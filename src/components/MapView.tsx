@@ -1,25 +1,28 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, Navigation, Zap } from "lucide-react";
+import { Navigation, Zap, Layers, Locate } from "lucide-react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 
-// Mock village locations
+// Village locations with real coordinates around Healdsburg
 const VILLAGE_LOCATIONS = [
-  { id: 1, name: "Main Stage", lat: 38.6127, lng: -122.8697, type: "venue", people: 42, emoji: "🎤" },
-  { id: 2, name: "Hacker House", lat: 38.6135, lng: -122.8680, type: "workspace", people: 18, emoji: "💻" },
-  { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8710, type: "social", people: 27, emoji: "🌳" },
-  { id: 4, name: "Dining Hall", lat: 38.6140, lng: -122.8700, type: "food", people: 55, emoji: "🍽️" },
-  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8690, type: "wellness", people: 8, emoji: "🧘" },
-  { id: 6, name: "Co-working Barn", lat: 38.6130, lng: -122.8715, type: "workspace", people: 31, emoji: "🏠" },
-  { id: 7, name: "Pool Deck", lat: 38.6145, lng: -122.8685, type: "social", people: 15, emoji: "🏊" },
-  { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8675, type: "venue", people: 12, emoji: "🎨" },
+  { id: 1, name: "Main Stage", lat: 38.6132, lng: -122.8700, type: "venue", people: 42, emoji: "🎤" },
+  { id: 2, name: "Hacker House", lat: 38.6140, lng: -122.8682, type: "workspace", people: 18, emoji: "💻" },
+  { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8715, type: "social", people: 27, emoji: "🌳" },
+  { id: 4, name: "Dining Hall", lat: 38.6145, lng: -122.8698, type: "food", people: 55, emoji: "🍽️" },
+  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘" },
+  { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
+  { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
+  { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
-  venue: "hsl(160, 80%, 50%)",
-  workspace: "hsl(200, 80%, 50%)",
-  social: "hsl(40, 90%, 60%)",
-  food: "hsl(20, 90%, 55%)",
-  wellness: "hsl(280, 60%, 60%)",
+  venue: "#2dd4a8",
+  workspace: "#38bdf8",
+  social: "#fbbf24",
+  food: "#f97316",
+  wellness: "#a78bfa",
 };
 
 interface MapViewProps {
@@ -28,39 +31,319 @@ interface MapViewProps {
 }
 
 export default function MapView({ onLocationSelect, selectedLocation }: MapViewProps) {
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapStyle, setMapStyle] = useState<"satellite" | "dark">("dark");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [mapError, setMapError] = useState(false);
 
-  // Simulated map view using a styled canvas with positioned markers
-  // In production, this would be Mapbox GL JS with custom tiles
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
+
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+
+    try {
+      const m = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: mapStyle === "dark"
+          ? "mapbox://styles/mapbox/dark-v11"
+          : "mapbox://styles/mapbox/satellite-streets-v12",
+        center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
+        zoom: VILLAGE_CENTER.zoom,
+        pitch: 45,
+        bearing: -15,
+        antialias: true,
+      });
+
+      m.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "bottom-right");
+
+      m.on("load", () => {
+        setMapLoaded(true);
+
+        // Add 3D buildings
+        const layers = m.getStyle()?.layers;
+        if (layers) {
+          const labelLayer = layers.find(
+            (layer) => layer.type === "symbol" && (layer.layout as any)?.["text-field"]
+          );
+          if (labelLayer) {
+            m.addLayer(
+              {
+                id: "3d-buildings",
+                source: "composite",
+                "source-layer": "building",
+                filter: ["==", "extrude", "true"],
+                type: "fill-extrusion",
+                minzoom: 14,
+                paint: {
+                  "fill-extrusion-color": "#1b4332",
+                  "fill-extrusion-height": ["get", "height"],
+                  "fill-extrusion-base": ["get", "min_height"],
+                  "fill-extrusion-opacity": 0.6,
+                },
+              },
+              labelLayer.id
+            );
+          }
+        }
+
+        // Add village boundary glow
+        m.addSource("village-area", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "Polygon",
+              coordinates: [[
+                [-122.8730, 38.6110],
+                [-122.8660, 38.6110],
+                [-122.8660, 38.6155],
+                [-122.8730, 38.6155],
+                [-122.8730, 38.6110],
+              ]],
+            },
+          },
+        });
+
+        m.addLayer({
+          id: "village-boundary",
+          type: "fill",
+          source: "village-area",
+          paint: {
+            "fill-color": "#2dd4a8",
+            "fill-opacity": 0.05,
+          },
+        });
+
+        m.addLayer({
+          id: "village-boundary-line",
+          type: "line",
+          source: "village-area",
+          paint: {
+            "line-color": "#2dd4a8",
+            "line-width": 2,
+            "line-opacity": 0.3,
+            "line-dasharray": [3, 3],
+          },
+        });
+      });
+
+      m.on("error", () => {
+        setMapError(true);
+      });
+
+      map.current = m;
+    } catch {
+      setMapError(true);
+    }
+
+    return () => {
+      map.current?.remove();
+      map.current = null;
+    };
+  }, []);
+
+  // Update map style
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    map.current.setStyle(
+      mapStyle === "dark"
+        ? "mapbox://styles/mapbox/dark-v11"
+        : "mapbox://styles/mapbox/satellite-streets-v12"
+    );
+  }, [mapStyle, mapLoaded]);
+
+  // Create custom markers
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    // Clear existing markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    VILLAGE_LOCATIONS.forEach((loc) => {
+      const color = TYPE_COLORS[loc.type] || "#2dd4a8";
+      const isSelected = selectedLocation?.id === loc.id;
+
+      // Create marker element
+      const el = document.createElement("div");
+      el.className = "village-marker";
+      el.style.cssText = `
+        width: 44px; height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%;
+        border: 2px solid ${color};
+        background: ${color}22;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 20px;
+        position: relative;
+        ${isSelected ? `box-shadow: 0 0 20px ${color}88, 0 0 40px ${color}44; transform: scale(1.2);` : ""}
+      `;
+      el.textContent = loc.emoji;
+
+      // Pulse ring for busy locations
+      if (loc.people > 20) {
+        const pulse = document.createElement("div");
+        pulse.style.cssText = `
+          position: absolute; inset: -4px;
+          border-radius: 50%;
+          border: 1px solid ${color}44;
+          animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        `;
+        el.appendChild(pulse);
+      }
+
+      // People count badge
+      const badge = document.createElement("div");
+      badge.style.cssText = `
+        position: absolute; top: -6px; right: -6px;
+        background: ${color};
+        color: #0d1b2a;
+        font-size: 9px; font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 999px;
+        font-family: 'Sora', sans-serif;
+      `;
+      badge.textContent = String(loc.people);
+      el.appendChild(badge);
+
+      el.addEventListener("click", () => {
+        onLocationSelect(selectedLocation?.id === loc.id ? null : loc);
+        map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
+      });
+
+      el.addEventListener("mouseenter", () => {
+        el.style.transform = "scale(1.15)";
+        el.style.boxShadow = `0 0 16px ${color}66`;
+      });
+
+      el.addEventListener("mouseleave", () => {
+        if (selectedLocation?.id !== loc.id) {
+          el.style.transform = "scale(1)";
+          el.style.boxShadow = "none";
+        }
+      });
+
+      // Popup
+      const popup = new mapboxgl.Popup({
+        offset: 30,
+        closeButton: false,
+        className: "village-popup",
+      }).setHTML(`
+        <div style="background: hsl(216, 40%, 14%); border: 1px solid hsl(160,20%,20%); border-radius: 12px; padding: 10px 14px; font-family: 'Manrope', sans-serif;">
+          <div style="font-family: 'Sora', sans-serif; font-size: 13px; font-weight: 600; color: hsl(160,100%,95%);">${loc.emoji} ${loc.name}</div>
+          <div style="font-size: 11px; color: hsl(160,20%,60%); margin-top: 3px; display: flex; align-items: center; gap: 4px;">
+            <span style="color: ${color};">⚡</span> ${loc.people} people here
+          </div>
+        </div>
+      `);
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([loc.lng, loc.lat])
+        .setPopup(popup)
+        .addTo(map.current!);
+
+      markersRef.current.push(marker);
+    });
+  }, [mapLoaded, selectedLocation, onLocationSelect]);
+
+  // GPS tracking
+  const trackLocation = useCallback(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(coords);
+
+        if (map.current) {
+          // Add/update user marker
+          if (userMarkerRef.current) {
+            userMarkerRef.current.setLngLat([coords.lng, coords.lat]);
+          } else {
+            const el = document.createElement("div");
+            el.style.cssText = `
+              width: 18px; height: 18px;
+              background: hsl(160, 80%, 50%);
+              border: 3px solid hsl(160, 100%, 95%);
+              border-radius: 50%;
+              box-shadow: 0 0 20px hsl(160, 80%, 50%, 0.5), 0 0 60px hsl(160, 80%, 50%, 0.2);
+            `;
+
+            const pulse = document.createElement("div");
+            pulse.style.cssText = `
+              position: absolute; inset: -8px;
+              border-radius: 50%;
+              background: hsl(160, 80%, 50%, 0.2);
+              animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            `;
+            el.appendChild(pulse);
+
+            userMarkerRef.current = new mapboxgl.Marker({ element: el })
+              .setLngLat([coords.lng, coords.lat])
+              .addTo(map.current);
+          }
+
+          map.current.flyTo({ center: [coords.lng, coords.lat], zoom: 17, duration: 1200 });
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true }
+    );
+  }, []);
+
+  // Fallback for invalid token
+  if (mapError) {
+    return <FallbackMap onLocationSelect={onLocationSelect} selectedLocation={selectedLocation} />;
+  }
+
   return (
-    <div ref={canvasRef} className="relative h-full w-full overflow-hidden bg-navy-deep">
-      {/* Stylized background grid */}
-      <div className="absolute inset-0" style={{
-        backgroundImage: `
-          radial-gradient(circle at 30% 40%, hsl(150, 40%, 18%, 0.4) 0%, transparent 50%),
-          radial-gradient(circle at 70% 60%, hsl(160, 80%, 50%, 0.08) 0%, transparent 40%),
-          linear-gradient(hsl(160, 20%, 20%, 0.15) 1px, transparent 1px),
-          linear-gradient(90deg, hsl(160, 20%, 20%, 0.15) 1px, transparent 1px)
-        `,
-        backgroundSize: '100% 100%, 100% 100%, 40px 40px, 40px 40px',
-      }} />
+    <div className="relative h-full w-full">
+      <div ref={mapContainer} className="absolute inset-0" />
 
-      {/* Topographic decoration lines */}
-      <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <path d="M10,50 Q30,20 50,45 T90,40" fill="none" stroke="hsl(160,80%,50%)" strokeWidth="0.3" />
-        <path d="M5,60 Q25,35 55,55 T95,50" fill="none" stroke="hsl(160,80%,50%)" strokeWidth="0.2" />
-        <path d="M15,70 Q35,45 60,65 T85,60" fill="none" stroke="hsl(160,80%,50%)" strokeWidth="0.2" />
-      </svg>
+      {/* Inject marker pulse animation */}
+      <style>{`
+        @keyframes marker-pulse {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        .mapboxgl-popup-content {
+          background: transparent !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border-radius: 12px !important;
+        }
+        .mapboxgl-popup-tip {
+          border-top-color: hsl(216, 40%, 14%) !important;
+        }
+        .mapboxgl-ctrl-group {
+          background: hsl(216, 40%, 14%, 0.9) !important;
+          border: 1px solid hsl(160, 20%, 20%) !important;
+          backdrop-filter: blur(12px) !important;
+          border-radius: 12px !important;
+        }
+        .mapboxgl-ctrl-group button {
+          border-color: hsl(160, 20%, 20%) !important;
+        }
+        .mapboxgl-ctrl-group button span {
+          filter: invert(1) !important;
+        }
+      `}</style>
 
-      {/* Village area label */}
+      {/* Top left badge */}
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="absolute top-6 left-6 z-10"
+        className="absolute top-4 left-4 z-10"
       >
-        <div className="glass-panel rounded-xl px-4 py-2">
+        <div className="glass-panel rounded-xl px-4 py-2.5">
           <p className="font-heading text-xs font-semibold tracking-widest uppercase text-primary">
             Edge Esmeralda Village
           </p>
@@ -68,12 +351,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         </div>
       </motion.div>
 
-      {/* Live indicator */}
+      {/* Live counter */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8 }}
-        className="absolute top-6 right-6 z-10"
+        className="absolute top-4 right-16 z-10"
       >
         <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
           <span className="relative flex h-2 w-2">
@@ -84,103 +367,113 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         </div>
       </motion.div>
 
-      {/* Location markers */}
+      {/* Bottom controls */}
+      <div className="absolute bottom-6 left-4 z-10 flex gap-2">
+        <button
+          onClick={trackLocation}
+          className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors"
+          title="Find my location"
+        >
+          <Locate className="w-4 h-4 text-primary" />
+        </button>
+        <button
+          onClick={() => setMapStyle(s => s === "dark" ? "satellite" : "dark")}
+          className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors"
+          title="Toggle map style"
+        >
+          <Layers className="w-4 h-4 text-primary" />
+        </button>
+        <button
+          onClick={() => map.current?.flyTo({
+            center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
+            zoom: VILLAGE_CENTER.zoom,
+            pitch: 45,
+            bearing: -15,
+            duration: 1200,
+          })}
+          className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors"
+          title="Reset view"
+        >
+          <Navigation className="w-4 h-4 text-primary" />
+        </button>
+      </div>
+
+      {/* Map loading overlay */}
+      <AnimatePresence>
+        {!mapLoaded && (
+          <motion.div
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-navy-deep flex items-center justify-center z-20"
+          >
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="font-heading text-sm text-muted-foreground">Loading map…</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Fallback stylized map if Mapbox token is invalid
+function FallbackMap({ onLocationSelect, selectedLocation }: MapViewProps) {
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-navy-deep">
+      <div className="absolute inset-0" style={{
+        backgroundImage: `
+          radial-gradient(circle at 30% 40%, hsl(150, 40%, 18%, 0.4) 0%, transparent 50%),
+          radial-gradient(circle at 70% 60%, hsl(160, 80%, 50%, 0.08) 0%, transparent 40%),
+          linear-gradient(hsl(160, 20%, 20%, 0.15) 1px, transparent 1px),
+          linear-gradient(90deg, hsl(160, 20%, 20%, 0.15) 1px, transparent 1px)
+        `,
+        backgroundSize: '100% 100%, 100% 100%, 40px 40px, 40px 40px',
+      }} />
+
+      <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="M10,50 Q30,20 50,45 T90,40" fill="none" stroke="hsl(160,80%,50%)" strokeWidth="0.3" />
+        <path d="M5,60 Q25,35 55,55 T95,50" fill="none" stroke="hsl(160,80%,50%)" strokeWidth="0.2" />
+      </svg>
+
+      <div className="absolute top-6 left-6 z-10 glass-panel rounded-xl px-4 py-2">
+        <p className="font-heading text-xs font-semibold tracking-widest uppercase text-primary">Edge Esmeralda Village</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Healdsburg, CA · Offline Mode</p>
+      </div>
+
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center glass-panel rounded-2xl p-6 max-w-xs">
+        <p className="font-heading text-sm font-semibold text-foreground mb-1">Map Unavailable</p>
+        <p className="text-xs text-muted-foreground">
+          Update your Mapbox token in <code className="text-primary text-[11px]">src/config/mapbox.ts</code> to enable the interactive map.
+        </p>
+      </div>
+
+      {/* Still show markers in fallback */}
       {VILLAGE_LOCATIONS.map((loc, i) => {
         const x = 15 + ((loc.lng + 122.872) / 0.005) * 70;
         const y = 15 + ((38.615 - loc.lat) / 0.004) * 70;
         const isSelected = selectedLocation?.id === loc.id;
-        const isHovered = hoveredId === loc.id;
         const color = TYPE_COLORS[loc.type];
 
         return (
           <motion.div
             key={loc.id}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 200 }}
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2 + i * 0.08, type: "spring" }}
             className="absolute z-20 cursor-pointer"
             style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
             onClick={() => onLocationSelect(isSelected ? null : loc)}
-            onMouseEnter={() => setHoveredId(loc.id)}
-            onMouseLeave={() => setHoveredId(null)}
           >
-            {/* Pulse ring for busy locations */}
-            {loc.people > 20 && (
-              <motion.div
-                className="absolute inset-0 rounded-full"
-                style={{ background: `${color}33` }}
-                animate={{ scale: [1, 2.5], opacity: [0.6, 0] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-            )}
-
-            {/* Marker dot */}
             <motion.div
-              animate={{
-                scale: isSelected ? 1.3 : isHovered ? 1.15 : 1,
-                boxShadow: isSelected
-                  ? `0 0 20px ${color}88, 0 0 40px ${color}44`
-                  : isHovered
-                    ? `0 0 12px ${color}66`
-                    : `0 0 6px ${color}33`,
-              }}
-              className="relative flex items-center justify-center w-10 h-10 rounded-full border-2"
-              style={{
-                borderColor: color,
-                background: `${color}22`,
-              }}
+              animate={{ scale: isSelected ? 1.2 : 1, boxShadow: isSelected ? `0 0 20px ${color}88` : "none" }}
+              className="flex items-center justify-center w-10 h-10 rounded-full border-2"
+              style={{ borderColor: color, background: `${color}22` }}
             >
               <span className="text-lg">{loc.emoji}</span>
             </motion.div>
-
-            {/* Label tooltip */}
-            <AnimatePresence>
-              {(isHovered || isSelected) && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 5 }}
-                  className="absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap glass-panel rounded-lg px-3 py-1.5"
-                >
-                  <p className="font-heading text-xs font-semibold text-foreground">{loc.name}</p>
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Zap className="w-2.5 h-2.5 text-primary" />
-                    {loc.people} people
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </motion.div>
         );
       })}
-
-      {/* User location indicator */}
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ delay: 1.2, type: "spring" }}
-        className="absolute z-30"
-        style={{ left: '45%', top: '55%', transform: 'translate(-50%, -50%)' }}
-      >
-        <div className="relative">
-          <motion.div
-            className="absolute inset-0 rounded-full bg-primary"
-            animate={{ scale: [1, 3], opacity: [0.4, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          />
-          <div className="relative w-4 h-4 rounded-full bg-primary border-2 border-foreground glow-mint" />
-        </div>
-      </motion.div>
-
-      {/* Bottom controls */}
-      <div className="absolute bottom-6 left-6 z-10 flex gap-2">
-        <button className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors">
-          <Navigation className="w-4 h-4 text-primary" />
-        </button>
-        <button className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors">
-          <MapPin className="w-4 h-4 text-primary" />
-        </button>
-      </div>
     </div>
   );
 }
