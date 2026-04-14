@@ -50,14 +50,33 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     try {
       const m = new mapboxgl.Map({
         container: mapContainer.current,
-        style: mapStyle === "dark"
-          ? "mapbox://styles/mapbox/dark-v11"
-          : "mapbox://styles/mapbox/satellite-streets-v12",
+        style: "mapbox://styles/mapbox/standard",
         center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
         zoom: VILLAGE_CENTER.zoom,
-        pitch: 45,
-        bearing: -15,
+        pitch: 0,
+        bearing: 0,
         antialias: true,
+      });
+
+      m.on("style.load", () => {
+        // Enable 3D terrain
+        m.addSource("mapbox-dem", {
+          type: "raster-dem",
+          url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+          tileSize: 512,
+          maxzoom: 14,
+        });
+        m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+
+        // Set Standard style config for colorful look
+        try {
+          m.setConfigProperty("basemap", "lightPreset", "dusk");
+          m.setConfigProperty("basemap", "showPointOfInterestLabels", true);
+          m.setConfigProperty("basemap", "showTransitLabels", false);
+          m.setConfigProperty("basemap", "showPlaceLabels", true);
+        } catch (e) {
+          // Config properties may not be available on all versions
+        }
       });
 
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "bottom-right");
