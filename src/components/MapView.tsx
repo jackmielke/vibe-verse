@@ -173,7 +173,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     if (!map.current || !mapLoaded) return;
     map.current.setStyle(
       mapStyle === "dark"
-        ? "mapbox://styles/mapbox/dark-v11"
+        ? "mapbox://styles/mapbox/standard"
         : "mapbox://styles/mapbox/satellite-streets-v12"
     );
   }, [mapStyle, mapLoaded]);
@@ -406,8 +406,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           onClick={() => map.current?.flyTo({
             center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
             zoom: VILLAGE_CENTER.zoom,
-            pitch: 45,
-            bearing: -15,
+            pitch: 0,
+            bearing: 0,
             duration: 1200,
           })}
           className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors"
