@@ -4,6 +4,7 @@ import { Navigation, Zap, Layers, Locate } from "lucide-react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
+import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 
 // Village locations with real coordinates around Healdsburg
 const VILLAGE_LOCATIONS = [
