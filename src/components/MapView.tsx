@@ -53,8 +53,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         style: "mapbox://styles/mapbox/standard",
         center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
         zoom: VILLAGE_CENTER.zoom,
-        pitch: 0,
-        bearing: 0,
+        pitch: 45,
+        bearing: -17,
         antialias: true,
       });
 
@@ -68,46 +68,51 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         });
         m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
-        // Set Standard style config for colorful look
+        // Set Standard style config for colorful, immersive 3D look
         try {
           m.setConfigProperty("basemap", "lightPreset", "dusk");
           m.setConfigProperty("basemap", "showPointOfInterestLabels", true);
           m.setConfigProperty("basemap", "showTransitLabels", false);
           m.setConfigProperty("basemap", "showPlaceLabels", true);
+          m.setConfigProperty("basemap", "show3dObjects", true);
         } catch (e) {
           // Config properties may not be available on all versions
         }
       });
 
-      m.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "bottom-right");
+      m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
 
       m.on("load", () => {
         setMapLoaded(true);
 
-        // Add 3D buildings
+        // Add 3D buildings (kept as fallback for non-Standard styles like satellite)
         const layers = m.getStyle()?.layers;
         if (layers) {
           const labelLayer = layers.find(
             (layer) => layer.type === "symbol" && (layer.layout as any)?.["text-field"]
           );
-          if (labelLayer) {
-            m.addLayer(
-              {
-                id: "3d-buildings",
-                source: "composite",
-                "source-layer": "building",
-                filter: ["==", "extrude", "true"],
-                type: "fill-extrusion",
-                minzoom: 14,
-                paint: {
-                  "fill-extrusion-color": "#1b4332",
-                  "fill-extrusion-height": ["get", "height"],
-                  "fill-extrusion-base": ["get", "min_height"],
-                  "fill-extrusion-opacity": 0.6,
+          if (labelLayer && !m.getLayer("3d-buildings")) {
+            try {
+              m.addLayer(
+                {
+                  id: "3d-buildings",
+                  source: "composite",
+                  "source-layer": "building",
+                  filter: ["==", "extrude", "true"],
+                  type: "fill-extrusion",
+                  minzoom: 14,
+                  paint: {
+                    "fill-extrusion-color": "#2dd4a8",
+                    "fill-extrusion-height": ["*", ["get", "height"], 1.5],
+                    "fill-extrusion-base": ["get", "min_height"],
+                    "fill-extrusion-opacity": 0.7,
+                  },
                 },
-              },
-              labelLayer.id
-            );
+                labelLayer.id
+              );
+            } catch {
+              // Standard style doesn't expose composite source — ignore
+            }
           }
         }
 
