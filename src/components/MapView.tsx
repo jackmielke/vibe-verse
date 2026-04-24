@@ -108,8 +108,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         setTimeout(() => {
           m.flyTo({
             center: [templeLoc.lng, templeLoc.lat],
-            zoom: 18.5,
-            pitch: 60,
+            zoom: 19.5,
+            pitch: 65,
             bearing: -20,
             duration: 2200,
           });
