@@ -411,8 +411,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           onClick={() => map.current?.flyTo({
             center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
             zoom: VILLAGE_CENTER.zoom,
-            pitch: 0,
-            bearing: 0,
+            pitch: 45,
+            bearing: -17,
             duration: 1200,
           })}
           className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors"
