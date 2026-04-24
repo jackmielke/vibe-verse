@@ -103,6 +103,18 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       m.on("load", () => {
         setMapLoaded(true);
 
+        // Fly to the 3D pavilion so it's immediately visible
+        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
+        setTimeout(() => {
+          m.flyTo({
+            center: [meditationGarden.lng, meditationGarden.lat],
+            zoom: 18.5,
+            pitch: 60,
+            bearing: -20,
+            duration: 2200,
+          });
+        }, 600);
+
         // Add 3D buildings (kept as fallback for non-Standard styles like satellite)
         const layers = m.getStyle()?.layers;
         if (layers) {
