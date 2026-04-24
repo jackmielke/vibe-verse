@@ -16,6 +16,7 @@ export function createMeditationTempleLayer(
 ): mapboxgl.CustomLayerInterface {
   const modelOrigin: [number, number] = [lngLat.lng, lngLat.lat];
   const modelAltitude = altitude;
+  // Rotate X by 90° so Three.js Y-up becomes Mapbox Z-up (model stands upright on ground).
   const modelRotate: [number, number, number] = [Math.PI / 2, 0, 0];
 
   const modelAsMercatorCoordinate = mapboxgl.MercatorCoordinate.fromLngLat(
@@ -23,8 +24,8 @@ export function createMeditationTempleLayer(
     modelAltitude,
   );
 
-  // Scale: meters → mercator units. Multiply for a visible pavilion (~40m wide).
-  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 40;
+  // Scale: meters → mercator units. Pavilion is ~8m wide — sized like a small building.
+  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 8;
 
   const modelTransform = {
     translateX: modelAsMercatorCoordinate.x,
