@@ -190,22 +190,32 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       const color = TYPE_COLORS[loc.type] || "#2dd4a8";
       const isSelected = selectedLocation?.id === loc.id;
 
-      // Create marker element
+      // Outer wrapper — Mapbox owns this element's transform for positioning.
+      // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
       el.style.cssText = `
         width: 44px; height: 44px;
+        position: relative;
+        cursor: pointer;
+        will-change: transform;
+      `;
+
+      // Inner scale wrapper — safe to transform/scale here.
+      const inner = document.createElement("div");
+      inner.style.cssText = `
+        width: 100%; height: 100%;
         display: flex; align-items: center; justify-content: center;
         border-radius: 50%;
         border: 2px solid ${color};
         background: ${color}22;
-        cursor: pointer;
-        transition: all 0.2s ease;
         font-size: 20px;
         position: relative;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
         ${isSelected ? `box-shadow: 0 0 20px ${color}88, 0 0 40px ${color}44; transform: scale(1.2);` : ""}
       `;
-      el.textContent = loc.emoji;
+      inner.textContent = loc.emoji;
+      el.appendChild(inner);
 
       // Pulse ring for busy locations
       if (loc.people > 20) {
@@ -215,8 +225,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           border-radius: 50%;
           border: 1px solid ${color}44;
           animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+          pointer-events: none;
         `;
-        el.appendChild(pulse);
+        inner.appendChild(pulse);
       }
 
       // People count badge
@@ -229,44 +240,33 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         padding: 1px 5px;
         border-radius: 999px;
         font-family: 'Sora', sans-serif;
+        pointer-events: none;
       `;
       badge.textContent = String(loc.people);
-      el.appendChild(badge);
+      inner.appendChild(badge);
 
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
         onLocationSelect(selectedLocation?.id === loc.id ? null : loc);
         map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
       });
 
-      el.addEventListener("mouseenter", () => {
-        el.style.transform = "scale(1.15)";
-        el.style.boxShadow = `0 0 16px ${color}66`;
-      });
-
-      el.addEventListener("mouseleave", () => {
+      inner.addEventListener("mouseenter", () => {
         if (selectedLocation?.id !== loc.id) {
-          el.style.transform = "scale(1)";
-          el.style.boxShadow = "none";
+          inner.style.transform = "scale(1.15)";
+          inner.style.boxShadow = `0 0 16px ${color}66`;
         }
       });
 
-      // Popup
-      const popup = new mapboxgl.Popup({
-        offset: 30,
-        closeButton: false,
-        className: "village-popup",
-      }).setHTML(`
-        <div style="background: hsl(216, 40%, 14%); border: 1px solid hsl(160,20%,20%); border-radius: 12px; padding: 10px 14px; font-family: 'Manrope', sans-serif;">
-          <div style="font-family: 'Sora', sans-serif; font-size: 13px; font-weight: 600; color: hsl(160,100%,95%);">${loc.emoji} ${loc.name}</div>
-          <div style="font-size: 11px; color: hsl(160,20%,60%); margin-top: 3px; display: flex; align-items: center; gap: 4px;">
-            <span style="color: ${color};">⚡</span> ${loc.people} people here
-          </div>
-        </div>
-      `);
+      inner.addEventListener("mouseleave", () => {
+        if (selectedLocation?.id !== loc.id) {
+          inner.style.transform = "scale(1)";
+          inner.style.boxShadow = "none";
+        }
+      });
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([loc.lng, loc.lat])
-        .setPopup(popup)
         .addTo(map.current!);
 
       markersRef.current.push(marker);
