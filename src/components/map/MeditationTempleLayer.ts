@@ -69,7 +69,7 @@ export function createMeditationTempleLayer(
 
       // Glow inside the temple (point light at orb position — set later)
       roofGlow = new THREE.PointLight(0x73ffb8, 4, 6);
-      roofGlow.position.set(0, 0, 1.4);
+      roofGlow.position.set(0, 1.4, 0);
       scene.add(roofGlow);
 
       // ---- Materials ----
@@ -98,24 +98,22 @@ export function createMeditationTempleLayer(
         metalness: 0.1,
       });
 
-      // ---- Geometry ----
+      // ---- Geometry (Y-up; after the layer's rotateX=π/2, +Y becomes world up) ----
       const root = new THREE.Group();
 
-      // Two-step stone base (octagonal)
+      // Two-step stone base (octagonal). CylinderGeometry's axis is Y by default.
       const baseLower = new THREE.Mesh(
         new THREE.CylinderGeometry(2.2, 2.4, 0.25, 8),
         stoneMat,
       );
-      baseLower.position.z = 0.125;
-      baseLower.rotation.x = Math.PI / 2;
+      baseLower.position.y = 0.125;
       root.add(baseLower);
 
       const baseUpper = new THREE.Mesh(
         new THREE.CylinderGeometry(1.9, 2.0, 0.18, 8),
         stoneMat,
       );
-      baseUpper.position.z = 0.34;
-      baseUpper.rotation.x = Math.PI / 2;
+      baseUpper.position.y = 0.34;
       root.add(baseUpper);
 
       // Floor pad (slightly darker)
@@ -123,29 +121,26 @@ export function createMeditationTempleLayer(
         new THREE.CylinderGeometry(1.7, 1.7, 0.05, 8),
         new THREE.MeshStandardMaterial({ color: 0xc9a87a, roughness: 0.9 }),
       );
-      floorPad.position.z = 0.45;
-      floorPad.rotation.x = Math.PI / 2;
+      floorPad.position.y = 0.45;
       root.add(floorPad);
 
-      // Four corner pillars
+      // Four corner pillars (vertical along Y)
       const pillarGeom = new THREE.CylinderGeometry(0.12, 0.14, 1.6, 10);
       const pillarPositions: [number, number][] = [
         [1.3, 1.3], [-1.3, 1.3], [1.3, -1.3], [-1.3, -1.3],
       ];
-      pillarPositions.forEach(([x, y]) => {
+      pillarPositions.forEach(([x, z]) => {
         const pillar = new THREE.Mesh(pillarGeom, woodMat);
-        pillar.position.set(x, y, 1.25);
-        pillar.rotation.x = Math.PI / 2;
+        pillar.position.set(x, 1.25, z);
         root.add(pillar);
       });
 
-      // Roof — pagoda-ish stepped pyramid (two tiers)
+      // Roof — pagoda-ish stepped pyramid (two tiers). Cone axis = Y.
       const roofLower = new THREE.Mesh(
         new THREE.ConeGeometry(2.3, 0.7, 4),
         roofMat,
       );
-      roofLower.position.z = 2.25;
-      roofLower.rotation.x = Math.PI / 2;
+      roofLower.position.y = 2.25;
       roofLower.rotation.y = Math.PI / 4;
       root.add(roofLower);
 
@@ -153,8 +148,7 @@ export function createMeditationTempleLayer(
         new THREE.ConeGeometry(1.4, 1.1, 4),
         roofMat,
       );
-      roofUpper.position.z = 2.95;
-      roofUpper.rotation.x = Math.PI / 2;
+      roofUpper.position.y = 2.95;
       roofUpper.rotation.y = Math.PI / 4;
       root.add(roofUpper);
 
@@ -163,14 +157,16 @@ export function createMeditationTempleLayer(
         new THREE.CylinderGeometry(0.04, 0.08, 0.5, 8),
         woodMat,
       );
-      spire.position.z = 3.65;
-      spire.rotation.x = Math.PI / 2;
+      spire.position.y = 3.65;
       root.add(spire);
 
       // Glowing orb on top
       orb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 24, 24), orbMat);
-      orb.position.set(0, 0, 3.95);
+      orb.position.set(0, 3.95, 0);
       root.add(orb);
+
+      // Update glow position to match orb
+      roofGlow.position.set(0, 3.5, 0);
 
       scene.add(root);
 
