@@ -104,10 +104,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         setMapLoaded(true);
 
         // Fly to the 3D pavilion so it's immediately visible
-        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
+        const templeLoc = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
         setTimeout(() => {
           m.flyTo({
-            center: [meditationGarden.lng, meditationGarden.lat],
+            center: [templeLoc.lng, templeLoc.lat],
             zoom: 18.5,
             pitch: 60,
             bearing: -20,
