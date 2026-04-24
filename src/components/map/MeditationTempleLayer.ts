@@ -23,8 +23,8 @@ export function createMeditationTempleLayer(
     modelAltitude,
   );
 
-  // Scale: meters → mercator units. Multiply by ~12 for a visible pavilion.
-  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 12;
+  // Scale: meters → mercator units. Multiply for a visible pavilion (~40m wide).
+  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 40;
 
   const modelTransform = {
     translateX: modelAsMercatorCoordinate.x,
