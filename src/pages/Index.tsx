@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import MapView, { VILLAGE_LOCATIONS } from "@/components/MapView";
 import EventFeed from "@/components/EventFeed";
+import LocationDetails from "@/components/LocationDetails";
 
 const Index = () => {
   const [selectedLocation, setSelectedLocation] = useState<typeof VILLAGE_LOCATIONS[0] | null>(null);
@@ -18,6 +19,10 @@ const Index = () => {
         <MapView
           onLocationSelect={setSelectedLocation}
           selectedLocation={selectedLocation}
+        />
+        <LocationDetails
+          location={selectedLocation}
+          onClose={() => setSelectedLocation(null)}
         />
       </motion.div>
 
