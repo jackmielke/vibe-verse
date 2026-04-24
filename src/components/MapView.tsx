@@ -206,13 +206,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     VILLAGE_LOCATIONS.forEach((loc) => {
       const color = TYPE_COLORS[loc.type] || "#2dd4a8";
       const isSelected = selectedLocation?.id === loc.id;
+      const isTemple = loc.id === 5; // Meditation Garden — rendered as a 3D model
 
       // Outer wrapper — Mapbox owns this element's transform for positioning.
       // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
       el.style.cssText = `
-        width: 44px; height: 44px;
+        width: ${isTemple ? 80 : 44}px; height: ${isTemple ? 80 : 44}px;
         position: relative;
         cursor: pointer;
         will-change: transform;
@@ -220,22 +221,34 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       // Inner scale wrapper — safe to transform/scale here.
       const inner = document.createElement("div");
-      inner.style.cssText = `
-        width: 100%; height: 100%;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 50%;
-        border: 2px solid ${color};
-        background: ${color}22;
-        font-size: 20px;
-        position: relative;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        ${isSelected ? `box-shadow: 0 0 20px ${color}88, 0 0 40px ${color}44; transform: scale(1.2);` : ""}
-      `;
-      inner.textContent = loc.emoji;
+      if (isTemple) {
+        // Invisible click target sized to cover the 3D pavilion
+        inner.style.cssText = `
+          width: 100%; height: 100%;
+          border-radius: 50%;
+          background: transparent;
+          position: relative;
+          ${isSelected ? `box-shadow: 0 0 30px ${color}88, 0 0 60px ${color}44;` : ""}
+          transition: box-shadow 0.2s ease;
+        `;
+      } else {
+        inner.style.cssText = `
+          width: 100%; height: 100%;
+          display: flex; align-items: center; justify-content: center;
+          border-radius: 50%;
+          border: 2px solid ${color};
+          background: ${color}22;
+          font-size: 20px;
+          position: relative;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          ${isSelected ? `box-shadow: 0 0 20px ${color}88, 0 0 40px ${color}44; transform: scale(1.2);` : ""}
+        `;
+        inner.textContent = loc.emoji;
+      }
       el.appendChild(inner);
 
-      // Pulse ring for busy locations
-      if (loc.people > 20) {
+      // Pulse ring for busy locations (skip on the temple — it has its own glow)
+      if (loc.people > 20 && !isTemple) {
         const pulse = document.createElement("div");
         pulse.style.cssText = `
           position: absolute; inset: -4px;
@@ -247,20 +260,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         inner.appendChild(pulse);
       }
 
-      // People count badge
-      const badge = document.createElement("div");
-      badge.style.cssText = `
-        position: absolute; top: -6px; right: -6px;
-        background: ${color};
-        color: #0d1b2a;
-        font-size: 9px; font-weight: 700;
-        padding: 1px 5px;
-        border-radius: 999px;
-        font-family: 'Sora', sans-serif;
-        pointer-events: none;
-      `;
-      badge.textContent = String(loc.people);
-      inner.appendChild(badge);
+      // People count badge (skip on the temple to keep the 3D model clean)
+      if (!isTemple) {
+        const badge = document.createElement("div");
+        badge.style.cssText = `
+          position: absolute; top: -6px; right: -6px;
+          background: ${color};
+          color: #0d1b2a;
+          font-size: 9px; font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 999px;
+          font-family: 'Sora', sans-serif;
+          pointer-events: none;
+        `;
+        badge.textContent = String(loc.people);
+        inner.appendChild(badge);
+      }
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -268,19 +283,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
       });
 
-      inner.addEventListener("mouseenter", () => {
-        if (selectedLocation?.id !== loc.id) {
-          inner.style.transform = "scale(1.15)";
-          inner.style.boxShadow = `0 0 16px ${color}66`;
-        }
-      });
+      if (!isTemple) {
+        inner.addEventListener("mouseenter", () => {
+          if (selectedLocation?.id !== loc.id) {
+            inner.style.transform = "scale(1.15)";
+            inner.style.boxShadow = `0 0 16px ${color}66`;
+          }
+        });
 
-      inner.addEventListener("mouseleave", () => {
-        if (selectedLocation?.id !== loc.id) {
-          inner.style.transform = "scale(1)";
-          inner.style.boxShadow = "none";
-        }
-      });
+        inner.addEventListener("mouseleave", () => {
+          if (selectedLocation?.id !== loc.id) {
+            inner.style.transform = "scale(1)";
+            inner.style.boxShadow = "none";
+          }
+        });
+      }
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([loc.lng, loc.lat])
