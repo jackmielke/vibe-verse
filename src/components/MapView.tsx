@@ -61,12 +61,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       m.on("style.load", () => {
         // Enable 3D terrain
-        m.addSource("mapbox-dem", {
-          type: "raster-dem",
-          url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-          tileSize: 512,
-          maxzoom: 14,
-        });
+        if (!m.getSource("mapbox-dem")) {
+          m.addSource("mapbox-dem", {
+            type: "raster-dem",
+            url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+            tileSize: 512,
+            maxzoom: 14,
+          });
+        }
         m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
         // Set Standard style config for colorful, immersive 3D look
@@ -78,6 +80,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           m.setConfigProperty("basemap", "show3dObjects", true);
         } catch (e) {
           // Config properties may not be available on all versions
+        }
+
+        // Re-add the 3D meditation pavilion (custom layers are wiped on style change)
+        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
+        if (!m.getLayer("meditation-temple")) {
+          try {
+            m.addLayer(
+              createMeditationTempleLayer("meditation-temple", {
+                lng: meditationGarden.lng,
+                lat: meditationGarden.lat,
+              }),
+            );
+          } catch {
+            /* ignore */
+          }
         }
       });
 
