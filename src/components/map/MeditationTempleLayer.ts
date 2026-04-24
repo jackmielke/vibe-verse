@@ -24,8 +24,8 @@ export function createMeditationTempleLayer(
     modelAltitude,
   );
 
-  // Scale: meters → mercator units. Pavilion is ~8m wide — sized like a small building.
-  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 8;
+  // Scale: meters → mercator units. Pavilion ~25m wide — visible from village-level zoom.
+  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 25;
 
   const modelTransform = {
     translateX: modelAsMercatorCoordinate.x,
