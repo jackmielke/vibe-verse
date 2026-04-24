@@ -165,6 +165,27 @@ export function createMeditationTempleLayer(
       orb.position.set(0, 3.95, 0);
       root.add(orb);
 
+      // Tall glowing beacon column shooting up from the orb — visible from any zoom
+      const beaconMat = new THREE.MeshBasicMaterial({
+        color: 0x73ffb8,
+        transparent: true,
+        opacity: 0.45,
+      });
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.25, 14, 12, 1, true),
+        beaconMat,
+      );
+      beacon.position.set(0, 11, 0);
+      root.add(beacon);
+
+      // Inner brighter core
+      const beaconCore = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.08, 14, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }),
+      );
+      beaconCore.position.set(0, 11, 0);
+      root.add(beaconCore);
+
       // Update glow position to match orb
       roofGlow.position.set(0, 3.5, 0);
 
