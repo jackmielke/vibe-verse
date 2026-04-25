@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import islandIcon from "@/assets/edge-island-icon.png";
 import edgeLogo from "@/assets/edge-esmeralda-logo.png";
 
 interface SplashScreenProps {
@@ -88,7 +87,7 @@ const SplashScreen = ({ onEnter }: SplashScreenProps) => {
             className="relative z-10"
           >
             <motion.img
-              src={islandIcon}
+              src={edgeLogo}
               alt="Edge Esmeralda floating village"
               className="w-[min(60vmin,460px)] h-[min(60vmin,460px)] object-contain select-none"
               style={{
