@@ -418,27 +418,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }
       `}</style>
 
-      {/* Top left badge */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="absolute top-4 left-4 z-10"
-      >
-        <div className="glass-panel rounded-xl px-4 py-2.5">
-          <p className="font-heading text-xs font-semibold tracking-widest uppercase text-primary">
-            Edge Esmeralda Village
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Healdsburg, CA · Live</p>
-        </div>
-      </motion.div>
-
-      {/* Live counter */}
+      {/* Live counter — top-right (badge is rendered by the page shell) */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8 }}
-        className="absolute top-4 right-16 z-10"
+        className="absolute top-4 right-4 z-10"
       >
         <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
           <span className="relative flex h-2 w-2">
