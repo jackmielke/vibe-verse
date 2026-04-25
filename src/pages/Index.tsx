@@ -3,10 +3,16 @@ import { motion } from "framer-motion";
 import MapView, { VILLAGE_LOCATIONS } from "@/components/MapView";
 import EventFeed from "@/components/EventFeed";
 import LocationDetails from "@/components/LocationDetails";
+import SplashScreen from "@/components/SplashScreen";
 import edgeLogo from "@/assets/edge-esmeralda-logo.png";
 
 const Index = () => {
   const [selectedLocation, setSelectedLocation] = useState<typeof VILLAGE_LOCATIONS[0] | null>(null);
+  const [splashDone, setSplashDone] = useState(false);
+
+  if (!splashDone) {
+    return <SplashScreen onEnter={() => setSplashDone(true)} />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
