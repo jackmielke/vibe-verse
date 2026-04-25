@@ -413,6 +413,17 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         .mapboxgl-ctrl-group button {
           border-color: hsl(160, 20%, 20%) !important;
         }
+        /* Lift Mapbox controls above the mobile bottom nav */
+        .mapboxgl-ctrl-bottom-right,
+        .mapboxgl-ctrl-bottom-left {
+          margin-bottom: 88px !important;
+        }
+        @media (min-width: 768px) {
+          .mapboxgl-ctrl-bottom-right,
+          .mapboxgl-ctrl-bottom-left {
+            margin-bottom: 0 !important;
+          }
+        }
         .mapboxgl-ctrl-group button span {
           filter: invert(1) !important;
         }
