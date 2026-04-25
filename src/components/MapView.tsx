@@ -434,8 +434,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         </div>
       </motion.div>
 
-      {/* Bottom controls */}
-      <div className="absolute bottom-6 left-4 z-10 flex gap-2">
+      {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
+      <div className="absolute bottom-24 md:bottom-6 left-4 z-10 flex gap-2">
         <button
           onClick={trackLocation}
           className="glass-panel rounded-lg p-2.5 hover:bg-muted transition-colors"
