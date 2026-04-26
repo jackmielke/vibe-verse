@@ -248,14 +248,17 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     VILLAGE_LOCATIONS.forEach((loc) => {
       const color = TYPE_COLORS[loc.type] || "#2dd4a8";
       const isSelected = selectedLocation?.id === loc.id;
-      const isTemple = loc.id === 5; // Meditation Garden — rendered as a 3D model
+      // Any location backed by a 3D model uses an invisible click target
+      // sized to cover that model — no emoji bubble.
+      const is3d = Boolean(loc.structure3d);
+      const hitSize = loc.hitSize ?? 44;
 
       // Outer wrapper — Mapbox owns this element's transform for positioning.
       // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
       el.style.cssText = `
-        width: ${isTemple ? 80 : 44}px; height: ${isTemple ? 80 : 44}px;
+        width: ${hitSize}px; height: ${hitSize}px;
         position: relative;
         cursor: pointer;
         will-change: transform;
@@ -263,8 +266,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       // Inner scale wrapper — safe to transform/scale here.
       const inner = document.createElement("div");
-      if (isTemple) {
-        // Invisible click target sized to cover the 3D pavilion
+      if (is3d) {
+        // Invisible click target sized to cover the 3D structure.
+        // Selected state still gets a soft glow ring around the model.
         inner.style.cssText = `
           width: 100%; height: 100%;
           border-radius: 50%;
@@ -289,8 +293,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       }
       el.appendChild(inner);
 
-      // Pulse ring for busy locations (skip on the temple — it has its own glow)
-      if (loc.people > 20 && !isTemple) {
+      // Pulse ring for busy locations (skip on 3D structures — they have their own glow)
+      if (loc.people > 20 && !is3d) {
         const pulse = document.createElement("div");
         pulse.style.cssText = `
           position: absolute; inset: -4px;
@@ -302,8 +306,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         inner.appendChild(pulse);
       }
 
-      // People count badge (skip on the temple to keep the 3D model clean)
-      if (!isTemple) {
+      // People count badge (skip on 3D structures to keep the model clean)
+      if (!is3d) {
         const badge = document.createElement("div");
         badge.style.cssText = `
           position: absolute; top: -6px; right: -6px;
@@ -325,7 +329,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
       });
 
-      if (!isTemple) {
+      if (!is3d) {
         inner.addEventListener("mouseenter", () => {
           if (selectedLocation?.id !== loc.id) {
             inner.style.transform = "scale(1.15)";
