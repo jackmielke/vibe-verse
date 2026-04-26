@@ -17,12 +17,12 @@ const VILLAGE_LOCATIONS = [
   { id: 2, name: "Hacker House", lat: 38.6140, lng: -122.8682, type: "workspace", people: 18, emoji: "💻" },
   { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8715, type: "social", people: 27, emoji: "🌳" },
   { id: 4, name: "Dining Hall", lat: 38.6145, lng: -122.8698, type: "food", people: 55, emoji: "🍽️" },
-  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 80 },
+  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 160 },
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
-  { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 100 },
-  { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 70 },
+  { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
+  { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 140 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -46,17 +46,43 @@ const STRUCTURE_FACTORIES: Record<
 // Adds every 3D structure layer for locations that have `structure3d` set.
 // Safe to call multiple times — it skips layers that already exist (and is
 // also called from `style.load` since custom layers are wiped on style change).
+// Uses `queryTerrainElevation` so structures sit on the ground rather than
+// sinking below an elevated terrain surface.
 function addStructureLayers(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
     const factory = STRUCTURE_FACTORIES[loc.structure3d];
     if (!factory || m.getLayer(factory.layerId)) return;
+    let altitude = 0;
     try {
-      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }));
+      // queryTerrainElevation returns meters above sea level at this lng/lat,
+      // or null if terrain isn't ready yet. Add a tiny lift so the base of
+      // the model isn't z-fighting with the terrain mesh.
+      const elev = m.queryTerrainElevation([loc.lng, loc.lat], { exaggerated: true });
+      if (typeof elev === "number") altitude = elev + 0.5;
+    } catch {
+      /* terrain not ready */
+    }
+    try {
+      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }, altitude));
     } catch {
       /* ignore — layer may not be ready in this style */
     }
   });
+}
+
+// Re-create structure layers (e.g. once terrain has loaded) so altitude
+// reflects current ground elevation.
+function refreshStructureLayers(m: mapboxgl.Map) {
+  VILLAGE_LOCATIONS.forEach((loc) => {
+    if (!loc.structure3d) return;
+    const factory = STRUCTURE_FACTORIES[loc.structure3d];
+    if (!factory) return;
+    if (m.getLayer(factory.layerId)) {
+      try { m.removeLayer(factory.layerId); } catch { /* noop */ }
+    }
+  });
+  addStructureLayers(m);
 }
 
 interface MapViewProps {
@@ -115,8 +141,18 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           // Config properties may not be available on all versions
         }
 
-        // Re-add 3D structures (custom layers are wiped on style change)
+        // Re-add 3D structures (custom layers are wiped on style change).
+        // Wait one tick for terrain tiles before sampling elevation.
         addStructureLayers(m);
+        m.once("idle", () => refreshStructureLayers(m));
+      });
+
+      // When new terrain tiles load near our structures, re-seat them on the
+      // ground so they don't appear to sink as the user pans/zooms.
+      m.on("sourcedata", (e) => {
+        if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
+          refreshStructureLayers(m);
+        }
       });
 
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
@@ -257,24 +293,29 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
+      // For 3D structures we make the hit area TALL so it covers the model
+      // that rises upward in screen space from the ground anchor.
+      const hitWidth = hitSize;
+      const hitHeight = is3d ? Math.round(hitSize * 1.6) : hitSize;
       el.style.cssText = `
-        width: ${hitSize}px; height: ${hitSize}px;
+        width: ${hitWidth}px; height: ${hitHeight}px;
         position: relative;
         cursor: pointer;
         will-change: transform;
+        pointer-events: auto;
       `;
 
       // Inner scale wrapper — safe to transform/scale here.
       const inner = document.createElement("div");
       if (is3d) {
         // Invisible click target sized to cover the 3D structure.
-        // Selected state still gets a soft glow ring around the model.
+        // Selected state still gets a soft glow ring around the model base.
         inner.style.cssText = `
           width: 100%; height: 100%;
-          border-radius: 50%;
+          border-radius: 40% 40% 50% 50%;
           background: transparent;
           position: relative;
-          ${isSelected ? `box-shadow: 0 0 30px ${color}88, 0 0 60px ${color}44;` : ""}
+          ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
           transition: box-shadow 0.2s ease;
         `;
       } else {
@@ -345,7 +386,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         });
       }
 
-      const marker = new mapboxgl.Marker({ element: el })
+      const marker = new mapboxgl.Marker({
+        element: el,
+        anchor: is3d ? "bottom" : "center",
+      })
         .setLngLat([loc.lng, loc.lat])
         .addTo(map.current!);
 
