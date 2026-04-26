@@ -153,6 +153,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
           refreshStructureLayers(m);
         }
+      });
 
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
 
