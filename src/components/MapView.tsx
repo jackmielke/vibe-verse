@@ -33,6 +33,32 @@ const TYPE_COLORS: Record<string, string> = {
   wellness: "#a78bfa",
 };
 
+// Maps a `structure3d` key to a Mapbox custom layer factory + its layer id.
+const STRUCTURE_FACTORIES: Record<
+  string,
+  { layerId: string; create: typeof createMeditationTempleLayer }
+> = {
+  temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
+  plaza: { layerId: "structure-plaza", create: createPlazaLayer },
+  observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
+};
+
+// Adds every 3D structure layer for locations that have `structure3d` set.
+// Safe to call multiple times — it skips layers that already exist (and is
+// also called from `style.load` since custom layers are wiped on style change).
+function addStructureLayers(m: mapboxgl.Map) {
+  VILLAGE_LOCATIONS.forEach((loc) => {
+    if (!loc.structure3d) return;
+    const factory = STRUCTURE_FACTORIES[loc.structure3d];
+    if (!factory || m.getLayer(factory.layerId)) return;
+    try {
+      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }));
+    } catch {
+      /* ignore — layer may not be ready in this style */
+    }
+  });
+}
+
 interface MapViewProps {
   onLocationSelect: (location: typeof VILLAGE_LOCATIONS[0] | null) => void;
   selectedLocation: typeof VILLAGE_LOCATIONS[0] | null;
