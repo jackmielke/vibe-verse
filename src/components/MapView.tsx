@@ -182,16 +182,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           },
         });
 
-        // 3D meditation pavilion overlay (replaces the 🧘 marker)
-        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
-        if (!m.getLayer("meditation-temple")) {
-          m.addLayer(
-            createMeditationTempleLayer("meditation-temple", {
-              lng: meditationGarden.lng,
-              lat: meditationGarden.lat,
-            }),
-          );
-        }
+        // 3D structure overlays (also re-added on style.load)
+        addStructureLayers(m);
       });
 
       m.on("error", () => {
