@@ -5,17 +5,24 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
+import { createPlazaLayer } from "./map/PlazaLayer";
+import { createObservatoryLayer } from "./map/ObservatoryLayer";
 
-// Village locations with real coordinates around Healdsburg
+// Village locations with real coordinates around Healdsburg.
+// `structure3d` marks locations that are rendered as a 3D model on the map
+// instead of an emoji bubble — the marker becomes an invisible click target
+// over the 3D asset, and the same selection/animation flow is used.
 const VILLAGE_LOCATIONS = [
   { id: 1, name: "Main Stage", lat: 38.6132, lng: -122.8700, type: "venue", people: 42, emoji: "🎤" },
   { id: 2, name: "Hacker House", lat: 38.6140, lng: -122.8682, type: "workspace", people: 18, emoji: "💻" },
   { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8715, type: "social", people: 27, emoji: "🌳" },
   { id: 4, name: "Dining Hall", lat: 38.6145, lng: -122.8698, type: "food", people: 55, emoji: "🍽️" },
-  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘" },
+  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 80 },
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
+  { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 100 },
+  { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 70 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -25,6 +32,32 @@ const TYPE_COLORS: Record<string, string> = {
   food: "#f97316",
   wellness: "#a78bfa",
 };
+
+// Maps a `structure3d` key to a Mapbox custom layer factory + its layer id.
+const STRUCTURE_FACTORIES: Record<
+  string,
+  { layerId: string; create: typeof createMeditationTempleLayer }
+> = {
+  temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
+  plaza: { layerId: "structure-plaza", create: createPlazaLayer },
+  observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
+};
+
+// Adds every 3D structure layer for locations that have `structure3d` set.
+// Safe to call multiple times — it skips layers that already exist (and is
+// also called from `style.load` since custom layers are wiped on style change).
+function addStructureLayers(m: mapboxgl.Map) {
+  VILLAGE_LOCATIONS.forEach((loc) => {
+    if (!loc.structure3d) return;
+    const factory = STRUCTURE_FACTORIES[loc.structure3d];
+    if (!factory || m.getLayer(factory.layerId)) return;
+    try {
+      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }));
+    } catch {
+      /* ignore — layer may not be ready in this style */
+    }
+  });
+}
 
 interface MapViewProps {
   onLocationSelect: (location: typeof VILLAGE_LOCATIONS[0] | null) => void;
@@ -82,20 +115,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           // Config properties may not be available on all versions
         }
 
-        // Re-add the 3D meditation pavilion (custom layers are wiped on style change)
-        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
-        if (!m.getLayer("meditation-temple")) {
-          try {
-            m.addLayer(
-              createMeditationTempleLayer("meditation-temple", {
-                lng: meditationGarden.lng,
-                lat: meditationGarden.lat,
-              }),
-            );
-          } catch {
-            /* ignore */
-          }
-        }
+        // Re-add 3D structures (custom layers are wiped on style change)
+        addStructureLayers(m);
       });
 
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
@@ -187,16 +208,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           },
         });
 
-        // 3D meditation pavilion overlay (replaces the 🧘 marker)
-        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
-        if (!m.getLayer("meditation-temple")) {
-          m.addLayer(
-            createMeditationTempleLayer("meditation-temple", {
-              lng: meditationGarden.lng,
-              lat: meditationGarden.lat,
-            }),
-          );
-        }
+        // 3D structure overlays (also re-added on style.load)
+        addStructureLayers(m);
       });
 
       m.on("error", () => {
@@ -235,14 +248,17 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     VILLAGE_LOCATIONS.forEach((loc) => {
       const color = TYPE_COLORS[loc.type] || "#2dd4a8";
       const isSelected = selectedLocation?.id === loc.id;
-      const isTemple = loc.id === 5; // Meditation Garden — rendered as a 3D model
+      // Any location backed by a 3D model uses an invisible click target
+      // sized to cover that model — no emoji bubble.
+      const is3d = Boolean(loc.structure3d);
+      const hitSize = loc.hitSize ?? 44;
 
       // Outer wrapper — Mapbox owns this element's transform for positioning.
       // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
       el.style.cssText = `
-        width: ${isTemple ? 80 : 44}px; height: ${isTemple ? 80 : 44}px;
+        width: ${hitSize}px; height: ${hitSize}px;
         position: relative;
         cursor: pointer;
         will-change: transform;
@@ -250,8 +266,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       // Inner scale wrapper — safe to transform/scale here.
       const inner = document.createElement("div");
-      if (isTemple) {
-        // Invisible click target sized to cover the 3D pavilion
+      if (is3d) {
+        // Invisible click target sized to cover the 3D structure.
+        // Selected state still gets a soft glow ring around the model.
         inner.style.cssText = `
           width: 100%; height: 100%;
           border-radius: 50%;
@@ -276,8 +293,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       }
       el.appendChild(inner);
 
-      // Pulse ring for busy locations (skip on the temple — it has its own glow)
-      if (loc.people > 20 && !isTemple) {
+      // Pulse ring for busy locations (skip on 3D structures — they have their own glow)
+      if (loc.people > 20 && !is3d) {
         const pulse = document.createElement("div");
         pulse.style.cssText = `
           position: absolute; inset: -4px;
@@ -289,8 +306,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         inner.appendChild(pulse);
       }
 
-      // People count badge (skip on the temple to keep the 3D model clean)
-      if (!isTemple) {
+      // People count badge (skip on 3D structures to keep the model clean)
+      if (!is3d) {
         const badge = document.createElement("div");
         badge.style.cssText = `
           position: absolute; top: -6px; right: -6px;
@@ -312,7 +329,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
       });
 
-      if (!isTemple) {
+      if (!is3d) {
         inner.addEventListener("mouseenter", () => {
           if (selectedLocation?.id !== loc.id) {
             inner.style.transform = "scale(1.15)";
