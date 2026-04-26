@@ -141,9 +141,18 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           // Config properties may not be available on all versions
         }
 
-        // Re-add 3D structures (custom layers are wiped on style change)
+        // Re-add 3D structures (custom layers are wiped on style change).
+        // Wait one tick for terrain tiles before sampling elevation.
         addStructureLayers(m);
+        m.once("idle", () => refreshStructureLayers(m));
       });
+
+      // When new terrain tiles load near our structures, re-seat them on the
+      // ground so they don't appear to sink as the user pans/zooms.
+      m.on("sourcedata", (e) => {
+        if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
+          refreshStructureLayers(m);
+        }
 
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
 
