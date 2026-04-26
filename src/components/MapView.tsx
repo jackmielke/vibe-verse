@@ -293,24 +293,29 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
+      // For 3D structures we make the hit area TALL so it covers the model
+      // that rises upward in screen space from the ground anchor.
+      const hitWidth = hitSize;
+      const hitHeight = is3d ? Math.round(hitSize * 1.6) : hitSize;
       el.style.cssText = `
-        width: ${hitSize}px; height: ${hitSize}px;
+        width: ${hitWidth}px; height: ${hitHeight}px;
         position: relative;
         cursor: pointer;
         will-change: transform;
+        pointer-events: auto;
       `;
 
       // Inner scale wrapper — safe to transform/scale here.
       const inner = document.createElement("div");
       if (is3d) {
         // Invisible click target sized to cover the 3D structure.
-        // Selected state still gets a soft glow ring around the model.
+        // Selected state still gets a soft glow ring around the model base.
         inner.style.cssText = `
           width: 100%; height: 100%;
-          border-radius: 50%;
+          border-radius: 40% 40% 50% 50%;
           background: transparent;
           position: relative;
-          ${isSelected ? `box-shadow: 0 0 30px ${color}88, 0 0 60px ${color}44;` : ""}
+          ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
           transition: box-shadow 0.2s ease;
         `;
       } else {
