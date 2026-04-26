@@ -89,20 +89,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           // Config properties may not be available on all versions
         }
 
-        // Re-add the 3D meditation pavilion (custom layers are wiped on style change)
-        const meditationGarden = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
-        if (!m.getLayer("meditation-temple")) {
-          try {
-            m.addLayer(
-              createMeditationTempleLayer("meditation-temple", {
-                lng: meditationGarden.lng,
-                lat: meditationGarden.lat,
-              }),
-            );
-          } catch {
-            /* ignore */
-          }
-        }
+        // Re-add 3D structures (custom layers are wiped on style change)
+        addStructureLayers(m);
       });
 
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
