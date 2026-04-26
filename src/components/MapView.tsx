@@ -46,17 +46,43 @@ const STRUCTURE_FACTORIES: Record<
 // Adds every 3D structure layer for locations that have `structure3d` set.
 // Safe to call multiple times — it skips layers that already exist (and is
 // also called from `style.load` since custom layers are wiped on style change).
+// Uses `queryTerrainElevation` so structures sit on the ground rather than
+// sinking below an elevated terrain surface.
 function addStructureLayers(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
     const factory = STRUCTURE_FACTORIES[loc.structure3d];
     if (!factory || m.getLayer(factory.layerId)) return;
+    let altitude = 0;
     try {
-      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }));
+      // queryTerrainElevation returns meters above sea level at this lng/lat,
+      // or null if terrain isn't ready yet. Add a tiny lift so the base of
+      // the model isn't z-fighting with the terrain mesh.
+      const elev = m.queryTerrainElevation([loc.lng, loc.lat], { exaggerated: true });
+      if (typeof elev === "number") altitude = elev + 0.5;
+    } catch {
+      /* terrain not ready */
+    }
+    try {
+      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }, altitude));
     } catch {
       /* ignore — layer may not be ready in this style */
     }
   });
+}
+
+// Re-create structure layers (e.g. once terrain has loaded) so altitude
+// reflects current ground elevation.
+function refreshStructureLayers(m: mapboxgl.Map) {
+  VILLAGE_LOCATIONS.forEach((loc) => {
+    if (!loc.structure3d) return;
+    const factory = STRUCTURE_FACTORIES[loc.structure3d];
+    if (!factory) return;
+    if (m.getLayer(factory.layerId)) {
+      try { m.removeLayer(factory.layerId); } catch { /* noop */ }
+    }
+  });
+  addStructureLayers(m);
 }
 
 interface MapViewProps {
