@@ -132,6 +132,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const keysRef = useRef<Record<string, boolean>>({});
   const heliVelocityRef = useRef({ forward: 0, lateral: 0, vertical: 0 });
 
+  // ---- Vibey (community agent character) -------------------------------
+  const vibeyStateRef = useRef<VibeyState>({
+    lng: VIBEY_LOCATION.lng,
+    lat: VIBEY_LOCATION.lat,
+    baseAltitude: 0,
+  });
+  const vibeyLayerAddedRef = useRef(false);
+  const vibeyMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [vibeyOpen, setVibeyOpen] = useState(false);
+
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
