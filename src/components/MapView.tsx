@@ -855,6 +855,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         </div>
       </motion.div>
 
+      {/* Vibey chat dialog */}
+      <VibeyDialog open={vibeyOpen} onClose={() => setVibeyOpen(false)} />
+
       {/* Helicopter control panel */}
       <HelicopterControl
         state={heliUI}
