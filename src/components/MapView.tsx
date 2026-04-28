@@ -7,6 +7,7 @@ import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
 import { createObservatoryLayer } from "./map/ObservatoryLayer";
+import { createHelicopterLayer } from "./map/HelicopterLayer";
 
 // Village locations with real coordinates around Healdsburg.
 // `structure3d` marks locations that are rendered as a 3D model on the map
@@ -23,6 +24,7 @@ const VILLAGE_LOCATIONS = [
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
   { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
   { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 140 },
+  { id: 11, name: "Sky Patrol Helicopter", lat: 38.6132, lng: -122.8695, type: "venue", people: 2, emoji: "🚁", structure3d: "helicopter" as const, hitSize: 180 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -41,6 +43,7 @@ const STRUCTURE_FACTORIES: Record<
   temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
   plaza: { layerId: "structure-plaza", create: createPlazaLayer },
   observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
+  helicopter: { layerId: "structure-helicopter", create: createHelicopterLayer },
 };
 
 // Adds every 3D structure layer for locations that have `structure3d` set.
