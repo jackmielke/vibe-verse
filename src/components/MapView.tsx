@@ -31,7 +31,6 @@ const VILLAGE_LOCATIONS = [
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
   { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
   { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 140 },
-  { id: 11, name: "Sky Patrol Helicopter", lat: 38.6132, lng: -122.8695, type: "venue", people: 2, emoji: "🚁", structure3d: "helicopter" as const, hitSize: 180 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
