@@ -137,10 +137,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     lng: VIBEY_LOCATION.lng,
     lat: VIBEY_LOCATION.lat,
     baseAltitude: 0,
+    heading: 0,
+    walkMode: false,
   });
   const vibeyLayerAddedRef = useRef(false);
   const vibeyMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [vibeyOpen, setVibeyOpen] = useState(false);
+  const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
+  const vibeyKeysRef = useRef<Record<string, boolean>>({});
 
   // Initialize map
   useEffect(() => {
@@ -325,158 +329,31 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     VILLAGE_LOCATIONS.forEach((loc) => {
       const color = TYPE_COLORS[loc.type] || "#2dd4a8";
       const isSelected = selectedLocation?.id === loc.id;
-      // Any location backed by a 3D model uses an invisible click target
-      // sized to cover that model — no emoji bubble.
-      const is3d = Boolean(loc.structure3d);
+      // Only 3D structures get an invisible click target. All other
+      // locations are intentionally hidden — no pins, no labels.
+      if (!loc.structure3d) return;
       const hitSize = loc.hitSize ?? 44;
 
-      // Outer wrapper — Mapbox owns this element's transform for positioning.
-      // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
 
-      if (is3d) {
-        // Invisible click target sized to cover the 3D structure.
-        const hitWidth = hitSize;
-        const hitHeight = Math.round(hitSize * 1.6);
-        el.style.cssText = `
-          width: ${hitWidth}px; height: ${hitHeight}px;
-          position: relative;
-          cursor: pointer;
-          pointer-events: auto;
-        `;
-        const inner = document.createElement("div");
-        inner.style.cssText = `
-          width: 100%; height: 100%;
-          border-radius: 40% 40% 50% 50%;
-          background: transparent;
-          ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
-          transition: box-shadow 0.2s ease;
-        `;
-        el.appendChild(inner);
-      } else {
-        // ── Beacon-style waypoint ──
-        // A thin vertical light pillar rising from the ground with a
-        // typographic label tag. Reads as a game HUD waypoint, not a pin.
-        el.style.cssText = `
-          position: relative;
-          width: 140px; height: 64px;
-          cursor: pointer;
-          pointer-events: auto;
-          font-family: 'Sora', sans-serif;
-          transition: transform 0.2s ease;
-          ${isSelected ? "transform: translateY(-2px) scale(1.05);" : ""}
-        `;
-
-        // Vertical beam
-        const beam = document.createElement("div");
-        beam.style.cssText = `
-          position: absolute;
-          left: 50%; bottom: 4px;
-          transform: translateX(-50%);
-          width: 2px; height: 28px;
-          background: linear-gradient(to top, ${color}, ${color}00);
-          box-shadow: 0 0 8px ${color}aa, 0 0 18px ${color}55;
-          pointer-events: none;
-        `;
-        el.appendChild(beam);
-
-        // Ground dot
-        const dot = document.createElement("div");
-        dot.style.cssText = `
-          position: absolute;
-          left: 50%; bottom: 0;
-          transform: translateX(-50%);
-          width: 8px; height: 8px;
-          border-radius: 50%;
-          background: ${color};
-          box-shadow: 0 0 12px ${color};
-          pointer-events: none;
-        `;
-        el.appendChild(dot);
-
-        // Pulse ring on ground for busy locations
-        if (loc.people > 20) {
-          const pulse = document.createElement("div");
-          pulse.style.cssText = `
-            position: absolute;
-            left: 50%; bottom: -3px;
-            transform: translateX(-50%);
-            width: 14px; height: 14px;
-            border-radius: 50%;
-            border: 1px solid ${color}88;
-            animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-            pointer-events: none;
-          `;
-          el.appendChild(pulse);
-        }
-
-        // Label tag at top of beam
-        const tag = document.createElement("div");
-        tag.style.cssText = `
-          position: absolute;
-          left: 50%; bottom: 30px;
-          transform: translateX(-50%);
-          display: flex; align-items: center; gap: 6px;
-          padding: 4px 9px 4px 7px;
-          border-radius: 999px;
-          background: rgba(13, 27, 42, 0.78);
-          border: 1px solid ${color}66;
-          backdrop-filter: blur(6px);
-          -webkit-backdrop-filter: blur(6px);
-          white-space: nowrap;
-          transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-          ${isSelected ? `border-color: ${color}; box-shadow: 0 0 14px ${color}66;` : ""}
-        `;
-
-        const tick = document.createElement("span");
-        tick.style.cssText = `
-          width: 5px; height: 5px; border-radius: 50%;
-          background: ${color};
-          box-shadow: 0 0 6px ${color};
-        `;
-        tag.appendChild(tick);
-
-        const name = document.createElement("span");
-        name.textContent = loc.name;
-        name.style.cssText = `
-          font-size: 10px;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          color: #f0fdf9;
-          text-transform: uppercase;
-        `;
-        tag.appendChild(name);
-
-        const count = document.createElement("span");
-        count.textContent = String(loc.people);
-        count.style.cssText = `
-          font-size: 9px;
-          font-weight: 700;
-          color: ${color};
-          padding-left: 6px;
-          margin-left: 2px;
-          border-left: 1px solid ${color}44;
-        `;
-        tag.appendChild(count);
-
-        el.appendChild(tag);
-
-        el.addEventListener("mouseenter", () => {
-          if (selectedLocation?.id !== loc.id) {
-            el.style.transform = "translateY(-2px)";
-            tag.style.borderColor = color;
-            tag.style.boxShadow = `0 0 14px ${color}55`;
-          }
-        });
-        el.addEventListener("mouseleave", () => {
-          if (selectedLocation?.id !== loc.id) {
-            el.style.transform = "";
-            tag.style.borderColor = `${color}66`;
-            tag.style.boxShadow = "";
-          }
-        });
-      }
+      const hitWidth = hitSize;
+      const hitHeight = Math.round(hitSize * 1.6);
+      el.style.cssText = `
+        width: ${hitWidth}px; height: ${hitHeight}px;
+        position: relative;
+        cursor: pointer;
+        pointer-events: auto;
+      `;
+      const inner = document.createElement("div");
+      inner.style.cssText = `
+        width: 100%; height: 100%;
+        border-radius: 40% 40% 50% 50%;
+        background: transparent;
+        ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
+        transition: box-shadow 0.2s ease;
+      `;
+      el.appendChild(inner);
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -599,6 +476,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         });
         el.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (vibeyStateRef.current.walkMode) return;
           setVibeyOpen(true);
         });
         vibeyMarkerRef.current = new mapboxgl.Marker({
@@ -790,6 +668,118 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, []);
 
+  // ---- Vibey: walk-mode keyboard input ---------------------------------
+  useEffect(() => {
+    if (!vibeyUI.walkMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setVibeyUI((s) => ({ ...s, walkMode: false }));
+        vibeyStateRef.current.walkMode = false;
+        return;
+      }
+      vibeyKeysRef.current[e.key.toLowerCase()] = true;
+      if (e.key.startsWith("Arrow")) e.preventDefault();
+    };
+    const onUp = (e: KeyboardEvent) => {
+      vibeyKeysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      vibeyKeysRef.current = {};
+    };
+  }, [vibeyUI.walkMode]);
+
+  // ---- Vibey: walk loop + first-person chase camera --------------------
+  useEffect(() => {
+    if (!vibeyUI.walkMode) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    let huiTick = 0;
+    const WALK_SPEED = 6; // m/s
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = vibeyStateRef.current;
+      const k = vibeyKeysRef.current;
+
+      const turn =
+        (k["arrowleft"] || k["a"] ? -1 : 0) +
+        (k["arrowright"] || k["d"] ? 1 : 0);
+      const forward =
+        (k["arrowup"] || k["w"] ? 1 : 0) +
+        (k["arrowdown"] || k["s"] ? -0.6 : 0);
+
+      s.heading += turn * 1.6 * dt;
+
+      const sinH = Math.sin(s.heading);
+      const cosH = Math.cos(s.heading);
+      const eastM = sinH * forward * WALK_SPEED;
+      const northM = cosH * forward * WALK_SPEED;
+      s.lat += (northM * dt) / 111320;
+      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+
+      // Resample ground altitude as Vibey moves
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        if (typeof elev === "number") s.baseAltitude = elev;
+      } catch { /* */ }
+
+      // Move marker so click target follows
+      vibeyMarkerRef.current?.setLngLat([s.lng, s.lat]);
+
+      // Third-person chase cam from just behind & above Vibey
+      const back = 12; // meters behind
+      const camLat = s.lat - (cosH * back) / 111320;
+      const camLng = s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      m.jumpTo({
+        center: [camLng, camLat],
+        bearing: (s.heading * 180) / Math.PI,
+        pitch: 75,
+        zoom: 20,
+      });
+
+      huiTick += dt;
+      if (huiTick > 0.16) {
+        huiTick = 0;
+        setVibeyUI((u) => (u.heading === s.heading ? u : { ...u, heading: s.heading }));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [vibeyUI.walkMode]);
+
+  const resetVibey = useCallback(() => {
+    const m = map.current;
+    const s = vibeyStateRef.current;
+    s.lng = VIBEY_LOCATION.lng;
+    s.lat = VIBEY_LOCATION.lat;
+    s.heading = 0;
+    try {
+      const elev = m?.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+      if (typeof elev === "number") s.baseAltitude = elev;
+    } catch { /* */ }
+    vibeyMarkerRef.current?.setLngLat([s.lng, s.lat]);
+    setVibeyUI((u) => ({ ...u, heading: 0 }));
+    if (m && !vibeyUI.walkMode) {
+      m.flyTo({
+        center: [s.lng, s.lat],
+        zoom: 18,
+        pitch: 55,
+        bearing: 0,
+        duration: 1200,
+      });
+    }
+  }, [vibeyUI.walkMode]);
+
+
   // Fallback for invalid token
   if (mapError) {
     return <FallbackMap onLocationSelect={onLocationSelect} selectedLocation={selectedLocation} />;
@@ -858,7 +848,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       {/* Vibey chat dialog */}
       <VibeyDialog open={vibeyOpen} onClose={() => setVibeyOpen(false)} />
 
-      {/* Helicopter control panel */}
+      {/* Sky Patrol — unified Vibey + Helicopter control */}
       <HelicopterControl
         state={heliUI}
         onToggleEnabled={() =>
@@ -876,6 +866,31 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }}
         onResetPosition={resetHelicopter}
+        vibey={vibeyUI}
+        onToggleVibeyWalk={() => {
+          setVibeyUI((s) => {
+            const next = !s.walkMode;
+            vibeyStateRef.current.walkMode = next;
+            // When entering walk mode, fly the camera into chase position
+            if (next && map.current) {
+              const vs = vibeyStateRef.current;
+              try {
+                const elev = map.current.queryTerrainElevation([vs.lng, vs.lat], { exaggerated: true });
+                if (typeof elev === "number") vs.baseAltitude = elev;
+              } catch { /* */ }
+              map.current.flyTo({
+                center: [vs.lng, vs.lat],
+                zoom: 20,
+                pitch: 75,
+                bearing: (vs.heading * 180) / Math.PI,
+                duration: 1100,
+              });
+            }
+            return { ...s, walkMode: next };
+          });
+        }}
+        onResetVibey={resetVibey}
+        onMessageVibey={() => setVibeyOpen(true)}
       />
 
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
@@ -959,7 +974,7 @@ function FallbackMap({ onLocationSelect, selectedLocation }: MapViewProps) {
       </div>
 
       {/* Still show markers in fallback */}
-      {VILLAGE_LOCATIONS.map((loc, i) => {
+      {VILLAGE_LOCATIONS.filter((l) => l.structure3d).map((loc, i) => {
         const x = 15 + ((loc.lng + 122.872) / 0.005) * 70;
         const y = 15 + ((38.615 - loc.lat) / 0.004) * 70;
         const isSelected = selectedLocation?.id === loc.id;
@@ -977,11 +992,9 @@ function FallbackMap({ onLocationSelect, selectedLocation }: MapViewProps) {
           >
             <motion.div
               animate={{ scale: isSelected ? 1.2 : 1, boxShadow: isSelected ? `0 0 20px ${color}88` : "none" }}
-              className="flex items-center justify-center w-10 h-10 rounded-full border-2"
+              className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: color, background: `${color}22` }}
-            >
-              <span className="text-lg">{loc.emoji}</span>
-            </motion.div>
+            />
           </motion.div>
         );
       })}
