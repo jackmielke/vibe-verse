@@ -7,7 +7,14 @@ import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
 import { createObservatoryLayer } from "./map/ObservatoryLayer";
-import { createHelicopterLayer } from "./map/HelicopterLayer";
+import {
+  createHelicopterLayer,
+  createDefaultHelicopterState,
+  type HelicopterState,
+} from "./map/HelicopterLayer";
+import HelicopterControl, {
+  type HelicopterControlState,
+} from "./HelicopterControl";
 
 // Village locations with real coordinates around Healdsburg.
 // `structure3d` marks locations that are rendered as a 3D model on the map
