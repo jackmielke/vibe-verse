@@ -847,7 +847,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       {/* Vibey chat dialog */}
       <VibeyDialog open={vibeyOpen} onClose={() => setVibeyOpen(false)} />
 
-      {/* Helicopter control panel */}
+      {/* Sky Patrol — unified Vibey + Helicopter control */}
       <HelicopterControl
         state={heliUI}
         onToggleEnabled={() =>
@@ -865,6 +865,31 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }}
         onResetPosition={resetHelicopter}
+        vibey={vibeyUI}
+        onToggleVibeyWalk={() => {
+          setVibeyUI((s) => {
+            const next = !s.walkMode;
+            vibeyStateRef.current.walkMode = next;
+            // When entering walk mode, fly the camera into chase position
+            if (next && map.current) {
+              const vs = vibeyStateRef.current;
+              try {
+                const elev = map.current.queryTerrainElevation([vs.lng, vs.lat], { exaggerated: true });
+                if (typeof elev === "number") vs.baseAltitude = elev;
+              } catch { /* */ }
+              map.current.flyTo({
+                center: [vs.lng, vs.lat],
+                zoom: 20,
+                pitch: 75,
+                bearing: (vs.heading * 180) / Math.PI,
+                duration: 1100,
+              });
+            }
+            return { ...s, walkMode: next };
+          });
+        }}
+        onResetVibey={resetVibey}
+        onMessageVibey={() => setVibeyOpen(true)}
       />
 
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
