@@ -698,6 +698,26 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         </div>
       </motion.div>
 
+      {/* Helicopter control panel */}
+      <HelicopterControl
+        state={heliUI}
+        onToggleEnabled={() =>
+          setHeliUI((s) => ({
+            ...s,
+            enabled: !s.enabled,
+            pilotMode: s.enabled ? false : s.pilotMode,
+          }))
+        }
+        onTogglePilot={() => {
+          setHeliUI((s) => {
+            const next = !s.pilotMode;
+            heliStateRef.current.pilotMode = next;
+            return { ...s, pilotMode: next };
+          });
+        }}
+        onResetPosition={resetHelicopter}
+      />
+
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
       <div className="absolute bottom-24 md:bottom-6 left-4 z-10 flex gap-2">
         <button
