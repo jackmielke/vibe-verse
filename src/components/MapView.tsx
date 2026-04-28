@@ -832,7 +832,7 @@ function FallbackMap({ onLocationSelect, selectedLocation }: MapViewProps) {
       </div>
 
       {/* Still show markers in fallback */}
-      {VILLAGE_LOCATIONS.map((loc, i) => {
+      {VILLAGE_LOCATIONS.filter((l) => l.structure3d).map((loc, i) => {
         const x = 15 + ((loc.lng + 122.872) / 0.005) * 70;
         const y = 15 + ((38.615 - loc.lat) / 0.004) * 70;
         const isSelected = selectedLocation?.id === loc.id;
@@ -850,11 +850,9 @@ function FallbackMap({ onLocationSelect, selectedLocation }: MapViewProps) {
           >
             <motion.div
               animate={{ scale: isSelected ? 1.2 : 1, boxShadow: isSelected ? `0 0 20px ${color}88` : "none" }}
-              className="flex items-center justify-center w-10 h-10 rounded-full border-2"
+              className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: color, background: `${color}22` }}
-            >
-              <span className="text-lg">{loc.emoji}</span>
-            </motion.div>
+            />
           </motion.div>
         );
       })}
