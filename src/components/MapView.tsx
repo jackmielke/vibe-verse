@@ -15,6 +15,12 @@ import {
 import HelicopterControl, {
   type HelicopterControlState,
 } from "./HelicopterControl";
+import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
+import VibeyDialog from "./VibeyDialog";
+
+// Vibey hangs out near the central plaza, slightly offset so he doesn't
+// overlap the plaza structure.
+const VIBEY_LOCATION = { lng: -122.8695, lat: 38.6135 };
 
 // Village locations with real coordinates around Healdsburg.
 // `structure3d` marks locations that are rendered as a 3D model on the map
