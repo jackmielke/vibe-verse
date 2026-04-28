@@ -1,74 +1,44 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, MapPin, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { VILLAGE_LOCATIONS } from "../MapView";
+import { supabase } from "@/integrations/supabase/client";
 
-const MOCK_EVENTS = [
-  {
-    id: 1,
-    title: "Morning Breathwork",
-    location: "Meditation Garden",
-    time: "7:00 AM",
-    duration: "45 min",
-    attendees: 12,
-    maxAttendees: 20,
-    host: "Sara K.",
-    emoji: "🧘",
-    tag: "Wellness",
-    isHappeningNow: true,
-  },
-  {
-    id: 2,
-    title: "DeFi Governance Workshop",
-    location: "Hacker House",
-    time: "10:00 AM",
-    duration: "2 hrs",
-    attendees: 34,
-    maxAttendees: 50,
-    host: "Vitalik B.",
-    emoji: "⚡",
-    tag: "Tech",
-    isHappeningNow: false,
-  },
-  {
-    id: 3,
-    title: "Farm-to-Table Lunch",
-    location: "Dining Hall",
-    time: "12:30 PM",
-    duration: "1.5 hrs",
-    attendees: 80,
-    maxAttendees: 100,
-    host: "Chef Marco",
-    emoji: "🥗",
-    tag: "Food",
-    isHappeningNow: false,
-  },
-  {
-    id: 4,
-    title: "Open Mic & Jam Session",
-    location: "Main Stage",
-    time: "7:00 PM",
-    duration: "3 hrs",
-    attendees: 45,
-    maxAttendees: 200,
-    host: "Community",
-    emoji: "🎵",
-    tag: "Social",
-    isHappeningNow: false,
-  },
-  {
-    id: 5,
-    title: "Sunset Yoga Flow",
-    location: "The Grove",
-    time: "5:30 PM",
-    duration: "1 hr",
-    attendees: 22,
-    maxAttendees: 30,
-    host: "Anya R.",
-    emoji: "🌅",
-    tag: "Wellness",
-    isHappeningNow: false,
-  },
+const EDGE_ESMERELDA_COMMUNITY_ID = "bb93af8f-3d13-458e-a580-207d374bbe39";
+
+interface EventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  event_start_time: string;
+  event_end_time: string;
+  event_location: string | null;
+  hosted_by: string | null;
+  current_attendees: number | null;
+  max_attendees: number | null;
+  tags: string[] | null;
+  event_image_url: string | null;
+}
+
+interface DisplayEvent {
+  id: string;
+  title: string;
+  location: string;
+  time: string;
+  duration: string;
+  attendees: number;
+  maxAttendees: number;
+  host: string;
+  tag: string;
+  isHappeningNow: boolean;
+}
+
+const MOCK_EVENTS: DisplayEvent[] = [
+  { id: "m1", title: "Morning Breathwork", location: "Meditation Garden", time: "7:00 AM", duration: "45 min", attendees: 12, maxAttendees: 20, host: "Sara K.", tag: "Wellness", isHappeningNow: true },
+  { id: "m2", title: "DeFi Governance Workshop", location: "Hacker House", time: "10:00 AM", duration: "2 hrs", attendees: 34, maxAttendees: 50, host: "Vitalik B.", tag: "Tech", isHappeningNow: false },
+  { id: "m3", title: "Farm-to-Table Lunch", location: "Dining Hall", time: "12:30 PM", duration: "1.5 hrs", attendees: 80, maxAttendees: 100, host: "Chef Marco", tag: "Food", isHappeningNow: false },
+  { id: "m4", title: "Open Mic & Jam Session", location: "Main Stage", time: "7:00 PM", duration: "3 hrs", attendees: 45, maxAttendees: 200, host: "Community", tag: "Social", isHappeningNow: false },
+  { id: "m5", title: "Sunset Yoga Flow", location: "The Grove", time: "5:30 PM", duration: "1 hr", attendees: 22, maxAttendees: 30, host: "Anya R.", tag: "Wellness", isHappeningNow: false },
 ];
 
 const TAG_COLORS: Record<string, string> = {
@@ -78,15 +48,80 @@ const TAG_COLORS: Record<string, string> = {
   Social: "bg-primary/20 text-primary",
 };
 
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDuration(startIso: string, endIso: string): string {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  const mins = Math.max(0, Math.round((end - start) / 60000));
+  if (mins < 60) return `${mins} min`;
+  const hrs = mins / 60;
+  return hrs % 1 === 0 ? `${hrs} hr${hrs > 1 ? "s" : ""}` : `${hrs.toFixed(1)} hrs`;
+}
+
+function pickTag(tags: string[] | null): string {
+  if (!tags || tags.length === 0) return "Social";
+  const t = tags[0].toLowerCase();
+  if (t.includes("yoga") || t.includes("wellness") || t.includes("medit")) return "Wellness";
+  if (t.includes("tech") || t.includes("code") || t.includes("hack") || t.includes("build")) return "Tech";
+  if (t.includes("food") || t.includes("dinner") || t.includes("lunch")) return "Food";
+  return "Social";
+}
+
+function transform(rows: EventRow[]): DisplayEvent[] {
+  const now = Date.now();
+  return rows.map((r) => {
+    const start = new Date(r.event_start_time).getTime();
+    const end = new Date(r.event_end_time).getTime();
+    return {
+      id: r.id,
+      title: r.title,
+      location: r.event_location || "TBD",
+      time: formatTime(r.event_start_time),
+      duration: formatDuration(r.event_start_time, r.event_end_time),
+      attendees: r.current_attendees ?? 0,
+      maxAttendees: r.max_attendees ?? 100,
+      host: r.hosted_by || "Community",
+      tag: pickTag(r.tags),
+      isHappeningNow: now >= start && now <= end,
+    };
+  });
+}
+
 interface EventsPanelProps {
   selectedLocation?: typeof VILLAGE_LOCATIONS[0] | null;
 }
 
 export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
-  const [rsvpd, setRsvpd] = useState<Set<number>>(new Set());
+  const [rsvpd, setRsvpd] = useState<Set<string>>(new Set());
+  const [events, setEvents] = useState<DisplayEvent[]>(MOCK_EVENTS);
+  const [loading, setLoading] = useState(true);
 
-  const toggleRsvp = (eventId: number) => {
-    setRsvpd(prev => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, title, description, event_start_time, event_end_time, event_location, hosted_by, current_attendees, max_attendees, tags, event_image_url")
+        .eq("community_id", EDGE_ESMERELDA_COMMUNITY_ID)
+        .eq("event_status", "published")
+        .gte("event_end_time", new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString())
+        .order("event_start_time", { ascending: true })
+        .limit(50);
+      if (cancelled) return;
+      if (!error && data && data.length > 0) {
+        setEvents(transform(data as EventRow[]));
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleRsvp = (eventId: string) => {
+    setRsvpd((prev) => {
       const next = new Set(prev);
       if (next.has(eventId)) next.delete(eventId);
       else next.add(eventId);
@@ -95,12 +130,11 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
   };
 
   const filteredEvents = selectedLocation
-    ? MOCK_EVENTS.filter(e => e.location === selectedLocation.name)
-    : MOCK_EVENTS;
+    ? events.filter((e) => e.location === selectedLocation.name)
+    : events;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Selected location filter */}
       <AnimatePresence>
         {selectedLocation && (
           <motion.div
@@ -119,7 +153,7 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
       </AnimatePresence>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {filteredEvents.some(e => e.isHappeningNow) && (
+        {filteredEvents.some((e) => e.isHappeningNow) && (
           <div className="mb-2">
             <div className="flex items-center gap-2 mb-2">
               <span className="relative flex h-2 w-2">
@@ -146,7 +180,6 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">{event.emoji}</span>
                   <h3 className="font-heading text-sm font-semibold text-foreground truncate">
                     {event.title}
                   </h3>
@@ -155,8 +188,8 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" /> {event.time} · {event.duration}
                   </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> {event.location}
+                  <span className="flex items-center gap-1 truncate">
+                    <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{event.location}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -196,7 +229,7 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
             <div className="mt-2.5 h-1 bg-muted rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${(event.attendees / event.maxAttendees) * 100}%` }}
+                animate={{ width: `${(event.attendees / Math.max(1, event.maxAttendees)) * 100}%` }}
                 transition={{ delay: 0.3 + i * 0.1, duration: 0.6 }}
                 className="h-full bg-primary rounded-full"
               />
@@ -204,7 +237,7 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
           </motion.div>
         ))}
 
-        {filteredEvents.length === 0 && (
+        {!loading && filteredEvents.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
             No events at this location yet
           </div>
