@@ -137,10 +137,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     lng: VIBEY_LOCATION.lng,
     lat: VIBEY_LOCATION.lat,
     baseAltitude: 0,
+    heading: 0,
+    walkMode: false,
   });
   const vibeyLayerAddedRef = useRef(false);
   const vibeyMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [vibeyOpen, setVibeyOpen] = useState(false);
+  const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
+  const vibeyKeysRef = useRef<Record<string, boolean>>({});
 
   // Initialize map
   useEffect(() => {
