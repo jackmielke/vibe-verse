@@ -318,75 +318,148 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       // DO NOT set `transform` on this element or markers will snap to (0,0).
       const el = document.createElement("div");
       el.className = "village-marker";
-      // For 3D structures we make the hit area TALL so it covers the model
-      // that rises upward in screen space from the ground anchor.
-      const hitWidth = hitSize;
-      const hitHeight = is3d ? Math.round(hitSize * 1.6) : hitSize;
-      el.style.cssText = `
-        width: ${hitWidth}px; height: ${hitHeight}px;
-        position: relative;
-        cursor: pointer;
-        will-change: transform;
-        pointer-events: auto;
-      `;
 
-      // Inner scale wrapper — safe to transform/scale here.
-      const inner = document.createElement("div");
       if (is3d) {
         // Invisible click target sized to cover the 3D structure.
-        // Selected state still gets a soft glow ring around the model base.
+        const hitWidth = hitSize;
+        const hitHeight = Math.round(hitSize * 1.6);
+        el.style.cssText = `
+          width: ${hitWidth}px; height: ${hitHeight}px;
+          position: relative;
+          cursor: pointer;
+          pointer-events: auto;
+        `;
+        const inner = document.createElement("div");
         inner.style.cssText = `
           width: 100%; height: 100%;
           border-radius: 40% 40% 50% 50%;
           background: transparent;
-          position: relative;
           ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
           transition: box-shadow 0.2s ease;
         `;
+        el.appendChild(inner);
       } else {
-        inner.style.cssText = `
-          width: 100%; height: 100%;
-          display: flex; align-items: center; justify-content: center;
-          border-radius: 50%;
-          border: 2px solid ${color};
-          background: ${color}22;
-          font-size: 20px;
+        // ── Beacon-style waypoint ──
+        // A thin vertical light pillar rising from the ground with a
+        // typographic label tag. Reads as a game HUD waypoint, not a pin.
+        el.style.cssText = `
           position: relative;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-          ${isSelected ? `box-shadow: 0 0 20px ${color}88, 0 0 40px ${color}44; transform: scale(1.2);` : ""}
-        `;
-        inner.textContent = loc.emoji;
-      }
-      el.appendChild(inner);
-
-      // Pulse ring for busy locations (skip on 3D structures — they have their own glow)
-      if (loc.people > 20 && !is3d) {
-        const pulse = document.createElement("div");
-        pulse.style.cssText = `
-          position: absolute; inset: -4px;
-          border-radius: 50%;
-          border: 1px solid ${color}44;
-          animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-          pointer-events: none;
-        `;
-        inner.appendChild(pulse);
-      }
-
-      // People count badge (skip on 3D structures to keep the model clean)
-      if (!is3d) {
-        const badge = document.createElement("div");
-        badge.style.cssText = `
-          position: absolute; top: -6px; right: -6px;
-          background: ${color};
-          color: #0d1b2a;
-          font-size: 9px; font-weight: 700;
-          padding: 1px 5px;
-          border-radius: 999px;
+          width: 140px; height: 64px;
+          cursor: pointer;
+          pointer-events: auto;
           font-family: 'Sora', sans-serif;
+          transition: transform 0.2s ease;
+          ${isSelected ? "transform: translateY(-2px) scale(1.05);" : ""}
+        `;
+
+        // Vertical beam
+        const beam = document.createElement("div");
+        beam.style.cssText = `
+          position: absolute;
+          left: 50%; bottom: 4px;
+          transform: translateX(-50%);
+          width: 2px; height: 28px;
+          background: linear-gradient(to top, ${color}, ${color}00);
+          box-shadow: 0 0 8px ${color}aa, 0 0 18px ${color}55;
           pointer-events: none;
         `;
-        badge.textContent = String(loc.people);
-        inner.appendChild(badge);
+        el.appendChild(beam);
+
+        // Ground dot
+        const dot = document.createElement("div");
+        dot.style.cssText = `
+          position: absolute;
+          left: 50%; bottom: 0;
+          transform: translateX(-50%);
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          background: ${color};
+          box-shadow: 0 0 12px ${color};
+          pointer-events: none;
+        `;
+        el.appendChild(dot);
+
+        // Pulse ring on ground for busy locations
+        if (loc.people > 20) {
+          const pulse = document.createElement("div");
+          pulse.style.cssText = `
+            position: absolute;
+            left: 50%; bottom: -3px;
+            transform: translateX(-50%);
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            border: 1px solid ${color}88;
+            animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            pointer-events: none;
+          `;
+          el.appendChild(pulse);
+        }
+
+        // Label tag at top of beam
+        const tag = document.createElement("div");
+        tag.style.cssText = `
+          position: absolute;
+          left: 50%; bottom: 30px;
+          transform: translateX(-50%);
+          display: flex; align-items: center; gap: 6px;
+          padding: 4px 9px 4px 7px;
+          border-radius: 999px;
+          background: rgba(13, 27, 42, 0.78);
+          border: 1px solid ${color}66;
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          white-space: nowrap;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+          ${isSelected ? `border-color: ${color}; box-shadow: 0 0 14px ${color}66;` : ""}
+        `;
+
+        const tick = document.createElement("span");
+        tick.style.cssText = `
+          width: 5px; height: 5px; border-radius: 50%;
+          background: ${color};
+          box-shadow: 0 0 6px ${color};
+        `;
+        tag.appendChild(tick);
+
+        const name = document.createElement("span");
+        name.textContent = loc.name;
+        name.style.cssText = `
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          color: #f0fdf9;
+          text-transform: uppercase;
+        `;
+        tag.appendChild(name);
+
+        const count = document.createElement("span");
+        count.textContent = String(loc.people);
+        count.style.cssText = `
+          font-size: 9px;
+          font-weight: 700;
+          color: ${color};
+          padding-left: 6px;
+          margin-left: 2px;
+          border-left: 1px solid ${color}44;
+        `;
+        tag.appendChild(count);
+
+        el.appendChild(tag);
+
+        el.addEventListener("mouseenter", () => {
+          if (selectedLocation?.id !== loc.id) {
+            el.style.transform = "translateY(-2px)";
+            tag.style.borderColor = color;
+            tag.style.boxShadow = `0 0 14px ${color}55`;
+          }
+        });
+        el.addEventListener("mouseleave", () => {
+          if (selectedLocation?.id !== loc.id) {
+            el.style.transform = "";
+            tag.style.borderColor = `${color}66`;
+            tag.style.boxShadow = "";
+          }
+        });
       }
 
       el.addEventListener("click", (e) => {
@@ -395,25 +468,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
       });
 
-      if (!is3d) {
-        inner.addEventListener("mouseenter", () => {
-          if (selectedLocation?.id !== loc.id) {
-            inner.style.transform = "scale(1.15)";
-            inner.style.boxShadow = `0 0 16px ${color}66`;
-          }
-        });
-
-        inner.addEventListener("mouseleave", () => {
-          if (selectedLocation?.id !== loc.id) {
-            inner.style.transform = "scale(1)";
-            inner.style.boxShadow = "none";
-          }
-        });
-      }
-
       const marker = new mapboxgl.Marker({
         element: el,
-        anchor: is3d ? "bottom" : "center",
+        anchor: "bottom",
       })
         .setLngLat([loc.lng, loc.lat])
         .addTo(map.current!);
