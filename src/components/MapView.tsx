@@ -396,7 +396,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       const marker = new mapboxgl.Marker({
         element: el,
-        anchor: is3d ? (loc.structure3d === "helicopter" ? "center" : "bottom") : "center",
+        anchor: is3d ? "bottom" : "center",
       })
         .setLngLat([loc.lng, loc.lat])
         .addTo(map.current!);
