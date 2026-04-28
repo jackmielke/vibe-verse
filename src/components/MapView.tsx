@@ -476,6 +476,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         });
         el.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (vibeyStateRef.current.walkMode) return;
           setVibeyOpen(true);
         });
         vibeyMarkerRef.current = new mapboxgl.Marker({
