@@ -7,6 +7,8 @@ export interface VibeyState {
   lng: number;
   lat: number;
   baseAltitude: number; // ground altitude in meters
+  heading: number; // radians, 0 = north
+  walkMode: boolean; // when true, suppress auto-spin
 }
 
 /**
@@ -98,15 +100,16 @@ export function createVibeyLayer(
     render(_gl, matrix) {
       const t = (performance.now() - startTime) / 1000;
 
-      // Gentle bob + slow spin
+      // Gentle bob always; auto-spin only when not being walked
       const bob = Math.sin(t * 1.4) * 0.25;
       if (vibey) {
-        vibey.rotation.y = t * 0.5;
-        vibey.position.y += 0; // base position set in onAdd; bob via altitude below
+        vibey.rotation.y = state.walkMode ? -state.heading : t * 0.5;
       }
 
       const altitude =
-        state.baseAltitude + FLOAT_HEIGHT + bob * BOB_AMPLITUDE;
+        state.baseAltitude +
+        (state.walkMode ? 0 : FLOAT_HEIGHT) +
+        bob * BOB_AMPLITUDE * (state.walkMode ? 0.3 : 1);
 
       const mercator = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: state.lng, lat: state.lat },
