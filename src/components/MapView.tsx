@@ -466,6 +466,173 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     );
   }, []);
 
+  // ---- Helicopter: add/remove layer when enabled toggles ----------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "structure-helicopter";
+
+    if (heliUI.enabled && !heliLayerAddedRef.current) {
+      try {
+        const elev = m.queryTerrainElevation(
+          [heliStateRef.current.lng, heliStateRef.current.lat],
+          { exaggerated: true },
+        );
+        const groundAlt = typeof elev === "number" ? elev : 0;
+        heliStateRef.current.altitude = groundAlt + 80;
+      } catch { /* terrain not ready */ }
+      heliStateRef.current.visible = true;
+
+      try {
+        m.addLayer(createHelicopterLayer(LAYER_ID, heliStateRef.current));
+        heliLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+    } else if (!heliUI.enabled && heliLayerAddedRef.current) {
+      heliStateRef.current.visible = false;
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      heliLayerAddedRef.current = false;
+    }
+  }, [heliUI.enabled, mapLoaded]);
+
+  // ---- Helicopter: keyboard input ---------------------------------------
+  useEffect(() => {
+    if (!heliUI.pilotMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setHeliUI((s) => ({ ...s, pilotMode: false }));
+        heliStateRef.current.pilotMode = false;
+        return;
+      }
+      keysRef.current[e.key.toLowerCase()] = true;
+      if (e.key.startsWith("Arrow")) e.preventDefault();
+    };
+    const onUp = (e: KeyboardEvent) => {
+      keysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      keysRef.current = {};
+    };
+  }, [heliUI.pilotMode]);
+
+  // ---- Helicopter: flight + camera-follow loop --------------------------
+  useEffect(() => {
+    if (!heliUI.enabled) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    let huiTick = 0;
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = heliStateRef.current;
+      const k = keysRef.current;
+      const vel = heliVelocityRef.current;
+
+      if (heliUI.pilotMode) {
+        s.pilotMode = true;
+        s.rotorSpeed = 1.4;
+
+        const turn = (k["arrowleft"] ? -1 : 0) + (k["arrowright"] ? 1 : 0);
+        const throttle = (k["arrowup"] ? 1 : 0) + (k["arrowdown"] ? -0.6 : 0);
+        const climb = (k["w"] ? 1 : 0) + (k["s"] ? -1 : 0);
+        const strafe = (k["d"] ? 1 : 0) + (k["a"] ? -1 : 0);
+
+        s.heading += turn * 1.1 * dt;
+
+        const targetFwd = throttle * 60;
+        const targetLat = strafe * 25;
+        const targetVert = climb * 15;
+        vel.forward += (targetFwd - vel.forward) * Math.min(1, dt * 2);
+        vel.lateral += (targetLat - vel.lateral) * Math.min(1, dt * 2);
+        vel.vertical += (targetVert - vel.vertical) * Math.min(1, dt * 2);
+
+        const sinH = Math.sin(s.heading);
+        const cosH = Math.cos(s.heading);
+        const eastM = sinH * vel.forward + cosH * vel.lateral;
+        const northM = cosH * vel.forward - sinH * vel.lateral;
+
+        const dLat = (northM * dt) / 111320;
+        const dLng = (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+        s.lat += dLat;
+        s.lng += dLng;
+        s.altitude = Math.max(15, s.altitude + vel.vertical * dt);
+
+        s.bank += (-turn * 0.4 - strafe * 0.25 - s.bank) * Math.min(1, dt * 4);
+        s.pitch += (-throttle * 0.18 - s.pitch) * Math.min(1, dt * 4);
+
+        // Chase cam: behind & above the helicopter
+        const back = 90;
+        const camLat = s.lat - (cosH * back) / 111320;
+        const camLng = s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+        m.jumpTo({
+          center: [camLng, camLat],
+          bearing: (s.heading * 180) / Math.PI,
+          pitch: 70,
+          zoom: 18.2,
+        });
+      } else {
+        s.pilotMode = false;
+        s.rotorSpeed = 1;
+        vel.forward *= 0.9;
+        vel.lateral *= 0.9;
+        vel.vertical *= 0.9;
+        s.bank += (0 - s.bank) * Math.min(1, dt * 3);
+        s.pitch += (0 - s.pitch) * Math.min(1, dt * 3);
+      }
+
+      huiTick += dt;
+      if (huiTick > 0.16) {
+        huiTick = 0;
+        const speedKts = Math.hypot(vel.forward, vel.lateral) * 1.94384;
+        setHeliUI((u) =>
+          Math.round(u.altitude) === Math.round(s.altitude) &&
+          u.heading === s.heading &&
+          Math.abs(u.speedKts - speedKts) < 0.5
+            ? u
+            : { ...u, altitude: s.altitude, heading: s.heading, speedKts },
+        );
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [heliUI.enabled, heliUI.pilotMode]);
+
+  const resetHelicopter = useCallback(() => {
+    const m = map.current;
+    const s = heliStateRef.current;
+    s.lng = VILLAGE_CENTER.lng;
+    s.lat = VILLAGE_CENTER.lat;
+    s.heading = 0;
+    s.bank = 0;
+    s.pitch = 0;
+    heliVelocityRef.current = { forward: 0, lateral: 0, vertical: 0 };
+    if (m) {
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        const groundAlt = typeof elev === "number" ? elev : 0;
+        s.altitude = groundAlt + 80;
+      } catch { /* */ }
+      m.flyTo({
+        center: [s.lng, s.lat],
+        zoom: VILLAGE_CENTER.zoom,
+        pitch: 55,
+        bearing: 0,
+        duration: 1200,
+      });
+      m.triggerRepaint();
+    }
+  }, []);
+
   // Fallback for invalid token
   if (mapError) {
     return <FallbackMap onLocationSelect={onLocationSelect} selectedLocation={selectedLocation} />;
