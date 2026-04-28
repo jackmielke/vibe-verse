@@ -539,6 +539,90 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     );
   }, []);
 
+  // ---- Vibey: mount layer + click marker once map is ready -------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "vibey-character";
+
+    const mount = () => {
+      if (vibeyLayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [vibeyStateRef.current.lng, vibeyStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") vibeyStateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+
+      try {
+        m.addLayer(createVibeyLayer(LAYER_ID, vibeyStateRef.current));
+        vibeyLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+
+      // Invisible click target floating where Vibey hovers
+      if (!vibeyMarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 90px; height: 110px;
+          cursor: pointer;
+          pointer-events: auto;
+          display: flex; align-items: flex-end; justify-content: center;
+        `;
+        const tag = document.createElement("div");
+        tag.style.cssText = `
+          font-family: 'Sora', sans-serif;
+          font-size: 10px; font-weight: 700;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          color: #f0fdf9;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(13, 27, 42, 0.78);
+          border: 1px solid rgba(45, 212, 168, 0.6);
+          box-shadow: 0 0 14px rgba(45, 212, 168, 0.45);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          white-space: nowrap;
+          transform: translateY(-110px);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        `;
+        tag.textContent = "✦ Vibey";
+        el.appendChild(tag);
+        el.addEventListener("mouseenter", () => {
+          tag.style.transform = "translateY(-110px) scale(1.06)";
+          tag.style.boxShadow = "0 0 22px rgba(45, 212, 168, 0.7)";
+        });
+        el.addEventListener("mouseleave", () => {
+          tag.style.transform = "translateY(-110px)";
+          tag.style.boxShadow = "0 0 14px rgba(45, 212, 168, 0.45)";
+        });
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setVibeyOpen(true);
+        });
+        vibeyMarkerRef.current = new mapboxgl.Marker({
+          element: el,
+          anchor: "bottom",
+        })
+          .setLngLat([vibeyStateRef.current.lng, vibeyStateRef.current.lat])
+          .addTo(m);
+      }
+    };
+
+    mount();
+    // Custom layers are wiped on style.load — remount.
+    const onStyle = () => {
+      vibeyLayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+
+    return () => {
+      m.off("style.load", onStyle);
+    };
+  }, [mapLoaded]);
+
   // ---- Helicopter: add/remove layer when enabled toggles ----------------
   useEffect(() => {
     const m = map.current;
