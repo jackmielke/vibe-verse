@@ -109,6 +109,23 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [mapError, setMapError] = useState(false);
 
+  // ---- Helicopter ------------------------------------------------------
+  // Mutable state that the custom layer reads on every render frame.
+  const heliStateRef = useRef<HelicopterState>(
+    createDefaultHelicopterState(VILLAGE_CENTER.lng, VILLAGE_CENTER.lat),
+  );
+  // React-visible mirror so the control panel HUD updates.
+  const [heliUI, setHeliUI] = useState<HelicopterControlState>({
+    enabled: false,
+    pilotMode: false,
+    altitude: 60,
+    speedKts: 0,
+    heading: 0,
+  });
+  const heliLayerAddedRef = useRef(false);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const heliVelocityRef = useRef({ forward: 0, lateral: 0, vertical: 0 });
+
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
