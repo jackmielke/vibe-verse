@@ -667,6 +667,118 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, []);
 
+  // ---- Vibey: walk-mode keyboard input ---------------------------------
+  useEffect(() => {
+    if (!vibeyUI.walkMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setVibeyUI((s) => ({ ...s, walkMode: false }));
+        vibeyStateRef.current.walkMode = false;
+        return;
+      }
+      vibeyKeysRef.current[e.key.toLowerCase()] = true;
+      if (e.key.startsWith("Arrow")) e.preventDefault();
+    };
+    const onUp = (e: KeyboardEvent) => {
+      vibeyKeysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      vibeyKeysRef.current = {};
+    };
+  }, [vibeyUI.walkMode]);
+
+  // ---- Vibey: walk loop + first-person chase camera --------------------
+  useEffect(() => {
+    if (!vibeyUI.walkMode) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    let huiTick = 0;
+    const WALK_SPEED = 6; // m/s
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = vibeyStateRef.current;
+      const k = vibeyKeysRef.current;
+
+      const turn =
+        (k["arrowleft"] || k["a"] ? -1 : 0) +
+        (k["arrowright"] || k["d"] ? 1 : 0);
+      const forward =
+        (k["arrowup"] || k["w"] ? 1 : 0) +
+        (k["arrowdown"] || k["s"] ? -0.6 : 0);
+
+      s.heading += turn * 1.6 * dt;
+
+      const sinH = Math.sin(s.heading);
+      const cosH = Math.cos(s.heading);
+      const eastM = sinH * forward * WALK_SPEED;
+      const northM = cosH * forward * WALK_SPEED;
+      s.lat += (northM * dt) / 111320;
+      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+
+      // Resample ground altitude as Vibey moves
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        if (typeof elev === "number") s.baseAltitude = elev;
+      } catch { /* */ }
+
+      // Move marker so click target follows
+      vibeyMarkerRef.current?.setLngLat([s.lng, s.lat]);
+
+      // Third-person chase cam from just behind & above Vibey
+      const back = 12; // meters behind
+      const camLat = s.lat - (cosH * back) / 111320;
+      const camLng = s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      m.jumpTo({
+        center: [camLng, camLat],
+        bearing: (s.heading * 180) / Math.PI,
+        pitch: 75,
+        zoom: 20,
+      });
+
+      huiTick += dt;
+      if (huiTick > 0.16) {
+        huiTick = 0;
+        setVibeyUI((u) => (u.heading === s.heading ? u : { ...u, heading: s.heading }));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [vibeyUI.walkMode]);
+
+  const resetVibey = useCallback(() => {
+    const m = map.current;
+    const s = vibeyStateRef.current;
+    s.lng = VIBEY_LOCATION.lng;
+    s.lat = VIBEY_LOCATION.lat;
+    s.heading = 0;
+    try {
+      const elev = m?.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+      if (typeof elev === "number") s.baseAltitude = elev;
+    } catch { /* */ }
+    vibeyMarkerRef.current?.setLngLat([s.lng, s.lat]);
+    setVibeyUI((u) => ({ ...u, heading: 0 }));
+    if (m && !vibeyUI.walkMode) {
+      m.flyTo({
+        center: [s.lng, s.lat],
+        zoom: 18,
+        pitch: 55,
+        bearing: 0,
+        duration: 1200,
+      });
+    }
+  }, [vibeyUI.walkMode]);
+
+
   // Fallback for invalid token
   if (mapError) {
     return <FallbackMap onLocationSelect={onLocationSelect} selectedLocation={selectedLocation} />;
