@@ -111,6 +111,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapStyle, setMapStyle] = useState<"satellite" | "dark">("dark");
+  const activeStyleRef = useRef<"satellite" | "dark">("dark");
+  const mapReadyTimeoutRef = useRef<number | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [mapError, setMapError] = useState(false);
@@ -163,6 +165,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         antialias: true,
       });
 
+      const markMapReady = () => {
+        if (mapReadyTimeoutRef.current) {
+          window.clearTimeout(mapReadyTimeoutRef.current);
+          mapReadyTimeoutRef.current = null;
+        }
+        setMapLoaded(true);
+      };
+
+      mapReadyTimeoutRef.current = window.setTimeout(markMapReady, 4500);
+
       m.on("style.load", () => {
         // Enable 3D terrain
         if (!m.getSource("mapbox-dem")) {
@@ -189,6 +201,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         // Re-add 3D structures (custom layers are wiped on style change).
         // Wait one tick for terrain tiles before sampling elevation.
         addStructureLayers(m);
+        markMapReady();
         m.once("idle", () => refreshStructureLayers(m));
       });
 
@@ -203,7 +216,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       m.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
 
       m.on("load", () => {
-        setMapLoaded(true);
+        markMapReady();
 
         // Fly to the 3D pavilion so it's immediately visible
         const templeLoc = VILLAGE_LOCATIONS.find((l) => l.id === 5)!;
@@ -293,8 +306,13 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         addStructureLayers(m);
       });
 
-      m.on("error", () => {
-        setMapError(true);
+      m.on("error", (event) => {
+        const message = String((event.error as Error | undefined)?.message ?? "");
+        if (/token|401|403|unauthorized|forbidden/i.test(message)) {
+          setMapError(true);
+        } else if (event.error) {
+          console.warn("[Mapbox] non-fatal map error", event.error);
+        }
       });
 
       map.current = m;
@@ -303,6 +321,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
 
     return () => {
+      if (mapReadyTimeoutRef.current) {
+        window.clearTimeout(mapReadyTimeoutRef.current);
+        mapReadyTimeoutRef.current = null;
+      }
       map.current?.remove();
       map.current = null;
     };
@@ -311,6 +333,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // Update map style
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
+    if (activeStyleRef.current === mapStyle) return;
+    activeStyleRef.current = mapStyle;
+    setMapLoaded(false);
     map.current.setStyle(
       mapStyle === "dark"
         ? "mapbox://styles/mapbox/standard"
