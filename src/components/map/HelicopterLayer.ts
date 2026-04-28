@@ -12,8 +12,9 @@ export function createHelicopterLayer(
   lngLat: { lng: number; lat: number },
   altitude = 0,
 ): mapboxgl.CustomLayerInterface {
-  // Float ~120m above whatever ground elevation was sampled.
-  const FLY_HEIGHT = 120;
+  // Float ~60m above whatever ground elevation was sampled — high enough to
+  // read as "in the sky" but still in frame at typical pitch/zoom.
+  const FLY_HEIGHT = 60;
   const modelOrigin: [number, number] = [lngLat.lng, lngLat.lat];
   const modelRotate: [number, number, number] = [Math.PI / 2, 0, 0];
 
@@ -22,8 +23,8 @@ export function createHelicopterLayer(
     altitude + FLY_HEIGHT,
   );
 
-  // Helicopter ~10m long
-  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 10;
+  // Helicopter ~30m long — oversized so it's clearly visible from village zoom.
+  const meterScale = modelAsMercatorCoordinate.meterInMercatorCoordinateUnits() * 30;
 
   const modelTransform = {
     translateX: modelAsMercatorCoordinate.x,
