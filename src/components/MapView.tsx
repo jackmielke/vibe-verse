@@ -49,7 +49,6 @@ const STRUCTURE_FACTORIES: Record<
   temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
   plaza: { layerId: "structure-plaza", create: createPlazaLayer },
   observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
-  helicopter: { layerId: "structure-helicopter", create: createHelicopterLayer },
 };
 
 // Adds every 3D structure layer for locations that have `structure3d` set.
