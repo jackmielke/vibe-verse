@@ -14,8 +14,14 @@ import {
 } from "./map/HelicopterLayer";
 import HelicopterControl, {
   type HelicopterControlState,
+  type NimbusControlState,
 } from "./HelicopterControl";
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
+import {
+  createNimbusVtolLayer,
+  createDefaultNimbusState,
+  type NimbusState,
+} from "./map/NimbusVtolLayer";
 import VibeyDialog from "./VibeyDialog";
 
 // Vibey hangs out near the central plaza, slightly offset so he doesn't
