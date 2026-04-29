@@ -128,10 +128,10 @@ export default function HelicopterControl({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.18 }}
-            className="glass-panel rounded-xl p-3 w-[240px] flex flex-col gap-2.5"
+            className="glass-panel rounded-xl p-3 w-[260px] flex flex-col gap-2.5"
           >
             {/* Tab switcher */}
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-background/40 border border-border">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
                 active={tab === "vibey"}
                 onClick={() => setTab("vibey")}
@@ -145,6 +145,13 @@ export default function HelicopterControl({
                 icon={<Plane className="w-3 h-3" />}
                 label="Chopper"
                 live={state.enabled}
+              />
+              <TabButton
+                active={tab === "nimbus"}
+                onClick={() => setTab("nimbus")}
+                icon={<Rocket className="w-3 h-3" />}
+                label="Nimbus"
+                live={nimbus.enabled}
               />
             </div>
 
