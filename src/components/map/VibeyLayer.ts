@@ -22,9 +22,9 @@ export function createVibeyLayer(
   state: VibeyState,
 ): mapboxgl.CustomLayerInterface {
   const modelRotate: [number, number, number] = [Math.PI / 2, 0, 0];
-  const FLOAT_HEIGHT = 18; // meters above ground
+  const FLOAT_HEIGHT = 22; // meters above ground
   const BOB_AMPLITUDE = 2.5; // meters
-  const SCALE_METERS = 8; // approximate height in meters
+  const SCALE_METERS = 18; // approximate height in meters
 
   let camera: THREE.Camera;
   let scene: THREE.Scene;
