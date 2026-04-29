@@ -67,6 +67,10 @@ export default function HelicopterControl({
   onToggleVibeyWalk,
   onResetVibey,
   onMessageVibey,
+  nimbus,
+  onToggleNimbus,
+  onTogglePilotNimbus,
+  onResetNimbus,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("vibey");
@@ -84,10 +88,17 @@ export default function HelicopterControl({
       setTab("vibey");
     }
   }, [vibey.walkMode]);
+  useEffect(() => {
+    if (nimbus.pilotMode) {
+      setOpen(true);
+      setTab("nimbus");
+    }
+  }, [nimbus.pilotMode]);
 
   const headingDeg = ((state.heading * 180) / Math.PI + 360) % 360;
   const vibeyHeadingDeg = ((vibey.heading * 180) / Math.PI + 360) % 360;
-  const anyActive = state.enabled || vibey.walkMode;
+  const nimbusHeadingDeg = ((nimbus.heading * 180) / Math.PI + 360) % 360;
+  const anyActive = state.enabled || vibey.walkMode || nimbus.enabled;
 
   return (
     <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
