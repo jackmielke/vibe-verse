@@ -14,8 +14,14 @@ import {
 } from "./map/HelicopterLayer";
 import HelicopterControl, {
   type HelicopterControlState,
+  type NimbusControlState,
 } from "./HelicopterControl";
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
+import {
+  createNimbusVtolLayer,
+  createDefaultNimbusState,
+  type NimbusState,
+} from "./map/NimbusVtolLayer";
 import VibeyDialog from "./VibeyDialog";
 
 // Vibey hangs out near the central plaza, slightly offset so he doesn't
@@ -147,6 +153,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [vibeyOpen, setVibeyOpen] = useState(false);
   const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
+
+  // ---- Nimbus VTOL ------------------------------------------------------
+  const nimbusStateRef = useRef<NimbusState>(
+    createDefaultNimbusState(VILLAGE_CENTER.lng, VILLAGE_CENTER.lat),
+  );
+  const [nimbusUI, setNimbusUI] = useState<NimbusControlState>({
+    enabled: false,
+    pilotMode: false,
+    altitude: 90,
+    speedKts: 0,
+    heading: 0,
+  });
+  const nimbusLayerAddedRef = useRef(false);
+  const nimbusKeysRef = useRef<Record<string, boolean>>({});
+  const nimbusVelocityRef = useRef({ forward: 0, lateral: 0, vertical: 0 });
 
   // Initialize map
   useEffect(() => {
@@ -693,6 +714,173 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, []);
 
+  // ---- Nimbus VTOL: add/remove layer when enabled toggles ---------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "structure-nimbus-vtol";
+
+    if (nimbusUI.enabled && !nimbusLayerAddedRef.current) {
+      try {
+        const elev = m.queryTerrainElevation(
+          [nimbusStateRef.current.lng, nimbusStateRef.current.lat],
+          { exaggerated: true },
+        );
+        const groundAlt = typeof elev === "number" ? elev : 0;
+        nimbusStateRef.current.altitude = groundAlt + 90;
+      } catch { /* terrain not ready */ }
+      nimbusStateRef.current.visible = true;
+
+      try {
+        m.addLayer(createNimbusVtolLayer(LAYER_ID, nimbusStateRef.current));
+        nimbusLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+    } else if (!nimbusUI.enabled && nimbusLayerAddedRef.current) {
+      nimbusStateRef.current.visible = false;
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      nimbusLayerAddedRef.current = false;
+    }
+  }, [nimbusUI.enabled, mapLoaded]);
+
+  // ---- Nimbus VTOL: keyboard input --------------------------------------
+  useEffect(() => {
+    if (!nimbusUI.pilotMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setNimbusUI((s) => ({ ...s, pilotMode: false }));
+        nimbusStateRef.current.pilotMode = false;
+        return;
+      }
+      nimbusKeysRef.current[e.key.toLowerCase()] = true;
+      if (e.key.startsWith("Arrow")) e.preventDefault();
+    };
+    const onUp = (e: KeyboardEvent) => {
+      nimbusKeysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      nimbusKeysRef.current = {};
+    };
+  }, [nimbusUI.pilotMode]);
+
+  // ---- Nimbus VTOL: flight + chase camera loop --------------------------
+  useEffect(() => {
+    if (!nimbusUI.enabled) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    let huiTick = 0;
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = nimbusStateRef.current;
+      const k = nimbusKeysRef.current;
+      const vel = nimbusVelocityRef.current;
+
+      if (nimbusUI.pilotMode) {
+        s.pilotMode = true;
+        s.thrusterIntensity = 1;
+
+        const turn = (k["arrowleft"] ? -1 : 0) + (k["arrowright"] ? 1 : 0);
+        const throttle = (k["arrowup"] ? 1 : 0) + (k["arrowdown"] ? -0.6 : 0);
+        const climb = (k["w"] ? 1 : 0) + (k["s"] ? -1 : 0);
+        const strafe = (k["d"] ? 1 : 0) + (k["a"] ? -1 : 0);
+
+        s.heading += turn * 1.3 * dt;
+
+        // Nimbus is faster than the helicopter
+        const targetFwd = throttle * 95;
+        const targetLat = strafe * 35;
+        const targetVert = climb * 22;
+        vel.forward += (targetFwd - vel.forward) * Math.min(1, dt * 2.4);
+        vel.lateral += (targetLat - vel.lateral) * Math.min(1, dt * 2.4);
+        vel.vertical += (targetVert - vel.vertical) * Math.min(1, dt * 2.4);
+
+        const sinH = Math.sin(s.heading);
+        const cosH = Math.cos(s.heading);
+        const eastM = sinH * vel.forward + cosH * vel.lateral;
+        const northM = cosH * vel.forward - sinH * vel.lateral;
+
+        const dLat = (northM * dt) / 111320;
+        const dLng = (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+        s.lat += dLat;
+        s.lng += dLng;
+        s.altitude = Math.max(20, s.altitude + vel.vertical * dt);
+
+        s.bank += (-turn * 0.5 - strafe * 0.3 - s.bank) * Math.min(1, dt * 4);
+        s.pitch += (-throttle * 0.22 - s.pitch) * Math.min(1, dt * 4);
+
+        const back = 110;
+        const camLat = s.lat - (cosH * back) / 111320;
+        const camLng = s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+        m.jumpTo({
+          center: [camLng, camLat],
+          bearing: (s.heading * 180) / Math.PI,
+          pitch: 70,
+          zoom: 18,
+        });
+      } else {
+        s.pilotMode = false;
+        s.thrusterIntensity = 0.6;
+        vel.forward *= 0.92;
+        vel.lateral *= 0.92;
+        vel.vertical *= 0.92;
+        s.bank += (0 - s.bank) * Math.min(1, dt * 3);
+        s.pitch += (0 - s.pitch) * Math.min(1, dt * 3);
+      }
+
+      huiTick += dt;
+      if (huiTick > 0.16) {
+        huiTick = 0;
+        const speedKts = Math.hypot(vel.forward, vel.lateral) * 1.94384;
+        setNimbusUI((u) =>
+          Math.round(u.altitude) === Math.round(s.altitude) &&
+          u.heading === s.heading &&
+          Math.abs(u.speedKts - speedKts) < 0.5
+            ? u
+            : { ...u, altitude: s.altitude, heading: s.heading, speedKts },
+        );
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [nimbusUI.enabled, nimbusUI.pilotMode]);
+
+  const resetNimbus = useCallback(() => {
+    const m = map.current;
+    const s = nimbusStateRef.current;
+    s.lng = VILLAGE_CENTER.lng;
+    s.lat = VILLAGE_CENTER.lat;
+    s.heading = 0;
+    s.bank = 0;
+    s.pitch = 0;
+    nimbusVelocityRef.current = { forward: 0, lateral: 0, vertical: 0 };
+    if (m) {
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        const groundAlt = typeof elev === "number" ? elev : 0;
+        s.altitude = groundAlt + 90;
+      } catch { /* */ }
+      m.flyTo({
+        center: [s.lng, s.lat],
+        zoom: VILLAGE_CENTER.zoom,
+        pitch: 55,
+        bearing: 0,
+        duration: 1200,
+      });
+      m.triggerRepaint();
+    }
+  }, []);
+
   // ---- Vibey: walk-mode keyboard input ---------------------------------
   useEffect(() => {
     if (!vibeyUI.walkMode) return;
@@ -916,6 +1104,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        nimbus={nimbusUI}
+        onToggleNimbus={() =>
+          setNimbusUI((s) => ({
+            ...s,
+            enabled: !s.enabled,
+            pilotMode: s.enabled ? false : s.pilotMode,
+          }))
+        }
+        onTogglePilotNimbus={() => {
+          setNimbusUI((s) => {
+            const next = !s.pilotMode;
+            nimbusStateRef.current.pilotMode = next;
+            return { ...s, pilotMode: next };
+          });
+        }}
+        onResetNimbus={resetNimbus}
       />
 
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}

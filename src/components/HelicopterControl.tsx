@@ -9,6 +9,7 @@ import {
   Home,
   Sparkles,
   Footprints,
+  Rocket,
 } from "lucide-react";
 
 export interface HelicopterControlState {
@@ -24,6 +25,14 @@ export interface VibeyControlState {
   heading: number;
 }
 
+export interface NimbusControlState {
+  enabled: boolean;
+  pilotMode: boolean;
+  altitude: number;
+  speedKts: number;
+  heading: number;
+}
+
 interface Props {
   // Helicopter
   state: HelicopterControlState;
@@ -35,9 +44,14 @@ interface Props {
   onToggleVibeyWalk: () => void;
   onResetVibey: () => void;
   onMessageVibey: () => void;
+  // Nimbus VTOL
+  nimbus: NimbusControlState;
+  onToggleNimbus: () => void;
+  onTogglePilotNimbus: () => void;
+  onResetNimbus: () => void;
 }
 
-type Tab = "vibey" | "heli";
+type Tab = "vibey" | "heli" | "nimbus";
 
 /**
  * Sky Patrol — unified control panel for both Vibey and the helicopter.
@@ -53,6 +67,10 @@ export default function HelicopterControl({
   onToggleVibeyWalk,
   onResetVibey,
   onMessageVibey,
+  nimbus,
+  onToggleNimbus,
+  onTogglePilotNimbus,
+  onResetNimbus,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("vibey");
@@ -70,10 +88,17 @@ export default function HelicopterControl({
       setTab("vibey");
     }
   }, [vibey.walkMode]);
+  useEffect(() => {
+    if (nimbus.pilotMode) {
+      setOpen(true);
+      setTab("nimbus");
+    }
+  }, [nimbus.pilotMode]);
 
   const headingDeg = ((state.heading * 180) / Math.PI + 360) % 360;
   const vibeyHeadingDeg = ((vibey.heading * 180) / Math.PI + 360) % 360;
-  const anyActive = state.enabled || vibey.walkMode;
+  const nimbusHeadingDeg = ((nimbus.heading * 180) / Math.PI + 360) % 360;
+  const anyActive = state.enabled || vibey.walkMode || nimbus.enabled;
 
   return (
     <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
@@ -103,10 +128,10 @@ export default function HelicopterControl({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.18 }}
-            className="glass-panel rounded-xl p-3 w-[240px] flex flex-col gap-2.5"
+            className="glass-panel rounded-xl p-3 w-[260px] flex flex-col gap-2.5"
           >
             {/* Tab switcher */}
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-background/40 border border-border">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
                 active={tab === "vibey"}
                 onClick={() => setTab("vibey")}
@@ -120,6 +145,13 @@ export default function HelicopterControl({
                 icon={<Plane className="w-3 h-3" />}
                 label="Chopper"
                 live={state.enabled}
+              />
+              <TabButton
+                active={tab === "nimbus"}
+                onClick={() => setTab("nimbus")}
+                icon={<Rocket className="w-3 h-3" />}
+                label="Nimbus"
+                live={nimbus.enabled}
               />
             </div>
 
@@ -235,6 +267,79 @@ export default function HelicopterControl({
                 )}
 
                 {state.pilotMode && (
+                  <div className="pt-1 border-t border-border space-y-0.5 text-[10px] font-mono text-muted-foreground leading-tight">
+                    <p>↑/↓ throttle · ←/→ turn</p>
+                    <p>W/S climb · A/D strafe</p>
+                    <p>ESC release</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {tab === "nimbus" && (
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="font-heading text-[11px] font-semibold tracking-widest uppercase text-primary">
+                    Nimbus VTOL
+                  </p>
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                      nimbus.enabled
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {nimbus.enabled ? "ARMED" : "STOWED"}
+                  </span>
+                </div>
+
+                <p className="text-[11px] font-body text-muted-foreground leading-snug">
+                  Futuristic personal aircraft. Silent thrusters, full hover.
+                </p>
+
+                <button
+                  onClick={onToggleNimbus}
+                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors ${
+                    nimbus.enabled
+                      ? "bg-muted text-foreground hover:bg-muted/80"
+                      : "bg-primary text-primary-foreground hover:opacity-90"
+                  }`}
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  {nimbus.enabled ? "Power Off" : "Launch Nimbus"}
+                </button>
+
+                <button
+                  onClick={onTogglePilotNimbus}
+                  disabled={!nimbus.enabled}
+                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    nimbus.pilotMode
+                      ? "bg-accent text-accent-foreground"
+                      : "bg-primary/15 text-primary hover:bg-primary/25"
+                  }`}
+                >
+                  <Gamepad2 className="w-3.5 h-3.5" />
+                  {nimbus.pilotMode ? "Release Controls" : "Take Controls"}
+                </button>
+
+                {nimbus.enabled && (
+                  <button
+                    onClick={onResetNimbus}
+                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-body py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Home className="w-3 h-3" />
+                    Return to base
+                  </button>
+                )}
+
+                {nimbus.enabled && (
+                  <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-border">
+                    <Stat label="ALT" value={`${Math.round(nimbus.altitude)}m`} />
+                    <Stat label="HDG" value={`${Math.round(nimbusHeadingDeg)}°`} />
+                    <Stat label="SPD" value={`${Math.round(nimbus.speedKts)}kt`} />
+                  </div>
+                )}
+
+                {nimbus.pilotMode && (
                   <div className="pt-1 border-t border-border space-y-0.5 text-[10px] font-mono text-muted-foreground leading-tight">
                     <p>↑/↓ throttle · ←/→ turn</p>
                     <p>W/S climb · A/D strafe</p>
