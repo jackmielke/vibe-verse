@@ -9,6 +9,7 @@ import {
   Home,
   Sparkles,
   Footprints,
+  Rocket,
 } from "lucide-react";
 
 export interface HelicopterControlState {
@@ -24,6 +25,14 @@ export interface VibeyControlState {
   heading: number;
 }
 
+export interface NimbusControlState {
+  enabled: boolean;
+  pilotMode: boolean;
+  altitude: number;
+  speedKts: number;
+  heading: number;
+}
+
 interface Props {
   // Helicopter
   state: HelicopterControlState;
@@ -35,9 +44,14 @@ interface Props {
   onToggleVibeyWalk: () => void;
   onResetVibey: () => void;
   onMessageVibey: () => void;
+  // Nimbus VTOL
+  nimbus: NimbusControlState;
+  onToggleNimbus: () => void;
+  onTogglePilotNimbus: () => void;
+  onResetNimbus: () => void;
 }
 
-type Tab = "vibey" | "heli";
+type Tab = "vibey" | "heli" | "nimbus";
 
 /**
  * Sky Patrol — unified control panel for both Vibey and the helicopter.
