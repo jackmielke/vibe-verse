@@ -1104,6 +1104,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        nimbus={nimbusUI}
+        onToggleNimbus={() =>
+          setNimbusUI((s) => ({
+            ...s,
+            enabled: !s.enabled,
+            pilotMode: s.enabled ? false : s.pilotMode,
+          }))
+        }
+        onTogglePilotNimbus={() => {
+          setNimbusUI((s) => {
+            const next = !s.pilotMode;
+            nimbusStateRef.current.pilotMode = next;
+            return { ...s, pilotMode: next };
+          });
+        }}
+        onResetNimbus={resetNimbus}
       />
 
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
