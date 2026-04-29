@@ -154,6 +154,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
 
+  // ---- Nimbus VTOL ------------------------------------------------------
+  const nimbusStateRef = useRef<NimbusState>(
+    createDefaultNimbusState(VILLAGE_CENTER.lng, VILLAGE_CENTER.lat),
+  );
+  const [nimbusUI, setNimbusUI] = useState<NimbusControlState>({
+    enabled: false,
+    pilotMode: false,
+    altitude: 90,
+    speedKts: 0,
+    heading: 0,
+  });
+  const nimbusLayerAddedRef = useRef(false);
+  const nimbusKeysRef = useRef<Record<string, boolean>>({});
+  const nimbusVelocityRef = useRef({ forward: 0, lateral: 0, vertical: 0 });
+
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
