@@ -1,6 +1,7 @@
 import edgeLogo from "@/assets/edge-esmeralda-logo.png";
 import { motion } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Plus, Globe2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface BrandHeaderProps {
   title?: string;
@@ -24,29 +25,39 @@ export default function BrandHeader({
 }: BrandHeaderProps) {
   if (variant === "floating") {
     return (
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="absolute top-4 left-4 z-10 flex items-center gap-3 glass-panel rounded-2xl pl-2 pr-4 py-2 glow-mint-sm pointer-events-none select-none"
-      >
-        <img
-          src={edgeLogo}
-          alt=""
-          className="h-10 w-10 object-contain drop-shadow-[0_0_12px_hsl(var(--mint-glow)/0.6)]"
-        />
-        <div className="flex flex-col leading-tight">
-          <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-            {subtitle}
-          </span>
-          <span
-            className="font-display text-sm font-semibold text-gradient-mint"
-            style={{ fontFamily: "'Sora', sans-serif" }}
-          >
-            {title}
-          </span>
-        </div>
-      </motion.div>
+      <>
+        <motion.div
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="absolute top-4 left-4 z-10 flex items-center gap-3 glass-panel rounded-2xl pl-2 pr-4 py-2 glow-mint-sm pointer-events-none select-none"
+        >
+          <img
+            src={edgeLogo}
+            alt=""
+            className="h-10 w-10 object-contain drop-shadow-[0_0_12px_hsl(var(--mint-glow)/0.6)]"
+          />
+          <div className="flex flex-col leading-tight">
+            <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+              {subtitle}
+            </span>
+            <span
+              className="font-display text-sm font-semibold text-gradient-mint"
+              style={{ fontFamily: "'Sora', sans-serif" }}
+            >
+              {title}
+            </span>
+          </div>
+        </motion.div>
+        <Link
+          to="/world"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-10 glass-panel rounded-full px-3 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.18em] uppercase text-primary hover:bg-primary/15 transition-colors"
+          title="Enter the 3D World"
+        >
+          <Globe2 className="w-3.5 h-3.5" />
+          World
+        </Link>
+      </>
     );
   }
 
