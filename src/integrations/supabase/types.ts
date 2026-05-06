@@ -71,6 +71,45 @@ export type Database = {
           },
         ]
       }
+      agent_tools: {
+        Row: {
+          category: string
+          created_at: string
+          description: string
+          id: string
+          is_enabled: boolean
+          label: string
+          name: string
+          required_secrets: string[]
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description: string
+          id?: string
+          is_enabled?: boolean
+          label: string
+          name: string
+          required_secrets?: string[]
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          is_enabled?: boolean
+          label?: string
+          name?: string
+          required_secrets?: string[]
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agents: {
         Row: {
           avatar_url: string | null
@@ -491,6 +530,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "automation_recipients_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "automations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_runs: {
+        Row: {
+          automation_id: string
+          community_id: string
+          dry_run: boolean
+          duration_ms: number | null
+          error: string | null
+          finished_at: string | null
+          http_status: number | null
+          id: string
+          recipients_count: number | null
+          result: Json | null
+          started_at: string
+          status: string
+          triggered_by: string
+        }
+        Insert: {
+          automation_id: string
+          community_id: string
+          dry_run?: boolean
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          http_status?: number | null
+          id?: string
+          recipients_count?: number | null
+          result?: Json | null
+          started_at?: string
+          status: string
+          triggered_by?: string
+        }
+        Update: {
+          automation_id?: string
+          community_id?: string
+          dry_run?: boolean
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          http_status?: number | null
+          id?: string
+          recipients_count?: number | null
+          result?: Json | null
+          started_at?: string
+          status?: string
+          triggered_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_runs_automation_id_fkey"
             columns: ["automation_id"]
             isOneToOne: false
             referencedRelation: "automations"
@@ -3196,6 +3291,13 @@ export type Database = {
           member_count: number
           name: string
           privacy_level: string
+        }[]
+      }
+      get_community_credentials: {
+        Args: { _community_id: string }
+        Returns: {
+          telegram_bot_token: string
+          webhook_api_key: string
         }[]
       }
       get_current_user_from_context: { Args: never; Returns: string }
