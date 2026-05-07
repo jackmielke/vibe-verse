@@ -272,11 +272,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [deathStarLoading, setDeathStarLoading] = useState(false);
   const [deathStarProgress, setDeathStarProgress] = useState<number | null>(null);
 
-  // Littlest Tokyo: keyframe-animated micro-city. Sits on the ground next
-  // to the plaza so it feels like a little neighborhood within the village.
+  // Littlest Tokyo: keyframe-animated micro-city. Sits on the ground a few
+  // blocks east of the plaza so it feels like its own neighborhood — far
+  // enough that it doesn't overlap the plaza pavilion's footprint.
   const tokyoStateRef = useRef<SpawnableState>({
-    lng: -122.8682, // ~80m east of the plaza, in open ground
-    lat: 38.6132,
+    lng: -122.8662, // ~280m east of the plaza, in open ground
+    lat: 38.6125,
     altitude: 32, // ground-level fallback; resampled from terrain on mount
     heading: 0,
     scaleMeters: 35,
