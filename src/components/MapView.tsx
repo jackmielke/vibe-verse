@@ -62,18 +62,6 @@ const UNIT7_WANDER_RADIUS_M = 50;
 const VIBE_POLICE_LOCATION = { lng: -122.8688, lat: 38.6122 };
 const VIBE_POLICE_WANDER_RADIUS_M = 45;
 
-// Vibey poster billboard — sits just NW of the plaza. Drop your image into
-// `public/posters/` with any of the names/extensions below and it shows up
-// automatically. (Path matters: public/ files are served at /, not bundled.)
-const POSTER_LOCATION = { lng: -122.8696, lat: 38.6133 };
-const POSTER_CANDIDATES = [
-  "/posters/vibey.jpg",
-  "/posters/vibey.png",
-  "/posters/vibey.webp",
-  "/posters/vibey.jpeg",
-  "/posters/vibey-poster.jpg",
-  "/posters/vibey-poster.png",
-];
 // Walking speed in meters/second.
 // Base walking speed at the default body size. The wander loop scales this
 // by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
@@ -683,63 +671,6 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       { enableHighAccuracy: true }
     );
   }, []);
-
-  // ---- Vibey poster billboard ------------------------------------------
-  // A simple HTML-image marker near the plaza so the village has a piece
-  // of "art" rendered into the world. Drop your image at the configured
-  // path and it shows up automatically.
-  useEffect(() => {
-    const m = map.current;
-    if (!m || !mapLoaded) return;
-
-    const el = document.createElement("div");
-    el.style.cssText = `
-      width: 200px;
-      height: 200px;
-      background: rgba(13, 27, 42, 0.85);
-      border: 2px solid rgba(45, 212, 168, 0.7);
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 0 24px rgba(45, 212, 168, 0.4);
-      transform: translateY(-110px);
-      pointer-events: none;
-    `;
-    const img = document.createElement("img");
-    img.alt = "Vibey poster";
-    img.style.cssText = `
-      width: 100%; height: 100%; object-fit: cover; display: block;
-    `;
-    // Try each candidate path in order; first one that loads wins. If all
-    // fail, render a fallback so it's obvious where to drop the image.
-    let candidateIndex = 0;
-    const tryNext = () => {
-      if (candidateIndex >= POSTER_CANDIDATES.length) {
-        img.remove();
-        const fb = document.createElement("div");
-        fb.style.cssText = `
-          width: 100%; height: 100%;
-          display: flex; align-items: center; justify-content: center;
-          text-align: center; padding: 16px; box-sizing: border-box;
-          color: #73ffb8; font-family: 'Sora', sans-serif;
-          font-size: 11px; line-height: 1.5; letter-spacing: 0.05em;
-        `;
-        fb.innerHTML =
-          '<div><div style="font-size:14px;font-weight:700;margin-bottom:8px;">Vibey Poster</div>' +
-          'Save your image as<br/><code style="font-size:10px;">public/posters/vibey.jpg</code><br/>(.png/.webp also work)</div>';
-        el.appendChild(fb);
-        return;
-      }
-      img.src = POSTER_CANDIDATES[candidateIndex++];
-    };
-    img.onerror = tryNext;
-    tryNext();
-    el.appendChild(img);
-
-    const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
-      .setLngLat([POSTER_LOCATION.lng, POSTER_LOCATION.lat])
-      .addTo(m);
-    return () => marker.remove();
-  }, [mapLoaded]);
 
   // ---- Time of day + dynamic sun --------------------------------------
   // Update the on-screen clock once a second so it stays smooth, and the
