@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import MapView, { VILLAGE_LOCATIONS } from "@/components/MapView";
 import LocationDetails from "@/components/LocationDetails";
@@ -35,6 +36,12 @@ const Index = () => {
             selectedLocation={selectedLocation}
           />
           <BrandHeader variant="floating" />
+          <Link
+            to="/island"
+            className="absolute top-4 right-4 z-20 rounded-full bg-emerald-600/90 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-emerald-500"
+          >
+            🏝️ Visit the island
+          </Link>
           <LocationDetails
             location={selectedLocation}
             onClose={() => setSelectedLocation(null)}
