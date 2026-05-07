@@ -48,10 +48,9 @@ export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   };
 }
 
-// In meters. RobotExpressive feels right around 28m at typical map zoom —
-// big enough to read as a character against city blocks, not so big he's
-// obstructing the plaza.
-const SCALE_METERS = 28;
+// In meters. Bumped to ~38 so he reads at roughly Vibey scale and you can
+// actually see his shape from the village-context zoom level.
+const SCALE_METERS = 38;
 // Tiny clearance over terrain so his soles don't z-fight the ground.
 // He walks ON the ground; no float, no bob.
 const GROUND_CLEARANCE = 0.3;
@@ -177,14 +176,18 @@ export function createUnit7Layer(
         unit7ModelUrl,
         (gltf) => {
           model = gltf.scene;
-          // Normalize so the model is ~2 units tall and feet sit at y=0.
+          // Normalize so the model is ~2 units tall, then translate so the
+          // geometric center sits over scene origin and feet sit at y=0.
+          // (RobotExpressive's GLB has nodes with transforms — its world
+          // bounding box is NOT centered on its glTF origin, so we have to
+          // re-center explicitly or the halo ends up off to one side.)
           const box = new THREE.Box3().setFromObject(model);
           const size = new THREE.Vector3();
           box.getSize(size);
-          const fit = 2 / (size.y || 1);
-          model.scale.setScalar(fit);
           const center = new THREE.Vector3();
           box.getCenter(center);
+          const fit = 2 / (size.y || 1);
+          model.scale.setScalar(fit);
           model.position.x = -center.x * fit;
           model.position.z = -center.z * fit;
           model.position.y = -box.min.y * fit;
