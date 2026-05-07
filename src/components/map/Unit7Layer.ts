@@ -34,7 +34,17 @@ export interface Unit7State {
   animPulse: number;
   // 0..1 per face morph. Defaults to all-zero (neutral expression).
   expressions: Record<Unit7Expression, number>;
+  // Optional. When set, overrides the default SCALE_METERS so a UI slider
+  // can grow him on the map without remounting the layer.
+  scaleMeters?: number;
 }
+
+// Defaults / bounds for the size slider. Default = the value that "felt
+// right" early on — proportionate halo, recognizable character.
+export const UNIT7_DEFAULT_SCALE_METERS = 28;
+export const UNIT7_MIN_SCALE_METERS = 28;
+// 10× the old cap so he can tower over the plaza pavilion when you want.
+export const UNIT7_MAX_SCALE_METERS = 1100;
 
 export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   return {
@@ -45,18 +55,14 @@ export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
     currentAnim: "Idle",
     animPulse: 0,
     expressions: { Angry: 0, Surprised: 0, Sad: 0 },
+    scaleMeters: UNIT7_DEFAULT_SCALE_METERS,
   };
 }
 
-// In meters. RobotExpressive feels right around 28m at typical map zoom —
-// big enough to read as a character against city blocks, not so big he's
-// obstructing the plaza.
-const SCALE_METERS = 28;
-// Float ~8m above terrain so plaza decorations and small buildings can't
-// occlude his head and shoulders.
-const HOVER_HEIGHT = 8;
-// Subtle vertical bob as he idles.
-const BOB_AMPLITUDE = 0.8;
+const SCALE_METERS = UNIT7_DEFAULT_SCALE_METERS;
+// Tiny clearance over terrain so his soles don't z-fight the ground.
+// He walks ON the ground; no float, no bob.
+const GROUND_CLEARANCE = 0.3;
 const FADE_SECONDS = 0.2;
 const ONE_SHOTS: Unit7AnimName[] = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"];
 
@@ -80,6 +86,9 @@ export function createUnit7Layer(
   let lastAnim: Unit7AnimName | null = null;
   let lastPulse = state.animPulse;
   let lastTime = performance.now();
+  // Static centering offsets captured after GLB load. Re-applied every frame
+  // so any animation root motion can't drift the bot away from the halo.
+  const modelHomePos = new THREE.Vector3();
   const startTime = performance.now();
 
   // Decorative beacon group so we can pulse / scale it in render().
@@ -122,10 +131,12 @@ export function createUnit7Layer(
       rim.position.set(40, 20, -30).normalize();
       scene.add(rim);
 
-      // ---- Beacon: ground halo + tall vertical pillar of light ----------
-      // Halo on the ground so you can spot him from straight above.
+      // ---- Beacon: subtle ring under his feet + tall pillar above -------
+      // Ring sized to roughly his footprint so it reads as "this guy is
+      // here", not as a giant landing pad. RobotExpressive's footprint is
+      // ~0.6 local units wide.
       const halo = new THREE.Mesh(
-        new THREE.RingGeometry(1.4, 1.7, 64),
+        new THREE.RingGeometry(0.45, 0.55, 64),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
@@ -140,13 +151,13 @@ export function createUnit7Layer(
       beaconGroup.add(halo);
       beaconRing = halo;
 
-      // Soft glow disc filling the center.
+      // Subtle glow filling the ring.
       const glow = new THREE.Mesh(
-        new THREE.CircleGeometry(1.4, 64),
+        new THREE.CircleGeometry(0.5, 64),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
-          opacity: 0.4,
+          opacity: 0.18,
           depthWrite: false,
         }),
       );
@@ -156,14 +167,13 @@ export function createUnit7Layer(
       beaconGroup.add(glow);
 
       // Tall vertical pillar so he's findable from any zoom or angle.
-      // Starts above the model's head (y=2.4) so he isn't visually wrapped
-      // inside it — pillar is its own thing pointing skyward.
+      // Starts above the model's head (y=2.4) so he isn't wrapped inside it.
       const pillar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.16, 0.22, 18, 16, 1, true),
+        new THREE.CylinderGeometry(0.12, 0.16, 18, 16, 1, true),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
-          opacity: 0.6,
+          opacity: 0.55,
           depthWrite: false,
           side: THREE.DoubleSide,
         }),
@@ -178,17 +188,18 @@ export function createUnit7Layer(
         unit7ModelUrl,
         (gltf) => {
           model = gltf.scene;
-          // Normalize so the model is ~2 units tall and feet sit at y=0.
+          // Normalize height to 2 scene units. We do NOT translate to center
+          // on the bbox — RobotExpressive's GLB is authored with origin
+          // close to the feet center, and any pre-translate gets multiplied
+          // by `meterScale` at render time, so even sub-unit offsets become
+          // hundreds of meters at large slider values. Leaving it natural
+          // keeps the bot tight to the halo at every scale.
           const box = new THREE.Box3().setFromObject(model);
           const size = new THREE.Vector3();
           box.getSize(size);
           const fit = 2 / (size.y || 1);
           model.scale.setScalar(fit);
-          const center = new THREE.Vector3();
-          box.getCenter(center);
-          model.position.x = -center.x * fit;
-          model.position.z = -center.z * fit;
-          model.position.y = -box.min.y * fit;
+          modelHomePos.copy(model.position); // (0, 0, 0)
           scene.add(model);
 
           // Find the head mesh that owns the face morph targets so we can
@@ -241,6 +252,11 @@ export function createUnit7Layer(
 
       if (mixer) mixer.update(delta);
 
+      // Pin the model back to its centered home each frame so any root
+      // translation an animation tries to apply (Walking has stride drift,
+      // for example) can't pull him out from under the halo.
+      if (model) model.position.copy(modelHomePos);
+
       // Apply animation changes from outside.
       if (lastAnim !== state.currentAnim || lastPulse !== state.animPulse) {
         play(state.currentAnim, lastPulse !== state.animPulse);
@@ -264,8 +280,8 @@ export function createUnit7Layer(
         model.rotation.y = state.heading;
       }
 
-      // Subtle hover bob + pulsing beacon scale.
-      const bob = Math.sin(t * 1.2) * BOB_AMPLITUDE;
+      // Subtle pulsing beacon scale — characters' bob removed; he walks
+      // ON the ground.
       const beaconPulse = 1 + Math.sin(t * 2) * 0.06;
       beaconGroup.scale.set(beaconPulse, 1, beaconPulse);
       if (beaconRing) {
@@ -273,14 +289,14 @@ export function createUnit7Layer(
           0.55 + Math.sin(t * 2) * 0.2;
       }
 
-      // Place him hovering above the sampled terrain so plaza/terrain
-      // can't visually swallow him.
-      const altitude = state.baseAltitude + HOVER_HEIGHT + bob;
+      // Anchor to the sampled terrain — feet just clear the surface.
+      const altitude = state.baseAltitude + GROUND_CLEARANCE;
       const mercator = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: state.lng, lat: state.lat },
         altitude,
       );
-      const meterScale = mercator.meterInMercatorCoordinateUnits() * SCALE_METERS;
+      const scaleMeters = state.scaleMeters ?? SCALE_METERS;
+      const meterScale = mercator.meterInMercatorCoordinateUnits() * scaleMeters;
 
       const rotationX = new THREE.Matrix4().makeRotationAxis(
         new THREE.Vector3(1, 0, 0),

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronRight, ChevronLeft } from "lucide-react";
 import MapView, { VILLAGE_LOCATIONS } from "@/components/MapView";
 import LocationDetails from "@/components/LocationDetails";
 import SplashScreen from "@/components/SplashScreen";
@@ -14,7 +15,17 @@ const Index = () => {
   const [selectedLocation, setSelectedLocation] = useState<typeof VILLAGE_LOCATIONS[0] | null>(null);
   const [splashDone, setSplashDone] = useState(false);
   const [tab, setTab] = useState<AppTab>("map");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const isMobile = useIsMobile();
+
+  // When the desktop sidebar toggles, the map container resizes. Mapbox
+  // doesn't observe container resize on its own, but it does listen for
+  // the global window resize event, so we kick that off after the layout
+  // has settled.
+  useEffect(() => {
+    const t = setTimeout(() => window.dispatchEvent(new Event("resize")), 320);
+    return () => clearTimeout(t);
+  }, [sidebarOpen]);
 
   if (!splashDone) {
     return <SplashScreen onEnter={() => setSplashDone(true)} />;
@@ -39,16 +50,45 @@ const Index = () => {
             location={selectedLocation}
             onClose={() => setSelectedLocation(null)}
           />
+
+          {/* Collapsed-sidebar tab — slides in from the right when the
+              sidebar is hidden so the user has a way to bring it back. */}
+          <AnimatePresence>
+            {!sidebarOpen && (
+              <motion.button
+                key="sidebar-tab"
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={{ duration: 0.18 }}
+                onClick={() => setSidebarOpen(true)}
+                className="absolute top-1/2 right-0 -translate-y-1/2 z-30 glass-panel h-16 w-7 rounded-l-lg rounded-r-none flex items-center justify-center hover:bg-muted transition-colors"
+                title="Show panel"
+              >
+                <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </motion.div>
 
-        <motion.div
-          initial={{ x: 100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="h-full"
-        >
-          <DesktopSidebar selectedLocation={selectedLocation} />
-        </motion.div>
+        {sidebarOpen && (
+          <motion.div
+            key="sidebar"
+            initial={{ x: 100, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.25 }}
+            className="h-full flex relative"
+          >
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="self-stretch px-1 hover:bg-muted/40 transition-colors flex items-center justify-center border-l border-border/40"
+              title="Hide panel"
+            >
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <DesktopSidebar selectedLocation={selectedLocation} />
+          </motion.div>
+        )}
       </div>
     );
   }
