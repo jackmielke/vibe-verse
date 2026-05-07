@@ -66,6 +66,11 @@ interface Props {
   unit7ScaleMin: number;
   unit7ScaleMax: number;
   onUnit7ScaleChange: (v: number) => void;
+  // Vibe Police
+  vibePoliceScale: number;
+  vibePoliceScaleMin: number;
+  vibePoliceScaleMax: number;
+  onVibePoliceScaleChange: (v: number) => void;
   // Nimbus VTOL
   nimbus: NimbusControlState;
   onToggleNimbus: () => void;
@@ -95,6 +100,10 @@ export default function HelicopterControl({
   unit7ScaleMin,
   unit7ScaleMax,
   onUnit7ScaleChange,
+  vibePoliceScale,
+  vibePoliceScaleMin,
+  vibePoliceScaleMax,
+  onVibePoliceScaleChange,
   nimbus,
   onToggleNimbus,
   onTogglePilotNimbus,
@@ -267,6 +276,31 @@ export default function HelicopterControl({
                       step={1}
                       value={unit7Scale}
                       onChange={(e) => onUnit7ScaleChange(Number(e.target.value))}
+                      className="w-full h-1 bg-background/60 rounded-full accent-primary cursor-pointer"
+                    />
+                  </div>
+                </CharacterRow>
+
+                {/* Vibe Police */}
+                <CharacterRow
+                  iconBg="bg-blue-500/15 border-blue-400/40"
+                  icon={<Bot className="w-3.5 h-3.5 text-blue-400" />}
+                  name="Vibe Police"
+                  subtitle="Anti-vibe officer · on patrol"
+                  live={false}
+                >
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
+                      <span>SIZE</span>
+                      <span className="text-primary">{Math.round(vibePoliceScale)}m</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={vibePoliceScaleMin}
+                      max={vibePoliceScaleMax}
+                      step={1}
+                      value={vibePoliceScale}
+                      onChange={(e) => onVibePoliceScaleChange(Number(e.target.value))}
                       className="w-full h-1 bg-background/60 rounded-full accent-primary cursor-pointer"
                     />
                   </div>

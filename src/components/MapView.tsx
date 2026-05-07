@@ -28,6 +28,14 @@ import {
   type Unit7Expression,
 } from "./map/Unit7Layer";
 import {
+  createVibePoliceLayer,
+  createDefaultVibePoliceState,
+  VIBE_POLICE_DEFAULT_SCALE_METERS,
+  VIBE_POLICE_MIN_SCALE_METERS,
+  VIBE_POLICE_MAX_SCALE_METERS,
+  type VibePoliceState,
+} from "./map/VibePoliceLayer";
+import {
   createNimbusVtolLayer,
   createDefaultNimbusState,
   type NimbusState,
@@ -49,6 +57,11 @@ const VIBEY_LOCATION = { lng: -122.8695, lat: 38.6135 };
 const UNIT7_LOCATION = { lng: -122.8696, lat: 38.6118 };
 // Wander radius (in meters, approximate) from spawn point.
 const UNIT7_WANDER_RADIUS_M = 50;
+
+// Vibe Police starts a block east, separate from Unit-7 so the two are
+// distinguishable on first sight.
+const VIBE_POLICE_LOCATION = { lng: -122.8688, lat: 38.6122 };
+const VIBE_POLICE_WANDER_RADIUS_M = 45;
 // Walking speed in meters/second.
 // Base walking speed at the default body size. The wander loop scales this
 // by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
@@ -248,6 +261,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // `unit7StateRef.current.scaleMeters` each frame.
   const [unit7Scale, setUnit7Scale] = useState(UNIT7_DEFAULT_SCALE_METERS);
 
+  // ---- Vibe Police (anti-vibe officer) ---------------------------------
+  const vibePoliceStateRef = useRef<VibePoliceState>(
+    createDefaultVibePoliceState(VIBE_POLICE_LOCATION.lng, VIBE_POLICE_LOCATION.lat),
+  );
+  const vibePoliceTargetRef = useRef<{ lng: number; lat: number } | null>(null);
+  const vibePoliceIdleUntilRef = useRef<number>(0);
+  const vibePoliceLayerAddedRef = useRef(false);
+  const vibePoliceMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [vibePoliceScale, setVibePoliceScale] = useState(VIBE_POLICE_DEFAULT_SCALE_METERS);
+
   // ---- Spawnables (lazy-loaded heavy GLBs) -----------------------------
   const islandStateRef = useRef<SpawnableState>({
     lng: VILLAGE_CENTER.lng,
@@ -396,6 +419,11 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
               { exaggerated: true },
             );
             if (typeof te === "number") tokyoStateRef.current.altitude = te;
+            const pe = m.queryTerrainElevation(
+              [vibePoliceStateRef.current.lng, vibePoliceStateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof pe === "number") vibePoliceStateRef.current.baseAltitude = pe;
           } catch { /* terrain not ready */ }
         }
       });
@@ -890,6 +918,144 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [mapLoaded, unit7Open]);
+
+  // ---- Vibe Police: mount layer + click marker -------------------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "vibe-police-character";
+
+    const mount = () => {
+      if (vibePoliceLayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [vibePoliceStateRef.current.lng, vibePoliceStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") vibePoliceStateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+
+      try {
+        m.addLayer(createVibePoliceLayer(LAYER_ID, vibePoliceStateRef.current));
+        vibePoliceLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+
+      if (!vibePoliceMarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 70px; height: 90px;
+          cursor: default;
+          pointer-events: auto;
+          display: flex; align-items: flex-end; justify-content: center;
+        `;
+        const tag = document.createElement("div");
+        tag.style.cssText = `
+          font-family: 'Sora', sans-serif;
+          font-size: 10px; font-weight: 700;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          color: #f0f7ff;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(13, 27, 60, 0.78);
+          border: 1px solid rgba(106, 168, 255, 0.6);
+          box-shadow: 0 0 14px rgba(106, 168, 255, 0.4);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          white-space: nowrap;
+          transform: translateY(-90px);
+        `;
+        tag.textContent = "★ Vibe Police";
+        el.appendChild(tag);
+        vibePoliceMarkerRef.current = new mapboxgl.Marker({
+          element: el,
+          anchor: "bottom",
+        })
+          .setLngLat([vibePoliceStateRef.current.lng, vibePoliceStateRef.current.lat])
+          .addTo(m);
+      }
+    };
+
+    mount();
+    const onStyle = () => {
+      vibePoliceLayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+    return () => {
+      m.off("style.load", onStyle);
+    };
+  }, [mapLoaded]);
+
+  // ---- Vibe Police: autonomous wander loop -----------------------------
+  useEffect(() => {
+    if (!mapLoaded) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let lastTime = performance.now();
+    const metersPerDegLat = 111_111;
+    const metersPerDegLng = 111_111 * Math.cos((VIBE_POLICE_LOCATION.lat * Math.PI) / 180);
+
+    function pickNewTarget() {
+      const r = Math.sqrt(Math.random()) * VIBE_POLICE_WANDER_RADIUS_M;
+      const theta = Math.random() * Math.PI * 2;
+      vibePoliceTargetRef.current = {
+        lng: VIBE_POLICE_LOCATION.lng + (r * Math.cos(theta)) / metersPerDegLng,
+        lat: VIBE_POLICE_LOCATION.lat + (r * Math.sin(theta)) / metersPerDegLat,
+      };
+    }
+
+    const tick = () => {
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+      const s = vibePoliceStateRef.current;
+
+      const target = vibePoliceTargetRef.current;
+      if (!target) {
+        if (now >= vibePoliceIdleUntilRef.current) {
+          pickNewTarget();
+          if (s.currentAnim !== "Walking") {
+            s.currentAnim = "Walking";
+            s.animPulse++;
+          }
+        } else if (s.currentAnim !== "Alert") {
+          s.currentAnim = "Alert";
+          s.animPulse++;
+        }
+      } else {
+        const dxMeters = (target.lng - s.lng) * metersPerDegLng;
+        const dyMeters = (target.lat - s.lat) * metersPerDegLat;
+        const distance = Math.hypot(dxMeters, dyMeters);
+        if (distance < 0.6) {
+          vibePoliceTargetRef.current = null;
+          vibePoliceIdleUntilRef.current = now + (3 + Math.random() * 5) * 1000;
+          s.currentAnim = "Alert";
+          s.animPulse++;
+        } else {
+          const sizeFactor = (s.scaleMeters || VIBE_POLICE_DEFAULT_SCALE_METERS) /
+            VIBE_POLICE_DEFAULT_SCALE_METERS;
+          const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
+          const nx = dxMeters / distance;
+          const ny = dyMeters / distance;
+          s.lng += (nx * step) / metersPerDegLng;
+          s.lat += (ny * step) / metersPerDegLat;
+          s.heading = Math.atan2(nx, ny);
+          try {
+            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+            if (typeof elev === "number") s.baseAltitude = elev;
+          } catch { /* terrain not ready */ }
+          vibePoliceMarkerRef.current?.setLngLat([s.lng, s.lat]);
+        }
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mapLoaded]);
 
   // ---- Spawnables: clear refs when style reloads -----------------------
   // Mapbox wipes all custom layers on style.load. Without nulling the refs
@@ -1604,6 +1770,13 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         onUnit7ScaleChange={(v) => {
           setUnit7Scale(v);
           unit7StateRef.current.scaleMeters = v;
+        }}
+        vibePoliceScale={vibePoliceScale}
+        vibePoliceScaleMin={VIBE_POLICE_MIN_SCALE_METERS}
+        vibePoliceScaleMax={VIBE_POLICE_MAX_SCALE_METERS}
+        onVibePoliceScaleChange={(v) => {
+          setVibePoliceScale(v);
+          vibePoliceStateRef.current.scaleMeters = v;
         }}
         onMessageUnit7={() => {
           // Third-person video-game-style framing: zoom way in, low-ish
