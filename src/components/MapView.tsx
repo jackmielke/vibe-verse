@@ -20,6 +20,9 @@ import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
 import {
   createUnit7Layer,
   createDefaultUnit7State,
+  UNIT7_DEFAULT_SCALE_METERS,
+  UNIT7_MIN_SCALE_METERS,
+  UNIT7_MAX_SCALE_METERS,
   type Unit7State,
   type Unit7AnimName,
   type Unit7Expression,
@@ -238,6 +241,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const unit7LayerAddedRef = useRef(false);
   const unit7MarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [unit7Open, setUnit7Open] = useState(false);
+  // UI-driven size slider for Unit-7 on the map. The layer reads from
+  // `unit7StateRef.current.scaleMeters` each frame.
+  const [unit7Scale, setUnit7Scale] = useState(UNIT7_DEFAULT_SCALE_METERS);
 
   // ---- Spawnables (lazy-loaded heavy GLBs) -----------------------------
   const islandStateRef = useRef<SpawnableState>({
@@ -1585,6 +1591,13 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        unit7Scale={unit7Scale}
+        unit7ScaleMin={UNIT7_MIN_SCALE_METERS}
+        unit7ScaleMax={UNIT7_MAX_SCALE_METERS}
+        onUnit7ScaleChange={(v) => {
+          setUnit7Scale(v);
+          unit7StateRef.current.scaleMeters = v;
+        }}
         onMessageUnit7={() => {
           // Third-person video-game-style framing: zoom way in, low-ish
           // pitch so we see his face/body, turn him to face the camera,

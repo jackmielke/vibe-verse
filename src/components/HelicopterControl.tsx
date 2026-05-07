@@ -62,6 +62,10 @@ interface Props {
   onMessageVibey: () => void;
   // Unit-7 (resident bot)
   onMessageUnit7: () => void;
+  unit7Scale: number;
+  unit7ScaleMin: number;
+  unit7ScaleMax: number;
+  onUnit7ScaleChange: (v: number) => void;
   // Nimbus VTOL
   nimbus: NimbusControlState;
   onToggleNimbus: () => void;
@@ -87,6 +91,10 @@ export default function HelicopterControl({
   onResetVibey,
   onMessageVibey,
   onMessageUnit7,
+  unit7Scale,
+  unit7ScaleMin,
+  unit7ScaleMax,
+  onUnit7ScaleChange,
   nimbus,
   onToggleNimbus,
   onTogglePilotNimbus,
@@ -247,6 +255,21 @@ export default function HelicopterControl({
                   >
                     <Bot className="w-3 h-3" /> Talk to Unit-7
                   </button>
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
+                      <span>SIZE</span>
+                      <span className="text-primary">{Math.round(unit7Scale)}m</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={unit7ScaleMin}
+                      max={unit7ScaleMax}
+                      step={1}
+                      value={unit7Scale}
+                      onChange={(e) => onUnit7ScaleChange(Number(e.target.value))}
+                      className="w-full h-1 bg-background/60 rounded-full accent-primary cursor-pointer"
+                    />
+                  </div>
                 </CharacterRow>
               </div>
             )}

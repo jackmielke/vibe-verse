@@ -34,7 +34,14 @@ export interface Unit7State {
   animPulse: number;
   // 0..1 per face morph. Defaults to all-zero (neutral expression).
   expressions: Record<Unit7Expression, number>;
+  // Approximate world-space height in meters. Read every frame so a UI
+  // slider can resize him on the map live.
+  scaleMeters: number;
 }
+
+export const UNIT7_DEFAULT_SCALE_METERS = 38;
+export const UNIT7_MIN_SCALE_METERS = 38;
+export const UNIT7_MAX_SCALE_METERS = 110;
 
 export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   return {
@@ -45,12 +52,12 @@ export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
     currentAnim: "Idle",
     animPulse: 0,
     expressions: { Angry: 0, Surprised: 0, Sad: 0 },
+    scaleMeters: UNIT7_DEFAULT_SCALE_METERS,
   };
 }
 
-// In meters. Bumped to ~38 so he reads at roughly Vibey scale and you can
-// actually see his shape from the village-context zoom level.
-const SCALE_METERS = 38;
+// Default scale lives in the constant above; the layer reads
+// `state.scaleMeters` per frame so a UI slider can grow/shrink him live.
 // Tiny clearance over terrain so his soles don't z-fight the ground.
 // He walks ON the ground; no float, no bob.
 const GROUND_CLEARANCE = 0.3;
@@ -281,7 +288,8 @@ export function createUnit7Layer(
         { lng: state.lng, lat: state.lat },
         altitude,
       );
-      const meterScale = mercator.meterInMercatorCoordinateUnits() * SCALE_METERS;
+      const scaleMeters = state.scaleMeters || UNIT7_DEFAULT_SCALE_METERS;
+      const meterScale = mercator.meterInMercatorCoordinateUnits() * scaleMeters;
 
       const rotationX = new THREE.Matrix4().makeRotationAxis(
         new THREE.Vector3(1, 0, 0),
