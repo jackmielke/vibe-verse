@@ -10,6 +10,7 @@ import {
   Sparkles,
   Footprints,
   Rocket,
+  Mountain,
 } from "lucide-react";
 
 export interface HelicopterControlState {
@@ -33,6 +34,17 @@ export interface NimbusControlState {
   heading: number;
 }
 
+export interface SpawnableControl {
+  id: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  loading: boolean;
+  // null when length isn't known yet (server didn't send Content-Length).
+  progress: number | null;
+  onToggle: () => void;
+}
+
 interface Props {
   // Helicopter
   state: HelicopterControlState;
@@ -49,9 +61,11 @@ interface Props {
   onToggleNimbus: () => void;
   onTogglePilotNimbus: () => void;
   onResetNimbus: () => void;
+  // Spawnable heavy GLBs (Edge Island, Death Star, …) — lazy-loaded.
+  spawnables: SpawnableControl[];
 }
 
-type Tab = "vibey" | "heli" | "nimbus";
+type Tab = "vibey" | "heli" | "nimbus" | "spawn";
 
 /**
  * Sky Patrol — unified control panel for both Vibey and the helicopter.
@@ -71,6 +85,7 @@ export default function HelicopterControl({
   onToggleNimbus,
   onTogglePilotNimbus,
   onResetNimbus,
+  spawnables,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("vibey");
@@ -98,7 +113,8 @@ export default function HelicopterControl({
   const headingDeg = ((state.heading * 180) / Math.PI + 360) % 360;
   const vibeyHeadingDeg = ((vibey.heading * 180) / Math.PI + 360) % 360;
   const nimbusHeadingDeg = ((nimbus.heading * 180) / Math.PI + 360) % 360;
-  const anyActive = state.enabled || vibey.walkMode || nimbus.enabled;
+  const anySpawnableActive = spawnables.some((s) => s.enabled || s.loading);
+  const anyActive = state.enabled || vibey.walkMode || nimbus.enabled || anySpawnableActive;
 
   return (
     <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
@@ -131,7 +147,7 @@ export default function HelicopterControl({
             className="glass-panel rounded-xl p-3 w-[260px] flex flex-col gap-2.5"
           >
             {/* Tab switcher */}
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-background/40 border border-border">
+            <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
                 active={tab === "vibey"}
                 onClick={() => setTab("vibey")}
@@ -143,7 +159,7 @@ export default function HelicopterControl({
                 active={tab === "heli"}
                 onClick={() => setTab("heli")}
                 icon={<Plane className="w-3 h-3" />}
-                label="Chopper"
+                label="Chop"
                 live={state.enabled}
               />
               <TabButton
@@ -152,6 +168,13 @@ export default function HelicopterControl({
                 icon={<Rocket className="w-3 h-3" />}
                 label="Nimbus"
                 live={nimbus.enabled}
+              />
+              <TabButton
+                active={tab === "spawn"}
+                onClick={() => setTab("spawn")}
+                icon={<Mountain className="w-3 h-3" />}
+                label="Spawn"
+                live={anySpawnableActive}
               />
             </div>
 
@@ -348,6 +371,17 @@ export default function HelicopterControl({
                 )}
               </div>
             )}
+
+            {tab === "spawn" && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[11px] font-body text-muted-foreground leading-snug">
+                  Spawn 3D worlds and objects above the village. Each loads on demand.
+                </p>
+                {spawnables.map((s) => (
+                  <SpawnableRow key={s.id} item={s} />
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -383,6 +417,68 @@ function TabButton({
         <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
       )}
     </button>
+  );
+}
+
+function SpawnableRow({ item }: { item: SpawnableControl }) {
+  const status = item.loading
+    ? "LOADING"
+    : item.enabled
+      ? "AIRBORNE"
+      : "GROUNDED";
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/30 p-2.5 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-heading text-[11px] font-semibold tracking-wider uppercase text-foreground">
+          {item.label}
+        </p>
+        <span
+          className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+            item.enabled
+              ? "bg-primary/20 text-primary"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {status}
+        </span>
+      </div>
+      <p className="text-[10.5px] font-body text-muted-foreground leading-snug">
+        {item.description}
+      </p>
+      <button
+        onClick={item.onToggle}
+        disabled={item.loading}
+        className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors disabled:opacity-60 ${
+          item.enabled
+            ? "bg-muted text-foreground hover:bg-muted/80"
+            : "bg-primary text-primary-foreground hover:opacity-90"
+        }`}
+      >
+        <Mountain className="w-3 h-3" />
+        {item.loading
+          ? "Streaming…"
+          : item.enabled
+            ? `Despawn ${item.label}`
+            : `Spawn ${item.label}`}
+      </button>
+      {item.loading && (
+        <div className="space-y-1">
+          <div className="h-1 rounded-full bg-background/60 overflow-hidden">
+            <div
+              className="h-full bg-primary transition-[width] duration-200"
+              style={{
+                width: item.progress != null ? `${Math.round(item.progress * 100)}%` : "30%",
+              }}
+            />
+          </div>
+          <p className="text-[9px] font-mono text-muted-foreground text-center">
+            {item.progress != null
+              ? `${Math.round(item.progress * 100)}%`
+              : "downloading…"}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

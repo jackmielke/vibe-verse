@@ -18,15 +18,37 @@ import HelicopterControl, {
 } from "./HelicopterControl";
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
 import {
+  createUnit7Layer,
+  type Unit7State,
+  type Unit7AnimName,
+} from "./map/Unit7Layer";
+import {
   createNimbusVtolLayer,
   createDefaultNimbusState,
   type NimbusState,
 } from "./map/NimbusVtolLayer";
+import {
+  createSpawnableLayer,
+  type SpawnableState,
+} from "./map/SpawnableLayer";
 import VibeyDialog from "./VibeyDialog";
+import Unit7Dialog from "./Unit7Dialog";
 
 // Vibey hangs out near the central plaza, slightly offset so he doesn't
 // overlap the plaza structure.
 const VIBEY_LOCATION = { lng: -122.8695, lat: 38.6135 };
+
+// Unit-7 spawns in the open street area just NW of the plaza so he's in
+// frame when the camera flies to the village center, but offset enough that
+// the plaza pavilion doesn't occlude him.
+const UNIT7_LOCATION = { lng: -122.8699, lat: 38.6132 };
+// Wander radius (in meters, approximate) from spawn point.
+const UNIT7_WANDER_RADIUS_M = 40;
+// Walking speed in meters/second.
+const UNIT7_SPEED_MPS = 1.6;
+// Idle pause between moves, seconds.
+const UNIT7_IDLE_MIN_S = 2.5;
+const UNIT7_IDLE_MAX_S = 6;
 
 // Village locations with real coordinates around Healdsburg.
 // `structure3d` marks locations that are rendered as a 3D model on the map
@@ -91,6 +113,54 @@ function addStructureLayers(m: mapboxgl.Map) {
   });
 }
 
+// Adds a 3D building extrusion layer for non-Standard styles (e.g. satellite).
+// The Mapbox Standard style ships its own beautiful 3D buildings and hides the
+// `composite` source, so this is a no-op there. On satellite-streets the
+// `composite` source is exposed and we can extrude the `building` layer.
+// Safe to call multiple times.
+function addBuildingsLayer(m: mapboxgl.Map) {
+  if (m.getLayer("3d-buildings")) return;
+  // Skip if `composite` source isn't available (Standard style hides it).
+  if (!m.getSource("composite")) return;
+
+  const layers = m.getStyle()?.layers;
+  // Insert beneath the first label layer so labels stay readable on top.
+  const labelLayer = layers?.find(
+    (layer) => layer.type === "symbol" && (layer.layout as any)?.["text-field"],
+  );
+
+  try {
+    m.addLayer(
+      {
+        id: "3d-buildings",
+        source: "composite",
+        "source-layer": "building",
+        filter: ["==", "extrude", "true"],
+        type: "fill-extrusion",
+        minzoom: 14,
+        paint: {
+          // Slight teal tint so buildings feel "Edge"-themed on satellite imagery.
+          "fill-extrusion-color": [
+            "interpolate",
+            ["linear"],
+            ["get", "height"],
+            0, "#7fe7c4",
+            50, "#2dd4a8",
+            150, "#1a8f73",
+          ],
+          "fill-extrusion-height": ["*", ["get", "height"], 1.5],
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": 0.85,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      labelLayer?.id,
+    );
+  } catch {
+    /* ignore — source/layer not yet ready */
+  }
+}
+
 // Re-create structure layers (e.g. once terrain has loaded) so altitude
 // reflects current ground elevation.
 function refreshStructureLayers(m: mapboxgl.Map) {
@@ -153,6 +223,54 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [vibeyOpen, setVibeyOpen] = useState(false);
   const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
+
+  // ---- Unit-7 (autonomous resident bot) --------------------------------
+  const unit7StateRef = useRef<Unit7State>({
+    lng: UNIT7_LOCATION.lng,
+    lat: UNIT7_LOCATION.lat,
+    baseAltitude: 0,
+    heading: 0,
+    currentAnim: "Idle",
+    animPulse: 0,
+  });
+  // Wander target. When null we're idling.
+  const unit7TargetRef = useRef<{ lng: number; lat: number } | null>(null);
+  const unit7IdleUntilRef = useRef<number>(0);
+  // After a one-shot emote finishes, return to this animation.
+  const unit7BaseAnimRef = useRef<Unit7AnimName>("Idle");
+  const unit7LayerAddedRef = useRef(false);
+  const unit7MarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [unit7Open, setUnit7Open] = useState(false);
+
+  // ---- Spawnables (lazy-loaded heavy GLBs) -----------------------------
+  const islandStateRef = useRef<SpawnableState>({
+    lng: VILLAGE_CENTER.lng,
+    lat: VILLAGE_CENTER.lat,
+    altitude: 700, // hover way up so the camera can pull back & include both
+    heading: 0,
+    scaleMeters: 260,
+    bobAmplitude: 8,
+    rotationSpeed: 0.04,
+  });
+  const islandLayerRef = useRef<ReturnType<typeof createSpawnableLayer> | null>(null);
+  const [islandEnabled, setIslandEnabled] = useState(false);
+  const [islandLoading, setIslandLoading] = useState(false);
+  const [islandProgress, setIslandProgress] = useState<number | null>(null);
+
+  const deathStarStateRef = useRef<SpawnableState>({
+    lng: VILLAGE_CENTER.lng + 0.012, // ~1km east of the village
+    lat: VILLAGE_CENTER.lat + 0.006,
+    altitude: 1100, // even higher than the island
+    heading: 0,
+    scaleMeters: 180,
+    bobAmplitude: 2,
+    bobPeriod: 22,
+    rotationSpeed: 0.18, // spins faster — it's a moon-sized space station
+  });
+  const deathStarLayerRef = useRef<ReturnType<typeof createSpawnableLayer> | null>(null);
+  const [deathStarEnabled, setDeathStarEnabled] = useState(false);
+  const [deathStarLoading, setDeathStarLoading] = useState(false);
+  const [deathStarProgress, setDeathStarProgress] = useState<number | null>(null);
 
   // ---- Nimbus VTOL ------------------------------------------------------
   const nimbusStateRef = useRef<NimbusState>(
@@ -222,6 +340,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         // Re-add 3D structures (custom layers are wiped on style change).
         // Wait one tick for terrain tiles before sampling elevation.
         addStructureLayers(m);
+        // Add city 3D buildings on styles that expose `composite` (satellite).
+        // Standard ships its own 3D buildings so this is a no-op there.
+        addBuildingsLayer(m);
         markMapReady();
         m.once("idle", () => refreshStructureLayers(m));
       });
@@ -231,6 +352,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       m.on("sourcedata", (e) => {
         if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
           refreshStructureLayers(m);
+          // Re-sample ground altitude for live characters too. Without this,
+          // they stay at sea-level (altitude 0) until a frame happens to
+          // resample, which leaves them underground in places like Healdsburg
+          // (terrain ~32m).
+          try {
+            const ve = m.queryTerrainElevation(
+              [vibeyStateRef.current.lng, vibeyStateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof ve === "number") vibeyStateRef.current.baseAltitude = ve;
+            const ue = m.queryTerrainElevation(
+              [unit7StateRef.current.lng, unit7StateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof ue === "number") unit7StateRef.current.baseAltitude = ue;
+          } catch { /* terrain not ready */ }
         }
       });
 
@@ -251,36 +388,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }, 600);
 
-        // Add 3D buildings (kept as fallback for non-Standard styles like satellite)
-        const layers = m.getStyle()?.layers;
-        if (layers) {
-          const labelLayer = layers.find(
-            (layer) => layer.type === "symbol" && (layer.layout as any)?.["text-field"]
-          );
-          if (labelLayer && !m.getLayer("3d-buildings")) {
-            try {
-              m.addLayer(
-                {
-                  id: "3d-buildings",
-                  source: "composite",
-                  "source-layer": "building",
-                  filter: ["==", "extrude", "true"],
-                  type: "fill-extrusion",
-                  minzoom: 14,
-                  paint: {
-                    "fill-extrusion-color": "#2dd4a8",
-                    "fill-extrusion-height": ["*", ["get", "height"], 1.5],
-                    "fill-extrusion-base": ["get", "min_height"],
-                    "fill-extrusion-opacity": 0.7,
-                  },
-                },
-                labelLayer.id
-              );
-            } catch {
-              // Standard style doesn't expose composite source — ignore
-            }
-          }
-        }
+        // (3D city buildings are added in `style.load` via `addBuildingsLayer`.)
 
         // Add village boundary glow
         m.addSource("village-area", {
@@ -337,6 +445,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       });
 
       map.current = m;
+      if (import.meta.env.DEV) {
+        (window as any).__map = m;
+      }
     } catch {
       setMapError(true);
     }
@@ -546,6 +657,264 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       m.off("style.load", onStyle);
     };
   }, [mapLoaded]);
+
+  // ---- Unit-7: mount layer + click marker once map is ready -------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "unit7-character";
+
+    const handleOneShotFinished = () => {
+      // Resume whatever the wander loop wants (Idle or Walking).
+      unit7StateRef.current.currentAnim = unit7BaseAnimRef.current;
+      unit7StateRef.current.animPulse++;
+    };
+
+    const mount = () => {
+      if (unit7LayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [unit7StateRef.current.lng, unit7StateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") unit7StateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+
+      try {
+        m.addLayer(createUnit7Layer(LAYER_ID, unit7StateRef.current, handleOneShotFinished));
+        unit7LayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+
+      if (!unit7MarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 70px; height: 90px;
+          cursor: pointer;
+          pointer-events: auto;
+          display: flex; align-items: flex-end; justify-content: center;
+        `;
+        const tag = document.createElement("div");
+        tag.style.cssText = `
+          font-family: 'Sora', sans-serif;
+          font-size: 10px; font-weight: 700;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          color: #f0fdf9;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(13, 27, 42, 0.78);
+          border: 1px solid rgba(115, 255, 184, 0.6);
+          box-shadow: 0 0 14px rgba(115, 255, 184, 0.4);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          white-space: nowrap;
+          transform: translateY(-90px);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        `;
+        tag.textContent = "◆ Unit-7";
+        el.appendChild(tag);
+        el.addEventListener("mouseenter", () => {
+          tag.style.transform = "translateY(-90px) scale(1.06)";
+          tag.style.boxShadow = "0 0 22px rgba(115, 255, 184, 0.7)";
+        });
+        el.addEventListener("mouseleave", () => {
+          tag.style.transform = "translateY(-90px)";
+          tag.style.boxShadow = "0 0 14px rgba(115, 255, 184, 0.4)";
+        });
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setUnit7Open(true);
+          // Wave hello when summoned.
+          unit7BaseAnimRef.current = "Idle";
+          unit7TargetRef.current = null;
+          unit7StateRef.current.currentAnim = "Wave";
+          unit7StateRef.current.animPulse++;
+        });
+        unit7MarkerRef.current = new mapboxgl.Marker({
+          element: el,
+          anchor: "bottom",
+        })
+          .setLngLat([unit7StateRef.current.lng, unit7StateRef.current.lat])
+          .addTo(m);
+      }
+    };
+
+    mount();
+    const onStyle = () => {
+      unit7LayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+
+    return () => {
+      m.off("style.load", onStyle);
+    };
+  }, [mapLoaded]);
+
+  // ---- Unit-7: autonomous wander loop ----------------------------------
+  useEffect(() => {
+    if (!mapLoaded) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let lastTime = performance.now();
+    // Meters → degrees conversion at this latitude. Lat is constant; lng
+    // depends on cos(lat). 1° lat ≈ 111_111 m.
+    const metersPerDegLat = 111_111;
+    const metersPerDegLng = 111_111 * Math.cos((UNIT7_LOCATION.lat * Math.PI) / 180);
+
+    function pickNewTarget() {
+      // Random point inside the wander radius (uniform on disc).
+      const r = Math.sqrt(Math.random()) * UNIT7_WANDER_RADIUS_M;
+      const theta = Math.random() * Math.PI * 2;
+      const dxMeters = r * Math.cos(theta);
+      const dyMeters = r * Math.sin(theta);
+      unit7TargetRef.current = {
+        lng: UNIT7_LOCATION.lng + dxMeters / metersPerDegLng,
+        lat: UNIT7_LOCATION.lat + dyMeters / metersPerDegLat,
+      };
+    }
+
+    const tick = () => {
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+      const s = unit7StateRef.current;
+
+      // Don't run wander while user has the dialog open — let him stand still
+      // and emote.
+      if (unit7Open) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Don't override one-shot emotes mid-play.
+      const isOneShot = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"].includes(
+        s.currentAnim,
+      );
+      if (isOneShot) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
+      const target = unit7TargetRef.current;
+      if (!target) {
+        // Idling. Pick a new target once the idle timer expires.
+        if (now >= unit7IdleUntilRef.current) {
+          pickNewTarget();
+          if (s.currentAnim !== "Walking") {
+            unit7BaseAnimRef.current = "Walking";
+            s.currentAnim = "Walking";
+            s.animPulse++;
+          }
+        } else if (s.currentAnim !== "Idle") {
+          unit7BaseAnimRef.current = "Idle";
+          s.currentAnim = "Idle";
+          s.animPulse++;
+        }
+      } else {
+        // Move toward target.
+        const dxMeters = (target.lng - s.lng) * metersPerDegLng;
+        const dyMeters = (target.lat - s.lat) * metersPerDegLat;
+        const distance = Math.hypot(dxMeters, dyMeters);
+        if (distance < 0.6) {
+          unit7TargetRef.current = null;
+          unit7IdleUntilRef.current =
+            now + (UNIT7_IDLE_MIN_S + Math.random() * (UNIT7_IDLE_MAX_S - UNIT7_IDLE_MIN_S)) * 1000;
+          unit7BaseAnimRef.current = "Idle";
+          s.currentAnim = "Idle";
+          s.animPulse++;
+        } else {
+          const step = Math.min(distance, UNIT7_SPEED_MPS * dt);
+          const nx = dxMeters / distance;
+          const ny = dyMeters / distance;
+          s.lng += (nx * step) / metersPerDegLng;
+          s.lat += (ny * step) / metersPerDegLat;
+          // Heading: 0 = facing +Z (north). atan2 with east, north.
+          s.heading = Math.atan2(nx, ny);
+          // Resample ground altitude as he moves.
+          try {
+            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+            if (typeof elev === "number") s.baseAltitude = elev;
+          } catch { /* terrain not ready */ }
+          unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+        }
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mapLoaded, unit7Open]);
+
+  // ---- Spawnables: add/remove layer when enabled toggles ---------------
+  // Heavy GLBs are mounted (and downloads started) only on user opt-in.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "edge-island";
+
+    if (islandEnabled && !islandLayerRef.current) {
+      setIslandLoading(true);
+      setIslandProgress(null);
+      const layer = createSpawnableLayer(LAYER_ID, islandStateRef.current, {
+        modelUrl: "/models/edge-island.glb",
+        onProgress: (loaded, total) => {
+          setIslandProgress(total ? loaded / total : null);
+        },
+        onLoaded: () => setIslandLoading(false),
+        onError: () => setIslandLoading(false),
+      });
+      try {
+        m.addLayer(layer);
+        islandLayerRef.current = layer;
+        m.triggerRepaint();
+      } catch (e) {
+        console.error("[EdgeIsland] addLayer failed", e);
+        setIslandLoading(false);
+      }
+    } else if (!islandEnabled && islandLayerRef.current) {
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      islandLayerRef.current.dispose();
+      islandLayerRef.current = null;
+      setIslandLoading(false);
+      setIslandProgress(null);
+    }
+  }, [islandEnabled, mapLoaded]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "death-star";
+
+    if (deathStarEnabled && !deathStarLayerRef.current) {
+      setDeathStarLoading(true);
+      setDeathStarProgress(null);
+      const layer = createSpawnableLayer(LAYER_ID, deathStarStateRef.current, {
+        modelUrl: "/models/death-star.glb",
+        onProgress: (loaded, total) => {
+          setDeathStarProgress(total ? loaded / total : null);
+        },
+        onLoaded: () => setDeathStarLoading(false),
+        onError: () => setDeathStarLoading(false),
+      });
+      try {
+        m.addLayer(layer);
+        deathStarLayerRef.current = layer;
+        m.triggerRepaint();
+      } catch (e) {
+        console.error("[DeathStar] addLayer failed", e);
+        setDeathStarLoading(false);
+      }
+    } else if (!deathStarEnabled && deathStarLayerRef.current) {
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      deathStarLayerRef.current.dispose();
+      deathStarLayerRef.current = null;
+      setDeathStarLoading(false);
+      setDeathStarProgress(null);
+    }
+  }, [deathStarEnabled, mapLoaded]);
 
   // ---- Helicopter: add/remove layer when enabled toggles ----------------
   useEffect(() => {
@@ -1061,6 +1430,23 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       {/* Vibey chat dialog */}
       <VibeyDialog open={vibeyOpen} onClose={() => setVibeyOpen(false)} />
 
+      {/* Unit-7 interaction dialog */}
+      <Unit7Dialog
+        open={unit7Open}
+        onClose={() => {
+          setUnit7Open(false);
+          // Resume autonomous wandering after the dialog closes.
+          unit7BaseAnimRef.current = "Idle";
+          unit7StateRef.current.currentAnim = "Idle";
+          unit7StateRef.current.animPulse++;
+        }}
+        onEmote={(anim) => {
+          // One-shots auto-revert via the layer's "finished" event.
+          unit7StateRef.current.currentAnim = anim;
+          unit7StateRef.current.animPulse++;
+        }}
+      />
+
       {/* Sky Patrol — unified Vibey + Helicopter control */}
       <HelicopterControl
         state={heliUI}
@@ -1120,6 +1506,50 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }}
         onResetNimbus={resetNimbus}
+        spawnables={[
+          {
+            id: "island",
+            label: "Edge Island",
+            description: "A floating world above the village. Heavy asset (~272 MB) — only loads when you spawn it.",
+            enabled: islandEnabled,
+            loading: islandLoading,
+            progress: islandProgress,
+            onToggle: () => {
+              if (!islandEnabled && map.current) {
+                const s = islandStateRef.current;
+                map.current.flyTo({
+                  center: [s.lng, s.lat],
+                  zoom: 14.5,
+                  pitch: 70,
+                  bearing: -25,
+                  duration: 1500,
+                });
+              }
+              setIslandEnabled((v) => !v);
+            },
+          },
+          {
+            id: "death-star",
+            label: "Death Star",
+            description: "Moon-sized space station hovering east of the village (~60 MB).",
+            enabled: deathStarEnabled,
+            loading: deathStarLoading,
+            progress: deathStarProgress,
+            onToggle: () => {
+              if (!deathStarEnabled && map.current) {
+                const s = deathStarStateRef.current;
+                map.current.flyTo({
+                  center: [s.lng, s.lat],
+                  zoom: 13.5,
+                  pitch: 70,
+                  bearing: 35,
+                  duration: 1500,
+                });
+              }
+              setDeathStarEnabled((v) => !v);
+            },
+          },
+        ]}
       />
 
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
