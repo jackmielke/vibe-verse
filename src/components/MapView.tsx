@@ -184,6 +184,48 @@ function addBuildingsLayer(m: mapboxgl.Map) {
 
 // Re-create structure layers (e.g. once terrain has loaded) so altitude
 // reflects current ground elevation.
+// Cheap building-collision check. Project (lng, lat) to a screen pixel,
+// query rendered features at that point, and treat any hit on a building-
+// like layer as "blocked." Works for both the satellite '3d-buildings'
+// layer and Mapbox Standard's basemap building extrusions.
+//
+// This is the v1 of the physics path — zero deps, no Rapier. Good enough
+// to feel collision in Healdsburg before deciding whether to upgrade.
+export function wouldHitBuilding(m: mapboxgl.Map, lng: number, lat: number): boolean {
+  let projected: mapboxgl.Point;
+  try {
+    projected = m.project([lng, lat]);
+  } catch {
+    return false;
+  }
+  // 2-pixel bbox around the projected point so we don't miss building edges.
+  const bbox: [[number, number], [number, number]] = [
+    [projected.x - 2, projected.y - 2],
+    [projected.x + 2, projected.y + 2],
+  ];
+  let features: mapboxgl.MapboxGeoJSONFeature[];
+  try {
+    features = m.queryRenderedFeatures(bbox);
+  } catch {
+    return false;
+  }
+  return features.some((f) => {
+    const layerId = f.layer?.id ?? "";
+    if (layerId === "3d-buildings") return true; // our satellite-mode layer
+    // Standard style ships building extrusions inside the basemap import;
+    // the layer ids look like "building", "building-extrusion", or namespaced
+    // variants. Catch them all without listing every Mapbox internal name.
+    if (/building/i.test(layerId)) return true;
+    // Some basemap layers don't include "building" in the id but expose a
+    // height property — that's an extrusion we should respect.
+    const sourceLayer = (f.layer as { "source-layer"?: string } | undefined)?.[
+      "source-layer"
+    ];
+    if (sourceLayer === "building") return true;
+    return false;
+  });
+}
+
 function refreshStructureLayers(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
@@ -260,6 +302,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // UI-driven size slider for Unit-7 on the map. The layer reads from
   // `unit7StateRef.current.scaleMeters` each frame.
   const [unit7Scale, setUnit7Scale] = useState(UNIT7_DEFAULT_SCALE_METERS);
+  // Walk-as-Unit-7 (mirrors Vibey's walk mode): pause wander, control with
+  // WASD, third-person chase camera.
+  const [unit7WalkMode, setUnit7WalkMode] = useState(false);
+  const unit7KeysRef = useRef<Record<string, boolean>>({});
 
   // ---- Vibe Police (anti-vibe officer) ---------------------------------
   const vibePoliceStateRef = useRef<VibePoliceState>(
@@ -865,6 +911,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         return;
       }
 
+      // Pause autonomous wander while the user is piloting him.
+      if (unit7WalkMode) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
       const target = unit7TargetRef.current;
       if (!target) {
         // Idling. Pick a new target once the idle timer expires.
@@ -893,23 +945,28 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           s.currentAnim = "Idle";
           s.animPulse++;
         } else {
-          // Scale stride length with body size so a 10× kaiju takes 10×
-          // strides. Falls back to base when scale isn't set.
           const sizeFactor = (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) /
             UNIT7_DEFAULT_SCALE_METERS;
           const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
           const nx = dxMeters / distance;
           const ny = dyMeters / distance;
-          s.lng += (nx * step) / metersPerDegLng;
-          s.lat += (ny * step) / metersPerDegLat;
-          // Heading: 0 = facing +Z (north). atan2 with east, north.
-          s.heading = Math.atan2(nx, ny);
-          // Resample ground altitude as he moves.
-          try {
-            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
-            if (typeof elev === "number") s.baseAltitude = elev;
-          } catch { /* terrain not ready */ }
-          unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+          const nextLng = s.lng + (nx * step) / metersPerDegLng;
+          const nextLat = s.lat + (ny * step) / metersPerDegLat;
+          // v1 collision: if the next step lands inside a building, pick a
+          // new wander target instead of phasing through the wall.
+          if (wouldHitBuilding(m, nextLng, nextLat)) {
+            unit7TargetRef.current = null;
+            unit7IdleUntilRef.current = now + 600;
+          } else {
+            s.lng = nextLng;
+            s.lat = nextLat;
+            s.heading = Math.atan2(nx, ny);
+            try {
+              const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+              if (typeof elev === "number") s.baseAltitude = elev;
+            } catch { /* terrain not ready */ }
+            unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+          }
         }
       }
 
@@ -917,7 +974,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mapLoaded, unit7Open]);
+  }, [mapLoaded, unit7Open, unit7WalkMode]);
 
   // ---- Vibe Police: mount layer + click marker -------------------------
   useEffect(() => {
@@ -1040,14 +1097,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
           const nx = dxMeters / distance;
           const ny = dyMeters / distance;
-          s.lng += (nx * step) / metersPerDegLng;
-          s.lat += (ny * step) / metersPerDegLat;
-          s.heading = Math.atan2(nx, ny);
-          try {
-            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
-            if (typeof elev === "number") s.baseAltitude = elev;
-          } catch { /* terrain not ready */ }
-          vibePoliceMarkerRef.current?.setLngLat([s.lng, s.lat]);
+          const nextLng = s.lng + (nx * step) / metersPerDegLng;
+          const nextLat = s.lat + (ny * step) / metersPerDegLat;
+          if (wouldHitBuilding(m, nextLng, nextLat)) {
+            // Bail on this target — pick a new one next tick.
+            vibePoliceTargetRef.current = null;
+            vibePoliceIdleUntilRef.current = now + 600;
+          } else {
+            s.lng = nextLng;
+            s.lat = nextLat;
+            s.heading = Math.atan2(nx, ny);
+            try {
+              const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+              if (typeof elev === "number") s.baseAltitude = elev;
+            } catch { /* terrain not ready */ }
+            vibePoliceMarkerRef.current?.setLngLat([s.lng, s.lat]);
+          }
         }
       }
 
@@ -1571,8 +1636,15 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       const cosH = Math.cos(s.heading);
       const eastM = sinH * forward * WALK_SPEED;
       const northM = cosH * forward * WALK_SPEED;
-      s.lat += (northM * dt) / 111320;
-      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      const nextLat = s.lat + (northM * dt) / 111320;
+      const nextLng =
+        s.lng + (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      // Cheap collision: only commit forward motion if we wouldn't end up
+      // inside a building. Heading still updates so you can turn off a wall.
+      if (forward !== 0 && !wouldHitBuilding(m, nextLng, nextLat)) {
+        s.lat = nextLat;
+        s.lng = nextLng;
+      }
 
       // Resample ground altitude as Vibey moves
       try {
@@ -1604,6 +1676,104 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [vibeyUI.walkMode]);
+
+  // ---- Unit-7: walk-mode keyboard input --------------------------------
+  useEffect(() => {
+    if (!unit7WalkMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setUnit7WalkMode(false);
+        return;
+      }
+      unit7KeysRef.current[e.key.toLowerCase()] = true;
+    };
+    const onUp = (e: KeyboardEvent) => {
+      unit7KeysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      unit7KeysRef.current = {};
+    };
+  }, [unit7WalkMode]);
+
+  // ---- Unit-7: walk loop + third-person chase camera -------------------
+  useEffect(() => {
+    if (!unit7WalkMode) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    const WALK_SPEED = 6; // m/s, scaled by body size below
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = unit7StateRef.current;
+      const k = unit7KeysRef.current;
+
+      const turn =
+        (k["arrowleft"] || k["a"] ? -1 : 0) +
+        (k["arrowright"] || k["d"] ? 1 : 0);
+      const forward =
+        (k["arrowup"] || k["w"] ? 1 : 0) +
+        (k["arrowdown"] || k["s"] ? -0.6 : 0);
+
+      s.heading += turn * 1.6 * dt;
+
+      const sinH = Math.sin(s.heading);
+      const cosH = Math.cos(s.heading);
+      const sizeFactor =
+        (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) / UNIT7_DEFAULT_SCALE_METERS;
+      const speed = WALK_SPEED * sizeFactor;
+      const eastM = sinH * forward * speed;
+      const northM = cosH * forward * speed;
+      const nextLat = s.lat + (northM * dt) / 111320;
+      const nextLng =
+        s.lng + (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+
+      // Cheap collision: only commit the move if it doesn't land inside a
+      // building. Heading still updates so you can turn off a wall.
+      if (forward !== 0 && !wouldHitBuilding(m, nextLng, nextLat)) {
+        s.lat = nextLat;
+        s.lng = nextLng;
+      }
+
+      // Drive the right animation for what he's doing right now.
+      const wantAnim = forward !== 0 ? "Walking" : "Idle";
+      if (s.currentAnim !== wantAnim) {
+        unit7BaseAnimRef.current = wantAnim;
+        s.currentAnim = wantAnim;
+        s.animPulse++;
+      }
+
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        if (typeof elev === "number") s.baseAltitude = elev;
+      } catch { /* */ }
+
+      unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+
+      // Third-person chase cam: ~12m behind & above him.
+      const back = 12;
+      const camLat = s.lat - (cosH * back) / 111320;
+      const camLng =
+        s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      m.jumpTo({
+        center: [camLng, camLat],
+        bearing: (s.heading * 180) / Math.PI,
+        pitch: 75,
+        zoom: 20,
+      });
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [unit7WalkMode]);
 
   const resetVibey = useCallback(() => {
     const m = map.current;
@@ -1777,6 +1947,25 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         onVibePoliceScaleChange={(v) => {
           setVibePoliceScale(v);
           vibePoliceStateRef.current.scaleMeters = v;
+        }}
+        unit7WalkMode={unit7WalkMode}
+        onToggleUnit7Walk={() => {
+          const next = !unit7WalkMode;
+          if (next && map.current) {
+            const s = unit7StateRef.current;
+            try {
+              const elev = map.current.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+              if (typeof elev === "number") s.baseAltitude = elev;
+            } catch { /* */ }
+            map.current.flyTo({
+              center: [s.lng, s.lat],
+              zoom: 20,
+              pitch: 75,
+              bearing: (s.heading * 180) / Math.PI,
+              duration: 1100,
+            });
+          }
+          setUnit7WalkMode(next);
         }}
         onMessageUnit7={() => {
           // Third-person video-game-style framing: zoom way in, low-ish

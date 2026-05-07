@@ -74,6 +74,8 @@ interface Props {
   unit7ScaleMin: number;
   unit7ScaleMax: number;
   onUnit7ScaleChange: (v: number) => void;
+  unit7WalkMode: boolean;
+  onToggleUnit7Walk: () => void;
   // Vibe Police
   vibePoliceScale: number;
   vibePoliceScaleMin: number;
@@ -110,6 +112,8 @@ export default function HelicopterControl({
   unit7ScaleMin,
   unit7ScaleMax,
   onUnit7ScaleChange,
+  unit7WalkMode,
+  onToggleUnit7Walk,
   vibePoliceScale,
   vibePoliceScaleMin,
   vibePoliceScaleMax,
@@ -149,7 +153,7 @@ export default function HelicopterControl({
   const nimbusHeadingDeg = ((nimbus.heading * 180) / Math.PI + 360) % 360;
   const anySpawnableActive = spawnables.some((s) => s.enabled || s.loading);
   const anyVehicleActive = state.enabled || nimbus.enabled;
-  const anyCharacterActive = vibey.walkMode;
+  const anyCharacterActive = vibey.walkMode || unit7WalkMode;
   const anyActive = anyVehicleActive || anyCharacterActive || anySpawnableActive;
 
   return (
@@ -274,14 +278,33 @@ export default function HelicopterControl({
                   icon={<Bot className="w-3.5 h-3.5 text-primary" />}
                   name="Unit-7"
                   subtitle="Resident bot · wandering the streets"
-                  live={false}
+                  live={unit7WalkMode}
+                  liveLabel="WALKING"
                 >
-                  <button
-                    onClick={onMessageUnit7}
-                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
-                  >
-                    <Bot className="w-3 h-3" /> Talk to Unit-7
-                  </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={onMessageUnit7}
+                      className="flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
+                    >
+                      <Bot className="w-3 h-3" /> Talk
+                    </button>
+                    <button
+                      onClick={onToggleUnit7Walk}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+                        unit7WalkMode
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-primary text-primary-foreground hover:opacity-90"
+                      }`}
+                    >
+                      <Footprints className="w-3 h-3" />
+                      {unit7WalkMode ? "Stop" : "Walk"}
+                    </button>
+                  </div>
+                  {unit7WalkMode && (
+                    <div className="space-y-0.5 text-[9px] font-mono text-muted-foreground leading-tight">
+                      <p>↑/W forward · ↓/S back · ←/A turn · →/D turn · ESC stop</p>
+                    </div>
+                  )}
                   <div>
                     <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
                       <span>SIZE</span>
