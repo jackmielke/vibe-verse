@@ -743,12 +743,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         });
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          setUnit7Open(true);
-          // Wave hello when summoned.
+          // Third-person framing + wave hello + face the camera.
+          const s = unit7StateRef.current;
+          const camBearing = m.getBearing();
+          m.flyTo({
+            center: [s.lng, s.lat],
+            zoom: 19.5,
+            pitch: 55,
+            bearing: camBearing,
+            duration: 1100,
+          });
           unit7BaseAnimRef.current = "Idle";
           unit7TargetRef.current = null;
-          unit7StateRef.current.currentAnim = "Wave";
-          unit7StateRef.current.animPulse++;
+          s.heading = (camBearing * Math.PI) / 180 + Math.PI;
+          s.currentAnim = "Wave";
+          s.animPulse++;
+          setUnit7Open(true);
         });
         unit7MarkerRef.current = new mapboxgl.Marker({
           element: el,
@@ -1576,15 +1586,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
         onMessageUnit7={() => {
-          // Fly to Unit-7 so he's framed up, turn him to face the camera,
-          // and have him wave hello.
+          // Third-person video-game-style framing: zoom way in, low-ish
+          // pitch so we see his face/body, turn him to face the camera,
+          // wave hello.
           if (map.current) {
             const s = unit7StateRef.current;
             const camBearing = map.current.getBearing();
             map.current.flyTo({
               center: [s.lng, s.lat],
-              zoom: 20,
-              pitch: 60,
+              zoom: 19.5,
+              pitch: 55,
               bearing: camBearing,
               duration: 1100,
             });

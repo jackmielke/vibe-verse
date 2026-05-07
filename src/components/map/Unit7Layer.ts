@@ -52,11 +52,9 @@ export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
 // big enough to read as a character against city blocks, not so big he's
 // obstructing the plaza.
 const SCALE_METERS = 28;
-// Float ~8m above terrain so plaza decorations and small buildings can't
-// occlude his head and shoulders.
-const HOVER_HEIGHT = 8;
-// Subtle vertical bob as he idles.
-const BOB_AMPLITUDE = 0.8;
+// Tiny clearance over terrain so his soles don't z-fight the ground.
+// He walks ON the ground; no float, no bob.
+const GROUND_CLEARANCE = 0.3;
 const FADE_SECONDS = 0.2;
 const ONE_SHOTS: Unit7AnimName[] = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"];
 
@@ -122,10 +120,12 @@ export function createUnit7Layer(
       rim.position.set(40, 20, -30).normalize();
       scene.add(rim);
 
-      // ---- Beacon: ground halo + tall vertical pillar of light ----------
-      // Halo on the ground so you can spot him from straight above.
+      // ---- Beacon: subtle ring under his feet + tall pillar above -------
+      // Ring sized to roughly his footprint so it reads as "this guy is
+      // here", not as a giant landing pad. RobotExpressive's footprint is
+      // ~0.6 local units wide.
       const halo = new THREE.Mesh(
-        new THREE.RingGeometry(1.4, 1.7, 64),
+        new THREE.RingGeometry(0.45, 0.55, 64),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
@@ -140,13 +140,13 @@ export function createUnit7Layer(
       beaconGroup.add(halo);
       beaconRing = halo;
 
-      // Soft glow disc filling the center.
+      // Subtle glow filling the ring.
       const glow = new THREE.Mesh(
-        new THREE.CircleGeometry(1.4, 64),
+        new THREE.CircleGeometry(0.5, 64),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
-          opacity: 0.4,
+          opacity: 0.18,
           depthWrite: false,
         }),
       );
@@ -156,14 +156,13 @@ export function createUnit7Layer(
       beaconGroup.add(glow);
 
       // Tall vertical pillar so he's findable from any zoom or angle.
-      // Starts above the model's head (y=2.4) so he isn't visually wrapped
-      // inside it — pillar is its own thing pointing skyward.
+      // Starts above the model's head (y=2.4) so he isn't wrapped inside it.
       const pillar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.16, 0.22, 18, 16, 1, true),
+        new THREE.CylinderGeometry(0.12, 0.16, 18, 16, 1, true),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
-          opacity: 0.6,
+          opacity: 0.55,
           depthWrite: false,
           side: THREE.DoubleSide,
         }),
@@ -264,8 +263,8 @@ export function createUnit7Layer(
         model.rotation.y = state.heading;
       }
 
-      // Subtle hover bob + pulsing beacon scale.
-      const bob = Math.sin(t * 1.2) * BOB_AMPLITUDE;
+      // Subtle pulsing beacon scale — characters' bob removed; he walks
+      // ON the ground.
       const beaconPulse = 1 + Math.sin(t * 2) * 0.06;
       beaconGroup.scale.set(beaconPulse, 1, beaconPulse);
       if (beaconRing) {
@@ -273,9 +272,8 @@ export function createUnit7Layer(
           0.55 + Math.sin(t * 2) * 0.2;
       }
 
-      // Place him hovering above the sampled terrain so plaza/terrain
-      // can't visually swallow him.
-      const altitude = state.baseAltitude + HOVER_HEIGHT + bob;
+      // Anchor to the sampled terrain — feet just clear the surface.
+      const altitude = state.baseAltitude + GROUND_CLEARANCE;
       const mercator = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: state.lng, lat: state.lat },
         altitude,
