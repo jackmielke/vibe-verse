@@ -862,7 +862,11 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           s.currentAnim = "Idle";
           s.animPulse++;
         } else {
-          const step = Math.min(distance, UNIT7_SPEED_MPS * dt);
+          // Scale stride length with body size so a 10× kaiju takes 10×
+          // strides. Falls back to base when scale isn't set.
+          const sizeFactor = (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) /
+            UNIT7_DEFAULT_SCALE_METERS;
+          const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
           const nx = dxMeters / distance;
           const ny = dyMeters / distance;
           s.lng += (nx * step) / metersPerDegLng;

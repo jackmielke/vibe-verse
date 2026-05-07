@@ -34,14 +34,16 @@ export interface Unit7State {
   animPulse: number;
   // 0..1 per face morph. Defaults to all-zero (neutral expression).
   expressions: Record<Unit7Expression, number>;
-  // Approximate world-space height in meters. Read every frame so a UI
-  // slider can resize him on the map live.
-  scaleMeters: number;
+  // Optional. When set, overrides the default SCALE_METERS so a UI slider
+  // can grow him on the map without remounting the layer.
+  scaleMeters?: number;
 }
 
-export const UNIT7_DEFAULT_SCALE_METERS = 38;
-export const UNIT7_MIN_SCALE_METERS = 38;
-export const UNIT7_MAX_SCALE_METERS = 110;
+// Defaults / bounds for the size slider. Default = the value that "felt
+// right" early on — proportionate halo, recognizable character.
+export const UNIT7_DEFAULT_SCALE_METERS = 28;
+export const UNIT7_MIN_SCALE_METERS = 28;
+export const UNIT7_MAX_SCALE_METERS = 280;
 
 export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   return {
@@ -56,8 +58,7 @@ export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   };
 }
 
-// Default scale lives in the constant above; the layer reads
-// `state.scaleMeters` per frame so a UI slider can grow/shrink him live.
+const SCALE_METERS = UNIT7_DEFAULT_SCALE_METERS;
 // Tiny clearance over terrain so his soles don't z-fight the ground.
 // He walks ON the ground; no float, no bob.
 const GROUND_CLEARANCE = 0.3;
@@ -183,18 +184,14 @@ export function createUnit7Layer(
         unit7ModelUrl,
         (gltf) => {
           model = gltf.scene;
-          // Normalize so the model is ~2 units tall, then translate so the
-          // geometric center sits over scene origin and feet sit at y=0.
-          // (RobotExpressive's GLB has nodes with transforms — its world
-          // bounding box is NOT centered on its glTF origin, so we have to
-          // re-center explicitly or the halo ends up off to one side.)
+          // Normalize so the model is ~2 units tall and feet sit at y=0.
           const box = new THREE.Box3().setFromObject(model);
           const size = new THREE.Vector3();
           box.getSize(size);
-          const center = new THREE.Vector3();
-          box.getCenter(center);
           const fit = 2 / (size.y || 1);
           model.scale.setScalar(fit);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
           model.position.x = -center.x * fit;
           model.position.z = -center.z * fit;
           model.position.y = -box.min.y * fit;
@@ -288,7 +285,7 @@ export function createUnit7Layer(
         { lng: state.lng, lat: state.lat },
         altitude,
       );
-      const scaleMeters = state.scaleMeters || UNIT7_DEFAULT_SCALE_METERS;
+      const scaleMeters = state.scaleMeters ?? SCALE_METERS;
       const meterScale = mercator.meterInMercatorCoordinateUnits() * scaleMeters;
 
       const rotationX = new THREE.Matrix4().makeRotationAxis(
