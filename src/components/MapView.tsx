@@ -6,7 +6,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
-import { createObservatoryLayer } from "./map/ObservatoryLayer";
 import {
   createHelicopterLayer,
   createDefaultHelicopterState,
@@ -63,11 +62,18 @@ const UNIT7_WANDER_RADIUS_M = 50;
 const VIBE_POLICE_LOCATION = { lng: -122.8688, lat: 38.6122 };
 const VIBE_POLICE_WANDER_RADIUS_M = 45;
 
-// Vibey poster billboard — sits just NW of the plaza. Drop the image at
-// `public/posters/vibey.jpg` and it shows up on the map. (Path matters:
-// public/ files are served at /, not bundled with vite.)
+// Vibey poster billboard — sits just NW of the plaza. Drop your image into
+// `public/posters/` with any of the names/extensions below and it shows up
+// automatically. (Path matters: public/ files are served at /, not bundled.)
 const POSTER_LOCATION = { lng: -122.8696, lat: 38.6133 };
-const POSTER_IMAGE_URL = "/posters/vibey.jpg";
+const POSTER_CANDIDATES = [
+  "/posters/vibey.jpg",
+  "/posters/vibey.png",
+  "/posters/vibey.webp",
+  "/posters/vibey.jpeg",
+  "/posters/vibey-poster.jpg",
+  "/posters/vibey-poster.png",
+];
 // Walking speed in meters/second.
 // Base walking speed at the default body size. The wander loop scales this
 // by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
@@ -91,7 +97,6 @@ const VILLAGE_LOCATIONS = [
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
   { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
-  { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 140 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -109,7 +114,6 @@ const STRUCTURE_FACTORIES: Record<
 > = {
   temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
   plaza: { layerId: "structure-plaza", create: createPlazaLayer },
-  observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
 };
 
 // Adds every 3D structure layer for locations that have `structure3d` set.
@@ -701,28 +705,34 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       pointer-events: none;
     `;
     const img = document.createElement("img");
-    img.src = POSTER_IMAGE_URL;
     img.alt = "Vibey poster";
     img.style.cssText = `
       width: 100%; height: 100%; object-fit: cover; display: block;
     `;
-    // If the file isn't there yet, show a friendly fallback so it's
-    // obvious where to drop the image.
-    img.onerror = () => {
-      img.remove();
-      const fb = document.createElement("div");
-      fb.style.cssText = `
-        width: 100%; height: 100%;
-        display: flex; align-items: center; justify-content: center;
-        text-align: center; padding: 16px; box-sizing: border-box;
-        color: #73ffb8; font-family: 'Sora', sans-serif;
-        font-size: 11px; line-height: 1.5; letter-spacing: 0.05em;
-      `;
-      fb.innerHTML =
-        '<div><div style="font-size:14px;font-weight:700;margin-bottom:8px;">Vibey Poster</div>' +
-        'Drop your image at<br/><code style="font-size:10px;">public/posters/vibey.jpg</code></div>';
-      el.appendChild(fb);
+    // Try each candidate path in order; first one that loads wins. If all
+    // fail, render a fallback so it's obvious where to drop the image.
+    let candidateIndex = 0;
+    const tryNext = () => {
+      if (candidateIndex >= POSTER_CANDIDATES.length) {
+        img.remove();
+        const fb = document.createElement("div");
+        fb.style.cssText = `
+          width: 100%; height: 100%;
+          display: flex; align-items: center; justify-content: center;
+          text-align: center; padding: 16px; box-sizing: border-box;
+          color: #73ffb8; font-family: 'Sora', sans-serif;
+          font-size: 11px; line-height: 1.5; letter-spacing: 0.05em;
+        `;
+        fb.innerHTML =
+          '<div><div style="font-size:14px;font-weight:700;margin-bottom:8px;">Vibey Poster</div>' +
+          'Save your image as<br/><code style="font-size:10px;">public/posters/vibey.jpg</code><br/>(.png/.webp also work)</div>';
+        el.appendChild(fb);
+        return;
+      }
+      img.src = POSTER_CANDIDATES[candidateIndex++];
     };
+    img.onerror = tryNext;
+    tryNext();
     el.appendChild(img);
 
     const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
@@ -2070,7 +2080,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           {
             id: "edge-esmeralda",
             label: "Edge Esmeralda",
-            description: "Healdsburg, CA. The pop-up village — Vibey, Unit-7, Vibe Police, the plaza pavilion, observatory, temple.",
+            description: "Healdsburg, CA. The pop-up village — Vibey, Unit-7, Vibe Police, the plaza pavilion, and the meditation temple.",
             onFlyTo: () => {
               if (!map.current) return;
               map.current.flyTo({
