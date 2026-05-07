@@ -22,8 +22,11 @@ export interface VibePoliceState {
   scaleMeters: number;
 }
 
-export const VIBE_POLICE_DEFAULT_SCALE_METERS = 38;
-export const VIBE_POLICE_MIN_SCALE_METERS = 38;
+// His Meshy mesh is naturally chunkier than RobotExpressive, so the same
+// "scaleMeters" reads visually larger. Default him smaller so he doesn't
+// dwarf Unit-7 on first sight.
+export const VIBE_POLICE_DEFAULT_SCALE_METERS = 22;
+export const VIBE_POLICE_MIN_SCALE_METERS = 14;
 export const VIBE_POLICE_MAX_SCALE_METERS = 1100;
 
 export function createDefaultVibePoliceState(
