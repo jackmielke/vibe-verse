@@ -1,6 +1,14 @@
 import mapboxgl from "mapbox-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+
+// Many threejs.org example GLBs (Littlest Tokyo, etc.) ship Draco-compressed
+// meshes. Without a DRACOLoader the GLTFLoader silently returns empty
+// geometry — model "loads" but renders invisible. We point at Google's
+// CDN for the decoder so we don't have to bundle the WASM ourselves.
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/");
 
 // Generic GLB-as-floating-object Mapbox custom layer. Heavy assets are
 // served from /public so they don't bundle into the JS chunk; the URL is
@@ -16,6 +24,11 @@ export interface SpawnableState {
   rotationSpeed?: number; // rad/sec around world-up. 0 disables rotation.
   bobAmplitude?: number; // meters of vertical sine bob. 0 disables.
   bobPeriod?: number; // seconds for one full bob cycle.
+  // If true, the model's lowest point sits at `altitude` (good for things
+  // that should rest on the ground — buildings, towns). If false (default),
+  // the model is centered on `altitude` (good for things floating in the
+  // sky — islands, planets).
+  bottomAnchor?: boolean;
 }
 
 interface CreateOpts {
@@ -36,8 +49,10 @@ export function createSpawnableLayer(
   let scene: THREE.Scene;
   let renderer: THREE.WebGLRenderer;
   let model: THREE.Group | null = null;
+  let mixer: THREE.AnimationMixer | null = null;
   let mapRef: mapboxgl.Map | null = null;
   const startTime = performance.now();
+  let lastTime = performance.now();
   let disposed = false;
 
   function disposeModel() {
@@ -73,6 +88,7 @@ export function createSpawnableLayer(
       scene.add(fill);
 
       const loader = new GLTFLoader();
+      loader.setDRACOLoader(dracoLoader);
       loader.load(
         opts.modelUrl,
         (gltf) => {
@@ -92,9 +108,25 @@ export function createSpawnableLayer(
           const center = new THREE.Vector3();
           box.getCenter(center);
           model.position.x = -center.x * fit;
-          model.position.y = -center.y * fit;
           model.position.z = -center.z * fit;
+          // bottomAnchor: lowest point at y=0 (model "stands" on the ground).
+          // Otherwise center the model on y=0 (good for floating objects).
+          if (state.bottomAnchor) {
+            model.position.y = -box.min.y * fit;
+          } else {
+            model.position.y = -center.y * fit;
+          }
           scene.add(model);
+
+          // If the GLB ships embedded animations (e.g. Littlest Tokyo's
+          // looping keyframes), wire up a mixer and play every clip on loop.
+          if (gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(model);
+            for (const clip of gltf.animations) {
+              mixer.clipAction(clip).play();
+            }
+          }
+
           opts.onLoaded?.();
           mapRef?.triggerRepaint();
         },
@@ -117,7 +149,12 @@ export function createSpawnableLayer(
     },
 
     render(_gl, matrix) {
-      const t = (performance.now() - startTime) / 1000;
+      const now = performance.now();
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+      const t = (now - startTime) / 1000;
+      if (mixer) mixer.update(delta);
+
       const bobAmp = state.bobAmplitude ?? 6;
       const bobPeriod = state.bobPeriod ?? 16;
       const rotSpeed = state.rotationSpeed ?? 0.05;
