@@ -273,6 +273,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [vibeyOpen, setVibeyOpen] = useState(false);
   const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
+  // Lazy-load: characters are off by default. Toggling on triggers GLB
+  // download + layer mount; toggling off tears them down so initial app
+  // load stays light (no ~12-54 MB of bundled meshes on first paint).
+  const [vibeyVisible, setVibeyVisible] = useState(false);
 
   // ---- Unit-7 (autonomous resident bot) --------------------------------
   const unit7StateRef = useRef<Unit7State>(
@@ -293,6 +297,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // WASD, third-person chase camera.
   const [unit7WalkMode, setUnit7WalkMode] = useState(false);
   const unit7KeysRef = useRef<Record<string, boolean>>({});
+  const [unit7Visible, setUnit7Visible] = useState(false);
 
   // Pacific Time clock label + sun/lighting that follow real local time.
   const [clockLabel, setClockLabel] = useState(() => getPacificClock().label);
@@ -306,6 +311,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const vibePoliceLayerAddedRef = useRef(false);
   const vibePoliceMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [vibePoliceScale, setVibePoliceScale] = useState(VIBE_POLICE_DEFAULT_SCALE_METERS);
+  const [vibePoliceVisible, setVibePoliceVisible] = useState(false);
 
   // ---- Spawnables (lazy-loaded heavy GLBs) -----------------------------
   const islandStateRef = useRef<SpawnableState>({
@@ -699,10 +705,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     return () => clearInterval(interval);
   }, [mapLoaded]);
 
-  // ---- Vibey: mount layer + click marker once map is ready -------------
+  // ---- Vibey: mount layer + click marker (only when toggled on) -------
   useEffect(() => {
     const m = map.current;
-    if (!m || !mapLoaded) return;
+    if (!m || !mapLoaded || !vibeyVisible) return;
     const LAYER_ID = "vibey-character";
 
     const mount = () => {
@@ -781,13 +787,18 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
     return () => {
       m.off("style.load", onStyle);
+      // Tear down on toggle-off so memory + GPU resources are freed.
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      vibeyLayerAddedRef.current = false;
+      vibeyMarkerRef.current?.remove();
+      vibeyMarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, vibeyVisible]);
 
-  // ---- Unit-7: mount layer + click marker once map is ready -------------
+  // ---- Unit-7: mount layer + click marker (only when toggled on) ------
   useEffect(() => {
     const m = map.current;
-    if (!m || !mapLoaded) return;
+    if (!m || !mapLoaded || !unit7Visible) return;
     const LAYER_ID = "unit7-character";
 
     const handleOneShotFinished = () => {
@@ -884,12 +895,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
     return () => {
       m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      unit7LayerAddedRef.current = false;
+      unit7MarkerRef.current?.remove();
+      unit7MarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, unit7Visible]);
 
   // ---- Unit-7: autonomous wander loop ----------------------------------
   useEffect(() => {
-    if (!mapLoaded) return;
+    if (!mapLoaded || !unit7Visible) return;
     const m = map.current;
     if (!m) return;
 
@@ -988,12 +1003,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mapLoaded, unit7Open, unit7WalkMode]);
+  }, [mapLoaded, unit7Open, unit7WalkMode, unit7Visible]);
 
-  // ---- Vibe Police: mount layer + click marker -------------------------
+  // ---- Vibe Police: mount layer + click marker (only when toggled on) -
   useEffect(() => {
     const m = map.current;
-    if (!m || !mapLoaded) return;
+    if (!m || !mapLoaded || !vibePoliceVisible) return;
     const LAYER_ID = "vibe-police-character";
 
     const mount = () => {
@@ -1055,12 +1070,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     m.on("style.load", onStyle);
     return () => {
       m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      vibePoliceLayerAddedRef.current = false;
+      vibePoliceMarkerRef.current?.remove();
+      vibePoliceMarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, vibePoliceVisible]);
 
   // ---- Vibe Police: autonomous wander loop -----------------------------
   useEffect(() => {
-    if (!mapLoaded) return;
+    if (!mapLoaded || !vibePoliceVisible) return;
     const m = map.current;
     if (!m) return;
 
@@ -1126,7 +1145,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mapLoaded]);
+  }, [mapLoaded, vibePoliceVisible]);
 
   // ---- Spawnables: clear refs when style reloads -----------------------
   // Mapbox wipes all custom layers on style.load. Without nulling the refs
@@ -1933,6 +1952,23 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        vibeyVisible={vibeyVisible}
+        onToggleVibey={() => setVibeyVisible((v) => {
+          // If turning off while walking, exit walk mode so the chase
+          // camera doesn't try to follow a despawned character.
+          if (v && vibeyUI.walkMode) {
+            vibeyStateRef.current.walkMode = false;
+            setVibeyUI((s) => ({ ...s, walkMode: false }));
+          }
+          return !v;
+        })}
+        unit7Visible={unit7Visible}
+        onToggleUnit7={() => setUnit7Visible((v) => {
+          if (v && unit7WalkMode) setUnit7WalkMode(false);
+          return !v;
+        })}
+        vibePoliceVisible={vibePoliceVisible}
+        onToggleVibePolice={() => setVibePoliceVisible((v) => !v)}
         unit7Scale={unit7Scale}
         unit7ScaleMin={UNIT7_MIN_SCALE_METERS}
         unit7ScaleMax={UNIT7_MAX_SCALE_METERS}
