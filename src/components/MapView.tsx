@@ -272,6 +272,24 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [deathStarLoading, setDeathStarLoading] = useState(false);
   const [deathStarProgress, setDeathStarProgress] = useState<number | null>(null);
 
+  // Littlest Tokyo: keyframe-animated micro-city. Sits on the ground a few
+  // blocks east of the plaza so it feels like its own neighborhood — far
+  // enough that it doesn't overlap the plaza pavilion's footprint.
+  const tokyoStateRef = useRef<SpawnableState>({
+    lng: -122.8662, // ~280m east of the plaza, in open ground
+    lat: 38.6125,
+    altitude: 32, // ground-level fallback; resampled from terrain on mount
+    heading: 0,
+    scaleMeters: 35,
+    bobAmplitude: 0, // no bob — this one sits on the ground
+    rotationSpeed: 0, // no auto-spin — its internal animations are the show
+    bottomAnchor: true, // city's footprint sits ON the ground, not half-buried
+  });
+  const tokyoLayerRef = useRef<ReturnType<typeof createSpawnableLayer> | null>(null);
+  const [tokyoEnabled, setTokyoEnabled] = useState(false);
+  const [tokyoLoading, setTokyoLoading] = useState(false);
+  const [tokyoProgress, setTokyoProgress] = useState<number | null>(null);
+
   // ---- Nimbus VTOL ------------------------------------------------------
   const nimbusStateRef = useRef<NimbusState>(
     createDefaultNimbusState(VILLAGE_CENTER.lng, VILLAGE_CENTER.lat),
@@ -367,6 +385,11 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
               { exaggerated: true },
             );
             if (typeof ue === "number") unit7StateRef.current.baseAltitude = ue;
+            const te = m.queryTerrainElevation(
+              [tokyoStateRef.current.lng, tokyoStateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof te === "number") tokyoStateRef.current.altitude = te;
           } catch { /* terrain not ready */ }
         }
       });
@@ -848,6 +871,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     return () => cancelAnimationFrame(raf);
   }, [mapLoaded, unit7Open]);
 
+  // ---- Spawnables: clear refs when style reloads -----------------------
+  // Mapbox wipes all custom layers on style.load. Without nulling the refs
+  // here the per-spawnable effects below would think their layer is still
+  // mounted and skip re-adding.
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const onStyle = () => {
+      islandLayerRef.current = null;
+      deathStarLayerRef.current = null;
+      tokyoLayerRef.current = null;
+    };
+    m.on("style.load", onStyle);
+    return () => { m.off("style.load", onStyle); };
+  }, []);
+
   // ---- Spawnables: add/remove layer when enabled toggles ---------------
   // Heavy GLBs are mounted (and downloads started) only on user opt-in.
   useEffect(() => {
@@ -915,6 +954,48 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       setDeathStarProgress(null);
     }
   }, [deathStarEnabled, mapLoaded]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "littlest-tokyo";
+
+    if (tokyoEnabled && !tokyoLayerRef.current) {
+      // Sample current terrain altitude so the town sits on the ground.
+      try {
+        const elev = m.queryTerrainElevation(
+          [tokyoStateRef.current.lng, tokyoStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") tokyoStateRef.current.altitude = elev;
+      } catch { /* terrain not ready */ }
+
+      setTokyoLoading(true);
+      setTokyoProgress(null);
+      const layer = createSpawnableLayer(LAYER_ID, tokyoStateRef.current, {
+        modelUrl: "/models/littlest-tokyo.glb",
+        onProgress: (loaded, total) => {
+          setTokyoProgress(total ? loaded / total : null);
+        },
+        onLoaded: () => setTokyoLoading(false),
+        onError: () => setTokyoLoading(false),
+      });
+      try {
+        m.addLayer(layer);
+        tokyoLayerRef.current = layer;
+        m.triggerRepaint();
+      } catch (e) {
+        console.error("[LittlestTokyo] addLayer failed", e);
+        setTokyoLoading(false);
+      }
+    } else if (!tokyoEnabled && tokyoLayerRef.current) {
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      tokyoLayerRef.current.dispose();
+      tokyoLayerRef.current = null;
+      setTokyoLoading(false);
+      setTokyoProgress(null);
+    }
+  }, [tokyoEnabled, mapLoaded]);
 
   // ---- Helicopter: add/remove layer when enabled toggles ----------------
   useEffect(() => {
@@ -1547,6 +1628,27 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
                 });
               }
               setDeathStarEnabled((v) => !v);
+            },
+          },
+          {
+            id: "littlest-tokyo",
+            label: "Tokyo Block",
+            description: "Animated micro-city next to the plaza — keyframe traffic, neon, all looping (~4 MB).",
+            enabled: tokyoEnabled,
+            loading: tokyoLoading,
+            progress: tokyoProgress,
+            onToggle: () => {
+              if (!tokyoEnabled && map.current) {
+                const s = tokyoStateRef.current;
+                map.current.flyTo({
+                  center: [s.lng, s.lat],
+                  zoom: 18,
+                  pitch: 65,
+                  bearing: -10,
+                  duration: 1500,
+                });
+              }
+              setTokyoEnabled((v) => !v);
             },
           },
         ]}
