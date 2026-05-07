@@ -1,12 +1,13 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Bot, Send } from "lucide-react";
 import { useState } from "react";
-import type { Unit7AnimName } from "./map/Unit7Layer";
+import type { Unit7AnimName, Unit7Expression } from "./map/Unit7Layer";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onEmote: (anim: Unit7AnimName) => void;
+  onExpression: (expr: Unit7Expression, intensity: number) => void;
 }
 
 const QUICK_EMOTES: { label: string; anim: Unit7AnimName }[] = [
@@ -18,29 +19,58 @@ const QUICK_EMOTES: { label: string; anim: Unit7AnimName }[] = [
   { label: "🦘 Jump", anim: "Jump" },
 ];
 
-// Naive keyword → emote mapping. Good enough as a placeholder until we wire
-// up an actual chat backend; the user gets immediate feedback that "talking"
-// to Unit-7 changes its behavior.
-function inferEmote(text: string): Unit7AnimName | null {
+const FACE_EXPRESSIONS: { label: string; expr: Unit7Expression }[] = [
+  { label: "😠 Angry", expr: "Angry" },
+  { label: "😮 Surprised", expr: "Surprised" },
+  { label: "😢 Sad", expr: "Sad" },
+];
+
+// Naive keyword → behavior mapping. Good enough as a placeholder until we
+// wire up an actual chat backend; the user gets immediate feedback that
+// "talking" to Unit-7 changes his behavior or face.
+function inferIntent(text: string): { anim?: Unit7AnimName; expr?: Unit7Expression } {
   const t = text.toLowerCase();
-  if (/\b(hi|hello|hey|sup|yo)\b/.test(t)) return "Wave";
-  if (/\b(dance|party|groove|vibe)\b/.test(t)) return "Dance";
-  if (/\b(yes|yeah|yep|ok|okay|sure|cool|nice|love it|awesome)\b/.test(t)) return "Yes";
-  if (/\b(no|nope|nah|never)\b/.test(t)) return "No";
-  if (/\b(thumbs?|good job|well done|gg)\b/.test(t)) return "ThumbsUp";
-  if (/\b(jump|hop|leap)\b/.test(t)) return "Jump";
-  if (/\b(punch|fight|hit)\b/.test(t)) return "Punch";
-  if (/\b(sit|rest)\b/.test(t)) return "Sitting";
-  return null;
+  if (/\b(angry|mad|furious|grr)\b/.test(t)) return { expr: "Angry" };
+  if (/\b(surprised|wow|whoa|omg)\b/.test(t)) return { expr: "Surprised" };
+  if (/\b(sad|sorry|bummed|miss)\b/.test(t)) return { expr: "Sad" };
+  if (/\b(hi|hello|hey|sup|yo)\b/.test(t)) return { anim: "Wave" };
+  if (/\b(dance|party|groove|vibe)\b/.test(t)) return { anim: "Dance" };
+  if (/\b(yes|yeah|yep|ok|okay|sure|cool|nice|love it|awesome)\b/.test(t)) return { anim: "Yes" };
+  if (/\b(no|nope|nah|never)\b/.test(t)) return { anim: "No" };
+  if (/\b(thumbs?|good job|well done|gg)\b/.test(t)) return { anim: "ThumbsUp" };
+  if (/\b(jump|hop|leap)\b/.test(t)) return { anim: "Jump" };
+  if (/\b(punch|fight|hit)\b/.test(t)) return { anim: "Punch" };
+  if (/\b(sit|rest)\b/.test(t)) return { anim: "Sitting" };
+  return {};
 }
 
-export default function Unit7Dialog({ open, onClose, onEmote }: Props) {
+export default function Unit7Dialog({ open, onClose, onEmote, onExpression }: Props) {
   const [text, setText] = useState("");
+  const [activeExpr, setActiveExpr] = useState<Unit7Expression | null>(null);
 
   function handleSend() {
-    const inferred = inferEmote(text);
-    onEmote(inferred ?? "Wave");
+    const intent = inferIntent(text);
+    if (intent.expr) {
+      onExpression(intent.expr, 0.85);
+      setActiveExpr(intent.expr);
+    } else if (intent.anim) {
+      onEmote(intent.anim);
+    } else {
+      onEmote("Wave");
+    }
     setText("");
+  }
+
+  function toggleExpression(expr: Unit7Expression) {
+    if (activeExpr === expr) {
+      onExpression(expr, 0);
+      setActiveExpr(null);
+    } else {
+      // Clear the previous one before applying the new one.
+      if (activeExpr) onExpression(activeExpr, 0);
+      onExpression(expr, 0.85);
+      setActiveExpr(expr);
+    }
   }
 
   return (
@@ -82,7 +112,7 @@ export default function Unit7Dialog({ open, onClose, onEmote }: Props) {
                   Unit-7
                 </h2>
                 <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                  Wandering the village. Tell him something or pick an emote.
+                  Wandering the village. Tell him something, pick an emote, or change his mood.
                 </p>
               </div>
 
@@ -98,6 +128,27 @@ export default function Unit7Dialog({ open, onClose, onEmote }: Props) {
                 ))}
               </div>
 
+              <div className="relative px-5 pb-2 pt-1">
+                <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mb-2">
+                  Mood
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {FACE_EXPRESSIONS.map((e) => (
+                    <button
+                      key={e.expr}
+                      onClick={() => toggleExpression(e.expr)}
+                      className={`rounded-lg border transition-colors px-2 py-2 text-xs font-medium ${
+                        activeExpr === e.expr
+                          ? "border-primary/60 bg-primary/20 text-primary"
+                          : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+                      }`}
+                    >
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="relative px-5 pb-5 pt-3 flex gap-2">
                 <input
                   value={text}
@@ -105,7 +156,7 @@ export default function Unit7Dialog({ open, onClose, onEmote }: Props) {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && text.trim()) handleSend();
                   }}
-                  placeholder="Say hi, ask him to dance…"
+                  placeholder="Say hi, ask him to dance, look surprised…"
                   className="flex-1 rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-sm"
                 />
                 <button

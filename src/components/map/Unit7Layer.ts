@@ -3,6 +3,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import unit7ModelUrl from "@/assets/robot-expressive.glb";
 
+// Locomotion + emote names from the RobotExpressive example.
+// https://threejs.org/examples/?q=Animation#webgl_animation_skinning_morph
 export type Unit7AnimName =
   | "Idle"
   | "Walking"
@@ -18,6 +20,9 @@ export type Unit7AnimName =
   | "Punch"
   | "ThumbsUp";
 
+// Face morphs available on the model (head mesh has these blend shapes).
+export type Unit7Expression = "Angry" | "Surprised" | "Sad";
+
 export interface Unit7State {
   lng: number;
   lat: number;
@@ -27,11 +32,31 @@ export interface Unit7State {
   // Bumped whenever the caller wants the *same* anim to retrigger (e.g. tap
   // Wave a second time). The layer compares to its last seen value.
   animPulse: number;
+  // 0..1 per face morph. Defaults to all-zero (neutral expression).
+  expressions: Record<Unit7Expression, number>;
 }
 
-// In meters. 18 keeps him recognizable at the zoom levels the map uses by
-// default, while still feeling like a character (not a building).
-const SCALE_METERS = 18;
+export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
+  return {
+    lng,
+    lat,
+    baseAltitude: 0,
+    heading: 0,
+    currentAnim: "Idle",
+    animPulse: 0,
+    expressions: { Angry: 0, Surprised: 0, Sad: 0 },
+  };
+}
+
+// In meters. RobotExpressive feels right around 28m at typical map zoom —
+// big enough to read as a character against city blocks, not so big he's
+// obstructing the plaza.
+const SCALE_METERS = 28;
+// Float ~8m above terrain so plaza decorations and small buildings can't
+// occlude his head and shoulders.
+const HOVER_HEIGHT = 8;
+// Subtle vertical bob as he idles.
+const BOB_AMPLITUDE = 0.8;
 const FADE_SECONDS = 0.2;
 const ONE_SHOTS: Unit7AnimName[] = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"];
 
@@ -47,11 +72,19 @@ export function createUnit7Layer(
 
   let model: THREE.Group | null = null;
   let mixer: THREE.AnimationMixer | null = null;
+  // Head mesh + morph dictionary for facial expressions (Angry, Surprised, Sad).
+  let faceMesh: THREE.Mesh | null = null;
+  let morphIndex: Partial<Record<Unit7Expression, number>> = {};
   const actions = new Map<Unit7AnimName, THREE.AnimationAction>();
   let activeAction: THREE.AnimationAction | null = null;
   let lastAnim: Unit7AnimName | null = null;
   let lastPulse = state.animPulse;
   let lastTime = performance.now();
+  const startTime = performance.now();
+
+  // Decorative beacon group so we can pulse / scale it in render().
+  const beaconGroup = new THREE.Group();
+  let beaconRing: THREE.Mesh | null = null;
 
   function play(name: Unit7AnimName, restart = false) {
     const next = actions.get(name);
@@ -80,39 +113,65 @@ export function createUnit7Layer(
       camera = new THREE.Camera();
       scene = new THREE.Scene();
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-      const key = new THREE.DirectionalLight(0xffffff, 1.1);
+      // Brighter lighting so the bot reads against dusk shadows.
+      scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+      const key = new THREE.DirectionalLight(0xffffff, 1.4);
       key.position.set(-30, 60, 50).normalize();
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x9affd6, 0.55);
+      const rim = new THREE.DirectionalLight(0x9affd6, 0.7);
       rim.position.set(40, 20, -30).normalize();
       scene.add(rim);
 
-      // Soft glow disc beneath the bot
-      const glow = new THREE.Mesh(
-        new THREE.CircleGeometry(1.2, 48),
+      // ---- Beacon: ground halo + tall vertical pillar of light ----------
+      // Halo on the ground so you can spot him from straight above.
+      const halo = new THREE.Mesh(
+        new THREE.RingGeometry(1.4, 1.7, 64),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
-          opacity: 0.55,
+          opacity: 0.7,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = 0.05;
+      halo.renderOrder = -1;
+      beaconGroup.add(halo);
+      beaconRing = halo;
+
+      // Soft glow disc filling the center.
+      const glow = new THREE.Mesh(
+        new THREE.CircleGeometry(1.4, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0x73ffb8,
+          transparent: true,
+          opacity: 0.4,
           depthWrite: false,
         }),
       );
       glow.rotation.x = -Math.PI / 2;
-      glow.position.y = 0.02;
+      glow.position.y = 0.04;
       glow.renderOrder = -1;
-      scene.add(glow);
+      beaconGroup.add(glow);
 
-      // Vertical beacon beam so the bot is findable from any zoom.
-      const beamMat = new THREE.MeshBasicMaterial({
-        color: 0x73ffb8,
-        transparent: true,
-        opacity: 0.35,
-        depthWrite: false,
-      });
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 12, 16), beamMat);
-      beam.position.y = 6;
-      scene.add(beam);
+      // Tall vertical pillar so he's findable from any zoom or angle.
+      // Starts above the model's head (y=2.4) so he isn't visually wrapped
+      // inside it — pillar is its own thing pointing skyward.
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.22, 18, 16, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0x73ffb8,
+          transparent: true,
+          opacity: 0.6,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      pillar.position.y = 11;
+      beaconGroup.add(pillar);
+
+      scene.add(beaconGroup);
 
       const loader = new GLTFLoader();
       loader.load(
@@ -132,11 +191,25 @@ export function createUnit7Layer(
           model.position.y = -box.min.y * fit;
           scene.add(model);
 
+          // Find the head mesh that owns the face morph targets so we can
+          // drive Angry / Surprised / Sad expressions later.
+          model.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const dict = mesh.morphTargetDictionary;
+            if (dict && ("Angry" in dict || "Surprised" in dict || "Sad" in dict)) {
+              faceMesh = mesh;
+              morphIndex = {
+                Angry: dict["Angry"],
+                Surprised: dict["Surprised"],
+                Sad: dict["Sad"],
+              };
+            }
+          });
+
           mixer = new THREE.AnimationMixer(model);
           mixer.addEventListener("finished", () => {
-            // Drop back to whatever the caller set as `currentAnim` after a
-            // one-shot finishes. If it's still a one-shot, the consumer
-            // probably wants Idle — let them decide via callback.
+            // After a one-shot, ask the consumer what to play next.
             onIdleAfterOneShot?.();
           });
           for (const clip of gltf.animations) {
@@ -164,6 +237,7 @@ export function createUnit7Layer(
       const now = performance.now();
       const delta = (now - lastTime) / 1000;
       lastTime = now;
+      const t = (now - startTime) / 1000;
 
       if (mixer) mixer.update(delta);
 
@@ -174,23 +248,40 @@ export function createUnit7Layer(
         lastPulse = state.animPulse;
       }
 
+      // Push expression weights every frame; cheap and keeps morphs in sync
+      // even if the consumer mutates state mid-frame.
+      if (faceMesh && faceMesh.morphTargetInfluences) {
+        for (const name of ["Angry", "Surprised", "Sad"] as Unit7Expression[]) {
+          const idx = morphIndex[name];
+          if (typeof idx === "number") {
+            const w = state.expressions?.[name] ?? 0;
+            faceMesh.morphTargetInfluences[idx] = Math.max(0, Math.min(1, w));
+          }
+        }
+      }
+
       if (model) {
-        // state.heading: 0 = north (i.e. -y in mercator). Robot's "forward"
-        // is +Z in its local frame, so rotate accordingly.
         model.rotation.y = state.heading;
       }
 
-      // Lift the model 1m above sampled terrain so we don't z-fight on
-      // sloped tiles or get clipped on terrain mesh edges.
+      // Subtle hover bob + pulsing beacon scale.
+      const bob = Math.sin(t * 1.2) * BOB_AMPLITUDE;
+      const beaconPulse = 1 + Math.sin(t * 2) * 0.06;
+      beaconGroup.scale.set(beaconPulse, 1, beaconPulse);
+      if (beaconRing) {
+        (beaconRing.material as THREE.MeshBasicMaterial).opacity =
+          0.55 + Math.sin(t * 2) * 0.2;
+      }
+
+      // Place him hovering above the sampled terrain so plaza/terrain
+      // can't visually swallow him.
+      const altitude = state.baseAltitude + HOVER_HEIGHT + bob;
       const mercator = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: state.lng, lat: state.lat },
-        state.baseAltitude + 1,
+        altitude,
       );
       const meterScale = mercator.meterInMercatorCoordinateUnits() * SCALE_METERS;
 
-      // Mapbox custom-layer convention: rotate +X by π/2 so model "up" is +Z
-      // in mercator space, and flip Y (-meterScale) so meshes don't render
-      // mirrored.
       const rotationX = new THREE.Matrix4().makeRotationAxis(
         new THREE.Vector3(1, 0, 0),
         Math.PI / 2,

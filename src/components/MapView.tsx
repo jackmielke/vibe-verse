@@ -19,8 +19,10 @@ import HelicopterControl, {
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
 import {
   createUnit7Layer,
+  createDefaultUnit7State,
   type Unit7State,
   type Unit7AnimName,
+  type Unit7Expression,
 } from "./map/Unit7Layer";
 import {
   createNimbusVtolLayer,
@@ -38,12 +40,12 @@ import Unit7Dialog from "./Unit7Dialog";
 // overlap the plaza structure.
 const VIBEY_LOCATION = { lng: -122.8695, lat: 38.6135 };
 
-// Unit-7 spawns in the open street area just NW of the plaza so he's in
-// frame when the camera flies to the village center, but offset enough that
-// the plaza pavilion doesn't occlude him.
-const UNIT7_LOCATION = { lng: -122.8699, lat: 38.6132 };
+// Unit-7 spawns in the open ground south of the village so the plaza
+// pavilion can't visually swallow him on the initial flyTo, and so the
+// teal beacon stands out against open street + tree cover.
+const UNIT7_LOCATION = { lng: -122.8696, lat: 38.6118 };
 // Wander radius (in meters, approximate) from spawn point.
-const UNIT7_WANDER_RADIUS_M = 40;
+const UNIT7_WANDER_RADIUS_M = 50;
 // Walking speed in meters/second.
 const UNIT7_SPEED_MPS = 1.6;
 // Idle pause between moves, seconds.
@@ -225,14 +227,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
 
   // ---- Unit-7 (autonomous resident bot) --------------------------------
-  const unit7StateRef = useRef<Unit7State>({
-    lng: UNIT7_LOCATION.lng,
-    lat: UNIT7_LOCATION.lat,
-    baseAltitude: 0,
-    heading: 0,
-    currentAnim: "Idle",
-    animPulse: 0,
-  });
+  const unit7StateRef = useRef<Unit7State>(
+    createDefaultUnit7State(UNIT7_LOCATION.lng, UNIT7_LOCATION.lat),
+  );
   // Wander target. When null we're idling.
   const unit7TargetRef = useRef<{ lng: number; lat: number } | null>(null);
   const unit7IdleUntilRef = useRef<number>(0);
@@ -1516,15 +1513,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         open={unit7Open}
         onClose={() => {
           setUnit7Open(false);
-          // Resume autonomous wandering after the dialog closes.
+          // Resume autonomous wandering after the dialog closes; clear face
+          // morphs so he goes back to neutral.
           unit7BaseAnimRef.current = "Idle";
           unit7StateRef.current.currentAnim = "Idle";
           unit7StateRef.current.animPulse++;
+          unit7StateRef.current.expressions.Angry = 0;
+          unit7StateRef.current.expressions.Surprised = 0;
+          unit7StateRef.current.expressions.Sad = 0;
         }}
         onEmote={(anim) => {
           // One-shots auto-revert via the layer's "finished" event.
           unit7StateRef.current.currentAnim = anim;
           unit7StateRef.current.animPulse++;
+        }}
+        onExpression={(expr, intensity) => {
+          unit7StateRef.current.expressions[expr] = intensity;
         }}
       />
 
@@ -1571,6 +1575,30 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        onMessageUnit7={() => {
+          // Fly to Unit-7 so he's framed up, turn him to face the camera,
+          // and have him wave hello.
+          if (map.current) {
+            const s = unit7StateRef.current;
+            const camBearing = map.current.getBearing();
+            map.current.flyTo({
+              center: [s.lng, s.lat],
+              zoom: 20,
+              pitch: 60,
+              bearing: camBearing,
+              duration: 1100,
+            });
+            // Camera bearing is degrees clockwise from north. Robot's heading
+            // is radians, 0 = north (matches the wander loop's atan2 frame).
+            // Add π so he faces TOWARD the camera, not away from it.
+            unit7BaseAnimRef.current = "Idle";
+            unit7TargetRef.current = null;
+            s.heading = (camBearing * Math.PI) / 180 + Math.PI;
+            s.currentAnim = "Wave";
+            s.animPulse++;
+          }
+          setUnit7Open(true);
+        }}
         nimbus={nimbusUI}
         onToggleNimbus={() =>
           setNimbusUI((s) => ({
