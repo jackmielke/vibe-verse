@@ -62,6 +62,12 @@ const UNIT7_WANDER_RADIUS_M = 50;
 // distinguishable on first sight.
 const VIBE_POLICE_LOCATION = { lng: -122.8688, lat: 38.6122 };
 const VIBE_POLICE_WANDER_RADIUS_M = 45;
+
+// Vibey poster billboard — sits just NW of the plaza. Drop the image at
+// `public/posters/vibey.jpg` and it shows up on the map. (Path matters:
+// public/ files are served at /, not bundled with vite.)
+const POSTER_LOCATION = { lng: -122.8696, lat: 38.6133 };
+const POSTER_IMAGE_URL = "/posters/vibey.jpg";
 // Walking speed in meters/second.
 // Base walking speed at the default body size. The wander loop scales this
 // by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
@@ -184,46 +190,35 @@ function addBuildingsLayer(m: mapboxgl.Map) {
 
 // Re-create structure layers (e.g. once terrain has loaded) so altitude
 // reflects current ground elevation.
-// Cheap building-collision check. Project (lng, lat) to a screen pixel,
-// query rendered features at that point, and treat any hit on a building-
-// like layer as "blocked." Works for both the satellite '3d-buildings'
-// layer and Mapbox Standard's basemap building extrusions.
-//
-// This is the v1 of the physics path — zero deps, no Rapier. Good enough
-// to feel collision in Healdsburg before deciding whether to upgrade.
-export function wouldHitBuilding(m: mapboxgl.Map, lng: number, lat: number): boolean {
-  let projected: mapboxgl.Point;
-  try {
-    projected = m.project([lng, lat]);
-  } catch {
-    return false;
-  }
-  // 2-pixel bbox around the projected point so we don't miss building edges.
-  const bbox: [[number, number], [number, number]] = [
-    [projected.x - 2, projected.y - 2],
-    [projected.x + 2, projected.y + 2],
-  ];
-  let features: mapboxgl.MapboxGeoJSONFeature[];
-  try {
-    features = m.queryRenderedFeatures(bbox);
-  } catch {
-    return false;
-  }
-  return features.some((f) => {
-    const layerId = f.layer?.id ?? "";
-    if (layerId === "3d-buildings") return true; // our satellite-mode layer
-    // Standard style ships building extrusions inside the basemap import;
-    // the layer ids look like "building", "building-extrusion", or namespaced
-    // variants. Catch them all without listing every Mapbox internal name.
-    if (/building/i.test(layerId)) return true;
-    // Some basemap layers don't include "building" in the id but expose a
-    // height property — that's an extrusion we should respect.
-    const sourceLayer = (f.layer as { "source-layer"?: string } | undefined)?.[
-      "source-layer"
-    ];
-    if (sourceLayer === "building") return true;
-    return false;
-  });
+// Pacific Time → Mapbox Standard light preset. Roughly:
+//   05:00–08:00 → dawn
+//   08:00–16:00 → day
+//   16:00–19:00 → dusk
+//   else        → night
+function lightPresetForPTHour(hour: number): "dawn" | "day" | "dusk" | "night" {
+  if (hour >= 5 && hour < 8) return "dawn";
+  if (hour >= 8 && hour < 16) return "day";
+  if (hour >= 16 && hour < 19) return "dusk";
+  return "night";
+}
+
+function getPacificClock(): { hour: number; label: string } {
+  const now = new Date();
+  // Use Intl with a known timezone so we don't trust the user's local clock.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(now);
+  const label = parts.map((p) => p.value).join("");
+  const hour24Str = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    hour12: false,
+  }).format(now);
+  const hour = Number(hour24Str) % 24;
+  return { hour, label };
 }
 
 function refreshStructureLayers(m: mapboxgl.Map) {
@@ -306,6 +301,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // WASD, third-person chase camera.
   const [unit7WalkMode, setUnit7WalkMode] = useState(false);
   const unit7KeysRef = useRef<Record<string, boolean>>({});
+
+  // Pacific Time clock label + sun/lighting that follow real local time.
+  const [clockLabel, setClockLabel] = useState(() => getPacificClock().label);
 
   // ---- Vibe Police (anti-vibe officer) ---------------------------------
   const vibePoliceStateRef = useRef<VibePoliceState>(
@@ -419,9 +417,15 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }
         m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
-        // Set Standard style config for colorful, immersive 3D look
+        // Set Standard style config for colorful, immersive 3D look. The
+        // lightPreset reflects local Pacific Time so the "sun" rises and
+        // sets in sync with whoever's running the village.
         try {
-          m.setConfigProperty("basemap", "lightPreset", "dusk");
+          m.setConfigProperty(
+            "basemap",
+            "lightPreset",
+            lightPresetForPTHour(getPacificClock().hour),
+          );
           m.setConfigProperty("basemap", "showPointOfInterestLabels", true);
           m.setConfigProperty("basemap", "showTransitLabels", false);
           m.setConfigProperty("basemap", "showPlaceLabels", true);
@@ -675,6 +679,84 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       { enableHighAccuracy: true }
     );
   }, []);
+
+  // ---- Vibey poster billboard ------------------------------------------
+  // A simple HTML-image marker near the plaza so the village has a piece
+  // of "art" rendered into the world. Drop your image at the configured
+  // path and it shows up automatically.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+
+    const el = document.createElement("div");
+    el.style.cssText = `
+      width: 200px;
+      height: 200px;
+      background: rgba(13, 27, 42, 0.85);
+      border: 2px solid rgba(45, 212, 168, 0.7);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 24px rgba(45, 212, 168, 0.4);
+      transform: translateY(-110px);
+      pointer-events: none;
+    `;
+    const img = document.createElement("img");
+    img.src = POSTER_IMAGE_URL;
+    img.alt = "Vibey poster";
+    img.style.cssText = `
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    `;
+    // If the file isn't there yet, show a friendly fallback so it's
+    // obvious where to drop the image.
+    img.onerror = () => {
+      img.remove();
+      const fb = document.createElement("div");
+      fb.style.cssText = `
+        width: 100%; height: 100%;
+        display: flex; align-items: center; justify-content: center;
+        text-align: center; padding: 16px; box-sizing: border-box;
+        color: #73ffb8; font-family: 'Sora', sans-serif;
+        font-size: 11px; line-height: 1.5; letter-spacing: 0.05em;
+      `;
+      fb.innerHTML =
+        '<div><div style="font-size:14px;font-weight:700;margin-bottom:8px;">Vibey Poster</div>' +
+        'Drop your image at<br/><code style="font-size:10px;">public/posters/vibey.jpg</code></div>';
+      el.appendChild(fb);
+    };
+    el.appendChild(img);
+
+    const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+      .setLngLat([POSTER_LOCATION.lng, POSTER_LOCATION.lat])
+      .addTo(m);
+    return () => marker.remove();
+  }, [mapLoaded]);
+
+  // ---- Time of day + dynamic sun --------------------------------------
+  // Update the on-screen clock once a second so it stays smooth, and the
+  // Mapbox Standard lightPreset once a minute so the basemap relighting
+  // doesn't churn.
+  useEffect(() => {
+    const tickClock = () => setClockLabel(getPacificClock().label);
+    const interval = setInterval(tickClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    let lastPreset: string | null = null;
+    const applyPreset = () => {
+      const preset = lightPresetForPTHour(getPacificClock().hour);
+      if (preset === lastPreset) return;
+      lastPreset = preset;
+      try {
+        m.setConfigProperty("basemap", "lightPreset", preset);
+      } catch { /* may not exist on older mapbox-gl */ }
+    };
+    applyPreset();
+    const interval = setInterval(applyPreset, 60_000);
+    return () => clearInterval(interval);
+  }, [mapLoaded]);
 
   // ---- Vibey: mount layer + click marker once map is ready -------------
   useEffect(() => {
@@ -950,23 +1032,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
           const nx = dxMeters / distance;
           const ny = dyMeters / distance;
-          const nextLng = s.lng + (nx * step) / metersPerDegLng;
-          const nextLat = s.lat + (ny * step) / metersPerDegLat;
-          // v1 collision: if the next step lands inside a building, pick a
-          // new wander target instead of phasing through the wall.
-          if (wouldHitBuilding(m, nextLng, nextLat)) {
-            unit7TargetRef.current = null;
-            unit7IdleUntilRef.current = now + 600;
-          } else {
-            s.lng = nextLng;
-            s.lat = nextLat;
-            s.heading = Math.atan2(nx, ny);
-            try {
-              const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
-              if (typeof elev === "number") s.baseAltitude = elev;
-            } catch { /* terrain not ready */ }
-            unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
-          }
+          s.lng += (nx * step) / metersPerDegLng;
+          s.lat += (ny * step) / metersPerDegLat;
+          s.heading = Math.atan2(nx, ny);
+          try {
+            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+            if (typeof elev === "number") s.baseAltitude = elev;
+          } catch { /* terrain not ready */ }
+          unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
         }
       }
 
@@ -1097,22 +1170,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
           const nx = dxMeters / distance;
           const ny = dyMeters / distance;
-          const nextLng = s.lng + (nx * step) / metersPerDegLng;
-          const nextLat = s.lat + (ny * step) / metersPerDegLat;
-          if (wouldHitBuilding(m, nextLng, nextLat)) {
-            // Bail on this target — pick a new one next tick.
-            vibePoliceTargetRef.current = null;
-            vibePoliceIdleUntilRef.current = now + 600;
-          } else {
-            s.lng = nextLng;
-            s.lat = nextLat;
-            s.heading = Math.atan2(nx, ny);
-            try {
-              const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
-              if (typeof elev === "number") s.baseAltitude = elev;
-            } catch { /* terrain not ready */ }
-            vibePoliceMarkerRef.current?.setLngLat([s.lng, s.lat]);
-          }
+          s.lng += (nx * step) / metersPerDegLng;
+          s.lat += (ny * step) / metersPerDegLat;
+          s.heading = Math.atan2(nx, ny);
+          try {
+            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+            if (typeof elev === "number") s.baseAltitude = elev;
+          } catch { /* terrain not ready */ }
+          vibePoliceMarkerRef.current?.setLngLat([s.lng, s.lat]);
         }
       }
 
@@ -1636,15 +1701,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       const cosH = Math.cos(s.heading);
       const eastM = sinH * forward * WALK_SPEED;
       const northM = cosH * forward * WALK_SPEED;
-      const nextLat = s.lat + (northM * dt) / 111320;
-      const nextLng =
-        s.lng + (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
-      // Cheap collision: only commit forward motion if we wouldn't end up
-      // inside a building. Heading still updates so you can turn off a wall.
-      if (forward !== 0 && !wouldHitBuilding(m, nextLng, nextLat)) {
-        s.lat = nextLat;
-        s.lng = nextLng;
-      }
+      s.lat += (northM * dt) / 111320;
+      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
 
       // Resample ground altitude as Vibey moves
       try {
@@ -1731,16 +1789,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       const speed = WALK_SPEED * sizeFactor;
       const eastM = sinH * forward * speed;
       const northM = cosH * forward * speed;
-      const nextLat = s.lat + (northM * dt) / 111320;
-      const nextLng =
-        s.lng + (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
-
-      // Cheap collision: only commit the move if it doesn't land inside a
-      // building. Heading still updates so you can turn off a wall.
-      if (forward !== 0 && !wouldHitBuilding(m, nextLng, nextLat)) {
-        s.lat = nextLat;
-        s.lng = nextLng;
-      }
+      s.lat += (northM * dt) / 111320;
+      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
 
       // Drive the right animation for what he's doing right now.
       const wantAnim = forward !== 0 ? "Walking" : "Idle";
@@ -1855,12 +1905,20 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         transition={{ delay: 0.8 }}
         className="absolute top-4 right-4 z-10"
       >
-        <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-          </span>
-          <span className="text-xs font-body font-medium text-foreground">208 here now</span>
+        <div className="flex flex-col items-end gap-2">
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+            <span className="text-xs font-body font-medium text-foreground">208 here now</span>
+          </div>
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] font-mono font-semibold text-primary tracking-wide">
+              {clockLabel}
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground tracking-widest">PT</span>
+          </div>
         </div>
       </motion.div>
 

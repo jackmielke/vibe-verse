@@ -157,7 +157,7 @@ export default function HelicopterControl({
   const anyActive = anyVehicleActive || anyCharacterActive || anySpawnableActive;
 
   return (
-    <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
+    <div className="absolute top-24 right-4 z-20 flex flex-col items-end gap-2">
       {/* Tab toggle */}
       <button
         onClick={() => setOpen((o) => !o)}
