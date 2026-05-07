@@ -1819,6 +1819,40 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }}
         onResetNimbus={resetNimbus}
+        places={[
+          {
+            id: "edge-esmeralda",
+            label: "Edge Esmeralda",
+            description: "Healdsburg, CA. The pop-up village — Vibey, Unit-7, Vibe Police, the plaza pavilion, observatory, temple.",
+            onFlyTo: () => {
+              if (!map.current) return;
+              map.current.flyTo({
+                center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
+                zoom: VILLAGE_CENTER.zoom,
+                pitch: 60,
+                bearing: -20,
+                duration: 2200,
+              });
+            },
+          },
+          {
+            id: "san-francisco",
+            label: "San Francisco",
+            description: "Embarcadero waterfront. Mapbox renders the SF skyline, Bay Bridge, and downtown blocks in 3D.",
+            onFlyTo: () => {
+              if (!map.current) return;
+              map.current.flyTo({
+                // Looking northwest from the Embarcadero, framing the Ferry
+                // Building + downtown skyline.
+                center: [-122.3947, 37.7955],
+                zoom: 16.2,
+                pitch: 65,
+                bearing: -50,
+                duration: 3000,
+              });
+            },
+          },
+        ]}
         spawnables={[
           {
             id: "island",

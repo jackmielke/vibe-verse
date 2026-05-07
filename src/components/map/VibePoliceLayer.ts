@@ -22,11 +22,12 @@ export interface VibePoliceState {
   scaleMeters: number;
 }
 
-// His Meshy mesh is naturally chunkier than RobotExpressive, so the same
-// "scaleMeters" reads visually larger. Default him smaller so he doesn't
-// dwarf Unit-7 on first sight.
-export const VIBE_POLICE_DEFAULT_SCALE_METERS = 22;
-export const VIBE_POLICE_MIN_SCALE_METERS = 14;
+// The Meshy export's bounding box is dominated by huge head/clothing
+// volumes, so a "scaleMeters" of 22 here actually rendered him at roughly
+// 20× the apparent size of Unit-7. Drop the defaults way down — the slider
+// still goes up to 1100 if you want a kaiju cop.
+export const VIBE_POLICE_DEFAULT_SCALE_METERS = 2;
+export const VIBE_POLICE_MIN_SCALE_METERS = 1;
 export const VIBE_POLICE_MAX_SCALE_METERS = 1100;
 
 export function createDefaultVibePoliceState(

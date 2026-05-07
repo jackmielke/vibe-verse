@@ -15,6 +15,7 @@ import {
   Users,
   Car,
   Menu,
+  MapPin,
 } from "lucide-react";
 
 export interface HelicopterControlState {
@@ -49,6 +50,13 @@ export interface SpawnableControl {
   onToggle: () => void;
 }
 
+export interface PlaceControl {
+  id: string;
+  label: string;
+  description: string;
+  onFlyTo: () => void;
+}
+
 interface Props {
   // Helicopter
   state: HelicopterControlState;
@@ -78,9 +86,11 @@ interface Props {
   onResetNimbus: () => void;
   // Spawnable heavy GLBs (Edge Island, Death Star, …) — lazy-loaded.
   spawnables: SpawnableControl[];
+  // Quick-travel destinations (Edge Esmeralda, San Francisco, …).
+  places: PlaceControl[];
 }
 
-type Tab = "characters" | "vehicles" | "spawn";
+type Tab = "characters" | "vehicles" | "spawn" | "places";
 
 /**
  * Menu — unified control panel: Characters, Vehicles, and spawnable Worlds.
@@ -109,6 +119,7 @@ export default function HelicopterControl({
   onTogglePilotNimbus,
   onResetNimbus,
   spawnables,
+  places,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("characters");
@@ -172,19 +183,19 @@ export default function HelicopterControl({
             className="glass-panel rounded-xl p-3 w-[280px] flex flex-col gap-2.5"
           >
             {/* Tab switcher */}
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-background/40 border border-border">
+            <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
                 active={tab === "characters"}
                 onClick={() => setTab("characters")}
                 icon={<Users className="w-3 h-3" />}
-                label="Characters"
+                label="Cast"
                 live={anyCharacterActive}
               />
               <TabButton
                 active={tab === "vehicles"}
                 onClick={() => setTab("vehicles")}
                 icon={<Car className="w-3 h-3" />}
-                label="Vehicles"
+                label="Rides"
                 live={anyVehicleActive}
               />
               <TabButton
@@ -193,6 +204,13 @@ export default function HelicopterControl({
                 icon={<Mountain className="w-3 h-3" />}
                 label="Spawn"
                 live={anySpawnableActive}
+              />
+              <TabButton
+                active={tab === "places"}
+                onClick={() => setTab("places")}
+                icon={<MapPin className="w-3 h-3" />}
+                label="Places"
+                live={false}
               />
             </div>
 
@@ -433,6 +451,32 @@ export default function HelicopterControl({
                 </p>
                 {spawnables.map((s) => (
                   <SpawnableRow key={s.id} item={s} />
+                ))}
+              </div>
+            )}
+
+            {tab === "places" && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[11px] font-body text-muted-foreground leading-snug">
+                  Travel anywhere on the planet. Mapbox 3D buildings render
+                  city blocks for you on arrival.
+                </p>
+                {places.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={p.onFlyTo}
+                    className="rounded-lg border border-border/60 bg-background/30 hover:border-primary/50 hover:bg-primary/10 transition-colors p-2.5 flex flex-col gap-1 text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-primary" />
+                      <p className="font-heading text-[12px] font-semibold tracking-wide text-foreground leading-none">
+                        {p.label}
+                      </p>
+                    </div>
+                    <p className="text-[10.5px] font-body text-muted-foreground leading-snug">
+                      {p.description}
+                    </p>
+                  </button>
                 ))}
               </div>
             )}
