@@ -1576,17 +1576,26 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
         onMessageUnit7={() => {
-          // Fly to Unit-7 so he's framed up before opening the chat,
-          // and pause his wander loop while the dialog is open.
+          // Fly to Unit-7 so he's framed up, turn him to face the camera,
+          // and have him wave hello.
           if (map.current) {
             const s = unit7StateRef.current;
+            const camBearing = map.current.getBearing();
             map.current.flyTo({
               center: [s.lng, s.lat],
               zoom: 20,
               pitch: 60,
-              bearing: 0,
+              bearing: camBearing,
               duration: 1100,
             });
+            // Camera bearing is degrees clockwise from north. Robot's heading
+            // is radians, 0 = north (matches the wander loop's atan2 frame).
+            // Add π so he faces TOWARD the camera, not away from it.
+            unit7BaseAnimRef.current = "Idle";
+            unit7TargetRef.current = null;
+            s.heading = (camBearing * Math.PI) / 180 + Math.PI;
+            s.currentAnim = "Wave";
+            s.animPulse++;
           }
           setUnit7Open(true);
         }}
