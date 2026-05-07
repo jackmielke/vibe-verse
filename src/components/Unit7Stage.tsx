@@ -63,16 +63,17 @@ export default function Unit7Stage({
     // Camera framing: ¾-front view of the bot's torso/head, like a
     // character-select screen. RobotExpressive's GLB renders at ~2 units
     // tall at native scale.
-    // Wide enough to fit his full body during dynamic poses (Wave raises
-     // an arm, Jump elevates him, etc.) without ever cropping the head.
+    // Match the threejs.org morph-skinning example camera so the bot
+    // appears at the size+orientation that example was authored for.
+    // https://threejs.org/examples/?q=Animation#webgl_animation_skinning_morph
     const camera = new THREE.PerspectiveCamera(
-      28,
+      45,
       canvas.clientWidth / canvas.clientHeight,
       0.25,
       100,
     );
-    camera.position.set(-1.4, 2.0, 7.5);
-    camera.lookAt(0, 1.3, 0);
+    camera.position.set(-5, 3, 10);
+    camera.lookAt(0, 1, 0);
 
     // ---- Renderer --------------------------------------------------------
     const renderer = new THREE.WebGLRenderer({
@@ -127,8 +128,10 @@ export default function Unit7Stage({
       unit7ModelUrl,
       (gltf) => {
         if (disposed) return;
-        // Threejs example loads RobotExpressive at native scale and adds
-        // it to a scene with camera ~(-5, 3, 10). We match that.
+        // Threejs example loads RobotExpressive and adds the scene as-is.
+        // Don't try to compute or normalize the bounding box — the GLB
+        // has node transforms and skinned meshes that produce a huge
+        // misleading world bbox if you setFromObject on the root.
         model = gltf.scene;
         scene.add(model);
 
@@ -227,14 +230,14 @@ export default function Unit7Stage({
   }, []);
 
   return (
-    <div className="relative w-full h-44 rounded-xl overflow-hidden bg-gradient-to-b from-primary/10 to-background/40 border border-border/50">
+    <div className="relative w-full h-72 rounded-xl overflow-hidden bg-gradient-to-b from-primary/10 to-background/40 border border-border/50">
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
         // Width/height set programmatically via ResizeObserver. Defaults
         // here just prevent flash before mount.
         width={400}
-        height={176}
+        height={288}
       />
     </div>
   );
