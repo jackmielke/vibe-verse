@@ -1575,7 +1575,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
-        onMessageUnit7={() => setUnit7Open(true)}
+        onMessageUnit7={() => {
+          // Fly to Unit-7 so he's framed up before opening the chat,
+          // and pause his wander loop while the dialog is open.
+          if (map.current) {
+            const s = unit7StateRef.current;
+            map.current.flyTo({
+              center: [s.lng, s.lat],
+              zoom: 20,
+              pitch: 60,
+              bearing: 0,
+              duration: 1100,
+            });
+          }
+          setUnit7Open(true);
+        }}
         nimbus={nimbusUI}
         onToggleNimbus={() =>
           setNimbusUI((s) => ({

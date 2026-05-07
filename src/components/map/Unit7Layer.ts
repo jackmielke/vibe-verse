@@ -48,15 +48,15 @@ export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   };
 }
 
-// In meters. RobotExpressive feels right around 24m at typical map zoom —
+// In meters. RobotExpressive feels right around 28m at typical map zoom —
 // big enough to read as a character against city blocks, not so big he's
 // obstructing the plaza.
-const SCALE_METERS = 24;
-// Float a bit off the ground so the plaza pavilion / sloped terrain
-// doesn't visually swallow him.
-const HOVER_HEIGHT = 4;
+const SCALE_METERS = 28;
+// Float ~8m above terrain so plaza decorations and small buildings can't
+// occlude his head and shoulders.
+const HOVER_HEIGHT = 8;
 // Subtle vertical bob as he idles.
-const BOB_AMPLITUDE = 0.6;
+const BOB_AMPLITUDE = 0.8;
 const FADE_SECONDS = 0.2;
 const ONE_SHOTS: Unit7AnimName[] = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"];
 
