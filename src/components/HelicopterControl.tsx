@@ -58,6 +58,14 @@ export interface PlaceControl {
 }
 
 interface Props {
+  // Visibility toggles for the lazy-loaded character GLBs. By default
+  // none are spawned so the app stays light on first paint.
+  vibeyVisible: boolean;
+  onToggleVibey: () => void;
+  unit7Visible: boolean;
+  onToggleUnit7: () => void;
+  vibePoliceVisible: boolean;
+  onToggleVibePolice: () => void;
   // Helicopter
   state: HelicopterControlState;
   onToggleEnabled: () => void;
@@ -74,6 +82,8 @@ interface Props {
   unit7ScaleMin: number;
   unit7ScaleMax: number;
   onUnit7ScaleChange: (v: number) => void;
+  unit7WalkMode: boolean;
+  onToggleUnit7Walk: () => void;
   // Vibe Police
   vibePoliceScale: number;
   vibePoliceScaleMin: number;
@@ -97,6 +107,12 @@ type Tab = "characters" | "vehicles" | "spawn" | "places";
  * Hidden by default; tap the chip to expand.
  */
 export default function HelicopterControl({
+  vibeyVisible,
+  onToggleVibey,
+  unit7Visible,
+  onToggleUnit7,
+  vibePoliceVisible,
+  onToggleVibePolice,
   state,
   onToggleEnabled,
   onTogglePilot,
@@ -110,6 +126,8 @@ export default function HelicopterControl({
   unit7ScaleMin,
   unit7ScaleMax,
   onUnit7ScaleChange,
+  unit7WalkMode,
+  onToggleUnit7Walk,
   vibePoliceScale,
   vibePoliceScaleMin,
   vibePoliceScaleMax,
@@ -149,11 +167,11 @@ export default function HelicopterControl({
   const nimbusHeadingDeg = ((nimbus.heading * 180) / Math.PI + 360) % 360;
   const anySpawnableActive = spawnables.some((s) => s.enabled || s.loading);
   const anyVehicleActive = state.enabled || nimbus.enabled;
-  const anyCharacterActive = vibey.walkMode;
+  const anyCharacterActive = vibey.walkMode || unit7WalkMode;
   const anyActive = anyVehicleActive || anyCharacterActive || anySpawnableActive;
 
   return (
-    <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
+    <div className="absolute top-24 right-4 z-20 flex flex-col items-end gap-2">
       {/* Tab toggle */}
       <button
         onClick={() => setOpen((o) => !o)}
@@ -225,10 +243,16 @@ export default function HelicopterControl({
                   iconBg="bg-primary/15 border-primary/40"
                   icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}
                   name="Vibey"
-                  subtitle="Community agent · floating above plaza"
+                  subtitle="Community agent · loads on demand"
                   live={vibey.walkMode}
                   liveLabel="WALKING"
                 >
+                  <SpawnToggle
+                    spawned={vibeyVisible}
+                    onToggle={onToggleVibey}
+                    label="Vibey"
+                  />
+                  {vibeyVisible && (
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       onClick={onMessageVibey}
@@ -248,7 +272,8 @@ export default function HelicopterControl({
                       {vibey.walkMode ? "Stop" : "Walk"}
                     </button>
                   </div>
-                  {vibey.walkMode && (
+                  )}
+                  {vibeyVisible && vibey.walkMode && (
                     <>
                       <button
                         onClick={onResetVibey}
@@ -273,15 +298,40 @@ export default function HelicopterControl({
                   iconBg="bg-primary/15 border-primary/40"
                   icon={<Bot className="w-3.5 h-3.5 text-primary" />}
                   name="Unit-7"
-                  subtitle="Resident bot · wandering the streets"
-                  live={false}
+                  subtitle="Resident bot · loads on demand"
+                  live={unit7WalkMode}
+                  liveLabel="WALKING"
                 >
-                  <button
-                    onClick={onMessageUnit7}
-                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
-                  >
-                    <Bot className="w-3 h-3" /> Talk to Unit-7
-                  </button>
+                  <SpawnToggle
+                    spawned={unit7Visible}
+                    onToggle={onToggleUnit7}
+                    label="Unit-7"
+                  />
+                  {unit7Visible && (<>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={onMessageUnit7}
+                      className="flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
+                    >
+                      <Bot className="w-3 h-3" /> Talk
+                    </button>
+                    <button
+                      onClick={onToggleUnit7Walk}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+                        unit7WalkMode
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-primary text-primary-foreground hover:opacity-90"
+                      }`}
+                    >
+                      <Footprints className="w-3 h-3" />
+                      {unit7WalkMode ? "Stop" : "Walk"}
+                    </button>
+                  </div>
+                  {unit7WalkMode && (
+                    <div className="space-y-0.5 text-[9px] font-mono text-muted-foreground leading-tight">
+                      <p>↑/W forward · ↓/S back · ←/A turn · →/D turn · ESC stop</p>
+                    </div>
+                  )}
                   <div>
                     <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
                       <span>SIZE</span>
@@ -297,6 +347,7 @@ export default function HelicopterControl({
                       className="w-full h-1 bg-background/60 rounded-full accent-primary cursor-pointer"
                     />
                   </div>
+                  </>)}
                 </CharacterRow>
 
                 {/* Vibe Police */}
@@ -304,9 +355,15 @@ export default function HelicopterControl({
                   iconBg="bg-blue-500/15 border-blue-400/40"
                   icon={<Bot className="w-3.5 h-3.5 text-blue-400" />}
                   name="Vibe Police"
-                  subtitle="Anti-vibe officer · on patrol"
+                  subtitle="Anti-vibe officer · loads on demand"
                   live={false}
                 >
+                  <SpawnToggle
+                    spawned={vibePoliceVisible}
+                    onToggle={onToggleVibePolice}
+                    label="Vibe Police"
+                  />
+                  {vibePoliceVisible && (
                   <div>
                     <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
                       <span>SIZE</span>
@@ -322,6 +379,7 @@ export default function HelicopterControl({
                       className="w-full h-1 bg-background/60 rounded-full accent-primary cursor-pointer"
                     />
                   </div>
+                  )}
                 </CharacterRow>
               </div>
             )}
@@ -514,6 +572,30 @@ function TabButton({
       {live && (
         <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
       )}
+    </button>
+  );
+}
+
+function SpawnToggle({
+  spawned,
+  onToggle,
+  label,
+}: {
+  spawned: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+        spawned
+          ? "bg-muted text-foreground hover:bg-muted/80"
+          : "bg-primary text-primary-foreground hover:opacity-90"
+      }`}
+    >
+      <Power className="w-3 h-3" />
+      {spawned ? `Despawn ${label}` : `Spawn ${label}`}
     </button>
   );
 }

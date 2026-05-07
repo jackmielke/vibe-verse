@@ -6,7 +6,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
-import { createObservatoryLayer } from "./map/ObservatoryLayer";
 import {
   createHelicopterLayer,
   createDefaultHelicopterState,
@@ -62,6 +61,7 @@ const UNIT7_WANDER_RADIUS_M = 50;
 // distinguishable on first sight.
 const VIBE_POLICE_LOCATION = { lng: -122.8688, lat: 38.6122 };
 const VIBE_POLICE_WANDER_RADIUS_M = 45;
+
 // Walking speed in meters/second.
 // Base walking speed at the default body size. The wander loop scales this
 // by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
@@ -85,7 +85,6 @@ const VILLAGE_LOCATIONS = [
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
   { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
-  { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 140 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -103,7 +102,6 @@ const STRUCTURE_FACTORIES: Record<
 > = {
   temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
   plaza: { layerId: "structure-plaza", create: createPlazaLayer },
-  observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
 };
 
 // Adds every 3D structure layer for locations that have `structure3d` set.
@@ -184,6 +182,37 @@ function addBuildingsLayer(m: mapboxgl.Map) {
 
 // Re-create structure layers (e.g. once terrain has loaded) so altitude
 // reflects current ground elevation.
+// Pacific Time → Mapbox Standard light preset. Roughly:
+//   05:00–08:00 → dawn
+//   08:00–16:00 → day
+//   16:00–19:00 → dusk
+//   else        → night
+function lightPresetForPTHour(hour: number): "dawn" | "day" | "dusk" | "night" {
+  if (hour >= 5 && hour < 8) return "dawn";
+  if (hour >= 8 && hour < 16) return "day";
+  if (hour >= 16 && hour < 19) return "dusk";
+  return "night";
+}
+
+function getPacificClock(): { hour: number; label: string } {
+  const now = new Date();
+  // Use Intl with a known timezone so we don't trust the user's local clock.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(now);
+  const label = parts.map((p) => p.value).join("");
+  const hour24Str = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    hour12: false,
+  }).format(now);
+  const hour = Number(hour24Str) % 24;
+  return { hour, label };
+}
+
 function refreshStructureLayers(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
@@ -244,6 +273,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [vibeyOpen, setVibeyOpen] = useState(false);
   const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
+  // Lazy-load: characters are off by default. Toggling on triggers GLB
+  // download + layer mount; toggling off tears them down so initial app
+  // load stays light (no ~12-54 MB of bundled meshes on first paint).
+  const [vibeyVisible, setVibeyVisible] = useState(false);
 
   // ---- Unit-7 (autonomous resident bot) --------------------------------
   const unit7StateRef = useRef<Unit7State>(
@@ -260,6 +293,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // UI-driven size slider for Unit-7 on the map. The layer reads from
   // `unit7StateRef.current.scaleMeters` each frame.
   const [unit7Scale, setUnit7Scale] = useState(UNIT7_DEFAULT_SCALE_METERS);
+  // Walk-as-Unit-7 (mirrors Vibey's walk mode): pause wander, control with
+  // WASD, third-person chase camera.
+  const [unit7WalkMode, setUnit7WalkMode] = useState(false);
+  const unit7KeysRef = useRef<Record<string, boolean>>({});
+  const [unit7Visible, setUnit7Visible] = useState(false);
+
+  // Pacific Time clock label + sun/lighting that follow real local time.
+  const [clockLabel, setClockLabel] = useState(() => getPacificClock().label);
 
   // ---- Vibe Police (anti-vibe officer) ---------------------------------
   const vibePoliceStateRef = useRef<VibePoliceState>(
@@ -270,6 +311,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const vibePoliceLayerAddedRef = useRef(false);
   const vibePoliceMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [vibePoliceScale, setVibePoliceScale] = useState(VIBE_POLICE_DEFAULT_SCALE_METERS);
+  const [vibePoliceVisible, setVibePoliceVisible] = useState(false);
 
   // ---- Spawnables (lazy-loaded heavy GLBs) -----------------------------
   const islandStateRef = useRef<SpawnableState>({
@@ -373,9 +415,15 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }
         m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
-        // Set Standard style config for colorful, immersive 3D look
+        // Set Standard style config for colorful, immersive 3D look. The
+        // lightPreset reflects local Pacific Time so the "sun" rises and
+        // sets in sync with whoever's running the village.
         try {
-          m.setConfigProperty("basemap", "lightPreset", "dusk");
+          m.setConfigProperty(
+            "basemap",
+            "lightPreset",
+            lightPresetForPTHour(getPacificClock().hour),
+          );
           m.setConfigProperty("basemap", "showPointOfInterestLabels", true);
           m.setConfigProperty("basemap", "showTransitLabels", false);
           m.setConfigProperty("basemap", "showPlaceLabels", true);
@@ -630,10 +678,37 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     );
   }, []);
 
-  // ---- Vibey: mount layer + click marker once map is ready -------------
+  // ---- Time of day + dynamic sun --------------------------------------
+  // Update the on-screen clock once a second so it stays smooth, and the
+  // Mapbox Standard lightPreset once a minute so the basemap relighting
+  // doesn't churn.
+  useEffect(() => {
+    const tickClock = () => setClockLabel(getPacificClock().label);
+    const interval = setInterval(tickClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const m = map.current;
     if (!m || !mapLoaded) return;
+    let lastPreset: string | null = null;
+    const applyPreset = () => {
+      const preset = lightPresetForPTHour(getPacificClock().hour);
+      if (preset === lastPreset) return;
+      lastPreset = preset;
+      try {
+        m.setConfigProperty("basemap", "lightPreset", preset);
+      } catch { /* may not exist on older mapbox-gl */ }
+    };
+    applyPreset();
+    const interval = setInterval(applyPreset, 60_000);
+    return () => clearInterval(interval);
+  }, [mapLoaded]);
+
+  // ---- Vibey: mount layer + click marker (only when toggled on) -------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded || !vibeyVisible) return;
     const LAYER_ID = "vibey-character";
 
     const mount = () => {
@@ -712,13 +787,18 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
     return () => {
       m.off("style.load", onStyle);
+      // Tear down on toggle-off so memory + GPU resources are freed.
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      vibeyLayerAddedRef.current = false;
+      vibeyMarkerRef.current?.remove();
+      vibeyMarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, vibeyVisible]);
 
-  // ---- Unit-7: mount layer + click marker once map is ready -------------
+  // ---- Unit-7: mount layer + click marker (only when toggled on) ------
   useEffect(() => {
     const m = map.current;
-    if (!m || !mapLoaded) return;
+    if (!m || !mapLoaded || !unit7Visible) return;
     const LAYER_ID = "unit7-character";
 
     const handleOneShotFinished = () => {
@@ -815,12 +895,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
     return () => {
       m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      unit7LayerAddedRef.current = false;
+      unit7MarkerRef.current?.remove();
+      unit7MarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, unit7Visible]);
 
   // ---- Unit-7: autonomous wander loop ----------------------------------
   useEffect(() => {
-    if (!mapLoaded) return;
+    if (!mapLoaded || !unit7Visible) return;
     const m = map.current;
     if (!m) return;
 
@@ -865,6 +949,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         return;
       }
 
+      // Pause autonomous wander while the user is piloting him.
+      if (unit7WalkMode) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
       const target = unit7TargetRef.current;
       if (!target) {
         // Idling. Pick a new target once the idle timer expires.
@@ -893,8 +983,6 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           s.currentAnim = "Idle";
           s.animPulse++;
         } else {
-          // Scale stride length with body size so a 10× kaiju takes 10×
-          // strides. Falls back to base when scale isn't set.
           const sizeFactor = (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) /
             UNIT7_DEFAULT_SCALE_METERS;
           const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
@@ -902,9 +990,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           const ny = dyMeters / distance;
           s.lng += (nx * step) / metersPerDegLng;
           s.lat += (ny * step) / metersPerDegLat;
-          // Heading: 0 = facing +Z (north). atan2 with east, north.
           s.heading = Math.atan2(nx, ny);
-          // Resample ground altitude as he moves.
           try {
             const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
             if (typeof elev === "number") s.baseAltitude = elev;
@@ -917,12 +1003,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mapLoaded, unit7Open]);
+  }, [mapLoaded, unit7Open, unit7WalkMode, unit7Visible]);
 
-  // ---- Vibe Police: mount layer + click marker -------------------------
+  // ---- Vibe Police: mount layer + click marker (only when toggled on) -
   useEffect(() => {
     const m = map.current;
-    if (!m || !mapLoaded) return;
+    if (!m || !mapLoaded || !vibePoliceVisible) return;
     const LAYER_ID = "vibe-police-character";
 
     const mount = () => {
@@ -984,12 +1070,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     m.on("style.load", onStyle);
     return () => {
       m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      vibePoliceLayerAddedRef.current = false;
+      vibePoliceMarkerRef.current?.remove();
+      vibePoliceMarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, vibePoliceVisible]);
 
   // ---- Vibe Police: autonomous wander loop -----------------------------
   useEffect(() => {
-    if (!mapLoaded) return;
+    if (!mapLoaded || !vibePoliceVisible) return;
     const m = map.current;
     if (!m) return;
 
@@ -1055,7 +1145,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mapLoaded]);
+  }, [mapLoaded, vibePoliceVisible]);
 
   // ---- Spawnables: clear refs when style reloads -----------------------
   // Mapbox wipes all custom layers on style.load. Without nulling the refs
@@ -1605,6 +1695,96 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     return () => cancelAnimationFrame(raf);
   }, [vibeyUI.walkMode]);
 
+  // ---- Unit-7: walk-mode keyboard input --------------------------------
+  useEffect(() => {
+    if (!unit7WalkMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setUnit7WalkMode(false);
+        return;
+      }
+      unit7KeysRef.current[e.key.toLowerCase()] = true;
+    };
+    const onUp = (e: KeyboardEvent) => {
+      unit7KeysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      unit7KeysRef.current = {};
+    };
+  }, [unit7WalkMode]);
+
+  // ---- Unit-7: walk loop + third-person chase camera -------------------
+  useEffect(() => {
+    if (!unit7WalkMode) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    const WALK_SPEED = 6; // m/s, scaled by body size below
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = unit7StateRef.current;
+      const k = unit7KeysRef.current;
+
+      const turn =
+        (k["arrowleft"] || k["a"] ? -1 : 0) +
+        (k["arrowright"] || k["d"] ? 1 : 0);
+      const forward =
+        (k["arrowup"] || k["w"] ? 1 : 0) +
+        (k["arrowdown"] || k["s"] ? -0.6 : 0);
+
+      s.heading += turn * 1.6 * dt;
+
+      const sinH = Math.sin(s.heading);
+      const cosH = Math.cos(s.heading);
+      const sizeFactor =
+        (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) / UNIT7_DEFAULT_SCALE_METERS;
+      const speed = WALK_SPEED * sizeFactor;
+      const eastM = sinH * forward * speed;
+      const northM = cosH * forward * speed;
+      s.lat += (northM * dt) / 111320;
+      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+
+      // Drive the right animation for what he's doing right now.
+      const wantAnim = forward !== 0 ? "Walking" : "Idle";
+      if (s.currentAnim !== wantAnim) {
+        unit7BaseAnimRef.current = wantAnim;
+        s.currentAnim = wantAnim;
+        s.animPulse++;
+      }
+
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        if (typeof elev === "number") s.baseAltitude = elev;
+      } catch { /* */ }
+
+      unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+
+      // Third-person chase cam: ~12m behind & above him.
+      const back = 12;
+      const camLat = s.lat - (cosH * back) / 111320;
+      const camLng =
+        s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      m.jumpTo({
+        center: [camLng, camLat],
+        bearing: (s.heading * 180) / Math.PI,
+        pitch: 75,
+        zoom: 20,
+      });
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [unit7WalkMode]);
+
   const resetVibey = useCallback(() => {
     const m = map.current;
     const s = vibeyStateRef.current;
@@ -1685,12 +1865,20 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         transition={{ delay: 0.8 }}
         className="absolute top-4 right-4 z-10"
       >
-        <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-          </span>
-          <span className="text-xs font-body font-medium text-foreground">208 here now</span>
+        <div className="flex flex-col items-end gap-2">
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+            <span className="text-xs font-body font-medium text-foreground">208 here now</span>
+          </div>
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] font-mono font-semibold text-primary tracking-wide">
+              {clockLabel}
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground tracking-widest">PT</span>
+          </div>
         </div>
       </motion.div>
 
@@ -1764,6 +1952,23 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        vibeyVisible={vibeyVisible}
+        onToggleVibey={() => setVibeyVisible((v) => {
+          // If turning off while walking, exit walk mode so the chase
+          // camera doesn't try to follow a despawned character.
+          if (v && vibeyUI.walkMode) {
+            vibeyStateRef.current.walkMode = false;
+            setVibeyUI((s) => ({ ...s, walkMode: false }));
+          }
+          return !v;
+        })}
+        unit7Visible={unit7Visible}
+        onToggleUnit7={() => setUnit7Visible((v) => {
+          if (v && unit7WalkMode) setUnit7WalkMode(false);
+          return !v;
+        })}
+        vibePoliceVisible={vibePoliceVisible}
+        onToggleVibePolice={() => setVibePoliceVisible((v) => !v)}
         unit7Scale={unit7Scale}
         unit7ScaleMin={UNIT7_MIN_SCALE_METERS}
         unit7ScaleMax={UNIT7_MAX_SCALE_METERS}
@@ -1777,6 +1982,25 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         onVibePoliceScaleChange={(v) => {
           setVibePoliceScale(v);
           vibePoliceStateRef.current.scaleMeters = v;
+        }}
+        unit7WalkMode={unit7WalkMode}
+        onToggleUnit7Walk={() => {
+          const next = !unit7WalkMode;
+          if (next && map.current) {
+            const s = unit7StateRef.current;
+            try {
+              const elev = map.current.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+              if (typeof elev === "number") s.baseAltitude = elev;
+            } catch { /* */ }
+            map.current.flyTo({
+              center: [s.lng, s.lat],
+              zoom: 20,
+              pitch: 75,
+              bearing: (s.heading * 180) / Math.PI,
+              duration: 1100,
+            });
+          }
+          setUnit7WalkMode(next);
         }}
         onMessageUnit7={() => {
           // Third-person video-game-style framing: zoom way in, low-ish
@@ -1823,7 +2047,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           {
             id: "edge-esmeralda",
             label: "Edge Esmeralda",
-            description: "Healdsburg, CA. The pop-up village — Vibey, Unit-7, Vibe Police, the plaza pavilion, observatory, temple.",
+            description: "Healdsburg, CA. The pop-up village — Vibey, Unit-7, Vibe Police, the plaza pavilion, and the meditation temple.",
             onFlyTo: () => {
               if (!map.current) return;
               map.current.flyTo({
