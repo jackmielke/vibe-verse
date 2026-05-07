@@ -11,6 +11,10 @@ import {
   Footprints,
   Rocket,
   Mountain,
+  Bot,
+  Users,
+  Car,
+  Menu,
 } from "lucide-react";
 
 export interface HelicopterControlState {
@@ -56,6 +60,8 @@ interface Props {
   onToggleVibeyWalk: () => void;
   onResetVibey: () => void;
   onMessageVibey: () => void;
+  // Unit-7 (resident bot)
+  onMessageUnit7: () => void;
   // Nimbus VTOL
   nimbus: NimbusControlState;
   onToggleNimbus: () => void;
@@ -65,12 +71,11 @@ interface Props {
   spawnables: SpawnableControl[];
 }
 
-type Tab = "vibey" | "heli" | "nimbus" | "spawn";
+type Tab = "characters" | "vehicles" | "spawn";
 
 /**
- * Sky Patrol — unified control panel for both Vibey and the helicopter.
- * Hidden by default; tap the chip to expand. Two tabs let you switch
- * between piloting Vibey on foot and flying the chopper.
+ * Menu — unified control panel: Characters, Vehicles, and spawnable Worlds.
+ * Hidden by default; tap the chip to expand.
  */
 export default function HelicopterControl({
   state,
@@ -81,6 +86,7 @@ export default function HelicopterControl({
   onToggleVibeyWalk,
   onResetVibey,
   onMessageVibey,
+  onMessageUnit7,
   nimbus,
   onToggleNimbus,
   onTogglePilotNimbus,
@@ -88,25 +94,25 @@ export default function HelicopterControl({
   spawnables,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>("vibey");
+  const [tab, setTab] = useState<Tab>("characters");
 
   // Auto-open + auto-switch tabs when a mode engages
   useEffect(() => {
     if (state.pilotMode) {
       setOpen(true);
-      setTab("heli");
+      setTab("vehicles");
     }
   }, [state.pilotMode]);
   useEffect(() => {
     if (vibey.walkMode) {
       setOpen(true);
-      setTab("vibey");
+      setTab("characters");
     }
   }, [vibey.walkMode]);
   useEffect(() => {
     if (nimbus.pilotMode) {
       setOpen(true);
-      setTab("nimbus");
+      setTab("vehicles");
     }
   }, [nimbus.pilotMode]);
 
@@ -114,7 +120,9 @@ export default function HelicopterControl({
   const vibeyHeadingDeg = ((vibey.heading * 180) / Math.PI + 360) % 360;
   const nimbusHeadingDeg = ((nimbus.heading * 180) / Math.PI + 360) % 360;
   const anySpawnableActive = spawnables.some((s) => s.enabled || s.loading);
-  const anyActive = state.enabled || vibey.walkMode || nimbus.enabled || anySpawnableActive;
+  const anyVehicleActive = state.enabled || nimbus.enabled;
+  const anyCharacterActive = vibey.walkMode;
+  const anyActive = anyVehicleActive || anyCharacterActive || anySpawnableActive;
 
   return (
     <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
@@ -122,13 +130,13 @@ export default function HelicopterControl({
       <button
         onClick={() => setOpen((o) => !o)}
         className="glass-panel rounded-lg px-2.5 py-2 flex items-center gap-1.5 hover:bg-muted transition-colors"
-        title="Sky Patrol"
+        title="Menu"
       >
-        <Sparkles
+        <Menu
           className={`w-4 h-4 ${anyActive ? "text-primary" : "text-muted-foreground"}`}
         />
         <span className="font-heading text-[10px] font-semibold tracking-widest uppercase text-foreground">
-          Sky Patrol
+          Menu
         </span>
         {open ? (
           <ChevronUp className="w-3 h-3 text-muted-foreground" />
@@ -144,30 +152,23 @@ export default function HelicopterControl({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.18 }}
-            className="glass-panel rounded-xl p-3 w-[260px] flex flex-col gap-2.5"
+            className="glass-panel rounded-xl p-3 w-[280px] flex flex-col gap-2.5"
           >
             {/* Tab switcher */}
-            <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-background/40 border border-border">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
-                active={tab === "vibey"}
-                onClick={() => setTab("vibey")}
-                icon={<Sparkles className="w-3 h-3" />}
-                label="Vibey"
-                live={vibey.walkMode}
+                active={tab === "characters"}
+                onClick={() => setTab("characters")}
+                icon={<Users className="w-3 h-3" />}
+                label="Characters"
+                live={anyCharacterActive}
               />
               <TabButton
-                active={tab === "heli"}
-                onClick={() => setTab("heli")}
-                icon={<Plane className="w-3 h-3" />}
-                label="Chop"
-                live={state.enabled}
-              />
-              <TabButton
-                active={tab === "nimbus"}
-                onClick={() => setTab("nimbus")}
-                icon={<Rocket className="w-3 h-3" />}
-                label="Nimbus"
-                live={nimbus.enabled}
+                active={tab === "vehicles"}
+                onClick={() => setTab("vehicles")}
+                icon={<Car className="w-3 h-3" />}
+                label="Vehicles"
+                live={anyVehicleActive}
               />
               <TabButton
                 active={tab === "spawn"}
@@ -178,197 +179,193 @@ export default function HelicopterControl({
               />
             </div>
 
-            {tab === "vibey" && (
-              <div className="flex flex-col gap-2.5">
+            {tab === "characters" && (
+              <div className="flex flex-col gap-3">
                 <p className="text-[11px] font-body text-muted-foreground leading-snug">
-                  Vibey is your community agent. Walk around as Vibey or send a message.
+                  Residents of Edge Esmeralda. Tap to chat or take controls.
                 </p>
 
-                <button
-                  onClick={onToggleVibeyWalk}
-                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors ${
-                    vibey.walkMode
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-primary text-primary-foreground hover:opacity-90"
-                  }`}
+                {/* Vibey */}
+                <CharacterRow
+                  iconBg="bg-primary/15 border-primary/40"
+                  icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}
+                  name="Vibey"
+                  subtitle="Community agent · floating above plaza"
+                  live={vibey.walkMode}
+                  liveLabel="WALKING"
                 >
-                  <Footprints className="w-3.5 h-3.5" />
-                  {vibey.walkMode ? "Stop Walking" : "Walk as Vibey"}
-                </button>
-
-                <button
-                  onClick={onMessageVibey}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Message Vibey
-                </button>
-
-                {vibey.walkMode && (
-                  <>
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
-                      onClick={onResetVibey}
-                      className="w-full flex items-center justify-center gap-1.5 text-[11px] font-body py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={onMessageVibey}
+                      className="flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
                     >
-                      <Home className="w-3 h-3" />
-                      Return to plaza
+                      <Sparkles className="w-3 h-3" /> Message
                     </button>
+                    <button
+                      onClick={onToggleVibeyWalk}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+                        vibey.walkMode
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-primary text-primary-foreground hover:opacity-90"
+                      }`}
+                    >
+                      <Footprints className="w-3 h-3" />
+                      {vibey.walkMode ? "Stop" : "Walk"}
+                    </button>
+                  </div>
+                  {vibey.walkMode && (
+                    <>
+                      <button
+                        onClick={onResetVibey}
+                        className="w-full flex items-center justify-center gap-1.5 text-[10px] font-body py-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Home className="w-3 h-3" />
+                        Return to plaza
+                      </button>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Stat label="HDG" value={`${Math.round(vibeyHeadingDeg)}°`} />
+                        <Stat label="MODE" value="WALK" />
+                      </div>
+                      <div className="space-y-0.5 text-[9px] font-mono text-muted-foreground leading-tight">
+                        <p>↑/W forward · ↓/S back · ←/A turn · →/D turn · ESC stop</p>
+                      </div>
+                    </>
+                  )}
+                </CharacterRow>
 
-                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-border">
-                      <Stat label="HDG" value={`${Math.round(vibeyHeadingDeg)}°`} />
-                      <Stat label="MODE" value="WALK" />
-                    </div>
-
-                    <div className="pt-1 border-t border-border space-y-0.5 text-[10px] font-mono text-muted-foreground leading-tight">
-                      <p>↑/W forward · ↓/S back</p>
-                      <p>←/A turn left · →/D turn right</p>
-                      <p>ESC stop</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {tab === "heli" && (
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <p className="font-heading text-[11px] font-semibold tracking-widest uppercase text-primary">
-                    Helicopter
-                  </p>
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                      state.enabled
-                        ? "bg-primary/20 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {state.enabled ? "ONLINE" : "OFFLINE"}
-                  </span>
-                </div>
-
-                <button
-                  onClick={onToggleEnabled}
-                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors ${
-                    state.enabled
-                      ? "bg-muted text-foreground hover:bg-muted/80"
-                      : "bg-primary text-primary-foreground hover:opacity-90"
-                  }`}
+                {/* Unit-7 */}
+                <CharacterRow
+                  iconBg="bg-primary/15 border-primary/40"
+                  icon={<Bot className="w-3.5 h-3.5 text-primary" />}
+                  name="Unit-7"
+                  subtitle="Resident bot · wandering the streets"
+                  live={false}
                 >
-                  <Power className="w-3.5 h-3.5" />
-                  {state.enabled ? "Power Off" : "Spin Up"}
-                </button>
-
-                <button
-                  onClick={onTogglePilot}
-                  disabled={!state.enabled}
-                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    state.pilotMode
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-primary/15 text-primary hover:bg-primary/25"
-                  }`}
-                >
-                  <Gamepad2 className="w-3.5 h-3.5" />
-                  {state.pilotMode ? "Release Controls" : "Take Controls"}
-                </button>
-
-                {state.enabled && (
                   <button
-                    onClick={onResetPosition}
-                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-body py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={onMessageUnit7}
+                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
                   >
-                    <Home className="w-3 h-3" />
-                    Return to base
+                    <Bot className="w-3 h-3" /> Talk to Unit-7
                   </button>
-                )}
-
-                {state.enabled && (
-                  <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-border">
-                    <Stat label="ALT" value={`${Math.round(state.altitude)}m`} />
-                    <Stat label="HDG" value={`${Math.round(headingDeg)}°`} />
-                    <Stat label="SPD" value={`${Math.round(state.speedKts)}kt`} />
-                  </div>
-                )}
-
-                {state.pilotMode && (
-                  <div className="pt-1 border-t border-border space-y-0.5 text-[10px] font-mono text-muted-foreground leading-tight">
-                    <p>↑/↓ throttle · ←/→ turn</p>
-                    <p>W/S climb · A/D strafe</p>
-                    <p>ESC release</p>
-                  </div>
-                )}
+                </CharacterRow>
               </div>
             )}
-            {tab === "nimbus" && (
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <p className="font-heading text-[11px] font-semibold tracking-widest uppercase text-primary">
-                    Nimbus VTOL
-                  </p>
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                      nimbus.enabled
-                        ? "bg-primary/20 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {nimbus.enabled ? "ARMED" : "STOWED"}
-                  </span>
-                </div>
 
+            {tab === "vehicles" && (
+              <div className="flex flex-col gap-3">
                 <p className="text-[11px] font-body text-muted-foreground leading-snug">
-                  Futuristic personal aircraft. Silent thrusters, full hover.
+                  Personal aircraft. Power on, then take controls to fly.
                 </p>
 
-                <button
-                  onClick={onToggleNimbus}
-                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors ${
-                    nimbus.enabled
-                      ? "bg-muted text-foreground hover:bg-muted/80"
-                      : "bg-primary text-primary-foreground hover:opacity-90"
-                  }`}
+                {/* Helicopter */}
+                <VehicleRow
+                  icon={<Plane className="w-3.5 h-3.5 text-primary" />}
+                  name="Helicopter"
+                  status={state.enabled ? "ONLINE" : "OFFLINE"}
+                  live={state.enabled}
                 >
-                  <Power className="w-3.5 h-3.5" />
-                  {nimbus.enabled ? "Power Off" : "Launch Nimbus"}
-                </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={onToggleEnabled}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+                        state.enabled
+                          ? "bg-muted text-foreground hover:bg-muted/80"
+                          : "bg-primary text-primary-foreground hover:opacity-90"
+                      }`}
+                    >
+                      <Power className="w-3 h-3" />
+                      {state.enabled ? "Power Off" : "Spin Up"}
+                    </button>
+                    <button
+                      onClick={onTogglePilot}
+                      disabled={!state.enabled}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        state.pilotMode
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-primary/15 text-primary hover:bg-primary/25"
+                      }`}
+                    >
+                      <Gamepad2 className="w-3 h-3" />
+                      {state.pilotMode ? "Release" : "Take"}
+                    </button>
+                  </div>
+                  {state.enabled && (
+                    <>
+                      <button
+                        onClick={onResetPosition}
+                        className="w-full flex items-center justify-center gap-1.5 text-[10px] font-body py-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Home className="w-3 h-3" />
+                        Return to base
+                      </button>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <Stat label="ALT" value={`${Math.round(state.altitude)}m`} />
+                        <Stat label="HDG" value={`${Math.round(headingDeg)}°`} />
+                        <Stat label="SPD" value={`${Math.round(state.speedKts)}kt`} />
+                      </div>
+                    </>
+                  )}
+                  {state.pilotMode && (
+                    <div className="space-y-0.5 text-[9px] font-mono text-muted-foreground leading-tight">
+                      <p>↑/↓ throttle · ←/→ turn · W/S climb · A/D strafe · ESC release</p>
+                    </div>
+                  )}
+                </VehicleRow>
 
-                <button
-                  onClick={onTogglePilotNimbus}
-                  disabled={!nimbus.enabled}
-                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-heading font-semibold py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    nimbus.pilotMode
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-primary/15 text-primary hover:bg-primary/25"
-                  }`}
+                {/* Nimbus VTOL */}
+                <VehicleRow
+                  icon={<Rocket className="w-3.5 h-3.5 text-primary" />}
+                  name="Nimbus VTOL"
+                  status={nimbus.enabled ? "ARMED" : "STOWED"}
+                  live={nimbus.enabled}
                 >
-                  <Gamepad2 className="w-3.5 h-3.5" />
-                  {nimbus.pilotMode ? "Release Controls" : "Take Controls"}
-                </button>
-
-                {nimbus.enabled && (
-                  <button
-                    onClick={onResetNimbus}
-                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-body py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Home className="w-3 h-3" />
-                    Return to base
-                  </button>
-                )}
-
-                {nimbus.enabled && (
-                  <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-border">
-                    <Stat label="ALT" value={`${Math.round(nimbus.altitude)}m`} />
-                    <Stat label="HDG" value={`${Math.round(nimbusHeadingDeg)}°`} />
-                    <Stat label="SPD" value={`${Math.round(nimbus.speedKts)}kt`} />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={onToggleNimbus}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+                        nimbus.enabled
+                          ? "bg-muted text-foreground hover:bg-muted/80"
+                          : "bg-primary text-primary-foreground hover:opacity-90"
+                      }`}
+                    >
+                      <Power className="w-3 h-3" />
+                      {nimbus.enabled ? "Power Off" : "Launch"}
+                    </button>
+                    <button
+                      onClick={onTogglePilotNimbus}
+                      disabled={!nimbus.enabled}
+                      className={`flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        nimbus.pilotMode
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-primary/15 text-primary hover:bg-primary/25"
+                      }`}
+                    >
+                      <Gamepad2 className="w-3 h-3" />
+                      {nimbus.pilotMode ? "Release" : "Take"}
+                    </button>
                   </div>
-                )}
-
-                {nimbus.pilotMode && (
-                  <div className="pt-1 border-t border-border space-y-0.5 text-[10px] font-mono text-muted-foreground leading-tight">
-                    <p>↑/↓ throttle · ←/→ turn</p>
-                    <p>W/S climb · A/D strafe</p>
-                    <p>ESC release</p>
-                  </div>
-                )}
+                  {nimbus.enabled && (
+                    <>
+                      <button
+                        onClick={onResetNimbus}
+                        className="w-full flex items-center justify-center gap-1.5 text-[10px] font-body py-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Home className="w-3 h-3" />
+                        Return to base
+                      </button>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <Stat label="ALT" value={`${Math.round(nimbus.altitude)}m`} />
+                        <Stat label="HDG" value={`${Math.round(nimbusHeadingDeg)}°`} />
+                        <Stat label="SPD" value={`${Math.round(nimbus.speedKts)}kt`} />
+                      </div>
+                    </>
+                  )}
+                  {nimbus.pilotMode && (
+                    <div className="space-y-0.5 text-[9px] font-mono text-muted-foreground leading-tight">
+                      <p>↑/↓ throttle · ←/→ turn · W/S climb · A/D strafe · ESC release</p>
+                    </div>
+                  )}
+                </VehicleRow>
               </div>
             )}
 
@@ -417,6 +414,83 @@ function TabButton({
         <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
       )}
     </button>
+  );
+}
+
+function CharacterRow({
+  icon,
+  iconBg,
+  name,
+  subtitle,
+  live,
+  liveLabel = "LIVE",
+  children,
+}: {
+  icon: React.ReactNode;
+  iconBg: string;
+  name: string;
+  subtitle: string;
+  live: boolean;
+  liveLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/30 p-2.5 flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <div className={`w-7 h-7 rounded-md border ${iconBg} flex items-center justify-center`}>
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-heading text-[12px] font-semibold tracking-wide text-foreground leading-none">
+            {name}
+          </p>
+          <p className="text-[10px] font-body text-muted-foreground leading-snug mt-0.5 truncate">
+            {subtitle}
+          </p>
+        </div>
+        {live && (
+          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+            {liveLabel}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function VehicleRow({
+  icon,
+  name,
+  status,
+  live,
+  children,
+}: {
+  icon: React.ReactNode;
+  name: string;
+  status: string;
+  live: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/30 p-2.5 flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-md border border-primary/40 bg-primary/15 flex items-center justify-center">
+          {icon}
+        </div>
+        <p className="flex-1 font-heading text-[12px] font-semibold tracking-wide text-foreground leading-none">
+          {name}
+        </p>
+        <span
+          className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+            live ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {status}
+        </span>
+      </div>
+      {children}
+    </div>
   );
 }
 
