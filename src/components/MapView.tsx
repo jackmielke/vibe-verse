@@ -50,7 +50,10 @@ const UNIT7_LOCATION = { lng: -122.8696, lat: 38.6118 };
 // Wander radius (in meters, approximate) from spawn point.
 const UNIT7_WANDER_RADIUS_M = 50;
 // Walking speed in meters/second.
-const UNIT7_SPEED_MPS = 1.6;
+// Base walking speed at the default body size. The wander loop scales this
+// by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
+// 10× strides instead of looking like he's foot-shuffling.
+const UNIT7_SPEED_MPS = 4;
 // Idle pause between moves, seconds.
 const UNIT7_IDLE_MIN_S = 2.5;
 const UNIT7_IDLE_MAX_S = 6;

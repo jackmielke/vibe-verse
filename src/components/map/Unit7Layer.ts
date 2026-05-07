@@ -43,7 +43,8 @@ export interface Unit7State {
 // right" early on — proportionate halo, recognizable character.
 export const UNIT7_DEFAULT_SCALE_METERS = 28;
 export const UNIT7_MIN_SCALE_METERS = 28;
-export const UNIT7_MAX_SCALE_METERS = 280;
+// 10× the old cap so he can tower over the plaza pavilion when you want.
+export const UNIT7_MAX_SCALE_METERS = 1100;
 
 export function createDefaultUnit7State(lng: number, lat: number): Unit7State {
   return {
@@ -85,6 +86,9 @@ export function createUnit7Layer(
   let lastAnim: Unit7AnimName | null = null;
   let lastPulse = state.animPulse;
   let lastTime = performance.now();
+  // Static centering offsets captured after GLB load. Re-applied every frame
+  // so any animation root motion can't drift the bot away from the halo.
+  const modelHomePos = new THREE.Vector3();
   const startTime = performance.now();
 
   // Decorative beacon group so we can pulse / scale it in render().
@@ -184,17 +188,18 @@ export function createUnit7Layer(
         unit7ModelUrl,
         (gltf) => {
           model = gltf.scene;
-          // Normalize so the model is ~2 units tall and feet sit at y=0.
+          // Normalize height to 2 scene units. We do NOT translate to center
+          // on the bbox — RobotExpressive's GLB is authored with origin
+          // close to the feet center, and any pre-translate gets multiplied
+          // by `meterScale` at render time, so even sub-unit offsets become
+          // hundreds of meters at large slider values. Leaving it natural
+          // keeps the bot tight to the halo at every scale.
           const box = new THREE.Box3().setFromObject(model);
           const size = new THREE.Vector3();
           box.getSize(size);
           const fit = 2 / (size.y || 1);
           model.scale.setScalar(fit);
-          const center = new THREE.Vector3();
-          box.getCenter(center);
-          model.position.x = -center.x * fit;
-          model.position.z = -center.z * fit;
-          model.position.y = -box.min.y * fit;
+          modelHomePos.copy(model.position); // (0, 0, 0)
           scene.add(model);
 
           // Find the head mesh that owns the face morph targets so we can
@@ -246,6 +251,11 @@ export function createUnit7Layer(
       const t = (now - startTime) / 1000;
 
       if (mixer) mixer.update(delta);
+
+      // Pin the model back to its centered home each frame so any root
+      // translation an animation tries to apply (Walking has stride drift,
+      // for example) can't pull him out from under the halo.
+      if (model) model.position.copy(modelHomePos);
 
       // Apply animation changes from outside.
       if (lastAnim !== state.currentAnim || lastPulse !== state.animPulse) {
