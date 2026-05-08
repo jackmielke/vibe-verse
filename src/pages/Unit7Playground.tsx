@@ -642,7 +642,7 @@ export default function Unit7Playground() {
     arc: true,
     ship: true,
     sparks: true,
-    rocky: true,
+    rocky: false, // off by default — flip from the Layers panel
   });
   const layerVisibleRef = useRef(layerVisible);
   layerVisibleRef.current = layerVisible;
@@ -2673,13 +2673,13 @@ export default function Unit7Playground() {
           const box = new THREE.Box3().setFromObject(rocky);
           const size = new THREE.Vector3();
           box.getSize(size);
-          // Normalize to ~2.2 units tall so he reads about Vibey's
-          // height (Vibey's RobotExpressive scales to 2 units).
-          const fit = 2.2 / Math.max(size.y, 0.0001);
+          // Normalize by his largest dimension — the GLB is a sprawled
+          // creature so a height-only fit was making him tiny+low.
+          const fit = 2.6 / Math.max(size.x, size.y, size.z, 0.0001);
           rocky.scale.setScalar(fit);
-          // Park him on the platform near the edge, slightly behind
-          // and to Vibey's right so he's visible but not blocking.
-          rocky.position.set(2.4, -0.05, 1.2);
+          // Park him on the platform near Vibey's right; lift his Y so
+          // he sits ON the disc instead of half-clipping into it.
+          rocky.position.set(2.6, 0.4, 1.4);
           rocky.rotation.y = -0.7; // angle toward Vibey
           // PBR clamp so the gilded textures don't read black.
           rocky.traverse((obj) => {
