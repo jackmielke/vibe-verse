@@ -14,6 +14,7 @@ import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
 import floatingIslandUrl from "@/assets/glb/floating-island.glb";
 import pixelTouchUrl from "@/assets/glb/pixel-touch.glb";
+import rockyUrl from "@/assets/glb/rocky.glb";
 import type {
   Unit7AnimName,
   Unit7Expression,
@@ -630,7 +631,8 @@ export default function Unit7Playground() {
     | "comet"
     | "arc"
     | "ship"
-    | "sparks";
+    | "sparks"
+    | "rocky";
   const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({
     cards: true,
     memories: false, // default OFF — knowledge can feel noisy
@@ -640,6 +642,7 @@ export default function Unit7Playground() {
     arc: true,
     ship: true,
     sparks: true,
+    rocky: true,
   });
   const layerVisibleRef = useRef(layerVisible);
   layerVisibleRef.current = layerVisible;
@@ -650,6 +653,7 @@ export default function Unit7Playground() {
   const cometRef = useRef<THREE.Group | null>(null);
   const shipRef = useRef<THREE.Group | null>(null);
   const sparksRef = useRef<THREE.Points | null>(null);
+  const rockyRef = useRef<THREE.Group | null>(null);
   const [controlPanelOpen, setControlPanelOpen] = useState(false);
 
   // Re-apply layer visibility whenever the toggles change. Async-loaded
@@ -667,6 +671,7 @@ export default function Unit7Playground() {
     // (Comet visibility is also driven by its own spawn logic when on.)
     if (shipRef.current) shipRef.current.visible = layerVisible.ship;
     if (sparksRef.current) sparksRef.current.visible = layerVisible.sparks;
+    if (rockyRef.current) rockyRef.current.visible = layerVisible.rocky;
   }, [layerVisible]);
   // Click-to-focus state: when the user clicks a card or memory orb,
   // the scene useEffect calls this ref's current handler.
@@ -2657,6 +2662,53 @@ export default function Unit7Playground() {
       );
     }
 
+    // ---- Rocky (gilded golem) ---------------------------------------
+    // A second character that hangs out on the platform with Vibey.
+    {
+      const rockyLoader = new GLTFLoader();
+      rockyLoader.load(
+        rockyUrl,
+        (gltf) => {
+          const rocky = gltf.scene;
+          const box = new THREE.Box3().setFromObject(rocky);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          // Normalize to ~2.2 units tall so he reads about Vibey's
+          // height (Vibey's RobotExpressive scales to 2 units).
+          const fit = 2.2 / Math.max(size.y, 0.0001);
+          rocky.scale.setScalar(fit);
+          // Park him on the platform near the edge, slightly behind
+          // and to Vibey's right so he's visible but not blocking.
+          rocky.position.set(2.4, -0.05, 1.2);
+          rocky.rotation.y = -0.7; // angle toward Vibey
+          // PBR clamp so the gilded textures don't read black.
+          rocky.traverse((obj) => {
+            const mesh = obj as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const apply = (mat: THREE.Material) => {
+              const std = mat as THREE.MeshStandardMaterial;
+              if (std && "metalness" in std) {
+                std.metalness = Math.min(std.metalness, 0.5);
+                std.roughness = Math.max(std.roughness, 0.3);
+                std.envMapIntensity = 1.0;
+                std.needsUpdate = true;
+              }
+            };
+            const mat = mesh.material;
+            if (Array.isArray(mat)) mat.forEach(apply);
+            else if (mat) apply(mat);
+          });
+          rocky.visible = layerVisibleRef.current.rocky;
+          scene.add(rocky);
+          rockyRef.current = rocky;
+        },
+        undefined,
+        (err) => {
+          console.error("[Vibey] rocky failed", err);
+        },
+      );
+    }
+
     // ---- Floating platform -------------------------------------------
     const platformRadius = 6.5;
     {
@@ -3810,6 +3862,7 @@ export default function Unit7Playground() {
           </p>
           <div className="flex flex-col gap-1">
             {[
+              { id: "rocky" as const, label: "Rocky 🪨" },
               { id: "cards" as const, label: "People cards" },
               { id: "memories" as const, label: "Vibey · Knows" },
               { id: "asteroids" as const, label: "Asteroid belt" },
