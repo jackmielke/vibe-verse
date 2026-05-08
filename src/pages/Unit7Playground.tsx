@@ -57,6 +57,7 @@ interface ChatMessage {
 
 // ---------- Component --------------------------------------------------
 
+// "Emotes" — play once, then we revert to whatever locomotion he was doing.
 const ONE_SHOTS: Set<Unit7AnimName> = new Set([
   "Wave",
   "Yes",
@@ -64,6 +65,15 @@ const ONE_SHOTS: Set<Unit7AnimName> = new Set([
   "ThumbsUp",
   "Punch",
   "Jump",
+]);
+// "States that hold a pose" — play once, freeze on the last frame, do NOT
+// revert. Without this, Sitting / Standing / Death loop forever (he
+// repeatedly sits down, dies, etc.) because the underlying clip is a
+// transition, not a steady-state loop.
+const HELD_POSES: Set<Unit7AnimName> = new Set([
+  "Sitting",
+  "Standing",
+  "Death",
 ]);
 
 const ALL_EMOTES: { label: string; anim: Unit7AnimName }[] = [
@@ -366,11 +376,17 @@ export default function Unit7Playground() {
       const next = actions.get(name);
       if (!next) return;
       const oneShot = ONE_SHOTS.has(name);
+      const held = HELD_POSES.has(name);
       if (activeAction === next && !restart) return;
       if (activeAction && activeAction !== next) activeAction.fadeOut(0.18);
       next.reset();
-      next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
-      next.clampWhenFinished = oneShot;
+      if (oneShot || held) {
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+      } else {
+        next.setLoop(THREE.LoopRepeat, Infinity);
+        next.clampWhenFinished = false;
+      }
       next.fadeIn(0.18).play();
       activeAction = next;
     }
@@ -383,10 +399,15 @@ export default function Unit7Playground() {
       scene.add(model);
 
       mixer = new THREE.AnimationMixer(model);
-      mixer.addEventListener("finished", () => {
-        // After a one-shot, return to whatever we were doing.
-        desiredAnimRef.current = baseAnimRef.current;
-        animPulseRef.current++;
+      mixer.addEventListener("finished", (e: { action: THREE.AnimationAction }) => {
+        const finishedName = e.action.getClip().name as Unit7AnimName;
+        // True one-shots (Wave, Punch, etc.) revert to whatever locomotion
+        // he was doing. Held poses (Sitting, Standing, Death) stay frozen
+        // on the last frame until the user picks something else.
+        if (ONE_SHOTS.has(finishedName)) {
+          desiredAnimRef.current = baseAnimRef.current;
+          animPulseRef.current++;
+        }
       });
       for (const clip of gltf.animations) {
         actions.set(clip.name as Unit7AnimName, mixer.clipAction(clip));

@@ -13,6 +13,7 @@ interface Props {
   onOneShotEnd?: () => void;
 }
 
+// Emotes — play once, then revert.
 const ONE_SHOTS: Set<Unit7AnimName> = new Set([
   "Wave",
   "Yes",
@@ -20,6 +21,12 @@ const ONE_SHOTS: Set<Unit7AnimName> = new Set([
   "ThumbsUp",
   "Punch",
   "Jump",
+]);
+// Held poses — play once and freeze; don't loop the transition.
+const HELD_POSES: Set<Unit7AnimName> = new Set([
+  "Sitting",
+  "Standing",
+  "Death",
 ]);
 
 /**
@@ -112,11 +119,17 @@ export default function Unit7Stage({
       const next = actions.get(name);
       if (!next) return;
       const isOneShot = ONE_SHOTS.has(name);
+      const isHeld = HELD_POSES.has(name);
       if (activeAction === next && !restart) return;
       if (activeAction && activeAction !== next) activeAction.fadeOut(0.18);
       next.reset();
-      next.setLoop(isOneShot ? THREE.LoopOnce : THREE.LoopRepeat, isOneShot ? 1 : Infinity);
-      next.clampWhenFinished = isOneShot;
+      if (isOneShot || isHeld) {
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+      } else {
+        next.setLoop(THREE.LoopRepeat, Infinity);
+        next.clampWhenFinished = false;
+      }
       next.fadeIn(0.18).play();
       activeAction = next;
     }
@@ -136,8 +149,11 @@ export default function Unit7Stage({
         scene.add(model);
 
         mixer = new THREE.AnimationMixer(model);
-        mixer.addEventListener("finished", () => {
-          onOneShotEndRef.current?.();
+        mixer.addEventListener("finished", (e: { action: THREE.AnimationAction }) => {
+          // Held poses (Sitting/Standing/Death) finish but should stay
+          // frozen — only fire the callback for true one-shot emotes.
+          const finishedName = e.action.getClip().name as Unit7AnimName;
+          if (ONE_SHOTS.has(finishedName)) onOneShotEndRef.current?.();
         });
         for (const clip of gltf.animations) actions.set(clip.name, mixer.clipAction(clip));
 

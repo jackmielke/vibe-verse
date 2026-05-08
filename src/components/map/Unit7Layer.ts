@@ -64,7 +64,11 @@ const SCALE_METERS = UNIT7_DEFAULT_SCALE_METERS;
 // He walks ON the ground; no float, no bob.
 const GROUND_CLEARANCE = 0.3;
 const FADE_SECONDS = 0.2;
+// Emotes — play once, then revert to whatever locomotion he was doing.
 const ONE_SHOTS: Unit7AnimName[] = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"];
+// Held poses — play once, freeze the last frame, do NOT revert. Without
+// this, "sit / die / stand" loop the transition forever.
+const HELD_POSES: Unit7AnimName[] = ["Sitting", "Standing", "Death"];
 
 export function createUnit7Layer(
   id: string,
@@ -99,6 +103,7 @@ export function createUnit7Layer(
     const next = actions.get(name);
     if (!next) return;
     const isOneShot = ONE_SHOTS.includes(name);
+    const isHeld = HELD_POSES.includes(name);
 
     if (activeAction === next && !restart) return;
 
@@ -106,8 +111,13 @@ export function createUnit7Layer(
       activeAction.fadeOut(FADE_SECONDS);
     }
     next.reset();
-    next.setLoop(isOneShot ? THREE.LoopOnce : THREE.LoopRepeat, isOneShot ? 1 : Infinity);
-    next.clampWhenFinished = isOneShot;
+    if (isOneShot || isHeld) {
+      next.setLoop(THREE.LoopOnce, 1);
+      next.clampWhenFinished = true;
+    } else {
+      next.setLoop(THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = false;
+    }
     next.fadeIn(FADE_SECONDS).play();
     activeAction = next;
   }
@@ -219,9 +229,12 @@ export function createUnit7Layer(
           });
 
           mixer = new THREE.AnimationMixer(model);
-          mixer.addEventListener("finished", () => {
-            // After a one-shot, ask the consumer what to play next.
-            onIdleAfterOneShot?.();
+          mixer.addEventListener("finished", (e: { action: THREE.AnimationAction }) => {
+            // True one-shots (Wave, Punch, etc.) hand control back to the
+            // wander loop / caller. Held poses (Sitting, Standing, Death)
+            // stay frozen on the last frame until something else is set.
+            const finishedName = e.action.getClip().name as Unit7AnimName;
+            if (ONE_SHOTS.includes(finishedName)) onIdleAfterOneShot?.();
           });
           for (const clip of gltf.animations) {
             actions.set(clip.name as Unit7AnimName, mixer.clipAction(clip));
