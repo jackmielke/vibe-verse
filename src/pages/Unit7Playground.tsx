@@ -3,13 +3,127 @@ import { Link } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { ArrowLeft, Send, Bot } from "lucide-react";
+import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX } from "lucide-react";
 import unit7ModelUrl from "@/assets/robot-expressive.glb";
 import type {
   Unit7AnimName,
   Unit7Expression,
 } from "@/components/map/Unit7Layer";
 import { supabase } from "@/integrations/supabase/client";
+
+// ---------- Ambient synth ----------------------------------------------
+// Tiny procedural soundtrack so the playground has vibe without needing a
+// licensed audio file. Four sine voices tuned to a wide-voiced minor 9
+// chord, each with its own slow tremolo LFO, gently low-passed. Sounds
+// like a sustained pad floating in space.
+
+class AmbientSynth {
+  private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
+  private filter: BiquadFilterNode | null = null;
+  private oscs: OscillatorNode[] = [];
+  private lfos: OscillatorNode[] = [];
+  private targetVolume = 0.4;
+
+  start() {
+    if (this.ctx) return;
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    this.ctx = new Ctx();
+    const ctx = this.ctx;
+
+    this.master = ctx.createGain();
+    this.master.gain.value = 0;
+
+    this.filter = ctx.createBiquadFilter();
+    this.filter.type = "lowpass";
+    this.filter.frequency.value = 1100;
+    this.filter.Q.value = 0.4;
+
+    this.master.connect(this.filter);
+    this.filter.connect(ctx.destination);
+
+    // Slow filter sweep so the pad breathes.
+    const sweep = ctx.createOscillator();
+    sweep.type = "sine";
+    sweep.frequency.value = 0.02;
+    const sweepGain = ctx.createGain();
+    sweepGain.gain.value = 350;
+    sweep.connect(sweepGain);
+    sweepGain.connect(this.filter.frequency);
+    sweep.start();
+    this.lfos.push(sweep);
+
+    // Open-voiced minor 9 chord (A2, E3, C4, B4-ish). Spacey + warm.
+    const root = 110; // A2
+    const ratios = [1, 1.5, 2.4, 3.56];
+    for (let i = 0; i < ratios.length; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = i === 0 ? "triangle" : "sine"; // triangle for the root adds body
+      osc.frequency.value = root * ratios[i];
+      // Slight detune per voice for richness.
+      osc.detune.value = (Math.random() - 0.5) * 6;
+
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.value = 0.18 / ratios.length;
+
+      // Per-voice tremolo LFO.
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.04 + Math.random() * 0.08;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.08;
+      lfo.connect(lfoGain);
+      lfoGain.connect(voiceGain.gain);
+      lfo.start();
+
+      osc.connect(voiceGain);
+      voiceGain.connect(this.master);
+      osc.start();
+
+      this.oscs.push(osc);
+      this.lfos.push(lfo);
+    }
+
+    // Fade in.
+    this.master.gain.setValueAtTime(0, ctx.currentTime);
+    this.master.gain.linearRampToValueAtTime(this.targetVolume, ctx.currentTime + 2.5);
+  }
+
+  setVolume(v: number) {
+    this.targetVolume = Math.max(0, Math.min(1, v));
+    if (!this.ctx || !this.master) return;
+    this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.master.gain.linearRampToValueAtTime(this.targetVolume, this.ctx.currentTime + 0.3);
+  }
+
+  fadeOut() {
+    if (!this.ctx || !this.master) return;
+    this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.master.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1);
+  }
+
+  dispose() {
+    if (!this.ctx) return;
+    try {
+      this.fadeOut();
+      const ctx = this.ctx;
+      setTimeout(() => {
+        try {
+          this.oscs.forEach((o) => { try { o.stop(); } catch { /* */ } });
+          this.lfos.forEach((o) => { try { o.stop(); } catch { /* */ } });
+          ctx.close();
+        } catch { /* */ }
+      }, 1100);
+    } catch { /* */ }
+    this.oscs = [];
+    this.lfos = [];
+    this.master = null;
+    this.filter = null;
+    this.ctx = null;
+  }
+}
 
 // ---------- Conversation logic ------------------------------------------
 // Keyword-based intent inference. Same shape as the in-map dialog so the
@@ -116,6 +230,33 @@ export default function Unit7Playground() {
   ]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [musicOn, setMusicOn] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(0.4);
+  const synthRef = useRef<AmbientSynth | null>(null);
+
+  // Boot the synth on first toggle (browser autoplay policy requires a
+  // user gesture). Keep it alive across renders; tear it down on unmount.
+  useEffect(() => {
+    if (musicOn) {
+      if (!synthRef.current) synthRef.current = new AmbientSynth();
+      synthRef.current.start();
+      synthRef.current.setVolume(musicVolume);
+    } else if (synthRef.current) {
+      synthRef.current.fadeOut();
+    }
+  }, [musicOn]);
+
+  useEffect(() => {
+    synthRef.current?.setVolume(musicOn ? musicVolume : 0);
+  }, [musicVolume, musicOn]);
+
+  useEffect(() => {
+    return () => {
+      synthRef.current?.dispose();
+      synthRef.current = null;
+    };
+  }, []);
 
   function pushMessage(who: "user" | "bot", text: string) {
     setMessages((m) => [...m, { id: m.length + 1, who, text }]);
@@ -581,14 +722,36 @@ export default function Unit7Playground() {
         </div>
       </div>
 
-      {/* Side panel: chat + controls */}
+      {/* Floating "open chat" pill — only visible when the panel is hidden,
+          so the top of the screen stays unobstructed. */}
+      {!panelOpen && (
+        <button
+          onClick={() => setPanelOpen(true)}
+          className="absolute bottom-4 right-4 z-10 glass-panel rounded-full px-4 py-2.5 flex items-center gap-2 hover:bg-muted transition-colors"
+        >
+          <MessageCircle className="w-4 h-4 text-primary" />
+          <span className="text-[11px] font-heading font-semibold tracking-widest uppercase">
+            Chat & emotes
+          </span>
+        </button>
+      )}
+
+      {/* Side panel: chat + controls (collapsible) */}
+      {panelOpen && (
       <div className="absolute top-4 right-4 bottom-4 z-10 w-[min(360px,calc(100vw-2rem))] flex flex-col gap-2.5">
         <div className="glass-panel rounded-xl p-3 flex flex-col gap-2.5 flex-1 min-h-0">
           <div className="flex items-center gap-2">
             <Bot className="w-4 h-4 text-primary" />
-            <p className="font-heading text-[12px] font-semibold tracking-wider text-foreground">
+            <p className="font-heading text-[12px] font-semibold tracking-wider text-foreground flex-1">
               Talk to Unit-7
             </p>
+            <button
+              onClick={() => setPanelOpen(false)}
+              className="p-1 rounded-md hover:bg-muted/40 transition-colors"
+              title="Hide chat"
+            >
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto bg-background/30 rounded-lg p-2 space-y-2">
             {messages.map((m) => (
@@ -666,6 +829,33 @@ export default function Unit7Playground() {
             ))}
           </div>
         </div>
+      </div>
+      )}
+
+      {/* Music widget — bottom-left so it's never blocked by the chat
+          panel. Web Audio synth boots on first toggle (autoplay rule). */}
+      <div className="absolute bottom-4 left-4 z-10 glass-panel rounded-full pl-2 pr-3 py-1.5 flex items-center gap-2">
+        <button
+          onClick={() => setMusicOn((v) => !v)}
+          className="p-1 rounded-full hover:bg-muted/40 transition-colors"
+          title={musicOn ? "Mute soundtrack" : "Play soundtrack"}
+        >
+          {musicOn ? (
+            <Volume2 className="w-4 h-4 text-primary" />
+          ) : (
+            <VolumeX className="w-4 h-4 text-muted-foreground" />
+          )}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.02}
+          value={musicVolume}
+          onChange={(e) => setMusicVolume(Number(e.target.value))}
+          className="w-20 h-1 accent-primary cursor-pointer"
+          aria-label="Soundtrack volume"
+        />
       </div>
     </div>
   );
