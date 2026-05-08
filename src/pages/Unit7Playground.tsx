@@ -1000,24 +1000,26 @@ export default function Unit7Playground() {
       bob?: number;
     };
     const PROP_CFG: Record<PropId, PropCfg> = {
-      astronaut: {
-        url: floatingAstronautUrl,
-        target: 6,
-        position: [10, 12, -6],
-        spin: 0.06,
-        bob: 0.6,
-      },
+      // Island sits 180° opposite the iridescent arc, with the
+      // astronaut hovering just above it like she's exploring.
       island: {
         url: floatingIslandUrl,
         target: 24,
-        position: [-32, -8, -42],
-        rotationY: 0.4,
+        position: [32, -8, 42],
+        rotationY: -0.4,
         spin: 0.015,
         bob: 0.4,
       },
+      astronaut: {
+        url: floatingAstronautUrl,
+        target: 6,
+        position: [32, 8, 42],
+        spin: 0.06,
+        bob: 0.6,
+      },
       touch: {
         url: pixelTouchUrl,
-        target: 14,
+        target: 7,
         position: [-22, 9, -16],
         rotationY: -0.3,
         spin: 0.04,

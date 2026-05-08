@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Navigation, Zap, Layers, Locate } from "lucide-react";
 import mapboxgl from "mapbox-gl";
@@ -231,6 +232,7 @@ interface MapViewProps {
 }
 
 export default function MapView({ onLocationSelect, selectedLocation }: MapViewProps) {
+  const navigate = useNavigate();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -2075,6 +2077,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
                 duration: 3000,
               });
             },
+          },
+          {
+            id: "outer-space",
+            label: "Outer Space",
+            description: "Vibey 2.0's late-night show. A floating asteroid platform with the Vibey Show, live community photos, member cards orbiting overhead, and Vibey's knowledge in the sky.",
+            onFlyTo: () => navigate("/space"),
           },
         ]}
         spawnables={[

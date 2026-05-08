@@ -17,6 +17,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
+          <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
