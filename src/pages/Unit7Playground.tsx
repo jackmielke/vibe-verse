@@ -158,6 +158,16 @@ export default function Unit7Playground() {
   const [trackIndex, setTrackIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Backflip — set when user clicks the emote. The render loop reads it
+  // and rotates the model on X over ~0.85s, then resets.
+  const backflipStartRef = useRef<number>(0);
+  const sprintStartRef = useRef<number>(0);
+  // Robot tint — null = original colors, otherwise a hex like 0x73ffb8.
+  const robotColorRef = useRef<number | null>(null);
+  const [robotColor, setRobotColor] = useState<number | null>(null);
+  // Keep the ref in sync with state.
+  robotColorRef.current = robotColor;
+
   // Hook up volume + auto-advance once we have an <audio> element.
   useEffect(() => {
     const audio = audioRef.current;
@@ -204,6 +214,20 @@ export default function Unit7Playground() {
     if (expr) cleared[expr] = 0.85;
     expressionsRef.current = cleared;
     setActiveMood(expr);
+  }
+
+  function triggerBackflip() {
+    // Play Jump while we rotate him — gives the legs a tuck-in pose so
+    // it reads as a flip instead of a stiff somersault.
+    triggerAnim("Jump");
+    backflipStartRef.current = performance.now();
+  }
+
+  function triggerSprint() {
+    desiredAnimRef.current = "Running";
+    baseAnimRef.current = "Running";
+    animPulseRef.current++;
+    sprintStartRef.current = performance.now();
   }
 
   function applyReply(reply: { say: string; anim: Unit7AnimName | null; expr: Unit7Expression | null }) {
@@ -284,15 +308,15 @@ export default function Unit7Playground() {
       0.1,
       400,
     );
-    camera.position.set(-6, 4, 12);
-    camera.lookAt(0, 1, 0);
+    camera.position.set(-8, 5, 18);
+    camera.lookAt(0, 1.1, 0);
 
     const controls = new OrbitControls(camera, canvas);
-    controls.target.set(0, 1, 0);
+    controls.target.set(0, 1.1, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 4;
-    controls.maxDistance = 30;
+    controls.maxDistance = 38;
     controls.maxPolarAngle = Math.PI * 0.55; // don't let user go below platform
     controls.autoRotate = true;
     controls.autoRotateSpeed = 0.35;
@@ -372,6 +396,203 @@ export default function Unit7Playground() {
       scene.add(new THREE.Mesh(glowGeo, glowMat));
     }
 
+    // ---- Spiral galaxy backdrop --------------------------------------
+    // A flat spiral of points tilted across the sky. Each "arm" follows a
+    // logarithmic spiral; we add radial + vertical scatter so it has
+    // depth instead of looking like a clean diagram.
+    const galaxy = (() => {
+      const ARMS = 4;
+      const STARS_PER_ARM = 1100;
+      const total = ARMS * STARS_PER_ARM;
+      const pos = new Float32Array(total * 3);
+      const col = new Float32Array(total * 3);
+      const tmpColor = new THREE.Color();
+      let i = 0;
+      for (let a = 0; a < ARMS; a++) {
+        const armOffset = (a / ARMS) * Math.PI * 2;
+        for (let s = 0; s < STARS_PER_ARM; s++) {
+          const t = s / STARS_PER_ARM;
+          const radius = 12 + t * 95; // arms stretch out
+          const angle = armOffset + t * Math.PI * 4 + (Math.random() - 0.5) * 0.4;
+          const radialJitter = (Math.random() - 0.5) * (4 + t * 18);
+          const r = radius + radialJitter;
+          // Verticality tapers off with distance — flat disc.
+          const yJitter = (Math.random() - 0.5) * (2 + (1 - t) * 6);
+          pos[i * 3 + 0] = Math.cos(angle) * r;
+          pos[i * 3 + 1] = yJitter;
+          pos[i * 3 + 2] = Math.sin(angle) * r;
+          // Color: warm core, cool outer arms, with some variation.
+          const warmth = 1 - t;
+          tmpColor.setRGB(
+            0.7 + warmth * 0.3 + (Math.random() - 0.5) * 0.1,
+            0.55 + warmth * 0.25,
+            0.55 + (1 - warmth) * 0.4 + (Math.random() - 0.5) * 0.1,
+          );
+          const intensity = 0.6 + Math.random() * 0.5;
+          col[i * 3 + 0] = tmpColor.r * intensity;
+          col[i * 3 + 1] = tmpColor.g * intensity;
+          col[i * 3 + 2] = tmpColor.b * intensity;
+          i++;
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      const mat = new THREE.PointsMaterial({
+        size: 0.55,
+        sizeAttenuation: true,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const points = new THREE.Points(geo, mat);
+      // Tilt + position the galaxy off to one side so it reads as a
+      // distant feature rather than the dome of the sky.
+      const group = new THREE.Group();
+      group.add(points);
+      group.position.set(-12, 20, -80);
+      group.rotation.set(-Math.PI * 0.16, 0.38, Math.PI * 0.08);
+      scene.add(group);
+      return group;
+    })();
+
+    // ---- Milky Way ribbon ---------------------------------------------
+    // A soft cross-sky band so the galaxy is visible in the default frame.
+    const milkyWay = (() => {
+      const COUNT = 1800;
+      const pos = new Float32Array(COUNT * 3);
+      const col = new Float32Array(COUNT * 3);
+      const tmpColor = new THREE.Color();
+      for (let i = 0; i < COUNT; i++) {
+        const spread = (Math.random() - 0.5) * 2;
+        const along = (Math.random() - 0.5) * 82;
+        const curve = Math.sin(along * 0.06) * 4;
+        pos[i * 3 + 0] = along;
+        pos[i * 3 + 1] = 16 + curve + spread * 5;
+        pos[i * 3 + 2] = -62 + spread * 10 + Math.cos(along * 0.04) * 8;
+
+        const cool = Math.random();
+        if (cool < 0.55) tmpColor.setRGB(0.7, 0.86, 1);
+        else if (cool < 0.82) tmpColor.setRGB(1, 0.78, 0.92);
+        else tmpColor.setRGB(1, 0.94, 0.74);
+        const intensity = 0.35 + Math.random() * 0.55;
+        col[i * 3 + 0] = tmpColor.r * intensity;
+        col[i * 3 + 1] = tmpColor.g * intensity;
+        col[i * 3 + 2] = tmpColor.b * intensity;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      const mat = new THREE.PointsMaterial({
+        size: 0.7,
+        sizeAttenuation: true,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.65,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const points = new THREE.Points(geo, mat);
+      points.rotation.z = -0.14;
+      scene.add(points);
+      return points;
+    })();
+
+    // ---- Distant moon + planet ---------------------------------------
+    const moon = new THREE.Mesh(
+      new THREE.SphereGeometry(2.5, 32, 32),
+      new THREE.MeshStandardMaterial({
+        color: 0xc4cbe0,
+        roughness: 0.95,
+        metalness: 0,
+        emissive: 0x111522,
+      }),
+    );
+    moon.position.set(14, 12, -30);
+    scene.add(moon);
+
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(7, 48, 48),
+      new THREE.MeshStandardMaterial({
+        color: 0xe88c4f,
+        roughness: 0.6,
+        metalness: 0.05,
+        emissive: 0x441a08,
+      }),
+    );
+    planet.position.set(-28, -5, -52);
+    scene.add(planet);
+    // Rings of Saturn-style halo around the planet.
+    const planetRing = new THREE.Mesh(
+      new THREE.RingGeometry(9, 12, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd9a8,
+        transparent: true,
+        opacity: 0.35,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    planetRing.rotation.x = -Math.PI / 2.6;
+    planet.add(planetRing);
+
+    // ---- Orbiting spaceship ------------------------------------------
+    // Procedural — small saucer + light beam — orbits the platform on a
+    // gently tilted plane.
+    const ship = (() => {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.85, 0.3, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0xeef0fa,
+          metalness: 0.6,
+          roughness: 0.35,
+        }),
+      );
+      g.add(body);
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.42, 24, 18, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({
+          color: 0x73ffb8,
+          metalness: 0.3,
+          roughness: 0.15,
+          emissive: 0x114433,
+          transparent: true,
+          opacity: 0.85,
+        }),
+      );
+      dome.position.y = 0.18;
+      g.add(dome);
+      // Underside light beam — long thin cone, semi-transparent.
+      const beam = new THREE.Mesh(
+        new THREE.ConeGeometry(0.5, 4, 24, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0x73ffb8,
+          transparent: true,
+          opacity: 0.18,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      beam.position.y = -2.1;
+      beam.rotation.x = Math.PI;
+      g.add(beam);
+      // Blinking nav light.
+      const navLight = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xff5577 }),
+      );
+      navLight.position.set(0.7, 0, 0);
+      g.add(navLight);
+      scene.add(g);
+      // Stash the nav light + beam material so the render loop can pulse them.
+      (g as unknown as Record<string, unknown>).__nav = navLight;
+      (g as unknown as Record<string, unknown>).__beam = beam.material;
+      return g;
+    })();
+
     // ---- Floating platform -------------------------------------------
     const platformRadius = 6.5;
     {
@@ -439,6 +660,8 @@ export default function Unit7Playground() {
     let lastPulse = -1;
     let faceMesh: THREE.Mesh | null = null;
     const morphIndex: Partial<Record<Unit7Expression, number>> = {};
+    const originalRobotColors = new Map<THREE.Material, THREE.Color>();
+    let lastAppliedRobotColor: number | null | undefined = undefined;
 
     function play(name: Unit7AnimName, restart = false) {
       const next = actions.get(name);
@@ -484,6 +707,13 @@ export default function Unit7Playground() {
       model.traverse((child) => {
         const mesh = child as THREE.Mesh;
         if (!mesh.isMesh) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of mats) {
+          const standardMaterial = material as THREE.MeshStandardMaterial;
+          if (standardMaterial.color && !originalRobotColors.has(standardMaterial)) {
+            originalRobotColors.set(standardMaterial, standardMaterial.color.clone());
+          }
+        }
         const dict = mesh.morphTargetDictionary;
         if (dict && ("Angry" in dict || "Surprised" in dict || "Sad" in dict)) {
           faceMesh = mesh;
@@ -507,9 +737,57 @@ export default function Unit7Playground() {
       target = new THREE.Vector3(r * Math.cos(theta), 0, r * Math.sin(theta));
     }
 
+    // ---- Shooting stars (occasional streaks across the sky) ---------
+    type ShootingStar = {
+      line: THREE.Line;
+      mat: THREE.LineBasicMaterial;
+      age: number;
+      lifetime: number;
+      velocity: THREE.Vector3;
+      head: THREE.Vector3;
+    };
+    const shootingStars: ShootingStar[] = [];
+    let nextShooterAt = performance.now() + 1500;
+    function spawnShootingStar() {
+      const head = new THREE.Vector3(
+        (Math.random() - 0.5) * 120,
+        30 + Math.random() * 30,
+        -50 - Math.random() * 60,
+      );
+      const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 80,
+        -20 - Math.random() * 20,
+        20 + Math.random() * 30,
+      );
+      const tail = head.clone().sub(velocity.clone().multiplyScalar(0.04));
+      const positions = new Float32Array([
+        head.x, head.y, head.z,
+        tail.x, tail.y, tail.z,
+      ]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0xfff0c8,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+      });
+      const line = new THREE.Line(geo, mat);
+      scene.add(line);
+      shootingStars.push({
+        line,
+        mat,
+        age: 0,
+        lifetime: 0.9 + Math.random() * 0.5,
+        velocity,
+        head,
+      });
+    }
+
     // ---- Animation loop ---------------------------------------------
     let lastTime = performance.now();
     let raf = 0;
+    let shipAngle = 0;
     const tick = () => {
       const now = performance.now();
       const delta = Math.min(0.05, (now - lastTime) / 1000);
@@ -539,10 +817,42 @@ export default function Unit7Playground() {
         lastPulse = animPulseRef.current;
       }
 
+      // Sprint is a short player-triggered burst across the platform.
+      if (model && sprintStartRef.current > 0) {
+        const elapsed = (now - sprintStartRef.current) / 1000;
+        const dur = 1.2;
+        if (elapsed < dur) {
+          const forward = new THREE.Vector3(
+            Math.sin(model.rotation.y),
+            0,
+            Math.cos(model.rotation.y),
+          );
+          const step = 5.2 * delta * (1 - elapsed / dur * 0.35);
+          model.position.x += forward.x * step;
+          model.position.z += forward.z * step;
+          const distFromCenter = Math.hypot(model.position.x, model.position.z);
+          const maxDist = platformRadius - 0.9;
+          if (distFromCenter > maxDist) {
+            const scale = maxDist / distFromCenter;
+            model.position.x *= scale;
+            model.position.z *= scale;
+            model.rotation.y += Math.PI * 0.65;
+          }
+        } else {
+          sprintStartRef.current = 0;
+          target = null;
+          idleUntil = now + 900;
+          desiredAnimRef.current = "Idle";
+          baseAnimRef.current = "Idle";
+          animPulseRef.current++;
+        }
+      }
+
       // Wander loop, but only when the desired anim is one of the
       // locomotion states (Idle / Walking). Don't override an emote.
       if (
         model &&
+        sprintStartRef.current === 0 &&
         (desiredAnimRef.current === "Idle" || desiredAnimRef.current === "Walking")
       ) {
         if (!target) {
@@ -585,6 +895,105 @@ export default function Unit7Playground() {
             model.rotation.y = Math.atan2(dir.x, dir.z);
           }
         }
+      }
+
+      // ---- Backflip (procedural): rotate model on X over ~0.85s -----
+      if (model && backflipStartRef.current > 0) {
+        const elapsed = (now - backflipStartRef.current) / 1000;
+        const dur = 0.85;
+        if (elapsed < dur) {
+          const t = elapsed / dur;
+          // Ease out so the rotation slows on landing.
+          const eased = 1 - Math.pow(1 - t, 2);
+          model.rotation.x = -Math.PI * 2 * eased;
+        } else {
+          model.rotation.x = 0;
+          backflipStartRef.current = 0;
+        }
+      }
+
+      // ---- Robot tint -----------------------------------------------
+      // Recolor the model to whatever color the user picked, or restore
+      // the original GLB material colors when "Original" is selected.
+      if (model && robotColorRef.current !== lastAppliedRobotColor) {
+        const c = robotColorRef.current;
+        model.traverse((child) => {
+          const mesh = child as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const m of mats) {
+            const sm = m as THREE.MeshStandardMaterial;
+            if (sm && sm.color && !sm.userData.skipTint) {
+              if (typeof c === "number") {
+                sm.color.setHex(c);
+              } else {
+                const original = originalRobotColors.get(sm);
+                if (original) sm.color.copy(original);
+              }
+            }
+          }
+        });
+        lastAppliedRobotColor = c;
+      }
+
+      // ---- Galaxy + planets + moon slow rotation -------------------
+      galaxy.rotation.y += delta * 0.012;
+      milkyWay.rotation.y += delta * 0.003;
+      planet.rotation.y += delta * 0.05;
+      moon.rotation.y += delta * 0.08;
+
+      // ---- Spaceship orbit + nav light blink + beam pulse ----------
+      shipAngle += delta * 0.32;
+      const shipR = 12;
+      ship.position.set(
+        Math.cos(shipAngle) * shipR,
+        5 + Math.sin(shipAngle * 2) * 0.4,
+        Math.sin(shipAngle) * shipR,
+      );
+      ship.rotation.y = -shipAngle + Math.PI / 2;
+      // Bank into the turn for personality.
+      ship.rotation.z = Math.sin(shipAngle * 2) * 0.18;
+      const navLight = (ship as unknown as Record<string, unknown>).__nav as
+        | THREE.Mesh
+        | undefined;
+      if (navLight && (navLight.material as THREE.MeshBasicMaterial)) {
+        const blink = 0.5 + Math.abs(Math.sin(now * 0.005)) * 0.5;
+        (navLight.material as THREE.MeshBasicMaterial).color.setRGB(
+          blink,
+          blink * 0.3,
+          blink * 0.45,
+        );
+      }
+      const beamMat = (ship as unknown as Record<string, unknown>).__beam as
+        | THREE.MeshBasicMaterial
+        | undefined;
+      if (beamMat) beamMat.opacity = 0.12 + Math.abs(Math.sin(now * 0.003)) * 0.1;
+
+      // ---- Shooting stars: spawn occasionally + advance + fade ----
+      if (now >= nextShooterAt) {
+        spawnShootingStar();
+        nextShooterAt = now + 1500 + Math.random() * 4500;
+      }
+      for (let i = shootingStars.length - 1; i >= 0; i--) {
+        const s = shootingStars[i];
+        s.age += delta;
+        const t = s.age / s.lifetime;
+        if (t >= 1) {
+          scene.remove(s.line);
+          s.line.geometry.dispose();
+          s.mat.dispose();
+          shootingStars.splice(i, 1);
+          continue;
+        }
+        // Move head along velocity; tail trails behind.
+        s.head.addScaledVector(s.velocity, delta);
+        const tail = s.head.clone().sub(s.velocity.clone().multiplyScalar(0.06));
+        const arr = (s.line.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+        arr[0] = s.head.x; arr[1] = s.head.y; arr[2] = s.head.z;
+        arr[3] = tail.x; arr[4] = tail.y; arr[5] = tail.z;
+        (s.line.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        // Fade in fast, fade out gently.
+        s.mat.opacity = t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85;
       }
 
       controls.update();
@@ -735,6 +1144,56 @@ export default function Unit7Playground() {
               </button>
             ))}
           </div>
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
+            Tricks
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={triggerBackflip}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
+            >
+              🤸 Backflip
+            </button>
+            <button
+              onClick={triggerSprint}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
+            >
+              💨 Sprint
+            </button>
+          </div>
+
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
+            Skin
+          </p>
+          <div className="grid grid-cols-7 gap-1.5">
+            {[
+              { label: "Original", c: null },
+              { label: "Mint", c: 0x73ffb8 },
+              { label: "Sky", c: 0x6aa8ff },
+              { label: "Coral", c: 0xff7e8a },
+              { label: "Gold", c: 0xffd166 },
+              { label: "Violet", c: 0xb392ff },
+              { label: "Snow", c: 0xeaeaf0 },
+            ].map((s) => (
+              <button
+                key={s.label}
+                onClick={() => setRobotColor(s.c)}
+                className={`h-6 rounded-md border transition-all ${
+                  robotColor === s.c
+                    ? "border-primary scale-110"
+                    : "border-border/60 hover:border-primary/50"
+                }`}
+                style={{
+                  background:
+                    s.c == null
+                      ? "linear-gradient(135deg, #d4a35a 0%, #6f5c3a 100%)"
+                      : "#" + s.c.toString(16).padStart(6, "0"),
+                }}
+                title={s.label}
+              />
+            ))}
+          </div>
+
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
             Mood
           </p>
