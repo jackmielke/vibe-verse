@@ -64,12 +64,14 @@ Deno.serve(async (req) => {
         .eq("is_active", true)
         .limit(1)
         .maybeSingle(),
+      // Memories aren't always tagged with a community_id — most rows
+      // are about Edge Esmeralda but live globally. Pull recent ones
+      // either way so Vibey's "knowledge orbit" actually has content.
       sb
         .from("memories")
         .select("content, tags, created_at")
-        .eq("community_id", communityId)
         .order("created_at", { ascending: false })
-        .limit(40),
+        .limit(60),
     ]);
 
   // Two-step lookup avoids relying on a PostgREST foreign-key relationship.

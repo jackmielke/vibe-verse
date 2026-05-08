@@ -938,8 +938,8 @@ export default function Unit7Playground() {
     sample.forEach((mem, i) => {
       const orb = makeMemoryOrb(mem, PALETTE[i % PALETTE.length]);
       const a = (i / sample.length) * Math.PI * 2;
-      const r = 8.5 + Math.random() * 1.5;
-      const y = 8.5 + Math.sin(a * 1.7) * 1.2 + (Math.random() - 0.5) * 0.6;
+      const r = 9.5 + Math.random() * 1.5;
+      const y = 4 + Math.sin(a * 1.7) * 1.5 + (Math.random() - 0.5) * 0.8;
       orb.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
       orb.userData.bobPhase = Math.random() * Math.PI * 2;
       orb.userData.baseY = y;
