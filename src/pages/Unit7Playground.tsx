@@ -95,7 +95,17 @@ interface ChatMessage {
   text: string;
 }
 
-type SpaceExperience = "none" | "ion" | "blocks" | "friend";
+type SpaceExperience = "none" | "ion" | "blocks" | "friend" | "gallery";
+
+type GalleryPhoto = {
+  id: string;
+  image_url: string;
+  title: string | null;
+  description: string | null;
+  residency_name: string | null;
+};
+
+const EDGE_ESMERELDA_COMMUNITY_ID = "bb93af8f-3d13-458e-a580-207d374bbe39";
 
 // ---------- Component --------------------------------------------------
 
@@ -219,6 +229,9 @@ export default function Unit7Playground() {
   );
   const [activeExperience, setActiveExperience] = useState<SpaceExperience>("none");
   const activeExperienceRef = useRef<SpaceExperience>("none");
+  const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryStatus, setGalleryStatus] = useState<"idle" | "loading" | "ready" | "empty" | "error">("idle");
   showModeRef.current = showMode;
   activeExperienceRef.current = activeExperience;
 
@@ -259,7 +272,64 @@ export default function Unit7Playground() {
     }
   }, [musicOn, trackIndex, musicVolume]);
 
+  useEffect(() => {
+    if (activeExperience !== "gallery") return;
+    let cancelled = false;
+    let settled = false;
+    setGalleryStatus("loading");
+    const timeout = window.setTimeout(() => {
+      if (cancelled || settled) return;
+      settled = true;
+      setGalleryStatus("error");
+      setShowMood("weak signal");
+      setShowThought("Gallery TV is still waiting on Supabase. The village signal may be offline here.");
+    }, 8000);
+    supabase
+      .from("gallery_photos")
+      .select("id, image_url, title, description, residency_name")
+      .eq("community_id", EDGE_ESMERELDA_COMMUNITY_ID)
+      .eq("is_visible", true)
+      .order("display_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(24)
+      .then(({ data, error }) => {
+        if (cancelled || settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        if (error) {
+          setGalleryStatus("error");
+          setShowMood("offline");
+          setShowThought("Gallery TV tried to tune the village feed, but Supabase did not answer.");
+          return;
+        }
+        const photos = (data ?? []).filter((photo) => Boolean(photo.image_url));
+        setGalleryPhotos(photos);
+        setGalleryIndex(0);
+        setGalleryStatus(photos.length ? "ready" : "empty");
+        setShowMood(photos.length ? "broadcasting" : "empty feed");
+        setShowThought(
+          photos.length
+            ? `Gallery TV tuned ${photos.length} live village photo${photos.length === 1 ? "" : "s"}.`
+            : "Gallery TV found the table, but there are no visible photos yet.",
+        );
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [activeExperience]);
+
+  useEffect(() => {
+    if (activeExperience !== "gallery" || galleryPhotos.length < 2) return;
+    const timer = window.setInterval(() => {
+      setGalleryIndex((index) => (index + 1) % galleryPhotos.length);
+    }, 4800);
+    return () => window.clearInterval(timer);
+  }, [activeExperience, galleryPhotos.length]);
+
   const currentTrack = TRACKS[trackIndex];
+  const currentGalleryPhoto =
+    galleryPhotos.length > 0 ? galleryPhotos[galleryIndex % galleryPhotos.length] : null;
 
   function pushMessage(who: "user" | "bot", text: string) {
     setMessages((m) => [...m, { id: m.length + 1, who, text }]);
@@ -365,6 +435,7 @@ export default function Unit7Playground() {
 
   function spawnExperience(experience: SpaceExperience) {
     setActiveExperience(experience);
+    if (experience === "gallery") setGalleryStatus("idle");
     const details: Record<SpaceExperience, { mood: string; line: string }> = {
       none: {
         mood: "quiet",
@@ -381,6 +452,10 @@ export default function Unit7Playground() {
       friend: {
         mood: "befriending",
         line: "Good Friend spawned. Vibey now has company, which may improve the show by 12 percent.",
+      },
+      gallery: {
+        mood: "tuning",
+        line: "Gallery TV spawned. Vibey is tuning into live photos from the village.",
       },
     };
     const next = details[experience];
@@ -1884,6 +1959,66 @@ export default function Unit7Playground() {
         </p>
       </div>
 
+      {activeExperience === "gallery" && (
+        <div className="absolute left-4 top-20 z-10 w-[min(430px,calc(100vw-2rem))] glass-panel rounded-xl border border-primary/30 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
+            <div>
+              <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                Gallery TV
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Supabase live village feed
+              </p>
+            </div>
+            {galleryStatus === "ready" && (
+              <p className="text-[10px] font-mono text-muted-foreground">
+                {galleryIndex + 1}/{galleryPhotos.length}
+              </p>
+            )}
+          </div>
+
+          <div className="relative aspect-video bg-background/60">
+            {galleryStatus === "loading" && (
+              <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                Tuning gallery feed...
+              </div>
+            )}
+            {galleryStatus === "empty" && (
+              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-muted-foreground">
+                No visible gallery photos yet.
+              </div>
+            )}
+            {galleryStatus === "error" && (
+              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-muted-foreground">
+                Gallery feed unavailable.
+              </div>
+            )}
+            {currentGalleryPhoto && (
+              <img
+                key={currentGalleryPhoto.id}
+                src={currentGalleryPhoto.image_url}
+                alt={currentGalleryPhoto.title ?? "Edge Esmeralda gallery photo"}
+                className="h-full w-full object-cover"
+              />
+            )}
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(115,255,184,0.08)_1px,transparent_1px)] bg-[length:100%_4px] mix-blend-screen" />
+          </div>
+
+          {currentGalleryPhoto && (
+            <div className="px-3 py-2">
+              <p className="truncate text-xs font-heading font-semibold text-foreground">
+                {currentGalleryPhoto.title ?? "Untitled transmission"}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
+                {currentGalleryPhoto.description ||
+                  currentGalleryPhoto.residency_name ||
+                  "Live from the Edge Esmeralda gallery."}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Side panel: chat + controls (collapsible) */}
       {panelOpen && (
       <div className="absolute top-4 right-4 bottom-4 z-10 w-[min(360px,calc(100vw-2rem))] flex flex-col gap-2.5">
@@ -1945,7 +2080,7 @@ export default function Unit7Playground() {
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground">
             Emotes
           </p>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-5 gap-1.5">
             {ALL_EMOTES.map((e) => (
               <button
                 key={e.anim}
@@ -2031,6 +2166,7 @@ export default function Unit7Playground() {
               { id: "ion" as const, label: "Ion" },
               { id: "blocks" as const, label: "Blocks" },
               { id: "friend" as const, label: "Friend" },
+              { id: "gallery" as const, label: "TV" },
               { id: "none" as const, label: "Clear" },
             ].map((item) => (
               <button
