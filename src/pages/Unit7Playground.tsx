@@ -132,6 +132,14 @@ const ALL_MOODS: { label: string; expr: Unit7Expression }[] = [
   { label: "😢 Sad", expr: "Sad" },
 ];
 
+const POET_LINES = [
+  "Poet capsule says: the blue planet keeps writing itself in water.",
+  "Poet capsule says: every orbit is just a sentence learning where to pause.",
+  "Poet capsule says: Unit-7, your little platform is a comma in the dark.",
+  "Poet capsule says: clouds are Earth thinking out loud.",
+  "Poet capsule says: I packed one notebook and no landing plan.",
+];
+
 export default function Unit7Playground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -230,6 +238,13 @@ export default function Unit7Playground() {
     sprintStartRef.current = performance.now();
   }
 
+  function triggerPoetTransmission() {
+    const line = POET_LINES[Math.floor(Math.random() * POET_LINES.length)];
+    triggerExpression("Surprised");
+    triggerAnim("Wave");
+    pushMessage("bot", line);
+  }
+
   function applyReply(reply: { say: string; anim: Unit7AnimName | null; expr: Unit7Expression | null }) {
     if (reply.anim) triggerAnim(reply.anim);
     if (reply.expr) triggerExpression(reply.expr);
@@ -300,6 +315,93 @@ export default function Unit7Playground() {
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x05060f, 0.012);
+    const disposableTextures: THREE.Texture[] = [];
+
+    function continentField(lon: number, lat: number) {
+      const ridgeA = Math.sin(lon * 2.1 + Math.cos(lat * 3.2) * 1.4);
+      const ridgeB = Math.sin(lon * 4.7 - lat * 1.8);
+      const ridgeC = Math.cos(lon * 1.15 + lat * 5.1);
+      const islandNoise = Math.sin(lon * 9.0 + lat * 3.7) * Math.cos(lon * 2.6 - lat * 8.2);
+      const equatorBias = Math.cos(lat) * 0.16;
+      return ridgeA * 0.38 + ridgeB * 0.22 + ridgeC * 0.2 + islandNoise * 0.14 + equatorBias;
+    }
+
+    function makeEarthTexture(kind: "surface" | "clouds" | "lights") {
+      const width = kind === "surface" ? 1024 : 512;
+      const height = width / 2;
+      const textureCanvas = document.createElement("canvas");
+      textureCanvas.width = width;
+      textureCanvas.height = height;
+      const ctx = textureCanvas.getContext("2d");
+      if (!ctx) return null;
+      const image = ctx.createImageData(width, height);
+      const data = image.data;
+
+      for (let y = 0; y < height; y++) {
+        const v = y / height;
+        const lat = (0.5 - v) * Math.PI;
+        const polar = Math.abs(Math.sin(lat));
+        for (let x = 0; x < width; x++) {
+          const u = x / width;
+          const lon = (u - 0.5) * Math.PI * 2;
+          const idx = (y * width + x) * 4;
+          const landScore = continentField(lon, lat);
+          const land = landScore > 0.18;
+
+          if (kind === "surface") {
+            if (land) {
+              const green = Math.max(0, 1 - polar * 1.5);
+              const mountain = Math.max(0, landScore - 0.42);
+              data[idx] = 34 + mountain * 240 + polar * 190;
+              data[idx + 1] = 92 + green * 86 + mountain * 70 + polar * 105;
+              data[idx + 2] = 48 + green * 34 + polar * 95;
+            } else {
+              const depth = 0.35 + Math.abs(Math.sin(lon * 3.0 + lat * 2.1)) * 0.25;
+              data[idx] = 9 + depth * 20;
+              data[idx + 1] = 55 + depth * 42;
+              data[idx + 2] = 116 + depth * 92;
+            }
+            if (polar > 0.82) {
+              const ice = Math.min(1, (polar - 0.82) / 0.18);
+              data[idx] = data[idx] * (1 - ice) + 225 * ice;
+              data[idx + 1] = data[idx + 1] * (1 - ice) + 235 * ice;
+              data[idx + 2] = data[idx + 2] * (1 - ice) + 242 * ice;
+            }
+            data[idx + 3] = 255;
+            continue;
+          }
+
+          const cloudNoise =
+            Math.sin(lon * 7.2 + lat * 2.4) * 0.35 +
+            Math.cos(lon * 12.1 - lat * 3.3) * 0.25 +
+            Math.sin(lon * 21.7 + lat * 9.8) * 0.18;
+
+          if (kind === "clouds") {
+            const alpha = cloudNoise > 0.25 ? Math.min(180, (cloudNoise - 0.25) * 420) : 0;
+            data[idx] = 235;
+            data[idx + 1] = 242;
+            data[idx + 2] = 255;
+            data[idx + 3] = alpha;
+            continue;
+          }
+
+          const cityBands = Math.abs(Math.sin(lon * 24.0) * Math.cos(lat * 18.0));
+          const city = land && polar < 0.74 && cityBands > 0.92 && landScore < 0.55;
+          data[idx] = 255;
+          data[idx + 1] = 206;
+          data[idx + 2] = 108;
+          data[idx + 3] = city ? 190 : 0;
+        }
+      }
+
+      ctx.putImageData(image, 0, 0);
+      const texture = new THREE.CanvasTexture(textureCanvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      disposableTextures.push(texture);
+      return texture;
+    }
 
     // Camera + orbit controls.
     const camera = new THREE.PerspectiveCamera(
@@ -537,6 +639,124 @@ export default function Unit7Playground() {
     );
     planetRing.rotation.x = -Math.PI / 2.6;
     planet.add(planetRing);
+
+    // ---- Planet Earth --------------------------------------------------
+    // Inspired by the official Three.js Earth example: textured surface,
+    // cloud shell, city lights, and a thin atmospheric rim. We generate
+    // lightweight canvas textures locally to avoid adding remote assets.
+    const earth = (() => {
+      const group = new THREE.Group();
+      group.position.set(26, 5.5, -44);
+      group.rotation.z = -0.38;
+
+      const surfaceMap = makeEarthTexture("surface");
+      const cloudMap = makeEarthTexture("clouds");
+      const lightsMap = makeEarthTexture("lights");
+
+      const surface = new THREE.Mesh(
+        new THREE.SphereGeometry(4.2, 64, 64),
+        new THREE.MeshStandardMaterial({
+          map: surfaceMap ?? undefined,
+          roughness: 0.72,
+          metalness: 0,
+          emissive: 0x061328,
+          emissiveIntensity: 0.18,
+        }),
+      );
+      group.add(surface);
+
+      const cityLights = new THREE.Mesh(
+        new THREE.SphereGeometry(4.205, 48, 48),
+        new THREE.MeshBasicMaterial({
+          map: lightsMap ?? undefined,
+          transparent: true,
+          opacity: 0.55,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      group.add(cityLights);
+
+      const clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(4.28, 48, 48),
+        new THREE.MeshStandardMaterial({
+          map: cloudMap ?? undefined,
+          transparent: true,
+          opacity: 0.52,
+          roughness: 0.9,
+          metalness: 0,
+          depthWrite: false,
+        }),
+      );
+      group.add(clouds);
+
+      const atmosphere = new THREE.Mesh(
+        new THREE.SphereGeometry(4.55, 64, 64),
+        new THREE.ShaderMaterial({
+          side: THREE.BackSide,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            glowColor: { value: new THREE.Color(0x70d7ff) },
+          },
+          vertexShader: /* glsl */ `
+            varying vec3 vNormal;
+            void main() {
+              vNormal = normalize(normalMatrix * normal);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: /* glsl */ `
+            uniform vec3 glowColor;
+            varying vec3 vNormal;
+            void main() {
+              float rim = pow(1.0 - abs(vNormal.z), 2.4);
+              gl_FragColor = vec4(glowColor, rim * 0.36);
+            }
+          `,
+        }),
+      );
+      group.add(atmosphere);
+
+      const orbit = new THREE.Mesh(
+        new THREE.TorusGeometry(5.45, 0.012, 8, 128),
+        new THREE.MeshBasicMaterial({
+          color: 0x8fe8ff,
+          transparent: true,
+          opacity: 0.28,
+          depthWrite: false,
+        }),
+      );
+      orbit.rotation.x = Math.PI / 2.7;
+      group.add(orbit);
+
+      const poetCapsule = new THREE.Group();
+      const capsuleBody = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.12, 0.36, 6, 12),
+        new THREE.MeshStandardMaterial({
+          color: 0xf8ecd2,
+          roughness: 0.7,
+          metalness: 0.05,
+          emissive: 0x241a08,
+        }),
+      );
+      poetCapsule.add(capsuleBody);
+      const notebook = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.18, 0.03),
+        new THREE.MeshStandardMaterial({
+          color: 0x73ffb8,
+          roughness: 0.8,
+          emissive: 0x0b2418,
+        }),
+      );
+      notebook.position.set(0.22, 0.06, 0.03);
+      poetCapsule.add(notebook);
+      group.add(poetCapsule);
+
+      scene.add(group);
+      return { group, surface, clouds, cityLights, poetCapsule };
+    })();
 
     // ---- Orbiting spaceship ------------------------------------------
     // Procedural — small saucer + light beam — orbits the platform on a
@@ -941,6 +1161,17 @@ export default function Unit7Playground() {
       milkyWay.rotation.y += delta * 0.003;
       planet.rotation.y += delta * 0.05;
       moon.rotation.y += delta * 0.08;
+      earth.group.rotation.y += delta * 0.018;
+      earth.surface.rotation.y += delta * 0.045;
+      earth.cityLights.rotation.y = earth.surface.rotation.y;
+      earth.clouds.rotation.y += delta * 0.06;
+      const poetAngle = now * 0.00035;
+      earth.poetCapsule.position.set(
+        Math.cos(poetAngle) * 5.45,
+        Math.sin(poetAngle * 1.7) * 0.85,
+        Math.sin(poetAngle) * 5.45,
+      );
+      earth.poetCapsule.lookAt(0, 0, 0);
 
       // ---- Spaceship orbit + nav light blink + beam pulse ----------
       shipAngle += delta * 0.32;
@@ -1028,6 +1259,7 @@ export default function Unit7Playground() {
           else mat?.dispose();
         }
       });
+      disposableTextures.forEach((texture) => texture.dispose());
       renderer.dispose();
     };
   }, []);
@@ -1147,7 +1379,7 @@ export default function Unit7Playground() {
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
             Tricks
           </p>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               onClick={triggerBackflip}
               className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
@@ -1159,6 +1391,12 @@ export default function Unit7Playground() {
               className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
             >
               💨 Sprint
+            </button>
+            <button
+              onClick={triggerPoetTransmission}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
+            >
+              📜 Poet
             </button>
           </div>
 
