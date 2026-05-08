@@ -1,7 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import nimbusModelUrl from "@/assets/nimbus-vtol.glb";
+import nimbusModelUrl from "@/assets/glb/nimbus-vtol.glb";
 
 export interface NimbusState {
   lng: number;

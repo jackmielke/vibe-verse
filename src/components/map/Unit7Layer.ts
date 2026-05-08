@@ -1,7 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import unit7ModelUrl from "@/assets/robot-expressive.glb";
+import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 
 // Locomotion + emote names from the RobotExpressive example.
 // https://threejs.org/examples/?q=Animation#webgl_animation_skinning_morph

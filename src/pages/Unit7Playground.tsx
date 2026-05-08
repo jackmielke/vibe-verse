@@ -9,8 +9,11 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
-import unit7ModelUrl from "@/assets/robot-expressive.glb";
-import iridescentArcUrl from "@/assets/iridescent-arc.glb";
+import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
+import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
+import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
+import floatingIslandUrl from "@/assets/glb/floating-island.glb";
+import pixelTouchUrl from "@/assets/glb/pixel-touch.glb";
 import type {
   Unit7AnimName,
   Unit7Expression,
@@ -613,6 +616,10 @@ export default function Unit7Playground() {
   const vibeCardsGroupRef = useRef<THREE.Group | null>(null);
   // Vibey's knowledge: small memory orbs that orbit closer to the bot.
   const memoryOrbsGroupRef = useRef<THREE.Group | null>(null);
+  // Toggleable Meshy GLB props the user can spawn into the scene.
+  type PropId = "astronaut" | "island" | "touch";
+  const [activeProps, setActiveProps] = useState<Set<PropId>>(new Set());
+  const propsCacheRef = useRef<Map<PropId, THREE.Group>>(new Map());
   // Click-to-focus state: when the user clicks a card or memory orb,
   // the scene useEffect calls this ref's current handler.
   const focusHandlerRef = useRef<
@@ -977,6 +984,111 @@ export default function Unit7Playground() {
       scene.remove(group);
     };
   }, [vibeProfiles]);
+
+  // ---- Spawnable Meshy props (astronaut, island, touch) ----------
+  // Mount/unmount each prop based on the activeProps set. Loaded
+  // groups stay cached across toggles so re-spawning is instant.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    type PropCfg = {
+      url: string;
+      target: number;
+      position: [number, number, number];
+      rotationY?: number;
+      spin?: number;
+      bob?: number;
+    };
+    const PROP_CFG: Record<PropId, PropCfg> = {
+      astronaut: {
+        url: floatingAstronautUrl,
+        target: 6,
+        position: [10, 12, -6],
+        spin: 0.06,
+        bob: 0.6,
+      },
+      island: {
+        url: floatingIslandUrl,
+        target: 24,
+        position: [-32, -8, -42],
+        rotationY: 0.4,
+        spin: 0.015,
+        bob: 0.4,
+      },
+      touch: {
+        url: pixelTouchUrl,
+        target: 14,
+        position: [-22, 9, -16],
+        rotationY: -0.3,
+        spin: 0.04,
+        bob: 0.5,
+      },
+    };
+    const cache = propsCacheRef.current;
+    for (const id of Object.keys(PROP_CFG) as PropId[]) {
+      const wanted = activeProps.has(id);
+      const have = cache.get(id);
+      if (wanted && !have) {
+        const cfg = PROP_CFG[id];
+        const placeholder = new THREE.Group();
+        placeholder.userData.cfg = cfg;
+        cache.set(id, placeholder);
+        scene.add(placeholder);
+        new GLTFLoader().load(
+          cfg.url,
+          (gltf) => {
+            const m = gltf.scene;
+            const box = new THREE.Box3().setFromObject(m);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const fit = cfg.target /
+              Math.max(size.x, size.y, size.z, 0.0001);
+            m.scale.setScalar(fit);
+            placeholder.add(m);
+            placeholder.position.set(...cfg.position);
+            if (cfg.rotationY) placeholder.rotation.y = cfg.rotationY;
+            placeholder.userData.basePosY = cfg.position[1];
+            placeholder.userData.spin = cfg.spin ?? 0;
+            placeholder.userData.bob = cfg.bob ?? 0;
+            // PBR materials show as black without an env map for some
+            // metallic Meshy exports — clamp metalness so they read.
+            m.traverse((obj) => {
+              const mesh = obj as THREE.Mesh;
+              if (!mesh.isMesh) return;
+              const apply = (mat: THREE.Material) => {
+                const std = mat as THREE.MeshStandardMaterial;
+                if (std && "metalness" in std) {
+                  std.metalness = Math.min(std.metalness, 0.3);
+                  std.roughness = Math.max(std.roughness, 0.45);
+                  std.envMapIntensity = 1.0;
+                  std.needsUpdate = true;
+                }
+              };
+              const mat = mesh.material;
+              if (Array.isArray(mat)) mat.forEach(apply);
+              else if (mat) apply(mat);
+            });
+          },
+          undefined,
+          (err) => {
+            console.error(`[prop] ${id} failed`, err);
+          },
+        );
+      } else if (!wanted && have) {
+        scene.remove(have);
+        have.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.isMesh) {
+            mesh.geometry?.dispose();
+            const mat = mesh.material as THREE.Material | THREE.Material[];
+            if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+            else mat?.dispose();
+          }
+        });
+        cache.delete(id);
+      }
+    }
+  }, [activeProps]);
 
   // ---- Build Vibey's memory orbs (knowledge) ----------------------
   useEffect(() => {
@@ -3032,6 +3144,15 @@ export default function Unit7Playground() {
         }
       }
 
+      // ---- Spawnable props: per-prop slow spin + gentle bob -------
+      for (const g of propsCacheRef.current.values()) {
+        const spin = (g.userData.spin as number) ?? 0;
+        const bob = (g.userData.bob as number) ?? 0;
+        const baseY = (g.userData.basePosY as number) ?? g.position.y;
+        if (spin) g.rotation.y += delta * spin;
+        if (bob) g.position.y = baseY + Math.sin(now * 0.0006) * bob;
+      }
+
       // ---- Iridescent arc: slow drift rotation ---------------------
       if (arcGroup) {
         arcGroup.rotation.y += delta * 0.08;
@@ -3362,6 +3483,45 @@ export default function Unit7Playground() {
                 {item.label}
               </button>
             ))}
+          </div>
+
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
+            Props
+          </p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[
+              { id: "astronaut" as const, label: "🧑‍🚀 Astro" },
+              { id: "island" as const, label: "🏝 Island" },
+              { id: "touch" as const, label: "✨ Touch" },
+            ].map((item) => {
+              const on = activeProps.has(item.id);
+              return (
+                <button
+                  key={item.id}
+                  onClick={() =>
+                    setActiveProps((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.id)) next.delete(item.id);
+                      else next.add(item.id);
+                      return next;
+                    })
+                  }
+                  className={`rounded-md border transition-colors px-1 py-1.5 text-[10px] font-medium ${
+                    on
+                      ? "border-primary/60 bg-primary/20 text-primary"
+                      : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setActiveProps(new Set())}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 px-1 py-1.5 text-[10px] font-medium"
+            >
+              Clear
+            </button>
           </div>
 
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
