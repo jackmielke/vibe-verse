@@ -97,18 +97,13 @@ Deno.serve(async (req) => {
     userRows = (u.data ?? []) as typeof userRows;
   }
 
-  // Strip avatar URLs that would leak the Telegram bot token.
-  // Anything from api.telegram.org includes ?file/bot<token>/... in
-  // the path, so we drop those entirely. Supabase Storage URLs and
-  // user-uploaded ones are kept.
-  function safeAvatar(...candidates: (string | null | undefined)[]): string | null {
-    for (const c of candidates) {
-      if (!c) continue;
-      if (/api\.telegram\.org/i.test(c)) continue;
-      return c;
-    }
-    return null;
-  }
+  // We never echo raw avatar URLs to the client — Telegram-uploaded
+  // ones embed the bot token in the path. Instead, return a stable
+  // proxied URL pointing at the avatar-proxy edge function, which
+  // resolves the user id server-side and streams back the bytes.
+  const proxyBase = `${supabaseUrl}/functions/v1/avatar-proxy?u=`;
+  const hasAnyAvatar = (u: { profile_picture_url: string | null; avatar_url: string | null }) =>
+    !!(u.profile_picture_url || u.avatar_url);
 
   const profiles: {
     id: string;
@@ -125,7 +120,7 @@ Deno.serve(async (req) => {
       id: u.id,
       name: u.name,
       role: roleByUserId.get(u.id) ?? "member",
-      avatar: safeAvatar(u.profile_picture_url, u.avatar_url),
+      avatar: hasAnyAvatar(u) ? `${proxyBase}${u.id}` : null,
     });
   }
   // Shuffle once, then prefer profiles with safe avatars at the front

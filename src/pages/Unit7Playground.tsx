@@ -310,6 +310,9 @@ function makeVibeCard(
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      // The proxy returns a 1x1 transparent PNG when no working
+      // avatar source exists — treat that as a miss and keep initials.
+      if (img.naturalWidth <= 2 && img.naturalHeight <= 2) return;
       ctx.save();
       // Clear the disc area and draw the photo clipped to a circle.
       ctx.beginPath();
@@ -938,8 +941,10 @@ export default function Unit7Playground() {
     sample.forEach((mem, i) => {
       const orb = makeMemoryOrb(mem, PALETTE[i % PALETTE.length]);
       const a = (i / sample.length) * Math.PI * 2;
-      const r = 9.5 + Math.random() * 1.5;
-      const y = 4 + Math.sin(a * 1.7) * 1.5 + (Math.random() - 0.5) * 0.8;
+      // Knowledge floats higher than the people — sky-thoughts.
+      // (Cards sit around y=5; memories sit at y=10-12.)
+      const r = 10 + Math.random() * 2;
+      const y = 10.5 + Math.sin(a * 1.7) * 1.4 + (Math.random() - 0.5) * 0.8;
       orb.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
       orb.userData.bobPhase = Math.random() * Math.PI * 2;
       orb.userData.baseY = y;
@@ -1344,7 +1349,9 @@ export default function Unit7Playground() {
     camera.lookAt(0, 1.1, 0);
 
     const controls = new OrbitControls(camera, canvas);
-    controls.target.set(0, 1.1, 0);
+    // Aim a touch above Vibey's head so the orbiting memory orbs
+    // (sky layer at y≈10) sit naturally in frame alongside the cards.
+    controls.target.set(0, 3, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 4;
