@@ -215,7 +215,7 @@ export default function Unit7Playground() {
   ]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [trackIndex, setTrackIndex] = useState(0);
@@ -1465,14 +1465,11 @@ export default function Unit7Playground() {
         toneMapped: false,
       });
       const screen = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 4.4), screenMat);
-      // After lookAt, the TV's local -Z faces the target, so the screen
-      // sits on the -Z side and the plane faces the target by rotating
-      // 180° around Y (default plane normal is +Z).
-      screen.position.z = -0.27;
-      screen.rotation.y = Math.PI;
+      // Default plane normal is +Z, and we'll yaw the whole TV so its
+      // local +Z points at the platform — so the screen sits on +Z.
+      screen.position.z = 0.27;
       tv.add(screen);
-      // Soft glow halo so it reads against the starfield even when the
-      // photo is dark.
+      // Soft glow halo behind the screen.
       const halo = new THREE.Mesh(
         new THREE.PlaneGeometry(10, 7),
         new THREE.MeshBasicMaterial({
@@ -1482,7 +1479,7 @@ export default function Unit7Playground() {
           depthWrite: false,
         }),
       );
-      halo.position.z = 0.4; // halo lives behind the screen (target side)
+      halo.position.z = -0.4;
       tv.add(halo);
       // Three small thrusters underneath so it reads as a hovering
       // spacecraft, not a wall TV. Each is a glowing emissive sphere
@@ -1494,9 +1491,8 @@ export default function Unit7Playground() {
       });
       [-2.6, 0, 2.6].forEach((x) => {
         const th = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), thrusterMat);
-        th.position.set(x, -2.95, -0.35);
+        th.position.set(x, -2.95, 0.35);
         tv.add(th);
-        // Wider, fainter glow underneath each thruster.
         const flare = new THREE.Mesh(
           new THREE.SphereGeometry(0.45, 16, 12),
           new THREE.MeshBasicMaterial({
@@ -1510,13 +1506,14 @@ export default function Unit7Playground() {
         tv.add(flare);
       });
 
-      // Position truly opposite the planet/moon. Earth ≈ (-55, -8, -65),
-      // moon ≈ (35, 12, -30) — both back-side. Put the TV in the
-      // front-right quadrant, scaled up so it reads as a distant
-      // billboard from any orbit angle.
+      // Position opposite the planet/moon (Earth back-left). Front-right
+      // quadrant, big enough to read as a distant billboard.
       tv.position.set(38, 9, 32);
+      tv.userData.homeY = 9;
       tv.scale.setScalar(1.8);
-      tv.lookAt(0, 3, 0);
+      // Yaw-only rotation so the TV stays upright (lookAt would tilt it
+      // and reorient the thrusters away from "down").
+      tv.rotation.y = Math.atan2(0 - 38, 0 - 32);
       tv.visible = false;
       scene.add(tv);
       tvGroupRef.current = tv;
