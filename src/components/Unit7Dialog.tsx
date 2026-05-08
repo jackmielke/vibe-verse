@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send } from "lucide-react";
+import { X, Send, Rocket } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import type { Unit7AnimName, Unit7Expression } from "./map/Unit7Layer";
 import Unit7Stage from "./Unit7Stage";
 
@@ -192,6 +193,17 @@ export default function Unit7Dialog({ open, onClose, onEmote, onExpression }: Pr
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="relative px-5 pt-2">
+                <Link
+                  to="/unit7"
+                  onClick={onClose}
+                  className="w-full flex items-center justify-center gap-2 bg-primary/15 hover:bg-primary/25 transition-colors text-primary font-heading text-xs font-semibold py-2 rounded-lg"
+                >
+                  <Rocket className="w-3.5 h-3.5" />
+                  Open Unit-7's outer-space playground
+                </Link>
               </div>
 
               <div className="relative px-5 pb-5 pt-2 flex gap-2">
