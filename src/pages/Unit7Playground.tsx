@@ -105,7 +105,7 @@ type GalleryPhoto = {
   residency_name: string | null;
 };
 
-const EDGE_ESMERELDA_COMMUNITY_ID = "bb93af8f-3d13-458e-a580-207d374bbe39";
+const EDGE_ESMERELDA_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
 
 // ---------- Component --------------------------------------------------
 
@@ -1316,20 +1316,6 @@ export default function Unit7Playground() {
       );
       dome.position.y = 0.18;
       g.add(dome);
-      // Underside light beam — long thin cone, semi-transparent.
-      const beam = new THREE.Mesh(
-        new THREE.ConeGeometry(0.5, 4, 24, 1, true),
-        new THREE.MeshBasicMaterial({
-          color: 0x73ffb8,
-          transparent: true,
-          opacity: 0.18,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        }),
-      );
-      beam.position.y = -2.1;
-      beam.rotation.x = Math.PI;
-      g.add(beam);
       // Blinking nav light.
       const navLight = new THREE.Mesh(
         new THREE.SphereGeometry(0.06, 12, 12),
@@ -1338,9 +1324,7 @@ export default function Unit7Playground() {
       navLight.position.set(0.7, 0, 0);
       g.add(navLight);
       scene.add(g);
-      // Stash the nav light + beam material so the render loop can pulse them.
       (g as unknown as Record<string, unknown>).__nav = navLight;
-      (g as unknown as Record<string, unknown>).__beam = beam.material;
       return g;
     })();
 
@@ -1831,11 +1815,6 @@ export default function Unit7Playground() {
           blink * 0.45,
         );
       }
-      const beamMat = (ship as unknown as Record<string, unknown>).__beam as
-        | THREE.MeshBasicMaterial
-        | undefined;
-      if (beamMat) beamMat.opacity = 0.12 + Math.abs(Math.sin(now * 0.003)) * 0.1;
-
       // ---- Shooting stars: spawn occasionally + advance + fade ----
       if (now >= nextShooterAt) {
         spawnShootingStar();
@@ -1947,7 +1926,7 @@ export default function Unit7Playground() {
         </button>
       )}
 
-      <div className="absolute left-1/2 top-4 z-10 w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 glass-panel rounded-xl px-3 py-2 border border-primary/30">
+      <div className="absolute left-1/2 top-[125px] z-10 w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 glass-panel rounded-xl px-3 py-2 border border-primary/30">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_14px_rgba(115,255,184,0.9)]" />
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
