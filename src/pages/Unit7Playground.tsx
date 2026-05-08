@@ -68,12 +68,15 @@ const ONE_SHOTS: Set<Unit7AnimName> = new Set([
 const ALL_EMOTES: { label: string; anim: Unit7AnimName }[] = [
   { label: "👋 Wave", anim: "Wave" },
   { label: "💃 Dance", anim: "Dance" },
-  { label: "👍 Thumbs Up", anim: "ThumbsUp" },
+  { label: "👍 Thumbs", anim: "ThumbsUp" },
   { label: "✅ Yes", anim: "Yes" },
   { label: "❌ No", anim: "No" },
   { label: "🦘 Jump", anim: "Jump" },
   { label: "👊 Punch", anim: "Punch" },
   { label: "🪑 Sit", anim: "Sitting" },
+  { label: "🧍 Stand", anim: "Standing" },
+  { label: "🏃 Run", anim: "Running" },
+  { label: "💀 Die", anim: "Death" },
 ];
 
 const ALL_MOODS: { label: string; expr: Unit7Expression }[] = [
