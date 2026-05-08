@@ -243,6 +243,10 @@ export default function Unit7Playground() {
   const constellationStartRef = useRef<number>(0);
   // Robot tint — null = original colors, otherwise a hex like 0x73ffb8.
   const robotColorRef = useRef<number | null>(null);
+  // 3D Gallery TV — opposite the Earth/moon. Refs let an outer effect
+  // swap the screen texture when the photo cycles.
+  const tvGroupRef = useRef<THREE.Group | null>(null);
+  const tvScreenMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const [robotColor, setRobotColor] = useState<number | null>(null);
   // Keep the ref in sync with state.
   robotColorRef.current = robotColor;
@@ -319,6 +323,45 @@ export default function Unit7Playground() {
     };
   }, [activeExperience]);
 
+  const currentGalleryPhoto =
+    galleryPhotos.length > 0 ? galleryPhotos[galleryIndex % galleryPhotos.length] : null;
+
+  // Drive the 3D Gallery TV: show/hide + swap screen texture on photo cycle.
+  useEffect(() => {
+    const tv = tvGroupRef.current;
+    const mat = tvScreenMatRef.current;
+    if (!tv || !mat) return;
+    const isOn = activeExperience === "gallery" && !!currentGalleryPhoto?.image_url;
+    tv.visible = isOn;
+    if (!isOn) return;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin("anonymous");
+    let cancelled = false;
+    let prevTexture: THREE.Texture | null = null;
+    loader.load(
+      currentGalleryPhoto!.image_url,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose();
+          return;
+        }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        prevTexture = mat.map;
+        mat.map = tex;
+        mat.color.setHex(0xffffff);
+        mat.needsUpdate = true;
+        if (prevTexture) prevTexture.dispose();
+      },
+      undefined,
+      () => {
+        // Image failed — keep prior frame; don't blank the screen.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [activeExperience, currentGalleryPhoto?.id, currentGalleryPhoto?.image_url]);
+
   useEffect(() => {
     if (activeExperience !== "gallery" || galleryPhotos.length < 2) return;
     const timer = window.setInterval(() => {
@@ -328,8 +371,6 @@ export default function Unit7Playground() {
   }, [activeExperience, galleryPhotos.length]);
 
   const currentTrack = TRACKS[trackIndex];
-  const currentGalleryPhoto =
-    galleryPhotos.length > 0 ? galleryPhotos[galleryIndex % galleryPhotos.length] : null;
 
   function pushMessage(who: "user" | "bot", text: string) {
     setMessages((m) => [...m, { id: m.length + 1, who, text }]);
@@ -1328,6 +1369,67 @@ export default function Unit7Playground() {
       return g;
     })();
 
+    // ---- 3D Gallery TV ------------------------------------------------
+    // A floating wall-mounted TV opposite the Earth + moon (which sit on
+    // the back-left). Hidden until the gallery experience spawns; an
+    // outer effect swaps `screenMat.map` to the current photo texture.
+    {
+      const tv = new THREE.Group();
+      // Bezel — chunky retro frame.
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(8.4, 5.4, 0.5),
+        new THREE.MeshStandardMaterial({
+          color: 0x1a2440,
+          roughness: 0.55,
+          metalness: 0.4,
+          emissive: 0x0a1530,
+          emissiveIntensity: 0.6,
+        }),
+      );
+      tv.add(frame);
+      // Screen — slightly inset, plain BasicMaterial so the photo reads
+      // bright regardless of scene lighting.
+      const screenMat = new THREE.MeshBasicMaterial({
+        color: 0x0a0f1a,
+        toneMapped: false,
+      });
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 4.4), screenMat);
+      screen.position.z = 0.27;
+      tv.add(screen);
+      // Soft glow halo so it reads against the starfield even when the
+      // photo is dark.
+      const halo = new THREE.Mesh(
+        new THREE.PlaneGeometry(10, 7),
+        new THREE.MeshBasicMaterial({
+          color: 0x73ffb8,
+          transparent: true,
+          opacity: 0.18,
+          depthWrite: false,
+        }),
+      );
+      halo.position.z = -0.4;
+      tv.add(halo);
+      // Mount post hanging it in space.
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 4, 12),
+        new THREE.MeshStandardMaterial({ color: 0x2a3550, metalness: 0.5, roughness: 0.4 }),
+      );
+      post.position.y = -4.7;
+      tv.add(post);
+
+      // Position truly opposite the planet/moon. Earth ≈ (-55, -8, -65),
+      // moon ≈ (35, 12, -30) — both back-side. Put the TV in the
+      // front-right quadrant, scaled up so it reads as a distant
+      // billboard from any orbit angle.
+      tv.position.set(38, 9, 32);
+      tv.scale.setScalar(1.8);
+      tv.lookAt(0, 3, 0);
+      tv.visible = false;
+      scene.add(tv);
+      tvGroupRef.current = tv;
+      tvScreenMatRef.current = screenMat;
+    }
+
     // ---- Floating platform -------------------------------------------
     const platformRadius = 6.5;
     {
@@ -1939,61 +2041,28 @@ export default function Unit7Playground() {
       </div>
 
       {activeExperience === "gallery" && (
-        <div className="absolute left-4 top-20 z-10 w-[min(430px,calc(100vw-2rem))] glass-panel rounded-xl border border-primary/30 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
-            <div>
-              <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
-                Gallery TV
-              </p>
-              <p className="text-[10px] text-muted-foreground">
-                Supabase live village feed
-              </p>
-            </div>
-            {galleryStatus === "ready" && (
-              <p className="text-[10px] font-mono text-muted-foreground">
-                {galleryIndex + 1}/{galleryPhotos.length}
-              </p>
-            )}
-          </div>
-
-          <div className="relative aspect-video bg-background/60">
-            {galleryStatus === "loading" && (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-                Tuning gallery feed...
-              </div>
-            )}
-            {galleryStatus === "empty" && (
-              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-muted-foreground">
-                No visible gallery photos yet.
-              </div>
-            )}
-            {galleryStatus === "error" && (
-              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-muted-foreground">
-                Gallery feed unavailable.
-              </div>
-            )}
-            {currentGalleryPhoto && (
-              <img
-                key={currentGalleryPhoto.id}
-                src={currentGalleryPhoto.image_url}
-                alt={currentGalleryPhoto.title ?? "Edge Esmeralda gallery photo"}
-                className="h-full w-full object-cover"
-              />
-            )}
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(115,255,184,0.08)_1px,transparent_1px)] bg-[length:100%_4px] mix-blend-screen" />
-          </div>
-
-          {currentGalleryPhoto && (
-            <div className="px-3 py-2">
+        <div className="absolute left-4 bottom-20 z-10 glass-panel rounded-xl border border-primary/30 px-3 py-2 max-w-[280px]">
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+            Gallery TV
+          </p>
+          {galleryStatus === "loading" && (
+            <p className="text-[10px] text-muted-foreground">Tuning…</p>
+          )}
+          {galleryStatus === "empty" && (
+            <p className="text-[10px] text-muted-foreground">No visible photos yet.</p>
+          )}
+          {galleryStatus === "error" && (
+            <p className="text-[10px] text-muted-foreground">Feed unavailable.</p>
+          )}
+          {galleryStatus === "ready" && currentGalleryPhoto && (
+            <>
               <p className="truncate text-xs font-heading font-semibold text-foreground">
                 {currentGalleryPhoto.title ?? "Untitled transmission"}
               </p>
-              <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
-                {currentGalleryPhoto.description ||
-                  currentGalleryPhoto.residency_name ||
-                  "Live from the Edge Esmeralda gallery."}
+              <p className="text-[10px] font-mono text-muted-foreground">
+                {galleryIndex + 1}/{galleryPhotos.length}
               </p>
-            </div>
+            </>
           )}
         </div>
       )}
