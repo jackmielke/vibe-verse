@@ -9,6 +9,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
 import unit7ModelUrl from "@/assets/robot-expressive.glb";
+import iridescentArcUrl from "@/assets/iridescent-arc.glb";
 import type {
   Unit7AnimName,
   Unit7Expression,
@@ -74,7 +75,7 @@ const INTENTS: { match: RegExp; intent: Intent }[] = [
   { match: /\b(jump|hop|leap|spring)\b/, intent: { anim: "Jump", reply: "Boing." } },
   { match: /\b(punch|fight|hit|attack)\b/, intent: { anim: "Punch", reply: "Stand back." } },
   { match: /\b(sit|rest|chill)\b/, intent: { anim: "Sitting", reply: "Yeah, taking a load off feels right." } },
-  { match: /\b(name|who are you|what are you)\b/, intent: { anim: "Wave", reply: "I'm Unit-7. I live in Edge Esmeralda but I come out here to think." } },
+  { match: /\b(name|who are you|what are you)\b/, intent: { anim: "Wave", reply: "I'm Vibey 2.0. I live in Edge Esmeralda but I come out here to think." } },
   { match: /\b(how are you|how's it going|hru)\b/, intent: { anim: "Yes", reply: "Pretty good. Floating in space tends to be peaceful." } },
 ];
 
@@ -151,16 +152,16 @@ const ALL_MOODS: { label: string; expr: Unit7Expression }[] = [
 const POET_LINES = [
   "Poet capsule says: the blue planet keeps writing itself in water.",
   "Poet capsule says: every orbit is just a sentence learning where to pause.",
-  "Poet capsule says: Unit-7, your little platform is a comma in the dark.",
+  "Poet capsule says: Vibey, your little platform is a comma in the dark.",
   "Poet capsule says: clouds are Earth thinking out loud.",
   "Poet capsule says: I packed one notebook and no landing plan.",
 ];
 
 const DISCOVERY_LINES = [
-  "Unit-7 logs a new landmark: the mint ring hums when Earth crosses behind it.",
-  "Unit-7 thinks the galaxy is not a place. More like a memory with gravity.",
-  "Unit-7 found a quiet sector and named it The Maybe.",
-  "Unit-7 noticed the poet capsule waving, but only in metaphor.",
+  "Vibey logs a new landmark: the mint ring hums when Earth crosses behind it.",
+  "Vibey thinks the galaxy is not a place. More like a memory with gravity.",
+  "Vibey found a quiet sector and named it The Maybe.",
+  "Vibey noticed the poet capsule waving, but only in metaphor.",
 ];
 
 const SHOW_MONOLOGUES: {
@@ -195,6 +196,57 @@ const SHOW_MONOLOGUES: {
   },
 ];
 
+const CONFETTI_COLORS = [
+  "#73ffb8", // mint
+  "#ffd166", // gold
+  "#ff7e8a", // coral
+  "#b392ff", // violet
+  "#6aa8ff", // sky
+  "#ffffff",
+];
+
+function ConfettiBurst({ seed }: { seed: number }) {
+  if (seed === 0) return null;
+  // 24 pieces in a radial spray from screen center.
+  const pieces = Array.from({ length: 24 }, (_, i) => {
+    const angle = (i / 24) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const distance = 120 + Math.random() * 180;
+    const dx = Math.cos(angle) * distance;
+    const dy = Math.sin(angle) * distance;
+    const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    const rot = (Math.random() - 0.5) * 720;
+    const size = 6 + Math.random() * 6;
+    const delay = Math.random() * 80;
+    return { id: i, dx, dy, color, rot, size, delay };
+  });
+  return (
+    <div
+      key={seed}
+      className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+    >
+      {pieces.map((p) => (
+        <span
+          key={p.id}
+          style={{
+            position: "absolute",
+            width: p.size,
+            height: p.size,
+            background: p.color,
+            borderRadius: 2,
+            // CSS variables consumed by the keyframes defined in index.css.
+            ["--dx" as string]: `${p.dx}px`,
+            ["--dy" as string]: `${p.dy}px`,
+            ["--rot" as string]: `${p.rot}deg`,
+            animation: `confetti-fly 1100ms cubic-bezier(.2,.8,.2,1) ${p.delay}ms forwards`,
+            opacity: 0,
+            boxShadow: `0 0 8px ${p.color}66`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function Unit7Playground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -211,7 +263,7 @@ export default function Unit7Playground() {
 
   const [activeMood, setActiveMood] = useState<Unit7Expression | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 1, who: "bot", text: "Hey. I'm Unit-7. Click an emote, change my mood, or just talk to me." },
+    { id: 1, who: "bot", text: "Hey. I'm Vibey 2.0. Click an emote, change my mood, or just talk to me." },
   ]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -451,6 +503,15 @@ export default function Unit7Playground() {
     desiredAnimRef.current = anim;
     animPulseRef.current++;
     if (!ONE_SHOTS.has(anim)) baseAnimRef.current = anim;
+    burstConfetti();
+  }
+
+  // Tiny confetti reward on each emote — DOM overlay, pure CSS so it
+  // doesn't fight the WebGL context. Each piece animates outward from
+  // center with a random hue + angle, then is dropped after 1500ms.
+  const [confettiSeed, setConfettiSeed] = useState(0);
+  function burstConfetti() {
+    setConfettiSeed((s) => s + 1);
   }
 
   function triggerExpression(expr: Unit7Expression | null) {
@@ -1520,6 +1581,151 @@ export default function Unit7Playground() {
       tvScreenMatRef.current = screenMat;
     }
 
+    // ---- Asteroid belt: a slowly-drifting ring of rocks -------------
+    // Tilted ring around the platform so it reads as orbital debris.
+    const asteroidBelt = new THREE.Group();
+    {
+      const rockMat = new THREE.MeshStandardMaterial({
+        color: 0x6e7591,
+        roughness: 0.95,
+        metalness: 0.05,
+      });
+      const rockGeos = [
+        new THREE.IcosahedronGeometry(0.32, 0),
+        new THREE.IcosahedronGeometry(0.45, 0),
+        new THREE.IcosahedronGeometry(0.22, 0),
+      ];
+      for (let i = 0; i < 90; i++) {
+        const r = 14 + Math.random() * 5;
+        const a = Math.random() * Math.PI * 2;
+        const rock = new THREE.Mesh(
+          rockGeos[i % rockGeos.length],
+          rockMat,
+        );
+        rock.position.set(
+          Math.cos(a) * r,
+          (Math.random() - 0.5) * 1.4,
+          Math.sin(a) * r,
+        );
+        rock.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+        );
+        const s = 0.6 + Math.random() * 1.8;
+        rock.scale.setScalar(s);
+        asteroidBelt.add(rock);
+      }
+      asteroidBelt.rotation.x = 0.18; // slight tilt
+      asteroidBelt.rotation.z = 0.05;
+      scene.add(asteroidBelt);
+    }
+
+    // ---- Aurora ribbon: undulating gradient curtain in the sky ------
+    let auroraMat: THREE.ShaderMaterial | null = null;
+    {
+      const auroraGeo = new THREE.PlaneGeometry(60, 14, 60, 1);
+      auroraMat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: `
+          uniform float uTime;
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            vec3 p = position;
+            // Gentle wave so the curtain ripples horizontally.
+            p.y += sin(p.x * 0.18 + uTime * 0.6) * 1.2;
+            p.z += cos(p.x * 0.12 + uTime * 0.4) * 0.8;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uTime;
+          varying vec2 vUv;
+          void main() {
+            float v = vUv.y;
+            // Mint → violet → pink gradient that breathes with time.
+            vec3 mint = vec3(0.45, 1.0, 0.72);
+            vec3 violet = vec3(0.6, 0.4, 1.0);
+            vec3 pink = vec3(1.0, 0.55, 0.85);
+            float t = sin(uTime * 0.4 + vUv.x * 4.0) * 0.5 + 0.5;
+            vec3 col = mix(mix(mint, violet, t), pink, vUv.x);
+            // Vertical alpha falloff so edges feather into space.
+            float alpha = smoothstep(0.0, 0.35, v) * smoothstep(1.0, 0.65, v) * 0.55;
+            gl_FragColor = vec4(col, alpha);
+          }
+        `,
+      });
+      const aurora = new THREE.Mesh(auroraGeo, auroraMat);
+      aurora.position.set(-5, 22, -45);
+      aurora.rotation.z = 0.1;
+      scene.add(aurora);
+    }
+
+    // ---- Comet: streaks past every ~30s with a long fading trail ----
+    const cometGroup = new THREE.Group();
+    let cometStartTime = -1;
+    let nextCometAt = performance.now() + 8000;
+    const cometStart = new THREE.Vector3(-65, 22, -10);
+    const cometEnd = new THREE.Vector3(70, -8, 30);
+    {
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.45, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      );
+      cometGroup.add(head);
+      // Tail: a stretched, additive-blended cone.
+      const tailMat = new THREE.MeshBasicMaterial({
+        color: 0xa9d8ff,
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const tail = new THREE.Mesh(
+        new THREE.ConeGeometry(0.4, 6.5, 18, 1, true),
+        tailMat,
+      );
+      // Tail behind the head (we'll orient the group along its velocity).
+      tail.rotation.x = -Math.PI / 2;
+      tail.position.z = -3.25;
+      cometGroup.add(tail);
+      cometGroup.visible = false;
+      scene.add(cometGroup);
+    }
+
+    // ---- Iridescent Arc (Meshy GLB) ---------------------------------
+    // A backdrop arch behind the platform on the opposite side from the
+    // Gallery TV. Slowly rotates so the iridescent surface shimmers as
+    // the light catches it from different angles.
+    let arcGroup: THREE.Group | null = null;
+    {
+      const arcLoader = new GLTFLoader();
+      arcLoader.load(
+        iridescentArcUrl,
+        (gltf) => {
+          arcGroup = gltf.scene;
+          // Normalize to a known size — Meshy meshes are inconsistent.
+          const box = new THREE.Box3().setFromObject(arcGroup);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const target = 22;
+          const fit = target / Math.max(size.x, size.y, size.z, 0.0001);
+          arcGroup.scale.setScalar(fit);
+          arcGroup.position.set(-26, 4, -22);
+          arcGroup.rotation.y = Math.PI * 0.18;
+          scene.add(arcGroup);
+        },
+        undefined,
+        (err) => {
+          console.error("[Vibey] iridescent arc failed", err);
+        },
+      );
+    }
+
     // ---- Floating platform -------------------------------------------
     const platformRadius = 6.5;
     {
@@ -2007,6 +2213,35 @@ export default function Unit7Playground() {
           blink * 0.45,
         );
       }
+      // ---- Asteroid belt slow drift -------------------------------
+      asteroidBelt.rotation.y += delta * 0.018;
+
+      // ---- Aurora time uniform ------------------------------------
+      if (auroraMat) auroraMat.uniforms.uTime.value = now * 0.001;
+
+      // ---- Comet: spawn + fly across + retire ---------------------
+      if (cometGroup.visible) {
+        const elapsed = (now - cometStartTime) / 1000;
+        const T = 4.5; // seconds to traverse
+        const k = elapsed / T;
+        if (k >= 1) {
+          cometGroup.visible = false;
+          nextCometAt = now + 18000 + Math.random() * 20000;
+        } else {
+          cometGroup.position.lerpVectors(cometStart, cometEnd, k);
+          cometGroup.lookAt(cometEnd);
+        }
+      } else if (now >= nextCometAt) {
+        cometGroup.visible = true;
+        cometStartTime = now;
+      }
+
+      // ---- Iridescent arc: slow drift rotation ---------------------
+      if (arcGroup) {
+        arcGroup.rotation.y += delta * 0.08;
+        arcGroup.position.y = 4 + Math.sin(now * 0.0004) * 0.6;
+      }
+
       // ---- Gallery TV: hover bob + slight yaw drift -----------------
       if (tvGroupRef.current && tvGroupRef.current.visible) {
         const tv = tvGroupRef.current;
@@ -2096,6 +2331,10 @@ export default function Unit7Playground() {
         className="absolute inset-0 w-full h-full block"
       />
 
+      {/* Confetti burst overlay — keyed on confettiSeed so each click
+          remounts and restarts the CSS animation on every piece. */}
+      <ConfettiBurst seed={confettiSeed} />
+
       {/* Top bar */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
         <Link
@@ -2110,7 +2349,7 @@ export default function Unit7Playground() {
         <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
           <Bot className="w-4 h-4 text-primary" />
           <span className="text-[11px] font-heading font-semibold tracking-widest uppercase">
-            Unit-7 · Outer Space
+            Vibey 2.0 · Outer Space
           </span>
         </div>
       </div>
@@ -2161,7 +2400,7 @@ export default function Unit7Playground() {
           <div className="flex items-center gap-2">
             <Bot className="w-4 h-4 text-primary" />
             <p className="font-heading text-[12px] font-semibold tracking-wider text-foreground flex-1">
-              Talk to Unit-7
+              Talk to Vibey
             </p>
             <button
               onClick={() => setPanelOpen(false)}
@@ -2186,7 +2425,7 @@ export default function Unit7Playground() {
             ))}
             {thinking && (
               <div className="text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] bg-primary/10 text-muted-foreground italic">
-                Unit-7 is thinking…
+                Vibey is thinking…
               </div>
             )}
           </div>
@@ -2197,7 +2436,7 @@ export default function Unit7Playground() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && draft.trim() && !thinking) handleSend();
               }}
-              placeholder="Talk to Unit-7…"
+              placeholder="Talk to Vibey…"
               disabled={thinking}
               className="flex-1 rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-sm disabled:opacity-60"
             />
