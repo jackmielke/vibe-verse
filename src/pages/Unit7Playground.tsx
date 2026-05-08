@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
 import unit7ModelUrl from "@/assets/robot-expressive.glb";
 import type {
   Unit7AnimName,
@@ -11,119 +11,41 @@ import type {
 } from "@/components/map/Unit7Layer";
 import { supabase } from "@/integrations/supabase/client";
 
-// ---------- Ambient synth ----------------------------------------------
-// Tiny procedural soundtrack so the playground has vibe without needing a
-// licensed audio file. Four sine voices tuned to a wide-voiced minor 9
-// chord, each with its own slow tremolo LFO, gently low-passed. Sounds
-// like a sustained pad floating in space.
+// ---------- Soundtrack -------------------------------------------------
+// Real public-domain recordings hosted by Wikimedia Commons. Their CDN
+// serves them with `Access-Control-Allow-Origin: *`, so a plain
+// <audio> element streams them directly — no asset bloat in our repo,
+// no licensing question. To swap in your own track, drop an mp3/ogg
+// into public/audio/ and prepend it to TRACKS as `/audio/yourfile.mp3`.
 
-class AmbientSynth {
-  private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
-  private filter: BiquadFilterNode | null = null;
-  private oscs: OscillatorNode[] = [];
-  private lfos: OscillatorNode[] = [];
-  private targetVolume = 0.4;
-
-  start() {
-    if (this.ctx) return;
-    const Ctx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext;
-    this.ctx = new Ctx();
-    const ctx = this.ctx;
-
-    this.master = ctx.createGain();
-    this.master.gain.value = 0;
-
-    this.filter = ctx.createBiquadFilter();
-    this.filter.type = "lowpass";
-    this.filter.frequency.value = 1100;
-    this.filter.Q.value = 0.4;
-
-    this.master.connect(this.filter);
-    this.filter.connect(ctx.destination);
-
-    // Slow filter sweep so the pad breathes.
-    const sweep = ctx.createOscillator();
-    sweep.type = "sine";
-    sweep.frequency.value = 0.02;
-    const sweepGain = ctx.createGain();
-    sweepGain.gain.value = 350;
-    sweep.connect(sweepGain);
-    sweepGain.connect(this.filter.frequency);
-    sweep.start();
-    this.lfos.push(sweep);
-
-    // Open-voiced minor 9 chord (A2, E3, C4, B4-ish). Spacey + warm.
-    const root = 110; // A2
-    const ratios = [1, 1.5, 2.4, 3.56];
-    for (let i = 0; i < ratios.length; i++) {
-      const osc = ctx.createOscillator();
-      osc.type = i === 0 ? "triangle" : "sine"; // triangle for the root adds body
-      osc.frequency.value = root * ratios[i];
-      // Slight detune per voice for richness.
-      osc.detune.value = (Math.random() - 0.5) * 6;
-
-      const voiceGain = ctx.createGain();
-      voiceGain.gain.value = 0.18 / ratios.length;
-
-      // Per-voice tremolo LFO.
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.04 + Math.random() * 0.08;
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.08;
-      lfo.connect(lfoGain);
-      lfoGain.connect(voiceGain.gain);
-      lfo.start();
-
-      osc.connect(voiceGain);
-      voiceGain.connect(this.master);
-      osc.start();
-
-      this.oscs.push(osc);
-      this.lfos.push(lfo);
-    }
-
-    // Fade in.
-    this.master.gain.setValueAtTime(0, ctx.currentTime);
-    this.master.gain.linearRampToValueAtTime(this.targetVolume, ctx.currentTime + 2.5);
-  }
-
-  setVolume(v: number) {
-    this.targetVolume = Math.max(0, Math.min(1, v));
-    if (!this.ctx || !this.master) return;
-    this.master.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.master.gain.linearRampToValueAtTime(this.targetVolume, this.ctx.currentTime + 0.3);
-  }
-
-  fadeOut() {
-    if (!this.ctx || !this.master) return;
-    this.master.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.master.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1);
-  }
-
-  dispose() {
-    if (!this.ctx) return;
-    try {
-      this.fadeOut();
-      const ctx = this.ctx;
-      setTimeout(() => {
-        try {
-          this.oscs.forEach((o) => { try { o.stop(); } catch { /* */ } });
-          this.lfos.forEach((o) => { try { o.stop(); } catch { /* */ } });
-          ctx.close();
-        } catch { /* */ }
-      }, 1100);
-    } catch { /* */ }
-    this.oscs = [];
-    this.lfos = [];
-    this.master = null;
-    this.filter = null;
-    this.ctx = null;
-  }
+interface Track {
+  title: string;
+  artist: string;
+  src: string;
 }
+
+const TRACKS: Track[] = [
+  {
+    title: "Concerto No. 12 in A — Andante",
+    artist: "Mozart",
+    src: "https://upload.wikimedia.org/wikipedia/commons/a/aa/Mozart%3B_Concerto_No._12_in_A-_II._Andante.ogg",
+  },
+  {
+    title: "Eine kleine Nachtmusik — Allegro",
+    artist: "Mozart",
+    src: "https://upload.wikimedia.org/wikipedia/commons/2/24/Mozart_-_Eine_kleine_Nachtmusik_-_1._Allegro.ogg",
+  },
+  {
+    title: "Symphony No. 40 — Molto allegro",
+    artist: "Mozart",
+    src: "https://upload.wikimedia.org/wikipedia/commons/9/99/Wolfgang_Amadeus_Mozart_-_Symphony_40_g-moll_-_1._Molto_allegro.ogg",
+  },
+  {
+    title: "Clair de lune",
+    artist: "Debussy",
+    src: "https://upload.wikimedia.org/wikipedia/commons/b/be/Clair_de_lune_%28Claude_Debussy%29_Suite_bergamasque.ogg",
+  },
+];
 
 // ---------- Conversation logic ------------------------------------------
 // Keyword-based intent inference. Same shape as the in-map dialog so the
@@ -232,31 +154,36 @@ export default function Unit7Playground() {
   const [thinking, setThinking] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [musicOn, setMusicOn] = useState(false);
-  const [musicVolume, setMusicVolume] = useState(0.4);
-  const synthRef = useRef<AmbientSynth | null>(null);
+  const [musicVolume, setMusicVolume] = useState(0.5);
+  const [trackIndex, setTrackIndex] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Boot the synth on first toggle (browser autoplay policy requires a
-  // user gesture). Keep it alive across renders; tear it down on unmount.
+  // Hook up volume + auto-advance once we have an <audio> element.
   useEffect(() => {
-    if (musicOn) {
-      if (!synthRef.current) synthRef.current = new AmbientSynth();
-      synthRef.current.start();
-      synthRef.current.setVolume(musicVolume);
-    } else if (synthRef.current) {
-      synthRef.current.fadeOut();
-    }
-  }, [musicOn]);
-
-  useEffect(() => {
-    synthRef.current?.setVolume(musicOn ? musicVolume : 0);
-  }, [musicVolume, musicOn]);
-
-  useEffect(() => {
-    return () => {
-      synthRef.current?.dispose();
-      synthRef.current = null;
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = musicVolume;
+    const onEnded = () => {
+      // Auto-advance to next track. Wraps around.
+      setTrackIndex((i) => (i + 1) % TRACKS.length);
     };
-  }, []);
+    audio.addEventListener("ended", onEnded);
+    return () => audio.removeEventListener("ended", onEnded);
+  }, [musicVolume]);
+
+  // Honor play/pause + track changes against the actual <audio> element.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = musicVolume;
+    if (musicOn) {
+      audio.play().catch(() => { /* autoplay blocked; user toggles again */ });
+    } else {
+      audio.pause();
+    }
+  }, [musicOn, trackIndex, musicVolume]);
+
+  const currentTrack = TRACKS[trackIndex];
 
   function pushMessage(who: "user" | "bot", text: string) {
     setMessages((m) => [...m, { id: m.length + 1, who, text }]);
@@ -832,20 +759,49 @@ export default function Unit7Playground() {
       </div>
       )}
 
-      {/* Music widget — bottom-left so it's never blocked by the chat
-          panel. Web Audio synth boots on first toggle (autoplay rule). */}
-      <div className="absolute bottom-4 left-4 z-10 glass-panel rounded-full pl-2 pr-3 py-1.5 flex items-center gap-2">
+      {/* Music player — bottom-left, never blocked by the chat panel.
+          Streams public-domain recordings from Wikimedia (CORS-safe),
+          plays via a hidden HTML <audio> element. Auto-advances on end. */}
+      <div className="absolute bottom-4 left-4 z-10 glass-panel rounded-xl px-3 py-2 flex items-center gap-2">
+        <audio ref={audioRef} src={currentTrack.src} preload="none" crossOrigin="anonymous" />
+        <button
+          onClick={() => setTrackIndex((i) => (i - 1 + TRACKS.length) % TRACKS.length)}
+          className="p-1 rounded-md hover:bg-muted/40 transition-colors"
+          title="Previous track"
+        >
+          <SkipBack className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
         <button
           onClick={() => setMusicOn((v) => !v)}
-          className="p-1 rounded-full hover:bg-muted/40 transition-colors"
-          title={musicOn ? "Mute soundtrack" : "Play soundtrack"}
+          className="p-1.5 rounded-full bg-primary/15 hover:bg-primary/25 transition-colors"
+          title={musicOn ? "Pause" : "Play"}
         >
           {musicOn ? (
-            <Volume2 className="w-4 h-4 text-primary" />
+            <Pause className="w-4 h-4 text-primary" />
           ) : (
-            <VolumeX className="w-4 h-4 text-muted-foreground" />
+            <Play className="w-4 h-4 text-primary" />
           )}
         </button>
+        <button
+          onClick={() => setTrackIndex((i) => (i + 1) % TRACKS.length)}
+          className="p-1 rounded-md hover:bg-muted/40 transition-colors"
+          title="Next track"
+        >
+          <SkipForward className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+        <div className="ml-1 mr-1 max-w-[160px] overflow-hidden">
+          <p className="text-[11px] font-heading font-semibold text-foreground leading-tight truncate">
+            {currentTrack.title}
+          </p>
+          <p className="text-[9px] font-mono text-muted-foreground tracking-widest uppercase truncate">
+            {currentTrack.artist}
+          </p>
+        </div>
+        {musicVolume === 0 ? (
+          <VolumeX className="w-3.5 h-3.5 text-muted-foreground" />
+        ) : (
+          <Volume2 className="w-3.5 h-3.5 text-muted-foreground" />
+        )}
         <input
           type="range"
           min={0}
@@ -853,8 +809,8 @@ export default function Unit7Playground() {
           step={0.02}
           value={musicVolume}
           onChange={(e) => setMusicVolume(Number(e.target.value))}
-          className="w-20 h-1 accent-primary cursor-pointer"
-          aria-label="Soundtrack volume"
+          className="w-16 h-1 accent-primary cursor-pointer"
+          aria-label="Volume"
         />
       </div>
     </div>
