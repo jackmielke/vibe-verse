@@ -196,6 +196,21 @@ const SHOW_MONOLOGUES: {
   },
 ];
 
+const SPEECH_LINES: Partial<Record<Unit7AnimName, string[]>> = {
+  Wave: ["hey!", "you came!", "hi friend"],
+  Dance: ["💫", "let's gooo", "this is the song"],
+  Yes: ["mhm", "absolutely", "100%"],
+  No: ["nope", "respectfully no", "uh-uh"],
+  ThumbsUp: ["solid", "vibes confirmed", "noted"],
+  Punch: ["pow", "boop", "respectful jab"],
+  Jump: ["wheeee", "boing", "lift-off"],
+  Sitting: ["taking a sec", "comfy", "thinking…"],
+  Standing: ["up.", "back", "ready"],
+  Death: ["X_X", "dramatic", "tell my story"],
+  Walking: ["wandering", "off i go", "patrol mode"],
+  Running: ["zoom", "sprinting", "catch me"],
+};
+
 const CONFETTI_COLORS = [
   "#73ffb8", // mint
   "#ffd166", // gold
@@ -504,6 +519,11 @@ export default function Unit7Playground() {
     animPulseRef.current++;
     if (!ONE_SHOTS.has(anim)) baseAnimRef.current = anim;
     burstConfetti();
+    const lines = SPEECH_LINES[anim];
+    if (lines) {
+      const text = lines[Math.floor(Math.random() * lines.length)];
+      setSpeechBubble({ text, key: Date.now() });
+    }
   }
 
   // Tiny confetti reward on each emote — DOM overlay, pure CSS so it
@@ -513,6 +533,17 @@ export default function Unit7Playground() {
   function burstConfetti() {
     setConfettiSeed((s) => s + 1);
   }
+
+  // Speech bubble fired by emotes — auto-clears after 1.8s. Keyed by
+  // timestamp so re-clicking the same emote restarts the animation.
+  const [speechBubble, setSpeechBubble] = useState<
+    { text: string; key: number } | null
+  >(null);
+  useEffect(() => {
+    if (!speechBubble) return;
+    const t = window.setTimeout(() => setSpeechBubble(null), 1800);
+    return () => window.clearTimeout(t);
+  }, [speechBubble]);
 
   function triggerExpression(expr: Unit7Expression | null) {
     const cleared: Record<Unit7Expression, number> = {
@@ -876,6 +907,56 @@ export default function Unit7Playground() {
         depthWrite: false,
       });
       scene.add(new THREE.Points(geo, mat));
+
+      // Bonus sparkle layer: 260 brighter stars that twinkle out of
+      // phase via a small ShaderMaterial. Adds life to the sky without
+      // touching the base starfield.
+      const SPARK_COUNT = 260;
+      const sPos = new Float32Array(SPARK_COUNT * 3);
+      const sPhase = new Float32Array(SPARK_COUNT);
+      for (let i = 0; i < SPARK_COUNT; i++) {
+        const r = 70 + Math.random() * 110;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        sPos[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+        sPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        sPos[i * 3 + 2] = r * Math.cos(phi);
+        sPhase[i] = Math.random() * Math.PI * 2;
+      }
+      const sGeo = new THREE.BufferGeometry();
+      sGeo.setAttribute("position", new THREE.BufferAttribute(sPos, 3));
+      sGeo.setAttribute("phase", new THREE.BufferAttribute(sPhase, 1));
+      const sMat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: `
+          attribute float phase;
+          varying float vTwinkle;
+          uniform float uTime;
+          void main() {
+            vTwinkle = 0.55 + 0.45 * sin(uTime * 1.6 + phase);
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = (1.6 + vTwinkle * 2.4) * (300.0 / -mv.z);
+            gl_Position = projectionMatrix * mv;
+          }
+        `,
+        fragmentShader: `
+          varying float vTwinkle;
+          void main() {
+            vec2 c = gl_PointCoord - 0.5;
+            float d = length(c);
+            float a = smoothstep(0.5, 0.0, d) * vTwinkle;
+            gl_FragColor = vec4(1.0, 0.96, 0.85, a);
+          }
+        `,
+      });
+      const sparks = new THREE.Points(sGeo, sMat);
+      scene.add(sparks);
+      // Stash so the tick loop can update uTime.
+      (sparks as unknown as Record<string, unknown>).__mat = sMat;
+      (scene as unknown as Record<string, unknown>).__sparks = sparks;
     }
 
     // ---- Distant nebula glow -----------------------------------------
@@ -1596,7 +1677,7 @@ export default function Unit7Playground() {
         new THREE.IcosahedronGeometry(0.22, 0),
       ];
       for (let i = 0; i < 90; i++) {
-        const r = 14 + Math.random() * 5;
+        const r = 24 + Math.random() * 7;
         const a = Math.random() * Math.PI * 2;
         const rock = new THREE.Mesh(
           rockGeos[i % rockGeos.length],
@@ -1612,7 +1693,7 @@ export default function Unit7Playground() {
           Math.random() * Math.PI,
           Math.random() * Math.PI,
         );
-        const s = 0.6 + Math.random() * 1.8;
+        const s = 0.5 + Math.random() * 1.0;
         rock.scale.setScalar(s);
         asteroidBelt.add(rock);
       }
@@ -2219,6 +2300,13 @@ export default function Unit7Playground() {
       // ---- Aurora time uniform ------------------------------------
       if (auroraMat) auroraMat.uniforms.uTime.value = now * 0.001;
 
+      // ---- Twinkle sparks: advance shader time --------------------
+      const sparks = (scene as unknown as { __sparks?: THREE.Points }).__sparks;
+      if (sparks) {
+        const m = (sparks as unknown as { __mat?: THREE.ShaderMaterial }).__mat;
+        if (m) m.uniforms.uTime.value = now * 0.001;
+      }
+
       // ---- Comet: spawn + fly across + retire ---------------------
       if (cometGroup.visible) {
         const elapsed = (now - cometStartTime) / 1000;
@@ -2334,6 +2422,17 @@ export default function Unit7Playground() {
       {/* Confetti burst overlay — keyed on confettiSeed so each click
           remounts and restarts the CSS animation on every piece. */}
       <ConfettiBurst seed={confettiSeed} />
+
+      {/* Speech bubble above Vibey — fades in, drifts up, fades out. */}
+      {speechBubble && (
+        <div
+          key={speechBubble.key}
+          className="pointer-events-none absolute left-1/2 top-[42%] z-20 -translate-x-1/2 px-3 py-1.5 rounded-2xl bg-background/85 border border-primary/40 backdrop-blur shadow-lg text-sm font-heading text-foreground"
+          style={{ animation: "speech-pop 1800ms cubic-bezier(.2,.7,.2,1) forwards" }}
+        >
+          {speechBubble.text}
+        </div>
+      )}
 
       {/* Top bar */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
