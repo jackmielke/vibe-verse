@@ -7,6 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
+import { createVenueBeaconLayer } from "./map/VenueBeaconLayer";
 import {
   createHelicopterLayer,
   createDefaultHelicopterState,
@@ -105,32 +106,51 @@ const STRUCTURE_FACTORIES: Record<
   plaza: { layerId: "structure-plaza", create: createPlazaLayer },
 };
 
-// Adds every 3D structure layer for locations that have `structure3d` set.
-// Safe to call multiple times — it skips layers that already exist (and is
-// also called from `style.load` since custom layers are wiped on style change).
-// Uses `queryTerrainElevation` so structures sit on the ground rather than
-// sinking below an elevated terrain surface.
-function addStructureLayers(m: mapboxgl.Map) {
+// Adds the small "venue beacon" layer (a thin pillar of light + halo)
+// at every location that has a structure3d. The beacon is the always-on
+// minimalist marker — the actual pavilion / fountain / temple meshes
+// are gated behind the spawn toggles.
+function addVenueBeaconLayers(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
-    const factory = STRUCTURE_FACTORIES[loc.structure3d];
-    if (!factory || m.getLayer(factory.layerId)) return;
+    const id = `beacon-${loc.structure3d}`;
+    if (m.getLayer(id)) return;
     let altitude = 0;
     try {
-      // queryTerrainElevation returns meters above sea level at this lng/lat,
-      // or null if terrain isn't ready yet. Add a tiny lift so the base of
-      // the model isn't z-fighting with the terrain mesh.
       const elev = m.queryTerrainElevation([loc.lng, loc.lat], { exaggerated: true });
-      if (typeof elev === "number") altitude = elev + 0.5;
-    } catch {
-      /* terrain not ready */
-    }
+      if (typeof elev === "number") altitude = elev + 0.2;
+    } catch { /* terrain not ready */ }
     try {
-      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }, altitude));
-    } catch {
-      /* ignore — layer may not be ready in this style */
-    }
+      m.addLayer(createVenueBeaconLayer(id, { lng: loc.lng, lat: loc.lat }, altitude));
+    } catch { /* style not ready */ }
   });
+}
+
+// Adds the heavy 3D structure for a single venue (called when the user
+// spawns it from the Spawn panel). Returns true if it succeeded.
+function addStructureLayer(m: mapboxgl.Map, structure: "plaza" | "temple") {
+  const loc = VILLAGE_LOCATIONS.find((l) => l.structure3d === structure);
+  if (!loc) return false;
+  const factory = STRUCTURE_FACTORIES[structure];
+  if (!factory || m.getLayer(factory.layerId)) return false;
+  let altitude = 0;
+  try {
+    const elev = m.queryTerrainElevation([loc.lng, loc.lat], { exaggerated: true });
+    if (typeof elev === "number") altitude = elev + 0.5;
+  } catch { /* terrain not ready */ }
+  try {
+    m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }, altitude));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Removes a previously-spawned 3D structure layer if present.
+function removeStructureLayer(m: mapboxgl.Map, structure: "plaza" | "temple") {
+  const factory = STRUCTURE_FACTORIES[structure];
+  if (!factory) return;
+  if (m.getLayer(factory.layerId)) m.removeLayer(factory.layerId);
 }
 
 // Adds a 3D building extrusion layer for non-Standard styles (e.g. satellite).
@@ -214,16 +234,15 @@ function getPacificClock(): { hour: number; label: string } {
   return { hour, label };
 }
 
-function refreshStructureLayers(m: mapboxgl.Map) {
+function refreshVenueBeacons(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
-    const factory = STRUCTURE_FACTORIES[loc.structure3d];
-    if (!factory) return;
-    if (m.getLayer(factory.layerId)) {
-      try { m.removeLayer(factory.layerId); } catch { /* noop */ }
+    const id = `beacon-${loc.structure3d}`;
+    if (m.getLayer(id)) {
+      try { m.removeLayer(id); } catch { /* noop */ }
     }
   });
-  addStructureLayers(m);
+  addVenueBeaconLayers(m);
 }
 
 interface MapViewProps {
@@ -363,6 +382,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [tokyoLoading, setTokyoLoading] = useState(false);
   const [tokyoProgress, setTokyoProgress] = useState<number | null>(null);
 
+  // 3D venue structures (plaza pavilion + meditation temple) are
+  // gated behind their own spawn toggles. The always-on beacons mark
+  // their location until the heavy meshes are spawned.
+  const [plazaEnabled, setPlazaEnabled] = useState(false);
+  const [templeEnabled, setTempleEnabled] = useState(false);
+
   // ---- Nimbus VTOL ------------------------------------------------------
   const nimbusStateRef = useRef<NimbusState>(
     createDefaultNimbusState(VILLAGE_CENTER.lng, VILLAGE_CENTER.lat),
@@ -434,21 +459,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           // Config properties may not be available on all versions
         }
 
-        // Re-add 3D structures (custom layers are wiped on style change).
-        // Wait one tick for terrain tiles before sampling elevation.
-        addStructureLayers(m);
+        // Re-add the always-on venue beacons (custom layers are wiped
+        // on style change). Heavy structures are gated behind the
+        // Spawn panel and re-added by the spawn-state effect below.
+        addVenueBeaconLayers(m);
         // Add city 3D buildings on styles that expose `composite` (satellite).
         // Standard ships its own 3D buildings so this is a no-op there.
         addBuildingsLayer(m);
         markMapReady();
-        m.once("idle", () => refreshStructureLayers(m));
+        m.once("idle", () => refreshVenueBeacons(m));
       });
 
       // When new terrain tiles load near our structures, re-seat them on the
       // ground so they don't appear to sink as the user pans/zooms.
       m.on("sourcedata", (e) => {
         if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
-          refreshStructureLayers(m);
+          refreshVenueBeacons(m);
           // Re-sample ground altitude for live characters too. Without this,
           // they stay at sea-level (altitude 0) until a frame happens to
           // resample, which leaves them underground in places like Healdsburg
@@ -538,8 +564,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           },
         });
 
-        // 3D structure overlays (also re-added on style.load)
-        addStructureLayers(m);
+        // Always-on venue beacons (also re-added on style.load).
+        addVenueBeaconLayers(m);
       });
 
       m.on("error", (event) => {
@@ -1199,6 +1225,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       setIslandProgress(null);
     }
   }, [islandEnabled, mapLoaded]);
+
+  // ---- Plaza + Temple 3D structure spawn toggles -----------------
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    const m = map.current;
+    if (plazaEnabled) addStructureLayer(m, "plaza");
+    else removeStructureLayer(m, "plaza");
+  }, [plazaEnabled, mapLoaded]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    const m = map.current;
+    if (templeEnabled) addStructureLayer(m, "temple");
+    else removeStructureLayer(m, "temple");
+  }, [templeEnabled, mapLoaded]);
 
   useEffect(() => {
     const m = map.current;
@@ -2086,6 +2127,52 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           },
         ]}
         spawnables={[
+          {
+            id: "plaza",
+            label: "Central Plaza",
+            description: "The fountain + pavilion structure at the plaza beacon. Spawn to see the full venue, despawn to keep just the beam of light.",
+            enabled: plazaEnabled,
+            loading: false,
+            progress: null,
+            onToggle: () => {
+              if (!plazaEnabled && map.current) {
+                const plaza = VILLAGE_LOCATIONS.find((l) => l.structure3d === "plaza");
+                if (plaza) {
+                  map.current.flyTo({
+                    center: [plaza.lng, plaza.lat],
+                    zoom: 18,
+                    pitch: 65,
+                    bearing: -20,
+                    duration: 1500,
+                  });
+                }
+              }
+              setPlazaEnabled((v) => !v);
+            },
+          },
+          {
+            id: "temple",
+            label: "Meditation Temple",
+            description: "Pagoda-style temple at the meditation garden beacon. Spawn to bring it in.",
+            enabled: templeEnabled,
+            loading: false,
+            progress: null,
+            onToggle: () => {
+              if (!templeEnabled && map.current) {
+                const temple = VILLAGE_LOCATIONS.find((l) => l.structure3d === "temple");
+                if (temple) {
+                  map.current.flyTo({
+                    center: [temple.lng, temple.lat],
+                    zoom: 18,
+                    pitch: 65,
+                    bearing: -20,
+                    duration: 1500,
+                  });
+                }
+              }
+              setTempleEnabled((v) => !v);
+            },
+          },
           {
             id: "island",
             label: "Edge Island",
