@@ -28,3 +28,7 @@ dist-ssr
 
 # Heavy GLB assets — keep local, don't bloat the repo.
 public/models/*.glb
+
+# Supabase CLI local cache (linked-project metadata, version files, etc.)
+supabase/.temp/
+supabase/.branches/
