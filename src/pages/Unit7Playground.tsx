@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -294,7 +295,10 @@ export default function Unit7Playground() {
   const [showThought, setShowThought] = useState(
     "Vibey is online, wandering without direct orders.",
   );
-  const [activeExperience, setActiveExperience] = useState<SpaceExperience>("none");
+  // Default to gallery so the 3D Gallery TV is part of the scene from
+  // first paint — Jack expects the TV to always be there, not gated on
+  // a Spawn-TV click.
+  const [activeExperience, setActiveExperience] = useState<SpaceExperience>("gallery");
   const activeExperienceRef = useRef<SpaceExperience>("none");
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
@@ -743,6 +747,14 @@ export default function Unit7Playground() {
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x05060f, 0.012);
+    // Soft environment so PBR materials (like the iridescent arc) have
+    // something to reflect — without this they read as black voids.
+    {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = envTex;
+      pmrem.dispose();
+    }
     const disposableTextures: THREE.Texture[] = [];
 
     function continentField(lon: number, lat: number) {
@@ -1793,11 +1805,38 @@ export default function Unit7Playground() {
           const box = new THREE.Box3().setFromObject(arcGroup);
           const size = new THREE.Vector3();
           box.getSize(size);
-          const target = 22;
+          const target = 8; // ~1/3 of the previous size per user request
           const fit = target / Math.max(size.x, size.y, size.z, 0.0001);
           arcGroup.scale.setScalar(fit);
-          arcGroup.position.set(-26, 4, -22);
+          arcGroup.position.set(-18, 4, -14);
           arcGroup.rotation.y = Math.PI * 0.18;
+          // Make sure the iridescent texture actually shines. The Meshy
+          // GLB ships PBR materials whose metalness reads near-black
+          // without an environment map. Boost emissive (so the baked
+          // texture shows even with no light) and tone metalness down.
+          arcGroup.traverse((obj) => {
+            const mesh = obj as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const apply = (m: THREE.Material) => {
+              const std = m as THREE.MeshStandardMaterial;
+              if (std && "metalness" in std) {
+                std.metalness = Math.min(std.metalness, 0.25);
+                std.roughness = Math.max(std.roughness, 0.4);
+                // Use the diffuse map as a glow source so it reads
+                // against the dark sky regardless of lighting.
+                if (std.map) {
+                  std.emissiveMap = std.map;
+                  std.emissive = new THREE.Color(0xffffff);
+                  std.emissiveIntensity = 0.55;
+                }
+                std.envMapIntensity = 1.0;
+                std.needsUpdate = true;
+              }
+            };
+            const mat = mesh.material;
+            if (Array.isArray(mat)) mat.forEach(apply);
+            else if (mat) apply(mat);
+          });
           scene.add(arcGroup);
         },
         undefined,
