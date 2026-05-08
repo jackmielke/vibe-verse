@@ -1000,20 +1000,21 @@ export default function Unit7Playground() {
       bob?: number;
     };
     const PROP_CFG: Record<PropId, PropCfg> = {
-      // Island sits 180° opposite the iridescent arc, with the
-      // astronaut hovering just above it like she's exploring.
+      // Island + astronaut sit 90° to the right of the Gallery TV
+      // (back-right quadrant) so they don't intersect the TV column
+      // when viewed from behind Vibey.
       island: {
         url: floatingIslandUrl,
         target: 24,
-        position: [32, -8, 42],
-        rotationY: -0.4,
+        position: [42, -8, -32],
+        rotationY: -0.92,
         spin: 0.015,
         bob: 0.4,
       },
       astronaut: {
         url: floatingAstronautUrl,
         target: 6,
-        position: [32, 8, 42],
+        position: [42, 8, -32],
         spin: 0.06,
         bob: 0.6,
       },
