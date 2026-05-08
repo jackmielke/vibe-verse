@@ -620,6 +620,54 @@ export default function Unit7Playground() {
   type PropId = "astronaut" | "island" | "touch";
   const [activeProps, setActiveProps] = useState<Set<PropId>>(new Set());
   const propsCacheRef = useRef<Map<PropId, THREE.Group>>(new Map());
+
+  // ---- Scene layer visibility (Control Panel) -------------------
+  type LayerId =
+    | "cards"
+    | "memories"
+    | "asteroids"
+    | "aurora"
+    | "comet"
+    | "arc"
+    | "ship"
+    | "sparks";
+  const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({
+    cards: true,
+    memories: false, // default OFF — knowledge can feel noisy
+    asteroids: true,
+    aurora: true,
+    comet: true,
+    arc: true,
+    ship: true,
+    sparks: true,
+  });
+  const layerVisibleRef = useRef(layerVisible);
+  layerVisibleRef.current = layerVisible;
+  // Refs to scene objects so the toggle effect can flip their .visible.
+  const arcRef = useRef<THREE.Group | null>(null);
+  const asteroidBeltRef = useRef<THREE.Group | null>(null);
+  const auroraRef = useRef<THREE.Mesh | null>(null);
+  const cometRef = useRef<THREE.Group | null>(null);
+  const shipRef = useRef<THREE.Group | null>(null);
+  const sparksRef = useRef<THREE.Points | null>(null);
+  const [controlPanelOpen, setControlPanelOpen] = useState(false);
+
+  // Re-apply layer visibility whenever the toggles change. Async-loaded
+  // refs (arc) may be null on first run; they catch up on next change.
+  useEffect(() => {
+    if (vibeCardsGroupRef.current)
+      vibeCardsGroupRef.current.visible = layerVisible.cards;
+    if (memoryOrbsGroupRef.current)
+      memoryOrbsGroupRef.current.visible = layerVisible.memories;
+    if (arcRef.current) arcRef.current.visible = layerVisible.arc;
+    if (asteroidBeltRef.current)
+      asteroidBeltRef.current.visible = layerVisible.asteroids;
+    if (auroraRef.current) auroraRef.current.visible = layerVisible.aurora;
+    if (cometRef.current && !layerVisible.comet) cometRef.current.visible = false;
+    // (Comet visibility is also driven by its own spawn logic when on.)
+    if (shipRef.current) shipRef.current.visible = layerVisible.ship;
+    if (sparksRef.current) sparksRef.current.visible = layerVisible.sparks;
+  }, [layerVisible]);
   // Click-to-focus state: when the user clicks a card or memory orb,
   // the scene useEffect calls this ref's current handler.
   const focusHandlerRef = useRef<
@@ -977,6 +1025,7 @@ export default function Unit7Playground() {
       card.userData.profile = p;
       group.add(card);
     });
+    group.visible = layerVisibleRef.current.cards;
     scene.add(group);
     vibeCardsGroupRef.current = group;
     (window as unknown as Record<string, unknown>).__vibeCards = group;
@@ -1128,6 +1177,7 @@ export default function Unit7Playground() {
       orb.userData.memory = mem;
       group.add(orb);
     });
+    group.visible = layerVisibleRef.current.memories;
     scene.add(group);
     memoryOrbsGroupRef.current = group;
     return () => {
@@ -1711,7 +1761,9 @@ export default function Unit7Playground() {
         `,
       });
       const sparks = new THREE.Points(sGeo, sMat);
+      sparks.visible = layerVisibleRef.current.sparks;
       scene.add(sparks);
+      sparksRef.current = sparks;
       // Stash so the tick loop can update uTime.
       (sparks as unknown as Record<string, unknown>).__mat = sMat;
       (scene as unknown as Record<string, unknown>).__sparks = sparks;
@@ -2335,8 +2387,10 @@ export default function Unit7Playground() {
       );
       navLight.position.set(0.7, 0, 0);
       g.add(navLight);
+      g.visible = layerVisibleRef.current.ship;
       scene.add(g);
       (g as unknown as Record<string, unknown>).__nav = navLight;
+      shipRef.current = g;
       return g;
     })();
 
@@ -2457,7 +2511,9 @@ export default function Unit7Playground() {
       }
       asteroidBelt.rotation.x = 0.18; // slight tilt
       asteroidBelt.rotation.z = 0.05;
+      asteroidBelt.visible = layerVisibleRef.current.asteroids;
       scene.add(asteroidBelt);
+      asteroidBeltRef.current = asteroidBelt;
     }
 
     // ---- Aurora ribbon: undulating gradient curtain in the sky ------
@@ -2505,7 +2561,9 @@ export default function Unit7Playground() {
       const aurora = new THREE.Mesh(auroraGeo, auroraMat);
       aurora.position.set(-5, 22, -45);
       aurora.rotation.z = 0.1;
+      aurora.visible = layerVisibleRef.current.aurora;
       scene.add(aurora);
+      auroraRef.current = aurora;
     }
 
     // ---- Comet: streaks past every ~30s with a long fading trail ----
@@ -2538,6 +2596,7 @@ export default function Unit7Playground() {
       cometGroup.add(tail);
       cometGroup.visible = false;
       scene.add(cometGroup);
+      cometRef.current = cometGroup;
     }
 
     // ---- Iridescent Arc (Meshy GLB) ---------------------------------
@@ -2587,7 +2646,9 @@ export default function Unit7Playground() {
             if (Array.isArray(mat)) mat.forEach(apply);
             else if (mat) apply(mat);
           });
+          arcGroup.visible = layerVisibleRef.current.arc;
           scene.add(arcGroup);
+          arcRef.current = arcGroup;
         },
         undefined,
         (err) => {
@@ -3116,7 +3177,7 @@ export default function Unit7Playground() {
           cometGroup.position.lerpVectors(cometStart, cometEnd, k);
           cometGroup.lookAt(cometEnd);
         }
-      } else if (now >= nextCometAt) {
+      } else if (now >= nextCometAt && layerVisibleRef.current.comet) {
         cometGroup.visible = true;
         cometStartTime = now;
       }
@@ -3724,6 +3785,71 @@ export default function Unit7Playground() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Control Panel — toggles which scene layers are visible. */}
+      <button
+        onClick={() => setControlPanelOpen((v) => !v)}
+        className={`absolute bottom-32 left-4 z-10 glass-panel rounded-full px-3 py-1.5 flex items-center gap-2 text-[11px] font-heading transition-colors border ${
+          controlPanelOpen
+            ? "border-primary/60 bg-primary/15"
+            : "border-primary/30 hover:bg-muted/40"
+        }`}
+        title="Toggle scene layers"
+      >
+        <span className="text-primary">⚙</span>
+        <span className="tracking-widest uppercase">Layers</span>
+      </button>
+
+      {controlPanelOpen && (
+        <div className="absolute bottom-44 left-4 z-20 glass-panel rounded-xl border border-primary/30 p-3 w-[220px]">
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-2">
+            Scene Layers
+          </p>
+          <div className="flex flex-col gap-1">
+            {[
+              { id: "cards" as const, label: "People cards" },
+              { id: "memories" as const, label: "Vibey · Knows" },
+              { id: "asteroids" as const, label: "Asteroid belt" },
+              { id: "aurora" as const, label: "Aurora ribbon" },
+              { id: "comet" as const, label: "Comets" },
+              { id: "arc" as const, label: "Iridescent arc" },
+              { id: "ship" as const, label: "Saucer" },
+              { id: "sparks" as const, label: "Twinkle stars" },
+            ].map((row) => {
+              const on = layerVisible[row.id];
+              return (
+                <button
+                  key={row.id}
+                  onClick={() =>
+                    setLayerVisible((prev) => ({
+                      ...prev,
+                      [row.id]: !prev[row.id],
+                    }))
+                  }
+                  className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[11px] transition-colors ${
+                    on
+                      ? "bg-primary/15 text-foreground"
+                      : "bg-background/30 text-muted-foreground hover:bg-muted/30"
+                  }`}
+                >
+                  <span>{row.label}</span>
+                  <span
+                    className={`relative inline-block w-7 h-3.5 rounded-full transition-colors ${
+                      on ? "bg-primary/80" : "bg-muted/50"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-foreground transition-all ${
+                        on ? "left-3.5" : "left-0.5"
+                      }`}
+                    />
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
