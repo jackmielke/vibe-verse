@@ -586,6 +586,7 @@ export default function Unit7Playground() {
 
   // Realtime presence — how many visitors are watching right now.
   const [watchingNow, setWatchingNow] = useState<number>(1);
+
   const [activeExperience, setActiveExperience] = useState<SpaceExperience>("gallery");
   const activeExperienceRef = useRef<SpaceExperience>("none");
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
@@ -612,6 +613,33 @@ export default function Unit7Playground() {
   const vibeCardsGroupRef = useRef<THREE.Group | null>(null);
   // Vibey's knowledge: small memory orbs that orbit closer to the bot.
   const memoryOrbsGroupRef = useRef<THREE.Group | null>(null);
+  // Click-to-focus state: when the user clicks a card or memory orb,
+  // the scene useEffect calls this ref's current handler.
+  const focusHandlerRef = useRef<
+    | ((kind: "profile" | "memory", payload: unknown) => void)
+    | null
+  >(null);
+  const [focusedProfile, setFocusedProfile] = useState<{
+    id: string;
+    name: string;
+    role: string;
+    avatar: string | null;
+  } | null>(null);
+  const [focusedMemory, setFocusedMemory] = useState<{
+    content: string;
+    tags: string[];
+  } | null>(null);
+
+  // Wire the focus handler each render so the scene's pointerdown can
+  // fire it with the latest setState closures. (Declared after the
+  // setState pair so this assignment never hits the TDZ.)
+  focusHandlerRef.current = (kind, payload) => {
+    if (kind === "profile") {
+      setFocusedProfile(payload as VibeProfile);
+    } else if (kind === "memory") {
+      setFocusedMemory(payload as VibeyMemory);
+    }
+  };
   const [robotColor, setRobotColor] = useState<number | null>(null);
   // Keep the ref in sync with state.
   robotColorRef.current = robotColor;
@@ -776,6 +804,35 @@ export default function Unit7Playground() {
           ctx.fillText(ln, 24, photoH + 18 + i * 34);
         });
       }
+      // ---- CRT pass: scanlines + soft vignette + faint RGB shift -
+      // Pure 2D canvas effects so we don't have to swap the screen
+      // material to a ShaderMaterial.
+      ctx.save();
+      ctx.globalCompositeOperation = "multiply";
+      ctx.fillStyle = "rgba(180, 200, 220, 1)";
+      // Scanlines every 3 pixels — dim alternates light to leave the
+      // photo's brightness mostly intact.
+      for (let y = 0; y < H; y += 3) {
+        ctx.fillStyle = y % 6 === 0
+          ? "rgba(120, 130, 150, 1)"
+          : "rgba(220, 225, 235, 1)";
+        ctx.fillRect(0, y, W, 1);
+      }
+      ctx.restore();
+      // Faint chromatic ghost — re-stamp red and blue channels at a
+      // ±2px offset with low alpha. Keeps it subtle.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.08;
+      ctx.drawImage(canvas, -2, 0);
+      ctx.drawImage(canvas, 2, 0);
+      ctx.restore();
+      // Vignette.
+      const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.7);
+      vg.addColorStop(0, "rgba(0,0,0,0)");
+      vg.addColorStop(1, "rgba(0,0,0,0.55)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, W, H);
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       // Default flipY (true) is fine for PlaneGeometry, but the caption
@@ -907,6 +964,10 @@ export default function Unit7Playground() {
       // loop can wiggle them independently.
       card.userData.bobPhase = Math.random() * Math.PI * 2;
       card.userData.baseY = y;
+      // Mark the card with its profile so a raycaster can fire the
+      // click-to-focus handler with the right payload.
+      card.userData.kind = "profile";
+      card.userData.profile = p;
       group.add(card);
     });
     scene.add(group);
@@ -948,6 +1009,8 @@ export default function Unit7Playground() {
       orb.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
       orb.userData.bobPhase = Math.random() * Math.PI * 2;
       orb.userData.baseY = y;
+      orb.userData.kind = "memory";
+      orb.userData.memory = mem;
       group.add(orb);
     });
     scene.add(group);
@@ -956,6 +1019,42 @@ export default function Unit7Playground() {
       scene.remove(group);
     };
   }, [vibeyMemories]);
+
+  // ---- New-photo toast: pop a banner when a gallery_photos row
+  // arrives in the live community feed.
+  const [newPhotoToast, setNewPhotoToast] = useState<{
+    title: string;
+    key: number;
+  } | null>(null);
+  useEffect(() => {
+    const channel = supabase
+      .channel("gallery-photo-inserts")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "gallery_photos",
+          filter: `community_id=eq.${EDGE_ESMERELDA_COMMUNITY_ID}`,
+        },
+        (payload) => {
+          const row = payload.new as { title?: string; description?: string };
+          const title = (row.title?.trim() || row.description?.trim() || "New photo")
+            .slice(0, 80);
+          setNewPhotoToast({ title, key: Date.now() });
+        },
+      )
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, []);
+  useEffect(() => {
+    if (!newPhotoToast) return;
+    const t = window.setTimeout(() => setNewPhotoToast(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [newPhotoToast]);
 
   // ---- Realtime presence: count concurrent viewers ----------------
   useEffect(() => {
@@ -1362,6 +1461,41 @@ export default function Unit7Playground() {
     // Stop auto-rotation as soon as the user drags.
     canvas.addEventListener("pointerdown", () => {
       controls.autoRotate = false;
+    });
+
+    // Click-to-focus on cards + memory orbs. We compare pointerdown
+    // and pointerup positions so a drag (rotating the camera) doesn't
+    // also count as a click.
+    const downAt = new THREE.Vector2();
+    let downTime = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      downAt.set(e.clientX, e.clientY);
+      downTime = performance.now();
+    });
+    const raycaster = new THREE.Raycaster();
+    canvas.addEventListener("pointerup", (e) => {
+      const dx = e.clientX - downAt.x;
+      const dy = e.clientY - downAt.y;
+      if (dx * dx + dy * dy > 36) return; // dragged
+      if (performance.now() - downTime > 700) return; // long-press, ignore
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const targets: THREE.Object3D[] = [];
+      if (vibeCardsGroupRef.current) targets.push(...vibeCardsGroupRef.current.children);
+      if (memoryOrbsGroupRef.current) targets.push(...memoryOrbsGroupRef.current.children);
+      const hits = raycaster.intersectObjects(targets, false);
+      const hit = hits[0]?.object;
+      if (!hit) return;
+      const kind = hit.userData.kind as "profile" | "memory" | undefined;
+      if (kind === "profile" && hit.userData.profile) {
+        focusHandlerRef.current?.("profile", hit.userData.profile as VibeProfile);
+      } else if (kind === "memory" && hit.userData.memory) {
+        focusHandlerRef.current?.("memory", hit.userData.memory as VibeyMemory);
+      }
     });
 
     const composer = new EffectComposer(renderer);
@@ -3309,6 +3443,125 @@ export default function Unit7Playground() {
             <span className="font-mono font-semibold">{communityStats.events}</span>
             <span className="text-muted-foreground ml-1">events</span>
           </span>
+        </div>
+      )}
+
+      {/* New-photo toast — slides in when a new gallery photo lands. */}
+      {newPhotoToast && (
+        <div
+          key={newPhotoToast.key}
+          className="absolute top-16 left-1/2 z-20 -translate-x-1/2 glass-panel rounded-xl px-4 py-2 border border-primary/40 flex items-center gap-2 shadow-lg"
+          style={{ animation: "speech-pop 6000ms cubic-bezier(.2,.7,.2,1) forwards" }}
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+          </span>
+          <span className="text-[11px] uppercase tracking-widest text-primary font-heading">
+            New photo
+          </span>
+          <span className="text-xs text-foreground/85 max-w-[280px] truncate">
+            {newPhotoToast.title}
+          </span>
+        </div>
+      )}
+
+      {/* Click-focus panels: a member card or memory orb in the 3D
+          scene was clicked → show its full data in a side panel. */}
+      {focusedProfile && (
+        <div
+          className="absolute inset-0 z-30 bg-background/60 backdrop-blur-md flex items-center justify-center p-6"
+          onClick={() => setFocusedProfile(null)}
+        >
+          <div
+            className="glass-panel rounded-2xl border border-primary/40 max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+              <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                Vibe Profile · Edge Esmeralda
+              </p>
+              <button
+                onClick={() => setFocusedProfile(null)}
+                className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="px-4 py-4 flex items-center gap-3">
+              {focusedProfile.avatar ? (
+                <img
+                  src={focusedProfile.avatar}
+                  alt={focusedProfile.name}
+                  className="w-16 h-16 rounded-full object-cover border-2 border-primary/60"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-primary/30 flex items-center justify-center text-2xl font-heading font-bold text-foreground">
+                  {focusedProfile.name
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map((s) => s[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-heading font-semibold text-foreground truncate">
+                  {focusedProfile.name}
+                </p>
+                <p className="text-[11px] uppercase tracking-widest text-primary mt-0.5">
+                  {focusedProfile.role}
+                </p>
+              </div>
+            </div>
+            <div className="px-4 pb-4 text-xs text-muted-foreground">
+              One of {communityStats?.members ?? "many"} members in the
+              Edge Esmeralda village. Tap a different card or click
+              outside to dismiss.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {focusedMemory && (
+        <div
+          className="absolute inset-0 z-30 bg-background/60 backdrop-blur-md flex items-center justify-center p-6"
+          onClick={() => setFocusedMemory(null)}
+        >
+          <div
+            className="glass-panel rounded-2xl border border-primary/40 max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+              <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                Vibey · Knows
+              </p>
+              <button
+                onClick={() => setFocusedMemory(null)}
+                className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-sm leading-relaxed text-foreground">
+                {focusedMemory.content}
+              </p>
+              {focusedMemory.tags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {focusedMemory.tags.map((t) => (
+                    <span
+                      key={t}
+                      className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/15 text-primary"
+                    >
+                      #{t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
