@@ -221,6 +221,116 @@ const CONFETTI_COLORS = [
   "#ffffff",
 ];
 
+// Build a 3D vibe card: a small plane mesh with a CanvasTexture that
+// paints the user's initials in a colored circle plus their name and
+// role. No avatar fetching — Telegram URLs leak the bot token and
+// taint the canvas with CORS, so we render initials instead.
+function makeVibeCard(
+  profile: { id: string; name: string; role: string },
+  accent: string,
+): THREE.Mesh {
+  const W = 512;
+  const H = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d ctx");
+
+  // Card background: rounded rectangle with subtle gradient + border.
+  const radius = 28;
+  ctx.fillStyle = "#0e1530";
+  roundRect(ctx, 8, 8, W - 16, H - 16, radius);
+  ctx.fill();
+  // Inner gradient.
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, "rgba(115, 255, 184, 0.06)");
+  grad.addColorStop(1, "rgba(178, 146, 255, 0.10)");
+  ctx.fillStyle = grad;
+  roundRect(ctx, 8, 8, W - 16, H - 16, radius);
+  ctx.fill();
+  // Accent border.
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 4;
+  roundRect(ctx, 10, 10, W - 20, H - 20, radius - 2);
+  ctx.stroke();
+
+  // Initials disc.
+  const cx = 86;
+  const cy = H / 2;
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 56, 0, Math.PI * 2);
+  ctx.fill();
+  const initials = profile.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+  ctx.fillStyle = "#0e1530";
+  ctx.font = "700 56px ui-sans-serif, system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(initials || "·", cx, cy + 4);
+
+  // Name + role.
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#eaf3ff";
+  ctx.font = "600 38px ui-sans-serif, system-ui, -apple-system, sans-serif";
+  let name = profile.name.replace(/\s+/g, " ").trim();
+  if (ctx.measureText(name).width > W - 180) {
+    while (ctx.measureText(name + "…").width > W - 180 && name.length > 0) {
+      name = name.slice(0, -1);
+    }
+    name += "…";
+  }
+  ctx.fillText(name, 168, H / 2 - 4);
+
+  ctx.fillStyle = accent;
+  ctx.font = "500 22px ui-sans-serif, system-ui, -apple-system, sans-serif";
+  ctx.fillText(profile.role.toUpperCase(), 168, H / 2 + 30);
+
+  // "EDGE ESMERALDA" tag in corner.
+  ctx.fillStyle = "rgba(234, 243, 255, 0.55)";
+  ctx.font = "600 14px ui-sans-serif, system-ui, -apple-system, sans-serif";
+  ctx.fillText("EDGE ESMERALDA", 168, H - 36);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 2.6), mat);
+  return mesh;
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function ConfettiBurst({ seed }: { seed: number }) {
   if (seed === 0) return null;
   // 24 pieces in a radial spray from screen center.
@@ -298,6 +408,19 @@ export default function Unit7Playground() {
   // Default to gallery so the 3D Gallery TV is part of the scene from
   // first paint — Jack expects the TV to always be there, not gated on
   // a Spawn-TV click.
+  // Queue of AI-generated show beats; the render loop pops from this
+  // first and falls back to SHOW_MONOLOGUES when empty.
+  type ShowBeat = { mood: Unit7Expression | null; anim: Unit7AnimName; line: string };
+  const aiBeatsRef = useRef<ShowBeat[]>([]);
+  const recentBeatsRef = useRef<string[]>([]);
+
+  // Live community profiles to float around the platform.
+  type VibeProfile = { id: string; name: string; role: string };
+  const [vibeProfiles, setVibeProfiles] = useState<VibeProfile[]>([]);
+
+  // Live community stats panel.
+  type Stats = { members: number; photos: number; events: number };
+  const [communityStats, setCommunityStats] = useState<Stats | null>(null);
   const [activeExperience, setActiveExperience] = useState<SpaceExperience>("gallery");
   const activeExperienceRef = useRef<SpaceExperience>("none");
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
@@ -318,6 +441,10 @@ export default function Unit7Playground() {
   // swap the screen texture when the photo cycles.
   const tvGroupRef = useRef<THREE.Group | null>(null);
   const tvScreenMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  // Floating Vibe Profile cards — built in a side effect when the
+  // profiles arrive from Supabase.
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const vibeCardsGroupRef = useRef<THREE.Group | null>(null);
   const [robotColor, setRobotColor] = useState<number | null>(null);
   // Keep the ref in sync with state.
   robotColorRef.current = robotColor;
@@ -549,6 +676,126 @@ export default function Unit7Playground() {
     return () => window.clearTimeout(t);
   }, [speechBubble]);
 
+  // ---- Pull live community profiles + stats ----------------------
+  // RLS on community_members blocks anon SELECT, so a service-role
+  // edge function does the read for us in one round-trip.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.functions.invoke(
+        "community-stats",
+        { body: {} },
+      );
+      if (cancelled || error || !data) return;
+      const stats = (data as { stats?: Stats }).stats;
+      const profiles =
+        (data as { profiles?: VibeProfile[] }).profiles ?? [];
+      if (stats) setCommunityStats(stats);
+      if (profiles.length) setVibeProfiles(profiles);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ---- Build floating Vibe Profile cards when profiles arrive ----
+  useEffect(() => {
+    if (!vibeProfiles.length) return;
+    const scene = sceneRef.current;
+    if (!scene) return;
+    // Clean up any prior group (in case profiles refresh).
+    if (vibeCardsGroupRef.current) {
+      scene.remove(vibeCardsGroupRef.current);
+      vibeCardsGroupRef.current.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry?.dispose();
+          const mat = m.material as THREE.Material | THREE.Material[];
+          if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+          else mat?.dispose();
+        }
+      });
+    }
+    const group = new THREE.Group();
+    const PALETTE = [
+      "#73ffb8", "#ffd166", "#ff7e8a", "#b392ff", "#6aa8ff", "#eaeaf0",
+    ];
+    vibeProfiles.forEach((p, i) => {
+      const card = makeVibeCard(p, PALETTE[i % PALETTE.length]);
+      // Distribute on a tilted ring around the platform.
+      const a = (i / vibeProfiles.length) * Math.PI * 2;
+      const r = 13 + Math.random() * 3;
+      const y = 4 + Math.sin(a * 1.4) * 2.2 + (Math.random() - 0.5) * 1.2;
+      card.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      // Face roughly toward the platform center.
+      card.rotation.y = Math.atan2(0 - card.position.x, 0 - card.position.z);
+      // Each card stores its own bob phase + base position so the tick
+      // loop can wiggle them independently.
+      card.userData.bobPhase = Math.random() * Math.PI * 2;
+      card.userData.baseY = y;
+      group.add(card);
+    });
+    scene.add(group);
+    vibeCardsGroupRef.current = group;
+    (window as unknown as Record<string, unknown>).__vibeCards = group;
+    return () => {
+      scene.remove(group);
+    };
+  }, [vibeProfiles]);
+
+  // ---- AI monologue feed ------------------------------------------
+  // Pull a fresh show beat from the vibey-monologue edge function and
+  // push it onto a queue the render loop drains. We keep ~3 in flight
+  // so beats feel responsive even if the upstream is slow.
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchBeat() {
+      if (cancelled) return;
+      if (aiBeatsRef.current.length >= 3) return;
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "vibey-monologue",
+          {
+            body: {
+              recent: recentBeatsRef.current.slice(-6),
+              context:
+                "It's late evening Pacific time. Mozart concerto playing. Vibey is on the platform.",
+            },
+          },
+        );
+        if (cancelled || error || !data) return;
+        const moodRaw = (data as { mood?: string }).mood ?? null;
+        const animRaw = (data as { anim?: string }).anim ?? "Idle";
+        const lineRaw = (data as { line?: string }).line ?? "";
+        if (!lineRaw) return;
+        const VALID_MOODS = new Set(["Angry", "Surprised", "Sad"]);
+        const VALID_ANIMS = new Set([
+          "Idle", "Walking", "Running", "Dance", "Sitting", "Standing",
+          "Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump",
+        ]);
+        const beat: ShowBeat = {
+          mood: moodRaw && VALID_MOODS.has(moodRaw)
+            ? (moodRaw as Unit7Expression)
+            : null,
+          anim: VALID_ANIMS.has(animRaw)
+            ? (animRaw as Unit7AnimName)
+            : "Idle",
+          line: lineRaw,
+        };
+        aiBeatsRef.current.push(beat);
+      } catch {
+        // Silent — render loop will fall back to scripted SHOW_MONOLOGUES.
+      }
+    }
+    // Prime the queue, then refill every 30s.
+    fetchBeat();
+    const t = window.setInterval(fetchBeat, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, []);
+
   function triggerExpression(expr: Unit7Expression | null) {
     const cleared: Record<Unit7Expression, number> = {
       Angry: 0,
@@ -746,6 +993,7 @@ export default function Unit7Playground() {
     renderer.toneMappingExposure = 1.2;
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.fog = new THREE.FogExp2(0x05060f, 0.012);
     // Soft environment so PBR materials (like the iridescent arc) have
     // something to reflect — without this they read as black voids.
@@ -1747,7 +1995,11 @@ export default function Unit7Playground() {
             float t = sin(uTime * 0.4 + vUv.x * 4.0) * 0.5 + 0.5;
             vec3 col = mix(mix(mint, violet, t), pink, vUv.x);
             // Vertical alpha falloff so edges feather into space.
-            float alpha = smoothstep(0.0, 0.35, v) * smoothstep(1.0, 0.65, v) * 0.55;
+            // Feather all four edges so the curtain dissolves into space
+            // instead of cutting hard along the plane geometry.
+            float vFade = smoothstep(0.0, 0.35, v) * smoothstep(1.0, 0.65, v);
+            float hFade = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+            float alpha = vFade * hFade * 0.55;
             gl_FragColor = vec4(col, alpha);
           }
         `,
@@ -2285,7 +2537,13 @@ export default function Unit7Playground() {
       }
 
       if (showModeRef.current && now >= nextShowBeatAt) {
-        const beat = SHOW_MONOLOGUES[Math.floor(Math.random() * SHOW_MONOLOGUES.length)];
+        // Prefer an AI-generated beat; fall back to the scripted pool
+        // when the queue is empty.
+        const aiBeat = aiBeatsRef.current.shift();
+        const beat = aiBeat ??
+          SHOW_MONOLOGUES[Math.floor(Math.random() * SHOW_MONOLOGUES.length)];
+        // Keep a rolling history so the AI fetcher can dodge repeats.
+        recentBeatsRef.current = [...recentBeatsRef.current, beat.line].slice(-8);
         if (beat.mood) {
           const cleared: Record<Unit7Expression, number> = {
             Angry: 0,
@@ -2361,6 +2619,20 @@ export default function Unit7Playground() {
       } else if (now >= nextCometAt) {
         cometGroup.visible = true;
         cometStartTime = now;
+      }
+
+      // ---- Vibe Profile cards: slow carousel + per-card bob -------
+      if (vibeCardsGroupRef.current) {
+        const g = vibeCardsGroupRef.current;
+        g.rotation.y += delta * 0.05;
+        for (const card of g.children) {
+          const phase = (card.userData.bobPhase as number) ?? 0;
+          const baseY = (card.userData.baseY as number) ?? card.position.y;
+          card.position.y = baseY + Math.sin(now * 0.0008 + phase) * 0.45;
+          // Billboard: always face the camera so the text reads
+          // correctly no matter where we are in the orbit.
+          card.lookAt(camera.position);
+        }
       }
 
       // ---- Iridescent arc: slow drift rotation ---------------------
@@ -2749,6 +3021,42 @@ export default function Unit7Playground() {
           </div>
         </div>
       </div>
+      )}
+
+      {/* Community stats card — top-right when the chat panel is closed.
+          Pulls live counts of members, photos, events from Supabase. */}
+      {!panelOpen && communityStats && (
+        <div className="absolute top-4 right-4 z-10 glass-panel rounded-xl px-3 py-2 border border-primary/30 min-w-[180px]">
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-1">
+            Edge Esmeralda · Live
+          </p>
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div>
+              <p className="text-base font-heading font-bold text-foreground leading-none">
+                {communityStats.members}
+              </p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5">
+                Members
+              </p>
+            </div>
+            <div>
+              <p className="text-base font-heading font-bold text-foreground leading-none">
+                {communityStats.photos}
+              </p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5">
+                Photos
+              </p>
+            </div>
+            <div>
+              <p className="text-base font-heading font-bold text-foreground leading-none">
+                {communityStats.events}
+              </p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5">
+                Events
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Music player — bottom-left, never blocked by the chat panel.
