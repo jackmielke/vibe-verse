@@ -334,29 +334,100 @@ export default function Unit7Playground() {
     const isOn = activeExperience === "gallery" && !!currentGalleryPhoto?.image_url;
     tv.visible = isOn;
     if (!isOn) return;
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin("anonymous");
     let cancelled = false;
-    let prevTexture: THREE.Texture | null = null;
-    loader.load(
-      currentGalleryPhoto!.image_url,
-      (tex) => {
-        if (cancelled) {
-          tex.dispose();
-          return;
+    const photo = currentGalleryPhoto!;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (cancelled) return;
+      // Match the screen plane aspect (7.4 x 4.4 ≈ 1.68:1).
+      const W = 1024;
+      const H = 608;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      // Letterbox the photo into the top portion; reserve a strip
+      // at the bottom for the caption.
+      const stripH = 110;
+      const photoH = H - stripH;
+      ctx.fillStyle = "#0a0f1a";
+      ctx.fillRect(0, 0, W, H);
+      // Cover-fit the photo into the photo region.
+      const ar = img.width / img.height;
+      const region = W / photoH;
+      let dw = W;
+      let dh = photoH;
+      let dx = 0;
+      let dy = 0;
+      if (ar > region) {
+        dh = photoH;
+        dw = dh * ar;
+        dx = (W - dw) / 2;
+      } else {
+        dw = W;
+        dh = dw / ar;
+        dy = (photoH - dh) / 2;
+      }
+      ctx.drawImage(img, dx, dy, dw, dh);
+      // Caption strip with the photo description. Only render if a real
+      // description exists — skip "Untitled" placeholders + residency
+      // metadata so the screen stays clean for unlabeled photos.
+      const caption = (photo.description && photo.description.trim()) || "";
+      if (caption) {
+        ctx.fillStyle = "rgba(8, 14, 28, 0.92)";
+        ctx.fillRect(0, photoH, W, stripH);
+        ctx.fillStyle = "#73ffb8";
+        ctx.fillRect(0, photoH, W, 3);
+        ctx.fillStyle = "#eaf3ff";
+        ctx.font = "500 26px ui-sans-serif, system-ui, -apple-system, sans-serif";
+        ctx.textBaseline = "top";
+        // Word-wrap into up to 2 lines.
+        const words = caption.split(/\s+/);
+        const lines: string[] = [];
+        let line = "";
+        const maxW = W - 48;
+        for (const w of words) {
+          const test = line ? `${line} ${w}` : w;
+          if (ctx.measureText(test).width > maxW && line) {
+            lines.push(line);
+            line = w;
+            if (lines.length === 2) break;
+          } else {
+            line = test;
+          }
         }
-        tex.colorSpace = THREE.SRGBColorSpace;
-        prevTexture = mat.map;
-        mat.map = tex;
-        mat.color.setHex(0xffffff);
-        mat.needsUpdate = true;
-        if (prevTexture) prevTexture.dispose();
-      },
-      undefined,
-      () => {
-        // Image failed — keep prior frame; don't blank the screen.
-      },
-    );
+        if (line && lines.length < 2) lines.push(line);
+        if (lines.length === 2 && words.length > lines.join(" ").split(/\s+/).length) {
+          // Truncate the second line with an ellipsis.
+          let tail = lines[1];
+          while (ctx.measureText(tail + "…").width > maxW && tail.length > 0) {
+            tail = tail.slice(0, -1);
+          }
+          lines[1] = tail + "…";
+        }
+        lines.forEach((ln, i) => {
+          ctx.fillText(ln, 24, photoH + 18 + i * 34);
+        });
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      // Default flipY (true) is fine for PlaneGeometry, but the caption
+      // strip we drew at the bottom of the canvas should appear at the
+      // bottom of the screen — flip the canvas itself so text reads.
+      tex.flipY = true;
+      tex.needsUpdate = true;
+      const prev = mat.map;
+      mat.map = tex;
+      mat.color.setHex(0xffffff);
+      mat.needsUpdate = true;
+      if (prev) prev.dispose();
+    };
+    img.onerror = () => {
+      // Keep the previous frame; don't blank the screen on a load failure.
+    };
+    img.src = photo.image_url;
     return () => {
       cancelled = true;
     };
@@ -1394,7 +1465,11 @@ export default function Unit7Playground() {
         toneMapped: false,
       });
       const screen = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 4.4), screenMat);
-      screen.position.z = 0.27;
+      // After lookAt, the TV's local -Z faces the target, so the screen
+      // sits on the -Z side and the plane faces the target by rotating
+      // 180° around Y (default plane normal is +Z).
+      screen.position.z = -0.27;
+      screen.rotation.y = Math.PI;
       tv.add(screen);
       // Soft glow halo so it reads against the starfield even when the
       // photo is dark.
@@ -1407,15 +1482,33 @@ export default function Unit7Playground() {
           depthWrite: false,
         }),
       );
-      halo.position.z = -0.4;
+      halo.position.z = 0.4; // halo lives behind the screen (target side)
       tv.add(halo);
-      // Mount post hanging it in space.
-      const post = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12, 0.12, 4, 12),
-        new THREE.MeshStandardMaterial({ color: 0x2a3550, metalness: 0.5, roughness: 0.4 }),
-      );
-      post.position.y = -4.7;
-      tv.add(post);
+      // Three small thrusters underneath so it reads as a hovering
+      // spacecraft, not a wall TV. Each is a glowing emissive sphere
+      // mounted on the screen-facing side so the camera sees them.
+      const thrusterMat = new THREE.MeshBasicMaterial({
+        color: 0x73ffb8,
+        transparent: true,
+        opacity: 0.85,
+      });
+      [-2.6, 0, 2.6].forEach((x) => {
+        const th = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), thrusterMat);
+        th.position.set(x, -2.95, -0.35);
+        tv.add(th);
+        // Wider, fainter glow underneath each thruster.
+        const flare = new THREE.Mesh(
+          new THREE.SphereGeometry(0.45, 16, 12),
+          new THREE.MeshBasicMaterial({
+            color: 0x73ffb8,
+            transparent: true,
+            opacity: 0.18,
+            depthWrite: false,
+          }),
+        );
+        flare.position.copy(th.position);
+        tv.add(flare);
+      });
 
       // Position truly opposite the planet/moon. Earth ≈ (-55, -8, -65),
       // moon ≈ (35, 12, -30) — both back-side. Put the TV in the
@@ -1917,6 +2010,17 @@ export default function Unit7Playground() {
           blink * 0.45,
         );
       }
+      // ---- Gallery TV: hover bob + slight yaw drift -----------------
+      if (tvGroupRef.current && tvGroupRef.current.visible) {
+        const tv = tvGroupRef.current;
+        // Capture base on first visible frame so bob oscillates around it.
+        const base = (tv as unknown as { __baseY?: number }).__baseY ?? 9;
+        (tv as unknown as { __baseY?: number }).__baseY = base;
+        tv.position.y = base + Math.sin(now * 0.0009) * 0.6;
+        // Subtle pendulum yaw — keeps it feeling alive without leaving frame.
+        tv.rotation.z = Math.sin(now * 0.0006) * 0.04;
+      }
+
       // ---- Shooting stars: spawn occasionally + advance + fade ----
       if (now >= nextShooterAt) {
         spawnShootingStar();
@@ -2040,30 +2144,16 @@ export default function Unit7Playground() {
         </p>
       </div>
 
-      {activeExperience === "gallery" && (
-        <div className="absolute left-4 bottom-20 z-10 glass-panel rounded-xl border border-primary/30 px-3 py-2 max-w-[280px]">
+      {activeExperience === "gallery" && galleryStatus !== "ready" && (
+        <div className="absolute left-4 bottom-20 z-10 glass-panel rounded-xl border border-primary/30 px-3 py-2 max-w-[260px]">
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
             Gallery TV
           </p>
-          {galleryStatus === "loading" && (
-            <p className="text-[10px] text-muted-foreground">Tuning…</p>
-          )}
-          {galleryStatus === "empty" && (
-            <p className="text-[10px] text-muted-foreground">No visible photos yet.</p>
-          )}
-          {galleryStatus === "error" && (
-            <p className="text-[10px] text-muted-foreground">Feed unavailable.</p>
-          )}
-          {galleryStatus === "ready" && currentGalleryPhoto && (
-            <>
-              <p className="truncate text-xs font-heading font-semibold text-foreground">
-                {currentGalleryPhoto.title ?? "Untitled transmission"}
-              </p>
-              <p className="text-[10px] font-mono text-muted-foreground">
-                {galleryIndex + 1}/{galleryPhotos.length}
-              </p>
-            </>
-          )}
+          <p className="text-[10px] text-muted-foreground">
+            {galleryStatus === "loading" && "Tuning…"}
+            {galleryStatus === "empty" && "No visible photos yet."}
+            {galleryStatus === "error" && "Feed unavailable."}
+          </p>
         </div>
       )}
 
