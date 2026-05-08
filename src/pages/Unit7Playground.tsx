@@ -9,6 +9,7 @@ import type {
   Unit7AnimName,
   Unit7Expression,
 } from "@/components/map/Unit7Layer";
+import { supabase } from "@/integrations/supabase/client";
 
 // ---------- Conversation logic ------------------------------------------
 // Keyword-based intent inference. Same shape as the in-map dialog so the
@@ -104,6 +105,7 @@ export default function Unit7Playground() {
     { id: 1, who: "bot", text: "Hey. I'm Unit-7. Click an emote, change my mood, or just talk to me." },
   ]);
   const [draft, setDraft] = useState("");
+  const [thinking, setThinking] = useState(false);
 
   function pushMessage(who: "user" | "bot", text: string) {
     setMessages((m) => [...m, { id: m.length + 1, who, text }]);
@@ -126,17 +128,62 @@ export default function Unit7Playground() {
     setActiveMood(expr);
   }
 
-  function handleSend() {
+  function applyReply(reply: { say: string; anim: Unit7AnimName | null; expr: Unit7Expression | null }) {
+    if (reply.anim) triggerAnim(reply.anim);
+    if (reply.expr) triggerExpression(reply.expr);
+    pushMessage("bot", reply.say);
+  }
+
+  async function handleSend() {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || thinking) return;
     setDraft("");
     pushMessage("user", text);
-    const intent = inferIntent(text);
-    setTimeout(() => {
-      if (intent.anim) triggerAnim(intent.anim);
-      if (intent.expr) triggerExpression(intent.expr);
-      pushMessage("bot", intent.reply);
-    }, 350);
+    setThinking(true);
+
+    // Try the Supabase Edge Function (real LLM via OpenRouter). The key
+    // lives server-side; the browser never sees it. If anything fails
+    // (function not deployed yet, no key, network), fall back to the
+    // offline keyword inference so the user still gets a response.
+    const history = messages
+      .slice(1)
+      .slice(-12)
+      .map((m) => ({
+        role: (m.who === "bot" ? "assistant" : "user") as
+          | "user"
+          | "assistant",
+        content: m.text,
+      }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke("unit7-chat", {
+        body: { history, text },
+      });
+      if (error) throw error;
+      if (data && typeof data === "object" && "say" in data) {
+        applyReply({
+          say: String((data as Record<string, unknown>).say ?? "..."),
+          anim: ((data as Record<string, unknown>).anim ?? null) as
+            | Unit7AnimName
+            | null,
+          expr: ((data as Record<string, unknown>).expr ?? null) as
+            | Unit7Expression
+            | null,
+        });
+      } else {
+        throw new Error("Bad response from unit7-chat");
+      }
+    } catch {
+      // Quiet fallback. The keyword path still feels alive.
+      const intent = inferIntent(text);
+      applyReply({
+        say: intent.reply,
+        anim: intent.anim ?? null,
+        expr: intent.expr ?? null,
+      });
+    } finally {
+      setThinking(false);
+    }
   }
 
   // ---- Three.js scene setup -------------------------------------------
@@ -535,20 +582,26 @@ export default function Unit7Playground() {
                 {m.text}
               </div>
             ))}
+            {thinking && (
+              <div className="text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] bg-primary/10 text-muted-foreground italic">
+                Unit-7 is thinking…
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && draft.trim()) handleSend();
+                if (e.key === "Enter" && draft.trim() && !thinking) handleSend();
               }}
-              placeholder="Say hi, ask him to dance, get angry…"
-              className="flex-1 rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-sm"
+              placeholder="Talk to Unit-7…"
+              disabled={thinking}
+              className="flex-1 rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-sm disabled:opacity-60"
             />
             <button
               onClick={handleSend}
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || thinking}
               className="bg-primary text-primary-foreground px-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40"
             >
               <Send className="w-4 h-4" />
