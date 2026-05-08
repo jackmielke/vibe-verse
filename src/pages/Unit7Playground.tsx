@@ -421,6 +421,9 @@ export default function Unit7Playground() {
   // Live community stats panel.
   type Stats = { members: number; photos: number; events: number };
   const [communityStats, setCommunityStats] = useState<Stats | null>(null);
+
+  // Realtime presence — how many visitors are watching right now.
+  const [watchingNow, setWatchingNow] = useState<number>(1);
   const [activeExperience, setActiveExperience] = useState<SpaceExperience>("gallery");
   const activeExperienceRef = useRef<SpaceExperience>("none");
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([]);
@@ -742,6 +745,37 @@ export default function Unit7Playground() {
       scene.remove(group);
     };
   }, [vibeProfiles]);
+
+  // ---- Realtime presence: count concurrent viewers ----------------
+  useEffect(() => {
+    const visitorId = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+      ? crypto.randomUUID()
+      : `v-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel("vibey-show-presence", {
+      config: { presence: { key: visitorId } },
+    });
+    const recount = () => {
+      const state = channel.presenceState();
+      const total = Object.values(state).reduce(
+        (n, arr) => n + (arr as unknown[]).length,
+        0,
+      );
+      setWatchingNow(Math.max(1, total));
+    };
+    channel
+      .on("presence", { event: "sync" }, recount)
+      .on("presence", { event: "join" }, recount)
+      .on("presence", { event: "leave" }, recount)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ joined_at: Date.now() });
+        }
+      });
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // ---- AI monologue feed ------------------------------------------
   // Pull a fresh show beat from the vibey-monologue edge function and
@@ -3026,10 +3060,20 @@ export default function Unit7Playground() {
       {/* Community stats card — top-right when the chat panel is closed.
           Pulls live counts of members, photos, events from Supabase. */}
       {!panelOpen && communityStats && (
-        <div className="absolute top-4 right-4 z-10 glass-panel rounded-xl px-3 py-2 border border-primary/30 min-w-[180px]">
-          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-1">
-            Edge Esmeralda · Live
-          </p>
+        <div className="absolute top-4 right-4 z-10 glass-panel rounded-xl px-3 py-2 border border-primary/30 min-w-[200px]">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+              Edge Esmeralda · Live
+            </p>
+            <span className="flex items-center gap-1 text-[10px] text-foreground/85">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+              </span>
+              <span className="font-mono font-semibold">{watchingNow}</span>
+              <span className="text-muted-foreground">watching</span>
+            </span>
+          </div>
           <div className="grid grid-cols-3 gap-1.5 text-center">
             <div>
               <p className="text-base font-heading font-bold text-foreground leading-none">
