@@ -140,6 +140,14 @@ const POET_LINES = [
   "Poet capsule says: I packed one notebook and no landing plan.",
 ];
 
+const DISCOVERY_LINES = [
+  "Unit-7 logs a new landmark: the mint ring hums when Earth crosses behind it.",
+  "Unit-7 thinks the galaxy is not a place. More like a memory with gravity.",
+  "Unit-7 found a quiet sector and named it The Maybe.",
+  "Unit-7 says the portal is pretending to be asleep.",
+  "Unit-7 noticed the poet capsule waving, but only in metaphor.",
+];
+
 export default function Unit7Playground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -170,6 +178,9 @@ export default function Unit7Playground() {
   // and rotates the model on X over ~0.85s, then resets.
   const backflipStartRef = useRef<number>(0);
   const sprintStartRef = useRef<number>(0);
+  const beaconStartRef = useRef<number>(0);
+  const portalStartRef = useRef<number>(0);
+  const constellationStartRef = useRef<number>(0);
   // Robot tint — null = original colors, otherwise a hex like 0x73ffb8.
   const robotColorRef = useRef<number | null>(null);
   const [robotColor, setRobotColor] = useState<number | null>(null);
@@ -243,6 +254,24 @@ export default function Unit7Playground() {
     triggerExpression("Surprised");
     triggerAnim("Wave");
     pushMessage("bot", line);
+  }
+
+  function triggerBeacon() {
+    beaconStartRef.current = performance.now();
+    triggerExpression("Surprised");
+    pushMessage("bot", "Beacon online. Unit-7 is listening for anything that answers in green.");
+  }
+
+  function triggerPortal() {
+    portalStartRef.current = performance.now();
+    triggerAnim("Wave");
+    pushMessage("bot", "Portal awake. It is not open, exactly. It is considering us.");
+  }
+
+  function triggerConstellation() {
+    constellationStartRef.current = performance.now();
+    triggerAnim("Yes");
+    pushMessage("bot", "Constellation revealed: The Unfinished Robot.");
   }
 
   function applyReply(reply: { say: string; anim: Unit7AnimName | null; expr: Unit7Expression | null }) {
@@ -602,6 +631,60 @@ export default function Unit7Playground() {
       return points;
     })();
 
+    // ---- Named constellation ------------------------------------------
+    const constellation = (() => {
+      const group = new THREE.Group();
+      group.position.set(-18, 18, -52);
+      group.rotation.set(0.18, -0.18, 0.28);
+      const points = [
+        new THREE.Vector3(-4.8, 0.7, 0),
+        new THREE.Vector3(-3.0, 2.1, 0),
+        new THREE.Vector3(-1.2, 1.0, 0),
+        new THREE.Vector3(0.6, 2.3, 0),
+        new THREE.Vector3(2.6, 0.9, 0),
+        new THREE.Vector3(1.1, -1.0, 0),
+        new THREE.Vector3(-1.9, -1.3, 0),
+      ];
+      const linePositions: number[] = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        linePositions.push(points[i].x, points[i].y, points[i].z);
+        linePositions.push(points[i + 1].x, points[i + 1].y, points[i + 1].z);
+      }
+      linePositions.push(points[1].x, points[1].y, points[1].z);
+      linePositions.push(points[5].x, points[5].y, points[5].z);
+      linePositions.push(points[2].x, points[2].y, points[2].z);
+      linePositions.push(points[6].x, points[6].y, points[6].z);
+
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(linePositions, 3),
+      );
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x9be7ff,
+        transparent: true,
+        opacity: 0.1,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      group.add(new THREE.LineSegments(lineGeo, lineMat));
+
+      const starMat = new THREE.MeshBasicMaterial({
+        color: 0xf6fbff,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+      });
+      for (const point of points) {
+        const star = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), starMat);
+        star.position.copy(point);
+        group.add(star);
+      }
+
+      scene.add(group);
+      return { group, lineMat, starMat };
+    })();
+
     // ---- Distant moon + planet ---------------------------------------
     const moon = new THREE.Mesh(
       new THREE.SphereGeometry(2.5, 32, 32),
@@ -639,6 +722,75 @@ export default function Unit7Playground() {
     );
     planetRing.rotation.x = -Math.PI / 2.6;
     planet.add(planetRing);
+
+    // ---- Platform beacon ----------------------------------------------
+    const beacon = (() => {
+      const group = new THREE.Group();
+      const rings: THREE.Mesh[] = [];
+      for (let i = 0; i < 4; i++) {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(1.5 + i * 0.75, 0.018, 8, 96),
+          new THREE.MeshBasicMaterial({
+            color: 0x73ffb8,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          }),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.16 + i * 0.08;
+        rings.push(ring);
+        group.add(ring);
+      }
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 1.4, 28, 32, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0x73ffb8,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      beam.position.y = 14;
+      group.add(beam);
+      scene.add(group);
+      return { group, rings, beam };
+    })();
+
+    // ---- Thinking portal ----------------------------------------------
+    const portal = (() => {
+      const group = new THREE.Group();
+      group.position.set(-6.4, 2.0, -5.3);
+      group.rotation.set(0, 0.6, 0);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(1.15, 0.08, 16, 96),
+        new THREE.MeshBasicMaterial({
+          color: 0xb392ff,
+          transparent: true,
+          opacity: 0.25,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      group.add(ring);
+      const core = new THREE.Mesh(
+        new THREE.CircleGeometry(1.05, 48),
+        new THREE.MeshBasicMaterial({
+          color: 0x73ffb8,
+          transparent: true,
+          opacity: 0.06,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      group.add(core);
+      scene.add(group);
+      return { group, ring, core };
+    })();
 
     // ---- Planet Earth --------------------------------------------------
     // Inspired by the official Three.js Earth example: textured surface,
@@ -1008,6 +1160,7 @@ export default function Unit7Playground() {
     let lastTime = performance.now();
     let raf = 0;
     let shipAngle = 0;
+    let nextDiscoveryAt = performance.now() + 26000;
     const tick = () => {
       const now = performance.now();
       const delta = Math.min(0.05, (now - lastTime) / 1000);
@@ -1159,6 +1312,14 @@ export default function Unit7Playground() {
       // ---- Galaxy + planets + moon slow rotation -------------------
       galaxy.rotation.y += delta * 0.012;
       milkyWay.rotation.y += delta * 0.003;
+      constellation.group.rotation.z += delta * 0.004;
+      const constellationPulse =
+        constellationStartRef.current > 0
+          ? Math.max(0, 1 - (now - constellationStartRef.current) / 5200)
+          : 0;
+      constellation.lineMat.opacity = 0.12 + constellationPulse * 0.72;
+      constellation.starMat.opacity =
+        0.35 + constellationPulse * 0.58 + Math.abs(Math.sin(now * 0.003)) * 0.08;
       planet.rotation.y += delta * 0.05;
       moon.rotation.y += delta * 0.08;
       earth.group.rotation.y += delta * 0.018;
@@ -1172,6 +1333,46 @@ export default function Unit7Playground() {
         Math.sin(poetAngle) * 5.45,
       );
       earth.poetCapsule.lookAt(0, 0, 0);
+
+      // ---- Beacon and portal event pulses ---------------------------
+      const beaconPulse =
+        beaconStartRef.current > 0
+          ? Math.max(0, 1 - (now - beaconStartRef.current) / 3600)
+          : 0;
+      beacon.rings.forEach((ring, i) => {
+        const local = Math.max(0, Math.min(1, beaconPulse * 1.25 - i * 0.18));
+        ring.scale.setScalar(1 + (1 - local) * (0.8 + i * 0.18));
+        ring.position.y = 0.14 + i * 0.12 + (1 - local) * 1.3;
+        (ring.material as THREE.MeshBasicMaterial).opacity = local * 0.55;
+      });
+      (beacon.beam.material as THREE.MeshBasicMaterial).opacity =
+        beaconPulse * (0.08 + Math.abs(Math.sin(now * 0.008)) * 0.08);
+
+      const portalPulse =
+        portalStartRef.current > 0
+          ? Math.max(0, 1 - (now - portalStartRef.current) / 5200)
+          : 0;
+      portal.group.rotation.z += delta * (0.3 + portalPulse * 1.4);
+      portal.ring.scale.setScalar(1 + portalPulse * 0.28 + Math.sin(now * 0.004) * 0.04);
+      (portal.ring.material as THREE.MeshBasicMaterial).opacity =
+        0.22 + portalPulse * 0.62;
+      (portal.core.material as THREE.MeshBasicMaterial).opacity =
+        0.05 + portalPulse * 0.36 + Math.abs(Math.sin(now * 0.006)) * 0.04;
+
+      // Unit-7 occasionally narrates his own observations. This keeps the
+      // scene feeling inhabited without forcing the user to press buttons.
+      if (now >= nextDiscoveryAt) {
+        const line = DISCOVERY_LINES[Math.floor(Math.random() * DISCOVERY_LINES.length)];
+        setMessages((current) => [
+          ...current,
+          { id: current.length + 1, who: "bot", text: line },
+        ]);
+        if (Math.random() < 0.5) {
+          desiredAnimRef.current = "Wave";
+          animPulseRef.current++;
+        }
+        nextDiscoveryAt = now + 28000 + Math.random() * 26000;
+      }
 
       // ---- Spaceship orbit + nav light blink + beam pulse ----------
       shipAngle += delta * 0.32;
@@ -1397,6 +1598,30 @@ export default function Unit7Playground() {
               className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
             >
               📜 Poet
+            </button>
+          </div>
+
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
+            World
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              onClick={triggerBeacon}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
+            >
+              🔆 Beacon
+            </button>
+            <button
+              onClick={triggerPortal}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
+            >
+              🌀 Portal
+            </button>
+            <button
+              onClick={triggerConstellation}
+              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
+            >
+              ✦ Stars
             </button>
           </div>
 
