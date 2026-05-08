@@ -223,10 +223,10 @@ const CONFETTI_COLORS = [
 
 // Build a 3D vibe card: a small plane mesh with a CanvasTexture that
 // paints the user's initials in a colored circle plus their name and
-// role. No avatar fetching — Telegram URLs leak the bot token and
-// taint the canvas with CORS, so we render initials instead.
+// role. If a CORS-safe avatar URL is provided, we draw the photo over
+// the initials disc once it loads.
 function makeVibeCard(
-  profile: { id: string; name: string; role: string },
+  profile: { id: string; name: string; role: string; avatar?: string | null },
   accent: string,
 ): THREE.Mesh {
   const W = 512;
@@ -304,6 +304,47 @@ function makeVibeCard(
   tex.anisotropy = 4;
   tex.needsUpdate = true;
 
+  // Optional avatar: load with crossOrigin and, on success, redraw
+  // the initials disc as a circular photo and refresh the texture.
+  if (profile.avatar) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.save();
+      // Clear the disc area and draw the photo clipped to a circle.
+      ctx.beginPath();
+      ctx.arc(cx, cy, 56, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      // Cover-fit the photo into the 112x112 disc.
+      const ar = img.width / img.height;
+      let dw = 112;
+      let dh = 112;
+      let dx = cx - 56;
+      let dy = cy - 56;
+      if (ar > 1) {
+        dw = 112 * ar;
+        dx = cx - dw / 2;
+      } else {
+        dh = 112 / ar;
+        dy = cy - dh / 2;
+      }
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.restore();
+      // Re-stroke the accent ring on top.
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 58, 0, Math.PI * 2);
+      ctx.stroke();
+      tex.needsUpdate = true;
+    };
+    img.onerror = () => {
+      // Tainted or 404 — keep initials, no-op.
+    };
+    img.src = profile.avatar;
+  }
+
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
     transparent: true,
@@ -311,6 +352,107 @@ function makeVibeCard(
     toneMapped: false,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 2.6), mat);
+  return mesh;
+}
+
+// A Vibey "knowledge orb" — small floating slip showing a single
+// memory snippet. Renders the snippet text, an emoji-style accent
+// dot, and up to two tags. Designed to orbit close to Vibey so it
+// reads as a thought bubble.
+function makeMemoryOrb(
+  memory: { content: string; tags: string[] },
+  accent: string,
+): THREE.Mesh {
+  const W = 512;
+  const H = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d ctx");
+
+  const radius = 36;
+  // Background.
+  ctx.fillStyle = "rgba(8, 14, 28, 0.92)";
+  roundRect(ctx, 8, 8, W - 16, H - 16, radius);
+  ctx.fill();
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, "rgba(115, 255, 184, 0.10)");
+  grad.addColorStop(1, "rgba(178, 146, 255, 0.10)");
+  ctx.fillStyle = grad;
+  roundRect(ctx, 8, 8, W - 16, H - 16, radius);
+  ctx.fill();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 3;
+  roundRect(ctx, 10, 10, W - 20, H - 20, radius - 2);
+  ctx.stroke();
+
+  // Header label.
+  ctx.fillStyle = accent;
+  ctx.font = "700 16px ui-sans-serif, system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("VIBEY · KNOWS", 32, 44);
+
+  // Body — wrap content to up to 4 lines.
+  ctx.fillStyle = "#eaf3ff";
+  ctx.font = "500 26px ui-sans-serif, system-ui, -apple-system, sans-serif";
+  const words = memory.content.split(/\s+/);
+  const lines: string[] = [];
+  let line = "";
+  const maxW = W - 64;
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxW && line) {
+      lines.push(line);
+      line = w;
+      if (lines.length === 4) break;
+    } else {
+      line = test;
+    }
+  }
+  if (line && lines.length < 4) lines.push(line);
+  if (lines.length === 4 && words.length > lines.join(" ").split(/\s+/).length) {
+    let tail = lines[3];
+    while (ctx.measureText(tail + "…").width > maxW && tail.length > 0) {
+      tail = tail.slice(0, -1);
+    }
+    lines[3] = tail + "…";
+  }
+  lines.forEach((ln, i) => {
+    ctx.fillText(ln, 32, 80 + i * 32);
+  });
+
+  // Tags.
+  if (memory.tags.length) {
+    ctx.font = "600 14px ui-sans-serif, system-ui, -apple-system, sans-serif";
+    let x = 32;
+    const y = H - 28;
+    for (const tag of memory.tags.slice(0, 3)) {
+      const label = `#${tag}`;
+      const w = ctx.measureText(label).width + 16;
+      ctx.fillStyle = "rgba(115, 255, 184, 0.18)";
+      roundRect(ctx, x, y - 16, w, 22, 11);
+      ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.fillText(label, x + 8, y);
+      x += w + 6;
+      if (x > W - 60) break;
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    opacity: 0.92,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.7), mat);
   return mesh;
 }
 
@@ -415,12 +557,29 @@ export default function Unit7Playground() {
   const recentBeatsRef = useRef<string[]>([]);
 
   // Live community profiles to float around the platform.
-  type VibeProfile = { id: string; name: string; role: string };
+  type VibeProfile = {
+    id: string;
+    name: string;
+    role: string;
+    avatar: string | null;
+  };
   const [vibeProfiles, setVibeProfiles] = useState<VibeProfile[]>([]);
 
   // Live community stats panel.
   type Stats = { members: number; photos: number; events: number };
   const [communityStats, setCommunityStats] = useState<Stats | null>(null);
+
+  // Vibey's soul (system prompt) + knowledge (community memories).
+  type VibeyAgent = {
+    name: string;
+    system_prompt: string;
+    intro_message: string;
+    model: string;
+  };
+  const [vibeyAgent, setVibeyAgent] = useState<VibeyAgent | null>(null);
+  type VibeyMemory = { content: string; tags: string[] };
+  const [vibeyMemories, setVibeyMemories] = useState<VibeyMemory[]>([]);
+  const [soulOpen, setSoulOpen] = useState(false);
 
   // Realtime presence — how many visitors are watching right now.
   const [watchingNow, setWatchingNow] = useState<number>(1);
@@ -448,6 +607,8 @@ export default function Unit7Playground() {
   // profiles arrive from Supabase.
   const sceneRef = useRef<THREE.Scene | null>(null);
   const vibeCardsGroupRef = useRef<THREE.Group | null>(null);
+  // Vibey's knowledge: small memory orbs that orbit closer to the bot.
+  const memoryOrbsGroupRef = useRef<THREE.Group | null>(null);
   const [robotColor, setRobotColor] = useState<number | null>(null);
   // Keep the ref in sync with state.
   robotColorRef.current = robotColor;
@@ -693,8 +854,13 @@ export default function Unit7Playground() {
       const stats = (data as { stats?: Stats }).stats;
       const profiles =
         (data as { profiles?: VibeProfile[] }).profiles ?? [];
+      const agent = (data as { agent?: VibeyAgent | null }).agent ?? null;
+      const memories =
+        (data as { memories?: VibeyMemory[] }).memories ?? [];
       if (stats) setCommunityStats(stats);
       if (profiles.length) setVibeProfiles(profiles);
+      if (agent) setVibeyAgent(agent);
+      if (memories.length) setVibeyMemories(memories);
     })();
     return () => {
       cancelled = true;
@@ -723,12 +889,14 @@ export default function Unit7Playground() {
     const PALETTE = [
       "#73ffb8", "#ffd166", "#ff7e8a", "#b392ff", "#6aa8ff", "#eaeaf0",
     ];
-    vibeProfiles.forEach((p, i) => {
+    // Cap to 8 cards so the orbit feels populated but not crowded.
+    const visible = vibeProfiles.slice(0, 8);
+    visible.forEach((p, i) => {
       const card = makeVibeCard(p, PALETTE[i % PALETTE.length]);
-      // Distribute on a tilted ring around the platform.
-      const a = (i / vibeProfiles.length) * Math.PI * 2;
-      const r = 13 + Math.random() * 3;
-      const y = 4 + Math.sin(a * 1.4) * 2.2 + (Math.random() - 0.5) * 1.2;
+      // Distribute on a wider, tilted ring around the platform.
+      const a = (i / visible.length) * Math.PI * 2;
+      const r = 19 + Math.random() * 3;
+      const y = 5 + Math.sin(a * 1.6) * 2.6 + (Math.random() - 0.5) * 1.4;
       card.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
       // Face roughly toward the platform center.
       card.rotation.y = Math.atan2(0 - card.position.x, 0 - card.position.z);
@@ -745,6 +913,44 @@ export default function Unit7Playground() {
       scene.remove(group);
     };
   }, [vibeProfiles]);
+
+  // ---- Build Vibey's memory orbs (knowledge) ----------------------
+  useEffect(() => {
+    if (!vibeyMemories.length) return;
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (memoryOrbsGroupRef.current) {
+      scene.remove(memoryOrbsGroupRef.current);
+      memoryOrbsGroupRef.current.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry?.dispose();
+          const mat = m.material as THREE.Material | THREE.Material[];
+          if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+          else mat?.dispose();
+        }
+      });
+    }
+    const PALETTE = ["#73ffb8", "#b392ff", "#ffd166", "#6aa8ff"];
+    // Cap to 6 so the inner ring stays readable.
+    const sample = vibeyMemories.slice(0, 6);
+    const group = new THREE.Group();
+    sample.forEach((mem, i) => {
+      const orb = makeMemoryOrb(mem, PALETTE[i % PALETTE.length]);
+      const a = (i / sample.length) * Math.PI * 2;
+      const r = 8.5 + Math.random() * 1.5;
+      const y = 8.5 + Math.sin(a * 1.7) * 1.2 + (Math.random() - 0.5) * 0.6;
+      orb.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      orb.userData.bobPhase = Math.random() * Math.PI * 2;
+      orb.userData.baseY = y;
+      group.add(orb);
+    });
+    scene.add(group);
+    memoryOrbsGroupRef.current = group;
+    return () => {
+      scene.remove(group);
+    };
+  }, [vibeyMemories]);
 
   // ---- Realtime presence: count concurrent viewers ----------------
   useEffect(() => {
@@ -821,9 +1027,11 @@ export default function Unit7Playground() {
         // Silent — render loop will fall back to scripted SHOW_MONOLOGUES.
       }
     }
-    // Prime the queue, then refill every 30s.
+    // Prime the queue with a couple beats, then top up sparingly.
+    // The render loop only consumes a beat every ~16-30s, so polling
+    // every 2 minutes with a queue cap of 3 keeps API spend tiny.
     fetchBeat();
-    const t = window.setInterval(fetchBeat, 30000);
+    const t = window.setInterval(fetchBeat, 120000);
     return () => {
       cancelled = true;
       window.clearInterval(t);
@@ -2600,7 +2808,9 @@ export default function Unit7Playground() {
         ]);
         setShowMood(beat.mood ? beat.mood.toLowerCase() : "improvising");
         setShowThought(beat.line);
-        nextShowBeatAt = now + 16000 + Math.random() * 14000;
+        // 35-60s between show beats — enough breathing room that the
+        // narrative feels intentional, not chatty.
+        nextShowBeatAt = now + 35000 + Math.random() * 25000;
       }
 
       // ---- Spaceship orbit + nav light blink + beam pulse ----------
@@ -2666,6 +2876,18 @@ export default function Unit7Playground() {
           // Billboard: always face the camera so the text reads
           // correctly no matter where we are in the orbit.
           card.lookAt(camera.position);
+        }
+      }
+
+      // ---- Memory orbs: counter-rotate inner ring + per-orb bob ---
+      if (memoryOrbsGroupRef.current) {
+        const g = memoryOrbsGroupRef.current;
+        g.rotation.y -= delta * 0.08;
+        for (const orb of g.children) {
+          const phase = (orb.userData.bobPhase as number) ?? 0;
+          const baseY = (orb.userData.baseY as number) ?? orb.position.y;
+          orb.position.y = baseY + Math.sin(now * 0.0011 + phase) * 0.32;
+          orb.lookAt(camera.position);
         }
       }
 
@@ -3057,47 +3279,90 @@ export default function Unit7Playground() {
       </div>
       )}
 
-      {/* Community stats card — top-right when the chat panel is closed.
-          Pulls live counts of members, photos, events from Supabase. */}
+      {/* Community stats — compact pill. Live counts + presence dot. */}
       {!panelOpen && communityStats && (
-        <div className="absolute top-4 right-4 z-10 glass-panel rounded-xl px-3 py-2 border border-primary/30 min-w-[200px]">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
-              Edge Esmeralda · Live
-            </p>
-            <span className="flex items-center gap-1 text-[10px] text-foreground/85">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-              </span>
-              <span className="font-mono font-semibold">{watchingNow}</span>
-              <span className="text-muted-foreground">watching</span>
+        <div className="absolute top-4 right-4 z-10 glass-panel rounded-full pl-2.5 pr-3 py-1.5 border border-primary/30 flex items-center gap-3 text-[11px] font-heading text-foreground/90">
+          <span className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
             </span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 text-center">
-            <div>
-              <p className="text-base font-heading font-bold text-foreground leading-none">
-                {communityStats.members}
-              </p>
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5">
-                Members
-              </p>
+            <span className="font-mono font-semibold">{watchingNow}</span>
+          </span>
+          <span className="opacity-30">|</span>
+          <span>
+            <span className="font-mono font-semibold">{communityStats.members}</span>
+            <span className="text-muted-foreground ml-1">members</span>
+          </span>
+          <span>
+            <span className="font-mono font-semibold">{communityStats.photos}</span>
+            <span className="text-muted-foreground ml-1">photos</span>
+          </span>
+          <span>
+            <span className="font-mono font-semibold">{communityStats.events}</span>
+            <span className="text-muted-foreground ml-1">events</span>
+          </span>
+        </div>
+      )}
+
+      {/* Vibey Soul button — opens a panel showing the agent's name,
+          model, intro, and full system prompt. */}
+      {vibeyAgent && (
+        <button
+          onClick={() => setSoulOpen((v) => !v)}
+          className="absolute bottom-20 left-4 z-10 glass-panel rounded-full px-3 py-1.5 flex items-center gap-2 text-[11px] font-heading hover:bg-muted/40 transition-colors border border-primary/30"
+          title="Peek at Vibey's soul"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+          </span>
+          <span className="tracking-widest uppercase">Vibey · Soul</span>
+        </button>
+      )}
+
+      {soulOpen && vibeyAgent && (
+        <div
+          className="absolute inset-0 z-30 bg-background/70 backdrop-blur-md flex items-center justify-center p-6"
+          onClick={() => setSoulOpen(false)}
+        >
+          <div
+            className="glass-panel rounded-2xl border border-primary/40 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+              <div>
+                <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                  Vibey · Soul
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                  {vibeyAgent.model || "claude"}
+                </p>
+              </div>
+              <button
+                onClick={() => setSoulOpen(false)}
+                className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
             </div>
-            <div>
-              <p className="text-base font-heading font-bold text-foreground leading-none">
-                {communityStats.photos}
+            {vibeyAgent.intro_message && (
+              <div className="px-4 py-3 border-b border-border/30">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                  Intro
+                </p>
+                <p className="text-sm text-foreground">
+                  {vibeyAgent.intro_message}
+                </p>
+              </div>
+            )}
+            <div className="px-4 py-3 overflow-y-auto">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                System Prompt
               </p>
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5">
-                Photos
-              </p>
-            </div>
-            <div>
-              <p className="text-base font-heading font-bold text-foreground leading-none">
-                {communityStats.events}
-              </p>
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5">
-                Events
-              </p>
+              <pre className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans">
+                {vibeyAgent.system_prompt}
+              </pre>
             </div>
           </div>
         </div>
