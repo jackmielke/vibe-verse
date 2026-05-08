@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
 import unit7ModelUrl from "@/assets/robot-expressive.glb";
 import type {
@@ -144,8 +147,39 @@ const DISCOVERY_LINES = [
   "Unit-7 logs a new landmark: the mint ring hums when Earth crosses behind it.",
   "Unit-7 thinks the galaxy is not a place. More like a memory with gravity.",
   "Unit-7 found a quiet sector and named it The Maybe.",
-  "Unit-7 says the portal is pretending to be asleep.",
   "Unit-7 noticed the poet capsule waving, but only in metaphor.",
+];
+
+const SHOW_MONOLOGUES: {
+  mood: Unit7Expression | null;
+  anim: Unit7AnimName;
+  line: string;
+}[] = [
+  {
+    mood: "Surprised",
+    anim: "Wave",
+    line: "Vibey notices Earth behind his shoulder and briefly forgets he is supposed to be cool about it.",
+  },
+  {
+    mood: null,
+    anim: "Walking",
+    line: "Vibey begins a patrol of the platform edge. He has no orders. This appears to be the point.",
+  },
+  {
+    mood: "Sad",
+    anim: "Sitting",
+    line: "Vibey sits down because the galaxy is beautiful in an unfair way.",
+  },
+  {
+    mood: null,
+    anim: "Dance",
+    line: "Vibey decides the correct response to cosmic dread is a small dance.",
+  },
+  {
+    mood: "Angry",
+    anim: "No",
+    line: "Vibey rejects a suspicious radio ping. His official reason is: bad vibes.",
+  },
 ];
 
 export default function Unit7Playground() {
@@ -173,13 +207,20 @@ export default function Unit7Playground() {
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [trackIndex, setTrackIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const synthAudioRef = useRef<AudioContext | null>(null);
+  const [showMode, setShowMode] = useState(true);
+  const showModeRef = useRef(true);
+  const [showMood, setShowMood] = useState("curious");
+  const [showThought, setShowThought] = useState(
+    "Vibey is online, wandering without direct orders.",
+  );
+  showModeRef.current = showMode;
 
   // Backflip — set when user clicks the emote. The render loop reads it
   // and rotates the model on X over ~0.85s, then resets.
   const backflipStartRef = useRef<number>(0);
   const sprintStartRef = useRef<number>(0);
   const beaconStartRef = useRef<number>(0);
-  const portalStartRef = useRef<number>(0);
   const constellationStartRef = useRef<number>(0);
   // Robot tint — null = original colors, otherwise a hex like 0x73ffb8.
   const robotColorRef = useRef<number | null>(null);
@@ -254,24 +295,66 @@ export default function Unit7Playground() {
     triggerExpression("Surprised");
     triggerAnim("Wave");
     pushMessage("bot", line);
+    setShowMood("listening");
+    setShowThought(line);
+  }
+
+  function playBeaconSound() {
+    const audioWindow = window as Window &
+      typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+    const AudioCtor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
+    if (!AudioCtor) return;
+    const ctx = synthAudioRef.current ?? new AudioCtor();
+    synthAudioRef.current = ctx;
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.12, now + 0.04);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
+    master.connect(ctx.destination);
+
+    [164.81, 246.94, 329.63].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = i === 0 ? "sine" : "triangle";
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.52, now + 0.72);
+      gain.gain.setValueAtTime(0.2 / (i + 1), now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.95 + i * 0.08);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(now + i * 0.03);
+      osc.stop(now + 1.2);
+    });
   }
 
   function triggerBeacon() {
     beaconStartRef.current = performance.now();
+    playBeaconSound();
     triggerExpression("Surprised");
-    pushMessage("bot", "Beacon online. Unit-7 is listening for anything that answers in green.");
-  }
-
-  function triggerPortal() {
-    portalStartRef.current = performance.now();
-    triggerAnim("Wave");
-    pushMessage("bot", "Portal awake. It is not open, exactly. It is considering us.");
+    const line = "Beacon online. Vibey is listening for anything that answers in green.";
+    pushMessage("bot", line);
+    setShowMood("scanning");
+    setShowThought(line);
   }
 
   function triggerConstellation() {
     constellationStartRef.current = performance.now();
     triggerAnim("Yes");
-    pushMessage("bot", "Constellation revealed: The Unfinished Robot.");
+    const line = "Constellation revealed: The Unfinished Robot.";
+    pushMessage("bot", line);
+    setShowMood("delighted");
+    setShowThought(line);
+  }
+
+  function triggerShowBeat() {
+    const beat = SHOW_MONOLOGUES[Math.floor(Math.random() * SHOW_MONOLOGUES.length)];
+    if (beat.mood) triggerExpression(beat.mood);
+    else triggerExpression(null);
+    triggerAnim(beat.anim);
+    pushMessage("bot", beat.line);
+    setShowMood(beat.mood ? beat.mood.toLowerCase() : "improvising");
+    setShowThought(beat.line);
   }
 
   function applyReply(reply: { say: string; anim: Unit7AnimName | null; expr: Unit7Expression | null }) {
@@ -455,6 +538,18 @@ export default function Unit7Playground() {
     canvas.addEventListener("pointerdown", () => {
       controls.autoRotate = false;
     });
+
+    const composer = new EffectComposer(renderer);
+    composer.setSize(canvas.clientWidth, canvas.clientHeight);
+    composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
+      0.45,
+      0.62,
+      0.18,
+    );
+    composer.addPass(bloomPass);
 
     // ---- Starfield ----------------------------------------------------
     {
@@ -760,36 +855,64 @@ export default function Unit7Playground() {
       return { group, rings, beam };
     })();
 
-    // ---- Thinking portal ----------------------------------------------
-    const portal = (() => {
+    // ---- Jarvis-like holo field ---------------------------------------
+    const holoField = (() => {
       const group = new THREE.Group();
-      group.position.set(-6.4, 2.0, -5.3);
-      group.rotation.set(0, 0.6, 0);
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(1.15, 0.08, 16, 96),
-        new THREE.MeshBasicMaterial({
-          color: 0xb392ff,
-          transparent: true,
-          opacity: 0.25,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-        }),
-      );
-      group.add(ring);
-      const core = new THREE.Mesh(
-        new THREE.CircleGeometry(1.05, 48),
+      group.position.y = 0.12;
+      const rings: THREE.Mesh[] = [];
+      for (let i = 0; i < 7; i++) {
+        const radius = 1.4 + i * 0.62;
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(radius, 0.01 + i * 0.001, 8, 128),
+          new THREE.MeshBasicMaterial({
+            color: i % 2 === 0 ? 0x73ffb8 : 0x8fe8ff,
+            transparent: true,
+            opacity: 0.12,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          }),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = i * 0.055;
+        rings.push(ring);
+        group.add(ring);
+      }
+
+      const ticks: THREE.Mesh[] = [];
+      const tickMat = new THREE.MeshBasicMaterial({
+        color: 0x9fffd6,
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      for (let i = 0; i < 36; i++) {
+        const tick = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.012, 0.38), tickMat);
+        const a = (i / 36) * Math.PI * 2;
+        const r = 2.5 + (i % 3) * 0.9;
+        tick.position.set(Math.cos(a) * r, 0.24 + (i % 4) * 0.04, Math.sin(a) * r);
+        tick.rotation.y = -a;
+        ticks.push(tick);
+        group.add(tick);
+      }
+
+      const scanLine = new THREE.Mesh(
+        new THREE.RingGeometry(0.85, 5.55, 128),
         new THREE.MeshBasicMaterial({
           color: 0x73ffb8,
           transparent: true,
-          opacity: 0.06,
+          opacity: 0.055,
           depthWrite: false,
           side: THREE.DoubleSide,
           blending: THREE.AdditiveBlending,
         }),
       );
-      group.add(core);
+      scanLine.rotation.x = -Math.PI / 2;
+      scanLine.position.y = 0.34;
+      group.add(scanLine);
+
       scene.add(group);
-      return { group, ring, core };
+      return { group, rings, ticks, scanLine, tickMat };
     })();
 
     // ---- Planet Earth --------------------------------------------------
@@ -1161,6 +1284,7 @@ export default function Unit7Playground() {
     let raf = 0;
     let shipAngle = 0;
     let nextDiscoveryAt = performance.now() + 26000;
+    let nextShowBeatAt = performance.now() + 9000;
     const tick = () => {
       const now = performance.now();
       const delta = Math.min(0.05, (now - lastTime) / 1000);
@@ -1348,16 +1472,17 @@ export default function Unit7Playground() {
       (beacon.beam.material as THREE.MeshBasicMaterial).opacity =
         beaconPulse * (0.08 + Math.abs(Math.sin(now * 0.008)) * 0.08);
 
-      const portalPulse =
-        portalStartRef.current > 0
-          ? Math.max(0, 1 - (now - portalStartRef.current) / 5200)
-          : 0;
-      portal.group.rotation.z += delta * (0.3 + portalPulse * 1.4);
-      portal.ring.scale.setScalar(1 + portalPulse * 0.28 + Math.sin(now * 0.004) * 0.04);
-      (portal.ring.material as THREE.MeshBasicMaterial).opacity =
-        0.22 + portalPulse * 0.62;
-      (portal.core.material as THREE.MeshBasicMaterial).opacity =
-        0.05 + portalPulse * 0.36 + Math.abs(Math.sin(now * 0.006)) * 0.04;
+      holoField.rings.forEach((ring, i) => {
+        ring.rotation.z += delta * (0.08 + i * 0.012) * (i % 2 === 0 ? 1 : -1);
+        ring.position.y = 0.12 + i * 0.05 + Math.sin(now * 0.0014 + i) * 0.03;
+        (ring.material as THREE.MeshBasicMaterial).opacity =
+          0.1 + beaconPulse * 0.28 + Math.abs(Math.sin(now * 0.002 + i)) * 0.045;
+      });
+      holoField.group.rotation.y += delta * 0.045;
+      holoField.scanLine.rotation.z -= delta * (0.5 + beaconPulse * 1.4);
+      (holoField.scanLine.material as THREE.MeshBasicMaterial).opacity =
+        0.045 + beaconPulse * 0.16 + Math.abs(Math.sin(now * 0.003)) * 0.025;
+      holoField.tickMat.opacity = 0.2 + beaconPulse * 0.42;
 
       // Unit-7 occasionally narrates his own observations. This keeps the
       // scene feeling inhabited without forcing the user to press buttons.
@@ -1372,6 +1497,33 @@ export default function Unit7Playground() {
           animPulseRef.current++;
         }
         nextDiscoveryAt = now + 28000 + Math.random() * 26000;
+      }
+
+      if (showModeRef.current && now >= nextShowBeatAt) {
+        const beat = SHOW_MONOLOGUES[Math.floor(Math.random() * SHOW_MONOLOGUES.length)];
+        if (beat.mood) {
+          const cleared: Record<Unit7Expression, number> = {
+            Angry: 0,
+            Surprised: 0,
+            Sad: 0,
+          };
+          cleared[beat.mood] = 0.85;
+          expressionsRef.current = cleared;
+          setActiveMood(beat.mood);
+        } else {
+          expressionsRef.current = { Angry: 0, Surprised: 0, Sad: 0 };
+          setActiveMood(null);
+        }
+        desiredAnimRef.current = beat.anim;
+        if (!ONE_SHOTS.has(beat.anim)) baseAnimRef.current = beat.anim;
+        animPulseRef.current++;
+        setMessages((current) => [
+          ...current,
+          { id: current.length + 1, who: "bot", text: beat.line },
+        ]);
+        setShowMood(beat.mood ? beat.mood.toLowerCase() : "improvising");
+        setShowThought(beat.line);
+        nextShowBeatAt = now + 16000 + Math.random() * 14000;
       }
 
       // ---- Spaceship orbit + nav light blink + beam pulse ----------
@@ -1429,7 +1581,8 @@ export default function Unit7Playground() {
       }
 
       controls.update();
-      renderer.render(scene, camera);
+      bloomPass.strength = 0.35 + beaconPulse * 0.55;
+      composer.render();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1439,6 +1592,7 @@ export default function Unit7Playground() {
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       renderer.setSize(w, h, false);
+      composer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     });
@@ -1460,6 +1614,7 @@ export default function Unit7Playground() {
           else mat?.dispose();
         }
       });
+      composer.dispose();
       disposableTextures.forEach((texture) => texture.dispose());
       renderer.dispose();
     };
@@ -1504,6 +1659,18 @@ export default function Unit7Playground() {
           </span>
         </button>
       )}
+
+      <div className="absolute left-1/2 top-4 z-10 w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 glass-panel rounded-xl px-3 py-2 border border-primary/30">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_14px_rgba(115,255,184,0.9)]" />
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+            Vibey Show · {showMood}
+          </p>
+        </div>
+        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-foreground/85">
+          {showThought}
+        </p>
+      </div>
 
       {/* Side panel: chat + controls (collapsible) */}
       {panelOpen && (
@@ -1612,10 +1779,10 @@ export default function Unit7Playground() {
               🔆 Beacon
             </button>
             <button
-              onClick={triggerPortal}
+              onClick={triggerShowBeat}
               className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 transition-colors px-1 py-1.5 text-[10px] font-medium"
             >
-              🌀 Portal
+              📡 Beat
             </button>
             <button
               onClick={triggerConstellation}
@@ -1624,6 +1791,25 @@ export default function Unit7Playground() {
               ✦ Stars
             </button>
           </div>
+          <button
+            onClick={() => {
+              const next = !showMode;
+              setShowMode(next);
+              setShowMood(next ? "autonomous" : "quiet");
+              setShowThought(
+                next
+                  ? "Vibey resumes the show. Nobody is driving."
+                  : "Show mode paused. Vibey is still here, just quieter.",
+              );
+            }}
+            className={`mt-1 rounded-md border transition-colors px-2 py-1.5 text-[10px] font-medium ${
+              showMode
+                ? "border-primary/60 bg-primary/20 text-primary"
+                : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+            }`}
+          >
+            {showMode ? "Broadcasting" : "Resume show"}
+          </button>
 
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
             Skin
