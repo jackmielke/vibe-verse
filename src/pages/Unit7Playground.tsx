@@ -6,6 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
 import unit7ModelUrl from "@/assets/robot-expressive.glb";
 import type {
@@ -93,6 +94,8 @@ interface ChatMessage {
   who: "user" | "bot";
   text: string;
 }
+
+type SpaceExperience = "none" | "ion" | "blocks" | "friend";
 
 // ---------- Component --------------------------------------------------
 
@@ -214,7 +217,10 @@ export default function Unit7Playground() {
   const [showThought, setShowThought] = useState(
     "Vibey is online, wandering without direct orders.",
   );
+  const [activeExperience, setActiveExperience] = useState<SpaceExperience>("none");
+  const activeExperienceRef = useRef<SpaceExperience>("none");
   showModeRef.current = showMode;
+  activeExperienceRef.current = activeExperience;
 
   // Backflip — set when user clicks the emote. The render loop reads it
   // and rotates the model on X over ~0.85s, then resets.
@@ -357,6 +363,35 @@ export default function Unit7Playground() {
     setShowThought(beat.line);
   }
 
+  function spawnExperience(experience: SpaceExperience) {
+    setActiveExperience(experience);
+    const details: Record<SpaceExperience, { mood: string; line: string }> = {
+      none: {
+        mood: "quiet",
+        line: "Vibey lets the extra set pieces fade out. Just platform, stars, and thoughts.",
+      },
+      ion: {
+        mood: "blooming",
+        line: "Ion Bloom spawned. Vibey has found the dramatic lighting department.",
+      },
+      blocks: {
+        mood: "constructing",
+        line: "Voxel garden spawned. Vibey is considering whether blocks count as geology.",
+      },
+      friend: {
+        mood: "befriending",
+        line: "Good Friend spawned. Vibey now has company, which may improve the show by 12 percent.",
+      },
+    };
+    const next = details[experience];
+    setShowMood(next.mood);
+    setShowThought(next.line);
+    pushMessage("bot", next.line);
+    if (experience === "ion") triggerExpression("Surprised");
+    if (experience === "blocks") triggerAnim("Jump");
+    if (experience === "friend") triggerAnim("Wave");
+  }
+
   function applyReply(reply: { say: string; anim: Unit7AnimName | null; expr: Unit7Expression | null }) {
     if (reply.anim) triggerAnim(reply.anim);
     if (reply.expr) triggerExpression(reply.expr);
@@ -424,6 +459,8 @@ export default function Unit7Playground() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
     renderer.setClearColor(0x05060f, 1);
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    renderer.toneMappingExposure = 1.2;
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x05060f, 0.012);
@@ -545,11 +582,15 @@ export default function Unit7Playground() {
     composer.addPass(new RenderPass(scene, camera));
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
-      0.45,
-      0.62,
-      0.18,
+      1.5,
+      0.4,
+      0,
     );
+    bloomPass.threshold = 0.72;
+    bloomPass.strength = 0.62;
+    bloomPass.radius = 0.08;
     composer.addPass(bloomPass);
+    composer.addPass(new OutputPass());
 
     // ---- Starfield ----------------------------------------------------
     {
@@ -858,6 +899,7 @@ export default function Unit7Playground() {
     // ---- Jarvis-like holo field ---------------------------------------
     const holoField = (() => {
       const group = new THREE.Group();
+      group.visible = false;
       group.position.y = 0.12;
       const rings: THREE.Mesh[] = [];
       for (let i = 0; i < 7; i++) {
@@ -913,6 +955,145 @@ export default function Unit7Playground() {
 
       scene.add(group);
       return { group, rings, ticks, scanLine, tickMat };
+    })();
+
+    // ---- Spawnable experiences ----------------------------------------
+    const ionBloom = (() => {
+      const group = new THREE.Group();
+      group.visible = false;
+      group.position.set(-1.2, 2.1, -5.2);
+      group.rotation.set(0.2, -0.35, 0.08);
+
+      const shellMat = new THREE.MeshStandardMaterial({
+        color: 0x1d2738,
+        roughness: 0.28,
+        metalness: 0.85,
+      });
+      const glowMats = [0xff4f9a, 0x73ffb8, 0x8fe8ff].map((hex) => {
+        const mat = new THREE.MeshStandardMaterial({
+          color: hex,
+          emissive: hex,
+          emissiveIntensity: 2.8,
+          roughness: 0.18,
+          metalness: 0.2,
+        });
+        mat.color.multiplyScalar(1.35);
+        return mat;
+      });
+
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.95, 2), glowMats[1]);
+      group.add(core);
+
+      for (let i = 0; i < 3; i++) {
+        const torus = new THREE.Mesh(
+          new THREE.TorusGeometry(1.25 + i * 0.36, 0.045, 16, 128),
+          glowMats[i],
+        );
+        torus.rotation.set(Math.PI / 2 + i * 0.34, i * 0.5, i * 0.2);
+        group.add(torus);
+      }
+
+      for (let i = 0; i < 8; i++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 1.1), shellMat);
+        const a = (i / 8) * Math.PI * 2;
+        fin.position.set(Math.cos(a) * 1.55, Math.sin(a) * 1.55, 0);
+        fin.rotation.z = a;
+        group.add(fin);
+      }
+
+      const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(0.85, 3.1, 36, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0x8fe8ff,
+          transparent: true,
+          opacity: 0.34,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+        }),
+      );
+      flame.position.z = 2.0;
+      flame.rotation.x = Math.PI / 2;
+      group.add(flame);
+
+      scene.add(group);
+      return { group, core, flame, glowMats };
+    })();
+
+    const voxelGarden = (() => {
+      const group = new THREE.Group();
+      group.visible = false;
+      group.position.set(4.5, 0.25, -2.5);
+      const mats = {
+        grass: new THREE.MeshStandardMaterial({ color: 0x54c86a, roughness: 0.8 }),
+        dirt: new THREE.MeshStandardMaterial({ color: 0x7a5134, roughness: 0.9 }),
+        stone: new THREE.MeshStandardMaterial({ color: 0x777f8f, roughness: 0.85 }),
+        glow: new THREE.MeshStandardMaterial({
+          color: 0x73ffb8,
+          emissive: 0x73ffb8,
+          emissiveIntensity: 1.8,
+        }),
+      };
+      for (let x = -3; x <= 3; x++) {
+        for (let z = -2; z <= 2; z++) {
+          const h = Math.max(1, Math.round(1.5 + Math.sin(x * 1.7 + z) * 1.1));
+          for (let y = 0; y < h; y++) {
+            const cube = new THREE.Mesh(
+              new THREE.BoxGeometry(0.58, 0.58, 0.58),
+              y === h - 1 ? mats.grass : y === 0 ? mats.stone : mats.dirt,
+            );
+            cube.position.set(x * 0.58, y * 0.58, z * 0.58);
+            group.add(cube);
+          }
+        }
+      }
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), mats.glow);
+      gem.position.set(0, 2.5, 0);
+      group.add(gem);
+      scene.add(group);
+      return { group, gem };
+    })();
+
+    const goodFriend = (() => {
+      const group = new THREE.Group();
+      group.visible = false;
+      group.position.set(-2.8, 0.38, 2.7);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0xf0d19a,
+        roughness: 0.8,
+        emissive: 0x1e1204,
+      });
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1b22, roughness: 0.75 });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.48, 1.25), bodyMat);
+      body.position.y = 0.5;
+      group.add(body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.58, 0.62), bodyMat);
+      head.position.set(0, 0.78, -0.82);
+      group.add(head);
+      for (const x of [-0.28, 0.28]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), darkMat);
+        eye.position.set(x, 0.86, -1.15);
+        group.add(eye);
+      }
+      for (const x of [-0.36, 0.36]) {
+        const ear = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 4), bodyMat);
+        ear.position.set(x, 1.13, -0.84);
+        ear.rotation.z = x < 0 ? 0.55 : -0.55;
+        group.add(ear);
+      }
+      for (const x of [-0.32, 0.32]) {
+        for (const z of [-0.32, 0.42]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.54, 0.18), bodyMat);
+          leg.position.set(x, 0.08, z);
+          group.add(leg);
+        }
+      }
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.62), bodyMat);
+      tail.position.set(0, 0.78, 0.86);
+      tail.rotation.x = -0.8;
+      group.add(tail);
+      scene.add(group);
+      return { group, tail };
     })();
 
     // ---- Planet Earth --------------------------------------------------
@@ -1473,16 +1654,43 @@ export default function Unit7Playground() {
         beaconPulse * (0.08 + Math.abs(Math.sin(now * 0.008)) * 0.08);
 
       holoField.rings.forEach((ring, i) => {
+        const holoVisible = beaconPulse > 0.02;
+        holoField.group.visible = holoVisible;
         ring.rotation.z += delta * (0.08 + i * 0.012) * (i % 2 === 0 ? 1 : -1);
         ring.position.y = 0.12 + i * 0.05 + Math.sin(now * 0.0014 + i) * 0.03;
         (ring.material as THREE.MeshBasicMaterial).opacity =
-          0.1 + beaconPulse * 0.28 + Math.abs(Math.sin(now * 0.002 + i)) * 0.045;
+          0.05 +
+          beaconPulse * 0.28 +
+          Math.abs(Math.sin(now * 0.002 + i)) * 0.045;
       });
       holoField.group.rotation.y += delta * 0.045;
       holoField.scanLine.rotation.z -= delta * (0.5 + beaconPulse * 1.4);
       (holoField.scanLine.material as THREE.MeshBasicMaterial).opacity =
         0.045 + beaconPulse * 0.16 + Math.abs(Math.sin(now * 0.003)) * 0.025;
       holoField.tickMat.opacity = 0.2 + beaconPulse * 0.42;
+
+      ionBloom.group.visible = activeExperienceRef.current === "ion";
+      voxelGarden.group.visible = activeExperienceRef.current === "blocks";
+      goodFriend.group.visible = activeExperienceRef.current === "friend";
+
+      if (activeExperienceRef.current === "ion") {
+        ionBloom.group.rotation.y += delta * 0.35;
+        ionBloom.core.rotation.x += delta * 0.9;
+        ionBloom.core.rotation.y += delta * 1.1;
+        ionBloom.flame.scale.setScalar(0.9 + Math.abs(Math.sin(now * 0.006)) * 0.25);
+        ionBloom.glowMats.forEach((mat, i) => {
+          mat.emissiveIntensity = 2.4 + Math.abs(Math.sin(now * 0.003 + i)) * 1.6;
+        });
+      }
+      if (activeExperienceRef.current === "blocks") {
+        voxelGarden.group.rotation.y += delta * 0.08;
+        voxelGarden.gem.rotation.y += delta * 1.2;
+        voxelGarden.gem.position.y = 2.5 + Math.sin(now * 0.003) * 0.18;
+      }
+      if (activeExperienceRef.current === "friend") {
+        goodFriend.group.rotation.y = Math.sin(now * 0.0015) * 0.35;
+        goodFriend.tail.rotation.y = Math.sin(now * 0.012) * 0.7;
+      }
 
       // Unit-7 occasionally narrates his own observations. This keeps the
       // scene feeling inhabited without forcing the user to press buttons.
@@ -1581,7 +1789,11 @@ export default function Unit7Playground() {
       }
 
       controls.update();
-      bloomPass.strength = 0.35 + beaconPulse * 0.55;
+      bloomPass.threshold = activeExperienceRef.current === "ion" ? 0.62 : 0.72;
+      bloomPass.strength =
+        activeExperienceRef.current === "ion" ? 1.45 + beaconPulse * 0.25 : 0.42 + beaconPulse * 0.55;
+      bloomPass.radius = activeExperienceRef.current === "ion" ? 0.35 : 0.08;
+      renderer.toneMappingExposure = activeExperienceRef.current === "ion" ? 1.0 : 1.12;
       composer.render();
       raf = requestAnimationFrame(tick);
     };
@@ -1807,9 +2019,33 @@ export default function Unit7Playground() {
                 ? "border-primary/60 bg-primary/20 text-primary"
                 : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
             }`}
-          >
-            {showMode ? "Broadcasting" : "Resume show"}
-          </button>
+        >
+          {showMode ? "Broadcasting" : "Resume show"}
+        </button>
+
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
+            Spawn
+          </p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[
+              { id: "ion" as const, label: "Ion" },
+              { id: "blocks" as const, label: "Blocks" },
+              { id: "friend" as const, label: "Friend" },
+              { id: "none" as const, label: "Clear" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => spawnExperience(item.id)}
+                className={`rounded-md border transition-colors px-1 py-1.5 text-[10px] font-medium ${
+                  activeExperience === item.id
+                    ? "border-primary/60 bg-primary/20 text-primary"
+                    : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
             Skin
