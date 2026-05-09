@@ -66,17 +66,17 @@ function buildScatter(seed: number, radius: number): Scatter[] {
       });
     }
   }
-  // Trees ring the perimeter.
+  // Trees ring the perimeter (halved — was 16, now 8 total).
   for (const url of ASSETS.trees) {
-    place(url, { count: 4, minR: radius * 0.55, maxR: radius, scaleMin: 1.6, scaleMax: 2.6, sway: 0.05 });
+    place(url, { count: 2, minR: radius * 0.55, maxR: radius, scaleMin: 1.6, scaleMax: 2.6, sway: 0.05 });
   }
-  // Bushes scattered mid-radius.
+  // Bushes scattered mid-radius (was 9, now 6).
   for (const url of ASSETS.bushes) {
-    place(url, { count: 3, minR: radius * 0.25, maxR: radius * 0.75, scaleMin: 0.9, scaleMax: 1.6, sway: 0.025 });
+    place(url, { count: 2, minR: radius * 0.25, maxR: radius * 0.75, scaleMin: 0.9, scaleMax: 1.6, sway: 0.025 });
   }
-  // Grass tufts close in.
+  // Grass tufts close in (was 12, now 6).
   for (const url of ASSETS.grasses) {
-    place(url, { count: 4, minR: radius * 0.1, maxR: radius * 0.6, scaleMin: 0.6, scaleMax: 1.0, sway: 0.04 });
+    place(url, { count: 2, minR: radius * 0.1, maxR: radius * 0.6, scaleMin: 0.6, scaleMax: 1.0, sway: 0.04 });
   }
   // Rocks dotted near the trees, no sway.
   for (const url of ASSETS.rocks) {

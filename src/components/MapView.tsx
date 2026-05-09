@@ -286,6 +286,10 @@ interface MapViewProps {
 export default function MapView({ onLocationSelect, selectedLocation }: MapViewProps) {
   const navigate = useNavigate();
   const mapContainer = useRef<HTMLDivElement>(null);
+  // Set to true once we've re-seated beacons on the freshly-loaded
+  // terrain DEM. Reset on every style.load so a style toggle re-runs
+  // the one-time refresh.
+  const beaconsSeatedRef = useRef(false);
 
   // ---- Edge Esmeralda upcoming events ticker ---------------------
   type EdgeEvent = {
@@ -509,6 +513,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       });
 
       m.on("style.load", () => {
+        // Style change wipes custom layers — let the next DEM-ready
+        // event re-seat the beacons once.
+        beaconsSeatedRef.current = false;
         // Enable 3D terrain
         if (!m.getSource("mapbox-dem")) {
           m.addSource("mapbox-dem", {
@@ -548,11 +555,17 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         m.once("idle", () => refreshVenueBeacons(m));
       });
 
-      // When new terrain tiles load near our structures, re-seat them on the
-      // ground so they don't appear to sink as the user pans/zooms.
+      // When new terrain tiles load near our structures, re-seat them
+      // on the ground so they don't appear to sink as the user pans
+      // or zooms. We only do this ONCE per style — repeating it on
+      // every DEM tile load was tearing down + reloading the heavy
+      // NaturePack GLBs and causing visible flicker.
       m.on("sourcedata", (e) => {
         if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
-          refreshVenueBeacons(m);
+          if (!beaconsSeatedRef.current) {
+            refreshVenueBeacons(m);
+            beaconsSeatedRef.current = true;
+          }
           // Re-sample ground altitude for live characters too. Without this,
           // they stay at sea-level (altitude 0) until a frame happens to
           // resample, which leaves them underground in places like Healdsburg

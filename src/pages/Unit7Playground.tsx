@@ -15,6 +15,7 @@ import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
 import floatingIslandUrl from "@/assets/glb/floating-island.glb";
 import pixelTouchUrl from "@/assets/glb/pixel-touch.glb";
 import rockyUrl from "@/assets/glb/rocky.glb";
+import alienUrl from "@/assets/glb/alien.glb";
 import type {
   Unit7AnimName,
   Unit7Expression,
@@ -618,7 +619,7 @@ export default function Unit7Playground() {
   // Vibey's knowledge: small memory orbs that orbit closer to the bot.
   const memoryOrbsGroupRef = useRef<THREE.Group | null>(null);
   // Toggleable Meshy GLB props the user can spawn into the scene.
-  type PropId = "astronaut" | "island" | "touch";
+  type PropId = "astronaut" | "island" | "touch" | "alien";
   const [activeProps, setActiveProps] = useState<Set<PropId>>(new Set());
   const propsCacheRef = useRef<Map<PropId, THREE.Group>>(new Map());
 
@@ -1052,6 +1053,7 @@ export default function Unit7Playground() {
       rotationY?: number;
       spin?: number;
       bob?: number;
+      playClip?: boolean;
     };
     const PROP_CFG: Record<PropId, PropCfg> = {
       // Island + astronaut sit 90° to the right of the Gallery TV
@@ -1080,6 +1082,18 @@ export default function Unit7Playground() {
         spin: 0.04,
         bob: 0.5,
       },
+      // Alien from Quaternius Alien Animated pack — animated FBX
+      // converted to GLB via assimp. Lands on the platform near
+      // Vibey, walks/idles via its baked clip.
+      alien: {
+        url: alienUrl,
+        target: 2.4,
+        position: [-2.4, 0.1, -1.2],
+        rotationY: 0.6,
+        spin: 0,
+        bob: 0,
+        playClip: true,
+      },
     };
     const cache = propsCacheRef.current;
     for (const id of Object.keys(PROP_CFG) as PropId[]) {
@@ -1107,6 +1121,12 @@ export default function Unit7Playground() {
             placeholder.userData.basePosY = cfg.position[1];
             placeholder.userData.spin = cfg.spin ?? 0;
             placeholder.userData.bob = cfg.bob ?? 0;
+            // Play any baked animation clip on the model (alien etc.).
+            if (cfg.playClip && gltf.animations && gltf.animations.length) {
+              const mixer = new THREE.AnimationMixer(m);
+              mixer.clipAction(gltf.animations[0]).play();
+              placeholder.userData.mixer = mixer;
+            }
             // PBR materials show as black without an env map for some
             // metallic Meshy exports — clamp metalness so they read.
             m.traverse((obj) => {
@@ -3267,6 +3287,9 @@ export default function Unit7Playground() {
         const baseY = (g.userData.basePosY as number) ?? g.position.y;
         if (spin) g.rotation.y += delta * spin;
         if (bob) g.position.y = baseY + Math.sin(now * 0.0006) * bob;
+        // Drive any baked-clip mixer (alien).
+        const mixer = g.userData.mixer as THREE.AnimationMixer | undefined;
+        if (mixer) mixer.update(delta);
       }
 
       // ---- Iridescent arc: slow drift rotation ---------------------
@@ -3609,6 +3632,7 @@ export default function Unit7Playground() {
               { id: "astronaut" as const, label: "🧑‍🚀 Astro" },
               { id: "island" as const, label: "🏝 Island" },
               { id: "touch" as const, label: "✨ Touch" },
+              { id: "alien" as const, label: "👽 Alien" },
             ].map((item) => {
               const on = activeProps.has(item.id);
               return (
