@@ -50,16 +50,23 @@ interface Track {
 // Joplin tracks bring some groove. Drop your own MP3s into
 // public/audio/ and add an entry here for licensed music.
 const TRACKS: Track[] = [
+  // ---- User-supplied MP3s in public/audio (full licensed catalog).
+  // Drop more files into public/audio/ and prepend an entry here.
+  {
+    title: "Brazil",
+    artist: "Declan McKenna",
+    src: "/audio/declan-mckenna-brazil.mp3",
+  },
+  {
+    title: "Dreams",
+    artist: "Fleetwood Mac",
+    src: "/audio/fleetwood-mac-dreams.mp3",
+  },
   // ---- Joplin ragtime — peppy, danceable, public domain ----
   {
     title: "The Entertainer",
     artist: "Scott Joplin",
     src: "https://upload.wikimedia.org/wikipedia/commons/6/62/Scott_Joplin_-_The_Entertainer_%281902%29.ogg",
-  },
-  {
-    title: "The Entertainer · piano roll",
-    artist: "Scott Joplin",
-    src: "https://upload.wikimedia.org/wikipedia/commons/1/1b/The_Entertainer_-_Scott_Joplin.ogg",
   },
   // ---- Mozart / Debussy — classical, melodic, PD ----
   {
