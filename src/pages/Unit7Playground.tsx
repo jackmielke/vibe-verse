@@ -8,7 +8,9 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
+import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause, ArrowDown } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   loginWithSpotify,
   isConnected as spotifyIsConnected,
@@ -609,7 +611,33 @@ export default function Unit7Playground() {
   const [thinking, setThinking] = useState(false);
   // "local" → our unit7-chat edge function (the original Vibey 2.0 brain)
   // "live"  → the production community Vibey at efdqqnubowgwsnwvlalp.supabase.co
-  const [chatMode, setChatMode] = useState<"local" | "live">("local");
+  const [chatMode, setChatMode] = useState<"local" | "live">("live");
+
+  // Auto-scroll machinery for the chat panel. We only auto-pin to the
+  // bottom when the user is already there — if they've scrolled up to
+  // re-read something, we leave them alone and surface a jump button.
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const [chatAtBottom, setChatAtBottom] = useState(true);
+  const handleChatScroll = () => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    // 24px slack so the indicator doesn't flicker when streaming.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    setChatAtBottom(atBottom);
+  };
+  const scrollChatToBottom = (behavior: ScrollBehavior = "auto") => {
+    chatBottomRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
+  // Pin to bottom whenever messages grow OR a token streams in — but
+  // only if the user was already there. Streaming SSE updates the last
+  // message's text in place, so we depend on a serialized snapshot
+  // (message count + last message length) to fire on each delta.
+  const tailKey = `${messages.length}:${messages[messages.length - 1]?.text.length ?? 0}`;
+  useEffect(() => {
+    if (chatAtBottom) scrollChatToBottom("auto");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tailKey]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -3946,19 +3974,8 @@ export default function Unit7Playground() {
               <X className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           </div>
-          {/* Two-pill toggle: local Vibey 2.0 vs the live community Vibey */}
+          {/* Two-pill toggle: live community Vibey is the default brain. */}
           <div className="flex gap-1 p-0.5 rounded-lg bg-background/40 border border-border/40 text-[10px]">
-            <button
-              onClick={() => setChatMode("local")}
-              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
-                chatMode === "local"
-                  ? "bg-primary/25 text-foreground font-semibold"
-                  : "text-muted-foreground hover:bg-muted/30"
-              }`}
-              title="The Vibey 2.0 brain that lives in this app"
-            >
-              🤖 Vibey 2.0
-            </button>
             <button
               onClick={() => setChatMode("live")}
               className={`flex-1 px-2 py-1 rounded-md transition-colors ${
@@ -3970,41 +3987,96 @@ export default function Unit7Playground() {
             >
               🌐 Live Vibey
             </button>
+            <button
+              onClick={() => setChatMode("local")}
+              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
+                chatMode === "local"
+                  ? "bg-primary/25 text-foreground font-semibold"
+                  : "text-muted-foreground hover:bg-muted/30"
+              }`}
+              title="The Vibey 2.0 brain that lives in this app"
+            >
+              🤖 Vibey 2.0
+            </button>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto bg-background/30 rounded-lg p-2 space-y-2">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] ${
-                  m.who === "bot"
-                    ? "bg-primary/15 text-foreground"
-                    : "bg-muted/60 text-foreground self-end ml-auto"
-                }`}
+          <div className="relative flex-1 min-h-0">
+            <div
+              ref={chatScrollRef}
+              onScroll={handleChatScroll}
+              className="absolute inset-0 overflow-y-auto bg-background/30 rounded-lg p-2 space-y-2"
+            >
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] ${
+                    m.who === "bot"
+                      ? "bg-primary/15 text-foreground"
+                      : "bg-muted/60 text-foreground self-end ml-auto"
+                  }`}
+                >
+                  {m.who === "bot" ? (
+                    /* Bot replies often contain markdown (bold, lists, links).
+                       Render with GFM; tighten spacing so it fits chat bubbles. */
+                    <div className="vibey-md">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.text || "…"}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    /* User messages are plain text — preserve their newlines. */
+                    <div className="whitespace-pre-wrap break-words">{m.text}</div>
+                  )}
+                </div>
+              ))}
+              {thinking && (
+                <div className="text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] bg-primary/10 text-muted-foreground italic">
+                  Vibey is thinking…
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+            {/* Jump-to-bottom: appears only when the user has scrolled up. */}
+            {!chatAtBottom && (
+              <button
+                onClick={() => scrollChatToBottom("smooth")}
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-primary/90 text-primary-foreground rounded-full px-3 py-1 text-[10px] font-semibold flex items-center gap-1 shadow-lg hover:bg-primary transition-colors"
+                title="Jump to latest"
               >
-                {m.text}
-              </div>
-            ))}
-            {thinking && (
-              <div className="text-xs leading-relaxed rounded-lg px-2.5 py-1.5 max-w-[85%] bg-primary/10 text-muted-foreground italic">
-                Vibey is thinking…
-              </div>
+                <ArrowDown className="w-3 h-3" />
+                Latest
+              </button>
             )}
           </div>
-          <div className="flex gap-2">
-            <input
+          <div className="flex gap-2 items-end">
+            <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && draft.trim() && !thinking) handleSend();
+                // Enter sends; Shift+Enter (or Cmd/Ctrl+Enter) inserts a newline.
+                if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+                  e.preventDefault();
+                  if (draft.trim() && !thinking) handleSend();
+                }
               }}
-              placeholder="Talk to Vibey…"
+              placeholder="Talk to Vibey… (Shift+Enter for newline)"
               disabled={thinking}
-              className="flex-1 rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-sm disabled:opacity-60"
+              rows={1}
+              className="flex-1 resize-none rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-sm disabled:opacity-60 max-h-32 min-h-[2.4rem] leading-snug"
+              style={{
+                // Auto-grow up to max-h via scrollHeight on every render.
+                height: "auto",
+              }}
+              ref={(el) => {
+                if (el) {
+                  el.style.height = "auto";
+                  el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+                }
+              }}
             />
             <button
               onClick={handleSend}
               disabled={!draft.trim() || thinking}
-              className="bg-primary text-primary-foreground px-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40"
+              className="bg-primary text-primary-foreground px-3 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 self-stretch"
             >
               <Send className="w-4 h-4" />
             </button>

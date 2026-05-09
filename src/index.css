@@ -132,3 +132,56 @@
     }
   }
 }
+
+/* Vibey chat: tight markdown styling that fits inside chat bubbles. */
+.vibey-md {
+  word-break: break-word;
+}
+.vibey-md > *:first-child { margin-top: 0; }
+.vibey-md > *:last-child { margin-bottom: 0; }
+.vibey-md p { margin: 0.25rem 0; }
+.vibey-md strong { font-weight: 600; color: hsl(var(--primary)); }
+.vibey-md em { font-style: italic; }
+.vibey-md ul, .vibey-md ol { margin: 0.25rem 0; padding-left: 1.1rem; }
+.vibey-md ul { list-style: disc; }
+.vibey-md ol { list-style: decimal; }
+.vibey-md li { margin: 0.1rem 0; }
+.vibey-md code {
+  background: hsl(var(--muted) / 0.6);
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+.vibey-md pre {
+  background: hsl(var(--muted) / 0.5);
+  padding: 0.5rem;
+  border-radius: 0.4rem;
+  overflow-x: auto;
+  margin: 0.4rem 0;
+}
+.vibey-md pre code { background: transparent; padding: 0; }
+.vibey-md a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vibey-md h1, .vibey-md h2, .vibey-md h3 {
+  font-weight: 600;
+  margin: 0.4rem 0 0.2rem;
+  line-height: 1.2;
+}
+.vibey-md h1 { font-size: 1.05em; }
+.vibey-md h2 { font-size: 1em; }
+.vibey-md h3 { font-size: 0.95em; }
+.vibey-md blockquote {
+  border-left: 2px solid hsl(var(--primary) / 0.5);
+  padding-left: 0.5rem;
+  margin: 0.3rem 0;
+  color: hsl(var(--muted-foreground));
+}
+.vibey-md hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border) / 0.6);
+  margin: 0.5rem 0;
+}
