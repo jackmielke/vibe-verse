@@ -7,7 +7,7 @@ export const MAPBOX_TOKEN = "pk.eyJ1IjoiamFja21pZWxrZSIsImEiOiJjbWpnYnNhNzcwbjRr
 // St / Healdsburg Ave). All venue beacons + fictional locations are
 // positioned relative to this anchor.
 export const VILLAGE_CENTER = {
-  lng: -122.86990,
-  lat: 38.61030,
+  lng: -122.87007,
+  lat: 38.61080,
   zoom: 16,
 } as const;

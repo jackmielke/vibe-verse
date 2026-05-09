@@ -82,13 +82,15 @@ const VILLAGE_LOCATIONS = [
   { id: 2, name: "Hacker House", lat: 38.6140, lng: -122.8682, type: "workspace", people: 18, emoji: "💻" },
   { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8715, type: "social", people: 27, emoji: "🌳" },
   { id: 4, name: "Dining Hall", lat: 38.6145, lng: -122.8698, type: "food", people: 55, emoji: "🍽️" },
-  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 160 },
+  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 160, beaconColor: 0xb392ff },
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
-  // Real Healdsburg Plaza: the green block bounded by Plaza St (N),
-  // Center St (E), Matheson St (S), and Healdsburg Ave (W).
-  { id: 9, name: "Central Plaza", lat: 38.61030, lng: -122.86990, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
+  // Real Healdsburg Plaza (OpenStreetMap-verified centroid).
+  { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8 },
+  // CraftWork — coworking space at 109 Healdsburg Ave (geocoded).
+  // Pure beacon for now (no 3D structure to spawn), warm amber aura.
+  { id: 10, name: "CraftWork", lat: 38.60582, lng: -122.86904, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -123,7 +125,8 @@ function addVenueBeaconLayers(m: mapboxgl.Map) {
       if (typeof elev === "number") altitude = elev + 0.2;
     } catch { /* terrain not ready */ }
     try {
-      m.addLayer(createVenueBeaconLayer(id, { lng: loc.lng, lat: loc.lat }, altitude));
+      const color = (loc as { beaconColor?: number }).beaconColor ?? 0x73ffb8;
+      m.addLayer(createVenueBeaconLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, color));
     } catch { /* style not ready */ }
   });
 }
