@@ -100,14 +100,14 @@ const VILLAGE_LOCATIONS = [
   // Real Healdsburg Plaza (OpenStreetMap-verified centroid). Mint
   // ground rings instead of a vertical beam so the plaza reads as
   // ambient space, not just another beacon.
-  { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8, markerStyle: "rings" as const },
+  { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8, markerStyle: "none" as const },
   // ---- Edge Esmeralda real-world venues (OSM-geocoded) -----------
   // Each gets a unique structure3d id and a markerStyle so we can
   // swap aesthetics per venue (beam, rings, orb, particles, ...).
   { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a, markerStyle: "beam" as const },
   { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff, markerStyle: "beam" as const },
   { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166, markerStyle: "orb" as const },
-  { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0, markerStyle: "rings" as const },
+  { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0, markerStyle: "none" as const },
   // Giorgi Park (real Healdsburg park) — uses the Simple Nature Pack
   // (low-poly trees / bushes / grass / rocks) to mark the spot
   // instead of a beam of light. Wind-swayed mini-grove.
@@ -166,7 +166,10 @@ function addVenueBeaconLayers(m: mapboxgl.Map) {
     } catch { /* terrain not ready */ }
     try {
       const color = (loc as { beaconColor?: number }).beaconColor ?? 0x73ffb8;
-      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" | "nature" | "vineyard" }).markerStyle ?? "beam";
+      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" | "nature" | "vineyard" | "none" }).markerStyle ?? "beam";
+      // "none" = pin only, no 3D ground beacon. Used for places where
+      // the pin + hover card carries the whole landmark experience.
+      if (style === "none") return;
       if (style === "nature") {
         m.addLayer(
           createNaturePackLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, {
@@ -368,6 +371,11 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   };
   const EDGE_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
   const [upcomingEvents, setUpcomingEvents] = useState<EdgeEvent[]>([]);
+  // Mirror events into a ref so the hover-card builders (registered
+  // once when markers mount) can read fresh data without re-rendering
+  // every marker on every event refresh.
+  const upcomingEventsRef = useRef<EdgeEvent[]>([]);
+  useEffect(() => { upcomingEventsRef.current = upcomingEvents; }, [upcomingEvents]);
   const [tickerOpen, setTickerOpen] = useState(true);
   useEffect(() => {
     let cancelled = false;
@@ -567,7 +575,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/standard",
         center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
-        zoom: 11.5,
+        // Tighter opening shot — half as far out as the original 11.5
+        // so the cinematic flyTo has less ground to cover and the user
+        // can already make out the village blocks.
+        zoom: 13.5,
         pitch: 0,
         bearing: 0,
         antialias: true,
@@ -647,11 +658,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
               zoom: 17.5,
               pitch: 60,
               bearing: -20,
-              speed: 0.5,
+              // Snappier opener: ~half the duration of the previous
+              // speed:0.5 / delay:600 setup. We still use a curve so
+              // the motion feels like a flyover, just less leisurely.
+              speed: 1.4,
               curve: 1.7,
               essential: true,
             });
-          }, 600);
+          }, 250);
         }
       });
 
@@ -850,51 +864,126 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       markersRef.current.push(marker);
 
-      // Floating name label — hidden by default, fades in only when
-      // the marker is hovered. Mapbox adopts the marker's root
-      // element as its own and overwrites pointer-events / opacity
-      // there, so we wrap a styled inner span inside an empty root.
-      // The root is the marker; the inner span is what we control.
+      // Hover card — name + venue type + up to 2 upcoming events that
+      // happen here. Hidden by default, fades in on hover. Mapbox
+      // adopts the marker's root element and overwrites inline styles
+      // there, so we keep the root empty and style an inner card.
       const labelRoot = document.createElement("div");
       labelRoot.style.cssText = "pointer-events: none;";
-      const labelEl = document.createElement("span");
-      labelEl.className = "venue-label-inner";
-      labelEl.style.cssText = `
-        display: inline-block;
-        white-space: nowrap;
-        padding: 4px 10px;
-        border-radius: 999px;
-        background: hsl(216 40% 14% / 0.85);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-        border: 1px solid ${color}88;
+      const cardEl = document.createElement("div");
+      cardEl.className = "venue-card-inner";
+      cardEl.style.cssText = `
+        max-width: 240px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: hsl(216 40% 12% / 0.92);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid ${color}99;
         color: #eaf3ff;
         font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
         font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        box-shadow: 0 0 18px ${color}33;
+        line-height: 1.45;
+        box-shadow: 0 6px 28px hsl(216 60% 4% / 0.6), 0 0 22px ${color}33;
         opacity: 0;
-        transition: opacity 0.2s ease;
+        transform: translateY(4px);
+        transition: opacity 0.18s ease, transform 0.18s ease;
       `;
-      labelEl.textContent = `${loc.emoji ?? "•"}  ${loc.name}`;
-      labelRoot.appendChild(labelEl);
+      labelRoot.appendChild(cardEl);
       const labelMarker = new mapboxgl.Marker({
         element: labelRoot,
         anchor: "bottom",
-        offset: [0, -64],
+        offset: [0, -72],
       })
         .setLngLat([loc.lng, loc.lat])
         .addTo(map.current!);
       markersRef.current.push(labelMarker);
-      // Toggle the inner span on hover of the click marker.
-      el.addEventListener("mouseenter", () => { labelEl.style.opacity = "1"; });
-      el.addEventListener("mouseleave", () => { labelEl.style.opacity = "0"; });
+
+      // Tiny HTML escaper so event titles can't break the card.
+      const esc = (s: string) =>
+        s.replace(/[&<>"']/g, (ch) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[ch] as string));
+
+      // Build the card on hover so we always show fresh events.
+      const buildCard = () => {
+        const evs = upcomingEventsRef.current ?? [];
+        const lname = loc.name.toLowerCase();
+        // Match events to this venue by name substring on either side.
+        // (Imperfect, but the events table doesn't link to venue ids.)
+        const matches = evs
+          .filter((ev) => {
+            const where = (ev.event_location ?? "").toLowerCase();
+            if (!where) return false;
+            return where.includes(lname) || lname.includes(where);
+          })
+          .slice(0, 2);
+
+        const fmt = (iso: string) => {
+          try {
+            const d = new Date(iso);
+            return d.toLocaleDateString(undefined, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            }) + " · " + d.toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+            });
+          } catch {
+            return iso;
+          }
+        };
+
+        const eventsHTML = matches.length
+          ? `<div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+              ${matches.map((ev) => `
+                <div style="border-left: 2px solid ${color}cc; padding-left: 6px;">
+                  <div style="font-weight: 600; color: #fff;">${esc(ev.title)}</div>
+                  <div style="opacity: 0.7; font-size: 10px;">${esc(fmt(ev.event_start_time))}</div>
+                </div>
+              `).join("")}
+            </div>`
+          : `<div style="margin-top: 4px; opacity: 0.55; font-size: 10px; font-style: italic;">No upcoming events here yet</div>`;
+
+        cardEl.innerHTML = `
+          <div style="display: flex; align-items: baseline; gap: 6px;">
+            <span style="font-size: 14px;">${loc.emoji ?? "•"}</span>
+            <span style="font-weight: 700; font-size: 12.5px; letter-spacing: 0.01em;">${esc(loc.name)}</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 2px; opacity: 0.7; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;">
+            <span>${esc(loc.type ?? "")}</span>
+            <span>·</span>
+            <span>${loc.people ?? 0} here</span>
+          </div>
+          ${eventsHTML}
+        `;
+      };
+
+      const showCard = () => {
+        buildCard();
+        cardEl.style.opacity = "1";
+        cardEl.style.transform = "translateY(0)";
+      };
+      const hideCard = () => {
+        cardEl.style.opacity = "0";
+        cardEl.style.transform = "translateY(4px)";
+      };
+      // Listen on both the click marker and its inner — Mapbox swaps
+      // pointer-events on the root, but the inner is reliably ours.
+      el.addEventListener("mouseenter", showCard);
+      el.addEventListener("mouseleave", hideCard);
+      inner.addEventListener("mouseenter", showCard);
+      inner.addEventListener("mouseleave", hideCard);
       el.addEventListener(
         "touchstart",
         () => {
-          labelEl.style.opacity = "1";
-          window.setTimeout(() => { labelEl.style.opacity = "0"; }, 1800);
+          showCard();
+          window.setTimeout(hideCard, 2400);
         },
         { passive: true },
       );
