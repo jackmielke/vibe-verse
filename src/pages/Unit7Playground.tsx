@@ -43,7 +43,25 @@ interface Track {
   src: string;
 }
 
+// Public-domain playlist streamed from Wikimedia Commons. Disco-era
+// Michael Jackson / Bee Gees / Earth Wind & Fire is all still
+// copyrighted and can't be legally embedded — what's PD is pre-1925
+// jazz + ragtime (Scott Joplin etc.) + everything classical. The
+// Joplin tracks bring some groove. Drop your own MP3s into
+// public/audio/ and add an entry here for licensed music.
 const TRACKS: Track[] = [
+  // ---- Joplin ragtime — peppy, danceable, public domain ----
+  {
+    title: "The Entertainer",
+    artist: "Scott Joplin",
+    src: "https://upload.wikimedia.org/wikipedia/commons/6/62/Scott_Joplin_-_The_Entertainer_%281902%29.ogg",
+  },
+  {
+    title: "The Entertainer · piano roll",
+    artist: "Scott Joplin",
+    src: "https://upload.wikimedia.org/wikipedia/commons/1/1b/The_Entertainer_-_Scott_Joplin.ogg",
+  },
+  // ---- Mozart / Debussy — classical, melodic, PD ----
   {
     title: "Concerto No. 12 in A — Andante",
     artist: "Mozart",
@@ -575,6 +593,7 @@ export default function Unit7Playground() {
   const [thinking, setThinking] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [trackIndex, setTrackIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1754,7 +1773,10 @@ export default function Unit7Playground() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 4;
-    controls.maxDistance = 38;
+    // Far-zoom-out — pulls back wide enough to take the whole
+    // scene in: galaxy, planets, asteroid belt, all the orbiting
+    // bits. Was 38; tripled.
+    controls.maxDistance = 130;
     controls.maxPolarAngle = Math.PI * 0.55; // don't let user go below platform
     controls.autoRotate = true;
     controls.autoRotateSpeed = 0.35;
@@ -4311,59 +4333,108 @@ export default function Unit7Playground() {
         </div>
       )}
 
-      {/* Music player — bottom-left, never blocked by the chat panel.
-          Streams public-domain recordings from Wikimedia (CORS-safe),
-          plays via a hidden HTML <audio> element. Auto-advances on end. */}
-      <div className="absolute bottom-4 left-4 z-10 glass-panel rounded-xl px-3 py-2 flex items-center gap-2">
-        <audio ref={audioRef} src={currentTrack.src} preload="none" crossOrigin="anonymous" />
-        <button
-          onClick={() => setTrackIndex((i) => (i - 1 + TRACKS.length) % TRACKS.length)}
-          className="p-1 rounded-md hover:bg-muted/40 transition-colors"
-          title="Previous track"
-        >
-          <SkipBack className="w-3.5 h-3.5 text-muted-foreground" />
-        </button>
-        <button
-          onClick={() => setMusicOn((v) => !v)}
-          className="p-1.5 rounded-full bg-primary/15 hover:bg-primary/25 transition-colors"
-          title={musicOn ? "Pause" : "Play"}
-        >
-          {musicOn ? (
-            <Pause className="w-4 h-4 text-primary" />
-          ) : (
-            <Play className="w-4 h-4 text-primary" />
-          )}
-        </button>
-        <button
-          onClick={() => setTrackIndex((i) => (i + 1) % TRACKS.length)}
-          className="p-1 rounded-md hover:bg-muted/40 transition-colors"
-          title="Next track"
-        >
-          <SkipForward className="w-3.5 h-3.5 text-muted-foreground" />
-        </button>
-        <div className="ml-1 mr-1 max-w-[160px] overflow-hidden">
-          <p className="text-[11px] font-heading font-semibold text-foreground leading-tight truncate">
-            {currentTrack.title}
-          </p>
-          <p className="text-[9px] font-mono text-muted-foreground tracking-widest uppercase truncate">
-            {currentTrack.artist}
-          </p>
-        </div>
-        {musicVolume === 0 ? (
-          <VolumeX className="w-3.5 h-3.5 text-muted-foreground" />
-        ) : (
-          <Volume2 className="w-3.5 h-3.5 text-muted-foreground" />
+      {/* Music player + queue. Click the title to flip open a list
+          of every track; click any row to jump to it. Auto-advances
+          on end. */}
+      <div className="absolute bottom-4 left-4 z-10 flex flex-col items-stretch gap-2 max-w-[340px]">
+        {queueOpen && (
+          <div className="glass-panel rounded-xl border border-primary/30 p-2 max-h-[55vh] overflow-y-auto">
+            <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-1.5 px-1">
+              Queue · {TRACKS.length} tracks
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {TRACKS.map((t, i) => {
+                const on = i === trackIndex;
+                return (
+                  <button
+                    key={t.src}
+                    onClick={() => {
+                      setTrackIndex(i);
+                      setMusicOn(true);
+                    }}
+                    className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                      on
+                        ? "bg-primary/15 text-foreground"
+                        : "hover:bg-muted/40 text-foreground/85"
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        on
+                          ? "bg-primary shadow-[0_0_8px_rgba(115,255,184,0.8)]"
+                          : "bg-muted-foreground/40"
+                      }`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-heading font-semibold leading-tight truncate">
+                        {t.title}
+                      </p>
+                      <p className="text-[9px] font-mono text-muted-foreground tracking-widest uppercase truncate">
+                        {t.artist}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.02}
-          value={musicVolume}
-          onChange={(e) => setMusicVolume(Number(e.target.value))}
-          className="w-16 h-1 accent-primary cursor-pointer"
-          aria-label="Volume"
-        />
+
+        <div className="glass-panel rounded-xl px-3 py-2 flex items-center gap-2">
+          <audio ref={audioRef} src={currentTrack.src} preload="none" crossOrigin="anonymous" />
+          <button
+            onClick={() => setTrackIndex((i) => (i - 1 + TRACKS.length) % TRACKS.length)}
+            className="p-1 rounded-md hover:bg-muted/40 transition-colors"
+            title="Previous track"
+          >
+            <SkipBack className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setMusicOn((v) => !v)}
+            className="p-1.5 rounded-full bg-primary/15 hover:bg-primary/25 transition-colors"
+            title={musicOn ? "Pause" : "Play"}
+          >
+            {musicOn ? (
+              <Pause className="w-4 h-4 text-primary" />
+            ) : (
+              <Play className="w-4 h-4 text-primary" />
+            )}
+          </button>
+          <button
+            onClick={() => setTrackIndex((i) => (i + 1) % TRACKS.length)}
+            className="p-1 rounded-md hover:bg-muted/40 transition-colors"
+            title="Next track"
+          >
+            <SkipForward className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setQueueOpen((v) => !v)}
+            className="ml-1 mr-1 max-w-[160px] overflow-hidden text-left hover:bg-muted/30 rounded-md px-1 py-0.5 transition-colors"
+            title="Show queue"
+          >
+            <p className="text-[11px] font-heading font-semibold text-foreground leading-tight truncate">
+              {currentTrack.title}
+            </p>
+            <p className="text-[9px] font-mono text-muted-foreground tracking-widest uppercase truncate">
+              {currentTrack.artist} · {trackIndex + 1}/{TRACKS.length}
+            </p>
+          </button>
+          {musicVolume === 0 ? (
+            <VolumeX className="w-3.5 h-3.5 text-muted-foreground" />
+          ) : (
+            <Volume2 className="w-3.5 h-3.5 text-muted-foreground" />
+          )}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.02}
+            value={musicVolume}
+            onChange={(e) => setMusicVolume(Number(e.target.value))}
+            className="w-16 h-1 accent-primary cursor-pointer"
+            aria-label="Volume"
+          />
+        </div>
       </div>
     </div>
   );
