@@ -88,9 +88,18 @@ const VILLAGE_LOCATIONS = [
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
   // Real Healdsburg Plaza (OpenStreetMap-verified centroid).
   { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8 },
-  // CraftWork — coworking space at 109 Healdsburg Ave (geocoded).
-  // Pure beacon for now (no 3D structure to spawn), warm amber aura.
-  { id: 10, name: "CraftWork", lat: 38.60582, lng: -122.86904, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a },
+  // ---- Edge Esmeralda real-world venues (all OSM-geocoded) -------
+  // Each gets a unique structure3d id so its beacon layer is unique.
+  // None of these have a spawnable 3D model — they're beacon-only.
+  { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a },
+  { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff },
+  { id: 12, name: "SingleThread", lat: 38.61234, lng: -122.86969, type: "food", people: 18, emoji: "🍽️", structure3d: "single-thread" as const, hitSize: 140, beaconColor: 0xff7e8a },
+  { id: 13, name: "Bergamot Alley", lat: 38.61152, lng: -122.87048, type: "social", people: 24, emoji: "🍷", structure3d: "bergamot" as const, hitSize: 130, beaconColor: 0xb392ff },
+  { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166 },
+  { id: 15, name: "Valette", lat: 38.61206, lng: -122.86957, type: "food", people: 19, emoji: "🥂", structure3d: "valette" as const, hitSize: 130, beaconColor: 0xff9f7a },
+  { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0 },
+  { id: 17, name: "Hotel Les Mars", lat: 38.61217, lng: -122.87157, type: "venue", people: 22, emoji: "🛏️", structure3d: "les-mars" as const, hitSize: 140, beaconColor: 0xc9a86a },
+  { id: 18, name: "Barndiva", lat: 38.60963, lng: -122.86947, type: "food", people: 18, emoji: "🌿", structure3d: "barndiva" as const, hitSize: 130, beaconColor: 0x8ad48a },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -655,13 +664,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         cursor: pointer;
         pointer-events: auto;
       `;
+      // Plain invisible click target — the visible indicator is the
+      // vertical beacon beam, not a circular halo on the marker.
       const inner = document.createElement("div");
       inner.style.cssText = `
         width: 100%; height: 100%;
-        border-radius: 40% 40% 50% 50%;
         background: transparent;
-        ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
-        transition: box-shadow 0.2s ease;
       `;
       el.appendChild(inner);
 
