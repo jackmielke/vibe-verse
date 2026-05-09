@@ -95,12 +95,14 @@ const VILLAGE_LOCATIONS = [
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
-  // Real Healdsburg Plaza (OpenStreetMap-verified centroid).
-  { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8 },
+  // Real Healdsburg Plaza (OpenStreetMap-verified centroid). Mint
+  // ground rings instead of a vertical beam so the plaza reads as
+  // ambient space, not just another beacon.
+  { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8, markerStyle: "rings" as const },
   // ---- Edge Esmeralda real-world venues (OSM-geocoded) -----------
   // Each gets a unique structure3d id and a markerStyle so we can
   // swap aesthetics per venue (beam, rings, orb, particles, ...).
-  { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a, markerStyle: "rings" as const },
+  { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a, markerStyle: "beam" as const },
   { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff, markerStyle: "beam" as const },
   { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166, markerStyle: "orb" as const },
   { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0, markerStyle: "rings" as const },
@@ -108,9 +110,6 @@ const VILLAGE_LOCATIONS = [
   // (low-poly trees / bushes / grass / rocks) to mark the spot
   // instead of a beam of light. Wind-swayed mini-grove.
   { id: 19, name: "Giorgi Park", lat: 38.61546, lng: -122.86179, type: "wellness", people: 12, emoji: "🌳", structure3d: "giorgi" as const, hitSize: 200, beaconColor: 0x8ad48a, markerStyle: "nature" as const },
-  // Garagiste Wines — real Healdsburg tasting room. Uses the Nature
-  // Crops Pack to render a proper vineyard tasting plot at the spot.
-  { id: 20, name: "Garagiste Wines", lat: 38.61327, lng: -122.87191, type: "venue", people: 18, emoji: "🍇", structure3d: "garagiste" as const, hitSize: 180, beaconColor: 0xb392ff, markerStyle: "vineyard" as const },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -326,6 +325,10 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // terrain DEM. Reset on every style.load so a style toggle re-runs
   // the one-time refresh.
   const beaconsSeatedRef = useRef(false);
+  // Set to true once we've performed the cinematic intro fly-in to
+  // the plaza. Prevents the camera from being yanked around on
+  // subsequent style toggles (dark ↔ satellite).
+  const introFlownRef = useRef(false);
 
   // ---- Edge Esmeralda upcoming events ticker ---------------------
   type EdgeEvent = {
@@ -520,13 +523,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
     try {
+      // Start the camera way out + flat, so the first thing the user
+      // sees is a wide top-down view of Healdsburg. The "open the
+      // app, zoom into the plaza" cinematic flyTo is wired below.
       const m = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/standard",
         center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
-        zoom: VILLAGE_CENTER.zoom,
-        pitch: 45,
-        bearing: -17,
+        zoom: 11.5,
+        pitch: 0,
+        bearing: 0,
         antialias: true,
       });
 
@@ -596,6 +602,25 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         addBuildingsLayer(m);
         markMapReady();
         m.once("idle", () => refreshVenueBeacons(m));
+
+        // Cinematic open: only the first time the style finishes
+        // loading, fly from the wide top-down opener into the plaza
+        // with pitch + bearing. Skipped on subsequent style toggles
+        // (dark ↔ satellite) so the user isn't yanked around.
+        if (!introFlownRef.current) {
+          introFlownRef.current = true;
+          window.setTimeout(() => {
+            m.flyTo({
+              center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
+              zoom: VILLAGE_CENTER.zoom,
+              pitch: 60,
+              bearing: -20,
+              speed: 0.6,
+              curve: 1.6,
+              essential: true,
+            });
+          }, 600);
+        }
       });
 
       // When new terrain tiles load near our structures, re-seat them
@@ -793,9 +818,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       markersRef.current.push(marker);
 
-      // Floating name label that hovers above the marker. Always
-      // visible at street/aerial zooms — gives the beacon an
-      // identity instead of a mysterious column of light.
+      // Floating name label — hidden by default, fades in only when
+      // the marker is hovered. Keeps the map calm; you discover the
+      // landmark, then learn what it's called on hover.
       const labelEl = document.createElement("div");
       labelEl.className = "venue-label";
       labelEl.style.cssText = `
@@ -803,7 +828,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         white-space: nowrap;
         padding: 4px 10px;
         border-radius: 999px;
-        background: hsl(216 40% 14% / 0.78);
+        background: hsl(216 40% 14% / 0.85);
         backdrop-filter: blur(6px);
         -webkit-backdrop-filter: blur(6px);
         border: 1px solid ${color}88;
@@ -814,16 +839,30 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         letter-spacing: 0.02em;
         box-shadow: 0 0 18px ${color}33;
         transform: translateY(-12px);
+        opacity: 0;
+        transition: opacity 0.18s ease;
       `;
       labelEl.textContent = `${loc.emoji ?? "•"}  ${loc.name}`;
       const labelMarker = new mapboxgl.Marker({
         element: labelEl,
         anchor: "bottom",
-        offset: [0, -64], // sit above the beacon stem
+        offset: [0, -64],
       })
         .setLngLat([loc.lng, loc.lat])
         .addTo(map.current!);
       markersRef.current.push(labelMarker);
+      el.addEventListener("mouseenter", () => { labelEl.style.opacity = "1"; });
+      el.addEventListener("mouseleave", () => { labelEl.style.opacity = "0"; });
+      // Tap on touch devices (where hover doesn't fire) → flash the
+      // label briefly so the user can still see what they tapped.
+      el.addEventListener(
+        "touchstart",
+        () => {
+          labelEl.style.opacity = "1";
+          window.setTimeout(() => { labelEl.style.opacity = "0"; }, 1800);
+        },
+        { passive: true },
+      );
     });
   }, [mapLoaded, selectedLocation, onLocationSelect]);
 
@@ -2055,8 +2094,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       {/* Live Edge Esmeralda events ticker — stripe of upcoming
           events along the bottom of the map. Click a chip → fly to
           the matching beacon if its title mentions a known venue. */}
+      {/* Mobile-only event ticker. The right-side Events panel
+          already lists what's happening on desktop — having a second
+          row at the bottom would duplicate that. md:hidden keeps it
+          on phones, where the right panel doesn't fit. */}
       {tickerOpen && upcomingEvents.length > 0 && (
-        <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none">
+        <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none md:hidden">
           <div className="glass-panel rounded-xl border border-primary/30 px-3 py-2 flex items-center gap-2 overflow-hidden pointer-events-auto">
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="relative flex h-2 w-2">
@@ -2126,7 +2169,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       {!tickerOpen && upcomingEvents.length > 0 && (
         <button
           onClick={() => setTickerOpen(true)}
-          className="absolute bottom-3 left-3 z-10 glass-panel rounded-full px-3 py-1.5 border border-primary/30 text-[11px] font-heading font-semibold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+          className="absolute bottom-3 left-3 z-10 glass-panel rounded-full px-3 py-1.5 border border-primary/30 text-[11px] font-heading font-semibold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors md:hidden"
         >
           Schedule ({upcomingEvents.length})
         </button>
