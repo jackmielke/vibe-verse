@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Navigation, Zap, Layers, Locate } from "lucide-react";
+import { Navigation, Zap, Layers, Locate, X } from "lucide-react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
@@ -401,6 +401,20 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Detail modal for spawned mega-structures (Death Star, Edge Island,
+  // Tokyo Block, etc). When the user clicks the floating "i" marker
+  // pinned to a structure, this fills in and the modal animates in.
+  const [structureDetail, setStructureDetail] = useState<{
+    id: string;
+    label: string;
+    description: string;
+    flavor: string; // a longer "why this exists" paragraph
+    emoji: string;
+    accent: string; // hex tint for the card border / glow
+    lng: number;
+    lat: number;
+  } | null>(null);
   const [mapStyle, setMapStyle] = useState<"satellite" | "dark">("dark");
   const activeStyleRef = useRef<"satellite" | "dark">("dark");
   const mapReadyTimeoutRef = useRef<number | null>(null);
@@ -852,7 +866,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         onLocationSelect(selectedLocation?.id === loc.id ? null : loc);
-        map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
+        // Cinematic close-up: pull in tight enough to actually inspect
+        // the venue, with a 60° pitch + slight bearing change so the
+        // landmark reads in 3D rather than a flat top-down. Preserve
+        // the user's current bearing if they've manually rotated.
+        const m = map.current;
+        if (!m) return;
+        const curBearing = m.getBearing();
+        m.flyTo({
+          center: [loc.lng, loc.lat],
+          zoom: 18.4,
+          pitch: 60,
+          bearing: curBearing + 12,
+          duration: 1400,
+          curve: 1.5,
+          essential: true,
+        });
       });
 
       const marker = new mapboxgl.Marker({
@@ -1840,6 +1869,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, []);
 
+  // ---- Nimbus VTOL: auto-spawn ~8s after the village finishes loading ---
+  // We delay so the cinematic open-up flyTo has finished and the
+  // user has had a moment to take in the village before the craft
+  // shows up doing figure-8s overhead. Skips re-spawning if the
+  // user has already toggled it off manually.
+  const nimbusAutoSpawnedRef = useRef(false);
+  useEffect(() => {
+    if (!mapLoaded || nimbusAutoSpawnedRef.current) return;
+    const t = window.setTimeout(() => {
+      nimbusAutoSpawnedRef.current = true;
+      setNimbusUI((s) => (s.enabled ? s : { ...s, enabled: true }));
+    }, 8000);
+    return () => window.clearTimeout(t);
+  }, [mapLoaded]);
+
   // ---- Nimbus VTOL: add/remove layer when enabled toggles ---------------
   useEffect(() => {
     const m = map.current;
@@ -1953,13 +1997,60 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           zoom: 18,
         });
       } else {
+        // Autopilot: figure-8 around the plaza on a Bernoulli
+        // lemniscate. The craft tilts into its turns, gently bobs in
+        // altitude, and always faces along its velocity vector so it
+        // looks like a real flight path rather than a sliding decal.
         s.pilotMode = false;
-        s.thrusterIntensity = 0.6;
-        vel.forward *= 0.92;
-        vel.lateral *= 0.92;
-        vel.vertical *= 0.92;
-        s.bank += (0 - s.bank) * Math.min(1, dt * 3);
-        s.pitch += (0 - s.pitch) * Math.min(1, dt * 3);
+        s.thrusterIntensity = 0.45;
+        vel.forward *= 0.9;
+        vel.lateral *= 0.9;
+        vel.vertical *= 0.9;
+
+        // Lemniscate of Bernoulli, in METERS centered on the plaza:
+        //   x(τ) = a·cos(τ) / (1 + sin²(τ))     ← east
+        //   y(τ) = a·sin(τ)·cos(τ) / (1 + sin²(τ)) ← north
+        // a sets the loop radius; period = 2π / OMEGA.
+        const A = 220; // ~220m wide loops — covers plaza → CraftWork
+        const OMEGA = 0.18; // rad/sec → ~35s per full figure-8
+        const tau = t * OMEGA;
+        const denom = 1 + Math.sin(tau) * Math.sin(tau);
+        const eastM = (A * Math.cos(tau)) / denom;
+        const northM = (A * Math.sin(tau) * Math.cos(tau)) / denom;
+
+        // Velocity (analytic derivative) — gives us heading + bank.
+        const dTau_dt = OMEGA;
+        const dE = ((-A * Math.sin(tau) * denom -
+          A * Math.cos(tau) * 2 * Math.sin(tau) * Math.cos(tau)) /
+          (denom * denom)) * dTau_dt;
+        const dN = ((A * (Math.cos(tau) * Math.cos(tau) - Math.sin(tau) * Math.sin(tau)) * denom -
+          A * Math.sin(tau) * Math.cos(tau) * 2 * Math.sin(tau) * Math.cos(tau)) /
+          (denom * denom)) * dTau_dt;
+        const targetHeading = Math.atan2(dE, dN); // 0 = north, clockwise
+
+        // Center on plaza coords.
+        const centerLng = VILLAGE_CENTER.lng;
+        const centerLat = VILLAGE_CENTER.lat;
+        s.lng = centerLng + eastM / (111320 * Math.cos((centerLat * Math.PI) / 180));
+        s.lat = centerLat + northM / 111320;
+
+        // Smooth heading toward target (avoid yaw snap at the loop crossings).
+        const dh = ((targetHeading - s.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        s.heading += dh * Math.min(1, dt * 3);
+
+        // Bank into the turn — sign of d(heading)/dt.
+        const turnRate = dh; // proportional
+        const targetBank = -Math.max(-0.45, Math.min(0.45, turnRate * 4));
+        s.bank += (targetBank - s.bank) * Math.min(1, dt * 3);
+
+        // Subtle altitude bob + slight nose down on the climbs out.
+        try {
+          const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+          const groundAlt = typeof elev === "number" ? elev : 0;
+          const targetAlt = groundAlt + 95 + Math.sin(t * 0.6) * 8;
+          s.altitude += (targetAlt - s.altitude) * Math.min(1, dt * 1.2);
+        } catch { /* terrain not ready */ }
+        s.pitch += (-0.04 - s.pitch) * Math.min(1, dt * 2);
       }
 
       huiTick += dt;
@@ -2208,6 +2299,124 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, [vibeyUI.walkMode]);
 
+
+  // ---- Floating "i" markers on spawned mega-structures -----------------
+  // Each spawnable that's currently enabled gets a small clickable info
+  // chip pinned to its lng/lat. Click → opens the animated detail card
+  // overlay. We rebuild the set whenever the enabled flags change so
+  // markers appear/disappear in lockstep with the spawnables themselves.
+  const structureInfoMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    // Tear down previous markers.
+    structureInfoMarkersRef.current.forEach((mk) => mk.remove());
+    structureInfoMarkersRef.current = [];
+
+    type InfoEntry = {
+      id: string;
+      label: string;
+      emoji: string;
+      accent: string;
+      description: string;
+      flavor: string;
+      lng: number;
+      lat: number;
+      enabled: boolean;
+    };
+    const entries: InfoEntry[] = [
+      {
+        id: "death-star",
+        label: "Death Star",
+        emoji: "🛰️",
+        accent: "#9be7ff",
+        description: "Moon-sized space station hovering east of the village.",
+        flavor:
+          "On loan from a galaxy far, far away. The crew is on shore leave at the plaza this week — the laser is fully decommissioned (we promise). It rotates on its own axis once every ~22 seconds and is parked at ~1.1km altitude so it reads as a real moon, not a prop.",
+        lng: deathStarStateRef.current.lng,
+        lat: deathStarStateRef.current.lat,
+        enabled: deathStarEnabled,
+      },
+      {
+        id: "island",
+        label: "Edge Island",
+        emoji: "🏝️",
+        accent: "#73ffb8",
+        description: "A floating world above the village.",
+        flavor:
+          "A studio Ghibli-coded sky island. Pull the camera back and it frames Healdsburg below it like a dream. The island bobs slowly so it never feels static. ~272 MB GLB — the heaviest asset in the show, only loaded when you spawn it.",
+        lng: islandStateRef.current.lng,
+        lat: islandStateRef.current.lat,
+        enabled: islandEnabled,
+      },
+      {
+        id: "littlest-tokyo",
+        label: "Tokyo Block",
+        emoji: "🏙️",
+        accent: "#ff8ad6",
+        description: "Animated micro-city next to the plaza.",
+        flavor:
+          "A scale model of downtown Tokyo with looping keyframe traffic, neon flicker, and a tiny ramen shop. ~4 MB. Sits on real ground a few blocks east of the plaza — a glimpse of a different city dropped into this one.",
+        lng: tokyoStateRef.current.lng,
+        lat: tokyoStateRef.current.lat,
+        enabled: tokyoEnabled,
+      },
+      {
+        id: "plaza",
+        label: "Central Plaza",
+        emoji: "⛲",
+        accent: "#73ffb8",
+        description: "The fountain + pavilion structure at the plaza beacon.",
+        flavor:
+          "The geographic and social center of Edge Esmeralda. The pavilion is where the morning standup happens, the fountain where late-night conversations land. Despawn this and the beacon becomes an empty patch waiting for action.",
+        lng: VILLAGE_CENTER.lng,
+        lat: VILLAGE_CENTER.lat,
+        enabled: plazaEnabled,
+      },
+    ];
+
+    entries.forEach((entry) => {
+      if (!entry.enabled) return;
+      const root = document.createElement("div");
+      root.style.cssText = "pointer-events: auto; cursor: pointer;";
+      const chip = document.createElement("div");
+      chip.style.cssText = `
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: hsl(216 40% 12% / 0.92);
+        border: 1px solid ${entry.accent}99;
+        color: #eaf3ff;
+        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-size: 11px; font-weight: 600;
+        letter-spacing: 0.02em;
+        box-shadow: 0 4px 18px hsl(216 60% 4% / 0.5), 0 0 14px ${entry.accent}55;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        transform: translateY(0);
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+        user-select: none;
+        animation: structInfoPulse 2.4s ease-in-out infinite;
+      `;
+      chip.innerHTML = `<span style="font-size: 13px;">${entry.emoji}</span> <span>${entry.label}</span> <span style="opacity: 0.75; font-weight: 700;">›</span>`;
+      root.appendChild(chip);
+      root.addEventListener("mouseenter", () => {
+        chip.style.transform = "translateY(-2px)";
+        chip.style.boxShadow = `0 8px 24px hsl(216 60% 4% / 0.65), 0 0 22px ${entry.accent}99`;
+      });
+      root.addEventListener("mouseleave", () => {
+        chip.style.transform = "translateY(0)";
+        chip.style.boxShadow = `0 4px 18px hsl(216 60% 4% / 0.5), 0 0 14px ${entry.accent}55`;
+      });
+      root.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setStructureDetail(entry);
+      });
+      const mk = new mapboxgl.Marker({ element: root, anchor: "bottom" })
+        .setLngLat([entry.lng, entry.lat])
+        .addTo(map.current!);
+      structureInfoMarkersRef.current.push(mk);
+    });
+  }, [mapLoaded, deathStarEnabled, islandEnabled, tokyoEnabled, plazaEnabled]);
 
   // Fallback for invalid token
   if (mapError) {
@@ -2751,6 +2960,120 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
               <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
               <p className="font-heading text-sm text-muted-foreground">Loading map…</p>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Animated detail card for spawned mega-structures. Pops in
+          from the bottom with a soft scale+glow, dimming the rest. */}
+      <AnimatePresence>
+        {structureDetail && (
+          <motion.div
+            key="structure-detail-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-30 flex items-end md:items-center justify-center bg-black/40 backdrop-blur-[2px] p-4"
+            onClick={() => setStructureDetail(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.85, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 22, stiffness: 280 }}
+              className="relative w-full max-w-md rounded-2xl p-5 glass-panel"
+              style={{
+                border: `1px solid ${structureDetail.accent}88`,
+                boxShadow: `0 30px 80px hsl(216 60% 4% / 0.7), 0 0 60px ${structureDetail.accent}33`,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setStructureDetail(null)}
+                className="absolute top-3 right-3 p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08, duration: 0.25 }}
+                className="flex items-center gap-3 mb-3"
+              >
+                <div
+                  className="text-3xl"
+                  style={{ filter: `drop-shadow(0 0 10px ${structureDetail.accent}aa)` }}
+                >
+                  {structureDetail.emoji}
+                </div>
+                <div>
+                  <h2 className="font-heading text-lg font-bold tracking-tight text-foreground">
+                    {structureDetail.label}
+                  </h2>
+                  <p className="text-[11px] uppercase tracking-widest opacity-60">
+                    Mega-structure
+                  </p>
+                </div>
+              </motion.div>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.16, duration: 0.3 }}
+                className="text-sm text-foreground/90 mb-2"
+              >
+                {structureDetail.description}
+              </motion.p>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.24, duration: 0.3 }}
+                className="text-xs text-muted-foreground leading-relaxed mb-4"
+              >
+                {structureDetail.flavor}
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.25 }}
+                className="flex gap-2"
+              >
+                <button
+                  onClick={() => {
+                    const m = map.current;
+                    if (!m) return;
+                    m.flyTo({
+                      center: [structureDetail.lng, structureDetail.lat],
+                      zoom: 16.5,
+                      pitch: 70,
+                      bearing: m.getBearing() + 30,
+                      duration: 2000,
+                      curve: 1.6,
+                    });
+                    setStructureDetail(null);
+                  }}
+                  className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                  style={{
+                    background: `${structureDetail.accent}33`,
+                    border: `1px solid ${structureDetail.accent}88`,
+                    color: "#eaf3ff",
+                  }}
+                >
+                  Fly closer →
+                </button>
+                <button
+                  onClick={() => setStructureDetail(null)}
+                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-muted/40 hover:bg-muted/60 transition-colors text-foreground/80"
+                >
+                  Close
+                </button>
+              </motion.div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

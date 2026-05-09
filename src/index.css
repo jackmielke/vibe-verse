@@ -185,3 +185,9 @@
   border-top: 1px solid hsl(var(--border) / 0.6);
   margin: 0.5rem 0;
 }
+
+/* Subtle pulse for the floating "i" chips above spawned mega-structures. */
+@keyframes structInfoPulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
