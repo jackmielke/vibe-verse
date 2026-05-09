@@ -202,6 +202,28 @@ const SHOW_MONOLOGUES: {
   },
 ];
 
+// Vibey emote → matching alien clip name from the Quaternius pack.
+// Some emotes have no exact equivalent — fall back to the closest
+// energy match (Wave/Yes/Dance → Clapping; ThumbsUp → Standing).
+const ALIEN_CLIP_FOR: Partial<Record<Unit7AnimName, string>> = {
+  Idle: "AlienArmature|Alien_Idle",
+  Walking: "AlienArmature|Alien_Walk",
+  Running: "AlienArmature|Alien_Run",
+  Sitting: "AlienArmature|Alien_Sitting",
+  Standing: "AlienArmature|Alien_Standing",
+  Jump: "AlienArmature|Alien_Jump",
+  Punch: "AlienArmature|Alien_Punch",
+  Death: "AlienArmature|Alien_Death",
+  Wave: "AlienArmature|Alien_Clapping",
+  Yes: "AlienArmature|Alien_Clapping",
+  No: "AlienArmature|Alien_SwordSlash",
+  ThumbsUp: "AlienArmature|Alien_Standing",
+  Dance: "AlienArmature|Alien_Clapping",
+};
+// Alien emotes that should hold their pose vs revert to base loop.
+const ALIEN_HELD_POSES = new Set<Unit7AnimName>(["Sitting", "Standing", "Death"]);
+const ALIEN_LOOPS = new Set<Unit7AnimName>(["Idle", "Walking", "Running"]);
+
 const SPEECH_LINES: Partial<Record<Unit7AnimName, string[]>> = {
   Wave: ["hey!", "you came!", "hi friend"],
   Dance: ["💫", "let's gooo", "this is the song"],
@@ -619,7 +641,7 @@ export default function Unit7Playground() {
   // Vibey's knowledge: small memory orbs that orbit closer to the bot.
   const memoryOrbsGroupRef = useRef<THREE.Group | null>(null);
   // Toggleable Meshy GLB props the user can spawn into the scene.
-  type PropId = "astronaut" | "island" | "touch" | "alien";
+  type PropId = "astronaut" | "island" | "touch";
   const [activeProps, setActiveProps] = useState<Set<PropId>>(new Set());
   const propsCacheRef = useRef<Map<PropId, THREE.Group>>(new Map());
 
@@ -656,6 +678,18 @@ export default function Unit7Playground() {
   const sparksRef = useRef<THREE.Points | null>(null);
   const rockyRef = useRef<THREE.Group | null>(null);
   const [controlPanelOpen, setControlPanelOpen] = useState(false);
+
+  // ---- Alien companion (on a saucer, orbits Vibey) ----------------
+  // The alien rides his own little spacecraft around the platform.
+  // Emotes can be dispatched to him OR Vibey via the FOCUS toggle.
+  const alienMixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const alienActionsRef = useRef<Map<string, THREE.AnimationAction>>(new Map());
+  const alienActiveActionRef = useRef<THREE.AnimationAction | null>(null);
+  const alienBaseClipRef = useRef<string>("Idle");
+  const alienSaucerGroupRef = useRef<THREE.Group | null>(null);
+  const [emoteFocus, setEmoteFocus] = useState<"vibey" | "alien">("vibey");
+  const emoteFocusRef = useRef<"vibey" | "alien">("vibey");
+  emoteFocusRef.current = emoteFocus;
 
   // Re-apply layer visibility whenever the toggles change. Async-loaded
   // refs (arc) may be null on first run; they catch up on next change.
@@ -931,15 +965,67 @@ export default function Unit7Playground() {
   }
 
   function triggerAnim(anim: Unit7AnimName) {
-    desiredAnimRef.current = anim;
-    animPulseRef.current++;
-    if (!ONE_SHOTS.has(anim)) baseAnimRef.current = anim;
     burstConfetti();
     const lines = SPEECH_LINES[anim];
     if (lines) {
       const text = lines[Math.floor(Math.random() * lines.length)];
       setSpeechBubble({ text, key: Date.now() });
     }
+    if (emoteFocusRef.current === "alien") {
+      playAlienAnim(anim);
+      return;
+    }
+    desiredAnimRef.current = anim;
+    animPulseRef.current++;
+    if (!ONE_SHOTS.has(anim)) baseAnimRef.current = anim;
+  }
+
+  // Play one of the alien's 14 baked clips, mapped from the Vibey
+  // emote name. Loops Idle/Walking/Running, holds Sitting/Standing/
+  // Death, fires others as one-shots that fall back to the current
+  // base loop (Idle by default).
+  function playAlienAnim(anim: Unit7AnimName) {
+    const mixer = alienMixerRef.current;
+    const actions = alienActionsRef.current;
+    if (!mixer || !actions.size) return;
+    const clipName = ALIEN_CLIP_FOR[anim];
+    if (!clipName) return;
+    const next = actions.get(clipName);
+    if (!next) return;
+    const isLoop = ALIEN_LOOPS.has(anim);
+    const isHeld = ALIEN_HELD_POSES.has(anim);
+    const prev = alienActiveActionRef.current;
+    if (prev && prev !== next) prev.fadeOut(0.18);
+    next.reset();
+    if (isLoop) {
+      next.setLoop(THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = false;
+      alienBaseClipRef.current = clipName;
+    } else if (isHeld) {
+      next.setLoop(THREE.LoopOnce, 1);
+      next.clampWhenFinished = true;
+      alienBaseClipRef.current = clipName; // hold
+    } else {
+      // One-shot — return to current base loop after.
+      next.setLoop(THREE.LoopOnce, 1);
+      next.clampWhenFinished = true;
+      // Schedule a return-to-base via the mixer's finished event.
+      const onFinished = (e: { action: THREE.AnimationAction }) => {
+        if (e.action !== next) return;
+        mixer.removeEventListener("finished", onFinished);
+        const base = actions.get(alienBaseClipRef.current);
+        if (base) {
+          next.fadeOut(0.18);
+          base.reset();
+          base.setLoop(THREE.LoopRepeat, Infinity);
+          base.fadeIn(0.18).play();
+          alienActiveActionRef.current = base;
+        }
+      };
+      mixer.addEventListener("finished", onFinished);
+    }
+    next.fadeIn(0.18).play();
+    alienActiveActionRef.current = next;
   }
 
   // Tiny confetti reward on each emote — DOM overlay, pure CSS so it
@@ -1081,18 +1167,6 @@ export default function Unit7Playground() {
         rotationY: -0.3,
         spin: 0.04,
         bob: 0.5,
-      },
-      // Alien from Quaternius Alien Animated pack — animated FBX
-      // converted to GLB via assimp. Lands on the platform near
-      // Vibey, walks/idles via its baked clip.
-      alien: {
-        url: alienUrl,
-        target: 2.4,
-        position: [-2.4, 0.1, -1.2],
-        rotationY: 0.6,
-        spin: 0,
-        bob: 0,
-        playClip: true,
       },
     };
     const cache = propsCacheRef.current;
@@ -2419,6 +2493,126 @@ export default function Unit7Playground() {
       return g;
     })();
 
+    // ---- Alien on a Saucer (orbits Vibey) ---------------------------
+    // The alien lives on his own little spacecraft that slowly circles
+    // the platform. Loaded once on mount; the FOCUS toggle in the UI
+    // routes emotes to him via alienMixerRef + alienActionsRef.
+    {
+      const saucerGroup = new THREE.Group();
+      // Saucer body: flat disc with a glowing dome on top.
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.6, 2.0, 0.35, 32),
+        new THREE.MeshStandardMaterial({
+          color: 0x141a30,
+          metalness: 0.55,
+          roughness: 0.35,
+          emissive: 0x0a1530,
+          emissiveIntensity: 0.4,
+        }),
+      );
+      saucerGroup.add(disc);
+      const ringLight = new THREE.Mesh(
+        new THREE.TorusGeometry(1.85, 0.06, 16, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0xb392ff,
+          transparent: true,
+          opacity: 0.9,
+        }),
+      );
+      ringLight.rotation.x = Math.PI / 2;
+      ringLight.position.y = 0.05;
+      saucerGroup.add(ringLight);
+      // Underside glow halo so the spacecraft feels like it's hovering.
+      const underglow = new THREE.Mesh(
+        new THREE.CircleGeometry(2.2, 48),
+        new THREE.MeshBasicMaterial({
+          color: 0xb392ff,
+          transparent: true,
+          opacity: 0.45,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      underglow.rotation.x = -Math.PI / 2;
+      underglow.position.y = -0.21;
+      saucerGroup.add(underglow);
+      // Small dome on top so he has something to stand on / inside of.
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.9, 24, 18, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({
+          color: 0xb392ff,
+          metalness: 0.2,
+          roughness: 0.15,
+          emissive: 0x281a55,
+          emissiveIntensity: 0.5,
+          transparent: true,
+          opacity: 0.55,
+        }),
+      );
+      dome.position.y = 0.18;
+      saucerGroup.add(dome);
+
+      // Load the alien GLB and put him standing in the dome.
+      const alienLoader = new GLTFLoader();
+      alienLoader.load(
+        alienUrl,
+        (gltf) => {
+          const alien = gltf.scene;
+          // Normalize so he stands ~1.4 units tall (matches Vibey scale).
+          const box = new THREE.Box3().setFromObject(alien);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const fit = 1.4 / Math.max(size.y, 0.0001);
+          alien.scale.setScalar(fit);
+          alien.position.y = 0.18; // sits on the saucer disc
+          alien.traverse((obj) => {
+            const mesh = obj as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const apply = (mat: THREE.Material) => {
+              const std = mat as THREE.MeshStandardMaterial;
+              if (std && "metalness" in std) {
+                std.metalness = Math.min(std.metalness, 0.3);
+                std.roughness = Math.max(std.roughness, 0.45);
+                std.envMapIntensity = 1.0;
+                std.needsUpdate = true;
+              }
+            };
+            const mat = mesh.material;
+            if (Array.isArray(mat)) mat.forEach(apply);
+            else if (mat) apply(mat);
+          });
+          saucerGroup.add(alien);
+
+          // Wire up the mixer + action map so the emote system can
+          // play any of the 14 baked clips.
+          const mixer = new THREE.AnimationMixer(alien);
+          alienMixerRef.current = mixer;
+          for (const clip of gltf.animations) {
+            alienActionsRef.current.set(clip.name, mixer.clipAction(clip));
+          }
+          // Start him idling.
+          const idle = alienActionsRef.current.get("AlienArmature|Alien_Idle");
+          if (idle) {
+            idle.setLoop(THREE.LoopRepeat, Infinity).play();
+            alienActiveActionRef.current = idle;
+          }
+        },
+        undefined,
+        (err) => {
+          console.error("[alien-saucer] load failed", err);
+        },
+      );
+
+      // Mark the saucer for the orbit logic in the render tick.
+      saucerGroup.position.set(7, 4, 0);
+      saucerGroup.userData.orbitRadius = 7;
+      saucerGroup.userData.orbitHeight = 4;
+      saucerGroup.userData.orbitSpeed = 0.18; // rad/sec
+      saucerGroup.userData.orbitPhase = 0; // current angle
+      scene.add(saucerGroup);
+      alienSaucerGroupRef.current = saucerGroup;
+    }
+
     // ---- 3D Gallery TV ------------------------------------------------
     // A floating wall-mounted TV opposite the Earth + moon (which sit on
     // the back-left). Hidden until the gallery experience spawns; an
@@ -3254,6 +3448,23 @@ export default function Unit7Playground() {
         cometStartTime = now;
       }
 
+      // ---- Alien saucer: orbit Vibey + bob + drive alien mixer ----
+      if (alienSaucerGroupRef.current) {
+        const s = alienSaucerGroupRef.current;
+        s.userData.orbitPhase = (s.userData.orbitPhase as number) +
+          delta * (s.userData.orbitSpeed as number);
+        const a = s.userData.orbitPhase as number;
+        const r = s.userData.orbitRadius as number;
+        const h = s.userData.orbitHeight as number;
+        s.position.set(Math.cos(a) * r, h + Math.sin(now * 0.0006) * 0.3, Math.sin(a) * r);
+        // Saucer always faces the direction it's traveling (tangent
+        // to the circle), so the alien feels like he's being flown.
+        s.rotation.y = -a + Math.PI / 2;
+        // Slight banking roll into the curve.
+        s.rotation.z = Math.sin(now * 0.0008) * 0.05;
+      }
+      if (alienMixerRef.current) alienMixerRef.current.update(delta);
+
       // ---- Vibe Profile cards: slow carousel + per-card bob -------
       if (vibeCardsGroupRef.current) {
         const g = vibeCardsGroupRef.current;
@@ -3519,7 +3730,32 @@ export default function Unit7Playground() {
 
         <div className="glass-panel rounded-xl p-3 flex flex-col gap-2">
           <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground">
-            Emotes
+            Focus
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={() => setEmoteFocus("vibey")}
+              className={`rounded-md border transition-colors px-2 py-1.5 text-[11px] font-heading font-semibold ${
+                emoteFocus === "vibey"
+                  ? "border-primary/60 bg-primary/20 text-primary"
+                  : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+              }`}
+            >
+              🤖 Vibey
+            </button>
+            <button
+              onClick={() => setEmoteFocus("alien")}
+              className={`rounded-md border transition-colors px-2 py-1.5 text-[11px] font-heading font-semibold ${
+                emoteFocus === "alien"
+                  ? "border-primary/60 bg-primary/20 text-primary"
+                  : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+              }`}
+            >
+              👽 Alien
+            </button>
+          </div>
+          <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mt-1">
+            Emotes — sent to {emoteFocus === "vibey" ? "Vibey" : "Alien"}
           </p>
           <div className="grid grid-cols-5 gap-1.5">
             {ALL_EMOTES.map((e) => (
@@ -3632,7 +3868,6 @@ export default function Unit7Playground() {
               { id: "astronaut" as const, label: "🧑‍🚀 Astro" },
               { id: "island" as const, label: "🏝 Island" },
               { id: "touch" as const, label: "✨ Touch" },
-              { id: "alien" as const, label: "👽 Alien" },
             ].map((item) => {
               const on = activeProps.has(item.id);
               return (
