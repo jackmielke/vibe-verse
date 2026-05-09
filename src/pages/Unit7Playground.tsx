@@ -16,6 +16,14 @@ import floatingIslandUrl from "@/assets/glb/floating-island.glb";
 import pixelTouchUrl from "@/assets/glb/pixel-touch.glb";
 import rockyUrl from "@/assets/glb/rocky.glb";
 import alienUrl from "@/assets/glb/alien.glb";
+
+// Every lobby character is resolved as a Vite asset URL so we can pick
+// one at runtime based on the user's lobby selection. Same auto-glob
+// pattern the Lobby page uses.
+const LOBBY_CHARACTER_URLS = import.meta.glob(
+  "@/assets/glb/characters/*.glb",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
 import type {
   Unit7AnimName,
   Unit7Expression,
@@ -988,9 +996,33 @@ export default function Unit7Playground() {
     const mixer = alienMixerRef.current;
     const actions = alienActionsRef.current;
     if (!mixer || !actions.size) return;
-    const clipName = ALIEN_CLIP_FOR[anim];
-    if (!clipName) return;
-    const next = actions.get(clipName);
+    // First try the alien-specific clip name (works for the default
+    // alien). Fall back to a fuzzy short-name match so any Quaternius
+    // character whose clip names match "Idle"/"Walk"/"Run"/etc. also
+    // animates correctly.
+    const exact = ALIEN_CLIP_FOR[anim];
+    let next = exact ? actions.get(exact) : undefined;
+    if (!next) {
+      const want = anim.toLowerCase();
+      const fuzzyKey = [...actions.keys()].find((k) => {
+        const tail = (k.includes("|") ? k.split("|")[1] : k).toLowerCase();
+        if (tail.endsWith(`_${want}`) || tail === want) return true;
+        if (want === "walking" && /walk/.test(tail)) return true;
+        if (want === "running" && /run/.test(tail)) return true;
+        if (want === "wave" && /wave|clap/.test(tail)) return true;
+        if (want === "yes" && /(yes|nod|clap|victory)/.test(tail)) return true;
+        if (want === "no" && /(no|head)/.test(tail)) return true;
+        if (want === "thumbsup" && /(thumb|stand)/.test(tail)) return true;
+        if (want === "dance" && /(dance|clap)/.test(tail)) return true;
+        if (want === "death" && /(death|defeat|die)/.test(tail)) return true;
+        if (want === "punch" && /(punch|hit|attack)/.test(tail)) return true;
+        if (want === "jump" && /jump/.test(tail)) return true;
+        if (want === "sitting" && /sit/.test(tail)) return true;
+        if (want === "standing" && /stand/.test(tail)) return true;
+        return false;
+      });
+      if (fuzzyKey) next = actions.get(fuzzyKey);
+    }
     if (!next) return;
     const isLoop = ALIEN_LOOPS.has(anim);
     const isHeld = ALIEN_HELD_POSES.has(anim);
@@ -2552,12 +2584,28 @@ export default function Unit7Playground() {
       dome.position.y = 0.18;
       saucerGroup.add(dome);
 
-      // Load the alien GLB and put him standing in the dome.
+      // Pick whichever character was chosen in the lobby. Default is
+      // the alien — only change if the user picked a different
+      // character that maps to a known GLB URL.
+      const lobbyPick = (() => {
+        try { return localStorage.getItem("lobby.character"); } catch { return null; }
+      })();
+      let saucerCharUrl = alienUrl;
+      if (lobbyPick && lobbyPick !== "alien" && lobbyPick !== "vibey") {
+        // The Lobby's char id is the GLB filename without extension —
+        // find the URL whose path ends with `${id}.glb`.
+        const pickUrl = Object.entries(LOBBY_CHARACTER_URLS).find(
+          ([path]) => path.endsWith(`/${lobbyPick}.glb`),
+        )?.[1];
+        if (pickUrl) saucerCharUrl = pickUrl;
+      }
       const alienLoader = new GLTFLoader();
       alienLoader.load(
-        alienUrl,
+        saucerCharUrl,
         (gltf) => {
           const alien = gltf.scene;
+          alien.position.set(0, 0, 0);
+          alien.updateMatrixWorld(true);
           // Normalize so he stands ~1.4 units tall — and crucially,
           // sit his feet on the saucer disc by lifting the *post-
           // scale* bbox.min.y. Without this, the GLB's origin (often
@@ -2567,12 +2615,17 @@ export default function Unit7Playground() {
           const box = new THREE.Box3().setFromObject(alien);
           const size = new THREE.Vector3();
           box.getSize(size);
-          const fit = 1.4 / Math.max(size.y, 0.0001);
+          // Normalize by the largest dimension — Quaternius FBX→GLB
+          // characters can have weird armature scales that fool a
+          // height-only fit. Same recipe the Lobby uses.
+          const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
+          const fit = 1.4 / maxDim;
           alien.scale.setScalar(fit);
+          alien.updateMatrixWorld(true);
           const scaledBox = new THREE.Box3().setFromObject(alien);
-          // 0.2 = top of the saucer disc (disc height 0.35 / 2 = 0.175,
-          // round to 0.2 for a tiny lift).
-          alien.position.y = 0.2 - scaledBox.min.y;
+          // Stand on the saucer disc (top ~0.18) by lifting the post-
+          // scale bbox min.
+          alien.position.y = 0.18 - scaledBox.min.y;
           alien.traverse((obj) => {
             const mesh = obj as THREE.Mesh;
             if (!mesh.isMesh) return;
@@ -2599,7 +2652,13 @@ export default function Unit7Playground() {
             alienActionsRef.current.set(clip.name, mixer.clipAction(clip));
           }
           // Start him idling.
-          const idle = alienActionsRef.current.get("AlienArmature|Alien_Idle");
+          // Pick whichever clip name matches "Idle" — works for the
+          // alien (AlienArmature|Alien_Idle) and any Quaternius char
+          // (CharacterArmature|Idle) the user might have picked.
+          const idleKey = [...alienActionsRef.current.keys()].find((k) =>
+            /idle/i.test(k),
+          ) ?? [...alienActionsRef.current.keys()][0];
+          const idle = idleKey ? alienActionsRef.current.get(idleKey) : null;
           if (idle) {
             idle.setLoop(THREE.LoopRepeat, Infinity).play();
             alienActiveActionRef.current = idle;
