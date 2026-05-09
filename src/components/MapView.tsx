@@ -10,6 +10,7 @@ import { createPlazaLayer } from "./map/PlazaLayer";
 import { createVenueBeaconLayer } from "./map/VenueBeaconLayer";
 import { createRingPulseLayer } from "./map/RingPulseLayer";
 import { createOrbBobLayer } from "./map/OrbBobLayer";
+import { createNaturePackLayer } from "./map/NaturePackLayer";
 import { supabase } from "@/integrations/supabase/client";
 import {
   createHelicopterLayer,
@@ -98,6 +99,10 @@ const VILLAGE_LOCATIONS = [
   { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff, markerStyle: "beam" as const },
   { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166, markerStyle: "orb" as const },
   { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0, markerStyle: "rings" as const },
+  // Giorgi Park (real Healdsburg park) — uses the Simple Nature Pack
+  // (low-poly trees / bushes / grass / rocks) to mark the spot
+  // instead of a beam of light. Wind-swayed mini-grove.
+  { id: 19, name: "Giorgi Park", lat: 38.61546, lng: -122.86179, type: "wellness", people: 12, emoji: "🌳", structure3d: "giorgi" as const, hitSize: 200, beaconColor: 0x8ad48a, markerStyle: "nature" as const },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -133,14 +138,23 @@ function addVenueBeaconLayers(m: mapboxgl.Map) {
     } catch { /* terrain not ready */ }
     try {
       const color = (loc as { beaconColor?: number }).beaconColor ?? 0x73ffb8;
-      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" }).markerStyle ?? "beam";
-      const factoryFor = {
-        beam: createVenueBeaconLayer,
-        rings: createRingPulseLayer,
-        orb: createOrbBobLayer,
-      };
-      const make = factoryFor[style] ?? createVenueBeaconLayer;
-      m.addLayer(make(id, { lng: loc.lng, lat: loc.lat }, altitude, color));
+      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" | "nature" }).markerStyle ?? "beam";
+      if (style === "nature") {
+        m.addLayer(
+          createNaturePackLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, {
+            seed: loc.id,
+            radius: 28,
+          }),
+        );
+      } else {
+        const factoryFor = {
+          beam: createVenueBeaconLayer,
+          rings: createRingPulseLayer,
+          orb: createOrbBobLayer,
+        };
+        const make = factoryFor[style] ?? createVenueBeaconLayer;
+        m.addLayer(make(id, { lng: loc.lng, lat: loc.lat }, altitude, color));
+      }
     } catch { /* style not ready */ }
   });
 }
