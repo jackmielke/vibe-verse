@@ -8,6 +8,8 @@ import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
 import { createVenueBeaconLayer } from "./map/VenueBeaconLayer";
+import { createRingPulseLayer } from "./map/RingPulseLayer";
+import { createOrbBobLayer } from "./map/OrbBobLayer";
 import {
   createHelicopterLayer,
   createDefaultHelicopterState,
@@ -88,18 +90,13 @@ const VILLAGE_LOCATIONS = [
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
   // Real Healdsburg Plaza (OpenStreetMap-verified centroid).
   { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8 },
-  // ---- Edge Esmeralda real-world venues (all OSM-geocoded) -------
-  // Each gets a unique structure3d id so its beacon layer is unique.
-  // None of these have a spawnable 3D model — they're beacon-only.
-  { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a },
-  { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff },
-  { id: 12, name: "SingleThread", lat: 38.61234, lng: -122.86969, type: "food", people: 18, emoji: "🍽️", structure3d: "single-thread" as const, hitSize: 140, beaconColor: 0xff7e8a },
-  { id: 13, name: "Bergamot Alley", lat: 38.61152, lng: -122.87048, type: "social", people: 24, emoji: "🍷", structure3d: "bergamot" as const, hitSize: 130, beaconColor: 0xb392ff },
-  { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166 },
-  { id: 15, name: "Valette", lat: 38.61206, lng: -122.86957, type: "food", people: 19, emoji: "🥂", structure3d: "valette" as const, hitSize: 130, beaconColor: 0xff9f7a },
-  { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0 },
-  { id: 17, name: "Hotel Les Mars", lat: 38.61217, lng: -122.87157, type: "venue", people: 22, emoji: "🛏️", structure3d: "les-mars" as const, hitSize: 140, beaconColor: 0xc9a86a },
-  { id: 18, name: "Barndiva", lat: 38.60963, lng: -122.86947, type: "food", people: 18, emoji: "🌿", structure3d: "barndiva" as const, hitSize: 130, beaconColor: 0x8ad48a },
+  // ---- Edge Esmeralda real-world venues (OSM-geocoded) -----------
+  // Each gets a unique structure3d id and a markerStyle so we can
+  // swap aesthetics per venue (beam, rings, orb, particles, ...).
+  { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a, markerStyle: "rings" as const },
+  { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff, markerStyle: "beam" as const },
+  { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166, markerStyle: "orb" as const },
+  { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0, markerStyle: "rings" as const },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -135,7 +132,14 @@ function addVenueBeaconLayers(m: mapboxgl.Map) {
     } catch { /* terrain not ready */ }
     try {
       const color = (loc as { beaconColor?: number }).beaconColor ?? 0x73ffb8;
-      m.addLayer(createVenueBeaconLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, color));
+      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" }).markerStyle ?? "beam";
+      const factoryFor = {
+        beam: createVenueBeaconLayer,
+        rings: createRingPulseLayer,
+        orb: createOrbBobLayer,
+      };
+      const make = factoryFor[style] ?? createVenueBeaconLayer;
+      m.addLayer(make(id, { lng: loc.lng, lat: loc.lat }, altitude, color));
     } catch { /* style not ready */ }
   });
 }
@@ -687,6 +691,38 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         .addTo(map.current!);
 
       markersRef.current.push(marker);
+
+      // Floating name label that hovers above the marker. Always
+      // visible at street/aerial zooms — gives the beacon an
+      // identity instead of a mysterious column of light.
+      const labelEl = document.createElement("div");
+      labelEl.className = "venue-label";
+      labelEl.style.cssText = `
+        pointer-events: none;
+        white-space: nowrap;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: hsl(216 40% 14% / 0.78);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1px solid ${color}88;
+        color: #eaf3ff;
+        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        box-shadow: 0 0 18px ${color}33;
+        transform: translateY(-12px);
+      `;
+      labelEl.textContent = `${loc.emoji ?? "•"}  ${loc.name}`;
+      const labelMarker = new mapboxgl.Marker({
+        element: labelEl,
+        anchor: "bottom",
+        offset: [0, -64], // sit above the beacon stem
+      })
+        .setLngLat([loc.lng, loc.lat])
+        .addTo(map.current!);
+      markersRef.current.push(labelMarker);
     });
   }, [mapLoaded, selectedLocation, onLocationSelect]);
 
