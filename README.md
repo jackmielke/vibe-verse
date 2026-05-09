@@ -16,6 +16,63 @@ The whole thing is a small experiment in engaging with the digital world in a no
   - 🏮 **Tokyo Block** — a keyframe-animated micro-city a few blocks east of the plaza
 - **Events + Community panels** — what's happening today, where, and who's there
 - **Toggleable views** — Standard 3D dusk style and a Google-Earth–style satellite view, both with extruded 3D buildings
+- **Vibey 2.0 outer-space playground** at `/space` — Vibey on a floating asteroid platform with the Vibey Show monologue, live community photos, member cards orbiting overhead, real Edge memories floating as knowledge orbs, and the alien on a saucer
+- **Lobby** at `/lobby` — Mario-Kart-style character + vehicle picker. ~60 characters drawn from Quaternius asset packs; click a character to see it on a 3D turntable and play any of its baked animations
+
+## Project layout
+
+```
+src/
+  pages/
+    Index.tsx                 ← village map
+    Unit7Playground.tsx       ← /space playground (Vibey 2.0 + alien saucer)
+    Lobby.tsx                 ← /lobby (character + vehicle picker)
+  components/
+    MapView.tsx               ← Mapbox + 3D character/structure layers
+    HelicopterControl.tsx     ← Cast / Vehicles / Spawn / Places menu
+    map/
+      VenueBeaconLayer.ts     ← always-on light-pillar marker
+      RingPulseLayer.ts       ← ground-ring landmark variant
+      OrbBobLayer.ts          ← hovering orb landmark variant
+      NaturePackLayer.ts      ← scatter trees/bushes/rocks for parks
+      VibeyLayer.ts / Unit7Layer.ts / VibePoliceLayer.ts / NimbusVtolLayer.ts
+      AlienLayer.ts           ← alien character on the village map
+      SpawnableLayer.ts       ← generic GLB world loader (Draco-aware)
+      PlazaLayer.ts           ← spawnable plaza pavilion + fountain
+  assets/glb/
+    robot-expressive.glb      ← Vibey 2.0 in /space
+    vibey.glb                 ← Vibey on the village map
+    alien.glb / alien-helmet.glb (Quaternius Alien Animated)
+    rocky.glb (Meshy Gilded Golem)
+    iridescent-arc.glb / floating-astronaut.glb / floating-island.glb / pixel-touch.glb (Meshy props for /space)
+    nimbus-vtol.glb           ← village map jet
+    characters/               ← every Quaternius character pack drop. Lobby auto-picks via import.meta.glob
+    nature/                   ← Quaternius Simple Nature Pack (trees + bushes + grass + rocks)
+    kits/
+      pirate/                 ← Quaternius Pirate Kit (Nov 2023)
+        environment/  ← cliffs / docks / houses / palm trees / rocks / sawmill / skulls
+        props/        ← anchor / barrel / bomb / chest / coins / fish / cannon / etc.
+        ships/        ← Large + Small
+        weapons/      ← cutlass / dagger / pistol / rifle / swords / etc.
+        ui/           ← chicken-leg / gems / gold / paper / etc.
+docs/
+  skills/quaternius-pack.md   ← step-by-step playbook for adding a new Quaternius asset kit
+supabase/functions/
+  unit7-chat/                 ← Vibey chat (OpenRouter → Claude Haiku)
+  vibey-monologue/            ← Vibey Show beat generator
+  community-stats/            ← profiles / agent / memories for the playground
+```
+
+### Adding a new Quaternius / Meshy asset pack
+
+See `docs/skills/quaternius-pack.md` — the short version:
+
+1. Drop FBX/OBJ files in a temp dir, then `assimp export … -fglb2` (animated FBX) or `npx -y obj2gltf -i in.obj -o out.glb -b` (static OBJ)
+2. Characters → `src/assets/glb/characters/<name>.glb` — they auto-appear in the Lobby grid via Vite's `import.meta.glob`
+3. Themed kits → `src/assets/glb/kits/<kitname>/<category>/*.glb`
+4. For scatter packs (trees, props), copy the `NaturePackLayer.ts` pattern; for character packs, the alien's saucer mount is the reference
+
+
 
 ## Stack
 
