@@ -7,6 +7,7 @@ import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Unit7Playground from "./pages/Unit7Playground.tsx";
 import Lobby from "./pages/Lobby.tsx";
+import About from "./pages/About.tsx";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,8 @@ const App = () => (
           <Route path="/" element={<Index />} />
           {/* Mario-Kart-style character + vehicle picker. */}
           <Route path="/lobby" element={<Lobby />} />
+          {/* 3D About — narrative + carousel of characters. */}
+          <Route path="/about" element={<About />} />
           {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
           <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />

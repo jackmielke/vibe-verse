@@ -612,11 +612,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           window.setTimeout(() => {
             m.flyTo({
               center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
-              zoom: VILLAGE_CENTER.zoom,
+              // Closer zoom so the plaza + CraftWork + Costeaux +
+              // Raven + SingleThread cluster reads clearly in the
+              // middle of the screen.
+              zoom: 17.5,
               pitch: 60,
               bearing: -20,
-              speed: 0.6,
-              curve: 1.6,
+              speed: 0.5,
+              curve: 1.7,
               essential: true,
             });
           }, 600);
@@ -819,12 +822,16 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       markersRef.current.push(marker);
 
       // Floating name label — hidden by default, fades in only when
-      // the marker is hovered. Keeps the map calm; you discover the
-      // landmark, then learn what it's called on hover.
-      const labelEl = document.createElement("div");
-      labelEl.className = "venue-label";
+      // the marker is hovered. Mapbox adopts the marker's root
+      // element as its own and overwrites pointer-events / opacity
+      // there, so we wrap a styled inner span inside an empty root.
+      // The root is the marker; the inner span is what we control.
+      const labelRoot = document.createElement("div");
+      labelRoot.style.cssText = "pointer-events: none;";
+      const labelEl = document.createElement("span");
+      labelEl.className = "venue-label-inner";
       labelEl.style.cssText = `
-        pointer-events: none;
+        display: inline-block;
         white-space: nowrap;
         padding: 4px 10px;
         border-radius: 999px;
@@ -838,23 +845,22 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         font-weight: 600;
         letter-spacing: 0.02em;
         box-shadow: 0 0 18px ${color}33;
-        transform: translateY(-12px);
         opacity: 0;
-        transition: opacity 0.18s ease;
+        transition: opacity 0.2s ease;
       `;
       labelEl.textContent = `${loc.emoji ?? "•"}  ${loc.name}`;
+      labelRoot.appendChild(labelEl);
       const labelMarker = new mapboxgl.Marker({
-        element: labelEl,
+        element: labelRoot,
         anchor: "bottom",
         offset: [0, -64],
       })
         .setLngLat([loc.lng, loc.lat])
         .addTo(map.current!);
       markersRef.current.push(labelMarker);
+      // Toggle the inner span on hover of the click marker.
       el.addEventListener("mouseenter", () => { labelEl.style.opacity = "1"; });
       el.addEventListener("mouseleave", () => { labelEl.style.opacity = "0"; });
-      // Tap on touch devices (where hover doesn't fire) → flash the
-      // label briefly so the user can still see what they tapped.
       el.addEventListener(
         "touchstart",
         () => {
@@ -2446,6 +2452,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
             label: "Lobby",
             description: "Mario-Kart-style character + vehicle picker. 58 characters, animation buttons, 3D turntable.",
             onFlyTo: () => navigate("/lobby"),
+          },
+          {
+            id: "about",
+            label: "About",
+            description: "What this is, why it exists, and how it's stitched together. A 3D narrative page on a floating asteroid.",
+            onFlyTo: () => navigate("/about"),
           },
         ]}
         spawnables={[
