@@ -16,6 +16,7 @@ import {
   Car,
   Menu,
   MapPin,
+  Palette,
 } from "lucide-react";
 
 export interface HelicopterControlState {
@@ -100,9 +101,33 @@ interface Props {
   spawnables: SpawnableControl[];
   // Quick-travel destinations (Edge Esmeralda, San Francisco, …).
   places: PlaceControl[];
+  styleConfig: StyleConfig;
+  onStyleConfigChange: (next: StyleConfig) => void;
 }
 
-type Tab = "characters" | "vehicles" | "spawn" | "places";
+type Tab = "characters" | "vehicles" | "spawn" | "places" | "style";
+
+export type StyleConfig = {
+  lightPreset: "auto" | "dawn" | "day" | "dusk" | "night";
+  theme: "default" | "faded" | "monochrome";
+  showPois: boolean;
+  showRoads: boolean;
+  showPlaces: boolean;
+  showTransit: boolean;
+  showLandmarks: boolean;
+  show3d: boolean;
+};
+
+export const DEFAULT_STYLE_CONFIG: StyleConfig = {
+  lightPreset: "auto",
+  theme: "default",
+  showPois: true,
+  showRoads: true,
+  showPlaces: true,
+  showTransit: false,
+  showLandmarks: true,
+  show3d: true,
+};
 
 /**
  * Menu — unified control panel: Characters, Vehicles, and spawnable Worlds.
@@ -142,6 +167,8 @@ export default function HelicopterControl({
   onResetNimbus,
   spawnables,
   places,
+  styleConfig,
+  onStyleConfigChange,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("characters");
@@ -205,7 +232,7 @@ export default function HelicopterControl({
             className="glass-panel rounded-xl p-3 w-[280px] flex flex-col gap-2.5"
           >
             {/* Tab switcher */}
-            <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-background/40 border border-border">
+            <div className="grid grid-cols-5 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
                 active={tab === "characters"}
                 onClick={() => setTab("characters")}
@@ -232,6 +259,13 @@ export default function HelicopterControl({
                 onClick={() => setTab("places")}
                 icon={<MapPin className="w-3 h-3" />}
                 label="Places"
+                live={false}
+              />
+              <TabButton
+                active={tab === "style"}
+                onClick={() => setTab("style")}
+                icon={<Palette className="w-3 h-3" />}
+                label="Style"
                 live={false}
               />
             </div>
@@ -555,6 +589,121 @@ export default function HelicopterControl({
                     </p>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {tab === "style" && (
+              <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-0.5">
+                <p className="text-[11px] font-body text-muted-foreground leading-snug">
+                  Tweak Mapbox's basemap natively — no style swap. Auto
+                  light follows Pacific Time.
+                </p>
+
+                {/* Light preset */}
+                <div>
+                  <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mb-1.5">
+                    Light
+                  </p>
+                  <div className="grid grid-cols-5 gap-1">
+                    {(["auto", "dawn", "day", "dusk", "night"] as const).map((p) => {
+                      const on = styleConfig.lightPreset === p;
+                      return (
+                        <button
+                          key={p}
+                          onClick={() =>
+                            onStyleConfigChange({ ...styleConfig, lightPreset: p })
+                          }
+                          className={`rounded-md border px-1 py-1.5 text-[10px] font-heading font-semibold tracking-wider uppercase transition-colors ${
+                            on
+                              ? "border-primary/60 bg-primary/20 text-primary"
+                              : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Theme */}
+                <div>
+                  <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mb-1.5">
+                    Theme
+                  </p>
+                  <div className="grid grid-cols-3 gap-1">
+                    {(["default", "faded", "monochrome"] as const).map((t) => {
+                      const on = styleConfig.theme === t;
+                      return (
+                        <button
+                          key={t}
+                          onClick={() =>
+                            onStyleConfigChange({ ...styleConfig, theme: t })
+                          }
+                          className={`rounded-md border px-1 py-1.5 text-[10px] font-heading font-semibold tracking-wider uppercase transition-colors ${
+                            on
+                              ? "border-primary/60 bg-primary/20 text-primary"
+                              : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Show toggles */}
+                <div>
+                  <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mb-1.5">
+                    Show
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {([
+                      ["showPois", "POI labels"],
+                      ["showRoads", "Road labels"],
+                      ["showPlaces", "Place labels"],
+                      ["showLandmarks", "Landmark icons"],
+                      ["showTransit", "Transit labels"],
+                      ["show3d", "3D buildings"],
+                    ] as const).map(([key, label]) => {
+                      const on = styleConfig[key];
+                      return (
+                        <button
+                          key={key}
+                          onClick={() =>
+                            onStyleConfigChange({ ...styleConfig, [key]: !on })
+                          }
+                          className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[11px] transition-colors ${
+                            on
+                              ? "bg-primary/15 text-foreground"
+                              : "bg-background/30 text-muted-foreground hover:bg-muted/30"
+                          }`}
+                        >
+                          <span>{label}</span>
+                          <span
+                            className={`relative inline-block w-7 h-3.5 rounded-full transition-colors ${
+                              on ? "bg-primary/80" : "bg-muted/50"
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-foreground transition-all ${
+                                on ? "left-3.5" : "left-0.5"
+                              }`}
+                            />
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => onStyleConfigChange(DEFAULT_STYLE_CONFIG)}
+                  className="text-[10.5px] text-muted-foreground hover:text-foreground transition-colors mt-1"
+                >
+                  Reset to defaults
+                </button>
               </div>
             )}
           </motion.div>

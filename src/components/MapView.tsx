@@ -21,6 +21,8 @@ import {
 import HelicopterControl, {
   type HelicopterControlState,
   type NimbusControlState,
+  type StyleConfig,
+  DEFAULT_STYLE_CONFIG,
 } from "./HelicopterControl";
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
 import { createAlienLayer, createDefaultAlienState, type AlienState } from "./map/AlienLayer";
@@ -280,6 +282,26 @@ function lightPresetForPTHour(hour: number): "dawn" | "day" | "dusk" | "night" {
   return "night";
 }
 
+// Apply the user-configurable style settings to the live Mapbox map.
+// Wraps every setConfigProperty call in a try/catch since older
+// Mapbox versions and non-Standard styles silently lack support.
+function applyStyleConfig(m: mapboxgl.Map, cfg: StyleConfig) {
+  const set = (k: string, v: unknown) => {
+    try { m.setConfigProperty("basemap", k, v); } catch { /* ignore */ }
+  };
+  const light = cfg.lightPreset === "auto"
+    ? lightPresetForPTHour(getPacificClock().hour)
+    : cfg.lightPreset;
+  set("lightPreset", light);
+  set("theme", cfg.theme);
+  set("showPointOfInterestLabels", cfg.showPois);
+  set("showRoadLabels", cfg.showRoads);
+  set("showPlaceLabels", cfg.showPlaces);
+  set("showTransitLabels", cfg.showTransit);
+  set("showLandmarkIcons", cfg.showLandmarks);
+  set("show3dObjects", cfg.show3d);
+}
+
 function getPacificClock(): { hour: number; label: string } {
   const now = new Date();
   // Use Intl with a known timezone so we don't trust the user's local clock.
@@ -330,6 +352,13 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // subsequent style toggles (dark ↔ satellite).
   const introFlownRef = useRef(false);
 
+  // User-configurable Mapbox Standard config. State + ref declared
+  // here; the apply-on-change effect lives below mapLoaded so it
+  // can read it without TDZ.
+  const [styleConfig, setStyleConfig] = useState<StyleConfig>(DEFAULT_STYLE_CONFIG);
+  const styleConfigRef = useRef<StyleConfig>(DEFAULT_STYLE_CONFIG);
+  styleConfigRef.current = styleConfig;
+
   // ---- Edge Esmeralda upcoming events ticker ---------------------
   type EdgeEvent = {
     id: string;
@@ -370,6 +399,14 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [mapError, setMapError] = useState(false);
+
+  // Apply style config on every change (placed below mapLoaded so the
+  // dep array can reference it without a TDZ at render time).
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    applyStyleConfig(map.current, styleConfig);
+  }, [styleConfig, mapLoaded]);
+
 
   // ---- Helicopter ------------------------------------------------------
   // Mutable state that the custom layer reads on every render frame.
@@ -576,19 +613,11 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }
         m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
-        // Set Standard style config for colorful, immersive 3D look. The
-        // lightPreset reflects local Pacific Time so the "sun" rises and
-        // sets in sync with whoever's running the village.
+        // Apply the current Style-tab config plus the auto-PT light
+        // preset where requested. The user can override any of these
+        // from the menu.
         try {
-          m.setConfigProperty(
-            "basemap",
-            "lightPreset",
-            lightPresetForPTHour(getPacificClock().hour),
-          );
-          m.setConfigProperty("basemap", "showPointOfInterestLabels", true);
-          m.setConfigProperty("basemap", "showTransitLabels", false);
-          m.setConfigProperty("basemap", "showPlaceLabels", true);
-          m.setConfigProperty("basemap", "show3dObjects", true);
+          applyStyleConfig(m, styleConfigRef.current);
         } catch (e) {
           // Config properties may not be available on all versions
         }
@@ -931,6 +960,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     if (!m || !mapLoaded) return;
     let lastPreset: string | null = null;
     const applyPreset = () => {
+      // Only auto-update if the user hasn't manually picked a preset
+      // in the Style tab. Their explicit choice wins.
+      if (styleConfigRef.current.lightPreset !== "auto") return;
       const preset = lightPresetForPTHour(getPacificClock().hour);
       if (preset === lastPreset) return;
       lastPreset = preset;
@@ -2274,6 +2306,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       {/* Sky Patrol — unified Vibey + Helicopter control */}
       <HelicopterControl
+        styleConfig={styleConfig}
+        onStyleConfigChange={setStyleConfig}
         state={heliUI}
         onToggleEnabled={() =>
           setHeliUI((s) => ({
