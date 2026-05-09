@@ -17,6 +17,7 @@ import {
   type SpotifyProfile,
 } from "@/lib/spotify";
 import SpotifyPlayer from "@/components/SpotifyPlayer";
+import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
@@ -714,7 +715,9 @@ export default function Unit7Playground() {
     | "arc"
     | "ship"
     | "sparks"
-    | "rocky";
+    | "rocky"
+    | "earth"
+    | "tracks";
   const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({
     cards: true,
     memories: false, // default OFF — knowledge can feel noisy
@@ -725,6 +728,8 @@ export default function Unit7Playground() {
     ship: true,
     sparks: true,
     rocky: false, // off by default — flip from the Layers panel
+    earth: true,
+    tracks: false, // local MP3 queue is opt-in; Spotify is the default
   });
   const layerVisibleRef = useRef(layerVisible);
   layerVisibleRef.current = layerVisible;
@@ -736,6 +741,7 @@ export default function Unit7Playground() {
   const shipRef = useRef<THREE.Group | null>(null);
   const sparksRef = useRef<THREE.Points | null>(null);
   const rockyRef = useRef<THREE.Group | null>(null);
+  const earthRef = useRef<THREE.Group | null>(null);
   const [controlPanelOpen, setControlPanelOpen] = useState(false);
 
   // ---- Alien companion (on a saucer, orbits Vibey) ----------------
@@ -770,13 +776,15 @@ export default function Unit7Playground() {
     if (shipRef.current) shipRef.current.visible = layerVisible.ship;
     if (sparksRef.current) sparksRef.current.visible = layerVisible.sparks;
     if (rockyRef.current) rockyRef.current.visible = layerVisible.rocky;
+    if (earthRef.current) earthRef.current.visible = layerVisible.earth;
   }, [layerVisible]);
   // Click-to-focus state: when the user clicks a card or memory orb,
   // the scene useEffect calls this ref's current handler.
   const focusHandlerRef = useRef<
-    | ((kind: "profile" | "memory", payload: unknown) => void)
+    | ((kind: "profile" | "memory" | "earth", payload: unknown) => void)
     | null
   >(null);
+  const [earthOpen, setEarthOpen] = useState(false);
   const [focusedProfile, setFocusedProfile] = useState<{
     id: string;
     name: string;
@@ -796,6 +804,8 @@ export default function Unit7Playground() {
       setFocusedProfile(payload as VibeProfile);
     } else if (kind === "memory") {
       setFocusedMemory(payload as VibeyMemory);
+    } else if (kind === "earth") {
+      setEarthOpen(true);
     }
   };
   const [robotColor, setRobotColor] = useState<number | null>(null);
@@ -1841,14 +1851,24 @@ export default function Unit7Playground() {
       const targets: THREE.Object3D[] = [];
       if (vibeCardsGroupRef.current) targets.push(...vibeCardsGroupRef.current.children);
       if (memoryOrbsGroupRef.current) targets.push(...memoryOrbsGroupRef.current.children);
+      // Earth surface is also clickable — opens a preview of
+      // Healdsburg from above.
+      if (earthRef.current?.visible) {
+        earthRef.current.traverse((obj) => {
+          if ((obj as THREE.Mesh).userData?.kind === "earth") targets.push(obj);
+        });
+      }
       const hits = raycaster.intersectObjects(targets, false);
       const hit = hits[0]?.object;
       if (!hit) return;
-      const kind = hit.userData.kind as "profile" | "memory" | undefined;
+      const kind = hit.userData.kind as
+        | "profile" | "memory" | "earth" | undefined;
       if (kind === "profile" && hit.userData.profile) {
         focusHandlerRef.current?.("profile", hit.userData.profile as VibeProfile);
       } else if (kind === "memory" && hit.userData.memory) {
         focusHandlerRef.current?.("memory", hit.userData.memory as VibeyMemory);
+      } else if (kind === "earth") {
+        focusHandlerRef.current?.("earth", null);
       }
     });
 
@@ -2430,7 +2450,9 @@ export default function Unit7Playground() {
     // lightweight canvas textures locally to avoid adding remote assets.
     const earth = (() => {
       const group = new THREE.Group();
-      group.position.set(26, 5.5, -44);
+      // Pulled in a bit closer + lifted slightly so Earth is
+      // unmissable in the default camera frame.
+      group.position.set(22, 7, -32);
       group.rotation.z = -0.38;
 
       const surfaceMap = makeEarthTexture("surface");
@@ -2447,6 +2469,9 @@ export default function Unit7Playground() {
           emissiveIntensity: 0.18,
         }),
       );
+      // Mark the surface as a clickable Earth so the raycaster can
+      // open the Healdsburg preview when the user taps it.
+      surface.userData.kind = "earth";
       group.add(surface);
 
       const cityLights = new THREE.Mesh(
@@ -2538,7 +2563,9 @@ export default function Unit7Playground() {
       poetCapsule.add(notebook);
       group.add(poetCapsule);
 
+      group.visible = layerVisibleRef.current.earth;
       scene.add(group);
+      earthRef.current = group;
       return { group, surface, clouds, cityLights, poetCapsule };
     })();
 
@@ -4236,6 +4263,50 @@ export default function Unit7Playground() {
         </div>
       )}
 
+      {/* Earth preview modal — opens when the user clicks Earth in
+          /space. Shows a satellite tile of Healdsburg + a button to
+          actually visit the village map. */}
+      {earthOpen && (
+        <div
+          className="absolute inset-0 z-30 bg-background/70 backdrop-blur-md flex items-center justify-center p-6"
+          onClick={() => setEarthOpen(false)}
+        >
+          <div
+            className="glass-panel rounded-2xl border border-primary/40 max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+              <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                Earth · Healdsburg, CA
+              </p>
+              <button
+                onClick={() => setEarthOpen(false)}
+                className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <img
+              src={`https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${VILLAGE_CENTER.lng},${VILLAGE_CENTER.lat},15.5,0/600x400@2x?access_token=${MAPBOX_TOKEN}`}
+              alt="Satellite view of Healdsburg"
+              className="w-full block"
+            />
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                The plaza, right now. Edge Esmeralda is happening on this
+                exact green block.
+              </p>
+              <Link
+                to="/"
+                className="shrink-0 rounded-md bg-primary/15 hover:bg-primary/25 text-primary px-3 py-1.5 text-[11px] font-heading font-semibold tracking-widest uppercase transition-colors"
+              >
+                Visit village →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Control Panel — toggles which scene layers are visible. */}
       <button
         onClick={() => setControlPanelOpen((v) => !v)}
@@ -4257,6 +4328,8 @@ export default function Unit7Playground() {
           </p>
           <div className="flex flex-col gap-1">
             {[
+              { id: "earth" as const, label: "Earth 🌍" },
+              { id: "tracks" as const, label: "Local tracks 💿" },
               { id: "rocky" as const, label: "Rocky 🪨" },
               { id: "cards" as const, label: "People cards" },
               { id: "memories" as const, label: "Vibey · Knows" },
@@ -4371,10 +4444,24 @@ export default function Unit7Playground() {
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-stretch gap-2 max-w-[340px]">
         {/* Spotify Web Playback SDK player. Only mounts after the
             user has connected; Premium accounts can play full
-            tracks, free accounts will see an account_error and the
-            built-in MP3 queue stays as the fallback. */}
+            tracks, free accounts will see an account_error. */}
         {spotifyConnected && spotifyPlayerOpen && (
           <SpotifyPlayer onClose={() => setSpotifyPlayerOpen(false)} />
+        )}
+        {/* When the user has hidden the Spotify panel, surface a
+            small pill so they can re-open it without having to
+            sign out and back in. */}
+        {spotifyConnected && !spotifyPlayerOpen && (
+          <button
+            onClick={() => setSpotifyPlayerOpen(true)}
+            className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2 border border-primary/30 hover:bg-primary/10 transition-colors"
+            title="Open Spotify player"
+          >
+            <span className="text-[14px]">🎧</span>
+            <span className="text-[11px] font-heading font-semibold tracking-widest uppercase text-primary">
+              Open Spotify Player
+            </span>
+          </button>
         )}
 
         {/* Spotify auth pill. When connected, shows the user's name
@@ -4414,7 +4501,11 @@ export default function Unit7Playground() {
           </button>
         )}
 
-        {queueOpen && (
+        {/* Local-MP3 queue + player. Off by default; toggle on from
+            the Layers panel ('Local tracks 💿'). Spotify is the
+            primary music UI; this stays as a fallback for the
+            downloaded library. */}
+        {layerVisible.tracks && queueOpen && (
           <div className="glass-panel rounded-xl border border-primary/30 p-2 max-h-[55vh] overflow-y-auto">
             <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-1.5 px-1">
               Queue · {TRACKS.length} tracks
@@ -4457,6 +4548,7 @@ export default function Unit7Playground() {
           </div>
         )}
 
+        {layerVisible.tracks && (
         <div className="glass-panel rounded-xl px-3 py-2 flex items-center gap-2">
           <audio ref={audioRef} src={currentTrack.src} preload="none" crossOrigin="anonymous" />
           <button
@@ -4512,6 +4604,7 @@ export default function Unit7Playground() {
             aria-label="Volume"
           />
         </div>
+        )}
       </div>
     </div>
   );
