@@ -2558,13 +2558,21 @@ export default function Unit7Playground() {
         alienUrl,
         (gltf) => {
           const alien = gltf.scene;
-          // Normalize so he stands ~1.4 units tall (matches Vibey scale).
+          // Normalize so he stands ~1.4 units tall — and crucially,
+          // sit his feet on the saucer disc by lifting the *post-
+          // scale* bbox.min.y. Without this, the GLB's origin (often
+          // at the model center, sometimes well below the feet from
+          // the assimp FBX→GLB conversion) leaves him buried in the
+          // disc or floating in front of it.
           const box = new THREE.Box3().setFromObject(alien);
           const size = new THREE.Vector3();
           box.getSize(size);
           const fit = 1.4 / Math.max(size.y, 0.0001);
           alien.scale.setScalar(fit);
-          alien.position.y = 0.18; // sits on the saucer disc
+          const scaledBox = new THREE.Box3().setFromObject(alien);
+          // 0.2 = top of the saucer disc (disc height 0.35 / 2 = 0.175,
+          // round to 0.2 for a tiny lift).
+          alien.position.y = 0.2 - scaledBox.min.y;
           alien.traverse((obj) => {
             const mesh = obj as THREE.Mesh;
             if (!mesh.isMesh) return;

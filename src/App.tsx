@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Unit7Playground from "./pages/Unit7Playground.tsx";
+import Lobby from "./pages/Lobby.tsx";
 
 const queryClient = new QueryClient();
 
@@ -17,6 +18,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          {/* Mario-Kart-style character + vehicle picker. */}
+          <Route path="/lobby" element={<Lobby />} />
           {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
           <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />
