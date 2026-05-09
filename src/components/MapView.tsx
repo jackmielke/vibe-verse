@@ -22,6 +22,7 @@ import HelicopterControl, {
   type NimbusControlState,
 } from "./HelicopterControl";
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
+import { createAlienLayer, createDefaultAlienState, type AlienState } from "./map/AlienLayer";
 import {
   createUnit7Layer,
   createDefaultUnit7State,
@@ -55,6 +56,9 @@ import Unit7Dialog from "./Unit7Dialog";
 // Vibey hangs out near the central plaza, slightly offset so he doesn't
 // overlap the plaza structure.
 const VIBEY_LOCATION = { lng: -122.8695, lat: 38.6135 };
+// Alien hangs out in the open ground a block north of the plaza so
+// he doesn't pile on top of Vibey or Unit-7.
+const ALIEN_LOCATION = { lng: -122.86940, lat: 38.61140 };
 
 // Unit-7 spawns in the open ground south of the village so the plaza
 // pavilion can't visually swallow him on the initial flyTo, and so the
@@ -366,6 +370,13 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // download + layer mount; toggling off tears them down so initial app
   // load stays light (no ~12-54 MB of bundled meshes on first paint).
   const [vibeyVisible, setVibeyVisible] = useState(false);
+
+  // ---- Alien (Quaternius animated visitor) ------------------------------
+  const alienStateRef = useRef<AlienState>(
+    createDefaultAlienState(ALIEN_LOCATION.lng, ALIEN_LOCATION.lat),
+  );
+  const alienLayerAddedRef = useRef(false);
+  const [alienVisible, setAlienVisible] = useState(false);
 
   // ---- Unit-7 (autonomous resident bot) --------------------------------
   const unit7StateRef = useRef<Unit7State>(
@@ -944,6 +955,39 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       vibeyMarkerRef.current = null;
     };
   }, [mapLoaded, vibeyVisible]);
+
+  // ---- Alien: mount layer (toggleable from Cast tab) -----------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded || !alienVisible) return;
+    const LAYER_ID = "alien-character";
+    const mount = () => {
+      if (alienLayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [alienStateRef.current.lng, alienStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") alienStateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+      try {
+        m.addLayer(createAlienLayer(LAYER_ID, alienStateRef.current));
+        alienLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* */ }
+    };
+    mount();
+    const onStyle = () => {
+      alienLayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+    return () => {
+      m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      alienLayerAddedRef.current = false;
+    };
+  }, [mapLoaded, alienVisible]);
 
   // ---- Unit-7: mount layer + click marker (only when toggled on) ------
   useEffect(() => {
@@ -2190,6 +2234,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        alienVisible={alienVisible}
+        onToggleAlien={() => setAlienVisible((v) => !v)}
         vibeyVisible={vibeyVisible}
         onToggleVibey={() => setVibeyVisible((v) => {
           // If turning off while walking, exit walk mode so the chase

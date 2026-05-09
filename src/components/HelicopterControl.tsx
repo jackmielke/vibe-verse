@@ -64,6 +64,8 @@ interface Props {
   onToggleVibey: () => void;
   unit7Visible: boolean;
   onToggleUnit7: () => void;
+  alienVisible: boolean;
+  onToggleAlien: () => void;
   vibePoliceVisible: boolean;
   onToggleVibePolice: () => void;
   // Helicopter
@@ -111,6 +113,8 @@ export default function HelicopterControl({
   onToggleVibey,
   unit7Visible,
   onToggleUnit7,
+  alienVisible,
+  onToggleAlien,
   vibePoliceVisible,
   onToggleVibePolice,
   state,
@@ -380,6 +384,21 @@ export default function HelicopterControl({
                     />
                   </div>
                   )}
+                </CharacterRow>
+
+                {/* Alien (Quaternius animated visitor) */}
+                <CharacterRow
+                  iconBg="bg-violet-500/15 border-violet-400/40"
+                  icon={<Sparkles className="w-3.5 h-3.5 text-violet-300" />}
+                  name="Alien"
+                  subtitle="Quaternius visitor · animated · loads on demand"
+                  live={false}
+                >
+                  <SpawnToggle
+                    spawned={alienVisible}
+                    onToggle={onToggleAlien}
+                    label="Alien"
+                  />
                 </CharacterRow>
               </div>
             )}
