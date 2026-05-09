@@ -23,6 +23,11 @@ export const SPOTIFY_SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
   "streaming",
+  // Read user's top tracks/artists for the Shuffle button.
+  "user-top-read",
+  // Read user's saved tracks (Liked Songs) — powers the Time
+  // Portal that filters by decade.
+  "user-library-read",
 ].join(" ");
 
 const VERIFIER_KEY = "spotify.code_verifier";
