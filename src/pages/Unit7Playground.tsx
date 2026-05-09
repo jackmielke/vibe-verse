@@ -607,6 +607,9 @@ export default function Unit7Playground() {
   ]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
+  // "local" → our unit7-chat edge function (the original Vibey 2.0 brain)
+  // "live"  → the production community Vibey at efdqqnubowgwsnwvlalp.supabase.co
+  const [chatMode, setChatMode] = useState<"local" | "live">("local");
   const [panelOpen, setPanelOpen] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -1635,6 +1638,26 @@ export default function Unit7Playground() {
     pushMessage("bot", reply.say);
   }
 
+  // Chat-with-Vibey: live production agent (separate from the
+  // playground's scripted Unit-7 channel). Same UI, different brain.
+  const VIBEY_LIVE_URL =
+    "https://efdqqnubowgwsnwvlalp.supabase.co/functions/v1/chat-with-vibey";
+  const VIBEY_LIVE_ANON =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmZHFxbnVib3dnd3Nud3ZsYWxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwMjkxMzEsImV4cCI6MjA2NTYwNTEzMX0.VaAOevdkwQmOxd9ksOtOhnODVCITDhmtAgyE456IxbM";
+
+  // Stable per-browser id so Vibey can keep a persistent thread.
+  function getExternalId(): string {
+    const KEY = "vibey.external_id";
+    let v = localStorage.getItem(KEY);
+    if (!v) {
+      v = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+        ? crypto.randomUUID()
+        : `v-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+      localStorage.setItem(KEY, v);
+    }
+    return v;
+  }
+
   async function handleSend() {
     const text = draft.trim();
     if (!text || thinking) return;
@@ -1642,13 +1665,10 @@ export default function Unit7Playground() {
     pushMessage("user", text);
     setThinking(true);
 
-    // Try the Supabase Edge Function (real LLM via OpenRouter). The key
-    // lives server-side; the browser never sees it. If anything fails
-    // (function not deployed yet, no key, network), fall back to the
-    // offline keyword inference so the user still gets a response.
+    // Both modes use the same conversation history shape.
     const history = messages
       .slice(1)
-      .slice(-12)
+      .slice(-19)
       .map((m) => ({
         role: (m.who === "bot" ? "assistant" : "user") as
           | "user"
@@ -1656,6 +1676,82 @@ export default function Unit7Playground() {
         content: m.text,
       }));
 
+    if (chatMode === "live") {
+      // Stream SSE from the production Vibey endpoint. We append a
+      // placeholder bot message and grow its text as deltas land.
+      try {
+        const resp = await fetch(VIBEY_LIVE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: VIBEY_LIVE_ANON,
+            Authorization: `Bearer ${VIBEY_LIVE_ANON}`,
+          },
+          body: JSON.stringify({
+            messages: [...history, { role: "user", content: text }],
+            context: {
+              surface: "edge-esmeralda-space",
+              external_id: getExternalId(),
+            },
+          }),
+        });
+        if (!resp.ok || !resp.body) throw new Error(`Vibey ${resp.status}`);
+        // Push an empty bot message we'll grow as the stream arrives.
+        let placeholderId = -1;
+        setMessages((m) => {
+          placeholderId = m.length + 1;
+          return [...m, { id: placeholderId, who: "bot", text: "" }];
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let pending: string | null = null;
+        let acc = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) !== -1) {
+            const line = buf.slice(0, nl).replace(/\r$/, "");
+            buf = buf.slice(nl + 1);
+            if (line === "") {
+              pending = null;
+              continue;
+            }
+            if (line.startsWith("event: ")) {
+              pending = line.slice(7).trim();
+              continue;
+            }
+            if (!line.startsWith("data: ")) continue;
+            const payload = line.slice(6).trim();
+            if (payload === "[DONE]") break;
+            if (pending === "tool" || pending === "images") continue;
+            try {
+              const d = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+              if (typeof d === "string" && d) {
+                acc += d;
+                const snapshot = acc;
+                setMessages((m) =>
+                  m.map((msg) =>
+                    msg.id === placeholderId ? { ...msg, text: snapshot } : msg,
+                  ),
+                );
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        // Fire a generic acknowledging anim so Vibey reacts visually.
+        if (acc) triggerAnim("Yes");
+      } catch {
+        pushMessage("bot", "Couldn't reach live Vibey. Try local mode?");
+      } finally {
+        setThinking(false);
+      }
+      return;
+    }
+
+    // Local mode: the existing unit7-chat edge function (Claude Haiku).
     try {
       const { data, error } = await supabase.functions.invoke("unit7-chat", {
         body: { history, text },
@@ -1675,7 +1771,6 @@ export default function Unit7Playground() {
         throw new Error("Bad response from unit7-chat");
       }
     } catch {
-      // Quiet fallback. The keyword path still feels alive.
       const intent = inferIntent(text);
       applyReply({
         say: intent.reply,
@@ -3849,6 +3944,31 @@ export default function Unit7Playground() {
               title="Hide chat"
             >
               <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </div>
+          {/* Two-pill toggle: local Vibey 2.0 vs the live community Vibey */}
+          <div className="flex gap-1 p-0.5 rounded-lg bg-background/40 border border-border/40 text-[10px]">
+            <button
+              onClick={() => setChatMode("local")}
+              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
+                chatMode === "local"
+                  ? "bg-primary/25 text-foreground font-semibold"
+                  : "text-muted-foreground hover:bg-muted/30"
+              }`}
+              title="The Vibey 2.0 brain that lives in this app"
+            >
+              🤖 Vibey 2.0
+            </button>
+            <button
+              onClick={() => setChatMode("live")}
+              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
+                chatMode === "live"
+                  ? "bg-primary/25 text-foreground font-semibold"
+                  : "text-muted-foreground hover:bg-muted/30"
+              }`}
+              title="The live community Vibey (production hub)"
+            >
+              🌐 Live Vibey
             </button>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto bg-background/30 rounded-lg p-2 space-y-2">
