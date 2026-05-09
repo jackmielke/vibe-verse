@@ -4,16 +4,69 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { ArrowLeft } from "lucide-react";
 
-import wizardUrl from "@/assets/glb/characters/Wizard.glb";
-import knightUrl from "@/assets/glb/characters/Knight_Male.glb";
-import ninjaUrl from "@/assets/glb/characters/Ninja_Female.glb";
-import chefUrl from "@/assets/glb/characters/Chef_Female.glb";
-import cowboyUrl from "@/assets/glb/characters/Cowboy_Male.glb";
-import goblinUrl from "@/assets/glb/characters/Goblin_Male.glb";
-import casualUrl from "@/assets/glb/characters/Casual_Female.glb";
-import cowUrl from "@/assets/glb/characters/Cow.glb";
+// Two characters live outside the Quaternius pack folder.
 import alienUrl from "@/assets/glb/alien.glb";
 import vibeyUrl from "@/assets/glb/robot-expressive.glb";
+
+// Every Quaternius character — Vite resolves each .glb as an asset URL
+// at build time so we don't have to maintain a hand-edited list.
+const QUATERNIUS_URLS = import.meta.glob(
+  "@/assets/glb/characters/*.glb",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+
+// Per-character emoji + accent palette. Anything not listed falls back
+// to a neutral default — the goal is just enough recognizable variety
+// in the grid that you can tell them apart.
+const CHAR_OVERRIDES: Record<string, { emoji?: string; accent?: string; blurb?: string }> = {
+  Wizard: { emoji: "🧙", accent: "#a78bfa", blurb: "Casts vibes." },
+  Witch: { emoji: "🧙‍♀️", accent: "#b392ff", blurb: "Pointy-hat energy." },
+  Knight_Male: { emoji: "🛡", accent: "#6aa8ff", blurb: "Square-jawed and shiny." },
+  Knight_Golden_Male: { emoji: "🥇", accent: "#ffd166", blurb: "Polished to a mirror." },
+  Knight_Golden_Female: { emoji: "🥇", accent: "#ffd166", blurb: "Polished to a mirror." },
+  Ninja_Male: { emoji: "🥷", accent: "#ff7e8a" },
+  Ninja_Female: { emoji: "🥷", accent: "#ff7e8a" },
+  Ninja_Sand: { emoji: "🥷", accent: "#e6c890" },
+  Ninja_Sand_Female: { emoji: "🥷", accent: "#e6c890" },
+  Chef_Male: { emoji: "🥘", accent: "#ffd166" },
+  Chef_Female: { emoji: "🥘", accent: "#ffd166" },
+  Cowboy_Male: { emoji: "🤠", accent: "#ff9f7a" },
+  Cowboy_Female: { emoji: "🤠", accent: "#ff9f7a" },
+  Goblin_Male: { emoji: "👺", accent: "#8ad48a" },
+  Goblin_Female: { emoji: "👺", accent: "#8ad48a" },
+  Casual_Male: { emoji: "🧍", accent: "#eaeaf0" },
+  Casual_Female: { emoji: "🧍‍♀️", accent: "#eaeaf0" },
+  Casual_Bald: { emoji: "🧑‍🦲", accent: "#eaeaf0" },
+  Casual2_Male: { emoji: "🧍", accent: "#eaeaf0" },
+  Casual2_Female: { emoji: "🧍‍♀️", accent: "#eaeaf0" },
+  Casual3_Male: { emoji: "🧍", accent: "#eaeaf0" },
+  Casual3_Female: { emoji: "🧍‍♀️", accent: "#eaeaf0" },
+  Cow: { emoji: "🐄", accent: "#ffffff", blurb: "It's a cow. From space, somehow." },
+  Pug: { emoji: "🐶", accent: "#ffd9b3", blurb: "Pug, just hanging out." },
+  Elf: { emoji: "🧝", accent: "#a5d8ff" },
+  Doctor_Female_Old: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
+  Doctor_Female_Young: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
+  Doctor_Male_Old: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
+  Doctor_Male_Young: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
+  Pirate_Male: { emoji: "🏴‍☠️", accent: "#ff7e8a" },
+  Pirate_Female: { emoji: "🏴‍☠️", accent: "#ff7e8a" },
+  Viking_Male: { emoji: "⚒", accent: "#c9a86a" },
+  Viking_Female: { emoji: "⚒", accent: "#c9a86a" },
+  Soldier_Male: { emoji: "🪖", accent: "#8ad48a" },
+  Soldier_Female: { emoji: "🪖", accent: "#8ad48a" },
+  BlueSoldier_Male: { emoji: "🪖", accent: "#6aa8ff" },
+  BlueSoldier_Female: { emoji: "🪖", accent: "#6aa8ff" },
+  Worker_Male: { emoji: "👷", accent: "#ffd166" },
+  Worker_Female: { emoji: "👷", accent: "#ffd166" },
+  Suit_Male: { emoji: "🕴", accent: "#9aa3b5" },
+  Suit_Female: { emoji: "💼", accent: "#9aa3b5" },
+  Kimono_Male: { emoji: "🎎", accent: "#ff7e8a" },
+  Kimono_Female: { emoji: "🎎", accent: "#ff7e8a" },
+  OldClassy_Male: { emoji: "🎩", accent: "#c9a86a" },
+  OldClassy_Female: { emoji: "🎩", accent: "#c9a86a" },
+  Zombie_Male: { emoji: "🧟", accent: "#8ad48a" },
+  Zombie_Female: { emoji: "🧟‍♀️", accent: "#8ad48a" },
+};
 
 type CharSpec = {
   id: string;
@@ -24,17 +77,28 @@ type CharSpec = {
   accent: string;
 };
 
+function prettyName(filename: string) {
+  // Casual2_Female → "Casual2 Female"; trims the .glb path.
+  return filename.replace(/_/g, " ");
+}
+
 const CHARACTERS: CharSpec[] = [
-  { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot. Late-night host energy.", accent: "#73ffb8" },
+  { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
   { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
-  { id: "wizard", url: wizardUrl, label: "Wizard", emoji: "🧙", blurb: "Casts vibes. Beard included.", accent: "#a78bfa" },
-  { id: "knight", url: knightUrl, label: "Knight", emoji: "🛡", blurb: "Square-jawed and shiny.", accent: "#6aa8ff" },
-  { id: "ninja", url: ninjaUrl, label: "Ninja", emoji: "🥷", blurb: "Stealth + swagger.", accent: "#ff7e8a" },
-  { id: "chef", url: chefUrl, label: "Chef", emoji: "🥘", blurb: "Cooks for the village.", accent: "#ffd166" },
-  { id: "cowboy", url: cowboyUrl, label: "Cowboy", emoji: "🤠", blurb: "Strolled in from the vineyards.", accent: "#ff9f7a" },
-  { id: "goblin", url: goblinUrl, label: "Goblin", emoji: "👺", blurb: "Mischief incarnate.", accent: "#8ad48a" },
-  { id: "casual", url: casualUrl, label: "Casual", emoji: "🧍‍♀️", blurb: "Just somebody nice.", accent: "#eaeaf0" },
-  { id: "cow", url: cowUrl, label: "Cow", emoji: "🐄", blurb: "It's a cow. From space, somehow.", accent: "#ffffff" },
+  ...Object.entries(QUATERNIUS_URLS)
+    .map(([path, url]) => {
+      const filename = (path.split("/").pop() ?? "").replace(/\.glb$/, "");
+      const o = CHAR_OVERRIDES[filename] ?? {};
+      return {
+        id: filename,
+        url,
+        label: prettyName(filename),
+        emoji: o.emoji ?? "👤",
+        blurb: o.blurb ?? "Quaternius character.",
+        accent: o.accent ?? "#eaeaf0",
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label)),
 ];
 
 type VehicleSpec = {
@@ -51,6 +115,14 @@ const VEHICLES: VehicleSpec[] = [
   { id: "boots", label: "On Foot", emoji: "👟", blurb: "No vehicle. Walk it." },
 ];
 
+// Strip the armature prefix many Quaternius/animation rigs add before
+// the underscore — "AlienArmature|Alien_Idle" → "Idle",
+// "CharacterArmature|Walk" → "Walk".
+function shortClipName(raw: string) {
+  const afterPipe = raw.includes("|") ? raw.split("|")[1] : raw;
+  return afterPipe.replace(/^Alien_/, "").replace(/^Character_/, "");
+}
+
 export default function Lobby() {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -60,8 +132,17 @@ export default function Lobby() {
   const [vehicleId, setVehicleId] = useState<string>(() =>
     localStorage.getItem("lobby.vehicle") ?? "saucer",
   );
+  // List of available animation clip names for the current character
+  // (stripped of armature prefix). Updated whenever the model loads.
+  const [clipNames, setClipNames] = useState<string[]>([]);
+  // The clip currently playing, for highlighting in the UI.
+  const [activeClip, setActiveClip] = useState<string | null>(null);
+
   const charRef = useRef<string>(charId);
   charRef.current = charId;
+  // Imperative handle the page renders into — playing a clip is a
+  // function the canvas useEffect installs once it has a mixer.
+  const playClipRef = useRef<((clipShortName: string) => void) | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -89,7 +170,6 @@ export default function Lobby() {
     rim.position.set(3, 2, -2);
     scene.add(rim);
 
-    // Glowing pedestal disc.
     const disc = new THREE.Mesh(
       new THREE.CylinderGeometry(1.4, 1.6, 0.18, 48),
       new THREE.MeshStandardMaterial({
@@ -111,14 +191,66 @@ export default function Lobby() {
     ring.position.y = 0.05;
     scene.add(ring);
 
-    // Currently-shown model + its mixer.
     const turntable = new THREE.Group();
     scene.add(turntable);
-    (window as unknown as { __lobbyTurntable: THREE.Group }).__lobbyTurntable = turntable;
+
     let mixer: THREE.AnimationMixer | null = null;
+    // Maps short-clip-name → action so the play handler can find them.
+    const actionByShortName = new Map<string, THREE.AnimationAction>();
+    let activeAction: THREE.AnimationAction | null = null;
     let lastTime = performance.now();
     let loadGen = 0;
     let currentCharId = "";
+
+    function playClip(shortName: string) {
+      const next = actionByShortName.get(shortName);
+      if (!next) return;
+      if (activeAction === next) return;
+      if (activeAction) activeAction.fadeOut(0.18);
+      next.reset();
+      // Loop the obvious looping clips, hold the held poses, one-shot
+      // the rest. Same semantics as the playground emote system.
+      const lower = shortName.toLowerCase();
+      if (/idle|walk|run|swim|dance/.test(lower)) {
+        next.setLoop(THREE.LoopRepeat, Infinity);
+        next.clampWhenFinished = false;
+      } else if (/sit|stand|death|die/.test(lower)) {
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+      } else {
+        // One-shot — fall back to first idle/loop after.
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+        const onFinished = (e: { action: THREE.AnimationAction }) => {
+          if (e.action !== next) return;
+          mixer?.removeEventListener("finished", onFinished);
+          // Look for a sensible fallback to resume.
+          const fallback =
+            actionByShortName.get("Idle") ??
+            actionByShortName.get("idle") ??
+            actionByShortName.values().next().value;
+          if (fallback) {
+            next.fadeOut(0.18);
+            fallback.reset();
+            fallback.setLoop(THREE.LoopRepeat, Infinity);
+            fallback.fadeIn(0.18).play();
+            activeAction = fallback;
+            // Find which key it is to update the badge.
+            for (const [k, v] of actionByShortName) {
+              if (v === fallback) {
+                setActiveClip(k);
+                break;
+              }
+            }
+          }
+        };
+        mixer?.addEventListener("finished", onFinished);
+      }
+      next.fadeIn(0.18).play();
+      activeAction = next;
+      setActiveClip(shortName);
+    }
+    playClipRef.current = playClip;
 
     function loadCharacter(id: string) {
       const spec = CHARACTERS.find((c) => c.id === id);
@@ -140,33 +272,28 @@ export default function Lobby() {
         });
       }
       mixer = null;
+      activeAction = null;
+      actionByShortName.clear();
+      setClipNames([]);
+      setActiveClip(null);
 
-      // Update accent ring color to match the character.
       (ring.material as THREE.MeshBasicMaterial).color.set(spec.accent);
 
       const loader = new GLTFLoader();
       loader.load(spec.url, (gltf) => {
-        if (myGen !== loadGen) return; // a newer load won
+        if (myGen !== loadGen) return;
         const model = gltf.scene;
-        // Anchor the gltf root at origin so any baked offset doesn't
-        // throw off the bbox math.
         model.position.set(0, 0, 0);
-        // Quaternius FBX→GLB sometimes nests a 100x scaled armature
-        // inside a 0.01 scaled root — the world matrix has to be
-        // refreshed before the bbox is meaningful.
         model.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(model);
         const size = new THREE.Vector3();
         box.getSize(size);
-        // Use the largest dimension to account for sideways exports.
         const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
         const fit = 2.2 / maxDim;
         model.scale.setScalar(fit);
         model.updateMatrixWorld(true);
-        // Stand on the disc — lift by post-scale bbox min.
         const scaled = new THREE.Box3().setFromObject(model);
         model.position.y = 0.05 - scaled.min.y;
-        // PBR clamp.
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
           if (!mesh.isMesh) return;
@@ -185,17 +312,25 @@ export default function Lobby() {
         });
         turntable.add(model);
 
-        // Play the first idle-ish animation if available.
+        // Wire animations: build action map keyed by short clip name,
+        // play the first idle-ish clip if there is one.
         if (gltf.animations.length) {
           mixer = new THREE.AnimationMixer(model);
-          const idle =
-            gltf.animations.find((c) => /idle/i.test(c.name)) ?? gltf.animations[0];
-          mixer.clipAction(idle).play();
+          const shortNames: string[] = [];
+          for (const clip of gltf.animations) {
+            const short = shortClipName(clip.name);
+            shortNames.push(short);
+            actionByShortName.set(short, mixer.clipAction(clip));
+          }
+          setClipNames(shortNames);
+          // Start on something idle-ish.
+          const startName =
+            shortNames.find((n) => /idle/i.test(n)) ?? shortNames[0];
+          if (startName) playClip(startName);
         }
       });
     }
 
-    // Initial load.
     loadCharacter(charRef.current);
 
     const ro = new ResizeObserver(() => {
@@ -213,10 +348,8 @@ export default function Lobby() {
       const delta = (now - lastTime) / 1000;
       lastTime = now;
 
-      // Re-load if the character changed.
       if (charRef.current !== currentCharId) loadCharacter(charRef.current);
 
-      // Slow turntable spin + glowing ring pulse.
       turntable.rotation.y += delta * 0.6;
       const ringMat = ring.material as THREE.MeshBasicMaterial;
       ringMat.opacity = 0.6 + Math.sin(now * 0.002) * 0.25;
@@ -244,7 +377,6 @@ export default function Lobby() {
 
   return (
     <div className="relative w-full min-h-[100dvh] bg-black overflow-hidden text-foreground">
-      {/* Star backdrop — pure CSS so the page paints fast. */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -266,13 +398,13 @@ export default function Lobby() {
           </Link>
           <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
             <span className="text-[11px] font-heading font-semibold tracking-widest uppercase text-primary">
-              Lobby · choose your fighter
+              Lobby · choose your fighter · {CHARACTERS.length} chars
             </span>
           </div>
         </div>
 
         <div className="grid md:grid-cols-[1.3fr_1fr] gap-6 items-start">
-          {/* 3D preview */}
+          {/* 3D preview + animation buttons */}
           <div className="glass-panel rounded-2xl border border-primary/30 overflow-hidden">
             <canvas
               ref={canvasRef}
@@ -280,7 +412,7 @@ export default function Lobby() {
               style={{ aspectRatio: "16/12", height: "auto" }}
             />
             <div className="px-5 py-4 border-t border-border/50">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-3">
                 <span className="text-3xl">{selectedChar.emoji}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-base font-heading font-semibold text-foreground">
@@ -289,6 +421,35 @@ export default function Lobby() {
                   <p className="text-xs text-muted-foreground">{selectedChar.blurb}</p>
                 </div>
               </div>
+              {clipNames.length > 0 ? (
+                <>
+                  <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground mb-1.5">
+                    Animations
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {clipNames.map((c) => {
+                      const on = activeClip === c;
+                      return (
+                        <button
+                          key={c}
+                          onClick={() => playClipRef.current?.(c)}
+                          className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-colors ${
+                            on
+                              ? "border-primary/70 bg-primary/20 text-primary"
+                              : "border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-muted-foreground italic">
+                  No baked clips on this model.
+                </p>
+              )}
             </div>
           </div>
 
@@ -296,24 +457,28 @@ export default function Lobby() {
           <div className="flex flex-col gap-4">
             <div className="glass-panel rounded-2xl border border-primary/30 p-4">
               <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-3">
-                Character
+                Character ({CHARACTERS.length})
               </p>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div
+                className="grid grid-cols-5 gap-1.5 max-h-[420px] overflow-y-auto pr-1"
+                style={{ scrollbarWidth: "thin" }}
+              >
                 {CHARACTERS.map((c) => {
                   const on = charId === c.id;
                   return (
                     <button
                       key={c.id}
                       onClick={() => setCharId(c.id)}
-                      className={`flex flex-col items-center gap-1 rounded-lg border transition-all py-2 ${
+                      className={`flex flex-col items-center gap-0.5 rounded-lg border transition-all py-2 px-1 ${
                         on
                           ? "border-primary/70 bg-primary/15 scale-[1.05]"
                           : "border-border/60 bg-background/30 hover:border-primary/50 hover:bg-primary/10"
                       }`}
                       style={on ? { boxShadow: `0 0 18px ${c.accent}66` } : undefined}
+                      title={c.label}
                     >
-                      <span className="text-2xl">{c.emoji}</span>
-                      <span className="text-[9.5px] font-heading font-semibold text-foreground/85 leading-none">
+                      <span className="text-xl leading-none">{c.emoji}</span>
+                      <span className="text-[9px] font-heading font-semibold text-foreground/85 leading-tight text-center break-words">
                         {c.label}
                       </span>
                     </button>
