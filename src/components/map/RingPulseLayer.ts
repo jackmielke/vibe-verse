@@ -49,11 +49,11 @@ export function createRingPulseLayer(
 
       // Static halo disc beneath the rings.
       const halo = new THREE.Mesh(
-        new THREE.CircleGeometry(2, 48),
+        new THREE.CircleGeometry(3.5, 48),
         new THREE.MeshBasicMaterial({
           color: c,
           transparent: true,
-          opacity: 0.35,
+          opacity: 0.55,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         }),
@@ -64,7 +64,7 @@ export function createRingPulseLayer(
 
       // Ripple rings — each starts at radius 0 and expands.
       for (let i = 0; i < RING_COUNT; i++) {
-        const geo = new THREE.RingGeometry(0.95, 1.0, 64);
+        const geo = new THREE.RingGeometry(0.92, 1.0, 64);
         const mat = new THREE.MeshBasicMaterial({
           color: c,
           transparent: true,
@@ -75,11 +75,27 @@ export function createRingPulseLayer(
         });
         const ring = new THREE.Mesh(geo, mat);
         ring.rotation.x = -Math.PI / 2;
-        ring.position.y = 0.05;
+        ring.position.y = 0.1;
         ring.userData.phase = i / RING_COUNT;
         scene.add(ring);
         rings.push(ring);
       }
+
+      // Slim vertical anchor pillar so the spot reads from above too,
+      // even though the rings are the primary visual.
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.5, 22, 12, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: c,
+          transparent: true,
+          opacity: 0.35,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+        }),
+      );
+      pillar.position.y = 11;
+      scene.add(pillar);
 
       renderer = new THREE.WebGLRenderer({
         canvas: map.getCanvas(),
@@ -95,11 +111,11 @@ export function createRingPulseLayer(
       for (const ring of rings) {
         const phase = ring.userData.phase as number;
         const local = (t / 3 + phase) % 1; // 0..1
-        const r = 0.5 + local * 14; // radius in meters
+        const r = 1 + local * 22; // radius in meters
         ring.scale.set(r, r, 1);
         const mat = ring.material as THREE.MeshBasicMaterial;
         // Fade in fast, fade out toward the end.
-        mat.opacity = Math.sin(local * Math.PI) * 0.7;
+        mat.opacity = Math.sin(local * Math.PI) * 0.95;
       }
 
       const m = new THREE.Matrix4().fromArray(matrix);

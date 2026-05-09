@@ -10,6 +10,7 @@ import { createPlazaLayer } from "./map/PlazaLayer";
 import { createVenueBeaconLayer } from "./map/VenueBeaconLayer";
 import { createRingPulseLayer } from "./map/RingPulseLayer";
 import { createOrbBobLayer } from "./map/OrbBobLayer";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createHelicopterLayer,
   createDefaultHelicopterState,
@@ -84,7 +85,7 @@ const VILLAGE_LOCATIONS = [
   { id: 2, name: "Hacker House", lat: 38.6140, lng: -122.8682, type: "workspace", people: 18, emoji: "💻" },
   { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8715, type: "social", people: 27, emoji: "🌳" },
   { id: 4, name: "Dining Hall", lat: 38.6145, lng: -122.8698, type: "food", people: 55, emoji: "🍽️" },
-  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 160, beaconColor: 0xb392ff },
+  // (Meditation Garden was a fictional placeholder — removed.)
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
@@ -271,6 +272,37 @@ interface MapViewProps {
 export default function MapView({ onLocationSelect, selectedLocation }: MapViewProps) {
   const navigate = useNavigate();
   const mapContainer = useRef<HTMLDivElement>(null);
+
+  // ---- Edge Esmeralda upcoming events ticker ---------------------
+  type EdgeEvent = {
+    id: string;
+    title: string;
+    event_location: string | null;
+    event_start_time: string;
+  };
+  const EDGE_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
+  const [upcomingEvents, setUpcomingEvents] = useState<EdgeEvent[]>([]);
+  const [tickerOpen, setTickerOpen] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("events")
+        .select("id, title, event_location, event_start_time")
+        .eq("community_id", EDGE_COMMUNITY_ID)
+        .order("event_start_time", { ascending: true })
+        .limit(20);
+      if (cancelled || !data) return;
+      const now = Date.now();
+      const upcoming = (data as EdgeEvent[])
+        .filter((e) => new Date(e.event_start_time).getTime() > now)
+        .slice(0, 8);
+      // If no upcoming, fall back to the most recent past events so
+      // the ticker still has something to show.
+      setUpcomingEvents(upcoming.length ? upcoming : (data as EdgeEvent[]).slice(-6));
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -404,7 +436,6 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   // gated behind their own spawn toggles. The always-on beacons mark
   // their location until the heavy meshes are spawned.
   const [plazaEnabled, setPlazaEnabled] = useState(false);
-  const [templeEnabled, setTempleEnabled] = useState(false);
 
   // ---- Nimbus VTOL ------------------------------------------------------
   const nimbusStateRef = useRef<NimbusState>(
@@ -1299,13 +1330,6 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   }, [plazaEnabled, mapLoaded]);
 
   useEffect(() => {
-    if (!mapLoaded || !map.current) return;
-    const m = map.current;
-    if (templeEnabled) addStructureLayer(m, "temple");
-    else removeStructureLayer(m, "temple");
-  }, [templeEnabled, mapLoaded]);
-
-  useEffect(() => {
     const m = map.current;
     if (!m || !mapLoaded) return;
     const LAYER_ID = "death-star";
@@ -1925,6 +1949,86 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     <div className="relative h-full w-full">
       <div ref={mapContainer} className="absolute inset-0" />
 
+      {/* Live Edge Esmeralda events ticker — stripe of upcoming
+          events along the bottom of the map. Click a chip → fly to
+          the matching beacon if its title mentions a known venue. */}
+      {tickerOpen && upcomingEvents.length > 0 && (
+        <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none">
+          <div className="glass-panel rounded-xl border border-primary/30 px-3 py-2 flex items-center gap-2 overflow-hidden pointer-events-auto">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+              </span>
+              <span className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                Edge · Schedule
+              </span>
+            </div>
+            <div className="flex-1 min-w-0 overflow-x-auto">
+              <div className="flex items-center gap-2">
+                {upcomingEvents.map((e) => {
+                  const when = new Date(e.event_start_time);
+                  const day = when.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                  const time = when.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  });
+                  return (
+                    <button
+                      key={e.id}
+                      onClick={() => {
+                        // Try to fly to a venue whose name appears in
+                        // either the event title or its location.
+                        const text = `${e.title} ${e.event_location ?? ""}`.toLowerCase();
+                        const match = VILLAGE_LOCATIONS.find(
+                          (l) => l.structure3d && text.includes(l.name.toLowerCase()),
+                        );
+                        if (match && map.current) {
+                          map.current.flyTo({
+                            center: [match.lng, match.lat],
+                            zoom: 17,
+                            pitch: 60,
+                            bearing: -20,
+                            duration: 1500,
+                          });
+                        }
+                      }}
+                      className="shrink-0 rounded-md border border-border/60 bg-background/40 hover:border-primary/50 hover:bg-primary/10 transition-colors px-2.5 py-1 text-left"
+                    >
+                      <p className="text-[11px] font-heading font-semibold text-foreground truncate max-w-[220px]">
+                        {e.title}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {day} · {time}
+                        {e.event_location ? ` · ${e.event_location}` : ""}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              onClick={() => setTickerOpen(false)}
+              className="shrink-0 p-1 rounded-md hover:bg-muted/40 transition-colors text-muted-foreground"
+              title="Hide schedule"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+      {!tickerOpen && upcomingEvents.length > 0 && (
+        <button
+          onClick={() => setTickerOpen(true)}
+          className="absolute bottom-3 left-3 z-10 glass-panel rounded-full px-3 py-1.5 border border-primary/30 text-[11px] font-heading font-semibold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
+        >
+          Schedule ({upcomingEvents.length})
+        </button>
+      )}
+
       {/* Inject marker pulse animation */}
       <style>{`
         @keyframes marker-pulse {
@@ -2212,29 +2316,6 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
                 }
               }
               setPlazaEnabled((v) => !v);
-            },
-          },
-          {
-            id: "temple",
-            label: "Meditation Temple",
-            description: "Pagoda-style temple at the meditation garden beacon. Spawn to bring it in.",
-            enabled: templeEnabled,
-            loading: false,
-            progress: null,
-            onToggle: () => {
-              if (!templeEnabled && map.current) {
-                const temple = VILLAGE_LOCATIONS.find((l) => l.structure3d === "temple");
-                if (temple) {
-                  map.current.flyTo({
-                    center: [temple.lng, temple.lat],
-                    zoom: 18,
-                    pitch: 65,
-                    bearing: -20,
-                    duration: 1500,
-                  });
-                }
-              }
-              setTempleEnabled((v) => !v);
             },
           },
           {

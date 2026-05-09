@@ -47,32 +47,32 @@ export function createOrbBobLayer(
 
       const c = new THREE.Color(color);
 
-      // Solid emissive orb.
+      // Solid emissive orb — lifted higher so it clears low buildings.
       orb = new THREE.Mesh(
-        new THREE.SphereGeometry(1.4, 32, 24),
+        new THREE.SphereGeometry(2.2, 32, 24),
         new THREE.MeshBasicMaterial({ color: c }),
       );
-      orb.position.y = 12;
+      orb.position.y = 26;
       scene.add(orb);
 
       // Soft glow billboard sprite around the orb.
       glow = new THREE.Mesh(
-        new THREE.PlaneGeometry(7, 7),
+        new THREE.PlaneGeometry(12, 12),
         new THREE.MeshBasicMaterial({
           color: c,
           transparent: true,
-          opacity: 0.35,
+          opacity: 0.55,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         }),
       );
-      glow.position.y = 12;
+      glow.position.y = 26;
       scene.add(glow);
 
       // Ground halo disc beneath the orb so the spot reads on the
       // street even when the camera is high.
       groundHalo = new THREE.Mesh(
-        new THREE.CircleGeometry(2, 48),
+        new THREE.CircleGeometry(3.5, 48),
         new THREE.MeshBasicMaterial({
           color: c,
           transparent: true,
@@ -88,7 +88,7 @@ export function createOrbBobLayer(
       // Thin tether line down from the orb to the ground.
       const tetherGeo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0.1, 0),
-        new THREE.Vector3(0, 11, 0),
+        new THREE.Vector3(0, 24, 0),
       ]);
       const tether = new THREE.Line(
         tetherGeo,
@@ -111,9 +111,9 @@ export function createOrbBobLayer(
     render(_gl, matrix) {
       const t = (performance.now() - startTime) / 1000;
       // Bob the orb + scale the glow.
-      const bob = Math.sin(t * 1.2) * 0.6;
-      orb.position.y = 12 + bob;
-      glow.position.y = 12 + bob;
+      const bob = Math.sin(t * 1.2) * 0.9;
+      orb.position.y = 26 + bob;
+      glow.position.y = 26 + bob;
       const pulse = 1 + Math.sin(t * 2) * 0.08;
       glow.scale.setScalar(pulse);
       groundHalo.scale.setScalar(1 + Math.sin(t * 1.4) * 0.08);
