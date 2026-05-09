@@ -16,6 +16,7 @@ import {
   logout as spotifyLogout,
   type SpotifyProfile,
 } from "@/lib/spotify";
+import SpotifyPlayer from "@/components/SpotifyPlayer";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
@@ -612,6 +613,7 @@ export default function Unit7Playground() {
   // Spotify integration: PKCE OAuth, then poll the user's profile.
   const [spotifyConnected, setSpotifyConnected] = useState<boolean>(spotifyIsConnected());
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
+  const [spotifyPlayerOpen, setSpotifyPlayerOpen] = useState<boolean>(true);
   useEffect(() => {
     if (!spotifyConnected) {
       setSpotifyProfile(null);
@@ -4367,9 +4369,16 @@ export default function Unit7Playground() {
           of every track; click any row to jump to it. Auto-advances
           on end. */}
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-stretch gap-2 max-w-[340px]">
+        {/* Spotify Web Playback SDK player. Only mounts after the
+            user has connected; Premium accounts can play full
+            tracks, free accounts will see an account_error and the
+            built-in MP3 queue stays as the fallback. */}
+        {spotifyConnected && spotifyPlayerOpen && (
+          <SpotifyPlayer onClose={() => setSpotifyPlayerOpen(false)} />
+        )}
+
         {/* Spotify auth pill. When connected, shows the user's name
-            + a logout button. Premium status enables full track
-            streaming via the Web Playback SDK (next iteration). */}
+            + a logout button. */}
         {spotifyConnected ? (
           <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2 border border-primary/30">
             <span className="text-[14px]">🎧</span>

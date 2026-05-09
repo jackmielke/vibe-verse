@@ -188,3 +188,56 @@ export interface SpotifyProfile {
   product?: "premium" | "free" | "open";
   email?: string;
 }
+
+/** Authenticated PUT to a Spotify Web API endpoint. Returns true on 2xx. */
+export async function spotifyPut(path: string, body?: unknown): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  const res = await fetch(`https://api.spotify.com/v1${path}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.ok;
+}
+
+export async function spotifyPost(path: string, body?: unknown): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  const res = await fetch(`https://api.spotify.com/v1${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.ok;
+}
+
+/**
+ * Load the Spotify Web Playback SDK script + initialize a Player
+ * tied to our access token. Returns the device id once it's ready.
+ *
+ * The SDK requires Spotify Premium. Free accounts get a 401 when
+ * trying to play tracks; we surface that with a friendly message.
+ */
+let sdkScriptPromise: Promise<void> | null = null;
+export function loadSpotifySDK(): Promise<void> {
+  if (sdkScriptPromise) return sdkScriptPromise;
+  sdkScriptPromise = new Promise((resolve) => {
+    if ((window as unknown as { Spotify?: unknown }).Spotify) {
+      resolve();
+      return;
+    }
+    (window as unknown as Record<string, unknown>).onSpotifyWebPlaybackSDKReady = () => resolve();
+    const script = document.createElement("script");
+    script.src = "https://sdk.scdn.co/spotify-player.js";
+    script.async = true;
+    document.body.appendChild(script);
+  });
+  return sdkScriptPromise;
+}
