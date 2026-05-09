@@ -695,6 +695,10 @@ export default function Unit7Playground() {
   const alienActiveActionRef = useRef<THREE.AnimationAction | null>(null);
   const alienBaseClipRef = useRef<string>("Idle");
   const alienSaucerGroupRef = useRef<THREE.Group | null>(null);
+  // Random emote auto-cycler — performance.now() timestamp at which
+  // we should fire the next clip. Initialized to a couple seconds
+  // after mount so we don't hijack the first idle.
+  const nextAutoEmoteAtRef = useRef<number>(performance.now() + 3000);
   const [emoteFocus, setEmoteFocus] = useState<"vibey" | "alien">("vibey");
   const emoteFocusRef = useRef<"vibey" | "alien">("vibey");
   emoteFocusRef.current = emoteFocus;
@@ -2568,21 +2572,8 @@ export default function Unit7Playground() {
       underglow.rotation.x = -Math.PI / 2;
       underglow.position.y = -0.21;
       saucerGroup.add(underglow);
-      // Small dome on top so he has something to stand on / inside of.
-      const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(0.9, 24, 18, 0, Math.PI * 2, 0, Math.PI / 2),
-        new THREE.MeshStandardMaterial({
-          color: 0xb392ff,
-          metalness: 0.2,
-          roughness: 0.15,
-          emissive: 0x281a55,
-          emissiveIntensity: 0.5,
-          transparent: true,
-          opacity: 0.55,
-        }),
-      );
-      dome.position.y = 0.18;
-      saucerGroup.add(dome);
+      // (No dome — character stands on the open disc so we can see
+      // them dance.)
 
       // Pick whichever character was chosen in the lobby. Default is
       // the alien — only change if the user picked a different
@@ -3529,8 +3520,32 @@ export default function Unit7Playground() {
         s.rotation.y = -a + Math.PI / 2;
         // Slight banking roll into the curve.
         s.rotation.z = Math.sin(now * 0.0008) * 0.05;
+        // Have the character on the saucer turn to face the platform
+        // center (Vibey), regardless of where the saucer is on its
+        // orbit. The character is the saucer's last child (added
+        // after the disc / ring / underglow / thrusters). lookAt
+        // works in world space, so it cancels out the saucer's yaw.
+        const character = s.children[s.children.length - 1];
+        if (character && character.type === "Group") {
+          const target = new THREE.Vector3(0, character.getWorldPosition(new THREE.Vector3()).y, 0);
+          character.lookAt(target);
+        }
       }
       if (alienMixerRef.current) alienMixerRef.current.update(delta);
+
+      // ---- Random auto-emote on the saucer rider ------------------
+      // Every 4-8 seconds, pick a fun clip and play it on the
+      // character regardless of FOCUS. Idle stays the base loop.
+      if (alienMixerRef.current && alienActionsRef.current.size) {
+        if (now >= nextAutoEmoteAtRef.current) {
+          const choices: Unit7AnimName[] = [
+            "Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump", "Dance",
+          ];
+          const pick = choices[Math.floor(Math.random() * choices.length)];
+          playAlienAnim(pick);
+          nextAutoEmoteAtRef.current = now + 4000 + Math.random() * 4000;
+        }
+      }
 
       // ---- Vibe Profile cards: slow carousel + per-card bob -------
       if (vibeCardsGroupRef.current) {
