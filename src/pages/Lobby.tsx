@@ -411,6 +411,28 @@ export default function Lobby() {
               Lobby · choose your fighter · {CHARACTERS.length} chars
             </span>
           </div>
+          <div className="glass-panel rounded-full p-0.5 flex items-center gap-0.5">
+            <Link
+              to="/"
+              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              title="Village"
+            >
+              🗺
+            </Link>
+            <Link
+              to="/space"
+              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              title="Outer space"
+            >
+              🪐
+            </Link>
+            <span
+              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase bg-primary/15 text-primary"
+              title="Lobby (you are here)"
+            >
+              🎮
+            </span>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-[1.3fr_1fr] gap-6 items-start">

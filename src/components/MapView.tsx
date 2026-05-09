@@ -11,6 +11,7 @@ import { createVenueBeaconLayer } from "./map/VenueBeaconLayer";
 import { createRingPulseLayer } from "./map/RingPulseLayer";
 import { createOrbBobLayer } from "./map/OrbBobLayer";
 import { createNaturePackLayer } from "./map/NaturePackLayer";
+import { createVineyardLayer } from "./map/VineyardLayer";
 import { supabase } from "@/integrations/supabase/client";
 import {
   createHelicopterLayer,
@@ -107,6 +108,9 @@ const VILLAGE_LOCATIONS = [
   // (low-poly trees / bushes / grass / rocks) to mark the spot
   // instead of a beam of light. Wind-swayed mini-grove.
   { id: 19, name: "Giorgi Park", lat: 38.61546, lng: -122.86179, type: "wellness", people: 12, emoji: "🌳", structure3d: "giorgi" as const, hitSize: 200, beaconColor: 0x8ad48a, markerStyle: "nature" as const },
+  // Garagiste Wines — real Healdsburg tasting room. Uses the Nature
+  // Crops Pack to render a proper vineyard tasting plot at the spot.
+  { id: 20, name: "Garagiste Wines", lat: 38.61327, lng: -122.87191, type: "venue", people: 18, emoji: "🍇", structure3d: "garagiste" as const, hitSize: 180, beaconColor: 0xb392ff, markerStyle: "vineyard" as const },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -142,12 +146,18 @@ function addVenueBeaconLayers(m: mapboxgl.Map) {
     } catch { /* terrain not ready */ }
     try {
       const color = (loc as { beaconColor?: number }).beaconColor ?? 0x73ffb8;
-      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" | "nature" }).markerStyle ?? "beam";
+      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" | "nature" | "vineyard" }).markerStyle ?? "beam";
       if (style === "nature") {
         m.addLayer(
           createNaturePackLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, {
             seed: loc.id,
             radius: 28,
+          }),
+        );
+      } else if (style === "vineyard") {
+        m.addLayer(
+          createVineyardLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, {
+            seed: loc.id,
           }),
         );
       } else {
@@ -2160,6 +2170,32 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
               {clockLabel}
             </span>
             <span className="text-[9px] font-mono text-muted-foreground tracking-widest">PT</span>
+          </div>
+          {/* Quick travel: cycle between the village, the playground,
+              and the lobby. Three small pills, integrated with the
+              existing top-right HUD so nothing else has to move. */}
+          <div className="glass-panel rounded-full p-0.5 flex items-center gap-0.5">
+            <button
+              onClick={() => navigate("/")}
+              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase bg-primary/15 text-primary"
+              title="Village (you are here)"
+            >
+              🗺
+            </button>
+            <button
+              onClick={() => navigate("/space")}
+              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              title="Vibey 2.0 outer space"
+            >
+              🪐
+            </button>
+            <button
+              onClick={() => navigate("/lobby")}
+              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              title="Lobby — choose your character"
+            >
+              🎮
+            </button>
           </div>
         </div>
       </motion.div>
