@@ -2,17 +2,14 @@ import mapboxgl from "mapbox-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-import grapeUrl from "@/assets/glb/kits/crops/BushBerries_3.glb";
-import grapeMatureUrl from "@/assets/glb/kits/crops/BushBerries_4.glb";
-import wheatUrl from "@/assets/glb/kits/crops/Wheat_4.glb";
-import palmUrl from "@/assets/glb/kits/crops/PalmTree_3.glb";
-import flowersUrl from "@/assets/glb/kits/crops/Flower_3.glb";
+import palm1Url from "@/assets/glb/kits/crops/PalmTree_2.glb";
+import palm2Url from "@/assets/glb/kits/crops/PalmTree_3.glb";
+import palm3Url from "@/assets/glb/kits/crops/PalmTree_4.glb";
 
 /**
- * Vineyard tasting: a tidy grid of grape vines (Quaternius's
- * BushBerries — closest match to grapes), bordered by palm trees and
- * accented with wheat tufts + flowers. Built for a real Healdsburg
- * winery beacon (Garagiste). Vines sway in a shared wind.
+ * Palm-tree ring: scatters palm trees in a soft ring around a lng/
+ * lat. Used for the Garagiste vineyard beacon and as ambient
+ * decoration around the plaza. Wind-swayed.
  */
 type RowItem = {
   url: string;
@@ -31,74 +28,23 @@ function rand(seed: number) {
   };
 }
 
-function buildVineyard(seed: number): RowItem[] {
+function buildPalmRing(seed: number, count: number, minR: number, maxR: number): RowItem[] {
   const r = rand(seed);
   const items: RowItem[] = [];
-
-  // 5 rows of grape vines — each row is ~12 vines, spaced 2.5m apart.
-  // Rows are 4m apart so a person can imagine walking between them.
-  const ROWS = 5;
-  const PER_ROW = 12;
-  const ROW_SPACING = 4;
-  const VINE_SPACING = 2.5;
-  const totalWidth = (ROWS - 1) * ROW_SPACING;
-  const totalLength = (PER_ROW - 1) * VINE_SPACING;
-  for (let row = 0; row < ROWS; row++) {
-    for (let i = 0; i < PER_ROW; i++) {
-      // Mix mature vs juvenile so it doesn't look identical.
-      const url = r() > 0.5 ? grapeUrl : grapeMatureUrl;
-      items.push({
-        url,
-        x: row * ROW_SPACING - totalWidth / 2,
-        z: i * VINE_SPACING - totalLength / 2 + (r() - 0.5) * 0.4,
-        yaw: r() * Math.PI * 2,
-        scale: 1.6 + r() * 0.5,
-        sway: 0.04,
-      });
-    }
-  }
-
-  // Palm trees marking the four corners.
-  const halfW = totalWidth / 2 + 3;
-  const halfL = totalLength / 2 + 3;
-  for (const [x, z] of [
-    [-halfW, -halfL], [halfW, -halfL], [-halfW, halfL], [halfW, halfL],
-  ]) {
+  const palms = [palm1Url, palm2Url, palm3Url];
+  for (let i = 0; i < count; i++) {
+    // Slightly jittered angle so the ring doesn't look mechanical.
+    const angle = (i / count) * Math.PI * 2 + (r() - 0.5) * 0.3;
+    const dist = minR + r() * (maxR - minR);
     items.push({
-      url: palmUrl,
-      x, z,
-      yaw: r() * Math.PI * 2,
-      scale: 2.0 + r() * 0.4,
-      sway: 0.06,
-    });
-  }
-
-  // Wheat tufts dotted around the perimeter for texture.
-  for (let i = 0; i < 14; i++) {
-    const angle = r() * Math.PI * 2;
-    const dist = halfW + 1 + r() * 4;
-    items.push({
-      url: wheatUrl,
+      url: palms[i % palms.length],
       x: Math.cos(angle) * dist,
       z: Math.sin(angle) * dist,
       yaw: r() * Math.PI * 2,
-      scale: 0.9 + r() * 0.4,
+      scale: 1.8 + r() * 0.6,
       sway: 0.05,
     });
   }
-
-  // Flowers scattered between rows so the ground reads alive.
-  for (let i = 0; i < 18; i++) {
-    items.push({
-      url: flowersUrl,
-      x: (r() - 0.5) * totalWidth * 1.1,
-      z: (r() - 0.5) * totalLength * 1.1,
-      yaw: r() * Math.PI * 2,
-      scale: 0.6 + r() * 0.3,
-      sway: 0.03,
-    });
-  }
-
   return items;
 }
 
@@ -106,10 +52,19 @@ export function createVineyardLayer(
   id: string,
   lngLat: { lng: number; lat: number },
   altitude = 0,
-  options: { seed?: number; scaleMeters?: number } = {},
+  options: {
+    seed?: number;
+    scaleMeters?: number;
+    count?: number;
+    minRadius?: number;
+    maxRadius?: number;
+  } = {},
 ): mapboxgl.CustomLayerInterface {
   const seed = options.seed ?? 99;
   const baseMeters = options.scaleMeters ?? 1.6;
+  const count = options.count ?? 12;
+  const minR = options.minRadius ?? 12;
+  const maxR = options.maxRadius ?? 18;
 
   const mercator = mapboxgl.MercatorCoordinate.fromLngLat(
     [lngLat.lng, lngLat.lat],
@@ -151,22 +106,7 @@ export function createVineyardLayer(
       fill.position.set(-40, 30, -20);
       scene.add(fill);
 
-      // Soft halo so the spot reads from the air.
-      const halo = new THREE.Mesh(
-        new THREE.CircleGeometry(18, 64),
-        new THREE.MeshBasicMaterial({
-          color: 0xb392ff,
-          transparent: true,
-          opacity: 0.1,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-        }),
-      );
-      halo.rotation.x = -Math.PI / 2;
-      halo.position.y = 0.05;
-      scene.add(halo);
-
-      const layout = buildVineyard(seed);
+      const layout = buildPalmRing(seed, count, minR, maxR);
       const loader = new GLTFLoader();
       const cache = new Map<string, THREE.Group>();
       const byUrl = new Map<string, RowItem[]>();

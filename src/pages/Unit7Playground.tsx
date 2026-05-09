@@ -3638,28 +3638,6 @@ export default function Unit7Playground() {
             Vibey 2.0 · Outer Space
           </span>
         </div>
-        <div className="glass-panel rounded-full p-0.5 flex items-center gap-0.5">
-          <Link
-            to="/"
-            className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-            title="Village"
-          >
-            🗺
-          </Link>
-          <span
-            className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase bg-primary/15 text-primary"
-            title="Outer space (you are here)"
-          >
-            🪐
-          </span>
-          <Link
-            to="/lobby"
-            className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-            title="Lobby — choose your character"
-          >
-            🎮
-          </Link>
-        </div>
       </div>
 
       {/* Floating "open chat" pill — only visible when the panel is hidden,

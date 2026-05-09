@@ -135,6 +135,25 @@ const STRUCTURE_FACTORIES: Record<
 // minimalist marker — the actual pavilion / fountain / temple meshes
 // are gated behind the spawn toggles.
 function addVenueBeaconLayers(m: mapboxgl.Map) {
+  // Palm ring around the plaza — always on, gives the plaza a real
+  // bit of personality on top of its beam beacon.
+  const plaza = VILLAGE_LOCATIONS.find((l) => l.structure3d === "plaza");
+  if (plaza && !m.getLayer("palms-plaza")) {
+    let alt = 0;
+    try {
+      const e = m.queryTerrainElevation([plaza.lng, plaza.lat], { exaggerated: true });
+      if (typeof e === "number") alt = e + 0.1;
+    } catch { /* */ }
+    try {
+      m.addLayer(createVineyardLayer("palms-plaza", { lng: plaza.lng, lat: plaza.lat }, alt, {
+        seed: 7,
+        count: 10,
+        minRadius: 14,
+        maxRadius: 18,
+      }));
+    } catch { /* */ }
+  }
+
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
     const id = `beacon-${loc.structure3d}`;
@@ -289,6 +308,9 @@ function refreshVenueBeacons(m: mapboxgl.Map) {
       try { m.removeLayer(id); } catch { /* noop */ }
     }
   });
+  if (m.getLayer("palms-plaza")) {
+    try { m.removeLayer("palms-plaza"); } catch { /* noop */ }
+  }
   addVenueBeaconLayers(m);
 }
 
@@ -2171,32 +2193,6 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
             </span>
             <span className="text-[9px] font-mono text-muted-foreground tracking-widest">PT</span>
           </div>
-          {/* Quick travel: cycle between the village, the playground,
-              and the lobby. Three small pills, integrated with the
-              existing top-right HUD so nothing else has to move. */}
-          <div className="glass-panel rounded-full p-0.5 flex items-center gap-0.5">
-            <button
-              onClick={() => navigate("/")}
-              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase bg-primary/15 text-primary"
-              title="Village (you are here)"
-            >
-              🗺
-            </button>
-            <button
-              onClick={() => navigate("/space")}
-              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              title="Vibey 2.0 outer space"
-            >
-              🪐
-            </button>
-            <button
-              onClick={() => navigate("/lobby")}
-              className="rounded-full px-2.5 py-1 text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              title="Lobby — choose your character"
-            >
-              🎮
-            </button>
-          </div>
         </div>
       </motion.div>
 
@@ -2401,6 +2397,12 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
             label: "Outer Space",
             description: "Vibey 2.0's late-night show. A floating asteroid platform with the Vibey Show, live community photos, member cards orbiting overhead, and Vibey's knowledge in the sky.",
             onFlyTo: () => navigate("/space"),
+          },
+          {
+            id: "lobby",
+            label: "Lobby",
+            description: "Mario-Kart-style character + vehicle picker. 58 characters, animation buttons, 3D turntable.",
+            onFlyTo: () => navigate("/lobby"),
           },
         ]}
         spawnables={[
