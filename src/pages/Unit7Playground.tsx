@@ -9,6 +9,13 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ArrowLeft, Send, Bot, X, MessageCircle, Volume2, VolumeX, SkipForward, SkipBack, Play, Pause } from "lucide-react";
+import {
+  loginWithSpotify,
+  isConnected as spotifyIsConnected,
+  spotifyFetch,
+  logout as spotifyLogout,
+  type SpotifyProfile,
+} from "@/lib/spotify";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
@@ -601,6 +608,22 @@ export default function Unit7Playground() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+
+  // Spotify integration: PKCE OAuth, then poll the user's profile.
+  const [spotifyConnected, setSpotifyConnected] = useState<boolean>(spotifyIsConnected());
+  const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null);
+  useEffect(() => {
+    if (!spotifyConnected) {
+      setSpotifyProfile(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const me = await spotifyFetch<SpotifyProfile>("/me");
+      if (!cancelled) setSpotifyProfile(me);
+    })();
+    return () => { cancelled = true; };
+  }, [spotifyConnected]);
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [trackIndex, setTrackIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -4344,6 +4367,44 @@ export default function Unit7Playground() {
           of every track; click any row to jump to it. Auto-advances
           on end. */}
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-stretch gap-2 max-w-[340px]">
+        {/* Spotify auth pill. When connected, shows the user's name
+            + a logout button. Premium status enables full track
+            streaming via the Web Playback SDK (next iteration). */}
+        {spotifyConnected ? (
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2 border border-primary/30">
+            <span className="text-[14px]">🎧</span>
+            <span className="text-[11px] font-heading font-semibold text-foreground truncate flex-1">
+              {spotifyProfile?.display_name ?? "Connecting…"}
+            </span>
+            {spotifyProfile?.product && (
+              <span className="text-[9px] font-mono uppercase tracking-widest text-primary">
+                {spotifyProfile.product}
+              </span>
+            )}
+            <button
+              onClick={() => {
+                spotifyLogout();
+                setSpotifyConnected(false);
+              }}
+              className="text-[9px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+              title="Disconnect Spotify"
+            >
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => loginWithSpotify()}
+            className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2 border border-primary/30 hover:bg-primary/10 transition-colors"
+            title="Connect your Spotify account"
+          >
+            <span className="text-[14px]">🎧</span>
+            <span className="text-[11px] font-heading font-semibold tracking-widest uppercase text-primary">
+              Connect Spotify
+            </span>
+          </button>
+        )}
+
         {queueOpen && (
           <div className="glass-panel rounded-xl border border-primary/30 p-2 max-h-[55vh] overflow-y-auto">
             <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary mb-1.5 px-1">

@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound.tsx";
 import Unit7Playground from "./pages/Unit7Playground.tsx";
 import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
+import SpotifyCallback from "./pages/SpotifyCallback.tsx";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,8 @@ const App = () => (
           <Route path="/lobby" element={<Lobby />} />
           {/* 3D About — narrative + carousel of characters. */}
           <Route path="/about" element={<About />} />
+          {/* Spotify OAuth (PKCE) callback. */}
+          <Route path="/auth/spotify" element={<SpotifyCallback />} />
           {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
           <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />
