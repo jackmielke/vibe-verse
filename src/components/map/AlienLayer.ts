@@ -10,8 +10,11 @@ export interface AlienState {
   heading: number; // radians
 }
 
-const SCALE_METERS = 6; // approximate height in meters
-const GROUND_CLEARANCE = 0.4;
+// Real-world scale: a ~2.5m tall alien (just taller than a person)
+// reads correctly next to actual buildings on the map. The previous
+// 6m made him look like a giant standing in the street.
+const SCALE_METERS = 2.5;
+const GROUND_CLEARANCE = 0.1;
 
 /**
  * Alien — Quaternius's animated alien character. Loads the GLB,
@@ -67,17 +70,20 @@ export function createAlienLayer(
       halo.renderOrder = -1;
       scene.add(halo);
 
+      // Slim 4m beacon pillar — tall enough to be findable, short
+      // enough that the human-scale alien isn't dwarfed by his own
+      // marker. (Was 14m model-units = 35m real-world.)
       const pillar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.1, 0.14, 14, 16, 1, true),
+        new THREE.CylinderGeometry(0.06, 0.09, 4, 16, 1, true),
         new THREE.MeshBasicMaterial({
           color: 0xb392ff,
           transparent: true,
-          opacity: 0.5,
+          opacity: 0.45,
           depthWrite: false,
           side: THREE.DoubleSide,
         }),
       );
-      pillar.position.y = 9;
+      pillar.position.y = 3.5;
       scene.add(pillar);
 
       const loader = new GLTFLoader();

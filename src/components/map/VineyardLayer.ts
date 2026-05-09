@@ -98,13 +98,20 @@ export function createVineyardLayer(
 
       // Outdoor lighting tuned warmer than the nature pack — vineyards
       // read better in golden-hour-ish light.
-      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-      const sun = new THREE.DirectionalLight(0xffe8c2, 1.4);
+      // Bright outdoor lighting so the palm trees actually read as
+      // alive, not as silhouettes. Bumped ambient + sun + sky-fill,
+      // with a third bottom-bounce light so the underside of the
+      // canopy isn't pitch black.
+      scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+      const sun = new THREE.DirectionalLight(0xffeed8, 1.8);
       sun.position.set(40, 80, 30);
       scene.add(sun);
-      const fill = new THREE.DirectionalLight(0xa5d8ff, 0.3);
+      const fill = new THREE.DirectionalLight(0xa5d8ff, 0.6);
       fill.position.set(-40, 30, -20);
       scene.add(fill);
+      const bounce = new THREE.DirectionalLight(0xb0d8b0, 0.45);
+      bounce.position.set(0, -20, 10);
+      scene.add(bounce);
 
       const layout = buildPalmRing(seed, count, minR, maxR);
       const loader = new GLTFLoader();
@@ -120,6 +127,33 @@ export function createVineyardLayer(
         loader.load(
           url,
           (gltf) => {
+            // Brighten the palm materials so they read as a daytime
+            // grove, not silhouettes. obj2gltf produces MeshPhong by
+            // default — add a self-emissive lift so the canopy stays
+            // colorful even under the dusk-tinted Mapbox sky.
+            gltf.scene.traverse((obj) => {
+              const mesh = obj as THREE.Mesh;
+              if (!mesh.isMesh) return;
+              const apply = (mat: THREE.Material) => {
+                const std = mat as THREE.MeshStandardMaterial & {
+                  shininess?: number;
+                };
+                if (std && "metalness" in std) {
+                  std.metalness = 0.0;
+                  std.roughness = 0.85;
+                }
+                if ("emissive" in std && "color" in std) {
+                  // Lift toward the diffuse color so leaves/bark stay
+                  // recognizable while their value rises.
+                  std.emissive = (std.color ?? new THREE.Color(0xffffff)).clone();
+                  std.emissiveIntensity = 0.35;
+                }
+                std.needsUpdate = true;
+              };
+              const mat = mesh.material;
+              if (Array.isArray(mat)) mat.forEach(apply);
+              else if (mat) apply(mat);
+            });
             cache.set(url, gltf.scene);
             for (const item of items) {
               const inst = gltf.scene.clone(true);

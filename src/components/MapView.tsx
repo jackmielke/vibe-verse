@@ -2316,24 +2316,60 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
         alienVisible={alienVisible}
-        onToggleAlien={() => setAlienVisible((v) => !v)}
-        vibeyVisible={vibeyVisible}
-        onToggleVibey={() => setVibeyVisible((v) => {
-          // If turning off while walking, exit walk mode so the chase
-          // camera doesn't try to follow a despawned character.
-          if (v && vibeyUI.walkMode) {
-            vibeyStateRef.current.walkMode = false;
-            setVibeyUI((s) => ({ ...s, walkMode: false }));
+        onToggleAlien={() => {
+          // Drop the alien in wherever the camera is currently
+          // looking, instead of a fixed coord baked at app start.
+          // Going from off → on re-anchors; going from on → off
+          // leaves the position alone.
+          if (!alienVisible && map.current) {
+            const c = map.current.getCenter();
+            alienStateRef.current.lng = c.lng;
+            alienStateRef.current.lat = c.lat;
+            alienStateRef.current.baseAltitude = 0;
           }
-          return !v;
-        })}
+          setAlienVisible((v) => !v);
+        }}
+        vibeyVisible={vibeyVisible}
+        onToggleVibey={() => {
+          if (!vibeyVisible && map.current) {
+            const c = map.current.getCenter();
+            vibeyStateRef.current.lng = c.lng;
+            vibeyStateRef.current.lat = c.lat;
+            vibeyStateRef.current.baseAltitude = 0;
+          }
+          setVibeyVisible((v) => {
+            // If turning off while walking, exit walk mode so the chase
+            // camera doesn't try to follow a despawned character.
+            if (v && vibeyUI.walkMode) {
+              vibeyStateRef.current.walkMode = false;
+              setVibeyUI((s) => ({ ...s, walkMode: false }));
+            }
+            return !v;
+          });
+        }}
         unit7Visible={unit7Visible}
-        onToggleUnit7={() => setUnit7Visible((v) => {
-          if (v && unit7WalkMode) setUnit7WalkMode(false);
-          return !v;
-        })}
+        onToggleUnit7={() => {
+          if (!unit7Visible && map.current) {
+            const c = map.current.getCenter();
+            unit7StateRef.current.lng = c.lng;
+            unit7StateRef.current.lat = c.lat;
+            unit7StateRef.current.baseAltitude = 0;
+          }
+          setUnit7Visible((v) => {
+            if (v && unit7WalkMode) setUnit7WalkMode(false);
+            return !v;
+          });
+        }}
         vibePoliceVisible={vibePoliceVisible}
-        onToggleVibePolice={() => setVibePoliceVisible((v) => !v)}
+        onToggleVibePolice={() => {
+          if (!vibePoliceVisible && map.current) {
+            const c = map.current.getCenter();
+            vibePoliceStateRef.current.lng = c.lng;
+            vibePoliceStateRef.current.lat = c.lat;
+            vibePoliceStateRef.current.baseAltitude = 0;
+          }
+          setVibePoliceVisible((v) => !v);
+        }}
         unit7Scale={unit7Scale}
         unit7ScaleMin={UNIT7_MIN_SCALE_METERS}
         unit7ScaleMax={UNIT7_MAX_SCALE_METERS}
