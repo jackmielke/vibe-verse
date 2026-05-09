@@ -86,7 +86,9 @@ const VILLAGE_LOCATIONS = [
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
-  { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
+  // Real Healdsburg Plaza: the green block bounded by Plaza St (N),
+  // Center St (E), Matheson St (S), and Healdsburg Ave (W).
+  { id: 9, name: "Central Plaza", lat: 38.61030, lng: -122.86990, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -429,6 +431,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       };
 
       mapReadyTimeoutRef.current = window.setTimeout(markMapReady, 4500);
+
+      // Dev helper: shift+click anywhere on the map → logs the
+      // precise lng/lat to the console + copies it to the clipboard.
+      // Use this to pin landmarks exactly (open the map, shift+click
+      // the spot, paste the coord into VILLAGE_LOCATIONS).
+      m.on("click", (e) => {
+        if (!e.originalEvent.shiftKey) return;
+        const { lng, lat } = e.lngLat;
+        const out = `lat: ${lat.toFixed(5)}, lng: ${lng.toFixed(5)}`;
+        // eslint-disable-next-line no-console
+        console.log("[map shift+click]", out);
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(out).catch(() => { /* noop */ });
+        }
+      });
 
       m.on("style.load", () => {
         // Enable 3D terrain
