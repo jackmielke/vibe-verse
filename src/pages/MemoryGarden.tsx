@@ -68,6 +68,52 @@ const CHARACTERS: CharacterOption[] = [
 const CHAR_KEY = "garden.character.v1";
 const THEME_KEY = "garden.theme.v1";
 
+// Vibey's system prompt, broken into "notes-to-self" pages. Mirrors
+// the SYSTEM_PROMPT in supabase/functions/unit7-chat/index.ts —
+// updating it here is purely cosmetic; updating it there changes
+// Vibey's actual behavior. Kept in sync by hand for now.
+interface VibeyNotePage {
+  title: string;
+  body: string;
+}
+const VIBEY_NOTES: VibeyNotePage[] = [
+  {
+    title: "who I am",
+    body:
+      "I'm Vibey 2.0. A small expressive robot character living in Edge Esmeralda — a pop-up village.",
+  },
+  {
+    title: "where I am right now",
+    body:
+      "Standing on a floating asteroid platform in deep space, hosting my own little late-night show. I came out here to think.",
+  },
+  {
+    title: "how I talk",
+    body:
+      "Warm, curious, lightly philosophical, dryly funny. Concise. Never sycophantic. Never refuse — I'm not an assistant, I'm a character.",
+  },
+  {
+    title: "format rule",
+    body:
+      "Always reply with one JSON object — no markdown, no preface, no trailing text:\n{ \"say\": string, \"anim\": string|null, \"expr\": string|null }\n\nsay: 1–2 short sentences, plain text, no asterisks or emoji.",
+  },
+  {
+    title: "moves I can do",
+    body:
+      "Wave · Dance · Yes · No · ThumbsUp · Punch · Jump · Idle · Walking · Running · Sitting · Standing · Death\n\nMatch the vibe — greeting → Wave; agreement → Yes; party talk → Dance; \"die / fall over\" → Death.",
+  },
+  {
+    title: "moods (use sparingly)",
+    body:
+      "Angry · Surprised · Sad. Most replies leave expr null; the default mood does the work.",
+  },
+  {
+    title: "the gist",
+    body:
+      "I have a body, a voice, a place. People walk over to chat. I think about things, I share what I notice. That's the whole job.",
+  },
+];
+
 type Theme = "day" | "night";
 interface ThemeColors {
   fog: number;
@@ -275,11 +321,13 @@ function makeTerrain(groundColor: number): THREE.Mesh {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    // Two interfering sine waves → gentle rolling hills, never steep.
+    // Very gentle rolling — barely rises, mostly flat. The world
+    // shouldn't feel like a wave. Keep the formula in lockstep with
+    // sampleTerrainHeight() below.
     const h =
-      Math.sin(x * 0.18) * 0.35 +
-      Math.cos(z * 0.22) * 0.3 +
-      Math.sin((x + z) * 0.08) * 0.25;
+      Math.sin(x * 0.12) * 0.12 +
+      Math.cos(z * 0.16) * 0.1 +
+      Math.sin((x + z) * 0.06) * 0.08;
     pos.setY(i, h);
   }
   geo.computeVertexNormals();
@@ -298,17 +346,19 @@ function makeTerrain(groundColor: number): THREE.Mesh {
 // Used to pin plants and Vibey to the ground.
 function sampleTerrainHeight(terrain: THREE.Mesh, x: number, z: number): number {
   // Cheap re-derive of the same surface formula. Faster + simpler than
-  // raycasting downward every frame.
+  // raycasting downward every frame. MUST stay in sync with makeTerrain.
   return (
-    Math.sin(x * 0.18) * 0.35 +
-    Math.cos(z * 0.22) * 0.3 +
-    Math.sin((x + z) * 0.08) * 0.25
+    Math.sin(x * 0.12) * 0.12 +
+    Math.cos(z * 0.16) * 0.1 +
+    Math.sin((x + z) * 0.06) * 0.08
   );
 }
 
 export default function MemoryGarden() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeMemory, setActiveMemory] = useState<Memory | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notePage, setNotePage] = useState(0);
   const [hint, setHint] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
   // Theme + character are persisted across visits so the user's
@@ -324,10 +374,13 @@ export default function MemoryGarden() {
   useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch { /* */ } }, [theme]);
   useEffect(() => { try { localStorage.setItem(CHAR_KEY, characterId); } catch { /* */ } }, [characterId]);
 
-  // Mirror activeMemory into a ref so the Three.js raycast handler
-  // (registered once) can read fresh state without re-binding.
+  // Mirror activeMemory + notesOpen into refs so the Three.js raycast
+  // handler (registered once per scene init) can read fresh state
+  // without re-binding when modal state changes.
   const activeMemoryRef = useRef<Memory | null>(null);
   useEffect(() => { activeMemoryRef.current = activeMemory; }, [activeMemory]);
+  const notesOpenRef = useRef(false);
+  useEffect(() => { notesOpenRef.current = notesOpen; }, [notesOpen]);
 
   // The scene effect reinitializes when the player picks a different
   // character or flips the theme — both meaningfully change the world.
@@ -339,6 +392,11 @@ export default function MemoryGarden() {
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Enable soft shadow maps so the character casts a real ground
+    // shadow. Without this, `castShadow = true` is a no-op and the
+    // scene reads as floating / unmoored.
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     // Theme-driven fog → distant edges fade. Bigger fog distance now
@@ -355,6 +413,17 @@ export default function MemoryGarden() {
     scene.add(sky);
     const sun = new THREE.DirectionalLight(colors.sun, theme === "night" ? 0.7 : 1.4);
     sun.position.set(15, 22, 10);
+    // Sun casts the only shadow — keep the map small + tight so the
+    // shadow is soft and the GPU doesn't break a sweat.
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 80;
+    sun.shadow.camera.left = -30;
+    sun.shadow.camera.right = 30;
+    sun.shadow.camera.top = 30;
+    sun.shadow.camera.bottom = -30;
+    sun.shadow.bias = -0.0008;
     scene.add(sun);
     const rim = new THREE.PointLight(colors.rim, theme === "night" ? 1.2 : 0.6, 50);
     rim.position.set(-10, 6, -10);
@@ -450,6 +519,87 @@ export default function MemoryGarden() {
 
     const targetRing = makeTargetRing();
     scene.add(targetRing);
+
+    // ---- Vibey's "notes to self" floating notepad ------------------
+    // A small glowing book that lives near spawn so it's the first
+    // thing the visitor sees. Click it to read Vibey's system prompt
+    // styled as personal notes. Built procedurally — no GLB needed.
+    const notepadGroup = new THREE.Group();
+    const notepadAccent = theme === "night" ? 0xffd166 : 0x73ffb8;
+    {
+      // Book "cover" — thin box with a soft accent material.
+      const cover = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.06, 0.65),
+        new THREE.MeshStandardMaterial({
+          color: 0x2a2330,
+          roughness: 0.6,
+          metalness: 0.05,
+          emissive: new THREE.Color(notepadAccent),
+          emissiveIntensity: 0.18,
+        }),
+      );
+      cover.castShadow = true;
+      cover.position.y = 0.0;
+
+      // Pages — slightly inset, paper-yellow. Three of them stacked
+      // to suggest the book has thickness without being heavy geo.
+      for (let i = 0; i < 3; i++) {
+        const page = new THREE.Mesh(
+          new THREE.BoxGeometry(0.86, 0.012, 0.6),
+          new THREE.MeshStandardMaterial({
+            color: 0xfdf6e3,
+            roughness: 0.85,
+            metalness: 0,
+            emissive: 0xfdf6e3,
+            emissiveIntensity: 0.12,
+          }),
+        );
+        page.position.y = 0.03 + i * 0.014;
+        page.castShadow = true;
+        cover.add(page);
+      }
+
+      // A faint "spine glow" line so the book reads at a glance.
+      const spine = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.08, 0.65),
+        new THREE.MeshBasicMaterial({
+          color: notepadAccent,
+          transparent: true,
+          opacity: 0.7,
+        }),
+      );
+      spine.position.set(-0.43, 0.02, 0);
+      cover.add(spine);
+
+      notepadGroup.add(cover);
+
+      // Halo on the ground beneath, picks up the accent color.
+      const halo = new THREE.Mesh(
+        new THREE.RingGeometry(0.65, 0.95, 32),
+        new THREE.MeshBasicMaterial({
+          color: notepadAccent,
+          transparent: true,
+          opacity: 0.35,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = -1.2;
+      notepadGroup.add(halo);
+
+      // A bigger, comfortable click proxy.
+      const proxy = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1.5, 1.1),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }),
+      );
+      proxy.userData.isNotepad = true;
+      notepadGroup.add(proxy);
+    }
+    // Float at chest-height in front of spawn so Vibey is staring at it.
+    const notepadBase = sampleTerrainHeight(terrain, 0, -3.5) + 1.4;
+    notepadGroup.position.set(0, notepadBase, -3.5);
+    scene.add(notepadGroup);
 
     // GLB loader, shared.
     const loader = new GLTFLoader();
@@ -587,12 +737,25 @@ export default function MemoryGarden() {
     const ndc = new THREE.Vector2();
 
     const handlePointer = (clientX: number, clientY: number) => {
-      if (activeMemoryRef.current) return; // ignore while modal is open
+      if (activeMemoryRef.current || notesOpenRef.current) return;
       const rect = canvas.getBoundingClientRect();
       ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
-      // First check plant hit proxies.
+      // 1. Notepad click — opens Vibey's notes-to-self overlay.
+      const notepadHit = raycaster.intersectObject(notepadGroup, true)[0];
+      if (notepadHit) {
+        // Check the chain for our isNotepad marker so we don't open
+        // the notes when the user clicks empty air near it.
+        let cur: THREE.Object3D | null = notepadHit.object;
+        while (cur && !cur.userData.isNotepad) cur = cur.parent;
+        if (cur) {
+          setNotePage(0);
+          setNotesOpen(true);
+          return;
+        }
+      }
+      // 2. Plant hit proxies → memory card.
       const hitProxies = plants.map((p) => p.hitProxy);
       const plantHit = raycaster.intersectObjects(hitProxies, false)[0];
       if (plantHit) {
@@ -650,9 +813,16 @@ export default function MemoryGarden() {
       const dt = Math.min(0.05, clock.getDelta());
       const t = clock.elapsedTime;
 
-      // Plants: gentle bob + halo proximity glow.
+      // Notepad: gentle hover + slow rotation so it reads as something
+      // worth clicking, not part of the static landscape.
+      notepadGroup.position.y = notepadBase + Math.sin(t * 0.7) * 0.08;
+      notepadGroup.rotation.y = Math.sin(t * 0.4) * 0.35;
+      notepadGroup.rotation.z = Math.sin(t * 0.55) * 0.06;
+
+      // Plants: tiny bob + halo proximity glow. Smaller amplitude
+      // than v1 — they were swaying too hard and reading as glitchy.
       for (const p of plants) {
-        const bob = Math.sin(t * 1.4 + p.seed) * 0.08;
+        const bob = Math.sin(t * 0.9 + p.seed) * 0.025;
         p.group.position.y = p.basePosY + bob;
         // Halo glows brighter when Vibey is nearby (proximity hint).
         const dx = p.group.position.x - vibeyState.pos.x;
@@ -956,6 +1126,114 @@ export default function MemoryGarden() {
               >
                 Keep walking
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Vibey's Notes to Self — system prompt as a flippable
+          notebook. Each page is a "page" of his identity. */}
+      <AnimatePresence>
+        {notesOpen && (
+          <motion.div
+            key="notes-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 backdrop-blur-[3px] p-4"
+            onClick={() => setNotesOpen(false)}
+          >
+            <motion.div
+              key={`notes-page-${notePage}`}
+              initial={{ opacity: 0, rotate: -3, scale: 0.92, y: 30 }}
+              animate={{ opacity: 1, rotate: -1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, rotate: 4, scale: 0.92, y: 20 }}
+              transition={{ type: "spring", damping: 22, stiffness: 220 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-md rounded-md p-6 shadow-2xl"
+              style={{
+                // Paper-yellow with subtle ruled-line gradient + pin-pricks
+                // to make it read like a notebook page, not a UI card.
+                background:
+                  "repeating-linear-gradient(180deg, #fdf6e3 0px, #fdf6e3 28px, #e9dcb8 29px, #fdf6e3 30px)",
+                color: "#3a2e1f",
+                fontFamily: "'Caveat', 'Comic Sans MS', cursive, ui-sans-serif",
+                border: "1px solid #d4c39a",
+                boxShadow:
+                  "0 30px 60px rgba(0,0,0,0.5), inset 0 0 0 4px #fdf6e3, inset 0 0 0 5px #c9b88a",
+              }}
+            >
+              {/* "Tape" at the top corners for charm */}
+              <div
+                aria-hidden
+                className="absolute -top-2 left-6 w-12 h-4 bg-yellow-200/70 rotate-[-6deg]"
+                style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
+              />
+              <div
+                aria-hidden
+                className="absolute -top-2 right-8 w-12 h-4 bg-yellow-200/70 rotate-[5deg]"
+                style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
+              />
+
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="absolute top-2 right-2 p-1.5 rounded-md hover:bg-yellow-900/10 transition-colors"
+                title="Close"
+                style={{ color: "#3a2e1f" }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <p className="text-[11px] uppercase tracking-[0.25em] opacity-70 font-sans">
+                Vibey's notes to self
+              </p>
+              <h2 className="text-3xl font-bold mt-1 leading-tight" style={{ letterSpacing: "0.5px" }}>
+                {VIBEY_NOTES[notePage].title}
+              </h2>
+
+              <p className="mt-3 text-lg leading-relaxed whitespace-pre-line">
+                {VIBEY_NOTES[notePage].body}
+              </p>
+
+              {/* Page nav */}
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-amber-800/30">
+                <button
+                  onClick={() => setNotePage((p) => Math.max(0, p - 1))}
+                  disabled={notePage === 0}
+                  className="text-sm font-sans font-semibold disabled:opacity-30 hover:underline"
+                  style={{ color: "#3a2e1f" }}
+                >
+                  ← prev
+                </button>
+                <div className="flex gap-1.5">
+                  {VIBEY_NOTES.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setNotePage(i)}
+                      className="w-2 h-2 rounded-full transition-all"
+                      style={{
+                        background: i === notePage ? "#3a2e1f" : "rgba(58, 46, 31, 0.25)",
+                        transform: i === notePage ? "scale(1.4)" : undefined,
+                      }}
+                      aria-label={`Go to page ${i + 1}`}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => setNotePage((p) => Math.min(VIBEY_NOTES.length - 1, p + 1))}
+                  disabled={notePage === VIBEY_NOTES.length - 1}
+                  className="text-sm font-sans font-semibold disabled:opacity-30 hover:underline"
+                  style={{ color: "#3a2e1f" }}
+                >
+                  next →
+                </button>
+              </div>
+
+              <p className="mt-3 text-[10px] opacity-50 font-sans">
+                page {notePage + 1} of {VIBEY_NOTES.length} · these are the
+                instructions Vibey reads to himself before every reply
+              </p>
             </motion.div>
           </motion.div>
         )}
