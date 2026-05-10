@@ -229,9 +229,10 @@ export default function HelicopterControl({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.18 }}
-            className="glass-panel rounded-xl p-3 w-[280px] flex flex-col gap-2.5"
+            className="glass-panel rounded-xl p-3 w-[320px] max-w-[calc(100vw-1.5rem)] flex flex-col gap-2.5"
           >
-            {/* Tab switcher */}
+            {/* Tab switcher — icons stacked over labels so 5 fit
+                comfortably without the text getting clipped. */}
             <div className="grid grid-cols-5 gap-1 p-1 rounded-lg bg-background/40 border border-border">
               <TabButton
                 active={tab === "characters"}
@@ -729,14 +730,15 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`relative flex items-center justify-center gap-1.5 text-[11px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
+      className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-heading font-semibold py-1.5 rounded-md transition-colors ${
         active
           ? "bg-primary/20 text-primary"
           : "text-muted-foreground hover:text-foreground"
       }`}
+      title={label}
     >
       {icon}
-      {label}
+      <span className="leading-none">{label}</span>
       {live && (
         <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
       )}

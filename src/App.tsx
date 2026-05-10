@@ -9,6 +9,7 @@ import Unit7Playground from "./pages/Unit7Playground.tsx";
 import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
+import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
 
@@ -18,6 +19,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        {/* Global top-center destination nav — visible on every route
+            so the user always has one-click access to all the worlds. */}
+        <GlobalNav />
         <Routes>
           <Route path="/" element={<Index />} />
           {/* Mario-Kart-style character + vehicle picker. */}
