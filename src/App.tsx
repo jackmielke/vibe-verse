@@ -9,6 +9,7 @@ import Unit7Playground from "./pages/Unit7Playground.tsx";
 import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
+import MemoryGarden from "./pages/MemoryGarden.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,8 @@ const App = () => (
           {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
           <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />
+          {/* Vibey's memory garden — walk Vibey, read each plant's memory. */}
+          <Route path="/garden" element={<MemoryGarden />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
