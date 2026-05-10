@@ -19,10 +19,94 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Flower2 } from "lucide-react";
+import { X, Flower2, Sun, Moon, Users } from "lucide-react";
 
-// Vibey is the visitor.
-import vibeyUrl from "@/assets/glb/vibey.glb";
+// Default visitor: the robot-expressive Vibey 2.0 we use elsewhere.
+// He's properly rigged and ships with Idle/Walking/Wave clips, so
+// he reads as a character rather than a stiff prop.
+import robotVibeyUrl from "@/assets/glb/robot-expressive.glb";
+import alienUrl from "@/assets/glb/alien.glb";
+
+// Quaternius pack — every character GLB resolved as an asset URL via
+// Vite's glob import. Same pattern the lobby uses.
+const QUATERNIUS_URLS = import.meta.glob(
+  "@/assets/glb/characters/*.glb",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+function quaternius(name: string): string | undefined {
+  // Find by base filename (e.g. "Wizard").
+  const entry = Object.entries(QUATERNIUS_URLS).find(([path]) =>
+    path.endsWith(`/${name}.glb`),
+  );
+  return entry?.[1];
+}
+
+interface CharacterOption {
+  id: string;
+  label: string;
+  emoji: string;
+  url: string;
+}
+
+// A small curated set — keeps the picker tight + every option has
+// a reliable rig. The robot stays first because he's the canonical
+// "Vibey" we've been showing across Space.
+const CHARACTERS: CharacterOption[] = [
+  { id: "vibey", label: "Vibey", emoji: "🤖", url: robotVibeyUrl },
+  { id: "alien", label: "Alien", emoji: "👽", url: alienUrl },
+  { id: "wizard", label: "Wizard", emoji: "🧙", url: quaternius("Wizard") ?? robotVibeyUrl },
+  { id: "knight", label: "Knight", emoji: "🛡", url: quaternius("Knight_Male") ?? robotVibeyUrl },
+  { id: "ninja", label: "Ninja", emoji: "🥷", url: quaternius("Ninja_Male") ?? robotVibeyUrl },
+  { id: "chef", label: "Chef", emoji: "🥘", url: quaternius("Chef_Female") ?? robotVibeyUrl },
+  { id: "cowboy", label: "Cowboy", emoji: "🤠", url: quaternius("Cowboy_Male") ?? robotVibeyUrl },
+  { id: "elf", label: "Elf", emoji: "🧝", url: quaternius("Elf") ?? robotVibeyUrl },
+  { id: "skeleton", label: "Skeleton", emoji: "💀", url: quaternius("Skeleton_Minion") ?? robotVibeyUrl },
+  { id: "pug", label: "Pug", emoji: "🐶", url: quaternius("Pug") ?? robotVibeyUrl },
+];
+
+// Persist the user's character + theme choice across visits.
+const CHAR_KEY = "garden.character.v1";
+const THEME_KEY = "garden.theme.v1";
+
+type Theme = "day" | "night";
+interface ThemeColors {
+  fog: number;
+  skyTop: number;
+  skyMid: number;
+  skyBottom: number;
+  ground: number;
+  ambientSky: number;
+  ambientGround: number;
+  sun: number;
+  rim: number;
+  fireflyColor: number;
+}
+const THEMES: Record<Theme, ThemeColors> = {
+  day: {
+    fog: 0xf6c8d8,
+    skyTop: 0xc7e7ff,
+    skyMid: 0xffd9e8,
+    skyBottom: 0xfff5d0,
+    ground: 0x6cc18a,
+    ambientSky: 0xfde6ff,
+    ambientGround: 0x9be0a8,
+    sun: 0xfff0d6,
+    rim: 0xff9bd8,
+    fireflyColor: 0xfff5b3,
+  },
+  night: {
+    fog: 0x0d1530,
+    skyTop: 0x0a1230,
+    skyMid: 0x1a1a44,
+    skyBottom: 0x2c1a3a,
+    ground: 0x2c4a3a,
+    ambientSky: 0x6c8cff,
+    ambientGround: 0x223a55,
+    sun: 0xa8c0ff,
+    rim: 0x9b7bff,
+    fireflyColor: 0x9bf2ff,
+  },
+};
 
 // Plants we'll use as memory markers. Picked for readable variety —
 // one tree, a few flowers, a mushroom, a berry bush, a sunflower
@@ -176,10 +260,16 @@ function makeTargetRing(): THREE.Mesh {
 
 // Soft hilly terrain — a plane warped by a gentle sine surface so
 // the garden has shape but Vibey can still walk anywhere.
-function makeTerrain(): THREE.Mesh {
-  const SIZE = 80;
-  const SEGMENTS = 64;
-  const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
+// Bigger terrain than v1 + an outer skirt that fades to the fog so
+// you can't accidentally walk off the edge or see "the void" at any
+// camera angle. Walkable region is clamped to ±TERRAIN_HALF.
+const TERRAIN_SIZE = 200;
+const TERRAIN_HALF = TERRAIN_SIZE / 2;
+const WALK_LIMIT = 36; // keep Vibey inside the central play area
+
+function makeTerrain(groundColor: number): THREE.Mesh {
+  const SEGMENTS = 96;
+  const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -194,7 +284,7 @@ function makeTerrain(): THREE.Mesh {
   }
   geo.computeVertexNormals();
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x6cc18a,
+    color: groundColor,
     roughness: 0.95,
     metalness: 0,
   });
@@ -220,12 +310,30 @@ export default function MemoryGarden() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeMemory, setActiveMemory] = useState<Memory | null>(null);
   const [hint, setHint] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Theme + character are persisted across visits so the user's
+  // preference (e.g. dark mode for tired eyes) sticks.
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = (typeof localStorage !== "undefined" && localStorage.getItem(THEME_KEY)) as Theme | null;
+    return saved === "day" || saved === "night" ? saved : "night";
+  });
+  const [characterId, setCharacterId] = useState<string>(() => {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem(CHAR_KEY) : null;
+    return CHARACTERS.find((c) => c.id === saved)?.id ?? "vibey";
+  });
+  useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch { /* */ } }, [theme]);
+  useEffect(() => { try { localStorage.setItem(CHAR_KEY, characterId); } catch { /* */ } }, [characterId]);
+
   // Mirror activeMemory into a ref so the Three.js raycast handler
   // (registered once) can read fresh state without re-binding.
   const activeMemoryRef = useRef<Memory | null>(null);
   useEffect(() => { activeMemoryRef.current = activeMemory; }, [activeMemory]);
 
+  // The scene effect reinitializes when the player picks a different
+  // character or flips the theme — both meaningfully change the world.
   useEffect(() => {
+    const characterUrl = CHARACTERS.find((c) => c.id === characterId)?.url ?? robotVibeyUrl;
+    const colors = THEMES[theme];
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -233,31 +341,33 @@ export default function MemoryGarden() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     const scene = new THREE.Scene();
-    // Soft pastel fog → distant edges fade, dreamy.
-    scene.fog = new THREE.Fog(0xf6c8d8, 28, 70);
+    // Theme-driven fog → distant edges fade. Bigger fog distance now
+    // that the terrain is bigger, so we don't see the edge.
+    scene.fog = new THREE.Fog(colors.fog, 40, 110);
+    scene.background = new THREE.Color(colors.fog);
 
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
     camera.position.set(0, 8, 14);
     camera.lookAt(0, 1, 0);
 
-    // Lights — soft sky/sun pair.
-    const sky = new THREE.HemisphereLight(0xfde6ff, 0x9be0a8, 1.1);
+    // Lights — sky/ground hemisphere + warm key + colored rim.
+    const sky = new THREE.HemisphereLight(colors.ambientSky, colors.ambientGround, theme === "night" ? 0.7 : 1.1);
     scene.add(sky);
-    const sun = new THREE.DirectionalLight(0xfff0d6, 1.4);
+    const sun = new THREE.DirectionalLight(colors.sun, theme === "night" ? 0.7 : 1.4);
     sun.position.set(15, 22, 10);
     scene.add(sun);
-    const rim = new THREE.PointLight(0xff9bd8, 0.6, 40);
+    const rim = new THREE.PointLight(colors.rim, theme === "night" ? 1.2 : 0.6, 50);
     rim.position.set(-10, 6, -10);
     scene.add(rim);
 
-    // Sky gradient backdrop — a giant inverted sphere with a soft
-    // pastel gradient. Cheaper than a real skybox texture.
-    const skyGeo = new THREE.SphereGeometry(120, 16, 16);
+    // Sky gradient backdrop — a giant inverted sphere with a theme
+    // gradient (top → mid → horizon).
+    const skyGeo = new THREE.SphereGeometry(180, 16, 16);
     const skyMat = new THREE.ShaderMaterial({
       uniforms: {
-        topColor: { value: new THREE.Color(0xc7e7ff) },
-        midColor: { value: new THREE.Color(0xffd9e8) },
-        bottomColor: { value: new THREE.Color(0xfff5d0) },
+        topColor: { value: new THREE.Color(colors.skyTop) },
+        midColor: { value: new THREE.Color(colors.skyMid) },
+        bottomColor: { value: new THREE.Color(colors.skyBottom) },
       },
       vertexShader: `
         varying vec3 vWorld;
@@ -284,8 +394,8 @@ export default function MemoryGarden() {
     const skyDome = new THREE.Mesh(skyGeo, skyMat);
     scene.add(skyDome);
 
-    // Terrain.
-    const terrain = makeTerrain();
+    // Terrain (themed grass color).
+    const terrain = makeTerrain(colors.ground);
     scene.add(terrain);
 
     // Drifting fireflies — small glowing points that bob in place.
@@ -303,12 +413,13 @@ export default function MemoryGarden() {
     }
     fireflyGeo.setAttribute("position", new THREE.BufferAttribute(fireflyPos, 3));
     const fireflyMat = new THREE.PointsMaterial({
-      color: 0xfff5b3,
-      size: 0.18,
+      color: colors.fireflyColor,
+      size: theme === "night" ? 0.22 : 0.16,
       transparent: true,
-      opacity: 0.85,
+      opacity: theme === "night" ? 0.95 : 0.7,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
     });
     const fireflies = new THREE.Points(fireflyGeo, fireflyMat);
     scene.add(fireflies);
@@ -343,53 +454,85 @@ export default function MemoryGarden() {
     // GLB loader, shared.
     const loader = new GLTFLoader();
 
-    // Load Vibey.
-    loader.load(vibeyUrl, (gltf) => {
+    // Load the selected character. We do TWO measurement passes to
+    // anchor the model so its FEET sit at the carrier's origin
+    // (y = 0). Quaternius rigs sometimes have armatures whose origin
+    // is NOT at the feet, so reading the world-space bbox after a
+    // matrixWorld update is the only reliable anchor.
+    let walkAction: THREE.AnimationAction | null = null;
+    let idleAction: THREE.AnimationAction | null = null;
+    loader.load(characterUrl, (gltf) => {
       vibey = gltf.scene;
-      // Normalize size so Vibey reads as ~1.6 meters tall regardless
-      // of the source GLB's scale.
+      // Reset any incoming transforms before we measure.
+      vibey.position.set(0, 0, 0);
+      vibey.scale.setScalar(1);
+      vibey.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(vibey);
       const size = new THREE.Vector3();
       box.getSize(size);
-      const fit = 1.6 / Math.max(size.y, 0.01);
+      const heightSrc = Math.max(size.y, 0.01);
+      const fit = 1.6 / heightSrc; // target ~1.6m tall
       vibey.scale.setScalar(fit);
-      // Re-center so the model's feet sit on the carrier's origin.
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      vibey.position.x = -center.x * fit;
-      vibey.position.y = (-center.y + size.y / 2) * fit;
-      vibey.position.z = -center.z * fit;
+      vibey.updateMatrixWorld(true);
+      // Bottom-anchor: lift so the lowest point sits at y = 0.
+      const fittedBox = new THREE.Box3().setFromObject(vibey);
+      vibey.position.y = -fittedBox.min.y;
+      // X/Z center — keep the visible silhouette over the carrier.
+      const fittedCenter = new THREE.Vector3();
+      fittedBox.getCenter(fittedCenter);
+      vibey.position.x = -fittedCenter.x;
+      vibey.position.z = -fittedCenter.z;
       vibey.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
           (o as THREE.Mesh).castShadow = true;
         }
       });
       vibeyGroup.add(vibey);
-      // If Vibey ships with an Idle clip, play it.
+      // If the rig ships with clips, prefer Idle for standing,
+      // Walking/Running for moving. Falls back to anything available.
       if (gltf.animations && gltf.animations.length > 0) {
         vibeyMixer = new THREE.AnimationMixer(vibey);
-        const idle = gltf.animations.find((c) => /idle|breath/i.test(c.name)) ?? gltf.animations[0];
-        if (idle) vibeyMixer.clipAction(idle).play();
+        const idleClip =
+          gltf.animations.find((c) => /idle|breath|stand/i.test(c.name)) ??
+          gltf.animations[0];
+        const walkClip =
+          gltf.animations.find((c) => /walk|run/i.test(c.name)) ??
+          idleClip;
+        if (idleClip) {
+          idleAction = vibeyMixer.clipAction(idleClip);
+          idleAction.play();
+        }
+        if (walkClip && walkClip !== idleClip) {
+          walkAction = vibeyMixer.clipAction(walkClip);
+          walkAction.setLoop(THREE.LoopRepeat, Infinity);
+          walkAction.weight = 0;
+          walkAction.play();
+        }
       }
     });
 
-    // Load all the memory plants.
+    // Load all the memory plants. Same bottom-anchor pattern as the
+    // character so plants don't sink into the hills.
     MEMORIES.forEach((memory) => {
       loader.load(memory.asset, (gltf) => {
         const root = gltf.scene;
+        root.position.set(0, 0, 0);
+        root.scale.setScalar(1);
+        root.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(root);
         const size = new THREE.Vector3();
         box.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z, 0.01);
-        // Plants are normalized to ~1.5m tall × scale override — gives
-        // each memory its own visual weight.
+        // Normalize tallest dim to ~1.5m × scale override.
         const fit = (1.5 * memory.scale) / maxDim;
         root.scale.setScalar(fit);
-        const center = new THREE.Vector3();
-        box.getCenter(center);
-        root.position.x = -center.x * fit;
-        root.position.y = (-center.y + size.y / 2) * fit;
-        root.position.z = -center.z * fit;
+        root.updateMatrixWorld(true);
+        const fittedBox = new THREE.Box3().setFromObject(root);
+        const fittedCenter = new THREE.Vector3();
+        fittedBox.getCenter(fittedCenter);
+        root.position.x = -fittedCenter.x;
+        root.position.y = -fittedBox.min.y; // sit ON the ground
+        root.position.z = -fittedCenter.z;
         root.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) {
             (o as THREE.Mesh).castShadow = true;
@@ -543,6 +686,12 @@ export default function MemoryGarden() {
         targetRing.visible = true;
       }
 
+      // Clamp walk target inside the playable region (no falling off
+      // the world). The terrain is bigger than the walk limit so the
+      // visible horizon never reads as an edge.
+      vibeyState.target.x = THREE.MathUtils.clamp(vibeyState.target.x, -WALK_LIMIT, WALK_LIMIT);
+      vibeyState.target.z = THREE.MathUtils.clamp(vibeyState.target.z, -WALK_LIMIT, WALK_LIMIT);
+
       // Move Vibey toward target with a soft ease.
       if (vibeyState.walking) {
         const dx = vibeyState.target.x - vibeyState.pos.x;
@@ -564,20 +713,37 @@ export default function MemoryGarden() {
           vibeyState.heading += dh * Math.min(1, dt * 8);
         }
       }
+      // Hard clamp pos too (defensive — a stale target can't push us out).
+      vibeyState.pos.x = THREE.MathUtils.clamp(vibeyState.pos.x, -WALK_LIMIT, WALK_LIMIT);
+      vibeyState.pos.z = THREE.MathUtils.clamp(vibeyState.pos.z, -WALK_LIMIT, WALK_LIMIT);
       // Snap to terrain.
       vibeyState.pos.y = sampleTerrainHeight(terrain, vibeyState.pos.x, vibeyState.pos.z);
       vibeyGroup.position.copy(vibeyState.pos);
       vibeyGroup.rotation.y = vibeyState.heading;
-      // Subtle bob if walking.
-      if (vibey) {
+      // Crossfade idle ↔ walk animations if both are available; fall
+      // back to a manual bob otherwise so even rigless models look alive.
+      if (walkAction && idleAction) {
+        const targetWalkW = vibeyState.walking ? 1 : 0;
+        walkAction.weight += (targetWalkW - walkAction.weight) * Math.min(1, dt * 6);
+        idleAction.weight += ((1 - targetWalkW) - idleAction.weight) * Math.min(1, dt * 6);
+        if (vibey) vibey.position.y = 0;
+      } else if (vibey) {
         vibey.position.y = vibeyState.walking ? Math.abs(Math.sin(t * 8)) * 0.08 : 0;
       }
       vibeyMixer?.update(dt);
 
-      // Camera: smooth third-person chase.
+      // Camera: smooth third-person chase, clamped above terrain so it
+      // can't dip into the hill behind Vibey on downslopes.
       const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * 9;
       const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * 9;
-      const camTargetY = vibeyState.pos.y + 5.5;
+      // Sample the terrain UNDER where the camera is heading so the
+      // chase cam can never slip behind a ridge.
+      const groundUnderCam = sampleTerrainHeight(
+        terrain,
+        THREE.MathUtils.clamp(camTargetX, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
+        THREE.MathUtils.clamp(camTargetZ, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
+      );
+      const camTargetY = Math.max(vibeyState.pos.y + 5.5, groundUnderCam + 2.5);
       camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2);
       camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2);
       camera.position.z += (camTargetZ - camera.position.z) * Math.min(1, dt * 2);
@@ -610,7 +776,12 @@ export default function MemoryGarden() {
         else mat?.dispose();
       });
     };
-  }, []);
+    // Re-init when the player picks a new character or theme — both
+    // change the world meaningfully and full reload is the simplest
+    // correct answer.
+  }, [characterId, theme]);
+
+  const activeChar = CHARACTERS.find((c) => c.id === characterId) ?? CHARACTERS[0];
 
   return (
     <div className="relative w-full min-h-[100dvh] bg-black overflow-hidden">
@@ -621,7 +792,7 @@ export default function MemoryGarden() {
       />
 
       {/* Header pill */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 flex-wrap">
         <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
           <Flower2 className="w-4 h-4 text-primary" />
           <span className="text-[11px] font-heading font-semibold tracking-widest uppercase">
@@ -630,6 +801,73 @@ export default function MemoryGarden() {
         </div>
         <div className="hidden sm:block glass-panel rounded-full px-3 py-2 text-[11px] text-muted-foreground">
           {MEMORIES.length} memories planted
+        </div>
+      </div>
+
+      {/* Theme + character controls (top-right). Picker uses the same
+          compact emoji-grid pattern the lobby has. */}
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        <button
+          onClick={() => setTheme((t) => (t === "day" ? "night" : "day"))}
+          className="glass-panel rounded-full px-3 py-2 flex items-center gap-2 hover:bg-muted/40 transition-colors"
+          title={theme === "day" ? "Switch to night mode" : "Switch to day mode"}
+        >
+          {theme === "day" ? (
+            <Sun className="w-4 h-4 text-primary" />
+          ) : (
+            <Moon className="w-4 h-4 text-primary" />
+          )}
+          <span className="text-[10.5px] font-heading font-semibold tracking-widest uppercase hidden sm:inline">
+            {theme === "day" ? "Day" : "Night"}
+          </span>
+        </button>
+        <div className="relative">
+          <button
+            onClick={() => setPickerOpen((v) => !v)}
+            className="glass-panel rounded-full pl-2 pr-3 py-2 flex items-center gap-2 hover:bg-muted/40 transition-colors"
+            title="Change character"
+          >
+            <span className="text-base leading-none">{activeChar.emoji}</span>
+            <span className="text-[10.5px] font-heading font-semibold tracking-widest uppercase hidden sm:inline">
+              {activeChar.label}
+            </span>
+            <Users className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+          <AnimatePresence>
+            {pickerOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                transition={{ duration: 0.16 }}
+                className="absolute top-full right-0 mt-2 glass-panel rounded-xl p-2 w-[220px] grid grid-cols-5 gap-1"
+              >
+                {CHARACTERS.map((c) => {
+                  const on = c.id === characterId;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setCharacterId(c.id);
+                        setPickerOpen(false);
+                      }}
+                      className={`flex flex-col items-center gap-0.5 rounded-lg border transition-all py-1.5 px-1 ${
+                        on
+                          ? "border-primary/70 bg-primary/15"
+                          : "border-border/60 bg-background/30 hover:border-primary/50 hover:bg-primary/10"
+                      }`}
+                      title={c.label}
+                    >
+                      <span className="text-lg leading-none">{c.emoji}</span>
+                      <span className="text-[8px] font-heading font-semibold text-foreground/85 leading-tight text-center break-words">
+                        {c.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
