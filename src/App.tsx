@@ -10,6 +10,7 @@ import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
 import MemoryGarden from "./pages/MemoryGarden.tsx";
+import VibeGallery from "./pages/VibeGallery.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,8 @@ const App = () => (
           <Route path="/unit7" element={<Unit7Playground />} />
           {/* Vibey's memory garden — walk Vibey, read each plant's memory. */}
           <Route path="/garden" element={<MemoryGarden />} />
+          {/* 3D walkable photo gallery — paintings on real walls. */}
+          <Route path="/gallery" element={<VibeGallery />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
