@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { ArrowLeft } from "lucide-react";
+import VibeCoinPanel from "@/components/VibeCoinPanel";
 
 // Two characters live outside the Quaternius pack folder.
 import alienUrl from "@/assets/glb/alien.glb";
@@ -538,6 +539,12 @@ export default function Lobby() {
               <span className="opacity-50">·</span>
               <span>{selectedVehicle.emoji}</span>
             </button>
+
+            {/* $VIBE live ticker + calculator. Pulls from GeckoTerminal
+                directly; no auth, no key. Fits inside the right column
+                so it lives next to the picker without competing with
+                the 3D preview on the left. */}
+            <VibeCoinPanel />
           </div>
         </div>
       </div>
