@@ -396,7 +396,7 @@ export default function Lobby() {
         }}
       />
 
-      <div className="relative z-10 flex flex-col gap-6 p-6 md:p-10 max-w-6xl mx-auto">
+      <div className="relative z-10 flex flex-col gap-6 px-6 md:px-10 pt-16 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
           <Link
             to="/"

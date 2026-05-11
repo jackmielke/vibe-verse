@@ -259,7 +259,7 @@ export default function About() {
       />
 
       {/* Top bar */}
-      <div className="relative z-10 flex items-center gap-3 p-4 md:p-6">
+      <div className="relative z-10 flex items-center gap-3 px-4 md:px-6 pt-14 md:pt-6 pb-4 md:pb-6 flex-wrap">
         <Link
           to="/"
           className="glass-panel rounded-full px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors"

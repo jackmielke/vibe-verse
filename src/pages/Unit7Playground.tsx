@@ -3900,7 +3900,7 @@ export default function Unit7Playground() {
       )}
 
       {/* Top bar */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
+      <div className="absolute top-14 md:top-4 left-4 z-10 flex items-center gap-3 flex-wrap">
         <Link
           to="/"
           className="glass-panel rounded-full px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors"
@@ -3959,7 +3959,7 @@ export default function Unit7Playground() {
 
       {/* Side panel: chat + controls (collapsible) */}
       {panelOpen && (
-      <div className="absolute top-4 right-4 bottom-4 z-10 w-[min(360px,calc(100vw-2rem))] flex flex-col gap-2.5">
+      <div className="absolute top-14 md:top-4 right-4 bottom-4 z-10 w-[min(360px,calc(100vw-2rem))] flex flex-col gap-2.5">
         <div className="glass-panel rounded-xl p-3 flex flex-col gap-2.5 flex-1 min-h-0">
           <div className="flex items-center gap-2">
             <Bot className="w-4 h-4 text-primary" />
@@ -4312,7 +4312,7 @@ export default function Unit7Playground() {
 
       {/* Community stats — compact pill. Live counts + presence dot. */}
       {!panelOpen && communityStats && (
-        <div className="absolute top-4 right-4 z-10 glass-panel rounded-full pl-2.5 pr-3 py-1.5 border border-primary/30 flex items-center gap-3 text-[11px] font-heading text-foreground/90">
+        <div className="absolute top-14 md:top-4 right-4 z-10 glass-panel rounded-full pl-2.5 pr-3 py-1.5 border border-primary/30 flex items-center gap-3 text-[11px] font-heading text-foreground/90">
           <span className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />
@@ -4340,7 +4340,7 @@ export default function Unit7Playground() {
       {newPhotoToast && (
         <div
           key={newPhotoToast.key}
-          className="absolute top-16 left-1/2 z-20 -translate-x-1/2 glass-panel rounded-xl px-4 py-2 border border-primary/40 flex items-center gap-2 shadow-lg"
+          className="absolute top-28 md:top-16 left-1/2 z-20 -translate-x-1/2 glass-panel rounded-xl px-4 py-2 border border-primary/40 flex items-center gap-2 shadow-lg"
           style={{ animation: "speech-pop 6000ms cubic-bezier(.2,.7,.2,1) forwards" }}
         >
           <span className="relative flex h-2 w-2">

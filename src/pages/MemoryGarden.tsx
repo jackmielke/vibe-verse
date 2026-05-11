@@ -1661,7 +1661,7 @@ export default function MemoryGarden() {
 
       {/* Theme + character controls (top-right). Picker uses the same
           compact emoji-grid pattern the lobby has. */}
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+      <div className="absolute top-14 md:top-3 right-3 z-10 flex items-center gap-2">
         <button
           onClick={() => setTheme((t) => (t === "day" ? "night" : "day"))}
           className="glass-panel rounded-full px-3 py-2 flex items-center gap-2 hover:bg-muted/40 transition-colors"

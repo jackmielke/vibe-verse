@@ -61,7 +61,7 @@ export default function GlobalNav() {
             <Link
               key={d.to}
               to={d.to}
-              className={`group relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition-all ${
+              className={`group relative flex items-center gap-1.5 rounded-full px-2 sm:px-2.5 py-1.5 transition-all ${
                 active
                   ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.35)]"
                   : "text-foreground/75 hover:text-foreground hover:bg-muted/50"
