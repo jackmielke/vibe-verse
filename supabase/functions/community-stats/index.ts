@@ -32,6 +32,16 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const communityId = url.searchParams.get("community_id") ?? DEFAULT_COMMUNITY;
+  let profileLimit = 36;
+  try {
+    const body = req.method === "GET" ? null : await req.clone().json();
+    const requested = Number((body as { profiles_limit?: unknown } | null)?.profiles_limit);
+    if (Number.isFinite(requested)) {
+      profileLimit = Math.max(1, Math.min(60, Math.floor(requested)));
+    }
+  } catch {
+    // Body is optional; default to a generous profile sample.
+  }
 
   const sb = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false },
@@ -161,7 +171,7 @@ Deno.serve(async (req) => {
       photos: photos.count ?? 0,
       events: events.count ?? 0,
     },
-    profiles: profiles.slice(0, 12),
+    profiles: profiles.slice(0, profileLimit),
     agent,
     memories,
   });

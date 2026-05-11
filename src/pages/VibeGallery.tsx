@@ -352,6 +352,14 @@ export default function VibeGallery() {
       walking: false,
     };
     vibeyGroup.position.copy(vibeyState.pos);
+    vibeyGroup.rotation.y = vibeyState.heading;
+    {
+      const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * 6.5;
+      const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * 6.5;
+      const camTargetY = vibeyState.pos.y + 3.4;
+      camera.position.set(camTargetX, camTargetY, camTargetZ);
+      camera.lookAt(vibeyState.pos.x, vibeyState.pos.y + 1.6, vibeyState.pos.z);
+    }
 
     const targetRing = new THREE.Mesh(
       new THREE.RingGeometry(0.5, 0.7, 32),

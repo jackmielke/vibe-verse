@@ -15,11 +15,13 @@
  *    and a clear path later to swap for Supabase-backed user-planted
  *    memories.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Flower2, Sun, Moon, Users } from "lucide-react";
+import { X, Database, Flower2, Image as ImageIcon, Sun, Moon, Users } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { WORLD_CHANGELOG, type WorldChange } from "@/data/worldChangelog";
 
 // Default visitor: the robot-expressive Vibey 2.0 we use elsewhere.
 // He's properly rigged and ships with Idle/Walking/Wave clips, so
@@ -67,6 +69,46 @@ const CHARACTERS: CharacterOption[] = [
 // Persist the user's character + theme choice across visits.
 const CHAR_KEY = "garden.character.v1";
 const THEME_KEY = "garden.theme.v1";
+const EDGE_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
+const ART_FAIR_LIMIT = 18;
+const PROFILE_CARD_LIMIT = 30;
+const ART_FRAME_W = 2.7;
+const ART_FRAME_H = 1.8;
+const ART_CENTER_Y = 1.9;
+
+interface Photo {
+  id: string;
+  image_url: string;
+  title: string | null;
+  description: string | null;
+  residency_name: string | null;
+}
+
+interface GardenProfile {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string | null;
+}
+
+interface GardenStats {
+  members: number;
+  photos: number;
+  events: number;
+}
+
+interface VibeyAgent {
+  name: string;
+  system_prompt: string;
+  intro_message: string;
+  model: string;
+}
+
+interface VibeyMemory {
+  content: string;
+  tags: string[];
+  created_at?: string | null;
+}
 
 // Vibey's system prompt, broken into "notes-to-self" pages. Mirrors
 // the SYSTEM_PROMPT in supabase/functions/unit7-chat/index.ts —
@@ -354,12 +396,72 @@ function sampleTerrainHeight(terrain: THREE.Mesh, x: number, z: number): number 
   );
 }
 
+function makeTextCanvasTexture({
+  title,
+  subtitle,
+  lines,
+  accent = "#73ffb8",
+}: {
+  title: string;
+  subtitle?: string;
+  lines: string[];
+  accent?: string;
+}): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 640;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const grd = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grd.addColorStop(0, "rgba(115,255,184,0.18)");
+  grd.addColorStop(0.5, "rgba(106,168,255,0.10)");
+  grd.addColorStop(1, "rgba(255,126,138,0.12)");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 8;
+  ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+  ctx.fillStyle = accent;
+  ctx.font = "700 42px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText(title.toUpperCase(), 56, 82);
+  if (subtitle) {
+    ctx.fillStyle = "rgba(234,243,255,0.72)";
+    ctx.font = "24px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillText(subtitle, 56, 122);
+  }
+  ctx.fillStyle = "#eaf3ff";
+  ctx.font = "28px ui-sans-serif, system-ui, sans-serif";
+  let y = 178;
+  for (const line of lines.slice(0, 12)) {
+    ctx.fillText(line.length > 56 ? `${line.slice(0, 53)}...` : line, 56, y);
+    y += 38;
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export default function MemoryGarden() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeMemory, setActiveMemory] = useState<Memory | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notePage, setNotePage] = useState(0);
   const [hint, setHint] = useState(true);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photosStatus, setPhotosStatus] = useState<"loading" | "ready" | "empty" | "error">("loading");
+  const [activePhoto, setActivePhoto] = useState<Photo | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyChanges, setHistoryChanges] = useState<WorldChange[]>(WORLD_CHANGELOG);
+  const [historyStatus, setHistoryStatus] = useState<"live" | "fallback" | "loading">("loading");
+  const [communityStats, setCommunityStats] = useState<GardenStats | null>(null);
+  const [profiles, setProfiles] = useState<GardenProfile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<GardenProfile | null>(null);
+  const [vibeyAgent, setVibeyAgent] = useState<VibeyAgent | null>(null);
+  const [vibeyMemories, setVibeyMemories] = useState<VibeyMemory[]>([]);
+  const [soulOpen, setSoulOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   // Theme + character are persisted across visits so the user's
   // preference (e.g. dark mode for tired eyes) sticks.
@@ -379,8 +481,103 @@ export default function MemoryGarden() {
   // without re-binding when modal state changes.
   const activeMemoryRef = useRef<Memory | null>(null);
   useEffect(() => { activeMemoryRef.current = activeMemory; }, [activeMemory]);
+  const activePhotoRef = useRef<Photo | null>(null);
+  useEffect(() => { activePhotoRef.current = activePhoto; }, [activePhoto]);
+  const historyOpenRef = useRef(false);
+  useEffect(() => { historyOpenRef.current = historyOpen; }, [historyOpen]);
+  const activeProfileRef = useRef<GardenProfile | null>(null);
+  useEffect(() => { activeProfileRef.current = activeProfile; }, [activeProfile]);
+  const soulOpenRef = useRef(false);
+  useEffect(() => { soulOpenRef.current = soulOpen; }, [soulOpen]);
   const notesOpenRef = useRef(false);
   useEffect(() => { notesOpenRef.current = notesOpen; }, [notesOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPhotosStatus("loading");
+    supabase
+      .from("gallery_photos")
+      .select("id, image_url, title, description, residency_name")
+      .eq("community_id", EDGE_COMMUNITY_ID)
+      .eq("is_visible", true)
+      .order("display_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(ART_FAIR_LIMIT)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setPhotosStatus("error");
+          return;
+        }
+        const list = (data ?? []).filter((p) => p.image_url);
+        setPhotos(list);
+        setPhotosStatus(list.length ? "ready" : "empty");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.functions.invoke("community-stats", {
+        body: { community_id: EDGE_COMMUNITY_ID, profiles_limit: PROFILE_CARD_LIMIT },
+      });
+      if (cancelled || error || !data) return;
+      const payload = data as {
+        stats?: GardenStats;
+        profiles?: GardenProfile[];
+        agent?: VibeyAgent | null;
+        memories?: VibeyMemory[];
+      };
+      if (payload.stats) setCommunityStats(payload.stats);
+      if (payload.profiles?.length) setProfiles(payload.profiles);
+      if (payload.agent) setVibeyAgent(payload.agent);
+      if (payload.memories?.length) setVibeyMemories(payload.memories);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("https://api.github.com/repos/jackmielke/edgeesmeralda/commits?per_page=40");
+        if (!res.ok) throw new Error(`GitHub ${res.status}`);
+        const rows = (await res.json()) as Array<{
+          sha?: string;
+          commit?: { message?: string; author?: { date?: string } };
+        }>;
+        if (cancelled) return;
+        const changes = rows
+          .map((row) => ({
+            hash: (row.sha ?? "").slice(0, 7),
+            date: (row.commit?.author?.date ?? "").slice(0, 10),
+            title: (row.commit?.message ?? "").split("\n")[0],
+          }))
+          .filter((change) => change.hash && change.title);
+        if (changes.length) {
+          setHistoryChanges(changes);
+          setHistoryStatus("live");
+        } else {
+          setHistoryStatus("fallback");
+        }
+      } catch {
+        if (!cancelled) setHistoryStatus("fallback");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const photosKey = useMemo(() => photos.map((p) => p.id).join(","), [photos]);
+  const profilesKey = useMemo(() => profiles.map((p) => p.id).join(","), [profiles]);
+  const historyKey = useMemo(() => historyChanges.map((p) => p.hash).join(","), [historyChanges]);
+  const soulKey = `${vibeyAgent?.name ?? ""}:${vibeyAgent?.model ?? ""}:${communityStats?.members ?? 0}:${vibeyMemories.length}`;
 
   // The scene effect reinitializes when the player picks a different
   // character or flips the theme — both meaningfully change the world.
@@ -405,8 +602,7 @@ export default function MemoryGarden() {
     scene.background = new THREE.Color(colors.fog);
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
-    camera.position.set(0, 8, 14);
-    camera.lookAt(0, 1, 0);
+    let cameraDistance = 9;
 
     // Lights — sky/ground hemisphere + warm key + colored rim.
     const sky = new THREE.HemisphereLight(colors.ambientSky, colors.ambientGround, theme === "night" ? 0.7 : 1.1);
@@ -516,6 +712,18 @@ export default function MemoryGarden() {
       heading: 0, // radians
       walking: false,
     };
+    vibeyState.pos.y = sampleTerrainHeight(terrain, vibeyState.pos.x, vibeyState.pos.z);
+    vibeyState.target.copy(vibeyState.pos);
+    vibeyGroup.position.copy(vibeyState.pos);
+    vibeyGroup.rotation.y = vibeyState.heading;
+    {
+      const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * cameraDistance;
+      const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * cameraDistance;
+      const groundUnderCam = sampleTerrainHeight(terrain, camTargetX, camTargetZ);
+      const camTargetY = Math.max(vibeyState.pos.y + 4.6 + cameraDistance * 0.1, groundUnderCam + 2.5);
+      camera.position.set(camTargetX, camTargetY, camTargetZ);
+      camera.lookAt(vibeyState.pos.x, vibeyState.pos.y + 1.0, vibeyState.pos.z);
+    }
 
     const targetRing = makeTargetRing();
     scene.add(targetRing);
@@ -600,6 +808,78 @@ export default function MemoryGarden() {
     const notepadBase = sampleTerrainHeight(terrain, 0, -3.5) + 1.4;
     notepadGroup.position.set(0, notepadBase, -3.5);
     scene.add(notepadGroup);
+
+    // ---- Live database soul board ---------------------------------
+    // A second readable object near spawn: unlike the notebook, this
+    // summarizes the actual agent/profile/community data coming from
+    // Supabase's community-stats edge function.
+    const soulBoardGroup = new THREE.Group();
+    {
+      const promptPreview = vibeyAgent?.system_prompt
+        ? vibeyAgent.system_prompt.replace(/\s+/g, " ").slice(0, 170)
+        : "Waiting for the active agent row from Supabase.";
+      const soulTexture = makeTextCanvasTexture({
+        title: `${vibeyAgent?.name ?? "Vibey"} Soul`,
+        subtitle: vibeyAgent?.model ? `model: ${vibeyAgent.model}` : "Supabase live config",
+        accent: theme === "night" ? "#73ffb8" : "#315f51",
+        lines: [
+          `members: ${communityStats?.members ?? "..."}`,
+          `photos: ${communityStats?.photos ?? (photos.length || "...")}`,
+          `events: ${communityStats?.events ?? "..."}`,
+          `profiles loaded: ${profiles.length}`,
+          `memories loaded: ${vibeyMemories.length}`,
+          "",
+          "system prompt:",
+          promptPreview,
+        ],
+      });
+      const panel = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 2.1),
+        new THREE.MeshBasicMaterial({
+          map: soulTexture,
+          side: THREE.DoubleSide,
+        }),
+      );
+      panel.position.y = 2.25;
+      soulBoardGroup.add(panel);
+
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(3.7, 2.38, 0.12),
+        new THREE.MeshStandardMaterial({
+          color: theme === "night" ? 0x243b4f : 0x55706a,
+          roughness: 0.5,
+          metalness: 0.2,
+        }),
+      );
+      frame.position.set(0, 2.25, -0.07);
+      frame.castShadow = true;
+      soulBoardGroup.add(frame);
+      frame.renderOrder = -1;
+
+      const postMat = new THREE.MeshStandardMaterial({
+        color: theme === "night" ? 0x6a472a : 0x7b5635,
+        roughness: 0.8,
+      });
+      for (const x of [-1.55, 1.55]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.1, 0.12), postMat);
+        post.position.set(x, 1.05, -0.08);
+        post.castShadow = true;
+        soulBoardGroup.add(post);
+      }
+
+      const proxy = new THREE.Mesh(
+        new THREE.BoxGeometry(3.9, 2.6, 0.7),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }),
+      );
+      proxy.position.y = 2.2;
+      proxy.userData.isSoulBoard = true;
+      soulBoardGroup.add(proxy);
+    }
+    const soulX = -5.8;
+    const soulZ = -4.1;
+    soulBoardGroup.position.set(soulX, sampleTerrainHeight(terrain, soulX, soulZ), soulZ);
+    soulBoardGroup.rotation.y = 0.55;
+    scene.add(soulBoardGroup);
 
     // GLB loader, shared.
     const loader = new GLTFLoader();
@@ -732,17 +1012,366 @@ export default function MemoryGarden() {
       });
     });
 
+    // ---- Outdoor gallery ------------------------------------------
+    // The gallery now lives in the garden: a little art-fair crescent
+    // of framed community photos on easels. Textures load lazily, so a
+    // slow image never blocks the scene from becoming walkable.
+    interface ArtFrame {
+      photo: Photo;
+      mesh: THREE.Mesh;
+    }
+    const artFrames: ArtFrame[] = [];
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.crossOrigin = "anonymous";
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: theme === "night" ? 0xd5a95f : 0x9f7440,
+      roughness: 0.45,
+      metalness: 0.45,
+    });
+    const standMat = new THREE.MeshStandardMaterial({
+      color: theme === "night" ? 0x6a472a : 0x7b5635,
+      roughness: 0.75,
+      metalness: 0.05,
+    });
+    const lampMat = new THREE.MeshBasicMaterial({
+      color: colors.fireflyColor,
+      transparent: true,
+      opacity: theme === "night" ? 0.72 : 0.3,
+    });
+    const galleryCenter = new THREE.Vector3(0, 0, 10.5);
+    const galleryHalo = new THREE.Mesh(
+      new THREE.RingGeometry(10.0, 18.2, 72),
+      new THREE.MeshBasicMaterial({
+        color: colors.fireflyColor,
+        transparent: true,
+        opacity: theme === "night" ? 0.12 : 0.08,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    galleryHalo.position.set(galleryCenter.x, sampleTerrainHeight(terrain, 0, galleryCenter.z) + 0.035, galleryCenter.z);
+    galleryHalo.rotation.x = -Math.PI / 2;
+    scene.add(galleryHalo);
+
+    const galleryPhotos = photos.slice(0, ART_FAIR_LIMIT);
+    galleryPhotos.forEach((photo, i) => {
+      const innerCount = Math.min(7, galleryPhotos.length);
+      const outerCount = Math.max(0, galleryPhotos.length - innerCount);
+      const row = i < innerCount ? 0 : 1;
+      const rowIndex = row === 0 ? i : i - innerCount;
+      const rowCount = row === 0 ? innerCount : outerCount;
+      const radius = row === 0 ? 11.0 : 17.2;
+      const spread = Math.PI * 1.04;
+      const start = (Math.PI - spread) / 2;
+      const stagger = row === 0 ? 0 : spread / Math.max(rowCount, 1) / 2;
+      const a = start + ((rowIndex + 0.5) / Math.max(rowCount, 1)) * spread + stagger;
+      const x = galleryCenter.x + Math.cos(a) * radius;
+      const z = galleryCenter.z + Math.sin(a) * radius;
+      const groundY = sampleTerrainHeight(terrain, x, z);
+      const group = new THREE.Group();
+      group.position.set(x, groundY, z);
+      const dirToEntrance = new THREE.Vector3(0 - x, 0, 0 - z).normalize();
+      group.rotation.y = Math.atan2(dirToEntrance.x, dirToEntrance.z);
+
+      const easel = new THREE.Group();
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(ART_FRAME_W + 0.24, ART_FRAME_H + 0.24, 0.12),
+        frameMat,
+      );
+      frame.position.set(0, ART_CENTER_Y, -0.03);
+      frame.castShadow = true;
+      frame.receiveShadow = true;
+      easel.add(frame);
+
+      const canvasMat = new THREE.MeshBasicMaterial({
+        color: 0x9b9185,
+      });
+      const canvasMesh = new THREE.Mesh(new THREE.PlaneGeometry(ART_FRAME_W, ART_FRAME_H), canvasMat);
+      canvasMesh.position.set(0, ART_CENTER_Y, 0.04);
+      canvasMesh.userData.photoId = photo.id;
+      easel.add(canvasMesh);
+      artFrames.push({ photo, mesh: canvasMesh });
+
+      const legGeo = new THREE.BoxGeometry(0.08, 1.55, 0.08);
+      const makeLeg = (lx: number, rotZ: number) => {
+        const leg = new THREE.Mesh(legGeo, standMat);
+        leg.position.set(lx, 0.8, -0.08);
+        leg.rotation.z = rotZ;
+        leg.castShadow = true;
+        easel.add(leg);
+      };
+      makeLeg(-0.72, -0.12);
+      makeLeg(0.72, 0.12);
+      const backLeg = new THREE.Mesh(legGeo, standMat);
+      backLeg.position.set(0, 0.74, -0.58);
+      backLeg.rotation.x = -0.35;
+      backLeg.castShadow = true;
+      easel.add(backLeg);
+
+      const shelf = new THREE.Mesh(new THREE.BoxGeometry(ART_FRAME_W + 0.55, 0.08, 0.16), standMat);
+      shelf.position.set(0, 0.95, 0.03);
+      shelf.castShadow = true;
+      easel.add(shelf);
+
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), lampMat);
+      lamp.position.set(0, ART_CENTER_Y + ART_FRAME_H / 2 + 0.38, 0.12);
+      easel.add(lamp);
+      if (theme === "night") {
+        const light = new THREE.PointLight(colors.fireflyColor, 0.65, 5);
+        light.position.copy(lamp.position);
+        easel.add(light);
+      }
+
+      group.add(easel);
+      scene.add(group);
+
+      textureLoader.load(
+        photo.image_url,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const img = tex.image as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number };
+          const iw = img.naturalWidth ?? img.width ?? ART_FRAME_W;
+          const ih = img.naturalHeight ?? img.height ?? ART_FRAME_H;
+          const canvasAR = ART_FRAME_W / ART_FRAME_H;
+          const photoAR = iw / ih;
+          if (photoAR > canvasAR) {
+            const k = canvasAR / photoAR;
+            tex.repeat.x = k;
+            tex.offset.x = (1 - k) / 2;
+          } else {
+            const k = photoAR / canvasAR;
+            tex.repeat.y = k;
+            tex.offset.y = (1 - k) / 2;
+          }
+          canvasMat.map = tex;
+          canvasMat.color.set(0xffffff);
+          canvasMat.needsUpdate = true;
+        },
+        undefined,
+        () => { /* keep the quiet placeholder panel */ },
+      );
+    });
+
+    // ---- Community profile cards ----------------------------------
+    // Small live member cards from Supabase, arranged as a friendlier
+    // cluster near the gallery instead of another top-level overlay.
+    interface ProfileCard {
+      profile: GardenProfile;
+      mesh: THREE.Mesh;
+    }
+    const profileCards: ProfileCard[] = [];
+    const profileCenter = new THREE.Vector3(15.5, 0, 4);
+    profiles.slice(0, PROFILE_CARD_LIMIT).forEach((profile, i, visible) => {
+      const a = (i / Math.max(visible.length, 1)) * Math.PI * 2;
+      const radius = 4.2 + (i % 3) * 1.35;
+      const x = profileCenter.x + Math.cos(a) * radius;
+      const z = profileCenter.z + Math.sin(a) * radius;
+      const group = new THREE.Group();
+      group.position.set(x, sampleTerrainHeight(terrain, x, z), z);
+      const face = new THREE.Vector3(0 - x, 0, 0 - z).normalize();
+      group.rotation.y = Math.atan2(face.x, face.z);
+
+      const cardTexture = makeTextCanvasTexture({
+        title: profile.name,
+        subtitle: profile.role,
+        accent: ["#73ffb8", "#ffd166", "#ff7e8a", "#6aa8ff"][i % 4],
+        lines: [
+          "community profile",
+          profile.avatar ? "avatar available" : "no avatar yet",
+          "from Supabase",
+        ],
+      });
+      const card = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.9, 1.2),
+        new THREE.MeshBasicMaterial({ map: cardTexture, side: THREE.DoubleSide }),
+      );
+      card.position.y = 1.8;
+      card.userData.profileId = profile.id;
+      group.add(card);
+      profileCards.push({ profile, mesh: card });
+
+      const stand = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 1.45, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: theme === "night" ? 0x6a472a : 0x7b5635,
+          roughness: 0.8,
+        }),
+      );
+      stand.position.y = 0.72;
+      stand.castShadow = true;
+      group.add(stand);
+
+      if (profile.avatar) {
+        textureLoader.load(
+          profile.avatar,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            const avatar = new THREE.Mesh(
+              new THREE.PlaneGeometry(0.58, 0.58),
+              new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
+            );
+            avatar.position.set(-0.53, 1.94, 0.03);
+            group.add(avatar);
+          },
+          undefined,
+          () => { /* text card remains useful without the image */ },
+        );
+      }
+
+      scene.add(group);
+    });
+
+    // ---- World History monument -----------------------------------
+    // One destination object, not a field of signs. The modal does the
+    // reading; the world only needs to invite you over.
+    const historyAccent = theme === "night" ? "#ffd166" : "#315f51";
+    const historyGroup = new THREE.Group();
+    const historyTexture = makeTextCanvasTexture({
+      title: "World History",
+      subtitle: historyStatus === "live" ? "Live GitHub timeline" : "Local timeline fallback",
+      accent: historyAccent,
+      lines: [
+        "Click to read how the world grew.",
+        `${historyChanges.length} recent commits`,
+        "Synced from GitHub when available.",
+      ],
+    });
+    {
+      const stoneMat = new THREE.MeshStandardMaterial({
+        color: theme === "night" ? 0x263244 : 0xd9d1bc,
+        roughness: 0.65,
+        metalness: 0.06,
+      });
+      const darkInsetMat = new THREE.MeshStandardMaterial({
+        color: theme === "night" ? 0x0f1827 : 0x1a2430,
+        roughness: 0.55,
+        metalness: 0.1,
+        emissive: new THREE.Color(historyAccent),
+        emissiveIntensity: theme === "night" ? 0.04 : 0.01,
+      });
+      const facade = new THREE.Mesh(
+        new THREE.BoxGeometry(8.4, 5.1, 0.55),
+        stoneMat,
+      );
+      facade.position.y = 2.95;
+      facade.castShadow = true;
+      facade.receiveShadow = true;
+      historyGroup.add(facade);
+
+      const inset = new THREE.Mesh(new THREE.BoxGeometry(7.15, 3.45, 0.18), darkInsetMat);
+      inset.position.set(0, 2.95, 0.33);
+      inset.castShadow = true;
+      historyGroup.add(inset);
+
+      const face = new THREE.Mesh(
+        new THREE.PlaneGeometry(6.65, 3.0),
+        new THREE.MeshBasicMaterial({ map: historyTexture, side: THREE.DoubleSide }),
+      );
+      face.position.set(0, 2.95, 0.43);
+      historyGroup.add(face);
+
+      // Newspaper-building cues: columns, heavy cornice, and shallow
+      // steps. All simple geometry so it stays cheap to render.
+      const columnMat = new THREE.MeshStandardMaterial({
+        color: theme === "night" ? 0xb9ad8d : 0xf2ead7,
+        roughness: 0.48,
+        metalness: 0.04,
+      });
+      for (const x of [-3.6, -2.1, 2.1, 3.6]) {
+        const column = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 4.4, 18), columnMat);
+        column.position.set(x, 2.75, 0.56);
+        column.castShadow = true;
+        historyGroup.add(column);
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.42), columnMat);
+        cap.position.set(x, 4.98, 0.56);
+        cap.castShadow = true;
+        historyGroup.add(cap);
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.46), columnMat);
+        foot.position.set(x, 0.52, 0.56);
+        foot.castShadow = true;
+        historyGroup.add(foot);
+      }
+
+      const cornice = new THREE.Mesh(new THREE.BoxGeometry(9.0, 0.38, 0.85), stoneMat);
+      cornice.position.set(0, 5.66, 0.14);
+      cornice.castShadow = true;
+      historyGroup.add(cornice);
+
+      const masthead = new THREE.Mesh(
+        new THREE.BoxGeometry(5.4, 0.52, 0.18),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(historyAccent),
+          transparent: true,
+          opacity: theme === "night" ? 0.78 : 0.55,
+        }),
+      );
+      masthead.position.set(0, 5.66, 0.6);
+      historyGroup.add(masthead);
+
+      for (let i = 0; i < 3; i++) {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(8.8 + i * 0.9, 0.18, 0.95), stoneMat);
+        step.position.set(0, 0.1 + i * 0.16, 1.02 + i * 0.42);
+        step.receiveShadow = true;
+        step.castShadow = true;
+        historyGroup.add(step);
+      }
+
+      const halo = new THREE.Mesh(
+        new THREE.RingGeometry(4.4, 5.8, 56),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(historyAccent),
+          transparent: true,
+          opacity: theme === "night" ? 0.28 : 0.16,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = 0.03;
+      historyGroup.add(halo);
+
+      const proxy = new THREE.Mesh(
+        new THREE.BoxGeometry(9.2, 6.2, 2.2),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }),
+      );
+      proxy.position.y = 3.1;
+      proxy.userData.isWorldHistory = true;
+      historyGroup.add(proxy);
+    }
+    const historyX = -18;
+    const historyZ = 10;
+    historyGroup.position.set(historyX, sampleTerrainHeight(terrain, historyX, historyZ), historyZ);
+    historyGroup.rotation.y = Math.atan2(0 - historyX, 0 - historyZ);
+    scene.add(historyGroup);
+
     // Click → either pick a plant or set a walk target.
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
 
     const handlePointer = (clientX: number, clientY: number) => {
-      if (activeMemoryRef.current || notesOpenRef.current) return;
+      if (
+        activeMemoryRef.current ||
+        activePhotoRef.current ||
+        historyOpenRef.current ||
+        activeProfileRef.current ||
+        notesOpenRef.current ||
+        soulOpenRef.current
+      ) return;
       const rect = canvas.getBoundingClientRect();
       ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
-      // 1. Notepad click — opens Vibey's notes-to-self overlay.
+      // 1. Live database board — opens the real Supabase-backed soul view.
+      const soulHit = raycaster.intersectObject(soulBoardGroup, true)[0];
+      if (soulHit) {
+        let cur: THREE.Object3D | null = soulHit.object;
+        while (cur && !cur.userData.isSoulBoard) cur = cur.parent;
+        if (cur) {
+          setSoulOpen(true);
+          return;
+        }
+      }
+      // 2. Notepad click — opens Vibey's notes-to-self overlay.
       const notepadHit = raycaster.intersectObject(notepadGroup, true)[0];
       if (notepadHit) {
         // Check the chain for our isNotepad marker so we don't open
@@ -755,7 +1384,33 @@ export default function MemoryGarden() {
           return;
         }
       }
-      // 2. Plant hit proxies → memory card.
+      // 3. Profile card → member detail.
+      const profileHit = raycaster.intersectObjects(profileCards.map((p) => p.mesh), false)[0];
+      if (profileHit) {
+        const id = (profileHit.object as THREE.Mesh).userData.profileId as string;
+        const profile = profileCards.find((p) => p.profile.id === id)?.profile;
+        if (profile) setActiveProfile(profile);
+        return;
+      }
+      // 4. World History monument → live GitHub timeline.
+      const historyHit = raycaster.intersectObject(historyGroup, true)[0];
+      if (historyHit) {
+        let cur: THREE.Object3D | null = historyHit.object;
+        while (cur && !cur.userData.isWorldHistory) cur = cur.parent;
+        if (cur) {
+          setHistoryOpen(true);
+          return;
+        }
+      }
+      // 5. Art fair photo → gallery detail card.
+      const artHit = raycaster.intersectObjects(artFrames.map((p) => p.mesh), false)[0];
+      if (artHit) {
+        const id = (artHit.object as THREE.Mesh).userData.photoId as string;
+        const photo = artFrames.find((p) => p.photo.id === id)?.photo;
+        if (photo) setActivePhoto(photo);
+        return;
+      }
+      // 6. Plant hit proxies → memory card.
       const hitProxies = plants.map((p) => p.hitProxy);
       const plantHit = raycaster.intersectObjects(hitProxies, false)[0];
       if (plantHit) {
@@ -780,8 +1435,13 @@ export default function MemoryGarden() {
       if (!e.touches[0]) return;
       handlePointer(e.touches[0].clientX, e.touches[0].clientY);
     };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.012, 6, 24);
+    };
     canvas.addEventListener("click", onClick);
     canvas.addEventListener("touchstart", onTouch, { passive: true });
+    canvas.addEventListener("wheel", onWheel, { passive: false });
 
     // Optional WASD for keyboard users — but click-to-move is primary.
     const keys: Record<string, boolean> = {};
@@ -834,6 +1494,10 @@ export default function MemoryGarden() {
         haloMat.opacity += (targetOpacity - haloMat.opacity) * Math.min(1, dt * 4);
         p.halo.scale.setScalar(0.95 + proximity * 0.25 + Math.sin(t * 2 + p.seed) * 0.04);
       }
+
+      historyGroup.position.y =
+        sampleTerrainHeight(terrain, historyGroup.position.x, historyGroup.position.z) +
+        Math.sin(t * 0.45) * 0.025;
 
       // Fireflies bob in place.
       const positions = fireflies.geometry.attributes.position as THREE.BufferAttribute;
@@ -904,8 +1568,8 @@ export default function MemoryGarden() {
 
       // Camera: smooth third-person chase, clamped above terrain so it
       // can't dip into the hill behind Vibey on downslopes.
-      const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * 9;
-      const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * 9;
+      const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * cameraDistance;
+      const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * cameraDistance;
       // Sample the terrain UNDER where the camera is heading so the
       // chase cam can never slip behind a ridge.
       const groundUnderCam = sampleTerrainHeight(
@@ -913,7 +1577,7 @@ export default function MemoryGarden() {
         THREE.MathUtils.clamp(camTargetX, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
         THREE.MathUtils.clamp(camTargetZ, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
       );
-      const camTargetY = Math.max(vibeyState.pos.y + 5.5, groundUnderCam + 2.5);
+      const camTargetY = Math.max(vibeyState.pos.y + 4.6 + cameraDistance * 0.1, groundUnderCam + 2.5);
       camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2);
       camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2);
       camera.position.z += (camTargetZ - camera.position.z) * Math.min(1, dt * 2);
@@ -934,6 +1598,7 @@ export default function MemoryGarden() {
       cancelAnimationFrame(raf);
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouch as EventListener);
+      canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       ro.disconnect();
@@ -949,7 +1614,7 @@ export default function MemoryGarden() {
     // Re-init when the player picks a new character or theme — both
     // change the world meaningfully and full reload is the simplest
     // correct answer.
-  }, [characterId, theme]);
+  }, [characterId, theme, photosKey, profilesKey, historyKey, historyStatus, soulKey]);
 
   const activeChar = CHARACTERS.find((c) => c.id === characterId) ?? CHARACTERS[0];
 
@@ -962,7 +1627,7 @@ export default function MemoryGarden() {
       />
 
       {/* Header pill */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 flex-wrap">
+      <div className="absolute top-16 left-3 z-10 flex items-center gap-2 flex-wrap">
         <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
           <Flower2 className="w-4 h-4 text-primary" />
           <span className="text-[11px] font-heading font-semibold tracking-widest uppercase">
@@ -972,6 +1637,26 @@ export default function MemoryGarden() {
         <div className="hidden sm:block glass-panel rounded-full px-3 py-2 text-[11px] text-muted-foreground">
           {MEMORIES.length} memories planted
         </div>
+        <div className="hidden sm:block glass-panel rounded-full px-3 py-2 text-[11px] text-muted-foreground">
+          {historyStatus === "live" ? `${historyChanges.length} GitHub commits` : `${historyChanges.length} local commits`}
+        </div>
+        <div className="hidden sm:flex glass-panel rounded-full px-3 py-2 text-[11px] text-muted-foreground items-center gap-2">
+          <ImageIcon className="w-3.5 h-3.5 text-primary" />
+          {photosStatus === "loading" && "Hanging the outdoor gallery..."}
+          {photosStatus === "ready" && `${photos.length} gallery photos on easels`}
+          {photosStatus === "empty" && "Gallery is empty"}
+          {photosStatus === "error" && "Gallery photos unavailable"}
+        </div>
+        {vibeyAgent && (
+          <button
+            onClick={() => setSoulOpen(true)}
+            className="hidden sm:flex glass-panel rounded-full px-3 py-2 text-[11px] text-muted-foreground items-center gap-2 hover:bg-muted/40 transition-colors"
+            title="Open Vibey's live Supabase soul"
+          >
+            <Database className="w-3.5 h-3.5 text-primary" />
+            {profiles.length} profiles · live soul
+          </button>
+        )}
       </div>
 
       {/* Theme + character controls (top-right). Picker uses the same
@@ -1052,7 +1737,7 @@ export default function MemoryGarden() {
             className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 glass-panel rounded-full px-4 py-2.5 text-xs text-foreground/85 flex items-center gap-2 max-w-[90vw]"
           >
             <span className="text-base">🪻</span>
-            <span>Click anywhere to walk · click a plant to read its memory</span>
+            <span>Click to walk · scroll to zoom · click a plant, World History, painting, profile, or soul board</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1126,6 +1811,274 @@ export default function MemoryGarden() {
               >
                 Keep walking
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* World History live timeline */}
+      <AnimatePresence>
+        {historyOpen && (
+          <motion.div
+            key="history-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-30 flex items-end md:items-center justify-center bg-black/45 backdrop-blur-[3px] p-4"
+            onClick={() => setHistoryOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: "spring", damping: 22, stiffness: 240 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-2xl max-h-[82vh] rounded-2xl glass-panel border border-primary/30 overflow-hidden flex flex-col"
+              style={{
+                boxShadow: "0 30px 80px rgba(0,0,0,0.55), 0 0 60px hsl(var(--primary) / 0.14)",
+              }}
+            >
+              <button
+                onClick={() => setHistoryOpen(false)}
+                className="absolute top-3 right-3 p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <div className="px-5 py-4 border-b border-border/40">
+                <p className="text-[10px] uppercase tracking-widest text-primary/85 font-heading font-semibold mb-1">
+                  World History
+                </p>
+                <h2 className="font-heading text-xl font-bold tracking-tight text-foreground pr-8">
+                  How This World Came To Be
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground font-mono">
+                  {historyStatus === "live" ? "Synced from GitHub" : "Local changelog fallback"} · {historyChanges.length} commits
+                </p>
+              </div>
+              <div className="overflow-y-auto px-5 py-4">
+                <div className="relative pl-5 space-y-3 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-px before:bg-primary/30">
+                  {historyChanges.map((change) => (
+                    <div key={change.hash} className="relative rounded-lg border border-border/45 bg-background/30 px-3 py-2">
+                      <span className="absolute -left-[22px] top-4 w-3 h-3 rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.55)]" />
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mb-1">
+                      <span>{change.hash}</span>
+                      <span>{change.date}</span>
+                    </div>
+                    <p className="text-xs text-foreground/85 leading-relaxed">{change.title}</p>
+                  </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Outdoor gallery photo card */}
+      <AnimatePresence>
+        {activePhoto && (
+          <motion.div
+            key="photo-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 z-30 flex items-end md:items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
+            onClick={() => setActivePhoto(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: "spring", damping: 22, stiffness: 240 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-2xl rounded-2xl glass-panel overflow-hidden border border-primary/30"
+              style={{
+                boxShadow: "0 30px 80px rgba(0,0,0,0.6), 0 0 60px hsl(var(--primary) / 0.15)",
+              }}
+            >
+              <button
+                onClick={() => setActivePhoto(null)}
+                className="absolute top-3 right-3 z-10 p-1.5 rounded-md bg-black/40 hover:bg-black/60 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
+              <img
+                src={activePhoto.image_url}
+                alt={activePhoto.title ?? "Gallery photo"}
+                className="w-full max-h-[60vh] object-contain bg-black"
+              />
+              <div className="p-4">
+                {activePhoto.residency_name && (
+                  <p className="text-[10px] uppercase tracking-widest text-primary/85 font-heading font-semibold mb-1">
+                    {activePhoto.residency_name}
+                  </p>
+                )}
+                <h2 className="font-heading text-lg font-bold tracking-tight text-foreground mb-1">
+                  {activePhoto.title ?? "Untitled"}
+                </h2>
+                {activePhoto.description && (
+                  <p className="text-sm text-foreground/85 leading-relaxed">
+                    {activePhoto.description}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Community profile card */}
+      <AnimatePresence>
+        {activeProfile && (
+          <motion.div
+            key="profile-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-30 flex items-end md:items-center justify-center bg-black/45 backdrop-blur-[2px] p-4"
+            onClick={() => setActiveProfile(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: "spring", damping: 22, stiffness: 240 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm rounded-2xl glass-panel border border-primary/30 p-5"
+            >
+              <button
+                onClick={() => setActiveProfile(null)}
+                className="absolute top-3 right-3 p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <div className="flex items-center gap-4">
+                {activeProfile.avatar ? (
+                  <img
+                    src={activeProfile.avatar}
+                    alt={activeProfile.name}
+                    className="w-16 h-16 rounded-xl object-cover border border-primary/30"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-xl border border-primary/30 bg-primary/10 flex items-center justify-center">
+                    <Users className="w-7 h-7 text-primary" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-primary/85 font-heading font-semibold">
+                    Supabase profile
+                  </p>
+                  <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">
+                    {activeProfile.name}
+                  </h2>
+                  <p className="text-sm text-muted-foreground capitalize">{activeProfile.role}</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Live Vibey soul / config from Supabase */}
+      <AnimatePresence>
+        {soulOpen && (
+          <motion.div
+            key="soul-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-40 flex items-end md:items-center justify-center bg-background/70 backdrop-blur-md p-4"
+            onClick={() => setSoulOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ type: "spring", damping: 24, stiffness: 240 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-3xl max-h-[82vh] rounded-2xl glass-panel border border-primary/35 overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+                <div>
+                  <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                    Vibey · Live Supabase Soul
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                    {vibeyAgent?.model || "agent row loading"} · {communityStats?.members ?? 0} members · {communityStats?.photos ?? photos.length} photos
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSoulOpen(false)}
+                  className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+              {vibeyAgent?.intro_message && (
+                <div className="px-4 py-3 border-b border-border/30">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                    Intro
+                  </p>
+                  <p className="text-sm text-foreground">{vibeyAgent.intro_message}</p>
+                </div>
+              )}
+              <div className="grid md:grid-cols-[1fr_260px] overflow-hidden">
+                <div className="px-4 py-3 overflow-y-auto max-h-[62vh]">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                    System Prompt
+                  </p>
+                  <pre className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans">
+                    {vibeyAgent?.system_prompt || "No active agent prompt returned yet."}
+                  </pre>
+                </div>
+                <div className="border-t md:border-t-0 md:border-l border-border/30 px-4 py-3 overflow-y-auto max-h-[62vh]">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                    Profiles
+                  </p>
+                  <div className="space-y-2">
+                    {profiles.slice(0, PROFILE_CARD_LIMIT).map((profile) => (
+                      <button
+                        key={profile.id}
+                        onClick={() => {
+                          setSoulOpen(false);
+                          setActiveProfile(profile);
+                        }}
+                        className="w-full flex items-center gap-2 text-left rounded-lg border border-border/40 bg-background/25 p-2 hover:bg-muted/30 transition-colors"
+                      >
+                        {profile.avatar ? (
+                          <img src={profile.avatar} alt="" className="w-8 h-8 rounded-md object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
+                            <Users className="w-4 h-4 text-primary" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold truncate">{profile.name}</p>
+                          <p className="text-[10px] text-muted-foreground capitalize truncate">{profile.role}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mt-4 mb-2">
+                    Memories
+                  </p>
+                  <div className="space-y-2">
+                    {vibeyMemories.slice(0, 4).map((memory, i) => (
+                      <div key={`${memory.created_at ?? "memory"}-${i}`} className="rounded-lg border border-border/40 bg-background/25 p-2">
+                        <p className="text-[11px] leading-relaxed text-foreground/80">{memory.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
