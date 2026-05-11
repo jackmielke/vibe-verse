@@ -16,26 +16,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Coins, RefreshCw } from "lucide-react";
 
-// $VIBE token on Base + the canonical pool the community treats as
-// the "real" price. There are multiple pools (Uniswap V3, V4, etc)
-// with very different prices — pin to the one the community is
-// already looking at on GeckoTerminal so our number matches theirs.
-const VIBE_TOKEN_ADDRESS = "0x7255ecf1020a95fed5323dd4feb23a54ab1aa7d1";
-const VIBE_NETWORK = "base";
-// Canonical $VIBE pool on Base — the one linked at
-// https://www.geckoterminal.com/base/pools/0xc3ad...
-const VIBE_POOL_ADDRESS = "0xc3ad498815597f1e6f71d3cb1166856e947efb46";
-const POOL_ENDPOINT = `https://api.geckoterminal.com/api/v2/networks/${VIBE_NETWORK}/pools/${VIBE_POOL_ADDRESS}`;
+// Source of truth: CoinGecko. They aggregate tickers across every
+// exchange listing $VIBE, account for actual *circulating* supply
+// (not total supply), and surface the same market cap users see
+// when they look the coin up themselves. Per-pool GeckoTerminal
+// data was misleading — single illiquid pools quote stale prices
+// and don't know about lockups, so FDV ≠ market cap.
+const COINGECKO_ID = "vibecoin-2";
+const COINGECKO_ENDPOINT =
+  `https://api.coingecko.com/api/v3/coins/${COINGECKO_ID}` +
+  `?localization=false&tickers=false&market_data=true` +
+  `&community_data=false&developer_data=false&sparkline=false`;
 
 interface VibeStats {
   priceUsd: number;
   fdvUsd: number | null;
   marketCapUsd: number | null;
-  liquidityUsd: number | null;
+  circulatingSupply: number | null;
+  totalSupply: number | null;
   volume24h: number | null;
   priceChange24h: number | null;
-  poolName: string | null;
-  poolAddress: string | null;
   fetchedAt: number;
 }
 
@@ -48,25 +48,23 @@ function num(v: unknown): number | null {
 
 async function fetchVibe(): Promise<VibeStats | null> {
   try {
-    const res = await fetch(POOL_ENDPOINT, {
+    const res = await fetch(COINGECKO_ENDPOINT, {
       headers: { accept: "application/json" },
     });
     if (!res.ok) return null;
     const json = await res.json();
-    const a = json?.data?.attributes as Record<string, unknown> | undefined;
-    if (!a) return null;
-    const priceUsd =
-      num(a.base_token_price_usd) ?? num((a as Record<string, unknown>).token_price_usd);
+    const m = json?.market_data as Record<string, unknown> | undefined;
+    if (!m) return null;
+    const priceUsd = num((m.current_price as Record<string, unknown> | undefined)?.usd);
     if (priceUsd == null) return null;
     return {
       priceUsd,
-      fdvUsd: num(a.fdv_usd),
-      marketCapUsd: num(a.market_cap_usd),
-      liquidityUsd: num(a.reserve_in_usd),
-      volume24h: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
-      priceChange24h: num((a.price_change_percentage as Record<string, unknown> | undefined)?.h24),
-      poolName: typeof a.name === "string" ? a.name : null,
-      poolAddress: typeof a.address === "string" ? a.address : VIBE_POOL_ADDRESS,
+      marketCapUsd: num((m.market_cap as Record<string, unknown> | undefined)?.usd),
+      fdvUsd: num((m.fully_diluted_valuation as Record<string, unknown> | undefined)?.usd),
+      circulatingSupply: num(m.circulating_supply),
+      totalSupply: num(m.total_supply),
+      volume24h: num((m.total_volume as Record<string, unknown> | undefined)?.usd),
+      priceChange24h: num(m.price_change_percentage_24h),
       fetchedAt: Date.now(),
     };
   } catch {
@@ -93,6 +91,15 @@ function fmtUsd(n: number | null, opts: { compact?: boolean } = {}): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   })}`;
+}
+
+// Compact number formatter (no $ prefix) for supply / count stats.
+function compactNumber(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return n.toLocaleString();
 }
 
 function fmtCompact(n: number | null): string {
@@ -197,15 +204,11 @@ export default function VibeCoinPanel() {
           />
         </div>
         <a
-          href={
-            stats?.poolAddress
-              ? `https://www.geckoterminal.com/${VIBE_NETWORK}/pools/${stats.poolAddress}`
-              : `https://www.geckoterminal.com/${VIBE_NETWORK}/tokens/${VIBE_TOKEN_ADDRESS}`
-          }
+          href={`https://www.coingecko.com/en/coins/${COINGECKO_ID}`}
           target="_blank"
           rel="noreferrer"
           className="text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-          title={stats?.poolName ? `Pool: ${stats.poolName} — open on GeckoTerminal` : "Open on GeckoTerminal"}
+          title="Open on CoinGecko"
         >
           <span>chart</span>
           <span aria-hidden>↗</span>
@@ -263,15 +266,24 @@ export default function VibeCoinPanel() {
         )}
       </div>
 
-      {/* Stats grid — price/liquidity/volume support the headline. */}
+      {/* Stats grid — price + circulating supply + 24h volume support
+          the headline. Circulating is the lever that distinguishes
+          "real" market cap from FDV, so it earns its slot here. */}
       <div className="grid grid-cols-3 gap-2">
         <Stat
           label="Per token"
           value={stats ? fmtUsd(stats.priceUsd) : "—"}
         />
         <Stat
-          label="Liquidity"
-          value={fmtUsd(stats?.liquidityUsd ?? null, { compact: true })}
+          label="Circulating"
+          value={stats?.circulatingSupply != null
+            ? compactNumber(stats.circulatingSupply)
+            : "—"}
+          tooltip={
+            stats?.circulatingSupply != null && stats?.totalSupply != null
+              ? `${stats.circulatingSupply.toLocaleString()} of ${stats.totalSupply.toLocaleString()} total $VIBE in circulation`
+              : undefined
+          }
         />
         <Stat
           label="24h volume"
