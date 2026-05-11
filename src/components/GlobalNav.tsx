@@ -27,6 +27,7 @@ const DESTINATIONS: Destination[] = [
   { to: "/lobby", emoji: "🏎️", label: "Lobby" },
   { to: "/space", emoji: "🌌", label: "Space", matchPaths: ["/unit7"] },
   { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
+  { to: "/vibe", emoji: "🪙", label: "VIBE" },
   { to: "/about", emoji: "✨", label: "About" },
 ];
 

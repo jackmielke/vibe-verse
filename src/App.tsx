@@ -10,6 +10,7 @@ import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
 import MemoryGarden from "./pages/MemoryGarden.tsx";
+import VibeHub from "./pages/VibeHub.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,8 @@ const App = () => (
           <Route path="/garden" element={<MemoryGarden />} />
           {/* The old standalone gallery now collapses into the garden art fair. */}
           <Route path="/gallery" element={<Navigate to="/garden" replace />} />
+          {/* VIBE Hub — wallet login, community holders, market. */}
+          <Route path="/vibe" element={<VibeHub />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

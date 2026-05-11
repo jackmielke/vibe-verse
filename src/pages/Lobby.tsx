@@ -4,6 +4,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { ArrowLeft } from "lucide-react";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
+import VibeLogin from "@/components/VibeLogin";
+import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 
 // Two characters live outside the Quaternius pack folder.
 import alienUrl from "@/assets/glb/alien.glb";
@@ -540,11 +542,18 @@ export default function Lobby() {
               <span>{selectedVehicle.emoji}</span>
             </button>
 
+            {/* Wallet login lives right next to the picker — pick
+                your fighter, link your wallet, both feel like part of
+                the same "arrive at the lobby" ritual. */}
+            <VibeLogin variant="card" />
+
             {/* $VIBE live ticker + calculator. Pulls from GeckoTerminal
-                directly; no auth, no key. Fits inside the right column
-                so it lives next to the picker without competing with
-                the 3D preview on the left. */}
+                directly; no auth, no key. */}
             <VibeCoinPanel />
+
+            {/* Top 5 holders by default with "Show all" expand — full
+                view is on /vibe. */}
+            <VibeWalletLeaderboard defaultVisible={5} maxRows={30} />
           </div>
         </div>
       </div>
