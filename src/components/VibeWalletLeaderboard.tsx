@@ -11,15 +11,12 @@
  * that opens the user's wallet for a transfer.
  */
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Send, ExternalLink, Trophy } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, Trophy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   getVibeBalances,
   formatVibe,
   shortAddress,
-  sendVibe,
-  loadSession,
   type Address,
 } from "@/lib/vibe-wallet";
 
@@ -53,7 +50,6 @@ export default function VibeWalletLeaderboard({
   const [members, setMembers] = useState<Member[] | null>(null);
   const [balances, setBalances] = useState<Record<string, bigint>>({});
   const [expanded, setExpanded] = useState(false);
-  const [sendTo, setSendTo] = useState<Member | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 1. Load members with wallets.
@@ -146,7 +142,6 @@ export default function VibeWalletLeaderboard({
               rank={sorted.indexOf(m) + 1}
               member={m}
               balanceWei={bal ?? null}
-              onSend={() => setSendTo(m)}
               accent={i === 0 && expanded === false ? "gold" : "default"}
             />
           );
@@ -166,14 +161,6 @@ export default function VibeWalletLeaderboard({
         </button>
       )}
 
-      <AnimatePresence>
-        {sendTo && (
-          <SendVibeModal
-            to={sendTo}
-            onClose={() => setSendTo(null)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -186,18 +173,14 @@ function MemberRow({
   rank,
   member,
   balanceWei,
-  onSend,
   accent,
 }: {
   rank: number;
   member: Member;
   balanceWei: bigint | null;
-  onSend: () => void;
   accent: "default" | "gold";
 }) {
   const display = member.name ?? member.username ?? shortAddress(member.wallet_address);
-  const isSelf =
-    loadSession()?.address.toLowerCase() === member.wallet_address.toLowerCase();
   const accentClass =
     accent === "gold"
       ? "border-amber-400/40 bg-amber-400/8"
@@ -223,13 +206,8 @@ function MemberRow({
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-heading font-semibold text-foreground truncate flex items-center gap-1.5">
+        <p className="text-xs font-heading font-semibold text-foreground truncate">
           {display}
-          {isSelf && (
-            <span className="text-[8px] uppercase tracking-widest text-primary bg-primary/15 px-1 py-0.5 rounded">
-              you
-            </span>
-          )}
         </p>
         <a
           href={`https://basescan.org/address/${member.wallet_address}`}
@@ -248,154 +226,12 @@ function MemberRow({
         </p>
         <p className="text-[9px] uppercase tracking-widest text-muted-foreground">VIBE</p>
       </div>
-      <button
-        onClick={onSend}
-        className="p-1.5 rounded-md hover:bg-primary/15 transition-colors"
-        title={`Send VIBE to ${display}`}
-      >
-        <Send className="w-3.5 h-3.5 text-primary" />
-      </button>
     </div>
   );
 }
 
-// ----------------------------------------------------------------------
-// Send modal
-// ----------------------------------------------------------------------
+// Wallet-popup "Send VIBE" intentionally removed from this v1.
+// The leaderboard is now strictly read-only: see who holds what,
+// click through to BaseScan to verify, and let the user initiate
+// any transfer in their own wallet on their own terms.
 
-function SendVibeModal({ to, onClose }: { to: Member; onClose: () => void }) {
-  const session = loadSession();
-  const [amount, setAmount] = useState("10");
-  const [status, setStatus] = useState<"idle" | "signing" | "sent" | "error">("idle");
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const display = to.name ?? to.username ?? shortAddress(to.wallet_address);
-
-  const send = async () => {
-    if (!session) {
-      setError("Connect your wallet first.");
-      setStatus("error");
-      return;
-    }
-    const num = parseFloat(amount);
-    if (!Number.isFinite(num) || num <= 0) {
-      setError("Enter a positive amount.");
-      setStatus("error");
-      return;
-    }
-    setError(null);
-    setStatus("signing");
-    try {
-      // Convert decimal amount to wei (18 decimals).
-      const wei = BigInt(Math.floor(num * 1e6)) * BigInt(1e12);
-      const hash = await sendVibe({
-        from: session.address,
-        to: to.wallet_address as Address,
-        amount: wei,
-      });
-      setTxHash(hash);
-      setStatus("sent");
-    } catch (e) {
-      setError((e as Error).message ?? "Transaction failed");
-      setStatus("error");
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-[3px] p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.94, y: 12 }}
-        transition={{ type: "spring", damping: 22, stiffness: 240 }}
-        onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-sm rounded-2xl glass-panel p-5 border border-primary/30"
-      >
-        <p className="text-[10px] uppercase tracking-widest text-primary font-heading font-semibold mb-1">
-          Send $VIBE
-        </p>
-        <h2 className="font-heading text-lg font-bold mb-1">to {display}</h2>
-        <p className="text-[10px] font-mono text-muted-foreground mb-4">
-          {shortAddress(to.wallet_address)}
-        </p>
-
-        {!session && (
-          <p className="text-xs text-rose-300 bg-rose-400/10 border border-rose-400/30 rounded px-2 py-1.5 mb-3">
-            Connect a wallet first.
-          </p>
-        )}
-
-        <label className="block mb-3">
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            Amount (VIBE)
-          </span>
-          <input
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={!session || status === "signing"}
-            className="mt-1 w-full rounded-lg bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-3 py-2 text-base font-mono disabled:opacity-60"
-            placeholder="0"
-          />
-        </label>
-
-        <div className="flex flex-wrap gap-1 mb-4">
-          {[10, 100, 1000, 10000].map((amt) => (
-            <button
-              key={amt}
-              onClick={() => setAmount(String(amt))}
-              disabled={!session || status === "signing"}
-              className="rounded-md border border-border/60 bg-background/40 hover:bg-primary/15 hover:border-primary/50 px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-50"
-            >
-              {amt.toLocaleString()}
-            </button>
-          ))}
-        </div>
-
-        {status === "sent" && txHash && (
-          <div className="rounded-lg bg-emerald-400/10 border border-emerald-400/40 px-3 py-2 mb-3 text-xs text-emerald-200">
-            Sent.{" "}
-            <a
-              href={`https://basescan.org/tx/${txHash}`}
-              target="_blank"
-              rel="noreferrer"
-              className="underline hover:text-emerald-100"
-            >
-              View tx
-            </a>
-          </div>
-        )}
-
-        {error && (
-          <p className="text-[11px] text-rose-300 bg-rose-400/10 border border-rose-400/30 rounded px-2 py-1.5 mb-3">
-            {error}
-          </p>
-        )}
-
-        <div className="flex gap-2">
-          <button
-            onClick={send}
-            disabled={!session || status === "signing"}
-            className="flex-1 bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            {status === "signing" ? "Confirming in wallet…" : "Send"}
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3 py-2 rounded-lg text-sm font-heading font-semibold bg-muted/40 hover:bg-muted/60 transition-colors text-foreground/80"
-          >
-            Close
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}

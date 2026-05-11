@@ -16,13 +16,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Coins, RefreshCw } from "lucide-react";
 
-// $VIBE token on Base. The original brief called this a "pool"
-// address but it's actually the ERC-20 token contract — there are
-// multiple pools (Uniswap v3, v4, etc) with varying depth, so we
-// query the token's pool list and pick the deepest-liquidity one.
+// $VIBE token on Base + the canonical pool the community treats as
+// the "real" price. There are multiple pools (Uniswap V3, V4, etc)
+// with very different prices — pin to the one the community is
+// already looking at on GeckoTerminal so our number matches theirs.
 const VIBE_TOKEN_ADDRESS = "0x7255ecf1020a95fed5323dd4feb23a54ab1aa7d1";
 const VIBE_NETWORK = "base";
-const POOLS_ENDPOINT = `https://api.geckoterminal.com/api/v2/networks/${VIBE_NETWORK}/tokens/${VIBE_TOKEN_ADDRESS}/pools`;
+// Canonical $VIBE pool on Base — the one linked at
+// https://www.geckoterminal.com/base/pools/0xc3ad...
+const VIBE_POOL_ADDRESS = "0xc3ad498815597f1e6f71d3cb1166856e947efb46";
+const POOL_ENDPOINT = `https://api.geckoterminal.com/api/v2/networks/${VIBE_NETWORK}/pools/${VIBE_POOL_ADDRESS}`;
 
 interface VibeStats {
   priceUsd: number;
@@ -45,25 +48,15 @@ function num(v: unknown): number | null {
 
 async function fetchVibe(): Promise<VibeStats | null> {
   try {
-    const res = await fetch(POOLS_ENDPOINT, {
+    const res = await fetch(POOL_ENDPOINT, {
       headers: { accept: "application/json" },
     });
     if (!res.ok) return null;
     const json = await res.json();
-    const pools: Array<{ attributes: Record<string, unknown> }> = json?.data ?? [];
-    if (!pools.length) return null;
-    // Pick the deepest-liquidity pool (illiquid pools quote stale,
-    // misleading prices — we want the canonical price).
-    const best = pools.reduce<typeof pools[number] | null>((acc, p) => {
-      const r = num((p.attributes as Record<string, unknown>).reserve_in_usd);
-      const accR = acc ? num((acc.attributes as Record<string, unknown>).reserve_in_usd) : null;
-      if (r == null) return acc;
-      if (acc == null || (accR ?? 0) < r) return p;
-      return acc;
-    }, null);
-    if (!best) return null;
-    const a = best.attributes as Record<string, unknown>;
-    const priceUsd = num(a.base_token_price_usd) ?? num((a as Record<string, unknown>).token_price_usd);
+    const a = json?.data?.attributes as Record<string, unknown> | undefined;
+    if (!a) return null;
+    const priceUsd =
+      num(a.base_token_price_usd) ?? num((a as Record<string, unknown>).token_price_usd);
     if (priceUsd == null) return null;
     return {
       priceUsd,
@@ -73,7 +66,7 @@ async function fetchVibe(): Promise<VibeStats | null> {
       volume24h: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
       priceChange24h: num((a.price_change_percentage as Record<string, unknown> | undefined)?.h24),
       poolName: typeof a.name === "string" ? a.name : null,
-      poolAddress: typeof a.address === "string" ? a.address : null,
+      poolAddress: typeof a.address === "string" ? a.address : VIBE_POOL_ADDRESS,
       fetchedAt: Date.now(),
     };
   } catch {
@@ -219,11 +212,13 @@ export default function VibeCoinPanel() {
         </a>
       </div>
 
-      {/* Price + 24h change */}
+      {/* Market cap is the headline number — it's the figure the
+          community cares about. Price-per-token + the rest become
+          supporting stats below. */}
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div>
           <p
-            key={`price-${pulse}`}
+            key={`cap-${pulse}`}
             className="font-heading text-3xl md:text-4xl font-bold tracking-tight text-foreground"
             style={{
               animation: "vibeFlash 0.5s ease-out 1",
@@ -239,11 +234,11 @@ export default function VibeCoinPanel() {
                 Couldn't fetch live data
               </span>
             ) : (
-              fmtUsd(stats.priceUsd)
+              fmtUsd(cap, { compact: true })
             )}
           </p>
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground mt-1">
-            Per $VIBE token
+            {usingFdv ? "Fully-diluted valuation" : "Market cap"}
           </p>
         </div>
 
@@ -268,12 +263,11 @@ export default function VibeCoinPanel() {
         )}
       </div>
 
-      {/* Stats grid */}
+      {/* Stats grid — price/liquidity/volume support the headline. */}
       <div className="grid grid-cols-3 gap-2">
         <Stat
-          label={usingFdv ? "FDV" : "Market cap"}
-          value={fmtUsd(cap, { compact: true })}
-          tooltip={usingFdv ? "Fully-diluted valuation (no circulating-supply data available)" : undefined}
+          label="Per token"
+          value={stats ? fmtUsd(stats.priceUsd) : "—"}
         />
         <Stat
           label="Liquidity"

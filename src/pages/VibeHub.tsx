@@ -12,7 +12,7 @@
  */
 import { Link } from "react-router-dom";
 import { ArrowLeft, Coins } from "lucide-react";
-import VibeLogin from "@/components/VibeLogin";
+import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
 
@@ -63,7 +63,7 @@ export default function VibeHub() {
         <div className="grid md:grid-cols-[1fr_1fr] gap-5 items-start">
           {/* Left column: login + market */}
           <div className="flex flex-col gap-5">
-            <VibeLogin variant="card" />
+            <VibeAccountCard variant="card" />
             <VibeCoinPanel />
           </div>
           {/* Right column: leaderboard */}
