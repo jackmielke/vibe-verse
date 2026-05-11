@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { VILLAGE_LOCATIONS } from "../MapView";
 import { supabase } from "@/integrations/supabase/client";
 
-const EDGE_ESMERELDA_COMMUNITY_ID = "bb93af8f-3d13-458e-a580-207d374bbe39";
+// Real Edge Esmeralda community in Supabase. The previous id was a
+// placeholder that returned 0 rows.
+const EDGE_ESMERELDA_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
 
 interface EventRow {
   id: string;
@@ -97,8 +99,12 @@ interface EventsPanelProps {
 
 export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
   const [rsvpd, setRsvpd] = useState<Set<string>>(new Set());
-  const [events, setEvents] = useState<DisplayEvent[]>(MOCK_EVENTS);
-  const [loading, setLoading] = useState(true);
+  // Mock events stay at the top — they're the curated demo set.
+  // Real Supabase events are loaded into a separate state and
+  // appended below with their own header.
+  const [liveEvents, setLiveEvents] = useState<DisplayEvent[]>([]);
+  const [, setLoading] = useState(true);
+  const events = MOCK_EVENTS;
 
   useEffect(() => {
     let cancelled = false;
@@ -107,13 +113,11 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
         .from("events")
         .select("id, title, description, event_start_time, event_end_time, event_location, hosted_by, current_attendees, max_attendees, tags, event_image_url")
         .eq("community_id", EDGE_ESMERELDA_COMMUNITY_ID)
-        .eq("event_status", "published")
-        .gte("event_end_time", new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString())
-        .order("event_start_time", { ascending: true })
-        .limit(50);
+        .order("event_start_time", { ascending: false })
+        .limit(20);
       if (cancelled) return;
-      if (!error && data && data.length > 0) {
-        setEvents(transform(data as EventRow[]));
+      if (!error && data) {
+        setLiveEvents(transform(data as EventRow[]));
       }
       setLoading(false);
     })();
@@ -237,9 +241,68 @@ export default function EventsPanel({ selectedLocation }: EventsPanelProps) {
           </motion.div>
         ))}
 
-        {!loading && filteredEvents.length === 0 && (
+        {filteredEvents.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
             No events at this location yet
+          </div>
+        )}
+
+        {!selectedLocation && liveEvents.length > 0 && (
+          <div className="pt-4 mt-2 border-t border-border/40 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+              </span>
+              <span className="font-heading text-[11px] font-semibold text-primary uppercase tracking-widest">
+                Live · From Edge Esmeralda
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                · pulled from Supabase
+              </span>
+            </div>
+            {liveEvents.map((event, i) => (
+              <motion.div
+                key={`live-${event.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className={`rounded-xl border p-3.5 transition-all hover:border-primary/30 cursor-pointer ${
+                  event.isHappeningNow ? "border-primary/40 glow-mint-sm" : "border-border/60"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-heading text-sm font-semibold text-foreground line-clamp-2">
+                      {event.title}
+                    </h3>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1 mb-1.5">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {event.time}
+                      </span>
+                      {event.location && event.location !== "TBD" && (
+                        <span className="flex items-center gap-1 truncate">
+                          <MapPin className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{event.location}</span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          TAG_COLORS[event.tag] || "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {event.tag}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground truncate">
+                        by {event.host}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
           </div>
         )}
       </div>

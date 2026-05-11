@@ -1,7 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import vibeyModelUrl from "@/assets/vibey.glb";
+import vibeyModelUrl from "@/assets/glb/vibey.glb";
 
 export interface VibeyState {
   lng: number;

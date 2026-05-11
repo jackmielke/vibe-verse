@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Navigation, Zap, Layers, Locate } from "lucide-react";
+import { Navigation, Zap, Layers, Locate, X } from "lucide-react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { createMeditationTempleLayer } from "./map/MeditationTempleLayer";
 import { createPlazaLayer } from "./map/PlazaLayer";
-import { createObservatoryLayer } from "./map/ObservatoryLayer";
+import { createVenueBeaconLayer } from "./map/VenueBeaconLayer";
+import { createRingPulseLayer } from "./map/RingPulseLayer";
+import { createOrbBobLayer } from "./map/OrbBobLayer";
+import { createNaturePackLayer } from "./map/NaturePackLayer";
+import { createVineyardLayer } from "./map/VineyardLayer";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createHelicopterLayer,
   createDefaultHelicopterState,
@@ -15,18 +21,68 @@ import {
 import HelicopterControl, {
   type HelicopterControlState,
   type NimbusControlState,
+  type StyleConfig,
+  DEFAULT_STYLE_CONFIG,
 } from "./HelicopterControl";
 import { createVibeyLayer, type VibeyState } from "./map/VibeyLayer";
+import { createAlienLayer, createDefaultAlienState, type AlienState } from "./map/AlienLayer";
+import {
+  createUnit7Layer,
+  createDefaultUnit7State,
+  UNIT7_DEFAULT_SCALE_METERS,
+  UNIT7_MIN_SCALE_METERS,
+  UNIT7_MAX_SCALE_METERS,
+  type Unit7State,
+  type Unit7AnimName,
+  type Unit7Expression,
+} from "./map/Unit7Layer";
+import {
+  createVibePoliceLayer,
+  createDefaultVibePoliceState,
+  VIBE_POLICE_DEFAULT_SCALE_METERS,
+  VIBE_POLICE_MIN_SCALE_METERS,
+  VIBE_POLICE_MAX_SCALE_METERS,
+  type VibePoliceState,
+} from "./map/VibePoliceLayer";
 import {
   createNimbusVtolLayer,
   createDefaultNimbusState,
   type NimbusState,
 } from "./map/NimbusVtolLayer";
+import {
+  createSpawnableLayer,
+  type SpawnableState,
+} from "./map/SpawnableLayer";
 import VibeyDialog from "./VibeyDialog";
+import Unit7Dialog from "./Unit7Dialog";
 
 // Vibey hangs out near the central plaza, slightly offset so he doesn't
 // overlap the plaza structure.
 const VIBEY_LOCATION = { lng: -122.8695, lat: 38.6135 };
+// Alien hangs out in the open ground a block north of the plaza so
+// he doesn't pile on top of Vibey or Unit-7.
+const ALIEN_LOCATION = { lng: -122.86940, lat: 38.61140 };
+
+// Unit-7 spawns in the open ground south of the village so the plaza
+// pavilion can't visually swallow him on the initial flyTo, and so the
+// teal beacon stands out against open street + tree cover.
+const UNIT7_LOCATION = { lng: -122.8696, lat: 38.6118 };
+// Wander radius (in meters, approximate) from spawn point.
+const UNIT7_WANDER_RADIUS_M = 50;
+
+// Vibe Police starts a block east, separate from Unit-7 so the two are
+// distinguishable on first sight.
+const VIBE_POLICE_LOCATION = { lng: -122.8688, lat: 38.6122 };
+const VIBE_POLICE_WANDER_RADIUS_M = 45;
+
+// Walking speed in meters/second.
+// Base walking speed at the default body size. The wander loop scales this
+// by `state.scaleMeters / UNIT7_DEFAULT_SCALE_METERS` so a 10× kaiju takes
+// 10× strides instead of looking like he's foot-shuffling.
+const UNIT7_SPEED_MPS = 4;
+// Idle pause between moves, seconds.
+const UNIT7_IDLE_MIN_S = 2.5;
+const UNIT7_IDLE_MAX_S = 6;
 
 // Village locations with real coordinates around Healdsburg.
 // `structure3d` marks locations that are rendered as a 3D model on the map
@@ -37,12 +93,25 @@ const VILLAGE_LOCATIONS = [
   { id: 2, name: "Hacker House", lat: 38.6140, lng: -122.8682, type: "workspace", people: 18, emoji: "💻" },
   { id: 3, name: "The Grove", lat: 38.6120, lng: -122.8715, type: "social", people: 27, emoji: "🌳" },
   { id: 4, name: "Dining Hall", lat: 38.6145, lng: -122.8698, type: "food", people: 55, emoji: "🍽️" },
-  { id: 5, name: "Meditation Garden", lat: 38.6115, lng: -122.8688, type: "wellness", people: 8, emoji: "🧘", structure3d: "temple" as const, hitSize: 160 },
+  // (Meditation Garden was a fictional placeholder — removed.)
   { id: 6, name: "Co-working Barn", lat: 38.6128, lng: -122.8720, type: "workspace", people: 31, emoji: "🏠" },
   { id: 7, name: "Pool Deck", lat: 38.6148, lng: -122.8690, type: "social", people: 15, emoji: "🏊" },
   { id: 8, name: "Art Studio", lat: 38.6118, lng: -122.8672, type: "venue", people: 12, emoji: "🎨" },
-  { id: 9, name: "Central Plaza", lat: 38.6130, lng: -122.8692, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200 },
-  { id: 10, name: "Observatory", lat: 38.6138, lng: -122.8710, type: "venue", people: 6, emoji: "🔭", structure3d: "observatory" as const, hitSize: 140 },
+  // Real Healdsburg Plaza (OpenStreetMap-verified centroid). Mint
+  // ground rings instead of a vertical beam so the plaza reads as
+  // ambient space, not just another beacon.
+  { id: 9, name: "Central Plaza", lat: 38.61080, lng: -122.87007, type: "social", people: 64, emoji: "⛲", structure3d: "plaza" as const, hitSize: 200, beaconColor: 0x73ffb8, markerStyle: "beam" as const },
+  // ---- Edge Esmeralda real-world venues (OSM-geocoded) -----------
+  // Each gets a unique structure3d id and a markerStyle so we can
+  // swap aesthetics per venue (beam, rings, orb, particles, ...).
+  { id: 10, name: "CraftWork", lat: 38.61230, lng: -122.87098, type: "workspace", people: 22, emoji: "☕", structure3d: "craftwork" as const, hitSize: 140, beaconColor: 0xffb24a, markerStyle: "beam" as const },
+  { id: 11, name: "Hotel Trio", lat: 38.62568, lng: -122.87503, type: "venue", people: 36, emoji: "🛎️", structure3d: "hotel-trio" as const, hitSize: 180, beaconColor: 0x6aa8ff, markerStyle: "beam" as const },
+  { id: 14, name: "Costeaux", lat: 38.61254, lng: -122.87159, type: "food", people: 14, emoji: "🥐", structure3d: "costeaux" as const, hitSize: 130, beaconColor: 0xffd166, markerStyle: "orb" as const },
+  { id: 16, name: "Raven Theater", lat: 38.61228, lng: -122.87041, type: "venue", people: 28, emoji: "🎭", structure3d: "raven" as const, hitSize: 140, beaconColor: 0xeaeaf0, markerStyle: "beam" as const },
+  // Giorgi Park (real Healdsburg park) — uses the Simple Nature Pack
+  // (low-poly trees / bushes / grass / rocks) to mark the spot
+  // instead of a beam of light. Wind-swayed mini-grove.
+  { id: 19, name: "Giorgi Park", lat: 38.61546, lng: -122.86179, type: "wellness", people: 12, emoji: "🌳", structure3d: "giorgi" as const, hitSize: 200, beaconColor: 0x8ad48a, markerStyle: "nature" as const },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -60,49 +129,213 @@ const STRUCTURE_FACTORIES: Record<
 > = {
   temple: { layerId: "structure-temple", create: createMeditationTempleLayer },
   plaza: { layerId: "structure-plaza", create: createPlazaLayer },
-  observatory: { layerId: "structure-observatory", create: createObservatoryLayer },
 };
 
-// Adds every 3D structure layer for locations that have `structure3d` set.
-// Safe to call multiple times — it skips layers that already exist (and is
-// also called from `style.load` since custom layers are wiped on style change).
-// Uses `queryTerrainElevation` so structures sit on the ground rather than
-// sinking below an elevated terrain surface.
-function addStructureLayers(m: mapboxgl.Map) {
+// Adds the small "venue beacon" layer (a thin pillar of light + halo)
+// at every location that has a structure3d. The beacon is the always-on
+// minimalist marker — the actual pavilion / fountain / temple meshes
+// are gated behind the spawn toggles.
+function addVenueBeaconLayers(m: mapboxgl.Map) {
+  // Palm ring around the plaza — always on, gives the plaza a real
+  // bit of personality on top of its beam beacon.
+  const plaza = VILLAGE_LOCATIONS.find((l) => l.structure3d === "plaza");
+  if (plaza && !m.getLayer("palms-plaza")) {
+    let alt = 0;
+    try {
+      const e = m.queryTerrainElevation([plaza.lng, plaza.lat], { exaggerated: true });
+      if (typeof e === "number") alt = e + 0.1;
+    } catch { /* */ }
+    try {
+      m.addLayer(createVineyardLayer("palms-plaza", { lng: plaza.lng, lat: plaza.lat }, alt, {
+        seed: 7,
+        count: 10,
+        minRadius: 14,
+        maxRadius: 18,
+      }));
+    } catch { /* */ }
+  }
+
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
-    const factory = STRUCTURE_FACTORIES[loc.structure3d];
-    if (!factory || m.getLayer(factory.layerId)) return;
+    const id = `beacon-${loc.structure3d}`;
+    if (m.getLayer(id)) return;
     let altitude = 0;
     try {
-      // queryTerrainElevation returns meters above sea level at this lng/lat,
-      // or null if terrain isn't ready yet. Add a tiny lift so the base of
-      // the model isn't z-fighting with the terrain mesh.
       const elev = m.queryTerrainElevation([loc.lng, loc.lat], { exaggerated: true });
-      if (typeof elev === "number") altitude = elev + 0.5;
-    } catch {
-      /* terrain not ready */
-    }
+      if (typeof elev === "number") altitude = elev + 0.2;
+    } catch { /* terrain not ready */ }
     try {
-      m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }, altitude));
-    } catch {
-      /* ignore — layer may not be ready in this style */
-    }
+      const color = (loc as { beaconColor?: number }).beaconColor ?? 0x73ffb8;
+      const style = (loc as { markerStyle?: "beam" | "rings" | "orb" | "nature" | "vineyard" | "none" }).markerStyle ?? "beam";
+      // "none" = pin only, no 3D ground beacon. Used for places where
+      // the pin + hover card carries the whole landmark experience.
+      if (style === "none") return;
+      if (style === "nature") {
+        m.addLayer(
+          createNaturePackLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, {
+            seed: loc.id,
+            radius: 28,
+          }),
+        );
+      } else if (style === "vineyard") {
+        m.addLayer(
+          createVineyardLayer(id, { lng: loc.lng, lat: loc.lat }, altitude, {
+            seed: loc.id,
+          }),
+        );
+      } else {
+        const factoryFor = {
+          beam: createVenueBeaconLayer,
+          rings: createRingPulseLayer,
+          orb: createOrbBobLayer,
+        };
+        const make = factoryFor[style] ?? createVenueBeaconLayer;
+        m.addLayer(make(id, { lng: loc.lng, lat: loc.lat }, altitude, color));
+      }
+    } catch { /* style not ready */ }
   });
+}
+
+// Adds the heavy 3D structure for a single venue (called when the user
+// spawns it from the Spawn panel). Returns true if it succeeded.
+function addStructureLayer(m: mapboxgl.Map, structure: "plaza" | "temple") {
+  const loc = VILLAGE_LOCATIONS.find((l) => l.structure3d === structure);
+  if (!loc) return false;
+  const factory = STRUCTURE_FACTORIES[structure];
+  if (!factory || m.getLayer(factory.layerId)) return false;
+  let altitude = 0;
+  try {
+    const elev = m.queryTerrainElevation([loc.lng, loc.lat], { exaggerated: true });
+    if (typeof elev === "number") altitude = elev + 0.5;
+  } catch { /* terrain not ready */ }
+  try {
+    m.addLayer(factory.create(factory.layerId, { lng: loc.lng, lat: loc.lat }, altitude));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Removes a previously-spawned 3D structure layer if present.
+function removeStructureLayer(m: mapboxgl.Map, structure: "plaza" | "temple") {
+  const factory = STRUCTURE_FACTORIES[structure];
+  if (!factory) return;
+  if (m.getLayer(factory.layerId)) m.removeLayer(factory.layerId);
+}
+
+// Adds a 3D building extrusion layer for non-Standard styles (e.g. satellite).
+// The Mapbox Standard style ships its own beautiful 3D buildings and hides the
+// `composite` source, so this is a no-op there. On satellite-streets the
+// `composite` source is exposed and we can extrude the `building` layer.
+// Safe to call multiple times.
+function addBuildingsLayer(m: mapboxgl.Map) {
+  if (m.getLayer("3d-buildings")) return;
+  // Skip if `composite` source isn't available (Standard style hides it).
+  if (!m.getSource("composite")) return;
+
+  const layers = m.getStyle()?.layers;
+  // Insert beneath the first label layer so labels stay readable on top.
+  const labelLayer = layers?.find(
+    (layer) => layer.type === "symbol" && (layer.layout as any)?.["text-field"],
+  );
+
+  try {
+    m.addLayer(
+      {
+        id: "3d-buildings",
+        source: "composite",
+        "source-layer": "building",
+        filter: ["==", "extrude", "true"],
+        type: "fill-extrusion",
+        minzoom: 14,
+        paint: {
+          // Slight teal tint so buildings feel "Edge"-themed on satellite imagery.
+          "fill-extrusion-color": [
+            "interpolate",
+            ["linear"],
+            ["get", "height"],
+            0, "#7fe7c4",
+            50, "#2dd4a8",
+            150, "#1a8f73",
+          ],
+          "fill-extrusion-height": ["*", ["get", "height"], 1.5],
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": 0.85,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      labelLayer?.id,
+    );
+  } catch {
+    /* ignore — source/layer not yet ready */
+  }
 }
 
 // Re-create structure layers (e.g. once terrain has loaded) so altitude
 // reflects current ground elevation.
-function refreshStructureLayers(m: mapboxgl.Map) {
+// Pacific Time → Mapbox Standard light preset. Roughly:
+//   05:00–08:00 → dawn
+//   08:00–16:00 → day
+//   16:00–19:00 → dusk
+//   else        → night
+function lightPresetForPTHour(hour: number): "dawn" | "day" | "dusk" | "night" {
+  if (hour >= 5 && hour < 8) return "dawn";
+  if (hour >= 8 && hour < 16) return "day";
+  if (hour >= 16 && hour < 19) return "dusk";
+  return "night";
+}
+
+// Apply the user-configurable style settings to the live Mapbox map.
+// Wraps every setConfigProperty call in a try/catch since older
+// Mapbox versions and non-Standard styles silently lack support.
+function applyStyleConfig(m: mapboxgl.Map, cfg: StyleConfig) {
+  const set = (k: string, v: unknown) => {
+    try { m.setConfigProperty("basemap", k, v); } catch { /* ignore */ }
+  };
+  const light = cfg.lightPreset === "auto"
+    ? lightPresetForPTHour(getPacificClock().hour)
+    : cfg.lightPreset;
+  set("lightPreset", light);
+  set("theme", cfg.theme);
+  set("showPointOfInterestLabels", cfg.showPois);
+  set("showRoadLabels", cfg.showRoads);
+  set("showPlaceLabels", cfg.showPlaces);
+  set("showTransitLabels", cfg.showTransit);
+  set("showLandmarkIcons", cfg.showLandmarks);
+  set("show3dObjects", cfg.show3d);
+}
+
+function getPacificClock(): { hour: number; label: string } {
+  const now = new Date();
+  // Use Intl with a known timezone so we don't trust the user's local clock.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(now);
+  const label = parts.map((p) => p.value).join("");
+  const hour24Str = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    hour12: false,
+  }).format(now);
+  const hour = Number(hour24Str) % 24;
+  return { hour, label };
+}
+
+function refreshVenueBeacons(m: mapboxgl.Map) {
   VILLAGE_LOCATIONS.forEach((loc) => {
     if (!loc.structure3d) return;
-    const factory = STRUCTURE_FACTORIES[loc.structure3d];
-    if (!factory) return;
-    if (m.getLayer(factory.layerId)) {
-      try { m.removeLayer(factory.layerId); } catch { /* noop */ }
+    const id = `beacon-${loc.structure3d}`;
+    if (m.getLayer(id)) {
+      try { m.removeLayer(id); } catch { /* noop */ }
     }
   });
-  addStructureLayers(m);
+  if (m.getLayer("palms-plaza")) {
+    try { m.removeLayer("palms-plaza"); } catch { /* noop */ }
+  }
+  addVenueBeaconLayers(m);
 }
 
 interface MapViewProps {
@@ -111,17 +344,91 @@ interface MapViewProps {
 }
 
 export default function MapView({ onLocationSelect, selectedLocation }: MapViewProps) {
+  const navigate = useNavigate();
   const mapContainer = useRef<HTMLDivElement>(null);
+  // Set to true once we've re-seated beacons on the freshly-loaded
+  // terrain DEM. Reset on every style.load so a style toggle re-runs
+  // the one-time refresh.
+  const beaconsSeatedRef = useRef(false);
+  // Set to true once we've performed the cinematic intro fly-in to
+  // the plaza. Prevents the camera from being yanked around on
+  // subsequent style toggles (dark ↔ satellite).
+  const introFlownRef = useRef(false);
+
+  // User-configurable Mapbox Standard config. State + ref declared
+  // here; the apply-on-change effect lives below mapLoaded so it
+  // can read it without TDZ.
+  const [styleConfig, setStyleConfig] = useState<StyleConfig>(DEFAULT_STYLE_CONFIG);
+  const styleConfigRef = useRef<StyleConfig>(DEFAULT_STYLE_CONFIG);
+  styleConfigRef.current = styleConfig;
+
+  // ---- Edge Esmeralda upcoming events ticker ---------------------
+  type EdgeEvent = {
+    id: string;
+    title: string;
+    event_location: string | null;
+    event_start_time: string;
+  };
+  const EDGE_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
+  const [upcomingEvents, setUpcomingEvents] = useState<EdgeEvent[]>([]);
+  // Mirror events into a ref so the hover-card builders (registered
+  // once when markers mount) can read fresh data without re-rendering
+  // every marker on every event refresh.
+  const upcomingEventsRef = useRef<EdgeEvent[]>([]);
+  useEffect(() => { upcomingEventsRef.current = upcomingEvents; }, [upcomingEvents]);
+  const [tickerOpen, setTickerOpen] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("events")
+        .select("id, title, event_location, event_start_time")
+        .eq("community_id", EDGE_COMMUNITY_ID)
+        .order("event_start_time", { ascending: true })
+        .limit(20);
+      if (cancelled || !data) return;
+      const now = Date.now();
+      const upcoming = (data as EdgeEvent[])
+        .filter((e) => new Date(e.event_start_time).getTime() > now)
+        .slice(0, 8);
+      // If no upcoming, fall back to the most recent past events so
+      // the ticker still has something to show.
+      setUpcomingEvents(upcoming.length ? upcoming : (data as EdgeEvent[]).slice(-6));
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Detail modal for spawned mega-structures (Death Star, Edge Island,
+  // Tokyo Block, etc). When the user clicks the floating "i" marker
+  // pinned to a structure, this fills in and the modal animates in.
+  const [structureDetail, setStructureDetail] = useState<{
+    id: string;
+    label: string;
+    description: string;
+    flavor: string; // a longer "why this exists" paragraph
+    emoji: string;
+    accent: string; // hex tint for the card border / glow
+    lng: number;
+    lat: number;
+  } | null>(null);
   const [mapStyle, setMapStyle] = useState<"satellite" | "dark">("dark");
   const activeStyleRef = useRef<"satellite" | "dark">("dark");
   const mapReadyTimeoutRef = useRef<number | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [mapError, setMapError] = useState(false);
+
+  // Apply style config on every change (placed below mapLoaded so the
+  // dep array can reference it without a TDZ at render time).
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    applyStyleConfig(map.current, styleConfig);
+  }, [styleConfig, mapLoaded]);
+
 
   // ---- Helicopter ------------------------------------------------------
   // Mutable state that the custom layer reads on every render frame.
@@ -153,6 +460,105 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   const [vibeyOpen, setVibeyOpen] = useState(false);
   const [vibeyUI, setVibeyUI] = useState({ walkMode: false, heading: 0 });
   const vibeyKeysRef = useRef<Record<string, boolean>>({});
+  // Lazy-load: characters are off by default. Toggling on triggers GLB
+  // download + layer mount; toggling off tears them down so initial app
+  // load stays light (no ~12-54 MB of bundled meshes on first paint).
+  const [vibeyVisible, setVibeyVisible] = useState(false);
+
+  // ---- Alien (Quaternius animated visitor) ------------------------------
+  const alienStateRef = useRef<AlienState>(
+    createDefaultAlienState(ALIEN_LOCATION.lng, ALIEN_LOCATION.lat),
+  );
+  const alienLayerAddedRef = useRef(false);
+  const [alienVisible, setAlienVisible] = useState(false);
+
+  // ---- Unit-7 (autonomous resident bot) --------------------------------
+  const unit7StateRef = useRef<Unit7State>(
+    createDefaultUnit7State(UNIT7_LOCATION.lng, UNIT7_LOCATION.lat),
+  );
+  // Wander target. When null we're idling.
+  const unit7TargetRef = useRef<{ lng: number; lat: number } | null>(null);
+  const unit7IdleUntilRef = useRef<number>(0);
+  // After a one-shot emote finishes, return to this animation.
+  const unit7BaseAnimRef = useRef<Unit7AnimName>("Idle");
+  const unit7LayerAddedRef = useRef(false);
+  const unit7MarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [unit7Open, setUnit7Open] = useState(false);
+  // UI-driven size slider for Unit-7 on the map. The layer reads from
+  // `unit7StateRef.current.scaleMeters` each frame.
+  const [unit7Scale, setUnit7Scale] = useState(UNIT7_DEFAULT_SCALE_METERS);
+  // Walk-as-Unit-7 (mirrors Vibey's walk mode): pause wander, control with
+  // WASD, third-person chase camera.
+  const [unit7WalkMode, setUnit7WalkMode] = useState(false);
+  const unit7KeysRef = useRef<Record<string, boolean>>({});
+  const [unit7Visible, setUnit7Visible] = useState(false);
+
+  // Pacific Time clock label + sun/lighting that follow real local time.
+  const [clockLabel, setClockLabel] = useState(() => getPacificClock().label);
+
+  // ---- Vibe Police (anti-vibe officer) ---------------------------------
+  const vibePoliceStateRef = useRef<VibePoliceState>(
+    createDefaultVibePoliceState(VIBE_POLICE_LOCATION.lng, VIBE_POLICE_LOCATION.lat),
+  );
+  const vibePoliceTargetRef = useRef<{ lng: number; lat: number } | null>(null);
+  const vibePoliceIdleUntilRef = useRef<number>(0);
+  const vibePoliceLayerAddedRef = useRef(false);
+  const vibePoliceMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [vibePoliceScale, setVibePoliceScale] = useState(VIBE_POLICE_DEFAULT_SCALE_METERS);
+  const [vibePoliceVisible, setVibePoliceVisible] = useState(false);
+
+  // ---- Spawnables (lazy-loaded heavy GLBs) -----------------------------
+  const islandStateRef = useRef<SpawnableState>({
+    lng: VILLAGE_CENTER.lng,
+    lat: VILLAGE_CENTER.lat,
+    altitude: 700, // hover way up so the camera can pull back & include both
+    heading: 0,
+    scaleMeters: 260,
+    bobAmplitude: 8,
+    rotationSpeed: 0.04,
+  });
+  const islandLayerRef = useRef<ReturnType<typeof createSpawnableLayer> | null>(null);
+  const [islandEnabled, setIslandEnabled] = useState(false);
+  const [islandLoading, setIslandLoading] = useState(false);
+  const [islandProgress, setIslandProgress] = useState<number | null>(null);
+
+  const deathStarStateRef = useRef<SpawnableState>({
+    lng: VILLAGE_CENTER.lng + 0.012, // ~1km east of the village
+    lat: VILLAGE_CENTER.lat + 0.006,
+    altitude: 1100, // even higher than the island
+    heading: 0,
+    scaleMeters: 180,
+    bobAmplitude: 2,
+    bobPeriod: 22,
+    rotationSpeed: 0.18, // spins faster — it's a moon-sized space station
+  });
+  const deathStarLayerRef = useRef<ReturnType<typeof createSpawnableLayer> | null>(null);
+  const [deathStarEnabled, setDeathStarEnabled] = useState(false);
+  const [deathStarLoading, setDeathStarLoading] = useState(false);
+  const [deathStarProgress, setDeathStarProgress] = useState<number | null>(null);
+
+  // Littlest Tokyo: keyframe-animated micro-city. Sits on the ground a few
+  // blocks east of the plaza so it feels like its own neighborhood — far
+  // enough that it doesn't overlap the plaza pavilion's footprint.
+  const tokyoStateRef = useRef<SpawnableState>({
+    lng: -122.8662, // ~280m east of the plaza, in open ground
+    lat: 38.6125,
+    altitude: 32, // ground-level fallback; resampled from terrain on mount
+    heading: 0,
+    scaleMeters: 35,
+    bobAmplitude: 0, // no bob — this one sits on the ground
+    rotationSpeed: 0, // no auto-spin — its internal animations are the show
+    bottomAnchor: true, // city's footprint sits ON the ground, not half-buried
+  });
+  const tokyoLayerRef = useRef<ReturnType<typeof createSpawnableLayer> | null>(null);
+  const [tokyoEnabled, setTokyoEnabled] = useState(false);
+  const [tokyoLoading, setTokyoLoading] = useState(false);
+  const [tokyoProgress, setTokyoProgress] = useState<number | null>(null);
+
+  // 3D venue structures (plaza pavilion + meditation temple) are
+  // gated behind their own spawn toggles. The always-on beacons mark
+  // their location until the heavy meshes are spawned.
+  const [plazaEnabled, setPlazaEnabled] = useState(false);
 
   // ---- Nimbus VTOL ------------------------------------------------------
   const nimbusStateRef = useRef<NimbusState>(
@@ -176,13 +582,19 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
     try {
+      // Start the camera way out + flat, so the first thing the user
+      // sees is a wide top-down view of Healdsburg. The "open the
+      // app, zoom into the plaza" cinematic flyTo is wired below.
       const m = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/standard",
         center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
-        zoom: VILLAGE_CENTER.zoom,
-        pitch: 45,
-        bearing: -17,
+        // Tighter opening shot — half as far out as the original 11.5
+        // so the cinematic flyTo has less ground to cover and the user
+        // can already make out the village blocks.
+        zoom: 13.5,
+        pitch: 0,
+        bearing: 0,
         antialias: true,
       });
 
@@ -196,7 +608,25 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       mapReadyTimeoutRef.current = window.setTimeout(markMapReady, 4500);
 
+      // Dev helper: shift+click anywhere on the map → logs the
+      // precise lng/lat to the console + copies it to the clipboard.
+      // Use this to pin landmarks exactly (open the map, shift+click
+      // the spot, paste the coord into VILLAGE_LOCATIONS).
+      m.on("click", (e) => {
+        if (!e.originalEvent.shiftKey) return;
+        const { lng, lat } = e.lngLat;
+        const out = `lat: ${lat.toFixed(5)}, lng: ${lng.toFixed(5)}`;
+        // eslint-disable-next-line no-console
+        console.log("[map shift+click]", out);
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(out).catch(() => { /* noop */ });
+        }
+      });
+
       m.on("style.load", () => {
+        // Style change wipes custom layers — let the next DEM-ready
+        // event re-seat the beacons once.
+        beaconsSeatedRef.current = false;
         // Enable 3D terrain
         if (!m.getSource("mapbox-dem")) {
           m.addSource("mapbox-dem", {
@@ -208,29 +638,88 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }
         m.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
-        // Set Standard style config for colorful, immersive 3D look
+        // Apply the current Style-tab config plus the auto-PT light
+        // preset where requested. The user can override any of these
+        // from the menu.
         try {
-          m.setConfigProperty("basemap", "lightPreset", "dusk");
-          m.setConfigProperty("basemap", "showPointOfInterestLabels", true);
-          m.setConfigProperty("basemap", "showTransitLabels", false);
-          m.setConfigProperty("basemap", "showPlaceLabels", true);
-          m.setConfigProperty("basemap", "show3dObjects", true);
+          applyStyleConfig(m, styleConfigRef.current);
         } catch (e) {
           // Config properties may not be available on all versions
         }
 
-        // Re-add 3D structures (custom layers are wiped on style change).
-        // Wait one tick for terrain tiles before sampling elevation.
-        addStructureLayers(m);
+        // Re-add the always-on venue beacons (custom layers are wiped
+        // on style change). Heavy structures are gated behind the
+        // Spawn panel and re-added by the spawn-state effect below.
+        addVenueBeaconLayers(m);
+        // Add city 3D buildings on styles that expose `composite` (satellite).
+        // Standard ships its own 3D buildings so this is a no-op there.
+        addBuildingsLayer(m);
         markMapReady();
-        m.once("idle", () => refreshStructureLayers(m));
+        m.once("idle", () => refreshVenueBeacons(m));
+
+        // Cinematic open: only the first time the style finishes
+        // loading, fly from the wide top-down opener into the plaza
+        // with pitch + bearing. Skipped on subsequent style toggles
+        // (dark ↔ satellite) so the user isn't yanked around.
+        if (!introFlownRef.current) {
+          introFlownRef.current = true;
+          window.setTimeout(() => {
+            m.flyTo({
+              center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
+              // Closer zoom so the plaza + CraftWork + Costeaux +
+              // Raven + SingleThread cluster reads clearly in the
+              // middle of the screen.
+              zoom: 17.5,
+              pitch: 60,
+              bearing: -20,
+              // Snappier opener: ~half the duration of the previous
+              // speed:0.5 / delay:600 setup. We still use a curve so
+              // the motion feels like a flyover, just less leisurely.
+              speed: 1.4,
+              curve: 1.7,
+              essential: true,
+            });
+          }, 250);
+        }
       });
 
-      // When new terrain tiles load near our structures, re-seat them on the
-      // ground so they don't appear to sink as the user pans/zooms.
+      // When new terrain tiles load near our structures, re-seat them
+      // on the ground so they don't appear to sink as the user pans
+      // or zooms. We only do this ONCE per style — repeating it on
+      // every DEM tile load was tearing down + reloading the heavy
+      // NaturePack GLBs and causing visible flicker.
       m.on("sourcedata", (e) => {
         if (e.sourceId === "mapbox-dem" && e.isSourceLoaded) {
-          refreshStructureLayers(m);
+          if (!beaconsSeatedRef.current) {
+            refreshVenueBeacons(m);
+            beaconsSeatedRef.current = true;
+          }
+          // Re-sample ground altitude for live characters too. Without this,
+          // they stay at sea-level (altitude 0) until a frame happens to
+          // resample, which leaves them underground in places like Healdsburg
+          // (terrain ~32m).
+          try {
+            const ve = m.queryTerrainElevation(
+              [vibeyStateRef.current.lng, vibeyStateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof ve === "number") vibeyStateRef.current.baseAltitude = ve;
+            const ue = m.queryTerrainElevation(
+              [unit7StateRef.current.lng, unit7StateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof ue === "number") unit7StateRef.current.baseAltitude = ue;
+            const te = m.queryTerrainElevation(
+              [tokyoStateRef.current.lng, tokyoStateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof te === "number") tokyoStateRef.current.altitude = te;
+            const pe = m.queryTerrainElevation(
+              [vibePoliceStateRef.current.lng, vibePoliceStateRef.current.lat],
+              { exaggerated: true },
+            );
+            if (typeof pe === "number") vibePoliceStateRef.current.baseAltitude = pe;
+          } catch { /* terrain not ready */ }
         }
       });
 
@@ -251,36 +740,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }, 600);
 
-        // Add 3D buildings (kept as fallback for non-Standard styles like satellite)
-        const layers = m.getStyle()?.layers;
-        if (layers) {
-          const labelLayer = layers.find(
-            (layer) => layer.type === "symbol" && (layer.layout as any)?.["text-field"]
-          );
-          if (labelLayer && !m.getLayer("3d-buildings")) {
-            try {
-              m.addLayer(
-                {
-                  id: "3d-buildings",
-                  source: "composite",
-                  "source-layer": "building",
-                  filter: ["==", "extrude", "true"],
-                  type: "fill-extrusion",
-                  minzoom: 14,
-                  paint: {
-                    "fill-extrusion-color": "#2dd4a8",
-                    "fill-extrusion-height": ["*", ["get", "height"], 1.5],
-                    "fill-extrusion-base": ["get", "min_height"],
-                    "fill-extrusion-opacity": 0.7,
-                  },
-                },
-                labelLayer.id
-              );
-            } catch {
-              // Standard style doesn't expose composite source — ignore
-            }
-          }
-        }
+        // (3D city buildings are added in `style.load` via `addBuildingsLayer`.)
 
         // Add village boundary glow
         m.addSource("village-area", {
@@ -323,8 +783,8 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           },
         });
 
-        // 3D structure overlays (also re-added on style.load)
-        addStructureLayers(m);
+        // Always-on venue beacons (also re-added on style.load).
+        addVenueBeaconLayers(m);
       });
 
       m.on("error", (event) => {
@@ -337,6 +797,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       });
 
       map.current = m;
+      if (import.meta.env.DEV) {
+        (window as any).__map = m;
+      }
     } catch {
       setMapError(true);
     }
@@ -391,20 +854,34 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         cursor: pointer;
         pointer-events: auto;
       `;
+      // Plain invisible click target — the visible indicator is the
+      // vertical beacon beam, not a circular halo on the marker.
       const inner = document.createElement("div");
       inner.style.cssText = `
         width: 100%; height: 100%;
-        border-radius: 40% 40% 50% 50%;
         background: transparent;
-        ${isSelected ? `box-shadow: inset 0 -20px 40px ${color}55, 0 0 30px ${color}66;` : ""}
-        transition: box-shadow 0.2s ease;
       `;
       el.appendChild(inner);
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         onLocationSelect(selectedLocation?.id === loc.id ? null : loc);
-        map.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 17, duration: 800 });
+        // Cinematic close-up: pull in tight enough to actually inspect
+        // the venue, with a 60° pitch + slight bearing change so the
+        // landmark reads in 3D rather than a flat top-down. Preserve
+        // the user's current bearing if they've manually rotated.
+        const m = map.current;
+        if (!m) return;
+        const curBearing = m.getBearing();
+        m.flyTo({
+          center: [loc.lng, loc.lat],
+          zoom: 18.4,
+          pitch: 60,
+          bearing: curBearing + 12,
+          duration: 1400,
+          curve: 1.5,
+          essential: true,
+        });
       });
 
       const marker = new mapboxgl.Marker({
@@ -415,6 +892,130 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         .addTo(map.current!);
 
       markersRef.current.push(marker);
+
+      // Hover card — name + venue type + up to 2 upcoming events that
+      // happen here. Hidden by default, fades in on hover. Mapbox
+      // adopts the marker's root element and overwrites inline styles
+      // there, so we keep the root empty and style an inner card.
+      const labelRoot = document.createElement("div");
+      labelRoot.style.cssText = "pointer-events: none;";
+      const cardEl = document.createElement("div");
+      cardEl.className = "venue-card-inner";
+      cardEl.style.cssText = `
+        max-width: 240px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: hsl(216 40% 12% / 0.92);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid ${color}99;
+        color: #eaf3ff;
+        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-size: 11px;
+        line-height: 1.45;
+        box-shadow: 0 6px 28px hsl(216 60% 4% / 0.6), 0 0 22px ${color}33;
+        opacity: 0;
+        transform: translateY(4px);
+        transition: opacity 0.18s ease, transform 0.18s ease;
+      `;
+      labelRoot.appendChild(cardEl);
+      const labelMarker = new mapboxgl.Marker({
+        element: labelRoot,
+        anchor: "bottom",
+        offset: [0, -72],
+      })
+        .setLngLat([loc.lng, loc.lat])
+        .addTo(map.current!);
+      markersRef.current.push(labelMarker);
+
+      // Tiny HTML escaper so event titles can't break the card.
+      const esc = (s: string) =>
+        s.replace(/[&<>"']/g, (ch) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[ch] as string));
+
+      // Build the card on hover so we always show fresh events.
+      const buildCard = () => {
+        const evs = upcomingEventsRef.current ?? [];
+        const lname = loc.name.toLowerCase();
+        // Match events to this venue by name substring on either side.
+        // (Imperfect, but the events table doesn't link to venue ids.)
+        const matches = evs
+          .filter((ev) => {
+            const where = (ev.event_location ?? "").toLowerCase();
+            if (!where) return false;
+            return where.includes(lname) || lname.includes(where);
+          })
+          .slice(0, 2);
+
+        const fmt = (iso: string) => {
+          try {
+            const d = new Date(iso);
+            return d.toLocaleDateString(undefined, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            }) + " · " + d.toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+            });
+          } catch {
+            return iso;
+          }
+        };
+
+        const eventsHTML = matches.length
+          ? `<div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+              ${matches.map((ev) => `
+                <div style="border-left: 2px solid ${color}cc; padding-left: 6px;">
+                  <div style="font-weight: 600; color: #fff;">${esc(ev.title)}</div>
+                  <div style="opacity: 0.7; font-size: 10px;">${esc(fmt(ev.event_start_time))}</div>
+                </div>
+              `).join("")}
+            </div>`
+          : `<div style="margin-top: 4px; opacity: 0.55; font-size: 10px; font-style: italic;">No upcoming events here yet</div>`;
+
+        cardEl.innerHTML = `
+          <div style="display: flex; align-items: baseline; gap: 6px;">
+            <span style="font-size: 14px;">${loc.emoji ?? "•"}</span>
+            <span style="font-weight: 700; font-size: 12.5px; letter-spacing: 0.01em;">${esc(loc.name)}</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 2px; opacity: 0.7; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;">
+            <span>${esc(loc.type ?? "")}</span>
+            <span>·</span>
+            <span>${loc.people ?? 0} here</span>
+          </div>
+          ${eventsHTML}
+        `;
+      };
+
+      const showCard = () => {
+        buildCard();
+        cardEl.style.opacity = "1";
+        cardEl.style.transform = "translateY(0)";
+      };
+      const hideCard = () => {
+        cardEl.style.opacity = "0";
+        cardEl.style.transform = "translateY(4px)";
+      };
+      // Listen on both the click marker and its inner — Mapbox swaps
+      // pointer-events on the root, but the inner is reliably ours.
+      el.addEventListener("mouseenter", showCard);
+      el.addEventListener("mouseleave", hideCard);
+      inner.addEventListener("mouseenter", showCard);
+      inner.addEventListener("mouseleave", hideCard);
+      el.addEventListener(
+        "touchstart",
+        () => {
+          showCard();
+          window.setTimeout(hideCard, 2400);
+        },
+        { passive: true },
+      );
     });
   }, [mapLoaded, selectedLocation, onLocationSelect]);
 
@@ -462,10 +1063,40 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     );
   }, []);
 
-  // ---- Vibey: mount layer + click marker once map is ready -------------
+  // ---- Time of day + dynamic sun --------------------------------------
+  // Update the on-screen clock once a second so it stays smooth, and the
+  // Mapbox Standard lightPreset once a minute so the basemap relighting
+  // doesn't churn.
+  useEffect(() => {
+    const tickClock = () => setClockLabel(getPacificClock().label);
+    const interval = setInterval(tickClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const m = map.current;
     if (!m || !mapLoaded) return;
+    let lastPreset: string | null = null;
+    const applyPreset = () => {
+      // Only auto-update if the user hasn't manually picked a preset
+      // in the Style tab. Their explicit choice wins.
+      if (styleConfigRef.current.lightPreset !== "auto") return;
+      const preset = lightPresetForPTHour(getPacificClock().hour);
+      if (preset === lastPreset) return;
+      lastPreset = preset;
+      try {
+        m.setConfigProperty("basemap", "lightPreset", preset);
+      } catch { /* may not exist on older mapbox-gl */ }
+    };
+    applyPreset();
+    const interval = setInterval(applyPreset, 60_000);
+    return () => clearInterval(interval);
+  }, [mapLoaded]);
+
+  // ---- Vibey: mount layer + click marker (only when toggled on) -------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded || !vibeyVisible) return;
     const LAYER_ID = "vibey-character";
 
     const mount = () => {
@@ -544,8 +1175,532 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
     return () => {
       m.off("style.load", onStyle);
+      // Tear down on toggle-off so memory + GPU resources are freed.
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      vibeyLayerAddedRef.current = false;
+      vibeyMarkerRef.current?.remove();
+      vibeyMarkerRef.current = null;
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, vibeyVisible]);
+
+  // ---- Alien: mount layer (toggleable from Cast tab) -----------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded || !alienVisible) return;
+    const LAYER_ID = "alien-character";
+    const mount = () => {
+      if (alienLayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [alienStateRef.current.lng, alienStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") alienStateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+      try {
+        m.addLayer(createAlienLayer(LAYER_ID, alienStateRef.current));
+        alienLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* */ }
+    };
+    mount();
+    const onStyle = () => {
+      alienLayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+    return () => {
+      m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      alienLayerAddedRef.current = false;
+    };
+  }, [mapLoaded, alienVisible]);
+
+  // ---- Unit-7: mount layer + click marker (only when toggled on) ------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded || !unit7Visible) return;
+    const LAYER_ID = "unit7-character";
+
+    const handleOneShotFinished = () => {
+      // Resume whatever the wander loop wants (Idle or Walking).
+      unit7StateRef.current.currentAnim = unit7BaseAnimRef.current;
+      unit7StateRef.current.animPulse++;
+    };
+
+    const mount = () => {
+      if (unit7LayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [unit7StateRef.current.lng, unit7StateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") unit7StateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+
+      try {
+        m.addLayer(createUnit7Layer(LAYER_ID, unit7StateRef.current, handleOneShotFinished));
+        unit7LayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+
+      if (!unit7MarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 70px; height: 90px;
+          cursor: pointer;
+          pointer-events: auto;
+          display: flex; align-items: flex-end; justify-content: center;
+        `;
+        const tag = document.createElement("div");
+        tag.style.cssText = `
+          font-family: 'Sora', sans-serif;
+          font-size: 10px; font-weight: 700;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          color: #f0fdf9;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(13, 27, 42, 0.78);
+          border: 1px solid rgba(115, 255, 184, 0.6);
+          box-shadow: 0 0 14px rgba(115, 255, 184, 0.4);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          white-space: nowrap;
+          transform: translateY(-90px);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        `;
+        tag.textContent = "◆ Unit-7";
+        el.appendChild(tag);
+        el.addEventListener("mouseenter", () => {
+          tag.style.transform = "translateY(-90px) scale(1.06)";
+          tag.style.boxShadow = "0 0 22px rgba(115, 255, 184, 0.7)";
+        });
+        el.addEventListener("mouseleave", () => {
+          tag.style.transform = "translateY(-90px)";
+          tag.style.boxShadow = "0 0 14px rgba(115, 255, 184, 0.4)";
+        });
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          // Third-person framing + wave hello + face the camera.
+          const s = unit7StateRef.current;
+          const camBearing = m.getBearing();
+          m.flyTo({
+            center: [s.lng, s.lat],
+            zoom: 19.5,
+            pitch: 55,
+            bearing: camBearing,
+            duration: 1100,
+          });
+          unit7BaseAnimRef.current = "Idle";
+          unit7TargetRef.current = null;
+          s.heading = (camBearing * Math.PI) / 180 + Math.PI;
+          s.currentAnim = "Wave";
+          s.animPulse++;
+          setUnit7Open(true);
+        });
+        unit7MarkerRef.current = new mapboxgl.Marker({
+          element: el,
+          anchor: "bottom",
+        })
+          .setLngLat([unit7StateRef.current.lng, unit7StateRef.current.lat])
+          .addTo(m);
+      }
+    };
+
+    mount();
+    const onStyle = () => {
+      unit7LayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+
+    return () => {
+      m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      unit7LayerAddedRef.current = false;
+      unit7MarkerRef.current?.remove();
+      unit7MarkerRef.current = null;
+    };
+  }, [mapLoaded, unit7Visible]);
+
+  // ---- Unit-7: autonomous wander loop ----------------------------------
+  useEffect(() => {
+    if (!mapLoaded || !unit7Visible) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let lastTime = performance.now();
+    // Meters → degrees conversion at this latitude. Lat is constant; lng
+    // depends on cos(lat). 1° lat ≈ 111_111 m.
+    const metersPerDegLat = 111_111;
+    const metersPerDegLng = 111_111 * Math.cos((UNIT7_LOCATION.lat * Math.PI) / 180);
+
+    function pickNewTarget() {
+      // Random point inside the wander radius (uniform on disc).
+      const r = Math.sqrt(Math.random()) * UNIT7_WANDER_RADIUS_M;
+      const theta = Math.random() * Math.PI * 2;
+      const dxMeters = r * Math.cos(theta);
+      const dyMeters = r * Math.sin(theta);
+      unit7TargetRef.current = {
+        lng: UNIT7_LOCATION.lng + dxMeters / metersPerDegLng,
+        lat: UNIT7_LOCATION.lat + dyMeters / metersPerDegLat,
+      };
+    }
+
+    const tick = () => {
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+      const s = unit7StateRef.current;
+
+      // Don't run wander while user has the dialog open — let him stand still
+      // and emote.
+      if (unit7Open) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Don't override one-shot emotes mid-play.
+      const isOneShot = ["Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump"].includes(
+        s.currentAnim,
+      );
+      if (isOneShot) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Pause autonomous wander while the user is piloting him.
+      if (unit7WalkMode) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
+      const target = unit7TargetRef.current;
+      if (!target) {
+        // Idling. Pick a new target once the idle timer expires.
+        if (now >= unit7IdleUntilRef.current) {
+          pickNewTarget();
+          if (s.currentAnim !== "Walking") {
+            unit7BaseAnimRef.current = "Walking";
+            s.currentAnim = "Walking";
+            s.animPulse++;
+          }
+        } else if (s.currentAnim !== "Idle") {
+          unit7BaseAnimRef.current = "Idle";
+          s.currentAnim = "Idle";
+          s.animPulse++;
+        }
+      } else {
+        // Move toward target.
+        const dxMeters = (target.lng - s.lng) * metersPerDegLng;
+        const dyMeters = (target.lat - s.lat) * metersPerDegLat;
+        const distance = Math.hypot(dxMeters, dyMeters);
+        if (distance < 0.6) {
+          unit7TargetRef.current = null;
+          unit7IdleUntilRef.current =
+            now + (UNIT7_IDLE_MIN_S + Math.random() * (UNIT7_IDLE_MAX_S - UNIT7_IDLE_MIN_S)) * 1000;
+          unit7BaseAnimRef.current = "Idle";
+          s.currentAnim = "Idle";
+          s.animPulse++;
+        } else {
+          const sizeFactor = (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) /
+            UNIT7_DEFAULT_SCALE_METERS;
+          const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
+          const nx = dxMeters / distance;
+          const ny = dyMeters / distance;
+          s.lng += (nx * step) / metersPerDegLng;
+          s.lat += (ny * step) / metersPerDegLat;
+          s.heading = Math.atan2(nx, ny);
+          try {
+            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+            if (typeof elev === "number") s.baseAltitude = elev;
+          } catch { /* terrain not ready */ }
+          unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+        }
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mapLoaded, unit7Open, unit7WalkMode, unit7Visible]);
+
+  // ---- Vibe Police: mount layer + click marker (only when toggled on) -
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded || !vibePoliceVisible) return;
+    const LAYER_ID = "vibe-police-character";
+
+    const mount = () => {
+      if (vibePoliceLayerAddedRef.current) return;
+      try {
+        const elev = m.queryTerrainElevation(
+          [vibePoliceStateRef.current.lng, vibePoliceStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") vibePoliceStateRef.current.baseAltitude = elev;
+      } catch { /* terrain not ready */ }
+
+      try {
+        m.addLayer(createVibePoliceLayer(LAYER_ID, vibePoliceStateRef.current));
+        vibePoliceLayerAddedRef.current = true;
+        m.triggerRepaint();
+      } catch { /* ignore */ }
+
+      if (!vibePoliceMarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 70px; height: 90px;
+          cursor: default;
+          pointer-events: auto;
+          display: flex; align-items: flex-end; justify-content: center;
+        `;
+        const tag = document.createElement("div");
+        tag.style.cssText = `
+          font-family: 'Sora', sans-serif;
+          font-size: 10px; font-weight: 700;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          color: #f0f7ff;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(13, 27, 60, 0.78);
+          border: 1px solid rgba(106, 168, 255, 0.6);
+          box-shadow: 0 0 14px rgba(106, 168, 255, 0.4);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          white-space: nowrap;
+          transform: translateY(-90px);
+        `;
+        tag.textContent = "★ Vibe Police";
+        el.appendChild(tag);
+        vibePoliceMarkerRef.current = new mapboxgl.Marker({
+          element: el,
+          anchor: "bottom",
+        })
+          .setLngLat([vibePoliceStateRef.current.lng, vibePoliceStateRef.current.lat])
+          .addTo(m);
+      }
+    };
+
+    mount();
+    const onStyle = () => {
+      vibePoliceLayerAddedRef.current = false;
+      m.once("idle", mount);
+    };
+    m.on("style.load", onStyle);
+    return () => {
+      m.off("style.load", onStyle);
+      try { m.removeLayer(LAYER_ID); } catch { /* */ }
+      vibePoliceLayerAddedRef.current = false;
+      vibePoliceMarkerRef.current?.remove();
+      vibePoliceMarkerRef.current = null;
+    };
+  }, [mapLoaded, vibePoliceVisible]);
+
+  // ---- Vibe Police: autonomous wander loop -----------------------------
+  useEffect(() => {
+    if (!mapLoaded || !vibePoliceVisible) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let lastTime = performance.now();
+    const metersPerDegLat = 111_111;
+    const metersPerDegLng = 111_111 * Math.cos((VIBE_POLICE_LOCATION.lat * Math.PI) / 180);
+
+    function pickNewTarget() {
+      const r = Math.sqrt(Math.random()) * VIBE_POLICE_WANDER_RADIUS_M;
+      const theta = Math.random() * Math.PI * 2;
+      vibePoliceTargetRef.current = {
+        lng: VIBE_POLICE_LOCATION.lng + (r * Math.cos(theta)) / metersPerDegLng,
+        lat: VIBE_POLICE_LOCATION.lat + (r * Math.sin(theta)) / metersPerDegLat,
+      };
+    }
+
+    const tick = () => {
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+      const s = vibePoliceStateRef.current;
+
+      const target = vibePoliceTargetRef.current;
+      if (!target) {
+        if (now >= vibePoliceIdleUntilRef.current) {
+          pickNewTarget();
+          if (s.currentAnim !== "Walking") {
+            s.currentAnim = "Walking";
+            s.animPulse++;
+          }
+        } else if (s.currentAnim !== "Alert") {
+          s.currentAnim = "Alert";
+          s.animPulse++;
+        }
+      } else {
+        const dxMeters = (target.lng - s.lng) * metersPerDegLng;
+        const dyMeters = (target.lat - s.lat) * metersPerDegLat;
+        const distance = Math.hypot(dxMeters, dyMeters);
+        if (distance < 0.6) {
+          vibePoliceTargetRef.current = null;
+          vibePoliceIdleUntilRef.current = now + (3 + Math.random() * 5) * 1000;
+          s.currentAnim = "Alert";
+          s.animPulse++;
+        } else {
+          const sizeFactor = (s.scaleMeters || VIBE_POLICE_DEFAULT_SCALE_METERS) /
+            VIBE_POLICE_DEFAULT_SCALE_METERS;
+          const step = Math.min(distance, UNIT7_SPEED_MPS * sizeFactor * dt);
+          const nx = dxMeters / distance;
+          const ny = dyMeters / distance;
+          s.lng += (nx * step) / metersPerDegLng;
+          s.lat += (ny * step) / metersPerDegLat;
+          s.heading = Math.atan2(nx, ny);
+          try {
+            const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+            if (typeof elev === "number") s.baseAltitude = elev;
+          } catch { /* terrain not ready */ }
+          vibePoliceMarkerRef.current?.setLngLat([s.lng, s.lat]);
+        }
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mapLoaded, vibePoliceVisible]);
+
+  // ---- Spawnables: clear refs when style reloads -----------------------
+  // Mapbox wipes all custom layers on style.load. Without nulling the refs
+  // here the per-spawnable effects below would think their layer is still
+  // mounted and skip re-adding.
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const onStyle = () => {
+      islandLayerRef.current = null;
+      deathStarLayerRef.current = null;
+      tokyoLayerRef.current = null;
+    };
+    m.on("style.load", onStyle);
+    return () => { m.off("style.load", onStyle); };
+  }, []);
+
+  // ---- Spawnables: add/remove layer when enabled toggles ---------------
+  // Heavy GLBs are mounted (and downloads started) only on user opt-in.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "edge-island";
+
+    if (islandEnabled && !islandLayerRef.current) {
+      setIslandLoading(true);
+      setIslandProgress(null);
+      const layer = createSpawnableLayer(LAYER_ID, islandStateRef.current, {
+        modelUrl: "/models/edge-island.glb",
+        onProgress: (loaded, total) => {
+          setIslandProgress(total ? loaded / total : null);
+        },
+        onLoaded: () => setIslandLoading(false),
+        onError: () => setIslandLoading(false),
+      });
+      try {
+        m.addLayer(layer);
+        islandLayerRef.current = layer;
+        m.triggerRepaint();
+      } catch (e) {
+        console.error("[EdgeIsland] addLayer failed", e);
+        setIslandLoading(false);
+      }
+    } else if (!islandEnabled && islandLayerRef.current) {
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      islandLayerRef.current.dispose();
+      islandLayerRef.current = null;
+      setIslandLoading(false);
+      setIslandProgress(null);
+    }
+  }, [islandEnabled, mapLoaded]);
+
+  // ---- Plaza + Temple 3D structure spawn toggles -----------------
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    const m = map.current;
+    if (plazaEnabled) addStructureLayer(m, "plaza");
+    else removeStructureLayer(m, "plaza");
+  }, [plazaEnabled, mapLoaded]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "death-star";
+
+    if (deathStarEnabled && !deathStarLayerRef.current) {
+      setDeathStarLoading(true);
+      setDeathStarProgress(null);
+      const layer = createSpawnableLayer(LAYER_ID, deathStarStateRef.current, {
+        modelUrl: "/models/death-star.glb",
+        onProgress: (loaded, total) => {
+          setDeathStarProgress(total ? loaded / total : null);
+        },
+        onLoaded: () => setDeathStarLoading(false),
+        onError: () => setDeathStarLoading(false),
+      });
+      try {
+        m.addLayer(layer);
+        deathStarLayerRef.current = layer;
+        m.triggerRepaint();
+      } catch (e) {
+        console.error("[DeathStar] addLayer failed", e);
+        setDeathStarLoading(false);
+      }
+    } else if (!deathStarEnabled && deathStarLayerRef.current) {
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      deathStarLayerRef.current.dispose();
+      deathStarLayerRef.current = null;
+      setDeathStarLoading(false);
+      setDeathStarProgress(null);
+    }
+  }, [deathStarEnabled, mapLoaded]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const LAYER_ID = "littlest-tokyo";
+
+    if (tokyoEnabled && !tokyoLayerRef.current) {
+      // Sample current terrain altitude so the town sits on the ground.
+      try {
+        const elev = m.queryTerrainElevation(
+          [tokyoStateRef.current.lng, tokyoStateRef.current.lat],
+          { exaggerated: true },
+        );
+        if (typeof elev === "number") tokyoStateRef.current.altitude = elev;
+      } catch { /* terrain not ready */ }
+
+      setTokyoLoading(true);
+      setTokyoProgress(null);
+      const layer = createSpawnableLayer(LAYER_ID, tokyoStateRef.current, {
+        modelUrl: "/models/littlest-tokyo.glb",
+        onProgress: (loaded, total) => {
+          setTokyoProgress(total ? loaded / total : null);
+        },
+        onLoaded: () => setTokyoLoading(false),
+        onError: () => setTokyoLoading(false),
+      });
+      try {
+        m.addLayer(layer);
+        tokyoLayerRef.current = layer;
+        m.triggerRepaint();
+      } catch (e) {
+        console.error("[LittlestTokyo] addLayer failed", e);
+        setTokyoLoading(false);
+      }
+    } else if (!tokyoEnabled && tokyoLayerRef.current) {
+      try { m.removeLayer(LAYER_ID); } catch { /* noop */ }
+      tokyoLayerRef.current.dispose();
+      tokyoLayerRef.current = null;
+      setTokyoLoading(false);
+      setTokyoProgress(null);
+    }
+  }, [tokyoEnabled, mapLoaded]);
 
   // ---- Helicopter: add/remove layer when enabled toggles ----------------
   useEffect(() => {
@@ -714,6 +1869,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, []);
 
+  // ---- Nimbus VTOL: auto-spawn ~8s after the village finishes loading ---
+  // We delay so the cinematic open-up flyTo has finished and the
+  // user has had a moment to take in the village before the craft
+  // shows up doing figure-8s overhead. Skips re-spawning if the
+  // user has already toggled it off manually.
+  const nimbusAutoSpawnedRef = useRef(false);
+  useEffect(() => {
+    if (!mapLoaded || nimbusAutoSpawnedRef.current) return;
+    const t = window.setTimeout(() => {
+      nimbusAutoSpawnedRef.current = true;
+      setNimbusUI((s) => (s.enabled ? s : { ...s, enabled: true }));
+    }, 8000);
+    return () => window.clearTimeout(t);
+  }, [mapLoaded]);
+
   // ---- Nimbus VTOL: add/remove layer when enabled toggles ---------------
   useEffect(() => {
     const m = map.current;
@@ -827,13 +1997,60 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           zoom: 18,
         });
       } else {
+        // Autopilot: figure-8 around the plaza on a Bernoulli
+        // lemniscate. The craft tilts into its turns, gently bobs in
+        // altitude, and always faces along its velocity vector so it
+        // looks like a real flight path rather than a sliding decal.
         s.pilotMode = false;
-        s.thrusterIntensity = 0.6;
-        vel.forward *= 0.92;
-        vel.lateral *= 0.92;
-        vel.vertical *= 0.92;
-        s.bank += (0 - s.bank) * Math.min(1, dt * 3);
-        s.pitch += (0 - s.pitch) * Math.min(1, dt * 3);
+        s.thrusterIntensity = 0.45;
+        vel.forward *= 0.9;
+        vel.lateral *= 0.9;
+        vel.vertical *= 0.9;
+
+        // Lemniscate of Bernoulli, in METERS centered on the plaza:
+        //   x(τ) = a·cos(τ) / (1 + sin²(τ))     ← east
+        //   y(τ) = a·sin(τ)·cos(τ) / (1 + sin²(τ)) ← north
+        // a sets the loop radius; period = 2π / OMEGA.
+        const A = 220; // ~220m wide loops — covers plaza → CraftWork
+        const OMEGA = 0.18; // rad/sec → ~35s per full figure-8
+        const tau = t * OMEGA;
+        const denom = 1 + Math.sin(tau) * Math.sin(tau);
+        const eastM = (A * Math.cos(tau)) / denom;
+        const northM = (A * Math.sin(tau) * Math.cos(tau)) / denom;
+
+        // Velocity (analytic derivative) — gives us heading + bank.
+        const dTau_dt = OMEGA;
+        const dE = ((-A * Math.sin(tau) * denom -
+          A * Math.cos(tau) * 2 * Math.sin(tau) * Math.cos(tau)) /
+          (denom * denom)) * dTau_dt;
+        const dN = ((A * (Math.cos(tau) * Math.cos(tau) - Math.sin(tau) * Math.sin(tau)) * denom -
+          A * Math.sin(tau) * Math.cos(tau) * 2 * Math.sin(tau) * Math.cos(tau)) /
+          (denom * denom)) * dTau_dt;
+        const targetHeading = Math.atan2(dE, dN); // 0 = north, clockwise
+
+        // Center on plaza coords.
+        const centerLng = VILLAGE_CENTER.lng;
+        const centerLat = VILLAGE_CENTER.lat;
+        s.lng = centerLng + eastM / (111320 * Math.cos((centerLat * Math.PI) / 180));
+        s.lat = centerLat + northM / 111320;
+
+        // Smooth heading toward target (avoid yaw snap at the loop crossings).
+        const dh = ((targetHeading - s.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        s.heading += dh * Math.min(1, dt * 3);
+
+        // Bank into the turn — sign of d(heading)/dt.
+        const turnRate = dh; // proportional
+        const targetBank = -Math.max(-0.45, Math.min(0.45, turnRate * 4));
+        s.bank += (targetBank - s.bank) * Math.min(1, dt * 3);
+
+        // Subtle altitude bob + slight nose down on the climbs out.
+        try {
+          const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+          const groundAlt = typeof elev === "number" ? elev : 0;
+          const targetAlt = groundAlt + 95 + Math.sin(t * 0.6) * 8;
+          s.altitude += (targetAlt - s.altitude) * Math.min(1, dt * 1.2);
+        } catch { /* terrain not ready */ }
+        s.pitch += (-0.04 - s.pitch) * Math.min(1, dt * 2);
       }
 
       huiTick += dt;
@@ -969,6 +2186,96 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     return () => cancelAnimationFrame(raf);
   }, [vibeyUI.walkMode]);
 
+  // ---- Unit-7: walk-mode keyboard input --------------------------------
+  useEffect(() => {
+    if (!unit7WalkMode) return;
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setUnit7WalkMode(false);
+        return;
+      }
+      unit7KeysRef.current[e.key.toLowerCase()] = true;
+    };
+    const onUp = (e: KeyboardEvent) => {
+      unit7KeysRef.current[e.key.toLowerCase()] = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      unit7KeysRef.current = {};
+    };
+  }, [unit7WalkMode]);
+
+  // ---- Unit-7: walk loop + third-person chase camera -------------------
+  useEffect(() => {
+    if (!unit7WalkMode) return;
+    const m = map.current;
+    if (!m) return;
+
+    let raf = 0;
+    let last = performance.now();
+    const WALK_SPEED = 6; // m/s, scaled by body size below
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const s = unit7StateRef.current;
+      const k = unit7KeysRef.current;
+
+      const turn =
+        (k["arrowleft"] || k["a"] ? -1 : 0) +
+        (k["arrowright"] || k["d"] ? 1 : 0);
+      const forward =
+        (k["arrowup"] || k["w"] ? 1 : 0) +
+        (k["arrowdown"] || k["s"] ? -0.6 : 0);
+
+      s.heading += turn * 1.6 * dt;
+
+      const sinH = Math.sin(s.heading);
+      const cosH = Math.cos(s.heading);
+      const sizeFactor =
+        (s.scaleMeters || UNIT7_DEFAULT_SCALE_METERS) / UNIT7_DEFAULT_SCALE_METERS;
+      const speed = WALK_SPEED * sizeFactor;
+      const eastM = sinH * forward * speed;
+      const northM = cosH * forward * speed;
+      s.lat += (northM * dt) / 111320;
+      s.lng += (eastM * dt) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+
+      // Drive the right animation for what he's doing right now.
+      const wantAnim = forward !== 0 ? "Walking" : "Idle";
+      if (s.currentAnim !== wantAnim) {
+        unit7BaseAnimRef.current = wantAnim;
+        s.currentAnim = wantAnim;
+        s.animPulse++;
+      }
+
+      try {
+        const elev = m.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+        if (typeof elev === "number") s.baseAltitude = elev;
+      } catch { /* */ }
+
+      unit7MarkerRef.current?.setLngLat([s.lng, s.lat]);
+
+      // Third-person chase cam: ~12m behind & above him.
+      const back = 12;
+      const camLat = s.lat - (cosH * back) / 111320;
+      const camLng =
+        s.lng - (sinH * back) / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      m.jumpTo({
+        center: [camLng, camLat],
+        bearing: (s.heading * 180) / Math.PI,
+        pitch: 75,
+        zoom: 20,
+      });
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [unit7WalkMode]);
+
   const resetVibey = useCallback(() => {
     const m = map.current;
     const s = vibeyStateRef.current;
@@ -993,6 +2300,124 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   }, [vibeyUI.walkMode]);
 
 
+  // ---- Floating "i" markers on spawned mega-structures -----------------
+  // Each spawnable that's currently enabled gets a small clickable info
+  // chip pinned to its lng/lat. Click → opens the animated detail card
+  // overlay. We rebuild the set whenever the enabled flags change so
+  // markers appear/disappear in lockstep with the spawnables themselves.
+  const structureInfoMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    // Tear down previous markers.
+    structureInfoMarkersRef.current.forEach((mk) => mk.remove());
+    structureInfoMarkersRef.current = [];
+
+    type InfoEntry = {
+      id: string;
+      label: string;
+      emoji: string;
+      accent: string;
+      description: string;
+      flavor: string;
+      lng: number;
+      lat: number;
+      enabled: boolean;
+    };
+    const entries: InfoEntry[] = [
+      {
+        id: "death-star",
+        label: "Death Star",
+        emoji: "🛰️",
+        accent: "#9be7ff",
+        description: "Moon-sized space station hovering east of the village.",
+        flavor:
+          "On loan from a galaxy far, far away. The crew is on shore leave at the plaza this week — the laser is fully decommissioned (we promise). It rotates on its own axis once every ~22 seconds and is parked at ~1.1km altitude so it reads as a real moon, not a prop.",
+        lng: deathStarStateRef.current.lng,
+        lat: deathStarStateRef.current.lat,
+        enabled: deathStarEnabled,
+      },
+      {
+        id: "island",
+        label: "Edge Island",
+        emoji: "🏝️",
+        accent: "#73ffb8",
+        description: "A floating world above the village.",
+        flavor:
+          "A studio Ghibli-coded sky island. Pull the camera back and it frames Healdsburg below it like a dream. The island bobs slowly so it never feels static. ~272 MB GLB — the heaviest asset in the show, only loaded when you spawn it.",
+        lng: islandStateRef.current.lng,
+        lat: islandStateRef.current.lat,
+        enabled: islandEnabled,
+      },
+      {
+        id: "littlest-tokyo",
+        label: "Tokyo Block",
+        emoji: "🏙️",
+        accent: "#ff8ad6",
+        description: "Animated micro-city next to the plaza.",
+        flavor:
+          "A scale model of downtown Tokyo with looping keyframe traffic, neon flicker, and a tiny ramen shop. ~4 MB. Sits on real ground a few blocks east of the plaza — a glimpse of a different city dropped into this one.",
+        lng: tokyoStateRef.current.lng,
+        lat: tokyoStateRef.current.lat,
+        enabled: tokyoEnabled,
+      },
+      {
+        id: "plaza",
+        label: "Central Plaza",
+        emoji: "⛲",
+        accent: "#73ffb8",
+        description: "The fountain + pavilion structure at the plaza beacon.",
+        flavor:
+          "The geographic and social center of Edge Esmeralda. The pavilion is where the morning standup happens, the fountain where late-night conversations land. Despawn this and the beacon becomes an empty patch waiting for action.",
+        lng: VILLAGE_CENTER.lng,
+        lat: VILLAGE_CENTER.lat,
+        enabled: plazaEnabled,
+      },
+    ];
+
+    entries.forEach((entry) => {
+      if (!entry.enabled) return;
+      const root = document.createElement("div");
+      root.style.cssText = "pointer-events: auto; cursor: pointer;";
+      const chip = document.createElement("div");
+      chip.style.cssText = `
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: hsl(216 40% 12% / 0.92);
+        border: 1px solid ${entry.accent}99;
+        color: #eaf3ff;
+        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-size: 11px; font-weight: 600;
+        letter-spacing: 0.02em;
+        box-shadow: 0 4px 18px hsl(216 60% 4% / 0.5), 0 0 14px ${entry.accent}55;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        transform: translateY(0);
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+        user-select: none;
+        animation: structInfoPulse 2.4s ease-in-out infinite;
+      `;
+      chip.innerHTML = `<span style="font-size: 13px;">${entry.emoji}</span> <span>${entry.label}</span> <span style="opacity: 0.75; font-weight: 700;">›</span>`;
+      root.appendChild(chip);
+      root.addEventListener("mouseenter", () => {
+        chip.style.transform = "translateY(-2px)";
+        chip.style.boxShadow = `0 8px 24px hsl(216 60% 4% / 0.65), 0 0 22px ${entry.accent}99`;
+      });
+      root.addEventListener("mouseleave", () => {
+        chip.style.transform = "translateY(0)";
+        chip.style.boxShadow = `0 4px 18px hsl(216 60% 4% / 0.5), 0 0 14px ${entry.accent}55`;
+      });
+      root.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setStructureDetail(entry);
+      });
+      const mk = new mapboxgl.Marker({ element: root, anchor: "bottom" })
+        .setLngLat([entry.lng, entry.lat])
+        .addTo(map.current!);
+      structureInfoMarkersRef.current.push(mk);
+    });
+  }, [mapLoaded, deathStarEnabled, islandEnabled, tokyoEnabled, plazaEnabled]);
+
   // Fallback for invalid token
   if (mapError) {
     return <FallbackMap onLocationSelect={onLocationSelect} selectedLocation={selectedLocation} />;
@@ -1001,6 +2426,90 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
   return (
     <div className="relative h-full w-full">
       <div ref={mapContainer} className="absolute inset-0" />
+
+      {/* Live Edge Esmeralda events ticker — stripe of upcoming
+          events along the bottom of the map. Click a chip → fly to
+          the matching beacon if its title mentions a known venue. */}
+      {/* Mobile-only event ticker. The right-side Events panel
+          already lists what's happening on desktop — having a second
+          row at the bottom would duplicate that. md:hidden keeps it
+          on phones, where the right panel doesn't fit. */}
+      {tickerOpen && upcomingEvents.length > 0 && (
+        <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none md:hidden">
+          <div className="glass-panel rounded-xl border border-primary/30 px-3 py-2 flex items-center gap-2 overflow-hidden pointer-events-auto">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+              </span>
+              <span className="text-[10px] font-heading font-semibold tracking-widest uppercase text-primary">
+                Edge · Schedule
+              </span>
+            </div>
+            <div className="flex-1 min-w-0 overflow-x-auto">
+              <div className="flex items-center gap-2">
+                {upcomingEvents.map((e) => {
+                  const when = new Date(e.event_start_time);
+                  const day = when.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                  const time = when.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  });
+                  return (
+                    <button
+                      key={e.id}
+                      onClick={() => {
+                        // Try to fly to a venue whose name appears in
+                        // either the event title or its location.
+                        const text = `${e.title} ${e.event_location ?? ""}`.toLowerCase();
+                        const match = VILLAGE_LOCATIONS.find(
+                          (l) => l.structure3d && text.includes(l.name.toLowerCase()),
+                        );
+                        if (match && map.current) {
+                          map.current.flyTo({
+                            center: [match.lng, match.lat],
+                            zoom: 17,
+                            pitch: 60,
+                            bearing: -20,
+                            duration: 1500,
+                          });
+                        }
+                      }}
+                      className="shrink-0 rounded-md border border-border/60 bg-background/40 hover:border-primary/50 hover:bg-primary/10 transition-colors px-2.5 py-1 text-left"
+                    >
+                      <p className="text-[11px] font-heading font-semibold text-foreground truncate max-w-[220px]">
+                        {e.title}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {day} · {time}
+                        {e.event_location ? ` · ${e.event_location}` : ""}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              onClick={() => setTickerOpen(false)}
+              className="shrink-0 p-1 rounded-md hover:bg-muted/40 transition-colors text-muted-foreground"
+              title="Hide schedule"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+      {!tickerOpen && upcomingEvents.length > 0 && (
+        <button
+          onClick={() => setTickerOpen(true)}
+          className="absolute bottom-3 left-3 z-10 glass-panel rounded-full px-3 py-1.5 border border-primary/30 text-[11px] font-heading font-semibold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors md:hidden"
+        >
+          Schedule ({upcomingEvents.length})
+        </button>
+      )}
 
       {/* Inject marker pulse animation */}
       <style>{`
@@ -1049,20 +2558,54 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         transition={{ delay: 0.8 }}
         className="absolute top-4 right-4 z-10"
       >
-        <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-          </span>
-          <span className="text-xs font-body font-medium text-foreground">208 here now</span>
+        <div className="flex flex-col items-end gap-2">
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+            <span className="text-xs font-body font-medium text-foreground">208 here now</span>
+          </div>
+          <div className="glass-panel rounded-full px-3 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] font-mono font-semibold text-primary tracking-wide">
+              {clockLabel}
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground tracking-widest">PT</span>
+          </div>
         </div>
       </motion.div>
 
       {/* Vibey chat dialog */}
       <VibeyDialog open={vibeyOpen} onClose={() => setVibeyOpen(false)} />
 
+      {/* Unit-7 interaction dialog */}
+      <Unit7Dialog
+        open={unit7Open}
+        onClose={() => {
+          setUnit7Open(false);
+          // Resume autonomous wandering after the dialog closes; clear face
+          // morphs so he goes back to neutral.
+          unit7BaseAnimRef.current = "Idle";
+          unit7StateRef.current.currentAnim = "Idle";
+          unit7StateRef.current.animPulse++;
+          unit7StateRef.current.expressions.Angry = 0;
+          unit7StateRef.current.expressions.Surprised = 0;
+          unit7StateRef.current.expressions.Sad = 0;
+        }}
+        onEmote={(anim) => {
+          // One-shots auto-revert via the layer's "finished" event.
+          unit7StateRef.current.currentAnim = anim;
+          unit7StateRef.current.animPulse++;
+        }}
+        onExpression={(expr, intensity) => {
+          unit7StateRef.current.expressions[expr] = intensity;
+        }}
+      />
+
       {/* Sky Patrol — unified Vibey + Helicopter control */}
       <HelicopterControl
+        styleConfig={styleConfig}
+        onStyleConfigChange={setStyleConfig}
         state={heliUI}
         onToggleEnabled={() =>
           setHeliUI((s) => ({
@@ -1104,6 +2647,119 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         }}
         onResetVibey={resetVibey}
         onMessageVibey={() => setVibeyOpen(true)}
+        alienVisible={alienVisible}
+        onToggleAlien={() => {
+          // Drop the alien in wherever the camera is currently
+          // looking, instead of a fixed coord baked at app start.
+          // Going from off → on re-anchors; going from on → off
+          // leaves the position alone.
+          if (!alienVisible && map.current) {
+            const c = map.current.getCenter();
+            alienStateRef.current.lng = c.lng;
+            alienStateRef.current.lat = c.lat;
+            alienStateRef.current.baseAltitude = 0;
+          }
+          setAlienVisible((v) => !v);
+        }}
+        vibeyVisible={vibeyVisible}
+        onToggleVibey={() => {
+          if (!vibeyVisible && map.current) {
+            const c = map.current.getCenter();
+            vibeyStateRef.current.lng = c.lng;
+            vibeyStateRef.current.lat = c.lat;
+            vibeyStateRef.current.baseAltitude = 0;
+          }
+          setVibeyVisible((v) => {
+            // If turning off while walking, exit walk mode so the chase
+            // camera doesn't try to follow a despawned character.
+            if (v && vibeyUI.walkMode) {
+              vibeyStateRef.current.walkMode = false;
+              setVibeyUI((s) => ({ ...s, walkMode: false }));
+            }
+            return !v;
+          });
+        }}
+        unit7Visible={unit7Visible}
+        onToggleUnit7={() => {
+          if (!unit7Visible && map.current) {
+            const c = map.current.getCenter();
+            unit7StateRef.current.lng = c.lng;
+            unit7StateRef.current.lat = c.lat;
+            unit7StateRef.current.baseAltitude = 0;
+          }
+          setUnit7Visible((v) => {
+            if (v && unit7WalkMode) setUnit7WalkMode(false);
+            return !v;
+          });
+        }}
+        vibePoliceVisible={vibePoliceVisible}
+        onToggleVibePolice={() => {
+          if (!vibePoliceVisible && map.current) {
+            const c = map.current.getCenter();
+            vibePoliceStateRef.current.lng = c.lng;
+            vibePoliceStateRef.current.lat = c.lat;
+            vibePoliceStateRef.current.baseAltitude = 0;
+          }
+          setVibePoliceVisible((v) => !v);
+        }}
+        unit7Scale={unit7Scale}
+        unit7ScaleMin={UNIT7_MIN_SCALE_METERS}
+        unit7ScaleMax={UNIT7_MAX_SCALE_METERS}
+        onUnit7ScaleChange={(v) => {
+          setUnit7Scale(v);
+          unit7StateRef.current.scaleMeters = v;
+        }}
+        vibePoliceScale={vibePoliceScale}
+        vibePoliceScaleMin={VIBE_POLICE_MIN_SCALE_METERS}
+        vibePoliceScaleMax={VIBE_POLICE_MAX_SCALE_METERS}
+        onVibePoliceScaleChange={(v) => {
+          setVibePoliceScale(v);
+          vibePoliceStateRef.current.scaleMeters = v;
+        }}
+        unit7WalkMode={unit7WalkMode}
+        onToggleUnit7Walk={() => {
+          const next = !unit7WalkMode;
+          if (next && map.current) {
+            const s = unit7StateRef.current;
+            try {
+              const elev = map.current.queryTerrainElevation([s.lng, s.lat], { exaggerated: true });
+              if (typeof elev === "number") s.baseAltitude = elev;
+            } catch { /* */ }
+            map.current.flyTo({
+              center: [s.lng, s.lat],
+              zoom: 20,
+              pitch: 75,
+              bearing: (s.heading * 180) / Math.PI,
+              duration: 1100,
+            });
+          }
+          setUnit7WalkMode(next);
+        }}
+        onMessageUnit7={() => {
+          // Third-person video-game-style framing: zoom way in, low-ish
+          // pitch so we see his face/body, turn him to face the camera,
+          // wave hello.
+          if (map.current) {
+            const s = unit7StateRef.current;
+            const camBearing = map.current.getBearing();
+            map.current.flyTo({
+              center: [s.lng, s.lat],
+              zoom: 19.5,
+              pitch: 55,
+              bearing: camBearing,
+              duration: 1100,
+            });
+            // Camera bearing is degrees clockwise from north. Robot's heading
+            // is radians, 0 = north (matches the wander loop's atan2 frame).
+            // Add π so he faces TOWARD the camera, not away from it.
+            unit7BaseAnimRef.current = "Idle";
+            unit7TargetRef.current = null;
+            s.heading = (camBearing * Math.PI) / 180 + Math.PI;
+            s.currentAnim = "Wave";
+            s.animPulse++;
+          }
+          setUnit7Open(true);
+        }}
         nimbus={nimbusUI}
         onToggleNimbus={() =>
           setNimbusUI((s) => ({
@@ -1120,6 +2776,146 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           });
         }}
         onResetNimbus={resetNimbus}
+        places={[
+          {
+            id: "edge-esmeralda",
+            label: "Edge Esmeralda",
+            description: "Healdsburg, CA. The pop-up village — Vibey, Unit-7, Vibe Police, the plaza pavilion, and the meditation temple.",
+            onFlyTo: () => {
+              if (!map.current) return;
+              map.current.flyTo({
+                center: [VILLAGE_CENTER.lng, VILLAGE_CENTER.lat],
+                zoom: VILLAGE_CENTER.zoom,
+                pitch: 60,
+                bearing: -20,
+                duration: 2200,
+              });
+            },
+          },
+          {
+            id: "san-francisco",
+            label: "San Francisco",
+            description: "Embarcadero waterfront. Mapbox renders the SF skyline, Bay Bridge, and downtown blocks in 3D.",
+            onFlyTo: () => {
+              if (!map.current) return;
+              map.current.flyTo({
+                // Looking northwest from the Embarcadero, framing the Ferry
+                // Building + downtown skyline.
+                center: [-122.3947, 37.7955],
+                zoom: 16.2,
+                pitch: 65,
+                bearing: -50,
+                duration: 3000,
+              });
+            },
+          },
+          {
+            id: "outer-space",
+            label: "Outer Space",
+            description: "Vibey 2.0's late-night show. A floating asteroid platform with the Vibey Show, live community photos, member cards orbiting overhead, and Vibey's knowledge in the sky.",
+            onFlyTo: () => navigate("/space"),
+          },
+          {
+            id: "lobby",
+            label: "Lobby",
+            description: "Mario-Kart-style character + vehicle picker. 58 characters, animation buttons, 3D turntable.",
+            onFlyTo: () => navigate("/lobby"),
+          },
+          {
+            id: "about",
+            label: "About",
+            description: "What this is, why it exists, and how it's stitched together. A 3D narrative page on a floating asteroid.",
+            onFlyTo: () => navigate("/about"),
+          },
+        ]}
+        spawnables={[
+          {
+            id: "plaza",
+            label: "Central Plaza",
+            description: "The fountain + pavilion structure at the plaza beacon. Spawn to see the full venue, despawn to keep just the beam of light.",
+            enabled: plazaEnabled,
+            loading: false,
+            progress: null,
+            onToggle: () => {
+              if (!plazaEnabled && map.current) {
+                const plaza = VILLAGE_LOCATIONS.find((l) => l.structure3d === "plaza");
+                if (plaza) {
+                  map.current.flyTo({
+                    center: [plaza.lng, plaza.lat],
+                    zoom: 18,
+                    pitch: 65,
+                    bearing: -20,
+                    duration: 1500,
+                  });
+                }
+              }
+              setPlazaEnabled((v) => !v);
+            },
+          },
+          {
+            id: "island",
+            label: "Edge Island",
+            description: "A floating world above the village. Heavy asset (~272 MB) — only loads when you spawn it.",
+            enabled: islandEnabled,
+            loading: islandLoading,
+            progress: islandProgress,
+            onToggle: () => {
+              if (!islandEnabled && map.current) {
+                const s = islandStateRef.current;
+                map.current.flyTo({
+                  center: [s.lng, s.lat],
+                  zoom: 14.5,
+                  pitch: 70,
+                  bearing: -25,
+                  duration: 1500,
+                });
+              }
+              setIslandEnabled((v) => !v);
+            },
+          },
+          {
+            id: "death-star",
+            label: "Death Star",
+            description: "Moon-sized space station hovering east of the village (~60 MB).",
+            enabled: deathStarEnabled,
+            loading: deathStarLoading,
+            progress: deathStarProgress,
+            onToggle: () => {
+              if (!deathStarEnabled && map.current) {
+                const s = deathStarStateRef.current;
+                map.current.flyTo({
+                  center: [s.lng, s.lat],
+                  zoom: 13.5,
+                  pitch: 70,
+                  bearing: 35,
+                  duration: 1500,
+                });
+              }
+              setDeathStarEnabled((v) => !v);
+            },
+          },
+          {
+            id: "littlest-tokyo",
+            label: "Tokyo Block",
+            description: "Animated micro-city next to the plaza — keyframe traffic, neon, all looping (~4 MB).",
+            enabled: tokyoEnabled,
+            loading: tokyoLoading,
+            progress: tokyoProgress,
+            onToggle: () => {
+              if (!tokyoEnabled && map.current) {
+                const s = tokyoStateRef.current;
+                map.current.flyTo({
+                  center: [s.lng, s.lat],
+                  zoom: 18,
+                  pitch: 65,
+                  bearing: -10,
+                  duration: 1500,
+                });
+              }
+              setTokyoEnabled((v) => !v);
+            },
+          },
+        ]}
       />
 
       {/* Bottom controls — lifted on mobile so the bottom nav doesn't cover them */}
@@ -1164,6 +2960,120 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
               <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
               <p className="font-heading text-sm text-muted-foreground">Loading map…</p>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Animated detail card for spawned mega-structures. Pops in
+          from the bottom with a soft scale+glow, dimming the rest. */}
+      <AnimatePresence>
+        {structureDetail && (
+          <motion.div
+            key="structure-detail-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-30 flex items-end md:items-center justify-center bg-black/40 backdrop-blur-[2px] p-4"
+            onClick={() => setStructureDetail(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.85, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 22, stiffness: 280 }}
+              className="relative w-full max-w-md rounded-2xl p-5 glass-panel"
+              style={{
+                border: `1px solid ${structureDetail.accent}88`,
+                boxShadow: `0 30px 80px hsl(216 60% 4% / 0.7), 0 0 60px ${structureDetail.accent}33`,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setStructureDetail(null)}
+                className="absolute top-3 right-3 p-1.5 rounded-md hover:bg-muted/40 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08, duration: 0.25 }}
+                className="flex items-center gap-3 mb-3"
+              >
+                <div
+                  className="text-3xl"
+                  style={{ filter: `drop-shadow(0 0 10px ${structureDetail.accent}aa)` }}
+                >
+                  {structureDetail.emoji}
+                </div>
+                <div>
+                  <h2 className="font-heading text-lg font-bold tracking-tight text-foreground">
+                    {structureDetail.label}
+                  </h2>
+                  <p className="text-[11px] uppercase tracking-widest opacity-60">
+                    Mega-structure
+                  </p>
+                </div>
+              </motion.div>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.16, duration: 0.3 }}
+                className="text-sm text-foreground/90 mb-2"
+              >
+                {structureDetail.description}
+              </motion.p>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.24, duration: 0.3 }}
+                className="text-xs text-muted-foreground leading-relaxed mb-4"
+              >
+                {structureDetail.flavor}
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.25 }}
+                className="flex gap-2"
+              >
+                <button
+                  onClick={() => {
+                    const m = map.current;
+                    if (!m) return;
+                    m.flyTo({
+                      center: [structureDetail.lng, structureDetail.lat],
+                      zoom: 16.5,
+                      pitch: 70,
+                      bearing: m.getBearing() + 30,
+                      duration: 2000,
+                      curve: 1.6,
+                    });
+                    setStructureDetail(null);
+                  }}
+                  className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                  style={{
+                    background: `${structureDetail.accent}33`,
+                    border: `1px solid ${structureDetail.accent}88`,
+                    color: "#eaf3ff",
+                  }}
+                >
+                  Fly closer →
+                </button>
+                <button
+                  onClick={() => setStructureDetail(null)}
+                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-muted/40 hover:bg-muted/60 transition-colors text-foreground/80"
+                >
+                  Close
+                </button>
+              </motion.div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

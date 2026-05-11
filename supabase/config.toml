@@ -1,1 +1,8 @@
 project_id = "efdqqnubowgwsnwvlalp"
+
+# Avatar proxy is fetched directly by <img> tags, which can't send the
+# Authorization header. Allow unauthenticated access — the function
+# only returns image bytes for a given user id and never echoes any
+# secret URL back to the client.
+[functions.avatar-proxy]
+verify_jwt = false

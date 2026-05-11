@@ -1,7 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import nimbusModelUrl from "@/assets/nimbus-vtol.glb";
+import nimbusModelUrl from "@/assets/glb/nimbus-vtol.glb";
 
 export interface NimbusState {
   lng: number;
@@ -48,7 +48,8 @@ export function createNimbusVtolLayer(
   let scene: THREE.Scene;
   let renderer: THREE.WebGLRenderer;
   let craft: THREE.Group | null = null;
-  let glow: THREE.Mesh;
+  // The thruster glow disc is intentionally omitted — the user found
+  // the green halo distracting against satellite/light terrain.
   let mapRef: mapboxgl.Map | null = null;
   const startTime = performance.now();
 
@@ -72,17 +73,6 @@ export function createNimbusVtolLayer(
       const under = new THREE.PointLight(0x4ade80, 1.6, 12);
       under.position.set(0, -1.4, 0);
       scene.add(under);
-
-      // Cyan thruster glow disc beneath the craft
-      const glowMat = new THREE.MeshBasicMaterial({
-        color: 0x73ffb8,
-        transparent: true,
-        opacity: 0.45,
-      });
-      glow = new THREE.Mesh(new THREE.CircleGeometry(1.4, 32), glowMat);
-      glow.rotation.x = -Math.PI / 2;
-      glow.position.y = -1.5;
-      scene.add(glow);
 
       const loader = new GLTFLoader();
       loader.load(
@@ -140,11 +130,7 @@ export function createNimbusVtolLayer(
         craft.position.y = bobY;
       }
 
-      // Pulse the engine glow
-      const pulse = 0.7 + Math.sin(t * 6) * 0.25;
-      (glow.material as THREE.MeshBasicMaterial).opacity =
-        0.25 + state.thrusterIntensity * 0.4 * pulse;
-      glow.scale.setScalar(0.85 + state.thrusterIntensity * 0.4 * pulse);
+      // (glow disc removed — engine glow is implicit via the craft's own GLB emissive)
 
       const mercator = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: state.lng, lat: state.lat },

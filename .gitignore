@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Claude Code workspace
+.claude/
+
+# Heavy GLB assets — keep local, don't bloat the repo.
+public/models/*.glb
+
+# Supabase CLI local cache (linked-project metadata, version files, etc.)
+supabase/.temp/
+supabase/.branches/
