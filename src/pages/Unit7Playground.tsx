@@ -2756,32 +2756,92 @@ export default function Unit7Playground() {
     })();
 
     // ---- Vibey's journal (orbits the platform) -----------------------
-    // A small glowing leather-bound book that floats around the
-    // asteroid on its own slow orbit. Click opens the handwritten
-    // overlay React component below.
+    // A glowing leather-bound book that floats around the asteroid on
+    // its own slow orbit. ~2x the original size so it reads from any
+    // camera distance, with a real "V" painted on the cover via a
+    // canvas texture (so the glyph is unmistakable, not abstract).
     {
       const group = new THREE.Group();
 
-      // Cover: thin box with deep leather palette + faint emissive
-      // so the book reads against the starfield.
-      const cover = new THREE.Mesh(
-        new THREE.BoxGeometry(0.65, 0.08, 0.48),
-        new THREE.MeshStandardMaterial({
-          color: 0x3a2412,
-          roughness: 0.55,
-          metalness: 0.1,
-          emissive: 0x140a04,
-          emissiveIntensity: 0.6,
-        }),
-      );
+      // ----- Painted cover texture: deep leather + gold "V" -----------
+      // CanvasTexture so the V is sharp from any angle, no font loading.
+      const coverCanvas = document.createElement("canvas");
+      coverCanvas.width = 512;
+      coverCanvas.height = 384; // aspect mirrors the cover box
+      const cctx = coverCanvas.getContext("2d");
+      if (cctx) {
+        // Leather gradient.
+        const grad = cctx.createLinearGradient(0, 0, coverCanvas.width, coverCanvas.height);
+        grad.addColorStop(0, "#5b3a1d");
+        grad.addColorStop(0.55, "#2f1c0e");
+        grad.addColorStop(1, "#1a0f06");
+        cctx.fillStyle = grad;
+        cctx.fillRect(0, 0, coverCanvas.width, coverCanvas.height);
+        // Inset border to read as "book".
+        cctx.strokeStyle = "rgba(212, 168, 90, 0.6)";
+        cctx.lineWidth = 6;
+        cctx.strokeRect(20, 20, coverCanvas.width - 40, coverCanvas.height - 40);
+        // The "V". A bold serif-ish glyph painted in gold with a
+        // subtle drop shadow so it reads embossed.
+        cctx.font = "bold 280px 'Georgia', 'Times New Roman', serif";
+        cctx.textAlign = "center";
+        cctx.textBaseline = "middle";
+        cctx.shadowColor = "rgba(0,0,0,0.55)";
+        cctx.shadowBlur = 18;
+        cctx.shadowOffsetX = 0;
+        cctx.shadowOffsetY = 4;
+        cctx.fillStyle = "#ffd28a";
+        cctx.fillText("V", coverCanvas.width / 2, coverCanvas.height / 2 + 14);
+        // Inner highlight stroke for a glint.
+        cctx.shadowBlur = 0;
+        cctx.shadowOffsetY = 0;
+        cctx.strokeStyle = "rgba(255, 240, 200, 0.8)";
+        cctx.lineWidth = 3;
+        cctx.strokeText("V", coverCanvas.width / 2, coverCanvas.height / 2 + 14);
+      }
+      const coverTex = new THREE.CanvasTexture(coverCanvas);
+      coverTex.colorSpace = THREE.SRGBColorSpace;
+      coverTex.anisotropy = 8;
+
+      // Book is ~2x previous dimensions.
+      const BOOK_W = 1.3;
+      const BOOK_H = 0.16;
+      const BOOK_D = 0.96;
+
+      // Use a 6-material BoxGeometry so the cover texture lands on the
+      // TOP face only (the face the camera sees when the book is laid
+      // flat). Other faces use solid leather.
+      const leatherMat = new THREE.MeshStandardMaterial({
+        color: 0x3a2412,
+        roughness: 0.55,
+        metalness: 0.1,
+        emissive: 0x140a04,
+        emissiveIntensity: 0.55,
+      });
+      const coverFaceMat = new THREE.MeshStandardMaterial({
+        map: coverTex,
+        roughness: 0.55,
+        metalness: 0.1,
+        emissive: 0x2a1a08,
+        emissiveIntensity: 0.4,
+      });
+      // BoxGeometry material order: [+x, -x, +y, -y, +z, -z]. Top is +y.
+      const cover = new THREE.Mesh(new THREE.BoxGeometry(BOOK_W, BOOK_H, BOOK_D), [
+        leatherMat,
+        leatherMat,
+        coverFaceMat,
+        leatherMat,
+        leatherMat,
+        leatherMat,
+      ]);
       cover.userData.kind = "journal";
       group.add(cover);
 
-      // Three stacked pages, paper-yellow. Slightly inset so the
-      // cover frames them.
+      // Page edges — three stacked paper-yellow sheets visible from
+      // the side, tucked inside the cover.
       for (let i = 0; i < 3; i++) {
         const page = new THREE.Mesh(
-          new THREE.BoxGeometry(0.6, 0.012, 0.43),
+          new THREE.BoxGeometry(BOOK_W * 0.93, 0.022, BOOK_D * 0.92),
           new THREE.MeshStandardMaterial({
             color: 0xfdf6e3,
             roughness: 0.85,
@@ -2790,57 +2850,41 @@ export default function Unit7Playground() {
             emissiveIntensity: 0.18,
           }),
         );
-        page.position.y = 0.05 + i * 0.014;
+        page.position.y = 0.1 + i * 0.026;
         page.userData.kind = "journal";
         group.add(page);
       }
 
       // Spine — vertical glowing stripe on the long edge.
       const spine = new THREE.Mesh(
-        new THREE.BoxGeometry(0.03, 0.1, 0.48),
+        new THREE.BoxGeometry(0.06, BOOK_H * 1.4, BOOK_D),
         new THREE.MeshBasicMaterial({
           color: 0xffd28a,
           transparent: true,
           opacity: 0.85,
         }),
       );
-      spine.position.set(-0.31, 0.03, 0);
+      spine.position.set(-BOOK_W / 2 - 0.01, 0.06, 0);
       spine.userData.kind = "journal";
       group.add(spine);
 
-      // Embossed "V" — a tiny additive disc on the cover with a
-      // sprite-style glow. Looks more interesting than a flat decal.
-      const sigil = new THREE.Mesh(
-        new THREE.CircleGeometry(0.07, 24),
-        new THREE.MeshBasicMaterial({
-          color: 0xffdca6,
-          transparent: true,
-          opacity: 0.55,
-          depthWrite: false,
-        }),
-      );
-      sigil.rotation.x = -Math.PI / 2;
-      sigil.position.y = 0.041;
-      sigil.userData.kind = "journal";
-      group.add(sigil);
-
       // Outer warm halo — additive sphere that surrounds the book
-      // so it reads as "this glows" from any angle, even in shadow.
+      // so it glows against the starfield from any angle.
       const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(0.6, 16, 12),
+        new THREE.SphereGeometry(BOOK_W, 16, 12),
         new THREE.MeshBasicMaterial({
           color: 0xffb95a,
           transparent: true,
-          opacity: 0.07,
+          opacity: 0.08,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         }),
       );
       halo.userData.kind = "journal";
       group.add(halo);
-      // Stash the halo on the group so the animation loop can pulse it.
+      // Stash the halo so the animation loop can pulse it.
       (group as unknown as Record<string, unknown>).__halo = halo;
-      (group as unknown as Record<string, unknown>).__sigil = sigil;
+      (group as unknown as Record<string, unknown>).__sigil = cover; // for pulse
 
       group.visible = true;
       scene.add(group);
@@ -3811,30 +3855,28 @@ export default function Unit7Playground() {
         const y = 4.2 + Math.sin(angle) * R * Math.sin(tilt) * 0.6
                 + Math.sin(t * 1.1) * 0.18;
         journal.position.set(x, y, z);
-        // Always face roughly toward the platform so the cover and
-        // sigil read from the camera.
-        journal.lookAt(0, 4, 0);
-        // Slow spin around the book's own up-axis so the spine glow
-        // catches the eye periodically.
-        journal.rotateY(Math.sin(t * 0.6) * 0.4);
+        // Keep the book laid flat (cover facing world-up) so the V
+        // is readable from the typical /space camera angle. We
+        // gently bank the book so it shows its face to whichever
+        // side of the orbit it's currently on, then spin slowly
+        // around its vertical so the spine catches the eye too.
+        journal.rotation.set(0, 0, 0);
+        // Tilt the cover slightly toward the platform's center so
+        // the V flashes in and out of view as it orbits.
+        journal.rotateZ(Math.sin(angle) * 0.18);
+        journal.rotateX(-Math.cos(angle) * 0.18);
+        journal.rotateY(angle * 0.4 + Math.sin(t * 0.4) * 0.15);
         // Halo pulse + extra burst when journalNudgeRef bumps
         // (new entry just landed).
         const halo = (journal as unknown as Record<string, unknown>).__halo as
           | THREE.Mesh
           | undefined;
-        const sigil = (journal as unknown as Record<string, unknown>).__sigil as
-          | THREE.Mesh
-          | undefined;
         if (halo) {
           const mat = halo.material as THREE.MeshBasicMaterial;
-          const base = 0.07 + Math.sin(t * 1.4) * 0.025;
+          const base = 0.08 + Math.sin(t * 1.4) * 0.03;
           const nudge = Math.max(0, 1 - (now - journalNudgeRef.current) / 1800);
           mat.opacity = base + nudge * 0.45;
           halo.scale.setScalar(1 + nudge * 0.55 + Math.sin(t * 1.4) * 0.05);
-        }
-        if (sigil) {
-          const mat = sigil.material as THREE.MeshBasicMaterial;
-          mat.opacity = 0.5 + Math.sin(t * 2.2) * 0.18;
         }
       }
 

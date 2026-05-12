@@ -550,7 +550,7 @@ function JournalOverlay({
         exit={{ opacity: 0, scale: 0.94, y: 20 }}
         transition={{ type: "spring", damping: 22, stiffness: 220 }}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-lg rounded-md p-6 md:p-7 shadow-2xl"
+        className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-md p-6 md:p-7 shadow-2xl"
         style={{
           background:
             "repeating-linear-gradient(180deg, #fdf6e3 0px, #fdf6e3 28px, #e9dcb8 29px, #fdf6e3 30px)",
@@ -890,6 +890,9 @@ function IdentityPage({
 // through a small edge function call instead).
 // ----------------------------------------------------------------------
 
+// Each item is a single notebook page. Page 0 is always the
+// drafts inbox (all pending drafts together — they're the headline);
+// pages 1+ are individual research entries Vibey has been reading.
 function OvernightDigest({
   research,
   drafts,
@@ -899,148 +902,212 @@ function OvernightDigest({
   drafts: SoulDraftRow[];
   onDraftChange: (id: string, next: "pending" | "applied" | "rejected") => void;
 }) {
+  const [page, setPage] = useState(0);
+  const totalPages = 1 + research.length; // 1 drafts page + N research pages
+
+  const next = () => setPage((p) => Math.min(totalPages - 1, p + 1));
+  const prev = () => setPage((p) => Math.max(0, p - 1));
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Arrow nav is handled at the overlay level for the main
+      // journal/identity tabs; here we listen only for our own
+      // dedicated keys so we don't fight with that handler.
+      if (e.key === "PageDown") { e.preventDefault(); next(); }
+      if (e.key === "PageUp") { e.preventDefault(); prev(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPages]);
+
+  return (
+    <div>
+      {page === 0 ? (
+        <DraftsPage drafts={drafts} onDraftChange={onDraftChange} />
+      ) : (
+        <ResearchPage row={research[page - 1]} />
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-amber-800/30">
+          <button
+            onClick={prev}
+            disabled={page === 0}
+            className="text-sm font-sans font-semibold disabled:opacity-30 hover:underline inline-flex items-center gap-1"
+            style={{ color: "#2e1f10" }}
+          >
+            <ChevronLeft className="w-3 h-3" />
+            prev
+          </button>
+          <p className="text-[10px] font-sans opacity-60">
+            {page === 0
+              ? "drafts inbox"
+              : `reading ${page} of ${research.length}`}
+            {" · page "}{page + 1}{" of "}{totalPages}
+          </p>
+          <button
+            onClick={next}
+            disabled={page >= totalPages - 1}
+            className="text-sm font-sans font-semibold disabled:opacity-30 hover:underline inline-flex items-center gap-1"
+            style={{ color: "#2e1f10" }}
+          >
+            next
+            <ChevronRight className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DraftsPage({
+  drafts,
+  onDraftChange,
+}: {
+  drafts: SoulDraftRow[];
+  onDraftChange: (id: string, next: "pending" | "applied" | "rejected") => void;
+}) {
   const pending = drafts.filter((d) => d.status === "pending");
   const reviewed = drafts.filter((d) => d.status !== "pending");
 
   const updateDraft = async (id: string, status: "applied" | "rejected") => {
     onDraftChange(id, status); // optimistic
-    await supabase.functions.invoke("vibey-soul-draft-review", {
-      body: { id, status },
-    }).catch((e) => {
-      console.warn("[overnight] draft review failed:", e);
-    });
+    await supabase.functions
+      .invoke("vibey-soul-draft-review", { body: { id, status } })
+      .catch((e) => console.warn("[overnight] draft review failed:", e));
   };
 
   return (
-    <div className="space-y-5">
-      {/* Pending soul drafts — these are the headline of the overnight */}
-      <section>
-        <div className="flex items-baseline justify-between mb-2">
-          <h3 className="text-xl">Drafts for my soul</h3>
-          <span className="text-[10px] font-sans opacity-60">
-            {pending.length} pending · {reviewed.length} reviewed
-          </span>
-        </div>
-        {pending.length === 0 && (
-          <p className="text-base font-sans opacity-60 italic">
-            No new soul drafts yet. They'll show up here whenever I have a
-            thought worth committing to.
-          </p>
-        )}
-        <div className="space-y-3">
-          {pending.map((d) => (
-            <div
-              key={d.id}
-              className="rounded-md border border-amber-800/30 bg-amber-100/50 p-3"
-            >
-              <p className="text-[11px] uppercase tracking-widest font-sans opacity-60">
-                {formatJournalDate(d.created_at)}
+    <section>
+      <div className="flex items-baseline justify-between mb-2">
+        <h3 className="text-xl">Drafts for my soul</h3>
+        <span className="text-[10px] font-sans opacity-60">
+          {pending.length} pending · {reviewed.length} reviewed
+        </span>
+      </div>
+      {pending.length === 0 && (
+        <p className="text-base font-sans opacity-60 italic">
+          No new soul drafts yet. They'll show up here whenever I have a
+          thought worth committing to.
+        </p>
+      )}
+      <div className="space-y-3">
+        {pending.map((d) => (
+          <div
+            key={d.id}
+            className="rounded-md border border-amber-800/30 bg-amber-100/50 p-3"
+          >
+            <p className="text-[11px] uppercase tracking-widest font-sans opacity-60">
+              {formatJournalDate(d.created_at)}
+            </p>
+            {d.diff_summary && (
+              <h4 className="text-lg leading-tight mt-0.5">{d.diff_summary}</h4>
+            )}
+            {d.proposed_addition && (
+              <blockquote className="text-base leading-relaxed mt-2 pl-3 border-l-2 border-amber-800/40 whitespace-pre-line">
+                {d.proposed_addition}
+              </blockquote>
+            )}
+            {d.reasoning && (
+              <p className="text-[12px] font-sans opacity-70 mt-2 italic">
+                why: {d.reasoning}
               </p>
-              {d.diff_summary && (
-                <h4 className="text-lg leading-tight mt-0.5">{d.diff_summary}</h4>
-              )}
-              {d.proposed_addition && (
-                <blockquote className="text-base leading-relaxed mt-2 pl-3 border-l-2 border-amber-800/40 whitespace-pre-line">
-                  {d.proposed_addition}
-                </blockquote>
-              )}
-              {d.reasoning && (
-                <p className="text-[12px] font-sans opacity-70 mt-2 italic">
-                  why: {d.reasoning}
-                </p>
-              )}
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => updateDraft(d.id, "applied")}
-                  className="px-3 py-1.5 rounded text-sm font-sans font-semibold text-emerald-50"
-                  style={{ background: "#3a7d3a" }}
-                >
-                  Apply to soul
-                </button>
-                <button
-                  onClick={() => updateDraft(d.id, "rejected")}
-                  className="px-3 py-1.5 rounded text-sm font-sans font-semibold"
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => updateDraft(d.id, "applied")}
+                className="px-3 py-1.5 rounded text-sm font-sans font-semibold text-emerald-50"
+                style={{ background: "#3a7d3a" }}
+              >
+                Apply to soul
+              </button>
+              <button
+                onClick={() => updateDraft(d.id, "rejected")}
+                className="px-3 py-1.5 rounded text-sm font-sans font-semibold"
+                style={{
+                  color: "#2e1f10",
+                  background: "rgba(120,80,60,0.12)",
+                  border: "1px solid rgba(120,80,60,0.25)",
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {reviewed.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-[11px] font-sans opacity-60 cursor-pointer hover:opacity-100">
+            {reviewed.length} reviewed
+          </summary>
+          <ul className="mt-2 space-y-1 text-[12px] font-sans">
+            {reviewed.map((d) => (
+              <li key={d.id} className="flex items-start gap-2 opacity-70">
+                <span
+                  className="inline-block w-12 text-center px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest"
                   style={{
-                    color: "#2e1f10",
-                    background: "rgba(120,80,60,0.12)",
-                    border: "1px solid rgba(120,80,60,0.25)",
+                    background:
+                      d.status === "applied"
+                        ? "rgba(58, 125, 58, 0.2)"
+                        : "rgba(120, 80, 60, 0.15)",
                   }}
                 >
-                  Skip
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-        {reviewed.length > 0 && (
-          <details className="mt-3">
-            <summary className="text-[11px] font-sans opacity-60 cursor-pointer hover:opacity-100">
-              {reviewed.length} reviewed
-            </summary>
-            <ul className="mt-2 space-y-1 text-[12px] font-sans">
-              {reviewed.map((d) => (
-                <li key={d.id} className="flex items-start gap-2 opacity-70">
-                  <span
-                    className="inline-block w-12 text-center px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest"
-                    style={{
-                      background:
-                        d.status === "applied"
-                          ? "rgba(58, 125, 58, 0.2)"
-                          : "rgba(120, 80, 60, 0.15)",
-                    }}
-                  >
-                    {d.status}
-                  </span>
-                  <span className="flex-1">
-                    {d.diff_summary || (d.proposed_addition ?? "").slice(0, 80)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </section>
-
-      {/* Research log — what Vibey has been reading */}
-      <section>
-        <div className="flex items-baseline justify-between mb-2">
-          <h3 className="text-xl">What I've been reading</h3>
-          <span className="text-[10px] font-sans opacity-60">
-            {research.length} cached
-          </span>
-        </div>
-        {research.length === 0 && (
-          <p className="text-base font-sans opacity-60 italic">
-            I haven't read anything yet. The next journal cycle should pull
-            something.
-          </p>
-        )}
-        <div className="space-y-3">
-          {research.map((r) => (
-            <div key={r.id} className="rounded-md border border-amber-800/20 p-3">
-              <div className="flex items-baseline justify-between gap-2">
-                <a
-                  href={r.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] uppercase tracking-widest font-sans font-semibold hover:underline"
-                  style={{ color: "#2e1f10" }}
-                >
-                  {r.source_label}
-                </a>
-                <span className="text-[10px] font-sans opacity-60">
-                  {formatJournalDate(r.fetched_at)}
+                  {d.status}
                 </span>
-              </div>
-              {r.title && (
-                <h4 className="text-lg leading-tight mt-0.5">{r.title}</h4>
-              )}
-              <p className="text-base leading-relaxed mt-1">{r.summary}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
+                <span className="flex-1">
+                  {d.diff_summary || (d.proposed_addition ?? "").slice(0, 80)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function ResearchPage({ row }: { row: ResearchRow | undefined }) {
+  if (!row) {
+    return (
+      <p className="text-base font-sans opacity-60 italic">
+        Nothing on this page yet.
+      </p>
+    );
+  }
+  return (
+    <section>
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        {row.url && row.url.startsWith("http") ? (
+          <a
+            href={row.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] uppercase tracking-widest font-sans font-semibold hover:underline"
+            style={{ color: "#2e1f10" }}
+          >
+            {row.source_label}
+          </a>
+        ) : (
+          <span
+            className="text-[11px] uppercase tracking-widest font-sans font-semibold"
+            style={{ color: "#2e1f10" }}
+          >
+            {row.source_label}
+          </span>
+        )}
+        <span className="text-[10px] font-sans opacity-60">
+          {formatJournalDate(row.fetched_at)}
+        </span>
+      </div>
+      {row.title && (
+        <h2 className="text-2xl leading-tight mb-2">{row.title}</h2>
+      )}
+      <p className="text-base leading-relaxed whitespace-pre-line">
+        {row.summary}
+      </p>
+    </section>
   );
 }
 
