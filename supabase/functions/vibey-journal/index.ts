@@ -172,10 +172,14 @@ Deno.serve(async (req) => {
       .eq("community_id", communityId).gte("created_at", sinceIso),
     sb.from("events").select("id", { count: "exact", head: true })
       .eq("community_id", communityId).gte("created_at", sinceIso),
+    // Research split into two buckets:
+    //   - Claude briefings (deep curated context, kept long-term)
+    //   - Rotating URL cache (what Vibey has been reading lately)
+    // Pulled in one query then segmented in JS below.
     sb.from("vibey_research_log")
       .select("source_label, url, title, summary, fetched_at, ok")
       .eq("community_id", communityId).eq("ok", true)
-      .order("fetched_at", { ascending: false }).limit(4),
+      .order("fetched_at", { ascending: false }).limit(20),
     sb.from("agents")
       .select("id, name, system_prompt, model, temperature")
       .eq("community_id", communityId).eq("is_active", true)
@@ -190,7 +194,14 @@ Deno.serve(async (req) => {
   const memories = allMemories ?? [];
   const freshMemories = newMemories ?? [];
   const notes = allNotes ?? [];
-  const researchList = research ?? [];
+  const researchAll = research ?? [];
+  // Split: Claude's hand-fed briefings stay sticky; URL cache rotates.
+  const briefings = researchAll
+    .filter((r) => typeof r.source_label === "string" && r.source_label.startsWith("Briefing from Claude"))
+    .slice(0, 5);
+  const researchList = researchAll
+    .filter((r) => !(typeof r.source_label === "string" && r.source_label.startsWith("Briefing from Claude")))
+    .slice(0, 4);
 
   // 4. Build the user turn.
   const messageBlock = messages.length
@@ -208,6 +219,11 @@ Deno.serve(async (req) => {
   const notesBlock = notes.length
     ? notes.map((n, i) => `${i + 1}. ${(n.content ?? "").slice(0, 240)}`).join("\n")
     : "(no notes)";
+  const briefingBlock = briefings.length
+    ? briefings.map((r) =>
+        `— ${r.source_label}${r.title ? ` · "${r.title}"` : ""}\n  ${(r.summary ?? "").slice(0, 1800)}`,
+      ).join("\n\n")
+    : "(no curated briefings yet)";
   const researchBlock = researchList.length
     ? researchList.map((r) =>
         `— ${r.source_label}${r.title ? ` · "${r.title}"` : ""} (${r.url})\n  ${(r.summary ?? "").slice(0, 700)}`,
@@ -232,7 +248,8 @@ Deno.serve(async (req) => {
     `Newly added since last entry:\n${freshMemoryBlock}`,
     `Saved notes:\n${notesBlock}`,
     `Telegram chatter (last ${messages.length}):\n${messageBlock}`,
-    `What you've been reading lately (latest research cache):\n${researchBlock}`,
+    `Deep context you've been chewing on (hand-curated briefings — your foundational world-knowledge, weighted heavier than the rotating reads below):\n${briefingBlock}`,
+    `What you've been reading lately (rotating URL cache):\n${researchBlock}`,
     draftBlock,
   ].filter(Boolean).join("\n\n");
 
@@ -288,7 +305,11 @@ Deno.serve(async (req) => {
     fresh_memory_count: freshMemories.length,
     note_count: notes.length,
     research_count: researchList.length,
-    research_sources: researchList.map((r) => r.source_label),
+    briefing_count: briefings.length,
+    research_sources: [
+      ...briefings.map((r) => r.source_label),
+      ...researchList.map((r) => r.source_label),
+    ],
     refreshed_url: pick?.url ?? null,
     model,
   };
