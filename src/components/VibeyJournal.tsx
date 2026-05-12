@@ -47,19 +47,54 @@ interface VibeyIdentity {
   updated_at: string | null;
 }
 
-type Tab = "journal" | "identity";
+type Tab = "journal" | "identity" | "overnight";
 
-// Split the soul (system_prompt) into pages on blank lines so it
-// reads like flipping through a notebook, not staring at a wall.
+interface ResearchRow {
+  id: string;
+  source_label: string;
+  url: string;
+  title: string | null;
+  summary: string;
+  fetched_at: string;
+}
+
+interface SoulDraftRow {
+  id: string;
+  status: "pending" | "applied" | "rejected" | string;
+  proposed_addition: string | null;
+  reasoning: string | null;
+  diff_summary: string | null;
+  created_at: string;
+}
+
+// Split the soul (system_prompt) into pages on blank lines, then
+// merge any "stub" pages (a short heading like "Your goals:" with
+// nothing else) into the page that follows them. The old splitter
+// would leave a page that just said "Your goals:" and a separate
+// page with the actual list — this fixes that.
 function splitSoulIntoPages(soul: string): string[] {
   if (!soul) return [];
-  // Break on double-newlines first; if the result is too few pages
-  // we'll merge nothing, if too many sections we keep them as-is.
-  const sections = soul
+  const raw = soul
     .split(/\n\s*\n/)
     .map((s) => s.trim())
     .filter(Boolean);
-  return sections;
+
+  const merged: string[] = [];
+  // A "stub" is a short fragment with no body, usually a heading.
+  const STUB_MAX = 60;
+  const isStub = (s: string) =>
+    s.length <= STUB_MAX && !/\n/.test(s);
+
+  for (let i = 0; i < raw.length; i++) {
+    const cur = raw[i];
+    if (isStub(cur) && i + 1 < raw.length) {
+      merged.push(`${cur}\n${raw[i + 1]}`);
+      i += 1; // consume the next chunk as part of this page
+    } else {
+      merged.push(cur);
+    }
+  }
+  return merged;
 }
 
 interface Props {
@@ -106,6 +141,9 @@ export default function VibeyJournal({
   const [identityPage, setIdentityPage] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Overnight digest — research Vibey has read + soul drafts pending review.
+  const [research, setResearch] = useState<ResearchRow[]>([]);
+  const [drafts, setDrafts] = useState<SoulDraftRow[]>([]);
   // Track which entry ids arrived live this session (so we typewriter
   // them, not the historical pages).
   const liveIdsRef = useRef<Set<string>>(new Set());
@@ -219,6 +257,36 @@ export default function VibeyJournal({
     if (open) setUnseen(0);
   }, [open]);
 
+  // Load Overnight tab data (research + drafts) whenever it's visible.
+  // Refreshes every minute while open so the morning view stays live.
+  useEffect(() => {
+    if (!open || tab !== "overnight") return;
+    let cancelled = false;
+    const load = async () => {
+      const [{ data: r }, { data: d }] = await Promise.all([
+        supabase
+          .from("vibey_research_log")
+          .select("id, source_label, url, title, summary, fetched_at")
+          .eq("community_id", communityId)
+          .eq("ok", true)
+          .order("fetched_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("vibey_soul_drafts")
+          .select("id, status, proposed_addition, reasoning, diff_summary, created_at")
+          .eq("community_id", communityId)
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
+      if (cancelled) return;
+      if (r) setResearch(r as ResearchRow[]);
+      if (d) setDrafts(d as SoulDraftRow[]);
+    };
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [open, tab, communityId]);
+
   // Lazy-load Vibey's identity when the Notes-to-Self tab is first
   // requested. We don't re-fetch on every tab change; the agent row
   // doesn't move that often.
@@ -263,6 +331,13 @@ export default function VibeyJournal({
             identity={identity}
             identityPage={identityPage}
             setIdentityPage={setIdentityPage}
+            research={research}
+            drafts={drafts}
+            onDraftChange={(id, next) => {
+              setDrafts((prev) =>
+                prev.map((d) => (d.id === id ? { ...d, status: next } : d)),
+              );
+            }}
             currentEntry={currentEntry}
             isLiveEntry={isLiveEntry}
             generating={generating}
@@ -391,6 +466,9 @@ function JournalOverlay({
   identity,
   identityPage,
   setIdentityPage,
+  research,
+  drafts,
+  onDraftChange,
   currentEntry,
   isLiveEntry,
   generating,
@@ -406,6 +484,9 @@ function JournalOverlay({
   identity: VibeyIdentity | null;
   identityPage: number;
   setIdentityPage: (i: number) => void;
+  research: ResearchRow[];
+  drafts: SoulDraftRow[];
+  onDraftChange: (id: string, next: "pending" | "applied" | "rejected") => void;
   currentEntry: JournalEntry | null;
   isLiveEntry: boolean;
   generating: boolean;
@@ -533,7 +614,36 @@ function JournalOverlay({
             <Cpu className="w-3 h-3" />
             Notes to self
           </button>
+          <button
+            onClick={() => setTab("overnight")}
+            className={`flex-1 px-2 py-1 rounded transition-colors inline-flex items-center justify-center gap-1.5 relative ${
+              tab === "overnight"
+                ? "bg-amber-100 font-semibold"
+                : "opacity-60 hover:opacity-100"
+            }`}
+            style={{ color: "#2e1f10" }}
+            title="What Vibey read and what it wants to learn"
+          >
+            <Sparkles className="w-3 h-3" />
+            Overnight
+            {drafts.some((d) => d.status === "pending") && (
+              <span
+                className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+                style={{ background: "#b8540a" }}
+                aria-label="pending soul drafts"
+              />
+            )}
+          </button>
         </div>
+
+        {/* ----- OVERNIGHT (research + drafts) tab ----- */}
+        {tab === "overnight" && (
+          <OvernightDigest
+            research={research}
+            drafts={drafts}
+            onDraftChange={onDraftChange}
+          />
+        )}
 
         {/* ----- IDENTITY (Notes to self) tab ----- */}
         {tab === "identity" && (
@@ -770,6 +880,167 @@ function IdentityPage({
           : "—"}
       </p>
     </>
+  );
+}
+
+// ----------------------------------------------------------------------
+// OvernightDigest — what Vibey read + the soul updates he wants to propose.
+// Drafts have apply / reject buttons that PATCH the row directly via the
+// anon client (RLS allows SELECT but not UPDATE — so the update goes
+// through a small edge function call instead).
+// ----------------------------------------------------------------------
+
+function OvernightDigest({
+  research,
+  drafts,
+  onDraftChange,
+}: {
+  research: ResearchRow[];
+  drafts: SoulDraftRow[];
+  onDraftChange: (id: string, next: "pending" | "applied" | "rejected") => void;
+}) {
+  const pending = drafts.filter((d) => d.status === "pending");
+  const reviewed = drafts.filter((d) => d.status !== "pending");
+
+  const updateDraft = async (id: string, status: "applied" | "rejected") => {
+    onDraftChange(id, status); // optimistic
+    await supabase.functions.invoke("vibey-soul-draft-review", {
+      body: { id, status },
+    }).catch((e) => {
+      console.warn("[overnight] draft review failed:", e);
+    });
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Pending soul drafts — these are the headline of the overnight */}
+      <section>
+        <div className="flex items-baseline justify-between mb-2">
+          <h3 className="text-xl">Drafts for my soul</h3>
+          <span className="text-[10px] font-sans opacity-60">
+            {pending.length} pending · {reviewed.length} reviewed
+          </span>
+        </div>
+        {pending.length === 0 && (
+          <p className="text-base font-sans opacity-60 italic">
+            No new soul drafts yet. They'll show up here whenever I have a
+            thought worth committing to.
+          </p>
+        )}
+        <div className="space-y-3">
+          {pending.map((d) => (
+            <div
+              key={d.id}
+              className="rounded-md border border-amber-800/30 bg-amber-100/50 p-3"
+            >
+              <p className="text-[11px] uppercase tracking-widest font-sans opacity-60">
+                {formatJournalDate(d.created_at)}
+              </p>
+              {d.diff_summary && (
+                <h4 className="text-lg leading-tight mt-0.5">{d.diff_summary}</h4>
+              )}
+              {d.proposed_addition && (
+                <blockquote className="text-base leading-relaxed mt-2 pl-3 border-l-2 border-amber-800/40 whitespace-pre-line">
+                  {d.proposed_addition}
+                </blockquote>
+              )}
+              {d.reasoning && (
+                <p className="text-[12px] font-sans opacity-70 mt-2 italic">
+                  why: {d.reasoning}
+                </p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => updateDraft(d.id, "applied")}
+                  className="px-3 py-1.5 rounded text-sm font-sans font-semibold text-emerald-50"
+                  style={{ background: "#3a7d3a" }}
+                >
+                  Apply to soul
+                </button>
+                <button
+                  onClick={() => updateDraft(d.id, "rejected")}
+                  className="px-3 py-1.5 rounded text-sm font-sans font-semibold"
+                  style={{
+                    color: "#2e1f10",
+                    background: "rgba(120,80,60,0.12)",
+                    border: "1px solid rgba(120,80,60,0.25)",
+                  }}
+                >
+                  Skip
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {reviewed.length > 0 && (
+          <details className="mt-3">
+            <summary className="text-[11px] font-sans opacity-60 cursor-pointer hover:opacity-100">
+              {reviewed.length} reviewed
+            </summary>
+            <ul className="mt-2 space-y-1 text-[12px] font-sans">
+              {reviewed.map((d) => (
+                <li key={d.id} className="flex items-start gap-2 opacity-70">
+                  <span
+                    className="inline-block w-12 text-center px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest"
+                    style={{
+                      background:
+                        d.status === "applied"
+                          ? "rgba(58, 125, 58, 0.2)"
+                          : "rgba(120, 80, 60, 0.15)",
+                    }}
+                  >
+                    {d.status}
+                  </span>
+                  <span className="flex-1">
+                    {d.diff_summary || (d.proposed_addition ?? "").slice(0, 80)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+
+      {/* Research log — what Vibey has been reading */}
+      <section>
+        <div className="flex items-baseline justify-between mb-2">
+          <h3 className="text-xl">What I've been reading</h3>
+          <span className="text-[10px] font-sans opacity-60">
+            {research.length} cached
+          </span>
+        </div>
+        {research.length === 0 && (
+          <p className="text-base font-sans opacity-60 italic">
+            I haven't read anything yet. The next journal cycle should pull
+            something.
+          </p>
+        )}
+        <div className="space-y-3">
+          {research.map((r) => (
+            <div key={r.id} className="rounded-md border border-amber-800/20 p-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] uppercase tracking-widest font-sans font-semibold hover:underline"
+                  style={{ color: "#2e1f10" }}
+                >
+                  {r.source_label}
+                </a>
+                <span className="text-[10px] font-sans opacity-60">
+                  {formatJournalDate(r.fetched_at)}
+                </span>
+              </div>
+              {r.title && (
+                <h4 className="text-lg leading-tight mt-0.5">{r.title}</h4>
+              )}
+              <p className="text-base leading-relaxed mt-1">{r.summary}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
