@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpen, X, Sparkles, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, X, Sparkles, RefreshCw, ChevronLeft, ChevronRight, NotebookPen, Cpu } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface JournalEntry {
@@ -32,6 +32,34 @@ interface JournalEntry {
   source_summary: string | null;
   message_count: number | null;
   created_at: string;
+}
+
+interface VibeyIdentity {
+  id: string;
+  name: string | null;
+  avatar_url: string | null;
+  intro_message: string | null;
+  model: string | null;
+  temperature: number | string | null;
+  skills: string[] | null;
+  telegram_enabled: boolean | null;
+  system_prompt: string | null;
+  updated_at: string | null;
+}
+
+type Tab = "journal" | "identity";
+
+// Split the soul (system_prompt) into pages on blank lines so it
+// reads like flipping through a notebook, not staring at a wall.
+function splitSoulIntoPages(soul: string): string[] {
+  if (!soul) return [];
+  // Break on double-newlines first; if the result is too few pages
+  // we'll merge nothing, if too many sections we keep them as-is.
+  const sections = soul
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return sections;
 }
 
 interface Props {
@@ -48,7 +76,10 @@ const ENTRY_INTERVAL_MS = 10 * 60 * 1000;     // mirror the edge function's inte
 export default function VibeyJournal({ communityId, watching }: Props) {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("journal");
   const [pageIndex, setPageIndex] = useState(0);
+  const [identity, setIdentity] = useState<VibeyIdentity | null>(null);
+  const [identityPage, setIdentityPage] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Track which entry ids arrived live this session (so we typewriter
@@ -162,6 +193,25 @@ export default function VibeyJournal({ communityId, watching }: Props) {
     if (open) setUnseen(0);
   }, [open]);
 
+  // Lazy-load Vibey's identity when the Notes-to-Self tab is first
+  // requested. We don't re-fetch on every tab change; the agent row
+  // doesn't move that often.
+  useEffect(() => {
+    if (!open || tab !== "identity" || identity) return;
+    let cancelled = false;
+    supabase.functions
+      .invoke("vibey-identity", { body: { community_id: communityId } })
+      .then(({ data, error: err }) => {
+        if (cancelled) return;
+        if (err) {
+          setError(err.message);
+          return;
+        }
+        if (data?.agent) setIdentity(data.agent as VibeyIdentity);
+      });
+    return () => { cancelled = true; };
+  }, [open, tab, identity, communityId]);
+
   const currentEntry = entries[pageIndex] ?? null;
   const isLiveEntry =
     currentEntry != null && liveIdsRef.current.has(currentEntry.id);
@@ -177,9 +227,14 @@ export default function VibeyJournal({ communityId, watching }: Props) {
       <AnimatePresence>
         {open && (
           <JournalOverlay
+            tab={tab}
+            setTab={setTab}
             entries={entries}
             pageIndex={pageIndex}
             setPageIndex={setPageIndex}
+            identity={identity}
+            identityPage={identityPage}
+            setIdentityPage={setIdentityPage}
             currentEntry={currentEntry}
             isLiveEntry={isLiveEntry}
             generating={generating}
@@ -209,8 +264,17 @@ function FloatingBookButton({
   return (
     <button
       onClick={onClick}
-      className="absolute left-4 bottom-32 md:bottom-20 z-10 select-none"
-      style={{ perspective: "600px" }}
+      // The OUTER wrapper drifts on a long, looping path so the book
+      // reads as "floating around the scene" rather than parked in
+      // the corner. We anchor near the upper-left so we don't fight
+      // the music player at the bottom, then let the keyframe carry
+      // it across a generous orbit.
+      className="absolute top-24 left-6 md:top-32 md:left-10 z-10 select-none"
+      style={{
+        perspective: "600px",
+        animation: "vibeyJournalDrift 22s ease-in-out infinite",
+        willChange: "transform",
+      }}
       title="Vibey's journal"
     >
       <div
@@ -223,6 +287,8 @@ function FloatingBookButton({
             "linear-gradient(135deg, #4a2e1a 0%, #2a1a10 60%, #1a0f08 100%)",
           boxShadow:
             "0 6px 18px rgba(0,0,0,0.6), 0 0 22px hsl(45 90% 60% / 0.35), inset 0 0 0 1px rgba(255,200,120,0.18)",
+          // Inner bob — quicker than the outer drift so the book
+          // looks like it's hovering on its own thrusters.
           animation: "vibeyJournalFloat 4.5s ease-in-out infinite",
         }}
       >
@@ -289,9 +355,14 @@ function FloatingBookButton({
 // ----------------------------------------------------------------------
 
 function JournalOverlay({
+  tab,
+  setTab,
   entries,
   pageIndex,
   setPageIndex,
+  identity,
+  identityPage,
+  setIdentityPage,
   currentEntry,
   isLiveEntry,
   generating,
@@ -299,9 +370,14 @@ function JournalOverlay({
   onClose,
   onForce,
 }: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
   entries: JournalEntry[];
   pageIndex: number;
   setPageIndex: (i: number) => void;
+  identity: VibeyIdentity | null;
+  identityPage: number;
+  setIdentityPage: (i: number) => void;
   currentEntry: JournalEntry | null;
   isLiveEntry: boolean;
   generating: boolean;
@@ -310,6 +386,7 @@ function JournalOverlay({
   onForce: () => void;
 }) {
   const total = entries.length;
+  const soulPages = identity?.system_prompt ? splitSoulIntoPages(identity.system_prompt) : [];
   // Typewriter: only render the live entry's body progressively.
   const [typed, setTyped] = useState(0);
   useEffect(() => {
@@ -332,16 +409,22 @@ function JournalOverlay({
     return () => window.clearTimeout(t);
   }, [currentEntry?.id, isLiveEntry, currentEntry?.body, currentEntry]);
 
-  // Keyboard nav.
+  // Keyboard nav — pages within whichever tab is active.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft" && pageIndex < total - 1) setPageIndex(pageIndex + 1);
-      if (e.key === "ArrowRight" && pageIndex > 0) setPageIndex(pageIndex - 1);
+      if (tab === "journal") {
+        if (e.key === "ArrowLeft" && pageIndex < total - 1) setPageIndex(pageIndex + 1);
+        if (e.key === "ArrowRight" && pageIndex > 0) setPageIndex(pageIndex - 1);
+      } else if (tab === "identity") {
+        if (e.key === "ArrowLeft" && identityPage > 0) setIdentityPage(identityPage - 1);
+        if (e.key === "ArrowRight" && identityPage < soulPages.length - 1)
+          setIdentityPage(identityPage + 1);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pageIndex, total, onClose, setPageIndex]);
+  }, [tab, pageIndex, total, identityPage, soulPages.length, onClose, setPageIndex, setIdentityPage]);
 
   return (
     <motion.div
@@ -383,12 +466,12 @@ function JournalOverlay({
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-2">
           <BookOpen className="w-4 h-4" style={{ color: "#2e1f10" }} />
           <p className="text-[11px] uppercase tracking-[0.3em] opacity-70 font-sans font-semibold">
             Vibey's notebook
           </p>
-          {generating && (
+          {generating && tab === "journal" && (
             <span className="ml-auto text-[10px] inline-flex items-center gap-1 opacity-70 font-sans">
               <Sparkles className="w-3 h-3 animate-pulse" />
               writing…
@@ -396,8 +479,48 @@ function JournalOverlay({
           )}
         </div>
 
+        {/* Tab switcher — Journal pages vs Notes to self (soul) */}
+        <div className="flex gap-1 p-0.5 mb-3 rounded-md bg-amber-900/8 border border-amber-800/20 text-[11px] font-sans">
+          <button
+            onClick={() => setTab("journal")}
+            className={`flex-1 px-2 py-1 rounded transition-colors inline-flex items-center justify-center gap-1.5 ${
+              tab === "journal"
+                ? "bg-amber-100 font-semibold"
+                : "opacity-60 hover:opacity-100"
+            }`}
+            style={{ color: "#2e1f10" }}
+          >
+            <NotebookPen className="w-3 h-3" />
+            Journal
+          </button>
+          <button
+            onClick={() => setTab("identity")}
+            className={`flex-1 px-2 py-1 rounded transition-colors inline-flex items-center justify-center gap-1.5 ${
+              tab === "identity"
+                ? "bg-amber-100 font-semibold"
+                : "opacity-60 hover:opacity-100"
+            }`}
+            style={{ color: "#2e1f10" }}
+          >
+            <Cpu className="w-3 h-3" />
+            Notes to self
+          </button>
+        </div>
+
+        {/* ----- IDENTITY (Notes to self) tab ----- */}
+        {tab === "identity" && (
+          <IdentityPage
+            identity={identity}
+            soulPages={soulPages}
+            identityPage={identityPage}
+            setIdentityPage={setIdentityPage}
+          />
+        )}
+
+        {/* ----- JOURNAL tab ----- */}
+
         {/* Empty state */}
-        {!currentEntry && !generating && (
+        {tab === "journal" && !currentEntry && !generating && (
           <div className="py-8 text-center">
             <p className="text-xl">The page is blank.</p>
             <p className="text-sm mt-2 font-sans opacity-70">
@@ -416,7 +539,7 @@ function JournalOverlay({
         )}
 
         {/* Active entry */}
-        {currentEntry && (
+        {tab === "journal" && currentEntry && (
           <>
             <div className="flex items-baseline gap-3 mb-2">
               <h2 className="text-2xl leading-tight">
@@ -450,8 +573,8 @@ function JournalOverlay({
           </>
         )}
 
-        {/* Page navigation */}
-        {total > 0 && (
+        {/* Page navigation (journal tab) */}
+        {tab === "journal" && total > 0 && (
           <div className="flex items-center justify-between mt-6 pt-4 border-t border-amber-800/30">
             <button
               onClick={() => setPageIndex(Math.min(total - 1, pageIndex + 1))}
@@ -478,6 +601,7 @@ function JournalOverlay({
         )}
 
         {/* Manual refresh — power-user "write me one now" button */}
+        {tab === "journal" && (
         <div className="flex items-center justify-between mt-3">
           <p className="text-[10px] font-sans opacity-50">
             new pages every ~10 min while someone's watching
@@ -493,6 +617,7 @@ function JournalOverlay({
             nudge
           </button>
         </div>
+        )}
 
         {error && (
           <p className="text-[10px] font-sans text-rose-700 bg-rose-200/40 border border-rose-400/30 rounded px-2 py-1 mt-3">
@@ -501,6 +626,122 @@ function JournalOverlay({
         )}
       </motion.div>
     </motion.div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// IdentityPage — the "Notes to Self" tab. Pulls Vibey's live agent
+// config (system_prompt, skills, model, temperature) and renders it
+// as paginated handwritten pages plus a meta footer.
+// ----------------------------------------------------------------------
+
+function IdentityPage({
+  identity,
+  soulPages,
+  identityPage,
+  setIdentityPage,
+}: {
+  identity: VibeyIdentity | null;
+  soulPages: string[];
+  identityPage: number;
+  setIdentityPage: (i: number) => void;
+}) {
+  if (!identity) {
+    return (
+      <p className="text-base font-sans opacity-60 italic py-6 text-center">
+        Loading my own instructions…
+      </p>
+    );
+  }
+
+  const total = soulPages.length;
+  const currentSection = soulPages[identityPage] ?? "";
+
+  // Detect a SHOUTY heading at the top of a section ("PERSONALITY",
+  // "BOUNDARIES" etc) and elevate it as the page title.
+  const firstLine = currentSection.split("\n", 1)[0] ?? "";
+  const isHeading =
+    firstLine.length <= 40 &&
+    firstLine === firstLine.toUpperCase() &&
+    /[A-Z]/.test(firstLine);
+  const title = isHeading
+    ? firstLine.replace(/^(.*?)$/, (s) => s.charAt(0) + s.slice(1).toLowerCase())
+    : `Page ${identityPage + 1}`;
+  const bodyText = isHeading
+    ? currentSection.slice(firstLine.length).replace(/^\n+/, "")
+    : currentSection;
+
+  return (
+    <>
+      {/* Top "card" — name, model, skills */}
+      <div className="rounded-md border border-amber-800/30 bg-amber-100/40 px-3 py-2 mb-3 font-sans text-[11px] leading-snug">
+        <p className="font-semibold text-[12px]">
+          I am {identity.name ?? "Vibey"}.
+        </p>
+        {identity.intro_message && (
+          <p className="opacity-70 italic mt-0.5">"{identity.intro_message}"</p>
+        )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 opacity-70">
+          {identity.model && <span>model: {identity.model}</span>}
+          {identity.temperature != null && (
+            <span>temp: {identity.temperature}</span>
+          )}
+          {identity.telegram_enabled && <span>· on Telegram</span>}
+        </div>
+        {identity.skills && identity.skills.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {identity.skills.map((s) => (
+              <span
+                key={s}
+                className="px-1.5 py-0.5 rounded bg-amber-200/60 border border-amber-800/30 text-[10px]"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Paginated soul */}
+      <h2 className="text-2xl leading-tight mb-2">{title}</h2>
+      <p className="text-base leading-relaxed whitespace-pre-line min-h-[8rem]">
+        {bodyText.trim() || "(blank page)"}
+      </p>
+
+      {total > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-amber-800/30">
+          <button
+            onClick={() => setIdentityPage(Math.max(0, identityPage - 1))}
+            disabled={identityPage === 0}
+            className="text-sm font-sans font-semibold disabled:opacity-30 hover:underline inline-flex items-center gap-1"
+            style={{ color: "#2e1f10" }}
+          >
+            <ChevronLeft className="w-3 h-3" />
+            prev
+          </button>
+          <p className="text-[10px] font-sans opacity-60">
+            page {identityPage + 1} of {total}
+          </p>
+          <button
+            onClick={() => setIdentityPage(Math.min(total - 1, identityPage + 1))}
+            disabled={identityPage >= total - 1}
+            className="text-sm font-sans font-semibold disabled:opacity-30 hover:underline inline-flex items-center gap-1"
+            style={{ color: "#2e1f10" }}
+          >
+            next
+            <ChevronRight className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
+      <p className="mt-3 text-[10px] font-sans opacity-50">
+        these are the instructions I read to myself before every reply ·
+        live from the agents row · last updated{" "}
+        {identity.updated_at
+          ? new Date(identity.updated_at).toLocaleDateString()
+          : "—"}
+      </p>
+    </>
   );
 }
 

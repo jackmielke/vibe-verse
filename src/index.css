@@ -212,3 +212,16 @@
   0%, 100% { transform: scale(1);   opacity: 1; }
   50%      { transform: scale(1.4); opacity: 0.7; }
 }
+
+/* Vibey's journal — long-period orbital drift around its anchor.
+   The book bobs locally via vibeyJournalFloat and drifts globally
+   via this keyframe so it reads as a hovercraft, not a fixed UI
+   chip. Translations are kept modest so it never lands on top of
+   the chat panel or music player. */
+@keyframes vibeyJournalDrift {
+  0%   { transform: translate(0px, 0px) rotate(-1deg); }
+  20%  { transform: translate(60px, -16px) rotate(2deg); }
+  45%  { transform: translate(120px, 24px) rotate(-2deg); }
+  70%  { transform: translate(40px, 56px) rotate(1deg); }
+  100% { transform: translate(0px, 0px) rotate(-1deg); }
+}
