@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Edge Esmeralda model index",
+  "description": "Public GLB files served by this app. Stable URLs you can fetch from any other agent, tool, or pipeline.",
+  "updated": "2026-05-12",
+  "models": [
+    {
+      "id": "vibey",
+      "name": "Vibey",
+      "description": "The canonical Vibey 2.0 character. Small expressive robot, ~453 KB, fully rigged. This is the version that runs in /space, the memory garden, the gallery, and disco mode.",
+      "url": "/models/vibey.glb",
+      "format": "glb",
+      "size_bytes": 463988,
+      "animations": [
+        "Idle", "Walking", "Running", "Dance", "Sitting", "Standing",
+        "Wave", "Yes", "No", "ThumbsUp", "Punch", "Jump", "Death"
+      ],
+      "morph_targets": ["Angry", "Surprised", "Sad"],
+      "origin": "Three.js example: \"Robot Expressive\" by Tomás Laulhé / Don McCurdy. CC0.",
+      "recommended_scale_meters": 1.6
+    },
+    {
+      "id": "expressive-vibey",
+      "name": "Expressive Vibey",
+      "description": "The original/heavier Vibey model. ~12 MB. Higher poly, different aesthetic. We swapped to the lighter canonical Vibey for readability + perf, but this one is preserved if you want the chunkier look.",
+      "url": "/models/expressive-vibey.glb",
+      "format": "glb",
+      "size_bytes": 13006560
+    },
+    {
+      "id": "death-star",
+      "name": "Death Star",
+      "description": "Moon-sized space station spawnable in /space.",
+      "url": "/models/death-star.glb",
+      "format": "glb",
+      "size_bytes": 62914560
+    },
+    {
+      "id": "edge-island",
+      "name": "Edge Island",
+      "description": "Floating sky island spawnable. Heavy (~272 MB) — only fetch when you actually need it.",
+      "url": "/models/edge-island.glb",
+      "format": "glb",
+      "size_bytes": 285212672
+    },
+    {
+      "id": "littlest-tokyo",
+      "name": "Littlest Tokyo",
+      "description": "Animated micro-city diorama, keyframed traffic + neon.",
+      "url": "/models/littlest-tokyo.glb",
+      "format": "glb",
+      "size_bytes": 4194304
+    }
+  ]
+}

@@ -28,6 +28,11 @@ dist-ssr
 
 # Heavy GLB assets — keep local, don't bloat the repo.
 public/models/*.glb
+# Exception: the two Vibey character models. Small enough to commit
+# (453 KB + 12 MB), and we want them at stable public URLs so any
+# other agent / tool / pipeline can fetch them.
+!public/models/vibey.glb
+!public/models/expressive-vibey.glb
 
 # Supabase CLI local cache (linked-project metadata, version files, etc.)
 supabase/.temp/
