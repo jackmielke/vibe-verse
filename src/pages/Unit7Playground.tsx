@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import VibeyJournal from "@/components/VibeyJournal";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -4629,6 +4630,14 @@ export default function Unit7Playground() {
           </div>
         </div>
       )}
+
+      {/* Vibey's journal — floating book at bottom-left, opens to a
+          handwritten overlay. Writes a new entry every ~10 min while
+          someone is watching the show. */}
+      <VibeyJournal
+        communityId={EDGE_ESMERELDA_COMMUNITY_ID}
+        watching={watchingNow > 0}
+      />
 
       {/* Music player + queue. Click the title to flip open a list
           of every track; click any row to jump to it. Auto-advances

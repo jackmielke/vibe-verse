@@ -202,3 +202,13 @@
   0%   { color: hsl(150 80% 70%); text-shadow: 0 0 18px hsl(150 80% 60% / 0.7); }
   100% { color: inherit; text-shadow: none; }
 }
+
+/* Vibey's floating journal — slow drift + writing-indicator pulse. */
+@keyframes vibeyJournalFloat {
+  0%, 100% { transform: rotateY(-22deg) rotateX(8deg) translateY(0px); }
+  50%      { transform: rotateY(-18deg) rotateX(10deg) translateY(-4px); }
+}
+@keyframes vibeyJournalPulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%      { transform: scale(1.4); opacity: 0.7; }
+}
