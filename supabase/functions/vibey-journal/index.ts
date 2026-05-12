@@ -44,7 +44,11 @@ const READING_LIST: { label: string; url: string }[] = [
   { label: "Vibe Code Residency",     url: "https://www.vibecoderesidency.com/" },
   { label: "Edge City",               url: "https://www.edgecity.live/" },
   { label: "Edge Esmeralda",          url: "https://www.edgeesmeralda.com/" },
-  { label: "AI Vibe Check Substack",  url: "https://aivibecheck.substack.com/" },
+  // The REAL AI Vibe Check — Jack + Mariella + Noah's Substack at
+  // vibecheckai.substack.com. The aivibecheck.substack.com version
+  // is Lucas Didier's unrelated newsletter and was a wrong pick.
+  { label: "AI Vibe Check (our Substack)", url: "https://vibecheckai.substack.com/" },
+  { label: "Jack's personal site",    url: "https://jackmielke.com/" },
   { label: "Edge Esmeralda app",      url: "https://edgeesmeralda.lovable.app/" },
 ];
 
