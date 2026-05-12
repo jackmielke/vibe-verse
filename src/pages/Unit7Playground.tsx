@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import VibeyJournal from "@/components/VibeyJournal";
+import {
+  playSound,
+  isMuted as soundsMuted,
+  toggleMuted as toggleSoundsMuted,
+  ensureAudioRunning,
+} from "@/lib/vibey-sounds";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -645,6 +651,18 @@ export default function Unit7Playground() {
   }, [tailKey]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
+  // Beep-boop sound effects mute toggle. Read once from localStorage,
+  // then synced via custom event so the pill icon updates if any
+  // other surface flips the mute (none today, but cheap to wire).
+  const [sfxMuted, setSfxMuted] = useState<boolean>(() => soundsMuted());
+  useEffect(() => {
+    const onMute = (e: Event) => {
+      const muted = (e as CustomEvent).detail?.muted as boolean | undefined;
+      if (typeof muted === "boolean") setSfxMuted(muted);
+    };
+    window.addEventListener("vibey-sounds-mute", onMute);
+    return () => window.removeEventListener("vibey-sounds-mute", onMute);
+  }, []);
   const [queueOpen, setQueueOpen] = useState(false);
 
   // Spotify integration: PKCE OAuth, then poll the user's profile.
@@ -849,6 +867,8 @@ export default function Unit7Playground() {
     } else if (kind === "earth") {
       setEarthOpen(true);
     } else if (kind === "journal") {
+      ensureAudioRunning();
+      playSound("pop"); // soft "you have my attention" when opening the book
       setJournalOpen(true);
     }
   };
@@ -1083,6 +1103,11 @@ export default function Unit7Playground() {
 
   function triggerAnim(anim: Unit7AnimName) {
     burstConfetti();
+    // Every emote gets a matching beep/boop. soundForAnim() inside
+    // vibey-sounds maps anim names → robotic voice cues (Wave →
+    // sparkle, Yes → chirp, Dance → groove, Punch → thud, etc).
+    ensureAudioRunning();
+    playSound("emote", { anim });
     const lines = SPEECH_LINES[anim];
     if (lines) {
       const text = lines[Math.floor(Math.random() * lines.length)];
@@ -1704,6 +1729,9 @@ export default function Unit7Playground() {
     if (!text || thinking) return;
     setDraft("");
     pushMessage("user", text);
+    // Small UI blip on send so it feels physical.
+    ensureAudioRunning();
+    playSound("blip");
     setThinking(true);
 
     // Both modes use the same conversation history shape.
@@ -4110,6 +4138,27 @@ export default function Unit7Playground() {
             Back to village
           </span>
         </Link>
+        <button
+          onClick={() => {
+            const next = toggleSoundsMuted();
+            setSfxMuted(next);
+            // Tiny audible confirmation on un-mute so the user
+            // hears the synth is alive.
+            if (!next) {
+              ensureAudioRunning();
+              playSound("chirp");
+            }
+          }}
+          className="glass-panel rounded-full p-2 hover:bg-muted transition-colors"
+          title={sfxMuted ? "Vibey's beeps are muted — click to enable" : "Mute Vibey's beep-boops"}
+          aria-label="Toggle sound effects"
+        >
+          {sfxMuted ? (
+            <VolumeX className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <Volume2 className="w-4 h-4 text-primary" />
+          )}
+        </button>
         <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
           <Bot className="w-4 h-4 text-primary" />
           <span className="text-[11px] font-heading font-semibold tracking-widest uppercase">
@@ -4843,7 +4892,12 @@ export default function Unit7Playground() {
         open={journalOpen}
         onOpenChange={setJournalOpen}
         showFloatingBook={false}
-        onLiveEntry={() => { journalNudgeRef.current = performance.now(); }}
+        onLiveEntry={() => {
+          journalNudgeRef.current = performance.now();
+          // Soft bell when Vibey writes a new page — only audible
+          // if the user has interacted with the page (audio gesture).
+          playSound("chime");
+        }}
       />
 
       {/* Music player + queue. Click the title to flip open a list
