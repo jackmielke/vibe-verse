@@ -67,15 +67,39 @@ interface Props {
   /** Set to true while at least one viewer (including the user) is
       currently in /space. Drives the auto-tick polling. */
   watching: boolean;
+  /** Optional controlled open state — used when a 3D click in the
+      scene drives the modal instead of the built-in floating book. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the built-in 2D floating book chip. Used when a 3D
+      version is rendered in the Three.js scene instead. */
+  showFloatingBook?: boolean;
+  /** Called whenever a new live entry lands. Lets the parent pulse
+      the 3D book or play a sound, etc. */
+  onLiveEntry?: () => void;
 }
 
 const PAGE_SIZE = 24;
 const TICK_INTERVAL_MS = 60 * 1000;           // check eligibility every minute
 const ENTRY_INTERVAL_MS = 10 * 60 * 1000;     // mirror the edge function's interval
 
-export default function VibeyJournal({ communityId, watching }: Props) {
+export default function VibeyJournal({
+  communityId,
+  watching,
+  open: openProp,
+  onOpenChange,
+  showFloatingBook = true,
+  onLiveEntry,
+}: Props) {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [open, setOpen] = useState(false);
+  const [openSelf, setOpenSelf] = useState(false);
+  // Support both controlled (open prop from parent) and uncontrolled
+  // (internal state) modes so the component works standalone too.
+  const open = openProp ?? openSelf;
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setOpenSelf(next);
+    onOpenChange?.(next);
+  };
   const [tab, setTab] = useState<Tab>("journal");
   const [pageIndex, setPageIndex] = useState(0);
   const [identity, setIdentity] = useState<VibeyIdentity | null>(null);
@@ -126,6 +150,7 @@ export default function VibeyJournal({ communityId, watching }: Props) {
           });
           // If the journal isn't open, signal that there's something new.
           if (!open) setUnseen((u) => u + 1);
+          onLiveEntry?.();
         },
       )
       .subscribe();
@@ -152,6 +177,7 @@ export default function VibeyJournal({ communityId, watching }: Props) {
           return [data.entry, ...prev].slice(0, PAGE_SIZE);
         });
         if (!open) setUnseen((u) => u + 1);
+        onLiveEntry?.();
       }
     } catch (e) {
       setError((e as Error).message ?? "Couldn't reach Vibey's journal");
@@ -219,11 +245,13 @@ export default function VibeyJournal({ communityId, watching }: Props) {
   // ---- Render ----------------------------------------------------------
   return (
     <>
-      <FloatingBookButton
-        onClick={() => setOpen(true)}
-        generating={generating}
-        unseen={unseen}
-      />
+      {showFloatingBook && (
+        <FloatingBookButton
+          onClick={() => setOpen(true)}
+          generating={generating}
+          unseen={unseen}
+        />
+      )}
       <AnimatePresence>
         {open && (
           <JournalOverlay

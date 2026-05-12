@@ -158,6 +158,10 @@ type GalleryPhoto = {
 };
 
 const EDGE_ESMERELDA_COMMUNITY_ID = "4202857f-13fd-4407-8906-3f8ffe63e510";
+// The playful Vibey community — Sonnet-4.5 agent with the
+// "Everything is awesome" memory. This is the soul we want the
+// journal + identity tab to reflect.
+const VIBEY_COMMUNITY_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
 
 // ---------- Component --------------------------------------------------
 
@@ -771,6 +775,12 @@ export default function Unit7Playground() {
   const auroraRef = useRef<THREE.Mesh | null>(null);
   const cometRef = useRef<THREE.Group | null>(null);
   const shipRef = useRef<THREE.Group | null>(null);
+  // Vibey's 3D journal — orbits the platform, click to open the
+  // handwritten overlay. The journalNudgeRef is bumped whenever a
+  // new entry lands so the animation loop can play a glow burst.
+  const journalRef = useRef<THREE.Group | null>(null);
+  const journalNudgeRef = useRef(0);
+  const [journalOpen, setJournalOpen] = useState(false);
   const sparksRef = useRef<THREE.Points | null>(null);
   const rockyRef = useRef<THREE.Group | null>(null);
   const earthRef = useRef<THREE.Group | null>(null);
@@ -813,7 +823,7 @@ export default function Unit7Playground() {
   // Click-to-focus state: when the user clicks a card or memory orb,
   // the scene useEffect calls this ref's current handler.
   const focusHandlerRef = useRef<
-    | ((kind: "profile" | "memory" | "earth", payload: unknown) => void)
+    | ((kind: "profile" | "memory" | "earth" | "journal", payload: unknown) => void)
     | null
   >(null);
   const [earthOpen, setEarthOpen] = useState(false);
@@ -838,6 +848,8 @@ export default function Unit7Playground() {
       setFocusedMemory(payload as VibeyMemory);
     } else if (kind === "earth") {
       setEarthOpen(true);
+    } else if (kind === "journal") {
+      setJournalOpen(true);
     }
   };
   const [robotColor, setRobotColor] = useState<number | null>(null);
@@ -1982,17 +1994,26 @@ export default function Unit7Playground() {
           if ((obj as THREE.Mesh).userData?.kind === "earth") targets.push(obj);
         });
       }
+      // Vibey's journal — the orbiting book. Any sub-mesh on the
+      // journal group counts (cover, pages, spine, halo).
+      if (journalRef.current?.visible) {
+        journalRef.current.traverse((obj) => {
+          if ((obj as THREE.Mesh).userData?.kind === "journal") targets.push(obj);
+        });
+      }
       const hits = raycaster.intersectObjects(targets, false);
       const hit = hits[0]?.object;
       if (!hit) return;
       const kind = hit.userData.kind as
-        | "profile" | "memory" | "earth" | undefined;
+        | "profile" | "memory" | "earth" | "journal" | undefined;
       if (kind === "profile" && hit.userData.profile) {
         focusHandlerRef.current?.("profile", hit.userData.profile as VibeProfile);
       } else if (kind === "memory" && hit.userData.memory) {
         focusHandlerRef.current?.("memory", hit.userData.memory as VibeyMemory);
       } else if (kind === "earth") {
         focusHandlerRef.current?.("earth", null);
+      } else if (kind === "journal") {
+        focusHandlerRef.current?.("journal", null);
       }
     });
 
@@ -2733,6 +2754,98 @@ export default function Unit7Playground() {
       shipRef.current = g;
       return g;
     })();
+
+    // ---- Vibey's journal (orbits the platform) -----------------------
+    // A small glowing leather-bound book that floats around the
+    // asteroid on its own slow orbit. Click opens the handwritten
+    // overlay React component below.
+    {
+      const group = new THREE.Group();
+
+      // Cover: thin box with deep leather palette + faint emissive
+      // so the book reads against the starfield.
+      const cover = new THREE.Mesh(
+        new THREE.BoxGeometry(0.65, 0.08, 0.48),
+        new THREE.MeshStandardMaterial({
+          color: 0x3a2412,
+          roughness: 0.55,
+          metalness: 0.1,
+          emissive: 0x140a04,
+          emissiveIntensity: 0.6,
+        }),
+      );
+      cover.userData.kind = "journal";
+      group.add(cover);
+
+      // Three stacked pages, paper-yellow. Slightly inset so the
+      // cover frames them.
+      for (let i = 0; i < 3; i++) {
+        const page = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.012, 0.43),
+          new THREE.MeshStandardMaterial({
+            color: 0xfdf6e3,
+            roughness: 0.85,
+            metalness: 0,
+            emissive: 0xfdf6e3,
+            emissiveIntensity: 0.18,
+          }),
+        );
+        page.position.y = 0.05 + i * 0.014;
+        page.userData.kind = "journal";
+        group.add(page);
+      }
+
+      // Spine — vertical glowing stripe on the long edge.
+      const spine = new THREE.Mesh(
+        new THREE.BoxGeometry(0.03, 0.1, 0.48),
+        new THREE.MeshBasicMaterial({
+          color: 0xffd28a,
+          transparent: true,
+          opacity: 0.85,
+        }),
+      );
+      spine.position.set(-0.31, 0.03, 0);
+      spine.userData.kind = "journal";
+      group.add(spine);
+
+      // Embossed "V" — a tiny additive disc on the cover with a
+      // sprite-style glow. Looks more interesting than a flat decal.
+      const sigil = new THREE.Mesh(
+        new THREE.CircleGeometry(0.07, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0xffdca6,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+        }),
+      );
+      sigil.rotation.x = -Math.PI / 2;
+      sigil.position.y = 0.041;
+      sigil.userData.kind = "journal";
+      group.add(sigil);
+
+      // Outer warm halo — additive sphere that surrounds the book
+      // so it reads as "this glows" from any angle, even in shadow.
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.6, 16, 12),
+        new THREE.MeshBasicMaterial({
+          color: 0xffb95a,
+          transparent: true,
+          opacity: 0.07,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      halo.userData.kind = "journal";
+      group.add(halo);
+      // Stash the halo on the group so the animation loop can pulse it.
+      (group as unknown as Record<string, unknown>).__halo = halo;
+      (group as unknown as Record<string, unknown>).__sigil = sigil;
+
+      group.visible = true;
+      scene.add(group);
+      journalRef.current = group;
+    }
 
     // ---- Alien on a Saucer (orbits Vibey) ---------------------------
     // The alien lives on his own little spacecraft that slowly circles
@@ -3681,6 +3794,50 @@ export default function Unit7Playground() {
           blink * 0.45,
         );
       }
+      // ---- Vibey's journal: orbit + halo pulse + nudge burst -----
+      // Different radius / tilt / period than the ship so it reads
+      // as a separate object, not a duplicate. The journal travels
+      // counter-clockwise on a more tilted plane.
+      const journal = journalRef.current;
+      if (journal) {
+        const t = now * 0.001;
+        const angle = -t * 0.22; // counter to the ship
+        const R = 9.5;
+        // Tilt the orbit so it slices through more of the camera's
+        // arc — book is more often visible at eye level.
+        const tilt = 0.45;
+        const x = Math.cos(angle) * R;
+        const z = Math.sin(angle) * R * Math.cos(tilt);
+        const y = 4.2 + Math.sin(angle) * R * Math.sin(tilt) * 0.6
+                + Math.sin(t * 1.1) * 0.18;
+        journal.position.set(x, y, z);
+        // Always face roughly toward the platform so the cover and
+        // sigil read from the camera.
+        journal.lookAt(0, 4, 0);
+        // Slow spin around the book's own up-axis so the spine glow
+        // catches the eye periodically.
+        journal.rotateY(Math.sin(t * 0.6) * 0.4);
+        // Halo pulse + extra burst when journalNudgeRef bumps
+        // (new entry just landed).
+        const halo = (journal as unknown as Record<string, unknown>).__halo as
+          | THREE.Mesh
+          | undefined;
+        const sigil = (journal as unknown as Record<string, unknown>).__sigil as
+          | THREE.Mesh
+          | undefined;
+        if (halo) {
+          const mat = halo.material as THREE.MeshBasicMaterial;
+          const base = 0.07 + Math.sin(t * 1.4) * 0.025;
+          const nudge = Math.max(0, 1 - (now - journalNudgeRef.current) / 1800);
+          mat.opacity = base + nudge * 0.45;
+          halo.scale.setScalar(1 + nudge * 0.55 + Math.sin(t * 1.4) * 0.05);
+        }
+        if (sigil) {
+          const mat = sigil.material as THREE.MeshBasicMaterial;
+          mat.opacity = 0.5 + Math.sin(t * 2.2) * 0.18;
+        }
+      }
+
       // ---- Asteroid belt slow drift -------------------------------
       asteroidBelt.rotation.y += delta * 0.018;
 
@@ -4631,12 +4788,20 @@ export default function Unit7Playground() {
         </div>
       )}
 
-      {/* Vibey's journal — floating book at bottom-left, opens to a
-          handwritten overlay. Writes a new entry every ~10 min while
-          someone is watching the show. */}
+      {/* Vibey's journal — the floating leather book that orbits the
+          asteroid is a real Three.js object in the space scene
+          (built in the canvas setup). This component handles the
+          handwritten overlay + edge-function tick. We hand it the
+          journalOpen state so a 3D click can open it, and ask it to
+          ping `journalNudgeRef` whenever a new entry lands so the
+          orbiting book bursts a halo. */}
       <VibeyJournal
-        communityId={EDGE_ESMERELDA_COMMUNITY_ID}
+        communityId={VIBEY_COMMUNITY_ID}
         watching={watchingNow > 0}
+        open={journalOpen}
+        onOpenChange={setJournalOpen}
+        showFloatingBook={false}
+        onLiveEntry={() => { journalNudgeRef.current = performance.now(); }}
       />
 
       {/* Music player + queue. Click the title to flip open a list

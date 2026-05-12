@@ -108,22 +108,51 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 2. Pull recent Telegram messages since the last entry. Cap to
-  // MAX_MESSAGES so the model's context stays small.
+  // 2. Pull every flavor of context the journal might draw on. For
+  // some communities Telegram messages are the lifeblood; for others
+  // it's a curated knowledge base in `memories` + `notes`. We feed
+  // all of it to Vibey and let him pick what to write about.
   const sinceIso = new Date(sinceMs || Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: msgs } = await sb
-    .from("messages")
-    .select("id, content, chat_type, sender_id, topic_name, created_at")
-    .eq("community_id", communityId)
-    .gte("created_at", sinceIso)
-    .order("created_at", { ascending: false })
-    .limit(MAX_MESSAGES);
-
-  const messages = (msgs ?? []).reverse(); // chronological order for the model
-
-  // 3. Counts of other activity in the same window — gives Vibey
-  // something to react to even on a quiet messages day.
-  const [{ count: photoCount }, { count: eventCount }] = await Promise.all([
+  const [
+    { data: recentMsgs },
+    { data: allMemories },
+    { data: newMemories },
+    { data: allNotes },
+    { count: photoCount },
+    { count: eventCount },
+  ] = await Promise.all([
+    // Telegram messages since last entry.
+    sb
+      .from("messages")
+      .select("id, content, chat_type, sender_id, topic_name, created_at")
+      .eq("community_id", communityId)
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(MAX_MESSAGES),
+    // Full memory base — these are the community principles Vibey
+    // is supposed to know about (like "Everything is awesome").
+    sb
+      .from("memories")
+      .select("id, content, created_at")
+      .eq("community_id", communityId)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    // Memories added since the last entry, surfaced separately so
+    // Vibey notices "ah, someone just taught me this".
+    sb
+      .from("memories")
+      .select("id, content, created_at")
+      .eq("community_id", communityId)
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    // Notes — anything the community has formally written down.
+    sb
+      .from("notes")
+      .select("id, content, created_at")
+      .eq("community_id", communityId)
+      .order("created_at", { ascending: false })
+      .limit(15),
     sb.from("gallery_photos")
       .select("id", { count: "exact", head: true })
       .eq("community_id", communityId)
@@ -134,7 +163,13 @@ Deno.serve(async (req) => {
       .gte("created_at", sinceIso),
   ]);
 
-  // 4. Build the user turn for the model.
+  const messages = (recentMsgs ?? []).reverse(); // chronological for the model
+  const memories = allMemories ?? [];
+  const freshMemories = newMemories ?? [];
+  const notes = allNotes ?? [];
+
+  // 3. Build the user turn for the model — broken into clearly
+  // labeled sections so the model can decide where to draw from.
   const messageBlock = messages.length
     ? messages
         .map((m) => {
@@ -145,6 +180,18 @@ Deno.serve(async (req) => {
         .join("\n")
     : "(no new telegram messages since last entry)";
 
+  const memoryBlock = memories.length
+    ? memories.map((m, i) => `${i + 1}. ${(m.content ?? "").slice(0, 240)}`).join("\n")
+    : "(no memories saved for this community yet)";
+
+  const freshMemoryBlock = freshMemories.length
+    ? freshMemories.map((m) => `+ ${(m.content ?? "").slice(0, 240)}`).join("\n")
+    : "(no new memories since last entry)";
+
+  const notesBlock = notes.length
+    ? notes.map((n, i) => `${i + 1}. ${(n.content ?? "").slice(0, 240)}`).join("\n")
+    : "(no notes for this community yet)";
+
   const minutesSinceLast = latest
     ? Math.round(ageMs / 60000)
     : null;
@@ -153,10 +200,11 @@ Deno.serve(async (req) => {
     minutesSinceLast != null
       ? `Time since your last entry: ${minutesSinceLast} minute(s).`
       : `This is your first entry.`,
-    `New photos in the community: ${photoCount ?? 0}`,
-    `New events: ${eventCount ?? 0}`,
-    `Telegram (last ${messages.length}):`,
-    messageBlock,
+    `New photos: ${photoCount ?? 0}  ·  New events: ${eventCount ?? 0}`,
+    `What you already know about this community (memories — these are facts you keep returning to):\n${memoryBlock}`,
+    `Newly added since your last entry (someone just taught you this — worth noticing):\n${freshMemoryBlock}`,
+    `Saved notes from the community:\n${notesBlock}`,
+    `Telegram chatter (last ${messages.length}):\n${messageBlock}`,
   ].join("\n\n");
 
   // 5. Call Claude Haiku via OpenRouter.
@@ -207,10 +255,16 @@ Deno.serve(async (req) => {
     new_photos: photoCount ?? 0,
     new_events: eventCount ?? 0,
     message_count: messages.length,
+    memory_count: memories.length,
+    fresh_memory_count: freshMemories.length,
+    note_count: notes.length,
     sample_messages: messages.slice(-5).map((m) => ({
       topic: m.topic_name,
       preview: (m.content ?? "").slice(0, 160),
     })),
+    fresh_memories: freshMemories.slice(0, 5).map((m) =>
+      (m.content ?? "").slice(0, 200),
+    ),
   };
 
   const { data: inserted, error: insertErr } = await sb
