@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   // Load the draft.
   const { data: draft, error: dErr } = await sb
     .from("vibey_soul_drafts")
-    .select("id, community_id, agent_id, status, proposed_addition")
+    .select("id, community_id, agent_id, status, proposed_addition, proposed_replacement")
     .eq("id", id)
     .maybeSingle();
   if (dErr || !draft) return json({ error: "draft not found" }, 404);
@@ -50,10 +50,14 @@ Deno.serve(async (req) => {
   }
 
   if (status === "applied") {
-    // Find the live agent for this community and append to its soul.
-    // We deliberately don't try to do any clever diffing — append-only
-    // keeps the change safe and reversible (you can edit it later in
-    // the agents table directly).
+    // Two flavors of apply:
+    //   - proposed_replacement set → REPLACE the live system_prompt
+    //     wholesale. Used when the human (or a future Vibey) wants
+    //     to refactor / strip / rewrite. Destructive, but reversible
+    //     via the previous_system_prompt snapshot we stash on the
+    //     draft row before applying.
+    //   - proposed_addition set     → APPEND to the existing soul.
+    //     Original safe flow.
     let agentId = draft.agent_id as string | null;
     if (!agentId) {
       const { data: agent } = await sb
@@ -74,12 +78,26 @@ Deno.serve(async (req) => {
       .eq("id", agentId)
       .maybeSingle();
     const existing = (cur?.system_prompt ?? "").trimEnd();
-    const newSoul = `${existing}\n\n${(draft.proposed_addition ?? "").trim()}`;
+    const replacement = (draft.proposed_replacement ?? "").trim();
+    const addition = (draft.proposed_addition ?? "").trim();
+    const newSoul = replacement
+      ? replacement
+      : `${existing}\n\n${addition}`;
     const { error: upErr } = await sb
       .from("agents")
       .update({ system_prompt: newSoul, updated_at: new Date().toISOString() })
       .eq("id", agentId);
     if (upErr) return json({ error: upErr.message }, 500);
+    // Snapshot the previous soul on the draft itself so it's
+    // recoverable if you change your mind. Goes into reasoning so
+    // we don't need a new column.
+    await sb
+      .from("vibey_soul_drafts")
+      .update({
+        reasoning:
+          `Applied. Previous soul snapshot (${existing.length} chars) follows:\n---\n${existing}`,
+      })
+      .eq("id", id);
   }
 
   const { error: rErr } = await sb

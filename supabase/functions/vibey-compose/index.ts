@@ -95,16 +95,24 @@ Deno.serve(async (req) => {
   }
 
   if (kind === "draft") {
+    // Two shapes:
+    //   { addition }    → append-style (default).
+    //   { replacement } → full soul rewrite. Lands in proposed_replacement
+    //                     so the review function knows to swap, not append.
     const addition = typeof body.addition === "string" ? body.addition.trim() : "";
-    if (!addition) return json({ error: "addition required" }, 400);
+    const replacement = typeof body.replacement === "string" ? body.replacement.trim() : "";
+    if (!addition && !replacement) {
+      return json({ error: "addition or replacement required" }, 400);
+    }
     const reasoning =
       typeof body.reasoning === "string" ? body.reasoning.slice(0, 1000) : null;
     const diffSummary =
       typeof body.diff_summary === "string"
         ? body.diff_summary.slice(0, 140)
+        : replacement
+        ? `Full soul rewrite from ${authorName ?? "a human"}`
         : `From ${authorName ?? "a human"}`;
 
-    // Find the active agent so we can stamp agent_id on the draft.
     const { data: agent } = await sb
       .from("agents")
       .select("id")
@@ -114,17 +122,23 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    const insertRow: Record<string, unknown> = {
+      community_id: communityId,
+      agent_id: agent?.id ?? null,
+      status: "pending",
+      reasoning: reasoning ?? `Suggested by ${authorName ?? "a human"}`,
+      diff_summary: diffSummary,
+    };
+    if (replacement) {
+      insertRow.proposed_replacement = replacement.slice(0, 10_000);
+    } else {
+      insertRow.proposed_addition = addition.slice(0, 2000);
+    }
+
     const { data, error } = await sb
       .from("vibey_soul_drafts")
-      .insert({
-        community_id: communityId,
-        agent_id: agent?.id ?? null,
-        status: "pending",
-        proposed_addition: addition.slice(0, 2000),
-        reasoning: reasoning ?? `Suggested by ${authorName ?? "a human"}`,
-        diff_summary: diffSummary,
-      })
-      .select("id, proposed_addition, diff_summary, created_at")
+      .insert(insertRow)
+      .select("id, proposed_addition, proposed_replacement, diff_summary, created_at")
       .single();
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true, draft: data });

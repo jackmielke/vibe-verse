@@ -50,7 +50,7 @@ interface VibeyIdentity {
 
 type Tab = "journal" | "identity" | "overnight" | "compose";
 
-type ComposeKind = "seed" | "draft" | "memory";
+type ComposeKind = "seed" | "draft" | "memory" | "rewrite";
 
 interface ResearchRow {
   id: string;
@@ -65,6 +65,7 @@ interface SoulDraftRow {
   id: string;
   status: "pending" | "applied" | "rejected" | string;
   proposed_addition: string | null;
+  proposed_replacement: string | null;
   reasoning: string | null;
   diff_summary: string | null;
   created_at: string;
@@ -299,7 +300,7 @@ export default function VibeyJournal({
           .limit(20),
         supabase
           .from("vibey_soul_drafts")
-          .select("id, status, proposed_addition, reasoning, diff_summary, created_at")
+          .select("id, status, proposed_addition, proposed_replacement, reasoning, diff_summary, created_at")
           .eq("community_id", communityId)
           .order("created_at", { ascending: false })
           .limit(20),
@@ -1071,49 +1072,74 @@ function DraftsPage({
         </p>
       )}
       <div className="space-y-3">
-        {pending.map((d) => (
-          <div
-            key={d.id}
-            className="rounded-md border border-amber-800/30 bg-amber-100/50 p-3"
-          >
-            <p className="text-[11px] uppercase tracking-widest font-sans opacity-60">
-              {formatJournalDate(d.created_at)}
-            </p>
-            {d.diff_summary && (
-              <h4 className="text-lg leading-tight mt-0.5">{d.diff_summary}</h4>
-            )}
-            {d.proposed_addition && (
-              <blockquote className="text-base leading-relaxed mt-2 pl-3 border-l-2 border-amber-800/40 whitespace-pre-line">
-                {d.proposed_addition}
-              </blockquote>
-            )}
-            {d.reasoning && (
-              <p className="text-[12px] font-sans opacity-70 mt-2 italic">
-                why: {d.reasoning}
-              </p>
-            )}
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={() => updateDraft(d.id, "applied")}
-                className="px-3 py-1.5 rounded text-sm font-sans font-semibold text-emerald-50"
-                style={{ background: "#3a7d3a" }}
-              >
-                Apply to soul
-              </button>
-              <button
-                onClick={() => updateDraft(d.id, "rejected")}
-                className="px-3 py-1.5 rounded text-sm font-sans font-semibold"
-                style={{
-                  color: "#2e1f10",
-                  background: "rgba(120,80,60,0.12)",
-                  border: "1px solid rgba(120,80,60,0.25)",
-                }}
-              >
-                Skip
-              </button>
+        {pending.map((d) => {
+          const isReplace = !!d.proposed_replacement;
+          const body = d.proposed_replacement ?? d.proposed_addition ?? "";
+          return (
+            <div
+              key={d.id}
+              className="rounded-md border border-amber-800/30 bg-amber-100/50 p-3"
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-[11px] uppercase tracking-widest font-sans opacity-60">
+                  {formatJournalDate(d.created_at)}
+                </p>
+                <span
+                  className="text-[9px] uppercase tracking-widest font-sans font-semibold px-1.5 py-0.5 rounded"
+                  style={{
+                    background: isReplace ? "rgba(180, 80, 60, 0.18)" : "rgba(58, 125, 58, 0.18)",
+                    color: isReplace ? "#7a2f1a" : "#244a24",
+                  }}
+                  title={isReplace ? "Replaces the entire soul" : "Appends to the soul"}
+                >
+                  {isReplace ? "rewrite" : "append"}
+                </span>
+              </div>
+              {d.diff_summary && (
+                <h4 className="text-lg leading-tight mt-0.5">{d.diff_summary}</h4>
+              )}
+              {body && (
+                <blockquote className="text-base leading-relaxed mt-2 pl-3 border-l-2 border-amber-800/40 whitespace-pre-line">
+                  {body}
+                </blockquote>
+              )}
+              {d.reasoning && (
+                <p className="text-[12px] font-sans opacity-70 mt-2 italic">
+                  why: {d.reasoning}
+                </p>
+              )}
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <button
+                  onClick={() => {
+                    if (isReplace) {
+                      const ok = window.confirm(
+                        "This REPLACES the entire system prompt. The previous soul is snapshotted on this draft so you can recover it. Continue?",
+                      );
+                      if (!ok) return;
+                    }
+                    updateDraft(d.id, "applied");
+                  }}
+                  className="px-3 py-1.5 rounded text-sm font-sans font-semibold text-emerald-50"
+                  style={{ background: isReplace ? "#a04020" : "#3a7d3a" }}
+                  title={isReplace ? "Replace the live system prompt" : "Append to the live system prompt"}
+                >
+                  {isReplace ? "Replace soul" : "Apply to soul"}
+                </button>
+                <button
+                  onClick={() => updateDraft(d.id, "rejected")}
+                  className="px-3 py-1.5 rounded text-sm font-sans font-semibold"
+                  style={{
+                    color: "#2e1f10",
+                    background: "rgba(120,80,60,0.12)",
+                    border: "1px solid rgba(120,80,60,0.25)",
+                  }}
+                >
+                  Skip
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {reviewed.length > 0 && (
         <details className="mt-3">
@@ -1233,17 +1259,28 @@ function ComposePage({
     setError(null);
     setStatus("idle");
     try {
+      // The server takes both "draft" and a "rewrite" subkind via
+      // a single endpoint; we always send kind:"draft" but include
+      // either `addition` or `replacement`.
+      const wireKind: ComposeKind =
+        kind === "rewrite" ? "draft" : kind;
       const payload: Record<string, unknown> =
         kind === "seed"
           ? { text: text.trim() }
           : kind === "memory"
           ? { content: text.trim() }
+          : kind === "rewrite"
+          ? {
+              replacement: text.trim(),
+              diff_summary: diffSummary.trim() || `Soul rewrite from ${authedName ?? "a human"}`,
+              reasoning: `Full rewrite suggested by ${authedName ?? "a human"}`,
+            }
           : {
               addition: text.trim(),
               diff_summary: diffSummary.trim() || `Suggested by ${authedName ?? "a human"}`,
               reasoning: `Hand-written suggestion from ${authedName ?? "a human"}`,
             };
-      await onCompose(kind, payload);
+      await onCompose(wireKind, payload);
       setStatus("saved");
       setText("");
       setDiffSummary("");
@@ -1260,9 +1297,11 @@ function ComposePage({
     seed:
       "ask me something. or just give me a thread to pull on. i'll write into it next cycle.",
     draft:
-      "write a line you think belongs in my soul. e.g. \"i texts in lowercase like a real person.\"",
+      "write a line you think belongs in my soul. e.g. \"i text in lowercase like a real person.\"",
     memory:
       "teach me something durable about this community. e.g. \"the buildathon is week 3 of edge esmeralda.\"",
+    rewrite:
+      "write the entire soul. plain prose, no markdown. this REPLACES my system prompt when you apply it.",
   };
 
   return (
@@ -1293,18 +1332,19 @@ function ComposePage({
       </p>
 
       {/* Kind selector */}
-      <div className="flex gap-1 p-0.5 mb-3 rounded-md bg-amber-900/8 border border-amber-800/20 text-[11px] font-sans">
+      <div className="grid grid-cols-2 gap-1 p-0.5 mb-3 rounded-md bg-amber-900/8 border border-amber-800/20 text-[11px] font-sans">
         {([
           { id: "seed", label: "Plant a thought", hint: "one-shot prompt" },
-          { id: "draft", label: "Suggest a soul line", hint: "becomes a pending draft" },
+          { id: "draft", label: "Suggest a soul line", hint: "append a line" },
           { id: "memory", label: "Teach a memory", hint: "permanent" },
+          { id: "rewrite", label: "Rewrite the soul", hint: "full replacement" },
         ] as const).map((k) => (
           <button
             key={k.id}
             onClick={() => { setKind(k.id); setStatus("idle"); }}
-            className={`flex-1 px-2 py-1 rounded transition-colors flex flex-col items-center ${
+            className={`px-2 py-1 rounded transition-colors flex flex-col items-center ${
               kind === k.id ? "bg-amber-100 font-semibold" : "opacity-60 hover:opacity-100"
-            }`}
+            } ${k.id === "rewrite" ? "border border-rose-400/40" : ""}`}
             style={{ color: "#2e1f10" }}
             title={k.hint}
           >
@@ -1314,13 +1354,24 @@ function ComposePage({
         ))}
       </div>
 
+      {kind === "rewrite" && (
+        <p className="text-[11px] font-sans bg-rose-100 border border-rose-300 text-rose-900 rounded px-2 py-1.5 mb-2 leading-snug">
+          Heads up: applying a rewrite REPLACES my entire system prompt. The
+          previous one is snapshotted on the draft so it's recoverable.
+        </p>
+      )}
+
       {/* Soul drafts get an optional one-line summary */}
-      {kind === "draft" && (
+      {(kind === "draft" || kind === "rewrite") && (
         <input
           type="text"
           value={diffSummary}
           onChange={(e) => setDiffSummary(e.target.value)}
-          placeholder="one-line headline (optional) — e.g. 'remember to text in lowercase'"
+          placeholder={
+            kind === "rewrite"
+              ? "headline for this rewrite — e.g. 'sci-fi character, less assistant'"
+              : "one-line headline (optional) — e.g. 'remember to text in lowercase'"
+          }
           disabled={busy}
           className="w-full mb-2 rounded-md border border-amber-800/30 bg-amber-50/80 px-3 py-2 text-base font-sans"
           style={{ color: "#2e1f10" }}
@@ -1358,6 +1409,8 @@ function ComposePage({
           <span className="text-[11px] font-sans opacity-60">
             {kind === "draft"
               ? "lands in Overnight as a pending draft — apply with one click"
+              : kind === "rewrite"
+              ? "lands in Overnight as a REPLACEMENT draft — review before applying"
               : "saved as permanent memory for this community"}
           </span>
         )}
@@ -1383,6 +1436,8 @@ function ComposePage({
               : "planted — Vibey will pick it up in the next cycle."
             : kind === "draft"
             ? "drafted — open the Overnight tab and hit Apply to merge it into the soul."
+            : kind === "rewrite"
+            ? "rewrite drafted — open the Overnight tab to review and hit Replace soul if it's right."
             : "saved — Vibey will see this from now on."}
         </p>
       )}
