@@ -160,6 +160,7 @@ Deno.serve(async (req) => {
     { data: research },
     { data: liveAgent },
     { data: recentDrafts },
+    { data: activeSeeds },
   ] = await Promise.all([
     sb.from("messages")
       .select("id, content, chat_type, sender_id, topic_name, created_at")
@@ -191,6 +192,13 @@ Deno.serve(async (req) => {
     sb.from("vibey_soul_drafts")
       .select("id, diff_summary, status, created_at")
       .eq("community_id", communityId)
+      .order("created_at", { ascending: false }).limit(5),
+    // Active seeds — thoughts a human (usually Jack) typed into the
+    // notebook for Vibey to chew on. Highest-priority context.
+    sb.from("vibey_seeds")
+      .select("id, text, author_name, created_at")
+      .eq("community_id", communityId)
+      .eq("status", "active")
       .order("created_at", { ascending: false }).limit(5),
   ]);
 
@@ -240,6 +248,13 @@ Deno.serve(async (req) => {
       }`
     : "";
 
+  const seeds = activeSeeds ?? [];
+  const seedBlock = seeds.length
+    ? `Thoughts a human just planted for you (TOP priority — write to these directly. If you address one in this entry, mention it so we can mark it consumed):\n${
+        seeds.map((s) => `• [${s.author_name ?? "someone"}, ${new Date(s.created_at).toLocaleString()}]\n  ${(s.text ?? "").slice(0, 600)}`).join("\n\n")
+      }`
+    : "";
+
   const minutesSinceLast = latest ? Math.round(ageMs / 60000) : null;
 
   const userTurn = [
@@ -254,6 +269,7 @@ Deno.serve(async (req) => {
     `Telegram chatter (last ${messages.length}):\n${messageBlock}`,
     `Deep context you've been chewing on (hand-curated briefings — your foundational world-knowledge, weighted heavier than the rotating reads below):\n${briefingBlock}`,
     `What you've been reading lately (rotating URL cache):\n${researchBlock}`,
+    seedBlock,
     draftBlock,
   ].filter(Boolean).join("\n\n");
 
@@ -360,7 +376,29 @@ Deno.serve(async (req) => {
     draftId = draft?.id ?? null;
   }
 
-  return json({ ok: true, created: true, entry: inserted, soul_draft_id: draftId });
+  // Consume any active seeds — they fed this entry's context, so mark
+  // them as consumed and stamp the entry id. Future cycles won't see
+  // them in the active list. (We do this conservatively in one batch;
+  // if Vibey didn't actually address a seed it's still fine to retire
+  // — the seed lives on in the consumed_at history.)
+  if (seeds.length > 0) {
+    await sb
+      .from("vibey_seeds")
+      .update({
+        status: "consumed",
+        consumed_at: new Date().toISOString(),
+        consumed_entry_id: inserted.id,
+      })
+      .in("id", seeds.map((s) => s.id as string));
+  }
+
+  return json({
+    ok: true,
+    created: true,
+    entry: inserted,
+    soul_draft_id: draftId,
+    seeds_consumed: seeds.length,
+  });
 });
 
 // ----------------------------------------------------------------------

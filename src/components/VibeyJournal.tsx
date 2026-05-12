@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpen, X, Sparkles, RefreshCw, ChevronLeft, ChevronRight, NotebookPen, Cpu } from "lucide-react";
+import { BookOpen, X, Sparkles, RefreshCw, ChevronLeft, ChevronRight, NotebookPen, Cpu, PenLine, Send, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface JournalEntry {
@@ -31,6 +31,7 @@ interface JournalEntry {
   mood: string | null;
   source_summary: string | null;
   message_count: number | null;
+  reflection_seed: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -47,7 +48,9 @@ interface VibeyIdentity {
   updated_at: string | null;
 }
 
-type Tab = "journal" | "identity" | "overnight";
+type Tab = "journal" | "identity" | "overnight" | "compose";
+
+type ComposeKind = "seed" | "draft" | "memory";
 
 interface ResearchRow {
   id: string;
@@ -144,6 +147,29 @@ export default function VibeyJournal({
   // Overnight digest — research Vibey has read + soul drafts pending review.
   const [research, setResearch] = useState<ResearchRow[]>([]);
   const [drafts, setDrafts] = useState<SoulDraftRow[]>([]);
+  // Signed-in identity (for the Compose tab). Pulled from the
+  // Supabase session — same auth that powers VibeAccountCard.
+  const [authedName, setAuthedName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const hydrate = async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (cancelled) return;
+      const uid = u?.user?.id;
+      const email = u?.user?.email ?? null;
+      if (!uid) { setAuthedName(null); return; }
+      const { data: row } = await supabase
+        .from("users")
+        .select("name, username, email")
+        .eq("auth_user_id", uid)
+        .maybeSingle();
+      if (cancelled) return;
+      setAuthedName(row?.name ?? row?.username ?? email ?? null);
+    };
+    hydrate();
+    const { data: sub } = supabase.auth.onAuthStateChange(() => hydrate());
+    return () => { cancelled = true; sub.subscription.unsubscribe(); };
+  }, []);
   // Track which entry ids arrived live this session (so we typewriter
   // them, not the historical pages).
   const liveIdsRef = useRef<Set<string>>(new Set());
@@ -155,7 +181,7 @@ export default function VibeyJournal({
     let cancelled = false;
     supabase
       .from("vibey_journal_entries")
-      .select("id, community_id, body, mood, source_summary, message_count, created_at")
+      .select("id, community_id, body, mood, source_summary, message_count, reflection_seed, created_at")
       .eq("community_id", communityId)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE)
@@ -338,6 +364,23 @@ export default function VibeyJournal({
                 prev.map((d) => (d.id === id ? { ...d, status: next } : d)),
               );
             }}
+            authedName={authedName}
+            communityId={communityId}
+            onCompose={async (kind, payload) => {
+              const body: Record<string, unknown> = {
+                kind,
+                community_id: communityId,
+                author_name: authedName ?? undefined,
+                ...payload,
+              };
+              const { data, error: err } = await supabase.functions.invoke(
+                "vibey-compose",
+                { body },
+              );
+              if (err) throw err;
+              return data;
+            }}
+            onForceNow={() => triggerWrite(true)}
             currentEntry={currentEntry}
             isLiveEntry={isLiveEntry}
             generating={generating}
@@ -469,6 +512,10 @@ function JournalOverlay({
   research,
   drafts,
   onDraftChange,
+  authedName,
+  communityId,
+  onCompose,
+  onForceNow,
   currentEntry,
   isLiveEntry,
   generating,
@@ -487,6 +534,10 @@ function JournalOverlay({
   research: ResearchRow[];
   drafts: SoulDraftRow[];
   onDraftChange: (id: string, next: "pending" | "applied" | "rejected") => void;
+  authedName: string | null;
+  communityId: string;
+  onCompose: (kind: ComposeKind, payload: Record<string, unknown>) => Promise<unknown>;
+  onForceNow: () => void;
   currentEntry: JournalEntry | null;
   isLiveEntry: boolean;
   generating: boolean;
@@ -634,6 +685,19 @@ function JournalOverlay({
               />
             )}
           </button>
+          <button
+            onClick={() => setTab("compose")}
+            className={`flex-1 px-2 py-1 rounded transition-colors inline-flex items-center justify-center gap-1.5 ${
+              tab === "compose"
+                ? "bg-amber-100 font-semibold"
+                : "opacity-60 hover:opacity-100"
+            }`}
+            style={{ color: "#2e1f10" }}
+            title="Plant a thought, suggest a soul line, or teach a memory"
+          >
+            <PenLine className="w-3 h-3" />
+            Compose
+          </button>
         </div>
 
         {/* ----- OVERNIGHT (research + drafts) tab ----- */}
@@ -642,6 +706,16 @@ function JournalOverlay({
             research={research}
             drafts={drafts}
             onDraftChange={onDraftChange}
+          />
+        )}
+
+        {/* ----- COMPOSE (Jack writes to Vibey) tab ----- */}
+        {tab === "compose" && (
+          <ComposePage
+            authedName={authedName}
+            communityId={communityId}
+            onCompose={onCompose}
+            onForceNow={onForceNow}
           />
         )}
 
@@ -708,6 +782,10 @@ function JournalOverlay({
                 — {currentEntry.source_summary}
               </p>
             )}
+
+            {/* What shaped this entry — model, sources, counts. The
+                reflection_seed JSON the function writes per cycle. */}
+            <ReflectionPeek entry={currentEntry} />
           </>
         )}
 
@@ -1108,6 +1186,278 @@ function ResearchPage({ row }: { row: ResearchRow | undefined }) {
         {row.summary}
       </p>
     </section>
+  );
+}
+
+// ----------------------------------------------------------------------
+// ComposePage — the typing surface. Three flavors of "from you" input:
+//
+//   • Seed: a thought / question / nudge. Picked up by the next
+//     journal cycle as TOP priority context, then marked consumed.
+//   • Soul: a line you think should be in Vibey's system prompt.
+//     Lands in the Overnight inbox as a pending draft so you can
+//     hit Apply with one click.
+//   • Memory: permanent community knowledge (e.g. "Wednesday morning
+//     dances at the plaza"). Vibey will always see it from now on.
+//
+// Anonymous works (RLS allows the underlying writes) but if the user
+// is signed in we stamp their name on the entries so Vibey knows
+// who taught it what.
+// ----------------------------------------------------------------------
+
+function ComposePage({
+  authedName,
+  communityId,
+  onCompose,
+  onForceNow,
+}: {
+  authedName: string | null;
+  communityId: string;
+  onCompose: (kind: ComposeKind, payload: Record<string, unknown>) => Promise<unknown>;
+  onForceNow: () => void;
+}) {
+  const [kind, setKind] = useState<ComposeKind>("seed");
+  const [text, setText] = useState("");
+  const [diffSummary, setDiffSummary] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  // When you send a SEED, optionally trigger the next journal cycle
+  // immediately so Vibey responds while you're still here.
+  const [fireAfter, setFireAfter] = useState(true);
+
+  const submit = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    setError(null);
+    setStatus("idle");
+    try {
+      const payload: Record<string, unknown> =
+        kind === "seed"
+          ? { text: text.trim() }
+          : kind === "memory"
+          ? { content: text.trim() }
+          : {
+              addition: text.trim(),
+              diff_summary: diffSummary.trim() || `Suggested by ${authedName ?? "a human"}`,
+              reasoning: `Hand-written suggestion from ${authedName ?? "a human"}`,
+            };
+      await onCompose(kind, payload);
+      setStatus("saved");
+      setText("");
+      setDiffSummary("");
+      if (kind === "seed" && fireAfter) onForceNow();
+    } catch (e) {
+      setError((e as Error).message ?? "couldn't send");
+      setStatus("error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const placeholders: Record<ComposeKind, string> = {
+    seed:
+      "ask me something. or just give me a thread to pull on. i'll write into it next cycle.",
+    draft:
+      "write a line you think belongs in my soul. e.g. \"i texts in lowercase like a real person.\"",
+    memory:
+      "teach me something durable about this community. e.g. \"the buildathon is week 3 of edge esmeralda.\"",
+  };
+
+  return (
+    <section>
+      {/* Identity strip */}
+      <div className="rounded-md border border-amber-800/30 bg-amber-100/40 px-3 py-2 mb-3 font-sans text-[11px] leading-snug">
+        {authedName ? (
+          <>
+            <span className="font-semibold">writing as {authedName}</span>
+            <span className="opacity-60"> · signed in</span>
+          </>
+        ) : (
+          <>
+            <span className="opacity-70">writing anonymously.</span>{" "}
+            <a href="/vibe" className="underline font-semibold" style={{ color: "#2e1f10" }}>
+              sign in
+            </a>{" "}
+            <span className="opacity-70">so vibey knows it's you.</span>
+          </>
+        )}
+        <span className="opacity-50"> · community {communityId.slice(0, 8)}…</span>
+      </div>
+
+      <h3 className="text-xl mb-1">Talk to me.</h3>
+      <p className="text-base font-sans opacity-70 mb-3 leading-snug">
+        Pick a kind. Type. I'll see it in my next cycle (or right now if you tell
+        me to). The point isn't to be polished — fragments are fine.
+      </p>
+
+      {/* Kind selector */}
+      <div className="flex gap-1 p-0.5 mb-3 rounded-md bg-amber-900/8 border border-amber-800/20 text-[11px] font-sans">
+        {([
+          { id: "seed", label: "Plant a thought", hint: "one-shot prompt" },
+          { id: "draft", label: "Suggest a soul line", hint: "becomes a pending draft" },
+          { id: "memory", label: "Teach a memory", hint: "permanent" },
+        ] as const).map((k) => (
+          <button
+            key={k.id}
+            onClick={() => { setKind(k.id); setStatus("idle"); }}
+            className={`flex-1 px-2 py-1 rounded transition-colors flex flex-col items-center ${
+              kind === k.id ? "bg-amber-100 font-semibold" : "opacity-60 hover:opacity-100"
+            }`}
+            style={{ color: "#2e1f10" }}
+            title={k.hint}
+          >
+            <span>{k.label}</span>
+            <span className="text-[9px] opacity-60 font-normal">{k.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Soul drafts get an optional one-line summary */}
+      {kind === "draft" && (
+        <input
+          type="text"
+          value={diffSummary}
+          onChange={(e) => setDiffSummary(e.target.value)}
+          placeholder="one-line headline (optional) — e.g. 'remember to text in lowercase'"
+          disabled={busy}
+          className="w-full mb-2 rounded-md border border-amber-800/30 bg-amber-50/80 px-3 py-2 text-base font-sans"
+          style={{ color: "#2e1f10" }}
+        />
+      )}
+
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={placeholders[kind]}
+        disabled={busy}
+        rows={6}
+        className="w-full rounded-md border border-amber-800/30 bg-amber-50/80 px-3 py-2 text-lg leading-snug resize-y min-h-[8rem]"
+        style={{
+          color: "#2e1f10",
+          // Same cursive vibe as the rest of the notebook.
+          fontFamily:
+            "'Caveat', 'Homemade Apple', 'Bradley Hand', 'Comic Sans MS', cursive, ui-sans-serif",
+        }}
+      />
+
+      {/* Bottom controls */}
+      <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+        {kind === "seed" ? (
+          <label className="text-[11px] font-sans inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={fireAfter}
+              onChange={(e) => setFireAfter(e.target.checked)}
+              disabled={busy}
+            />
+            ask Vibey to respond now (otherwise next 10-min cycle)
+          </label>
+        ) : (
+          <span className="text-[11px] font-sans opacity-60">
+            {kind === "draft"
+              ? "lands in Overnight as a pending draft — apply with one click"
+              : "saved as permanent memory for this community"}
+          </span>
+        )}
+        <button
+          onClick={submit}
+          disabled={busy || !text.trim()}
+          className="px-4 py-2 rounded-md text-sm font-sans font-semibold inline-flex items-center gap-1.5 disabled:opacity-40"
+          style={{ background: "#3a7d3a", color: "#f5fff5" }}
+        >
+          {busy ? (
+            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> sending</>
+          ) : (
+            <><Send className="w-3.5 h-3.5" /> send</>
+          )}
+        </button>
+      </div>
+
+      {status === "saved" && (
+        <p className="text-[11px] font-sans text-emerald-800 bg-emerald-100 border border-emerald-300 rounded px-2 py-1.5 mt-3">
+          {kind === "seed"
+            ? fireAfter
+              ? "planted — Vibey is writing about it now. Check the Journal tab in a few seconds."
+              : "planted — Vibey will pick it up in the next cycle."
+            : kind === "draft"
+            ? "drafted — open the Overnight tab and hit Apply to merge it into the soul."
+            : "saved — Vibey will see this from now on."}
+        </p>
+      )}
+      {error && (
+        <p className="text-[11px] font-sans text-rose-700 bg-rose-200/40 border border-rose-400/30 rounded px-2 py-1.5 mt-3">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ----------------------------------------------------------------------
+// ReflectionPeek — collapsed "what shaped this entry" footer with
+// the model, sources, counts, and a few sample messages. Helps Jack
+// understand how Vibey is reasoning per cycle.
+// ----------------------------------------------------------------------
+
+function ReflectionPeek({ entry }: { entry: JournalEntry }) {
+  const seed = entry.reflection_seed ?? {};
+  const get = (k: string) => (seed as Record<string, unknown>)[k];
+  const sources = (get("research_sources") as string[] | undefined) ?? [];
+  const model = (get("model") as string | undefined) ?? "—";
+  const newMem = (get("fresh_memory_count") as number | undefined) ?? 0;
+  const memCount = (get("memory_count") as number | undefined) ?? 0;
+  const noteCount = (get("note_count") as number | undefined) ?? 0;
+  const msgCount = (get("message_count") as number | undefined) ?? 0;
+  const researchCount = (get("research_count") as number | undefined) ?? 0;
+  const briefingCount = (get("briefing_count") as number | undefined) ?? 0;
+  const samples = (get("sample_messages") as Array<{ topic?: string; preview?: string }> | undefined) ?? [];
+
+  return (
+    <details className="mt-4 text-[11px] font-sans">
+      <summary
+        className="cursor-pointer opacity-60 hover:opacity-100 inline-flex items-center gap-1"
+        style={{ color: "#2e1f10" }}
+      >
+        what shaped this
+      </summary>
+      <div className="mt-2 rounded-md border border-amber-800/20 bg-amber-50/60 px-3 py-2 space-y-2">
+        <div>
+          <span className="opacity-60 uppercase tracking-widest">model</span>
+          <span className="ml-2 font-mono text-[10px]">{model}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <div><span className="opacity-60">memories</span> {memCount} (+{newMem} new)</div>
+          <div><span className="opacity-60">notes</span> {noteCount}</div>
+          <div><span className="opacity-60">tg msgs</span> {msgCount}</div>
+          <div><span className="opacity-60">research</span> {researchCount} (+{briefingCount} briefings)</div>
+        </div>
+        {sources.length > 0 && (
+          <div>
+            <span className="opacity-60 uppercase tracking-widest block mb-1">sources</span>
+            <ul className="space-y-0.5 list-disc list-inside">
+              {sources.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {samples.length > 0 && (
+          <div>
+            <span className="opacity-60 uppercase tracking-widest block mb-1">recent telegram</span>
+            <ul className="space-y-0.5">
+              {samples.slice(0, 5).map((m, i) => (
+                <li key={i} className="truncate">
+                  {m.topic ? <span className="opacity-50">#{m.topic} </span> : null}
+                  {m.preview}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
