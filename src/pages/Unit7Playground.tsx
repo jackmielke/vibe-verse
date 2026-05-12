@@ -42,6 +42,15 @@ const LOBBY_CHARACTER_URLS = import.meta.glob(
   "@/assets/glb/characters/*.glb",
   { eager: true, query: "?url", import: "default" },
 ) as Record<string, string>;
+
+// Convenience lookup by character base filename (no extension) so
+// disco mode can pull specific dancers by name. e.g. QUATERNIUS_CHARS.Wizard.
+const QUATERNIUS_CHARS: Record<string, string> = Object.fromEntries(
+  Object.entries(LOBBY_CHARACTER_URLS).map(([path, url]) => {
+    const name = path.split("/").pop()?.replace(/\.glb$/, "") ?? "";
+    return [name, url];
+  }),
+);
 import type {
   Unit7AnimName,
   Unit7Expression,
@@ -771,7 +780,8 @@ export default function Unit7Playground() {
     | "sparks"
     | "rocky"
     | "earth"
-    | "tracks";
+    | "tracks"
+    | "disco";
   const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({
     cards: true,
     memories: false, // default OFF — knowledge can feel noisy
@@ -784,6 +794,7 @@ export default function Unit7Playground() {
     rocky: false, // off by default — flip from the Layers panel
     earth: true,
     tracks: false, // local MP3 queue is opt-in; Spotify is the default
+    disco: false,  // dance party — disco ball, rotating lights, 4 backup dancers
   });
   const layerVisibleRef = useRef(layerVisible);
   layerVisibleRef.current = layerVisible;
@@ -793,6 +804,11 @@ export default function Unit7Playground() {
   const auroraRef = useRef<THREE.Mesh | null>(null);
   const cometRef = useRef<THREE.Group | null>(null);
   const shipRef = useRef<THREE.Group | null>(null);
+  // Disco mode — a glittery ball above Vibey, four rotating colored
+  // point lights overhead, and four dancing Quaternius characters in
+  // a small circle around him. Driven from the Layers panel.
+  const discoGroupRef = useRef<THREE.Group | null>(null);
+  const discoMixersRef = useRef<THREE.AnimationMixer[]>([]);
   // Vibey's 3D journal — orbits the platform, click to open the
   // handwritten overlay. The journalNudgeRef is bumped whenever a
   // new entry lands so the animation loop can play a glow burst.
@@ -837,6 +853,7 @@ export default function Unit7Playground() {
     if (sparksRef.current) sparksRef.current.visible = layerVisible.sparks;
     if (rockyRef.current) rockyRef.current.visible = layerVisible.rocky;
     if (earthRef.current) earthRef.current.visible = layerVisible.earth;
+    if (discoGroupRef.current) discoGroupRef.current.visible = layerVisible.disco;
   }, [layerVisible]);
   // Click-to-focus state: when the user clicks a card or memory orb,
   // the scene useEffect calls this ref's current handler.
@@ -3061,6 +3078,136 @@ export default function Unit7Playground() {
       alienSaucerGroupRef.current = saucerGroup;
     }
 
+    // ---- Disco mode (dance party) ------------------------------------
+    // Procedural disco ball + 4 colored rotating point lights + 4
+    // Quaternius dancers in a circle around Vibey. Hidden by default;
+    // flip "disco" in the Layers panel to drop the beat. All
+    // animation happens in the main render loop below — references
+    // stashed on userData so the tick can read them.
+    {
+      const discoGroup = new THREE.Group();
+      discoGroup.visible = layerVisibleRef.current.disco;
+
+      // -- Disco ball: faceted icosahedron, mirror-shiny, hung above Vibey.
+      const ball = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.55, 1),
+        new THREE.MeshStandardMaterial({
+          color: 0xeeeeff,
+          metalness: 0.95,
+          roughness: 0.12,
+          emissive: 0x222244,
+          emissiveIntensity: 0.4,
+          flatShading: true,
+        }),
+      );
+      ball.position.set(0, 6.2, 0); // hangs over Vibey's head
+      discoGroup.add(ball);
+      // Subtle bloom-friendly inner sparkle so the ball reads as glowy.
+      const ballSparkle = new THREE.Mesh(
+        new THREE.SphereGeometry(0.62, 16, 12),
+        new THREE.MeshBasicMaterial({
+          color: 0xffd2ee,
+          transparent: true,
+          opacity: 0.14,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      ballSparkle.position.copy(ball.position);
+      discoGroup.add(ballSparkle);
+      (discoGroup as unknown as Record<string, unknown>).__ball = ball;
+
+      // -- Four rotating colored point lights orbiting overhead.
+      // Saturated palette so the dance floor reads as Saturday-night.
+      const palette = [0xff3b8a, 0x6cf, 0xffe26a, 0x73ffb8];
+      const lights: THREE.PointLight[] = [];
+      for (let i = 0; i < palette.length; i++) {
+        const pl = new THREE.PointLight(palette[i], 6, 22, 1.8);
+        pl.userData.phase = (i / palette.length) * Math.PI * 2;
+        discoGroup.add(pl);
+        lights.push(pl);
+      }
+      (discoGroup as unknown as Record<string, unknown>).__lights = lights;
+
+      // -- Four backup dancers, evenly spaced around Vibey.
+      // Hand-picked Quaternius characters with the broadest visual variety.
+      interface DancerSlot {
+        url: string;
+        scale: number;
+      }
+      const dancers: DancerSlot[] = [
+        { url: QUATERNIUS_CHARS.Wizard ?? "", scale: 1 },
+        { url: QUATERNIUS_CHARS.Chef_Female ?? "", scale: 1 },
+        { url: QUATERNIUS_CHARS.Cowboy_Male ?? "", scale: 1 },
+        { url: QUATERNIUS_CHARS.Knight_Male ?? "", scale: 1 },
+      ];
+      const DANCE_RING_R = 3.2;
+      dancers.forEach((slot, i) => {
+        if (!slot.url) return;
+        const angle = (i / dancers.length) * Math.PI * 2 + Math.PI / 4;
+        const px = Math.cos(angle) * DANCE_RING_R;
+        const pz = Math.sin(angle) * DANCE_RING_R;
+        const carrier = new THREE.Group();
+        carrier.position.set(px, 0, pz);
+        // Face inward toward Vibey at origin.
+        carrier.rotation.y = Math.atan2(0 - pz, 0 - px) + Math.PI / 2;
+        discoGroup.add(carrier);
+
+        new GLTFLoader().load(
+          slot.url,
+          (gltf) => {
+            const model = gltf.scene;
+            // Bottom-anchor — same pattern the lobby + garden use.
+            model.position.set(0, 0, 0);
+            model.scale.setScalar(slot.scale);
+            model.updateMatrixWorld(true);
+            const box = new THREE.Box3().setFromObject(model);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const fit = 1.6 / Math.max(size.y, 0.01);
+            model.scale.setScalar(fit * slot.scale);
+            model.updateMatrixWorld(true);
+            const box1 = new THREE.Box3().setFromObject(model);
+            model.position.y = -box1.min.y;
+            const center = new THREE.Vector3();
+            box1.getCenter(center);
+            model.position.x = -center.x;
+            model.position.z = -center.z;
+            model.traverse((o) => {
+              if ((o as THREE.Mesh).isMesh) {
+                (o as THREE.Mesh).castShadow = false;
+                (o as THREE.Mesh).receiveShadow = false;
+              }
+            });
+            carrier.add(model);
+
+            // Find the Dance clip (or fall back to whatever's available).
+            if (gltf.animations && gltf.animations.length > 0) {
+              const mixer = new THREE.AnimationMixer(model);
+              const danceClip =
+                gltf.animations.find((c) => /dance/i.test(c.name)) ??
+                gltf.animations.find((c) => /idle/i.test(c.name)) ??
+                gltf.animations[0];
+              if (danceClip) {
+                const action = mixer.clipAction(danceClip);
+                action.setLoop(THREE.LoopRepeat, Infinity);
+                // Slight per-dancer time offset so they don't move
+                // in lockstep — reads as a real little crowd.
+                action.time = Math.random() * danceClip.duration;
+                action.play();
+              }
+              discoMixersRef.current.push(mixer);
+            }
+          },
+          undefined,
+          (err) => console.warn("[disco] dancer failed to load", err),
+        );
+      });
+
+      scene.add(discoGroup);
+      discoGroupRef.current = discoGroup;
+    }
+
     // ---- 3D Gallery TV ------------------------------------------------
     // A floating wall-mounted TV opposite the Earth + moon (which sit on
     // the back-left). Hidden until the gallery experience spawns; an
@@ -3965,6 +4112,40 @@ export default function Unit7Playground() {
       }
       if (alienMixerRef.current) alienMixerRef.current.update(delta);
 
+      // ---- Disco mode: spin ball + orbit colored lights + dance ---
+      if (discoGroupRef.current && discoGroupRef.current.visible) {
+        const t = now * 0.001;
+        const grp = discoGroupRef.current;
+        const ball = (grp as unknown as Record<string, unknown>).__ball as
+          | THREE.Mesh
+          | undefined;
+        if (ball) {
+          ball.rotation.y = t * 1.4;
+          ball.rotation.x = Math.sin(t * 0.6) * 0.25;
+        }
+        const lights = (grp as unknown as Record<string, unknown>).__lights as
+          | THREE.PointLight[]
+          | undefined;
+        if (lights) {
+          const RING_R = 5.5;
+          const RING_Y = 5.6;
+          for (const pl of lights) {
+            const ph = (pl.userData.phase as number) ?? 0;
+            const ang = t * 1.1 + ph;
+            pl.position.set(
+              Math.cos(ang) * RING_R,
+              RING_Y + Math.sin(t * 2 + ph) * 0.4,
+              Math.sin(ang) * RING_R,
+            );
+            // Pulse intensity on a fast beat so the lights flicker
+            // like a real DJ booth instead of looking pinned.
+            pl.intensity = 4 + Math.abs(Math.sin(t * 4 + ph)) * 5;
+          }
+        }
+        // Drive every dancer's mixer.
+        for (const mx of discoMixersRef.current) mx.update(delta);
+      }
+
       // ---- Random auto-emote on the saucer rider ------------------
       // Every 4-8 seconds, pick a fun clip and play it on the
       // character regardless of FOCUS. Idle stays the base loop.
@@ -4769,6 +4950,7 @@ export default function Unit7Playground() {
           </p>
           <div className="flex flex-col gap-1">
             {[
+              { id: "disco" as const, label: "Disco mode 🪩" },
               { id: "earth" as const, label: "Earth 🌍" },
               { id: "tracks" as const, label: "Local tracks 💿" },
               { id: "rocky" as const, label: "Rocky 🪨" },
@@ -4785,12 +4967,21 @@ export default function Unit7Playground() {
               return (
                 <button
                   key={row.id}
-                  onClick={() =>
+                  onClick={() => {
+                    const willTurnOn = !on;
                     setLayerVisible((prev) => ({
                       ...prev,
                       [row.id]: !prev[row.id],
-                    }))
-                  }
+                    }));
+                    // Drop the beat when disco turns on — quick groove
+                    // sound + Vibey throws a dance emote so it feels
+                    // like a real party kicks off.
+                    if (row.id === "disco" && willTurnOn) {
+                      ensureAudioRunning();
+                      playSound("groove");
+                      triggerAnim("Dance");
+                    }
+                  }}
                   className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[11px] transition-colors ${
                     on
                       ? "bg-primary/15 text-foreground"
