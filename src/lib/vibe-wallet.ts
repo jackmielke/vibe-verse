@@ -273,7 +273,7 @@ export interface VibeBalance {
 
 /** Get a single address's $VIBE balance, formatted. */
 export async function getVibeBalance(address: Address): Promise<VibeBalance> {
-  const raw = (await basePublicClient.readContract({
+  const raw = (await (basePublicClient.readContract as (args: unknown) => Promise<unknown>)({
     address: VIBE_TOKEN_ADDRESS,
     abi: ERC20_ABI,
     functionName: "balanceOf",
