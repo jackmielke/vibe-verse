@@ -1128,11 +1128,11 @@ export default function Unit7Playground() {
     if (isLoop) {
       next.setLoop(THREE.LoopRepeat, Infinity);
       next.clampWhenFinished = false;
-      alienBaseClipRef.current = clipName;
+      alienBaseClipRef.current = anim;
     } else if (isHeld) {
       next.setLoop(THREE.LoopOnce, 1);
       next.clampWhenFinished = true;
-      alienBaseClipRef.current = clipName; // hold
+      alienBaseClipRef.current = anim; // hold
     } else {
       // One-shot — return to current base loop after.
       next.setLoop(THREE.LoopOnce, 1);

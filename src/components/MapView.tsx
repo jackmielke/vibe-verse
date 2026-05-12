@@ -1950,6 +1950,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      const t = now / 1000;
       const s = nimbusStateRef.current;
       const k = nimbusKeysRef.current;
       const vel = nimbusVelocityRef.current;
