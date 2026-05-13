@@ -16,17 +16,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Coins, RefreshCw } from "lucide-react";
 
-// Source of truth: CoinGecko. They aggregate tickers across every
-// exchange listing $VIBE, account for actual *circulating* supply
-// (not total supply), and surface the same market cap users see
-// when they look the coin up themselves. Per-pool GeckoTerminal
-// data was misleading — single illiquid pools quote stale prices
-// and don't know about lockups, so FDV ≠ market cap.
-const COINGECKO_ID = "vibecoin-2";
-const COINGECKO_ENDPOINT =
-  `https://api.coingecko.com/api/v3/coins/${COINGECKO_ID}` +
-  `?localization=false&tickers=false&market_data=true` +
-  `&community_data=false&developer_data=false&sparkline=false`;
+// Source of truth: GeckoTerminal's canonical $VIBE pool on Base.
+// Jack prefers the pool view's headline number (~$92K FDV) over
+// CoinGecko's circulating-supply-adjusted market cap (~$8K) — the
+// pool number is what the community sees when they pull up the
+// chart themselves, so the app should match.
+const VIBE_TOKEN_ADDRESS = "0x7255ecf1020a95fed5323dd4feb23a54ab1aa7d1";
+const VIBE_NETWORK = "base";
+// The canonical pool — same one linked at
+// https://www.geckoterminal.com/base/pools/0xc3ad...
+const VIBE_POOL_ADDRESS = "0xc3ad498815597f1e6f71d3cb1166856e947efb46";
+const POOL_ENDPOINT = `https://api.geckoterminal.com/api/v2/networks/${VIBE_NETWORK}/pools/${VIBE_POOL_ADDRESS}`;
 
 interface VibeStats {
   priceUsd: number;
@@ -34,6 +34,7 @@ interface VibeStats {
   marketCapUsd: number | null;
   circulatingSupply: number | null;
   totalSupply: number | null;
+  liquidityUsd: number | null;
   volume24h: number | null;
   priceChange24h: number | null;
   fetchedAt: number;
@@ -48,23 +49,28 @@ function num(v: unknown): number | null {
 
 async function fetchVibe(): Promise<VibeStats | null> {
   try {
-    const res = await fetch(COINGECKO_ENDPOINT, {
+    const res = await fetch(POOL_ENDPOINT, {
       headers: { accept: "application/json" },
     });
     if (!res.ok) return null;
     const json = await res.json();
-    const m = json?.market_data as Record<string, unknown> | undefined;
-    if (!m) return null;
-    const priceUsd = num((m.current_price as Record<string, unknown> | undefined)?.usd);
+    const a = json?.data?.attributes as Record<string, unknown> | undefined;
+    if (!a) return null;
+    const priceUsd =
+      num(a.base_token_price_usd) ?? num((a as Record<string, unknown>).token_price_usd);
     if (priceUsd == null) return null;
     return {
       priceUsd,
-      marketCapUsd: num((m.market_cap as Record<string, unknown> | undefined)?.usd),
-      fdvUsd: num((m.fully_diluted_valuation as Record<string, unknown> | undefined)?.usd),
-      circulatingSupply: num(m.circulating_supply),
-      totalSupply: num(m.total_supply),
-      volume24h: num((m.total_volume as Record<string, unknown> | undefined)?.usd),
-      priceChange24h: num(m.price_change_percentage_24h),
+      // We headline FDV as "market cap" because that's what the pool
+      // reports and what the community looks at. CoinGecko's
+      // smaller circulating-cap is suppressed here on purpose.
+      marketCapUsd: num(a.fdv_usd),
+      fdvUsd: num(a.fdv_usd),
+      circulatingSupply: null, // pool endpoint doesn't expose this
+      totalSupply: null,
+      liquidityUsd: num(a.reserve_in_usd),
+      volume24h: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
+      priceChange24h: num((a.price_change_percentage as Record<string, unknown> | undefined)?.h24),
       fetchedAt: Date.now(),
     };
   } catch {
@@ -204,11 +210,11 @@ export default function VibeCoinPanel() {
           />
         </div>
         <a
-          href={`https://www.coingecko.com/en/coins/${COINGECKO_ID}`}
+          href={`https://www.geckoterminal.com/${VIBE_NETWORK}/pools/${VIBE_POOL_ADDRESS}`}
           target="_blank"
           rel="noreferrer"
           className="text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-          title="Open on CoinGecko"
+          title="Open the canonical $VIBE pool on GeckoTerminal"
         >
           <span>chart</span>
           <span aria-hidden>↗</span>
@@ -266,24 +272,17 @@ export default function VibeCoinPanel() {
         )}
       </div>
 
-      {/* Stats grid — price + circulating supply + 24h volume support
-          the headline. Circulating is the lever that distinguishes
-          "real" market cap from FDV, so it earns its slot here. */}
+      {/* Stats grid — price + pool liquidity + 24h volume support
+          the headline market cap. */}
       <div className="grid grid-cols-3 gap-2">
         <Stat
           label="Per token"
           value={stats ? fmtUsd(stats.priceUsd) : "—"}
         />
         <Stat
-          label="Circulating"
-          value={stats?.circulatingSupply != null
-            ? compactNumber(stats.circulatingSupply)
-            : "—"}
-          tooltip={
-            stats?.circulatingSupply != null && stats?.totalSupply != null
-              ? `${stats.circulatingSupply.toLocaleString()} of ${stats.totalSupply.toLocaleString()} total $VIBE in circulation`
-              : undefined
-          }
+          label="Liquidity"
+          value={fmtUsd(stats?.liquidityUsd ?? null, { compact: true })}
+          tooltip="USD value of both sides of the canonical $VIBE pool on Base"
         />
         <Stat
           label="24h volume"

@@ -31,6 +31,11 @@ import {
   X,
   Eye,
   EyeOff,
+  Github,
+  Wallet,
+  Plus,
+  Check,
+  Unlink,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -38,6 +43,8 @@ import {
   formatVibe,
   shortAddress,
   isAddress,
+  connectWallet,
+  signLinkMessage,
 } from "@/lib/vibe-wallet";
 
 interface UserRow {
@@ -77,17 +84,45 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
   const [walletSaving, setWalletSaving] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
+  // Linked auth identities (Google, GitHub, email, etc) — pulled from
+  // Supabase whenever the session changes.
+  const [identities, setIdentities] = useState<Array<{ id: string; provider: string }>>([]);
+  // Track the in-flight "linking with provider X" state so the button
+  // can show a spinner without locking the whole card.
+  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  // Wallet-link state when using the real MetaMask flow (separate
+  // from the paste-in text input below).
+  const [walletConnectStep, setWalletConnectStep] = useState<
+    "idle" | "connecting" | "signing" | "saving" | "done" | "error"
+  >("idle");
+  const [walletConnectError, setWalletConnectError] = useState<string | null>(null);
 
   // Subscribe to auth state — so login + logout updates the UI live.
   useEffect(() => {
+    const hydrateIdentities = async () => {
+      try {
+        const { data } = await supabase.auth.getUserIdentities();
+        const list = (data?.identities ?? []).map((i) => ({
+          id: i.identity_id ?? i.id,
+          provider: i.provider,
+        }));
+        setIdentities(list);
+      } catch {
+        setIdentities([]);
+      }
+    };
     supabase.auth.getUser().then(({ data }) => {
       setAuthUserId(data.user?.id ?? null);
       setAuthEmail(data.user?.email ?? null);
       setLoading(false);
+      if (data.user) hydrateIdentities();
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthUserId(session?.user?.id ?? null);
       setAuthEmail(session?.user?.email ?? null);
+      if (session?.user) hydrateIdentities();
+      else setIdentities([]);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -211,6 +246,106 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  /**
+   * Provider buttons (Google / GitHub) do two different things based
+   * on whether someone is signed in:
+   *  - Signed in → `linkIdentity` adds the OAuth identity to the
+   *    existing account so the user has multiple ways back in.
+   *  - Signed out → `signInWithOAuth` redirects them through the
+   *    provider's login and creates / finds the matching account.
+   *
+   * Both rely on the provider being enabled in the Supabase project
+   * (Auth → Providers). Until that's flipped on we surface a friendly
+   * error message client-side rather than a generic 401.
+   */
+  const linkOrSignInWithProvider = async (provider: "google" | "github") => {
+    setOauthError(null);
+    setPendingProvider(provider);
+    try {
+      if (authUserId) {
+        const { error } = await supabase.auth.linkIdentity({
+          provider,
+          options: { redirectTo: window.location.href },
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: window.location.href },
+        });
+        if (error) throw error;
+      }
+    } catch (e) {
+      setOauthError((e as Error).message ?? `Couldn't ${authUserId ? "link" : "sign in with"} ${provider}`);
+    } finally {
+      setPendingProvider(null);
+    }
+  };
+
+  const unlinkProvider = async (identityId: string, provider: string) => {
+    setOauthError(null);
+    setPendingProvider(provider);
+    try {
+      const { data } = await supabase.auth.getUserIdentities();
+      const target = (data?.identities ?? []).find(
+        (i) => (i.identity_id ?? i.id) === identityId,
+      );
+      if (!target) throw new Error("identity not found");
+      const { error } = await supabase.auth.unlinkIdentity(target);
+      if (error) throw error;
+      // Refresh the list.
+      const fresh = await supabase.auth.getUserIdentities();
+      setIdentities(
+        (fresh.data?.identities ?? []).map((i) => ({
+          id: i.identity_id ?? i.id,
+          provider: i.provider,
+        })),
+      );
+    } catch (e) {
+      setOauthError((e as Error).message ?? `Couldn't unlink ${provider}`);
+    } finally {
+      setPendingProvider(null);
+    }
+  };
+
+  /**
+   * MetaMask path: open the wallet, ask the user to sign a
+   * proof-of-ownership message (NO transaction, NO funds move), then
+   * write the address onto the user's row. We do the DB update
+   * client-side and rely on RLS to gate it — the user can only update
+   * their own row, and we explicitly scope by auth_user_id.
+   */
+  const connectAndLinkWallet = async () => {
+    if (!profile) return;
+    setWalletConnectError(null);
+    setWalletConnectStep("connecting");
+    try {
+      const address = await connectWallet();
+      setWalletConnectStep("signing");
+      const session = await signLinkMessage(address, "Edge Esmeralda");
+      setWalletConnectStep("saving");
+      const { data, error } = await supabase
+        .from("users")
+        .update({
+          wallet_address: session.address.toLowerCase(),
+          wallet_connected_at: new Date().toISOString(),
+          wallet_provider: "eip1193",
+        })
+        .eq("id", profile.id)
+        .select(
+          "id, auth_user_id, email, name, username, bio, headline, avatar_url, profile_picture_url, telegram_username, telegram_photo_url, wallet_address, wallet_connected_at",
+        )
+        .single();
+      if (error) throw error;
+      if (data) setProfile(data as UserRow);
+      setWalletConnectStep("done");
+      window.setTimeout(() => setWalletConnectStep("idle"), 1500);
+    } catch (e) {
+      setWalletConnectError((e as Error).message ?? "Wallet link failed");
+      setWalletConnectStep("error");
+    }
   };
 
   const saveWallet = async () => {
@@ -406,27 +541,59 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
               {authError}
             </p>
           )}
+
+          {/* OAuth alternatives — no password to remember. Falls
+              through to the same Supabase session as email/password. */}
+          <div className="relative my-1">
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+              <div className="w-full border-t border-border/40" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="px-2 text-[10px] uppercase tracking-widest bg-background text-muted-foreground">
+                or sign in with
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <OAuthButton
+              provider="google"
+              label="Google"
+              busy={pendingProvider === "google"}
+              onClick={() => linkOrSignInWithProvider("google")}
+            />
+            <OAuthButton
+              provider="github"
+              label="GitHub"
+              busy={pendingProvider === "github"}
+              onClick={() => linkOrSignInWithProvider("github")}
+            />
+          </div>
+          {oauthError && (
+            <p className="text-[11px] text-rose-300 bg-rose-400/10 border border-rose-400/30 rounded px-2 py-1.5">
+              {oauthError}
+            </p>
+          )}
         </>
       )}
 
-      {/* Step 2 + 3: Signed in → profile + wallet address */}
+      {/* Step 2 + 3: Signed in → profile + connected accounts */}
       {!loading && authUserId && profile && (
         <>
-          {/* Profile row */}
-          <div className="flex items-center gap-3">
+          {/* Profile hero */}
+          <div className="flex items-center gap-3 pb-3 border-b border-border/40">
             <Avatar profile={profile} />
             <div className="flex-1 min-w-0">
               <p className="font-heading text-base font-semibold text-foreground truncate">
                 {profile.name ?? profile.username ?? profile.email ?? "You"}
               </p>
-              {profile.headline && (
+              {profile.email && (
                 <p className="text-[11px] text-muted-foreground truncate">
-                  {profile.headline}
+                  {profile.email}
                 </p>
               )}
-              {profile.telegram_username && (
-                <p className="text-[10px] text-muted-foreground truncate">
-                  @{profile.telegram_username}
+              {profile.headline && (
+                <p className="text-[11px] text-muted-foreground/80 truncate mt-0.5">
+                  {profile.headline}
                 </p>
               )}
             </div>
@@ -438,30 +605,92 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
             </p>
           )}
 
-          {/* Wallet address — text input, no connection */}
-          <div className="rounded-lg bg-background/30 border border-border/60 p-3 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                Base Wallet Address
-              </p>
-              {!editingWallet && (
-                <button
-                  onClick={() => {
-                    setWalletDraft(profile.wallet_address ?? "");
-                    setEditingWallet(true);
-                    setWalletError(null);
-                  }}
-                  className="text-[10px] text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <Pencil className="w-3 h-3" />
-                  {profile.wallet_address ? "Edit" : "Add"}
-                </button>
-              )}
-            </div>
+          {/* Connected accounts — every way Vibey knows you. */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-heading font-semibold">
+              Connected accounts
+            </p>
 
-            {!editingWallet && (
-              profile.wallet_address ? (
-                <div className="flex items-center gap-2">
+            {/* Email row (always present when signed in) */}
+            <ProviderRow
+              icon={<Mail className="w-3.5 h-3.5" />}
+              label="Email"
+              value={authEmail ?? profile.email ?? ""}
+              linked
+            />
+
+            {/* OAuth providers — Google + GitHub */}
+            {(["google", "github"] as const).map((p) => {
+              const linked = identities.find((i) => i.provider === p);
+              const isBusy = pendingProvider === p;
+              return (
+                <ProviderRow
+                  key={p}
+                  icon={
+                    p === "google" ? (
+                      <GoogleIcon className="w-3.5 h-3.5" />
+                    ) : (
+                      <Github className="w-3.5 h-3.5" />
+                    )
+                  }
+                  label={p === "google" ? "Google" : "GitHub"}
+                  value={linked ? "linked" : "not linked"}
+                  linked={!!linked}
+                  action={
+                    linked ? (
+                      <button
+                        onClick={() => unlinkProvider(linked.id, p)}
+                        disabled={isBusy}
+                        className="text-[10px] text-muted-foreground hover:text-rose-300 inline-flex items-center gap-1 disabled:opacity-50"
+                        title="Unlink this identity"
+                      >
+                        {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlink className="w-3 h-3" />}
+                        unlink
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => linkOrSignInWithProvider(p)}
+                        disabled={isBusy}
+                        className="text-[10px] text-primary hover:underline inline-flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                        link
+                      </button>
+                    )
+                  }
+                />
+              );
+            })}
+
+            {/* Telegram — read-only badge for now (set by the Vibey
+                bot when someone first DMs it). Visible if the row
+                has a telegram_username; otherwise hidden so the
+                section doesn't feel empty. */}
+            {profile.telegram_username && (
+              <ProviderRow
+                icon={<TelegramIcon className="w-3.5 h-3.5" />}
+                label="Telegram"
+                value={`@${profile.telegram_username}`}
+                linked
+              />
+            )}
+
+            {/* Wallet — MetaMask path (connect + sign + save) and a
+                paste-in fallback for users who'd rather not connect. */}
+            <div className="rounded-md border border-border/60 bg-background/30 p-2.5 flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-foreground/85"><Wallet className="w-3.5 h-3.5" /></span>
+                <span className="text-xs font-heading font-semibold flex-1">Base Wallet</span>
+                {profile.wallet_address ? (
+                  <span className="text-[10px] inline-flex items-center gap-1 text-emerald-300">
+                    <Check className="w-3 h-3" /> linked
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">not linked</span>
+                )}
+              </div>
+              {profile.wallet_address ? (
+                <div className="flex items-center gap-2 flex-wrap">
                   <a
                     href={`https://basescan.org/address/${profile.wallet_address}`}
                     target="_blank"
@@ -472,68 +701,112 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
                     <ExternalLink className="w-2.5 h-2.5 opacity-60" />
                   </a>
                   {balanceWei != null && (
-                    <span className="ml-auto text-xs font-heading font-semibold text-primary tabular-nums">
+                    <span className="text-xs font-heading font-semibold text-primary tabular-nums">
                       {formatVibe(balanceWei, { compact: true })} VIBE
                     </span>
                   )}
+                  <button
+                    onClick={() => {
+                      setWalletDraft(profile.wallet_address ?? "");
+                      setEditingWallet(true);
+                      setWalletError(null);
+                    }}
+                    className="ml-auto text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  >
+                    <Pencil className="w-3 h-3" /> edit
+                  </button>
                 </div>
               ) : (
-                <p className="text-[11px] text-muted-foreground italic">
-                  No wallet address yet. Add one so the community can find you and see your $VIBE balance.
-                </p>
-              )
-            )}
-
-            {editingWallet && (
-              <>
-                <input
-                  type="text"
-                  value={walletDraft}
-                  onChange={(e) => setWalletDraft(e.target.value)}
-                  placeholder="0x…"
-                  disabled={walletSaving}
-                  className="w-full rounded-md bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-2 py-1.5 text-sm font-mono disabled:opacity-60"
-                  spellCheck={false}
-                />
-                <p className="text-[10px] text-muted-foreground leading-snug">
-                  Your public Base address — the same one you'd put on a name tag.
-                  We never ask you to connect a wallet here and we cannot move funds.
-                  Leave blank to remove.
-                </p>
-                {walletError && (
-                  <p className="text-[10px] text-rose-300">{walletError}</p>
-                )}
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                   <button
-                    onClick={saveWallet}
-                    disabled={walletSaving}
-                    className="flex-1 bg-primary text-primary-foreground rounded-md px-2 py-1.5 text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                    onClick={connectAndLinkWallet}
+                    disabled={walletConnectStep !== "idle" && walletConnectStep !== "error"}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 px-3 py-1.5 text-xs font-heading font-semibold"
                   >
-                    {walletSaving ? (
-                      <><Loader2 className="w-3 h-3 animate-spin" /> Saving</>
-                    ) : (
-                      <><Save className="w-3 h-3" /> Save</>
+                    {walletConnectStep === "connecting" && <><Loader2 className="w-3 h-3 animate-spin" /> Opening wallet…</>}
+                    {walletConnectStep === "signing" && <><Loader2 className="w-3 h-3 animate-spin" /> Sign to confirm…</>}
+                    {walletConnectStep === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</>}
+                    {walletConnectStep === "done" && <><Check className="w-3 h-3" /> linked</>}
+                    {(walletConnectStep === "idle" || walletConnectStep === "error") && (
+                      <>
+                        <MetaMaskIcon className="w-3.5 h-3.5" /> Connect MetaMask
+                      </>
                     )}
                   </button>
-                  <button
-                    onClick={() => { setEditingWallet(false); setWalletError(null); }}
-                    disabled={walletSaving}
-                    className="rounded-md border border-border/60 bg-background/40 hover:bg-muted/40 px-2 py-1.5 text-xs font-heading font-semibold text-muted-foreground inline-flex items-center gap-1.5"
-                  >
-                    <X className="w-3 h-3" />
-                    Cancel
-                  </button>
+                  {walletConnectError && (
+                    <p className="text-[10px] text-rose-300">{walletConnectError}</p>
+                  )}
+                  <details className="text-[10px] text-muted-foreground">
+                    <summary className="cursor-pointer hover:text-foreground">prefer to paste an address?</summary>
+                    <div className="mt-1.5">
+                      {!editingWallet ? (
+                        <button
+                          onClick={() => {
+                            setWalletDraft("");
+                            setEditingWallet(true);
+                            setWalletError(null);
+                          }}
+                          className="text-[10px] text-primary hover:underline"
+                        >
+                          paste 0x… instead
+                        </button>
+                      ) : null}
+                    </div>
+                  </details>
                 </div>
-              </>
-            )}
+              )}
+              {editingWallet && (
+                <div className="flex flex-col gap-1.5 mt-1">
+                  <input
+                    type="text"
+                    value={walletDraft}
+                    onChange={(e) => setWalletDraft(e.target.value)}
+                    placeholder="0x…"
+                    disabled={walletSaving}
+                    className="w-full rounded-md bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-2 py-1.5 text-sm font-mono disabled:opacity-60"
+                    spellCheck={false}
+                  />
+                  {walletError && (
+                    <p className="text-[10px] text-rose-300">{walletError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveWallet}
+                      disabled={walletSaving}
+                      className="flex-1 bg-primary text-primary-foreground rounded-md px-2 py-1.5 text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                    >
+                      {walletSaving ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" /> Saving</>
+                      ) : (
+                        <><Save className="w-3 h-3" /> Save</>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => { setEditingWallet(false); setWalletError(null); }}
+                      disabled={walletSaving}
+                      className="rounded-md border border-border/60 bg-background/40 hover:bg-muted/40 px-2 py-1.5 text-xs font-heading font-semibold text-muted-foreground inline-flex items-center gap-1.5"
+                    >
+                      <X className="w-3 h-3" />
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
+          {oauthError && (
+            <p className="text-[11px] text-rose-300 bg-rose-400/10 border border-rose-400/30 rounded px-2 py-1.5">
+              {oauthError}
+            </p>
+          )}
+
           {/* Safety promise — small print but unmissable */}
-          <p className="text-[10px] text-muted-foreground/80 leading-relaxed flex items-start gap-1.5">
+          <p className="text-[10px] text-muted-foreground/80 leading-relaxed flex items-start gap-1.5 mt-1">
             <ShieldCheck className="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-400" />
             <span>
-              We never touch your funds. This app only stores your address as text — like a username.
-              No signatures, no transactions, no browser-wallet popups.
+              Linking your wallet only asks you to sign a message proving you own it.
+              No transactions. No funds move. You can unlink anytime.
             </span>
           </p>
         </>
@@ -582,6 +855,129 @@ function PillView({
         <LogOut className="w-3 h-3 text-muted-foreground" />
       </button>
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// OAuthButton — used in the signed-out form. Branded outline button
+// with the provider logo. Same chrome as the email/password submit
+// so the alternatives feel first-class.
+// ----------------------------------------------------------------------
+
+function OAuthButton({
+  provider,
+  label,
+  busy,
+  onClick,
+}: {
+  provider: "google" | "github";
+  label: string;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="rounded-lg border border-border/60 bg-background/30 hover:bg-muted/40 transition-colors px-3 py-2 text-sm font-heading font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+    >
+      {busy ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : provider === "google" ? (
+        <GoogleIcon className="w-4 h-4" />
+      ) : (
+        <Github className="w-4 h-4" />
+      )}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// ----------------------------------------------------------------------
+// ProviderRow — one line per connected (or unconnected) identity.
+// Used inside the "Connected accounts" stack so every method reads
+// in the same shape.
+// ----------------------------------------------------------------------
+
+function ProviderRow({
+  icon,
+  label,
+  value,
+  linked,
+  action,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  linked: boolean;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border/40 bg-background/20 px-2.5 py-1.5 flex items-center gap-2">
+      <span className={linked ? "text-foreground/85" : "text-muted-foreground"}>{icon}</span>
+      <span className="text-xs font-heading font-semibold w-16 flex-shrink-0">{label}</span>
+      <span className="text-xs text-muted-foreground flex-1 truncate">{value}</span>
+      {linked ? (
+        <span className="text-[10px] inline-flex items-center gap-1 text-emerald-300">
+          <Check className="w-3 h-3" />
+        </span>
+      ) : null}
+      {action}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Brand icons — small inline SVGs so we don't pull in another lib.
+// ----------------------------------------------------------------------
+
+function GoogleIcon({ className = "" }: { className?: string }) {
+  // Standard four-color "G" mark. Adapted from Google's brand guide;
+  // each path is one color of the wordmark glyph.
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.56c2.08-1.92 3.28-4.74 3.28-8.1z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.56-2.77c-.99.66-2.25 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.11A6.6 6.6 0 0 1 5.48 12c0-.73.13-1.44.36-2.11V7.05H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.95l3.66-2.84z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.07.56 4.21 1.65l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.05l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"
+      />
+    </svg>
+  );
+}
+
+function MetaMaskIcon({ className = "" }: { className?: string }) {
+  // Simplified fox-head silhouette in MetaMask orange. Not exact-brand
+  // but recognizable; we don't ship pixel-art brand assets for now.
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        fill="#F6851B"
+        d="M3 6l4-2 5 4 5-4 4 2-1 5 1 3-2 4-3-1-1 2H8l-1-2-3 1-2-4 1-3z"
+      />
+      <path fill="#fff" d="M9.5 13a1 1 0 1 1 2 0 1 1 0 0 1-2 0zm3 0a1 1 0 1 1 2 0 1 1 0 0 1-2 0z" />
+    </svg>
+  );
+}
+
+function TelegramIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        fill="#229ED9"
+        d="M22 4 2 11l6 2 2 7 4-5 5 4 3-15z"
+      />
+    </svg>
   );
 }
 
