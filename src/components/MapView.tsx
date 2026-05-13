@@ -397,9 +397,164 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     })();
     return () => { cancelled = true; };
   }, []);
+  // Render / update Snap-Map dots whenever the shares list changes or
+  // the map finishes loading. Markers are diffed per user_id so we
+  // never tear them all down — a friend moving a block just shifts
+  // their dot, doesn't repaint the whole crowd.
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const m = map.current;
+    const live = new Set(communityShares.map((s) => s.user_id));
+    // Drop markers for users no longer sharing.
+    communityShareMarkersRef.current.forEach((mk, uid) => {
+      if (!live.has(uid)) {
+        mk.remove();
+        communityShareMarkersRef.current.delete(uid);
+      }
+    });
+    // Upsert markers for everyone currently sharing.
+    for (const s of communityShares) {
+      const display = (s.name ?? "Someone").trim();
+      const initial = display.charAt(0).toUpperCase();
+      const existing = communityShareMarkersRef.current.get(s.user_id);
+      if (existing) {
+        existing.setLngLat([s.lng, s.lat]);
+        continue;
+      }
+      // Build the marker root. Wrap in a child span so Mapbox doesn't
+      // overwrite our inline styles on the marker root.
+      const root = document.createElement("div");
+      root.style.cssText = "pointer-events: auto; cursor: pointer;";
+      const dot = document.createElement("div");
+      dot.style.cssText = `
+        position: relative;
+        width: 30px; height: 30px;
+        border-radius: 9999px;
+        border: 2px solid #73ffb8;
+        background: hsl(216 40% 12%);
+        box-shadow: 0 0 14px hsl(150 80% 60% / 0.55);
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
+        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-weight: 700; font-size: 12px; color: #73ffb8;
+      `;
+      if (s.avatar_url) {
+        const img = document.createElement("img");
+        img.src = s.avatar_url;
+        img.alt = "";
+        img.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
+        img.onerror = () => { img.style.display = "none"; dot.appendChild(document.createTextNode(initial)); };
+        dot.appendChild(img);
+      } else {
+        dot.appendChild(document.createTextNode(initial));
+      }
+      // Tiny pulsing ring beneath the dot so eyes catch it.
+      const pulse = document.createElement("div");
+      pulse.style.cssText = `
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: 30px; height: 30px; border-radius: 9999px;
+        background: hsl(150 80% 60% / 0.35);
+        animation: communityPing 1.8s ease-out infinite;
+        z-index: -1;
+      `;
+      dot.appendChild(pulse);
+      root.appendChild(dot);
+
+      const tooltip = document.createElement("div");
+      tooltip.style.cssText = `
+        position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, -6px);
+        white-space: nowrap;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: hsl(216 40% 14% / 0.92);
+        border: 1px solid hsl(150 80% 60% / 0.4);
+        color: #eaf3ff;
+        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-size: 10px; font-weight: 600;
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.18s ease;
+      `;
+      const minsAgo = Math.max(0, Math.round((Date.now() - new Date(s.shared_at).getTime()) / 60000));
+      tooltip.textContent = `${display} · ${minsAgo}m ago`;
+      root.appendChild(tooltip);
+      root.addEventListener("mouseenter", () => { tooltip.style.opacity = "1"; });
+      root.addEventListener("mouseleave", () => { tooltip.style.opacity = "0"; });
+
+      const marker = new mapboxgl.Marker({ element: root, anchor: "center" })
+        .setLngLat([s.lng, s.lat])
+        .addTo(m);
+      communityShareMarkersRef.current.set(s.user_id, marker);
+    }
+  }, [communityShares, mapLoaded]);
+
+  // Community shared locations — opt-in Snap-Map-style dots. We poll
+  // every 60s AND listen for realtime updates so a freshly-shared pin
+  // lands immediately.
+  type CommunityShare = {
+    user_id: string;
+    lat: number;
+    lng: number;
+    shared_at: string;
+    expires_at: string;
+    name: string | null;
+    avatar_url: string | null;
+  };
+  const [communityShares, setCommunityShares] = useState<CommunityShare[]>([]);
+  const loadCommunityShares = async () => {
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("user_locations")
+      .select("user_id, lat, lng, shared_at, expires_at")
+      .gt("expires_at", nowIso);
+    if (error || !data) return;
+    if (data.length === 0) { setCommunityShares([]); return; }
+    // Hydrate names + avatars in one extra round-trip.
+    const userIds = data.map((r) => r.user_id as string);
+    const { data: profiles } = await supabase
+      .from("users")
+      .select("id, name, username, avatar_url, profile_picture_url, telegram_photo_url")
+      .in("id", userIds);
+    const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
+    setCommunityShares(
+      data.map((row) => {
+        const p = byId.get(row.user_id as string);
+        return {
+          user_id: row.user_id as string,
+          lat: row.lat as number,
+          lng: row.lng as number,
+          shared_at: row.shared_at as string,
+          expires_at: row.expires_at as string,
+          name: (p?.name ?? p?.username ?? null) as string | null,
+          avatar_url: (p?.avatar_url ?? p?.profile_picture_url ?? p?.telegram_photo_url ?? null) as string | null,
+        };
+      }),
+    );
+  };
+  useEffect(() => {
+    loadCommunityShares();
+    const poll = window.setInterval(loadCommunityShares, 60_000);
+    const channel = supabase
+      .channel("user_locations:village")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_locations" },
+        () => loadCommunityShares(),
+      )
+      .subscribe();
+    return () => {
+      window.clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  // Snap-Map-style community-shared locations. Map of user_id → Marker
+  // so we can update / remove without rebuilding the whole layer when
+  // someone moves a few feet.
+  const communityShareMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const [mapLoaded, setMapLoaded] = useState(false);
 
   // Detail modal for spawned mega-structures (Death Star, Edge Island,

@@ -10,6 +10,7 @@ import EventsPanel from "@/components/panels/EventsPanel";
 import CommunityPanel from "@/components/panels/CommunityPanel";
 import DesktopSidebar from "@/components/DesktopSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import LocationSharePill from "@/components/LocationSharePill";
 
 const Index = () => {
   const [selectedLocation, setSelectedLocation] = useState<typeof VILLAGE_LOCATIONS[0] | null>(null);
@@ -46,6 +47,9 @@ const Index = () => {
             selectedLocation={selectedLocation}
           />
           <BrandHeader variant="floating" />
+          {/* Snap-Map-style location share — opt-in pill for signed-in
+              members. Sits above the chat-toggle / bottom controls. */}
+          <LocationSharePill />
           <LocationDetails
             location={selectedLocation}
             onClose={() => setSelectedLocation(null)}
@@ -107,6 +111,8 @@ const Index = () => {
           selectedLocation={selectedLocation}
         />
         <BrandHeader variant="floating" />
+        {/* Same Snap-Map pill on the mobile path. */}
+        <LocationSharePill />
         <LocationDetails
           location={selectedLocation}
           onClose={() => setSelectedLocation(null)}
