@@ -7,7 +7,7 @@
  * Self-contained: no scene state from /space leaks in, no shared
  * resources to worry about. Drops anywhere a canvas can fit.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -23,6 +23,11 @@ interface Props {
 
 export default function VibeArc({ size = 260, rotateSeconds = 14, className = "" }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Hover speeds the rotation up by ~4× — drives the speed multiplier
+  // through a ref so the render loop reads fresh state without
+  // re-running the effect (which would re-init the whole scene).
+  const speedMultiplierRef = useRef(1);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -107,13 +112,19 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
     );
 
     const clock = new THREE.Clock();
-    const rotateRate = (Math.PI * 2) / rotateSeconds; // rad/sec
+    const baseRate = (Math.PI * 2) / rotateSeconds; // rad/sec at 1×
+    // Track an animated speed multiplier so hover-in ramps up smoothly
+    // instead of jumping to 4× on the same frame.
+    let currentMul = 1;
     let raf = 0;
     const tick = () => {
       const dt = clock.getDelta();
       const t = clock.elapsedTime;
+      // Ease toward the target multiplier (1 idle / 4 hovered).
+      const target = speedMultiplierRef.current;
+      currentMul += (target - currentMul) * Math.min(1, dt * 6);
       if (arc) {
-        arc.rotation.y += dt * rotateRate;
+        arc.rotation.y += dt * baseRate * currentMul;
         arc.rotation.x = Math.sin(t * 0.5) * 0.08;
         arc.position.y = Math.sin(t * 0.7) * 0.12;
       }
@@ -142,7 +153,24 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
       width={size}
       height={size}
       className={className}
-      style={{ width: size, height: size, display: "block" }}
+      style={{
+        width: size,
+        height: size,
+        display: "block",
+        cursor: "pointer",
+        // Subtle scale on hover so the cursor change feels supported
+        // by the visual; the rotation speed-up is the real reward.
+        transform: hovered ? "scale(1.04)" : "scale(1)",
+        transition: "transform 240ms cubic-bezier(.2,.7,.2,1)",
+      }}
+      onMouseEnter={() => {
+        speedMultiplierRef.current = 4;
+        setHovered(true);
+      }}
+      onMouseLeave={() => {
+        speedMultiplierRef.current = 1;
+        setHovered(false);
+      }}
       aria-hidden="true"
     />
   );
