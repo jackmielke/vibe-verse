@@ -34,7 +34,10 @@ export default function VibeHub() {
       {/* Single column, top-to-bottom reading order. Tighter max-width
           (~720px) so each block has a coherent visual rhythm and
           nothing feels lonely in a half-empty column. */}
-      <div className="relative z-10 max-w-[720px] mx-auto px-4 md:px-6 pt-16 md:pt-12 pb-10 flex flex-col gap-8">
+      {/* Extra top padding so the arc has real breathing room below
+          the global nav strip, especially on mobile where the nav
+          eats ~3.5rem at the top. */}
+      <div className="relative z-10 max-w-[720px] mx-auto px-4 md:px-6 pt-28 md:pt-24 pb-10 flex flex-col gap-8">
         {/* ----- Hero ----- */}
         <section className="flex flex-col items-center text-center gap-5">
           {/* Iridescent arc — smaller (~35% smaller than before) and
