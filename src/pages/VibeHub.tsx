@@ -2,24 +2,21 @@
  * VibeHub — `/vibe`. The community-currency hub.
  *
  * Branding: Vibe Coin is "our community currency and asset" — the
- * page leads with that promise and uses the same robot avatar from
- * /space (rendered live via VibeyOrbit) so it feels continuous with
- * the rest of the world.
+ * page leads with that promise. The hero ornament is the iridescent
+ * "wink" emblem (lightning eyes + smile) rendered as inline SVG with
+ * a holographic stroke and a slow 3D-feeling rotation. Three copies
+ * float at varying sizes / orbits for depth.
  *
  * Layout:
- *   - Hero: brand + tagline + live Vibey orbit ornament
+ *   - Hero: brand + tagline + drifting wink emblems
  *   - Below: account card + market ticker on the left, holder
  *     leaderboard on the right
- *
- * Components below are all reusable — drop them into any other
- * surface if you want a smaller hub elsewhere.
  */
-import { Link } from "react-router-dom";
-import { ArrowLeft, Coins, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
-import VibeyOrbit from "@/components/VibeyOrbit";
+import VibeWink from "@/components/VibeWink";
 
 export default function VibeHub() {
   return (
@@ -34,26 +31,7 @@ export default function VibeHub() {
         }}
       />
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-8 pt-16 md:pt-10 pb-10 flex flex-col gap-8">
-        {/* Top sub-strip — clears the GlobalNav on mobile */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            to="/"
-            className="glass-panel rounded-full px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 text-primary" />
-            <span className="text-[11px] font-heading font-semibold tracking-widest uppercase">
-              Back to village
-            </span>
-          </Link>
-          <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
-            <Coins className="w-4 h-4 text-primary" />
-            <span className="text-[11px] font-heading font-semibold tracking-widest uppercase text-primary">
-              VIBE Coin
-            </span>
-          </div>
-        </div>
-
+      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-8 pt-16 md:pt-12 pb-10 flex flex-col gap-8">
         {/* ----- Hero ----- */}
         <section className="grid md:grid-cols-[1.4fr_1fr] gap-6 items-center">
           <div>
@@ -74,23 +52,25 @@ export default function VibeHub() {
             </p>
             <p className="mt-2 text-sm text-muted-foreground max-w-xl leading-relaxed">
               No transactions ever happen from this app. We just read the
-              public blockchain so Vibey can see who's holding and how the
-              vibe is doing.
+              public blockchain so the community can see who's holding and
+              how the vibe is doing.
             </p>
           </div>
 
-          {/* Live Vibey ornament — slowly orbits + plays Idle. Same
-              robot as /space so the brand is continuous. */}
-          <div className="flex items-center justify-center md:justify-end">
-            <div
-              className="relative rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle, hsl(150 80% 60% / 0.12) 0%, transparent 65%)",
-              }}
-            >
-              <VibeyOrbit size={260} tint="#73ffb8" />
+          {/* Floating wink emblems — three copies at different sizes,
+              phases, and orbits so they read as drifting in space.
+              Pure SVG + CSS, very light. */}
+          <div
+            className="relative flex items-center justify-center md:justify-end"
+            style={{ minHeight: 280 }}
+          >
+            <div className="absolute" style={{ top: "8%", left: "12%", opacity: 0.45 }}>
+              <VibeWink size={90} speed={0.65} phase={1.4} />
             </div>
+            <div className="absolute" style={{ top: "62%", left: "70%", opacity: 0.55 }}>
+              <VibeWink size={70} speed={1.3} phase={3.1} />
+            </div>
+            <VibeWink size={240} speed={0.9} />
           </div>
         </section>
 

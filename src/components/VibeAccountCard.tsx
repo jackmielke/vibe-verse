@@ -73,7 +73,9 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserRow | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<"signin" | "signup" | "magic">("signin");
+  // signin | signup — toggled by a single small inline link, not a
+  // three-tab strip. Default to signin since most repeat visitors are.
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [emailDraft, setEmailDraft] = useState("");
   const [passwordDraft, setPasswordDraft] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -194,24 +196,35 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
   }, [profile?.wallet_address]);
 
   // ---- Actions ---------------------------------------------------------
+  // Send a magic link to whatever's in the email field. Used as a
+  // tertiary "no password" option from a small inline link, NOT a
+  // tab — keeps the primary surface a clean two-field form.
+  const sendMagicLink = async () => {
+    setAuthError(null);
+    setAuthStatus("working");
+    const email = emailDraft.trim();
+    if (!email) {
+      setAuthError("Enter your email first.");
+      setAuthStatus("error");
+      return;
+    }
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href },
+    });
+    if (error) {
+      setAuthError(error.message);
+      setAuthStatus("error");
+      return;
+    }
+    setAuthStatus("magic-sent");
+  };
+
   const handleAuth = async () => {
     setAuthError(null);
     setAuthStatus("working");
     const email = emailDraft.trim();
     const password = passwordDraft;
-    if (authMode === "magic") {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.href },
-      });
-      if (error) {
-        setAuthError(error.message);
-        setAuthStatus("error");
-        return;
-      }
-      setAuthStatus("magic-sent");
-      return;
-    }
     if (authMode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
@@ -410,49 +423,12 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
         <p className="text-xs text-muted-foreground italic">Checking your session…</p>
       )}
 
-      {/* Step 1: Not signed in → email + password (default) or magic link */}
+      {/* Step 1: Not signed in → single clean email + password form.
+          Mode (signin / signup) is toggled by an inline link below
+          the button, not a three-tab strip. Magic link is a tertiary
+          option, also inline. */}
       {!loading && !authUserId && (
         <>
-          {/* Sign-in / Sign-up tab toggle */}
-          <div className="flex gap-1 p-0.5 rounded-lg bg-background/40 border border-border/40 text-[10px]">
-            <button
-              onClick={() => { setAuthMode("signin"); setAuthError(null); setAuthStatus("idle"); }}
-              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
-                authMode === "signin"
-                  ? "bg-primary/25 text-foreground font-semibold"
-                  : "text-muted-foreground hover:bg-muted/30"
-              }`}
-            >
-              Sign in
-            </button>
-            <button
-              onClick={() => { setAuthMode("signup"); setAuthError(null); setAuthStatus("idle"); }}
-              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
-                authMode === "signup"
-                  ? "bg-primary/25 text-foreground font-semibold"
-                  : "text-muted-foreground hover:bg-muted/30"
-              }`}
-            >
-              Create account
-            </button>
-            <button
-              onClick={() => { setAuthMode("magic"); setAuthError(null); setAuthStatus("idle"); }}
-              className={`flex-1 px-2 py-1 rounded-md transition-colors ${
-                authMode === "magic"
-                  ? "bg-primary/25 text-foreground font-semibold"
-                  : "text-muted-foreground hover:bg-muted/30"
-              }`}
-            >
-              Magic link
-            </button>
-          </div>
-
-          <p className="text-xs text-muted-foreground leading-snug">
-            {authMode === "signin" && "Welcome back. Sign in with your email and password."}
-            {authMode === "signup" && "Pick an email and a password to claim your Edge profile."}
-            {authMode === "magic" && "Get a one-click sign-in link delivered to your inbox — no password needed."}
-          </p>
-
           {/* Email */}
           <div className="flex items-center gap-1.5 rounded-lg bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
             <Mail className="w-3.5 h-3.5 text-muted-foreground" />
@@ -465,66 +441,85 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
               disabled={authStatus === "working" || authStatus === "magic-sent"}
               className="bg-transparent outline-none flex-1 text-sm disabled:opacity-60"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && emailDraft && (authMode === "magic" || passwordDraft)) {
-                  handleAuth();
-                }
+                if (e.key === "Enter" && emailDraft && passwordDraft) handleAuth();
               }}
             />
           </div>
 
-          {/* Password (hidden on magic-link mode) */}
-          {authMode !== "magic" && (
-            <div className="flex items-center gap-1.5 rounded-lg bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
-              <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                type={showPassword ? "text" : "password"}
-                autoComplete={authMode === "signin" ? "current-password" : "new-password"}
-                value={passwordDraft}
-                onChange={(e) => setPasswordDraft(e.target.value)}
-                placeholder={authMode === "signin" ? "your password" : "pick a password (8+ chars)"}
-                disabled={authStatus === "working"}
-                className="bg-transparent outline-none flex-1 text-sm disabled:opacity-60"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && emailDraft && passwordDraft) handleAuth();
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="p-1 rounded-md hover:bg-muted/40 transition-colors"
-                title={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? (
-                  <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
-                ) : (
-                  <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                )}
-              </button>
-            </div>
-          )}
+          {/* Password */}
+          <div className="flex items-center gap-1.5 rounded-lg bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
+            <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type={showPassword ? "text" : "password"}
+              autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+              value={passwordDraft}
+              onChange={(e) => setPasswordDraft(e.target.value)}
+              placeholder={authMode === "signin" ? "your password" : "pick a password (8+ chars)"}
+              disabled={authStatus === "working"}
+              className="bg-transparent outline-none flex-1 text-sm disabled:opacity-60"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && emailDraft && passwordDraft) handleAuth();
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="p-1 rounded-md hover:bg-muted/40 transition-colors"
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </button>
+          </div>
 
           <button
             onClick={handleAuth}
             disabled={
               !emailDraft ||
-              (authMode !== "magic" && !passwordDraft) ||
-              authStatus === "working" ||
-              authStatus === "magic-sent"
+              !passwordDraft ||
+              authStatus === "working"
             }
             className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
           >
             {authStatus === "working" ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Working…</>
-            ) : authStatus === "magic-sent" ? (
-              "Magic link sent ✓"
             ) : authMode === "signin" ? (
               "Sign in"
-            ) : authMode === "signup" ? (
-              "Create account"
             ) : (
               "Send link"
             )}
           </button>
+
+          {/* Mode toggle + magic-link option, both inline + small so
+              the form feels like one decision, not three. */}
+          <div className="flex items-center justify-between text-[11px] gap-3 flex-wrap">
+            {authMode === "signin" ? (
+              <button
+                onClick={() => { setAuthMode("signup"); setAuthError(null); setAuthStatus("idle"); }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                New here? <span className="text-primary underline-offset-2 hover:underline">Create an account</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => { setAuthMode("signin"); setAuthError(null); setAuthStatus("idle"); }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Have an account? <span className="text-primary underline-offset-2 hover:underline">Sign in</span>
+              </button>
+            )}
+            <button
+              onClick={sendMagicLink}
+              disabled={!emailDraft || authStatus === "working" || authStatus === "magic-sent"}
+              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 underline-offset-2 hover:underline"
+              title="We'll email you a one-click sign-in link"
+            >
+              email me a magic link
+            </button>
+          </div>
 
           {authStatus === "magic-sent" && (
             <p className="text-[11px] text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded px-2 py-1.5">

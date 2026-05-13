@@ -225,3 +225,16 @@
   70%  { transform: translate(40px, 56px) rotate(1deg); }
   100% { transform: translate(0px, 0px) rotate(-1deg); }
 }
+
+/* Vibe Wink — outer wrapper bobs gently, inner wrapper rotates around
+   the Y axis so the iridescent stroke catches "light" as it spins.
+   Used in the /vibe hero. */
+@keyframes vibe-wink-spin {
+  0%   { transform: rotateY(0deg)   rotateX(-6deg); }
+  50%  { transform: rotateY(180deg) rotateX(6deg); }
+  100% { transform: rotateY(360deg) rotateX(-6deg); }
+}
+@keyframes vibe-wink-bob {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-10px); }
+}
