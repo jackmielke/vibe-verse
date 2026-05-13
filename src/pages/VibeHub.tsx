@@ -16,7 +16,7 @@ import { Sparkles } from "lucide-react";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
-import VibeWink from "@/components/VibeWink";
+import VibeArc from "@/components/VibeArc";
 
 export default function VibeHub() {
   return (
@@ -57,20 +57,23 @@ export default function VibeHub() {
             </p>
           </div>
 
-          {/* Floating wink emblems — three copies at different sizes,
-              phases, and orbits so they read as drifting in space.
-              Pure SVG + CSS, very light. */}
+          {/* Iridescent arc — same Meshy GLB from /space, rendered
+              with its own RoomEnvironment so the PBR shimmer reads
+              correctly. Slow Y rotation + gentle bob. */}
           <div
             className="relative flex items-center justify-center md:justify-end"
             style={{ minHeight: 280 }}
           >
-            <div className="absolute" style={{ top: "8%", left: "12%", opacity: 0.45 }}>
-              <VibeWink size={90} speed={0.65} phase={1.4} />
-            </div>
-            <div className="absolute" style={{ top: "62%", left: "70%", opacity: 0.55 }}>
-              <VibeWink size={70} speed={1.3} phase={3.1} />
-            </div>
-            <VibeWink size={240} speed={0.9} />
+            {/* Soft mint halo so the arc has a glow well even in
+                stretches of its rotation where it's edge-on. */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  "radial-gradient(circle, hsl(150 80% 60% / 0.10) 0%, transparent 60%)",
+              }}
+            />
+            <VibeArc size={280} rotateSeconds={16} />
           </div>
         </section>
 
