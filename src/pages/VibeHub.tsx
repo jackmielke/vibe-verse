@@ -1,26 +1,31 @@
 /**
- * VibeHub — `/vibe` route, the canonical destination for everything
- * $VIBE: log in, see your balance, send to community members, and
- * see who else is in.
+ * VibeHub — `/vibe`. The community-currency hub.
  *
- * Layout: three columns on desktop, stacked on mobile.
- *   - Left: wallet login card + market summary
- *   - Right: full holder leaderboard
+ * Branding: Vibe Coin is "our community currency and asset" — the
+ * page leads with that promise and uses the same robot avatar from
+ * /space (rendered live via VibeyOrbit) so it feels continuous with
+ * the rest of the world.
  *
- * Mounted as its own page so the experience is dedicated, and also
- * available as embeddable components in the Lobby / Garden.
+ * Layout:
+ *   - Hero: brand + tagline + live Vibey orbit ornament
+ *   - Below: account card + market ticker on the left, holder
+ *     leaderboard on the right
+ *
+ * Components below are all reusable — drop them into any other
+ * surface if you want a smaller hub elsewhere.
  */
 import { Link } from "react-router-dom";
-import { ArrowLeft, Coins } from "lucide-react";
+import { ArrowLeft, Coins, Sparkles } from "lucide-react";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
+import VibeyOrbit from "@/components/VibeyOrbit";
 
 export default function VibeHub() {
   return (
     <div className="relative w-full min-h-[100dvh] bg-black overflow-hidden text-foreground">
-      {/* Subtle backdrop — same pattern as the rest of the worlds for
-          visual continuity. */}
+      {/* Deep starfield gradient — same family as /space + /lobby so
+          this page reads as part of the same world. */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -29,8 +34,8 @@ export default function VibeHub() {
         }}
       />
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-8 pt-16 md:pt-10 pb-10 flex flex-col gap-6">
-        {/* Top sub-strip — clears the GlobalNav on mobile, sits naturally on desktop */}
+      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-8 pt-16 md:pt-10 pb-10 flex flex-col gap-8">
+        {/* Top sub-strip — clears the GlobalNav on mobile */}
         <div className="flex items-center gap-2 flex-wrap">
           <Link
             to="/"
@@ -44,33 +49,63 @@ export default function VibeHub() {
           <div className="glass-panel rounded-full px-3 py-2 flex items-center gap-2">
             <Coins className="w-4 h-4 text-primary" />
             <span className="text-[11px] font-heading font-semibold tracking-widest uppercase text-primary">
-              VIBE Hub
+              VIBE Coin
             </span>
           </div>
         </div>
 
-        <div>
-          <h1 className="font-heading text-3xl md:text-4xl font-bold text-foreground leading-tight">
-            $VIBE in the community
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Connect your Base wallet to attach it to your Edge Esmeralda
-            profile. Everyone else can see your live balance — and you can
-            send VIBE to anyone in the community in two clicks.
-          </p>
-        </div>
+        {/* ----- Hero ----- */}
+        <section className="grid md:grid-cols-[1.4fr_1fr] gap-6 items-center">
+          <div>
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/30 mb-3">
+              <Sparkles className="w-3 h-3 text-primary" />
+              <span className="text-[10px] uppercase tracking-[0.25em] font-heading font-semibold text-primary">
+                $VIBE on Base
+              </span>
+            </div>
+            <h1 className="font-heading text-4xl md:text-5xl font-bold leading-tight tracking-tight">
+              Our community currency.
+            </h1>
+            <p className="mt-3 text-base text-foreground/85 max-w-xl leading-relaxed">
+              $VIBE is the asset behind the Edge Esmeralda + Vibe Code Residency
+              community — earned by people who ship things, gifted between
+              builders, and traded for buildathon prizes. Link your address
+              below to show up in the holder list and see your bag live.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground max-w-xl leading-relaxed">
+              No transactions ever happen from this app. We just read the
+              public blockchain so Vibey can see who's holding and how the
+              vibe is doing.
+            </p>
+          </div>
 
-        <div className="grid md:grid-cols-[1fr_1fr] gap-5 items-start">
-          {/* Left column: login + market */}
+          {/* Live Vibey ornament — slowly orbits + plays Idle. Same
+              robot as /space so the brand is continuous. */}
+          <div className="flex items-center justify-center md:justify-end">
+            <div
+              className="relative rounded-full"
+              style={{
+                background:
+                  "radial-gradient(circle, hsl(150 80% 60% / 0.12) 0%, transparent 65%)",
+              }}
+            >
+              <VibeyOrbit size={260} tint="#73ffb8" />
+            </div>
+          </div>
+        </section>
+
+        {/* ----- Functional grid ----- */}
+        <section className="grid md:grid-cols-[1fr_1fr] gap-5 items-start">
+          {/* Left: account + live market */}
           <div className="flex flex-col gap-5">
             <VibeAccountCard variant="card" />
             <VibeCoinPanel />
           </div>
-          {/* Right column: leaderboard */}
+          {/* Right: holder leaderboard */}
           <div className="flex flex-col gap-5">
             <VibeWalletLeaderboard defaultVisible={8} maxRows={40} />
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

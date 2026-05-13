@@ -675,8 +675,10 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
               />
             )}
 
-            {/* Wallet — MetaMask path (connect + sign + save) and a
-                paste-in fallback for users who'd rather not connect. */}
+            {/* Wallet — paste-in is the primary flow. MetaMask
+                Connect is tucked into a disclosure for users who
+                want the cryptographic proof, but defaults are the
+                safer / simpler text input. */}
             <div className="rounded-md border border-border/60 bg-background/30 p-2.5 flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-foreground/85"><Wallet className="w-3.5 h-3.5" /></span>
@@ -689,7 +691,9 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
                   <span className="text-[10px] text-muted-foreground">not linked</span>
                 )}
               </div>
-              {profile.wallet_address ? (
+
+              {/* Linked state — show address + balance + edit link. */}
+              {profile.wallet_address && !editingWallet && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <a
                     href={`https://basescan.org/address/${profile.wallet_address}`}
@@ -716,80 +720,91 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
                     <Pencil className="w-3 h-3" /> edit
                   </button>
                 </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={connectAndLinkWallet}
-                    disabled={walletConnectStep !== "idle" && walletConnectStep !== "error"}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 px-3 py-1.5 text-xs font-heading font-semibold"
-                  >
-                    {walletConnectStep === "connecting" && <><Loader2 className="w-3 h-3 animate-spin" /> Opening wallet…</>}
-                    {walletConnectStep === "signing" && <><Loader2 className="w-3 h-3 animate-spin" /> Sign to confirm…</>}
-                    {walletConnectStep === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</>}
-                    {walletConnectStep === "done" && <><Check className="w-3 h-3" /> linked</>}
-                    {(walletConnectStep === "idle" || walletConnectStep === "error") && (
-                      <>
-                        <MetaMaskIcon className="w-3.5 h-3.5" /> Connect MetaMask
-                      </>
-                    )}
-                  </button>
-                  {walletConnectError && (
-                    <p className="text-[10px] text-rose-300">{walletConnectError}</p>
-                  )}
-                  <details className="text-[10px] text-muted-foreground">
-                    <summary className="cursor-pointer hover:text-foreground">prefer to paste an address?</summary>
-                    <div className="mt-1.5">
-                      {!editingWallet ? (
-                        <button
-                          onClick={() => {
-                            setWalletDraft("");
-                            setEditingWallet(true);
-                            setWalletError(null);
-                          }}
-                          className="text-[10px] text-primary hover:underline"
-                        >
-                          paste 0x… instead
-                        </button>
-                      ) : null}
-                    </div>
-                  </details>
-                </div>
               )}
-              {editingWallet && (
-                <div className="flex flex-col gap-1.5 mt-1">
+
+              {/* Unlinked OR editing — paste-in field is primary. */}
+              {(!profile.wallet_address || editingWallet) && (
+                <div className="flex flex-col gap-1.5">
                   <input
                     type="text"
                     value={walletDraft}
                     onChange={(e) => setWalletDraft(e.target.value)}
-                    placeholder="0x…"
+                    placeholder="paste your public 0x… address"
                     disabled={walletSaving}
+                    autoFocus={editingWallet}
                     className="w-full rounded-md bg-background/60 border border-border/60 focus:border-primary/60 outline-none px-2 py-1.5 text-sm font-mono disabled:opacity-60"
                     spellCheck={false}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && walletDraft.trim()) saveWallet();
+                    }}
                   />
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Just paste your <strong>public</strong> Base address — like a name
+                    tag. We read your $VIBE balance from the blockchain. No
+                    transactions, no popups, no funds moved.
+                  </p>
                   {walletError && (
                     <p className="text-[10px] text-rose-300">{walletError}</p>
                   )}
                   <div className="flex gap-2">
                     <button
                       onClick={saveWallet}
-                      disabled={walletSaving}
+                      disabled={walletSaving || !walletDraft.trim()}
                       className="flex-1 bg-primary text-primary-foreground rounded-md px-2 py-1.5 text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
                     >
                       {walletSaving ? (
                         <><Loader2 className="w-3 h-3 animate-spin" /> Saving</>
                       ) : (
-                        <><Save className="w-3 h-3" /> Save</>
+                        <><Save className="w-3 h-3" /> Save address</>
                       )}
                     </button>
-                    <button
-                      onClick={() => { setEditingWallet(false); setWalletError(null); }}
-                      disabled={walletSaving}
-                      className="rounded-md border border-border/60 bg-background/40 hover:bg-muted/40 px-2 py-1.5 text-xs font-heading font-semibold text-muted-foreground inline-flex items-center gap-1.5"
-                    >
-                      <X className="w-3 h-3" />
-                      Cancel
-                    </button>
+                    {editingWallet && (
+                      <button
+                        onClick={() => { setEditingWallet(false); setWalletError(null); }}
+                        disabled={walletSaving}
+                        className="rounded-md border border-border/60 bg-background/40 hover:bg-muted/40 px-2 py-1.5 text-xs font-heading font-semibold text-muted-foreground inline-flex items-center gap-1.5"
+                      >
+                        <X className="w-3 h-3" />
+                        Cancel
+                      </button>
+                    )}
                   </div>
+
+                  {/* Power-user: connect via MetaMask for a real signed
+                      proof. Hidden until expanded so the default UX is
+                      safer / simpler. */}
+                  <details className="text-[10px] text-muted-foreground mt-1">
+                    <summary className="cursor-pointer hover:text-foreground inline-flex items-center gap-1">
+                      <MetaMaskIcon className="w-3 h-3" />
+                      have MetaMask? connect to prove ownership instead
+                    </summary>
+                    <div className="mt-2 flex flex-col gap-1.5 pl-3 border-l-2 border-border/40">
+                      <p className="leading-snug">
+                        Opens MetaMask, asks you to sign a message proving
+                        you own this address. Still no transactions or
+                        funds — just a cryptographic proof that's saved
+                        with your profile.
+                      </p>
+                      <button
+                        onClick={connectAndLinkWallet}
+                        disabled={walletConnectStep !== "idle" && walletConnectStep !== "error" && walletConnectStep !== "done"}
+                        className="self-start inline-flex items-center justify-center gap-1.5 rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 px-2.5 py-1 text-[11px] font-heading font-semibold"
+                      >
+                        {walletConnectStep === "connecting" && <><Loader2 className="w-3 h-3 animate-spin" /> Opening wallet…</>}
+                        {walletConnectStep === "signing" && <><Loader2 className="w-3 h-3 animate-spin" /> Sign to confirm…</>}
+                        {walletConnectStep === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</>}
+                        {walletConnectStep === "done" && <><Check className="w-3 h-3" /> linked</>}
+                        {(walletConnectStep === "idle" || walletConnectStep === "error") && (
+                          <>
+                            <MetaMaskIcon className="w-3 h-3" /> Connect MetaMask
+                          </>
+                        )}
+                      </button>
+                      {walletConnectError && (
+                        <p className="text-rose-300">{walletConnectError}</p>
+                      )}
+                    </div>
+                  </details>
                 </div>
               )}
             </div>

@@ -320,7 +320,22 @@ export default function VibeCoinPanel() {
               />
             </div>
           </label>
-          <span className="text-muted-foreground self-end pb-2 text-lg">⇌</span>
+          <button
+            type="button"
+            onClick={() => {
+              // Swap the two values + flip which side is "leading".
+              // Lets the user click once to flip the calculator's
+              // input focus without retyping.
+              setUsdInput(vibeInput);
+              setVibeInput(usdInput);
+              lastEdited.current = lastEdited.current === "usd" ? "vibe" : "usd";
+            }}
+            title="Swap USD ↔ VIBE"
+            aria-label="Swap input direction"
+            className="text-muted-foreground hover:text-primary self-end pb-2 text-lg leading-none transition-colors"
+          >
+            ⇌
+          </button>
           <label className="flex flex-col gap-1">
             <span className="text-[9px] uppercase tracking-widest text-muted-foreground">$VIBE</span>
             <div className="flex items-center gap-1 rounded-md bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
