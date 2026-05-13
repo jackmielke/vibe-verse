@@ -48,8 +48,12 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
+    // Camera framed loose so the arc has visible padding all around
+    // even at the top/bottom of its bob. Previously z = 7 + bob = 0.12
+    // meant the arc filled (and clipped past) the canvas edges; pulling
+    // back to ~9.4 gives ~20% headroom on every side.
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50);
-    camera.position.set(0, 0.6, 7);
+    camera.position.set(0, 0.6, 9.4);
     camera.lookAt(0, 0, 0);
 
     // Two small accent lights — colored from opposite sides so the
