@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
+import { enableVR } from "@/lib/webxr";
 import type { Unit7AnimName, Unit7Expression } from "./map/Unit7Layer";
 
 interface Props {
@@ -90,6 +91,10 @@ export default function Unit7Stage({
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    // Quest / Pico / Index — adds an "Enter VR" pill over the canvas.
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     // ---- Soft glow disc beneath the bot ---------------------------------
     const glow = new THREE.Mesh(
@@ -193,7 +198,6 @@ export default function Unit7Stage({
 
     // ---- Animation loop -------------------------------------------------
     let lastTime = performance.now();
-    let raf = 0;
     const tick = () => {
       const now = performance.now();
       const delta = (now - lastTime) / 1000;
@@ -222,13 +226,14 @@ export default function Unit7Stage({
       }
 
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    // setAnimationLoop drives from headset vsync when in XR, rAF otherwise.
+    renderer.setAnimationLoop(tick);
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       ro.disconnect();
       // Clean up GPU resources.
       if (model) {

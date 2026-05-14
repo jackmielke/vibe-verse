@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
+import { enableVR } from "@/lib/webxr";
 
 // Two characters live outside the Quaternius pack folder.
 import alienUrl from "@/assets/glb/alien.glb";
@@ -164,6 +165,12 @@ export default function Lobby() {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    // Enable WebXR — Quest / Pico / Index browsers will show an
+    // "Enter VR" pill in the bottom-right of the canvas. The button
+    // mounts to the canvas's parent so it sits over the preview frame.
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
@@ -355,7 +362,9 @@ export default function Lobby() {
     });
     ro.observe(canvas);
 
-    let raf = 0;
+    // setAnimationLoop (instead of requestAnimationFrame) is required
+    // for WebXR — three drives the loop from the headset's vsync when
+    // a session is active and from rAF otherwise.
     const tick = () => {
       const now = performance.now();
       const delta = (now - lastTime) / 1000;
@@ -368,12 +377,12 @@ export default function Lobby() {
       ringMat.opacity = 0.6 + Math.sin(now * 0.002) * 0.25;
       if (mixer) mixer.update(delta);
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    renderer.setAnimationLoop(tick);
 
     return () => {
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       ro.disconnect();
       renderer.dispose();
     };

@@ -207,6 +207,7 @@ import flowerSmallUrl from "@/assets/glb/kits/crops/Flower_2.glb";
 import tomatoUrl from "@/assets/glb/kits/crops/Tomato_4.glb";
 import bushUrl from "@/assets/glb/nature/Bush2.glb";
 import treeUrl from "@/assets/glb/nature/Tree3.glb";
+import { enableVR } from "@/lib/webxr";
 
 interface Memory {
   id: string;
@@ -594,6 +595,13 @@ export default function MemoryGarden() {
     // scene reads as floating / unmoored.
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Quest / Pico / Index — "Enter VR" pill in the bottom-right of
+    // the canvas. Locomotion in here is keyboard/click driven; in VR
+    // the player just gets to look around the scene from a fixed pose
+    // for now (true teleport locomotion is a follow-up).
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     const scene = new THREE.Scene();
     // Theme-driven fog → distant edges fade. Bigger fog distance now
@@ -1468,7 +1476,7 @@ export default function MemoryGarden() {
 
     // Main loop.
     const clock = new THREE.Clock();
-    let raf = 0;
+    // (raf removed — using renderer.setAnimationLoop for WebXR support.)
     const tick = () => {
       const dt = Math.min(0.05, clock.getDelta());
       const t = clock.elapsedTime;
@@ -1590,12 +1598,13 @@ export default function MemoryGarden() {
       }
 
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    // setAnimationLoop drives from headset vsync when in XR, rAF otherwise.
+    renderer.setAnimationLoop(tick);
 
     return () => {
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouch as EventListener);
       canvas.removeEventListener("wheel", onWheel);
