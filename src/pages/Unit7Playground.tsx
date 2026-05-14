@@ -613,6 +613,11 @@ function ConfettiBurst({ seed }: { seed: number }) {
 
 export default function Unit7Playground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Router navigate held in a ref so the long-lived Three.js effect can
+  // call it from inside VR portal callbacks without resubscribing.
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   // External-facing controls into the Three.js scene. The scene reads
   // from `desiredAnimRef` and `expressionsRef` each frame.
