@@ -362,7 +362,9 @@ export default function Lobby() {
     });
     ro.observe(canvas);
 
-    let raf = 0;
+    // setAnimationLoop (instead of requestAnimationFrame) is required
+    // for WebXR — three drives the loop from the headset's vsync when
+    // a session is active and from rAF otherwise.
     const tick = () => {
       const now = performance.now();
       const delta = (now - lastTime) / 1000;
@@ -375,12 +377,12 @@ export default function Lobby() {
       ringMat.opacity = 0.6 + Math.sin(now * 0.002) * 0.25;
       if (mixer) mixer.update(delta);
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    renderer.setAnimationLoop(tick);
 
     return () => {
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       ro.disconnect();
       renderer.dispose();
     };
