@@ -1601,21 +1601,24 @@ export default function MemoryGarden() {
       vibeyMixer?.update(dt);
 
       // Camera: smooth third-person chase, clamped above terrain so it
-      // can't dip into the hill behind Vibey on downslopes.
-      const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * cameraDistance;
-      const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * cameraDistance;
-      // Sample the terrain UNDER where the camera is heading so the
-      // chase cam can never slip behind a ridge.
-      const groundUnderCam = sampleTerrainHeight(
-        terrain,
-        THREE.MathUtils.clamp(camTargetX, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
-        THREE.MathUtils.clamp(camTargetZ, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
-      );
-      const camTargetY = Math.max(vibeyState.pos.y + 4.6 + cameraDistance * 0.1, groundUnderCam + 2.5);
-      camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2);
-      camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2);
-      camera.position.z += (camTargetZ - camera.position.z) * Math.min(1, dt * 2);
-      camera.lookAt(vibeyState.pos.x, vibeyState.pos.y + 1.0, vibeyState.pos.z);
+      // can't dip into the hill behind Vibey on downslopes. Skipped in
+      // VR — the headset owns camera rotation and the dolly owns
+      // position there.
+      if (!renderer.xr.isPresenting) {
+        const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * cameraDistance;
+        const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * cameraDistance;
+        const groundUnderCam = sampleTerrainHeight(
+          terrain,
+          THREE.MathUtils.clamp(camTargetX, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
+          THREE.MathUtils.clamp(camTargetZ, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
+        );
+        const camTargetY = Math.max(vibeyState.pos.y + 4.6 + cameraDistance * 0.1, groundUnderCam + 2.5);
+        camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2);
+        camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2);
+        camera.position.z += (camTargetZ - camera.position.z) * Math.min(1, dt * 2);
+        camera.lookAt(vibeyState.pos.x, vibeyState.pos.y + 1.0, vibeyState.pos.z);
+      }
+
 
       // Fade target ring opacity smoothly when not walking.
       if (!vibeyState.walking) {
