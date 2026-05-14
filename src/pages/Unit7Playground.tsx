@@ -4338,6 +4338,8 @@ export default function Unit7Playground() {
       disposed = true;
       renderer.setAnimationLoop(null);
       disposeVR();
+      portalGarden.dispose();
+      portalMuseum.dispose();
       ro.disconnect();
       controls.dispose();
       // Walk the scene and dispose meshes/materials so we don't leak
