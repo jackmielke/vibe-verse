@@ -151,21 +151,31 @@ export function createVRLocomotion(opts: VRLocomotionOptions): VRLocomotion {
 
       for (const src of session.inputSources) {
         const gp = src.gamepad;
-        if (!gp || gp.axes.length < 4) continue;
-        // WebXR standard mapping: axes[0,1] = touchpad, axes[2,3] = thumbstick.
-        const sx = apply(gp.axes[2] ?? 0);
-        const sy = apply(gp.axes[3] ?? 0);
+        if (!gp) continue;
+        // xr-standard maps thumbstick to axes[2,3]; some runtimes only
+        // expose axes[0,1]. Pick whichever pair has stronger deflection.
+        const a0 = gp.axes[0] ?? 0;
+        const a1 = gp.axes[1] ?? 0;
+        const a2 = gp.axes[2] ?? 0;
+        const a3 = gp.axes[3] ?? 0;
+        const useHigh = Math.hypot(a2, a3) >= Math.hypot(a0, a1);
+        const rawX = useHigh ? a2 : a0;
+        const rawY = useHigh ? a3 : a1;
+        const sx = apply(rawX);
+        const sy = apply(rawY);
 
-        if (sx !== 0 || sy !== 0) {
-          // -sy because pushing stick forward is negative Y on most runtimes.
-          dolly.position.addScaledVector(fwd, -sy * speed * dt);
-          dolly.position.addScaledVector(right, sx * speed * dt);
+        // Right hand (or any controller in walk mode) → planar movement.
+        const isLeft = src.handedness === "left";
+        if (!isLeft || opts.mode === "walk") {
+          if (sx !== 0 || sy !== 0) {
+            dolly.position.addScaledVector(fwd, -sy * speed * dt);
+            dolly.position.addScaledVector(right, sx * speed * dt);
+          }
         }
 
-        // In fly mode, left controller's Y also drives vertical thrust.
-        if (opts.mode === "fly" && src.handedness === "left") {
-          const sv = apply(gp.axes[3] ?? 0);
-          if (sv !== 0) dolly.position.y += -sv * speed * dt;
+        // In fly mode, left controller drives vertical thrust on Y.
+        if (opts.mode === "fly" && isLeft) {
+          if (sy !== 0) dolly.position.y += -sy * speed * dt;
         }
       }
     },
