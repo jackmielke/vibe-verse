@@ -24,6 +24,8 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
+import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
+import { useNavigate } from "react-router-dom";
 
 // ------------------------------------------------------------------
 // Content. Swap freely — add/remove items, point image_url at any
@@ -407,6 +409,9 @@ function layoutFrames(): FramePlacement[] {
 
 export default function Museum() {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const [ready, setReady] = useState(false);
   const [walking, setWalking] = useState(false);
   const [zoomed, setZoomed] = useState<Artwork | null>(null);
