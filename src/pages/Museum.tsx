@@ -23,7 +23,7 @@ import * as THREE from "three";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
-import { enableVR, disposeVR } from "@/lib/webxr";
+import { enableVR } from "@/lib/webxr";
 
 // ------------------------------------------------------------------
 // Content. Swap freely — add/remove items, point image_url at any
