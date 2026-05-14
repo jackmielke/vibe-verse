@@ -165,6 +165,12 @@ export default function Lobby() {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    // Enable WebXR — Quest / Pico / Index browsers will show an
+    // "Enter VR" pill in the bottom-right of the canvas. The button
+    // mounts to the canvas's parent so it sits over the preview frame.
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
