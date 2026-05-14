@@ -4279,7 +4279,8 @@ export default function Unit7Playground() {
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       ro.disconnect();
       controls.dispose();
       // Walk the scene and dispose meshes/materials so we don't leak
