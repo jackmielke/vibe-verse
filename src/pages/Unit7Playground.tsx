@@ -2004,6 +2004,22 @@ export default function Unit7Playground() {
     // it lazily on session-start so non-VR rendering is unaffected.
     const vrDolly = new THREE.Group();
     scene.add(vrDolly);
+    const vrLoco = createVRLocomotion({ mode: "fly", speed: 8 });
+    renderer.xr.addEventListener("sessionstart", () => {
+      // Move camera into the dolly so thumbstick translation moves the
+      // whole rig (camera + headset pose) through the world.
+      vrDolly.position.copy(camera.position);
+      vrDolly.add(camera);
+      camera.position.set(0, 0, 0);
+      controls.enabled = false;
+    });
+    renderer.xr.addEventListener("sessionend", () => {
+      // Detach: put the camera back in the scene at the dolly's spot.
+      camera.position.copy(vrDolly.position);
+      scene.add(camera);
+      vrDolly.position.set(0, 0, 0);
+      controls.enabled = true;
+    });
 
     const controls = new OrbitControls(camera, canvas);
     // Aim a touch above Vibey's head so the orbiting memory orbs
