@@ -716,7 +716,7 @@ export default function Museum() {
     window.addEventListener("resize", onResize);
 
     // WebXR — VR button + animation loop.
-    enableVR(renderer, mount, { referenceSpace: "local-floor" });
+    const disposeVR = enableVR(renderer, mount, { referenceSpace: "local-floor" });
 
     const move = new THREE.Vector3();
     const SPEED = 3.2;
