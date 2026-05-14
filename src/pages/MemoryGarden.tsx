@@ -595,6 +595,13 @@ export default function MemoryGarden() {
     // scene reads as floating / unmoored.
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Quest / Pico / Index — "Enter VR" pill in the bottom-right of
+    // the canvas. Locomotion in here is keyboard/click driven; in VR
+    // the player just gets to look around the scene from a fixed pose
+    // for now (true teleport locomotion is a follow-up).
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     const scene = new THREE.Scene();
     // Theme-driven fog → distant edges fade. Bigger fog distance now
