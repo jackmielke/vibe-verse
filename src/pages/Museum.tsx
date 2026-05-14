@@ -726,14 +726,16 @@ export default function Museum() {
     // Hidden VR portals — tucked in the back corners of the gallery.
     // In desktop walking mode they're still visible (and walkable into),
     // which gives non-VR users the same Easter-egg path between worlds.
+    const PX = ROOM_W / 2 - 1.6;
+    const PZ = ROOM_D / 2 - 1.6;
     const portalGarden = createVRPortal(scene, {
-      position: [HALF_W_PORTAL(), 1.6, -HALF_D_PORTAL()],
+      position: [PX, 1.6, -PZ],
       color: 0x73ffb8,
       label: "Garden",
       onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/garden"),
     });
     const portalSpace = createVRPortal(scene, {
-      position: [-HALF_W_PORTAL(), 1.6, -HALF_D_PORTAL()],
+      position: [-PX, 1.6, -PZ],
       color: 0xa78bfa,
       label: "Space",
       onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/space"),
