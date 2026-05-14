@@ -1476,7 +1476,7 @@ export default function MemoryGarden() {
 
     // Main loop.
     const clock = new THREE.Clock();
-    let raf = 0;
+    // (raf removed — using renderer.setAnimationLoop for WebXR support.)
     const tick = () => {
       const dt = Math.min(0.05, clock.getDelta());
       const t = clock.elapsedTime;
