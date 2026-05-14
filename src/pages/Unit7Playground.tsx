@@ -27,6 +27,7 @@ import {
 } from "@/lib/spotify";
 import SpotifyPlayer from "@/components/SpotifyPlayer";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
+import { enableVR } from "@/lib/webxr";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
