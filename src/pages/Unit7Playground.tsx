@@ -4256,10 +4256,15 @@ export default function Unit7Playground() {
         activeExperienceRef.current === "ion" ? 1.45 + beaconPulse * 0.25 : 0.42 + beaconPulse * 0.55;
       bloomPass.radius = activeExperienceRef.current === "ion" ? 0.35 : 0.08;
       renderer.toneMappingExposure = activeExperienceRef.current === "ion" ? 1.0 : 1.12;
-      composer.render();
-      raf = requestAnimationFrame(tick);
+      // EffectComposer doesn't support WebXR's per-eye render; in VR we
+      // fall back to a plain renderer.render so the headset gets frames.
+      if (renderer.xr.isPresenting) {
+        renderer.render(scene, camera);
+      } else {
+        composer.render();
+      }
     };
-    raf = requestAnimationFrame(tick);
+    renderer.setAnimationLoop(tick);
 
     // ---- Resize handling --------------------------------------------
     const ro = new ResizeObserver(() => {
