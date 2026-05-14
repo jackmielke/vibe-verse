@@ -785,6 +785,11 @@ export default function Museum() {
       }
       pos.needsUpdate = true;
 
+      // Portal proximity — works in both desktop walk and XR.
+      const head = camera.getWorldPosition(new THREE.Vector3());
+      portalGarden.update(head, dt);
+      portalSpace.update(head, dt);
+
       renderer.render(scene, camera);
     });
 
@@ -798,6 +803,8 @@ export default function Museum() {
       controls.dispose();
       renderer.setAnimationLoop(null);
       disposeVR();
+      portalGarden.dispose();
+      portalSpace.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);
