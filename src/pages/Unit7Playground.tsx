@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import VibeyJournal from "@/components/VibeyJournal";
 import {
   playSound,
@@ -28,6 +28,7 @@ import {
 import SpotifyPlayer from "@/components/SpotifyPlayer";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
+import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
