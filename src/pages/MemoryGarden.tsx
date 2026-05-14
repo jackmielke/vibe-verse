@@ -635,6 +635,21 @@ export default function MemoryGarden() {
       scene.add(camera);
     });
 
+    // Hidden VR portals — tucked at the edges of the walkable garden
+    // so VR users have somewhere to go. Cross-world Easter eggs.
+    const portalSpace = createVRPortal(scene, {
+      position: [12, 1.6, -10],
+      color: 0xa78bfa,
+      label: "Space",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/space"),
+    });
+    const portalMuseum = createVRPortal(scene, {
+      position: [-12, 1.6, -10],
+      color: 0xffb86b,
+      label: "Museum",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/museum"),
+    });
+
     // Lights — sky/ground hemisphere + warm key + colored rim.
     const sky = new THREE.HemisphereLight(colors.ambientSky, colors.ambientGround, theme === "night" ? 0.7 : 1.1);
     scene.add(sky);
@@ -1510,6 +1525,12 @@ export default function MemoryGarden() {
         vrDolly.position.x = THREE.MathUtils.clamp(vrDolly.position.x, -WALK_LIMIT, WALK_LIMIT);
         vrDolly.position.z = THREE.MathUtils.clamp(vrDolly.position.z, -WALK_LIMIT, WALK_LIMIT);
         vrDolly.position.y = sampleTerrainHeight(terrain, vrDolly.position.x, vrDolly.position.z);
+        // Anchor portal Y to terrain so they sit on the ground.
+        portalSpace.group.position.y = sampleTerrainHeight(terrain, 12, -10) + 1.4;
+        portalMuseum.group.position.y = sampleTerrainHeight(terrain, -12, -10) + 1.4;
+        const head = camera.getWorldPosition(new THREE.Vector3());
+        portalSpace.update(head, dt);
+        portalMuseum.update(head, dt);
       }
 
       // Notepad: gentle hover + slow rotation so it reads as something
