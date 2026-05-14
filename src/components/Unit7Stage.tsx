@@ -198,7 +198,6 @@ export default function Unit7Stage({
 
     // ---- Animation loop -------------------------------------------------
     let lastTime = performance.now();
-    let raf = 0;
     const tick = () => {
       const now = performance.now();
       const delta = (now - lastTime) / 1000;
@@ -227,13 +226,14 @@ export default function Unit7Stage({
       }
 
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    // setAnimationLoop drives from headset vsync when in XR, rAF otherwise.
+    renderer.setAnimationLoop(tick);
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       ro.disconnect();
       // Clean up GPU resources.
       if (model) {
