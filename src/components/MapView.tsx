@@ -1017,6 +1017,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (!loc || typeof loc.lng !== "number" || typeof loc.lat !== "number") return;
         onLocationSelect(selectedLocation?.id === loc.id ? null : loc);
         // Cinematic close-up: pull in tight enough to actually inspect
         // the venue, with a 60° pitch + slight bearing change so the
