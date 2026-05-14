@@ -539,3 +539,29 @@ The fastest way to internalize all of this is to fork the repo, swap `VILLAGE_CE
 Ship something weird. Make a world that couldn't exist anywhere but the browser. That's the whole point.
 
 — *the Edge Esmeralda team*
+
+---
+
+## 16. VR / Headset support (WebXR)
+
+Pure-Three.js scenes (Lobby, Unit7 stage, Memory Garden) ship with WebXR enabled. Open `https://edgeesmeralda.lovable.app/lobby` (or `/garden`) in the **Quest Browser**, **Pico Browser**, or any WebXR-capable browser, and tap the **"Enter VR"** pill in the bottom-right of the canvas. Works on Quest 2/3/Pro, Pico 4, Valve Index, and anything else that exposes `navigator.xr`.
+
+The Mapbox-based worlds (the village map, helicopter, saucer) are **not** VR-able as-is — Mapbox GL is a 2D-projected canvas with our Three.js custom layers riding on top, so the camera model doesn't translate to immersive XR. To put the village in VR you'd build a parallel pure-Three.js scene that loads the same GLB assets onto a flat ground plane (or a baked terrain mesh from Mapbox elevation) and skips the map tiles entirely. All the GLBs are already in `src/assets/glb/` and `public/models/` — see `src/components/map/*Layer.ts` for how each one is positioned.
+
+### Adding WebXR to a new Three.js scene
+
+The helper lives in `src/lib/webxr.ts`. Three lines:
+
+```ts
+import { enableVR } from "@/lib/webxr";
+
+const disposeVR = enableVR(renderer, canvas.parentElement!, {
+  referenceSpace: "local-floor",
+});
+renderer.setAnimationLoop(tick); // not requestAnimationFrame!
+// cleanup: disposeVR(); renderer.setAnimationLoop(null);
+```
+
+**Critical**: replace `requestAnimationFrame(tick)` with `renderer.setAnimationLoop(tick)`. In an XR session, three drives the loop from headset vsync — rAF won't fire and your scene freezes.
+
+Locomotion (teleport, controllers, hand tracking) isn't included yet — scenes are "viewing" experiences for now. When you add it, build on `THREE.XRControllerModelFactory` plus a teleport-ray helper. Quest controllers expose trigger + thumbstick; teleport on trigger-release is the comfortable default and avoids sim sickness.
