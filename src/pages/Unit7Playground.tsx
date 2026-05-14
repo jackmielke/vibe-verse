@@ -1997,6 +1997,14 @@ export default function Unit7Playground() {
     camera.position.set(-8, 5, 18);
     camera.lookAt(0, 1.1, 0);
 
+    // VR locomotion rig: in XR the headset controls camera rotation and
+    // we move the parent dolly with the right thumbstick. Outside of XR
+    // the dolly stays at origin and OrbitControls drives the camera as
+    // before. We add the dolly to the scene and parent the camera into
+    // it lazily on session-start so non-VR rendering is unaffected.
+    const vrDolly = new THREE.Group();
+    scene.add(vrDolly);
+
     const controls = new OrbitControls(camera, canvas);
     // Aim a touch above Vibey's head so the orbiting memory orbs
     // (sky layer at y≈10) sit naturally in frame alongside the cards.
