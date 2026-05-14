@@ -208,6 +208,8 @@ import tomatoUrl from "@/assets/glb/kits/crops/Tomato_4.glb";
 import bushUrl from "@/assets/glb/nature/Bush2.glb";
 import treeUrl from "@/assets/glb/nature/Tree3.glb";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
+import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
+import { useNavigate } from "react-router-dom";
 
 interface Memory {
   id: string;
@@ -447,6 +449,9 @@ function makeTextCanvasTexture({
 
 export default function MemoryGarden() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const [activeMemory, setActiveMemory] = useState<Memory | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notePage, setNotePage] = useState(0);
