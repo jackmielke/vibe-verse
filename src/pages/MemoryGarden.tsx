@@ -1598,12 +1598,13 @@ export default function MemoryGarden() {
       }
 
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    // setAnimationLoop drives from headset vsync when in XR, rAF otherwise.
+    renderer.setAnimationLoop(tick);
 
     return () => {
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouch as EventListener);
       canvas.removeEventListener("wheel", onWheel);
