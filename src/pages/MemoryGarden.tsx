@@ -1660,6 +1660,8 @@ export default function MemoryGarden() {
     return () => {
       renderer.setAnimationLoop(null);
       disposeVR();
+      portalSpace.dispose();
+      portalMuseum.dispose();
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouch as EventListener);
       canvas.removeEventListener("wheel", onWheel);
