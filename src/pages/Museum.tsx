@@ -24,6 +24,8 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
+import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
+import { useNavigate } from "react-router-dom";
 
 // ------------------------------------------------------------------
 // Content. Swap freely — add/remove items, point image_url at any
@@ -407,6 +409,9 @@ function layoutFrames(): FramePlacement[] {
 
 export default function Museum() {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const [ready, setReady] = useState(false);
   const [walking, setWalking] = useState(false);
   const [zoomed, setZoomed] = useState<Artwork | null>(null);
@@ -718,6 +723,24 @@ export default function Museum() {
     // WebXR — VR button + animation loop.
     const disposeVR = enableVR(renderer, mount, { referenceSpace: "local-floor" });
 
+    // Hidden VR portals — tucked in the back corners of the gallery.
+    // In desktop walking mode they're still visible (and walkable into),
+    // which gives non-VR users the same Easter-egg path between worlds.
+    const PX = ROOM_W / 2 - 1.6;
+    const PZ = ROOM_D / 2 - 1.6;
+    const portalGarden = createVRPortal(scene, {
+      position: [PX, 1.6, -PZ],
+      color: 0x73ffb8,
+      label: "Garden",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/garden"),
+    });
+    const portalSpace = createVRPortal(scene, {
+      position: [-PX, 1.6, -PZ],
+      color: 0xa78bfa,
+      label: "Space",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/space"),
+    });
+
     const move = new THREE.Vector3();
     const SPEED = 3.2;
     const HALF_W = ROOM_W / 2 - 0.6;
@@ -762,6 +785,11 @@ export default function Museum() {
       }
       pos.needsUpdate = true;
 
+      // Portal proximity — works in both desktop walk and XR.
+      const head = camera.getWorldPosition(new THREE.Vector3());
+      portalGarden.update(head, dt);
+      portalSpace.update(head, dt);
+
       renderer.render(scene, camera);
     });
 
@@ -775,6 +803,8 @@ export default function Museum() {
       controls.dispose();
       renderer.setAnimationLoop(null);
       disposeVR();
+      portalGarden.dispose();
+      portalSpace.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);

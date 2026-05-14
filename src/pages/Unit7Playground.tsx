@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import VibeyJournal from "@/components/VibeyJournal";
 import {
   playSound,
@@ -28,6 +28,7 @@ import {
 import SpotifyPlayer from "@/components/SpotifyPlayer";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
+import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
@@ -612,6 +613,11 @@ function ConfettiBurst({ seed }: { seed: number }) {
 
 export default function Unit7Playground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Router navigate held in a ref so the long-lived Three.js effect can
+  // call it from inside VR portal callbacks without resubscribing.
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   // External-facing controls into the Three.js scene. The scene reads
   // from `desiredAnimRef` and `expressionsRef` each frame.
@@ -2019,6 +2025,23 @@ export default function Unit7Playground() {
       scene.add(camera);
       vrDolly.position.set(0, 0, 0);
       controls.enabled = true;
+    });
+
+    // Hidden VR portals — only meaningful in XR. Float them a bit out
+    // from origin so they're discoverable as Easter eggs while flying
+    // around. Triggered when the headset (camera world pos) crosses
+    // the ring threshold.
+    const portalGarden = createVRPortal(scene, {
+      position: [10, 2, -6],
+      color: 0x73ffb8,
+      label: "Garden",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/garden"),
+    });
+    const portalMuseum = createVRPortal(scene, {
+      position: [-10, 2, -6],
+      color: 0xffb86b,
+      label: "Museum",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/museum"),
     });
 
     const controls = new OrbitControls(camera, canvas);
@@ -3755,6 +3778,13 @@ export default function Unit7Playground() {
       // VR thumbstick fly — only does anything while presenting.
       vrLoco.update(renderer, vrDolly, camera, delta);
 
+      // Portal proximity (only matters in XR but cheap to compute).
+      if (renderer.xr.isPresenting) {
+        const head = camera.getWorldPosition(new THREE.Vector3());
+        portalGarden.update(head, delta);
+        portalMuseum.update(head, delta);
+      }
+
       if (mixer) mixer.update(delta);
 
       // Push expression weights every frame so morphs ride on top of
@@ -4308,6 +4338,8 @@ export default function Unit7Playground() {
       disposed = true;
       renderer.setAnimationLoop(null);
       disposeVR();
+      portalGarden.dispose();
+      portalMuseum.dispose();
       ro.disconnect();
       controls.dispose();
       // Walk the scene and dispose meshes/materials so we don't leak

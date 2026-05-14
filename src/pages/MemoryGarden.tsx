@@ -208,6 +208,8 @@ import tomatoUrl from "@/assets/glb/kits/crops/Tomato_4.glb";
 import bushUrl from "@/assets/glb/nature/Bush2.glb";
 import treeUrl from "@/assets/glb/nature/Tree3.glb";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
+import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
+import { useNavigate } from "react-router-dom";
 
 interface Memory {
   id: string;
@@ -447,6 +449,9 @@ function makeTextCanvasTexture({
 
 export default function MemoryGarden() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const [activeMemory, setActiveMemory] = useState<Memory | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notePage, setNotePage] = useState(0);
@@ -628,6 +633,21 @@ export default function MemoryGarden() {
     });
     renderer.xr.addEventListener("sessionend", () => {
       scene.add(camera);
+    });
+
+    // Hidden VR portals — tucked at the edges of the walkable garden
+    // so VR users have somewhere to go. Cross-world Easter eggs.
+    const portalSpace = createVRPortal(scene, {
+      position: [12, 1.6, -10],
+      color: 0xa78bfa,
+      label: "Space",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/space"),
+    });
+    const portalMuseum = createVRPortal(scene, {
+      position: [-12, 1.6, -10],
+      color: 0xffb86b,
+      label: "Museum",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/museum"),
     });
 
     // Lights — sky/ground hemisphere + warm key + colored rim.
@@ -1505,6 +1525,12 @@ export default function MemoryGarden() {
         vrDolly.position.x = THREE.MathUtils.clamp(vrDolly.position.x, -WALK_LIMIT, WALK_LIMIT);
         vrDolly.position.z = THREE.MathUtils.clamp(vrDolly.position.z, -WALK_LIMIT, WALK_LIMIT);
         vrDolly.position.y = sampleTerrainHeight(terrain, vrDolly.position.x, vrDolly.position.z);
+        // Anchor portal Y to terrain so they sit on the ground.
+        portalSpace.group.position.y = sampleTerrainHeight(terrain, 12, -10) + 1.4;
+        portalMuseum.group.position.y = sampleTerrainHeight(terrain, -12, -10) + 1.4;
+        const head = camera.getWorldPosition(new THREE.Vector3());
+        portalSpace.update(head, dt);
+        portalMuseum.update(head, dt);
       }
 
       // Notepad: gentle hover + slow rotation so it reads as something
@@ -1634,6 +1660,8 @@ export default function MemoryGarden() {
     return () => {
       renderer.setAnimationLoop(null);
       disposeVR();
+      portalSpace.dispose();
+      portalMuseum.dispose();
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouch as EventListener);
       canvas.removeEventListener("wheel", onWheel);
