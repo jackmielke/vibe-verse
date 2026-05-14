@@ -857,6 +857,12 @@ export default function Museum() {
                 Walk with W A S D, look with the mouse. Click a painting to
                 zoom in. Click again to read its rhyme. ESC to leave.
               </p>
+              <div className="mb-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed"
+                style={{ borderColor: "#c44a1a", background: "#fff5e0" }}
+              >
+                <span className="text-[10px] uppercase tracking-widest font-semibold text-slate-500">Lovable discount code</span>
+                <span className="font-heading font-bold text-sm tracking-wider" style={{ color: "#c44a1a", fontFamily: "'Sora', sans-serif" }}>COMM-VIBE-EC46</span>
+              </div>
               <button
                 onClick={requestWalk}
                 className="font-heading font-semibold px-6 py-3 rounded-xl text-white text-sm uppercase tracking-wider"
