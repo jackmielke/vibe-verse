@@ -1499,6 +1499,14 @@ export default function MemoryGarden() {
       const dt = Math.min(0.05, clock.getDelta());
       const t = clock.elapsedTime;
 
+      // VR thumbstick walk + clamp dolly to walk region + snap to terrain.
+      vrLoco.update(renderer, vrDolly, camera, dt);
+      if (renderer.xr.isPresenting) {
+        vrDolly.position.x = THREE.MathUtils.clamp(vrDolly.position.x, -WALK_LIMIT, WALK_LIMIT);
+        vrDolly.position.z = THREE.MathUtils.clamp(vrDolly.position.z, -WALK_LIMIT, WALK_LIMIT);
+        vrDolly.position.y = sampleTerrainHeight(terrain, vrDolly.position.x, vrDolly.position.z);
+      }
+
       // Notepad: gentle hover + slow rotation so it reads as something
       // worth clicking, not part of the static landscape.
       notepadGroup.position.y = notepadBase + Math.sin(t * 0.7) * 0.08;
