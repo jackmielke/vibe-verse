@@ -774,7 +774,7 @@ export default function Museum() {
       renderer.domElement.removeEventListener("click", onClick);
       controls.dispose();
       renderer.setAnimationLoop(null);
-      disposeVR(mount);
+      disposeVR();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);
