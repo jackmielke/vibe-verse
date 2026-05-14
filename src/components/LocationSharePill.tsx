@@ -37,7 +37,7 @@ interface Props {
 interface MyShare {
   lat: number;
   lng: number;
-  shared_at: string;
+  updated_at: string;
   expires_at: string;
 }
 
@@ -79,7 +79,7 @@ export default function LocationSharePill({ className }: Props) {
     (async () => {
       const { data } = await supabase
         .from("user_locations")
-        .select("lat, lng, shared_at, expires_at")
+        .select("lat, lng, updated_at, expires_at")
         .eq("user_id", userRowId)
         .maybeSingle();
       if (cancelled) return;
@@ -113,7 +113,7 @@ export default function LocationSharePill({ className }: Props) {
               lat: pos.coords.latitude,
               lng: pos.coords.longitude,
               accuracy_m: Math.round(pos.coords.accuracy ?? 0),
-              shared_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
               expires_at: expires,
             },
             { onConflict: "user_id" },
@@ -126,7 +126,7 @@ export default function LocationSharePill({ className }: Props) {
         setShare({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          shared_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
           expires_at: expires,
         });
         setBusy("idle");

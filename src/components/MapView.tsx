@@ -404,7 +404,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     user_id: string;
     lat: number;
     lng: number;
-    shared_at: string;
+    updated_at: string;
     expires_at: string;
     name: string | null;
     avatar_url: string | null;
@@ -414,7 +414,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     const nowIso = new Date().toISOString();
     const { data, error } = await supabase
       .from("user_locations")
-      .select("user_id, lat, lng, shared_at, expires_at")
+      .select("user_id, lat, lng, updated_at, expires_at")
       .gt("expires_at", nowIso);
     if (error || !data) return;
     if (data.length === 0) { setCommunityShares([]); return; }
@@ -432,7 +432,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
           user_id: row.user_id as string,
           lat: row.lat as number,
           lng: row.lng as number,
-          shared_at: row.shared_at as string,
+          updated_at: row.updated_at as string,
           expires_at: row.expires_at as string,
           name: (p?.name ?? p?.username ?? null) as string | null,
           avatar_url: (p?.avatar_url ?? p?.profile_picture_url ?? p?.telegram_photo_url ?? null) as string | null,
@@ -541,7 +541,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         opacity: 0; pointer-events: none;
         transition: opacity 0.18s ease;
       `;
-      const minsAgo = Math.max(0, Math.round((Date.now() - new Date(s.shared_at).getTime()) / 60000));
+      const minsAgo = Math.max(0, Math.round((Date.now() - new Date(s.updated_at).getTime()) / 60000));
       tooltip.textContent = `${display} · ${minsAgo}m ago`;
       root.appendChild(tooltip);
       root.addEventListener("mouseenter", () => { tooltip.style.opacity = "1"; });
