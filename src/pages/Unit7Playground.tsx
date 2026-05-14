@@ -3719,7 +3719,7 @@ export default function Unit7Playground() {
 
     // ---- Animation loop ---------------------------------------------
     let lastTime = performance.now();
-    let raf = 0;
+    // (raf removed — using renderer.setAnimationLoop for WebXR support.)
     let shipAngle = 0;
     let nextDiscoveryAt = performance.now() + 26000;
     let nextShowBeatAt = performance.now() + 9000;
