@@ -3752,6 +3752,9 @@ export default function Unit7Playground() {
       const delta = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
+      // VR thumbstick fly — only does anything while presenting.
+      vrLoco.update(renderer, vrDolly, camera, delta);
+
       if (mixer) mixer.update(delta);
 
       // Push expression weights every frame so morphs ride on top of
