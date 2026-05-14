@@ -207,7 +207,7 @@ import flowerSmallUrl from "@/assets/glb/kits/crops/Flower_2.glb";
 import tomatoUrl from "@/assets/glb/kits/crops/Tomato_4.glb";
 import bushUrl from "@/assets/glb/nature/Bush2.glb";
 import treeUrl from "@/assets/glb/nature/Tree3.glb";
-import { enableVR } from "@/lib/webxr";
+import { enableVR, createVRLocomotion } from "@/lib/webxr";
 
 interface Memory {
   id: string;
