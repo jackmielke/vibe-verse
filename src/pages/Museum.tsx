@@ -723,6 +723,22 @@ export default function Museum() {
     // WebXR — VR button + animation loop.
     const disposeVR = enableVR(renderer, mount, { referenceSpace: "local-floor" });
 
+    // Hidden VR portals — tucked in the back corners of the gallery.
+    // In desktop walking mode they're still visible (and walkable into),
+    // which gives non-VR users the same Easter-egg path between worlds.
+    const portalGarden = createVRPortal(scene, {
+      position: [HALF_W_PORTAL(), 1.6, -HALF_D_PORTAL()],
+      color: 0x73ffb8,
+      label: "Garden",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/garden"),
+    });
+    const portalSpace = createVRPortal(scene, {
+      position: [-HALF_W_PORTAL(), 1.6, -HALF_D_PORTAL()],
+      color: 0xa78bfa,
+      label: "Space",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/space"),
+    });
+
     const move = new THREE.Vector3();
     const SPEED = 3.2;
     const HALF_W = ROOM_W / 2 - 0.6;
