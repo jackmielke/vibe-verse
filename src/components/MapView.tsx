@@ -1831,7 +1831,9 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
       setTokyoLoading(true);
       setTokyoProgress(null);
       const layer = createSpawnableLayer(LAYER_ID, tokyoStateRef.current, {
-        modelUrl: "/models/littlest-tokyo.glb",
+        // Hosted on the official three.js CDN — Draco-compressed, ~7 MB.
+        // Our DRACOLoader (in SpawnableLayer) decodes it on the fly.
+        modelUrl: "https://threejs.org/examples/models/gltf/LittlestTokyo.glb",
         onProgress: (loaded, total) => {
           setTokyoProgress(total ? loaded / total : null);
         },
