@@ -89,6 +89,22 @@ export function createSpawnableLayer(
 
       const loader = new GLTFLoader();
       loader.setDRACOLoader(dracoLoader);
+      // Preflight: if the asset is missing, dev/prod hosts often return the
+      // SPA's index.html with a 200, which causes GLTFLoader to choke on
+      // "Unexpected token '<'". Detect that early and surface a clear error.
+      fetch(opts.modelUrl, { method: "HEAD" }).then((res) => {
+        const ct = res.headers.get("content-type") || "";
+        if (!res.ok || ct.includes("text/html")) {
+          const err = new Error(
+            `[SpawnableLayer:${id}] model not available at ${opts.modelUrl} ` +
+            `(status ${res.status}, content-type ${ct || "unknown"}). ` +
+            `If the file is gitignored due to size, host it on a CDN and update modelUrl.`
+          );
+          // eslint-disable-next-line no-console
+          console.error(err.message);
+          opts.onError?.(err);
+        }
+      }).catch(() => { /* network probe failed; let GLTFLoader try anyway */ });
       loader.load(
         opts.modelUrl,
         (gltf) => {
