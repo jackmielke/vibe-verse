@@ -91,6 +91,10 @@ export default function Unit7Stage({
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    // Quest / Pico / Index — adds an "Enter VR" pill over the canvas.
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     // ---- Soft glow disc beneath the bot ---------------------------------
     const glow = new THREE.Mesh(
