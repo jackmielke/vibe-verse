@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
+import { enableVR } from "@/lib/webxr";
 
 // Two characters live outside the Quaternius pack folder.
 import alienUrl from "@/assets/glb/alien.glb";
