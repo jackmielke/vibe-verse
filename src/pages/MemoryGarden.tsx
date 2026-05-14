@@ -207,7 +207,7 @@ import flowerSmallUrl from "@/assets/glb/kits/crops/Flower_2.glb";
 import tomatoUrl from "@/assets/glb/kits/crops/Tomato_4.glb";
 import bushUrl from "@/assets/glb/nature/Bush2.glb";
 import treeUrl from "@/assets/glb/nature/Tree3.glb";
-import { enableVR } from "@/lib/webxr";
+import { enableVR, createVRLocomotion } from "@/lib/webxr";
 
 interface Memory {
   id: string;
@@ -611,6 +611,24 @@ export default function MemoryGarden() {
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
     let cameraDistance = 9;
+
+    // VR dolly — in XR the headset rotates the camera; we move the
+    // parent dolly via thumbstick. Outside of XR the chase cam in the
+    // tick loop owns the camera.
+    const vrDolly = new THREE.Group();
+    scene.add(vrDolly);
+    const vrLoco = createVRLocomotion({ mode: "walk", speed: 3 });
+    renderer.xr.addEventListener("sessionstart", () => {
+      // Park the dolly at Vibey's current spot so you start standing
+      // next to her instead of at world origin.
+      vrDolly.position.set(vibeyState.pos.x, vibeyState.pos.y, vibeyState.pos.z + 2);
+      vrDolly.add(camera);
+      camera.position.set(0, 1.6, 0); // local: roughly head height
+      camera.rotation.set(0, 0, 0);
+    });
+    renderer.xr.addEventListener("sessionend", () => {
+      scene.add(camera);
+    });
 
     // Lights — sky/ground hemisphere + warm key + colored rim.
     const sky = new THREE.HemisphereLight(colors.ambientSky, colors.ambientGround, theme === "night" ? 0.7 : 1.1);
@@ -1481,6 +1499,14 @@ export default function MemoryGarden() {
       const dt = Math.min(0.05, clock.getDelta());
       const t = clock.elapsedTime;
 
+      // VR thumbstick walk + clamp dolly to walk region + snap to terrain.
+      vrLoco.update(renderer, vrDolly, camera, dt);
+      if (renderer.xr.isPresenting) {
+        vrDolly.position.x = THREE.MathUtils.clamp(vrDolly.position.x, -WALK_LIMIT, WALK_LIMIT);
+        vrDolly.position.z = THREE.MathUtils.clamp(vrDolly.position.z, -WALK_LIMIT, WALK_LIMIT);
+        vrDolly.position.y = sampleTerrainHeight(terrain, vrDolly.position.x, vrDolly.position.z);
+      }
+
       // Notepad: gentle hover + slow rotation so it reads as something
       // worth clicking, not part of the static landscape.
       notepadGroup.position.y = notepadBase + Math.sin(t * 0.7) * 0.08;
@@ -1575,21 +1601,24 @@ export default function MemoryGarden() {
       vibeyMixer?.update(dt);
 
       // Camera: smooth third-person chase, clamped above terrain so it
-      // can't dip into the hill behind Vibey on downslopes.
-      const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * cameraDistance;
-      const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * cameraDistance;
-      // Sample the terrain UNDER where the camera is heading so the
-      // chase cam can never slip behind a ridge.
-      const groundUnderCam = sampleTerrainHeight(
-        terrain,
-        THREE.MathUtils.clamp(camTargetX, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
-        THREE.MathUtils.clamp(camTargetZ, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
-      );
-      const camTargetY = Math.max(vibeyState.pos.y + 4.6 + cameraDistance * 0.1, groundUnderCam + 2.5);
-      camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2);
-      camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2);
-      camera.position.z += (camTargetZ - camera.position.z) * Math.min(1, dt * 2);
-      camera.lookAt(vibeyState.pos.x, vibeyState.pos.y + 1.0, vibeyState.pos.z);
+      // can't dip into the hill behind Vibey on downslopes. Skipped in
+      // VR — the headset owns camera rotation and the dolly owns
+      // position there.
+      if (!renderer.xr.isPresenting) {
+        const camTargetX = vibeyState.pos.x - Math.sin(vibeyState.heading) * cameraDistance;
+        const camTargetZ = vibeyState.pos.z - Math.cos(vibeyState.heading) * cameraDistance;
+        const groundUnderCam = sampleTerrainHeight(
+          terrain,
+          THREE.MathUtils.clamp(camTargetX, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
+          THREE.MathUtils.clamp(camTargetZ, -TERRAIN_HALF + 1, TERRAIN_HALF - 1),
+        );
+        const camTargetY = Math.max(vibeyState.pos.y + 4.6 + cameraDistance * 0.1, groundUnderCam + 2.5);
+        camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2);
+        camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2);
+        camera.position.z += (camTargetZ - camera.position.z) * Math.min(1, dt * 2);
+        camera.lookAt(vibeyState.pos.x, vibeyState.pos.y + 1.0, vibeyState.pos.z);
+      }
+
 
       // Fade target ring opacity smoothly when not walking.
       if (!vibeyState.walking) {

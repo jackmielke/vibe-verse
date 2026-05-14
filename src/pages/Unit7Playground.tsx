@@ -27,7 +27,7 @@ import {
 } from "@/lib/spotify";
 import SpotifyPlayer from "@/components/SpotifyPlayer";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
-import { enableVR } from "@/lib/webxr";
+import { enableVR, createVRLocomotion } from "@/lib/webxr";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
@@ -1997,6 +1997,30 @@ export default function Unit7Playground() {
     camera.position.set(-8, 5, 18);
     camera.lookAt(0, 1.1, 0);
 
+    // VR locomotion rig: in XR the headset controls camera rotation and
+    // we move the parent dolly with the right thumbstick. Outside of XR
+    // the dolly stays at origin and OrbitControls drives the camera as
+    // before. We add the dolly to the scene and parent the camera into
+    // it lazily on session-start so non-VR rendering is unaffected.
+    const vrDolly = new THREE.Group();
+    scene.add(vrDolly);
+    const vrLoco = createVRLocomotion({ mode: "fly", speed: 8 });
+    renderer.xr.addEventListener("sessionstart", () => {
+      // Move camera into the dolly so thumbstick translation moves the
+      // whole rig (camera + headset pose) through the world.
+      vrDolly.position.copy(camera.position);
+      vrDolly.add(camera);
+      camera.position.set(0, 0, 0);
+      controls.enabled = false;
+    });
+    renderer.xr.addEventListener("sessionend", () => {
+      // Detach: put the camera back in the scene at the dolly's spot.
+      camera.position.copy(vrDolly.position);
+      scene.add(camera);
+      vrDolly.position.set(0, 0, 0);
+      controls.enabled = true;
+    });
+
     const controls = new OrbitControls(camera, canvas);
     // Aim a touch above Vibey's head so the orbiting memory orbs
     // (sky layer at y≈10) sit naturally in frame alongside the cards.
@@ -3727,6 +3751,9 @@ export default function Unit7Playground() {
       const now = performance.now();
       const delta = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
+
+      // VR thumbstick fly — only does anything while presenting.
+      vrLoco.update(renderer, vrDolly, camera, delta);
 
       if (mixer) mixer.update(delta);
 
