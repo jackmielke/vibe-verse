@@ -27,6 +27,7 @@ import {
 } from "@/lib/spotify";
 import SpotifyPlayer from "@/components/SpotifyPlayer";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
+import { enableVR } from "@/lib/webxr";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
@@ -1879,6 +1880,13 @@ export default function Unit7Playground() {
     renderer.setClearColor(0x05060f, 1);
     renderer.toneMapping = THREE.ReinhardToneMapping;
     renderer.toneMappingExposure = 1.2;
+    // Quest / Pico / Index — "Enter VR" pill in the bottom-right of the
+    // canvas. In VR the player just gets to look around the space scene
+    // from a fixed pose for now (no locomotion / no postFX — composer is
+    // bypassed because EffectComposer doesn't render per-eye).
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -3711,7 +3719,7 @@ export default function Unit7Playground() {
 
     // ---- Animation loop ---------------------------------------------
     let lastTime = performance.now();
-    let raf = 0;
+    // (raf removed — using renderer.setAnimationLoop for WebXR support.)
     let shipAngle = 0;
     let nextDiscoveryAt = performance.now() + 26000;
     let nextShowBeatAt = performance.now() + 9000;
@@ -4248,10 +4256,15 @@ export default function Unit7Playground() {
         activeExperienceRef.current === "ion" ? 1.45 + beaconPulse * 0.25 : 0.42 + beaconPulse * 0.55;
       bloomPass.radius = activeExperienceRef.current === "ion" ? 0.35 : 0.08;
       renderer.toneMappingExposure = activeExperienceRef.current === "ion" ? 1.0 : 1.12;
-      composer.render();
-      raf = requestAnimationFrame(tick);
+      // EffectComposer doesn't support WebXR's per-eye render; in VR we
+      // fall back to a plain renderer.render so the headset gets frames.
+      if (renderer.xr.isPresenting) {
+        renderer.render(scene, camera);
+      } else {
+        composer.render();
+      }
     };
-    raf = requestAnimationFrame(tick);
+    renderer.setAnimationLoop(tick);
 
     // ---- Resize handling --------------------------------------------
     const ro = new ResizeObserver(() => {
@@ -4266,7 +4279,8 @@ export default function Unit7Playground() {
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(raf);
+      renderer.setAnimationLoop(null);
+      disposeVR();
       ro.disconnect();
       controls.dispose();
       // Walk the scene and dispose meshes/materials so we don't leak
