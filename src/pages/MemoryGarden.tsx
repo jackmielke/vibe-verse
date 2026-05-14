@@ -612,6 +612,24 @@ export default function MemoryGarden() {
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
     let cameraDistance = 9;
 
+    // VR dolly — in XR the headset rotates the camera; we move the
+    // parent dolly via thumbstick. Outside of XR the chase cam in the
+    // tick loop owns the camera.
+    const vrDolly = new THREE.Group();
+    scene.add(vrDolly);
+    const vrLoco = createVRLocomotion({ mode: "walk", speed: 3 });
+    renderer.xr.addEventListener("sessionstart", () => {
+      // Park the dolly at Vibey's current spot so you start standing
+      // next to her instead of at world origin.
+      vrDolly.position.set(vibeyState.pos.x, vibeyState.pos.y, vibeyState.pos.z + 2);
+      vrDolly.add(camera);
+      camera.position.set(0, 1.6, 0); // local: roughly head height
+      camera.rotation.set(0, 0, 0);
+    });
+    renderer.xr.addEventListener("sessionend", () => {
+      scene.add(camera);
+    });
+
     // Lights — sky/ground hemisphere + warm key + colored rim.
     const sky = new THREE.HemisphereLight(colors.ambientSky, colors.ambientGround, theme === "night" ? 0.7 : 1.1);
     scene.add(sky);
