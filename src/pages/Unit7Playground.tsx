@@ -2027,6 +2027,23 @@ export default function Unit7Playground() {
       controls.enabled = true;
     });
 
+    // Hidden VR portals — only meaningful in XR. Float them a bit out
+    // from origin so they're discoverable as Easter eggs while flying
+    // around. Triggered when the headset (camera world pos) crosses
+    // the ring threshold.
+    const portalGarden = createVRPortal(scene, {
+      position: [10, 2, -6],
+      color: 0x73ffb8,
+      label: "Garden",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/garden"),
+    });
+    const portalMuseum = createVRPortal(scene, {
+      position: [-10, 2, -6],
+      color: 0xffb86b,
+      label: "Museum",
+      onEnter: () => leaveXrAndNavigate(renderer, navigateRef.current, "/museum"),
+    });
+
     const controls = new OrbitControls(camera, canvas);
     // Aim a touch above Vibey's head so the orbiting memory orbs
     // (sky layer at y≈10) sit naturally in frame alongside the cards.
