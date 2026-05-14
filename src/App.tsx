@@ -10,6 +10,7 @@ import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
 import MemoryGarden from "./pages/MemoryGarden.tsx";
+import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
@@ -39,6 +40,8 @@ const App = () => (
           <Route path="/garden" element={<MemoryGarden />} />
           {/* The old standalone gallery now collapses into the garden art fair. */}
           <Route path="/gallery" element={<Navigate to="/garden" replace />} />
+          {/* Fractal Museum — Seuss-inspired walkable gallery room. */}
+          <Route path="/museum" element={<Museum />} />
           {/* VIBE Hub — wallet login, community holders, market. */}
           <Route path="/vibe" element={<VibeHub />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
