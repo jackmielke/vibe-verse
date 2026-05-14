@@ -3778,6 +3778,13 @@ export default function Unit7Playground() {
       // VR thumbstick fly — only does anything while presenting.
       vrLoco.update(renderer, vrDolly, camera, delta);
 
+      // Portal proximity (only matters in XR but cheap to compute).
+      if (renderer.xr.isPresenting) {
+        const head = camera.getWorldPosition(new THREE.Vector3());
+        portalGarden.update(head, delta);
+        portalMuseum.update(head, delta);
+      }
+
       if (mixer) mixer.update(delta);
 
       // Push expression weights every frame so morphs ride on top of
