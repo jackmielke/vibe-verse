@@ -1880,6 +1880,13 @@ export default function Unit7Playground() {
     renderer.setClearColor(0x05060f, 1);
     renderer.toneMapping = THREE.ReinhardToneMapping;
     renderer.toneMappingExposure = 1.2;
+    // Quest / Pico / Index — "Enter VR" pill in the bottom-right of the
+    // canvas. In VR the player just gets to look around the space scene
+    // from a fixed pose for now (no locomotion / no postFX — composer is
+    // bypassed because EffectComposer doesn't render per-eye).
+    const disposeVR = canvas.parentElement
+      ? enableVR(renderer, canvas.parentElement, { referenceSpace: "local-floor" })
+      : () => {};
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
