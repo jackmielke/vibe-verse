@@ -979,7 +979,20 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     );
   }, [mapStyle, mapLoaded]);
 
-  // Create custom markers
+  // Refs so the (mount-once) marker handlers can read the latest
+  // selection + callback without forcing the whole marker tree to
+  // be rebuilt every time the user clicks a pin. Rebuilding markers
+  // on every selection was the root cause of the "glitchy" hover —
+  // the pointer would briefly hover a freshly-mounted element and
+  // lose its mouseenter, killing the card.
+  const onLocationSelectRef = useRef(onLocationSelect);
+  useEffect(() => { onLocationSelectRef.current = onLocationSelect; }, [onLocationSelect]);
+  const selectedLocationRef = useRef(selectedLocation);
+  useEffect(() => { selectedLocationRef.current = selectedLocation; }, [selectedLocation]);
+
+  // Create custom markers — mount ONCE per map load. Hover and click
+  // both live on the same DOM root, with the hover card as a child
+  // (pointer-events: none) so the hit area is one continuous element.
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -987,71 +1000,65 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
+    // Tiny HTML escaper so event titles can't break the card.
+    const esc = (s: string) =>
+      s.replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[ch] as string));
+
     VILLAGE_LOCATIONS.forEach((loc) => {
-      const color = TYPE_COLORS[loc.type] || "#2dd4a8";
-      const isSelected = selectedLocation?.id === loc.id;
-      // Only 3D structures get an invisible click target. All other
-      // locations are intentionally hidden — no pins, no labels.
       if (!loc.structure3d) return;
-      const hitSize = loc.hitSize ?? 44;
+      if (typeof loc.lng !== "number" || typeof loc.lat !== "number") return;
+      const color = TYPE_COLORS[loc.type] || "#2dd4a8";
 
-      const el = document.createElement("div");
-      el.className = "village-marker";
-
+      // Generous hit area — hovering the "general vicinity" of a venue
+      // is enough. We bump the default from 44 → 96 and use the per-loc
+      // hitSize as a floor when provided.
+      const hitSize = Math.max(loc.hitSize ?? 0, 96);
       const hitWidth = hitSize;
-      const hitHeight = Math.round(hitSize * 1.6);
-      el.style.cssText = `
-        width: ${hitWidth}px; height: ${hitHeight}px;
+      const hitHeight = Math.round(hitSize * 1.4);
+
+      // Root: relative, anchored bottom, holds both hit area + card.
+      const root = document.createElement("div");
+      root.className = "village-marker";
+      root.style.cssText = `
         position: relative;
+        width: ${hitWidth}px;
+        height: ${hitHeight}px;
+        pointer-events: none;
+      `;
+
+      // The actual hit zone — invisible, sized to the full root, the
+      // ONLY element that takes pointer events. Hover stability is
+      // guaranteed because there is exactly one element under the
+      // cursor for the entire vicinity.
+      const hit = document.createElement("div");
+      hit.style.cssText = `
+        position: absolute; inset: 0;
         cursor: pointer;
         pointer-events: auto;
-      `;
-      // Plain invisible click target — the visible indicator is the
-      // vertical beacon beam, not a circular halo on the marker.
-      const inner = document.createElement("div");
-      inner.style.cssText = `
-        width: 100%; height: 100%;
         background: transparent;
       `;
-      el.appendChild(inner);
+      root.appendChild(hit);
 
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!loc || typeof loc.lng !== "number" || typeof loc.lat !== "number") return;
-        onLocationSelect(selectedLocation?.id === loc.id ? null : loc);
-        // Cinematic close-up: pull in tight enough to actually inspect
-        // the venue, with a 60° pitch + slight bearing change so the
-        // landmark reads in 3D rather than a flat top-down. Preserve
-        // the user's current bearing if they've manually rotated.
-        const m = map.current;
-        if (!m) return;
-        const curBearing = m.getBearing();
-        m.flyTo({
-          center: [loc.lng, loc.lat],
-          zoom: 18.4,
-          pitch: 60,
-          bearing: curBearing + 12,
-          duration: 1400,
-          curve: 1.5,
-          essential: true,
-        });
-      });
-
-      const marker = new mapboxgl.Marker({
-        element: el,
-        anchor: "bottom",
-      })
-        .setLngLat([loc.lng, loc.lat])
-        .addTo(map.current!);
-
-      markersRef.current.push(marker);
-
-      // Hover card — name + venue type + up to 2 upcoming events that
-      // happen here. Hidden by default, fades in on hover. Mapbox
-      // adopts the marker's root element and overwrites inline styles
-      // there, so we keep the root empty and style an inner card.
-      const labelRoot = document.createElement("div");
-      labelRoot.style.cssText = "pointer-events: none;";
+      // Card floats above the hit zone but does NOT receive pointer
+      // events, so moving the cursor over it never triggers a leave
+      // on the hit zone.
+      const cardWrap = document.createElement("div");
+      cardWrap.style.cssText = `
+        position: absolute;
+        left: 50%;
+        bottom: 100%;
+        transform: translate(-50%, -8px);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        will-change: opacity, transform;
+      `;
       const cardEl = document.createElement("div");
       cardEl.className = "venue-card-inner";
       cardEl.style.cssText = `
@@ -1066,37 +1073,15 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
         font-size: 11px;
         line-height: 1.45;
+        white-space: nowrap;
         box-shadow: 0 6px 28px hsl(216 60% 4% / 0.6), 0 0 22px ${color}33;
-        opacity: 0;
-        transform: translateY(4px);
-        transition: opacity 0.18s ease, transform 0.18s ease;
       `;
-      labelRoot.appendChild(cardEl);
-      const labelMarker = new mapboxgl.Marker({
-        element: labelRoot,
-        anchor: "bottom",
-        offset: [0, -72],
-      })
-        .setLngLat([loc.lng, loc.lat])
-        .addTo(map.current!);
-      markersRef.current.push(labelMarker);
+      cardWrap.appendChild(cardEl);
+      root.appendChild(cardWrap);
 
-      // Tiny HTML escaper so event titles can't break the card.
-      const esc = (s: string) =>
-        s.replace(/[&<>"']/g, (ch) => ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
-        }[ch] as string));
-
-      // Build the card on hover so we always show fresh events.
       const buildCard = () => {
         const evs = upcomingEventsRef.current ?? [];
         const lname = loc.name.toLowerCase();
-        // Match events to this venue by name substring on either side.
-        // (Imperfect, but the events table doesn't link to venue ids.)
         const matches = evs
           .filter((ev) => {
             const where = (ev.event_location ?? "").toLowerCase();
@@ -1122,7 +1107,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         };
 
         const eventsHTML = matches.length
-          ? `<div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+          ? `<div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px; white-space: normal;">
               ${matches.map((ev) => `
                 <div style="border-left: 2px solid ${color}cc; padding-left: 6px;">
                   <div style="font-weight: 600; color: #fff;">${esc(ev.title)}</div>
@@ -1130,7 +1115,7 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
                 </div>
               `).join("")}
             </div>`
-          : `<div style="margin-top: 4px; opacity: 0.55; font-size: 10px; font-style: italic;">No upcoming events here yet</div>`;
+          : "";
 
         cardEl.innerHTML = `
           <div style="display: flex; align-items: baseline; gap: 6px;">
@@ -1148,20 +1133,34 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
 
       const showCard = () => {
         buildCard();
-        cardEl.style.opacity = "1";
-        cardEl.style.transform = "translateY(0)";
+        cardWrap.style.opacity = "1";
+        cardWrap.style.transform = "translate(-50%, -12px)";
       };
       const hideCard = () => {
-        cardEl.style.opacity = "0";
-        cardEl.style.transform = "translateY(4px)";
+        cardWrap.style.opacity = "0";
+        cardWrap.style.transform = "translate(-50%, -8px)";
       };
-      // Listen on both the click marker and its inner — Mapbox swaps
-      // pointer-events on the root, but the inner is reliably ours.
-      el.addEventListener("mouseenter", showCard);
-      el.addEventListener("mouseleave", hideCard);
-      inner.addEventListener("mouseenter", showCard);
-      inner.addEventListener("mouseleave", hideCard);
-      el.addEventListener(
+
+      hit.addEventListener("mouseenter", showCard);
+      hit.addEventListener("mouseleave", hideCard);
+      hit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const sel = selectedLocationRef.current;
+        onLocationSelectRef.current(sel?.id === loc.id ? null : loc);
+        const m = map.current;
+        if (!m) return;
+        const curBearing = m.getBearing();
+        m.flyTo({
+          center: [loc.lng, loc.lat],
+          zoom: 18.4,
+          pitch: 60,
+          bearing: curBearing + 12,
+          duration: 1400,
+          curve: 1.5,
+          essential: true,
+        });
+      });
+      hit.addEventListener(
         "touchstart",
         () => {
           showCard();
@@ -1169,8 +1168,21 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
         },
         { passive: true },
       );
+
+      const marker = new mapboxgl.Marker({
+        element: root,
+        anchor: "bottom",
+      })
+        .setLngLat([loc.lng, loc.lat])
+        .addTo(map.current!);
+      markersRef.current.push(marker);
     });
-  }, [mapLoaded, selectedLocation, onLocationSelect]);
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+    };
+  }, [mapLoaded]);
 
   // GPS tracking
   const trackLocation = useCallback(() => {
