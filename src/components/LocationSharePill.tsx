@@ -125,7 +125,11 @@ export default function LocationSharePill({ className }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const positionClass = className ?? "absolute bottom-24 md:bottom-20 right-4 z-30";
+  // Sit centered above the bottom nav on mobile (BottomNav is ~72px),
+  // and on the left edge on desktop where there's no bottom nav. This
+  // keeps us out of the way of the zoom +/- controls and the locate /
+  // layers / navigation icons in the corners.
+  const positionClass = className ?? "absolute bottom-[88px] md:bottom-4 left-1/2 md:left-4 -translate-x-1/2 md:translate-x-0 z-30";
 
   if (sharing && coord) {
     return (
