@@ -19,39 +19,57 @@ export type Database = {
           agent_id: string
           agent_response: string
           community_id: string
+          completion_tokens: number | null
+          cost_credits: number | null
           created_at: string | null
           id: string
+          openrouter_model: string | null
+          prompt_tokens: number | null
           session_key: string | null
           telegram_chat_id: number | null
           telegram_user_id: number | null
           telegram_username: string | null
           tokens_used: number | null
+          total_tokens: number | null
+          usage_json: Json | null
           user_message: string
         }
         Insert: {
           agent_id: string
           agent_response: string
           community_id: string
+          completion_tokens?: number | null
+          cost_credits?: number | null
           created_at?: string | null
           id?: string
+          openrouter_model?: string | null
+          prompt_tokens?: number | null
           session_key?: string | null
           telegram_chat_id?: number | null
           telegram_user_id?: number | null
           telegram_username?: string | null
           tokens_used?: number | null
+          total_tokens?: number | null
+          usage_json?: Json | null
           user_message: string
         }
         Update: {
           agent_id?: string
           agent_response?: string
           community_id?: string
+          completion_tokens?: number | null
+          cost_credits?: number | null
           created_at?: string | null
           id?: string
+          openrouter_model?: string | null
+          prompt_tokens?: number | null
           session_key?: string | null
           telegram_chat_id?: number | null
           telegram_user_id?: number | null
           telegram_username?: string | null
           tokens_used?: number | null
+          total_tokens?: number | null
+          usage_json?: Json | null
           user_message?: string
         }
         Relationships: [
@@ -1851,6 +1869,57 @@ export type Database = {
           },
         ]
       }
+      github_agent_actions: {
+        Row: {
+          action: string
+          actor_auth_id: string | null
+          actor_name: string | null
+          commit_sha: string | null
+          commit_url: string | null
+          created_at: string
+          error: string | null
+          id: string
+          message: string | null
+          meta: Json | null
+          ok: boolean
+          path: string | null
+          ref: string | null
+          repo: string
+        }
+        Insert: {
+          action: string
+          actor_auth_id?: string | null
+          actor_name?: string | null
+          commit_sha?: string | null
+          commit_url?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          message?: string | null
+          meta?: Json | null
+          ok?: boolean
+          path?: string | null
+          ref?: string | null
+          repo: string
+        }
+        Update: {
+          action?: string
+          actor_auth_id?: string | null
+          actor_name?: string | null
+          commit_sha?: string | null
+          commit_url?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          message?: string | null
+          meta?: Json | null
+          ok?: boolean
+          path?: string | null
+          ref?: string | null
+          repo?: string
+        }
+        Relationships: []
+      }
       magic_link_tokens: {
         Row: {
           community_id: string
@@ -1905,6 +1974,7 @@ export type Database = {
           id: string
           metadata: Json | null
           tags: string[] | null
+          title: string | null
           updated_at: string
         }
         Insert: {
@@ -1915,6 +1985,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           tags?: string[] | null
+          title?: string | null
           updated_at?: string
         }
         Update: {
@@ -1925,6 +1996,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           tags?: string[] | null
+          title?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2703,6 +2775,21 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_processed_updates: {
+        Row: {
+          processed_at: string
+          update_id: number
+        }
+        Insert: {
+          processed_at?: string
+          update_id: number
+        }
+        Update: {
+          processed_at?: string
+          update_id?: number
+        }
+        Relationships: []
+      }
       user_embeddings: {
         Row: {
           bio_embedding: string | null
@@ -3233,6 +3320,45 @@ export type Database = {
           reviewed_by?: string | null
           source_entry_id?: string | null
           status?: string
+        }
+        Relationships: []
+      }
+      vibey_vents: {
+        Row: {
+          acknowledged_at: string | null
+          context: string | null
+          created_at: string
+          delivered: boolean
+          delivery_error: string | null
+          id: string
+          message: string
+          source: string | null
+          telegram_message_id: number | null
+          urgency: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          context?: string | null
+          created_at?: string
+          delivered?: boolean
+          delivery_error?: string | null
+          id?: string
+          message: string
+          source?: string | null
+          telegram_message_id?: number | null
+          urgency: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          context?: string | null
+          created_at?: string
+          delivered?: boolean
+          delivery_error?: string | null
+          id?: string
+          message?: string
+          source?: string | null
+          telegram_message_id?: number | null
+          urgency?: string
         }
         Relationships: []
       }
