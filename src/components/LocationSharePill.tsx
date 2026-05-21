@@ -65,41 +65,42 @@ export default function LocationSharePill({ className }: Props) {
     }
     setError(null);
     setBusy("locating");
-    // One-shot first so the map flies to us quickly, then watch.
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const next: MyCoord = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          updatedAt: Date.now(),
-        };
-        setCoord(next);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* noop */ }
-        broadcast(next);
-        setBusy("idle");
-      },
-      (e) => {
-        setError(e.message || "Couldn't read your location.");
-        setBusy("idle");
-        setSharing(false);
-        localStorage.removeItem(ACTIVE_KEY);
-      },
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
-    );
-    // Live updates.
+
+    const handleFix = (pos: GeolocationPosition) => {
+      const next: MyCoord = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        updatedAt: Date.now(),
+      };
+      setCoord(next);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* noop */ }
+      broadcast(next);
+      setBusy("idle");
+    };
+
+    const handleErr = (e: GeolocationPositionError) => {
+      const msg = e.code === 1
+        ? "Permission denied — enable location for this site."
+        : e.code === 2
+        ? "Position unavailable. Try again outside or near a window."
+        : e.message || "Couldn't read your location.";
+      setError(msg);
+      setBusy("idle");
+      setSharing(false);
+      localStorage.removeItem(ACTIVE_KEY);
+      stopWatch();
+    };
+
+    // Fire one-shot AND start the watch — whichever resolves first
+    // clears the busy state. Low-accuracy fallback after 6s so we
+    // don't get stuck on a wifi-only device asking for GPS.
+    navigator.geolocation.getCurrentPosition(handleFix, handleErr, {
+      enableHighAccuracy: true, timeout: 8_000, maximumAge: 30_000,
+    });
     stopWatch();
     watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const next: MyCoord = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          updatedAt: Date.now(),
-        };
-        setCoord(next);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* noop */ }
-        broadcast(next);
-      },
-      () => { /* keep last known */ },
+      handleFix,
+      () => { /* swallow transient watch errors; one-shot reports */ },
       { enableHighAccuracy: true, maximumAge: 15_000 },
     );
   }, [stopWatch]);
@@ -124,7 +125,11 @@ export default function LocationSharePill({ className }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const positionClass = className ?? "absolute bottom-24 md:bottom-20 right-4 z-30";
+  // Sit centered above the bottom nav on mobile (BottomNav is ~72px),
+  // and on the left edge on desktop where there's no bottom nav. This
+  // keeps us out of the way of the zoom +/- controls and the locate /
+  // layers / navigation icons in the corners.
+  const positionClass = className ?? "absolute bottom-[88px] md:bottom-4 left-1/2 md:left-4 -translate-x-1/2 md:translate-x-0 z-30";
 
   if (sharing && coord) {
     return (
