@@ -554,6 +554,72 @@ export default function MapView({ onLocationSelect, selectedLocation }: MapViewP
     }
   }, [communityShares, mapLoaded]);
 
+  // ---- Single-player "me" pin -----------------------------------------
+  // Listen for the global event dispatched by <LocationSharePill /> and
+  // drop/update a green dot at the user's live GPS position. Flies to
+  // the position the first time it arrives so the user sees themselves.
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    const m = map.current;
+    let flown = false;
+    const onMine = (e: Event) => {
+      const detail = (e as CustomEvent<{ lat: number; lng: number }>).detail;
+      if (!detail || typeof detail.lat !== "number" || typeof detail.lng !== "number") return;
+      const { lat, lng } = detail;
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setLngLat([lng, lat]);
+      } else {
+        const el = document.createElement("div");
+        el.style.cssText = `
+          position: relative;
+          width: 18px; height: 18px;
+          background: hsl(160, 80%, 50%);
+          border: 3px solid hsl(160, 100%, 95%);
+          border-radius: 50%;
+          box-shadow: 0 0 20px hsl(160, 80%, 50%, 0.55), 0 0 60px hsl(160, 80%, 50%, 0.25);
+        `;
+        const pulse = document.createElement("div");
+        pulse.style.cssText = `
+          position: absolute; inset: -8px;
+          border-radius: 50%;
+          background: hsl(160, 80%, 50%, 0.2);
+          animation: marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        `;
+        el.appendChild(pulse);
+        userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "center" })
+          .setLngLat([lng, lat])
+          .addTo(m);
+      }
+      if (!flown) {
+        flown = true;
+        m.flyTo({ center: [lng, lat], zoom: Math.max(m.getZoom(), 16), duration: 1400 });
+      }
+    };
+    const onStop = () => {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+        userMarkerRef.current = null;
+      }
+      flown = false;
+    };
+    window.addEventListener("lovable:my-location", onMine as EventListener);
+    window.addEventListener("lovable:my-location-stop", onStop);
+    // If sharing was already active before the map mounted, replay the
+    // last known coords from localStorage so the dot appears immediately.
+    try {
+      const raw = localStorage.getItem("lovable.myLocation.v1");
+      const active = localStorage.getItem("lovable.myLocation.active.v1") === "1";
+      if (raw && active) {
+        const c = JSON.parse(raw) as { lat: number; lng: number };
+        onMine(new CustomEvent("lovable:my-location", { detail: c }));
+      }
+    } catch { /* noop */ }
+    return () => {
+      window.removeEventListener("lovable:my-location", onMine as EventListener);
+      window.removeEventListener("lovable:my-location-stop", onStop);
+    };
+  }, [mapLoaded]);
+
   // Detail modal for spawned mega-structures (Death Star, Edge Island,
   // Tokyo Block, etc). When the user clicks the floating "i" marker
   // pinned to a structure, this fills in and the modal animates in.
