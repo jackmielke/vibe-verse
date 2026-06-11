@@ -815,7 +815,6 @@ export function buildCardboardIsland(opts: {
   }
 
   group.add(plazaGroup);
-  spinners.push(pondGroup); // reuse spinners array for animation hook below
 
   // ---- Jerry the snail --------------------------------------------------
   // Mayor of Jerry's Plaza. Hand-built cardboard snail: slug body, a
