@@ -221,11 +221,7 @@ const SHOPS: ShopSpec[] = [
     x: -4, z: -32, w: 13, h: 6, d: 2.5,
     bg: "#eaa7c0", fg: "#8a2c52",
   },
-  {
-    lines: ["JERRY'S", "PLAZA"],
-    x: 8, z: 30, w: 10, h: 6, d: 8,
-    bg: "#bcd6e8", fg: "#2a5a8a",
-  },
+  // JERRY'S PLAZA is now a real plaza built around Jerry, not a building.
 ];
 
 export function buildCardboardIsland(opts: {
@@ -574,11 +570,257 @@ export function buildCardboardIsland(opts: {
   swing.add(swingPivot);
   group.add(swing);
 
+  // ---- Jerry's Plaza ----------------------------------------------------
+  // A real cardboard plaza built AROUND Jerry — modeled after the kids'
+  // hand-painted reference: green-painted base, white cross paths, a blue
+  // lily pond, planters of vines, benches, lanterns, and a JERRY'S PLAZA
+  // archway you walk through to enter.
+  const PLAZA_CX = 2;
+  const PLAZA_CZ = 22;
+  const PLAZA_R = 11; // plaza disk radius
+
+  const plazaGroup = new THREE.Group();
+  plazaGroup.position.set(PLAZA_CX, 0, PLAZA_CZ);
+
+  // Painted green base disk (the cardboard pad).
+  const plazaPadTex = (() => {
+    const S = 512;
+    const c = document.createElement("canvas");
+    c.width = c.height = S;
+    const ctx = c.getContext("2d")!;
+    // Green paint with brushy variation.
+    ctx.fillStyle = "#3f8c45";
+    ctx.fillRect(0, 0, S, S);
+    ctx.fillStyle = "rgba(70, 160, 80, 0.55)";
+    for (let i = 0; i < 80; i++) {
+      const x = Math.random() * S;
+      const y = Math.random() * S;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 18 + Math.random() * 30, 8 + Math.random() * 16, Math.random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // White cross paths.
+    ctx.fillStyle = "#f1ecdd";
+    ctx.fillRect(S * 0.42, 0, S * 0.16, S);
+    ctx.fillRect(0, S * 0.42, S, S * 0.16);
+    // Painted speckles (confetti dots).
+    const dots = ["#e85d75", "#ffd166", "#5db8e8", "#b78ae0", "#ffffff"];
+    for (let i = 0; i < 120; i++) {
+      ctx.fillStyle = dots[i % dots.length];
+      ctx.beginPath();
+      ctx.arc(Math.random() * S, Math.random() * S, 2 + Math.random() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Blue pond.
+    ctx.fillStyle = "#7fc8e8";
+    ctx.beginPath();
+    ctx.ellipse(S * 0.74, S * 0.28, 34, 24, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4aa6d8";
+    ctx.beginPath();
+    ctx.ellipse(S * 0.76, S * 0.30, 16, 10, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const plazaPad = new THREE.Mesh(
+    new THREE.CylinderGeometry(PLAZA_R, PLAZA_R, 0.18, 48),
+    [
+      new THREE.MeshStandardMaterial({ color: "#9a7a4e", roughness: 0.95 }), // side (cardboard edge)
+      new THREE.MeshStandardMaterial({ map: plazaPadTex, roughness: 0.9 }),  // top
+      new THREE.MeshStandardMaterial({ color: "#9a7a4e", roughness: 0.95 }), // bottom
+    ],
+  );
+  plazaPad.position.y = 0.09;
+  plazaGroup.add(plazaPad);
+
+  // Low cardboard planter wall around the rim (segments, with gaps for paths).
+  {
+    const seg = 24;
+    const wallMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.95 });
+    for (let i = 0; i < seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      // Leave 4 gaps aligned with the cross paths (N/S/E/W).
+      const nearAxis =
+        Math.min(
+          Math.abs(((a + Math.PI / 2) % Math.PI) - Math.PI / 2),
+          Math.abs((a % Math.PI) - Math.PI / 2),
+        );
+      if (nearAxis < 0.18) continue;
+      const segLen = (Math.PI * 2 * PLAZA_R) / seg - 0.25;
+      const w = new THREE.Mesh(
+        new THREE.BoxGeometry(0.45, 0.7, segLen),
+        wallMat,
+      );
+      w.position.set(Math.cos(a) * PLAZA_R, 0.45, Math.sin(a) * PLAZA_R);
+      w.rotation.y = -a + Math.PI / 2;
+      plazaGroup.add(w);
+    }
+  }
+
+  // Flower-pot planters around the perimeter.
+  {
+    const potCount = 8;
+    for (let i = 0; i < potCount; i++) {
+      const a = (i / potCount) * Math.PI * 2 + 0.2;
+      const r = PLAZA_R - 1.2;
+      const pot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.42, 0.85, 12),
+        new THREE.MeshStandardMaterial({ color: "#c0683a", roughness: 0.85 }),
+      );
+      pot.position.set(Math.cos(a) * r, 0.55, Math.sin(a) * r);
+      plazaGroup.add(pot);
+      // Foliage tuft.
+      const tuftColor = ["#5aa84a", "#7cc46a", "#46a886"][i % 3];
+      const tuft = new THREE.Mesh(
+        new THREE.SphereGeometry(0.65, 12, 10),
+        new THREE.MeshStandardMaterial({ color: tuftColor, roughness: 0.9 }),
+      );
+      tuft.position.set(Math.cos(a) * r, 1.25, Math.sin(a) * r);
+      tuft.scale.set(1, 0.75, 1);
+      plazaGroup.add(tuft);
+      // Tiny flowers.
+      const flowerColors = ["#e85d75", "#ffd166", "#b78ae0", "#ffffff"];
+      for (let f = 0; f < 4; f++) {
+        const flower = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 6, 6),
+          new THREE.MeshBasicMaterial({ color: flowerColors[(i + f) % flowerColors.length] }),
+        );
+        const fa = (f / 4) * Math.PI * 2;
+        flower.position.set(
+          Math.cos(a) * r + Math.cos(fa) * 0.45,
+          1.55,
+          Math.sin(a) * r + Math.sin(fa) * 0.45,
+        );
+        plazaGroup.add(flower);
+      }
+    }
+  }
+
+  // Benches facing Jerry, on the diagonals.
+  {
+    const benchMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.92 });
+    const diagonals = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4];
+    diagonals.forEach((a) => {
+      const r = PLAZA_R - 2.6;
+      const bx = Math.cos(a) * r;
+      const bz = Math.sin(a) * r;
+      const bench = new THREE.Group();
+      bench.position.set(bx, 0, bz);
+      bench.rotation.y = -a + Math.PI / 2; // face center
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 0.7), benchMat);
+      seat.position.y = 0.65;
+      bench.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 0.12), benchMat);
+      back.position.set(0, 1.0, -0.3);
+      bench.add(back);
+      [-0.95, 0.95].forEach((lx) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.65, 0.6), cardboardDark);
+        leg.position.set(lx, 0.33, 0);
+        bench.add(leg);
+      });
+      plazaGroup.add(bench);
+    });
+  }
+
+  // Lily pond (raised, animated ripple via shader-free vertical offset).
+  const pondGroup = new THREE.Group();
+  pondGroup.position.set(6.5, 0, -5);
+  {
+    const pondRim = new THREE.Mesh(
+      new THREE.TorusGeometry(1.6, 0.22, 10, 32),
+      new THREE.MeshStandardMaterial({ color: "#a8835a", roughness: 0.9 }),
+    );
+    pondRim.rotation.x = Math.PI / 2;
+    pondRim.position.y = 0.22;
+    pondGroup.add(pondRim);
+    const pondWater = new THREE.Mesh(
+      new THREE.CircleGeometry(1.55, 32),
+      new THREE.MeshStandardMaterial({
+        color: "#4aa6d8",
+        transparent: true,
+        opacity: 0.92,
+        roughness: 0.3,
+        metalness: 0.2,
+      }),
+    );
+    pondWater.rotation.x = -Math.PI / 2;
+    pondWater.position.y = 0.24;
+    pondGroup.add(pondWater);
+    // Lily pads.
+    [0.5, -0.6, 0.2].forEach((px, i) => {
+      const pad = new THREE.Mesh(
+        new THREE.CircleGeometry(0.32, 12),
+        new THREE.MeshStandardMaterial({ color: "#4f9a4a", roughness: 0.85 }),
+      );
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.set(px, 0.26, [-0.4, 0.3, 0.7][i]);
+      pondGroup.add(pad);
+    });
+  }
+  plazaGroup.add(pondGroup);
+
+  // JERRY'S PLAZA archway — kids' painted cardboard sign on two posts at the south entrance.
+  {
+    const archGroup = new THREE.Group();
+    archGroup.position.set(0, 0, PLAZA_R + 0.3); // south path entrance
+    const postMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.95 });
+    [-2.4, 2.4].forEach((px) => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5, 0.45), postMat);
+      post.position.set(px, 2.5, 0);
+      archGroup.add(post);
+    });
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.4, 1.8),
+      new THREE.MeshBasicMaterial({
+        map: signTexture(["JERRY'S", "PLAZA"], "#d9c081", "#1f4ba0"),
+        side: THREE.DoubleSide,
+      }),
+    );
+    sign.position.set(0, 4.5, 0);
+    archGroup.add(sign);
+    // Cardboard "beam" on top.
+    const beamTop = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.35, 0.45), postMat);
+    beamTop.position.set(0, 5.45, 0);
+    archGroup.add(beamTop);
+    plazaGroup.add(archGroup);
+  }
+
+  // Paper lanterns on the planter wall — gentle glow at night.
+  const plazaLanterns: THREE.Mesh[] = [];
+  {
+    const lanternPositions = [
+      Math.PI / 4,
+      (3 * Math.PI) / 4,
+      (5 * Math.PI) / 4,
+      (7 * Math.PI) / 4,
+    ];
+    lanternPositions.forEach((a) => {
+      const r = PLAZA_R + 0.1;
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.09, 2.6, 8),
+        cardboardDark,
+      );
+      pole.position.set(Math.cos(a) * r, 1.3, Math.sin(a) * r);
+      plazaGroup.add(pole);
+      const lantern = new THREE.Mesh(
+        new THREE.SphereGeometry(0.32, 14, 10),
+        new THREE.MeshBasicMaterial({ color: "#ffd98a" }),
+      );
+      lantern.position.set(Math.cos(a) * r, 2.55, Math.sin(a) * r);
+      plazaGroup.add(lantern);
+      plazaLanterns.push(lantern);
+    });
+  }
+
+  group.add(plazaGroup);
+
   // ---- Jerry the snail --------------------------------------------------
   // Mayor of Jerry's Plaza. Hand-built cardboard snail: slug body, a
   // shell with a painted spiral, googly eye stalks, a JERRY sign.
   const jerryGroup = new THREE.Group();
-  jerryGroup.position.set(2, 0, 22);
+  jerryGroup.position.set(2, 0.18, 22); // sit on top of the plaza pad
   jerryGroup.rotation.y = Math.PI + 0.5; // face the welcome path
   const jerryParts = { stalks: [] as THREE.Mesh[] };
   {
@@ -772,6 +1014,13 @@ export function buildCardboardIsland(opts: {
       jerryGroup.rotation.y = Math.PI + 0.5 + Math.sin(now * 0.0008) * 0.12;
       jerryParts.stalks.forEach((s, i) => {
         s.rotation.x = Math.sin(now * 0.0027 + i * 2.1) * 0.16;
+      });
+
+      // Plaza ambience: pond bob + lantern glow pulse.
+      pondGroup.position.y = Math.sin(now * 0.0015) * 0.03;
+      plazaLanterns.forEach((l, i) => {
+        const s = 1 + Math.sin(now * 0.002 + i * 1.3) * 0.08;
+        l.scale.set(s, s, s);
       });
 
       // Cardboard TV slideshow.
