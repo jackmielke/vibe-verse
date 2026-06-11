@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
+import { createNpcCrew } from "@/components/city/npcs";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
 
 // Every Quaternius character can be the pilot — same glob pattern as
@@ -72,10 +73,10 @@ const ISLAND_Z = -30;
 const ISLAND_TOP = 120;
 
 // Movement feel.
-const WALK_SPEED = 5.5;
-const RUN_SPEED = 11.5;
-const FLY_SPEED = 16; // jetpack cruising is faster than running…
-const FLY_RUN_SPEED = 24; // …and Shift opens the throttle for island runs
+const WALK_SPEED = 7;
+const RUN_SPEED = 16;
+const FLY_SPEED = 22; // jetpack cruising is faster than running…
+const FLY_RUN_SPEED = 34; // …and Shift opens the throttle for island runs
 const GRAVITY = 24;
 const THRUST = 50; // jetpack accel (net climb = THRUST - GRAVITY)
 const MAX_RISE = 19;
@@ -380,7 +381,18 @@ export default function City() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [entered, setEntered] = useState(false);
   const enteredRef = useRef(false);
-  const [hud, setHud] = useState({ alt: 0, spd: 0, jet: false, stars: 0, totalStars: 0 });
+  const [hud, setHud] = useState({
+    alt: 0,
+    spd: 0,
+    jet: false,
+    stars: 0,
+    totalStars: 0,
+    runMs: null as number | null,
+    bestMs: null as number | null,
+    nearIsland: false,
+  });
+  const travelRef = useRef<(() => void) | null>(null);
+  const resetRunRef = useRef<(() => void) | null>(null);
   const [dayMode, setDayMode] = useState(false);
   const [muted, setMuted] = useState(false);
   const soundsRef = useRef<CitySounds | null>(null);
@@ -552,6 +564,39 @@ export default function City() {
       return { mesh, baseY: p.y, taken: false };
     });
     let collectedCount = 0;
+
+    // Star-run timer: starts on the first pickup, best time persists.
+    let runStartMs: number | null = null;
+    let runFinalMs: number | null = null;
+    let bestMs: number | null = Number(localStorage.getItem("city.bestStarRun")) || null;
+    resetRunRef.current = () => {
+      collectibles.forEach((c) => {
+        c.taken = false;
+        c.mesh.visible = true;
+      });
+      collectedCount = 0;
+      runStartMs = null;
+      runFinalMs = null;
+    };
+
+    // ---- Residents: NPCs wandering the streets and the island -------
+    const npcNames = [
+      "Casual_Female",
+      "OldClassy_Male",
+      "Chef_Male",
+      "Cow",
+      "Pirate_Captain_Barbarossa",
+      "Goblin_Female",
+    ];
+    const npcCrew = createNpcCrew({
+      urls: npcNames
+        .map((n) => CHARACTERS.find((c) => c.name === n)?.url)
+        .filter((u): u is string => !!u),
+      streetLines: Array.from({ length: GRID + 1 }, (_, g) => (g - GRID / 2) * PITCH),
+      cityHalf: CITY_HALF,
+      island: { x: ISLAND_X, z: ISLAND_Z, topY: ISLAND_TOP },
+    });
+    scene.add(npcCrew.group);
 
     // Stars + moon (fog-exempt so they read at any distance).
     const starGeo = new THREE.BufferGeometry();
@@ -862,8 +907,24 @@ export default function City() {
         jet: keys.has("Space") && enteredRef.current,
         stars: collectedCount,
         totalStars: collectibles.length,
+        runMs:
+          runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
+        bestMs,
+        nearIsland: player.position.x > 250,
       });
     }, 120);
+
+    // Fast travel: hop between the plaza and Cardboard Island. Arrive
+    // a few meters up so you flutter down onto the lawn.
+    travelRef.current = () => {
+      if (player.position.x > 250) {
+        player.position.set(0, 0, 6);
+      } else {
+        player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+      }
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
 
     // Dev hook for screenshot-driven iteration (and console fun):
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
@@ -1032,12 +1093,21 @@ export default function City() {
           c.taken = true;
           c.mesh.visible = false;
           collectedCount++;
+          if (collectedCount === 1) runStartMs = now;
           soundsRef.current?.chime(collectedCount);
-          if (collectedCount === collectibles.length) soundsRef.current?.fanfare();
+          if (collectedCount === collectibles.length) {
+            soundsRef.current?.fanfare();
+            runFinalMs = runStartMs !== null ? now - runStartMs : null;
+            if (runFinalMs !== null && (bestMs === null || runFinalMs < bestMs)) {
+              bestMs = runFinalMs;
+              localStorage.setItem("city.bestStarRun", String(Math.round(bestMs)));
+            }
+          }
         }
       }
 
       island.update(dt, now);
+      npcCrew.update(dt, pos);
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
       // Pulse the landing pads and plaza ring together.
@@ -1072,6 +1142,8 @@ export default function City() {
       disposeVR();
       applyModeRef.current = null;
       loadPilotRef.current = null;
+      travelRef.current = null;
+      resetRunRef.current = null;
       delete devWindow.__cityDebug;
       soundsRef.current?.dispose();
       soundsRef.current = null;
@@ -1095,6 +1167,11 @@ export default function City() {
       renderer.dispose();
     };
   }, []);
+
+  const fmtMs = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
 
   const enter = () => {
     enteredRef.current = true;
@@ -1132,6 +1209,10 @@ export default function City() {
             }
           >
             ✦ <span className="text-foreground">{hud.stars}</span>/{hud.totalStars}
+            {hud.runMs !== null && <span> · {fmtMs(hud.runMs)}</span>}
+            {hud.bestMs !== null && (
+              <span className="opacity-70"> (best {fmtMs(hud.bestMs)})</span>
+            )}
             {hud.totalStars > 0 && hud.stars === hud.totalStars && " — CHAMPION!"}
           </div>
         </div>
@@ -1176,6 +1257,28 @@ export default function City() {
             >
               🎭 {charName.replace(/_/g, " ")}
             </button>
+            <button
+              onClick={(e) => {
+                travelRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title="Fast travel"
+            >
+              {hud.nearIsland ? "🏙️ Plaza" : "🏝️ Island"}
+            </button>
+            {hud.stars > 0 && (
+              <button
+                onClick={(e) => {
+                  resetRunRef.current?.();
+                  e.currentTarget.blur();
+                }}
+                className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+                title="Reset the star run"
+              >
+                ↻ Run
+              </button>
+            )}
           </div>
           {charPanelOpen && (
             <div className="glass-panel rounded-2xl p-2 w-56 max-h-[46dvh] overflow-y-auto space-y-0.5">
