@@ -14,6 +14,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_emails: {
+        Row: {
+          created_at: string
+          email: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+        }
+        Relationships: []
+      }
       agent_chat_logs: {
         Row: {
           agent_id: string
@@ -174,6 +189,7 @@ export type Database = {
           digest_hour_utc: number | null
           digest_timezone: string | null
           elevenlabs_agent_id: string | null
+          elevenlabs_voice_id: string | null
           id: string
           intro_message: string | null
           is_active: boolean | null
@@ -196,6 +212,7 @@ export type Database = {
           digest_hour_utc?: number | null
           digest_timezone?: string | null
           elevenlabs_agent_id?: string | null
+          elevenlabs_voice_id?: string | null
           id?: string
           intro_message?: string | null
           is_active?: boolean | null
@@ -218,6 +235,7 @@ export type Database = {
           digest_hour_utc?: number | null
           digest_timezone?: string | null
           elevenlabs_agent_id?: string | null
+          elevenlabs_voice_id?: string | null
           id?: string
           intro_message?: string | null
           is_active?: boolean | null
@@ -245,6 +263,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -308,6 +333,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_chat_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -812,6 +844,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "bot_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       bot_tokens: {
@@ -890,6 +929,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "bot_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       characters: {
@@ -946,6 +992,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "characters_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1143,11 +1196,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "community_members_referred_by_fkey"
+            columns: ["referred_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "community_members_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1550,6 +1617,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "custom_tool_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       custom_tools: {
@@ -1674,6 +1748,93 @@ export type Database = {
         }
         Relationships: []
       }
+      email_send_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          message_id: string | null
+          metadata: Json | null
+          recipient_email: string
+          status: string
+          template_name: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_id?: string | null
+          metadata?: Json | null
+          recipient_email: string
+          status: string
+          template_name: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_id?: string | null
+          metadata?: Json | null
+          recipient_email?: string
+          status?: string
+          template_name?: string
+        }
+        Relationships: []
+      }
+      email_send_state: {
+        Row: {
+          auth_email_ttl_minutes: number
+          batch_size: number
+          id: number
+          retry_after_until: string | null
+          send_delay_ms: number
+          transactional_email_ttl_minutes: number
+          updated_at: string
+        }
+        Insert: {
+          auth_email_ttl_minutes?: number
+          batch_size?: number
+          id?: number
+          retry_after_until?: string | null
+          send_delay_ms?: number
+          transactional_email_ttl_minutes?: number
+          updated_at?: string
+        }
+        Update: {
+          auth_email_ttl_minutes?: number
+          batch_size?: number
+          id?: number
+          retry_after_until?: string | null
+          send_delay_ms?: number
+          transactional_email_ttl_minutes?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_unsubscribe_tokens: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          token: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       event_attendees: {
         Row: {
           attended: boolean | null
@@ -1719,6 +1880,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_attendees_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1807,6 +1975,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       gallery_photos: {
@@ -1867,6 +2042,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "gallery_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       github_agent_actions: {
@@ -1920,6 +2102,196 @@ export type Database = {
         }
         Relationships: []
       }
+      heartbeat_runs: {
+        Row: {
+          automation_id: string | null
+          created_at: string
+          delivery_status: string | null
+          dry_run: boolean
+          duration_ms: number | null
+          error: string | null
+          final_message: string | null
+          finished_at: string | null
+          id: string
+          intermediate_thoughts: Json
+          kind: string
+          model: string | null
+          recipient_chat_id: string | null
+          recipient_label: string | null
+          recipient_user_id: string | null
+          seed_prompt: string | null
+          status: string
+          system_prompt: string | null
+          tokens_completion: number | null
+          tokens_prompt: number | null
+          tokens_total: number | null
+          tool_calls: Json
+          triggered_by: string
+        }
+        Insert: {
+          automation_id?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          dry_run?: boolean
+          duration_ms?: number | null
+          error?: string | null
+          final_message?: string | null
+          finished_at?: string | null
+          id?: string
+          intermediate_thoughts?: Json
+          kind: string
+          model?: string | null
+          recipient_chat_id?: string | null
+          recipient_label?: string | null
+          recipient_user_id?: string | null
+          seed_prompt?: string | null
+          status?: string
+          system_prompt?: string | null
+          tokens_completion?: number | null
+          tokens_prompt?: number | null
+          tokens_total?: number | null
+          tool_calls?: Json
+          triggered_by?: string
+        }
+        Update: {
+          automation_id?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          dry_run?: boolean
+          duration_ms?: number | null
+          error?: string | null
+          final_message?: string | null
+          finished_at?: string | null
+          id?: string
+          intermediate_thoughts?: Json
+          kind?: string
+          model?: string | null
+          recipient_chat_id?: string | null
+          recipient_label?: string | null
+          recipient_user_id?: string | null
+          seed_prompt?: string | null
+          status?: string
+          system_prompt?: string | null
+          tokens_completion?: number | null
+          tokens_prompt?: number | null
+          tokens_total?: number | null
+          tool_calls?: Json
+          triggered_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "heartbeat_runs_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "heartbeat_runs_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "heartbeat_runs_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      heartbeat_subscriptions: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          kind: string
+          telegram_chat_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind: string
+          telegram_chat_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind?: string
+          telegram_chat_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "heartbeat_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "heartbeat_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      inquiries: {
+        Row: {
+          business: string | null
+          created_at: string
+          email: string
+          id: string
+          message: string | null
+          name: string
+          notes: string | null
+          phone: string | null
+          sms_opt_in: boolean
+          source: string
+          status: string
+          workshop_weeks: number[]
+        }
+        Insert: {
+          business?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          message?: string | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          sms_opt_in?: boolean
+          source?: string
+          status?: string
+          workshop_weeks?: number[]
+        }
+        Update: {
+          business?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          sms_opt_in?: boolean
+          source?: string
+          status?: string
+          workshop_weeks?: number[]
+        }
+        Relationships: []
+      }
       magic_link_tokens: {
         Row: {
           community_id: string
@@ -1962,6 +2334,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "magic_link_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2013,6 +2392,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2090,6 +2476,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       notes: {
@@ -2140,6 +2533,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2404,6 +2804,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "profile_claim_requests_user_profile_id_fkey"
+            columns: ["user_profile_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       projects: {
@@ -2467,6 +2874,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "projects_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       registered_apps: {
@@ -2510,6 +2924,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registered_apps_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2596,6 +3017,39 @@ export type Database = {
           },
         ]
       }
+      sms_send_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          message: string
+          recipient_phone: string
+          sent_by: string | null
+          status: string
+          twilio_sid: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message: string
+          recipient_phone: string
+          sent_by?: string | null
+          status: string
+          twilio_sid?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          recipient_phone?: string
+          sent_by?: string | null
+          status?: string
+          twilio_sid?: string | null
+        }
+        Relationships: []
+      }
       sponsors: {
         Row: {
           company_name: string
@@ -2629,6 +3083,78 @@ export type Database = {
           phone?: string | null
           sponsorship_level?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      suppressed_emails: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          metadata: Json | null
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          metadata?: Json | null
+          reason: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          metadata?: Json | null
+          reason?: string
+        }
+        Relationships: []
+      }
+      suppressed_phones: {
+        Row: {
+          created_at: string
+          metadata: Json | null
+          phone: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          metadata?: Json | null
+          phone: string
+          reason?: string
+        }
+        Update: {
+          created_at?: string
+          metadata?: Json | null
+          phone?: string
+          reason?: string
+        }
+        Relationships: []
+      }
+      survey_responses: {
+        Row: {
+          business_name: string | null
+          contact_email: string | null
+          contact_name: string | null
+          created_at: string
+          id: string
+          payload: Json
+        }
+        Insert: {
+          business_name?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          payload: Json
+        }
+        Update: {
+          business_name?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
         }
         Relationships: []
       }
@@ -2742,6 +3268,48 @@ export type Database = {
           },
         ]
       }
+      telegram_dm_settings: {
+        Row: {
+          created_at: string
+          disabled_at: string | null
+          display_name: string | null
+          enabled: boolean
+          enabled_at: string | null
+          enabled_by: string | null
+          mode: string
+          notes: string | null
+          telegram_user_id: number
+          telegram_username: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          disabled_at?: string | null
+          display_name?: string | null
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          mode?: string
+          notes?: string | null
+          telegram_user_id: number
+          telegram_username?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          disabled_at?: string | null
+          display_name?: string | null
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          mode?: string
+          notes?: string | null
+          telegram_user_id?: number
+          telegram_username?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       telegram_group_settings: {
         Row: {
           added_at: string
@@ -2752,6 +3320,7 @@ export type Database = {
           enabled: boolean
           enabled_at: string | null
           enabled_by: string | null
+          mode: string
         }
         Insert: {
           added_at?: string
@@ -2762,6 +3331,7 @@ export type Database = {
           enabled?: boolean
           enabled_at?: string | null
           enabled_by?: string | null
+          mode?: string
         }
         Update: {
           added_at?: string
@@ -2772,6 +3342,7 @@ export type Database = {
           enabled?: boolean
           enabled_at?: string | null
           enabled_by?: string | null
+          mode?: string
         }
         Relationships: []
       }
@@ -2832,6 +3403,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_embeddings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       user_locations: {
@@ -2879,6 +3457,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_locations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       user_preferences: {
@@ -2911,6 +3496,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       user_roles: {
@@ -2940,6 +3532,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       users: {
@@ -2955,6 +3554,7 @@ export type Database = {
           intentions: string | null
           interests_skills: string[] | null
           is_claimed: boolean | null
+          is_vibe_resident: boolean
           name: string | null
           original_item_id: number | null
           phone_number: string | null
@@ -2968,6 +3568,7 @@ export type Database = {
           universal_id: string
           updated_at: string
           username: string | null
+          vibe_resident_at: string | null
           vibecoin_balance: number
           wallet_address: string | null
           wallet_connected_at: string | null
@@ -2988,6 +3589,7 @@ export type Database = {
           intentions?: string | null
           interests_skills?: string[] | null
           is_claimed?: boolean | null
+          is_vibe_resident?: boolean
           name?: string | null
           original_item_id?: number | null
           phone_number?: string | null
@@ -3001,6 +3603,7 @@ export type Database = {
           universal_id: string
           updated_at?: string
           username?: string | null
+          vibe_resident_at?: string | null
           vibecoin_balance?: number
           wallet_address?: string | null
           wallet_connected_at?: string | null
@@ -3021,6 +3624,7 @@ export type Database = {
           intentions?: string | null
           interests_skills?: string[] | null
           is_claimed?: boolean | null
+          is_vibe_resident?: boolean
           name?: string | null
           original_item_id?: number | null
           phone_number?: string | null
@@ -3034,6 +3638,7 @@ export type Database = {
           universal_id?: string
           updated_at?: string
           username?: string | null
+          vibe_resident_at?: string | null
           vibecoin_balance?: number
           wallet_address?: string | null
           wallet_connected_at?: string | null
@@ -3091,6 +3696,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vibecoin_pickups_collected_by_fkey"
+            columns: ["collected_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "vibecoin_pickups_community_id_fkey"
@@ -3362,6 +3974,262 @@ export type Database = {
         }
         Relationships: []
       }
+      wc_bids: {
+        Row: {
+          away_pred: number
+          created_at: string
+          home_pred: number
+          id: string
+          match_id: string
+          settled: boolean
+          stake: number
+          updated_at: string
+          user_id: string
+          won: boolean | null
+        }
+        Insert: {
+          away_pred: number
+          created_at?: string
+          home_pred: number
+          id?: string
+          match_id: string
+          settled?: boolean
+          stake: number
+          updated_at?: string
+          user_id: string
+          won?: boolean | null
+        }
+        Update: {
+          away_pred?: number
+          created_at?: string
+          home_pred?: number
+          id?: string
+          match_id?: string
+          settled?: boolean
+          stake?: number
+          updated_at?: string
+          user_id?: string
+          won?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wc_bids_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wc_bids_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      wc_matches: {
+        Row: {
+          away_score: number | null
+          away_team: string
+          created_at: string
+          home_score: number | null
+          home_team: string
+          id: string
+          kickoff_at: string
+          stage: string
+          status: string
+          updated_at: string
+          venue: string | null
+        }
+        Insert: {
+          away_score?: number | null
+          away_team: string
+          created_at?: string
+          home_score?: number | null
+          home_team: string
+          id?: string
+          kickoff_at: string
+          stage?: string
+          status?: string
+          updated_at?: string
+          venue?: string | null
+        }
+        Update: {
+          away_score?: number | null
+          away_team?: string
+          created_at?: string
+          home_score?: number | null
+          home_team?: string
+          id?: string
+          kickoff_at?: string
+          stage?: string
+          status?: string
+          updated_at?: string
+          venue?: string | null
+        }
+        Relationships: []
+      }
+      wc_profiles: {
+        Row: {
+          balance: number
+          created_at: string
+          display_name_override: string | null
+          favorite_team: string
+          losses: number
+          updated_at: string
+          user_id: string
+          wins: number
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          display_name_override?: string | null
+          favorite_team: string
+          losses?: number
+          updated_at?: string
+          user_id: string
+          wins?: number
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          display_name_override?: string | null
+          favorite_team?: string
+          losses?: number
+          updated_at?: string
+          user_id?: string
+          wins?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wc_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wc_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      wc_results_ledger: {
+        Row: {
+          bid_id: string | null
+          created_at: string
+          delta: number
+          id: string
+          reason: string
+          user_id: string
+        }
+        Insert: {
+          bid_id?: string | null
+          created_at?: string
+          delta: number
+          id?: string
+          reason: string
+          user_id: string
+        }
+        Update: {
+          bid_id?: string | null
+          created_at?: string
+          delta?: number
+          id?: string
+          reason?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wc_results_ledger_bid_id_fkey"
+            columns: ["bid_id"]
+            isOneToOne: false
+            referencedRelation: "wc_bids"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wc_results_ledger_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wc_results_ledger_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      workshops: {
+        Row: {
+          capacity: number
+          cover_image_url: string | null
+          created_at: string
+          date_label: string
+          id: string
+          is_published: boolean
+          live_demo: string | null
+          prototype_build: string | null
+          slug: string
+          sort_order: number
+          starts_at: string | null
+          subtitle: string | null
+          takeaway: string | null
+          title: string
+          tool: string | null
+          updated_at: string
+          week: number
+          what_it_is: string | null
+        }
+        Insert: {
+          capacity?: number
+          cover_image_url?: string | null
+          created_at?: string
+          date_label: string
+          id?: string
+          is_published?: boolean
+          live_demo?: string | null
+          prototype_build?: string | null
+          slug: string
+          sort_order?: number
+          starts_at?: string | null
+          subtitle?: string | null
+          takeaway?: string | null
+          title: string
+          tool?: string | null
+          updated_at?: string
+          week: number
+          what_it_is?: string | null
+        }
+        Update: {
+          capacity?: number
+          cover_image_url?: string | null
+          created_at?: string
+          date_label?: string
+          id?: string
+          is_published?: boolean
+          live_demo?: string | null
+          prototype_build?: string | null
+          slug?: string
+          sort_order?: number
+          starts_at?: string | null
+          subtitle?: string | null
+          takeaway?: string | null
+          title?: string
+          tool?: string | null
+          updated_at?: string
+          week?: number
+          what_it_is?: string | null
+        }
+        Relationships: []
+      }
       world_objects: {
         Row: {
           community_id: string
@@ -3407,6 +4275,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_objects_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3515,6 +4390,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "x_post_drafts_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "x_post_drafts_automation_id_fkey"
             columns: ["automation_id"]
             isOneToOne: false
@@ -3527,6 +4409,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "x_post_drafts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3553,8 +4442,70 @@ export type Database = {
           },
         ]
       }
+      wc_leaderboard: {
+        Row: {
+          avatar_url: string | null
+          balance: number | null
+          display_name: string | null
+          favorite_team: string | null
+          losses: number | null
+          user_id: string | null
+          wins: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      admin_auto_merge_telegram_username_duplicates: {
+        Args: { dry_run?: boolean }
+        Returns: {
+          merged_count: number
+          primary_id: string
+          tg_username: string
+        }[]
+      }
+      admin_list_survey_responses: {
+        Args: { _password: string }
+        Returns: {
+          business_name: string
+          contact_email: string
+          contact_name: string
+          created_at: string
+          id: string
+          payload: Json
+        }[]
+      }
+      admin_list_workshop_inquiries: {
+        Args: { _password: string }
+        Returns: {
+          business: string
+          created_at: string
+          email: string
+          id: string
+          message: string
+          name: string
+          phone: string
+          sms_opt_in: boolean
+          status: string
+          workshop_weeks: number[]
+        }[]
+      }
+      admin_merge_user_pair: {
+        Args: { loser_id: string; primary_id: string }
+        Returns: undefined
+      }
+      admin_preview_telegram_username_duplicate_groups: {
+        Args: never
+        Returns: {
+          n: number
+          rows: Json
+          tg_username: string
+        }[]
+      }
+      admin_set_inquiry_status: {
+        Args: { _id: string; _password: string; _status: string }
+        Returns: undefined
+      }
       auto_join_community_as_admin: {
         Args: { target_community_id: string }
         Returns: boolean
@@ -3566,6 +4517,14 @@ export type Database = {
       check_community_membership: {
         Args: { _auth_user_id: string; _community_id: string }
         Returns: boolean
+      }
+      delete_email: {
+        Args: { message_id: number; queue_name: string }
+        Returns: boolean
+      }
+      enqueue_email: {
+        Args: { payload: Json; queue_name: string }
+        Returns: number
       }
       ensure_unique_universal_id: {
         Args: { table_name: string }
@@ -3631,7 +4590,20 @@ export type Database = {
           username: string
         }[]
       }
+      get_workshop_week_counts: {
+        Args: never
+        Returns: {
+          capacity: number
+          registered_count: number
+          seats_left: number
+          slug: string
+          title: string
+          week: number
+        }[]
+      }
       has_role: { Args: { _role: string; _user_id: string }; Returns: boolean }
+      invoke_process_email_queue: { Args: never; Returns: undefined }
+      is_admin: { Args: never; Returns: boolean }
       is_community_admin: {
         Args: { community_id_param: string; user_auth_id: string }
         Returns: boolean
@@ -3639,6 +4611,23 @@ export type Database = {
       is_community_member: {
         Args: { community_id_param: string; user_id_param: string }
         Returns: boolean
+      }
+      move_to_dlq: {
+        Args: {
+          dlq_name: string
+          message_id: number
+          payload: Json
+          source_queue: string
+        }
+        Returns: number
+      }
+      read_email_batch: {
+        Args: { batch_size: number; queue_name: string; vt: number }
+        Returns: {
+          message: Json
+          msg_id: number
+          read_ct: number
+        }[]
       }
       semantic_search_users: {
         Args: {
@@ -3656,6 +4645,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      verify_admin_password: { Args: { _password: string }; Returns: boolean }
       verify_api_key: {
         Args: { key_hash: string; key_prefix: string }
         Returns: {
