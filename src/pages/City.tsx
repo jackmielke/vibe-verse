@@ -28,7 +28,29 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { motion, AnimatePresence } from "framer-motion";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
-import pilotUrl from "@/assets/glb/characters/BlueSoldier_Male.glb";
+
+// Every Quaternius character can be the pilot — same glob pattern as
+// the Lobby, so these assets are shared with it, not duplicated.
+const CHARACTER_URLS = import.meta.glob(
+  "@/assets/glb/characters/*.glb",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+
+const CHARACTERS = Object.entries(CHARACTER_URLS)
+  .map(([path, url]) => ({
+    name: path.split("/").pop()!.replace(/\.glb$/, ""),
+    url,
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+// Honor a character picked in the Lobby; fall back to the soldier.
+function initialCharacter(): string {
+  const stored =
+    localStorage.getItem("city.character") ?? localStorage.getItem("lobby.character");
+  if (stored && CHARACTERS.some((c) => c.name === stored)) return stored;
+  if (CHARACTERS.some((c) => c.name === "BlueSoldier_Male")) return "BlueSoldier_Male";
+  return CHARACTERS[0]?.name ?? "";
+}
 
 // ------------------------------------------------------------------
 // City plan — tune these and the whole district regenerates.
@@ -83,9 +105,15 @@ function rng(seed: string) {
 // ------------------------------------------------------------------
 function makeWindowTextures(
   variantSeed: string,
-  facade: string,
-  lit: string,
+  opts: {
+    facade: string;
+    lit: string;
+    litChance: number; // 0 for daytime facades — windows become glass
+    windowColor: string;
+    roofColor: string;
+  },
 ): { map: THREE.CanvasTexture; emissiveMap: THREE.CanvasTexture } {
+  const { facade, lit, litChance, windowColor, roofColor } = opts;
   const S = 512;
   const cols = 16;
   const rows = 16;
@@ -110,7 +138,7 @@ function makeWindowTextures(
       const y = cy * cell + cell * 0.2;
       const w = cell * 0.56;
       const h = cell * 0.6;
-      const isLit = r() < 0.32;
+      const isLit = r() < litChance;
       if (isLit) {
         const dim = 0.55 + r() * 0.45;
         bctx.fillStyle = lit;
@@ -122,14 +150,14 @@ function makeWindowTextures(
         ectx.fillRect(x, y, w, h);
         ectx.globalAlpha = 1;
       } else {
-        bctx.fillStyle = "rgba(8, 12, 16, 0.92)";
+        bctx.fillStyle = windowColor;
         bctx.fillRect(x, y, w, h);
       }
     }
   }
   // Reserved roof-colored corner texel for roofs/floors — slightly
   // lighter than the facade so rooftops read from above.
-  bctx.fillStyle = "#1f2733";
+  bctx.fillStyle = roofColor;
   bctx.fillRect(0, 0, 4, 4);
   ectx.fillStyle = "#000";
   ectx.fillRect(0, 0, 4, 4);
@@ -251,8 +279,8 @@ function generateCity(): {
 }
 
 // Ground texture: asphalt with sidewalk-edged blocks and dashed
-// street center lines, drawn once for the whole district.
-function makeGroundTexture(): THREE.CanvasTexture {
+// street center lines, drawn once per mode for the whole district.
+function makeGroundTexture(day: boolean): THREE.CanvasTexture {
   const S = 2048;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
@@ -260,7 +288,7 @@ function makeGroundTexture(): THREE.CanvasTexture {
   const m = S / (GRID * PITCH); // px per meter
   const center = (GRID - 1) / 2;
 
-  ctx.fillStyle = "#0e1219"; // asphalt
+  ctx.fillStyle = day ? "#6e7884" : "#0e1219"; // asphalt
   ctx.fillRect(0, 0, S, S);
 
   for (let gx = 0; gx < GRID; gx++) {
@@ -269,15 +297,22 @@ function makeGroundTexture(): THREE.CanvasTexture {
       const pz = (gz * PITCH + STREET / 2) * m;
       const side = BLOCK * m;
       // Sidewalk ring then block interior.
-      ctx.fillStyle = "#1d2531";
+      ctx.fillStyle = day ? "#9aa4b1" : "#1d2531";
       ctx.fillRect(px, pz, side, side);
-      ctx.fillStyle = gx === center && gz === center ? "#13312a" : "#121822";
+      ctx.fillStyle =
+        gx === center && gz === center
+          ? day
+            ? "#74b294"
+            : "#13312a"
+          : day
+            ? "#86909d"
+            : "#121822";
       ctx.fillRect(px + 2.2 * m, pz + 2.2 * m, side - 4.4 * m, side - 4.4 * m);
     }
   }
 
   // Dashed center lines down every street, both axes.
-  ctx.strokeStyle = "rgba(45, 212, 168, 0.6)";
+  ctx.strokeStyle = day ? "rgba(255, 255, 255, 0.7)" : "rgba(45, 212, 168, 0.6)";
   ctx.lineWidth = 0.35 * m;
   ctx.setLineDash([3 * m, 4.5 * m]);
   for (let g = 0; g <= GRID; g++) {
@@ -335,6 +370,12 @@ export default function City() {
   const [entered, setEntered] = useState(false);
   const enteredRef = useRef(false);
   const [hud, setHud] = useState({ alt: 0, spd: 0, jet: false });
+  const [dayMode, setDayMode] = useState(false);
+  const [charName, setCharName] = useState(initialCharacter);
+  const [charPanelOpen, setCharPanelOpen] = useState(false);
+  const charRef = useRef(charName);
+  const applyModeRef = useRef<((day: boolean) => void) | null>(null);
+  const loadPilotRef = useRef<((name: string) => void) | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -356,8 +397,10 @@ export default function City() {
       2200,
     );
 
-    scene.add(new THREE.AmbientLight(0x8899bb, 0.5));
-    scene.add(new THREE.HemisphereLight(0x32445e, 0x0c1018, 1.1));
+    const ambient = new THREE.AmbientLight(0x8899bb, 0.5);
+    scene.add(ambient);
+    const hemi = new THREE.HemisphereLight(0x32445e, 0x0c1018, 1.1);
+    scene.add(hemi);
     const moonlight = new THREE.DirectionalLight(0xbfd4ff, 1.05);
     moonlight.position.set(180, 320, -140);
     scene.add(moonlight);
@@ -368,21 +411,38 @@ export default function City() {
     // ---- The district ----------------------------------------------
     const { boxes, geoByVariant, pads } = generateCity();
     const facades = ["#151b27", "#132033", "#11141c"];
+    const dayFacades = ["#aab4c2", "#9fb0c4", "#b6bdc9"];
     const litColors = ["#2dd4a8", "#ffd9a0", "#6fd9ff"];
     const buildingMeshes: THREE.Mesh[] = [];
+    // Each variant keeps both skins so day/night can swap facades.
+    const buildingSkins: Array<{
+      mat: THREE.MeshStandardMaterial;
+      nightMap: THREE.CanvasTexture;
+      dayMap: THREE.CanvasTexture;
+    }> = [];
     geoByVariant.forEach((geos, i) => {
       if (!geos.length) return;
-      const { map, emissiveMap } = makeWindowTextures(
-        `${CITY_SEED}-tex-${i}`,
-        facades[i % facades.length],
-        litColors[Math.floor(i / facades.length) % litColors.length],
-      );
+      const lit = litColors[Math.floor(i / facades.length) % litColors.length];
+      const night = makeWindowTextures(`${CITY_SEED}-tex-${i}`, {
+        facade: facades[i % facades.length],
+        lit,
+        litChance: 0.32,
+        windowColor: "rgba(8, 12, 16, 0.92)",
+        roofColor: "#1f2733",
+      });
+      const day = makeWindowTextures(`${CITY_SEED}-tex-${i}-day`, {
+        facade: dayFacades[i % dayFacades.length],
+        lit,
+        litChance: 0, // daytime windows are just dark glass
+        windowColor: "#3d5168",
+        roofColor: "#99a3ae",
+      });
       const merged = mergeGeometries(geos, false)!;
       geos.forEach((g) => g.dispose());
       const mat = new THREE.MeshStandardMaterial({
-        map,
+        map: night.map,
         emissive: new THREE.Color("#ffffff"),
-        emissiveMap,
+        emissiveMap: night.emissiveMap,
         emissiveIntensity: 1.0,
         roughness: 0.85,
         metalness: 0.1,
@@ -390,19 +450,21 @@ export default function City() {
       const mesh = new THREE.Mesh(merged, mat);
       scene.add(mesh);
       buildingMeshes.push(mesh);
+      buildingSkins.push({ mat, nightMap: night.map, dayMap: day.map });
     });
 
     // Ground: textured district plate over a huge dark apron.
+    const groundNight = makeGroundTexture(false);
+    const groundDay = makeGroundTexture(true);
+    const plateMat = new THREE.MeshStandardMaterial({ map: groundNight, roughness: 0.95 });
     const plate = new THREE.Mesh(
       new THREE.PlaneGeometry(GRID * PITCH, GRID * PITCH),
-      new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness: 0.95 }),
+      plateMat,
     );
     plate.rotation.x = -Math.PI / 2;
     scene.add(plate);
-    const apron = new THREE.Mesh(
-      new THREE.PlaneGeometry(4000, 4000),
-      new THREE.MeshStandardMaterial({ color: "#04060a", roughness: 1 }),
-    );
+    const apronMat = new THREE.MeshStandardMaterial({ color: "#04060a", roughness: 1 });
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), apronMat);
     apron.rotation.x = -Math.PI / 2;
     apron.position.y = -0.05;
     scene.add(apron);
@@ -455,12 +517,40 @@ export default function City() {
       new THREE.PointsMaterial({ color: 0xcfe8ff, size: 2.2, sizeAttenuation: false, fog: false }),
     );
     scene.add(stars);
-    const moon = new THREE.Mesh(
-      new THREE.SphereGeometry(60, 32, 32),
-      new THREE.MeshBasicMaterial({ color: "#e8f1ff", fog: false }),
-    );
+    const moonMat = new THREE.MeshBasicMaterial({ color: "#e8f1ff", fog: false });
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(60, 32, 32), moonMat);
     moon.position.set(620, 430, -900);
     scene.add(moon);
+
+    // ---- Day / night ------------------------------------------------
+    // One function flips the whole atmosphere: sky, fog, lights,
+    // window glow, stars. The moon doubles as the daytime sun disk.
+    const applyMode = (day: boolean) => {
+      const sky = day ? "#9fd1f0" : "#05080d";
+      (scene.background as THREE.Color).set(sky);
+      const fog = scene.fog as THREE.Fog;
+      fog.color.set(sky);
+      fog.near = day ? 170 : 90;
+      fog.far = day ? 1100 : 520;
+      ambient.color.set(day ? 0xffffff : 0x8899bb);
+      hemi.color.set(day ? 0xcfe8ff : 0x32445e);
+      hemi.groundColor.set(day ? 0x8c96a4 : 0x0c1018);
+      hemi.intensity = day ? 1.9 : 1.1;
+      moonlight.color.set(day ? 0xfff2d0 : 0xbfd4ff);
+      moonlight.intensity = day ? 2.3 : 1.05;
+      plazaGlow.intensity = day ? 0 : 60;
+      stars.visible = !day;
+      moonMat.color.set(day ? 0xfff6cf : 0xe8f1ff);
+      buildingSkins.forEach((s) => {
+        s.mat.map = day ? s.dayMap : s.nightMap;
+        s.mat.emissiveIntensity = day ? 0 : 1.0;
+        s.mat.needsUpdate = true;
+      });
+      plateMat.map = day ? groundDay : groundNight;
+      plateMat.needsUpdate = true;
+      apronMat.color.set(day ? 0x67717d : 0x04060a);
+    };
+    applyModeRef.current = applyMode;
 
     // ---- Pilot + jetpack rig ----------------------------------------
     const player = new THREE.Group(); // origin = feet
@@ -483,6 +573,16 @@ export default function City() {
       if (!pick && fallbackFirst) pick = [...actions.keys()][0];
       if (!pick || pick === activeName) return;
       const next = actions.get(pick)!;
+      // A plain "Jump" (no _Idle hover variant) fires once and holds
+      // its final pose mid-air — not looping like a pogo stick.
+      const once = /jump/i.test(pick) && !/idle/i.test(pick);
+      if (once) {
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+      } else {
+        next.setLoop(THREE.LoopRepeat, Infinity);
+        next.clampWhenFinished = false;
+      }
       next.reset().fadeIn(0.22).play();
       activeAction?.fadeOut(0.22);
       activeAction = next;
@@ -490,43 +590,76 @@ export default function City() {
     };
 
     const loader = new GLTFLoader();
-    loader.load(pilotUrl, (gltf) => {
-      const model = gltf.scene;
-      model.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const fit = 1.85 / Math.max(size.x, size.y, size.z, 0.0001);
-      model.scale.setScalar(fit);
-      model.updateMatrixWorld(true);
-      const scaled = new THREE.Box3().setFromObject(model);
-      model.position.y = -scaled.min.y;
-      model.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const apply = (mat: THREE.Material) => {
-          const std = mat as THREE.MeshStandardMaterial;
-          if (std && "metalness" in std) {
-            std.metalness = Math.min(std.metalness, 0.3);
-            std.roughness = Math.max(std.roughness, 0.45);
-            std.needsUpdate = true;
-          }
-        };
-        const mat = mesh.material;
-        if (Array.isArray(mat)) mat.forEach(apply);
-        else if (mat) apply(mat);
-      });
-      modelHolder.add(model);
-
-      if (gltf.animations.length) {
-        mixer = new THREE.AnimationMixer(model);
-        for (const clip of gltf.animations) {
-          actions.set(shortClipName(clip.name), mixer.clipAction(clip));
-        }
-        console.debug("[city] pilot clips:", [...actions.keys()].join(", "));
-        playClip([/^idle$/i, /idle/i], true);
+    let pilotModel: THREE.Object3D | null = null;
+    let pilotGen = 0;
+    const loadPilot = (url: string) => {
+      const gen = ++pilotGen;
+      if (pilotModel) {
+        modelHolder.remove(pilotModel);
+        pilotModel.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.geometry?.dispose();
+          const m = mesh.material as THREE.Material | THREE.Material[];
+          if (Array.isArray(m)) m.forEach((x) => x.dispose());
+          else m?.dispose();
+        });
+        pilotModel = null;
       }
-    });
+      mixer?.stopAllAction();
+      mixer = null;
+      actions.clear();
+      activeAction = null;
+      activeName = "";
+
+      loader.load(url, (gltf) => {
+        if (gen !== pilotGen) return; // superseded by a newer pick
+        const model = gltf.scene;
+        model.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const fit = 1.85 / Math.max(size.x, size.y, size.z, 0.0001);
+        model.scale.setScalar(fit);
+        model.updateMatrixWorld(true);
+        const scaled = new THREE.Box3().setFromObject(model);
+        model.position.y = -scaled.min.y;
+        model.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const apply = (mat: THREE.Material) => {
+            const std = mat as THREE.MeshStandardMaterial;
+            if (std && "metalness" in std) {
+              std.metalness = Math.min(std.metalness, 0.3);
+              std.roughness = Math.max(std.roughness, 0.45);
+              std.needsUpdate = true;
+            }
+          };
+          const mat = mesh.material;
+          if (Array.isArray(mat)) mat.forEach(apply);
+          else if (mat) apply(mat);
+        });
+        pilotModel = model;
+        modelHolder.add(model);
+
+        if (gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(model);
+          for (const clip of gltf.animations) {
+            actions.set(shortClipName(clip.name), mixer.clipAction(clip));
+          }
+          console.debug("[city] pilot clips:", [...actions.keys()].join(", "));
+          playClip([/^idle$/i, /idle/i], true);
+        }
+      });
+    };
+    loadPilotRef.current = (name) => {
+      const c = CHARACTERS.find((x) => x.name === name);
+      if (c) loadPilot(c.url);
+    };
+    {
+      const start = CHARACTERS.find((c) => c.name === charRef.current) ?? CHARACTERS[0];
+      if (start) loadPilot(start.url);
+    }
 
     // Procedural jetpack: backplate + twin tanks + nozzles + flames.
     const jetpack = new THREE.Group();
@@ -820,6 +953,8 @@ export default function City() {
     return () => {
       renderer.setAnimationLoop(null);
       disposeVR();
+      applyModeRef.current = null;
+      loadPilotRef.current = null;
       ro.disconnect();
       window.clearInterval(hudTimer);
       window.removeEventListener("keydown", onKeyDown);
@@ -866,6 +1001,60 @@ export default function City() {
             {"  ·  "}
             SPD <span className="text-foreground">{hud.spd.toFixed(0)} m/s</span>
           </div>
+        </div>
+      )}
+
+      {/* World controls: day/night toggle + character picker. The
+          blur() calls keep focus off the buttons so Space stays on
+          the jetpack instead of re-clicking them. */}
+      {entered && (
+        <div className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => {
+                const next = !dayMode;
+                setDayMode(next);
+                applyModeRef.current?.(next);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title={dayMode ? "Switch to night" : "Switch to day"}
+            >
+              {dayMode ? "🌙 Night" : "☀️ Day"}
+            </button>
+            <button
+              onClick={(e) => {
+                setCharPanelOpen((v) => !v);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+            >
+              🎭 {charName.replace(/_/g, " ")}
+            </button>
+          </div>
+          {charPanelOpen && (
+            <div className="glass-panel rounded-2xl p-2 w-56 max-h-[46dvh] overflow-y-auto space-y-0.5">
+              {CHARACTERS.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={(e) => {
+                    setCharName(c.name);
+                    charRef.current = c.name;
+                    localStorage.setItem("city.character", c.name);
+                    loadPilotRef.current?.(c.name);
+                    e.currentTarget.blur();
+                  }}
+                  className={`w-full text-left text-xs rounded-lg px-2.5 py-1.5 transition-colors ${
+                    charName === c.name
+                      ? "bg-primary/25 text-primary"
+                      : "text-foreground/75 hover:bg-muted/50"
+                  }`}
+                >
+                  {c.name.replace(/_/g, " ")}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
