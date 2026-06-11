@@ -19,6 +19,8 @@ export interface CitySounds {
   thud(impact: number): void;
   /** All-stars-collected fanfare. */
   fanfare(): void;
+  /** A comedy moo for the cow Easter egg. */
+  moo(): void;
   setMuted(muted: boolean): void;
   dispose(): void;
 }
@@ -108,6 +110,32 @@ export function createCitySounds(): CitySounds | null {
       [0, 2, 4, 7, 9].forEach((s, i) => {
         blip(PENTATONIC[s % 5] * (s >= 5 ? 2 : 1), t + i * 0.14, 0.6, 0.2, "triangle");
       });
+    },
+    moo() {
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(196, t);
+      osc.frequency.linearRampToValueAtTime(140, t + 0.18);
+      osc.frequency.linearRampToValueAtTime(108, t + 0.55);
+      const vib = ctx.createOscillator();
+      vib.frequency.value = 6.5;
+      const vibGain = ctx.createGain();
+      vibGain.gain.value = 7;
+      vib.connect(vibGain).connect(osc.frequency);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 420;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.34, t + 0.06);
+      g.gain.setValueAtTime(0.34, t + 0.4);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.68);
+      osc.connect(lp).connect(g).connect(master);
+      osc.start(t);
+      vib.start(t);
+      osc.stop(t + 0.75);
+      vib.stop(t + 0.75);
     },
     setMuted(muted) {
       master.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);

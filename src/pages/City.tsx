@@ -85,11 +85,14 @@ const WALK_SPEED = 7;
 const RUN_SPEED = 16;
 const FLY_SPEED = 22; // jetpack cruising is faster than running…
 const FLY_RUN_SPEED = 34; // …and Shift opens the throttle for island runs
+const ZIP_SPEED = 10; // zipline glide, m/s
 const GRAVITY = 24;
 const THRUST = 50; // jetpack accel (net climb = THRUST - GRAVITY)
 const MAX_RISE = 19;
 const MAX_FALL = 32;
 const PLAYER_RADIUS = 0.55;
+const MIN_CAM_DIST = 4.5;
+const MAX_CAM_DIST = 750; // pinch all the way out to a god view
 
 interface BuildingBox {
   minX: number;
@@ -398,6 +401,9 @@ export default function City() {
     runMs: null as number | null,
     bestMs: null as number | null,
     nearIsland: false,
+    nearZip: false,
+    riding: false,
+    nearCow: false,
   });
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
@@ -424,14 +430,22 @@ export default function City() {
     return generated;
   });
 
-  // Vibey: proximity-gated LLM conversation via the unit7-chat function.
+  // Talkable NPCs (Vibey + Jerry): proximity-gated LLM conversations
+  // through the unit7-chat edge function, one dialog at a time.
   const [nearVibey, setNearVibey] = useState(false);
-  const [vibeyOpen, setVibeyOpen] = useState(false);
+  const [nearJerry, setNearJerry] = useState(false);
+  const [npcTarget, setNpcTarget] = useState<"vibey" | "jerry" | null>(null);
   const [vibeyThinking, setVibeyThinking] = useState(false);
   const [vibeyDraft, setVibeyDraft] = useState("");
-  const [vibeyLog, setVibeyLog] = useState<Array<{ who: "you" | "vibey"; text: string }>>([]);
-  const vibeyHistoryRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [npcLogs, setNpcLogs] = useState<
+    Record<"vibey" | "jerry", Array<{ who: "you" | "npc"; text: string }>>
+  >({ vibey: [], jerry: [] });
+  const npcHistoryRef = useRef<
+    Record<"vibey" | "jerry", Array<{ role: "user" | "assistant"; content: string }>>
+  >({ vibey: [], jerry: [] });
   const vibeyExciteRef = useRef<(() => void) | null>(null);
+  const zipGrabRef = useRef<(() => void) | null>(null);
+  const mooRef = useRef<(() => void) | null>(null);
   const [dayMode, setDayMode] = useState(false);
   const [muted, setMuted] = useState(false);
   const soundsRef = useRef<CitySounds | null>(null);
@@ -458,7 +472,7 @@ export default function City() {
       60,
       canvas.clientWidth / canvas.clientHeight,
       0.1,
-      2200,
+      3500,
     );
 
     const ambient = new THREE.AmbientLight(0x8899bb, 0.5);
@@ -585,6 +599,18 @@ export default function City() {
       ...pads.slice(0, 6).map((p) => new THREE.Vector3(p.x, p.y + 2.5, p.z)),
       ...starTrail,
       ...island.starSpots,
+      // Three more ride the zipline loop…
+      ...[0.6, 2.7, 4.8].map(
+        (a) =>
+          new THREE.Vector3(
+            ISLAND_X + Math.cos(a) * island.zipline.radius,
+            island.zipline.y - 2,
+            ISLAND_Z + Math.sin(a) * island.zipline.radius,
+          ),
+      ),
+      // …and one secret star hides under the island. Finding it makes
+      // your jetpack burn rainbow for the rest of the session.
+      new THREE.Vector3(ISLAND_X, ISLAND_TOP - 46, ISLAND_Z),
     ];
     const collectGeo = new THREE.OctahedronGeometry(0.9);
     const collectMat = new THREE.MeshBasicMaterial({
@@ -655,6 +681,23 @@ export default function City() {
     });
     mpRef.current = mp;
 
+    // ---- Cardboard TV: tune in the community photo gallery ----------
+    // Same gallery_photos feed the /space TV uses.
+    void supabase
+      .from("gallery_photos")
+      .select("image_url")
+      .eq("community_id", "4202857f-13fd-4407-8906-3f8ffe63e510")
+      .eq("is_visible", true)
+      .order("display_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(16)
+      .then(({ data }) => {
+        const urls = (data ?? [])
+          .map((row) => row.image_url as string)
+          .filter(Boolean);
+        if (urls.length) island.setTvPhotos(urls);
+      });
+
     // Stars + moon (fog-exempt so they read at any distance).
     const starGeo = new THREE.BufferGeometry();
     {
@@ -685,13 +728,17 @@ export default function City() {
     // ---- Day / night ------------------------------------------------
     // One function flips the whole atmosphere: sky, fog, lights,
     // window glow, stars. The moon doubles as the daytime sun disk.
+    let baseFogNear = 90;
+    let baseFogFar = 520;
     const applyMode = (day: boolean) => {
       const sky = day ? "#9fd1f0" : "#05080d";
       (scene.background as THREE.Color).set(sky);
       const fog = scene.fog as THREE.Fog;
       fog.color.set(sky);
-      fog.near = day ? 170 : 90;
-      fog.far = day ? 1100 : 520;
+      baseFogNear = day ? 170 : 90;
+      baseFogFar = day ? 1100 : 520;
+      fog.near = baseFogNear;
+      fog.far = baseFogFar;
       ambient.color.set(day ? 0xffffff : 0x8899bb);
       hemi.color.set(day ? 0xcfe8ff : 0x32445e);
       hemi.groundColor.set(day ? 0x8c96a4 : 0x0c1018);
@@ -864,6 +911,24 @@ export default function City() {
     jetLight.position.set(0, 0.4, -0.2);
     player.add(jetLight);
 
+    // Zipline T-handle, visible only while riding the cable.
+    const zipHandle = new THREE.Group();
+    {
+      const metal = new THREE.MeshStandardMaterial({
+        color: "#7d8694",
+        roughness: 0.4,
+        metalness: 0.6,
+      });
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 8), metal);
+      stem.position.y = 0.45;
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 8), metal);
+      bar.rotation.z = Math.PI / 2;
+      zipHandle.add(stem, bar);
+    }
+    zipHandle.position.y = 2.3;
+    zipHandle.visible = false;
+    player.add(zipHandle);
+
     // Thruster particle trail.
     const P_COUNT = 160;
     const pPos = new Float32Array(P_COUNT * 3);
@@ -907,22 +972,59 @@ export default function City() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
+    // Easter egg: type "vibe" anywhere (not in chat) → 20s of disco.
+    let typedEgg = "";
+    const onTypeEgg = (e: KeyboardEvent) => {
+      if (isTyping(e) || !/^[a-z]$/i.test(e.key)) return;
+      typedEgg = (typedEgg + e.key.toLowerCase()).slice(-6);
+      if (typedEgg.endsWith("vibe")) {
+        typedEgg = "";
+        discoUntil = performance.now() + 20000;
+        soundsRef.current?.fanfare();
+      }
+    };
+    window.addEventListener("keydown", onTypeEgg);
+
     // Drag-to-orbit camera (no pointer lock — phone-friendlier later).
     let camYaw = Math.PI;
     let camPitch = 0.42;
     let camDist = 9;
     // Manual delta tracking (movementX is unreliable for touch
-    // pointers on mobile Safari); one pointer at a time owns the
-    // camera so the joystick thumb doesn't fight it.
+    // pointers on mobile Safari). One finger drags the camera; two
+    // fingers on the canvas pinch-zoom, all the way out to god view.
+    const pointers = new Map<number, { x: number; y: number }>();
     let dragPointer: number | null = null;
     let dragLast = { x: 0, y: 0 };
+    let pinchStart: { dist: number; camDist: number } | null = null;
+    const clampDist = (d: number) => THREE.MathUtils.clamp(d, MIN_CAM_DIST, MAX_CAM_DIST);
     const onPointerDown = (e: PointerEvent) => {
-      if (dragPointer !== null) return;
-      dragPointer = e.pointerId;
-      dragLast = { x: e.clientX, y: e.clientY };
-      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is best-effort */
+      }
+      if (pointers.size === 1) {
+        dragPointer = e.pointerId;
+        dragLast = { x: e.clientX, y: e.clientY };
+      } else if (pointers.size === 2) {
+        dragPointer = null; // two fingers = pinch, not look
+        const [a, b] = [...pointers.values()];
+        pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), camDist };
+      }
     };
     const onPointerMove = (e: PointerEvent) => {
+      const p = pointers.get(e.pointerId);
+      if (p) {
+        p.x = e.clientX;
+        p.y = e.clientY;
+      }
+      if (pointers.size === 2 && pinchStart) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d > 16) camDist = clampDist(pinchStart.camDist * (pinchStart.dist / d));
+        return;
+      }
       if (dragPointer !== e.pointerId) return;
       const dx = e.clientX - dragLast.x;
       const dy = e.clientY - dragLast.y;
@@ -931,16 +1033,35 @@ export default function City() {
       camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0052, 0.06, 1.25);
     };
     const onPointerUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchStart = null;
       if (dragPointer === e.pointerId) dragPointer = null;
     };
+    // Laptop trackpads report pinches as ctrl+wheel — zoom the camera
+    // instead of the page, with a much stronger rate than scrolling.
     const onWheel = (e: WheelEvent) => {
-      camDist = THREE.MathUtils.clamp(camDist * (1 + e.deltaY * 0.0011), 4.5, 18);
+      if (e.ctrlKey) e.preventDefault();
+      const rate = e.ctrlKey ? 0.01 : 0.0011;
+      camDist = clampDist(camDist * (1 + e.deltaY * rate));
+    };
+    // Safari (macOS/iOS) reports trackpad pinches as gesture events.
+    let gestureStartDist = camDist;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureStartDist = camDist;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const scale = (e as unknown as { scale?: number }).scale || 1;
+      camDist = clampDist(gestureStartDist / scale);
     };
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerUp);
-    canvas.addEventListener("wheel", onWheel, { passive: true });
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("gesturestart", onGestureStart);
+    canvas.addEventListener("gesturechange", onGestureChange);
 
     // ---- Collision helpers --------------------------------------------
     // Only surfaces at or below refY can support you — so the floating
@@ -973,6 +1094,25 @@ export default function City() {
     let onGround = true;
     let modelYaw = 0;
     let lastTime = performance.now();
+    let riding = false; // on the zipline
+    let zipAngle = 0;
+    let rainbowOn = false; // secret star found
+    let discoUntil = 0; // "vibe" typed → plaza disco
+    const zip = island.zipline;
+
+    zipGrabRef.current = () => {
+      if (riding) {
+        riding = false;
+        return;
+      }
+      zipAngle = Math.atan2(player.position.z - zip.z, player.position.x - zip.x);
+      riding = true;
+      onGround = false;
+    };
+    mooRef.current = () => {
+      soundsRef.current?.moo();
+      npcCrew.hopCows();
+    };
 
     const hudTimer = window.setInterval(() => {
       setHud({
@@ -985,8 +1125,17 @@ export default function City() {
           runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
         bestMs,
         nearIsland: player.position.x > 250,
+        nearZip:
+          Math.abs(
+            Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
+          ) < 5 && Math.abs(player.position.y - (zip.y - 5)) < 9,
+        riding,
+        nearCow: npcCrew
+          .cowPositions()
+          .some((c) => c.distanceToSquared(player.position) < 49),
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
+      setNearJerry(player.position.distanceTo(island.jerry) < 8);
     }, 120);
 
     // Fast travel: hop between the plaza and Cardboard Island. Arrive
@@ -1046,6 +1195,21 @@ export default function City() {
         ? running ? RUN_SPEED : WALK_SPEED
         : running ? FLY_RUN_SPEED : FLY_SPEED;
 
+      const pos = player.position;
+      if (riding) {
+        // The cable owns your position: glide the loop around the
+        // island. Firing the jetpack (or the Let go button) releases
+        // you with the cable's momentum.
+        zipAngle += (ZIP_SPEED / zip.radius) * dt;
+        pos.set(
+          zip.x + Math.cos(zipAngle) * zip.radius,
+          zip.y - 2.2,
+          zip.z + Math.sin(zipAngle) * zip.radius,
+        );
+        vel.set(-Math.sin(zipAngle), 0, Math.cos(zipAngle)).multiplyScalar(ZIP_SPEED);
+        onGround = false;
+        if (thrusting) riding = false;
+      } else {
       // Horizontal velocity eases toward intent; lighter control mid-air.
       const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
       vel.x += (intent.x * targetSpeed - vel.x) * k;
@@ -1061,7 +1225,6 @@ export default function City() {
 
       // Integrate with axis-separated horizontal collision. The world
       // extends east past the district so the island is reachable.
-      const pos = player.position;
       const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, ISLAND_X + 130);
       const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, -CITY_HALF - 40, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
@@ -1104,6 +1267,7 @@ export default function City() {
       } else if (pos.y > support + 0.05) {
         onGround = false;
       }
+      } // end of free-movement physics (vs. riding the zipline)
 
       // Face the direction of travel; tilt forward while flying fast.
       const hSpeed = Math.hypot(vel.x, vel.z);
@@ -1175,6 +1339,7 @@ export default function City() {
           c.taken = true;
           c.mesh.visible = false;
           collectedCount++;
+          if (i === collectibles.length - 1) rainbowOn = true; // the secret one
           if (collectedCount === 1) runStartMs = now;
           soundsRef.current?.chime(collectedCount);
           if (collectedCount === collectibles.length) {
@@ -1201,6 +1366,22 @@ export default function City() {
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
+      // Easter-egg dressings: the zipline handle, the rainbow jetpack,
+      // and plaza disco while "vibe" mode lasts.
+      zipHandle.visible = riding;
+      if (rainbowOn) {
+        const hue = (now * 0.0004) % 1;
+        (particles.material as THREE.PointsMaterial).color.setHSL(hue, 0.9, 0.62);
+        flameMat.color.setHSL((hue + 0.25) % 1, 0.9, 0.65);
+      }
+      if (now < discoUntil) {
+        padMat.color.setHSL((now * 0.0006) % 1, 0.85, 0.6);
+        plazaGlow.color.setHSL((now * 0.0006 + 0.5) % 1, 0.85, 0.6);
+      } else {
+        padMat.color.set("#2dd4a8");
+        plazaGlow.color.set(0x2dd4a8);
+      }
+
       // Pulse the landing pads and plaza ring together.
       padMat.opacity = 0.55 + Math.sin(now * 0.0024) * 0.3;
 
@@ -1214,6 +1395,11 @@ export default function City() {
       eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
       camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
       camera.lookAt(pos.x, pos.y + 1.5, pos.z);
+
+      // Zoomed way out, the fog backs off so the diorama stays visible.
+      const fogNow = scene.fog as THREE.Fog;
+      fogNow.near = Math.max(baseFogNear, camDist * 1.2);
+      fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
 
       renderer.render(scene, camera);
     };
@@ -1245,11 +1431,16 @@ export default function City() {
       window.clearInterval(hudTimer);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("keydown", onTypeEgg);
+      zipGrabRef.current = null;
+      mooRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("gesturestart", onGestureStart);
+      canvas.removeEventListener("gesturechange", onGestureChange);
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.isMesh || (obj as THREE.Points).isPoints) {
@@ -1268,14 +1459,24 @@ export default function City() {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
 
-  // Vibey runs on the same unit7-chat edge function as the /space show
-  // (OpenRouter → Claude, key stays server-side).
-  const sendToVibey = async (text: string) => {
-    setVibeyLog((l) => [...l, { who: "you", text }]);
+  // Both NPCs run on the same unit7-chat edge function as the /space
+  // show (OpenRouter → Claude, key stays server-side). Jerry steers the
+  // persona with an in-band instruction until the function grows a
+  // proper character parameter.
+  const JERRY_PREFIX =
+    "(For this reply you are JERRY THE SNAIL — the beloved cardboard snail mayor of " +
+    "Jerry's Plaza on Cardboard Island, which the kids at the Edge Esmeralda creative " +
+    "residency built. You are slow, kind, a little philosophical, and very proud of " +
+    "the kids. Stay fully in character as Jerry the snail.) ";
+  const sendToNpc = async (target: "vibey" | "jerry", text: string) => {
+    setNpcLogs((l) => ({ ...l, [target]: [...l[target], { who: "you" as const, text }] }));
     setVibeyThinking(true);
     try {
       const { data, error } = await supabase.functions.invoke("unit7-chat", {
-        body: { history: vibeyHistoryRef.current.slice(-12), text },
+        body: {
+          history: npcHistoryRef.current[target].slice(-12),
+          text: target === "jerry" ? JERRY_PREFIX + text : text,
+        },
       });
       if (error) throw error;
       const say =
@@ -1283,17 +1484,21 @@ export default function City() {
           ? String((data as Record<string, unknown>).say)
           : null;
       if (!say) throw new Error("bad reply");
-      vibeyHistoryRef.current.push(
+      npcHistoryRef.current[target].push(
         { role: "user", content: text },
         { role: "assistant", content: say },
       );
-      setVibeyLog((l) => [...l, { who: "vibey", text: say }]);
-      vibeyExciteRef.current?.();
+      setNpcLogs((l) => ({ ...l, [target]: [...l[target], { who: "npc" as const, text: say }] }));
+      if (target === "vibey") vibeyExciteRef.current?.();
     } catch {
-      setVibeyLog((l) => [
+      const fallback =
+        target === "jerry"
+          ? "Jerry blinks slowly… the signal crawls even slower than he does. Try again soon."
+          : "My uplink is fuzzy out here — try me again in a moment.";
+      setNpcLogs((l) => ({
         ...l,
-        { who: "vibey", text: "My uplink is fuzzy out here — try me again in a moment." },
-      ]);
+        [target]: [...l[target], { who: "npc" as const, text: fallback }],
+      }));
     } finally {
       setVibeyThinking(false);
     }
@@ -1508,26 +1713,64 @@ export default function City() {
       {/* Touch controls for phones: joystick + jetpack button. */}
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
-      {/* Vibey: proximity prompt + conversation. */}
-      {entered && nearVibey && !vibeyOpen && (
-        <button
-          onClick={(e) => {
-            setVibeyOpen(true);
-            e.currentTarget.blur();
-          }}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
-        >
-          💬 Talk to Vibey
-        </button>
+      {/* Bottom-center action stack: context buttons appear as you
+          approach things — the zipline, a cow, Jerry, Vibey. */}
+      {entered && npcTarget === null && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+          {(hud.nearZip || hud.riding) && (
+            <button
+              onClick={(e) => {
+                zipGrabRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-amber-300"
+            >
+              {hud.riding ? "🪂 Let go" : "🧗 Grab the zipline"}
+            </button>
+          )}
+          {hud.nearCow && (
+            <button
+              onClick={(e) => {
+                mooRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm"
+            >
+              🐄 Moo
+            </button>
+          )}
+          {nearJerry && (
+            <button
+              onClick={(e) => {
+                setNpcTarget("jerry");
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🐌 Talk to Jerry
+            </button>
+          )}
+          {nearVibey && (
+            <button
+              onClick={(e) => {
+                setNpcTarget("vibey");
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              💬 Talk to Vibey
+            </button>
+          )}
+        </div>
       )}
-      {vibeyOpen && (
+      {npcTarget !== null && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-3 w-[min(92vw,26rem)] flex flex-col gap-2">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-heading font-semibold tracking-wider text-primary">
-              VIBEY · community agent
+              {npcTarget === "jerry" ? "JERRY · snail of Jerry's Plaza" : "VIBEY · community agent"}
             </span>
             <button
-              onClick={() => setVibeyOpen(false)}
+              onClick={() => setNpcTarget(null)}
               className="text-muted-foreground hover:text-foreground px-1"
               aria-label="Close"
             >
@@ -1535,20 +1778,26 @@ export default function City() {
             </button>
           </div>
           <div className="max-h-[26dvh] overflow-y-auto space-y-1.5 text-xs">
-            {vibeyLog.length === 0 && (
+            {npcLogs[npcTarget].length === 0 && (
               <div className="text-muted-foreground">
-                Vibey hovers a little closer, waiting for you to say something.
+                {npcTarget === "jerry"
+                  ? "Jerry's eye stalks swivel toward you. Very slowly."
+                  : "Vibey hovers a little closer, waiting for you to say something."}
               </div>
             )}
-            {vibeyLog.map((m, i) => (
+            {npcLogs[npcTarget].map((m, i) => (
               <div key={i}>
-                <span className={m.who === "vibey" ? "text-primary" : "text-amber-300"}>
-                  {m.who === "vibey" ? "Vibey" : playerName}
+                <span className={m.who === "npc" ? "text-primary" : "text-amber-300"}>
+                  {m.who === "npc" ? (npcTarget === "jerry" ? "Jerry" : "Vibey") : playerName}
                 </span>{" "}
                 <span className="text-foreground/90">{m.text}</span>
               </div>
             ))}
-            {vibeyThinking && <div className="text-muted-foreground animate-pulse">Vibey is thinking…</div>}
+            {vibeyThinking && (
+              <div className="text-muted-foreground animate-pulse">
+                {npcTarget === "jerry" ? "Jerry is thinking… slowly…" : "Vibey is thinking…"}
+              </div>
+            )}
           </div>
           <form
             onSubmit={(e) => {
@@ -1556,14 +1805,14 @@ export default function City() {
               const t = vibeyDraft.trim();
               if (!t || vibeyThinking) return;
               setVibeyDraft("");
-              void sendToVibey(t);
+              void sendToNpc(npcTarget, t);
             }}
             className="flex gap-1.5"
           >
             <input
               value={vibeyDraft}
               onChange={(e) => setVibeyDraft(e.target.value)}
-              placeholder="say something to Vibey"
+              placeholder={npcTarget === "jerry" ? "say something to Jerry" : "say something to Vibey"}
               maxLength={280}
               className="flex-1 min-w-0 bg-muted/40 border border-border/40 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary/60"
             />
@@ -1582,7 +1831,7 @@ export default function City() {
       {entered && (
         <div className="absolute bottom-4 right-4 glass-panel rounded-2xl px-4 py-3 text-[11px] text-muted-foreground pointer-events-none hidden sm:block">
           WASD move · Shift run · <span className="text-primary">Space hold = jetpack</span> · drag
-          look · scroll zoom
+          look · pinch / scroll zoom
         </div>
       )}
 
@@ -1615,7 +1864,7 @@ export default function City() {
               <div className="text-[11px] text-muted-foreground font-mono">
                 WASD / arrows — move · Shift — run · Space — jetpack
                 <br />
-                drag — look around · scroll — zoom
+                drag — look around · pinch / scroll — zoom
               </div>
               <button
                 onClick={enter}

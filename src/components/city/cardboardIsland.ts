@@ -37,6 +37,12 @@ export interface IslandWorld {
   update(dt: number, now: number): void;
   /** Sweet spots for collectible stars, in world coordinates. */
   starSpots: THREE.Vector3[];
+  /** The zipline cable loop, in world coordinates. */
+  zipline: { x: number; z: number; y: number; radius: number };
+  /** Where Jerry the snail sits, in world coordinates. */
+  jerry: THREE.Vector3;
+  /** Feed the cardboard TV a list of photo URLs to slideshow. */
+  setTvPhotos(urls: string[]): void;
 }
 
 const ISLAND_RADIUS = 55;
@@ -475,6 +481,255 @@ export function buildCardboardIsland(opts: {
     });
   });
 
+  // ---- The Firewall ---------------------------------------------------
+  // A literal wall of fire, kid-style: painted cardboard with FIREWALL
+  // across the top and a row of flickering flame cones along the edge.
+  // No collision — you're meant to jetpack straight through it.
+  const firewall = new THREE.Group();
+  firewall.position.set(-17, 0, -20);
+  {
+    const tex = (() => {
+      const c = document.createElement("canvas");
+      c.width = 512;
+      c.height = 192;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = "#c8a570";
+      ctx.fillRect(0, 0, 512, 192);
+      const colors = ["#e03e1f", "#f2762a", "#ffc02e"];
+      colors.forEach((col, layer) => {
+        ctx.fillStyle = col;
+        const h = 130 - layer * 38;
+        ctx.beginPath();
+        ctx.moveTo(0, 192);
+        for (let x = 0; x <= 512; x += 32) {
+          ctx.lineTo(x + 16, 192 - h - (x * 7919 % 23));
+          ctx.lineTo(x + 32, 192);
+        }
+        ctx.closePath();
+        ctx.fill();
+      });
+      ctx.font = "bold 52px 'Comic Sans MS', 'Segoe Print', cursive, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#5a2410";
+      ctx.fillText("FIREWALL", 256, 44);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 3.4, 0.5),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }),
+    );
+    wall.position.y = 1.7;
+    firewall.add(wall);
+  }
+  const firewallFlames: THREE.Mesh[] = [];
+  const fireMat = new THREE.MeshBasicMaterial({
+    color: "#ff8a2a",
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  for (let i = 0; i < 8; i++) {
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.4, 6), fireMat);
+    flame.position.set(-4.4 + i * 1.26, 3.8, 0);
+    firewall.add(flame);
+    firewallFlames.push(flame);
+  }
+  group.add(firewall);
+
+  // ---- The swing -------------------------------------------------------
+  const swing = new THREE.Group();
+  swing.position.set(-13, 0, -12);
+  {
+    const legGeo = new THREE.CylinderGeometry(0.12, 0.16, 3.8, 8);
+    [-1.3, 1.3].forEach((x) => {
+      [-0.5, 0.5].forEach((tilt) => {
+        const leg = new THREE.Mesh(legGeo, cardboardDark);
+        leg.position.set(x, 1.8, tilt * 0.7);
+        leg.rotation.x = tilt * 0.36;
+        swing.add(leg);
+      });
+    });
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.9, 8), cardboardDark);
+    bar.rotation.z = Math.PI / 2;
+    bar.position.y = 3.5;
+    swing.add(bar);
+  }
+  const swingPivot = new THREE.Group();
+  swingPivot.position.y = 3.5;
+  {
+    const ropeGeo = new THREE.CylinderGeometry(0.035, 0.035, 2.5, 6);
+    const ropeMat = new THREE.MeshStandardMaterial({ color: "#a8835a", roughness: 0.95 });
+    [-0.45, 0.45].forEach((x) => {
+      const rope = new THREE.Mesh(ropeGeo, ropeMat);
+      rope.position.set(x, -1.25, 0);
+      swingPivot.add(rope);
+    });
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.09, 0.42), cardboardMat);
+    seat.position.y = -2.52;
+    swingPivot.add(seat);
+  }
+  swing.add(swingPivot);
+  group.add(swing);
+
+  // ---- Jerry the snail --------------------------------------------------
+  // Mayor of Jerry's Plaza. Hand-built cardboard snail: slug body, a
+  // shell with a painted spiral, googly eye stalks, a JERRY sign.
+  const jerryGroup = new THREE.Group();
+  jerryGroup.position.set(2, 0, 22);
+  jerryGroup.rotation.y = Math.PI + 0.5; // face the welcome path
+  const jerryParts = { stalks: [] as THREE.Mesh[] };
+  {
+    const bodyMat = new THREE.MeshStandardMaterial({ color: "#d9c36b", roughness: 0.8 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), bodyMat);
+    body.scale.set(1.5, 0.55, 0.75);
+    body.position.y = 0.55;
+    jerryGroup.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 14, 12), bodyMat);
+    head.position.set(1.25, 1.05, 0);
+    jerryGroup.add(head);
+    // Shell: sphere with a painted spiral.
+    const shellTex = (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = "#c08a4e";
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = "#6a4520";
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      for (let a = 0; a < Math.PI * 7; a += 0.1) {
+        const r = 4 + a * 5.4;
+        const x = 128 + Math.cos(a) * r;
+        const y = 128 + Math.sin(a) * r;
+        if (a === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(1.15, 18, 14),
+      new THREE.MeshStandardMaterial({ map: shellTex, roughness: 0.75 }),
+    );
+    shell.position.set(-0.5, 1.5, 0);
+    shell.rotation.z = 0.25;
+    jerryGroup.add(shell);
+    // Googly eye stalks.
+    [-0.22, 0.22].forEach((z) => {
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.75, 6), bodyMat);
+      stalk.position.set(1.45, 1.65, z);
+      stalk.rotation.z = -0.25;
+      jerryGroup.add(stalk);
+      jerryParts.stalks.push(stalk);
+      const eye = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 10, 8),
+        new THREE.MeshBasicMaterial({ color: "#ffffff" }),
+      );
+      eye.position.set(1.55, 2.05, z);
+      jerryGroup.add(eye);
+      const pupil = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 8, 6),
+        new THREE.MeshBasicMaterial({ color: "#1a1a1a" }),
+      );
+      pupil.position.set(1.68, 2.07, z);
+      jerryGroup.add(pupil);
+    });
+    const jerrySign = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.2, 1),
+      new THREE.MeshBasicMaterial({
+        map: signTexture(["JERRY"], "#eaa7c0", "#6a2c42"),
+        side: THREE.DoubleSide,
+      }),
+    );
+    jerrySign.position.set(0, 3.1, 0);
+    jerryGroup.add(jerrySign);
+  }
+  group.add(jerryGroup);
+
+  // ---- Cardboard TV: the island photo gallery ---------------------------
+  const tv = new THREE.Group();
+  tv.position.set(18, 0, 22);
+  tv.rotation.y = Math.atan2(-18, -22); // screen faces the Dream Tree
+  const tvTextures: THREE.Texture[] = [];
+  let tvIndex = 0;
+  let tvTimer = 0;
+  const tvFallback = (() => {
+    const c = document.createElement("canvas");
+    c.width = 512;
+    c.height = 320;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#101418";
+    ctx.fillRect(0, 0, 512, 320);
+    const bars = ["#2dd4a8", "#ffd166", "#e85d75", "#5db8e8", "#b78ae0"];
+    bars.forEach((b, i) => {
+      ctx.fillStyle = b;
+      ctx.fillRect(26 + i * 95, 190, 70, 90);
+    });
+    ctx.font = "bold 54px 'Comic Sans MS', 'Segoe Print', cursive, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#baffe9";
+    ctx.fillText("VIBE TV", 256, 90);
+    ctx.font = "26px sans-serif";
+    ctx.fillStyle = "#8aa";
+    ctx.fillText("tuning the village photo feed…", 256, 145);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const tvScreenMat = new THREE.MeshBasicMaterial({ map: tvFallback });
+  {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(4.4, 3.1, 0.7), cardboardMat);
+    body.position.y = 2.5;
+    tv.add(body);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.3), tvScreenMat);
+    screen.position.set(0, 2.5, 0.38);
+    tv.add(screen);
+    [-1.5, 1.5].forEach((x) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1, 8), cardboardDark);
+      leg.position.set(x, 0.5, 0);
+      tv.add(leg);
+    });
+    [-0.4, 0.4].forEach((tilt) => {
+      const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.6, 6), cardboardDark);
+      antenna.position.set(tilt * 1.2, 4.7, 0);
+      antenna.rotation.z = tilt;
+      tv.add(antenna);
+    });
+  }
+  group.add(tv);
+
+  // ---- Zipline: a cable loop riding the island's perimeter ----------
+  // Grab it under any stretch of cable and it carries you around the
+  // whole cardboard city. Poles sit just outside the cable so riders
+  // glide past them, not through them.
+  const ZIP_RADIUS = 42;
+  const ZIP_HEIGHT = 5;
+  const cable = new THREE.Mesh(
+    new THREE.TorusGeometry(ZIP_RADIUS, 0.08, 6, 96),
+    new THREE.MeshBasicMaterial({ color: "#46392b" }),
+  );
+  cable.rotation.x = Math.PI / 2;
+  cable.position.y = ZIP_HEIGHT;
+  group.add(cable);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.33;
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.32, ZIP_HEIGHT + 0.8, 8),
+      cardboardDark,
+    );
+    pole.position.set(Math.cos(a) * (ZIP_RADIUS + 1.1), (ZIP_HEIGHT + 0.8) / 2, Math.sin(a) * (ZIP_RADIUS + 1.1));
+    group.add(pole);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.18, 0.18), cardboardDark);
+    arm.position.set(Math.cos(a) * (ZIP_RADIUS + 0.5), ZIP_HEIGHT + 0.25, Math.sin(a) * (ZIP_RADIUS + 0.5));
+    arm.rotation.y = -a;
+    group.add(arm);
+  }
+
   // Light beam: visible from the city day or night, fog-exempt.
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(1.1, 1.1, 320, 12, 1, true),
@@ -507,7 +762,44 @@ export function buildCardboardIsland(opts: {
       (beamMesh.material as THREE.MeshBasicMaterial).opacity =
         0.28 + Math.sin(now * 0.0016) * 0.12;
       lantern.position.y = 11 + Math.sin(now * 0.0012) * 0.4;
+
+      // Firewall flames flicker; the swing sways; Jerry wiggles.
+      firewallFlames.forEach((f, i) => {
+        const s = 0.75 + Math.abs(Math.sin(now * 0.011 + i * 1.7)) * 0.5;
+        f.scale.set(s, 0.8 + Math.random() * 0.55, s);
+      });
+      swingPivot.rotation.x = Math.sin(now * 0.0013) * 0.52;
+      jerryGroup.rotation.y = Math.PI + 0.5 + Math.sin(now * 0.0008) * 0.12;
+      jerryParts.stalks.forEach((s, i) => {
+        s.rotation.x = Math.sin(now * 0.0027 + i * 2.1) * 0.16;
+      });
+
+      // Cardboard TV slideshow.
+      tvTimer += dt;
+      if (tvTimer > 7 && tvTextures.length > 0) {
+        tvTimer = 0;
+        tvIndex = (tvIndex + 1) % tvTextures.length;
+        tvScreenMat.map = tvTextures[tvIndex];
+        tvScreenMat.needsUpdate = true;
+      }
     },
     starSpots,
+    zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
+    jerry: new THREE.Vector3(centerX + 2, topY, centerZ + 22),
+    setTvPhotos(urls) {
+      const loader2 = new THREE.TextureLoader();
+      loader2.setCrossOrigin("anonymous");
+      urls.slice(0, 16).forEach((url) => {
+        loader2.load(url, (t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          tvTextures.push(t);
+          // First photo takes over from the test pattern right away.
+          if (tvTextures.length === 1) {
+            tvScreenMat.map = t;
+            tvScreenMat.needsUpdate = true;
+          }
+        });
+      });
+    },
   };
 }

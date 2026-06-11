@@ -20,6 +20,10 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 export interface NpcCrew {
   group: THREE.Group;
   update(dt: number, playerPos: THREE.Vector3): void;
+  /** Where the cows currently are (Easter-egg proximity checks). */
+  cowPositions(): THREE.Vector3[];
+  /** Every cow does a happy little hop. */
+  hopCows(): void;
 }
 
 interface Npc {
@@ -35,6 +39,8 @@ interface Npc {
   nextDecision: number; // coordinate of the next intersection
   bounds: [number, number]; // walkable range along the axis
   isIsland: boolean;
+  isCow: boolean;
+  hopT: number; // seconds left in the current hop
 }
 
 const ANIM_CULL_DIST_SQ = 150 * 150;
@@ -78,6 +84,8 @@ export function createNpcCrew(opts: {
       nextDecision: 0,
       bounds: [-cityHalf + 16, cityHalf - 16],
       isIsland: false,
+      isCow: false,
+      hopT: 0,
     };
     npc.nextDecision = nextIntersection(start, npc.dir);
     if (axis === "x") obj.position.set(start, 0, line + npc.lateral);
@@ -102,6 +110,8 @@ export function createNpcCrew(opts: {
       bounds:
         axis === "x" ? [island.x - 30, island.x + 9] : [island.z - 26, island.z + 26],
       isIsland: true,
+      isCow: false,
+      hopT: 0,
     };
     if (axis === "x") obj.position.set(island.x - 10 + i * 6, island.topY, npc.line);
     else obj.position.set(npc.line, island.topY, island.z - 8 + i * 6);
@@ -154,6 +164,7 @@ export function createNpcCrew(opts: {
         // The last two residents move to the island.
         if (idx >= urls.length * 2 - 2) placeOnIsland(wrapper, mixer, c);
         else placeOnStreets(wrapper, mixer, idx);
+        npcs[npcs.length - 1].isCow = /cow/i.test(url);
       }
     });
   });
@@ -206,6 +217,10 @@ export function createNpcCrew(opts: {
         if (npc.axis === "x") p.x = next;
         else p.z = next;
         p.y = npc.y;
+        if (npc.hopT > 0) {
+          npc.hopT -= dt;
+          p.y = npc.y + Math.sin((1 - Math.max(0, npc.hopT) / 0.8) * Math.PI) * 1.3;
+        }
 
         // Face the direction of travel, with a soft turn.
         const targetYaw =
@@ -221,6 +236,12 @@ export function createNpcCrew(opts: {
           npc.mixer.update(dt);
         }
       }
+    },
+    cowPositions() {
+      return npcs.filter((n) => n.isCow).map((n) => n.obj.position);
+    },
+    hopCows() {
+      for (const n of npcs) if (n.isCow) n.hopT = 0.8;
     },
   };
 }
