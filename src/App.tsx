@@ -10,6 +10,7 @@ import Lobby from "./pages/Lobby.tsx";
 import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
 import MemoryGarden from "./pages/MemoryGarden.tsx";
+import City from "./pages/City.tsx";
 import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
@@ -36,6 +37,8 @@ const App = () => (
           {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
           <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />
+          {/* Vibe City — procedural neon district you explore with a jetpack. */}
+          <Route path="/city" element={<City />} />
           {/* Vibey's memory garden — walk Vibey, read plants, browse the outdoor gallery. */}
           <Route path="/garden" element={<MemoryGarden />} />
           {/* The old standalone gallery now collapses into the garden art fair. */}
