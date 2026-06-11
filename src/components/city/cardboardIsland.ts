@@ -221,11 +221,7 @@ const SHOPS: ShopSpec[] = [
     x: -4, z: -32, w: 13, h: 6, d: 2.5,
     bg: "#eaa7c0", fg: "#8a2c52",
   },
-  {
-    lines: ["JERRY'S", "PLAZA"],
-    x: 8, z: 30, w: 10, h: 6, d: 8,
-    bg: "#bcd6e8", fg: "#2a5a8a",
-  },
+  // JERRY'S PLAZA is now a real plaza built around Jerry, not a building.
 ];
 
 export function buildCardboardIsland(opts: {
