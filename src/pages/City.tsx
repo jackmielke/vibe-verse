@@ -28,6 +28,8 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { motion, AnimatePresence } from "framer-motion";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
+import { buildCardboardIsland } from "@/components/city/cardboardIsland";
+import { createCitySounds, type CitySounds } from "@/lib/citySounds";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
@@ -64,9 +66,16 @@ const CITY_HALF = (GRID * PITCH) / 2;
 const WINDOW_TILE = 12.8; // world meters covered by one window-texture tile
 const PAD_MIN_HEIGHT = 48; // towers taller than this get a landing pad
 
+// Cardboard Island — the kids' world floating east of the district.
+const ISLAND_X = 330;
+const ISLAND_Z = -30;
+const ISLAND_TOP = 120;
+
 // Movement feel.
 const WALK_SPEED = 5.5;
 const RUN_SPEED = 11.5;
+const FLY_SPEED = 16; // jetpack cruising is faster than running…
+const FLY_RUN_SPEED = 24; // …and Shift opens the throttle for island runs
 const GRAVITY = 24;
 const THRUST = 50; // jetpack accel (net climb = THRUST - GRAVITY)
 const MAX_RISE = 19;
@@ -78,7 +87,8 @@ interface BuildingBox {
   maxX: number;
   minZ: number;
   maxZ: number;
-  height: number;
+  base: number; // bottom of the solid column (>0 for floating worlds)
+  height: number; // top of the solid column
 }
 
 // Deterministic rng — same pattern as Museum, so the city never
@@ -269,6 +279,7 @@ function generateCity(): {
           maxX: lx + w / 2,
           minZ: lz - d / 2,
           maxZ: lz + d / 2,
+          base: 0,
           height,
         });
         if (height > PAD_MIN_HEIGHT) pads.push({ x: lx, z: lz, y: height });
@@ -369,8 +380,10 @@ export default function City() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [entered, setEntered] = useState(false);
   const enteredRef = useRef(false);
-  const [hud, setHud] = useState({ alt: 0, spd: 0, jet: false });
+  const [hud, setHud] = useState({ alt: 0, spd: 0, jet: false, stars: 0, totalStars: 0 });
   const [dayMode, setDayMode] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const soundsRef = useRef<CitySounds | null>(null);
   const [charName, setCharName] = useState(initialCharacter);
   const [charPanelOpen, setCharPanelOpen] = useState(false);
   const charRef = useRef(charName);
@@ -494,6 +507,51 @@ export default function City() {
       ring.position.set(p.x, p.y + 0.12, p.z);
       scene.add(ring);
     });
+
+    // ---- Cardboard Island (the kids' world, floating east) ----------
+    const island = buildCardboardIsland({
+      centerX: ISLAND_X,
+      centerZ: ISLAND_Z,
+      topY: ISLAND_TOP,
+      boxes,
+    });
+    scene.add(island.group);
+
+    // ---- Collectible stars: plaza → rooftops → sky trail → island ---
+    const starTrail = Array.from({ length: 6 }, (_, i) => {
+      const t = (i + 1) / 7;
+      return new THREE.Vector3(
+        40 + (ISLAND_X - 60 - 40) * t,
+        14 + (ISLAND_TOP - 8 - 14) * t,
+        8 + (ISLAND_Z - 8) * t,
+      );
+    });
+    const starPositions: THREE.Vector3[] = [
+      new THREE.Vector3(8, 2, 10),
+      new THREE.Vector3(-12, 2, 16),
+      new THREE.Vector3(16, 2, -12),
+      new THREE.Vector3(-18, 2, -10),
+      ...pads.slice(0, 6).map((p) => new THREE.Vector3(p.x, p.y + 2.5, p.z)),
+      ...starTrail,
+      ...island.starSpots,
+    ];
+    const collectGeo = new THREE.OctahedronGeometry(0.9);
+    const collectMat = new THREE.MeshBasicMaterial({
+      color: "#ffd166",
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    const collectibles = starPositions.map((p, i) => {
+      const mesh = new THREE.Mesh(collectGeo, collectMat);
+      mesh.position.copy(p);
+      mesh.rotation.y = i;
+      scene.add(mesh);
+      return { mesh, baseY: p.y, taken: false };
+    });
+    let collectedCount = 0;
 
     // Stars + moon (fog-exempt so they read at any distance).
     const starGeo = new THREE.BufferGeometry();
@@ -766,19 +824,23 @@ export default function City() {
     canvas.addEventListener("wheel", onWheel, { passive: true });
 
     // ---- Collision helpers --------------------------------------------
-    const supportHeightAt = (x: number, z: number): number => {
+    // Only surfaces at or below refY can support you — so the floating
+    // island doesn't "catch" a pilot flying far beneath it.
+    const supportHeightAt = (x: number, z: number, refY: number): number => {
       let h = 0;
       for (const b of boxes) {
-        if (x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
+        if (b.height <= refY &&
+            x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
             z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
           if (b.height > h) h = b.height;
         }
       }
       return h;
     };
+    // Blocked when the body (feet y .. head y+1.7) overlaps a column.
     const blockedAt = (x: number, z: number, y: number): boolean => {
       for (const b of boxes) {
-        if (y < b.height - 0.4 &&
+        if (y < b.height - 0.4 && y + 1.7 > b.base &&
             x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
             z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
           return true;
@@ -798,8 +860,22 @@ export default function City() {
         alt: Math.max(0, player.position.y),
         spd: vel.length(),
         jet: keys.has("Space") && enteredRef.current,
+        stars: collectedCount,
+        totalStars: collectibles.length,
       });
     }, 120);
+
+    // Dev hook for screenshot-driven iteration (and console fun):
+    // __cityDebug.teleport(330, 130, -30) drops you over the island.
+    const devWindow = window as unknown as {
+      __cityDebug?: { teleport: (x: number, y: number, z: number) => void };
+    };
+    devWindow.__cityDebug = {
+      teleport: (x, y, z) => {
+        player.position.set(x, y, z);
+        vel.set(0, 0, 0);
+      },
+    };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
       referenceSpace: "local-floor",
@@ -823,7 +899,9 @@ export default function City() {
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
       const thrusting = enteredRef.current && keys.has("Space");
       if (intent.lengthSq() > 0) intent.normalize();
-      const targetSpeed = running ? RUN_SPEED : WALK_SPEED;
+      const targetSpeed = onGround
+        ? running ? RUN_SPEED : WALK_SPEED
+        : running ? FLY_RUN_SPEED : FLY_SPEED;
 
       // Horizontal velocity eases toward intent; lighter control mid-air.
       const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
@@ -838,9 +916,10 @@ export default function City() {
       }
       vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
 
-      // Integrate with axis-separated horizontal collision.
+      // Integrate with axis-separated horizontal collision. The world
+      // extends east past the district so the island is reachable.
       const pos = player.position;
-      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, CITY_HALF + 40);
+      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, ISLAND_X + 130);
       const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, -CITY_HALF - 40, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
         pos.x = nx;
@@ -855,13 +934,29 @@ export default function City() {
         vel.x = 0;
         vel.z = 0;
       }
+      const prevY = pos.y;
       pos.y += vel.y * dt;
 
-      // Land on whatever is underneath (street or rooftop).
-      const support = supportHeightAt(pos.x, pos.z);
+      // Head bonk: rising into the underside of a floating world.
+      if (vel.y > 0) {
+        for (const b of boxes) {
+          if (prevY + 1.8 <= b.base && pos.y + 1.8 > b.base &&
+              pos.x >= b.minX - PLAYER_RADIUS && pos.x <= b.maxX + PLAYER_RADIUS &&
+              pos.z >= b.minZ - PLAYER_RADIUS && pos.z <= b.maxZ + PLAYER_RADIUS) {
+            pos.y = b.base - 1.8;
+            vel.y = 0;
+            break;
+          }
+        }
+      }
+
+      // Land on whatever is underneath (street, rooftop, or island).
+      const support = supportHeightAt(pos.x, pos.z, prevY + 0.1);
       if (pos.y <= support && vel.y <= 0) {
+        const fall = -vel.y;
         pos.y = support;
         vel.y = 0;
+        if (!onGround && fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
         onGround = true;
       } else if (pos.y > support + 0.05) {
         onGround = false;
@@ -923,6 +1018,28 @@ export default function City() {
       }
       particleGeo.attributes.position.needsUpdate = true;
 
+      // Star collection: spin, bob, and scoop up anything in reach.
+      for (let i = 0; i < collectibles.length; i++) {
+        const c = collectibles[i];
+        if (c.taken) continue;
+        c.mesh.rotation.y += dt * 2.4;
+        c.mesh.position.y = c.baseY + Math.sin(now * 0.003 + i) * 0.35;
+        if (!enteredRef.current) continue;
+        const dx = c.mesh.position.x - pos.x;
+        const dy = c.mesh.position.y - (pos.y + 1.2);
+        const dz = c.mesh.position.z - pos.z;
+        if (dx * dx + dy * dy + dz * dz < 7) {
+          c.taken = true;
+          c.mesh.visible = false;
+          collectedCount++;
+          soundsRef.current?.chime(collectedCount);
+          if (collectedCount === collectibles.length) soundsRef.current?.fanfare();
+        }
+      }
+
+      island.update(dt, now);
+      soundsRef.current?.update(thrusting, vel.length(), !onGround);
+
       // Pulse the landing pads and plaza ring together.
       padMat.opacity = 0.55 + Math.sin(now * 0.0024) * 0.3;
 
@@ -933,7 +1050,7 @@ export default function City() {
         pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
       );
       // Keep the camera out of the street floor.
-      eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z) + 0.6);
+      eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
       camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
       camera.lookAt(pos.x, pos.y + 1.5, pos.z);
 
@@ -955,6 +1072,9 @@ export default function City() {
       disposeVR();
       applyModeRef.current = null;
       loadPilotRef.current = null;
+      delete devWindow.__cityDebug;
+      soundsRef.current?.dispose();
+      soundsRef.current = null;
       ro.disconnect();
       window.clearInterval(hudTimer);
       window.removeEventListener("keydown", onKeyDown);
@@ -979,6 +1099,9 @@ export default function City() {
   const enter = () => {
     enteredRef.current = true;
     setEntered(true);
+    // AudioContext needs a user gesture — this click is it.
+    if (!soundsRef.current) soundsRef.current = createCitySounds();
+    soundsRef.current?.setMuted(muted);
   };
 
   return (
@@ -1001,6 +1124,16 @@ export default function City() {
             {"  ·  "}
             SPD <span className="text-foreground">{hud.spd.toFixed(0)} m/s</span>
           </div>
+          <div
+            className={
+              hud.totalStars > 0 && hud.stars === hud.totalStars
+                ? "text-amber-300"
+                : "text-muted-foreground"
+            }
+          >
+            ✦ <span className="text-foreground">{hud.stars}</span>/{hud.totalStars}
+            {hud.totalStars > 0 && hud.stars === hud.totalStars && " — CHAMPION!"}
+          </div>
         </div>
       )}
 
@@ -1010,6 +1143,18 @@ export default function City() {
       {entered && (
         <div className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
           <div className="flex gap-2">
+            <button
+              onClick={(e) => {
+                const next = !muted;
+                setMuted(next);
+                soundsRef.current?.setMuted(next);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title={muted ? "Unmute" : "Mute"}
+            >
+              {muted ? "🔇" : "🔊"}
+            </button>
             <button
               onClick={(e) => {
                 const next = !dayMode;
@@ -1085,9 +1230,12 @@ export default function City() {
                 VIBE CITY
               </h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                A neon district to explore. Walk the streets, then hold{" "}
-                <span className="text-primary font-semibold">Space</span> to fire the jetpack and
-                land on the rooftops — the glowing rings mark the best perches.
+                A neon district to explore. Hold{" "}
+                <span className="text-primary font-semibold">Space</span> to fire the jetpack, land
+                on rooftops, and collect every{" "}
+                <span className="text-amber-300 font-semibold">✦ star</span>. Then follow the
+                golden beam east — the kids built{" "}
+                <span className="text-primary font-semibold">Cardboard Island</span> up in the sky.
               </p>
               <div className="text-[11px] text-muted-foreground font-mono">
                 WASD / arrows — move · Shift — run · Space — jetpack

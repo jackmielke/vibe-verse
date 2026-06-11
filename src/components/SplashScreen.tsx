@@ -120,7 +120,7 @@ const SplashScreen = ({ onEnter }: SplashScreenProps) => {
               Edge Esmeralda
             </h1>
             <p className="text-sm text-muted-foreground tracking-[0.2em] uppercase">
-              A floating world, in season
+              A floating world, in session
             </p>
           </motion.div>
 
