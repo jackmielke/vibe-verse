@@ -30,7 +30,15 @@ import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { createNpcCrew } from "@/components/city/npcs";
+import { createVibeyNpc } from "@/components/city/vibeyNpc";
+import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
+import {
+  createMultiplayer,
+  type ChatMessage,
+  type Multiplayer,
+} from "@/components/city/multiplayer";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
+import { supabase } from "@/integrations/supabase/client";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
@@ -393,6 +401,37 @@ export default function City() {
   });
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
+
+  // Touch controls write straight into these; the tick reads them.
+  const touchMoveRef = useRef<TouchMove>({ x: 0, y: 0 });
+  const touchJetRef = useRef(false);
+  const isTouch =
+    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
+  // Multiplayer lobby + community terminal.
+  const mpRef = useRef<Multiplayer | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatOpenRef = useRef(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatUnread, setChatUnread] = useState(0);
+  const [peers, setPeers] = useState({ count: 1, online: false });
+  const [playerName, setPlayerName] = useState(() => {
+    const stored = localStorage.getItem("city.playerName");
+    if (stored) return stored;
+    const generated = `Pilot-${Math.floor(100 + Math.random() * 900)}`;
+    localStorage.setItem("city.playerName", generated);
+    return generated;
+  });
+
+  // Vibey: proximity-gated LLM conversation via the unit7-chat function.
+  const [nearVibey, setNearVibey] = useState(false);
+  const [vibeyOpen, setVibeyOpen] = useState(false);
+  const [vibeyThinking, setVibeyThinking] = useState(false);
+  const [vibeyDraft, setVibeyDraft] = useState("");
+  const [vibeyLog, setVibeyLog] = useState<Array<{ who: "you" | "vibey"; text: string }>>([]);
+  const vibeyHistoryRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const vibeyExciteRef = useRef<(() => void) | null>(null);
   const [dayMode, setDayMode] = useState(false);
   const [muted, setMuted] = useState(false);
   const soundsRef = useRef<CitySounds | null>(null);
@@ -597,6 +636,24 @@ export default function City() {
       island: { x: ISLAND_X, z: ISLAND_Z, topY: ISLAND_TOP },
     });
     scene.add(npcCrew.group);
+
+    // ---- Vibey, the community agent, drifting around the plaza ------
+    const vibey = createVibeyNpc();
+    scene.add(vibey.group);
+    vibeyExciteRef.current = vibey.excite;
+
+    // ---- Multiplayer: presence ghosts + the community terminal ------
+    const mp = createMultiplayer({
+      scene,
+      characterUrl: (n) => CHARACTERS.find((c) => c.name === n)?.url,
+      name: localStorage.getItem("city.playerName") ?? "pilot",
+      onChat: (msg) => {
+        setChatMessages((prev) => [...prev.slice(-59), msg]);
+        if (!chatOpenRef.current && !msg.self) setChatUnread((n) => n + 1);
+      },
+      onPeers: (count, online) => setPeers({ count: Math.max(1, count), online }),
+    });
+    mpRef.current = mp;
 
     // Stars + moon (fog-exempt so they read at any distance).
     const starGeo = new THREE.BufferGeometry();
@@ -836,8 +893,13 @@ export default function City() {
       "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
       "Space", "ShiftLeft", "ShiftRight",
     ]);
+    // Don't steal keys while the player is typing in chat.
+    const isTyping = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+    };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!enteredRef.current || !handled.has(e.code)) return;
+      if (isTyping(e) || !enteredRef.current || !handled.has(e.code)) return;
       e.preventDefault();
       keys.add(e.code);
     };
@@ -849,23 +911,35 @@ export default function City() {
     let camYaw = Math.PI;
     let camPitch = 0.42;
     let camDist = 9;
-    let dragging = false;
+    // Manual delta tracking (movementX is unreliable for touch
+    // pointers on mobile Safari); one pointer at a time owns the
+    // camera so the joystick thumb doesn't fight it.
+    let dragPointer: number | null = null;
+    let dragLast = { x: 0, y: 0 };
     const onPointerDown = (e: PointerEvent) => {
-      dragging = true;
+      if (dragPointer !== null) return;
+      dragPointer = e.pointerId;
+      dragLast = { x: e.clientX, y: e.clientY };
       canvas.setPointerCapture(e.pointerId);
     };
     const onPointerMove = (e: PointerEvent) => {
-      if (!dragging) return;
-      camYaw -= e.movementX * 0.0052;
-      camPitch = THREE.MathUtils.clamp(camPitch + e.movementY * 0.0052, 0.06, 1.25);
+      if (dragPointer !== e.pointerId) return;
+      const dx = e.clientX - dragLast.x;
+      const dy = e.clientY - dragLast.y;
+      dragLast = { x: e.clientX, y: e.clientY };
+      camYaw -= dx * 0.0052;
+      camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0052, 0.06, 1.25);
     };
-    const onPointerUp = () => (dragging = false);
+    const onPointerUp = (e: PointerEvent) => {
+      if (dragPointer === e.pointerId) dragPointer = null;
+    };
     const onWheel = (e: WheelEvent) => {
       camDist = THREE.MathUtils.clamp(camDist * (1 + e.deltaY * 0.0011), 4.5, 18);
     };
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
     canvas.addEventListener("wheel", onWheel, { passive: true });
 
     // ---- Collision helpers --------------------------------------------
@@ -912,6 +986,7 @@ export default function City() {
         bestMs,
         nearIsland: player.position.x > 250,
       });
+      setNearVibey(player.position.distanceTo(vibey.position) < 8);
     }, 120);
 
     // Fast travel: hop between the plaza and Cardboard Island. Arrive
@@ -947,18 +1022,25 @@ export default function City() {
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
-      // Input → camera-relative move intent.
+      // Input → camera-relative move intent (keyboard or thumbstick).
       const fwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
       const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const tm = touchMoveRef.current;
+      const touchLen = Math.hypot(tm.x, tm.y);
       const intent = new THREE.Vector3();
       if (enteredRef.current) {
         if (keys.has("KeyW") || keys.has("ArrowUp")) intent.add(fwd);
         if (keys.has("KeyS") || keys.has("ArrowDown")) intent.sub(fwd);
         if (keys.has("KeyD") || keys.has("ArrowRight")) intent.add(right);
         if (keys.has("KeyA") || keys.has("ArrowLeft")) intent.sub(right);
+        if (touchLen > 0.12) {
+          intent.addScaledVector(fwd, -tm.y);
+          intent.addScaledVector(right, tm.x);
+        }
       }
-      const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
-      const thrusting = enteredRef.current && keys.has("Space");
+      // Full thumbstick deflection runs, like holding Shift.
+      const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
+      const thrusting = enteredRef.current && (keys.has("Space") || touchJetRef.current);
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
@@ -1108,6 +1190,15 @@ export default function City() {
 
       island.update(dt, now);
       npcCrew.update(dt, pos);
+      vibey.update(dt, now);
+      mp.update(dt, {
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        yaw: modelYaw,
+        air: !onGround,
+        char: charRef.current,
+      });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
       // Pulse the landing pads and plaza ring together.
@@ -1144,6 +1235,9 @@ export default function City() {
       loadPilotRef.current = null;
       travelRef.current = null;
       resetRunRef.current = null;
+      vibeyExciteRef.current = null;
+      mp.dispose();
+      mpRef.current = null;
       delete devWindow.__cityDebug;
       soundsRef.current?.dispose();
       soundsRef.current = null;
@@ -1154,6 +1248,7 @@ export default function City() {
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("wheel", onWheel);
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -1171,6 +1266,37 @@ export default function City() {
   const fmtMs = (ms: number) => {
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+
+  // Vibey runs on the same unit7-chat edge function as the /space show
+  // (OpenRouter → Claude, key stays server-side).
+  const sendToVibey = async (text: string) => {
+    setVibeyLog((l) => [...l, { who: "you", text }]);
+    setVibeyThinking(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("unit7-chat", {
+        body: { history: vibeyHistoryRef.current.slice(-12), text },
+      });
+      if (error) throw error;
+      const say =
+        data && typeof data === "object" && "say" in data
+          ? String((data as Record<string, unknown>).say)
+          : null;
+      if (!say) throw new Error("bad reply");
+      vibeyHistoryRef.current.push(
+        { role: "user", content: text },
+        { role: "assistant", content: say },
+      );
+      setVibeyLog((l) => [...l, { who: "vibey", text: say }]);
+      vibeyExciteRef.current?.();
+    } catch {
+      setVibeyLog((l) => [
+        ...l,
+        { who: "vibey", text: "My uplink is fuzzy out here — try me again in a moment." },
+      ]);
+    } finally {
+      setVibeyThinking(false);
+    }
   };
 
   const enter = () => {
@@ -1279,7 +1405,80 @@ export default function City() {
                 ↻ Run
               </button>
             )}
+            <button
+              onClick={(e) => {
+                const next = !chatOpen;
+                setChatOpen(next);
+                chatOpenRef.current = next;
+                if (next) setChatUnread(0);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title="Community terminal"
+            >
+              💬 {peers.online ? peers.count : ""}
+              {chatUnread > 0 && <span className="text-amber-300"> +{chatUnread}</span>}
+            </button>
           </div>
+          {chatOpen && (
+            <div className="glass-panel rounded-2xl p-3 w-72 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-heading font-semibold tracking-wider text-primary">
+                  COMMUNITY TERMINAL
+                </span>
+                <span className={peers.online ? "text-primary" : "text-muted-foreground"}>
+                  {peers.online ? `${peers.count} online` : "offline"}
+                </span>
+              </div>
+              <div className="max-h-[30dvh] overflow-y-auto space-y-1 text-xs">
+                {chatMessages.length === 0 && (
+                  <div className="text-muted-foreground">
+                    Say hi — everyone in the city sees this terminal.
+                  </div>
+                )}
+                {chatMessages.map((m) => (
+                  <div key={m.id}>
+                    <span className={m.self ? "text-primary" : "text-amber-300"}>{m.name}</span>{" "}
+                    <span className="text-foreground/90 break-words">{m.text}</span>
+                  </div>
+                ))}
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const t = chatDraft.trim();
+                  if (!t) return;
+                  mpRef.current?.sendChat(t);
+                  setChatDraft("");
+                }}
+                className="flex gap-1.5"
+              >
+                <input
+                  value={chatDraft}
+                  onChange={(e) => setChatDraft(e.target.value)}
+                  placeholder={`chat as ${playerName}`}
+                  maxLength={280}
+                  className="flex-1 min-w-0 bg-muted/40 border border-border/40 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary/60"
+                />
+                <button type="submit" className="px-2.5 rounded-lg bg-primary/25 text-primary text-xs">
+                  →
+                </button>
+              </form>
+              <button
+                onClick={() => {
+                  const n = prompt("Display name", playerName)?.trim();
+                  if (n) {
+                    setPlayerName(n);
+                    localStorage.setItem("city.playerName", n);
+                    mpRef.current?.setName(n);
+                  }
+                }}
+                className="text-[10px] text-muted-foreground text-left hover:text-foreground transition-colors"
+              >
+                ✏️ {playerName}
+              </button>
+            </div>
+          )}
           {charPanelOpen && (
             <div className="glass-panel rounded-2xl p-2 w-56 max-h-[46dvh] overflow-y-auto space-y-0.5">
               {CHARACTERS.map((c) => (
@@ -1303,6 +1502,79 @@ export default function City() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Touch controls for phones: joystick + jetpack button. */}
+      {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
+
+      {/* Vibey: proximity prompt + conversation. */}
+      {entered && nearVibey && !vibeyOpen && (
+        <button
+          onClick={(e) => {
+            setVibeyOpen(true);
+            e.currentTarget.blur();
+          }}
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+        >
+          💬 Talk to Vibey
+        </button>
+      )}
+      {vibeyOpen && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-3 w-[min(92vw,26rem)] flex flex-col gap-2">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-heading font-semibold tracking-wider text-primary">
+              VIBEY · community agent
+            </span>
+            <button
+              onClick={() => setVibeyOpen(false)}
+              className="text-muted-foreground hover:text-foreground px-1"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="max-h-[26dvh] overflow-y-auto space-y-1.5 text-xs">
+            {vibeyLog.length === 0 && (
+              <div className="text-muted-foreground">
+                Vibey hovers a little closer, waiting for you to say something.
+              </div>
+            )}
+            {vibeyLog.map((m, i) => (
+              <div key={i}>
+                <span className={m.who === "vibey" ? "text-primary" : "text-amber-300"}>
+                  {m.who === "vibey" ? "Vibey" : playerName}
+                </span>{" "}
+                <span className="text-foreground/90">{m.text}</span>
+              </div>
+            ))}
+            {vibeyThinking && <div className="text-muted-foreground animate-pulse">Vibey is thinking…</div>}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const t = vibeyDraft.trim();
+              if (!t || vibeyThinking) return;
+              setVibeyDraft("");
+              void sendToVibey(t);
+            }}
+            className="flex gap-1.5"
+          >
+            <input
+              value={vibeyDraft}
+              onChange={(e) => setVibeyDraft(e.target.value)}
+              placeholder="say something to Vibey"
+              maxLength={280}
+              className="flex-1 min-w-0 bg-muted/40 border border-border/40 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary/60"
+            />
+            <button
+              type="submit"
+              disabled={vibeyThinking}
+              className="px-2.5 rounded-lg bg-primary/25 text-primary text-xs disabled:opacity-50"
+            >
+              →
+            </button>
+          </form>
         </div>
       )}
 
