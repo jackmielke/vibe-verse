@@ -1016,6 +1016,13 @@ export function buildCardboardIsland(opts: {
         s.rotation.x = Math.sin(now * 0.0027 + i * 2.1) * 0.16;
       });
 
+      // Plaza ambience: pond bob + lantern glow pulse.
+      pondGroup.position.y = Math.sin(now * 0.0015) * 0.03;
+      plazaLanterns.forEach((l, i) => {
+        const s = 1 + Math.sin(now * 0.002 + i * 1.3) * 0.08;
+        l.scale.set(s, s, s);
+      });
+
       // Cardboard TV slideshow.
       tvTimer += dt;
       if (tvTimer > 7 && tvTextures.length > 0) {
