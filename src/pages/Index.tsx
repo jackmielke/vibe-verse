@@ -4,6 +4,7 @@ import { ChevronRight, ChevronLeft } from "lucide-react";
 import MapView, { VILLAGE_LOCATIONS } from "@/components/MapView";
 import LocationDetails from "@/components/LocationDetails";
 import SplashScreen from "@/components/SplashScreen";
+import WorldPicker from "@/components/WorldPicker";
 import BottomNav, { type AppTab } from "@/components/BottomNav";
 import BrandHeader from "@/components/BrandHeader";
 import EventsPanel from "@/components/panels/EventsPanel";
@@ -15,6 +16,9 @@ import LocationSharePill from "@/components/LocationSharePill";
 const Index = () => {
   const [selectedLocation, setSelectedLocation] = useState<typeof VILLAGE_LOCATIONS[0] | null>(null);
   const [splashDone, setSplashDone] = useState(false);
+  // After the splash: pick a world. The village map loads underneath,
+  // so choosing "Village" is instant.
+  const [worldChosen, setWorldChosen] = useState(false);
   const [tab, setTab] = useState<AppTab>("map");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const isMobile = useIsMobile();
@@ -36,6 +40,7 @@ const Index = () => {
   if (!isMobile) {
     return (
       <div className="flex h-[100dvh] w-screen overflow-hidden bg-background">
+        <WorldPicker open={!worldChosen} onStay={() => setWorldChosen(true)} />
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -100,6 +105,7 @@ const Index = () => {
   // ---------- Mobile: full-screen tab apps + bottom nav ----------
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-background">
+      <WorldPicker open={!worldChosen} onStay={() => setWorldChosen(true)} />
       {/* Map stays mounted so switching back is instant */}
       <div
         className={`absolute inset-0 transition-opacity duration-300 ${
