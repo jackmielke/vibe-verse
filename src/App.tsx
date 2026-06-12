@@ -11,6 +11,8 @@ import About from "./pages/About.tsx";
 import SpotifyCallback from "./pages/SpotifyCallback.tsx";
 import MemoryGarden from "./pages/MemoryGarden.tsx";
 import City from "./pages/City.tsx";
+import Evolve from "./pages/Evolve.tsx";
+import Bestiary from "./pages/Bestiary.tsx";
 import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
@@ -39,6 +41,9 @@ const App = () => (
           <Route path="/unit7" element={<Unit7Playground />} />
           {/* Vibe City — procedural neon district you explore with a jetpack. */}
           <Route path="/city" element={<City />} />
+          {/* Evolve — the Genesis Bloom evolution sim (from genesis-bloom-evolve). */}
+          <Route path="/evolve" element={<Evolve />} />
+          <Route path="/bestiary" element={<Bestiary />} />
           {/* Vibey's memory garden — walk Vibey, read plants, browse the outdoor gallery. */}
           <Route path="/garden" element={<MemoryGarden />} />
           {/* The old standalone gallery now collapses into the garden art fair. */}

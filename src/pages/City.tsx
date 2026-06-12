@@ -38,6 +38,7 @@ import {
   type Multiplayer,
 } from "@/components/city/multiplayer";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
+import { startVibeyVoice, type VibeyVoiceSession } from "@/lib/vibeyVoice";
 import { supabase } from "@/integrations/supabase/client";
 
 // Every Quaternius character can be the pilot — same glob pattern as
@@ -446,6 +447,56 @@ export default function City() {
   const vibeyExciteRef = useRef<(() => void) | null>(null);
   const zipGrabRef = useRef<(() => void) | null>(null);
   const mooRef = useRef<(() => void) | null>(null);
+
+  // Voice mode: a live ElevenLabs conversation with Vibey.
+  const [voiceState, setVoiceState] = useState<"off" | "connecting" | "listening" | "speaking">(
+    "off",
+  );
+  const voiceRef = useRef<VibeyVoiceSession | null>(null);
+  const endVoice = () => {
+    void voiceRef.current?.end().catch(() => {});
+    voiceRef.current = null;
+    setVoiceState("off");
+  };
+  const beginVoice = async () => {
+    setVoiceState("connecting");
+    try {
+      voiceRef.current = await startVibeyVoice({
+        onMode: (mode) => {
+          setVoiceState(mode);
+          if (mode === "speaking") vibeyExciteRef.current?.();
+        },
+        onMessage: (source, text) => {
+          setNpcLogs((l) => ({
+            ...l,
+            vibey: [...l.vibey, { who: source === "ai" ? ("npc" as const) : ("you" as const), text }],
+          }));
+        },
+        onEnd: () => setVoiceState("off"),
+        onError: () => {
+          setNpcLogs((l) => ({
+            ...l,
+            vibey: [
+              ...l.vibey,
+              { who: "npc" as const, text: "(voice line crackles — let's try that again)" },
+            ],
+          }));
+        },
+      });
+    } catch {
+      setVoiceState("off");
+      setNpcLogs((l) => ({
+        ...l,
+        vibey: [
+          ...l.vibey,
+          {
+            who: "npc" as const,
+            text: "I couldn't open the voice line — check the mic permission and try again.",
+          },
+        ],
+      }));
+    }
+  };
   const [dayMode, setDayMode] = useState(false);
   const [muted, setMuted] = useState(false);
   const soundsRef = useRef<CitySounds | null>(null);
@@ -1434,6 +1485,8 @@ export default function City() {
       window.removeEventListener("keydown", onTypeEgg);
       zipGrabRef.current = null;
       mooRef.current = null;
+      void voiceRef.current?.end().catch(() => {});
+      voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
@@ -1770,13 +1823,50 @@ export default function City() {
               {npcTarget === "jerry" ? "JERRY · snail of Jerry's Plaza" : "VIBEY · community agent"}
             </span>
             <button
-              onClick={() => setNpcTarget(null)}
+              onClick={() => {
+                endVoice();
+                setNpcTarget(null);
+              }}
               className="text-muted-foreground hover:text-foreground px-1"
               aria-label="Close"
             >
               ✕
             </button>
           </div>
+          {npcTarget === "vibey" && (
+            <div className="flex items-center gap-2 text-[11px]">
+              {voiceState === "off" ? (
+                <button
+                  onClick={() => void beginVoice()}
+                  className="rounded-full bg-primary/25 text-primary px-3 py-1.5 hover:bg-primary/35 transition-colors"
+                >
+                  🎙️ Talk out loud
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={endVoice}
+                    className="rounded-full bg-destructive/25 text-destructive px-3 py-1.5 hover:bg-destructive/35 transition-colors"
+                  >
+                    ⏹ End voice
+                  </button>
+                  <span
+                    className={
+                      voiceState === "speaking"
+                        ? "text-primary animate-pulse"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {voiceState === "connecting"
+                      ? "opening the voice line…"
+                      : voiceState === "speaking"
+                        ? "🔊 Vibey is speaking…"
+                        : "🎙️ listening — just talk"}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
           <div className="max-h-[26dvh] overflow-y-auto space-y-1.5 text-xs">
             {npcLogs[npcTarget].length === 0 && (
               <div className="text-muted-foreground">

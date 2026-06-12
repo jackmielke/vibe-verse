@@ -17,6 +17,7 @@ import spaceArt from "@/assets/worlds/space.jpg";
 import lobbyArt from "@/assets/worlds/lobby.png";
 import gardenArt from "@/assets/worlds/garden.jpg";
 import museumArt from "@/assets/worlds/museum.jpg";
+import evolveArt from "@/assets/worlds/evolve.jpg";
 
 interface WorldCard {
   to: string | null; // null = stay here (the village)
@@ -40,6 +41,13 @@ const WORLDS: WorldCard[] = [
     name: "Vibe City",
     art: cityArt,
     blurb: "Jetpack a neon district, ride the zipline around Cardboard Island. Multiplayer.",
+  },
+  {
+    to: "/evolve",
+    emoji: "🧬",
+    name: "Evolve",
+    art: evolveArt,
+    blurb: "The Genesis Bloom sim — play a creature, eat, mutate, survive the apex.",
   },
   {
     to: "/space",
