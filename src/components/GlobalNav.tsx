@@ -1,96 +1,162 @@
 /**
- * GlobalNav — small top-center pill row of destination chips that
- * lives on every route so the user always has one-click access to
- * the village, lobby, outer-space, and about pages.
+ * GlobalNav — top-center pill row of destination chips on every route.
  *
- * Each chip shows an emoji + (on wider screens) a short label.
- * The current route is highlighted. On the village (`/`) we hide
- * the chip for `/` since BrandHeader already brands that page —
- * the rest stay so you can flip in from anywhere.
+ * Kept deliberately uncrowded: a 🌐 Worlds chip (opens the full
+ * world-picker gallery), five hero destinations, and a ⋯ chip that
+ * expands the rest in a dropdown. Add new worlds to MORE (or the
+ * picker) — PRIMARY stays capped so the bar never scrunches again.
+ *
+ * The Island chip is a shortcut into Vibe City with ?spawn=island —
+ * same world, lands you straight on the Cardboard Island lawn.
  *
  * Positioned at top-center so it doesn't collide with top-left
  * page headers (BrandHeader, back arrows) or top-right panels
  * (chat panels, menus).
  */
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import WorldPicker from "@/components/WorldPicker";
 
 interface Destination {
   to: string;
   emoji: string;
   label: string;
-  shortLabel?: string; // optional shorter mobile label
   matchPaths?: string[]; // additional paths that should highlight this dest
 }
 
-const DESTINATIONS: Destination[] = [
-  { to: "/", emoji: "🗺️", label: "Village" },
-  { to: "/lobby", emoji: "🏎️", label: "Lobby" },
+const PRIMARY: Destination[] = [
   { to: "/space", emoji: "🌌", label: "Space", matchPaths: ["/unit7"] },
-  { to: "/city", emoji: "🏙️", label: "City" },
   { to: "/evolve", emoji: "🧬", label: "Evolve", matchPaths: ["/bestiary"] },
   { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
+  { to: "/city", emoji: "🏙️", label: "City" },
+  { to: "/city?spawn=island", emoji: "🏝️", label: "Island" },
+];
+
+const MORE: Destination[] = [
+  { to: "/", emoji: "🗺️", label: "Village" },
+  { to: "/lobby", emoji: "🏎️", label: "Lobby" },
   { to: "/museum", emoji: "🖼️", label: "Museum" },
+  { to: "/ninja", emoji: "🍉", label: "Fruit Ninja" },
   { to: "/vibe", emoji: "🪙", label: "VIBE" },
-  { to: "/ninja", emoji: "🍉", label: "Ninja" },
   { to: "/about", emoji: "✨", label: "About" },
 ];
 
 export default function GlobalNav() {
   const location = useLocation();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Navigating anywhere collapses the dropdown and the picker.
+  useEffect(() => {
+    setMoreOpen(false);
+    setPickerOpen(false);
+  }, [location.pathname, location.search]);
 
   const isActive = (d: Destination) => {
-    if (location.pathname === d.to) return true;
-    if (d.matchPaths?.includes(location.pathname)) return true;
-    return false;
+    const [path, query] = d.to.split("?");
+    const pathHit = location.pathname === path || !!d.matchPaths?.includes(location.pathname);
+    if (!pathHit) return false;
+    // The City and Island chips share /city — the query decides.
+    if (path === "/city") {
+      const wantsIsland = !!query?.includes("spawn=island");
+      const atIsland = location.search.includes("spawn=island");
+      return wantsIsland === atIsland;
+    }
+    return true;
   };
+
+  const chipClass = (active: boolean) =>
+    `group relative flex items-center gap-1.5 rounded-full px-2 sm:px-2.5 py-1.5 transition-all ${
+      active
+        ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.35)]"
+        : "text-foreground/75 hover:text-foreground hover:bg-muted/50"
+    }`;
+
+  const labelClass =
+    "text-[10.5px] font-heading font-semibold tracking-wider uppercase leading-none hidden sm:inline";
 
   return (
     <nav
-      // top-center, non-blocking pointer-events on the wrapper so any
-      // hidden background interactions (e.g. canvas hover) still work.
       className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
       aria-label="Primary destinations"
     >
-      <div
-        className="glass-panel rounded-full border border-border/60 px-1.5 py-1 flex items-center gap-1 pointer-events-auto"
-        style={{
-          // Subtle gradient hint that this is the global navigator,
-          // distinct from in-page panels.
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-        }}
-      >
-        {DESTINATIONS.map((d) => {
-          const active = isActive(d);
-          return (
-            <Link
-              key={d.to}
-              to={d.to}
-              className={`group relative flex items-center gap-1.5 rounded-full px-2 sm:px-2.5 py-1.5 transition-all ${
-                active
-                  ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.35)]"
-                  : "text-foreground/75 hover:text-foreground hover:bg-muted/50"
-              }`}
-              title={d.label}
-              aria-current={active ? "page" : undefined}
-            >
-              <span className="text-sm leading-none">{d.emoji}</span>
-              <span
-                className={`text-[10.5px] font-heading font-semibold tracking-wider uppercase leading-none hidden sm:inline ${
-                  active ? "" : ""
-                }`}
-              >
-                {d.shortLabel ?? d.label}
-              </span>
-              {active && (
-                <span
-                  className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
-                  aria-hidden
-                />
-              )}
-            </Link>
-          );
-        })}
+      <div className="relative pointer-events-auto">
+        <div
+          className="glass-panel rounded-full border border-border/60 px-1.5 py-1 flex items-center gap-1"
+          style={{
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+          }}
+        >
+          <button
+            onClick={() => {
+              setPickerOpen((v) => !v);
+              setMoreOpen(false);
+            }}
+            className={chipClass(pickerOpen)}
+            title="All worlds"
+          >
+            <span className="text-sm leading-none">🌐</span>
+            <span className={labelClass}>Worlds</span>
+          </button>
+
+          {PRIMARY.map((d) => {
+            const active = isActive(d);
+            return (
+              <Link key={d.to} to={d.to} className={chipClass(active)} title={d.label}
+                aria-current={active ? "page" : undefined}>
+                <span className="text-sm leading-none">{d.emoji}</span>
+                <span className={labelClass}>{d.label}</span>
+                {active && (
+                  <span
+                    className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
+                    aria-hidden
+                  />
+                )}
+              </Link>
+            );
+          })}
+
+          <button
+            onClick={() => {
+              setMoreOpen((v) => !v);
+              setPickerOpen(false);
+            }}
+            className={chipClass(moreOpen || MORE.some(isActive))}
+            title="More worlds"
+            aria-expanded={moreOpen}
+          >
+            <span className="text-sm leading-none">⋯</span>
+          </button>
+        </div>
+
+        {moreOpen && (
+          <div className="absolute top-full right-0 mt-2 glass-panel rounded-2xl border border-border/60 p-1.5 flex flex-col gap-0.5 min-w-[10rem]">
+            {MORE.map((d) => {
+              const active = isActive(d);
+              return (
+                <Link
+                  key={d.to}
+                  to={d.to}
+                  className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-colors ${
+                    active
+                      ? "bg-primary/25 text-primary"
+                      : "text-foreground/80 hover:text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <span>{d.emoji}</span>
+                  <span className="font-heading font-semibold tracking-wider uppercase text-[10.5px]">
+                    {d.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="pointer-events-auto">
+        <WorldPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
       </div>
     </nav>
   );

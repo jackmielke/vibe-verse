@@ -15,10 +15,18 @@ import LocationSharePill from "@/components/LocationSharePill";
 
 const Index = () => {
   const [selectedLocation, setSelectedLocation] = useState<typeof VILLAGE_LOCATIONS[0] | null>(null);
-  const [splashDone, setSplashDone] = useState(false);
-  // After the splash: pick a world. The village map loads underneath,
-  // so choosing "Village" is instant.
-  const [worldChosen, setWorldChosen] = useState(false);
+  // Splash + world picker each run once per browser session — coming
+  // back to the village later in the session is a single click.
+  const [splashDone, setSplashDone] = useState(
+    () => sessionStorage.getItem("ee.splashSeen") === "1",
+  );
+  const [worldChosen, setWorldChosen] = useState(
+    () => sessionStorage.getItem("ee.worldChosen") === "1",
+  );
+  const closePicker = () => {
+    sessionStorage.setItem("ee.worldChosen", "1");
+    setWorldChosen(true);
+  };
   const [tab, setTab] = useState<AppTab>("map");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const isMobile = useIsMobile();
@@ -33,14 +41,21 @@ const Index = () => {
   }, [sidebarOpen]);
 
   if (!splashDone) {
-    return <SplashScreen onEnter={() => setSplashDone(true)} />;
+    return (
+      <SplashScreen
+        onEnter={() => {
+          sessionStorage.setItem("ee.splashSeen", "1");
+          setSplashDone(true);
+        }}
+      />
+    );
   }
 
   // ---------- Desktop: map + sidebar with Events/Community tabs ----------
   if (!isMobile) {
     return (
       <div className="flex h-[100dvh] w-screen overflow-hidden bg-background">
-        <WorldPicker open={!worldChosen} onStay={() => setWorldChosen(true)} />
+        <WorldPicker open={!worldChosen} onClose={closePicker} />
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -105,7 +120,7 @@ const Index = () => {
   // ---------- Mobile: full-screen tab apps + bottom nav ----------
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-background">
-      <WorldPicker open={!worldChosen} onStay={() => setWorldChosen(true)} />
+      <WorldPicker open={!worldChosen} onClose={closePicker} />
       {/* Map stays mounted so switching back is instant */}
       <div
         className={`absolute inset-0 transition-opacity duration-300 ${

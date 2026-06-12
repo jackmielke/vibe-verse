@@ -22,6 +22,7 @@
  * "City plan" section below; everything regenerates from the seed.
  */
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -408,6 +409,8 @@ export default function City() {
   });
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
+  const islandSpawnRef = useRef<(() => void) | null>(null);
+  const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
   const touchMoveRef = useRef<TouchMove>({ x: 0, y: 0 });
@@ -1200,6 +1203,12 @@ export default function City() {
       vel.set(0, 0, 0);
       onGround = false;
     };
+    // /city?spawn=island drops visitors straight onto the island lawn.
+    islandSpawnRef.current = () => {
+      player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
 
     // Dev hook for screenshot-driven iteration (and console fun):
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
@@ -1485,6 +1494,7 @@ export default function City() {
       window.removeEventListener("keydown", onTypeEgg);
       zipGrabRef.current = null;
       mooRef.current = null;
+      islandSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
       voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
@@ -1506,6 +1516,14 @@ export default function City() {
       renderer.dispose();
     };
   }, []);
+
+  // Runs on mount and whenever the query changes (e.g. the Island chip
+  // is clicked while already in the city).
+  useEffect(() => {
+    if (new URLSearchParams(routerLocation.search).get("spawn") === "island") {
+      islandSpawnRef.current?.();
+    }
+  }, [routerLocation.search]);
 
   const fmtMs = (ms: number) => {
     const s = Math.floor(ms / 1000);
