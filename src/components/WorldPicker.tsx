@@ -123,7 +123,7 @@ export default function WorldPicker({
   const location = useLocation();
   const here = (w: WorldCard) => w.to.split("?")[0] === location.pathname && !w.to.includes("?");
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
