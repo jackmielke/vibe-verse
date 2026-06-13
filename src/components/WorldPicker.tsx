@@ -196,6 +196,7 @@ export default function WorldPicker({
           </div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
