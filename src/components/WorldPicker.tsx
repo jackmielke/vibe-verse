@@ -9,6 +9,7 @@
  *
  * Re-capture a card's art when its world changes enough to feel stale.
  */
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import villageArt from "@/assets/edge-app-icon-bg.png";
@@ -122,7 +123,7 @@ export default function WorldPicker({
   const location = useLocation();
   const here = (w: WorldCard) => w.to.split("?")[0] === location.pathname && !w.to.includes("?");
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -195,6 +196,7 @@ export default function WorldPicker({
           </div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
