@@ -57,10 +57,10 @@ const App = () => (
           <Route path="/vibe" element={<VibeHub />} />
           {/* Fruit Ninja — VR controller swing test / mini-game. */}
           <Route path="/ninja" element={<FruitNinja />} />
-          {/* Hub — VibeVerse constellation lobby (experimental, will eventually replace the splash). */}
-          <Route path="/hub" element={<Hub />} />
-          {/* Hub V2 — space-themed orbital lobby with Vibey on the asteroid. */}
-          <Route path="/hub-v2" element={<HubV2 />} />
+          {/* Hub — VibeVerse orbital lobby (the new default hub). */}
+          <Route path="/hub" element={<HubV2 />} />
+          {/* Hub Old — the original constellation experiment, kept for comparison. */}
+          <Route path="/hub-old" element={<Hub />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
