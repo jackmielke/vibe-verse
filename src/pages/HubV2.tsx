@@ -563,9 +563,6 @@ export default function HubV2() {
         // Spin the visual.
         const spinObj: THREE.Object3D = s.modelObj ?? s.mesh;
         spinObj.rotation.y += dt * (i === focusedI ? 0.35 : 0.2);
-        // Halo brightens only on the active slot.
-        const halo = s.halo.material as THREE.MeshBasicMaterial;
-        halo.opacity = 0.05 + focusT * 0.12;
       });
 
       sparkles.rotation.y += dt * 0.02;
