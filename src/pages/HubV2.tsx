@@ -341,14 +341,9 @@ export default function HubV2() {
         new THREE.SphereGeometry(0.85, 48, 48),
         new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 }),
       );
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(1.05, 24, 24),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(w.color), transparent: true, opacity: 0.06, depthWrite: false }),
-      );
       wrap.add(planet);
-      wrap.add(halo);
       row.add(wrap);
-      return { world: w, group: wrap, mesh: planet, halo };
+      return { world: w, group: wrap, mesh: planet };
     });
 
     // ---------- Vibey ----------
