@@ -490,12 +490,49 @@ export default function HubV2() {
       }
       vibeyMixerRef.current?.update(dt);
 
-      // Smooth zoom.
+      // Smooth zoom (controls the "base" camera distance behind Vibey).
       camDistRef.current += (camDistTargetRef.current - camDistRef.current) * Math.min(1, dt * 6);
-      camera.position.x = Math.sin(t * 0.15) * 0.3;
-      camera.position.z = camDistRef.current;
-      camera.position.y = 5.5 - (camDistRef.current - 16) * 0.12;
-      camera.lookAt(0, ROW_Y, 0);
+
+      // Base pose: behind Vibey, slightly elevated, looking out across the
+      // row of worlds. Tilted up a bit so you see the back of Vibey's head
+      // in the foreground and the worlds floating in front of him.
+      const baseY = 7.2 - (camDistRef.current - 16) * 0.12;
+      const basePosX = Math.sin(t * 0.15) * 0.3;
+      const basePosY = baseY;
+      const basePosZ = camDistRef.current;
+      const baseLookY = ROW_Y + 0.2;
+
+      // Intro: hold close on Vibey's face (so the user sees the opening
+      // wave), then smoothly pan 180° around to the base pose behind him.
+      // VIBEY_HEAD_Z = platform.z + vibey.local.z ≈ 5 + (-1.3) = 3.7
+      const INTRO_HOLD = 1.4;     // seconds of held face shot
+      const INTRO_PAN  = 3.0;     // seconds of pan to base pose
+      const introElapsed = t;
+      const introPosX = Math.sin(introElapsed * 0.6) * 0.15;
+      const introPosY = 1.25;
+      const introPosZ = 1.4;       // in front of Vibey (he's at z≈3.7 facing -Z)
+      const introLookX = 0;
+      const introLookY = 1.15;     // roughly Vibey's head height
+      const introLookZ = 3.7;
+      // 0 during hold, 0→1 across the pan, then clamps at 1.
+      const introT = THREE.MathUtils.clamp(
+        (introElapsed - INTRO_HOLD) / INTRO_PAN, 0, 1,
+      );
+      // easeInOutCubic
+      const e = introT < 0.5
+        ? 4 * introT * introT * introT
+        : 1 - Math.pow(-2 * introT + 2, 3) / 2;
+
+      camera.position.set(
+        THREE.MathUtils.lerp(introPosX, basePosX, e),
+        THREE.MathUtils.lerp(introPosY, basePosY, e),
+        THREE.MathUtils.lerp(introPosZ, basePosZ, e),
+      );
+      camera.lookAt(
+        THREE.MathUtils.lerp(introLookX, 0, e),
+        THREE.MathUtils.lerp(introLookY, baseLookY, e),
+        THREE.MathUtils.lerp(introLookZ, 0, e),
+      );
 
       composer.render();
       raf = requestAnimationFrame(tick);
