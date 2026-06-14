@@ -17,6 +17,7 @@ import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
+import HubV2 from "./pages/HubV2.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,8 @@ const App = () => (
           <Route path="/ninja" element={<FruitNinja />} />
           {/* Hub — VibeVerse constellation lobby (experimental, will eventually replace the splash). */}
           <Route path="/hub" element={<Hub />} />
+          {/* Hub V2 — space-themed orbital lobby with Vibey on the asteroid. */}
+          <Route path="/hub-v2" element={<HubV2 />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
