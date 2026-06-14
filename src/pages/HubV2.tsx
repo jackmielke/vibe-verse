@@ -373,38 +373,70 @@ export default function HubV2() {
       return { world: w, group: wrap, mesh: planet };
     });
 
-    // ---------- Vibey ----------
-    new GLTFLoader().load(unit7ModelUrl, (gltf) => {
-      const v = gltf.scene;
-      v.scale.setScalar(0.9);
-      // Sit Vibey on the platform's worlds-facing edge so he looks toward
-      // the row at z=0. He faces -Z; "behind Vibey" is +Z (where the camera ends up).
-      v.position.set(0, -0.25, -1.3);
-      v.rotation.y = Math.PI; // face the worlds row
-      platform.add(v);
-      vibeyRef.current = v;
+    // ---------- Character loader ----------
+    // Loads the chosen avatar onto the platform, normalising its size
+    // and footing so any Quaternius character drops in cleanly.
+    const loadCharacter = (url: string, initial: boolean) => {
+      // Remove the previous character first.
+      const platformGroup = platformRef.current;
+      if (vibeyRef.current && platformGroup) {
+        platformGroup.remove(vibeyRef.current);
+      }
+      vibeyRef.current = null;
+      vibeyMixerRef.current = null;
+      vibeyActionsRef.current.clear();
 
-      const mixer = new THREE.AnimationMixer(v);
-      vibeyMixerRef.current = mixer;
-      const actions = vibeyActionsRef.current;
-      for (const clip of gltf.animations) {
-        actions.set(clip.name, mixer.clipAction(clip));
-      }
-      const idle = actions.get("Idle");
-      if (idle) idle.play();
-      // Opening wave — plays while the camera holds on Vibey's face,
-      // before the 180° pan begins.
-      const wave = actions.get("Wave");
-      if (wave) {
-        wave.reset();
-        wave.setLoop(THREE.LoopOnce, 1);
-        wave.clampWhenFinished = true;
-        wave.fadeIn(0.25).play();
-      }
-      // Kick off the intro now that Vibey is actually visible.
-      introStartedRef.current = true;
-      introElapsedRef.current = 0;
-    });
+      new GLTFLoader().load(url, (gltf) => {
+        const v = gltf.scene;
+        // Measure and normalise height ~1.6 so every avatar reads at
+        // the same body scale. robot-expressive specifically wants its
+        // historical 0.9 scale, so special-case it.
+        const box = new THREE.Box3().setFromObject(v);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const TARGET_H = 1.6;
+        const s = url === unit7ModelUrl ? 0.9 : (TARGET_H / Math.max(0.0001, size.y));
+        v.scale.setScalar(s);
+        // Re-measure after scaling to find the foot offset.
+        const box2 = new THREE.Box3().setFromObject(v);
+        const footY = box2.min.y;
+        v.position.set(0, -footY + 0.05, -1.3);
+        v.rotation.y = Math.PI;
+        platformRef.current?.add(v);
+        vibeyRef.current = v;
+
+        if (gltf.animations.length) {
+          const mixer = new THREE.AnimationMixer(v);
+          vibeyMixerRef.current = mixer;
+          const actions = vibeyActionsRef.current;
+          for (const clip of gltf.animations) {
+            actions.set(clip.name, mixer.clipAction(clip));
+          }
+          // Try common idle names — different rigs name it differently.
+          const idle = actions.get("Idle") ?? actions.get("CharacterArmature|Idle") ?? Array.from(actions.values())[0];
+          if (idle) idle.play();
+          // Opening wave — only when intro hasn't played yet.
+          if (initial) {
+            const wave = actions.get("Wave") ?? actions.get("CharacterArmature|Wave");
+            if (wave) {
+              wave.reset();
+              wave.setLoop(THREE.LoopOnce, 1);
+              wave.clampWhenFinished = true;
+              wave.fadeIn(0.25).play();
+            }
+          }
+        }
+
+        if (initial) {
+          introStartedRef.current = true;
+          introElapsedRef.current = 0;
+        }
+      });
+    };
+    loadCharRef.current = loadCharacter;
+    // Initial character — read whichever was last picked.
+    const initialPick = CHAR_PICKS.find((c) => c.id === charId) ?? CHAR_PICKS[0];
+    loadCharacter(initialPick.url, true);
 
 
 
