@@ -1522,6 +1522,14 @@ export default function City() {
   useEffect(() => {
     if (new URLSearchParams(routerLocation.search).get("spawn") === "island") {
       islandSpawnRef.current?.();
+      // Skip the entry overlay — visitors arriving from the hub already
+      // chose to land on the island, so drop them straight into control.
+      if (!enteredRef.current) {
+        enteredRef.current = true;
+        setEntered(true);
+        if (!soundsRef.current) soundsRef.current = createCitySounds();
+        soundsRef.current?.setMuted(muted);
+      }
     }
   }, [routerLocation.search]);
 
