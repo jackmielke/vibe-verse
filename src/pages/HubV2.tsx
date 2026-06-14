@@ -548,9 +548,7 @@ export default function HubV2() {
 
       sparkles.rotation.y += dt * 0.02;
 
-      // Platform life: pulse the standing ring, sweep the tilted orbital
-      // rings, drift the debris rocks.
-      (standRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(t * 1.5) * 0.18;
+      // Platform life: drift the debris rocks.
       for (const d of debris) {
         const u = d.userData as { ang: number; rad: number; yb: number; spd: number };
         u.ang += dt * u.spd;
