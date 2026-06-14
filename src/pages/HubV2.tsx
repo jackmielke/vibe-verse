@@ -289,7 +289,7 @@ export default function HubV2() {
       const box = new THREE.Box3().setFromObject(islandTemplate);
       const size = new THREE.Vector3();
       box.getSize(size);
-      const targetSize = 2.0;
+      const targetSize = 4.0;
       const s = targetSize / Math.max(size.x, size.y, size.z);
       islandTemplate.scale.setScalar(s);
       // Drop into the matching slot if it's already built.
