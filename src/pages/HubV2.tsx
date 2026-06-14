@@ -628,14 +628,10 @@ export default function HubV2() {
         camPos = heroPos;
         camLook = heroLook;
       } else if (introElapsed < FACE_DUR + ORBIT_DUR) {
-        // Sweep θ from the hero angle, the long way around (+1 full
-        // turn), landing behind Vibey (θ = π) at the resting distance.
+        // Sweep θ from the hero angle straight to behind Vibey (θ = π).
+        // Single ~180° arc — no extra full revolutions.
         const e = easeInOut((introElapsed - FACE_DUR) / ORBIT_DUR);
-        const theta = THREE.MathUtils.lerp(
-          HERO_ANGLE,
-          HERO_ANGLE + (Math.PI - HERO_ANGLE) + Math.PI * 2,
-          e,
-        );
+        const theta = THREE.MathUtils.lerp(HERO_ANGLE, Math.PI, e);
         const r = THREE.MathUtils.lerp(HERO_R, camDist, e);
         const h = THREE.MathUtils.lerp(vibeyHeadY + 0.7, baseY, e);
         camPos = new THREE.Vector3(
