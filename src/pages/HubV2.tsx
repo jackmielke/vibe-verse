@@ -79,7 +79,7 @@ const WORLDS: World[] = [
 ];
 
 // Horizontal spacing between adjacent worlds along the row.
-const SLOT_SPACING = 5.2;
+const SLOT_SPACING = 9.0;
 // Worlds float high above Vibey's head (he stands at y≈0) so the
 // focused world reads as a body up in the sky, well clear of him.
 const ROW_Y = 4.2;
@@ -239,26 +239,7 @@ export default function HubV2() {
     );
     platform.add(disc);
 
-    // Soft glow pool just above the disc.
-    const glowDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(3.6, 64),
-      new THREE.MeshBasicMaterial({
-        color: 0x4ade80, transparent: true, opacity: 0.1,
-        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      }),
-    );
-    glowDisc.rotation.x = -Math.PI / 2;
-    glowDisc.position.y = 0.22;
-    platform.add(glowDisc);
-
-    // Bright standing ring around the disc edge (pulses in the loop).
-    const standRing = new THREE.Mesh(
-      new THREE.TorusGeometry(2.6, 0.03, 12, 120),
-      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
-    );
-    standRing.rotation.x = Math.PI / 2;
-    standRing.position.y = 0.24;
-    platform.add(standRing);
+    // (Removed green glow disc and standing ring — too neon-busy.)
 
     // (Removed tilted orbital rings around the platform — felt too noisy.)
 
@@ -308,7 +289,7 @@ export default function HubV2() {
       const box = new THREE.Box3().setFromObject(islandTemplate);
       const size = new THREE.Vector3();
       box.getSize(size);
-      const targetSize = 2.0;
+      const targetSize = 4.0;
       const s = targetSize / Math.max(size.x, size.y, size.z);
       islandTemplate.scale.setScalar(s);
       // Drop into the matching slot if it's already built.
@@ -337,7 +318,7 @@ export default function HubV2() {
       const tex = loader.load(w.art);
       tex.colorSpace = THREE.SRGBColorSpace;
       const planet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.85, 48, 48),
+        new THREE.SphereGeometry(1.7, 48, 48),
         new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 }),
       );
       wrap.add(planet);
@@ -567,9 +548,7 @@ export default function HubV2() {
 
       sparkles.rotation.y += dt * 0.02;
 
-      // Platform life: pulse the standing ring, sweep the tilted orbital
-      // rings, drift the debris rocks.
-      (standRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(t * 1.5) * 0.18;
+      // Platform life: drift the debris rocks.
       for (const d of debris) {
         const u = d.userData as { ang: number; rad: number; yb: number; spd: number };
         u.ang += dt * u.spd;
@@ -649,14 +628,10 @@ export default function HubV2() {
         camPos = heroPos;
         camLook = heroLook;
       } else if (introElapsed < FACE_DUR + ORBIT_DUR) {
-        // Sweep θ from the hero angle, the long way around (+1 full
-        // turn), landing behind Vibey (θ = π) at the resting distance.
+        // Sweep θ from the hero angle straight to behind Vibey (θ = π).
+        // Single ~180° arc — no extra full revolutions.
         const e = easeInOut((introElapsed - FACE_DUR) / ORBIT_DUR);
-        const theta = THREE.MathUtils.lerp(
-          HERO_ANGLE,
-          HERO_ANGLE + (Math.PI - HERO_ANGLE) + Math.PI * 2,
-          e,
-        );
+        const theta = THREE.MathUtils.lerp(HERO_ANGLE, Math.PI, e);
         const r = THREE.MathUtils.lerp(HERO_R, camDist, e);
         const h = THREE.MathUtils.lerp(vibeyHeadY + 0.7, baseY, e);
         camPos = new THREE.Vector3(
