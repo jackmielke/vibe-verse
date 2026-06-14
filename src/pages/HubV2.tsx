@@ -622,10 +622,10 @@ export default function HubV2() {
       let camLook: THREE.Vector3;
 
       if (!introStartedRef.current) {
-        // Vibey not loaded yet — hold the wide pose so the first frames
-        // are never a close-up.
-        camPos = basePos;
-        camLook = baseLook;
+        // Vibey not loaded yet — hold the hero pose so the first frames
+        // match the intro and there's no flash on load.
+        camPos = heroPos;
+        camLook = heroLook;
       } else if (introElapsed < FACE_DUR) {
         camPos = heroPos;
         camLook = heroLook;
