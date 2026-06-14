@@ -275,8 +275,10 @@ export default function HubV2() {
     new GLTFLoader().load(unit7ModelUrl, (gltf) => {
       const v = gltf.scene;
       v.scale.setScalar(0.9);
-      v.position.set(0, -0.25, 1.3);
-      v.rotation.y = 0;
+      // Sit Vibey on the platform's worlds-facing edge so he looks toward
+      // the row at z=0. He faces -Z; "behind Vibey" is +Z (where the camera ends up).
+      v.position.set(0, -0.25, -1.3);
+      v.rotation.y = Math.PI; // face the worlds row
       platform.add(v);
       vibeyRef.current = v;
 
@@ -288,7 +290,15 @@ export default function HubV2() {
       }
       const idle = actions.get("Idle");
       if (idle) idle.play();
-    });
+      // Opening wave — plays while the camera holds on Vibey's face,
+      // before the 180° pan begins.
+      const wave = actions.get("Wave");
+      if (wave) {
+        wave.reset();
+        wave.setLoop(THREE.LoopOnce, 1);
+        wave.clampWhenFinished = true;
+        wave.fadeIn(0.25).play();
+      }
 
     // ---------- Bloom (subtle) ----------
     const composer = new EffectComposer(renderer);
