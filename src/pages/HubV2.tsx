@@ -260,27 +260,7 @@ export default function HubV2() {
     standRing.position.y = 0.24;
     platform.add(standRing);
 
-    // Tilted orbital rings sweeping around the asteroid — each on its own
-    // pivot so the tilt makes the spin actually readable.
-    const orbitRings: THREE.Group[] = [];
-    const orbSpecs = [
-      { r: 3.3, tube: 0.028, tiltX: 1.12, tiltZ: 0.22, color: 0x38bdf8, op: 0.5, spd: 0.42 },
-      { r: 3.95, tube: 0.02, tiltX: 1.4, tiltZ: -0.3, color: 0xa78bfa, op: 0.36, spd: -0.3 },
-    ];
-    for (const os of orbSpecs) {
-      const pivot = new THREE.Group();
-      pivot.position.y = -1.0;
-      pivot.userData.spd = os.spd;
-      const torus = new THREE.Mesh(
-        new THREE.TorusGeometry(os.r, os.tube, 12, 140),
-        new THREE.MeshBasicMaterial({ color: os.color, transparent: true, opacity: os.op, blending: THREE.AdditiveBlending, depthWrite: false }),
-      );
-      torus.rotation.x = os.tiltX;
-      torus.rotation.z = os.tiltZ;
-      pivot.add(torus);
-      platform.add(pivot);
-      orbitRings.push(pivot);
-    }
+    // (Removed tilted orbital rings around the platform — felt too noisy.)
 
     // Drifting debris rocks circling the platform.
     const debris: THREE.Mesh[] = [];
@@ -347,7 +327,6 @@ export default function HubV2() {
       world: World;
       group: THREE.Group;
       mesh: THREE.Mesh; // sphere planet (used unless modelObj swaps in)
-      halo: THREE.Mesh;
       modelObj?: THREE.Object3D;
     }
     const slots: Slot[] = WORLDS.map((w, i) => {
@@ -361,14 +340,9 @@ export default function HubV2() {
         new THREE.SphereGeometry(0.85, 48, 48),
         new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 }),
       );
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(1.05, 24, 24),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(w.color), transparent: true, opacity: 0.06, depthWrite: false }),
-      );
       wrap.add(planet);
-      wrap.add(halo);
       row.add(wrap);
-      return { world: w, group: wrap, mesh: planet, halo };
+      return { world: w, group: wrap, mesh: planet };
     });
 
     // ---------- Vibey ----------
@@ -589,9 +563,6 @@ export default function HubV2() {
         // Spin the visual.
         const spinObj: THREE.Object3D = s.modelObj ?? s.mesh;
         spinObj.rotation.y += dt * (i === focusedI ? 0.35 : 0.2);
-        // Halo brightens only on the active slot.
-        const halo = s.halo.material as THREE.MeshBasicMaterial;
-        halo.opacity = 0.05 + focusT * 0.12;
       });
 
       sparkles.rotation.y += dt * 0.02;
@@ -599,7 +570,6 @@ export default function HubV2() {
       // Platform life: pulse the standing ring, sweep the tilted orbital
       // rings, drift the debris rocks.
       (standRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(t * 1.5) * 0.18;
-      for (const p of orbitRings) p.rotation.y += dt * (p.userData.spd as number);
       for (const d of debris) {
         const u = d.userData as { ang: number; rad: number; yb: number; spd: number };
         u.ang += dt * u.spd;
