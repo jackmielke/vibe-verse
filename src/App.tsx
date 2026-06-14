@@ -16,6 +16,7 @@ import Bestiary from "./pages/Bestiary.tsx";
 import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
+import Hub from "./pages/Hub.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,8 @@ const App = () => (
           <Route path="/vibe" element={<VibeHub />} />
           {/* Fruit Ninja — VR controller swing test / mini-game. */}
           <Route path="/ninja" element={<FruitNinja />} />
+          {/* Hub — VibeVerse constellation lobby (experimental, will eventually replace the splash). */}
+          <Route path="/hub" element={<Hub />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
