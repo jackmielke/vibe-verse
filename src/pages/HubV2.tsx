@@ -82,11 +82,11 @@ const WORLDS: World[] = [
 const SLOT_SPACING = 9.0;
 // Worlds float high above Vibey's head (he stands at y≈0) so the
 // focused world reads as a body up in the sky, well clear of him.
-const ROW_Y = 4.2;
+const ROW_Y = 8.5;
 // Push the worlds row back from Vibey (who sits near z≈3.7) so the
 // focused world reads as a body floating in the distance, not stuck
 // to his face.
-const ROW_Z = -2.5;
+const ROW_Z = -14;
 
 export default function HubV2() {
   const navigate = useNavigate();
