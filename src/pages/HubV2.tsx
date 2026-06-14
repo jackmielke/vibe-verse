@@ -330,6 +330,8 @@ export default function HubV2() {
     const activePointers = new Map<number, { x: number; y: number }>();
     let pinchStartDist = 0;
     let pinchStartCamDist = 0;
+    let pinchStartCenterX = 0;
+    let pinchStartOffset = 0;
 
     const pinchDistance = () => {
       const pts = Array.from(activePointers.values());
@@ -337,6 +339,11 @@ export default function HubV2() {
       const dx = pts[0].x - pts[1].x;
       const dy = pts[0].y - pts[1].y;
       return Math.hypot(dx, dy);
+    };
+    const pinchCenterX = () => {
+      const pts = Array.from(activePointers.values());
+      if (pts.length < 2) return 0;
+      return (pts[0].x + pts[1].x) / 2;
     };
 
     // Convert a screen-pixel dx into world units along the row.
@@ -357,9 +364,14 @@ export default function HubV2() {
         dragStartXRef.current = ev.clientX;
         dragStartOffsetRef.current = targetOffsetRef.current;
       } else if (activePointers.size === 2) {
+        // Two-finger gesture: simultaneously pinch-zoom and pan horizontally
+        // (like the /space world). Both anchor on the moment the 2nd finger
+        // touched down.
         draggingRef.current = false;
         pinchStartDist = pinchDistance();
         pinchStartCamDist = camDistTargetRef.current;
+        pinchStartCenterX = pinchCenterX();
+        pinchStartOffset = targetOffsetRef.current;
       }
     };
     const onPointerMove = (ev: PointerEvent) => {
@@ -374,6 +386,9 @@ export default function HubV2() {
             pinchStartCamDist * scale, CAM_MIN, CAM_MAX,
           );
         }
+        // Horizontal pan from centroid movement.
+        const cx = pinchCenterX();
+        targetOffsetRef.current = pinchStartOffset + pixelsToWorld(cx - pinchStartCenterX);
         return;
       }
       if (!draggingRef.current) return;
