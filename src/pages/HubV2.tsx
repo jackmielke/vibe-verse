@@ -101,6 +101,10 @@ export default function HubV2() {
   const vibeyRef = useRef<THREE.Group | null>(null);
   const vibeyMixerRef = useRef<THREE.AnimationMixer | null>(null);
   const vibeyActionsRef = useRef<Map<string, THREE.AnimationAction>>(new Map());
+  // Intro plays once Vibey has actually loaded. `introElapsedRef` runs the
+  // sequence: face-hold (wave) → 180° orbit-around-Vibey → zoom out to base.
+  const introStartedRef = useRef(false);
+  const introElapsedRef = useRef(0);
 
   const cycle = (dir: number) => {
     const n = WORLDS.length;
