@@ -79,7 +79,7 @@ const WORLDS: World[] = [
 ];
 
 // Horizontal spacing between adjacent worlds along the row.
-const SLOT_SPACING = 5.2;
+const SLOT_SPACING = 9.0;
 // Worlds float high above Vibey's head (he stands at y≈0) so the
 // focused world reads as a body up in the sky, well clear of him.
 const ROW_Y = 4.2;
