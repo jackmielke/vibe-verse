@@ -310,6 +310,7 @@ export default function HubV2() {
     // him (+Z) and high, so we see his back and the worlds beyond.
     platform.position.set(0, -0.5, 5);
     scene.add(platform);
+    platformRef.current = platform;
 
     // ---------- Row of world slots ----------
     const row = new THREE.Group();
