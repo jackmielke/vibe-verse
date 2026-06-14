@@ -304,6 +304,7 @@ export default function HubV2() {
         wave.setLoop(THREE.LoopOnce, 1);
         wave.clampWhenFinished = true;
         wave.fadeIn(0.25).play();
+      }
       // Kick off the intro now that Vibey is actually visible.
       introStartedRef.current = true;
       introElapsedRef.current = 0;
