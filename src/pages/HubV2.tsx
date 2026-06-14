@@ -327,7 +327,6 @@ export default function HubV2() {
       world: World;
       group: THREE.Group;
       mesh: THREE.Mesh; // sphere planet (used unless modelObj swaps in)
-      halo: THREE.Mesh;
       modelObj?: THREE.Object3D;
     }
     const slots: Slot[] = WORLDS.map((w, i) => {
