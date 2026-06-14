@@ -690,6 +690,16 @@ export default function HubV2() {
 
       sparkles.rotation.y += dt * 0.02;
 
+      // Comet streaks — advance, fade in/out, respawn at end of arc.
+      for (const c of comets) {
+        c.life += dt * 0.06;
+        if (c.life >= 1) { respawnComet(c); continue; }
+        c.mesh.position.addScaledVector(c.vel, dt);
+        // Fade in/out at the ends of the arc so they don't pop.
+        const fade = Math.sin(c.life * Math.PI);
+        (c.mesh.material as THREE.MeshBasicMaterial).opacity = 0.85 * fade;
+      }
+
       // Platform life: drift the debris rocks.
       for (const d of debris) {
         const u = d.userData as { ang: number; rad: number; yb: number; spd: number };
