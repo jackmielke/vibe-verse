@@ -140,14 +140,18 @@ export default function HubV2() {
     renderer.setClearColor(0x05060f, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 0.85;
     mount.appendChild(renderer.domElement);
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     const camera = new THREE.PerspectiveCamera(45, mount.clientWidth / mount.clientHeight, 0.1, 500);
-    camera.position.set(0, 6.5, 18);
+    // Camera distance is driven by a ref so pinch/wheel zoom can move it.
+    const camDistRef = { current: 18 };
+    const camDistTargetRef = { current: 18 };
+    const CAM_MIN = 9, CAM_MAX = 30;
+    camera.position.set(0, 6.5, camDistRef.current);
     camera.lookAt(0, 1.2, 0);
 
     // ---------- Multi-layer starfield (cloned vibe) ----------
@@ -171,19 +175,19 @@ export default function HubV2() {
       scene.add(pts);
       return pts;
     };
-    makeStars(1800, 80, 200, 0.6, 0xffffff, 0.85);
-    makeStars(900, 40, 90, 0.35, 0x9ad8ff, 0.7);
-    const sparkles = makeStars(400, 18, 40, 0.5, 0x73ffb8, 0.9);
+    makeStars(1800, 80, 200, 0.45, 0xffffff, 0.7);
+    makeStars(700, 40, 90, 0.3, 0x9ad8ff, 0.45);
+    const sparkles = makeStars(220, 18, 40, 0.4, 0x73ffb8, 0.55);
 
-    // ---------- Lighting (matches /space palette) ----------
-    scene.add(new THREE.AmbientLight(0x4a5fa8, 0.4));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    // ---------- Lighting (matches /space palette, dialed down) ----------
+    scene.add(new THREE.AmbientLight(0x4a5fa8, 0.5));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
     sun.position.set(8, 14, 6);
     scene.add(sun);
-    const rim = new THREE.DirectionalLight(0x73ffb8, 0.9);
+    const rim = new THREE.DirectionalLight(0x73ffb8, 0.45);
     rim.position.set(-6, 4, -8);
     scene.add(rim);
-    const fill = new THREE.DirectionalLight(0xff7eb3, 0.4);
+    const fill = new THREE.DirectionalLight(0xff7eb3, 0.25);
     fill.position.set(4, -3, 6);
     scene.add(fill);
 
@@ -200,10 +204,10 @@ export default function HubV2() {
     );
     platSpire.position.y = -2.2;
     platform.add(platSpire);
-    // Neon rim ring around the platform edge.
+    // Neon rim ring around the platform edge (subtle, not bloom-fuel).
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(2.55, 0.03, 12, 96),
-      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.85 }),
+      new THREE.TorusGeometry(2.55, 0.025, 12, 96),
+      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.45 }),
     );
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.26;
@@ -218,8 +222,8 @@ export default function HubV2() {
 
     // Faint orbit ellipse hint (a flat ring on the orbital plane).
     const orbitRing = new THREE.Mesh(
-      new THREE.RingGeometry(7.95, 8.05, 128),
-      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.18, side: THREE.DoubleSide }),
+      new THREE.RingGeometry(7.95, 8.03, 128),
+      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.08, side: THREE.DoubleSide }),
     );
     orbitRing.rotation.x = -Math.PI / 2;
     orbitRing.position.y = 1.5;
@@ -250,11 +254,11 @@ export default function HubV2() {
         tex.colorSpace = THREE.SRGBColorSpace;
         const planet = new THREE.Mesh(
           new THREE.SphereGeometry(0.85, 48, 48),
-          new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, metalness: 0.1, emissive: new THREE.Color(w.color), emissiveIntensity: 0.15 }),
+          new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 }),
         );
         const halo = new THREE.Mesh(
-          new THREE.SphereGeometry(1.15, 24, 24),
-          new THREE.MeshBasicMaterial({ color: new THREE.Color(w.color), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }),
+          new THREE.SphereGeometry(1.05, 24, 24),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(w.color), transparent: true, opacity: 0.05, depthWrite: false }),
         );
         wrap.add(planet);
         wrap.add(halo);
@@ -276,20 +280,32 @@ export default function HubV2() {
     let centerIsland: THREE.Group | null = null;
     new GLTFLoader().load(floatingIslandUrl, (gltf) => {
       centerIsland = gltf.scene;
+      // Strip emissive/over-bright materials so the island doesn't blow out under bloom.
+      centerIsland.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mat of mats) {
+          const std = mat as THREE.MeshStandardMaterial;
+          if (std.emissive) { std.emissive.setScalar(0); std.emissiveIntensity = 0; }
+          if (typeof std.roughness === "number") std.roughness = Math.max(0.6, std.roughness);
+          if (typeof std.metalness === "number") std.metalness = Math.min(0.15, std.metalness);
+        }
+      });
       // Normalize size.
       const box = new THREE.Box3().setFromObject(centerIsland);
       const size = new THREE.Vector3();
       box.getSize(size);
-      const targetSize = 3.0;
+      const targetSize = 2.6;
       const s = targetSize / Math.max(size.x, size.y, size.z);
       centerIsland.scale.setScalar(s);
-      centerIsland.position.y = -0.3;
+      centerIsland.position.y = -0.4;
       centerSlot.add(centerIsland);
     }, undefined, () => {
       // GLB failed — fall back to a textured sphere so the scene still reads.
       const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(1.4, 48, 48),
-        new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.5, metalness: 0.2 }),
+        new THREE.SphereGeometry(1.2, 48, 48),
+        new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.7, metalness: 0.1 }),
       );
       centerSlot.add(sphere);
       centerIsland = sphere as unknown as THREE.Group;
@@ -314,31 +330,82 @@ export default function HubV2() {
       if (idle) idle.play();
     });
 
-    // ---------- Bloom postprocessing ----------
+    // ---------- Bloom postprocessing (dialed way down) ----------
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
+    // strength, radius, threshold — only the brightest pixels (rim + stars) bloom.
     const bloom = new UnrealBloomPass(
       new THREE.Vector2(mount.clientWidth, mount.clientHeight),
-      0.85, 0.55, 0.18,
+      0.32, 0.45, 0.82,
     );
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
-    // ---------- Pointer interactions ----------
+    // ---------- Pointer interactions (drag to rotate, pinch / wheel to zoom) ----------
     const ndc = new THREE.Vector2();
     const raycaster = new THREE.Raycaster();
+    const activePointers = new Map<number, { x: number; y: number }>();
+    let pinchStartDist = 0;
+    let pinchStartCamDist = 0;
+
+    const pinchDistance = () => {
+      const pts = Array.from(activePointers.values());
+      if (pts.length < 2) return 0;
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      return Math.hypot(dx, dy);
+    };
+
     const onPointerDown = (ev: PointerEvent) => {
-      draggingRef.current = true;
-      dragStartXRef.current = ev.clientX;
-      dragStartAngleRef.current = targetAngleRef.current;
+      activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       (ev.target as HTMLElement).setPointerCapture?.(ev.pointerId);
+      if (activePointers.size === 1) {
+        draggingRef.current = true;
+        dragStartXRef.current = ev.clientX;
+        dragStartAngleRef.current = targetAngleRef.current;
+      } else if (activePointers.size === 2) {
+        // Switch from rotate to pinch-zoom.
+        draggingRef.current = false;
+        pinchStartDist = pinchDistance();
+        pinchStartCamDist = camDistTargetRef.current;
+      }
     };
     const onPointerMove = (ev: PointerEvent) => {
+      if (activePointers.has(ev.pointerId)) {
+        activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      }
+      if (activePointers.size >= 2) {
+        const d = pinchDistance();
+        if (pinchStartDist > 0) {
+          const scale = pinchStartDist / d; // farther fingers => zoom in => smaller distance
+          camDistTargetRef.current = THREE.MathUtils.clamp(
+            pinchStartCamDist * scale,
+            CAM_MIN,
+            CAM_MAX,
+          );
+        }
+        return;
+      }
       if (!draggingRef.current) return;
       const dx = ev.clientX - dragStartXRef.current;
       targetAngleRef.current = dragStartAngleRef.current + dx * 0.005;
     };
     const onPointerUp = (ev: PointerEvent) => {
+      const wasMultiTouch = activePointers.size >= 2;
+      activePointers.delete(ev.pointerId);
+      if (wasMultiTouch) {
+        // Coming out of pinch — don't snap rotation.
+        if (activePointers.size === 1) {
+          // Rebase drag origin to the remaining finger.
+          const remaining = Array.from(activePointers.values())[0];
+          if (remaining) {
+            dragStartXRef.current = remaining.x;
+            dragStartAngleRef.current = targetAngleRef.current;
+            draggingRef.current = true;
+          }
+        }
+        return;
+      }
       const wasDragging = draggingRef.current;
       draggingRef.current = false;
       const dx = ev.clientX - dragStartXRef.current;
@@ -377,9 +444,20 @@ export default function HubV2() {
         }
       }
     };
+    const onWheel = (ev: WheelEvent) => {
+      ev.preventDefault();
+      const factor = Math.exp(ev.deltaY * 0.0015);
+      camDistTargetRef.current = THREE.MathUtils.clamp(
+        camDistTargetRef.current * factor,
+        CAM_MIN,
+        CAM_MAX,
+      );
+    };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
     // ---------- Animation loop ----------
     const clock = new THREE.Clock();
@@ -402,7 +480,7 @@ export default function HubV2() {
         const targetScale = isActive ? 0 : 1; // hide the planet at the focused slot — center island takes its place
         p.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
         const halo = p.halo.material as THREE.MeshBasicMaterial;
-        halo.opacity = 0.18;
+        halo.opacity = 0.05;
       });
 
       // Center island spins slowly and bobs.
@@ -425,8 +503,12 @@ export default function HubV2() {
       }
       vibeyMixerRef.current?.update(dt);
 
-      // Subtle camera parallax.
+      // Smooth camera zoom (pinch / wheel).
+      camDistRef.current += (camDistTargetRef.current - camDistRef.current) * Math.min(1, dt * 6);
+      // Subtle camera parallax + apply current zoom distance.
       camera.position.x = Math.sin(t * 0.15) * 0.4;
+      camera.position.z = camDistRef.current;
+      camera.position.y = 6.5 - (camDistRef.current - 18) * 0.15; // pitch in a touch when zooming in
       camera.lookAt(0, 1.6, 0);
 
       composer.render();
@@ -453,7 +535,9 @@ export default function HubV2() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("wheel", onWheel);
       composer.dispose();
       renderer.dispose();
       pmrem.dispose();
