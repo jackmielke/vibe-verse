@@ -80,9 +80,9 @@ const WORLDS: World[] = [
 
 // Horizontal spacing between adjacent worlds along the row.
 const SLOT_SPACING = 5.2;
-// Worlds float well above Vibey's head (he stands at y≈0) so the
-// focused world reads as a body in the sky, not stuck behind him.
-const ROW_Y = 3.5;
+// Worlds float high above Vibey's head (he stands at y≈0) so the
+// focused world reads as a body up in the sky, well clear of him.
+const ROW_Y = 4.2;
 // Push the worlds row back from Vibey (who sits near z≈3.7) so the
 // focused world reads as a body floating in the distance, not stuck
 // to his face.
@@ -152,7 +152,7 @@ export default function HubV2() {
     const camDistTargetRef = { current: 17 };
     const CAM_MIN = 11, CAM_MAX = 46;
     camera.position.set(0, 7, 21);
-    camera.lookAt(0, ROW_Y - 0.4, ROW_Z);
+    camera.lookAt(0, ROW_Y - 1.3, ROW_Z);
 
     // Vibey's framing metrics. Fixed (not measured) because his
     // placement is fully controlled below — platform at z=5, Vibey at
@@ -652,7 +652,9 @@ export default function HubV2() {
         baseY,
         vibeyZ + camDist,
       );
-      const baseLook = new THREE.Vector3(0, ROW_Y - 0.6, ROW_Z);
+      // Look-at sits well below the worlds row so the focused world
+      // floats high in the frame (worlds at ROW_Y, look ~1.3 lower).
+      const baseLook = new THREE.Vector3(0, ROW_Y - 1.3, ROW_Z);
 
       // Hero (A) pose — whole-robot 3/4 shot at a comfortable distance.
       const heroPos = new THREE.Vector3(
