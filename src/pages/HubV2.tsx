@@ -260,27 +260,7 @@ export default function HubV2() {
     standRing.position.y = 0.24;
     platform.add(standRing);
 
-    // Tilted orbital rings sweeping around the asteroid — each on its own
-    // pivot so the tilt makes the spin actually readable.
-    const orbitRings: THREE.Group[] = [];
-    const orbSpecs = [
-      { r: 3.3, tube: 0.028, tiltX: 1.12, tiltZ: 0.22, color: 0x38bdf8, op: 0.5, spd: 0.42 },
-      { r: 3.95, tube: 0.02, tiltX: 1.4, tiltZ: -0.3, color: 0xa78bfa, op: 0.36, spd: -0.3 },
-    ];
-    for (const os of orbSpecs) {
-      const pivot = new THREE.Group();
-      pivot.position.y = -1.0;
-      pivot.userData.spd = os.spd;
-      const torus = new THREE.Mesh(
-        new THREE.TorusGeometry(os.r, os.tube, 12, 140),
-        new THREE.MeshBasicMaterial({ color: os.color, transparent: true, opacity: os.op, blending: THREE.AdditiveBlending, depthWrite: false }),
-      );
-      torus.rotation.x = os.tiltX;
-      torus.rotation.z = os.tiltZ;
-      pivot.add(torus);
-      platform.add(pivot);
-      orbitRings.push(pivot);
-    }
+    // (Removed tilted orbital rings around the platform — felt too noisy.)
 
     // Drifting debris rocks circling the platform.
     const debris: THREE.Mesh[] = [];
