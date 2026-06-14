@@ -239,26 +239,7 @@ export default function HubV2() {
     );
     platform.add(disc);
 
-    // Soft glow pool just above the disc.
-    const glowDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(3.6, 64),
-      new THREE.MeshBasicMaterial({
-        color: 0x4ade80, transparent: true, opacity: 0.1,
-        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      }),
-    );
-    glowDisc.rotation.x = -Math.PI / 2;
-    glowDisc.position.y = 0.22;
-    platform.add(glowDisc);
-
-    // Bright standing ring around the disc edge (pulses in the loop).
-    const standRing = new THREE.Mesh(
-      new THREE.TorusGeometry(2.6, 0.03, 12, 120),
-      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
-    );
-    standRing.rotation.x = Math.PI / 2;
-    standRing.position.y = 0.24;
-    platform.add(standRing);
+    // (Removed green glow disc and standing ring — too neon-busy.)
 
     // (Removed tilted orbital rings around the platform — felt too noisy.)
 
