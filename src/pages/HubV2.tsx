@@ -240,6 +240,69 @@ export default function HubV2() {
     makeStars(700, 40, 90, 0.3, 0x9ad8ff, 0.45);
     const sparkles = makeStars(220, 18, 40, 0.4, 0x73ffb8, 0.55);
 
+    // ---------- Comet streaks ----------
+    // A handful of slow, glowing streaks drifting across the far sky.
+    // Built from a single tapered plane with additive blending so it
+    // reads as a light trail rather than a hard line.
+    interface Comet {
+      mesh: THREE.Mesh;
+      vel: THREE.Vector3;
+      life: number; // 0 → 1 along its arc, then respawn
+    }
+    const comets: Comet[] = [];
+    const cometGeo = (() => {
+      const g = new THREE.PlaneGeometry(8, 0.18, 1, 1);
+      // Taper one end so it looks like a streak with a head + tail.
+      const colors = new Float32Array(4 * 3);
+      // verts: 0=back-top, 1=front-top, 2=back-bottom, 3=front-bottom
+      // Actually PlaneGeometry order: (-x,+y),(+x,+y),(-x,-y),(+x,-y).
+      // We want +x to be the bright head.
+      const setC = (i: number, r: number, gC: number, b: number) => {
+        colors[i * 3] = r; colors[i * 3 + 1] = gC; colors[i * 3 + 2] = b;
+      };
+      setC(0, 0.0, 0.0, 0.0);
+      setC(1, 1.0, 1.0, 1.0);
+      setC(2, 0.0, 0.0, 0.0);
+      setC(3, 1.0, 1.0, 1.0);
+      g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      return g;
+    })();
+    const cometColors = [0xffffff, 0x9ad8ff, 0x73ffb8, 0xb392ff];
+    for (let i = 0; i < 4; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: cometColors[i % cometColors.length],
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(cometGeo, mat);
+      mesh.renderOrder = -1;
+      scene.add(mesh);
+      comets.push({
+        mesh,
+        vel: new THREE.Vector3(),
+        life: Math.random(),
+      });
+    }
+    const respawnComet = (c: Comet) => {
+      // Spawn far out at a random side of the sky, aim across the view.
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const y = 8 + Math.random() * 22;
+      const z = -30 - Math.random() * 50;
+      c.mesh.position.set(side * (40 + Math.random() * 20), y, z);
+      const target = new THREE.Vector3(-side * (10 + Math.random() * 20), y - 4 - Math.random() * 6, z + 10 + Math.random() * 10);
+      c.vel.copy(target).sub(c.mesh.position).normalize().multiplyScalar(8 + Math.random() * 6);
+      // Orient the streak along its velocity (in the XZ plane mostly).
+      const ang = Math.atan2(c.vel.y, c.vel.x);
+      c.mesh.rotation.z = ang;
+      c.life = 0;
+    };
+    comets.forEach(respawnComet);
+
+
     // ---------- Lighting ----------
     scene.add(new THREE.AmbientLight(0x4a5fa8, 0.5));
     const sun = new THREE.DirectionalLight(0xffffff, 1.0);
