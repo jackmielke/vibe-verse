@@ -132,10 +132,29 @@ export default function HubV2() {
   const vibeyRef = useRef<THREE.Group | null>(null);
   const vibeyMixerRef = useRef<THREE.AnimationMixer | null>(null);
   const vibeyActionsRef = useRef<Map<string, THREE.AnimationAction>>(new Map());
+  const platformRef = useRef<THREE.Group | null>(null);
+  const loadCharRef = useRef<(url: string, initial: boolean) => void>(() => {});
   // Intro plays once Vibey has actually loaded. `introElapsedRef` runs the
   // sequence: face-hold (wave) → 180° orbit-around-Vibey → zoom out to base.
   const introStartedRef = useRef(false);
   const introElapsedRef = useRef(0);
+
+  // Character pick — shared with /lobby via localStorage so the avatar
+  // you choose here is the one you spawn into other worlds with.
+  const [charId, setCharId] = useState<string>(() => {
+    if (typeof window === "undefined") return "vibey";
+    return localStorage.getItem("lobby.character") ?? "vibey";
+  });
+  useEffect(() => {
+    localStorage.setItem("lobby.character", charId);
+  }, [charId]);
+  // Re-load the character model whenever the pick changes (after mount).
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    const pick = CHAR_PICKS.find((c) => c.id === charId) ?? CHAR_PICKS[0];
+    loadCharRef.current(pick.url, false);
+  }, [charId]);
 
   const cycle = (dir: number) => {
     const n = WORLDS.length;
