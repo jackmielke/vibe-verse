@@ -139,10 +139,12 @@ export default function HubV2() {
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     const camera = new THREE.PerspectiveCamera(45, mount.clientWidth / mount.clientHeight, 0.1, 500);
-    const camDistRef = { current: 16 };
-    const camDistTargetRef = { current: 16 };
-    const CAM_MIN = 9, CAM_MAX = 26;
-    camera.position.set(0, 5.5, camDistRef.current);
+    // Base camera distance — kept large so the focused world reads as a
+    // distant body Vibey is looking out at, not a sphere right next to him.
+    const camDistRef = { current: 22 };
+    const camDistTargetRef = { current: 22 };
+    const CAM_MIN = 14, CAM_MAX = 36;
+    camera.position.set(0, 8.5, camDistRef.current);
     camera.lookAt(0, ROW_Y, 0);
 
     // ---------- Multi-layer starfield ----------
