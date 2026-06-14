@@ -80,7 +80,13 @@ const WORLDS: World[] = [
 
 // Horizontal spacing between adjacent worlds along the row.
 const SLOT_SPACING = 5.2;
-const ROW_Y = 1.6;
+// Worlds float well above Vibey's head (he stands at y≈0) so the
+// focused world reads as a body in the sky, not stuck behind him.
+const ROW_Y = 3.5;
+// Push the worlds row back from Vibey (who sits near z≈3.7) so the
+// focused world reads as a body floating in the distance, not stuck
+// to his face.
+const ROW_Z = -2.5;
 
 export default function HubV2() {
   const navigate = useNavigate();
@@ -139,13 +145,29 @@ export default function HubV2() {
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     const camera = new THREE.PerspectiveCamera(45, mount.clientWidth / mount.clientHeight, 0.1, 500);
-    // Base camera distance — kept large so the focused world reads as a
-    // distant body Vibey is looking out at, not a sphere right next to him.
-    const camDistRef = { current: 22 };
-    const camDistTargetRef = { current: 22 };
-    const CAM_MIN = 14, CAM_MAX = 36;
-    camera.position.set(0, 8.5, camDistRef.current);
-    camera.lookAt(0, ROW_Y, 0);
+    // Resting camera distance *behind* Vibey. Big + high so you see the
+    // whole tableau — Vibey on his platform in the foreground, the
+    // focused world floating out beyond him.
+    const camDistRef = { current: 17 };
+    const camDistTargetRef = { current: 17 };
+    const CAM_MIN = 11, CAM_MAX = 46;
+    camera.position.set(0, 7, 21);
+    camera.lookAt(0, ROW_Y - 0.4, ROW_Z);
+
+    // Vibey's framing metrics. Fixed (not measured) because his
+    // placement is fully controlled below — platform at z=5, Vibey at
+    // local z=-1.3 → world z≈3.7, ~1.6 tall standing on the disc. (A
+    // Box3 on the skinned model returns garbage bounds, so we don't.)
+    const vibeyHeadY = 1.0;
+    const vibeyMidY = 0.3;
+    const vibeyZ = 3.7;
+    // Any touch/scroll skips straight to the resting pose so the intro
+    // never feels like it's trapping the camera.
+    let introSkipped = false;
+    const FACE_DUR = 1.5; // wave / hero hold
+    const ORBIT_DUR = 3.6; // loop around + rise + pull back
+    const HERO_R = 6.2; // hero-shot distance from Vibey
+    const HERO_ANGLE = 0.55; // 3/4 front angle (radians off his facing axis)
 
     // ---------- Multi-layer starfield ----------
     const makeStars = (count: number, rMin: number, rMax: number, size: number, color: number, opacity: number) => {
@@ -184,35 +206,107 @@ export default function HubV2() {
     fill.position.set(4, -3, 6);
     scene.add(fill);
 
-    // ---------- Vibey's platform ----------
+    // ---------- Vibey's platform (faceted asteroid + neon rings) ----------
     const platform = new THREE.Group();
-    const platTop = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.6, 2.4, 0.5, 48),
-      new THREE.MeshStandardMaterial({ color: 0x1a2233, roughness: 0.85, metalness: 0.15, emissive: 0x0a1428, emissiveIntensity: 0.4 }),
+
+    // Faceted asteroid base — jittered icosahedron for a hand-chiselled
+    // rock look, squashed flat so Vibey has a stage to stand on.
+    const asteroidGeo = new THREE.IcosahedronGeometry(2.7, 1);
+    const apos = asteroidGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < apos.count; i++) {
+      const n = 0.82 + Math.random() * 0.34;
+      apos.setXYZ(i, apos.getX(i) * n, apos.getY(i) * n, apos.getZ(i) * n);
+    }
+    asteroidGeo.computeVertexNormals();
+    const asteroid = new THREE.Mesh(
+      asteroidGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x141b2c, roughness: 0.95, metalness: 0.12,
+        flatShading: true, emissive: 0x0a1430, emissiveIntensity: 0.35,
+      }),
     );
-    platform.add(platTop);
-    const platSpire = new THREE.Mesh(
-      new THREE.ConeGeometry(2.4, 4, 24, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x10182a, roughness: 1, metalness: 0 }),
+    asteroid.scale.set(1, 0.62, 1);
+    asteroid.position.y = -1.5;
+    platform.add(asteroid);
+
+    // Standing disc Vibey actually rests on.
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.45, 2.62, 0.4, 64),
+      new THREE.MeshStandardMaterial({
+        color: 0x1b2740, roughness: 0.55, metalness: 0.4,
+        emissive: 0x123a2e, emissiveIntensity: 0.5,
+      }),
     );
-    platSpire.position.y = -2.2;
-    platform.add(platSpire);
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(2.55, 0.025, 12, 96),
-      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.45 }),
+    platform.add(disc);
+
+    // Soft glow pool just above the disc.
+    const glowDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(3.6, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x4ade80, transparent: true, opacity: 0.1,
+        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      }),
     );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.26;
-    platform.add(ring);
-    // Move platform back so the worlds row floats in front of Vibey.
-    // Platform sits in FRONT of the worlds row (positive Z, near the camera).
-    // Vibey then faces -Z toward the worlds, so the default "behind-Vibey"
-    // camera up at z>VIBEY_Z naturally frames his back + the worlds beyond.
+    glowDisc.rotation.x = -Math.PI / 2;
+    glowDisc.position.y = 0.22;
+    platform.add(glowDisc);
+
+    // Bright standing ring around the disc edge (pulses in the loop).
+    const standRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.6, 0.03, 12, 120),
+      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    standRing.rotation.x = Math.PI / 2;
+    standRing.position.y = 0.24;
+    platform.add(standRing);
+
+    // Tilted orbital rings sweeping around the asteroid — each on its own
+    // pivot so the tilt makes the spin actually readable.
+    const orbitRings: THREE.Group[] = [];
+    const orbSpecs = [
+      { r: 3.3, tube: 0.028, tiltX: 1.12, tiltZ: 0.22, color: 0x38bdf8, op: 0.5, spd: 0.42 },
+      { r: 3.95, tube: 0.02, tiltX: 1.4, tiltZ: -0.3, color: 0xa78bfa, op: 0.36, spd: -0.3 },
+    ];
+    for (const os of orbSpecs) {
+      const pivot = new THREE.Group();
+      pivot.position.y = -1.0;
+      pivot.userData.spd = os.spd;
+      const torus = new THREE.Mesh(
+        new THREE.TorusGeometry(os.r, os.tube, 12, 140),
+        new THREE.MeshBasicMaterial({ color: os.color, transparent: true, opacity: os.op, blending: THREE.AdditiveBlending, depthWrite: false }),
+      );
+      torus.rotation.x = os.tiltX;
+      torus.rotation.z = os.tiltZ;
+      pivot.add(torus);
+      platform.add(pivot);
+      orbitRings.push(pivot);
+    }
+
+    // Drifting debris rocks circling the platform.
+    const debris: THREE.Mesh[] = [];
+    const rockGeo = new THREE.IcosahedronGeometry(0.17, 0);
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x28324d, roughness: 1, metalness: 0.05, flatShading: true });
+    for (let i = 0; i < 9; i++) {
+      const rock = new THREE.Mesh(rockGeo, rockMat);
+      rock.userData = {
+        ang: (i / 9) * Math.PI * 2,
+        rad: 3.0 + Math.random() * 1.0,
+        yb: -0.6 + Math.random() * 1.1,
+        spd: 0.12 + Math.random() * 0.22,
+      };
+      rock.scale.setScalar(0.55 + Math.random() * 1.1);
+      platform.add(rock);
+      debris.push(rock);
+    }
+
+    // Vibey faces -Z toward the worlds; the resting camera sits behind
+    // him (+Z) and high, so we see his back and the worlds beyond.
     platform.position.set(0, -0.5, 5);
     scene.add(platform);
 
     // ---------- Row of world slots ----------
     const row = new THREE.Group();
+    row.position.z = ROW_Z;
     scene.add(row);
 
     // Pre-load the floating island GLB once so we can drop it into the
@@ -357,6 +451,7 @@ export default function HubV2() {
     };
 
     const onPointerDown = (ev: PointerEvent) => {
+      introSkipped = true; // any interaction drops the cinematic intro
       activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       (ev.target as HTMLElement).setPointerCapture?.(ev.pointerId);
       if (activePointers.size === 1) {
@@ -454,6 +549,7 @@ export default function HubV2() {
     };
     const onWheel = (ev: WheelEvent) => {
       ev.preventDefault();
+      introSkipped = true;
       const factor = Math.exp(ev.deltaY * 0.0015);
       camDistTargetRef.current = THREE.MathUtils.clamp(
         camDistTargetRef.current * factor, CAM_MIN, CAM_MAX,
@@ -485,11 +581,11 @@ export default function HubV2() {
         const focusT = Math.max(0, 1 - dist / SLOT_SPACING); // 1 at center, 0 at neighbors
         const bob = Math.sin(t * 0.9 + i * 1.2) * 0.08;
         s.group.position.y = ROW_Y + bob;
-        const targetScale = 0.75 + focusT * 0.55; // neighbors ~0.75, focus ~1.30
+        const targetScale = 0.7 + focusT * 1.05; // neighbors ~0.7, focus ~1.75
         s.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
-        // Push the focused world slightly forward (away from Vibey, toward
-        // the camera) so it reads as a body floating out in space.
-        s.group.position.z = -focusT * 0.4;
+        // Float the focused world slightly toward the camera so it
+        // reads a touch bigger than its neighbors.
+        s.group.position.z = focusT * 0.5;
         // Spin the visual.
         const spinObj: THREE.Object3D = s.modelObj ?? s.mesh;
         spinObj.rotation.y += dt * (i === focusedI ? 0.35 : 0.2);
@@ -500,11 +596,27 @@ export default function HubV2() {
 
       sparkles.rotation.y += dt * 0.02;
 
+      // Platform life: pulse the standing ring, sweep the tilted orbital
+      // rings, drift the debris rocks.
+      (standRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(t * 1.5) * 0.18;
+      for (const p of orbitRings) p.rotation.y += dt * (p.userData.spd as number);
+      for (const d of debris) {
+        const u = d.userData as { ang: number; rad: number; yb: number; spd: number };
+        u.ang += dt * u.spd;
+        d.position.set(
+          Math.cos(u.ang) * u.rad,
+          u.yb + Math.sin(t * 0.8 + u.ang) * 0.18,
+          Math.sin(u.ang) * u.rad,
+        );
+        d.rotation.x += dt * 0.6;
+        d.rotation.y += dt * 0.5;
+      }
+
       // Vibey breathes + faces the focused slot.
       const vibey = vibeyRef.current;
       if (vibey) {
         const focusWorldX = focusedI * SLOT_SPACING + offsetRef.current;
-        const tgt = new THREE.Vector3(focusWorldX, ROW_Y, 0);
+        const tgt = new THREE.Vector3(focusWorldX, ROW_Y, ROW_Z);
         const localTgt = vibey.parent!.worldToLocal(tgt.clone());
         const desiredY = Math.atan2(localTgt.x - vibey.position.x, localTgt.z - vibey.position.z);
         // shortest-arc lerp
@@ -515,44 +627,40 @@ export default function HubV2() {
       }
       vibeyMixerRef.current?.update(dt);
 
-      // Smooth zoom (controls the base camera distance behind Vibey).
+      // Smooth zoom (the resting distance behind Vibey).
       camDistRef.current += (camDistTargetRef.current - camDistRef.current) * Math.min(1, dt * 6);
+      const camDist = camDistRef.current;
 
-      // ---- Intro choreography (only runs after Vibey has loaded) ----
-      // Phase A "face"  : camera held in front of Vibey while he waves.
-      // Phase B "orbit" : camera arcs 180° around him on a horizontal ring,
-      //                   while the radius/height grow toward the base pose.
-      // Phase C "done"  : normal behind-Vibey gaze across the worlds row.
-      //
-      // Vibey's world position is (0, head, VIBEY_Z). He faces -Z, so the
-      // "in front of his face" camera sits at z < VIBEY_Z.
-      const VIBEY_Z = 3.7;
-      const VIBEY_HEAD_Y = 1.05;
-      const FACE_DUR = 1.6;
-      const ORBIT_DUR = 3.2;
+      // ---- Intro choreography ----
+      //  A "hero"   : a flattering 3/4 front shot while Vibey waves.
+      //  B "orbit"  : ~1.4 loops around him, ending behind, rising and
+      //               pulling back to the resting distance.
+      //  C "rest"   : high + far behind Vibey, gazing over the worlds.
+      // Any touch/scroll sets introSkipped and jumps to C.
+      if (introStartedRef.current && !introSkipped) introElapsedRef.current += dt;
+      const introElapsed = introSkipped
+        ? Infinity
+        : introStartedRef.current
+          ? introElapsedRef.current
+          : 0;
 
-      if (introStartedRef.current) {
-        introElapsedRef.current += dt;
-      }
-      const introElapsed = introStartedRef.current ? introElapsedRef.current : 0;
-
-      // Base (Phase C) pose — behind Vibey, looking past him at the worlds.
-      const baseY = 8.0 + (camDistRef.current - 22) * 0.1;
+      // Resting (C) pose — behind Vibey and a bit above, framing him in
+      // the lower foreground with the focused world floating up beyond.
+      const baseY = 6.5 + (camDist - 17) * 0.16;
       const basePos = new THREE.Vector3(
-        Math.sin(t * 0.15) * 0.4,
+        Math.sin(t * 0.12) * 0.6,
         baseY,
-        VIBEY_Z + camDistRef.current,
+        vibeyZ + camDist,
       );
-      const baseLook = new THREE.Vector3(0, ROW_Y + 0.6, 0);
+      const baseLook = new THREE.Vector3(0, ROW_Y - 0.6, ROW_Z);
 
-      // Phase A face pose — close, eye-level, just in front of his face.
-      const FACE_R = 2.0;
-      const facePos = new THREE.Vector3(
-        Math.sin(introElapsed * 0.7) * 0.12,
-        VIBEY_HEAD_Y + 0.05,
-        VIBEY_Z - FACE_R,
+      // Hero (A) pose — whole-robot 3/4 shot at a comfortable distance.
+      const heroPos = new THREE.Vector3(
+        Math.sin(HERO_ANGLE) * HERO_R + Math.sin(t * 0.6) * 0.15,
+        vibeyHeadY + 0.7,
+        vibeyZ - Math.cos(HERO_ANGLE) * HERO_R,
       );
-      const faceLook = new THREE.Vector3(0, VIBEY_HEAD_Y, VIBEY_Z);
+      const heroLook = new THREE.Vector3(0, vibeyMidY + 0.35, vibeyZ);
 
       const easeInOut = (x: number) =>
         x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
@@ -560,31 +668,36 @@ export default function HubV2() {
       let camPos: THREE.Vector3;
       let camLook: THREE.Vector3;
 
-      if (!introStartedRef.current || introElapsed < FACE_DUR) {
-        // Phase A: hold on the face shot.
-        camPos = facePos;
-        camLook = faceLook;
+      if (!introStartedRef.current) {
+        // Vibey not loaded yet — hold the wide pose so the first frames
+        // are never a close-up.
+        camPos = basePos;
+        camLook = baseLook;
+      } else if (introElapsed < FACE_DUR) {
+        camPos = heroPos;
+        camLook = heroLook;
       } else if (introElapsed < FACE_DUR + ORBIT_DUR) {
-        // Phase B: arc around Vibey. θ=0 is in front (face shot),
-        // θ=π is behind. Radius and height both grow toward the base pose.
-        const k = (introElapsed - FACE_DUR) / ORBIT_DUR;
-        const e = easeInOut(k);
-        const theta = e * Math.PI;
-        const r = THREE.MathUtils.lerp(FACE_R, camDistRef.current, e);
-        const h = THREE.MathUtils.lerp(VIBEY_HEAD_Y + 0.05, baseY, e);
+        // Sweep θ from the hero angle, the long way around (+1 full
+        // turn), landing behind Vibey (θ = π) at the resting distance.
+        const e = easeInOut((introElapsed - FACE_DUR) / ORBIT_DUR);
+        const theta = THREE.MathUtils.lerp(
+          HERO_ANGLE,
+          HERO_ANGLE + (Math.PI - HERO_ANGLE) + Math.PI * 2,
+          e,
+        );
+        const r = THREE.MathUtils.lerp(HERO_R, camDist, e);
+        const h = THREE.MathUtils.lerp(vibeyHeadY + 0.7, baseY, e);
         camPos = new THREE.Vector3(
           Math.sin(theta) * r,
           h,
-          VIBEY_Z - Math.cos(theta) * r,
+          vibeyZ - Math.cos(theta) * r,
         );
-        // Look-at lerps from Vibey's head to the worlds row center.
         camLook = new THREE.Vector3(
-          THREE.MathUtils.lerp(faceLook.x, baseLook.x, e),
-          THREE.MathUtils.lerp(faceLook.y, baseLook.y, e),
-          THREE.MathUtils.lerp(faceLook.z, baseLook.z, e),
+          THREE.MathUtils.lerp(heroLook.x, baseLook.x, e),
+          THREE.MathUtils.lerp(heroLook.y, baseLook.y, e),
+          THREE.MathUtils.lerp(heroLook.z, baseLook.z, e),
         );
       } else {
-        // Phase C: settled.
         camPos = basePos;
         camLook = baseLook;
       }
