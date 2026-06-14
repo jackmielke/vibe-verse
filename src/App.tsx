@@ -32,7 +32,10 @@ const App = () => (
             so the user always has one-click access to all the worlds. */}
         <GlobalNav />
         <Routes>
-          <Route path="/" element={<Index />} />
+          {/* Hub is now the landing page — the VibeVerse lobby. */}
+          <Route path="/" element={<HubV2 />} />
+          {/* Old Edge Esmeralda splash, kept reachable for those who want it. */}
+          <Route path="/welcome" element={<Index />} />
           {/* Mario-Kart-style character + vehicle picker. */}
           <Route path="/lobby" element={<Lobby />} />
           {/* 3D About — narrative + carousel of characters. */}
@@ -44,22 +47,21 @@ const App = () => (
           <Route path="/unit7" element={<Unit7Playground />} />
           {/* Vibe City — procedural neon district you explore with a jetpack. */}
           <Route path="/city" element={<City />} />
-          {/* Evolve — the Genesis Bloom evolution sim (from genesis-bloom-evolve). */}
+          {/* Evolve — the Genesis Bloom evolution sim. */}
           <Route path="/evolve" element={<Evolve />} />
           <Route path="/bestiary" element={<Bestiary />} />
-          {/* Vibey's memory garden — walk Vibey, read plants, browse the outdoor gallery. */}
+          {/* Vibey's memory garden. */}
           <Route path="/garden" element={<MemoryGarden />} />
-          {/* The old standalone gallery now collapses into the garden art fair. */}
           <Route path="/gallery" element={<Navigate to="/garden" replace />} />
-          {/* Fractal Museum — Seuss-inspired walkable gallery room. */}
+          {/* Fractal Museum. */}
           <Route path="/museum" element={<Museum />} />
           {/* VIBE Hub — wallet login, community holders, market. */}
           <Route path="/vibe" element={<VibeHub />} />
-          {/* Fruit Ninja — VR controller swing test / mini-game. */}
+          {/* Fruit Ninja. */}
           <Route path="/ninja" element={<FruitNinja />} />
-          {/* Hub — VibeVerse orbital lobby (the new default hub). */}
+          {/* /hub still works as an alias for the lobby. */}
           <Route path="/hub" element={<HubV2 />} />
-          {/* Hub Old — the original constellation experiment, kept for comparison. */}
+          {/* Old constellation experiment, kept for comparison. */}
           <Route path="/hub-old" element={<Hub />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

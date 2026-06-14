@@ -29,7 +29,32 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
+import alienModelUrl from "@/assets/glb/alien.glb";
 import floatingIslandUrl from "@/assets/glb/floating-island.glb";
+
+// Quaternius character pack — Vite resolves each .glb to a URL.
+const QUATERNIUS_URLS = import.meta.glob(
+  "@/assets/glb/characters/*.glb",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+const quatUrl = (name: string): string | undefined => {
+  const hit = Object.entries(QUATERNIUS_URLS).find(([p]) => p.endsWith(`/${name}.glb`));
+  return hit?.[1];
+};
+
+// Curated character roster shown in the hub's avatar strip. Kept short
+// so the picker reads at a glance; the full roster lives in /lobby.
+interface CharSpec { id: string; label: string; emoji: string; url: string; }
+const CHAR_PICKS: CharSpec[] = [
+  { id: "vibey", label: "Vibey", emoji: "🤖", url: unit7ModelUrl },
+  { id: "alien", label: "Alien", emoji: "👽", url: alienModelUrl },
+  { id: "Wizard", label: "Wizard", emoji: "🧙", url: quatUrl("Wizard") ?? unit7ModelUrl },
+  { id: "Knight_Golden_Male", label: "Knight", emoji: "🛡", url: quatUrl("Knight_Golden_Male") ?? unit7ModelUrl },
+  { id: "Ninja_Male", label: "Ninja", emoji: "🥷", url: quatUrl("Ninja_Male") ?? unit7ModelUrl },
+  { id: "Pirate_Anne", label: "Pirate", emoji: "🏴‍☠️", url: quatUrl("Pirate_Anne") ?? unit7ModelUrl },
+  { id: "Cow", label: "Cow", emoji: "🐄", url: quatUrl("Cow") ?? unit7ModelUrl },
+  { id: "Pug", label: "Pug", emoji: "🐶", url: quatUrl("Pug") ?? unit7ModelUrl },
+].filter((c) => c.url);
 
 import cityArt from "@/assets/worlds/city.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
@@ -107,10 +132,29 @@ export default function HubV2() {
   const vibeyRef = useRef<THREE.Group | null>(null);
   const vibeyMixerRef = useRef<THREE.AnimationMixer | null>(null);
   const vibeyActionsRef = useRef<Map<string, THREE.AnimationAction>>(new Map());
+  const platformRef = useRef<THREE.Group | null>(null);
+  const loadCharRef = useRef<(url: string, initial: boolean) => void>(() => {});
   // Intro plays once Vibey has actually loaded. `introElapsedRef` runs the
   // sequence: face-hold (wave) → 180° orbit-around-Vibey → zoom out to base.
   const introStartedRef = useRef(false);
   const introElapsedRef = useRef(0);
+
+  // Character pick — shared with /lobby via localStorage so the avatar
+  // you choose here is the one you spawn into other worlds with.
+  const [charId, setCharId] = useState<string>(() => {
+    if (typeof window === "undefined") return "vibey";
+    return localStorage.getItem("lobby.character") ?? "vibey";
+  });
+  useEffect(() => {
+    localStorage.setItem("lobby.character", charId);
+  }, [charId]);
+  // Re-load the character model whenever the pick changes (after mount).
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    const pick = CHAR_PICKS.find((c) => c.id === charId) ?? CHAR_PICKS[0];
+    loadCharRef.current(pick.url, false);
+  }, [charId]);
 
   const cycle = (dir: number) => {
     const n = WORLDS.length;
@@ -196,6 +240,69 @@ export default function HubV2() {
     makeStars(700, 40, 90, 0.3, 0x9ad8ff, 0.45);
     const sparkles = makeStars(220, 18, 40, 0.4, 0x73ffb8, 0.55);
 
+    // ---------- Comet streaks ----------
+    // A handful of slow, glowing streaks drifting across the far sky.
+    // Built from a single tapered plane with additive blending so it
+    // reads as a light trail rather than a hard line.
+    interface Comet {
+      mesh: THREE.Mesh;
+      vel: THREE.Vector3;
+      life: number; // 0 → 1 along its arc, then respawn
+    }
+    const comets: Comet[] = [];
+    const cometGeo = (() => {
+      const g = new THREE.PlaneGeometry(8, 0.18, 1, 1);
+      // Taper one end so it looks like a streak with a head + tail.
+      const colors = new Float32Array(4 * 3);
+      // verts: 0=back-top, 1=front-top, 2=back-bottom, 3=front-bottom
+      // Actually PlaneGeometry order: (-x,+y),(+x,+y),(-x,-y),(+x,-y).
+      // We want +x to be the bright head.
+      const setC = (i: number, r: number, gC: number, b: number) => {
+        colors[i * 3] = r; colors[i * 3 + 1] = gC; colors[i * 3 + 2] = b;
+      };
+      setC(0, 0.0, 0.0, 0.0);
+      setC(1, 1.0, 1.0, 1.0);
+      setC(2, 0.0, 0.0, 0.0);
+      setC(3, 1.0, 1.0, 1.0);
+      g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      return g;
+    })();
+    const cometColors = [0xffffff, 0x9ad8ff, 0x73ffb8, 0xb392ff];
+    for (let i = 0; i < 4; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: cometColors[i % cometColors.length],
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(cometGeo, mat);
+      mesh.renderOrder = -1;
+      scene.add(mesh);
+      comets.push({
+        mesh,
+        vel: new THREE.Vector3(),
+        life: Math.random(),
+      });
+    }
+    const respawnComet = (c: Comet) => {
+      // Spawn far out at a random side of the sky, aim across the view.
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const y = 8 + Math.random() * 22;
+      const z = -30 - Math.random() * 50;
+      c.mesh.position.set(side * (40 + Math.random() * 20), y, z);
+      const target = new THREE.Vector3(-side * (10 + Math.random() * 20), y - 4 - Math.random() * 6, z + 10 + Math.random() * 10);
+      c.vel.copy(target).sub(c.mesh.position).normalize().multiplyScalar(8 + Math.random() * 6);
+      // Orient the streak along its velocity (in the XZ plane mostly).
+      const ang = Math.atan2(c.vel.y, c.vel.x);
+      c.mesh.rotation.z = ang;
+      c.life = 0;
+    };
+    comets.forEach(respawnComet);
+
+
     // ---------- Lighting ----------
     scene.add(new THREE.AmbientLight(0x4a5fa8, 0.5));
     const sun = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -266,6 +373,7 @@ export default function HubV2() {
     // him (+Z) and high, so we see his back and the worlds beyond.
     platform.position.set(0, -0.5, 5);
     scene.add(platform);
+    platformRef.current = platform;
 
     // ---------- Row of world slots ----------
     const row = new THREE.Group();
@@ -328,38 +436,70 @@ export default function HubV2() {
       return { world: w, group: wrap, mesh: planet };
     });
 
-    // ---------- Vibey ----------
-    new GLTFLoader().load(unit7ModelUrl, (gltf) => {
-      const v = gltf.scene;
-      v.scale.setScalar(0.9);
-      // Sit Vibey on the platform's worlds-facing edge so he looks toward
-      // the row at z=0. He faces -Z; "behind Vibey" is +Z (where the camera ends up).
-      v.position.set(0, -0.25, -1.3);
-      v.rotation.y = Math.PI; // face the worlds row
-      platform.add(v);
-      vibeyRef.current = v;
+    // ---------- Character loader ----------
+    // Loads the chosen avatar onto the platform, normalising its size
+    // and footing so any Quaternius character drops in cleanly.
+    const loadCharacter = (url: string, initial: boolean) => {
+      // Remove the previous character first.
+      const platformGroup = platformRef.current;
+      if (vibeyRef.current && platformGroup) {
+        platformGroup.remove(vibeyRef.current);
+      }
+      vibeyRef.current = null;
+      vibeyMixerRef.current = null;
+      vibeyActionsRef.current.clear();
 
-      const mixer = new THREE.AnimationMixer(v);
-      vibeyMixerRef.current = mixer;
-      const actions = vibeyActionsRef.current;
-      for (const clip of gltf.animations) {
-        actions.set(clip.name, mixer.clipAction(clip));
-      }
-      const idle = actions.get("Idle");
-      if (idle) idle.play();
-      // Opening wave — plays while the camera holds on Vibey's face,
-      // before the 180° pan begins.
-      const wave = actions.get("Wave");
-      if (wave) {
-        wave.reset();
-        wave.setLoop(THREE.LoopOnce, 1);
-        wave.clampWhenFinished = true;
-        wave.fadeIn(0.25).play();
-      }
-      // Kick off the intro now that Vibey is actually visible.
-      introStartedRef.current = true;
-      introElapsedRef.current = 0;
-    });
+      new GLTFLoader().load(url, (gltf) => {
+        const v = gltf.scene;
+        // Measure and normalise height ~1.6 so every avatar reads at
+        // the same body scale. robot-expressive specifically wants its
+        // historical 0.9 scale, so special-case it.
+        const box = new THREE.Box3().setFromObject(v);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const TARGET_H = 1.6;
+        const s = url === unit7ModelUrl ? 0.9 : (TARGET_H / Math.max(0.0001, size.y));
+        v.scale.setScalar(s);
+        // Re-measure after scaling to find the foot offset.
+        const box2 = new THREE.Box3().setFromObject(v);
+        const footY = box2.min.y;
+        v.position.set(0, -footY + 0.05, -1.3);
+        v.rotation.y = Math.PI;
+        platformRef.current?.add(v);
+        vibeyRef.current = v;
+
+        if (gltf.animations.length) {
+          const mixer = new THREE.AnimationMixer(v);
+          vibeyMixerRef.current = mixer;
+          const actions = vibeyActionsRef.current;
+          for (const clip of gltf.animations) {
+            actions.set(clip.name, mixer.clipAction(clip));
+          }
+          // Try common idle names — different rigs name it differently.
+          const idle = actions.get("Idle") ?? actions.get("CharacterArmature|Idle") ?? Array.from(actions.values())[0];
+          if (idle) idle.play();
+          // Opening wave — only when intro hasn't played yet.
+          if (initial) {
+            const wave = actions.get("Wave") ?? actions.get("CharacterArmature|Wave");
+            if (wave) {
+              wave.reset();
+              wave.setLoop(THREE.LoopOnce, 1);
+              wave.clampWhenFinished = true;
+              wave.fadeIn(0.25).play();
+            }
+          }
+        }
+
+        if (initial) {
+          introStartedRef.current = true;
+          introElapsedRef.current = 0;
+        }
+      });
+    };
+    loadCharRef.current = loadCharacter;
+    // Initial character — read whichever was last picked.
+    const initialPick = CHAR_PICKS.find((c) => c.id === charId) ?? CHAR_PICKS[0];
+    loadCharacter(initialPick.url, true);
 
 
 
@@ -549,6 +689,16 @@ export default function HubV2() {
       });
 
       sparkles.rotation.y += dt * 0.02;
+
+      // Comet streaks — advance, fade in/out, respawn at end of arc.
+      for (const c of comets) {
+        c.life += dt * 0.06;
+        if (c.life >= 1) { respawnComet(c); continue; }
+        c.mesh.position.addScaledVector(c.vel, dt);
+        // Fade in/out at the ends of the arc so they don't pop.
+        const fade = Math.sin(c.life * Math.PI);
+        (c.mesh.material as THREE.MeshBasicMaterial).opacity = 0.85 * fade;
+      }
 
       // Platform life: drift the debris rocks.
       for (const d of debris) {
@@ -772,6 +922,32 @@ export default function HubV2() {
               }`}
               aria-label={`Focus ${w.name}`}
             />
+          ))}
+        </div>
+      </div>
+
+      {/* Character picker — pick the avatar standing on the platform.
+          The choice is mirrored to localStorage so /lobby and /city
+          pick it up too. */}
+      <div className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-6 z-20 flex flex-col items-center gap-2 pointer-events-auto">
+        <p className="text-[9px] sm:text-[10px] tracking-[0.3em] uppercase text-primary/70 mb-1 [writing-mode:vertical-rl] rotate-180 sm:rotate-0 sm:[writing-mode:horizontal-tb]">
+          You
+        </p>
+        <div className="glass-panel rounded-2xl p-1.5 flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto">
+          {CHAR_PICKS.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setCharId(c.id)}
+              title={c.label}
+              aria-label={`Pick ${c.label}`}
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl text-xl sm:text-2xl flex items-center justify-center transition-all ${
+                charId === c.id
+                  ? "bg-primary/20 ring-2 ring-primary shadow-[0_0_18px_hsl(var(--primary)/0.5)]"
+                  : "bg-background/40 hover:bg-primary/10 ring-1 ring-border/40"
+              }`}
+            >
+              <span aria-hidden>{c.emoji}</span>
+            </button>
           ))}
         </div>
       </div>
