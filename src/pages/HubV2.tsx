@@ -480,7 +480,7 @@ export default function HubV2() {
         const targetScale = isActive ? 0 : 1; // hide the planet at the focused slot — center island takes its place
         p.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
         const halo = p.halo.material as THREE.MeshBasicMaterial;
-        halo.opacity = 0.18;
+        halo.opacity = 0.05;
       });
 
       // Center island spins slowly and bobs.
@@ -503,8 +503,12 @@ export default function HubV2() {
       }
       vibeyMixerRef.current?.update(dt);
 
-      // Subtle camera parallax.
+      // Smooth camera zoom (pinch / wheel).
+      camDistRef.current += (camDistTargetRef.current - camDistRef.current) * Math.min(1, dt * 6);
+      // Subtle camera parallax + apply current zoom distance.
       camera.position.x = Math.sin(t * 0.15) * 0.4;
+      camera.position.z = camDistRef.current;
+      camera.position.y = 6.5 - (camDistRef.current - 18) * 0.15; // pitch in a touch when zooming in
       camera.lookAt(0, 1.6, 0);
 
       composer.render();
