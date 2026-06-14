@@ -467,10 +467,11 @@ export default function HubV2() {
         const focusT = Math.max(0, 1 - dist / SLOT_SPACING); // 1 at center, 0 at neighbors
         const bob = Math.sin(t * 0.9 + i * 1.2) * 0.08;
         s.group.position.y = ROW_Y + bob;
-        const targetScale = 0.85 + focusT * 0.9; // neighbors ~0.85, focus ~1.75
+        const targetScale = 0.75 + focusT * 0.55; // neighbors ~0.75, focus ~1.30
         s.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
-        // Slight push-back for non-focused so the active reads forward.
-        s.group.position.z = -focusT * 0.6;
+        // Push the focused world slightly forward (away from Vibey, toward
+        // the camera) so it reads as a body floating out in space.
+        s.group.position.z = -focusT * 0.4;
         // Spin the visual.
         const spinObj: THREE.Object3D = s.modelObj ?? s.mesh;
         spinObj.rotation.y += dt * (i === focusedI ? 0.35 : 0.2);
