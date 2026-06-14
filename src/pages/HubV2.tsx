@@ -515,49 +515,82 @@ export default function HubV2() {
       }
       vibeyMixerRef.current?.update(dt);
 
-      // Smooth zoom (controls the "base" camera distance behind Vibey).
+      // Smooth zoom (controls the base camera distance behind Vibey).
       camDistRef.current += (camDistTargetRef.current - camDistRef.current) * Math.min(1, dt * 6);
 
-      // Base pose: behind Vibey, slightly elevated, looking out across the
-      // row of worlds. Tilted up a bit so you see the back of Vibey's head
-      // in the foreground and the worlds floating in front of him.
-      const baseY = 7.2 - (camDistRef.current - 16) * 0.12;
-      const basePosX = Math.sin(t * 0.15) * 0.3;
-      const basePosY = baseY;
-      const basePosZ = camDistRef.current;
-      const baseLookY = ROW_Y + 0.2;
+      // ---- Intro choreography (only runs after Vibey has loaded) ----
+      // Phase A "face"  : camera held in front of Vibey while he waves.
+      // Phase B "orbit" : camera arcs 180° around him on a horizontal ring,
+      //                   while the radius/height grow toward the base pose.
+      // Phase C "done"  : normal behind-Vibey gaze across the worlds row.
+      //
+      // Vibey's world position is (0, head, VIBEY_Z). He faces -Z, so the
+      // "in front of his face" camera sits at z < VIBEY_Z.
+      const VIBEY_Z = 3.7;
+      const VIBEY_HEAD_Y = 1.05;
+      const FACE_DUR = 1.6;
+      const ORBIT_DUR = 3.2;
 
-      // Intro: hold close on Vibey's face (so the user sees the opening
-      // wave), then smoothly pan 180° around to the base pose behind him.
-      // VIBEY_HEAD_Z = platform.z + vibey.local.z ≈ 5 + (-1.3) = 3.7
-      const INTRO_HOLD = 1.4;     // seconds of held face shot
-      const INTRO_PAN  = 3.0;     // seconds of pan to base pose
-      const introElapsed = t;
-      const introPosX = Math.sin(introElapsed * 0.6) * 0.15;
-      const introPosY = 1.25;
-      const introPosZ = 1.4;       // in front of Vibey (he's at z≈3.7 facing -Z)
-      const introLookX = 0;
-      const introLookY = 1.15;     // roughly Vibey's head height
-      const introLookZ = 3.7;
-      // 0 during hold, 0→1 across the pan, then clamps at 1.
-      const introT = THREE.MathUtils.clamp(
-        (introElapsed - INTRO_HOLD) / INTRO_PAN, 0, 1,
-      );
-      // easeInOutCubic
-      const e = introT < 0.5
-        ? 4 * introT * introT * introT
-        : 1 - Math.pow(-2 * introT + 2, 3) / 2;
+      if (introStartedRef.current) {
+        introElapsedRef.current += dt;
+      }
+      const introElapsed = introStartedRef.current ? introElapsedRef.current : 0;
 
-      camera.position.set(
-        THREE.MathUtils.lerp(introPosX, basePosX, e),
-        THREE.MathUtils.lerp(introPosY, basePosY, e),
-        THREE.MathUtils.lerp(introPosZ, basePosZ, e),
+      // Base (Phase C) pose — behind Vibey, looking past him at the worlds.
+      const baseY = 8.0 + (camDistRef.current - 22) * 0.1;
+      const basePos = new THREE.Vector3(
+        Math.sin(t * 0.15) * 0.4,
+        baseY,
+        VIBEY_Z + camDistRef.current,
       );
-      camera.lookAt(
-        THREE.MathUtils.lerp(introLookX, 0, e),
-        THREE.MathUtils.lerp(introLookY, baseLookY, e),
-        THREE.MathUtils.lerp(introLookZ, 0, e),
+      const baseLook = new THREE.Vector3(0, ROW_Y + 0.6, 0);
+
+      // Phase A face pose — close, eye-level, just in front of his face.
+      const FACE_R = 2.0;
+      const facePos = new THREE.Vector3(
+        Math.sin(introElapsed * 0.7) * 0.12,
+        VIBEY_HEAD_Y + 0.05,
+        VIBEY_Z - FACE_R,
       );
+      const faceLook = new THREE.Vector3(0, VIBEY_HEAD_Y, VIBEY_Z);
+
+      const easeInOut = (x: number) =>
+        x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+      let camPos: THREE.Vector3;
+      let camLook: THREE.Vector3;
+
+      if (!introStartedRef.current || introElapsed < FACE_DUR) {
+        // Phase A: hold on the face shot.
+        camPos = facePos;
+        camLook = faceLook;
+      } else if (introElapsed < FACE_DUR + ORBIT_DUR) {
+        // Phase B: arc around Vibey. θ=0 is in front (face shot),
+        // θ=π is behind. Radius and height both grow toward the base pose.
+        const k = (introElapsed - FACE_DUR) / ORBIT_DUR;
+        const e = easeInOut(k);
+        const theta = e * Math.PI;
+        const r = THREE.MathUtils.lerp(FACE_R, camDistRef.current, e);
+        const h = THREE.MathUtils.lerp(VIBEY_HEAD_Y + 0.05, baseY, e);
+        camPos = new THREE.Vector3(
+          Math.sin(theta) * r,
+          h,
+          VIBEY_Z - Math.cos(theta) * r,
+        );
+        // Look-at lerps from Vibey's head to the worlds row center.
+        camLook = new THREE.Vector3(
+          THREE.MathUtils.lerp(faceLook.x, baseLook.x, e),
+          THREE.MathUtils.lerp(faceLook.y, baseLook.y, e),
+          THREE.MathUtils.lerp(faceLook.z, baseLook.z, e),
+        );
+      } else {
+        // Phase C: settled.
+        camPos = basePos;
+        camLook = baseLook;
+      }
+
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
 
       composer.render();
       raf = requestAnimationFrame(tick);
