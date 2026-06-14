@@ -151,8 +151,10 @@ export default function HubV2() {
     const camDistRef = { current: 17 };
     const camDistTargetRef = { current: 17 };
     const CAM_MIN = 11, CAM_MAX = 46;
-    camera.position.set(0, 7, 21);
-    camera.lookAt(0, ROW_Y - 1.3, ROW_Z);
+    // Start on the hero pose so the first painted frames already match
+    // the intro and there's no flash when Vibey finishes loading.
+    camera.position.set(Math.sin(0.55) * 13.0, 1.0 + 0.7, 3.7 - Math.cos(0.55) * 13.0);
+    camera.lookAt(0, 0.3 + 0.35, 3.7);
 
     // Vibey's framing metrics. Fixed (not measured) because his
     // placement is fully controlled below — platform at z=5, Vibey at
