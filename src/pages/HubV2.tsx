@@ -341,21 +341,71 @@ export default function HubV2() {
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
-    // ---------- Pointer interactions ----------
+    // ---------- Pointer interactions (drag to rotate, pinch / wheel to zoom) ----------
     const ndc = new THREE.Vector2();
     const raycaster = new THREE.Raycaster();
+    const activePointers = new Map<number, { x: number; y: number }>();
+    let pinchStartDist = 0;
+    let pinchStartCamDist = 0;
+
+    const pinchDistance = () => {
+      const pts = Array.from(activePointers.values());
+      if (pts.length < 2) return 0;
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      return Math.hypot(dx, dy);
+    };
+
     const onPointerDown = (ev: PointerEvent) => {
-      draggingRef.current = true;
-      dragStartXRef.current = ev.clientX;
-      dragStartAngleRef.current = targetAngleRef.current;
+      activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       (ev.target as HTMLElement).setPointerCapture?.(ev.pointerId);
+      if (activePointers.size === 1) {
+        draggingRef.current = true;
+        dragStartXRef.current = ev.clientX;
+        dragStartAngleRef.current = targetAngleRef.current;
+      } else if (activePointers.size === 2) {
+        // Switch from rotate to pinch-zoom.
+        draggingRef.current = false;
+        pinchStartDist = pinchDistance();
+        pinchStartCamDist = camDistTargetRef.current;
+      }
     };
     const onPointerMove = (ev: PointerEvent) => {
+      if (activePointers.has(ev.pointerId)) {
+        activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      }
+      if (activePointers.size >= 2) {
+        const d = pinchDistance();
+        if (pinchStartDist > 0) {
+          const scale = pinchStartDist / d; // farther fingers => zoom in => smaller distance
+          camDistTargetRef.current = THREE.MathUtils.clamp(
+            pinchStartCamDist * scale,
+            CAM_MIN,
+            CAM_MAX,
+          );
+        }
+        return;
+      }
       if (!draggingRef.current) return;
       const dx = ev.clientX - dragStartXRef.current;
       targetAngleRef.current = dragStartAngleRef.current + dx * 0.005;
     };
     const onPointerUp = (ev: PointerEvent) => {
+      const wasMultiTouch = activePointers.size >= 2;
+      activePointers.delete(ev.pointerId);
+      if (wasMultiTouch) {
+        // Coming out of pinch — don't snap rotation.
+        if (activePointers.size === 1) {
+          // Rebase drag origin to the remaining finger.
+          const remaining = Array.from(activePointers.values())[0];
+          if (remaining) {
+            dragStartXRef.current = remaining.x;
+            dragStartAngleRef.current = targetAngleRef.current;
+            draggingRef.current = true;
+          }
+        }
+        return;
+      }
       const wasDragging = draggingRef.current;
       draggingRef.current = false;
       const dx = ev.clientX - dragStartXRef.current;
@@ -394,9 +444,20 @@ export default function HubV2() {
         }
       }
     };
+    const onWheel = (ev: WheelEvent) => {
+      ev.preventDefault();
+      const factor = Math.exp(ev.deltaY * 0.0015);
+      camDistTargetRef.current = THREE.MathUtils.clamp(
+        camDistTargetRef.current * factor,
+        CAM_MIN,
+        CAM_MAX,
+      );
+    };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
     // ---------- Animation loop ----------
     const clock = new THREE.Clock();
