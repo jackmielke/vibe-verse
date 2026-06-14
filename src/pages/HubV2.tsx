@@ -318,7 +318,7 @@ export default function HubV2() {
       const tex = loader.load(w.art);
       tex.colorSpace = THREE.SRGBColorSpace;
       const planet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.85, 48, 48),
+        new THREE.SphereGeometry(1.7, 48, 48),
         new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 }),
       );
       wrap.add(planet);
