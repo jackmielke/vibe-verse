@@ -166,7 +166,7 @@ export default function HubV2() {
     let introSkipped = false;
     const FACE_DUR = 1.5; // wave / hero hold
     const ORBIT_DUR = 3.6; // loop around + rise + pull back
-    const HERO_R = 6.2; // hero-shot distance from Vibey
+    const HERO_R = 13.0; // hero-shot distance from Vibey
     const HERO_ANGLE = 0.55; // 3/4 front angle (radians off his facing axis)
 
     // ---------- Multi-layer starfield ----------
