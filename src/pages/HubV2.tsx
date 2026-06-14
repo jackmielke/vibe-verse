@@ -298,7 +298,9 @@ export default function HubV2() {
         wave.setLoop(THREE.LoopOnce, 1);
         wave.clampWhenFinished = true;
         wave.fadeIn(0.25).play();
-      }
+    });
+
+
 
     // ---------- Bloom (subtle) ----------
     const composer = new EffectComposer(renderer);
