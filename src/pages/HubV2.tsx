@@ -29,7 +29,32 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
+import alienModelUrl from "@/assets/glb/alien.glb";
 import floatingIslandUrl from "@/assets/glb/floating-island.glb";
+
+// Quaternius character pack — Vite resolves each .glb to a URL.
+const QUATERNIUS_URLS = import.meta.glob(
+  "@/assets/glb/characters/*.glb",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+const quatUrl = (name: string): string | undefined => {
+  const hit = Object.entries(QUATERNIUS_URLS).find(([p]) => p.endsWith(`/${name}.glb`));
+  return hit?.[1];
+};
+
+// Curated character roster shown in the hub's avatar strip. Kept short
+// so the picker reads at a glance; the full roster lives in /lobby.
+interface CharSpec { id: string; label: string; emoji: string; url: string; }
+const CHAR_PICKS: CharSpec[] = [
+  { id: "vibey", label: "Vibey", emoji: "🤖", url: unit7ModelUrl },
+  { id: "alien", label: "Alien", emoji: "👽", url: alienModelUrl },
+  { id: "Wizard", label: "Wizard", emoji: "🧙", url: quatUrl("Wizard") ?? unit7ModelUrl },
+  { id: "Knight_Golden_Male", label: "Knight", emoji: "🛡", url: quatUrl("Knight_Golden_Male") ?? unit7ModelUrl },
+  { id: "Ninja_Male", label: "Ninja", emoji: "🥷", url: quatUrl("Ninja_Male") ?? unit7ModelUrl },
+  { id: "Pirate_Anne", label: "Pirate", emoji: "🏴‍☠️", url: quatUrl("Pirate_Anne") ?? unit7ModelUrl },
+  { id: "Cow", label: "Cow", emoji: "🐄", url: quatUrl("Cow") ?? unit7ModelUrl },
+  { id: "Pug", label: "Pug", emoji: "🐶", url: quatUrl("Pug") ?? unit7ModelUrl },
+].filter((c) => c.url);
 
 import cityArt from "@/assets/worlds/city.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
