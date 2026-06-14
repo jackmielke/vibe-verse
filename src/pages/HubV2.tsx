@@ -199,7 +199,10 @@ export default function HubV2() {
     ring.position.y = 0.26;
     platform.add(ring);
     // Move platform back so the worlds row floats in front of Vibey.
-    platform.position.set(0, -0.5, -3.5);
+    // Platform sits in FRONT of the worlds row (positive Z, near the camera).
+    // Vibey then faces -Z toward the worlds, so the default "behind-Vibey"
+    // camera up at z>VIBEY_Z naturally frames his back + the worlds beyond.
+    platform.position.set(0, -0.5, 5);
     scene.add(platform);
 
     // ---------- Row of world slots ----------
