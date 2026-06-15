@@ -447,6 +447,9 @@ export default function City() {
   // through the unit7-chat edge function, one dialog at a time.
   const [nearVibey, setNearVibey] = useState(false);
   const [nearJerry, setNearJerry] = useState(false);
+  const [nearSnackfe, setNearSnackfe] = useState(false);
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMsg, setSnackMsg] = useState<string | null>(null);
   const [npcTarget, setNpcTarget] = useState<"vibey" | "jerry" | null>(null);
   const [vibeyThinking, setVibeyThinking] = useState(false);
   const [vibeyDraft, setVibeyDraft] = useState("");
@@ -1211,6 +1214,7 @@ export default function City() {
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
+      setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
     }, 120);
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
@@ -1582,7 +1586,7 @@ export default function City() {
   // proper character parameter.
   const JERRY_PREFIX =
     "(For this reply you are JERRY THE SNAIL — the beloved cardboard snail mayor of " +
-    "Jerry's Plaza on Cardboard Island, which the kids at the Edge Esmeralda creative " +
+    "Jerry's Plaza on Edge Island, which the kids at the Edge Esmeralda creative " +
     "residency built. You are slow, kind, a little philosophical, and very proud of " +
     "the kids. Stay fully in character as Jerry the snail.) ";
   const sendToNpc = async (target: "vibey" | "jerry", text: string) => {
@@ -1867,6 +1871,18 @@ export default function City() {
               🐌 Talk to Jerry
             </button>
           )}
+          {nearSnackfe && (
+            <button
+              onClick={(e) => {
+                setSnackOpen(true);
+                setSnackMsg(null);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🍦 Order at SnackFe
+            </button>
+          )}
           {nearVibey && (
             <button
               onClick={(e) => {
@@ -1878,6 +1894,47 @@ export default function City() {
               💬 Talk to Vibey
             </button>
           )}
+        </div>
+      )}
+      {snackOpen && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,22rem)] flex flex-col gap-3 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <span className="font-heading font-semibold tracking-wider text-primary text-xs">
+              SNACKFE · open late
+            </span>
+            <button
+              onClick={() => setSnackOpen(false)}
+              className="text-muted-foreground hover:text-foreground px-1"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {[
+              { emoji: "🍦", name: "Mint coin float", msg: "An icy mint float in a tall glass. +1 vibe." },
+              { emoji: "🥐", name: "Sunrise croissant", msg: "Flaky, buttery, still warm. The wind on the island smells like butter for a minute." },
+              { emoji: "☕", name: "Edge espresso", msg: "Tiny cup, big punch. Your jetpack feels lighter." },
+              { emoji: "🍡", name: "Neon mochi skewer", msg: "Three little glowing mochi on a stick. Glowing." },
+            ].map((item) => (
+              <button
+                key={item.name}
+                onClick={() => setSnackMsg(`${item.emoji} ${item.msg}`)}
+                className="flex items-center gap-3 rounded-xl bg-foreground/5 hover:bg-primary/15 transition-colors px-3 py-2 text-left text-sm"
+              >
+                <span className="text-xl">{item.emoji}</span>
+                <span className="text-foreground/90">{item.name}</span>
+              </button>
+            ))}
+          </div>
+          {snackMsg && (
+            <div className="text-xs text-primary bg-primary/10 rounded-lg px-3 py-2 animate-fade-in">
+              {snackMsg}
+            </div>
+          )}
+          <div className="text-[10px] text-muted-foreground text-center">
+            more snacks coming soon — built by the Edge Island residents
+          </div>
         </div>
       )}
       {npcTarget !== null && (
@@ -2013,7 +2070,7 @@ export default function City() {
                 on rooftops, and collect every{" "}
                 <span className="text-amber-300 font-semibold">✦ star</span>. Then follow the
                 golden beam east — the kids built{" "}
-                <span className="text-primary font-semibold">Cardboard Island</span> up in the sky.
+                <span className="text-primary font-semibold">Edge Island</span> up in the sky.
               </p>
               <div className="text-[11px] text-muted-foreground font-mono">
                 WASD / arrows — move · Shift — run · Space — jetpack

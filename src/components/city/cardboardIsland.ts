@@ -41,6 +41,8 @@ export interface IslandWorld {
   zipline: { x: number; z: number; y: number; radius: number };
   /** Where Jerry the snail sits, in world coordinates. */
   jerry: THREE.Vector3;
+  /** Where the SnackFe cafe counter sits, in world coordinates. */
+  snackfe: THREE.Vector3;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
 }
@@ -383,7 +385,7 @@ export function buildCardboardIsland(opts: {
   post.position.y = 2.8;
   welcome.add(post);
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string }> = [
-    { lines: ["WELCOME TO", "CARDBOARD ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
+    { lines: ["WELCOME TO", "EDGE ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
     { lines: ["BE KIND · REUSE", "DREAM BIG"], y: 2.2, w: 5.6, h: 2.1, bg: "#cfe6c2", fg: "#2a6a3a" },
   ];
   boards.forEach((b) => {
@@ -945,6 +947,159 @@ export function buildCardboardIsland(opts: {
   }
   group.add(tv);
 
+  // ---- SnackFe: modern neon cafe ---------------------------------------
+  // A sleek modern micro-cafe with alternating mint/magenta string lights
+  // along the front awning. Walk up to it to order a snack.
+  const SNACK_X = 8;
+  const SNACK_Z = -10;
+  const SNACK_W = 9;
+  const SNACK_D = 6;
+  const SNACK_H = 4.4;
+  const snackGroup = new THREE.Group();
+  snackGroup.position.set(SNACK_X, 0, SNACK_Z);
+
+  // Dark matte concrete body — contrast against cardboard kid-world.
+  const snackBody = new THREE.Mesh(
+    new THREE.BoxGeometry(SNACK_W, SNACK_H, SNACK_D),
+    new THREE.MeshStandardMaterial({ color: "#1c1f26", roughness: 0.55, metalness: 0.15 }),
+  );
+  snackBody.position.y = SNACK_H / 2;
+  snackGroup.add(snackBody);
+
+  // Warm wood front panel under the service window.
+  const snackPanel = new THREE.Mesh(
+    new THREE.BoxGeometry(SNACK_W * 0.92, SNACK_H * 0.38, 0.12),
+    new THREE.MeshStandardMaterial({ color: "#8b5e34", roughness: 0.75 }),
+  );
+  snackPanel.position.set(0, SNACK_H * 0.22, SNACK_D / 2 + 0.06);
+  snackGroup.add(snackPanel);
+
+  // Service window cutout (a glowing rectangle).
+  const snackWindow = new THREE.Mesh(
+    new THREE.PlaneGeometry(SNACK_W * 0.7, SNACK_H * 0.34),
+    new THREE.MeshBasicMaterial({ color: "#fff2c8" }),
+  );
+  snackWindow.position.set(0, SNACK_H * 0.62, SNACK_D / 2 + 0.07);
+  snackGroup.add(snackWindow);
+
+  // Interior warm glow that spills out of the window.
+  const snackInteriorLight = new THREE.PointLight(0xffd28a, 22, 18, 1.8);
+  snackInteriorLight.position.set(0, SNACK_H * 0.6, SNACK_D / 2 - 0.6);
+  snackGroup.add(snackInteriorLight);
+
+  // Flat modern roof slab with slight overhang.
+  const snackRoof = new THREE.Mesh(
+    new THREE.BoxGeometry(SNACK_W + 1.6, 0.28, SNACK_D + 2.2),
+    new THREE.MeshStandardMaterial({ color: "#0d1014", roughness: 0.6 }),
+  );
+  snackRoof.position.set(0, SNACK_H + 0.14, 0.6);
+  snackGroup.add(snackRoof);
+
+  // Neon "SnackFe" sign mounted above the window.
+  const snackSignTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = 512;
+    c.height = 160;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#0d1014";
+    ctx.fillRect(0, 0, 512, 160);
+    ctx.font = "bold 96px 'Sora', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "#46e88c";
+    ctx.shadowBlur = 28;
+    ctx.fillStyle = "#46e88c";
+    ctx.fillText("SnackFe", 256, 82);
+    ctx.shadowBlur = 0;
+    ctx.font = "20px 'Manrope', sans-serif";
+    ctx.fillStyle = "#e94f8a";
+    ctx.fillText("· open late · vibes inside ·", 256, 138);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const snackSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.6, 1.75),
+    new THREE.MeshBasicMaterial({ map: snackSignTex, transparent: true }),
+  );
+  snackSign.position.set(0, SNACK_H + 1.1, SNACK_D / 2 + 0.08);
+  snackGroup.add(snackSign);
+
+  // Alternating string lights along the front roof edge.
+  const snackLights: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; hue: 0 | 1 }[] = [];
+  const LIGHT_COUNT = 11;
+  for (let i = 0; i < LIGHT_COUNT; i++) {
+    const t = i / (LIGHT_COUNT - 1);
+    const x = (-SNACK_W / 2 - 0.6) + t * (SNACK_W + 1.2);
+    const hue: 0 | 1 = (i % 2) as 0 | 1;
+    const mat = new THREE.MeshBasicMaterial({
+      color: hue === 0 ? "#46e88c" : "#e94f8a",
+      transparent: true,
+      opacity: 0.95,
+    });
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), mat);
+    bulb.position.set(x, SNACK_H + 0.05, SNACK_D / 2 + 1.05);
+    snackGroup.add(bulb);
+    snackLights.push({ mesh: bulb, mat, hue });
+  }
+  // Sagging cable that the bulbs hang from.
+  {
+    const cablePts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24;
+      const x = (-SNACK_W / 2 - 0.6) + t * (SNACK_W + 1.2);
+      const sag = Math.sin(t * Math.PI) * 0.18;
+      cablePts.push(new THREE.Vector3(x, SNACK_H + 0.22 - sag, SNACK_D / 2 + 1.05));
+    }
+    const cableGeo = new THREE.BufferGeometry().setFromPoints(cablePts);
+    const cableMat = new THREE.LineBasicMaterial({ color: "#222" });
+    snackGroup.add(new THREE.Line(cableGeo, cableMat));
+  }
+
+  // Outdoor counter + two stools.
+  const counter = new THREE.Mesh(
+    new THREE.BoxGeometry(SNACK_W * 0.7, 0.22, 0.7),
+    new THREE.MeshStandardMaterial({ color: "#d4a574", roughness: 0.7 }),
+  );
+  counter.position.set(0, 1.05, SNACK_D / 2 + 0.55);
+  snackGroup.add(counter);
+  [-1.6, 1.6].forEach((sx) => {
+    const stoolPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 0.9, 8),
+      new THREE.MeshStandardMaterial({ color: "#222", roughness: 0.6, metalness: 0.4 }),
+    );
+    stoolPole.position.set(sx, 0.45, SNACK_D / 2 + 1.35);
+    snackGroup.add(stoolPole);
+    const stoolSeat = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.32, 0.1, 16),
+      new THREE.MeshStandardMaterial({ color: "#46e88c", roughness: 0.5, emissive: "#1a3a26", emissiveIntensity: 0.4 }),
+    );
+    stoolSeat.position.set(sx, 0.95, SNACK_D / 2 + 1.35);
+    snackGroup.add(stoolSeat);
+  });
+
+  // Small floor mat with neon outline.
+  const mat = new THREE.Mesh(
+    new THREE.PlaneGeometry(SNACK_W * 0.85, 1.8),
+    new THREE.MeshBasicMaterial({ color: "#0d1014" }),
+  );
+  mat.rotation.x = -Math.PI / 2;
+  mat.position.set(0, 0.02, SNACK_D / 2 + 1.4);
+  snackGroup.add(mat);
+
+  group.add(snackGroup);
+
+  // Collision: the cafe body itself.
+  boxes.push({
+    minX: centerX + SNACK_X - SNACK_W / 2,
+    maxX: centerX + SNACK_X + SNACK_W / 2,
+    minZ: centerZ + SNACK_Z - SNACK_D / 2,
+    maxZ: centerZ + SNACK_Z + SNACK_D / 2,
+    base: topY,
+    height: topY + SNACK_H + 0.3,
+  });
+
+
   // ---- Zipline: a cable loop riding the island's perimeter ----------
   // Grab it under any stretch of cable and it carries you around the
   // whole cardboard city. Poles sit just outside the cable so riders
@@ -1023,6 +1178,16 @@ export function buildCardboardIsland(opts: {
         l.scale.set(s, s, s);
       });
 
+      // SnackFe alternating string-light pulse: even-index bulbs glow
+      // out of phase with odd-index bulbs, giving that vibey twinkle.
+      snackLights.forEach((b) => {
+        const phase = b.hue === 0 ? 0 : Math.PI;
+        const k = 0.6 + (Math.sin(now * 0.004 + phase) * 0.5 + 0.5) * 0.55;
+        b.mat.opacity = 0.55 + k * 0.45;
+        b.mesh.scale.setScalar(0.9 + k * 0.35);
+      });
+      snackInteriorLight.intensity = 18 + Math.sin(now * 0.0015) * 4;
+
       // Cardboard TV slideshow.
       tvTimer += dt;
       if (tvTimer > 7 && tvTextures.length > 0) {
@@ -1035,6 +1200,7 @@ export function buildCardboardIsland(opts: {
     starSpots,
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
     jerry: new THREE.Vector3(centerX + 2, topY, centerZ + 22),
+    snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z + SNACK_D / 2 + 1.4),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
