@@ -1209,13 +1209,19 @@ export default function City() {
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
     }, 120);
 
-    // Fast travel: hop between the plaza and Cardboard Island. Arrive
-    // a few meters up so you flutter down onto the lawn.
+    // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
+    // Arrive a few meters above each landing so you flutter down.
     travelRef.current = () => {
-      if (player.position.x > 250) {
-        player.position.set(0, 0, 6);
+      const p = player.position;
+      const onIsland = p.x > 250 && p.z > -120;
+      const onMoon =
+        Math.hypot(p.x - MOON_X, p.z - MOON_Z) < 60 && p.y > MOON_TOP - 20;
+      if (onMoon) {
+        p.set(0, 0, 6);
+      } else if (onIsland) {
+        p.set(MOON_X, MOON_TOP + 6, MOON_Z + 4);
       } else {
-        player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+        p.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
       }
       vel.set(0, 0, 0);
       onGround = false;
@@ -1223,6 +1229,12 @@ export default function City() {
     // /city?spawn=island drops visitors straight onto the island lawn.
     islandSpawnRef.current = () => {
       player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
+    // /city?spawn=moon drops visitors onto the moon's landing pad.
+    moonSpawnRef.current = () => {
+      player.position.copy(moonWorld.spawn);
       vel.set(0, 0, 0);
       onGround = false;
     };
