@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
+import { buildMoon } from "@/components/city/moon";
 import { createNpcCrew } from "@/components/city/npcs";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
@@ -81,6 +82,12 @@ const PAD_MIN_HEIGHT = 48; // towers taller than this get a landing pad
 const ISLAND_X = 330;
 const ISLAND_Z = -30;
 const ISLAND_TOP = 120;
+
+// The Moon — a small landable celestial body just north of the island,
+// hanging higher in the sky so the silhouette reads from the plaza.
+const MOON_X = 360;
+const MOON_Z = -200;
+const MOON_TOP = 175;
 
 // Movement feel.
 const WALK_SPEED = 7;
@@ -410,6 +417,7 @@ export default function City() {
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
+  const moonSpawnRef = useRef<(() => void) | null>(null);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
