@@ -1313,9 +1313,10 @@ export default function City() {
       vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
 
       // Integrate with axis-separated horizontal collision. The world
-      // extends east past the district so the island is reachable.
-      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, ISLAND_X + 130);
-      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, -CITY_HALF - 40, CITY_HALF + 40);
+      // extends east past the district so the island AND the moon are
+      // both reachable.
+      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MOON_X + 80);
+      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MOON_Z - 80, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
         pos.x = nx;
         pos.z = nz;
@@ -1525,6 +1526,7 @@ export default function City() {
       zipGrabRef.current = null;
       mooRef.current = null;
       islandSpawnRef.current = null;
+      moonSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
       voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
@@ -1550,10 +1552,12 @@ export default function City() {
   // Runs on mount and whenever the query changes (e.g. the Island chip
   // is clicked while already in the city).
   useEffect(() => {
-    if (new URLSearchParams(routerLocation.search).get("spawn") === "island") {
-      islandSpawnRef.current?.();
+    const spawn = new URLSearchParams(routerLocation.search).get("spawn");
+    if (spawn === "island" || spawn === "moon") {
+      if (spawn === "moon") moonSpawnRef.current?.();
+      else islandSpawnRef.current?.();
       // Skip the entry overlay — visitors arriving from the hub already
-      // chose to land on the island, so drop them straight into control.
+      // chose where to land, so drop them straight into control.
       if (!enteredRef.current) {
         enteredRef.current = true;
         setEntered(true);
