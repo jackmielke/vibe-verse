@@ -190,7 +190,7 @@ export default function HubV2() {
   }, [charId]);
 
   const cycle = (dir: number) => {
-    const n = WORLDS.length;
+    const n = worlds.length;
     setFocusedIdx((i) => (i + dir + n) % n);
     targetOffsetRef.current -= dir * SLOT_SPACING;
     const wave = vibeyActionsRef.current.get("Wave");
@@ -453,7 +453,7 @@ export default function HubV2() {
       mesh: THREE.Mesh; // sphere planet (used unless modelObj swaps in)
       modelObj?: THREE.Object3D;
     }
-    const slots: Slot[] = WORLDS.map((w, i) => {
+    const slots: Slot[] = worlds.map((w, i) => {
       const wrap = new THREE.Group();
       wrap.position.set(i * SLOT_SPACING, ROW_Y, 0);
       wrap.userData = { index: i };
@@ -640,7 +640,7 @@ export default function HubV2() {
       const dx = ev.clientX - dragStartXRef.current;
 
       // Snap to nearest slot.
-      const n = WORLDS.length;
+      const n = worlds.length;
       const snappedIdx = THREE.MathUtils.clamp(
         Math.round(-targetOffsetRef.current / SLOT_SPACING),
         0, n - 1,
@@ -671,7 +671,7 @@ export default function HubV2() {
               setFocusedIdx(idx);
               targetOffsetRef.current = -idx * SLOT_SPACING;
             } else {
-              navigate(WORLDS[idx].to);
+              navigate(worlds[idx].to);
             }
           }
         }
@@ -872,13 +872,13 @@ export default function HubV2() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") cycle(1);
       else if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") cycle(-1);
-      else if (e.key === "Enter") navigate(WORLDS[focusedRef.current].to);
+      else if (e.key === "Enter") navigate(worlds[focusedRef.current].to);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  const focused = WORLDS[focusedIdx];
+  const focused = worlds[focusedIdx];
 
   return (
     <div className="fixed inset-0 bg-background overflow-hidden select-none">
@@ -942,7 +942,7 @@ export default function HubV2() {
           to explore
         </div>
         <div className="flex items-center gap-1.5 mt-1">
-          {WORLDS.map((w, i) => (
+          {worlds.map((w, i) => (
             <button
               key={w.to}
               onClick={() => {
