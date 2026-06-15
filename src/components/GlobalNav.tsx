@@ -30,6 +30,7 @@ const PRIMARY: Destination[] = [
   { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
   { to: "/city", emoji: "🏙️", label: "City" },
   { to: "/city?spawn=island", emoji: "🏝️", label: "Island" },
+  { to: "/city?spawn=moon", emoji: "🌙", label: "Moon" },
 ];
 
 const MORE: Destination[] = [
@@ -58,11 +59,19 @@ export default function GlobalNav() {
     const [path, query] = d.to.split("?");
     const pathHit = location.pathname === path || !!d.matchPaths?.includes(location.pathname);
     if (!pathHit) return false;
-    // The City and Island chips share /city — the query decides.
+    // City, Island and Moon all share /city — the spawn query decides.
     if (path === "/city") {
-      const wantsIsland = !!query?.includes("spawn=island");
-      const atIsland = location.search.includes("spawn=island");
-      return wantsIsland === atIsland;
+      const wants = query?.includes("spawn=moon")
+        ? "moon"
+        : query?.includes("spawn=island")
+          ? "island"
+          : "city";
+      const at = location.search.includes("spawn=moon")
+        ? "moon"
+        : location.search.includes("spawn=island")
+          ? "island"
+          : "city";
+      return wants === at;
     }
     return true;
   };
