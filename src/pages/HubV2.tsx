@@ -27,7 +27,10 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import VibeLogin from "@/components/VibeLogin";
+import { loadSession } from "@/lib/vibe-wallet";
 
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import alienModelUrl from "@/assets/glb/alien.glb";
@@ -133,6 +136,16 @@ export default function HubV2() {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const focusedRef = useRef(0);
   useEffect(() => { focusedRef.current = focusedIdx; }, [focusedIdx]);
+
+  // Vibe-login gate for "+ add your world".
+  const [addOpen, setAddOpen] = useState(false);
+  const handleAddWorld = () => {
+    if (loadSession()) {
+      navigate("/submit-world");
+    } else {
+      setAddOpen(true);
+    }
+  };
 
   // Worlds shown in the hub = official (static) + community submissions
   // approved via /admin/worlds. Community worlds are appended so the
@@ -956,14 +969,45 @@ export default function HubV2() {
               aria-label={`Focus ${w.name}`}
             />
           ))}
+          <button
+            type="button"
+            onClick={handleAddWorld}
+            aria-label="Add your own world"
+            title="Add your own world"
+            className="pointer-events-auto ml-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/20 ring-1 ring-primary/60 text-primary hover:bg-primary/30 hover:shadow-[0_0_14px_hsl(var(--primary)/0.6)] transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" strokeWidth={3} />
+          </button>
         </div>
-        <Link
-          to="/submit-world"
+        <button
+          type="button"
+          onClick={handleAddWorld}
           className="pointer-events-auto mt-1 inline-flex items-center gap-1 text-[10px] sm:text-xs text-primary/80 hover:text-primary transition-colors"
         >
-          + Submit your world
-        </Link>
+          + Add your own world
+        </button>
       </div>
+
+      {/* Vibe-login gate dialog for world submissions. */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Connect your vibe wallet</DialogTitle>
+            <DialogDescription>
+              Submitting a world is gated by a vibe login so we can credit you as the creator. Connect your wallet to continue.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-2">
+            <VibeLogin
+              variant="card"
+              onLinked={() => {
+                setAddOpen(false);
+                navigate("/submit-world");
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Character picker — pick the avatar standing on the platform.
           The choice is mirrored to localStorage so /lobby and /city
