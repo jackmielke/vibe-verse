@@ -645,13 +645,13 @@ export default function City() {
     scene.add(island.group);
 
     // ---- The Moon (a landable celestial body near the island) -------
-    const moon = buildMoon({
+    const moonWorld = buildMoon({
       centerX: MOON_X,
       centerZ: MOON_Z,
       topY: MOON_TOP,
       boxes,
     });
-    scene.add(moon.group);
+    scene.add(moonWorld.group);
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
