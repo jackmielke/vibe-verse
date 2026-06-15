@@ -79,7 +79,7 @@ interface World {
   model?: "floating-island";
 }
 
-const WORLDS: World[] = [
+const OFFICIAL_WORLDS: World[] = [
   { to: "/city?spawn=island", name: "Cardboard Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
   { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",
@@ -103,6 +103,11 @@ const WORLDS: World[] = [
   { to: "/about", name: "About", art: aboutArt, color: "#c4b5fd",
     blurb: "What this is and how it's stitched together." },
 ];
+
+// Fallback preview when a community submission has no preview_url.
+const COMMUNITY_FALLBACK_ART = lobbyArt;
+// Mint accent for community worlds so they're visually distinct.
+const COMMUNITY_COLOR = "#5eead4";
 
 // Horizontal spacing between adjacent worlds along the row.
 const SLOT_SPACING = 9.0;
