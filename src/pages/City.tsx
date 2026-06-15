@@ -1871,6 +1871,18 @@ export default function City() {
               🐌 Talk to Jerry
             </button>
           )}
+          {nearSnackfe && (
+            <button
+              onClick={(e) => {
+                setSnackOpen(true);
+                setSnackMsg(null);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🍦 Order at SnackFe
+            </button>
+          )}
           {nearVibey && (
             <button
               onClick={(e) => {
