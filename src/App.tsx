@@ -18,6 +18,8 @@ import VibeHub from "./pages/VibeHub.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
 import HubV2 from "./pages/HubV2.tsx";
+import SubmitWorld from "./pages/SubmitWorld.tsx";
+import AdminWorlds from "./pages/AdminWorlds.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
