@@ -2070,7 +2070,7 @@ export default function City() {
                 on rooftops, and collect every{" "}
                 <span className="text-amber-300 font-semibold">✦ star</span>. Then follow the
                 golden beam east — the kids built{" "}
-                <span className="text-primary font-semibold">Cardboard Island</span> up in the sky.
+                <span className="text-primary font-semibold">Edge Island</span> up in the sky.
               </p>
               <div className="text-[11px] text-muted-foreground font-mono">
                 WASD / arrows — move · Shift — run · Space — jetpack
