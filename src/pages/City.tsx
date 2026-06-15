@@ -1214,6 +1214,7 @@ export default function City() {
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
+      setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
     }, 120);
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
