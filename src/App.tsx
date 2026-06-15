@@ -65,6 +65,9 @@ const App = () => (
           <Route path="/hub" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
           <Route path="/hub-old" element={<Hub />} />
+          {/* Community-submitted worlds. */}
+          <Route path="/submit-world" element={<SubmitWorld />} />
+          <Route path="/admin/worlds" element={<AdminWorlds />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
