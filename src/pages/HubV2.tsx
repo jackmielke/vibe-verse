@@ -865,7 +865,7 @@ export default function HubV2() {
       pmrem.dispose();
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
     };
-  }, [navigate]);
+  }, [navigate, worlds]);
 
   // Keyboard nav.
   useEffect(() => {
