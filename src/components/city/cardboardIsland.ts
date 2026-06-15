@@ -385,7 +385,7 @@ export function buildCardboardIsland(opts: {
   post.position.y = 2.8;
   welcome.add(post);
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string }> = [
-    { lines: ["WELCOME TO", "CARDBOARD ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
+    { lines: ["WELCOME TO", "EDGE ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
     { lines: ["BE KIND · REUSE", "DREAM BIG"], y: 2.2, w: 5.6, h: 2.1, bg: "#cfe6c2", fg: "#2a6a3a" },
   ];
   boards.forEach((b) => {
