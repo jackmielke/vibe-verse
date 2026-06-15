@@ -69,6 +69,13 @@ const WORLDS: WorldCard[] = [
     blurb: "The kids' world in the sky — Jerry, the zipline, the Firewall. Lands you right on it.",
   },
   {
+    to: "/city?spawn=moon",
+    emoji: "🌙",
+    name: "The Moon",
+    art: islandArt,
+    blurb: "A tiny landable moon near Cardboard Island — touch down on the glowing pad and plant your flag.",
+  },
+  {
     to: "/",
     emoji: "🗺️",
     name: "Village",

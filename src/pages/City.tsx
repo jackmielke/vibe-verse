@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
+import { buildMoon } from "@/components/city/moon";
 import { createNpcCrew } from "@/components/city/npcs";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
@@ -81,6 +82,12 @@ const PAD_MIN_HEIGHT = 48; // towers taller than this get a landing pad
 const ISLAND_X = 330;
 const ISLAND_Z = -30;
 const ISLAND_TOP = 120;
+
+// The Moon — a small landable celestial body just north of the island,
+// hanging higher in the sky so the silhouette reads from the plaza.
+const MOON_X = 360;
+const MOON_Z = -200;
+const MOON_TOP = 175;
 
 // Movement feel.
 const WALK_SPEED = 7;
@@ -403,6 +410,7 @@ export default function City() {
     runMs: null as number | null,
     bestMs: null as number | null,
     nearIsland: false,
+    nearMoon: false,
     nearZip: false,
     riding: false,
     nearCow: false,
@@ -410,6 +418,7 @@ export default function City() {
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
+  const moonSpawnRef = useRef<(() => void) | null>(null);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
@@ -635,6 +644,15 @@ export default function City() {
       boxes,
     });
     scene.add(island.group);
+
+    // ---- The Moon (a landable celestial body near the island) -------
+    const moonWorld = buildMoon({
+      centerX: MOON_X,
+      centerZ: MOON_Z,
+      topY: MOON_TOP,
+      boxes,
+    });
+    scene.add(moonWorld.group);
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
@@ -1178,7 +1196,10 @@ export default function City() {
         runMs:
           runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
         bestMs,
-        nearIsland: player.position.x > 250,
+        nearIsland: player.position.x > 250 && player.position.z > -120,
+        nearMoon:
+          Math.hypot(player.position.x - MOON_X, player.position.z - MOON_Z) < 60 &&
+          player.position.y > MOON_TOP - 30,
         nearZip:
           Math.abs(
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
@@ -1192,13 +1213,19 @@ export default function City() {
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
     }, 120);
 
-    // Fast travel: hop between the plaza and Cardboard Island. Arrive
-    // a few meters up so you flutter down onto the lawn.
+    // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
+    // Arrive a few meters above each landing so you flutter down.
     travelRef.current = () => {
-      if (player.position.x > 250) {
-        player.position.set(0, 0, 6);
+      const p = player.position;
+      const onIsland = p.x > 250 && p.z > -120;
+      const onMoon =
+        Math.hypot(p.x - MOON_X, p.z - MOON_Z) < 60 && p.y > MOON_TOP - 20;
+      if (onMoon) {
+        p.set(0, 0, 6);
+      } else if (onIsland) {
+        p.set(MOON_X, MOON_TOP + 6, MOON_Z + 4);
       } else {
-        player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+        p.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
       }
       vel.set(0, 0, 0);
       onGround = false;
@@ -1206,6 +1233,12 @@ export default function City() {
     // /city?spawn=island drops visitors straight onto the island lawn.
     islandSpawnRef.current = () => {
       player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
+    // /city?spawn=moon drops visitors onto the moon's landing pad.
+    moonSpawnRef.current = () => {
+      player.position.copy(moonWorld.spawn);
       vel.set(0, 0, 0);
       onGround = false;
     };
@@ -1284,9 +1317,10 @@ export default function City() {
       vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
 
       // Integrate with axis-separated horizontal collision. The world
-      // extends east past the district so the island is reachable.
-      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, ISLAND_X + 130);
-      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, -CITY_HALF - 40, CITY_HALF + 40);
+      // extends east past the district so the island AND the moon are
+      // both reachable.
+      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MOON_X + 80);
+      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MOON_Z - 80, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
         pos.x = nx;
         pos.z = nz;
@@ -1414,6 +1448,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      moonWorld.update(dt, now);
       npcCrew.update(dt, pos);
       vibey.update(dt, now);
       mp.update(dt, {
@@ -1495,6 +1530,7 @@ export default function City() {
       zipGrabRef.current = null;
       mooRef.current = null;
       islandSpawnRef.current = null;
+      moonSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
       voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
@@ -1520,10 +1556,12 @@ export default function City() {
   // Runs on mount and whenever the query changes (e.g. the Island chip
   // is clicked while already in the city).
   useEffect(() => {
-    if (new URLSearchParams(routerLocation.search).get("spawn") === "island") {
-      islandSpawnRef.current?.();
+    const spawn = new URLSearchParams(routerLocation.search).get("spawn");
+    if (spawn === "island" || spawn === "moon") {
+      if (spawn === "moon") moonSpawnRef.current?.();
+      else islandSpawnRef.current?.();
       // Skip the entry overlay — visitors arriving from the hub already
-      // chose to land on the island, so drop them straight into control.
+      // chose where to land, so drop them straight into control.
       if (!enteredRef.current) {
         enteredRef.current = true;
         setEntered(true);
@@ -1675,7 +1713,7 @@ export default function City() {
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
               title="Fast travel"
             >
-              {hud.nearIsland ? "🏙️ Plaza" : "🏝️ Island"}
+              {hud.nearMoon ? "🏙️ Plaza" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
             </button>
             {hud.stars > 0 && (
               <button

@@ -85,6 +85,8 @@ interface World {
 const OFFICIAL_WORLDS: World[] = [
   { to: "/city?spawn=island", name: "Cardboard Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
+  { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",
+    blurb: "A tiny landable moon near the island — touch down and plant your flag." },
   { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",
     blurb: "Vibey 2.0's late-night show on a floating asteroid." },
   { to: "/city", name: "Vibe City", art: cityArt, color: "#f0abfc",
