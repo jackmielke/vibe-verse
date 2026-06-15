@@ -134,6 +134,33 @@ export default function HubV2() {
   const focusedRef = useRef(0);
   useEffect(() => { focusedRef.current = focusedIdx; }, [focusedIdx]);
 
+  // Worlds shown in the hub = official (static) + community submissions
+  // approved via /admin/worlds. Community worlds are appended so the
+  // existing layout / focused-index logic stays stable across refreshes.
+  const [worlds, setWorlds] = useState<World[]>(OFFICIAL_WORLDS);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("worlds")
+        .select("id,name,blurb,route,preview_url,is_featured,sort_order,created_at")
+        .eq("status", "approved")
+        .order("is_featured", { ascending: false })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (cancelled || error || !data || data.length === 0) return;
+      const community: World[] = data.map((w) => ({
+        to: w.route,
+        name: w.name,
+        blurb: w.blurb ?? "",
+        art: w.preview_url || COMMUNITY_FALLBACK_ART,
+        color: COMMUNITY_COLOR,
+      }));
+      setWorlds([...OFFICIAL_WORLDS, ...community]);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Imperative refs the scene reads.
   const vibeyRef = useRef<THREE.Group | null>(null);
   const vibeyMixerRef = useRef<THREE.AnimationMixer | null>(null);
