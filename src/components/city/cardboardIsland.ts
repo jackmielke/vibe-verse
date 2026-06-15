@@ -1178,6 +1178,16 @@ export function buildCardboardIsland(opts: {
         l.scale.set(s, s, s);
       });
 
+      // SnackFe alternating string-light pulse: even-index bulbs glow
+      // out of phase with odd-index bulbs, giving that vibey twinkle.
+      snackLights.forEach((b) => {
+        const phase = b.hue === 0 ? 0 : Math.PI;
+        const k = 0.6 + (Math.sin(now * 0.004 + phase) * 0.5 + 0.5) * 0.55;
+        b.mat.opacity = 0.55 + k * 0.45;
+        b.mesh.scale.setScalar(0.9 + k * 0.35);
+      });
+      snackInteriorLight.intensity = 18 + Math.sin(now * 0.0015) * 4;
+
       // Cardboard TV slideshow.
       tvTimer += dt;
       if (tvTimer > 7 && tvTextures.length > 0) {
@@ -1190,6 +1200,7 @@ export function buildCardboardIsland(opts: {
     starSpots,
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
     jerry: new THREE.Vector3(centerX + 2, topY, centerZ + 22),
+    snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z + SNACK_D / 2 + 1.4),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
