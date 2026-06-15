@@ -137,6 +137,17 @@ export default function HubV2() {
   const focusedRef = useRef(0);
   useEffect(() => { focusedRef.current = focusedIdx; }, [focusedIdx]);
 
+  // Vibe-login gate for "+ add your world".
+  const [addOpen, setAddOpen] = useState(false);
+  const navigate = useNavigate();
+  const handleAddWorld = () => {
+    if (loadSession()) {
+      navigate("/submit-world");
+    } else {
+      setAddOpen(true);
+    }
+  };
+
   // Worlds shown in the hub = official (static) + community submissions
   // approved via /admin/worlds. Community worlds are appended so the
   // existing layout / focused-index logic stays stable across refreshes.
