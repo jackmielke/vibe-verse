@@ -17,7 +17,8 @@
  * No category filters here — the WorldPicker handles deeper browsing.
  */
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -78,7 +79,7 @@ interface World {
   model?: "floating-island";
 }
 
-const WORLDS: World[] = [
+const OFFICIAL_WORLDS: World[] = [
   { to: "/city?spawn=island", name: "Cardboard Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
   { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",
@@ -102,6 +103,11 @@ const WORLDS: World[] = [
   { to: "/about", name: "About", art: aboutArt, color: "#c4b5fd",
     blurb: "What this is and how it's stitched together." },
 ];
+
+// Fallback preview when a community submission has no preview_url.
+const COMMUNITY_FALLBACK_ART = lobbyArt;
+// Mint accent for community worlds so they're visually distinct.
+const COMMUNITY_COLOR = "#5eead4";
 
 // Horizontal spacing between adjacent worlds along the row.
 const SLOT_SPACING = 9.0;
@@ -127,6 +133,33 @@ export default function HubV2() {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const focusedRef = useRef(0);
   useEffect(() => { focusedRef.current = focusedIdx; }, [focusedIdx]);
+
+  // Worlds shown in the hub = official (static) + community submissions
+  // approved via /admin/worlds. Community worlds are appended so the
+  // existing layout / focused-index logic stays stable across refreshes.
+  const [worlds, setWorlds] = useState<World[]>(OFFICIAL_WORLDS);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("worlds")
+        .select("id,name,blurb,route,preview_url,is_featured,sort_order,created_at")
+        .eq("status", "approved")
+        .order("is_featured", { ascending: false })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (cancelled || error || !data || data.length === 0) return;
+      const community: World[] = data.map((w) => ({
+        to: w.route,
+        name: w.name,
+        blurb: w.blurb ?? "",
+        art: w.preview_url || COMMUNITY_FALLBACK_ART,
+        color: COMMUNITY_COLOR,
+      }));
+      setWorlds([...OFFICIAL_WORLDS, ...community]);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Imperative refs the scene reads.
   const vibeyRef = useRef<THREE.Group | null>(null);
@@ -157,7 +190,7 @@ export default function HubV2() {
   }, [charId]);
 
   const cycle = (dir: number) => {
-    const n = WORLDS.length;
+    const n = worlds.length;
     setFocusedIdx((i) => (i + dir + n) % n);
     targetOffsetRef.current -= dir * SLOT_SPACING;
     const wave = vibeyActionsRef.current.get("Wave");
@@ -420,7 +453,7 @@ export default function HubV2() {
       mesh: THREE.Mesh; // sphere planet (used unless modelObj swaps in)
       modelObj?: THREE.Object3D;
     }
-    const slots: Slot[] = WORLDS.map((w, i) => {
+    const slots: Slot[] = worlds.map((w, i) => {
       const wrap = new THREE.Group();
       wrap.position.set(i * SLOT_SPACING, ROW_Y, 0);
       wrap.userData = { index: i };
@@ -607,7 +640,7 @@ export default function HubV2() {
       const dx = ev.clientX - dragStartXRef.current;
 
       // Snap to nearest slot.
-      const n = WORLDS.length;
+      const n = worlds.length;
       const snappedIdx = THREE.MathUtils.clamp(
         Math.round(-targetOffsetRef.current / SLOT_SPACING),
         0, n - 1,
@@ -638,7 +671,7 @@ export default function HubV2() {
               setFocusedIdx(idx);
               targetOffsetRef.current = -idx * SLOT_SPACING;
             } else {
-              navigate(WORLDS[idx].to);
+              navigate(worlds[idx].to);
             }
           }
         }
@@ -832,20 +865,20 @@ export default function HubV2() {
       pmrem.dispose();
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
     };
-  }, [navigate]);
+  }, [navigate, worlds]);
 
   // Keyboard nav.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") cycle(1);
       else if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") cycle(-1);
-      else if (e.key === "Enter") navigate(WORLDS[focusedRef.current].to);
+      else if (e.key === "Enter") navigate(worlds[focusedRef.current].to);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  const focused = WORLDS[focusedIdx];
+  const focused = worlds[focusedIdx];
 
   return (
     <div className="fixed inset-0 bg-background overflow-hidden select-none">
@@ -909,9 +942,9 @@ export default function HubV2() {
           to explore
         </div>
         <div className="flex items-center gap-1.5 mt-1">
-          {WORLDS.map((w, i) => (
+          {worlds.map((w, i) => (
             <button
-              key={w.to}
+              key={`${w.to}-${i}`}
               onClick={() => {
                 if (i === focusedIdx) return;
                 setFocusedIdx(i);
@@ -924,6 +957,12 @@ export default function HubV2() {
             />
           ))}
         </div>
+        <Link
+          to="/submit-world"
+          className="pointer-events-auto mt-1 inline-flex items-center gap-1 text-[10px] sm:text-xs text-primary/80 hover:text-primary transition-colors"
+        >
+          + Submit your world
+        </Link>
       </div>
 
       {/* Character picker — pick the avatar standing on the platform.

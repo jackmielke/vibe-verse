@@ -18,6 +18,8 @@ import VibeHub from "./pages/VibeHub.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
 import HubV2 from "./pages/HubV2.tsx";
+import SubmitWorld from "./pages/SubmitWorld.tsx";
+import AdminWorlds from "./pages/AdminWorlds.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
 const queryClient = new QueryClient();
@@ -63,6 +65,9 @@ const App = () => (
           <Route path="/hub" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
           <Route path="/hub-old" element={<Hub />} />
+          {/* Community-submitted worlds. */}
+          <Route path="/submit-world" element={<SubmitWorld />} />
+          <Route path="/admin/worlds" element={<AdminWorlds />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
