@@ -41,6 +41,8 @@ export interface IslandWorld {
   zipline: { x: number; z: number; y: number; radius: number };
   /** Where Jerry the snail sits, in world coordinates. */
   jerry: THREE.Vector3;
+  /** Where the SnackFe cafe counter sits, in world coordinates. */
+  snackfe: THREE.Vector3;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
 }
