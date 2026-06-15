@@ -4285,6 +4285,78 @@ export type Database = {
           },
         ]
       }
+      worlds: {
+        Row: {
+          blurb: string | null
+          created_at: string
+          creator_id: string | null
+          github_url: string | null
+          hero_model_url: string | null
+          id: string
+          is_featured: boolean
+          name: string
+          play_count: number
+          preview_url: string | null
+          route: string
+          slug: string
+          sort_order: number
+          status: string
+          tags: string[]
+          updated_at: string
+        }
+        Insert: {
+          blurb?: string | null
+          created_at?: string
+          creator_id?: string | null
+          github_url?: string | null
+          hero_model_url?: string | null
+          id?: string
+          is_featured?: boolean
+          name: string
+          play_count?: number
+          preview_url?: string | null
+          route: string
+          slug: string
+          sort_order?: number
+          status?: string
+          tags?: string[]
+          updated_at?: string
+        }
+        Update: {
+          blurb?: string | null
+          created_at?: string
+          creator_id?: string | null
+          github_url?: string | null
+          hero_model_url?: string | null
+          id?: string
+          is_featured?: boolean
+          name?: string
+          play_count?: number
+          preview_url?: string | null
+          route?: string
+          slug?: string
+          sort_order?: number
+          status?: string
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worlds_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worlds_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       x_mentions: {
         Row: {
           author_id: string | null
@@ -4510,6 +4582,7 @@ export type Database = {
         Args: { target_community_id: string }
         Returns: boolean
       }
+      bump_world_play_count: { Args: { _world_id: string }; Returns: undefined }
       can_view_community_user: {
         Args: { target_user_id: string; viewer_auth_id: string }
         Returns: boolean
