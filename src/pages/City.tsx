@@ -410,6 +410,7 @@ export default function City() {
     runMs: null as number | null,
     bestMs: null as number | null,
     nearIsland: false,
+    nearMoon: false,
     nearZip: false,
     riding: false,
     nearCow: false,
@@ -1195,7 +1196,10 @@ export default function City() {
         runMs:
           runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
         bestMs,
-        nearIsland: player.position.x > 250,
+        nearIsland: player.position.x > 250 && player.position.z > -120,
+        nearMoon:
+          Math.hypot(player.position.x - MOON_X, player.position.z - MOON_Z) < 60 &&
+          player.position.y > MOON_TOP - 30,
         nearZip:
           Math.abs(
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
