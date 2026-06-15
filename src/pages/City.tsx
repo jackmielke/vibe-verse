@@ -1431,6 +1431,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      moonWorld.update(dt, now);
       npcCrew.update(dt, pos);
       vibey.update(dt, now);
       mp.update(dt, {
