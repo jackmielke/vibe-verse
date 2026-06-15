@@ -447,6 +447,9 @@ export default function City() {
   // through the unit7-chat edge function, one dialog at a time.
   const [nearVibey, setNearVibey] = useState(false);
   const [nearJerry, setNearJerry] = useState(false);
+  const [nearSnackfe, setNearSnackfe] = useState(false);
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMsg, setSnackMsg] = useState<string | null>(null);
   const [npcTarget, setNpcTarget] = useState<"vibey" | "jerry" | null>(null);
   const [vibeyThinking, setVibeyThinking] = useState(false);
   const [vibeyDraft, setVibeyDraft] = useState("");
