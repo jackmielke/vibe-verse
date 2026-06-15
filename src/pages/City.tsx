@@ -1896,6 +1896,47 @@ export default function City() {
           )}
         </div>
       )}
+      {snackOpen && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,22rem)] flex flex-col gap-3 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <span className="font-heading font-semibold tracking-wider text-primary text-xs">
+              SNACKFE · open late
+            </span>
+            <button
+              onClick={() => setSnackOpen(false)}
+              className="text-muted-foreground hover:text-foreground px-1"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {[
+              { emoji: "🍦", name: "Mint coin float", msg: "An icy mint float in a tall glass. +1 vibe." },
+              { emoji: "🥐", name: "Sunrise croissant", msg: "Flaky, buttery, still warm. The wind on the island smells like butter for a minute." },
+              { emoji: "☕", name: "Edge espresso", msg: "Tiny cup, big punch. Your jetpack feels lighter." },
+              { emoji: "🍡", name: "Neon mochi skewer", msg: "Three little glowing mochi on a stick. Glowing." },
+            ].map((item) => (
+              <button
+                key={item.name}
+                onClick={() => setSnackMsg(`${item.emoji} ${item.msg}`)}
+                className="flex items-center gap-3 rounded-xl bg-foreground/5 hover:bg-primary/15 transition-colors px-3 py-2 text-left text-sm"
+              >
+                <span className="text-xl">{item.emoji}</span>
+                <span className="text-foreground/90">{item.name}</span>
+              </button>
+            ))}
+          </div>
+          {snackMsg && (
+            <div className="text-xs text-primary bg-primary/10 rounded-lg px-3 py-2 animate-fade-in">
+              {snackMsg}
+            </div>
+          )}
+          <div className="text-[10px] text-muted-foreground text-center">
+            more snacks coming soon — built by the Edge Island residents
+          </div>
+        </div>
+      )}
       {npcTarget !== null && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-3 w-[min(92vw,26rem)] flex flex-col gap-2">
           <div className="flex items-center justify-between text-[11px]">
