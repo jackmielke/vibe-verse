@@ -944,7 +944,7 @@ export default function HubV2() {
         <div className="flex items-center gap-1.5 mt-1">
           {worlds.map((w, i) => (
             <button
-              key={w.to}
+              key={`${w.to}-${i}`}
               onClick={() => {
                 if (i === focusedIdx) return;
                 setFocusedIdx(i);
@@ -957,6 +957,12 @@ export default function HubV2() {
             />
           ))}
         </div>
+        <Link
+          to="/submit-world"
+          className="pointer-events-auto mt-1 inline-flex items-center gap-1 text-[10px] sm:text-xs text-primary/80 hover:text-primary transition-colors"
+        >
+          + Submit your world
+        </Link>
       </div>
 
       {/* Character picker — pick the avatar standing on the platform.
