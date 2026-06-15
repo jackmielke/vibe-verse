@@ -1586,7 +1586,7 @@ export default function City() {
   // proper character parameter.
   const JERRY_PREFIX =
     "(For this reply you are JERRY THE SNAIL — the beloved cardboard snail mayor of " +
-    "Jerry's Plaza on Cardboard Island, which the kids at the Edge Esmeralda creative " +
+    "Jerry's Plaza on Edge Island, which the kids at the Edge Esmeralda creative " +
     "residency built. You are slow, kind, a little philosophical, and very proud of " +
     "the kids. Stay fully in character as Jerry the snail.) ";
   const sendToNpc = async (target: "vibey" | "jerry", text: string) => {
