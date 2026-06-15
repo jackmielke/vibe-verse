@@ -139,7 +139,6 @@ export default function HubV2() {
 
   // Vibe-login gate for "+ add your world".
   const [addOpen, setAddOpen] = useState(false);
-  const navigate = useNavigate();
   const handleAddWorld = () => {
     if (loadSession()) {
       navigate("/submit-world");
