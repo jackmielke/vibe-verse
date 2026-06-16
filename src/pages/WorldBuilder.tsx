@@ -107,7 +107,7 @@ const ADDONS: Addon[] = [
   { id: "guestbook", label: "Visitor guestbook", prompt: "A guestbook object visitors can sign — short messages persist for future visitors to read." },
 ];
 
-type LocationRow = { name: string; what: string };
+
 
 export default function WorldBuilder() {
   // Identity
@@ -122,12 +122,6 @@ export default function WorldBuilder() {
   const [vibe, setVibe] = useState<string>("");
   const [palette, setPalette] = useState("");
 
-  // Locations
-  const [locations, setLocations] = useState<LocationRow[]>([
-    { name: "", what: "" },
-    { name: "", what: "" },
-    { name: "", what: "" },
-  ]);
 
   // Sound
   const [sound, setSound] = useState<string>("");
@@ -174,16 +168,8 @@ export default function WorldBuilder() {
     lines.push("- Match this aesthetic in every model, texture, lighting choice, UI font and color.");
     lines.push("");
 
-    const liveLocations = locations.filter((l) => l.name.trim() || l.what.trim());
-    if (liveLocations.length) {
-      lines.push("## Key locations");
-      liveLocations.forEach((l, i) => {
-        const name = l.name.trim() || `Location ${i + 1}`;
-        const what = l.what.trim();
-        lines.push(`${i + 1}. **${name}**${what ? ` — ${what}` : ""}`);
-      });
-      lines.push("");
-    }
+
+
 
     if (sound || ambient.trim()) {
       lines.push("## Soundtrack & ambience");
@@ -202,7 +188,7 @@ export default function WorldBuilder() {
     lines.push("## Requirements");
     lines.push("- First-person or third-person controls (WASD + mouse / touch joystick on mobile).");
     lines.push("- A clear spawn point with a short intro nudge so new visitors know what to do.");
-    lines.push("- Every location is reachable on foot within ~30 seconds of spawn.");
+    lines.push("- The world is fully explorable on foot within a couple of minutes of spawn.");
     lines.push("- Use the aesthetic above consistently — no generic placeholder assets.");
     lines.push("- Keep performance smooth on mid-range mobile (target 60fps).");
     lines.push("");
@@ -211,7 +197,7 @@ export default function WorldBuilder() {
     );
 
     return lines.join("\n");
-  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, locations, sound, ambient, selectedAddons]);
+  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, sound, ambient, selectedAddons]);
 
   const handleCopy = async () => {
     try {
@@ -224,8 +210,6 @@ export default function WorldBuilder() {
     }
   };
 
-  const updateLocation = (i: number, patch: Partial<LocationRow>) =>
-    setLocations((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   // Shared style tokens for consistency across the page
   const inputGlass =
@@ -371,80 +355,10 @@ export default function WorldBuilder() {
             </div>
           </GlassCard>
 
-          {/* Locations */}
-          <GlassCard>
-            <SectionHeader
-              step={2}
-              title="Key locations"
-              subtitle="3–5 named spots people can visit. Skip rows you don't need."
-            />
-            <div className="space-y-2">
-              {locations.map((loc, i) => (
-                <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
-                  <Input
-                    value={loc.name}
-                    onChange={(e) => updateLocation(i, { name: e.target.value })}
-                    placeholder={`Location ${i + 1} name`}
-                    maxLength={60}
-                    className={inputGlass}
-                  />
-                  <Input
-                    value={loc.what}
-                    onChange={(e) => updateLocation(i, { what: e.target.value })}
-                    placeholder="What's there? (one sentence)"
-                    maxLength={200}
-                    className={inputGlass}
-                  />
-                </div>
-              ))}
-              {locations.length < 5 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setLocations((rows) => [...rows, { name: "", what: "" }])}
-                  className="hover:bg-white/20"
-                >
-                  + Add another location
-                </Button>
-              )}
-            </div>
-          </GlassCard>
-
-          {/* Sound */}
-          <GlassCard>
-            <SectionHeader step={3} title="Sound & music" subtitle="What does it sound like?" />
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="Music style">
-                <Select value={sound} onValueChange={setSound}>
-                  <SelectTrigger className={inputGlass}>
-                    <SelectValue placeholder="Pick a soundtrack vibe…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SOUND_MOODS.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Ambient sounds (optional)">
-                <Input
-                  value={ambient}
-                  onChange={(e) => setAmbient(e.target.value)}
-                  placeholder="e.g. waves, distant chatter"
-                  maxLength={160}
-                  className={inputGlass}
-                />
-              </Field>
-            </div>
-          </GlassCard>
-
           {/* Optional add-ons */}
           <GlassCard>
             <SectionHeader
-              step={4}
+              step={2}
               title="Add a little extra"
               subtitle="Optional ideas — tap any that sound fun and we'll bake them into the prompt."
             />
@@ -479,10 +393,41 @@ export default function WorldBuilder() {
             )}
           </GlassCard>
 
+          {/* Sound */}
+          <GlassCard>
+            <SectionHeader step={3} title="Sound & music" subtitle="What does it sound like?" />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Music style">
+                <Select value={sound} onValueChange={setSound}>
+                  <SelectTrigger className={inputGlass}>
+                    <SelectValue placeholder="Pick a soundtrack vibe…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SOUND_MOODS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Ambient sounds (optional)">
+                <Input
+                  value={ambient}
+                  onChange={(e) => setAmbient(e.target.value)}
+                  placeholder="e.g. waves, distant chatter"
+                  maxLength={160}
+                  className={inputGlass}
+                />
+              </Field>
+            </div>
+          </GlassCard>
+
+
           {/* Step 5 — Name + Copy your prompt */}
           <GlassCard>
             <SectionHeader
-              step={5}
+              step={4}
               title="Name it & copy your prompt"
               subtitle="Give your world a name, then copy the prompt and paste it into your AI editor."
             />
@@ -693,7 +638,7 @@ function SubmitCard() {
     <section className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(15,30,60,0.2)]">
       <div className="mb-4 flex items-start gap-3">
         <div className="shrink-0 w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold inline-flex items-center justify-center shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
-          6
+          5
         </div>
         <div>
           <h2 className="text-lg font-semibold leading-tight text-slate-900">Ship it to the VibeVerse</h2>
