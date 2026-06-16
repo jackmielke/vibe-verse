@@ -764,6 +764,9 @@ export default function City() {
         setDayMode(day);
         applyModeRef.current?.(day);
       },
+      onEmote: (emote, fromPeer) => {
+        if (!fromPeer) playLocalEmoteRef.current?.(emote);
+      },
     });
     mpRef.current = mp;
 
