@@ -197,7 +197,7 @@ export default function WorldBuilder() {
     );
 
     return lines.join("\n");
-  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, locations, sound, ambient, selectedAddons]);
+  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, sound, ambient, selectedAddons]);
 
   const handleCopy = async () => {
     try {
@@ -210,8 +210,6 @@ export default function WorldBuilder() {
     }
   };
 
-  const updateLocation = (i: number, patch: Partial<LocationRow>) =>
-    setLocations((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   // Shared style tokens for consistency across the page
   const inputGlass =
