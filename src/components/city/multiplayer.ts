@@ -39,6 +39,7 @@ export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
   setName(name: string): void;
+  sendTimeMode(day: boolean): void;
   dispose(): void;
 }
 
@@ -83,8 +84,9 @@ export function createMultiplayer(opts: {
   name: string;
   onChat: (msg: ChatMessage) => void;
   onPeers: (count: number, online: boolean) => void;
+  onTimeMode?: (day: boolean, fromPeer: boolean) => void;
 }): Multiplayer {
-  const { scene, characterUrl, onChat, onPeers } = opts;
+  const { scene, characterUrl, onChat, onPeers, onTimeMode } = opts;
   let myName = opts.name;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
@@ -94,6 +96,8 @@ export function createMultiplayer(opts: {
   let lastSend = 0;
   let lastSent: PlayerState | null = null;
   let disposed = false;
+  let myDay: boolean | null = null; // our current known day/night, tracked in presence
+  let appliedInitial = false;
 
   const loadBase = (char: string) => {
     let entry = baseCache.get(char);
@@ -182,7 +186,7 @@ export function createMultiplayer(opts: {
     });
     channel
       .on("presence", { event: "sync" }, () => {
-        const state = channel!.presenceState<{ name: string; char: string }>();
+        const state = channel!.presenceState<{ name: string; char: string; day?: boolean }>();
         const keys = new Set(Object.keys(state));
         // Spawn newcomers, drop leavers.
         for (const key of keys) {
@@ -192,6 +196,20 @@ export function createMultiplayer(opts: {
         }
         for (const key of [...ghosts.keys()]) {
           if (!keys.has(key)) removeGhost(key);
+        }
+        // On first sync, adopt any peer's day/night so latecomers see the
+        // same world the existing crew is in.
+        if (!appliedInitial) {
+          for (const key of keys) {
+            if (key === sessionId) continue;
+            const meta = state[key][0];
+            if (meta && typeof meta.day === "boolean") {
+              appliedInitial = true;
+              myDay = meta.day;
+              onTimeMode?.(meta.day, true);
+              break;
+            }
+          }
         }
         onPeers(keys.size, online);
       })
@@ -217,10 +235,17 @@ export function createMultiplayer(opts: {
         if (!m?.text) return;
         onChat({ id: `${m.id}-${Date.now()}`, name: m.name, text: m.text, ts: Date.now() });
       })
+      .on("broadcast", { event: "time-mode" }, ({ payload }) => {
+        const p = payload as { day: boolean; id: string };
+        if (!p || p.id === sessionId) return;
+        myDay = !!p.day;
+        appliedInitial = true;
+        onTimeMode?.(myDay, true);
+      })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
-          await channel!.track({ name: myName, char: lastSent?.char ?? "" });
+          await channel!.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined });
         }
         onPeers(Object.keys(channel!.presenceState()).length, online);
       });
@@ -291,7 +316,19 @@ export function createMultiplayer(opts: {
     },
     setName(name) {
       myName = name;
-      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "" });
+      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined });
+    },
+    sendTimeMode(day) {
+      myDay = !!day;
+      appliedInitial = true;
+      if (online && channel) {
+        void channel.send({
+          type: "broadcast",
+          event: "time-mode",
+          payload: { id: sessionId, day: myDay },
+        });
+        void channel.track({ name: myName, char: lastSent?.char ?? "", day: myDay });
+      }
     },
     dispose() {
       disposed = true;
