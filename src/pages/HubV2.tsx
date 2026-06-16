@@ -139,13 +139,47 @@ export default function HubV2() {
   const focusedRef = useRef(0);
   useEffect(() => { focusedRef.current = focusedIdx; }, [focusedIdx]);
 
-  // Vibe-login gate for "+ add your world".
+  // Supabase auth gate for "+ add your world".
   const [addOpen, setAddOpen] = useState(false);
-  const handleAddWorld = () => {
-    if (loadSession()) {
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const handleAddWorld = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (data.user) {
       navigate("/submit-world");
     } else {
       setAddOpen(true);
+    }
+  };
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) return;
+    setAuthBusy(true);
+    try {
+      if (authMode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: { emailRedirectTo: `${window.location.origin}/` },
+        });
+        if (error) { toast.error(error.message); return; }
+        toast.success("Account created! Check your email if confirmation is required.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+        if (error) { toast.error(error.message); return; }
+      }
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        setAddOpen(false);
+        navigate("/submit-world");
+      }
+    } finally {
+      setAuthBusy(false);
     }
   };
 
