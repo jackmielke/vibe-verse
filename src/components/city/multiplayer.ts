@@ -96,6 +96,8 @@ export function createMultiplayer(opts: {
   let lastSend = 0;
   let lastSent: PlayerState | null = null;
   let disposed = false;
+  let myDay: boolean | null = null; // our current known day/night, tracked in presence
+  let appliedInitial = false;
 
   const loadBase = (char: string) => {
     let entry = baseCache.get(char);
