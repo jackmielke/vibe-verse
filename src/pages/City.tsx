@@ -1640,6 +1640,7 @@ export default function City() {
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("keydown", onTypeEgg);
       zipGrabRef.current = null;
+      swingGrabRef.current = null;
       mooRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
