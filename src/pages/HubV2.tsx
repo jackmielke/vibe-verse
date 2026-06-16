@@ -29,8 +29,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import VibeLogin from "@/components/VibeLogin";
-import { loadSession } from "@/lib/vibe-wallet";
+import { toast } from "sonner";
 
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import alienModelUrl from "@/assets/glb/alien.glb";
