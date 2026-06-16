@@ -427,7 +427,7 @@ export default function WorldBuilder() {
           {/* Step 5 — Name + Copy your prompt */}
           <GlassCard>
             <SectionHeader
-              step={5}
+              step={4}
               title="Name it & copy your prompt"
               subtitle="Give your world a name, then copy the prompt and paste it into your AI editor."
             />
