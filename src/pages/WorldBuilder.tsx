@@ -355,80 +355,10 @@ export default function WorldBuilder() {
             </div>
           </GlassCard>
 
-          {/* Locations */}
-          <GlassCard>
-            <SectionHeader
-              step={2}
-              title="Key locations"
-              subtitle="3–5 named spots people can visit. Skip rows you don't need."
-            />
-            <div className="space-y-2">
-              {locations.map((loc, i) => (
-                <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
-                  <Input
-                    value={loc.name}
-                    onChange={(e) => updateLocation(i, { name: e.target.value })}
-                    placeholder={`Location ${i + 1} name`}
-                    maxLength={60}
-                    className={inputGlass}
-                  />
-                  <Input
-                    value={loc.what}
-                    onChange={(e) => updateLocation(i, { what: e.target.value })}
-                    placeholder="What's there? (one sentence)"
-                    maxLength={200}
-                    className={inputGlass}
-                  />
-                </div>
-              ))}
-              {locations.length < 5 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setLocations((rows) => [...rows, { name: "", what: "" }])}
-                  className="hover:bg-white/20"
-                >
-                  + Add another location
-                </Button>
-              )}
-            </div>
-          </GlassCard>
-
-          {/* Sound */}
-          <GlassCard>
-            <SectionHeader step={3} title="Sound & music" subtitle="What does it sound like?" />
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="Music style">
-                <Select value={sound} onValueChange={setSound}>
-                  <SelectTrigger className={inputGlass}>
-                    <SelectValue placeholder="Pick a soundtrack vibe…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SOUND_MOODS.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Ambient sounds (optional)">
-                <Input
-                  value={ambient}
-                  onChange={(e) => setAmbient(e.target.value)}
-                  placeholder="e.g. waves, distant chatter"
-                  maxLength={160}
-                  className={inputGlass}
-                />
-              </Field>
-            </div>
-          </GlassCard>
-
           {/* Optional add-ons */}
           <GlassCard>
             <SectionHeader
-              step={4}
+              step={2}
               title="Add a little extra"
               subtitle="Optional ideas — tap any that sound fun and we'll bake them into the prompt."
             />
@@ -462,6 +392,37 @@ export default function WorldBuilder() {
               </p>
             )}
           </GlassCard>
+
+          {/* Sound */}
+          <GlassCard>
+            <SectionHeader step={3} title="Sound & music" subtitle="What does it sound like?" />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Music style">
+                <Select value={sound} onValueChange={setSound}>
+                  <SelectTrigger className={inputGlass}>
+                    <SelectValue placeholder="Pick a soundtrack vibe…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SOUND_MOODS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Ambient sounds (optional)">
+                <Input
+                  value={ambient}
+                  onChange={(e) => setAmbient(e.target.value)}
+                  placeholder="e.g. waves, distant chatter"
+                  maxLength={160}
+                  className={inputGlass}
+                />
+              </Field>
+            </div>
+          </GlassCard>
+
 
           {/* Step 5 — Name + Copy your prompt */}
           <GlassCard>
