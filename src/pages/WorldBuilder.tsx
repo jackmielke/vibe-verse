@@ -220,38 +220,32 @@ export default function WorldBuilder() {
         aria-hidden
       />
       <div
-        className="fixed inset-0 -z-10 bg-gradient-to-b from-white/10 via-background/30 to-background/70"
+        className="fixed inset-0 -z-10 bg-gradient-to-b from-transparent via-background/40 to-background/85"
         aria-hidden
       />
       <div
-        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-30 bg-primary/40"
+        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-20 bg-primary/40"
         aria-hidden
       />
       <div
-        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-25 bg-accent/40"
+        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-20 bg-accent/40"
         aria-hidden
       />
 
-      <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/30 border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm text-foreground/80 hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back
-          </Link>
-          <div className="inline-flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="w-4 h-4 text-primary" /> World Builder
-          </div>
-          <div className="w-12" />
-        </div>
-      </header>
+      <div className="max-w-6xl mx-auto px-4 pt-6">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-foreground transition-colors rounded-full px-3 py-1.5 bg-background/40 backdrop-blur-md border border-white/10"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Link>
+      </div>
 
-      <main className="max-w-6xl mx-auto px-4 py-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
+      <main className="max-w-6xl mx-auto px-4 pt-6 pb-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
         {/* ---------------- Form ---------------- */}
         <div className="space-y-8">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/10 backdrop-blur-md border border-white/15">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-background/50 backdrop-blur-md border border-white/15 text-foreground">
               <Sparkles className="w-3.5 h-3.5 text-primary" /> Guided world builder
             </div>
             <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
@@ -274,7 +268,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setWorldName(e.target.value)}
                   placeholder="e.g. Neon Atoll"
                   maxLength={80}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
               <Field label="One-line tagline (optional)">
@@ -283,7 +277,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setTagline(e.target.value)}
                   placeholder="e.g. A floating cafe where the moon never sets"
                   maxLength={160}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
               <Field label="Short backstory (optional)">
@@ -293,7 +287,7 @@ export default function WorldBuilder() {
                   placeholder="A sentence or two about why this place exists and who lives here."
                   rows={3}
                   maxLength={800}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
             </div>
@@ -356,7 +350,7 @@ export default function WorldBuilder() {
 
             {aestheticId === "__other__" && (
               <Input
-                className="mt-4 bg-white/10 border-white/15 backdrop-blur"
+                className="mt-4 bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 value={aestheticOther}
                 onChange={(e) => setAestheticOther(e.target.value)}
                 placeholder="Describe the style in your own words"
@@ -367,7 +361,7 @@ export default function WorldBuilder() {
             <div className="grid sm:grid-cols-2 gap-3 mt-5">
               <Field label="Overall vibe">
                 <Select value={vibe} onValueChange={setVibe}>
-                  <SelectTrigger className="bg-white/10 border-white/15 backdrop-blur">
+                  <SelectTrigger className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40">
                     <SelectValue placeholder="Pick a vibe…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -385,7 +379,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setPalette(e.target.value)}
                   placeholder="e.g. teal + magenta sunset"
                   maxLength={160}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
             </div>
@@ -406,14 +400,14 @@ export default function WorldBuilder() {
                     onChange={(e) => updateLocation(i, { name: e.target.value })}
                     placeholder={`Location ${i + 1} name`}
                     maxLength={60}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                   <Input
                     value={loc.what}
                     onChange={(e) => updateLocation(i, { what: e.target.value })}
                     placeholder="What's there? (one sentence)"
                     maxLength={200}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                 </div>
               ))}
@@ -445,14 +439,14 @@ export default function WorldBuilder() {
                     onChange={(e) => updateInteraction(i, { name: e.target.value })}
                     placeholder={`Interaction ${i + 1}`}
                     maxLength={60}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                   <Input
                     value={it.what}
                     onChange={(e) => updateInteraction(i, { what: e.target.value })}
                     placeholder="What happens? (e.g. opens a snack shop with gem currency)"
                     maxLength={240}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                 </div>
               ))}
@@ -475,7 +469,7 @@ export default function WorldBuilder() {
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Music style">
                 <Select value={sound} onValueChange={setSound}>
-                  <SelectTrigger className="bg-white/10 border-white/15 backdrop-blur">
+                  <SelectTrigger className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40">
                     <SelectValue placeholder="Pick a soundtrack vibe…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -493,7 +487,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setAmbient(e.target.value)}
                   placeholder="e.g. waves, distant chatter"
                   maxLength={160}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
             </div>
@@ -535,7 +529,7 @@ export default function WorldBuilder() {
 
 function GlassCard({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(0,0,0,0.25)]">
+    <section className="rounded-2xl border border-white/15 bg-background/55 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(0,0,0,0.35)]">
       {children}
     </section>
   );
@@ -552,12 +546,12 @@ function SectionHeader({
 }) {
   return (
     <div className="mb-4 flex items-start gap-3">
-      <div className="shrink-0 w-7 h-7 rounded-full bg-primary/20 ring-1 ring-primary/60 text-primary text-xs font-bold inline-flex items-center justify-center">
+      <div className="shrink-0 w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold inline-flex items-center justify-center shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
         {step}
       </div>
       <div>
-        <h2 className="text-lg font-semibold leading-tight">{title}</h2>
-        {subtitle && <p className="text-sm text-foreground/70 mt-0.5">{subtitle}</p>}
+        <h2 className="text-lg font-semibold leading-tight text-foreground">{title}</h2>
+        {subtitle && <p className="text-sm text-foreground/75 mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -566,7 +560,8 @@ function SectionHeader({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[11px] uppercase tracking-wider text-foreground/60">
+      <Label className="text-[11px] uppercase tracking-wider text-foreground/75 font-medium">
+
         {label}
       </Label>
       {children}
