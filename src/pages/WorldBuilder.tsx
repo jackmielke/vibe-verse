@@ -122,12 +122,6 @@ export default function WorldBuilder() {
   const [vibe, setVibe] = useState<string>("");
   const [palette, setPalette] = useState("");
 
-  // Locations
-  const [locations, setLocations] = useState<LocationRow[]>([
-    { name: "", what: "" },
-    { name: "", what: "" },
-    { name: "", what: "" },
-  ]);
 
   // Sound
   const [sound, setSound] = useState<string>("");
