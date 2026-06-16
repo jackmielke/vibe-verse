@@ -144,13 +144,9 @@ export default function HubV2() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const handleAddWorld = async () => {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      navigate("/submit-world");
-    } else {
-      setAddOpen(true);
-    }
+  const handleAddWorld = () => {
+    // No auth gate — anyone can build & submit a world.
+    navigate("/world-builder");
   };
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1020,14 +1016,6 @@ export default function HubV2() {
           className="pointer-events-auto mt-1 inline-flex items-center gap-1 text-[10px] sm:text-xs text-primary/80 hover:text-primary transition-colors"
         >
           + Add your own world
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate("/world-builder")}
-          className="pointer-events-auto mt-0.5 inline-flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground hover:text-primary transition-colors"
-          title="Walk through a guided form that generates a prompt for any AI editor"
-        >
-          ✨ Not sure how? Use the guided builder
         </button>
       </div>
 
