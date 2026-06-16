@@ -64,9 +64,33 @@ interface Ghost {
   target: { x: number; y: number; z: number; yaw: number };
   char: string;
   label: string;
+  emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
 }
 
 const SEND_INTERVAL_MS = 125;
+const EMOTE_LIFE = 2.6;
+
+function makeEmoteSprite(emoji: string): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 192;
+  canvas.height = 192;
+  const ctx = canvas.getContext("2d")!;
+  ctx.font = "140px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji'";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 14;
+  ctx.fillText(emoji, 96, 104);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }),
+  );
+  sprite.scale.set(1.2, 1.2, 1);
+  sprite.renderOrder = 999;
+  return sprite;
+}
+
 
 function makeLabelSprite(name: string): THREE.Sprite {
   const canvas = document.createElement("canvas");
