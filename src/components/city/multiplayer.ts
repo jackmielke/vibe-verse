@@ -213,6 +213,16 @@ export function createMultiplayer(opts: {
     scene.remove(g.group);
   };
 
+  const playEmoteOn = (g: Ghost, emote: EmoteName) => {
+    if (g.emote) g.group.remove(g.emote.sprite);
+    const sprite = makeEmoteSprite(EMOTE_EMOJI[emote] ?? "✨");
+    sprite.position.set(0, 3.0, 0);
+    g.group.add(sprite);
+    g.emote = { sprite, t: 0, life: EMOTE_LIFE, bob: Math.random() * Math.PI * 2 };
+  };
+
+
+
   let channel: RealtimeChannel | null = null;
   try {
     channel = supabase.channel("vibe-city", {
