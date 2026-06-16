@@ -144,13 +144,9 @@ export default function HubV2() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const handleAddWorld = async () => {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      navigate("/submit-world");
-    } else {
-      setAddOpen(true);
-    }
+  const handleAddWorld = () => {
+    // No auth gate — anyone can build & submit a world.
+    navigate("/world-builder");
   };
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
