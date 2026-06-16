@@ -756,6 +756,10 @@ export default function City() {
         if (!chatOpenRef.current && !msg.self) setChatUnread((n) => n + 1);
       },
       onPeers: (count, online) => setPeers({ count: Math.max(1, count), online }),
+      onTimeMode: (day) => {
+        setDayMode(day);
+        applyModeRef.current?.(day);
+      },
     });
     mpRef.current = mp;
 
