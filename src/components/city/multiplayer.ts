@@ -84,8 +84,9 @@ export function createMultiplayer(opts: {
   name: string;
   onChat: (msg: ChatMessage) => void;
   onPeers: (count: number, online: boolean) => void;
+  onTimeMode?: (day: boolean, fromPeer: boolean) => void;
 }): Multiplayer {
-  const { scene, characterUrl, onChat, onPeers } = opts;
+  const { scene, characterUrl, onChat, onPeers, onTimeMode } = opts;
   let myName = opts.name;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
