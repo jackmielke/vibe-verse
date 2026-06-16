@@ -107,7 +107,7 @@ const ADDONS: Addon[] = [
   { id: "guestbook", label: "Visitor guestbook", prompt: "A guestbook object visitors can sign — short messages persist for future visitors to read." },
 ];
 
-type LocationRow = { name: string; what: string };
+
 
 export default function WorldBuilder() {
   // Identity
