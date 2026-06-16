@@ -99,17 +99,16 @@ export default function GlobalNav() {
             WebkitBackdropFilter: "blur(10px)",
           }}
         >
-          <button
-            onClick={() => {
-              setPickerOpen((v) => !v);
-              setMoreOpen(false);
-            }}
-            className={chipClass(pickerOpen)}
+          <Link
+            to="/"
+            className={chipClass(location.pathname === "/")}
             title="All worlds"
+            aria-current={location.pathname === "/" ? "page" : undefined}
           >
             <span className="text-sm leading-none">🌐</span>
             <span className={labelClass}>Worlds</span>
-          </button>
+          </Link>
+
 
           {PRIMARY.map((d) => {
             const active = isActive(d);
