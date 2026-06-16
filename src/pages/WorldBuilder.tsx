@@ -168,16 +168,8 @@ export default function WorldBuilder() {
     lines.push("- Match this aesthetic in every model, texture, lighting choice, UI font and color.");
     lines.push("");
 
-    const liveLocations = locations.filter((l) => l.name.trim() || l.what.trim());
-    if (liveLocations.length) {
-      lines.push("## Key locations");
-      liveLocations.forEach((l, i) => {
-        const name = l.name.trim() || `Location ${i + 1}`;
-        const what = l.what.trim();
-        lines.push(`${i + 1}. **${name}**${what ? ` — ${what}` : ""}`);
-      });
-      lines.push("");
-    }
+
+
 
     if (sound || ambient.trim()) {
       lines.push("## Soundtrack & ambience");
