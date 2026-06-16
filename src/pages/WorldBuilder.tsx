@@ -512,6 +512,9 @@ export default function WorldBuilder() {
               </p>
             )}
           </GlassCard>
+
+          {/* Submit — paste public GitHub repo link */}
+          <SubmitCard />
         </div>
 
         {/* ---------------- Prompt preview ---------------- */}
