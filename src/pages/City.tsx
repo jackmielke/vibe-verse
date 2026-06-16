@@ -416,6 +416,8 @@ export default function City() {
     nearMoon: false,
     nearZip: false,
     riding: false,
+    nearSwing: false,
+    swinging: false,
     nearCow: false,
   });
   const spentGemsRef = useRef(0);
@@ -468,6 +470,7 @@ export default function City() {
   >({ vibey: [], jerry: [] });
   const vibeyExciteRef = useRef<(() => void) | null>(null);
   const zipGrabRef = useRef<(() => void) | null>(null);
+  const swingGrabRef = useRef<(() => void) | null>(null);
   const mooRef = useRef<(() => void) | null>(null);
 
   // Voice mode: a live ElevenLabs conversation with Vibey.
@@ -1233,6 +1236,7 @@ export default function City() {
     let lastTime = performance.now();
     let riding = false; // on the zipline
     let zipAngle = 0;
+    let swinging = false; // on the swing
     let rainbowOn = false; // secret star found
     let discoUntil = 0; // "vibe" typed → plaza disco
     const zip = island.zipline;
@@ -1245,6 +1249,20 @@ export default function City() {
       zipAngle = Math.atan2(player.position.z - zip.z, player.position.x - zip.x);
       riding = true;
       onGround = false;
+    };
+    swingGrabRef.current = () => {
+      if (swinging) {
+        swinging = false;
+        // Hop off with a gentle forward nudge in the swing's direction.
+        const a = island.swingAngle();
+        vel.set(0, 4, Math.sin(a) * 6);
+        onGround = false;
+        return;
+      }
+      swinging = true;
+      riding = false;
+      onGround = false;
+      vel.set(0, 0, 0);
     };
     mooRef.current = () => {
       soundsRef.current?.moo();
@@ -1271,6 +1289,8 @@ export default function City() {
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
           ) < 5 && Math.abs(player.position.y - (zip.y - 5)) < 9,
         riding,
+        nearSwing: player.position.distanceTo(island.swingMount) < 4.5,
+        swinging,
         nearCow: npcCrew
           .cowPositions()
           .some((c) => c.distanceToSquared(player.position) < 49),
@@ -1356,7 +1376,15 @@ export default function City() {
         : running ? FLY_RUN_SPEED : FLY_SPEED;
 
       const pos = player.position;
-      if (riding) {
+      if (swinging) {
+        // The swing seat owns your position. Jetpack (Space) hops you off.
+        const seatWorld = new THREE.Vector3();
+        island.swingSeat.getWorldPosition(seatWorld);
+        pos.copy(seatWorld);
+        vel.set(0, 0, 0);
+        onGround = false;
+        if (thrusting) swingGrabRef.current?.();
+      } else if (riding) {
         // The cable owns your position: glide the loop around the
         // island. Firing the jetpack (or the Let go button) releases
         // you with the cable's momentum.
@@ -1612,6 +1640,7 @@ export default function City() {
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("keydown", onTypeEgg);
       zipGrabRef.current = null;
+      swingGrabRef.current = null;
       mooRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
@@ -1967,6 +1996,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-amber-300"
             >
               {hud.riding ? "🪂 Let go" : "🧗 Grab the zipline"}
+            </button>
+          )}
+          {(hud.nearSwing || hud.swinging) && (
+            <button
+              onClick={(e) => {
+                swingGrabRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary"
+            >
+              {hud.swinging ? "🤸 Hop off (Space)" : "🪢 Jump on the swing"}
             </button>
           )}
           {hud.nearCow && (

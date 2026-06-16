@@ -43,6 +43,13 @@ export interface IslandWorld {
   jerry: THREE.Vector3;
   /** Where the SnackFe cafe counter sits, in world coordinates. */
   snackfe: THREE.Vector3;
+  /** Ground point right in front of the swing — used for proximity. */
+  swingMount: THREE.Vector3;
+  /** The swing seat, parented to the swinging pivot. Read its world
+   *  position each frame to ride along with the swing. */
+  swingSeat: THREE.Object3D;
+  /** Current pendulum angle in radians (signed). */
+  swingAngle(): number;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
 }
@@ -569,8 +576,14 @@ export function buildCardboardIsland(opts: {
     seat.position.y = -2.52;
     swingPivot.add(seat);
   }
+  // Marker that rides with the seat — child positioned just above it
+  // so a player parented/snapped here sits naturally on the plank.
+  const swingSeatMarker = new THREE.Object3D();
+  swingSeatMarker.position.y = -2.45;
+  swingPivot.add(swingSeatMarker);
   swing.add(swingPivot);
   group.add(swing);
+  let currentSwingAngle = 0;
 
   // ---- Jerry's Plaza ----------------------------------------------------
   // A real cardboard plaza built AROUND Jerry — modeled after the kids'
@@ -1165,7 +1178,8 @@ export function buildCardboardIsland(opts: {
         const s = 0.75 + Math.abs(Math.sin(now * 0.011 + i * 1.7)) * 0.5;
         f.scale.set(s, 0.8 + Math.random() * 0.55, s);
       });
-      swingPivot.rotation.x = Math.sin(now * 0.0013) * 0.52;
+      currentSwingAngle = Math.sin(now * 0.0013) * 0.52;
+      swingPivot.rotation.x = currentSwingAngle;
       jerryGroup.rotation.y = Math.PI + 0.5 + Math.sin(now * 0.0008) * 0.12;
       jerryParts.stalks.forEach((s, i) => {
         s.rotation.x = Math.sin(now * 0.0027 + i * 2.1) * 0.16;
@@ -1201,6 +1215,9 @@ export function buildCardboardIsland(opts: {
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
     jerry: new THREE.Vector3(centerX + 2, topY, centerZ + 22),
     snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z + SNACK_D / 2 + 1.4),
+    swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
+    swingSeat: swingSeatMarker,
+    swingAngle: () => currentSwingAngle,
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
