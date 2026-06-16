@@ -1511,6 +1511,23 @@ export default function City() {
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
+      // Local emote bubble lifecycle.
+      if (localEmote) {
+        localEmote.t += dt;
+        const u = localEmote.t / localEmote.life;
+        if (u >= 1) {
+          player.remove(localEmote.sprite);
+          localEmote.sprite.material.dispose();
+          (localEmote.sprite.material.map as THREE.Texture | null)?.dispose();
+          localEmote = null;
+        } else {
+          localEmote.sprite.position.y =
+            3.0 + Math.sin(localEmote.bob + localEmote.t * 4) * 0.15 + u * 0.4;
+          const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+          localEmote.sprite.material.opacity = fade;
+        }
+      }
+
       // Easter-egg dressings: the zipline handle, the rainbow jetpack,
       // and plaza disco while "vibe" mode lasts.
       zipHandle.visible = riding;
