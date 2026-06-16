@@ -278,40 +278,6 @@ export default function WorldBuilder() {
             </p>
           </div>
 
-          {/* Identity */}
-          <GlassCard>
-            <SectionHeader step={1} title="Identity" subtitle="What's this place called?" />
-            <div className="space-y-3">
-              <Field label="World name">
-                <Input
-                  value={worldName}
-                  onChange={(e) => setWorldName(e.target.value)}
-                  placeholder="e.g. Neon Atoll"
-                  maxLength={80}
-                  className={inputGlass}
-                />
-              </Field>
-              <Field label="One-line tagline (optional)">
-                <Input
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  placeholder="e.g. A floating cafe where the moon never sets"
-                  maxLength={160}
-                  className={inputGlass}
-                />
-              </Field>
-              <Field label="Short backstory (optional)">
-                <Textarea
-                  value={backstory}
-                  onChange={(e) => setBackstory(e.target.value)}
-                  placeholder="A sentence or two about why this place exists and who lives here."
-                  rows={3}
-                  maxLength={800}
-                  className={inputGlass}
-                />
-              </Field>
-            </div>
-          </GlassCard>
 
           {/* Aesthetic — VISUAL */}
           <GlassCard>
