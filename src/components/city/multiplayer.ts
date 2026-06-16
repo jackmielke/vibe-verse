@@ -186,7 +186,7 @@ export function createMultiplayer(opts: {
     });
     channel
       .on("presence", { event: "sync" }, () => {
-        const state = channel!.presenceState<{ name: string; char: string }>();
+        const state = channel!.presenceState<{ name: string; char: string; day?: boolean }>();
         const keys = new Set(Object.keys(state));
         // Spawn newcomers, drop leavers.
         for (const key of keys) {
@@ -196,6 +196,20 @@ export function createMultiplayer(opts: {
         }
         for (const key of [...ghosts.keys()]) {
           if (!keys.has(key)) removeGhost(key);
+        }
+        // On first sync, adopt any peer's day/night so latecomers see the
+        // same world the existing crew is in.
+        if (!appliedInitial) {
+          for (const key of keys) {
+            if (key === sessionId) continue;
+            const meta = state[key][0];
+            if (meta && typeof meta.day === "boolean") {
+              appliedInitial = true;
+              myDay = meta.day;
+              onTimeMode?.(meta.day, true);
+              break;
+            }
+          }
         }
         onPeers(keys.size, online);
       })
@@ -221,10 +235,17 @@ export function createMultiplayer(opts: {
         if (!m?.text) return;
         onChat({ id: `${m.id}-${Date.now()}`, name: m.name, text: m.text, ts: Date.now() });
       })
+      .on("broadcast", { event: "time-mode" }, ({ payload }) => {
+        const p = payload as { day: boolean; id: string };
+        if (!p || p.id === sessionId) return;
+        myDay = !!p.day;
+        appliedInitial = true;
+        onTimeMode?.(myDay, true);
+      })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
-          await channel!.track({ name: myName, char: lastSent?.char ?? "" });
+          await channel!.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined });
         }
         onPeers(Object.keys(channel!.presenceState()).length, online);
       });
