@@ -220,7 +220,7 @@ export default function WorldBuilder() {
         aria-hidden
       />
       <div
-        className="fixed inset-0 -z-10 bg-gradient-to-b from-background/40 via-background/70 to-background/95"
+        className="fixed inset-0 -z-10 bg-gradient-to-b from-white/10 via-background/30 to-background/70"
         aria-hidden
       />
       <div
