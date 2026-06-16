@@ -274,8 +274,8 @@ export default function WorldBuilder() {
             </h1>
             <p className="text-slate-700 max-w-2xl">
               Pick a vibe, drop in a few details, and we'll spit out a clean
-              prompt you can paste into any AI code editor — Lovable, Cursor,
-              Claude, ChatGPT — to scaffold the whole thing.
+              prompt you can paste into any AI code editor — Lovable, Claude,
+              Codex, Cursor, ChatGPT — to scaffold the whole thing.
             </p>
           </div>
 
