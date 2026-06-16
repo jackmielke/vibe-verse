@@ -268,7 +268,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setWorldName(e.target.value)}
                   placeholder="e.g. Neon Atoll"
                   maxLength={80}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
               <Field label="One-line tagline (optional)">
@@ -277,7 +277,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setTagline(e.target.value)}
                   placeholder="e.g. A floating cafe where the moon never sets"
                   maxLength={160}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
               <Field label="Short backstory (optional)">
@@ -287,7 +287,7 @@ export default function WorldBuilder() {
                   placeholder="A sentence or two about why this place exists and who lives here."
                   rows={3}
                   maxLength={800}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
             </div>
@@ -350,7 +350,7 @@ export default function WorldBuilder() {
 
             {aestheticId === "__other__" && (
               <Input
-                className="mt-4 bg-white/10 border-white/15 backdrop-blur"
+                className="mt-4 bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 value={aestheticOther}
                 onChange={(e) => setAestheticOther(e.target.value)}
                 placeholder="Describe the style in your own words"
@@ -361,7 +361,7 @@ export default function WorldBuilder() {
             <div className="grid sm:grid-cols-2 gap-3 mt-5">
               <Field label="Overall vibe">
                 <Select value={vibe} onValueChange={setVibe}>
-                  <SelectTrigger className="bg-white/10 border-white/15 backdrop-blur">
+                  <SelectTrigger className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40">
                     <SelectValue placeholder="Pick a vibe…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -379,7 +379,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setPalette(e.target.value)}
                   placeholder="e.g. teal + magenta sunset"
                   maxLength={160}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
             </div>
@@ -400,14 +400,14 @@ export default function WorldBuilder() {
                     onChange={(e) => updateLocation(i, { name: e.target.value })}
                     placeholder={`Location ${i + 1} name`}
                     maxLength={60}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                   <Input
                     value={loc.what}
                     onChange={(e) => updateLocation(i, { what: e.target.value })}
                     placeholder="What's there? (one sentence)"
                     maxLength={200}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                 </div>
               ))}
@@ -439,14 +439,14 @@ export default function WorldBuilder() {
                     onChange={(e) => updateInteraction(i, { name: e.target.value })}
                     placeholder={`Interaction ${i + 1}`}
                     maxLength={60}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                   <Input
                     value={it.what}
                     onChange={(e) => updateInteraction(i, { what: e.target.value })}
                     placeholder="What happens? (e.g. opens a snack shop with gem currency)"
                     maxLength={240}
-                    className="bg-white/10 border-white/15 backdrop-blur"
+                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                   />
                 </div>
               ))}
@@ -469,7 +469,7 @@ export default function WorldBuilder() {
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Music style">
                 <Select value={sound} onValueChange={setSound}>
-                  <SelectTrigger className="bg-white/10 border-white/15 backdrop-blur">
+                  <SelectTrigger className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40">
                     <SelectValue placeholder="Pick a soundtrack vibe…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -487,7 +487,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setAmbient(e.target.value)}
                   placeholder="e.g. waves, distant chatter"
                   maxLength={160}
-                  className="bg-white/10 border-white/15 backdrop-blur"
+                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
                 />
               </Field>
             </div>
