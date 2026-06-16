@@ -279,6 +279,13 @@ export function createMultiplayer(opts: {
         appliedInitial = true;
         onTimeMode?.(myDay, true);
       })
+      .on("broadcast", { event: "emote" }, ({ payload }) => {
+        const p = payload as { id: string; emote: EmoteName };
+        if (!p || p.id === sessionId) return;
+        const g = ghosts.get(p.id);
+        if (g) playEmoteOn(g, p.emote);
+        onEmote?.(p.emote, true);
+      })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
