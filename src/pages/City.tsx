@@ -434,6 +434,8 @@ export default function City() {
 
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
+  const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
+  const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const chatOpenRef = useRef(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
