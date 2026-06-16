@@ -590,3 +590,158 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
+
+function SubmitCard() {
+  const [repoUrl, setRepoUrl] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fireConfetti = () => {
+    const duration = 1800;
+    const end = Date.now() + duration;
+    const colors = ["#73ffb8", "#2dd4a8", "#a78bfa", "#67e8f9", "#fde68a"];
+    (function frame() {
+      confetti({
+        particleCount: 4,
+        angle: 60,
+        spread: 70,
+        startVelocity: 55,
+        origin: { x: 0, y: 0.7 },
+        colors,
+      });
+      confetti({
+        particleCount: 4,
+        angle: 120,
+        spread: 70,
+        startVelocity: 55,
+        origin: { x: 1, y: 0.7 },
+        colors,
+      });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+    // one big burst from center
+    confetti({
+      particleCount: 120,
+      spread: 100,
+      startVelocity: 45,
+      origin: { y: 0.6 },
+      colors,
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = repoUrl.trim();
+    const githubRegex = /^https?:\/\/(www\.)?github\.com\/[^/\s]+\/[^/\s]+\/?$/i;
+    if (!githubRegex.test(url)) {
+      setError("That doesn't look like a github.com repo URL. It should look like https://github.com/your-name/your-world");
+      return;
+    }
+    setError(null);
+    setSubmitted(true);
+    fireConfetti();
+  };
+
+  if (submitted) {
+    return (
+      <section className="rounded-2xl border border-primary/60 bg-white/30 backdrop-blur-2xl p-6 sm:p-8 shadow-[0_8px_60px_hsl(var(--primary)/0.35)] text-center animate-scale-in">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground mb-3 shadow-[0_0_30px_hsl(var(--primary)/0.6)]">
+          <PartyPopper className="w-7 h-7" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground">Your world is in the queue.</h2>
+        <p className="text-foreground/85 mt-2 max-w-md mx-auto">
+          We'll be adding this to the <span className="text-primary font-semibold">VibeVerse</span> soon.
+          Keep an eye on your inbox if you signed in — we'll ping you when it goes live.
+        </p>
+        <div className="mt-4 inline-flex items-center gap-2 text-xs text-foreground/70 bg-white/30 border border-white/40 rounded-full px-3 py-1.5">
+          <Github className="w-3.5 h-3.5" />
+          <span className="truncate max-w-[280px]">{repoUrl}</span>
+        </div>
+        <div className="mt-5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSubmitted(false);
+              setRepoUrl("");
+            }}
+            className="hover:bg-white/30"
+          >
+            Submit another world
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(15,30,60,0.2)]">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="shrink-0 w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold inline-flex items-center justify-center shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
+          6
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold leading-tight text-foreground">Ship it to the VibeVerse</h2>
+          <p className="text-sm text-foreground/80 mt-0.5">
+            Built your world? Drop in the public GitHub link and we'll add it to the map.
+          </p>
+        </div>
+      </div>
+
+      <ol className="space-y-2 text-sm text-foreground/85 mb-4">
+        <li className="flex gap-2">
+          <span className="text-primary font-bold">1.</span>
+          <span>
+            In your Lovable project, open the <span className="font-semibold">+</span> menu (bottom-left of the chat) →{" "}
+            <span className="font-semibold">GitHub</span> → <span className="font-semibold">Connect project</span>{" "}
+            and create the repo.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-primary font-bold">2.</span>
+          <span>
+            On{" "}
+            <a
+              href="https://github.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline underline-offset-2 inline-flex items-center gap-0.5"
+            >
+              github.com <ExternalLink className="w-3 h-3" />
+            </a>
+            , open the new repo → <span className="font-semibold">Settings</span> → scroll to{" "}
+            <span className="font-semibold">Danger Zone</span> → <span className="font-semibold">Change visibility</span>{" "}
+            → make it <span className="font-semibold">Public</span>.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-primary font-bold">3.</span>
+          <span>Copy the repo URL from your browser bar and paste it below.</span>
+        </li>
+      </ol>
+
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="relative">
+          <Github className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/60 pointer-events-none" />
+          <Input
+            value={repoUrl}
+            onChange={(e) => {
+              setRepoUrl(e.target.value);
+              if (error) setError(null);
+            }}
+            placeholder="https://github.com/your-name/your-world"
+            className="pl-9 bg-white/25 border-white/40 backdrop-blur-md text-foreground placeholder:text-foreground/55"
+            aria-label="Public GitHub repository URL"
+          />
+        </div>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <Button type="submit" size="lg" className="w-full gap-2">
+          <PartyPopper className="w-4 h-4" />
+          Submit to the VibeVerse
+        </Button>
+      </form>
+    </section>
+  );
+}
+}
