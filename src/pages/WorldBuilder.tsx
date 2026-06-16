@@ -479,6 +479,58 @@ export default function WorldBuilder() {
             )}
           </GlassCard>
 
+          {/* Identity — name it now that you can picture it */}
+          <GlassCard>
+            <SectionHeader
+              step={5}
+              title="Name your world"
+              subtitle="Now that you've imagined it, what's this place called?"
+            />
+            <div className="space-y-3">
+              <Field label="World name">
+                <Input
+                  value={worldName}
+                  onChange={(e) => setWorldName(e.target.value)}
+                  placeholder="e.g. Neon Atoll"
+                  maxLength={80}
+                  className={inputGlass}
+                />
+              </Field>
+              <Field label="One-line tagline (optional)">
+                <Input
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="e.g. A floating cafe where the moon never sets"
+                  maxLength={160}
+                  className={inputGlass}
+                />
+              </Field>
+              {showBackstory ? (
+                <Field label="Short backstory">
+                  <Textarea
+                    value={backstory}
+                    onChange={(e) => setBackstory(e.target.value)}
+                    placeholder="A sentence or two about why this place exists and who lives here."
+                    rows={3}
+                    maxLength={800}
+                    className={inputGlass}
+                    autoFocus
+                  />
+                </Field>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowBackstory(true)}
+                  className="hover:bg-white/30 text-slate-700"
+                >
+                  + Add a backstory (optional)
+                </Button>
+              )}
+            </div>
+          </GlassCard>
+
           {/* Submit — paste public GitHub repo link */}
           <SubmitCard />
         </div>
