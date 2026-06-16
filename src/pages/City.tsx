@@ -1199,6 +1199,7 @@ export default function City() {
         jet: keys.has("Space") && enteredRef.current,
         stars: collectedCount,
         totalStars: collectibles.length,
+        gems: Math.max(0, collectedCount - spentGemsRef.current),
         runMs:
           runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
         bestMs,
