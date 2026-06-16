@@ -241,11 +241,11 @@ export default function WorldBuilder() {
         </Link>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 py-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
+      <main className="max-w-6xl mx-auto px-4 pt-6 pb-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
         {/* ---------------- Form ---------------- */}
         <div className="space-y-8">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/10 backdrop-blur-md border border-white/15">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-background/50 backdrop-blur-md border border-white/15 text-foreground">
               <Sparkles className="w-3.5 h-3.5 text-primary" /> Guided world builder
             </div>
             <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
