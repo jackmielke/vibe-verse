@@ -1289,6 +1289,8 @@ export default function City() {
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
           ) < 5 && Math.abs(player.position.y - (zip.y - 5)) < 9,
         riding,
+        nearSwing: player.position.distanceTo(island.swingMount) < 4.5,
+        swinging,
         nearCow: npcCrew
           .cowPositions()
           .some((c) => c.distanceToSquared(player.position) < 49),
