@@ -638,7 +638,7 @@ function SubmitCard() {
     <section className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(15,30,60,0.2)]">
       <div className="mb-4 flex items-start gap-3">
         <div className="shrink-0 w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold inline-flex items-center justify-center shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
-          6
+          5
         </div>
         <div>
           <h2 className="text-lg font-semibold leading-tight text-slate-900">Ship it to the VibeVerse</h2>
