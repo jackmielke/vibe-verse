@@ -359,6 +359,22 @@ export function createMultiplayer(opts: {
           }
         }
         g.mixer?.update(dt);
+
+        // Emote bubble lifecycle: bob, fade, then detach.
+        if (g.emote) {
+          g.emote.t += dt;
+          const u = g.emote.t / g.emote.life;
+          if (u >= 1) {
+            g.group.remove(g.emote.sprite);
+            g.emote.sprite.material.dispose();
+            (g.emote.sprite.material.map as THREE.Texture | null)?.dispose();
+            g.emote = undefined;
+          } else {
+            g.emote.sprite.position.y = 3.0 + Math.sin(g.emote.bob + g.emote.t * 4) * 0.15 + u * 0.4;
+            const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+            g.emote.sprite.material.opacity = fade;
+          }
+        }
       }
     },
     sendChat(text) {
@@ -382,6 +398,16 @@ export function createMultiplayer(opts: {
           payload: { id: sessionId, day: myDay },
         });
         void channel.track({ name: myName, char: lastSent?.char ?? "", day: myDay });
+      }
+    },
+    sendEmote(emote) {
+      onEmote?.(emote, false);
+      if (online && channel) {
+        void channel.send({
+          type: "broadcast",
+          event: "emote",
+          payload: { id: sessionId, emote },
+        });
       }
     },
     dispose() {
