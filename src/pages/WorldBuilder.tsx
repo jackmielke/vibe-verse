@@ -2,8 +2,9 @@
  * WorldBuilder — guided form that turns a few choices into a paste-ready prompt
  * for any AI code editor (Cursor, Lovable, Claude, ChatGPT, etc.).
  *
- * Stack-agnostic: we never assume a target framework in the generated prompt.
- * The user pastes the result wherever they build.
+ * Visual: glassmorphic cards over a dreamy background; aesthetics are picked
+ * from a visual grid of generated reference images rather than a plain
+ * dropdown.
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -21,25 +22,51 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-const AESTHETICS = [
-  "Club Penguin (chunky, cute, 2.5D)",
-  "Super Mario (bright, blocky, playful)",
-  "Animal Crossing (soft pastel, cozy)",
-  "Zelda: Wind Waker (cel-shaded cartoon)",
-  "Studio Ghibli (hand-painted, dreamy)",
-  "Minecraft (voxel, blocky)",
-  "Low-poly flat-shaded",
-  "Photorealistic (Unreal-style)",
-  "Vaporwave / synthwave",
-  "Cyberpunk neon",
-  "Cottagecore / cozy nature",
-  "Y2K / early-2000s web",
-  "Pixel art (16-bit)",
-  "Paper / cardboard craft",
-  "Anime cel-shaded",
-  "Dark fantasy",
-  "Surreal dreamscape",
-] as const;
+import bgImage from "@/assets/world-builder-bg.png";
+import imgClubPenguin from "@/assets/aesthetic/club-penguin.jpg";
+import imgMario from "@/assets/aesthetic/mario.jpg";
+import imgAnimalCrossing from "@/assets/aesthetic/animal-crossing.jpg";
+import imgWindWaker from "@/assets/aesthetic/wind-waker.jpg";
+import imgGhibli from "@/assets/aesthetic/ghibli.jpg";
+import imgMinecraft from "@/assets/aesthetic/minecraft.jpg";
+import imgLowPoly from "@/assets/aesthetic/low-poly.jpg";
+import imgPhotoreal from "@/assets/aesthetic/photoreal.jpg";
+import imgVaporwave from "@/assets/aesthetic/vaporwave.jpg";
+import imgCyberpunk from "@/assets/aesthetic/cyberpunk.jpg";
+import imgCottagecore from "@/assets/aesthetic/cottagecore.jpg";
+import imgY2K from "@/assets/aesthetic/y2k.jpg";
+import imgPixel from "@/assets/aesthetic/pixel.jpg";
+import imgPapercraft from "@/assets/aesthetic/papercraft.jpg";
+import imgAnime from "@/assets/aesthetic/anime.jpg";
+import imgDarkFantasy from "@/assets/aesthetic/dark-fantasy.jpg";
+import imgDreamscape from "@/assets/aesthetic/dreamscape.jpg";
+
+type Aesthetic = {
+  id: string;
+  label: string;
+  prompt: string;
+  image: string;
+};
+
+const AESTHETICS: Aesthetic[] = [
+  { id: "club-penguin", label: "Club Penguin", prompt: "Club Penguin (chunky, cute, 2.5D cartoon)", image: imgClubPenguin },
+  { id: "mario", label: "Super Mario", prompt: "Super Mario (bright, blocky, playful 3D)", image: imgMario },
+  { id: "animal-crossing", label: "Animal Crossing", prompt: "Animal Crossing (soft pastel, cozy)", image: imgAnimalCrossing },
+  { id: "wind-waker", label: "Wind Waker", prompt: "Zelda Wind Waker (cel-shaded cartoon)", image: imgWindWaker },
+  { id: "ghibli", label: "Studio Ghibli", prompt: "Studio Ghibli (hand-painted, dreamy)", image: imgGhibli },
+  { id: "minecraft", label: "Minecraft", prompt: "Minecraft (voxel, blocky)", image: imgMinecraft },
+  { id: "low-poly", label: "Low-poly", prompt: "Low-poly flat-shaded 3D", image: imgLowPoly },
+  { id: "photoreal", label: "Photorealistic", prompt: "Photorealistic (Unreal Engine 5 style)", image: imgPhotoreal },
+  { id: "vaporwave", label: "Vaporwave", prompt: "Vaporwave / synthwave 80s", image: imgVaporwave },
+  { id: "cyberpunk", label: "Cyberpunk", prompt: "Cyberpunk neon city", image: imgCyberpunk },
+  { id: "cottagecore", label: "Cottagecore", prompt: "Cottagecore / cozy nature", image: imgCottagecore },
+  { id: "y2k", label: "Y2K", prompt: "Y2K / early-2000s web (chrome, holographic)", image: imgY2K },
+  { id: "pixel", label: "Pixel art", prompt: "16-bit pixel art", image: imgPixel },
+  { id: "papercraft", label: "Papercraft", prompt: "Paper / cardboard craft diorama", image: imgPapercraft },
+  { id: "anime", label: "Anime", prompt: "Anime cel-shaded (Makoto Shinkai style)", image: imgAnime },
+  { id: "dark-fantasy", label: "Dark fantasy", prompt: "Dark fantasy / gothic", image: imgDarkFantasy },
+  { id: "dreamscape", label: "Surreal dreamscape", prompt: "Surreal dreamscape with floating islands", image: imgDreamscape },
+];
 
 const VIBES = [
   "Cozy & welcoming",
@@ -73,19 +100,17 @@ export default function WorldBuilder() {
   const [backstory, setBackstory] = useState("");
 
   // Aesthetic + vibe
-  const [aesthetic, setAesthetic] = useState<string>("");
+  const [aestheticId, setAestheticId] = useState<string>("");
   const [aestheticOther, setAestheticOther] = useState("");
   const [vibe, setVibe] = useState<string>("");
   const [palette, setPalette] = useState("");
 
-  // Locations
+  // Locations / interactions
   const [locations, setLocations] = useState<LocationRow[]>([
     { name: "", what: "" },
     { name: "", what: "" },
     { name: "", what: "" },
   ]);
-
-  // Interactions
   const [interactions, setInteractions] = useState<InteractionRow[]>([
     { name: "", what: "" },
     { name: "", what: "" },
@@ -97,8 +122,11 @@ export default function WorldBuilder() {
 
   const [copied, setCopied] = useState(false);
 
-  const finalAesthetic =
-    aesthetic === "__other__" ? aestheticOther.trim() : aesthetic;
+  const finalAesthetic = useMemo(() => {
+    if (aestheticId === "__other__") return aestheticOther.trim();
+    const found = AESTHETICS.find((a) => a.id === aestheticId);
+    return found?.prompt ?? "";
+  }, [aestheticId, aestheticOther]);
 
   const prompt = useMemo(() => {
     const lines: string[] = [];
@@ -120,14 +148,10 @@ export default function WorldBuilder() {
     if (finalAesthetic) lines.push(`- Art style: ${finalAesthetic}`);
     if (vibe) lines.push(`- Overall vibe: ${vibe}`);
     if (palette.trim()) lines.push(`- Color palette / mood: ${palette.trim()}`);
-    lines.push(
-      "- Match this aesthetic in every model, texture, lighting choice, UI font and color.",
-    );
+    lines.push("- Match this aesthetic in every model, texture, lighting choice, UI font and color.");
     lines.push("");
 
-    const liveLocations = locations.filter(
-      (l) => l.name.trim() || l.what.trim(),
-    );
+    const liveLocations = locations.filter((l) => l.name.trim() || l.what.trim());
     if (liveLocations.length) {
       lines.push("## Key locations");
       liveLocations.forEach((l, i) => {
@@ -138,14 +162,10 @@ export default function WorldBuilder() {
       lines.push("");
     }
 
-    const liveInteractions = interactions.filter(
-      (i) => i.name.trim() || i.what.trim(),
-    );
+    const liveInteractions = interactions.filter((i) => i.name.trim() || i.what.trim());
     if (liveInteractions.length) {
       lines.push("## Interactions");
-      lines.push(
-        "When the player walks up to one of these, trigger the described behavior:",
-      );
+      lines.push("When the player walks up to one of these, trigger the described behavior:");
       liveInteractions.forEach((it, i) => {
         const name = it.name.trim() || `Interaction ${i + 1}`;
         const what = it.what.trim();
@@ -173,18 +193,7 @@ export default function WorldBuilder() {
     );
 
     return lines.join("\n");
-  }, [
-    worldName,
-    tagline,
-    backstory,
-    finalAesthetic,
-    vibe,
-    palette,
-    locations,
-    interactions,
-    sound,
-    ambient,
-  ]);
+  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, locations, interactions, sound, ambient]);
 
   const handleCopy = async () => {
     try {
@@ -197,20 +206,37 @@ export default function WorldBuilder() {
     }
   };
 
-  const updateLocation = (i: number, patch: Partial<LocationRow>) => {
+  const updateLocation = (i: number, patch: Partial<LocationRow>) =>
     setLocations((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  };
-  const updateInteraction = (i: number, patch: Partial<InteractionRow>) => {
+  const updateInteraction = (i: number, patch: Partial<InteractionRow>) =>
     setInteractions((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 backdrop-blur bg-background/80 border-b border-border/60">
+    <div className="relative min-h-screen text-foreground overflow-x-hidden">
+      {/* Background image + dark gradient + blobs */}
+      <div
+        className="fixed inset-0 -z-20 bg-cover bg-center"
+        style={{ backgroundImage: `url(${bgImage})` }}
+        aria-hidden
+      />
+      <div
+        className="fixed inset-0 -z-10 bg-gradient-to-b from-background/40 via-background/70 to-background/95"
+        aria-hidden
+      />
+      <div
+        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-30 bg-primary/40"
+        aria-hidden
+      />
+      <div
+        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-25 bg-accent/40"
+        aria-hidden
+      />
+
+      <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/30 border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <Link
             to="/"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-2 text-sm text-foreground/80 hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
@@ -221,199 +247,262 @@ export default function WorldBuilder() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 grid lg:grid-cols-[1fr_minmax(0,420px)] gap-8">
+      <main className="max-w-6xl mx-auto px-4 py-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
         {/* ---------------- Form ---------------- */}
-        <div className="space-y-10">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              Design your world in a few clicks
+        <div className="space-y-8">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/10 backdrop-blur-md border border-white/15">
+              <Sparkles className="w-3.5 h-3.5 text-primary" /> Guided world builder
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
+              Dream up your world in a few clicks.
             </h1>
-            <p className="mt-2 text-muted-foreground max-w-2xl">
-              Answer a handful of questions and we'll generate a clean prompt
-              you can paste into any AI code editor (Lovable, Cursor, Claude,
-              ChatGPT) to scaffold your world.
+            <p className="text-foreground/80 max-w-2xl">
+              Pick a vibe, drop in a few details, and we'll spit out a clean
+              prompt you can paste into any AI code editor — Lovable, Cursor,
+              Claude, ChatGPT — to scaffold the whole thing.
             </p>
           </div>
 
           {/* Identity */}
-          <Section title="1. Identity" subtitle="What is this world called?">
-            <Field label="World name">
-              <Input
-                value={worldName}
-                onChange={(e) => setWorldName(e.target.value)}
-                placeholder="e.g. Neon Atoll"
-                maxLength={80}
-              />
-            </Field>
-            <Field label="One-line tagline (optional)">
-              <Input
-                value={tagline}
-                onChange={(e) => setTagline(e.target.value)}
-                placeholder="e.g. A floating cafe where the moon never sets"
-                maxLength={160}
-              />
-            </Field>
-            <Field label="Short backstory (optional)">
-              <Textarea
-                value={backstory}
-                onChange={(e) => setBackstory(e.target.value)}
-                placeholder="A sentence or two about why this place exists and who lives here."
-                rows={3}
-                maxLength={800}
-              />
-            </Field>
-          </Section>
-
-          {/* Aesthetic + vibe */}
-          <Section title="2. Aesthetic & vibe" subtitle="The look and feel.">
-            <Field label="Art style">
-              <Select value={aesthetic} onValueChange={setAesthetic}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick an aesthetic…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {AESTHETICS.map((a) => (
-                    <SelectItem key={a} value={a}>
-                      {a}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="__other__">Other / describe my own…</SelectItem>
-                </SelectContent>
-              </Select>
-              {aesthetic === "__other__" && (
+          <GlassCard>
+            <SectionHeader step={1} title="Identity" subtitle="What's this place called?" />
+            <div className="space-y-3">
+              <Field label="World name">
                 <Input
-                  className="mt-2"
-                  value={aestheticOther}
-                  onChange={(e) => setAestheticOther(e.target.value)}
-                  placeholder="Describe the style in your own words"
-                  maxLength={160}
+                  value={worldName}
+                  onChange={(e) => setWorldName(e.target.value)}
+                  placeholder="e.g. Neon Atoll"
+                  maxLength={80}
+                  className="bg-white/10 border-white/15 backdrop-blur"
                 />
-              )}
-            </Field>
-            <Field label="Overall vibe">
-              <Select value={vibe} onValueChange={setVibe}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick a vibe…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VIBES.map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {v}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Color palette / mood (optional)">
+              </Field>
+              <Field label="One-line tagline (optional)">
+                <Input
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="e.g. A floating cafe where the moon never sets"
+                  maxLength={160}
+                  className="bg-white/10 border-white/15 backdrop-blur"
+                />
+              </Field>
+              <Field label="Short backstory (optional)">
+                <Textarea
+                  value={backstory}
+                  onChange={(e) => setBackstory(e.target.value)}
+                  placeholder="A sentence or two about why this place exists and who lives here."
+                  rows={3}
+                  maxLength={800}
+                  className="bg-white/10 border-white/15 backdrop-blur"
+                />
+              </Field>
+            </div>
+          </GlassCard>
+
+          {/* Aesthetic — VISUAL */}
+          <GlassCard>
+            <SectionHeader
+              step={2}
+              title="Aesthetic"
+              subtitle="Pick the visual style your world should match."
+            />
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {AESTHETICS.map((a) => {
+                const active = a.id === aestheticId;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setAestheticId(a.id)}
+                    className={`group relative aspect-square rounded-xl overflow-hidden border transition-all text-left ${
+                      active
+                        ? "border-primary ring-2 ring-primary shadow-[0_0_30px_hsl(var(--primary)/0.5)] scale-[1.02]"
+                        : "border-white/15 hover:border-white/40 hover:scale-[1.02]"
+                    }`}
+                  >
+                    <img
+                      src={a.image}
+                      alt={a.label}
+                      loading="lazy"
+                      width={512}
+                      height={512}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute bottom-2 left-2 right-2 text-xs font-semibold text-white drop-shadow">
+                      {a.label}
+                    </div>
+                    {active && (
+                      <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary text-primary-foreground inline-flex items-center justify-center shadow-lg">
+                        <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setAestheticId("__other__")}
+                className={`aspect-square rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1 text-xs font-medium ${
+                  aestheticId === "__other__"
+                    ? "border-primary text-primary bg-primary/10"
+                    : "border-white/25 text-foreground/70 hover:border-white/50 hover:text-foreground"
+                }`}
+              >
+                <Sparkles className="w-5 h-5" />
+                Describe my own
+              </button>
+            </div>
+
+            {aestheticId === "__other__" && (
               <Input
-                value={palette}
-                onChange={(e) => setPalette(e.target.value)}
-                placeholder="e.g. teal + magenta sunset, or hex codes"
+                className="mt-4 bg-white/10 border-white/15 backdrop-blur"
+                value={aestheticOther}
+                onChange={(e) => setAestheticOther(e.target.value)}
+                placeholder="Describe the style in your own words"
                 maxLength={160}
               />
-            </Field>
-          </Section>
+            )}
+
+            <div className="grid sm:grid-cols-2 gap-3 mt-5">
+              <Field label="Overall vibe">
+                <Select value={vibe} onValueChange={setVibe}>
+                  <SelectTrigger className="bg-white/10 border-white/15 backdrop-blur">
+                    <SelectValue placeholder="Pick a vibe…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VIBES.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Color palette (optional)">
+                <Input
+                  value={palette}
+                  onChange={(e) => setPalette(e.target.value)}
+                  placeholder="e.g. teal + magenta sunset"
+                  maxLength={160}
+                  className="bg-white/10 border-white/15 backdrop-blur"
+                />
+              </Field>
+            </div>
+          </GlassCard>
 
           {/* Locations */}
-          <Section
-            title="3. Key locations"
-            subtitle="3–5 named spots people can visit. Skip rows you don't need."
-          >
-            {locations.map((loc, i) => (
-              <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
-                <Input
-                  value={loc.name}
-                  onChange={(e) => updateLocation(i, { name: e.target.value })}
-                  placeholder={`Location ${i + 1} name`}
-                  maxLength={60}
-                />
-                <Input
-                  value={loc.what}
-                  onChange={(e) => updateLocation(i, { what: e.target.value })}
-                  placeholder="What's there? (one sentence)"
-                  maxLength={200}
-                />
-              </div>
-            ))}
-            {locations.length < 5 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setLocations((rows) => [...rows, { name: "", what: "" }])
-                }
-              >
-                + Add another location
-              </Button>
-            )}
-          </Section>
+          <GlassCard>
+            <SectionHeader
+              step={3}
+              title="Key locations"
+              subtitle="3–5 named spots people can visit. Skip rows you don't need."
+            />
+            <div className="space-y-2">
+              {locations.map((loc, i) => (
+                <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
+                  <Input
+                    value={loc.name}
+                    onChange={(e) => updateLocation(i, { name: e.target.value })}
+                    placeholder={`Location ${i + 1} name`}
+                    maxLength={60}
+                    className="bg-white/10 border-white/15 backdrop-blur"
+                  />
+                  <Input
+                    value={loc.what}
+                    onChange={(e) => updateLocation(i, { what: e.target.value })}
+                    placeholder="What's there? (one sentence)"
+                    maxLength={200}
+                    className="bg-white/10 border-white/15 backdrop-blur"
+                  />
+                </div>
+              ))}
+              {locations.length < 5 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLocations((rows) => [...rows, { name: "", what: "" }])}
+                >
+                  + Add another location
+                </Button>
+              )}
+            </div>
+          </GlassCard>
 
           {/* Interactions */}
-          <Section
-            title="4. Interactions"
-            subtitle="Things that happen when you walk up — mini-games, NPCs, shops, swings…"
-          >
-            {interactions.map((it, i) => (
-              <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
-                <Input
-                  value={it.name}
-                  onChange={(e) => updateInteraction(i, { name: e.target.value })}
-                  placeholder={`Interaction ${i + 1}`}
-                  maxLength={60}
-                />
-                <Input
-                  value={it.what}
-                  onChange={(e) => updateInteraction(i, { what: e.target.value })}
-                  placeholder="What happens? (e.g. opens a snack shop with gem currency)"
-                  maxLength={240}
-                />
-              </div>
-            ))}
-            {interactions.length < 6 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setInteractions((rows) => [...rows, { name: "", what: "" }])
-                }
-              >
-                + Add another interaction
-              </Button>
-            )}
-          </Section>
+          <GlassCard>
+            <SectionHeader
+              step={4}
+              title="Interactions"
+              subtitle="Things that happen when you walk up — mini-games, NPCs, shops, swings…"
+            />
+            <div className="space-y-2">
+              {interactions.map((it, i) => (
+                <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
+                  <Input
+                    value={it.name}
+                    onChange={(e) => updateInteraction(i, { name: e.target.value })}
+                    placeholder={`Interaction ${i + 1}`}
+                    maxLength={60}
+                    className="bg-white/10 border-white/15 backdrop-blur"
+                  />
+                  <Input
+                    value={it.what}
+                    onChange={(e) => updateInteraction(i, { what: e.target.value })}
+                    placeholder="What happens? (e.g. opens a snack shop with gem currency)"
+                    maxLength={240}
+                    className="bg-white/10 border-white/15 backdrop-blur"
+                  />
+                </div>
+              ))}
+              {interactions.length < 6 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setInteractions((rows) => [...rows, { name: "", what: "" }])}
+                >
+                  + Add another interaction
+                </Button>
+              )}
+            </div>
+          </GlassCard>
 
           {/* Sound */}
-          <Section title="5. Sound & music" subtitle="What does it sound like?">
-            <Field label="Music style">
-              <Select value={sound} onValueChange={setSound}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick a soundtrack vibe…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SOUND_MOODS.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Ambient sounds (optional)">
-              <Input
-                value={ambient}
-                onChange={(e) => setAmbient(e.target.value)}
-                placeholder="e.g. waves, distant chatter, wind chimes"
-                maxLength={160}
-              />
-            </Field>
-          </Section>
+          <GlassCard>
+            <SectionHeader step={5} title="Sound & music" subtitle="What does it sound like?" />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Music style">
+                <Select value={sound} onValueChange={setSound}>
+                  <SelectTrigger className="bg-white/10 border-white/15 backdrop-blur">
+                    <SelectValue placeholder="Pick a soundtrack vibe…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SOUND_MOODS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Ambient sounds (optional)">
+                <Input
+                  value={ambient}
+                  onChange={(e) => setAmbient(e.target.value)}
+                  placeholder="e.g. waves, distant chatter"
+                  maxLength={160}
+                  className="bg-white/10 border-white/15 backdrop-blur"
+                />
+              </Field>
+            </div>
+          </GlassCard>
         </div>
 
         {/* ---------------- Prompt preview ---------------- */}
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <div className="rounded-2xl border border-border/60 bg-card/60 backdrop-blur p-4 shadow-lg">
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-2xl p-4 shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold inline-flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" /> Your prompt
@@ -430,10 +519,10 @@ export default function WorldBuilder() {
                 )}
               </Button>
             </div>
-            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-background/60 p-3 border border-border/40">
+            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-background/40 p-3 border border-white/10">
 {prompt}
             </pre>
-            <p className="mt-3 text-[11px] text-muted-foreground">
+            <p className="mt-3 text-[11px] text-foreground/70">
               Paste into Lovable, Cursor, Claude, ChatGPT, or any AI code
               editor. It updates live as you edit the form.
             </p>
@@ -444,38 +533,40 @@ export default function WorldBuilder() {
   );
 }
 
-function Section({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
+function GlassCard({ children }: { children: React.ReactNode }) {
   return (
-    <section className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {subtitle && (
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
-        )}
-      </div>
-      <div className="space-y-3">{children}</div>
+    <section className="rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(0,0,0,0.25)]">
+      {children}
     </section>
   );
 }
 
-function Field({
-  label,
-  children,
+function SectionHeader({
+  step,
+  title,
+  subtitle,
 }: {
-  label: string;
-  children: React.ReactNode;
+  step: number;
+  title: string;
+  subtitle?: string;
 }) {
   return (
+    <div className="mb-4 flex items-start gap-3">
+      <div className="shrink-0 w-7 h-7 rounded-full bg-primary/20 ring-1 ring-primary/60 text-primary text-xs font-bold inline-flex items-center justify-center">
+        {step}
+      </div>
+      <div>
+        <h2 className="text-lg font-semibold leading-tight">{title}</h2>
+        {subtitle && <p className="text-sm text-foreground/70 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
     <div className="space-y-1.5">
-      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+      <Label className="text-[11px] uppercase tracking-wider text-foreground/60">
         {label}
       </Label>
       {children}
