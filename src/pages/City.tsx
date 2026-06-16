@@ -36,7 +36,9 @@ import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
+  EMOTE_EMOJI,
   type ChatMessage,
+  type EmoteName,
   type Multiplayer,
 } from "@/components/city/multiplayer";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
