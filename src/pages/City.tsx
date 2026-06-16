@@ -1236,6 +1236,7 @@ export default function City() {
     let lastTime = performance.now();
     let riding = false; // on the zipline
     let zipAngle = 0;
+    let swinging = false; // on the swing
     let rainbowOn = false; // secret star found
     let discoUntil = 0; // "vibe" typed → plaza disco
     const zip = island.zipline;
@@ -1248,6 +1249,20 @@ export default function City() {
       zipAngle = Math.atan2(player.position.z - zip.z, player.position.x - zip.x);
       riding = true;
       onGround = false;
+    };
+    swingGrabRef.current = () => {
+      if (swinging) {
+        swinging = false;
+        // Hop off with a gentle forward nudge in the swing's direction.
+        const a = island.swingAngle();
+        vel.set(0, 4, Math.sin(a) * 6);
+        onGround = false;
+        return;
+      }
+      swinging = true;
+      riding = false;
+      onGround = false;
+      vel.set(0, 0, 0);
     };
     mooRef.current = () => {
       soundsRef.current?.moo();
