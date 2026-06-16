@@ -35,11 +35,23 @@ export interface ChatMessage {
   self?: boolean;
 }
 
+export type EmoteName = "wave" | "dance" | "sit" | "point" | "heart" | "laugh";
+
+export const EMOTE_EMOJI: Record<EmoteName, string> = {
+  wave: "👋",
+  dance: "💃",
+  sit: "🪑",
+  point: "👉",
+  heart: "💜",
+  laugh: "😂",
+};
+
 export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
   setName(name: string): void;
   sendTimeMode(day: boolean): void;
+  sendEmote(emote: EmoteName): void;
   dispose(): void;
 }
 
