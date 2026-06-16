@@ -43,6 +43,13 @@ export interface IslandWorld {
   jerry: THREE.Vector3;
   /** Where the SnackFe cafe counter sits, in world coordinates. */
   snackfe: THREE.Vector3;
+  /** Ground point right in front of the swing — used for proximity. */
+  swingMount: THREE.Vector3;
+  /** The swing seat, parented to the swinging pivot. Read its world
+   *  position each frame to ride along with the swing. */
+  swingSeat: THREE.Object3D;
+  /** Current pendulum angle in radians (signed). */
+  swingAngle(): number;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
 }
