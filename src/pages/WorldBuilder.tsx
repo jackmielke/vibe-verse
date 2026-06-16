@@ -220,32 +220,26 @@ export default function WorldBuilder() {
         aria-hidden
       />
       <div
-        className="fixed inset-0 -z-10 bg-gradient-to-b from-white/10 via-background/30 to-background/70"
+        className="fixed inset-0 -z-10 bg-gradient-to-b from-transparent via-background/40 to-background/85"
         aria-hidden
       />
       <div
-        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-30 bg-primary/40"
+        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-20 bg-primary/40"
         aria-hidden
       />
       <div
-        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-25 bg-accent/40"
+        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-20 bg-accent/40"
         aria-hidden
       />
 
-      <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/30 border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm text-foreground/80 hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back
-          </Link>
-          <div className="inline-flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="w-4 h-4 text-primary" /> World Builder
-          </div>
-          <div className="w-12" />
-        </div>
-      </header>
+      <div className="max-w-6xl mx-auto px-4 pt-6">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-foreground transition-colors rounded-full px-3 py-1.5 bg-background/40 backdrop-blur-md border border-white/10"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Link>
+      </div>
 
       <main className="max-w-6xl mx-auto px-4 py-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
         {/* ---------------- Form ---------------- */}
