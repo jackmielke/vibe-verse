@@ -316,7 +316,19 @@ export function createMultiplayer(opts: {
     },
     setName(name) {
       myName = name;
-      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "" });
+      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined });
+    },
+    sendTimeMode(day) {
+      myDay = !!day;
+      appliedInitial = true;
+      if (online && channel) {
+        void channel.send({
+          type: "broadcast",
+          event: "time-mode",
+          payload: { id: sessionId, day: myDay },
+        });
+        void channel.track({ name: myName, char: lastSent?.char ?? "", day: myDay });
+      }
     },
     dispose() {
       disposed = true;
