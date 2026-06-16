@@ -1820,6 +1820,35 @@ export default function City() {
               {chatUnread > 0 && <span className="text-amber-300"> +{chatUnread}</span>}
             </button>
           </div>
+          {emoteWheelOpen && (
+            <div className="glass-panel rounded-2xl p-3 w-60 animate-scale-in">
+              <div className="flex items-center justify-between text-[11px] mb-2">
+                <span className="font-heading font-semibold tracking-wider text-primary">
+                  EMOTE WHEEL
+                </span>
+                <span className="text-muted-foreground">everyone sees it</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(EMOTE_EMOJI) as EmoteName[]).map((name) => (
+                  <button
+                    key={name}
+                    onClick={(e) => {
+                      mpRef.current?.sendEmote(name);
+                      setEmoteWheelOpen(false);
+                      e.currentTarget.blur();
+                    }}
+                    className="flex flex-col items-center justify-center gap-1 rounded-xl bg-muted/30 hover:bg-muted/60 transition-colors py-2 text-2xl"
+                    title={name}
+                  >
+                    <span>{EMOTE_EMOJI[name]}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {chatOpen && (
             <div className="glass-panel rounded-2xl p-3 w-72 flex flex-col gap-2">
               <div className="flex items-center justify-between text-[11px]">
