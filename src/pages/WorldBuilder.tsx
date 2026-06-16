@@ -262,8 +262,7 @@ export default function WorldBuilder() {
         </Link>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 pt-6 pb-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
-        {/* ---------------- Form ---------------- */}
+      <main className="max-w-3xl mx-auto px-4 pt-6 pb-10">
         <div className="space-y-6">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/25 backdrop-blur-md border border-white/40 text-slate-900">
@@ -442,7 +441,7 @@ export default function WorldBuilder() {
             </div>
           </GlassCard>
 
-          {/* Optional add-ons — tap-to-add suggestions */}
+          {/* Optional add-ons */}
           <GlassCard>
             <SectionHeader
               step={4}
@@ -480,12 +479,12 @@ export default function WorldBuilder() {
             )}
           </GlassCard>
 
-          {/* Identity — name it now that you can picture it */}
+          {/* Step 5 — Name + Copy your prompt */}
           <GlassCard>
             <SectionHeader
               step={5}
-              title="Name your world"
-              subtitle="Now that you've imagined it, what's this place called?"
+              title="Name it & copy your prompt"
+              subtitle="Give your world a name, then copy the prompt and paste it into your AI editor."
             />
             <div className="space-y-3">
               <Field label="World name">
@@ -530,40 +529,36 @@ export default function WorldBuilder() {
                 </Button>
               )}
             </div>
+
+            <div className="mt-5 rounded-xl border border-white/40 bg-white/25 backdrop-blur-md p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold inline-flex items-center gap-2 text-slate-900">
+                  <Sparkles className="w-4 h-4 text-primary" /> Your prompt
+                </div>
+                <Button size="sm" onClick={handleCopy} className="gap-1.5">
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4" /> Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" /> Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+              <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[40vh] overflow-auto rounded-lg bg-white/30 p-3 border border-white/30 text-slate-900">
+{prompt}
+              </pre>
+              <p className="mt-2 text-[11px] text-slate-700">
+                Paste into Lovable, Claude, Codex, Cursor, ChatGPT, or any AI code editor. It updates live as you edit the form above.
+              </p>
+            </div>
           </GlassCard>
 
-          {/* Submit — paste public GitHub repo link */}
+          {/* Step 6 — Submit */}
           <SubmitCard />
         </div>
-
-        {/* ---------------- Prompt preview ---------------- */}
-        <aside className="lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-4 shadow-[0_8px_40px_rgba(15,30,60,0.25)]">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold inline-flex items-center gap-2 text-slate-900">
-                <Sparkles className="w-4 h-4 text-primary" /> Your prompt
-              </div>
-              <Button size="sm" onClick={handleCopy} className="gap-1.5">
-                {copied ? (
-                  <>
-                    <Check className="w-4 h-4" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" /> Copy
-                  </>
-                )}
-              </Button>
-            </div>
-            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-white/30 p-3 border border-white/30 text-slate-900">
-{prompt}
-            </pre>
-            <p className="mt-3 text-[11px] text-slate-700">
-              Paste into Lovable, Cursor, Claude, ChatGPT, or any AI code
-              editor. It updates live as you edit the form.
-            </p>
-          </div>
-        </aside>
       </main>
     </div>
   );
