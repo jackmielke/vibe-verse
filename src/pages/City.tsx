@@ -36,7 +36,9 @@ import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
+  EMOTE_EMOJI,
   type ChatMessage,
+  type EmoteName,
   type Multiplayer,
 } from "@/components/city/multiplayer";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
@@ -432,6 +434,8 @@ export default function City() {
 
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
+  const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
+  const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const chatOpenRef = useRef(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -523,6 +527,23 @@ export default function City() {
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
+
+  // "B" toggles the emote wheel. Ignored while typing in chat.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        setEmoteWheelOpen((v) => !v);
+      } else if (e.key === "Escape") {
+        setEmoteWheelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -760,6 +781,9 @@ export default function City() {
         setDayMode(day);
         applyModeRef.current?.(day);
       },
+      onEmote: (emote, fromPeer) => {
+        if (!fromPeer) playLocalEmoteRef.current?.(emote);
+      },
     });
     mpRef.current = mp;
 
@@ -847,6 +871,37 @@ export default function City() {
     scene.add(player);
     const modelHolder = new THREE.Group(); // takes the flight tilt
     player.add(modelHolder);
+
+    // ---- Local emote bubble (sprite parented to the player) ---------
+    let localEmote: { sprite: THREE.Sprite; t: number; life: number; bob: number } | null = null;
+    const playLocalEmote = (emote: EmoteName) => {
+      if (localEmote) {
+        player.remove(localEmote.sprite);
+        localEmote.sprite.material.dispose();
+        (localEmote.sprite.material.map as THREE.Texture | null)?.dispose();
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = 192;
+      canvas.height = 192;
+      const ctx = canvas.getContext("2d")!;
+      ctx.font = "140px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji'";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0,0,0,0.55)";
+      ctx.shadowBlur = 14;
+      ctx.fillText(EMOTE_EMOJI[emote] ?? "✨", 96, 104);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }),
+      );
+      sprite.scale.set(1.2, 1.2, 1);
+      sprite.position.set(0, 3.0, 0);
+      sprite.renderOrder = 999;
+      player.add(sprite);
+      localEmote = { sprite, t: 0, life: 2.6, bob: Math.random() * Math.PI * 2 };
+    };
+    playLocalEmoteRef.current = playLocalEmote;
 
     let mixer: THREE.AnimationMixer | null = null;
     const actions = new Map<string, THREE.AnimationAction>();
@@ -1473,6 +1528,23 @@ export default function City() {
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
+      // Local emote bubble lifecycle.
+      if (localEmote) {
+        localEmote.t += dt;
+        const u = localEmote.t / localEmote.life;
+        if (u >= 1) {
+          player.remove(localEmote.sprite);
+          localEmote.sprite.material.dispose();
+          (localEmote.sprite.material.map as THREE.Texture | null)?.dispose();
+          localEmote = null;
+        } else {
+          localEmote.sprite.position.y =
+            3.0 + Math.sin(localEmote.bob + localEmote.t * 4) * 0.15 + u * 0.4;
+          const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+          localEmote.sprite.material.opacity = fade;
+        }
+      }
+
       // Easter-egg dressings: the zipline handle, the rainbow jetpack,
       // and plaza disco while "vibe" mode lasts.
       zipHandle.visible = riding;
@@ -1711,6 +1783,16 @@ export default function City() {
             </button>
             <button
               onClick={(e) => {
+                setEmoteWheelOpen((v) => !v);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title="Emote wheel (B)"
+            >
+              👋 Emote
+            </button>
+            <button
+              onClick={(e) => {
                 setCharPanelOpen((v) => !v);
                 e.currentTarget.blur();
               }}
@@ -1755,6 +1837,35 @@ export default function City() {
               {chatUnread > 0 && <span className="text-amber-300"> +{chatUnread}</span>}
             </button>
           </div>
+          {emoteWheelOpen && (
+            <div className="glass-panel rounded-2xl p-3 w-60 animate-scale-in">
+              <div className="flex items-center justify-between text-[11px] mb-2">
+                <span className="font-heading font-semibold tracking-wider text-primary">
+                  EMOTE WHEEL
+                </span>
+                <span className="text-muted-foreground">everyone sees it</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(EMOTE_EMOJI) as EmoteName[]).map((name) => (
+                  <button
+                    key={name}
+                    onClick={(e) => {
+                      mpRef.current?.sendEmote(name);
+                      setEmoteWheelOpen(false);
+                      e.currentTarget.blur();
+                    }}
+                    className="flex flex-col items-center justify-center gap-1 rounded-xl bg-muted/30 hover:bg-muted/60 transition-colors py-2 text-2xl"
+                    title={name}
+                  >
+                    <span>{EMOTE_EMOJI[name]}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {chatOpen && (
             <div className="glass-panel rounded-2xl p-3 w-72 flex flex-col gap-2">
               <div className="flex items-center justify-between text-[11px]">

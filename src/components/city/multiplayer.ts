@@ -35,11 +35,23 @@ export interface ChatMessage {
   self?: boolean;
 }
 
+export type EmoteName = "wave" | "dance" | "sit" | "point" | "heart" | "laugh";
+
+export const EMOTE_EMOJI: Record<EmoteName, string> = {
+  wave: "👋",
+  dance: "💃",
+  sit: "🪑",
+  point: "👉",
+  heart: "💜",
+  laugh: "😂",
+};
+
 export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
   setName(name: string): void;
   sendTimeMode(day: boolean): void;
+  sendEmote(emote: EmoteName): void;
   dispose(): void;
 }
 
@@ -52,9 +64,33 @@ interface Ghost {
   target: { x: number; y: number; z: number; yaw: number };
   char: string;
   label: string;
+  emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
 }
 
 const SEND_INTERVAL_MS = 125;
+const EMOTE_LIFE = 2.6;
+
+function makeEmoteSprite(emoji: string): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 192;
+  canvas.height = 192;
+  const ctx = canvas.getContext("2d")!;
+  ctx.font = "140px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji'";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 14;
+  ctx.fillText(emoji, 96, 104);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }),
+  );
+  sprite.scale.set(1.2, 1.2, 1);
+  sprite.renderOrder = 999;
+  return sprite;
+}
+
 
 function makeLabelSprite(name: string): THREE.Sprite {
   const canvas = document.createElement("canvas");
@@ -85,8 +121,9 @@ export function createMultiplayer(opts: {
   onChat: (msg: ChatMessage) => void;
   onPeers: (count: number, online: boolean) => void;
   onTimeMode?: (day: boolean, fromPeer: boolean) => void;
+  onEmote?: (emote: EmoteName, fromPeer: boolean) => void;
 }): Multiplayer {
-  const { scene, characterUrl, onChat, onPeers, onTimeMode } = opts;
+  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote } = opts;
   let myName = opts.name;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
@@ -176,6 +213,16 @@ export function createMultiplayer(opts: {
     scene.remove(g.group);
   };
 
+  const playEmoteOn = (g: Ghost, emote: EmoteName) => {
+    if (g.emote) g.group.remove(g.emote.sprite);
+    const sprite = makeEmoteSprite(EMOTE_EMOJI[emote] ?? "✨");
+    sprite.position.set(0, 3.0, 0);
+    g.group.add(sprite);
+    g.emote = { sprite, t: 0, life: EMOTE_LIFE, bob: Math.random() * Math.PI * 2 };
+  };
+
+
+
   let channel: RealtimeChannel | null = null;
   try {
     channel = supabase.channel("vibe-city", {
@@ -242,6 +289,13 @@ export function createMultiplayer(opts: {
         appliedInitial = true;
         onTimeMode?.(myDay, true);
       })
+      .on("broadcast", { event: "emote" }, ({ payload }) => {
+        const p = payload as { id: string; emote: EmoteName };
+        if (!p || p.id === sessionId) return;
+        const g = ghosts.get(p.id);
+        if (g) playEmoteOn(g, p.emote);
+        onEmote?.(p.emote, true);
+      })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
@@ -305,6 +359,22 @@ export function createMultiplayer(opts: {
           }
         }
         g.mixer?.update(dt);
+
+        // Emote bubble lifecycle: bob, fade, then detach.
+        if (g.emote) {
+          g.emote.t += dt;
+          const u = g.emote.t / g.emote.life;
+          if (u >= 1) {
+            g.group.remove(g.emote.sprite);
+            g.emote.sprite.material.dispose();
+            (g.emote.sprite.material.map as THREE.Texture | null)?.dispose();
+            g.emote = undefined;
+          } else {
+            g.emote.sprite.position.y = 3.0 + Math.sin(g.emote.bob + g.emote.t * 4) * 0.15 + u * 0.4;
+            const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+            g.emote.sprite.material.opacity = fade;
+          }
+        }
       }
     },
     sendChat(text) {
@@ -328,6 +398,16 @@ export function createMultiplayer(opts: {
           payload: { id: sessionId, day: myDay },
         });
         void channel.track({ name: myName, char: lastSent?.char ?? "", day: myDay });
+      }
+    },
+    sendEmote(emote) {
+      onEmote?.(emote, false);
+      if (online && channel) {
+        void channel.send({
+          type: "broadcast",
+          event: "emote",
+          payload: { id: sessionId, emote },
+        });
       }
     },
     dispose() {
