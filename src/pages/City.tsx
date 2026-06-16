@@ -528,6 +528,23 @@ export default function City() {
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
 
+  // "B" toggles the emote wheel. Ignored while typing in chat.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        setEmoteWheelOpen((v) => !v);
+      } else if (e.key === "Escape") {
+        setEmoteWheelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
