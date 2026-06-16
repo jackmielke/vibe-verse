@@ -1701,10 +1701,11 @@ export default function City() {
                 const next = !dayMode;
                 setDayMode(next);
                 applyModeRef.current?.(next);
+                mpRef.current?.sendTimeMode(next);
                 e.currentTarget.blur();
               }}
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
-              title={dayMode ? "Switch to night" : "Switch to day"}
+              title={dayMode ? "Switch the whole lobby to night" : "Switch the whole lobby to day"}
             >
               {dayMode ? "🌙 Night" : "☀️ Day"}
             </button>
