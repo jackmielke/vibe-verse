@@ -407,6 +407,7 @@ export default function City() {
     jet: false,
     stars: 0,
     totalStars: 0,
+    gems: 0,
     runMs: null as number | null,
     bestMs: null as number | null,
     nearIsland: false,
@@ -415,6 +416,8 @@ export default function City() {
     riding: false,
     nearCow: false,
   });
+  const spentGemsRef = useRef(0);
+  const [purchases, setPurchases] = useState<Record<string, number>>({});
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
