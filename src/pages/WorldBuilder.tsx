@@ -744,4 +744,3 @@ function SubmitCard() {
     </section>
   );
 }
-}
