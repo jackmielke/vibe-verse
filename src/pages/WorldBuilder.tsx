@@ -268,10 +268,10 @@ export default function WorldBuilder() {
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/25 backdrop-blur-md border border-white/40 text-slate-900">
               <Sparkles className="w-3.5 h-3.5 text-primary" /> Guided world builder
             </div>
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight drop-shadow-[0_1px_8px_rgba(15,30,60,0.35)]">
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 drop-shadow-[0_1px_2px_rgba(255,255,255,0.6)]">
               Dream up your world in a few clicks.
             </h1>
-            <p className="text-slate-800 max-w-2xl drop-shadow-[0_1px_4px_rgba(15,30,60,0.25)]">
+            <p className="text-slate-700 max-w-2xl">
               Pick a vibe, drop in a few details, and we'll spit out a clean
               prompt you can paste into any AI code editor — Lovable, Cursor,
               Claude, ChatGPT — to scaffold the whole thing.
