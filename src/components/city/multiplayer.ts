@@ -39,6 +39,7 @@ export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
   setName(name: string): void;
+  sendTimeMode(day: boolean): void;
   dispose(): void;
 }
 
