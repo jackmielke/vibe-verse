@@ -576,6 +576,11 @@ export function buildCardboardIsland(opts: {
     seat.position.y = -2.52;
     swingPivot.add(seat);
   }
+  // Marker that rides with the seat — child positioned just above it
+  // so a player parented/snapped here sits naturally on the plank.
+  const swingSeatMarker = new THREE.Object3D();
+  swingSeatMarker.position.y = -2.45;
+  swingPivot.add(swingSeatMarker);
   swing.add(swingPivot);
   group.add(swing);
 
