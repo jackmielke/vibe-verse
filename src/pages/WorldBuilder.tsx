@@ -2,13 +2,12 @@
  * WorldBuilder — guided form that turns a few choices into a paste-ready prompt
  * for any AI code editor (Cursor, Lovable, Claude, ChatGPT, etc.).
  *
- * Visual: glassmorphic cards over a dreamy background; aesthetics are picked
- * from a visual grid of generated reference images rather than a plain
- * dropdown.
+ * Visual: glassmorphic cards layered over a dreamy cloud background. Cards keep
+ * a consistent light-glass tint so the sky reads through but text stays legible.
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Copy, Sparkles, Check } from "lucide-react";
+import { ArrowLeft, Copy, Sparkles, Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -90,8 +89,24 @@ const SOUND_MOODS = [
   "Silent / minimal sfx only",
 ] as const;
 
+type Addon = { id: string; label: string; prompt: string };
+
+const ADDONS: Addon[] = [
+  { id: "day-night", label: "Day / night cycle", prompt: "A slow real-time day/night cycle that changes lighting and ambient sounds." },
+  { id: "multiplayer", label: "See other visitors", prompt: "Lightweight multiplayer presence so visitors see each other moving around in real time." },
+  { id: "npcs", label: "NPCs with dialogue", prompt: "Friendly NPCs scattered around with short clickable dialogue lines that match the world's tone." },
+  { id: "mini-game", label: "A small mini-game", prompt: "One bite-sized mini-game (60 seconds or less) tucked into the world with a visible high-score." },
+  { id: "collectibles", label: "Hidden collectibles", prompt: "5–10 hidden collectibles to discover, with a subtle counter in the corner of the HUD." },
+  { id: "photo-mode", label: "Photo mode", prompt: "A photo mode (press P) that hides the HUD and lets the player frame and download a screenshot." },
+  { id: "avatar", label: "Avatar customization", prompt: "A simple avatar customizer at spawn (color + one hat/accessory) so each visitor feels personal." },
+  { id: "weather", label: "Weather changes", prompt: "Occasional weather shifts (rain, fog, sparkles) that change the mood without blocking gameplay." },
+  { id: "vehicle", label: "A rideable thing", prompt: "Something fun the player can ride or pilot — a boat, glider, skateboard, hoverboard, whatever fits." },
+  { id: "secret-area", label: "A secret area", prompt: "One hidden room or off-the-map area that rewards exploration with a small surprise." },
+  { id: "music-player", label: "Diegetic music player", prompt: "A jukebox or radio object in the world that lets the player switch tracks." },
+  { id: "guestbook", label: "Visitor guestbook", prompt: "A guestbook object visitors can sign — short messages persist for future visitors to read." },
+];
+
 type LocationRow = { name: string; what: string };
-type InteractionRow = { name: string; what: string };
 
 export default function WorldBuilder() {
   // Identity
@@ -105,13 +120,9 @@ export default function WorldBuilder() {
   const [vibe, setVibe] = useState<string>("");
   const [palette, setPalette] = useState("");
 
-  // Locations / interactions
+  // Locations
   const [locations, setLocations] = useState<LocationRow[]>([
     { name: "", what: "" },
-    { name: "", what: "" },
-    { name: "", what: "" },
-  ]);
-  const [interactions, setInteractions] = useState<InteractionRow[]>([
     { name: "", what: "" },
     { name: "", what: "" },
   ]);
@@ -120,7 +131,17 @@ export default function WorldBuilder() {
   const [sound, setSound] = useState<string>("");
   const [ambient, setAmbient] = useState("");
 
+  // Optional add-ons (toggleable suggestions)
+  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set());
+
   const [copied, setCopied] = useState(false);
+
+  const toggleAddon = (id: string) =>
+    setSelectedAddons((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const finalAesthetic = useMemo(() => {
     if (aestheticId === "__other__") return aestheticOther.trim();
@@ -162,18 +183,6 @@ export default function WorldBuilder() {
       lines.push("");
     }
 
-    const liveInteractions = interactions.filter((i) => i.name.trim() || i.what.trim());
-    if (liveInteractions.length) {
-      lines.push("## Interactions");
-      lines.push("When the player walks up to one of these, trigger the described behavior:");
-      liveInteractions.forEach((it, i) => {
-        const name = it.name.trim() || `Interaction ${i + 1}`;
-        const what = it.what.trim();
-        lines.push(`- **${name}**${what ? `: ${what}` : ""}`);
-      });
-      lines.push("");
-    }
-
     if (sound || ambient.trim()) {
       lines.push("## Soundtrack & ambience");
       if (sound) lines.push(`- Music style: ${sound}`);
@@ -181,10 +190,17 @@ export default function WorldBuilder() {
       lines.push("");
     }
 
+    const liveAddons = ADDONS.filter((a) => selectedAddons.has(a.id));
+    if (liveAddons.length) {
+      lines.push("## Extra features to include");
+      liveAddons.forEach((a) => lines.push(`- ${a.prompt}`));
+      lines.push("");
+    }
+
     lines.push("## Requirements");
     lines.push("- First-person or third-person controls (WASD + mouse / touch joystick on mobile).");
     lines.push("- A clear spawn point with a short intro nudge so new visitors know what to do.");
-    lines.push("- Each location and interaction is reachable on foot within ~30 seconds of spawn.");
+    lines.push("- Every location is reachable on foot within ~30 seconds of spawn.");
     lines.push("- Use the aesthetic above consistently — no generic placeholder assets.");
     lines.push("- Keep performance smooth on mid-range mobile (target 60fps).");
     lines.push("");
@@ -193,7 +209,7 @@ export default function WorldBuilder() {
     );
 
     return lines.join("\n");
-  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, locations, interactions, sound, ambient]);
+  }, [worldName, tagline, backstory, finalAesthetic, vibe, palette, locations, sound, ambient, selectedAddons]);
 
   const handleCopy = async () => {
     try {
@@ -208,34 +224,37 @@ export default function WorldBuilder() {
 
   const updateLocation = (i: number, patch: Partial<LocationRow>) =>
     setLocations((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const updateInteraction = (i: number, patch: Partial<InteractionRow>) =>
-    setInteractions((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  // Shared style tokens for consistency across the page
+  const inputGlass =
+    "bg-white/25 border-white/40 backdrop-blur-md text-foreground placeholder:text-foreground/55";
 
   return (
     <div className="relative min-h-screen text-foreground overflow-x-hidden">
-      {/* Background image + dark gradient + blobs */}
+      {/* Background image + soft tint + blobs */}
       <div
         className="fixed inset-0 -z-20 bg-cover bg-center"
         style={{ backgroundImage: `url(${bgImage})` }}
         aria-hidden
       />
+      {/* Subtle warm-to-cool wash, never dark enough to hide the clouds */}
       <div
-        className="fixed inset-0 -z-10 bg-gradient-to-b from-transparent via-background/40 to-background/85"
+        className="fixed inset-0 -z-10 bg-gradient-to-b from-transparent via-sky-200/10 to-sky-900/25"
         aria-hidden
       />
       <div
-        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-20 bg-primary/40"
+        className="fixed -z-10 top-[-10%] left-[-10%] w-[40rem] h-[40rem] rounded-full blur-3xl opacity-25 bg-primary/40"
         aria-hidden
       />
       <div
-        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-20 bg-accent/40"
+        className="fixed -z-10 bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full blur-3xl opacity-25 bg-accent/40"
         aria-hidden
       />
 
       <div className="max-w-6xl mx-auto px-4 pt-6">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-foreground transition-colors rounded-full px-3 py-1.5 bg-background/40 backdrop-blur-md border border-white/10"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-foreground transition-colors rounded-full px-3 py-1.5 bg-white/25 backdrop-blur-md border border-white/40"
         >
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
@@ -243,15 +262,15 @@ export default function WorldBuilder() {
 
       <main className="max-w-6xl mx-auto px-4 pt-6 pb-10 grid lg:grid-cols-[1fr_minmax(0,440px)] gap-8">
         {/* ---------------- Form ---------------- */}
-        <div className="space-y-8">
+        <div className="space-y-6">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-background/50 backdrop-blur-md border border-white/15 text-foreground">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/25 backdrop-blur-md border border-white/40 text-foreground">
               <Sparkles className="w-3.5 h-3.5 text-primary" /> Guided world builder
             </div>
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight drop-shadow-[0_1px_8px_rgba(15,30,60,0.35)]">
               Dream up your world in a few clicks.
             </h1>
-            <p className="text-foreground/80 max-w-2xl">
+            <p className="text-foreground/90 max-w-2xl drop-shadow-[0_1px_4px_rgba(15,30,60,0.25)]">
               Pick a vibe, drop in a few details, and we'll spit out a clean
               prompt you can paste into any AI code editor — Lovable, Cursor,
               Claude, ChatGPT — to scaffold the whole thing.
@@ -268,7 +287,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setWorldName(e.target.value)}
                   placeholder="e.g. Neon Atoll"
                   maxLength={80}
-                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                  className={inputGlass}
                 />
               </Field>
               <Field label="One-line tagline (optional)">
@@ -277,7 +296,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setTagline(e.target.value)}
                   placeholder="e.g. A floating cafe where the moon never sets"
                   maxLength={160}
-                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                  className={inputGlass}
                 />
               </Field>
               <Field label="Short backstory (optional)">
@@ -287,7 +306,7 @@ export default function WorldBuilder() {
                   placeholder="A sentence or two about why this place exists and who lives here."
                   rows={3}
                   maxLength={800}
-                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                  className={inputGlass}
                 />
               </Field>
             </div>
@@ -311,7 +330,7 @@ export default function WorldBuilder() {
                     className={`group relative aspect-square rounded-xl overflow-hidden border transition-all text-left ${
                       active
                         ? "border-primary ring-2 ring-primary shadow-[0_0_30px_hsl(var(--primary)/0.5)] scale-[1.02]"
-                        : "border-white/15 hover:border-white/40 hover:scale-[1.02]"
+                        : "border-white/30 hover:border-white/60 hover:scale-[1.02]"
                     }`}
                   >
                     <img
@@ -340,7 +359,7 @@ export default function WorldBuilder() {
                 className={`aspect-square rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1 text-xs font-medium ${
                   aestheticId === "__other__"
                     ? "border-primary text-primary bg-primary/10"
-                    : "border-white/25 text-foreground/70 hover:border-white/50 hover:text-foreground"
+                    : "border-white/40 text-foreground/80 hover:border-white/70 hover:text-foreground"
                 }`}
               >
                 <Sparkles className="w-5 h-5" />
@@ -350,7 +369,7 @@ export default function WorldBuilder() {
 
             {aestheticId === "__other__" && (
               <Input
-                className="mt-4 bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                className={`mt-4 ${inputGlass}`}
                 value={aestheticOther}
                 onChange={(e) => setAestheticOther(e.target.value)}
                 placeholder="Describe the style in your own words"
@@ -361,7 +380,7 @@ export default function WorldBuilder() {
             <div className="grid sm:grid-cols-2 gap-3 mt-5">
               <Field label="Overall vibe">
                 <Select value={vibe} onValueChange={setVibe}>
-                  <SelectTrigger className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40">
+                  <SelectTrigger className={inputGlass}>
                     <SelectValue placeholder="Pick a vibe…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -379,7 +398,7 @@ export default function WorldBuilder() {
                   onChange={(e) => setPalette(e.target.value)}
                   placeholder="e.g. teal + magenta sunset"
                   maxLength={160}
-                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                  className={inputGlass}
                 />
               </Field>
             </div>
@@ -400,14 +419,14 @@ export default function WorldBuilder() {
                     onChange={(e) => updateLocation(i, { name: e.target.value })}
                     placeholder={`Location ${i + 1} name`}
                     maxLength={60}
-                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                    className={inputGlass}
                   />
                   <Input
                     value={loc.what}
                     onChange={(e) => updateLocation(i, { what: e.target.value })}
                     placeholder="What's there? (one sentence)"
                     maxLength={200}
-                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                    className={inputGlass}
                   />
                 </div>
               ))}
@@ -417,6 +436,7 @@ export default function WorldBuilder() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setLocations((rows) => [...rows, { name: "", what: "" }])}
+                  className="hover:bg-white/20"
                 >
                   + Add another location
                 </Button>
@@ -424,52 +444,13 @@ export default function WorldBuilder() {
             </div>
           </GlassCard>
 
-          {/* Interactions */}
-          <GlassCard>
-            <SectionHeader
-              step={4}
-              title="Interactions"
-              subtitle="Things that happen when you walk up — mini-games, NPCs, shops, swings…"
-            />
-            <div className="space-y-2">
-              {interactions.map((it, i) => (
-                <div key={i} className="grid sm:grid-cols-[180px_1fr] gap-2">
-                  <Input
-                    value={it.name}
-                    onChange={(e) => updateInteraction(i, { name: e.target.value })}
-                    placeholder={`Interaction ${i + 1}`}
-                    maxLength={60}
-                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
-                  />
-                  <Input
-                    value={it.what}
-                    onChange={(e) => updateInteraction(i, { what: e.target.value })}
-                    placeholder="What happens? (e.g. opens a snack shop with gem currency)"
-                    maxLength={240}
-                    className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
-                  />
-                </div>
-              ))}
-              {interactions.length < 6 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setInteractions((rows) => [...rows, { name: "", what: "" }])}
-                >
-                  + Add another interaction
-                </Button>
-              )}
-            </div>
-          </GlassCard>
-
           {/* Sound */}
           <GlassCard>
-            <SectionHeader step={5} title="Sound & music" subtitle="What does it sound like?" />
+            <SectionHeader step={4} title="Sound & music" subtitle="What does it sound like?" />
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Music style">
                 <Select value={sound} onValueChange={setSound}>
-                  <SelectTrigger className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40">
+                  <SelectTrigger className={inputGlass}>
                     <SelectValue placeholder="Pick a soundtrack vibe…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -487,18 +468,56 @@ export default function WorldBuilder() {
                   onChange={(e) => setAmbient(e.target.value)}
                   placeholder="e.g. waves, distant chatter"
                   maxLength={160}
-                  className="bg-background/50 border-white/15 backdrop-blur text-foreground placeholder:text-foreground/40"
+                  className={inputGlass}
                 />
               </Field>
             </div>
+          </GlassCard>
+
+          {/* Optional add-ons — tap-to-add suggestions */}
+          <GlassCard>
+            <SectionHeader
+              step={5}
+              title="Add a little extra"
+              subtitle="Optional ideas — tap any that sound fun and we'll bake them into the prompt."
+            />
+            <div className="flex flex-wrap gap-2">
+              {ADDONS.map((a) => {
+                const active = selectedAddons.has(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleAddon(a.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-all ${
+                      active
+                        ? "bg-primary text-primary-foreground border-primary shadow-[0_0_20px_hsl(var(--primary)/0.4)]"
+                        : "bg-white/25 text-foreground border-white/40 hover:bg-white/35 hover:border-white/60"
+                    }`}
+                  >
+                    {active ? (
+                      <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedAddons.size > 0 && (
+              <p className="mt-3 text-xs text-foreground/80">
+                {selectedAddons.size} extra{selectedAddons.size === 1 ? "" : "s"} added to the prompt.
+              </p>
+            )}
           </GlassCard>
         </div>
 
         {/* ---------------- Prompt preview ---------------- */}
         <aside className="lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-2xl p-4 shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
+          <div className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-4 shadow-[0_8px_40px_rgba(15,30,60,0.25)]">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold inline-flex items-center gap-2">
+              <div className="text-sm font-semibold inline-flex items-center gap-2 text-foreground">
                 <Sparkles className="w-4 h-4 text-primary" /> Your prompt
               </div>
               <Button size="sm" onClick={handleCopy} className="gap-1.5">
@@ -513,10 +532,10 @@ export default function WorldBuilder() {
                 )}
               </Button>
             </div>
-            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-background/40 p-3 border border-white/10">
+            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-white/30 p-3 border border-white/30 text-foreground">
 {prompt}
             </pre>
-            <p className="mt-3 text-[11px] text-foreground/70">
+            <p className="mt-3 text-[11px] text-foreground/80">
               Paste into Lovable, Cursor, Claude, ChatGPT, or any AI code
               editor. It updates live as you edit the form.
             </p>
@@ -529,7 +548,7 @@ export default function WorldBuilder() {
 
 function GlassCard({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-white/15 bg-background/55 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(0,0,0,0.35)]">
+    <section className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(15,30,60,0.2)]">
       {children}
     </section>
   );
@@ -551,7 +570,7 @@ function SectionHeader({
       </div>
       <div>
         <h2 className="text-lg font-semibold leading-tight text-foreground">{title}</h2>
-        {subtitle && <p className="text-sm text-foreground/75 mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-sm text-foreground/80 mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -560,8 +579,7 @@ function SectionHeader({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[11px] uppercase tracking-wider text-foreground/75 font-medium">
-
+      <Label className="text-[11px] uppercase tracking-wider text-foreground/80 font-semibold">
         {label}
       </Label>
       {children}
