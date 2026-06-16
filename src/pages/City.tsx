@@ -416,6 +416,8 @@ export default function City() {
     nearMoon: false,
     nearZip: false,
     riding: false,
+    nearSwing: false,
+    swinging: false,
     nearCow: false,
   });
   const spentGemsRef = useRef(0);
