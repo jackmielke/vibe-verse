@@ -19,6 +19,7 @@ import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
 import HubV2 from "./pages/HubV2.tsx";
 import SubmitWorld from "./pages/SubmitWorld.tsx";
+import WorldBuilder from "./pages/WorldBuilder.tsx";
 import AdminWorlds from "./pages/AdminWorlds.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
@@ -67,6 +68,8 @@ const App = () => (
           <Route path="/hub-old" element={<Hub />} />
           {/* Community-submitted worlds. */}
           <Route path="/submit-world" element={<SubmitWorld />} />
+          {/* Guided form that generates a paste-ready prompt for any AI editor. */}
+          <Route path="/world-builder" element={<WorldBuilder />} />
           <Route path="/admin/worlds" element={<AdminWorlds />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
