@@ -7,7 +7,8 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Copy, Sparkles, Check, Plus } from "lucide-react";
+import { ArrowLeft, Copy, Sparkles, Check, Plus, Github, PartyPopper, ExternalLink } from "lucide-react";
+import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
