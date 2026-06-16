@@ -470,6 +470,7 @@ export default function City() {
   >({ vibey: [], jerry: [] });
   const vibeyExciteRef = useRef<(() => void) | null>(null);
   const zipGrabRef = useRef<(() => void) | null>(null);
+  const swingGrabRef = useRef<(() => void) | null>(null);
   const mooRef = useRef<(() => void) | null>(null);
 
   // Voice mode: a live ElevenLabs conversation with Vibey.
