@@ -1376,7 +1376,15 @@ export default function City() {
         : running ? FLY_RUN_SPEED : FLY_SPEED;
 
       const pos = player.position;
-      if (riding) {
+      if (swinging) {
+        // The swing seat owns your position. Jetpack (Space) hops you off.
+        const seatWorld = new THREE.Vector3();
+        island.swingSeat.getWorldPosition(seatWorld);
+        pos.copy(seatWorld);
+        vel.set(0, 0, 0);
+        onGround = false;
+        if (thrusting) swingGrabRef.current?.();
+      } else if (riding) {
         // The cable owns your position: glide the loop around the
         // island. Firing the jetpack (or the Let go button) releases
         // you with the cable's momentum.
