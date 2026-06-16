@@ -852,6 +852,37 @@ export default function City() {
     const modelHolder = new THREE.Group(); // takes the flight tilt
     player.add(modelHolder);
 
+    // ---- Local emote bubble (sprite parented to the player) ---------
+    let localEmote: { sprite: THREE.Sprite; t: number; life: number; bob: number } | null = null;
+    const playLocalEmote = (emote: EmoteName) => {
+      if (localEmote) {
+        player.remove(localEmote.sprite);
+        localEmote.sprite.material.dispose();
+        (localEmote.sprite.material.map as THREE.Texture | null)?.dispose();
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = 192;
+      canvas.height = 192;
+      const ctx = canvas.getContext("2d")!;
+      ctx.font = "140px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji'";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0,0,0,0.55)";
+      ctx.shadowBlur = 14;
+      ctx.fillText(EMOTE_EMOJI[emote] ?? "✨", 96, 104);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }),
+      );
+      sprite.scale.set(1.2, 1.2, 1);
+      sprite.position.set(0, 3.0, 0);
+      sprite.renderOrder = 999;
+      player.add(sprite);
+      localEmote = { sprite, t: 0, life: 2.6, bob: Math.random() * Math.PI * 2 };
+    };
+    playLocalEmoteRef.current = playLocalEmote;
+
     let mixer: THREE.AnimationMixer | null = null;
     const actions = new Map<string, THREE.AnimationAction>();
     let activeAction: THREE.AnimationAction | null = null;
