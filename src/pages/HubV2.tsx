@@ -29,8 +29,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import VibeLogin from "@/components/VibeLogin";
-import { loadSession } from "@/lib/vibe-wallet";
+import { toast } from "sonner";
 
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
 import alienModelUrl from "@/assets/glb/alien.glb";
@@ -139,13 +138,47 @@ export default function HubV2() {
   const focusedRef = useRef(0);
   useEffect(() => { focusedRef.current = focusedIdx; }, [focusedIdx]);
 
-  // Vibe-login gate for "+ add your world".
+  // Supabase auth gate for "+ add your world".
   const [addOpen, setAddOpen] = useState(false);
-  const handleAddWorld = () => {
-    if (loadSession()) {
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const handleAddWorld = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (data.user) {
       navigate("/submit-world");
     } else {
       setAddOpen(true);
+    }
+  };
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) return;
+    setAuthBusy(true);
+    try {
+      if (authMode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: { emailRedirectTo: `${window.location.origin}/` },
+        });
+        if (error) { toast.error(error.message); return; }
+        toast.success("Account created! Check your email if confirmation is required.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+        if (error) { toast.error(error.message); return; }
+      }
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        setAddOpen(false);
+        navigate("/submit-world");
+      }
+    } finally {
+      setAuthBusy(false);
     }
   };
 
@@ -990,26 +1023,53 @@ export default function HubV2() {
         </button>
       </div>
 
-      {/* Vibe-login gate dialog for world submissions. */}
+      {/* Supabase auth gate dialog for world submissions. */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Connect your vibe wallet</DialogTitle>
+            <DialogTitle>{authMode === "signin" ? "Sign in to submit" : "Create an account"}</DialogTitle>
             <DialogDescription>
-              Submitting a world is gated by a vibe login so we can credit you as the creator. Connect your wallet to continue.
+              Submitting a world is gated by a quick login so we can credit you as the creator.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col items-center gap-3 py-2">
-            <VibeLogin
-              variant="card"
-              onLinked={() => {
-                setAddOpen(false);
-                navigate("/submit-world");
-              }}
+          <form onSubmit={handleAuthSubmit} className="flex flex-col gap-3 py-2">
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              className="w-full rounded-xl bg-background/40 border border-border/60 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
             />
-          </div>
+            <input
+              type="password"
+              required
+              minLength={6}
+              autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+              placeholder="Password (min 6 characters)"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              className="w-full rounded-xl bg-background/40 border border-border/60 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+            />
+            <button
+              type="submit"
+              disabled={authBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary text-primary-foreground font-heading font-bold text-sm px-6 py-3 shadow-[0_0_30px_hsl(var(--primary)/0.5)] hover:shadow-[0_0_40px_hsl(var(--primary)/0.8)] transition-all disabled:opacity-50"
+            >
+              {authBusy ? "…" : authMode === "signin" ? "Sign in" : "Sign up"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
+              className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              {authMode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+            </button>
+          </form>
         </DialogContent>
       </Dialog>
+
 
       {/* Character picker — pick the avatar standing on the platform.
           The choice is mirrored to localStorage so /lobby and /city
