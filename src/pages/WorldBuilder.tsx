@@ -114,6 +114,7 @@ export default function WorldBuilder() {
   const [worldName, setWorldName] = useState("");
   const [tagline, setTagline] = useState("");
   const [backstory, setBackstory] = useState("");
+  const [showBackstory, setShowBackstory] = useState(false);
 
   // Aesthetic + vibe
   const [aestheticId, setAestheticId] = useState<string>("");
