@@ -114,6 +114,7 @@ export default function WorldBuilder() {
   const [worldName, setWorldName] = useState("");
   const [tagline, setTagline] = useState("");
   const [backstory, setBackstory] = useState("");
+  const [showBackstory, setShowBackstory] = useState(false);
 
   // Aesthetic + vibe
   const [aestheticId, setAestheticId] = useState<string>("");
@@ -278,45 +279,11 @@ export default function WorldBuilder() {
             </p>
           </div>
 
-          {/* Identity */}
-          <GlassCard>
-            <SectionHeader step={1} title="Identity" subtitle="What's this place called?" />
-            <div className="space-y-3">
-              <Field label="World name">
-                <Input
-                  value={worldName}
-                  onChange={(e) => setWorldName(e.target.value)}
-                  placeholder="e.g. Neon Atoll"
-                  maxLength={80}
-                  className={inputGlass}
-                />
-              </Field>
-              <Field label="One-line tagline (optional)">
-                <Input
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  placeholder="e.g. A floating cafe where the moon never sets"
-                  maxLength={160}
-                  className={inputGlass}
-                />
-              </Field>
-              <Field label="Short backstory (optional)">
-                <Textarea
-                  value={backstory}
-                  onChange={(e) => setBackstory(e.target.value)}
-                  placeholder="A sentence or two about why this place exists and who lives here."
-                  rows={3}
-                  maxLength={800}
-                  className={inputGlass}
-                />
-              </Field>
-            </div>
-          </GlassCard>
 
           {/* Aesthetic — VISUAL */}
           <GlassCard>
             <SectionHeader
-              step={2}
+              step={1}
               title="Aesthetic"
               subtitle="Pick the visual style your world should match."
             />
@@ -408,7 +375,7 @@ export default function WorldBuilder() {
           {/* Locations */}
           <GlassCard>
             <SectionHeader
-              step={3}
+              step={2}
               title="Key locations"
               subtitle="3–5 named spots people can visit. Skip rows you don't need."
             />
@@ -447,7 +414,7 @@ export default function WorldBuilder() {
 
           {/* Sound */}
           <GlassCard>
-            <SectionHeader step={4} title="Sound & music" subtitle="What does it sound like?" />
+            <SectionHeader step={3} title="Sound & music" subtitle="What does it sound like?" />
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Music style">
                 <Select value={sound} onValueChange={setSound}>
@@ -478,7 +445,7 @@ export default function WorldBuilder() {
           {/* Optional add-ons — tap-to-add suggestions */}
           <GlassCard>
             <SectionHeader
-              step={5}
+              step={4}
               title="Add a little extra"
               subtitle="Optional ideas — tap any that sound fun and we'll bake them into the prompt."
             />
@@ -511,6 +478,58 @@ export default function WorldBuilder() {
                 {selectedAddons.size} extra{selectedAddons.size === 1 ? "" : "s"} added to the prompt.
               </p>
             )}
+          </GlassCard>
+
+          {/* Identity — name it now that you can picture it */}
+          <GlassCard>
+            <SectionHeader
+              step={5}
+              title="Name your world"
+              subtitle="Now that you've imagined it, what's this place called?"
+            />
+            <div className="space-y-3">
+              <Field label="World name">
+                <Input
+                  value={worldName}
+                  onChange={(e) => setWorldName(e.target.value)}
+                  placeholder="e.g. Neon Atoll"
+                  maxLength={80}
+                  className={inputGlass}
+                />
+              </Field>
+              <Field label="One-line tagline (optional)">
+                <Input
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="e.g. A floating cafe where the moon never sets"
+                  maxLength={160}
+                  className={inputGlass}
+                />
+              </Field>
+              {showBackstory ? (
+                <Field label="Short backstory">
+                  <Textarea
+                    value={backstory}
+                    onChange={(e) => setBackstory(e.target.value)}
+                    placeholder="A sentence or two about why this place exists and who lives here."
+                    rows={3}
+                    maxLength={800}
+                    className={inputGlass}
+                    autoFocus
+                  />
+                </Field>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowBackstory(true)}
+                  className="hover:bg-white/30 text-slate-700"
+                >
+                  + Add a backstory (optional)
+                </Button>
+              )}
+            </div>
           </GlassCard>
 
           {/* Submit — paste public GitHub repo link */}
