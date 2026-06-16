@@ -407,6 +407,7 @@ export default function City() {
     jet: false,
     stars: 0,
     totalStars: 0,
+    gems: 0,
     runMs: null as number | null,
     bestMs: null as number | null,
     nearIsland: false,
@@ -415,6 +416,8 @@ export default function City() {
     riding: false,
     nearCow: false,
   });
+  const spentGemsRef = useRef(0);
+  const [purchases, setPurchases] = useState<Record<string, number>>({});
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
@@ -1196,6 +1199,7 @@ export default function City() {
         jet: keys.has("Space") && enteredRef.current,
         stars: collectedCount,
         totalStars: collectibles.length,
+        gems: Math.max(0, collectedCount - spentGemsRef.current),
         runMs:
           runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
         bestMs,
@@ -1897,7 +1901,7 @@ export default function City() {
         </div>
       )}
       {snackOpen && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,22rem)] flex flex-col gap-3 animate-fade-in">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,24rem)] flex flex-col gap-3 animate-fade-in">
           <div className="flex items-center justify-between">
             <span className="font-heading font-semibold tracking-wider text-primary text-xs">
               SNACKFE · open late
@@ -1910,31 +1914,60 @@ export default function City() {
               ✕
             </button>
           </div>
+          <div className="flex items-center justify-between rounded-lg bg-foreground/5 px-3 py-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">your gems</span>
+            <span className="text-base font-heading font-semibold text-amber-300">
+              ✦ {hud.gems}
+            </span>
+          </div>
           <div className="grid grid-cols-1 gap-1.5">
             {[
-              { emoji: "🍦", name: "Mint coin float", msg: "An icy mint float in a tall glass. +1 vibe." },
-              { emoji: "🥐", name: "Sunrise croissant", msg: "Flaky, buttery, still warm. The wind on the island smells like butter for a minute." },
-              { emoji: "☕", name: "Edge espresso", msg: "Tiny cup, big punch. Your jetpack feels lighter." },
-              { emoji: "🍡", name: "Neon mochi skewer", msg: "Three little glowing mochi on a stick. Glowing." },
-            ].map((item) => (
-              <button
-                key={item.name}
-                onClick={() => setSnackMsg(`${item.emoji} ${item.msg}`)}
-                className="flex items-center gap-3 rounded-xl bg-foreground/5 hover:bg-primary/15 transition-colors px-3 py-2 text-left text-sm"
-              >
-                <span className="text-xl">{item.emoji}</span>
-                <span className="text-foreground/90">{item.name}</span>
-              </button>
-            ))}
+              { emoji: "🍓", name: "Strawberry", cost: 1, msg: "Sweet and bright. A tiny burst of summer." },
+              { emoji: "🍦", name: "Mint coin float", cost: 2, msg: "An icy mint float in a tall glass. +1 vibe." },
+              { emoji: "🥐", name: "Sunrise croissant", cost: 3, msg: "Flaky, buttery, still warm." },
+              { emoji: "☕", name: "Edge espresso", cost: 3, msg: "Tiny cup, big punch. Your jetpack feels lighter." },
+              { emoji: "🍡", name: "Neon mochi skewer", cost: 4, msg: "Three little glowing mochi on a stick." },
+              { emoji: "🍉", name: "Watermelon slice", cost: 5, msg: "Cold, crunchy, dripping. The good kind of mess." },
+            ].map((item) => {
+              const owned = purchases[item.name] ?? 0;
+              const canAfford = hud.gems >= item.cost;
+              return (
+                <button
+                  key={item.name}
+                  disabled={!canAfford}
+                  onClick={() => {
+                    spentGemsRef.current += item.cost;
+                    setPurchases((p) => ({ ...p, [item.name]: (p[item.name] ?? 0) + 1 }));
+                    setSnackMsg(`${item.emoji} ${item.msg}`);
+                  }}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                    canAfford
+                      ? "bg-foreground/5 hover:bg-primary/15"
+                      : "bg-foreground/5 opacity-40 cursor-not-allowed"
+                  }`}
+                >
+                  <span className="text-xl">{item.emoji}</span>
+                  <span className="flex-1 text-foreground/90">
+                    {item.name}
+                    {owned > 0 && (
+                      <span className="ml-2 text-[10px] text-muted-foreground">×{owned}</span>
+                    )}
+                  </span>
+                  <span className="text-xs font-mono text-amber-300">✦ {item.cost}</span>
+                </button>
+              );
+            })}
           </div>
           {snackMsg && (
             <div className="text-xs text-primary bg-primary/10 rounded-lg px-3 py-2 animate-fade-in">
               {snackMsg}
             </div>
           )}
-          <div className="text-[10px] text-muted-foreground text-center">
-            more snacks coming soon — built by the Edge Island residents
-          </div>
+          {hud.gems === 0 && (
+            <div className="text-[10px] text-muted-foreground text-center">
+              collect ✦ gems around Edge Island and the city to spend here
+            </div>
+          )}
         </div>
       )}
       {npcTarget !== null && (
