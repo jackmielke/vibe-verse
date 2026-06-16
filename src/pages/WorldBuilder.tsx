@@ -188,7 +188,7 @@ export default function WorldBuilder() {
     lines.push("## Requirements");
     lines.push("- First-person or third-person controls (WASD + mouse / touch joystick on mobile).");
     lines.push("- A clear spawn point with a short intro nudge so new visitors know what to do.");
-    lines.push("- Every location is reachable on foot within ~30 seconds of spawn.");
+    lines.push("- The world is fully explorable on foot within a couple of minutes of spawn.");
     lines.push("- Use the aesthetic above consistently — no generic placeholder assets.");
     lines.push("- Keep performance smooth on mid-range mobile (target 60fps).");
     lines.push("");
