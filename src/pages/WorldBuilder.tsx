@@ -529,7 +529,7 @@ export default function WorldBuilder() {
 
 function GlassCard({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(0,0,0,0.25)]">
+    <section className="rounded-2xl border border-white/15 bg-background/55 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_8px_40px_rgba(0,0,0,0.35)]">
       {children}
     </section>
   );
@@ -546,12 +546,12 @@ function SectionHeader({
 }) {
   return (
     <div className="mb-4 flex items-start gap-3">
-      <div className="shrink-0 w-7 h-7 rounded-full bg-primary/20 ring-1 ring-primary/60 text-primary text-xs font-bold inline-flex items-center justify-center">
+      <div className="shrink-0 w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold inline-flex items-center justify-center shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
         {step}
       </div>
       <div>
-        <h2 className="text-lg font-semibold leading-tight">{title}</h2>
-        {subtitle && <p className="text-sm text-foreground/70 mt-0.5">{subtitle}</p>}
+        <h2 className="text-lg font-semibold leading-tight text-foreground">{title}</h2>
+        {subtitle && <p className="text-sm text-foreground/75 mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -560,7 +560,8 @@ function SectionHeader({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[11px] uppercase tracking-wider text-foreground/60">
+      <Label className="text-[11px] uppercase tracking-wider text-foreground/75 font-medium">
+
         {label}
       </Label>
       {children}
