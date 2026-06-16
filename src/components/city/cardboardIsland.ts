@@ -583,6 +583,7 @@ export function buildCardboardIsland(opts: {
   swingPivot.add(swingSeatMarker);
   swing.add(swingPivot);
   group.add(swing);
+  let currentSwingAngle = 0;
 
   // ---- Jerry's Plaza ----------------------------------------------------
   // A real cardboard plaza built AROUND Jerry — modeled after the kids'
