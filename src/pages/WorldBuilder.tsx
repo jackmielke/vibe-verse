@@ -228,10 +228,10 @@ export default function WorldBuilder() {
 
   // Shared style tokens for consistency across the page
   const inputGlass =
-    "bg-white/25 border-white/40 backdrop-blur-md text-foreground placeholder:text-foreground/55";
+    "bg-white/25 border-white/40 backdrop-blur-md text-slate-900 placeholder:text-slate-500";
 
   return (
-    <div className="relative min-h-screen text-foreground overflow-x-hidden">
+    <div className="relative min-h-screen text-slate-900 overflow-x-hidden">
       {/* Background image + soft tint + blobs */}
       <div
         className="fixed inset-0 -z-20 bg-cover bg-center"
@@ -255,7 +255,7 @@ export default function WorldBuilder() {
       <div className="max-w-6xl mx-auto px-4 pt-6">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-foreground transition-colors rounded-full px-3 py-1.5 bg-white/25 backdrop-blur-md border border-white/40"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-800 hover:text-slate-900 transition-colors rounded-full px-3 py-1.5 bg-white/25 backdrop-blur-md border border-white/40"
         >
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
@@ -265,13 +265,13 @@ export default function WorldBuilder() {
         {/* ---------------- Form ---------------- */}
         <div className="space-y-6">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/25 backdrop-blur-md border border-white/40 text-foreground">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/25 backdrop-blur-md border border-white/40 text-slate-900">
               <Sparkles className="w-3.5 h-3.5 text-primary" /> Guided world builder
             </div>
             <h1 className="text-4xl sm:text-5xl font-bold tracking-tight drop-shadow-[0_1px_8px_rgba(15,30,60,0.35)]">
               Dream up your world in a few clicks.
             </h1>
-            <p className="text-foreground/90 max-w-2xl drop-shadow-[0_1px_4px_rgba(15,30,60,0.25)]">
+            <p className="text-slate-800 max-w-2xl drop-shadow-[0_1px_4px_rgba(15,30,60,0.25)]">
               Pick a vibe, drop in a few details, and we'll spit out a clean
               prompt you can paste into any AI code editor — Lovable, Cursor,
               Claude, ChatGPT — to scaffold the whole thing.
@@ -360,7 +360,7 @@ export default function WorldBuilder() {
                 className={`aspect-square rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1 text-xs font-medium ${
                   aestheticId === "__other__"
                     ? "border-primary text-primary bg-primary/10"
-                    : "border-white/40 text-foreground/80 hover:border-white/70 hover:text-foreground"
+                    : "border-white/40 text-slate-700 hover:border-white/70 hover:text-slate-900"
                 }`}
               >
                 <Sparkles className="w-5 h-5" />
@@ -493,7 +493,7 @@ export default function WorldBuilder() {
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-all ${
                       active
                         ? "bg-primary text-primary-foreground border-primary shadow-[0_0_20px_hsl(var(--primary)/0.4)]"
-                        : "bg-white/25 text-foreground border-white/40 hover:bg-white/35 hover:border-white/60"
+                        : "bg-white/25 text-slate-900 border-white/40 hover:bg-white/35 hover:border-white/60"
                     }`}
                   >
                     {active ? (
@@ -507,7 +507,7 @@ export default function WorldBuilder() {
               })}
             </div>
             {selectedAddons.size > 0 && (
-              <p className="mt-3 text-xs text-foreground/80">
+              <p className="mt-3 text-xs text-slate-700">
                 {selectedAddons.size} extra{selectedAddons.size === 1 ? "" : "s"} added to the prompt.
               </p>
             )}
@@ -521,7 +521,7 @@ export default function WorldBuilder() {
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-2xl border border-white/40 bg-white/25 backdrop-blur-2xl p-4 shadow-[0_8px_40px_rgba(15,30,60,0.25)]">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold inline-flex items-center gap-2 text-foreground">
+              <div className="text-sm font-semibold inline-flex items-center gap-2 text-slate-900">
                 <Sparkles className="w-4 h-4 text-primary" /> Your prompt
               </div>
               <Button size="sm" onClick={handleCopy} className="gap-1.5">
@@ -536,10 +536,10 @@ export default function WorldBuilder() {
                 )}
               </Button>
             </div>
-            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-white/30 p-3 border border-white/30 text-foreground">
+            <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-[60vh] overflow-auto rounded-lg bg-white/30 p-3 border border-white/30 text-slate-900">
 {prompt}
             </pre>
-            <p className="mt-3 text-[11px] text-foreground/80">
+            <p className="mt-3 text-[11px] text-slate-700">
               Paste into Lovable, Cursor, Claude, ChatGPT, or any AI code
               editor. It updates live as you edit the form.
             </p>
@@ -573,8 +573,8 @@ function SectionHeader({
         {step}
       </div>
       <div>
-        <h2 className="text-lg font-semibold leading-tight text-foreground">{title}</h2>
-        {subtitle && <p className="text-sm text-foreground/80 mt-0.5">{subtitle}</p>}
+        <h2 className="text-lg font-semibold leading-tight text-slate-900">{title}</h2>
+        {subtitle && <p className="text-sm text-slate-700 mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -583,7 +583,7 @@ function SectionHeader({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[11px] uppercase tracking-wider text-foreground/80 font-semibold">
+      <Label className="text-[11px] uppercase tracking-wider text-slate-700 font-semibold">
         {label}
       </Label>
       {children}
@@ -648,12 +648,12 @@ function SubmitCard() {
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground mb-3 shadow-[0_0_30px_hsl(var(--primary)/0.6)]">
           <PartyPopper className="w-7 h-7" />
         </div>
-        <h2 className="text-2xl font-bold text-foreground">Your world is in the queue.</h2>
-        <p className="text-foreground/85 mt-2 max-w-md mx-auto">
+        <h2 className="text-2xl font-bold text-slate-900">Your world is in the queue.</h2>
+        <p className="text-slate-700 mt-2 max-w-md mx-auto">
           We'll be adding this to the <span className="text-primary font-semibold">VibeVerse</span> soon.
           Keep an eye on your inbox if you signed in — we'll ping you when it goes live.
         </p>
-        <div className="mt-4 inline-flex items-center gap-2 text-xs text-foreground/70 bg-white/30 border border-white/40 rounded-full px-3 py-1.5">
+        <div className="mt-4 inline-flex items-center gap-2 text-xs text-slate-600 bg-white/30 border border-white/40 rounded-full px-3 py-1.5">
           <Github className="w-3.5 h-3.5" />
           <span className="truncate max-w-[280px]">{repoUrl}</span>
         </div>
@@ -682,14 +682,14 @@ function SubmitCard() {
           6
         </div>
         <div>
-          <h2 className="text-lg font-semibold leading-tight text-foreground">Ship it to the VibeVerse</h2>
-          <p className="text-sm text-foreground/80 mt-0.5">
+          <h2 className="text-lg font-semibold leading-tight text-slate-900">Ship it to the VibeVerse</h2>
+          <p className="text-sm text-slate-700 mt-0.5">
             Built your world? Drop in the public GitHub link and we'll add it to the map.
           </p>
         </div>
       </div>
 
-      <ol className="space-y-2 text-sm text-foreground/85 mb-4">
+      <ol className="space-y-2 text-sm text-slate-700 mb-4">
         <li className="flex gap-2">
           <span className="text-primary font-bold">1.</span>
           <span>
@@ -723,7 +723,7 @@ function SubmitCard() {
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="relative">
-          <Github className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/60 pointer-events-none" />
+          <Github className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
           <Input
             value={repoUrl}
             onChange={(e) => {
@@ -731,7 +731,7 @@ function SubmitCard() {
               if (error) setError(null);
             }}
             placeholder="https://github.com/your-name/your-world"
-            className="pl-9 bg-white/25 border-white/40 backdrop-blur-md text-foreground placeholder:text-foreground/55"
+            className="pl-9 bg-white/25 border-white/40 backdrop-blur-md text-slate-900 placeholder:text-slate-500"
             aria-label="Public GitHub repository URL"
           />
         </div>
