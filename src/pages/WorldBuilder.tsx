@@ -282,7 +282,7 @@ export default function WorldBuilder() {
           {/* Aesthetic — VISUAL */}
           <GlassCard>
             <SectionHeader
-              step={2}
+              step={1}
               title="Aesthetic"
               subtitle="Pick the visual style your world should match."
             />
@@ -374,7 +374,7 @@ export default function WorldBuilder() {
           {/* Locations */}
           <GlassCard>
             <SectionHeader
-              step={3}
+              step={2}
               title="Key locations"
               subtitle="3–5 named spots people can visit. Skip rows you don't need."
             />
@@ -413,7 +413,7 @@ export default function WorldBuilder() {
 
           {/* Sound */}
           <GlassCard>
-            <SectionHeader step={4} title="Sound & music" subtitle="What does it sound like?" />
+            <SectionHeader step={3} title="Sound & music" subtitle="What does it sound like?" />
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Music style">
                 <Select value={sound} onValueChange={setSound}>
@@ -444,7 +444,7 @@ export default function WorldBuilder() {
           {/* Optional add-ons — tap-to-add suggestions */}
           <GlassCard>
             <SectionHeader
-              step={5}
+              step={4}
               title="Add a little extra"
               subtitle="Optional ideas — tap any that sound fun and we'll bake them into the prompt."
             />
