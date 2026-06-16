@@ -1997,6 +1997,17 @@ export default function City() {
               {hud.riding ? "🪂 Let go" : "🧗 Grab the zipline"}
             </button>
           )}
+          {(hud.nearSwing || hud.swinging) && (
+            <button
+              onClick={(e) => {
+                swingGrabRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary"
+            >
+              {hud.swinging ? "🤸 Hop off (Space)" : "🪢 Jump on the swing"}
+            </button>
+          )}
           {hud.nearCow && (
             <button
               onClick={(e) => {
