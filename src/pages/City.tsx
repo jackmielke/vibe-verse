@@ -567,6 +567,14 @@ export default function City() {
       0.1,
       3500,
     );
+    // VR dolly: in immersive sessions, three.js controls the camera's
+    // local transform from the headset pose, so to MOVE the viewpoint
+    // we translate the dolly (the camera's parent). Outside XR the
+    // dolly just sits at the origin and the chase-cam code below
+    // drives the camera world position directly.
+    const dolly = new THREE.Group();
+    scene.add(dolly);
+    dolly.add(camera);
 
     const ambient = new THREE.AmbientLight(0x8899bb, 0.5);
     scene.add(ambient);
