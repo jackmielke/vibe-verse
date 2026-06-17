@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import VibeAvatar from "@/components/vibe-auth/VibeAvatar";
+import VibeLogo from "@/components/vibe-auth/VibeLogo";
 import VibeAuthDialog from "@/components/vibe-auth/VibeAuthDialog";
 import {
   DropdownMenu,
