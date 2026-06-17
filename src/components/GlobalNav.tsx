@@ -170,6 +170,12 @@ export default function GlobalNav() {
       <div className="pointer-events-auto">
         <WorldPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
       </div>
+
+      {/* Vibe identity — sits in its own pill to the right so it stays
+          out of the way on mobile but is always one tap from any world. */}
+      <div className="fixed top-3 right-3 z-40 pointer-events-auto">
+        <LogInWithVibe />
+      </div>
     </nav>
   );
 }
