@@ -40,6 +40,7 @@ const MORE: Destination[] = [
   { to: "/lobby", emoji: "🏎️", label: "Lobby" },
   { to: "/museum", emoji: "🖼️", label: "Museum" },
   { to: "/ninja", emoji: "🍉", label: "Fruit Ninja" },
+  { to: "/agario", emoji: "🦠", label: "Agario" },
   { to: "/vibe", emoji: "🪙", label: "VIBE" },
   { to: "/about", emoji: "✨", label: "About" },
 ];

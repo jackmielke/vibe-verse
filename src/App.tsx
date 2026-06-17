@@ -16,6 +16,7 @@ import Bestiary from "./pages/Bestiary.tsx";
 import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
+import Agario from "./pages/Agario.tsx";
 import Hub from "./pages/Hub.tsx";
 import HubV2 from "./pages/HubV2.tsx";
 import SubmitWorld from "./pages/SubmitWorld.tsx";
@@ -62,6 +63,8 @@ const App = () => (
           <Route path="/vibe" element={<VibeHub />} />
           {/* Fruit Ninja. */}
           <Route path="/ninja" element={<FruitNinja />} />
+          {/* Agario — single-player take on the classic cell-eating arcade game. */}
+          <Route path="/agario" element={<Agario />} />
           {/* /hub still works as an alias for the lobby. */}
           <Route path="/hub" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
