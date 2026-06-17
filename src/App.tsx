@@ -23,6 +23,7 @@ import WorldBuilder from "./pages/WorldBuilder.tsx";
 import EdmTown from "./pages/EdmTown.tsx";
 import AdminWorlds from "./pages/AdminWorlds.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
+import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 
 const queryClient = new QueryClient();
 
@@ -32,10 +33,11 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        {/* Global top-center destination nav — visible on every route
-            so the user always has one-click access to all the worlds. */}
-        <GlobalNav />
-        <Routes>
+        <VibeIdentityProvider>
+          {/* Global top-center destination nav — visible on every route
+              so the user always has one-click access to all the worlds. */}
+          <GlobalNav />
+          <Routes>
           {/* Hub is now the landing page — the VibeVerse lobby. */}
           <Route path="/" element={<HubV2 />} />
           {/* Old Edge Esmeralda splash, kept reachable for those who want it. */}
