@@ -438,6 +438,10 @@ export default function City() {
   const mpRef = useRef<Multiplayer | null>(null);
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
+  // Mobile: the whole world-controls chip row collapses behind a single
+  // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
+  // inline like before.
+  const [hudMenuOpen, setHudMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const chatOpenRef = useRef(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -1872,7 +1876,25 @@ export default function City() {
           the jetpack instead of re-clicking them. */}
       {entered && (
         <div className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
-          <div className="flex gap-2">
+          {/* Mobile-only trigger — collapses the whole chip row. */}
+          <button
+            onClick={(e) => {
+              setHudMenuOpen((v) => !v);
+              e.currentTarget.blur();
+            }}
+            className="md:hidden relative glass-panel rounded-full w-10 h-10 flex items-center justify-center text-base hover:bg-muted/50 transition-colors"
+            title="World controls"
+            aria-expanded={hudMenuOpen}
+            aria-label="World controls"
+          >
+            <span className="leading-none">{hudMenuOpen ? "✕" : "⋯"}</span>
+            {!hudMenuOpen && chatUnread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-1 rounded-full bg-amber-300 text-[10px] font-bold text-black flex items-center justify-center">
+                {chatUnread}
+              </span>
+            )}
+          </button>
+          <div className={`${hudMenuOpen ? "flex" : "hidden"} md:flex flex-wrap justify-end gap-2 max-w-[88vw]`}>
             <button
               onClick={(e) => {
                 const next = !muted;
