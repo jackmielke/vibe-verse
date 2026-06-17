@@ -438,6 +438,10 @@ export default function City() {
   const mpRef = useRef<Multiplayer | null>(null);
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
+  // Mobile: the whole world-controls chip row collapses behind a single
+  // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
+  // inline like before.
+  const [hudMenuOpen, setHudMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const chatOpenRef = useRef(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
