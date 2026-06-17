@@ -1359,9 +1359,59 @@ export default function City() {
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
+      // VR input: read the strongest thumbstick from any connected
+      // controller and feed it through the same touch refs that the
+      // on-screen joystick uses. Any controller button (trigger, grip,
+      // A/B/X/Y) doubles as the jetpack — same gesture as touch.
+      const xrPresenting = renderer.xr.isPresenting;
+      if (xrPresenting) {
+        const session = renderer.xr.getSession();
+        let mx = 0, my = 0, jet = false;
+        if (session) {
+          for (const src of session.inputSources) {
+            const gp = src.gamepad;
+            if (gp) {
+              const a0 = gp.axes[0] ?? 0;
+              const a1 = gp.axes[1] ?? 0;
+              const a2 = gp.axes[2] ?? 0;
+              const a3 = gp.axes[3] ?? 0;
+              const useHigh = Math.hypot(a2, a3) >= Math.hypot(a0, a1);
+              const rx = useHigh ? a2 : a0;
+              const ry = useHigh ? a3 : a1;
+              if (Math.hypot(rx, ry) > Math.hypot(mx, my)) { mx = rx; my = ry; }
+              for (const b of gp.buttons) if (b?.pressed) jet = true;
+            }
+          }
+        }
+        if (Math.hypot(mx, my) < 0.15) { mx = 0; my = 0; }
+        touchMoveRef.current.x = mx;
+        touchMoveRef.current.y = my;
+        touchJetRef.current = jet;
+        // No "Enter Vibe City" overlay click happens in VR — entering
+        // the immersive session IS the consent gesture.
+        if (!enteredRef.current) {
+          enteredRef.current = true;
+          setEntered(true);
+          if (!soundsRef.current) soundsRef.current = createCitySounds();
+          soundsRef.current?.setMuted(muted);
+        }
+      }
+
       // Input → camera-relative move intent (keyboard or thumbstick).
       const fwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
       const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      // In VR "forward" is wherever the headset is looking, not the
+      // 2D chase-cam yaw — feels much more natural with a real head.
+      if (xrPresenting) {
+        const headDir = new THREE.Vector3();
+        camera.getWorldDirection(headDir);
+        headDir.y = 0;
+        if (headDir.lengthSq() > 1e-6) {
+          headDir.normalize();
+          fwd.copy(headDir);
+          right.set(-fwd.z, 0, fwd.x);
+        }
+      }
       const tm = touchMoveRef.current;
       const touchLen = Math.hypot(tm.x, tm.y);
       const intent = new THREE.Vector3();
