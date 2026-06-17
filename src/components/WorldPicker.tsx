@@ -32,7 +32,16 @@ interface WorldCard {
   blurb: string;
 }
 
+import edmTownArt from "@/assets/worlds/edm-town.jpg";
+
 const WORLDS: WorldCard[] = [
+  {
+    to: "/edm-town",
+    emoji: "🪩",
+    name: "EDM Town",
+    art: edmTownArt,
+    blurb: "Low-poly neon festival town — lasers, a dancing crowd, photo mode, and a guestbook.",
+  },
   {
     to: "/space",
     emoji: "🌌",

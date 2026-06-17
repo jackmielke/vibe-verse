@@ -20,6 +20,7 @@ import Hub from "./pages/Hub.tsx";
 import HubV2 from "./pages/HubV2.tsx";
 import SubmitWorld from "./pages/SubmitWorld.tsx";
 import WorldBuilder from "./pages/WorldBuilder.tsx";
+import EdmTown from "./pages/EdmTown.tsx";
 import AdminWorlds from "./pages/AdminWorlds.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 
@@ -62,6 +63,8 @@ const App = () => (
           <Route path="/vibe" element={<VibeHub />} />
           {/* Fruit Ninja. */}
           <Route path="/ninja" element={<FruitNinja />} />
+          {/* EDM Town — low-poly party world with photo mode + guestbook. */}
+          <Route path="/edm-town" element={<EdmTown />} />
           {/* /hub still works as an alias for the lobby. */}
           <Route path="/hub" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
