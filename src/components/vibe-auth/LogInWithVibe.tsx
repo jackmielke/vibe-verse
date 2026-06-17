@@ -35,17 +35,18 @@ export default function LogInWithVibe({
     return <div className="h-8 w-8 rounded-full bg-white/5 animate-pulse" />;
   }
 
-  // Signed OUT — minimal icon-only profile button.
+  // Signed OUT — minimal Vibe-logo button.
   if (!id.session) {
     return (
       <>
         <button
           onClick={() => setOpen(true)}
-          className="h-9 w-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 flex items-center justify-center transition"
+          className="h-9 w-9 rounded-full glass-panel border border-border/60 flex items-center justify-center text-primary hover:text-primary hover:bg-primary/10 transition"
+          style={{ backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}
           title="Vibe Profile — sign in"
           aria-label="Vibe Profile"
         >
-          <User2 className="h-4 w-4 text-white/70" />
+          <VibeLogo size={20} />
         </button>
         <VibeAuthDialog open={open} onOpenChange={setOpen} />
       </>
