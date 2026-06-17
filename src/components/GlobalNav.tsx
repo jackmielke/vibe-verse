@@ -34,6 +34,7 @@ const PRIMARY: Destination[] = [
 ];
 
 const MORE: Destination[] = [
+  { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
   { to: "/hub", emoji: "🪐", label: "Hub" },
   { to: "/hub-old", emoji: "🌠", label: "Hub Old" },
   { to: "/", emoji: "🗺️", label: "Village" },
