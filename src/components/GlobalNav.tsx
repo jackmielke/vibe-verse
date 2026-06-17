@@ -16,6 +16,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import WorldPicker from "@/components/WorldPicker";
+import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
 
 interface Destination {
   to: string;
