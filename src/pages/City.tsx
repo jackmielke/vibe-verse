@@ -1650,21 +1650,51 @@ export default function City() {
       // Pulse the landing pads and plaza ring together.
       padMat.opacity = 0.55 + Math.sin(now * 0.0024) * 0.3;
 
-      // Chase camera.
-      const eye = new THREE.Vector3(
-        pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
-        pos.y + Math.sin(camPitch) * camDist + 1.4,
-        pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
-      );
-      // Keep the camera out of the street floor.
-      eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
-      camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
-      camera.lookAt(pos.x, pos.y + 1.5, pos.z);
+      if (xrPresenting) {
+        // Third-person VR: park the dolly behind/above the avatar
+        // along the headset's current look direction so the player
+        // sees themselves walking around (much more comfortable than
+        // a tiny FPS view, and matches the screen experience).
+        const headDir = new THREE.Vector3();
+        camera.getWorldDirection(headDir);
+        headDir.y = 0;
+        if (headDir.lengthSq() > 1e-6) headDir.normalize();
+        else headDir.set(0, 0, -1);
+        const back = 3.2;
+        const up = 1.8;
+        // Compensate for the headset's own offset inside the dolly so
+        // the resulting camera world position is exactly back+up from
+        // the avatar (not back+up + headset translation).
+        const camWorld = new THREE.Vector3();
+        camera.getWorldPosition(camWorld);
+        const headLocal = camWorld.clone().sub(dolly.position);
+        const desired = new THREE.Vector3(
+          pos.x - headDir.x * back - headLocal.x,
+          pos.y + up - headLocal.y,
+          pos.z - headDir.z * back - headLocal.z,
+        );
+        dolly.position.lerp(desired, 1 - Math.pow(0.0005, dt));
+        // Keep fog comfy in VR (no zoom-out gesture available).
+        const fogNow = scene.fog as THREE.Fog;
+        fogNow.near = baseFogNear;
+        fogNow.far = baseFogFar;
+      } else {
+        // Chase camera.
+        const eye = new THREE.Vector3(
+          pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+          pos.y + Math.sin(camPitch) * camDist + 1.4,
+          pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
+        );
+        // Keep the camera out of the street floor.
+        eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
+        camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
+        camera.lookAt(pos.x, pos.y + 1.5, pos.z);
 
-      // Zoomed way out, the fog backs off so the diorama stays visible.
-      const fogNow = scene.fog as THREE.Fog;
-      fogNow.near = Math.max(baseFogNear, camDist * 1.2);
-      fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
+        // Zoomed way out, the fog backs off so the diorama stays visible.
+        const fogNow = scene.fog as THREE.Fog;
+        fogNow.near = Math.max(baseFogNear, camDist * 1.2);
+        fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
+      }
 
       renderer.render(scene, camera);
     };
