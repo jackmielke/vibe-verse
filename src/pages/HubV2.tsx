@@ -81,7 +81,11 @@ interface World {
   model?: "floating-island";
 }
 
+import edmTownArt from "@/assets/worlds/edm-town.jpg";
+
 const OFFICIAL_WORLDS: World[] = [
+  { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
+    blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
   { to: "/city?spawn=island", name: "Edge Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
   { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",
