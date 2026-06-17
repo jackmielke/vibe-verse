@@ -567,6 +567,14 @@ export default function City() {
       0.1,
       3500,
     );
+    // VR dolly: in immersive sessions, three.js controls the camera's
+    // local transform from the headset pose, so to MOVE the viewpoint
+    // we translate the dolly (the camera's parent). Outside XR the
+    // dolly just sits at the origin and the chase-cam code below
+    // drives the camera world position directly.
+    const dolly = new THREE.Group();
+    scene.add(dolly);
+    dolly.add(camera);
 
     const ambient = new THREE.AmbientLight(0x8899bb, 0.5);
     scene.add(ambient);
@@ -1351,9 +1359,59 @@ export default function City() {
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
+      // VR input: read the strongest thumbstick from any connected
+      // controller and feed it through the same touch refs that the
+      // on-screen joystick uses. Any controller button (trigger, grip,
+      // A/B/X/Y) doubles as the jetpack — same gesture as touch.
+      const xrPresenting = renderer.xr.isPresenting;
+      if (xrPresenting) {
+        const session = renderer.xr.getSession();
+        let mx = 0, my = 0, jet = false;
+        if (session) {
+          for (const src of session.inputSources) {
+            const gp = src.gamepad;
+            if (gp) {
+              const a0 = gp.axes[0] ?? 0;
+              const a1 = gp.axes[1] ?? 0;
+              const a2 = gp.axes[2] ?? 0;
+              const a3 = gp.axes[3] ?? 0;
+              const useHigh = Math.hypot(a2, a3) >= Math.hypot(a0, a1);
+              const rx = useHigh ? a2 : a0;
+              const ry = useHigh ? a3 : a1;
+              if (Math.hypot(rx, ry) > Math.hypot(mx, my)) { mx = rx; my = ry; }
+              for (const b of gp.buttons) if (b?.pressed) jet = true;
+            }
+          }
+        }
+        if (Math.hypot(mx, my) < 0.15) { mx = 0; my = 0; }
+        touchMoveRef.current.x = mx;
+        touchMoveRef.current.y = my;
+        touchJetRef.current = jet;
+        // No "Enter Vibe City" overlay click happens in VR — entering
+        // the immersive session IS the consent gesture.
+        if (!enteredRef.current) {
+          enteredRef.current = true;
+          setEntered(true);
+          if (!soundsRef.current) soundsRef.current = createCitySounds();
+          soundsRef.current?.setMuted(muted);
+        }
+      }
+
       // Input → camera-relative move intent (keyboard or thumbstick).
       const fwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
       const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      // In VR "forward" is wherever the headset is looking, not the
+      // 2D chase-cam yaw — feels much more natural with a real head.
+      if (xrPresenting) {
+        const headDir = new THREE.Vector3();
+        camera.getWorldDirection(headDir);
+        headDir.y = 0;
+        if (headDir.lengthSq() > 1e-6) {
+          headDir.normalize();
+          fwd.copy(headDir);
+          right.set(-fwd.z, 0, fwd.x);
+        }
+      }
       const tm = touchMoveRef.current;
       const touchLen = Math.hypot(tm.x, tm.y);
       const intent = new THREE.Vector3();
@@ -1592,21 +1650,51 @@ export default function City() {
       // Pulse the landing pads and plaza ring together.
       padMat.opacity = 0.55 + Math.sin(now * 0.0024) * 0.3;
 
-      // Chase camera.
-      const eye = new THREE.Vector3(
-        pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
-        pos.y + Math.sin(camPitch) * camDist + 1.4,
-        pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
-      );
-      // Keep the camera out of the street floor.
-      eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
-      camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
-      camera.lookAt(pos.x, pos.y + 1.5, pos.z);
+      if (xrPresenting) {
+        // Third-person VR: park the dolly behind/above the avatar
+        // along the headset's current look direction so the player
+        // sees themselves walking around (much more comfortable than
+        // a tiny FPS view, and matches the screen experience).
+        const headDir = new THREE.Vector3();
+        camera.getWorldDirection(headDir);
+        headDir.y = 0;
+        if (headDir.lengthSq() > 1e-6) headDir.normalize();
+        else headDir.set(0, 0, -1);
+        const back = 3.2;
+        const up = 1.8;
+        // Compensate for the headset's own offset inside the dolly so
+        // the resulting camera world position is exactly back+up from
+        // the avatar (not back+up + headset translation).
+        const camWorld = new THREE.Vector3();
+        camera.getWorldPosition(camWorld);
+        const headLocal = camWorld.clone().sub(dolly.position);
+        const desired = new THREE.Vector3(
+          pos.x - headDir.x * back - headLocal.x,
+          pos.y + up - headLocal.y,
+          pos.z - headDir.z * back - headLocal.z,
+        );
+        dolly.position.lerp(desired, 1 - Math.pow(0.0005, dt));
+        // Keep fog comfy in VR (no zoom-out gesture available).
+        const fogNow = scene.fog as THREE.Fog;
+        fogNow.near = baseFogNear;
+        fogNow.far = baseFogFar;
+      } else {
+        // Chase camera.
+        const eye = new THREE.Vector3(
+          pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+          pos.y + Math.sin(camPitch) * camDist + 1.4,
+          pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
+        );
+        // Keep the camera out of the street floor.
+        eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
+        camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
+        camera.lookAt(pos.x, pos.y + 1.5, pos.z);
 
-      // Zoomed way out, the fog backs off so the diorama stays visible.
-      const fogNow = scene.fog as THREE.Fog;
-      fogNow.near = Math.max(baseFogNear, camDist * 1.2);
-      fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
+        // Zoomed way out, the fog backs off so the diorama stays visible.
+        const fogNow = scene.fog as THREE.Fog;
+        fogNow.near = Math.max(baseFogNear, camDist * 1.2);
+        fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
+      }
 
       renderer.render(scene, camera);
     };
