@@ -34,48 +34,42 @@ export default function LogInWithVibe({
     return <div className="h-8 w-8 rounded-full bg-white/5 animate-pulse" />;
   }
 
-  // Signed OUT — show "Log in with Vibe" + a small avatar preview that
-  // reflects the guest's chosen color, so the UI already feels personal.
+  // Signed OUT — minimal icon-only profile button.
   if (!id.session) {
     return (
       <>
         <button
           onClick={() => setOpen(true)}
-          className="group flex items-center gap-2 rounded-full pl-1 pr-3 py-1 bg-gradient-to-r from-fuchsia-500/80 to-cyan-400/80 hover:from-fuchsia-500 hover:to-cyan-400 text-black font-bold text-xs shadow-lg shadow-fuchsia-500/30 transition"
-          title="Log in with Vibe"
+          className="h-9 w-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 flex items-center justify-center transition"
+          title="Vibe Profile — sign in"
+          aria-label="Vibe Profile"
         >
-          <span className="w-7 h-7 rounded-full bg-white/30 flex items-center justify-center overflow-hidden">
-            <VibeAvatar colorId={id.colorId} size={26} />
-          </span>
-          {!compact && <span>Log in with Vibe</span>}
+          <User2 className="h-4 w-4 text-white/70" />
         </button>
         <VibeAuthDialog open={open} onOpenChange={setOpen} />
       </>
     );
   }
 
-  // Signed IN — avatar dropdown.
+  // Signed IN — avatar-only button → dropdown.
   const display = id.profile?.name || id.profile?.username || id.user?.email || "You";
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="flex items-center gap-2 rounded-full pl-1 pr-2.5 py-0.5 bg-white/5 hover:bg-white/10 border border-white/15 transition"
+            className="h-9 w-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 flex items-center justify-center overflow-hidden transition"
             title={display}
+            aria-label="Vibe Profile"
           >
-            <span className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center overflow-hidden">
-              <VibeAvatar colorId={id.colorId} size={26} />
-            </span>
-            {!compact && (
-              <span className="text-[11px] font-semibold max-w-[7rem] truncate">{display}</span>
-            )}
+            <VibeAvatar colorId={id.colorId} size={30} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 bg-zinc-950 border-white/15 text-white">
+        <DropdownMenuContent align="end" className="w-60 bg-zinc-950 border-white/15 text-white">
           <DropdownMenuLabel className="flex items-center gap-2">
-            <VibeAvatar colorId={id.colorId} size={28} />
+            <VibeAvatar colorId={id.colorId} size={32} />
             <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-widest text-white/40">Vibe Profile</div>
               <div className="text-xs font-semibold truncate">{display}</div>
               <div className="text-[10px] text-white/50 truncate">{id.user?.email}</div>
             </div>
@@ -85,7 +79,7 @@ export default function LogInWithVibe({
             <Palette className="mr-2 h-4 w-4" /> Change vibe color
           </DropdownMenuItem>
           <DropdownMenuItem disabled className="opacity-50 cursor-not-allowed">
-            <User2 className="mr-2 h-4 w-4" /> Edit profile · soon
+            <User2 className="mr-2 h-4 w-4" /> Edit Vibe Profile · soon
           </DropdownMenuItem>
           <DropdownMenuSeparator className="bg-white/10" />
           <DropdownMenuItem
