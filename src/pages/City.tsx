@@ -55,6 +55,7 @@ import {
   saveEquippedFlame,
   saveEquippedJetpack,
 } from "@/components/city/cosmetics";
+import { setActiveCharacter } from "@/hooks/use-active-character";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
@@ -2374,7 +2375,9 @@ export default function City() {
                   onClick={(e) => {
                     setCharName(c.name);
                     charRef.current = c.name;
-                    localStorage.setItem("city.character", c.name);
+                    // Broadcast so the nav emoji + /profile + other
+                    // worlds all reflect the same pick.
+                    setActiveCharacter(c.name);
                     loadPilotRef.current?.(c.name);
                     e.currentTarget.blur();
                   }}

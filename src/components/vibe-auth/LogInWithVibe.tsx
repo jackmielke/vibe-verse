@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
+import { useActiveCharacter } from "@/hooks/use-active-character";
 import VibeAvatar from "@/components/vibe-auth/VibeAvatar";
 import VibeAuthDialog from "@/components/vibe-auth/VibeAuthDialog";
 import {
@@ -28,6 +29,7 @@ export default function LogInWithVibe({
   compact?: boolean;
 }) {
   const id = useVibeIdentity();
+  const { character } = useActiveCharacter();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -60,26 +62,39 @@ export default function LogInWithVibe({
     );
   }
 
-  // Signed IN — avatar-only button → dropdown.
+  // Signed IN — character-emoji button (tinted by chosen vibe color)
+  //   → dropdown.
   const display = id.profile?.name || id.profile?.username || id.user?.email || "You";
+  // Top-right shows the EMOJI of the active character, ringed by the
+  // user's vibe color — no penguin.
+  const ringStyle = { boxShadow: `0 0 0 1.5px ${character.accent}80` };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className={`${iconBtn} hover:bg-white/10`}
-          title={display}
+          className={`${iconBtn} bg-white/5 hover:bg-white/10 text-[15px] leading-none`}
+          style={ringStyle}
+          title={`${display} · ${character.label}`}
           aria-label="Vibe Profile"
         >
-          <VibeAvatar colorId={id.colorId} size={26} />
+          <span aria-hidden>{character.emoji}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 bg-zinc-950 border-white/15 text-white">
         <DropdownMenuLabel className="flex items-center gap-2">
-          <VibeAvatar colorId={id.colorId} size={32} />
+          <span
+            className="h-8 w-8 rounded-full flex items-center justify-center text-lg leading-none bg-white/5"
+            style={ringStyle}
+            aria-hidden
+          >
+            {character.emoji}
+          </span>
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-widest text-white/40">Vibe Profile</div>
             <div className="text-xs font-semibold truncate">{display}</div>
-            <div className="text-[10px] text-white/50 truncate">{id.user?.email}</div>
+            <div className="text-[10px] text-white/50 truncate">
+              Playing as {character.label}
+            </div>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-white/10" />

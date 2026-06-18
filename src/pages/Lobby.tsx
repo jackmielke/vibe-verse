@@ -7,6 +7,7 @@ import VibeCoinPanel from "@/components/VibeCoinPanel";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import { enableVR } from "@/lib/webxr";
+import { setActiveCharacter } from "@/hooks/use-active-character";
 
 // Two characters live outside the Quaternius pack folder.
 import alienUrl from "@/assets/glb/alien.glb";
@@ -392,7 +393,7 @@ export default function Lobby() {
   const selectedVehicle = VEHICLES.find((v) => v.id === vehicleId)!;
 
   function launch() {
-    localStorage.setItem("lobby.character", charId);
+    setActiveCharacter(charId);
     localStorage.setItem("lobby.vehicle", vehicleId);
     navigate("/space");
   }

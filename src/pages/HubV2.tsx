@@ -82,6 +82,7 @@ interface World {
 }
 
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
+import { setActiveCharacter } from "@/hooks/use-active-character";
 
 const OFFICIAL_WORLDS: World[] = [
   // Edge Island leads the carousel — first-time visitors land on the
@@ -229,7 +230,7 @@ export default function HubV2() {
     return localStorage.getItem("lobby.character") ?? "vibey";
   });
   useEffect(() => {
-    localStorage.setItem("lobby.character", charId);
+    setActiveCharacter(charId);
   }, [charId]);
   // Re-load the character model whenever the pick changes (after mount).
   const didMountRef = useRef(false);
