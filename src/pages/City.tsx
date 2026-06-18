@@ -1670,8 +1670,17 @@ export default function City() {
         onGround = false;
         if (thrusting) riding = false;
       } else {
-      // Horizontal velocity eases toward intent; lighter control mid-air.
-      const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
+      // Horizontal velocity eases toward intent. In VR we use a much
+      // gentler accel/decel curve so starts and stops don't jolt the
+      // headset — the top speed is still the same, you just ramp into
+      // it. Separate ease-in vs. ease-out lets stops feel deliberate
+      // rather than sudden (which is the main VR nausea trigger).
+      const accelerating = intent.lengthSq() > 0;
+      const groundEase = xrPresenting
+        ? (accelerating ? 0.35 : 0.2)   // VR: ~0.6s to top speed, ~1.2s to stop
+        : (accelerating ? 0.02 : 0.05); // Desktop: snappy but not instant
+      const airEase = xrPresenting ? 0.6 : 0.2;
+      const k = 1 - Math.pow(onGround ? groundEase : airEase, dt);
       vel.x += (intent.x * targetSpeed - vel.x) * k;
       vel.z += (intent.z * targetSpeed - vel.z) * k;
 
