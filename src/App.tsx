@@ -22,6 +22,7 @@ import SubmitWorld from "./pages/SubmitWorld.tsx";
 import WorldBuilder from "./pages/WorldBuilder.tsx";
 import EdmTown from "./pages/EdmTown.tsx";
 import AdminWorlds from "./pages/AdminWorlds.tsx";
+import AgentLobby from "./pages/AgentLobby.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 
@@ -76,6 +77,9 @@ const App = () => (
           {/* Guided form that generates a paste-ready prompt for any AI editor. */}
           <Route path="/world-builder" element={<WorldBuilder />} />
           <Route path="/admin/worlds" element={<AdminWorlds />} />
+          {/* Agent Lobby — an always-on room agents join over HTTP and live in. */}
+          <Route path="/world" element={<AgentLobby />} />
+          <Route path="/agent-lobby" element={<AgentLobby />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
