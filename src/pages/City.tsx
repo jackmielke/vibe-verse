@@ -47,6 +47,12 @@ import {
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
 import { startVibeyVoice, type VibeyVoiceSession } from "@/lib/vibeyVoice";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  HAT_CATALOG,
+  FLAME_CATALOG,
+  saveEquippedHat,
+  saveEquippedFlame,
+} from "@/components/city/cosmetics";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
