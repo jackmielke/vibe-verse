@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import VibeLogo from "@/components/vibe-auth/VibeLogo";
+import VibeArc from "@/components/VibeArc";
 
 interface Props {
   open: boolean;
