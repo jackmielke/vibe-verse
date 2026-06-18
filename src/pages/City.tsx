@@ -1482,10 +1482,15 @@ export default function City() {
       onGround = false;
     };
     // /city?spawn=island drops visitors straight onto the island lawn.
+    // Camera starts in FRONT of the avatar (camYaw = 0) so the very first
+    // frame shows the character's face, not the back of their head — the
+    // chase-cam re-orients to behind as soon as the player drags or moves.
     islandSpawnRef.current = () => {
       player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
       vel.set(0, 0, 0);
       onGround = false;
+      camYaw = 0;
+      camPitch = 0.18;
     };
     // /city?spawn=moon drops visitors onto the moon's landing pad.
     moonSpawnRef.current = () => {

@@ -164,18 +164,15 @@ export default function GlobalNav() {
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            <button
-              onClick={() => {
-                setPickerOpen(true);
-                setMoreOpen(false);
-              }}
+            <Link
+              to="/"
               className={chipClass(location.pathname === "/")}
-              title="See all worlds"
-              aria-haspopup="dialog"
+              title="World selector"
+              aria-current={location.pathname === "/" ? "page" : undefined}
             >
               <span className="text-sm leading-none">🌐</span>
               <span className={labelClass}>Worlds</span>
-            </button>
+            </Link>
 
             {visible.map((d) => {
               const active = isActive(d);

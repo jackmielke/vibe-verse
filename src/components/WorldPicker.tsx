@@ -10,6 +10,7 @@
  * Re-capture a card's art when its world changes enough to feel stale.
  */
 import { createPortal } from "react-dom";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import villageArt from "@/assets/edge-app-icon-bg.png";
@@ -137,7 +138,16 @@ export default function WorldPicker({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [query, setQuery] = useState("");
+  useEffect(() => { if (!open) setQuery(""); }, [open]);
   const here = (w: WorldCard) => w.to.split("?")[0] === location.pathname && !w.to.includes("?");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return WORLDS;
+    return WORLDS.filter(
+      (w) => w.name.toLowerCase().includes(q) || w.blurb.toLowerCase().includes(q)
+    );
+  }, [query]);
 
   return createPortal(
     <AnimatePresence>
@@ -162,8 +172,24 @@ export default function WorldPicker({
               </p>
             </motion.div>
 
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="w-full max-w-md"
+            >
+              <input
+                type="search"
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search worlds…"
+                className="w-full glass-panel rounded-full border border-border/60 px-4 py-2 text-sm bg-background/40 focus:outline-none focus:border-primary/60 placeholder:text-muted-foreground/70"
+              />
+            </motion.div>
+
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full">
-              {WORLDS.map((w, i) => (
+              {filtered.map((w, i) => (
                 <motion.button
                   key={w.to}
                   initial={{ opacity: 0, y: 14 }}
