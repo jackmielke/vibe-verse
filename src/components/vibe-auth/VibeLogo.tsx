@@ -1,14 +1,18 @@
 /**
- * VibeLogo — the official Vibe smiley mark: two lightning-bolt eyes
- * and a smile that curls up into an arrow on the right.
- * Inherits color via `currentColor` so it tints with text-* classes.
+ * VibeLogo — the official Vibe smiley mark.
+ *
+ * Two lightning-bolt eyes (small left, big right) over a curved smile
+ * whose right tip flicks upward into an arrowhead. Inherits color via
+ * `currentColor` so it tints with any text-* class.
  */
 export default function VibeLogo({
   size = 20,
   className = "",
+  strokeWidth = 7,
 }: {
   size?: number;
   className?: string;
+  strokeWidth?: number;
 }) {
   return (
     <svg
@@ -19,21 +23,37 @@ export default function VibeLogo({
       className={className}
       aria-hidden="true"
     >
-      {/* Small lightning eye */}
+      {/* Small lightning eye (left) — stroked outline, like the reference */}
       <path
-        d="M30 28 L24 46 L31 46 L27 60 L40 40 L33 40 L37 28 Z"
-        fill="currentColor"
-      />
-      {/* Big lightning eye */}
-      <path
-        d="M62 18 L52 46 L62 46 L56 66 L78 38 L68 38 L74 18 Z"
-        fill="currentColor"
-      />
-      {/* Smile with arrow tip on the right */}
-      <path
-        d="M22 62 Q50 92 78 70 L74 66 M78 70 L72 74"
+        d="M32 30 L24 50 L33 50 L29 64 L42 44 L33 44 L37 30 Z"
         stroke="currentColor"
-        strokeWidth="7"
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        fill="none"
+      />
+      {/* Big lightning eye (right) */}
+      <path
+        d="M66 16 L52 48 L63 48 L57 70 L82 38 L70 38 L76 16 Z"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        fill="none"
+      />
+      {/* Smile curving up into an arrow tip on the right */}
+      <path
+        d="M18 66 Q50 96 80 72"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path
+        d="M72 68 L80 72 L76 80"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
