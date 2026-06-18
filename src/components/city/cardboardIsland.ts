@@ -592,8 +592,8 @@ export function buildCardboardIsland(opts: {
   // hand-painted reference: green-painted base, white cross paths, a blue
   // lily pond, planters of vines, benches, lanterns, and a JERRY'S PLAZA
   // archway you walk through to enter.
-  const PLAZA_CX = 2;
-  const PLAZA_CZ = 22;
+  const PLAZA_CX = 0;
+  const PLAZA_CZ = 0;
   const PLAZA_R = 11; // plaza disk radius
 
   const plazaGroup = new THREE.Group();
