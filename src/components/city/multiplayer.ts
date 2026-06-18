@@ -65,10 +65,12 @@ interface Ghost {
   char: string;
   label: string;
   emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
+  chat?: { sprite: THREE.Sprite; t: number; life: number };
 }
 
 const SEND_INTERVAL_MS = 125;
 const EMOTE_LIFE = 2.6;
+const CHAT_BUBBLE_LIFE = 6.0;
 
 function makeEmoteSprite(emoji: string): THREE.Sprite {
   const canvas = document.createElement("canvas");
@@ -90,6 +92,100 @@ function makeEmoteSprite(emoji: string): THREE.Sprite {
   sprite.renderOrder = 999;
   return sprite;
 }
+
+/**
+ * Club-Penguin style speech bubble parented to a character. White rounded
+ * background, dark text, tiny tail at the bottom. Auto-wraps to multiple
+ * lines and grows the canvas to fit.
+ */
+export function makeChatBubbleSprite(text: string): THREE.Sprite {
+  const clean = text.slice(0, 140);
+  const pad = 28;
+  const lineH = 44;
+  const fontPx = 34;
+  const maxTextWidth = 520;
+
+  const measure = document.createElement("canvas").getContext("2d")!;
+  measure.font = `600 ${fontPx}px system-ui, -apple-system, 'Segoe UI', sans-serif`;
+  const words = clean.split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const test = cur ? `${cur} ${w}` : w;
+    if (measure.measureText(test).width > maxTextWidth && cur) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = test;
+    }
+    if (lines.length >= 4) break;
+  }
+  if (cur && lines.length < 4) lines.push(cur);
+  if (lines.length === 4 && cur && lines[3] !== cur) {
+    let last = lines[3];
+    while (measure.measureText(last + "…").width > maxTextWidth && last.length > 0) {
+      last = last.slice(0, -1);
+    }
+    lines[3] = last + "…";
+  }
+
+  const textW = Math.min(
+    maxTextWidth,
+    Math.max(...lines.map((l) => measure.measureText(l).width)),
+  );
+  const w = Math.ceil(textW + pad * 2);
+  const tail = 22;
+  const h = Math.ceil(lines.length * lineH + pad * 2 + tail);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(64, w);
+  canvas.height = Math.max(64, h);
+  const ctx = canvas.getContext("2d")!;
+
+  const r = 26;
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = "rgba(255,255,255,0.97)";
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(w - r, 0);
+  ctx.quadraticCurveTo(w, 0, w, r);
+  ctx.lineTo(w, h - tail - r);
+  ctx.quadraticCurveTo(w, h - tail, w - r, h - tail);
+  ctx.lineTo(w / 2 + 16, h - tail);
+  ctx.lineTo(w / 2, h - 2);
+  ctx.lineTo(w / 2 - 16, h - tail);
+  ctx.lineTo(r, h - tail);
+  ctx.quadraticCurveTo(0, h - tail, 0, h - tail - r);
+  ctx.lineTo(0, r);
+  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.fillStyle = "#0f172a";
+  ctx.font = `600 ${fontPx}px system-ui, -apple-system, 'Segoe UI', sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], w / 2, pad + lineH / 2 + i * lineH);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }),
+  );
+  const baseW = 3.4;
+  sprite.scale.set(baseW, (baseW * h) / w, 1);
+  sprite.renderOrder = 1000;
+  return sprite;
+}
+
+export const CHAT_BUBBLE_DURATION = CHAT_BUBBLE_LIFE;
 
 
 function makeLabelSprite(name: string): THREE.Sprite {
@@ -221,6 +317,21 @@ export function createMultiplayer(opts: {
     g.emote = { sprite, t: 0, life: EMOTE_LIFE, bob: Math.random() * Math.PI * 2 };
   };
 
+  const showChatOn = (g: Ghost, text: string) => {
+    if (g.chat) {
+      g.group.remove(g.chat.sprite);
+      g.chat.sprite.material.dispose();
+      (g.chat.sprite.material.map as THREE.Texture | null)?.dispose();
+    }
+    const sprite = makeChatBubbleSprite(text);
+    // Sit above the name label (which is at y=2.35).
+    sprite.position.set(0, 3.2 + sprite.scale.y / 2, 0);
+    g.group.add(sprite);
+    g.chat = { sprite, t: 0, life: CHAT_BUBBLE_LIFE };
+  };
+
+
+
 
 
   let channel: RealtimeChannel | null = null;
@@ -280,6 +391,8 @@ export function createMultiplayer(opts: {
       .on("broadcast", { event: "chat" }, ({ payload }) => {
         const m = payload as { id: string; name: string; text: string };
         if (!m?.text) return;
+        const g = ghosts.get(m.id);
+        if (g) showChatOn(g, m.text);
         onChat({ id: `${m.id}-${Date.now()}`, name: m.name, text: m.text, ts: Date.now() });
       })
       .on("broadcast", { event: "time-mode" }, ({ payload }) => {
@@ -373,6 +486,21 @@ export function createMultiplayer(opts: {
             g.emote.sprite.position.y = 3.0 + Math.sin(g.emote.bob + g.emote.t * 4) * 0.15 + u * 0.4;
             const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
             g.emote.sprite.material.opacity = fade;
+          }
+        }
+
+        // Chat bubble lifecycle: hold, then fade out near the end.
+        if (g.chat) {
+          g.chat.t += dt;
+          const u = g.chat.t / g.chat.life;
+          if (u >= 1) {
+            g.group.remove(g.chat.sprite);
+            g.chat.sprite.material.dispose();
+            (g.chat.sprite.material.map as THREE.Texture | null)?.dispose();
+            g.chat = undefined;
+          } else {
+            const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+            g.chat.sprite.material.opacity = fade;
           }
         }
       }

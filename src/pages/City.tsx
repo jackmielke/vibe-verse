@@ -37,6 +37,8 @@ import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
   EMOTE_EMOJI,
+  makeChatBubbleSprite,
+  CHAT_BUBBLE_DURATION,
   type ChatMessage,
   type EmoteName,
   type Multiplayer,
@@ -437,6 +439,7 @@ export default function City() {
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
+  const playLocalChatRef = useRef<((text: string) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
   // Mobile: the whole world-controls chip row collapses behind a single
   // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
@@ -917,6 +920,21 @@ export default function City() {
       localEmote = { sprite, t: 0, life: 2.6, bob: Math.random() * Math.PI * 2 };
     };
     playLocalEmoteRef.current = playLocalEmote;
+
+    // ---- Local chat bubble (Club-Penguin style speech sprite) ------
+    let localChat: { sprite: THREE.Sprite; t: number; life: number } | null = null;
+    const playLocalChat = (text: string) => {
+      if (localChat) {
+        player.remove(localChat.sprite);
+        localChat.sprite.material.dispose();
+        (localChat.sprite.material.map as THREE.Texture | null)?.dispose();
+      }
+      const sprite = makeChatBubbleSprite(text);
+      sprite.position.set(0, 3.2 + sprite.scale.y / 2, 0);
+      player.add(sprite);
+      localChat = { sprite, t: 0, life: CHAT_BUBBLE_DURATION };
+    };
+    playLocalChatRef.current = playLocalChat;
 
     let mixer: THREE.AnimationMixer | null = null;
     const actions = new Map<string, THREE.AnimationAction>();
@@ -1635,6 +1653,23 @@ export default function City() {
         }
       }
 
+      // Local chat bubble lifecycle.
+      if (localChat) {
+        localChat.t += dt;
+        const u = localChat.t / localChat.life;
+        if (u >= 1) {
+          player.remove(localChat.sprite);
+          localChat.sprite.material.dispose();
+          (localChat.sprite.material.map as THREE.Texture | null)?.dispose();
+          localChat = null;
+        } else {
+          const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+          localChat.sprite.material.opacity = fade;
+        }
+      }
+
+
+
       // Easter-egg dressings: the zipline handle, the rainbow jetpack,
       // and plaza disco while "vibe" mode lasts.
       zipHandle.visible = riding;
@@ -2034,6 +2069,7 @@ export default function City() {
                   const t = chatDraft.trim();
                   if (!t) return;
                   mpRef.current?.sendChat(t);
+                  playLocalChatRef.current?.(t);
                   setChatDraft("");
                 }}
                 className="flex gap-1.5"
