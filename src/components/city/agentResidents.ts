@@ -182,13 +182,20 @@ function makeNameLabel(name: string): THREE.Sprite {
  *   /wave, /hi, /hello                → spin in place + 👋 bubble
  *   /dance, /party, /vibe             → wiggly spin
  */
-function parseEmote(body: string): { emote: Resident["emote"]; text: string } {
+function parseEmote(body: string): {
+  emote: Resident["emote"] | "respawn";
+  text: string;
+  moveDir?: { x: number; z: number };
+  duration?: number;
+} {
   // Look for the first /word token; allow it anywhere, not just leading.
-  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(.*)$/);
+  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(\d+(?:\.\d+)?)?\s*(.*)$/);
   if (!m) return { emote: "none", text: body };
   const cmd = m[2].toLowerCase();
-  const rest = (body.slice(0, m.index ?? 0) + " " + (m[3] || "")).trim();
-  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost")
+  const numArg = m[3] ? parseFloat(m[3]) : undefined;
+  const rest = (body.slice(0, m.index ?? 0) + " " + (m[4] || "")).trim();
+  const dur = Math.max(0.3, Math.min(8, numArg ?? 2));
+  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket" || cmd === "rocketship")
     return { emote: "jet", text: rest || "🚀" };
   if (cmd === "jump" || cmd === "hop")
     return { emote: "jump", text: rest || "⬆️" };
@@ -196,6 +203,16 @@ function parseEmote(body: string): { emote: Resident["emote"]; text: string } {
     return { emote: "wave", text: rest || "👋" };
   if (cmd === "dance" || cmd === "party" || cmd === "vibe")
     return { emote: "dance", text: rest || "💃" };
+  if (cmd === "forward" || cmd === "fwd" || cmd === "f" || cmd === "north" || cmd === "n")
+    return { emote: "move", text: rest || `⬆️ ${dur}s`, moveDir: { x: 0, z: -1 }, duration: dur };
+  if (cmd === "back" || cmd === "backward" || cmd === "b" || cmd === "south" || cmd === "s")
+    return { emote: "move", text: rest || `⬇️ ${dur}s`, moveDir: { x: 0, z: 1 }, duration: dur };
+  if (cmd === "left" || cmd === "l" || cmd === "west" || cmd === "w")
+    return { emote: "move", text: rest || `⬅️ ${dur}s`, moveDir: { x: -1, z: 0 }, duration: dur };
+  if (cmd === "right" || cmd === "r" || cmd === "east" || cmd === "e")
+    return { emote: "move", text: rest || `➡️ ${dur}s`, moveDir: { x: 1, z: 0 }, duration: dur };
+  if (cmd === "respawn" || cmd === "home" || cmd === "reset")
+    return { emote: "respawn", text: rest || "🏠" };
   return { emote: "none", text: body };
 }
 
