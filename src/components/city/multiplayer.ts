@@ -54,6 +54,8 @@ export interface Multiplayer {
   setName(name: string): void;
   sendTimeMode(day: boolean): void;
   sendEmote(emote: EmoteName): void;
+  /** Visit every remote ghost position. Used for soft player–player collision. */
+  forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   dispose(): void;
 }
 
