@@ -2338,6 +2338,17 @@ export default function City() {
               {hud.swinging ? "🤸 Hop off (Space)" : "🪢 Jump on the swing"}
             </button>
           )}
+          {nearShop && !shopOpen && (
+            <button
+              onClick={(e) => {
+                setShopOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+            >
+              🛍️ Open Vibe Shop
+            </button>
+          )}
           {hud.nearCow && (
             <button
               onClick={(e) => {
