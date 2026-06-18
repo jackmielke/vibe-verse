@@ -2375,7 +2375,9 @@ export default function City() {
                   onClick={(e) => {
                     setCharName(c.name);
                     charRef.current = c.name;
-                    localStorage.setItem("city.character", c.name);
+                    // Broadcast so the nav emoji + /profile + other
+                    // worlds all reflect the same pick.
+                    setActiveCharacter(c.name);
                     loadPilotRef.current?.(c.name);
                     e.currentTarget.blur();
                   }}
