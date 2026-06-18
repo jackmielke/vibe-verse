@@ -2660,6 +2660,18 @@ export default function City() {
               🛍️ Open Vibe Shop
             </button>
           )}
+          {nearRoster && !rosterOpen && (
+            <button
+              onClick={(e) => {
+                setRosterOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+            >
+              📺 Open Live Roster
+            </button>
+          )}
+
           {hud.nearCow && (
             <button
               onClick={(e) => {
