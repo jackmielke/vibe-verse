@@ -276,11 +276,12 @@ export function createAgentResidents(opts: {
     return entry;
   };
 
-  const setTargetFromTile = (r: Resident, x: number | null, y: number | null) => {
+  /** Update the resident's "home" tile. Does NOT pull them back automatically — they only return on /respawn. */
+  const setHomeFromTile = (r: Resident, x: number | null, y: number | null) => {
     if (x == null || y == null) return;
     const tmp = new THREE.Vector3();
     tileToOffset(x, y, radius, tmp);
-    r.target.set(centerX + tmp.x, centerY, centerZ + tmp.z);
+    r.home.set(centerX + tmp.x, centerY, centerZ + tmp.z);
   };
 
   const spawn = async (row: {
@@ -322,6 +323,7 @@ export function createAgentResidents(opts: {
         action.play();
         mixer.update((hashString(row.key + "phase") % 100) / 100);
       }
+      const home = wrapper.position.clone();
       const resident: Resident = {
         key: row.key,
         agentId: row.agentId,
@@ -329,18 +331,20 @@ export function createAgentResidents(opts: {
         wrapper,
         inner,
         mixer,
-        target: wrapper.position.clone(),
+        home,
+        target: home.clone(),
+        goingHome: false,
         bumpVel: new THREE.Vector3(),
+        moveDir: new THREE.Vector3(),
+        moveT: 0,
         speed: 1.6 + (hashString(row.key + "spd") % 100) / 100 * 1.0,
         yaw: 0,
-        idleT: 0.4,
         emote: "none",
         emoteT: 0,
         baseLift: lift,
         bubble: null,
         bubbleT: 0,
       };
-      setTargetFromTile(resident, row.x, row.y);
       group.add(wrapper);
       residents.set(row.key, resident);
       if (row.agentId) byAgentId.set(row.agentId, row.key);
