@@ -29,8 +29,22 @@ export interface FlameDef {
   core: string;
 }
 
+export interface JetpackDef {
+  id: string;
+  name: string;
+  emoji: string;
+  price: number;
+  /** When false the pack is hidden and thrust is disabled. */
+  equipped: boolean;
+  /** Main shell color (ignored when equipped=false). */
+  body: string;
+  /** Trim / collar accent. */
+  trim: string;
+}
+
 const HAT_STORAGE = "city.hat";
 const FLAME_STORAGE = "city.flame";
+const JETPACK_STORAGE = "city.jetpack";
 
 // ---- Hat factories ------------------------------------------------------
 // All hats are sized for a head sitting at ~y = 1.65–1.75 above the
