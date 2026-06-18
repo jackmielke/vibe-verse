@@ -33,7 +33,9 @@ import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 
 import { createAgentResidents } from "@/components/city/agentResidents";
+import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
+
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
