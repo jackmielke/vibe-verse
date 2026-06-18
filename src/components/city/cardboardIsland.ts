@@ -1002,12 +1002,15 @@ export function buildCardboardIsland(opts: {
   // ---- Vibe Shop: a modern neon kiosk tucked behind the TV ------------
   // Sleek dark counter with mint signage. Player walks up to it from
   // the back-island side; proximity opens the shop dialog in /city.
-  const SHOP_X = 30;
-  const SHOP_Z = 36;
+  // Sits just to the right of SnackFae (from a player approaching the counter)
+  // so you can see both at once when you walk up to grab a snack.
+  const SHOP_X = 22;
+  const SHOP_Z = 28;
   {
     const shopGroup = new THREE.Group();
     shopGroup.position.set(SHOP_X, 0, SHOP_Z);
-    shopGroup.rotation.y = Math.atan2(-SHOP_X, -SHOP_Z); // counter faces inward toward island center
+    shopGroup.rotation.y = Math.PI; // counter faces -Z, same as SnackFae, toward island center
+
   const shopBody = new THREE.MeshStandardMaterial({ color: "#10141c", roughness: 0.4, metalness: 0.35 });
   const shopMint = new THREE.MeshStandardMaterial({
     color: "#2dd4a8",
@@ -1355,7 +1358,7 @@ export function buildCardboardIsland(opts: {
     swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
     swingSeat: swingSeatMarker,
     swingAngle: () => currentSwingAngle,
-    shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z + 1.4),
+    shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z - 2.3),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
