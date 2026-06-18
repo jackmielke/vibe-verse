@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
+import { useActiveCharacter } from "@/hooks/use-active-character";
 import VibeAvatar from "@/components/vibe-auth/VibeAvatar";
 import VibeAuthDialog from "@/components/vibe-auth/VibeAuthDialog";
 import {
