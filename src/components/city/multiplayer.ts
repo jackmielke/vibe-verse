@@ -54,6 +54,8 @@ export interface Multiplayer {
   setName(name: string): void;
   sendTimeMode(day: boolean): void;
   sendEmote(emote: EmoteName): void;
+  /** Visit every remote ghost position. Used for soft player–player collision. */
+  forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   dispose(): void;
 }
 
@@ -538,6 +540,13 @@ export function createMultiplayer(opts: {
           event: "emote",
           payload: { id: sessionId, emote },
         });
+      }
+    },
+    forEachOccupant(cb) {
+      for (const g of ghosts.values()) {
+        const p = g.group.position;
+        if (p.y < -100) continue; // not spawned yet
+        cb(p.x, p.y, p.z);
       }
     },
     dispose() {

@@ -1502,7 +1502,7 @@ export default function City() {
       } else if (onIsland) {
         p.set(MOON_X, MOON_TOP + 6, MOON_Z + 4);
       } else {
-        p.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+        p.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
       }
       vel.set(0, 0, 0);
       onGround = false;
@@ -1512,7 +1512,8 @@ export default function City() {
     // frame shows the character's face, not the back of their head — the
     // chase-cam re-orients to behind as soon as the player drags or moves.
     islandSpawnRef.current = () => {
-      player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+      // Spawn inside Jerry's Plaza, a few steps south of Jerry himself.
+      player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
       vel.set(0, 0, 0);
       onGround = false;
       camYaw = 0;
@@ -1685,6 +1686,47 @@ export default function City() {
       } else {
         vel.x = 0;
         vel.z = 0;
+      }
+
+      // Soft personal-space buffer: gently push the player off any other
+      // character (remote ghost or roaming agent) we get stacked on top of.
+      // Same idea as the agent separation, just applied to the local player
+      // so bumping into someone produces a subtle nudge instead of phasing
+      // through them.
+      {
+        const PS = 1.3;                // personal space radius (m)
+        const STRENGTH = 3.4;          // m/s at full overlap
+        let pushX = 0, pushZ = 0;
+        const consider = (ox: number, oy: number, oz: number) => {
+          if (Math.abs(oy - pos.y) > 2.6) return;
+          const dx = pos.x - ox;
+          const dz = pos.z - oz;
+          const d2 = dx * dx + dz * dz;
+          if (d2 >= PS * PS) return;
+          const d = Math.sqrt(d2);
+          const overlap = (PS - d) / PS;
+          if (d < 0.0001) {
+            // Perfect stack — peel off in a deterministic direction.
+            pushX += STRENGTH * overlap;
+          } else {
+            pushX += (dx / d) * STRENGTH * overlap;
+            pushZ += (dz / d) * STRENGTH * overlap;
+          }
+        };
+        mp.forEachOccupant(consider);
+        agentResidents.forEachOccupant(consider);
+        if (pushX !== 0 || pushZ !== 0) {
+          const tx = pos.x + pushX * dt;
+          const tz = pos.z + pushZ * dt;
+          if (!blockedAt(tx, tz, pos.y)) {
+            pos.x = tx;
+            pos.z = tz;
+          } else if (!blockedAt(tx, pos.z, pos.y)) {
+            pos.x = tx;
+          } else if (!blockedAt(pos.x, tz, pos.y)) {
+            pos.z = tz;
+          }
+        }
       }
       const prevY = pos.y;
       pos.y += vel.y * dt;

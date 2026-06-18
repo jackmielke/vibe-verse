@@ -33,6 +33,8 @@ import { supabase } from "@/integrations/supabase/client";
 export interface AgentResidents {
   group: THREE.Group;
   update(dt: number, playerPos: THREE.Vector3): void;
+  /** Visit every resident position. Used for soft player–agent collision. */
+  forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   dispose(): void;
 }
 
@@ -549,6 +551,13 @@ export function createAgentResidents(opts: {
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
           if (r.idleT <= 0 || r.emote === "dance") r.mixer.update(dt);
         }
+      }
+    },
+    forEachOccupant(cb) {
+      for (const r of residents.values()) {
+        if (r.emote === "jet") continue; // mid-air
+        const p = r.wrapper.position;
+        cb(p.x, p.y, p.z);
       }
     },
     dispose() {

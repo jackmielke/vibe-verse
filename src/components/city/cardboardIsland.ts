@@ -592,8 +592,8 @@ export function buildCardboardIsland(opts: {
   // hand-painted reference: green-painted base, white cross paths, a blue
   // lily pond, planters of vines, benches, lanterns, and a JERRY'S PLAZA
   // archway you walk through to enter.
-  const PLAZA_CX = 2;
-  const PLAZA_CZ = 22;
+  const PLAZA_CX = 0;
+  const PLAZA_CZ = 0;
   const PLAZA_R = 11; // plaza disk radius
 
   const plazaGroup = new THREE.Group();
@@ -840,7 +840,7 @@ export function buildCardboardIsland(opts: {
   // Mayor of Jerry's Plaza. Hand-built cardboard snail: slug body, a
   // shell with a painted spiral, googly eye stalks, a JERRY sign.
   const jerryGroup = new THREE.Group();
-  jerryGroup.position.set(2, 0.18, 22); // sit on top of the plaza pad
+  jerryGroup.position.set(PLAZA_CX, 0.18, PLAZA_CZ); // sit at the center of the plaza pad
   jerryGroup.rotation.y = Math.PI + 0.5; // face the welcome path
   const jerryParts = { stalks: [] as THREE.Mesh[] };
   {
@@ -912,6 +912,21 @@ export function buildCardboardIsland(opts: {
     jerryGroup.add(jerrySign);
   }
   group.add(jerryGroup);
+
+  // Jerry is solid — players (and roaming agents) bump off him instead
+  // of walking through the snail mayor.
+  {
+    const JR = 1.8; // half-width footprint
+    const JH = 2.6; // shell + head height
+    boxes.push({
+      minX: centerX + PLAZA_CX - JR,
+      maxX: centerX + PLAZA_CX + JR,
+      minZ: centerZ + PLAZA_CZ - JR,
+      maxZ: centerZ + PLAZA_CZ + JR,
+      base: topY,
+      height: topY + JH,
+    });
+  }
 
   // ---- Cardboard TV: the island photo gallery ---------------------------
   const tv = new THREE.Group();
@@ -1314,7 +1329,7 @@ export function buildCardboardIsland(opts: {
     },
     starSpots,
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
-    jerry: new THREE.Vector3(centerX + 2, topY, centerZ + 22),
+    jerry: new THREE.Vector3(centerX, topY, centerZ),
     snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z + SNACK_D / 2 + 1.4),
     swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
     swingSeat: swingSeatMarker,
