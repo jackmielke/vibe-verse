@@ -84,10 +84,12 @@ interface World {
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
 
 const OFFICIAL_WORLDS: World[] = [
-  { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
-    blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
+  // Edge Island leads the carousel — first-time visitors land on the
+  // floating papercraft island as the focused world.
   { to: "/city?spawn=island", name: "Edge Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
+  { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
+    blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
   { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",
     blurb: "A tiny landable moon near the island — touch down and plant your flag." },
   { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",
@@ -278,8 +280,9 @@ export default function HubV2() {
     const CAM_MIN = 11, CAM_MAX = 46;
     // Start on the hero pose so the first painted frames already match
     // the intro and there's no flash when Vibey finishes loading.
-    camera.position.set(Math.sin(0.55) * 13.0, 1.0 + 0.7, 3.7 - Math.cos(0.55) * 13.0);
-    camera.lookAt(0, 0.3 + 0.35, 3.7);
+    // Dead-on front view at Vibey's eye level — he looks straight at you.
+    camera.position.set(0, 1.0, 3.7 - 13.0);
+    camera.lookAt(0, 1.0, 3.7);
 
     // Vibey's framing metrics. Fixed (not measured) because his
     // placement is fully controlled below — platform at z=5, Vibey at
@@ -294,7 +297,7 @@ export default function HubV2() {
     const FACE_DUR = 1.5; // wave / hero hold
     const ORBIT_DUR = 3.6; // loop around + rise + pull back
     const HERO_R = 13.0; // hero-shot distance from Vibey
-    const HERO_ANGLE = 0.55; // 3/4 front angle (radians off his facing axis)
+    const HERO_ANGLE = 0; // dead-on front — Vibey looks straight in your eyes
 
     // ---------- Multi-layer starfield ----------
     const makeStars = (count: number, rMin: number, rMax: number, size: number, color: number, opacity: number) => {
@@ -838,13 +841,14 @@ export default function HubV2() {
       // floats high in the frame (worlds at ROW_Y, look ~1.3 lower).
       const baseLook = new THREE.Vector3(0, ROW_Y - 1.3, ROW_Z);
 
-      // Hero (A) pose — whole-robot 3/4 shot at a comfortable distance.
+      // Hero (A) pose — head-on, at Vibey's eye level. He looks
+      // straight in your eyes; only a faint sway keeps it alive.
       const heroPos = new THREE.Vector3(
-        Math.sin(HERO_ANGLE) * HERO_R + Math.sin(t * 0.6) * 0.15,
-        vibeyHeadY + 0.7,
-        vibeyZ - Math.cos(HERO_ANGLE) * HERO_R,
+        Math.sin(t * 0.4) * 0.08,
+        vibeyHeadY,
+        vibeyZ - HERO_R,
       );
-      const heroLook = new THREE.Vector3(0, vibeyMidY + 0.35, vibeyZ);
+      const heroLook = new THREE.Vector3(0, vibeyHeadY, vibeyZ);
 
       const easeInOut = (x: number) =>
         x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
@@ -866,7 +870,7 @@ export default function HubV2() {
         const e = easeInOut((introElapsed - FACE_DUR) / ORBIT_DUR);
         const theta = THREE.MathUtils.lerp(HERO_ANGLE, Math.PI, e);
         const r = THREE.MathUtils.lerp(HERO_R, camDist, e);
-        const h = THREE.MathUtils.lerp(vibeyHeadY + 0.7, baseY, e);
+        const h = THREE.MathUtils.lerp(vibeyHeadY, baseY, e);
         camPos = new THREE.Vector3(
           Math.sin(theta) * r,
           h,
