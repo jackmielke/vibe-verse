@@ -1512,7 +1512,8 @@ export default function City() {
     // frame shows the character's face, not the back of their head — the
     // chase-cam re-orients to behind as soon as the player drags or moves.
     islandSpawnRef.current = () => {
-      player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+      // Spawn inside Jerry's Plaza, a few steps south of Jerry himself.
+      player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
       vel.set(0, 0, 0);
       onGround = false;
       camYaw = 0;
