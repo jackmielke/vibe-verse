@@ -852,23 +852,9 @@ export default function City() {
     };
 
     // ---- Residents: NPCs wandering the streets and the island -------
-    const npcNames = [
-      "Casual_Female",
-      "OldClassy_Male",
-      "Chef_Male",
-      "Cow",
-      "Pirate_Captain_Barbarossa",
-      "Goblin_Female",
-    ];
-    const npcCrew = createNpcCrew({
-      urls: npcNames
-        .map((n) => CHARACTERS.find((c) => c.name === n)?.url)
-        .filter((u): u is string => !!u),
-      streetLines: Array.from({ length: GRID + 1 }, (_, g) => (g - GRID / 2) * PITCH),
-      cityHalf: CITY_HALF,
-      island: { x: ISLAND_X, z: ISLAND_Z, topY: ISLAND_TOP },
-    });
-    scene.add(npcCrew.group);
+    // Wandering NPC crew removed — Edge Island is now agents-only.
+    // Vibey + the live agent residents are the only inhabitants.
+
 
     // ---- Vibey, the community agent, drifting around the plaza ------
     const vibey = createVibeyNpc();
