@@ -967,9 +967,10 @@ export function buildCardboardIsland(opts: {
   // the back-island side; proximity opens the shop dialog in /city.
   const SHOP_X = 30;
   const SHOP_Z = 36;
-  const shopGroup = new THREE.Group();
-  shopGroup.position.set(SHOP_X, 0, SHOP_Z);
-  shopGroup.rotation.y = Math.atan2(-SHOP_X, -SHOP_Z) + Math.PI; // counter faces outward
+  {
+    const shopGroup = new THREE.Group();
+    shopGroup.position.set(SHOP_X, 0, SHOP_Z);
+    shopGroup.rotation.y = Math.atan2(-SHOP_X, -SHOP_Z) + Math.PI; // counter faces outward
   const shopBody = new THREE.MeshStandardMaterial({ color: "#10141c", roughness: 0.4, metalness: 0.35 });
   const shopMint = new THREE.MeshStandardMaterial({
     color: "#2dd4a8",
