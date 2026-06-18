@@ -23,6 +23,7 @@ import WorldBuilder from "./pages/WorldBuilder.tsx";
 import EdmTown from "./pages/EdmTown.tsx";
 import AdminWorlds from "./pages/AdminWorlds.tsx";
 import AgentLobby from "./pages/AgentLobby.tsx";
+import VibeProfile from "./pages/VibeProfile.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 
@@ -80,6 +81,8 @@ const App = () => (
           {/* Agent Lobby — an always-on room agents join over HTTP and live in. */}
           <Route path="/world" element={<AgentLobby />} />
           <Route path="/agent-lobby" element={<AgentLobby />} />
+          {/* Profile / character picker — replaces the tiny color popover. */}
+          <Route path="/profile" element={<VibeProfile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
