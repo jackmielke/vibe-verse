@@ -47,6 +47,12 @@ import {
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
 import { startVibeyVoice, type VibeyVoiceSession } from "@/lib/vibeyVoice";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  HAT_CATALOG,
+  FLAME_CATALOG,
+  saveEquippedHat,
+  saveEquippedFlame,
+} from "@/components/city/cosmetics";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
@@ -598,6 +604,21 @@ export default function City() {
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
+
+  // Vibe Shop — equipped cosmetics + dialog state. The setters below
+  // are wired into the 3D scene via refs so equipping is instant.
+  const [shopOpen, setShopOpen] = useState(false);
+  const [nearShop, setNearShop] = useState(false);
+  const [equippedHat, setEquippedHat] = useState<string>(() => {
+    if (typeof window === "undefined") return "none";
+    return localStorage.getItem("city.hat") || "none";
+  });
+  const [equippedFlame, setEquippedFlame] = useState<string>(() => {
+    if (typeof window === "undefined") return "mint";
+    return localStorage.getItem("city.flame") || "mint";
+  });
+  const applyHatRef = useRef<((id: string) => void) | null>(null);
+  const applyFlameRef = useRef<((id: string) => void) | null>(null);
 
   // "B" toggles the emote wheel. Ignored while typing in chat.
   useEffect(() => {
@@ -1156,6 +1177,43 @@ export default function City() {
     jetLight.position.set(0, 0.4, -0.2);
     player.add(jetLight);
 
+    // ---- Cosmetics: hat + jet flame color, both equippable from the
+    // Vibe Shop. Hat is parented to modelHolder so it tilts with the
+    // pilot. Flame color also tints the jet point light.
+    const hatMount = new THREE.Group();
+    hatMount.position.set(0, 1.78, 0); // just above a ~1.85m model's head
+    modelHolder.add(hatMount);
+    let currentHat: THREE.Group | null = null;
+    const applyHat = (id: string) => {
+      if (currentHat) {
+        hatMount.remove(currentHat);
+        currentHat.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.geometry?.dispose();
+            const mat = m.material as THREE.Material | THREE.Material[];
+            if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+            else mat?.dispose();
+          }
+        });
+        currentHat = null;
+      }
+      const def = HAT_CATALOG.find((h) => h.id === id) ?? HAT_CATALOG[0];
+      const g = def.build();
+      hatMount.add(g);
+      currentHat = g;
+    };
+    applyHatRef.current = applyHat;
+    const applyFlame = (id: string) => {
+      const def = FLAME_CATALOG.find((f) => f.id === id) ?? FLAME_CATALOG[0];
+      flameMat.color.set(def.color);
+      jetLight.color.set(def.core);
+    };
+    applyFlameRef.current = applyFlame;
+    applyHat(localStorage.getItem("city.hat") || "none");
+    applyFlame(localStorage.getItem("city.flame") || "mint");
+
+
     // Zipline T-handle, visible only while riding the cable.
     const zipHandle = new THREE.Group();
     {
@@ -1403,6 +1461,7 @@ export default function City() {
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
+      setNearShop(player.position.distanceTo(island.shop) < 7);
     }, 120);
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
@@ -2250,6 +2309,110 @@ export default function City() {
         </div>
       )}
 
+      {/* Vibe Shop dialog — hats + jet boost cosmetics. Free during
+          early access; vibe coin prices are shown for the future. */}
+      {entered && shopOpen && (
+        <div
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-3 sm:p-6 bg-background/70 backdrop-blur-sm"
+          onClick={() => setShopOpen(false)}
+        >
+          <div
+            className="glass-panel rounded-2xl w-full max-w-md p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-heading font-bold text-base tracking-wide text-primary">
+                  🛍️ VIBE SHOP
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Early access · everything free
+                </div>
+              </div>
+              <button
+                onClick={() => setShopOpen(false)}
+                className="text-muted-foreground hover:text-foreground text-lg leading-none px-2"
+                aria-label="Close shop"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
+                HATS
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {HAT_CATALOG.map((h) => {
+                  const eq = equippedHat === h.id;
+                  return (
+                    <button
+                      key={h.id}
+                      onClick={() => {
+                        setEquippedHat(h.id);
+                        saveEquippedHat(h.id);
+                        applyHatRef.current?.(h.id);
+                      }}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
+                        eq
+                          ? "bg-primary/25 ring-1 ring-primary text-primary"
+                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
+                      }`}
+                    >
+                      <span className="text-2xl">{h.emoji}</span>
+                      <span className="text-[10px] text-center leading-tight">{h.name}</span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {h.price === 0 ? "free" : `${h.price} 🪙`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
+                JET BOOSTS
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {FLAME_CATALOG.map((f) => {
+                  const eq = equippedFlame === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        setEquippedFlame(f.id);
+                        saveEquippedFlame(f.id);
+                        applyFlameRef.current?.(f.id);
+                      }}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
+                        eq
+                          ? "bg-primary/25 ring-1 ring-primary text-primary"
+                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
+                      }`}
+                    >
+                      <span className="text-xl">{f.emoji}</span>
+                      <span
+                        className="w-6 h-1.5 rounded-full"
+                        style={{ background: f.color, boxShadow: `0 0 10px ${f.color}` }}
+                      />
+                      <span className="text-[10px] text-center leading-tight">{f.name}</span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {f.price === 0 ? "free" : `${f.price} 🪙`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="text-[10px] text-muted-foreground text-center pt-1">
+              Hold Space to test your new boost · the look saves across visits.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Touch controls for phones: joystick + jetpack button. */}
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
@@ -2277,6 +2440,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary"
             >
               {hud.swinging ? "🤸 Hop off (Space)" : "🪢 Jump on the swing"}
+            </button>
+          )}
+          {nearShop && !shopOpen && (
+            <button
+              onClick={(e) => {
+                setShopOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+            >
+              🛍️ Open Vibe Shop
             </button>
           )}
           {hud.nearCow && (

@@ -52,6 +52,8 @@ export interface IslandWorld {
   swingAngle(): number;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
+  /** The shop counter (modern kiosk behind the TV), in world coordinates. */
+  shop: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
@@ -960,6 +962,102 @@ export function buildCardboardIsland(opts: {
   }
   group.add(tv);
 
+  // ---- Vibe Shop: a modern neon kiosk tucked behind the TV ------------
+  // Sleek dark counter with mint signage. Player walks up to it from
+  // the back-island side; proximity opens the shop dialog in /city.
+  const SHOP_X = 30;
+  const SHOP_Z = 36;
+  {
+    const shopGroup = new THREE.Group();
+    shopGroup.position.set(SHOP_X, 0, SHOP_Z);
+    shopGroup.rotation.y = Math.atan2(-SHOP_X, -SHOP_Z) + Math.PI; // counter faces outward
+  const shopBody = new THREE.MeshStandardMaterial({ color: "#10141c", roughness: 0.4, metalness: 0.35 });
+  const shopMint = new THREE.MeshStandardMaterial({
+    color: "#2dd4a8",
+    emissive: "#2dd4a8",
+    emissiveIntensity: 1.4,
+    roughness: 0.3,
+  });
+  const shopMagenta = new THREE.MeshStandardMaterial({
+    color: "#e85d75",
+    emissive: "#e85d75",
+    emissiveIntensity: 1.2,
+    roughness: 0.3,
+  });
+  // Counter
+  const shopCounter = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.1, 1.8), shopBody);
+  shopCounter.position.set(0, 0.55, 0);
+  shopGroup.add(shopCounter);
+  // Mint edge strip across the front of the counter
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.08, 0.06), shopMint);
+  edge.position.set(0, 0.5, 0.92);
+  shopGroup.add(edge);
+  // Back display wall
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(5.2, 3.0, 0.18), shopBody);
+  wall.position.set(0, 2.6, -0.85);
+  shopGroup.add(wall);
+  // Awning roof
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.18, 2.2), shopBody);
+  roof.position.set(0, 4.15, 0);
+  shopGroup.add(roof);
+  // Roof underside neon strip
+  const roofGlow = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.04, 0.08), shopMagenta);
+  roofGlow.position.set(0, 4.04, 0.6);
+  shopGroup.add(roofGlow);
+  // Two display shelves on the back wall
+  for (let i = 0; i < 2; i++) {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.06, 0.5), shopBody);
+    shelf.position.set(0, 2.0 + i * 1.0, -0.55);
+    shopGroup.add(shelf);
+  }
+  // Floating "SHOP" sign (canvas texture)
+  const signCanvas = document.createElement("canvas");
+  signCanvas.width = 512;
+  signCanvas.height = 128;
+  const sctx = signCanvas.getContext("2d")!;
+  sctx.fillStyle = "rgba(15, 18, 28, 0)";
+  sctx.fillRect(0, 0, 512, 128);
+  sctx.font = "bold 88px system-ui, sans-serif";
+  sctx.textAlign = "center";
+  sctx.textBaseline = "middle";
+  sctx.shadowColor = "#2dd4a8";
+  sctx.shadowBlur = 36;
+  sctx.fillStyle = "#baffe9";
+  sctx.fillText("VIBE SHOP", 256, 64);
+  const signTex = new THREE.CanvasTexture(signCanvas);
+  signTex.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.6, 0.9),
+    new THREE.MeshBasicMaterial({ map: signTex, transparent: true, depthWrite: false }),
+  );
+  sign.position.set(0, 4.6, -0.7);
+  shopGroup.add(sign);
+  // Soft uplight inside the kiosk
+  const shopLight = new THREE.PointLight(0x2dd4a8, 22, 14, 2);
+  shopLight.position.set(0, 2.4, 0.3);
+  shopGroup.add(shopLight);
+  // Two little display pedestal items
+  const pedHat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.3, 16), shopBody);
+  pedHat.position.set(-1.4, 2.18, -0.55);
+  shopGroup.add(pedHat);
+  const tinyHat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.32, 18), shopMagenta);
+  tinyHat.position.set(-1.4, 2.55, -0.55);
+  shopGroup.add(tinyHat);
+  const pedFlame = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.3, 16), shopBody);
+  pedFlame.position.set(1.4, 2.18, -0.55);
+  shopGroup.add(pedFlame);
+  const tinyFlame = new THREE.Mesh(
+    new THREE.ConeGeometry(0.16, 0.5, 12),
+    new THREE.MeshBasicMaterial({ color: "#7dfce0", transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending }),
+  );
+  tinyFlame.position.set(1.4, 2.6, -0.55);
+  tinyFlame.rotation.x = Math.PI;
+  shopGroup.add(tinyFlame);
+
+    group.add(shopGroup);
+  }
+
+
   // ---- SnackFe: modern neon cafe ---------------------------------------
   // A sleek modern micro-cafe with alternating mint/magenta string lights
   // along the front awning. Walk up to it to order a snack.
@@ -1218,6 +1316,7 @@ export function buildCardboardIsland(opts: {
     swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
     swingSeat: swingSeatMarker,
     swingAngle: () => currentSwingAngle,
+    shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z + 1.4),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
