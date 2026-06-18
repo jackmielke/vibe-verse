@@ -1481,9 +1481,8 @@ export default function City() {
         riding,
         nearSwing: player.position.distanceTo(island.swingMount) < 4.5,
         swinging,
-        nearCow: npcCrew
-          .cowPositions()
-          .some((c) => c.distanceToSquared(player.position) < 49),
+        nearCow: false,
+
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
