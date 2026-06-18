@@ -1232,7 +1232,6 @@ export default function City() {
       }
     };
     applyJetpackRef.current = applyJetpack;
-    jetpackEquippedRef.current = () => jetpackEquipped;
     applyHat(localStorage.getItem("city.hat") || "none");
     applyFlame(localStorage.getItem("city.flame") || "mint");
     applyJetpack(localStorage.getItem("city.jetpack") || "stock");
