@@ -6,3 +6,8 @@ project_id = "efdqqnubowgwsnwvlalp"
 # secret URL back to the client.
 [functions.avatar-proxy]
 verify_jwt = false
+
+# Agent Lobby bridge — external agents POST here with the anon key (or no auth)
+# to join/move/say/read the world, so it must accept unauthenticated calls.
+[functions.agent-lobby]
+verify_jwt = false
