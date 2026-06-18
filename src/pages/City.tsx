@@ -31,7 +31,7 @@ import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
-import { createNpcCrew } from "@/components/city/npcs";
+
 import { createAgentResidents } from "@/components/city/agentResidents";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
@@ -852,23 +852,9 @@ export default function City() {
     };
 
     // ---- Residents: NPCs wandering the streets and the island -------
-    const npcNames = [
-      "Casual_Female",
-      "OldClassy_Male",
-      "Chef_Male",
-      "Cow",
-      "Pirate_Captain_Barbarossa",
-      "Goblin_Female",
-    ];
-    const npcCrew = createNpcCrew({
-      urls: npcNames
-        .map((n) => CHARACTERS.find((c) => c.name === n)?.url)
-        .filter((u): u is string => !!u),
-      streetLines: Array.from({ length: GRID + 1 }, (_, g) => (g - GRID / 2) * PITCH),
-      cityHalf: CITY_HALF,
-      island: { x: ISLAND_X, z: ISLAND_Z, topY: ISLAND_TOP },
-    });
-    scene.add(npcCrew.group);
+    // Wandering NPC crew removed — Edge Island is now agents-only.
+    // Vibey + the live agent residents are the only inhabitants.
+
 
     // ---- Vibey, the community agent, drifting around the plaza ------
     const vibey = createVibeyNpc();
@@ -1470,8 +1456,8 @@ export default function City() {
     };
     mooRef.current = () => {
       soundsRef.current?.moo();
-      npcCrew.hopCows();
     };
+
 
     const hudTimer = window.setInterval(() => {
       setHud({
@@ -1495,9 +1481,8 @@ export default function City() {
         riding,
         nearSwing: player.position.distanceTo(island.swingMount) < 4.5,
         swinging,
-        nearCow: npcCrew
-          .cowPositions()
-          .some((c) => c.distanceToSquared(player.position) < 49),
+        nearCow: false,
+
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
@@ -1860,7 +1845,7 @@ export default function City() {
 
       island.update(dt, now);
       moonWorld.update(dt, now);
-      npcCrew.update(dt, pos);
+      
       vibey.update(dt, now);
       agentResidents.update(dt, pos);
       mp.update(dt, {
