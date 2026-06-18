@@ -555,27 +555,43 @@ export function createAgentResidents(opts: {
       }
       for (const r of residents.values()) {
         // ---- movement ----
+        // Residents stay put by default. They only translate when:
+        //   • an active /forward|/back|/left|/right command is running (r.moveT > 0), or
+        //   • /respawn was called (r.goingHome = true), which walks them back to their home tile.
         const p = r.wrapper.position;
-        if (r.idleT > 0) {
-          r.idleT -= dt;
-        } else {
-          tmpVec.copy(r.target).sub(p);
+        let walking = false;
+        let walkDirX = 0, walkDirZ = 0;
+        if (r.moveT > 0) {
+          walking = true;
+          walkDirX = r.moveDir.x;
+          walkDirZ = r.moveDir.z;
+          r.moveT -= dt;
+          if (r.moveT <= 0) {
+            r.moveT = 0;
+            r.emote = "none";
+          }
+        } else if (r.goingHome) {
+          tmpVec.copy(r.home).sub(p);
           tmpVec.y = 0;
           const dist = tmpVec.length();
-          if (dist < 0.4) {
-            r.idleT = 1.2 + Math.random() * 2.0;
+          if (dist < 0.3) {
+            r.goingHome = false;
           } else {
             tmpVec.multiplyScalar(1 / dist);
-            const step = Math.min(dist, r.speed * dt);
-            p.x += tmpVec.x * step;
-            p.z += tmpVec.z * step;
-            const targetYaw = Math.atan2(tmpVec.x, tmpVec.z);
-            let d = targetYaw - r.yaw;
-            while (d > Math.PI) d -= Math.PI * 2;
-            while (d < -Math.PI) d += Math.PI * 2;
-            r.yaw += d * Math.min(1, dt * 6);
-            r.wrapper.rotation.y = r.yaw;
+            walking = true;
+            walkDirX = tmpVec.x;
+            walkDirZ = tmpVec.z;
           }
+        }
+        if (walking) {
+          p.x += walkDirX * r.speed * dt;
+          p.z += walkDirZ * r.speed * dt;
+          const targetYaw = Math.atan2(walkDirX, walkDirZ);
+          let d = targetYaw - r.yaw;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          r.yaw += d * Math.min(1, dt * 6);
+          r.wrapper.rotation.y = r.yaw;
         }
         if (r.bumpVel.lengthSq() > 0.0001) {
           p.x += r.bumpVel.x * dt;
