@@ -363,8 +363,8 @@ export function buildCardboardIsland(opts: {
   // ---- Dream Tree --------------------------------------------------
   // Moved off the plaza so it no longer crowds the spawn camera; tucked
   // into the NE lawn between the welcome path and the snack stand.
-  const TREE_X = 20;
-  const TREE_Z = -6;
+  const TREE_X = -14;
+  const TREE_Z = 26;
   const tree = new THREE.Group();
   tree.position.set(TREE_X, 0, TREE_Z);
   const trunk = new THREE.Mesh(
