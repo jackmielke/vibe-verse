@@ -1418,6 +1418,8 @@ export default function City() {
     // ---- Simulation state ---------------------------------------------
     const vel = new THREE.Vector3();
     let onGround = true;
+    let prevJetInput = false;
+    let coyoteTimer = 0; // grace window so jumping just after leaving ground feels right
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
