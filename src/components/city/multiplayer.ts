@@ -33,6 +33,8 @@ export interface ChatMessage {
   text: string;
   ts: number;
   self?: boolean;
+  /** True when this message came from a world_agents resident (vibe-world). */
+  agent?: boolean;
 }
 
 export type EmoteName = "wave" | "dance" | "sit" | "point" | "heart" | "laugh";
