@@ -1348,7 +1348,7 @@ export function buildCardboardIsland(opts: {
     starSpots,
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
     jerry: new THREE.Vector3(centerX, topY, centerZ),
-    snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z + SNACK_D / 2 + 1.4),
+    snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z - SNACK_D / 2 - 1.4),
     swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
     swingSeat: swingSeatMarker,
     swingAngle: () => currentSwingAngle,
