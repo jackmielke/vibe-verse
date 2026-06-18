@@ -619,8 +619,13 @@ export default function City() {
     if (typeof window === "undefined") return "mint";
     return localStorage.getItem("city.flame") || "mint";
   });
+  const [equippedJetpack, setEquippedJetpack] = useState<string>(() => {
+    if (typeof window === "undefined") return "stock";
+    return localStorage.getItem("city.jetpack") || "stock";
+  });
   const applyHatRef = useRef<((id: string) => void) | null>(null);
   const applyFlameRef = useRef<((id: string) => void) | null>(null);
+  const applyJetpackRef = useRef<((id: string) => void) | null>(null);
 
   // "B" toggles the emote wheel. Ignored while typing in chat.
   useEffect(() => {
