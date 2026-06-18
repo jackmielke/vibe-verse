@@ -450,7 +450,9 @@ export function createAgentResidents(opts: {
           });
           return;
         }
-        setTargetFromTile(r, row.x ?? null, row.y ?? null);
+        // Keep "home" up to date so /respawn returns them to their latest assigned tile,
+        // but do NOT pull them back here — bumps and manual movement should persist.
+        setHomeFromTile(r, row.x ?? null, row.y ?? null);
       },
     )
     .on(
