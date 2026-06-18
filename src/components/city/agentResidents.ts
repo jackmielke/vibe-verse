@@ -672,7 +672,7 @@ export function createAgentResidents(opts: {
         const shove = Math.min(10, 2.8 + speed * 0.32) * overlap;
         r.bumpVel.x += nx * shove * dt * 14;
         r.bumpVel.z += nz * shove * dt * 14;
-        r.idleT = Math.min(r.idleT, 0.15);
+        // Bumped residents simply stay where they're shoved — no auto-return.
       }
     },
     dispose() {
