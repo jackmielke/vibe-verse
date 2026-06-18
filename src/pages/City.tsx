@@ -1653,6 +1653,23 @@ export default function City() {
         }
       }
 
+      // Local chat bubble lifecycle.
+      if (localChat) {
+        localChat.t += dt;
+        const u = localChat.t / localChat.life;
+        if (u >= 1) {
+          player.remove(localChat.sprite);
+          localChat.sprite.material.dispose();
+          (localChat.sprite.material.map as THREE.Texture | null)?.dispose();
+          localChat = null;
+        } else {
+          const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+          localChat.sprite.material.opacity = fade;
+        }
+      }
+
+
+
       // Easter-egg dressings: the zipline handle, the rainbow jetpack,
       // and plaza disco while "vibe" mode lasts.
       zipHandle.visible = riding;
