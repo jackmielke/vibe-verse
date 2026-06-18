@@ -91,9 +91,11 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <ArrowLeft className="h-5 w-5" />
           </button>
 
-          {/* Logo */}
-          <div className="flex justify-center mb-5">
-            <VibeLogo size={56} className="text-white" />
+          {/* 3D iridescent arc — same asset used on the VIBE coin page.
+              Slowly rotates idle, spins faster on hover, plays a random
+              animation on click. */}
+          <div className="flex justify-center mb-2 -mt-2">
+            <VibeArc size={140} rotateSeconds={28} />
           </div>
 
           {/* Heading */}
