@@ -1502,7 +1502,7 @@ export default function City() {
       } else if (onIsland) {
         p.set(MOON_X, MOON_TOP + 6, MOON_Z + 4);
       } else {
-        p.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 26);
+        p.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
       }
       vel.set(0, 0, 0);
       onGround = false;
