@@ -69,7 +69,7 @@ export default function LogInWithVibe({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className={`${btn} hover:bg-white/10`}
+            className={`${iconBtn} hover:bg-white/10`}
             title={display}
             aria-label="Vibe Profile"
           >
