@@ -542,6 +542,13 @@ export function createMultiplayer(opts: {
         });
       }
     },
+    forEachOccupant(cb) {
+      for (const g of ghosts.values()) {
+        const p = g.group.position;
+        if (p.y < -100) continue; // not spawned yet
+        cb(p.x, p.y, p.z);
+      }
+    },
     dispose() {
       disposed = true;
       for (const key of [...ghosts.keys()]) removeGhost(key);
