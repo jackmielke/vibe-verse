@@ -229,7 +229,7 @@ export default function HubV2() {
     return localStorage.getItem("lobby.character") ?? "vibey";
   });
   useEffect(() => {
-    localStorage.setItem("lobby.character", charId);
+    setActiveCharacter(charId);
   }, [charId]);
   // Re-load the character model whenever the pick changes (after mount).
   const didMountRef = useRef(false);
