@@ -2069,6 +2069,7 @@ export default function City() {
                   const t = chatDraft.trim();
                   if (!t) return;
                   mpRef.current?.sendChat(t);
+                  playLocalChatRef.current?.(t);
                   setChatDraft("");
                 }}
                 className="flex gap-1.5"
