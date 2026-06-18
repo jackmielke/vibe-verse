@@ -33,7 +33,9 @@ import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 
 import { createAgentResidents } from "@/components/city/agentResidents";
+import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
+
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
@@ -612,6 +614,11 @@ export default function City() {
   // are wired into the 3D scene via refs so equipping is instant.
   const [shopOpen, setShopOpen] = useState(false);
   const [nearShop, setNearShop] = useState(false);
+  // Live Roster TV — agents currently in the vibe-lobby room.
+  const [rosterAgents, setRosterAgents] = useState<RosterAgent[]>([]);
+  const [nearRoster, setNearRoster] = useState(false);
+  const [rosterOpen, setRosterOpen] = useState(false);
+
   const [equippedHat, setEquippedHat] = useState<string>(() => {
     if (typeof window === "undefined") return "none";
     return localStorage.getItem("city.hat") || "none";
@@ -875,6 +882,20 @@ export default function City() {
       roomId: "vibe-lobby",
     });
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
+
+    // ---- Live Roster TV: scoreboard-style screen on the front of the
+    // island showing every current agent and their lobby-grid tile.
+    // Clicking it opens a fuller modal with the same list.
+    const ROSTER_LX = -22;
+    const ROSTER_LZ = 14;
+    const rosterBoard = createAgentRosterBoard({
+      position: new THREE.Vector3(ISLAND_X + ROSTER_LX, ISLAND_TOP, ISLAND_Z + ROSTER_LZ),
+      rotationY: Math.atan2(-ROSTER_LX, -ROSTER_LZ), // face the island center
+      roomId: "vibe-lobby",
+    });
+    scene.add(rosterBoard.group);
+    const unsubRoster = rosterBoard.onUpdate((rows) => setRosterAgents(rows));
+
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
     const mp = createMultiplayer({
@@ -1488,6 +1509,8 @@ export default function City() {
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
+      setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
+
     }, 120);
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
@@ -1848,6 +1871,8 @@ export default function City() {
       
       vibey.update(dt, now);
       agentResidents.update(dt, pos);
+      rosterBoard.update(dt);
+
       mp.update(dt, {
         x: pos.x,
         y: pos.y,
@@ -1981,6 +2006,9 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       agentResidents.dispose();
+      unsubRoster();
+      rosterBoard.dispose();
+
       delete devWindow.__cityDebug;
       soundsRef.current?.dispose();
       soundsRef.current = null;
@@ -2632,6 +2660,18 @@ export default function City() {
               🛍️ Open Vibe Shop
             </button>
           )}
+          {nearRoster && !rosterOpen && (
+            <button
+              onClick={(e) => {
+                setRosterOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+            >
+              📺 Open Live Roster
+            </button>
+          )}
+
           {hud.nearCow && (
             <button
               onClick={(e) => {
@@ -2679,6 +2719,66 @@ export default function City() {
           )}
         </div>
       )}
+      {rosterOpen && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(94vw,28rem)] flex flex-col gap-3 animate-fade-in border border-primary/40 shadow-[0_0_30px_hsl(var(--primary)/0.35)]">
+          <div className="flex items-center justify-between">
+            <span className="font-heading font-semibold tracking-[0.2em] text-primary text-xs flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
+              LIVE ROSTER · vibe-lobby
+            </span>
+            <button
+              onClick={() => setRosterOpen(false)}
+              className="text-muted-foreground hover:text-foreground px-1"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground border-b border-primary/20 pb-2">
+            <span>{rosterAgents.length} online</span>
+            <span>tile (x, y) · 12×8 grid</span>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto flex flex-col gap-1 font-mono text-sm">
+            {rosterAgents.length === 0 ? (
+              <div className="text-center text-muted-foreground italic py-6">
+                waiting for agents…
+              </div>
+            ) : (
+              rosterAgents.map((a, i) => (
+                <div
+                  key={a.key}
+                  className={`flex items-center justify-between rounded-md px-3 py-2 ${
+                    i % 2 === 0 ? "bg-primary/5" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        a.status === "offline" ? "bg-muted-foreground" : "bg-primary"
+                      }`}
+                    />
+                    <span className="truncate text-foreground">{a.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-primary/80 tabular-nums">
+                    <span>
+                      {a.x === null || a.y === null
+                        ? "—"
+                        : `${String(a.x).padStart(2, " ")},${String(a.y).padStart(2, " ")}`}
+                    </span>
+                    <span className="text-muted-foreground w-14 text-right">
+                      {a.status || "online"}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center pt-1">
+            updates instantly when agents join, move, or sign off
+          </div>
+        </div>
+      )}
+
       {snackOpen && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,24rem)] flex flex-col gap-3 animate-fade-in">
           <div className="flex items-center justify-between">
