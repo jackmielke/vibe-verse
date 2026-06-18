@@ -1,82 +1,61 @@
-# Pivot to a Vibe-Coded Worlds Platform
+# Social Core v1 — Duels + Leave-behinds
 
-Turn the hub from a curated Edge Esmeralda lobby into a creator-driven launcher where any logged-in user can submit a world (GitHub repo + scene route + preview) and any character (name + GLB asset). Anonymous visitors can still explore everything; login is only required to contribute or save your identity.
+Building on what already works in `/city`: real-time presence, chat bubbles, and the emote wheel (`src/components/city/multiplayer.ts` + `src/pages/City.tsx`). Two new threads, both designed to feel alive even when nobody's online (async-friendly).
 
-This is **Phase 1: foundations + submissions**. Per-world hover preview side-panel, multiplayer presence per world, and rebrand-from-Edge-Esmeralda come in later passes.
+## 1. Walk-up duels: RPS + Emote Match
 
-## Scope of this pass
+**Trigger.** When your player stands within ~2.5m of another peer for >0.6s, a "👋 Challenge {name}" prompt appears above their head. Press **E** (or tap the prompt on mobile) to send a duel invite. The other player sees an Accept / Decline toast for 8s.
 
-1. New Supabase tables: `worlds`, `world_characters` (plus storage bucket for previews/GLBs).
-2. Seed the existing 3 worlds + 8 characters from `HubV2.tsx` into the DB so nothing visually changes day one.
-3. Hub loads worlds & characters from DB instead of hardcoded arrays.
-4. New `/submit-world` page (login-gated) with a form: name, blurb, GitHub URL, scene route or external URL, preview image upload, tags.
-5. New `/submit-character` page (login-gated): name, GLB upload (or URL), optional scale override.
-6. Light moderation: submissions default to `status = 'pending'`. Hub only shows `status = 'approved'`. You (admin role, already exists via `has_role`) can approve from a simple `/admin/worlds` list.
-7. Anonymous browse stays the default — no auth wall on `/`.
+**Round flow (shared overlay).**
+- Coin flip picks game: **Rock-Paper-Scissors** or **Emote Match** (mirror the opponent's emote within 3s).
+- Best-of-3. Each round ~5s. Result floats above both players ("WIN" / "LOSE" / "TIE") and broadcasts a sparkle emote.
+- Win streaks tracked per-session; "first blood / 3-streak" gets a chat bubble shout-out.
 
-## Out of scope (next passes)
+**Transport.** Add three new message kinds to the existing presence channel — no new tables yet:
+- `duel:invite { fromId, toId, game, nonce }`
+- `duel:move { duelId, round, choice }` (rock|paper|scissors, or emote name)
+- `duel:end { duelId, winnerId, score }`
+Both clients are authoritative for their own move; tie-break by lower peer-id on conflict.
 
-- Hover preview side-panel with creator avatar, GH link, play count.
-- Per-world `world_vehicles` join table.
-- Multiplayer presence ("3 people in this world now").
-- Visual rebrand away from Edge Esmeralda.
-- Vibecoin unlocks for premium characters.
+**UI.** New `src/components/city/DuelOverlay.tsx` — centered glass card, 3 big choice buttons, round counter, opponent name. Reuses the emote sprite system for "throw" animation.
 
-## Data model
+## 2. Leave-behinds at locations
+
+A persistent, world-anchored note/gift/graffiti you drop where you stand. Anyone in `/city` later sees it floating as a small glowing icon; click to read.
+
+**New table `world_leavebehinds`** (Lovable Cloud / Supabase):
+- `id, world` (text, e.g. 'city'), `x, y, z` (real)
+- `kind` ('note' | 'gift' | 'graffiti')
+- `emoji` (text, optional), `text` (text, ≤140 chars)
+- `author_name` (text, from vibe identity), `author_id` (uuid nullable — works signed-out)
+- `color` (text, from vibe palette), `created_at`, `expires_at` (default now()+14 days)
+- RLS: public read; insert allowed for anyone (rate-limited client-side, 1/min); delete by author_id only when signed in.
+- GRANTs: `SELECT` to anon+authenticated; `INSERT` to anon+authenticated; `UPDATE/DELETE` to authenticated; ALL to service_role.
+
+**In-world rendering.** New `src/components/city/leavebehinds.ts` — loads all rows for `world='city'` on spawn, renders each as a small `THREE.Sprite` with the emoji on a translucent disc in the vibe color. Approaching (<2m) opens a little popover with the text + author. A "🪧 Leave something here" HUD button (next to Emote) opens a tiny composer: kind picker (note/gift/graffiti), emoji, ≤140 chars, post.
+
+**Discovery.** Tiny "+N nearby" counter near the minimap so empty plazas feel populated by past visitors.
+
+## Out of scope (next slices)
+- Plaza/Lobby for idle players
+- VIBECOIN in mini-games
+- Homes + Agent Village bridge
+
+## Technical notes
+- No schema changes for duels; reuses presence channel.
+- Leave-behinds is the only DB change — single migration with GRANTs + RLS as above.
+- All new UI uses existing semantic tokens; no hardcoded colors.
+- Mobile: duel prompt + composer use the same glass-panel pattern as the emote wheel.
+
+## Files
 
 ```text
-worlds
-  id              uuid pk
-  slug            text unique           -- e.g. "cardboard-island"
-  name            text
-  blurb           text
-  creator_id      uuid → users.id       -- vibe profile
-  github_url      text nullable
-  route           text                  -- "/city?spawn=island" OR external https://
-  preview_url     text                  -- storage public URL
-  hero_model_url  text nullable         -- optional GLB shown instead of sphere
-  tags            text[]
-  status          text                  -- 'pending' | 'approved' | 'rejected'
-  is_featured     bool                  -- pin to front of hub row
-  sort_order      int
-  play_count      int default 0
-  created_at, updated_at
-
-world_characters
-  id              uuid pk
-  slug            text unique
-  name            text
-  emoji           text nullable
-  asset_url       text                  -- GLB URL (storage or external)
-  scale_override  numeric nullable      -- e.g. 0.9 for Vibey
-  creator_id      uuid → users.id nullable  -- null = official
-  status          text                  -- 'pending' | 'approved'
-  sort_order      int
-  created_at, updated_at
+new   src/components/city/DuelOverlay.tsx
+new   src/components/city/leavebehinds.ts
+new   src/components/city/LeaveBehindComposer.tsx
+edit  src/components/city/multiplayer.ts   // duel message kinds + handlers
+edit  src/pages/City.tsx                   // wire overlay, proximity prompt, HUD button
+db    migration: create public.world_leavebehinds + GRANTs + RLS
 ```
 
-### Access rules (plain English)
-
-- **worlds**: anyone (incl. anonymous) can read rows where `status = 'approved'`. Logged-in users can insert (forced to `status = 'pending'`, `creator_id = auth user`). Creators can edit their own pending rows. Admins can do anything.
-- **world_characters**: same pattern.
-- **Storage bucket `world-assets**`: public read, authenticated write, file size cap (e.g. 25 MB for GLBs, 5 MB for previews).
-
-## Hub changes
-
-`src/pages/HubV2.tsx` currently hardcodes ~9 worlds and 8 characters. Replace those arrays with a `useQuery` that pulls approved rows. Keep the existing 3D layout code unchanged — it just iterates over whatever the query returns. Add a tiny "+ Submit your world" tile at the end of the worlds row that links to `/submit-world`.
-
-## New pages
-
-- `/submit-world` — form + preview-image upload. Requires login (redirects to existing auth flow if not signed in).
-- `/submit-character` — same pattern, GLB upload.
-- `/admin/worlds` — admin-only list with Approve / Reject buttons, gated by `has_role(auth.uid(), 'admin')`.
-
-## Seeding
-
-A single insert migration that mirrors the current hardcoded worlds (Cardboard Island, Vibe Hub, City, Garden, Museum, Evolve, Fruit Ninja, Vibe Gallery, About) and characters (Vibey, Alien, Wizard, Knight, …) with `status = 'approved'`, `creator_id = null` (official), preserving current `sort_order`. The hub looks identical post-migration.
-
-## Open questions you can answer now or after I start
-
-- **GLB hosting**: upload to Supabase Storage (recommended, keeps things self-contained) or paste an external URL (simpler, no quota)? I'll default to "either works — upload field + URL field, one required."
-- **GitHub URL required?** I'll make it optional for now since not every world has a repo (e.g. the Map).
-- **Character submissions in this pass, or just worlds first?** Plan includes both because they share the same shape; happy to defer characters if you want a smaller pass. lets not do this yet tho actually
+Want me to start with **duels first**, **leave-behinds first**, or build them in parallel?
