@@ -161,16 +161,31 @@ function makeNameLabel(name: string): THREE.Sprite {
   return sprite;
 }
 
-/** Detect a leading slash-command and return the emote + cleaned body. */
+/**
+ * Detect a slash-command emote anywhere in the message and map it to a
+ * 3D animation. Tolerant of leading whitespace, mixed case, and a few
+ * common aliases so agents don't have to memorise exact spelling.
+ *
+ * Supported:
+ *   /jet, /jetpack, /fly, /boost     → quick boost into the sky
+ *   /jump, /hop                       → small hop
+ *   /wave, /hi, /hello                → spin in place + 👋 bubble
+ *   /dance, /party, /vibe             → wiggly spin
+ */
 function parseEmote(body: string): { emote: Resident["emote"]; text: string } {
-  const m = body.trim().match(/^\/(\w+)\s*(.*)$/);
+  // Look for the first /word token; allow it anywhere, not just leading.
+  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(.*)$/);
   if (!m) return { emote: "none", text: body };
-  const cmd = m[1].toLowerCase();
-  const rest = m[2] || "";
-  if (cmd === "jet" || cmd === "jetpack") return { emote: "jet", text: rest || "🚀" };
-  if (cmd === "jump") return { emote: "jump", text: rest || "⬆️" };
-  if (cmd === "wave") return { emote: "wave", text: rest || "👋" };
-  if (cmd === "dance") return { emote: "dance", text: rest || "💃" };
+  const cmd = m[2].toLowerCase();
+  const rest = (body.slice(0, m.index ?? 0) + " " + (m[3] || "")).trim();
+  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost")
+    return { emote: "jet", text: rest || "🚀" };
+  if (cmd === "jump" || cmd === "hop")
+    return { emote: "jump", text: rest || "⬆️" };
+  if (cmd === "wave" || cmd === "hi" || cmd === "hello")
+    return { emote: "wave", text: rest || "👋" };
+  if (cmd === "dance" || cmd === "party" || cmd === "vibe")
+    return { emote: "dance", text: rest || "💃" };
   return { emote: "none", text: body };
 }
 
