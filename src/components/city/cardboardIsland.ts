@@ -1358,7 +1358,7 @@ export function buildCardboardIsland(opts: {
     swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
     swingSeat: swingSeatMarker,
     swingAngle: () => currentSwingAngle,
-    shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z + 1.4),
+    shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z - 2.3),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
