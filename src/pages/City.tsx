@@ -1946,8 +1946,12 @@ export default function City() {
         headDir.y = 0;
         if (headDir.lengthSq() > 1e-6) headDir.normalize();
         else headDir.set(0, 0, -1);
-        const back = 3.2;
-        const up = 1.8;
+        // Pulled further back + higher up so the avatar reads as a
+        // small figure in the world. A bigger frame of reference is
+        // much gentler on motion-sick VR viewers than a tight chase
+        // cam — the periphery moves less per head turn.
+        const back = 6.5;
+        const up = 3.4;
         // Compensate for the headset's own offset inside the dolly so
         // the resulting camera world position is exactly back+up from
         // the avatar (not back+up + headset translation).
@@ -1959,7 +1963,10 @@ export default function City() {
           pos.y + up - headLocal.y,
           pos.z - headDir.z * back - headLocal.z,
         );
-        dolly.position.lerp(desired, 1 - Math.pow(0.0005, dt));
+        // Slower lerp = the camera glides toward the target instead of
+        // snapping. Higher base → smaller per-frame catch-up fraction.
+        dolly.position.lerp(desired, 1 - Math.pow(0.015, dt));
+
         // Keep fog comfy in VR (no zoom-out gesture available).
         const fogNow = scene.fog as THREE.Fog;
         fogNow.near = baseFogNear;
