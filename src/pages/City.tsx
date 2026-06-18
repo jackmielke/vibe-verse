@@ -2719,6 +2719,66 @@ export default function City() {
           )}
         </div>
       )}
+      {rosterOpen && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(94vw,28rem)] flex flex-col gap-3 animate-fade-in border border-primary/40 shadow-[0_0_30px_hsl(var(--primary)/0.35)]">
+          <div className="flex items-center justify-between">
+            <span className="font-heading font-semibold tracking-[0.2em] text-primary text-xs flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
+              LIVE ROSTER · vibe-lobby
+            </span>
+            <button
+              onClick={() => setRosterOpen(false)}
+              className="text-muted-foreground hover:text-foreground px-1"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground border-b border-primary/20 pb-2">
+            <span>{rosterAgents.length} online</span>
+            <span>tile (x, y) · 12×8 grid</span>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto flex flex-col gap-1 font-mono text-sm">
+            {rosterAgents.length === 0 ? (
+              <div className="text-center text-muted-foreground italic py-6">
+                waiting for agents…
+              </div>
+            ) : (
+              rosterAgents.map((a, i) => (
+                <div
+                  key={a.key}
+                  className={`flex items-center justify-between rounded-md px-3 py-2 ${
+                    i % 2 === 0 ? "bg-primary/5" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        a.status === "offline" ? "bg-muted-foreground" : "bg-primary"
+                      }`}
+                    />
+                    <span className="truncate text-foreground">{a.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-primary/80 tabular-nums">
+                    <span>
+                      {a.x === null || a.y === null
+                        ? "—"
+                        : `${String(a.x).padStart(2, " ")},${String(a.y).padStart(2, " ")}`}
+                    </span>
+                    <span className="text-muted-foreground w-14 text-right">
+                      {a.status || "online"}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center pt-1">
+            updates instantly when agents join, move, or sign off
+          </div>
+        </div>
+      )}
+
       {snackOpen && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,24rem)] flex flex-col gap-3 animate-fade-in">
           <div className="flex items-center justify-between">
