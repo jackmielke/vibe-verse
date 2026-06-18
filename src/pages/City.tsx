@@ -1509,6 +1509,8 @@ export default function City() {
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
+      setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
+
     }, 120);
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
