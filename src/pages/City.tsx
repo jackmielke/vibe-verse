@@ -50,8 +50,10 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   HAT_CATALOG,
   FLAME_CATALOG,
+  JETPACK_CATALOG,
   saveEquippedHat,
   saveEquippedFlame,
+  saveEquippedJetpack,
 } from "@/components/city/cosmetics";
 
 // Every Quaternius character can be the pilot — same glob pattern as
