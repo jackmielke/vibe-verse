@@ -225,8 +225,9 @@ export function createMultiplayer(opts: {
   onPeers: (count: number, online: boolean) => void;
   onTimeMode?: (day: boolean, fromPeer: boolean) => void;
   onEmote?: (emote: EmoteName, fromPeer: boolean) => void;
+  onBump?: (x: number, y: number, z: number, dirX: number, dirZ: number, speed: number) => void;
 }): Multiplayer {
-  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote } = opts;
+  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote, onBump } = opts;
   let myName = opts.name;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
@@ -234,6 +235,7 @@ export function createMultiplayer(opts: {
   const baseCache = new Map<string, Promise<{ scene: THREE.Group; clips: THREE.AnimationClip[]; fit: number; lift: number }>>();
   let online = false;
   let lastSend = 0;
+  let lastBumpSend = 0;
   let lastSent: PlayerState | null = null;
   let disposed = false;
   let myDay: boolean | null = null; // our current known day/night, tracked in presence
@@ -416,6 +418,11 @@ export function createMultiplayer(opts: {
         const g = ghosts.get(p.id);
         if (g) playEmoteOn(g, p.emote);
         onEmote?.(p.emote, true);
+      })
+      .on("broadcast", { event: "bump" }, ({ payload }) => {
+        const p = payload as { id: string; x: number; y: number; z: number; dirX: number; dirZ: number; speed: number };
+        if (!p || p.id === sessionId) return;
+        onBump?.(p.x, p.y, p.z, p.dirX, p.dirZ, p.speed);
       })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
