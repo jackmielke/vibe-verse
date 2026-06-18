@@ -488,6 +488,21 @@ export function createMultiplayer(opts: {
             g.emote.sprite.material.opacity = fade;
           }
         }
+
+        // Chat bubble lifecycle: hold, then fade out near the end.
+        if (g.chat) {
+          g.chat.t += dt;
+          const u = g.chat.t / g.chat.life;
+          if (u >= 1) {
+            g.group.remove(g.chat.sprite);
+            g.chat.sprite.material.dispose();
+            (g.chat.sprite.material.map as THREE.Texture | null)?.dispose();
+            g.chat = undefined;
+          } else {
+            const fade = u < 0.85 ? 1 : 1 - (u - 0.85) / 0.15;
+            g.chat.sprite.material.opacity = fade;
+          }
+        }
       }
     },
     sendChat(text) {
