@@ -888,6 +888,7 @@ export default function City() {
       radius: 28,
       roomId: "vibe-lobby",
     });
+    let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
     const mp = createMultiplayer({
@@ -908,13 +909,7 @@ export default function City() {
       },
       onBump: (x, y, z, dirX, dirZ, speed) => {
         agentResidents.pushFrom(x, y, z, dirX, dirZ, speed, 1 / 30);
-        const pos = player.position;
-        if (Math.abs(pos.y - y) > 2.6) return;
-        const dx = pos.x - x;
-        const dz = pos.z - z;
-        if (dx * dx + dz * dz > 1.75 * 1.75) return;
-        vel.x += dirX * Math.min(10, 2.8 + speed * 0.32);
-        vel.z += dirZ * Math.min(10, 2.8 + speed * 0.32);
+        applyRemoteBump(x, y, z, dirX, dirZ, speed);
       },
     });
     mpRef.current = mp;
