@@ -841,13 +841,14 @@ export default function HubV2() {
       // floats high in the frame (worlds at ROW_Y, look ~1.3 lower).
       const baseLook = new THREE.Vector3(0, ROW_Y - 1.3, ROW_Z);
 
-      // Hero (A) pose — whole-robot 3/4 shot at a comfortable distance.
+      // Hero (A) pose — head-on, at Vibey's eye level. He looks
+      // straight in your eyes; only a faint sway keeps it alive.
       const heroPos = new THREE.Vector3(
-        Math.sin(HERO_ANGLE) * HERO_R + Math.sin(t * 0.6) * 0.15,
-        vibeyHeadY + 0.7,
-        vibeyZ - Math.cos(HERO_ANGLE) * HERO_R,
+        Math.sin(t * 0.4) * 0.08,
+        vibeyHeadY,
+        vibeyZ - HERO_R,
       );
-      const heroLook = new THREE.Vector3(0, vibeyMidY + 0.35, vibeyZ);
+      const heroLook = new THREE.Vector3(0, vibeyHeadY, vibeyZ);
 
       const easeInOut = (x: number) =>
         x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
