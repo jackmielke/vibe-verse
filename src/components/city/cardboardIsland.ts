@@ -947,7 +947,7 @@ export function buildCardboardIsland(opts: {
   // ---- Cardboard TV: the island photo gallery ---------------------------
   const tv = new THREE.Group();
   tv.position.set(18, 0, 22);
-  tv.rotation.y = Math.atan2(-18, -22); // screen faces the Dream Tree
+  tv.rotation.y = Math.atan2(0 - 18, 0 - 22); // screen faces the plaza center
   const tvTextures: THREE.Texture[] = [];
   let tvIndex = 0;
   let tvTimer = 0;
