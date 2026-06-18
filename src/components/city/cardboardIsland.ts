@@ -781,7 +781,10 @@ export function buildCardboardIsland(opts: {
   // JERRY'S PLAZA archway — kids' painted cardboard sign on two posts at the south entrance.
   {
     const archGroup = new THREE.Group();
-    archGroup.position.set(0, 0, PLAZA_R + 0.3); // south path entrance
+    // West path entrance — rotated 90° from the south so the sign no
+    // longer blocks the spawn camera's view of the player.
+    archGroup.position.set(-(PLAZA_R + 0.3), 0, 0);
+    archGroup.rotation.y = Math.PI / 2;
     const postMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.95 });
     [-2.4, 2.4].forEach((px) => {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5, 0.45), postMat);
