@@ -2309,6 +2309,110 @@ export default function City() {
         </div>
       )}
 
+      {/* Vibe Shop dialog — hats + jet boost cosmetics. Free during
+          early access; vibe coin prices are shown for the future. */}
+      {entered && shopOpen && (
+        <div
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-3 sm:p-6 bg-background/70 backdrop-blur-sm"
+          onClick={() => setShopOpen(false)}
+        >
+          <div
+            className="glass-panel rounded-2xl w-full max-w-md p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-heading font-bold text-base tracking-wide text-primary">
+                  🛍️ VIBE SHOP
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Early access · everything free
+                </div>
+              </div>
+              <button
+                onClick={() => setShopOpen(false)}
+                className="text-muted-foreground hover:text-foreground text-lg leading-none px-2"
+                aria-label="Close shop"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
+                HATS
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {HAT_CATALOG.map((h) => {
+                  const eq = equippedHat === h.id;
+                  return (
+                    <button
+                      key={h.id}
+                      onClick={() => {
+                        setEquippedHat(h.id);
+                        saveEquippedHat(h.id);
+                        applyHatRef.current?.(h.id);
+                      }}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
+                        eq
+                          ? "bg-primary/25 ring-1 ring-primary text-primary"
+                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
+                      }`}
+                    >
+                      <span className="text-2xl">{h.emoji}</span>
+                      <span className="text-[10px] text-center leading-tight">{h.name}</span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {h.price === 0 ? "free" : `${h.price} 🪙`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
+                JET BOOSTS
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {FLAME_CATALOG.map((f) => {
+                  const eq = equippedFlame === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        setEquippedFlame(f.id);
+                        saveEquippedFlame(f.id);
+                        applyFlameRef.current?.(f.id);
+                      }}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
+                        eq
+                          ? "bg-primary/25 ring-1 ring-primary text-primary"
+                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
+                      }`}
+                    >
+                      <span className="text-xl">{f.emoji}</span>
+                      <span
+                        className="w-6 h-1.5 rounded-full"
+                        style={{ background: f.color, boxShadow: `0 0 10px ${f.color}` }}
+                      />
+                      <span className="text-[10px] text-center leading-tight">{f.name}</span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {f.price === 0 ? "free" : `${f.price} 🪙`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="text-[10px] text-muted-foreground text-center pt-1">
+              Hold Space to test your new boost · the look saves across visits.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Touch controls for phones: joystick + jetpack button. */}
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
