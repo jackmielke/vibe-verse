@@ -33,6 +33,8 @@ import { supabase } from "@/integrations/supabase/client";
 export interface AgentResidents {
   group: THREE.Group;
   update(dt: number, playerPos: THREE.Vector3): void;
+  /** Visit every resident position. Used for soft player–agent collision. */
+  forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   dispose(): void;
 }
 
