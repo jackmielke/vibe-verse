@@ -376,6 +376,8 @@ export function createMultiplayer(opts: {
       .on("broadcast", { event: "chat" }, ({ payload }) => {
         const m = payload as { id: string; name: string; text: string };
         if (!m?.text) return;
+        const g = ghosts.get(m.id);
+        if (g) showChatOn(g, m.text);
         onChat({ id: `${m.id}-${Date.now()}`, name: m.name, text: m.text, ts: Date.now() });
       })
       .on("broadcast", { event: "time-mode" }, ({ payload }) => {
