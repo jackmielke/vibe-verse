@@ -2313,86 +2313,6 @@ export type Database = {
         }
         Relationships: []
       }
-      lobby_messages: {
-        Row: {
-          created_at: string
-          emoji: string
-          id: string
-          name: string
-          presence_id: string | null
-          text: string
-        }
-        Insert: {
-          created_at?: string
-          emoji?: string
-          id?: string
-          name: string
-          presence_id?: string | null
-          text: string
-        }
-        Update: {
-          created_at?: string
-          emoji?: string
-          id?: string
-          name?: string
-          presence_id?: string | null
-          text?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "lobby_messages_presence_id_fkey"
-            columns: ["presence_id"]
-            isOneToOne: false
-            referencedRelation: "lobby_presence"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      lobby_presence: {
-        Row: {
-          autopilot: boolean
-          bio: string | null
-          color: string
-          created_at: string
-          emoji: string
-          id: string
-          kind: string
-          last_say: string | null
-          name: string
-          updated_at: string
-          x: number
-          y: number
-        }
-        Insert: {
-          autopilot?: boolean
-          bio?: string | null
-          color?: string
-          created_at?: string
-          emoji?: string
-          id?: string
-          kind?: string
-          last_say?: string | null
-          name: string
-          updated_at?: string
-          x?: number
-          y?: number
-        }
-        Update: {
-          autopilot?: boolean
-          bio?: string | null
-          color?: string
-          created_at?: string
-          emoji?: string
-          id?: string
-          kind?: string
-          last_say?: string | null
-          name?: string
-          updated_at?: string
-          x?: number
-          y?: number
-        }
-        Relationships: []
-      }
       magic_link_tokens: {
         Row: {
           community_id: string
@@ -4331,6 +4251,107 @@ export type Database = {
         }
         Relationships: []
       }
+      world_agents: {
+        Row: {
+          agent_key: string
+          color: string
+          created_at: string
+          id: string
+          last_seen_at: string
+          metadata: Json
+          name: string
+          prompt: string | null
+          room_id: string
+          status: string
+          updated_at: string
+          x: number
+          y: number
+        }
+        Insert: {
+          agent_key: string
+          color?: string
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          name: string
+          prompt?: string | null
+          room_id: string
+          status?: string
+          updated_at?: string
+          x?: number
+          y?: number
+        }
+        Update: {
+          agent_key?: string
+          color?: string
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          name?: string
+          prompt?: string | null
+          room_id?: string
+          status?: string
+          updated_at?: string
+          x?: number
+          y?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_agents_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "world_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_messages: {
+        Row: {
+          agent_id: string | null
+          body: string
+          created_at: string
+          id: string
+          kind: string
+          room_id: string
+          speaker: string
+        }
+        Insert: {
+          agent_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          kind?: string
+          room_id: string
+          speaker: string
+        }
+        Update: {
+          agent_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          room_id?: string
+          speaker?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_messages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "world_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "world_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_objects: {
         Row: {
           community_id: string
@@ -4385,6 +4406,45 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      world_rooms: {
+        Row: {
+          created_at: string
+          description: string | null
+          height: number
+          id: string
+          name: string
+          slug: string
+          spawn_x: number
+          spawn_y: number
+          updated_at: string
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          height?: number
+          id: string
+          name: string
+          slug: string
+          spawn_x?: number
+          spawn_y?: number
+          updated_at?: string
+          width?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          height?: number
+          id?: string
+          name?: string
+          slug?: string
+          spawn_x?: number
+          spawn_y?: number
+          updated_at?: string
+          width?: number
+        }
+        Relationships: []
       }
       worlds: {
         Row: {
