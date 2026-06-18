@@ -913,6 +913,21 @@ export function buildCardboardIsland(opts: {
   }
   group.add(jerryGroup);
 
+  // Jerry is solid — players (and roaming agents) bump off him instead
+  // of walking through the snail mayor.
+  {
+    const JR = 1.8; // half-width footprint
+    const JH = 2.6; // shell + head height
+    boxes.push({
+      minX: centerX + PLAZA_CX - JR,
+      maxX: centerX + PLAZA_CX + JR,
+      minZ: centerZ + PLAZA_CZ - JR,
+      maxZ: centerZ + PLAZA_CZ + JR,
+      base: topY,
+      height: topY + JH,
+    });
+  }
+
   // ---- Cardboard TV: the island photo gallery ---------------------------
   const tv = new THREE.Group();
   tv.position.set(18, 0, 22);
