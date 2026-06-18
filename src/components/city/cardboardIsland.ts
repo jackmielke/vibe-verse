@@ -1054,7 +1054,9 @@ export function buildCardboardIsland(opts: {
   tinyFlame.rotation.x = Math.PI;
   shopGroup.add(tinyFlame);
 
-  group.add(shopGroup);
+    group.add(shopGroup);
+  }
+
 
   // ---- SnackFe: modern neon cafe ---------------------------------------
   // A sleek modern micro-cafe with alternating mint/magenta string lights
