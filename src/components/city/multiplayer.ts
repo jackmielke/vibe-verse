@@ -468,6 +468,13 @@ export function createMultiplayer(opts: {
         p.x += (g.target.x - p.x) * k;
         p.y += (g.target.y - p.y) * k;
         p.z += (g.target.z - p.z) * k;
+        if (g.bumpVel.lengthSq() > 0.0001) {
+          p.x += g.bumpVel.x * dt;
+          p.z += g.bumpVel.z * dt;
+          g.bumpVel.multiplyScalar(Math.pow(0.025, dt));
+        } else {
+          g.bumpVel.set(0, 0, 0);
+        }
         let d = g.target.yaw - g.group.rotation.y;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
@@ -558,6 +565,37 @@ export function createMultiplayer(opts: {
         const p = g.group.position;
         if (p.y < -100) continue; // not spawned yet
         cb(p.x, p.y, p.z);
+      }
+    },
+    pushFrom(x, y, z, dirX, dirZ, speed, dt) {
+      const len = Math.hypot(dirX, dirZ);
+      if (len < 0.001 || speed < 0.5) return;
+      const nx = dirX / len;
+      const nz = dirZ / len;
+      const radius = 1.75;
+      let hit = false;
+      for (const g of ghosts.values()) {
+        const p = g.group.position;
+        if (p.y < -100 || Math.abs(p.y - y) > 2.6) continue;
+        const dx = p.x - x;
+        const dz = p.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= radius * radius) continue;
+        const d = Math.sqrt(d2);
+        const overlap = (radius - d) / radius;
+        const shove = Math.min(10, 2.8 + speed * 0.32) * overlap;
+        g.bumpVel.x += nx * shove * dt * 14;
+        g.bumpVel.z += nz * shove * dt * 14;
+        hit = true;
+      }
+      const now = performance.now();
+      if (hit && online && channel && now - lastBumpSend > 90) {
+        lastBumpSend = now;
+        void channel.send({
+          type: "broadcast",
+          event: "bump",
+          payload: { id: sessionId, x, y, z, dirX: nx, dirZ: nz, speed },
+        });
       }
     },
     dispose() {
