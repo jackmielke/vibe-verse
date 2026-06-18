@@ -1611,7 +1611,10 @@ export default function City() {
       }
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
-      const thrusting = jetpackEquipped && enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const jetInput = enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const thrusting = jetpackEquipped && jetInput;
+      // Parkour mode: no jetpack means Space / mobile jet button becomes a jump.
+      const wantsJump = !jetpackEquipped && jetInput;
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
