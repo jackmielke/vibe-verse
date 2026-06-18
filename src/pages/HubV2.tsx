@@ -483,7 +483,7 @@ export default function HubV2() {
       const box = new THREE.Box3().setFromObject(islandTemplate);
       const size = new THREE.Vector3();
       box.getSize(size);
-      const targetSize = 4.0;
+      const targetSize = 2.8;
       const s = targetSize / Math.max(size.x, size.y, size.z);
       islandTemplate.scale.setScalar(s);
       // Drop into the matching slot if it's already built.
@@ -1075,31 +1075,10 @@ export default function HubV2() {
       </Dialog>
 
 
-      {/* Character picker — pick the avatar standing on the platform.
-          The choice is mirrored to localStorage so /lobby and /city
-          pick it up too. */}
-      <div className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-6 z-20 flex flex-col items-center gap-2 pointer-events-auto">
-        <p className="text-[9px] sm:text-[10px] tracking-[0.3em] uppercase text-primary/70 mb-1 [writing-mode:vertical-rl] rotate-180 sm:rotate-0 sm:[writing-mode:horizontal-tb]">
-          You
-        </p>
-        <div className="glass-panel rounded-2xl p-1.5 flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto">
-          {CHAR_PICKS.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setCharId(c.id)}
-              title={c.label}
-              aria-label={`Pick ${c.label}`}
-              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl text-xl sm:text-2xl flex items-center justify-center transition-all ${
-                charId === c.id
-                  ? "bg-primary/20 ring-2 ring-primary shadow-[0_0_18px_hsl(var(--primary)/0.5)]"
-                  : "bg-background/40 hover:bg-primary/10 ring-1 ring-border/40"
-              }`}
-            >
-              <span aria-hidden>{c.emoji}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Character picker moved to the /profile page — it lives in the
+          global-nav "Sign in" dropdown as "Choose your character". The
+          full Lobby-style grid (every Quaternius character) is the
+          source of truth for picking who you play as. */}
     </div>
   );
 }
