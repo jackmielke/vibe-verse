@@ -387,6 +387,22 @@ export function createAgentResidents(opts: {
     r.emoteT = 0;
   };
 
+  const startMove = (r: Resident, dirX: number, dirZ: number, dur: number) => {
+    const len = Math.hypot(dirX, dirZ) || 1;
+    r.moveDir.set(dirX / len, 0, dirZ / len);
+    r.moveT = dur;
+    r.emote = "move";
+    r.emoteT = 0;
+    r.goingHome = false;
+  };
+
+  const respawn = (r: Resident) => {
+    r.target.copy(r.home);
+    r.goingHome = true;
+    r.moveT = 0;
+    r.emote = "none";
+  };
+
   // Initial fetch
   (async () => {
     const { data, error } = await supabase
