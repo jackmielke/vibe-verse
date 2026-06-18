@@ -2313,6 +2313,86 @@ export type Database = {
         }
         Relationships: []
       }
+      lobby_messages: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          name: string
+          presence_id: string | null
+          text: string
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          name: string
+          presence_id?: string | null
+          text: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          name?: string
+          presence_id?: string | null
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lobby_messages_presence_id_fkey"
+            columns: ["presence_id"]
+            isOneToOne: false
+            referencedRelation: "lobby_presence"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lobby_presence: {
+        Row: {
+          autopilot: boolean
+          bio: string | null
+          color: string
+          created_at: string
+          emoji: string
+          id: string
+          kind: string
+          last_say: string | null
+          name: string
+          updated_at: string
+          x: number
+          y: number
+        }
+        Insert: {
+          autopilot?: boolean
+          bio?: string | null
+          color?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          kind?: string
+          last_say?: string | null
+          name: string
+          updated_at?: string
+          x?: number
+          y?: number
+        }
+        Update: {
+          autopilot?: boolean
+          bio?: string | null
+          color?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          kind?: string
+          last_say?: string | null
+          name?: string
+          updated_at?: string
+          x?: number
+          y?: number
+        }
+        Relationships: []
+      }
       magic_link_tokens: {
         Row: {
           community_id: string
