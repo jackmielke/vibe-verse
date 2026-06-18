@@ -840,7 +840,7 @@ export function buildCardboardIsland(opts: {
   // Mayor of Jerry's Plaza. Hand-built cardboard snail: slug body, a
   // shell with a painted spiral, googly eye stalks, a JERRY sign.
   const jerryGroup = new THREE.Group();
-  jerryGroup.position.set(2, 0.18, 22); // sit on top of the plaza pad
+  jerryGroup.position.set(PLAZA_CX, 0.18, PLAZA_CZ); // sit at the center of the plaza pad
   jerryGroup.rotation.y = Math.PI + 0.5; // face the welcome path
   const jerryParts = { stalks: [] as THREE.Mesh[] };
   {
