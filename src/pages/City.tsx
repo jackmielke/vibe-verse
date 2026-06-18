@@ -2006,6 +2006,9 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       agentResidents.dispose();
+      unsubRoster();
+      rosterBoard.dispose();
+
       delete devWindow.__cityDebug;
       soundsRef.current?.dispose();
       soundsRef.current = null;
