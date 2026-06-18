@@ -31,8 +31,12 @@ export default function LogInWithVibe({
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  // Sized to match the chip height in GlobalNav so the pills align.
+  const btn =
+    "h-7 w-7 rounded-full flex items-center justify-center transition overflow-hidden";
+
   if (id.loading) {
-    return <div className="h-8 w-8 rounded-full bg-white/5 animate-pulse" />;
+    return <div className={`${btn} bg-white/5 animate-pulse`} />;
   }
 
   // Signed OUT — minimal Vibe-logo button.
@@ -41,8 +45,7 @@ export default function LogInWithVibe({
       <>
         <button
           onClick={() => setOpen(true)}
-          className="h-9 w-9 rounded-full glass-panel border border-border/60 flex items-center justify-center text-primary hover:text-primary hover:bg-primary/10 transition"
-          style={{ backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}
+          className={`${btn} text-primary hover:bg-primary/10`}
           title="Vibe Profile — sign in"
           aria-label="Vibe Profile"
         >
@@ -60,11 +63,11 @@ export default function LogInWithVibe({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="h-9 w-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 flex items-center justify-center overflow-hidden transition"
+            className={`${btn} hover:bg-white/10`}
             title={display}
             aria-label="Vibe Profile"
           >
-            <VibeAvatar colorId={id.colorId} size={30} />
+            <VibeAvatar colorId={id.colorId} size={26} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60 bg-zinc-950 border-white/15 text-white">
