@@ -203,6 +203,16 @@ export const FLAME_CATALOG: FlameDef[] = [
   { id: "rainbow",name: "Rainbow",      emoji: "🌈", price: 300, color: "#ffffff", core: "#ffffff" }, // animated upstream
 ];
 
+export const JETPACK_CATALOG: JetpackDef[] = [
+  { id: "stock",   name: "Stock Pack",   emoji: "🎒", price: 0,   equipped: true,  body: "#1d2733", trim: "#2dd4a8" },
+  { id: "sunset",  name: "Sunset Pack",  emoji: "🌅", price: 80,  equipped: true,  body: "#3a1f2b", trim: "#ff8a3d" },
+  { id: "violet",  name: "Violet Pack",  emoji: "💜", price: 110, equipped: true,  body: "#2a1a44", trim: "#c084fc" },
+  { id: "ion",     name: "Ion Pack",     emoji: "⚡", price: 140, equipped: true,  body: "#0f2530", trim: "#5db8e8" },
+  { id: "magma",   name: "Magma Pack",   emoji: "🌋", price: 180, equipped: true,  body: "#2d1414", trim: "#e85d75" },
+  { id: "gold",    name: "Gold Pack",    emoji: "✨", price: 260, equipped: true,  body: "#2a220a", trim: "#ffd166" },
+  { id: "none",    name: "Return Pack",  emoji: "🚫", price: 0,   equipped: false, body: "#000000", trim: "#000000" },
+];
+
 export function loadEquippedHat(): string {
   if (typeof window === "undefined") return "none";
   return localStorage.getItem(HAT_STORAGE) || "none";
@@ -219,4 +229,13 @@ export function loadEquippedFlame(): string {
 
 export function saveEquippedFlame(id: string) {
   try { localStorage.setItem(FLAME_STORAGE, id); } catch { /* ignore quota */ }
+}
+
+export function loadEquippedJetpack(): string {
+  if (typeof window === "undefined") return "stock";
+  return localStorage.getItem(JETPACK_STORAGE) || "stock";
+}
+
+export function saveEquippedJetpack(id: string) {
+  try { localStorage.setItem(JETPACK_STORAGE, id); } catch { /* ignore quota */ }
 }
