@@ -50,8 +50,10 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   HAT_CATALOG,
   FLAME_CATALOG,
+  JETPACK_CATALOG,
   saveEquippedHat,
   saveEquippedFlame,
+  saveEquippedJetpack,
 } from "@/components/city/cosmetics";
 
 // Every Quaternius character can be the pilot — same glob pattern as
@@ -617,8 +619,13 @@ export default function City() {
     if (typeof window === "undefined") return "mint";
     return localStorage.getItem("city.flame") || "mint";
   });
+  const [equippedJetpack, setEquippedJetpack] = useState<string>(() => {
+    if (typeof window === "undefined") return "stock";
+    return localStorage.getItem("city.jetpack") || "stock";
+  });
   const applyHatRef = useRef<((id: string) => void) | null>(null);
   const applyFlameRef = useRef<((id: string) => void) | null>(null);
+  const applyJetpackRef = useRef<((id: string) => void) | null>(null);
 
   // "B" toggles the emote wheel. Ignored while typing in chat.
   useEffect(() => {
@@ -1210,8 +1217,24 @@ export default function City() {
       jetLight.color.set(def.core);
     };
     applyFlameRef.current = applyFlame;
+    // Jetpack equip / color / "returned" state. When equipped=false the
+    // whole pack hides AND thrust is disabled — you handed it back at the
+    // Vibe Shop. Body + trim colors are tinted live.
+    let jetpackEquipped = true;
+    const applyJetpack = (id: string) => {
+      const def = JETPACK_CATALOG.find((j) => j.id === id) ?? JETPACK_CATALOG[0];
+      jetpackEquipped = def.equipped;
+      jetpack.visible = def.equipped;
+      if (def.equipped) {
+        packMat.color.set(def.body);
+        trimMat.color.set(def.trim);
+        trimMat.emissive.set(def.trim);
+      }
+    };
+    applyJetpackRef.current = applyJetpack;
     applyHat(localStorage.getItem("city.hat") || "none");
     applyFlame(localStorage.getItem("city.flame") || "mint");
+    applyJetpack(localStorage.getItem("city.jetpack") || "stock");
 
 
     // Zipline T-handle, visible only while riding the cable.
@@ -1588,7 +1611,7 @@ export default function City() {
       }
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
-      const thrusting = enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const thrusting = jetpackEquipped && enteredRef.current && (keys.has("Space") || touchJetRef.current);
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
@@ -2410,6 +2433,55 @@ export default function City() {
                 })}
               </div>
             </div>
+
+            <div>
+              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
+                JET PACKS
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {JETPACK_CATALOG.map((j) => {
+                  const eq = equippedJetpack === j.id;
+                  const returned = !j.equipped;
+                  return (
+                    <button
+                      key={j.id}
+                      onClick={() => {
+                        setEquippedJetpack(j.id);
+                        saveEquippedJetpack(j.id);
+                        applyJetpackRef.current?.(j.id);
+                      }}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
+                        eq
+                          ? "bg-primary/25 ring-1 ring-primary text-primary"
+                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
+                      }`}
+                    >
+                      <span className="text-xl">{j.emoji}</span>
+                      {returned ? (
+                        <span className="w-6 h-1.5 rounded-full bg-muted-foreground/40" />
+                      ) : (
+                        <span className="flex gap-0.5">
+                          <span
+                            className="w-3 h-1.5 rounded-l-full"
+                            style={{ background: j.body }}
+                          />
+                          <span
+                            className="w-3 h-1.5 rounded-r-full"
+                            style={{ background: j.trim, boxShadow: `0 0 8px ${j.trim}` }}
+                          />
+                        </span>
+                      )}
+                      <span className="text-[10px] text-center leading-tight">{j.name}</span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {j.price === 0 ? (returned ? "return" : "free") : `${j.price} 🪙`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+
 
             <div className="text-[10px] text-muted-foreground text-center pt-1">
               Hold Space to test your new boost · the look saves across visits.

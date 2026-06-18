@@ -970,7 +970,7 @@ export function buildCardboardIsland(opts: {
   {
     const shopGroup = new THREE.Group();
     shopGroup.position.set(SHOP_X, 0, SHOP_Z);
-    shopGroup.rotation.y = Math.atan2(-SHOP_X, -SHOP_Z) + Math.PI; // counter faces outward
+    shopGroup.rotation.y = Math.atan2(-SHOP_X, -SHOP_Z); // counter faces inward toward island center
   const shopBody = new THREE.MeshStandardMaterial({ color: "#10141c", roughness: 0.4, metalness: 0.35 });
   const shopMint = new THREE.MeshStandardMaterial({
     color: "#2dd4a8",
