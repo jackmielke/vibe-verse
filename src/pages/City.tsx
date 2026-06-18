@@ -1871,6 +1871,8 @@ export default function City() {
       
       vibey.update(dt, now);
       agentResidents.update(dt, pos);
+      rosterBoard.update(dt);
+
       mp.update(dt, {
         x: pos.x,
         y: pos.y,
