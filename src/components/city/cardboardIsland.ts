@@ -52,6 +52,8 @@ export interface IslandWorld {
   swingAngle(): number;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
+  /** The shop counter (modern kiosk behind the TV), in world coordinates. */
+  shop: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
