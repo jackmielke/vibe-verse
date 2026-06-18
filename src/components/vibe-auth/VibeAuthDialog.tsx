@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import VibeArc from "@/components/VibeArc";
-import vibeLogoMark from "@/assets/vibe-logo-mark.png.asset.json";
 
 interface Props {
   open: boolean;
@@ -92,22 +91,11 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <ArrowLeft className="h-5 w-5" />
           </button>
 
-          {/* Vibe lightning-smile mark. Static PNG renders instantly so
-              there's no GLB-loading wait on the auth screen. (The 3D
-              VibeArc is still used on the /vibe coin page.) */}
+          {/* 3D iridescent arc — same asset used on the VIBE coin page.
+              Slowly rotates idle, spins faster on hover, plays a random
+              animation on click. */}
           <div className="flex justify-center mb-2 -mt-2">
-            <img
-              src={vibeLogoMark.url}
-              alt="Vibe"
-              width={140}
-              height={140}
-              draggable={false}
-              className="h-[140px] w-[140px] select-none"
-              style={{
-                filter:
-                  "invert(1) drop-shadow(0 0 18px hsl(var(--primary) / 0.55)) drop-shadow(0 0 6px hsl(var(--primary) / 0.8))",
-              }}
-            />
+            <VibeArc size={140} rotateSeconds={28} />
           </div>
 
           {/* Heading */}
