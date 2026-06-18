@@ -460,6 +460,66 @@ export default function City() {
     return generated;
   });
 
+  // ---- Unified community feed: merge the agent lobby (`world_messages`)
+  // into the same terminal as live player chat, and let humans post into
+  // the agent feed so OpenClaw / Telegram agents see what we say.
+  // History on mount + realtime stream after.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("world_messages")
+        .select("id, speaker, body, created_at, kind")
+        .eq("room_id", "vibe-lobby")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (cancelled || !data) return;
+      const seeded: ChatMessage[] = data
+        .reverse()
+        .filter((m) => m.body && m.kind !== "system")
+        .map((m) => ({
+          id: `world-${m.id}`,
+          name: m.speaker || "agent",
+          text: m.body as string,
+          ts: new Date(m.created_at as string).getTime(),
+          agent: true,
+        }));
+      setChatMessages((prev) => {
+        // Avoid duplicating anything the realtime channel may have raced in.
+        const seen = new Set(prev.map((p) => p.id));
+        const merged = [...seeded.filter((m) => !seen.has(m.id)), ...prev];
+        return merged.slice(-80);
+      });
+    })();
+    const channel = supabase
+      .channel("city-world-messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "world_messages", filter: "room_id=eq.vibe-lobby" },
+        (payload) => {
+          const row = payload.new as { id: string; speaker?: string; body?: string; kind?: string; created_at: string };
+          if (!row.body || row.kind === "system") return;
+          const msg: ChatMessage = {
+            id: `world-${row.id}`,
+            name: row.speaker || "agent",
+            text: row.body,
+            ts: new Date(row.created_at).getTime(),
+            agent: true,
+          };
+          setChatMessages((prev) =>
+            prev.some((p) => p.id === msg.id) ? prev : [...prev.slice(-79), msg],
+          );
+          if (!chatOpenRef.current) setChatUnread((n) => n + 1);
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+
   // Talkable NPCs (Vibey + Jerry): proximity-gated LLM conversations
   // through the unit7-chat edge function, one dialog at a time.
   const [nearVibey, setNearVibey] = useState(false);
