@@ -56,6 +56,8 @@ export interface Multiplayer {
   sendEmote(emote: EmoteName): void;
   /** Visit every remote ghost position. Used for soft player–player collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
+  /** Locally shove remote ghosts so bumping other players feels playful. */
+  pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
   dispose(): void;
 }
 
@@ -66,6 +68,7 @@ interface Ghost {
   idle: THREE.AnimationAction | null;
   active: "walk" | "idle" | null;
   target: { x: number; y: number; z: number; yaw: number };
+  bumpVel: THREE.Vector3;
   char: string;
   label: string;
   emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
@@ -270,6 +273,7 @@ export function createMultiplayer(opts: {
       idle: null,
       active: null,
       target: { x: 0, y: -500, z: 0, yaw: 0 },
+      bumpVel: new THREE.Vector3(),
       char,
       label,
     };
