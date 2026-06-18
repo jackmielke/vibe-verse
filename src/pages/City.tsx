@@ -1456,8 +1456,8 @@ export default function City() {
     };
     mooRef.current = () => {
       soundsRef.current?.moo();
-      npcCrew.hopCows();
     };
+
 
     const hudTimer = window.setInterval(() => {
       setHud({
