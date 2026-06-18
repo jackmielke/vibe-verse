@@ -39,7 +39,11 @@ export const VIBE_COLORS: { id: string; name: string; hex: string }[] = [
 export const DEFAULT_VIBE_COLOR = "purple";
 
 export function colorHexById(id: string | null | undefined): string {
-  return VIBE_COLORS.find((c) => c.id === id)?.hex ?? VIBE_COLORS[5].hex;
+  return (
+    VIBE_COLORS.find((c) => c.id === id)?.hex ??
+    VIBE_COLORS.find((c) => c.id === DEFAULT_VIBE_COLOR)?.hex ??
+    VIBE_COLORS[0].hex
+  );
 }
 
 interface Props {
