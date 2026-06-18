@@ -985,7 +985,7 @@ export function buildCardboardIsland(opts: {
   });
   // Counter
   const shopCounter = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.1, 1.8), shopBody);
-  counter.position.set(0, 0.55, 0);
+  shopCounter.position.set(0, 0.55, 0);
   shopGroup.add(shopCounter);
   // Mint edge strip across the front of the counter
   const edge = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.08, 0.06), shopMint);
