@@ -35,6 +35,8 @@ export interface AgentResidents {
   update(dt: number, playerPos: THREE.Vector3): void;
   /** Visit every resident position. Used for soft player–agent collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
+  /** Shove nearby residents away from a moving player. */
+  pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
   dispose(): void;
 }
 
@@ -46,6 +48,7 @@ interface Resident {
   inner: THREE.Group;        // the character mesh — we bob/rotate this for emotes
   mixer: THREE.AnimationMixer | null;
   target: THREE.Vector3;
+  bumpVel: THREE.Vector3;
   speed: number;
   yaw: number;
   idleT: number;
@@ -303,6 +306,7 @@ export function createAgentResidents(opts: {
         inner,
         mixer,
         target: wrapper.position.clone(),
+        bumpVel: new THREE.Vector3(),
         speed: 1.6 + (hashString(row.key + "spd") % 100) / 100 * 1.0,
         yaw: 0,
         idleT: 0.4,
