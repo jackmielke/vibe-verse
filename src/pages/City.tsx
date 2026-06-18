@@ -906,6 +906,16 @@ export default function City() {
       onEmote: (emote, fromPeer) => {
         if (!fromPeer) playLocalEmoteRef.current?.(emote);
       },
+      onBump: (x, y, z, dirX, dirZ, speed) => {
+        agentResidents.pushFrom(x, y, z, dirX, dirZ, speed, 1 / 30);
+        const pos = player.position;
+        if (Math.abs(pos.y - y) > 2.6) return;
+        const dx = pos.x - x;
+        const dz = pos.z - z;
+        if (dx * dx + dz * dz > 1.75 * 1.75) return;
+        vel.x += dirX * Math.min(10, 2.8 + speed * 0.32);
+        vel.z += dirZ * Math.min(10, 2.8 + speed * 0.32);
+      },
     });
     mpRef.current = mp;
 
@@ -1672,6 +1682,11 @@ export default function City() {
       // Integrate with axis-separated horizontal collision. The world
       // extends east past the district so the island AND the moon are
       // both reachable.
+      const movingSpeed = Math.hypot(vel.x, vel.z);
+      if (movingSpeed > 0.5 && enteredRef.current) {
+        mp.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
+        agentResidents.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
+      }
       const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MOON_X + 80);
       const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MOON_Z - 80, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
@@ -1688,14 +1703,11 @@ export default function City() {
         vel.z = 0;
       }
 
-      // Soft personal-space buffer: gently push the player off any other
-      // character (remote ghost or roaming agent) we get stacked on top of.
-      // Same idea as the agent separation, just applied to the local player
-      // so bumping into someone produces a subtle nudge instead of phasing
-      // through them.
+      // Soft personal-space buffer: if someone is still overlapping us,
+      // keep a tiny fallback nudge so characters do not get stuck together.
       {
         const PS = 1.3;                // personal space radius (m)
-        const STRENGTH = 3.4;          // m/s at full overlap
+        const STRENGTH = 1.2;          // m/s at full overlap
         let pushX = 0, pushZ = 0;
         const consider = (ox: number, oy: number, oz: number) => {
           if (Math.abs(oy - pos.y) > 2.6) return;
