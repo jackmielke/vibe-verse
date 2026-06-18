@@ -32,29 +32,35 @@ export default function LogInWithVibe({
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Sized to match the chip height in GlobalNav so the pills align.
-  const btn =
+  const iconBtn =
     "h-7 w-7 rounded-full flex items-center justify-center transition overflow-hidden";
 
   if (id.loading) {
-    return <div className={`${btn} bg-white/5 animate-pulse`} />;
+    return <div className={`${iconBtn} bg-white/5 animate-pulse`} />;
   }
 
-  // Signed OUT — minimal Vibe-logo button.
+  // Signed OUT — glowing "Log in" pill.
   if (!id.session) {
     return (
       <>
         <button
           onClick={() => setOpen(true)}
-          className={`${btn} text-primary hover:bg-primary/10`}
-          title="Vibe Profile — sign in"
-          aria-label="Vibe Profile"
+          className="group relative h-7 px-3 rounded-full border border-primary/40 bg-primary/10 text-primary text-[11px] font-semibold tracking-wide hover:bg-primary/20 hover:border-primary/70 transition-all shadow-[0_0_12px_-2px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_-1px_hsl(var(--primary)/0.85)]"
+          title="Log in with Vibe"
+          aria-label="Log in"
         >
-          <VibeLogo size={20} />
+          <span className="relative z-10">Log in</span>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-full opacity-60 blur-[6px] bg-primary/30 group-hover:opacity-90 transition-opacity"
+          />
         </button>
         <VibeAuthDialog open={open} onOpenChange={setOpen} />
       </>
     );
   }
+
+
 
   // Signed IN — avatar-only button → dropdown.
   const display = id.profile?.name || id.profile?.username || id.user?.email || "You";
@@ -63,7 +69,7 @@ export default function LogInWithVibe({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className={`${btn} hover:bg-white/10`}
+            className={`${iconBtn} hover:bg-white/10`}
             title={display}
             aria-label="Vibe Profile"
           >
