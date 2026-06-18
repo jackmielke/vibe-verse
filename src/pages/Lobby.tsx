@@ -392,7 +392,7 @@ export default function Lobby() {
   const selectedVehicle = VEHICLES.find((v) => v.id === vehicleId)!;
 
   function launch() {
-    localStorage.setItem("lobby.character", charId);
+    setActiveCharacter(charId);
     localStorage.setItem("lobby.vehicle", vehicleId);
     navigate("/space");
   }
