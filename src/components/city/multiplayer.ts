@@ -317,6 +317,21 @@ export function createMultiplayer(opts: {
     g.emote = { sprite, t: 0, life: EMOTE_LIFE, bob: Math.random() * Math.PI * 2 };
   };
 
+  const showChatOn = (g: Ghost, text: string) => {
+    if (g.chat) {
+      g.group.remove(g.chat.sprite);
+      g.chat.sprite.material.dispose();
+      (g.chat.sprite.material.map as THREE.Texture | null)?.dispose();
+    }
+    const sprite = makeChatBubbleSprite(text);
+    // Sit above the name label (which is at y=2.35).
+    sprite.position.set(0, 3.2 + sprite.scale.y / 2, 0);
+    g.group.add(sprite);
+    g.chat = { sprite, t: 0, life: CHAT_BUBBLE_LIFE };
+  };
+
+
+
 
 
   let channel: RealtimeChannel | null = null;
