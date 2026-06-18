@@ -280,8 +280,9 @@ export default function HubV2() {
     const CAM_MIN = 11, CAM_MAX = 46;
     // Start on the hero pose so the first painted frames already match
     // the intro and there's no flash when Vibey finishes loading.
-    camera.position.set(Math.sin(0.55) * 13.0, 1.0 + 0.7, 3.7 - Math.cos(0.55) * 13.0);
-    camera.lookAt(0, 0.3 + 0.35, 3.7);
+    // Dead-on front view at Vibey's eye level — he looks straight at you.
+    camera.position.set(0, 1.0, 3.7 - 13.0);
+    camera.lookAt(0, 1.0, 3.7);
 
     // Vibey's framing metrics. Fixed (not measured) because his
     // placement is fully controlled below — platform at z=5, Vibey at
@@ -296,7 +297,7 @@ export default function HubV2() {
     const FACE_DUR = 1.5; // wave / hero hold
     const ORBIT_DUR = 3.6; // loop around + rise + pull back
     const HERO_R = 13.0; // hero-shot distance from Vibey
-    const HERO_ANGLE = 0.55; // 3/4 front angle (radians off his facing axis)
+    const HERO_ANGLE = 0; // dead-on front — Vibey looks straight in your eyes
 
     // ---------- Multi-layer starfield ----------
     const makeStars = (count: number, rMin: number, rMax: number, size: number, color: number, opacity: number) => {
