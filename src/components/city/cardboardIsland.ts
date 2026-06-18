@@ -363,8 +363,8 @@ export function buildCardboardIsland(opts: {
   // ---- Dream Tree --------------------------------------------------
   // Moved off the plaza so it no longer crowds the spawn camera; tucked
   // into the NE lawn between the welcome path and the snack stand.
-  const TREE_X = 20;
-  const TREE_Z = -6;
+  const TREE_X = -14;
+  const TREE_Z = 26;
   const tree = new THREE.Group();
   tree.position.set(TREE_X, 0, TREE_Z);
   const trunk = new THREE.Mesh(
@@ -917,14 +917,17 @@ export function buildCardboardIsland(opts: {
       pupil.position.set(1.68, 2.07, z);
       jerryGroup.add(pupil);
     });
+    // Tiny name plaque pinned to the front of the shell — small enough
+    // that it doesn't tower over Jerry or block the plaza signs behind.
     const jerrySign = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.2, 1),
+      new THREE.PlaneGeometry(1.1, 0.42),
       new THREE.MeshBasicMaterial({
         map: signTexture(["JERRY"], "#eaa7c0", "#6a2c42"),
         side: THREE.DoubleSide,
       }),
     );
-    jerrySign.position.set(0, 3.1, 0);
+    jerrySign.position.set(0.68, 1.55, 0);
+    jerrySign.rotation.y = Math.PI / 2; // face forward, same way as Jerry's head
     jerryGroup.add(jerrySign);
   }
   group.add(jerryGroup);
@@ -1095,13 +1098,15 @@ export function buildCardboardIsland(opts: {
   // ---- SnackFe: modern neon cafe ---------------------------------------
   // A sleek modern micro-cafe with alternating mint/magenta string lights
   // along the front awning. Walk up to it to order a snack.
-  const SNACK_X = 28;
-  const SNACK_Z = -14;
+  const SNACK_X = 12;
+  const SNACK_Z = 28;
   const SNACK_W = 9;
   const SNACK_D = 6;
   const SNACK_H = 4.4;
   const snackGroup = new THREE.Group();
   snackGroup.position.set(SNACK_X, 0, SNACK_Z);
+  // Rotate so the service window faces inward toward the plaza/center.
+  snackGroup.rotation.y = Math.PI;
 
   // Dark matte concrete body — contrast against cardboard kid-world.
   const snackBody = new THREE.Mesh(
@@ -1346,7 +1351,7 @@ export function buildCardboardIsland(opts: {
     starSpots,
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
     jerry: new THREE.Vector3(centerX, topY, centerZ),
-    snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z + SNACK_D / 2 + 1.4),
+    snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z - SNACK_D / 2 - 1.4),
     swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
     swingSeat: swingSeatMarker,
     swingAngle: () => currentSwingAngle,
