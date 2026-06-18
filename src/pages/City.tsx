@@ -1217,8 +1217,25 @@ export default function City() {
       jetLight.color.set(def.core);
     };
     applyFlameRef.current = applyFlame;
+    // Jetpack equip / color / "returned" state. When equipped=false the
+    // whole pack hides AND thrust is disabled — you handed it back at the
+    // Vibe Shop. Body + trim colors are tinted live.
+    let jetpackEquipped = true;
+    const applyJetpack = (id: string) => {
+      const def = JETPACK_CATALOG.find((j) => j.id === id) ?? JETPACK_CATALOG[0];
+      jetpackEquipped = def.equipped;
+      jetpack.visible = def.equipped;
+      if (def.equipped) {
+        packMat.color.set(def.body);
+        trimMat.color.set(def.trim);
+        trimMat.emissive.set(def.trim);
+      }
+    };
+    applyJetpackRef.current = applyJetpack;
+    jetpackEquippedRef.current = () => jetpackEquipped;
     applyHat(localStorage.getItem("city.hat") || "none");
     applyFlame(localStorage.getItem("city.flame") || "mint");
+    applyJetpack(localStorage.getItem("city.jetpack") || "stock");
 
 
     // Zipline T-handle, visible only while riding the cable.
