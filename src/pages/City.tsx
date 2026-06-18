@@ -878,6 +878,20 @@ export default function City() {
     });
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
 
+    // ---- Live Roster TV: scoreboard-style screen on the front of the
+    // island showing every current agent and their lobby-grid tile.
+    // Clicking it opens a fuller modal with the same list.
+    const ROSTER_LX = -22;
+    const ROSTER_LZ = 14;
+    const rosterBoard = createAgentRosterBoard({
+      position: new THREE.Vector3(ISLAND_X + ROSTER_LX, ISLAND_TOP, ISLAND_Z + ROSTER_LZ),
+      rotationY: Math.atan2(-ROSTER_LX, -ROSTER_LZ), // face the island center
+      roomId: "vibe-lobby",
+    });
+    scene.add(rosterBoard.group);
+    const unsubRoster = rosterBoard.onUpdate((rows) => setRosterAgents(rows));
+
+
     // ---- Multiplayer: presence ghosts + the community terminal ------
     const mp = createMultiplayer({
       scene,
