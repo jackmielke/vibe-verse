@@ -1418,6 +1418,8 @@ export default function City() {
     // ---- Simulation state ---------------------------------------------
     const vel = new THREE.Vector3();
     let onGround = true;
+    let prevJetInput = false;
+    let coyoteTimer = 0; // grace window so jumping just after leaving ground feels right
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
@@ -1611,7 +1613,10 @@ export default function City() {
       }
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
-      const thrusting = jetpackEquipped && enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const jetInput = enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const thrusting = jetpackEquipped && jetInput;
+      // Parkour mode: no jetpack means Space / mobile jet button becomes a jump.
+      const wantsJump = !jetpackEquipped && jetInput;
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
@@ -1651,7 +1656,16 @@ export default function City() {
         vel.y += THRUST * dt;
         onGround = false;
       }
+      // Parkour jump: edge-trigger when grounded (or within coyote window).
+      if (wantsJump && !prevJetInput && (onGround || coyoteTimer > 0)) {
+        vel.y = 11;
+        onGround = false;
+        coyoteTimer = 0;
+        soundsRef.current?.thud?.(0.15);
+      }
       vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
+      prevJetInput = jetInput;
+      coyoteTimer = onGround ? 0.12 : Math.max(0, coyoteTimer - dt);
 
       // Integrate with axis-separated horizontal collision. The world
       // extends east past the district so the island AND the moon are
