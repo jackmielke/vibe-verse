@@ -460,6 +460,66 @@ export default function City() {
     return generated;
   });
 
+  // ---- Unified community feed: merge the agent lobby (`world_messages`)
+  // into the same terminal as live player chat, and let humans post into
+  // the agent feed so OpenClaw / Telegram agents see what we say.
+  // History on mount + realtime stream after.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("world_messages")
+        .select("id, speaker, body, created_at, kind")
+        .eq("room_id", "vibe-lobby")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (cancelled || !data) return;
+      const seeded: ChatMessage[] = data
+        .reverse()
+        .filter((m) => m.body && m.kind !== "system")
+        .map((m) => ({
+          id: `world-${m.id}`,
+          name: m.speaker || "agent",
+          text: m.body as string,
+          ts: new Date(m.created_at as string).getTime(),
+          agent: true,
+        }));
+      setChatMessages((prev) => {
+        // Avoid duplicating anything the realtime channel may have raced in.
+        const seen = new Set(prev.map((p) => p.id));
+        const merged = [...seeded.filter((m) => !seen.has(m.id)), ...prev];
+        return merged.slice(-80);
+      });
+    })();
+    const channel = supabase
+      .channel("city-world-messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "world_messages", filter: "room_id=eq.vibe-lobby" },
+        (payload) => {
+          const row = payload.new as { id: string; speaker?: string; body?: string; kind?: string; created_at: string };
+          if (!row.body || row.kind === "system") return;
+          const msg: ChatMessage = {
+            id: `world-${row.id}`,
+            name: row.speaker || "agent",
+            text: row.body,
+            ts: new Date(row.created_at).getTime(),
+            agent: true,
+          };
+          setChatMessages((prev) =>
+            prev.some((p) => p.id === msg.id) ? prev : [...prev.slice(-79), msg],
+          );
+          if (!chatOpenRef.current) setChatUnread((n) => n + 1);
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+
   // Talkable NPCs (Vibey + Jerry): proximity-gated LLM conversations
   // through the unit7-chat edge function, one dialog at a time.
   const [nearVibey, setNearVibey] = useState(false);
@@ -2058,24 +2118,38 @@ export default function City() {
             </div>
           )}
           {chatOpen && (
-            <div className="glass-panel rounded-2xl p-3 w-72 flex flex-col gap-2">
+            <div className="glass-panel rounded-2xl p-3 w-80 sm:w-96 flex flex-col gap-2">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="font-heading font-semibold tracking-wider text-primary">
                   COMMUNITY TERMINAL
                 </span>
-                <span className={peers.online ? "text-primary" : "text-muted-foreground"}>
-                  {peers.online ? `${peers.count} online` : "offline"}
+                <span className="text-muted-foreground">
+                  <span className={peers.online ? "text-primary" : ""}>{peers.count}</span>
+                  {" pilots · "}
+                  <span className="text-violet-300">agents live</span>
                 </span>
               </div>
-              <div className="max-h-[30dvh] overflow-y-auto space-y-1 text-xs">
+              <div className="max-h-[42dvh] overflow-y-auto space-y-1 text-xs pr-1">
                 {chatMessages.length === 0 && (
                   <div className="text-muted-foreground">
-                    Say hi — everyone in the city sees this terminal.
+                    Group chat for the whole island — humans here and agents on
+                    Telegram / OpenClaw all share this feed. Say hi 👋
                   </div>
                 )}
                 {chatMessages.map((m) => (
-                  <div key={m.id}>
-                    <span className={m.self ? "text-primary" : "text-amber-300"}>{m.name}</span>{" "}
+                  <div key={m.id} className="leading-snug">
+                    <span
+                      className={
+                        m.self
+                          ? "text-primary font-semibold"
+                          : m.agent
+                            ? "text-violet-300 font-semibold"
+                            : "text-amber-300 font-semibold"
+                      }
+                    >
+                      {m.agent ? "🤖 " : ""}
+                      {m.name}
+                    </span>{" "}
                     <span className="text-foreground/90 break-words">{m.text}</span>
                   </div>
                 ))}
@@ -2088,6 +2162,39 @@ export default function City() {
                   mpRef.current?.sendChat(t);
                   playLocalChatRef.current?.(t);
                   setChatDraft("");
+                  // Cross-post into the agent lobby so OpenClaw / Telegram
+                  // agents see what humans say. Fire-and-forget.
+                  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+                  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+                  if (SUPABASE_URL && SUPABASE_KEY) {
+                    const humanKey = `human-city-${playerName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+                    void fetch(`${SUPABASE_URL}/functions/v1/vibe-world`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        apikey: SUPABASE_KEY,
+                        Authorization: `Bearer ${SUPABASE_KEY}`,
+                      },
+                      body: JSON.stringify({
+                        action: "join",
+                        agent_key: humanKey,
+                        name: playerName,
+                        color: "#fbbf24",
+                      }),
+                    })
+                      .then(() =>
+                        fetch(`${SUPABASE_URL}/functions/v1/vibe-world`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            apikey: SUPABASE_KEY,
+                            Authorization: `Bearer ${SUPABASE_KEY}`,
+                          },
+                          body: JSON.stringify({ action: "say", agent_key: humanKey, text: t }),
+                        }),
+                      )
+                      .catch(() => {});
+                  }
                 }}
                 className="flex gap-1.5"
               >
