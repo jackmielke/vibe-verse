@@ -921,6 +921,21 @@ export default function City() {
     };
     playLocalEmoteRef.current = playLocalEmote;
 
+    // ---- Local chat bubble (Club-Penguin style speech sprite) ------
+    let localChat: { sprite: THREE.Sprite; t: number; life: number } | null = null;
+    const playLocalChat = (text: string) => {
+      if (localChat) {
+        player.remove(localChat.sprite);
+        localChat.sprite.material.dispose();
+        (localChat.sprite.material.map as THREE.Texture | null)?.dispose();
+      }
+      const sprite = makeChatBubbleSprite(text);
+      sprite.position.set(0, 3.2 + sprite.scale.y / 2, 0);
+      player.add(sprite);
+      localChat = { sprite, t: 0, life: CHAT_BUBBLE_DURATION };
+    };
+    playLocalChatRef.current = playLocalChat;
+
     let mixer: THREE.AnimationMixer | null = null;
     const actions = new Map<string, THREE.AnimationAction>();
     let activeAction: THREE.AnimationAction | null = null;
