@@ -32,6 +32,7 @@ import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 import { createNpcCrew } from "@/components/city/npcs";
+import { createAgentResidents } from "@/components/city/agentResidents";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
@@ -784,6 +785,16 @@ export default function City() {
     const vibey = createVibeyNpc();
     scene.add(vibey.group);
     vibeyExciteRef.current = vibey.excite;
+
+    // ---- Agent residents: every row in world_agents wanders the plaza.
+    // Each agent gets a randomly-assigned Quaternius character (stable
+    // per agent_key) so the village fills up as more agents join.
+    const agentResidents = createAgentResidents({
+      scene,
+      characters: CHARACTERS,
+      center: { x: 0, z: 0 },
+      radius: 42,
+    });
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
     const mp = createMultiplayer({
@@ -1626,6 +1637,7 @@ export default function City() {
       moonWorld.update(dt, now);
       npcCrew.update(dt, pos);
       vibey.update(dt, now);
+      agentResidents.update(dt, pos);
       mp.update(dt, {
         x: pos.x,
         y: pos.y,
@@ -1758,6 +1770,7 @@ export default function City() {
       vibeyExciteRef.current = null;
       mp.dispose();
       mpRef.current = null;
+      agentResidents.dispose();
       delete devWindow.__cityDebug;
       soundsRef.current?.dispose();
       soundsRef.current = null;
