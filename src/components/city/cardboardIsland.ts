@@ -917,14 +917,17 @@ export function buildCardboardIsland(opts: {
       pupil.position.set(1.68, 2.07, z);
       jerryGroup.add(pupil);
     });
+    // Tiny name plaque pinned to the front of the shell — small enough
+    // that it doesn't tower over Jerry or block the plaza signs behind.
     const jerrySign = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.2, 1),
+      new THREE.PlaneGeometry(1.1, 0.42),
       new THREE.MeshBasicMaterial({
         map: signTexture(["JERRY"], "#eaa7c0", "#6a2c42"),
         side: THREE.DoubleSide,
       }),
     );
-    jerrySign.position.set(0, 3.1, 0);
+    jerrySign.position.set(0.68, 1.55, 0);
+    jerrySign.rotation.y = Math.PI / 2; // face forward, same way as Jerry's head
     jerryGroup.add(jerrySign);
   }
   group.add(jerryGroup);
