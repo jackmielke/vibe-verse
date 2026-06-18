@@ -152,6 +152,27 @@ export default function GlobalNav() {
 
   return (
     <>
+      {/* World selector — own pill, top-left, mirrors the Vibe Profile pill. */}
+      <div className="fixed top-3 left-3 z-40 pointer-events-auto">
+        <div
+          className="glass-panel rounded-full border border-border/60 px-1.5 py-1 flex items-center"
+          style={{
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+          }}
+        >
+          <Link
+            to="/"
+            className={chipClass(location.pathname === "/")}
+            title="World selector"
+            aria-current={location.pathname === "/" ? "page" : undefined}
+          >
+            <span className="text-sm leading-none">🌐</span>
+            <span className={labelClass}>Worlds</span>
+          </Link>
+        </div>
+      </div>
+
       <nav
         className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
         aria-label="Primary destinations"
@@ -164,16 +185,6 @@ export default function GlobalNav() {
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            <Link
-              to="/"
-              className={chipClass(location.pathname === "/")}
-              title="World selector"
-              aria-current={location.pathname === "/" ? "page" : undefined}
-            >
-              <span className="text-sm leading-none">🌐</span>
-              <span className={labelClass}>Worlds</span>
-            </Link>
-
             {visible.map((d) => {
               const active = isActive(d);
               return (
