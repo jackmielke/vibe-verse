@@ -37,6 +37,8 @@ import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
   EMOTE_EMOJI,
+  makeChatBubbleSprite,
+  CHAT_BUBBLE_DURATION,
   type ChatMessage,
   type EmoteName,
   type Multiplayer,
