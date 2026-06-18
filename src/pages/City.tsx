@@ -1611,7 +1611,7 @@ export default function City() {
       }
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
-      const thrusting = enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const thrusting = jetpackEquipped && enteredRef.current && (keys.has("Space") || touchJetRef.current);
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
