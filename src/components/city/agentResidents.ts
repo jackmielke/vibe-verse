@@ -35,6 +35,8 @@ export interface AgentResidents {
   update(dt: number, playerPos: THREE.Vector3): void;
   /** Visit every resident position. Used for soft player–agent collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
+  /** Shove nearby residents away from a moving player. */
+  pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
   dispose(): void;
 }
 
@@ -46,6 +48,7 @@ interface Resident {
   inner: THREE.Group;        // the character mesh — we bob/rotate this for emotes
   mixer: THREE.AnimationMixer | null;
   target: THREE.Vector3;
+  bumpVel: THREE.Vector3;
   speed: number;
   yaw: number;
   idleT: number;
@@ -303,6 +306,7 @@ export function createAgentResidents(opts: {
         inner,
         mixer,
         target: wrapper.position.clone(),
+        bumpVel: new THREE.Vector3(),
         speed: 1.6 + (hashString(row.key + "spd") % 100) / 100 * 1.0,
         yaw: 0,
         idleT: 0.4,
@@ -459,7 +463,8 @@ export function createAgentResidents(opts: {
   // OpenClaw, etc.) all spawn on the same tile, they'd otherwise stack
   // into a single visual blob — this gentle push keeps them apart.
   const PERSONAL_SPACE = 1.4;
-  const SEPARATION_STRENGTH = 2.6; // m/s at full overlap
+  const SEPARATION_STRENGTH = 4.4; // m/s at full overlap
+  const BUMP_RADIUS = 1.75;
   return {
     group,
     update(dt, playerPos) {
@@ -490,10 +495,10 @@ export function createAgentResidents(opts: {
           }
           const overlap = (PERSONAL_SPACE - d) / PERSONAL_SPACE; // 0..1
           const push = SEPARATION_STRENGTH * overlap * dt;
-          a.wrapper.position.x += nx * push;
-          a.wrapper.position.z += nz * push;
-          b.wrapper.position.x -= nx * push;
-          b.wrapper.position.z -= nz * push;
+          a.bumpVel.x += nx * push * 10;
+          a.bumpVel.z += nz * push * 10;
+          b.bumpVel.x -= nx * push * 10;
+          b.bumpVel.z -= nz * push * 10;
         }
       }
       for (const r of residents.values()) {
@@ -519,6 +524,13 @@ export function createAgentResidents(opts: {
             r.yaw += d * Math.min(1, dt * 6);
             r.wrapper.rotation.y = r.yaw;
           }
+        }
+        if (r.bumpVel.lengthSq() > 0.0001) {
+          p.x += r.bumpVel.x * dt;
+          p.z += r.bumpVel.z * dt;
+          r.bumpVel.multiplyScalar(Math.pow(0.025, dt));
+        } else {
+          r.bumpVel.set(0, 0, 0);
         }
         // ---- emote ----
         if (r.emote !== "none") {
@@ -573,6 +585,25 @@ export function createAgentResidents(opts: {
         if (r.emote === "jet") continue; // mid-air
         const p = r.wrapper.position;
         cb(p.x, p.y, p.z);
+      }
+    },
+    pushFrom(x, y, z, dirX, dirZ, speed, dt) {
+      const len = Math.hypot(dirX, dirZ);
+      if (len < 0.001 || speed < 0.5) return;
+      const nx = dirX / len;
+      const nz = dirZ / len;
+      for (const r of residents.values()) {
+        if (r.emote === "jet" || Math.abs(r.wrapper.position.y - y) > 2.6) continue;
+        const dx = r.wrapper.position.x - x;
+        const dz = r.wrapper.position.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= BUMP_RADIUS * BUMP_RADIUS) continue;
+        const d = Math.sqrt(d2);
+        const overlap = (BUMP_RADIUS - d) / BUMP_RADIUS;
+        const shove = Math.min(10, 2.8 + speed * 0.32) * overlap;
+        r.bumpVel.x += nx * shove * dt * 14;
+        r.bumpVel.z += nz * shove * dt * 14;
+        r.idleT = Math.min(r.idleT, 0.15);
       }
     },
     dispose() {

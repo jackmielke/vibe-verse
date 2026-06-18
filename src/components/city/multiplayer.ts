@@ -56,6 +56,8 @@ export interface Multiplayer {
   sendEmote(emote: EmoteName): void;
   /** Visit every remote ghost position. Used for soft player–player collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
+  /** Locally shove remote ghosts so bumping other players feels playful. */
+  pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
   dispose(): void;
 }
 
@@ -66,6 +68,7 @@ interface Ghost {
   idle: THREE.AnimationAction | null;
   active: "walk" | "idle" | null;
   target: { x: number; y: number; z: number; yaw: number };
+  bumpVel: THREE.Vector3;
   char: string;
   label: string;
   emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
@@ -222,8 +225,9 @@ export function createMultiplayer(opts: {
   onPeers: (count: number, online: boolean) => void;
   onTimeMode?: (day: boolean, fromPeer: boolean) => void;
   onEmote?: (emote: EmoteName, fromPeer: boolean) => void;
+  onBump?: (x: number, y: number, z: number, dirX: number, dirZ: number, speed: number) => void;
 }): Multiplayer {
-  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote } = opts;
+  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote, onBump } = opts;
   let myName = opts.name;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
@@ -231,6 +235,7 @@ export function createMultiplayer(opts: {
   const baseCache = new Map<string, Promise<{ scene: THREE.Group; clips: THREE.AnimationClip[]; fit: number; lift: number }>>();
   let online = false;
   let lastSend = 0;
+  let lastBumpSend = 0;
   let lastSent: PlayerState | null = null;
   let disposed = false;
   let myDay: boolean | null = null; // our current known day/night, tracked in presence
@@ -270,6 +275,7 @@ export function createMultiplayer(opts: {
       idle: null,
       active: null,
       target: { x: 0, y: -500, z: 0, yaw: 0 },
+      bumpVel: new THREE.Vector3(),
       char,
       label,
     };
@@ -413,6 +419,11 @@ export function createMultiplayer(opts: {
         if (g) playEmoteOn(g, p.emote);
         onEmote?.(p.emote, true);
       })
+      .on("broadcast", { event: "bump" }, ({ payload }) => {
+        const p = payload as { id: string; x: number; y: number; z: number; dirX: number; dirZ: number; speed: number };
+        if (!p || p.id === sessionId) return;
+        onBump?.(p.x, p.y, p.z, p.dirX, p.dirZ, p.speed);
+      })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
@@ -457,6 +468,13 @@ export function createMultiplayer(opts: {
         p.x += (g.target.x - p.x) * k;
         p.y += (g.target.y - p.y) * k;
         p.z += (g.target.z - p.z) * k;
+        if (g.bumpVel.lengthSq() > 0.0001) {
+          p.x += g.bumpVel.x * dt;
+          p.z += g.bumpVel.z * dt;
+          g.bumpVel.multiplyScalar(Math.pow(0.025, dt));
+        } else {
+          g.bumpVel.set(0, 0, 0);
+        }
         let d = g.target.yaw - g.group.rotation.y;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
@@ -547,6 +565,37 @@ export function createMultiplayer(opts: {
         const p = g.group.position;
         if (p.y < -100) continue; // not spawned yet
         cb(p.x, p.y, p.z);
+      }
+    },
+    pushFrom(x, y, z, dirX, dirZ, speed, dt) {
+      const len = Math.hypot(dirX, dirZ);
+      if (len < 0.001 || speed < 0.5) return;
+      const nx = dirX / len;
+      const nz = dirZ / len;
+      const radius = 1.75;
+      let hit = false;
+      for (const g of ghosts.values()) {
+        const p = g.group.position;
+        if (p.y < -100 || Math.abs(p.y - y) > 2.6) continue;
+        const dx = p.x - x;
+        const dz = p.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= radius * radius) continue;
+        const d = Math.sqrt(d2);
+        const overlap = (radius - d) / radius;
+        const shove = Math.min(10, 2.8 + speed * 0.32) * overlap;
+        g.bumpVel.x += nx * shove * dt * 14;
+        g.bumpVel.z += nz * shove * dt * 14;
+        hit = true;
+      }
+      const now = performance.now();
+      if (hit && online && channel && now - lastBumpSend > 90) {
+        lastBumpSend = now;
+        void channel.send({
+          type: "broadcast",
+          event: "bump",
+          payload: { id: sessionId, x, y, z, dirX: nx, dirZ: nz, speed },
+        });
       }
     },
     dispose() {
