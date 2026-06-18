@@ -1095,13 +1095,15 @@ export function buildCardboardIsland(opts: {
   // ---- SnackFe: modern neon cafe ---------------------------------------
   // A sleek modern micro-cafe with alternating mint/magenta string lights
   // along the front awning. Walk up to it to order a snack.
-  const SNACK_X = 28;
-  const SNACK_Z = -14;
+  const SNACK_X = 12;
+  const SNACK_Z = 28;
   const SNACK_W = 9;
   const SNACK_D = 6;
   const SNACK_H = 4.4;
   const snackGroup = new THREE.Group();
   snackGroup.position.set(SNACK_X, 0, SNACK_Z);
+  // Rotate so the service window faces inward toward the plaza/center.
+  snackGroup.rotation.y = Math.PI;
 
   // Dark matte concrete body — contrast against cardboard kid-world.
   const snackBody = new THREE.Mesh(
