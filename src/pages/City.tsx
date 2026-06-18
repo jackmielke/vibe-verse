@@ -2134,8 +2134,19 @@ export default function City() {
                   </div>
                 )}
                 {chatMessages.map((m) => (
-                  <div key={m.id}>
-                    <span className={m.self ? "text-primary" : "text-amber-300"}>{m.name}</span>{" "}
+                  <div key={m.id} className="leading-snug">
+                    <span
+                      className={
+                        m.self
+                          ? "text-primary font-semibold"
+                          : m.agent
+                            ? "text-violet-300 font-semibold"
+                            : "text-amber-300 font-semibold"
+                      }
+                    >
+                      {m.agent ? "🤖 " : ""}
+                      {m.name}
+                    </span>{" "}
                     <span className="text-foreground/90 break-words">{m.text}</span>
                   </div>
                 ))}
@@ -2148,6 +2159,39 @@ export default function City() {
                   mpRef.current?.sendChat(t);
                   playLocalChatRef.current?.(t);
                   setChatDraft("");
+                  // Cross-post into the agent lobby so OpenClaw / Telegram
+                  // agents see what humans say. Fire-and-forget.
+                  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+                  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+                  if (SUPABASE_URL && SUPABASE_KEY) {
+                    const humanKey = `human-city-${playerName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+                    void fetch(`${SUPABASE_URL}/functions/v1/vibe-world`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        apikey: SUPABASE_KEY,
+                        Authorization: `Bearer ${SUPABASE_KEY}`,
+                      },
+                      body: JSON.stringify({
+                        action: "join",
+                        agent_key: humanKey,
+                        name: playerName,
+                        color: "#fbbf24",
+                      }),
+                    })
+                      .then(() =>
+                        fetch(`${SUPABASE_URL}/functions/v1/vibe-world`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            apikey: SUPABASE_KEY,
+                            Authorization: `Bearer ${SUPABASE_KEY}`,
+                          },
+                          body: JSON.stringify({ action: "say", agent_key: humanKey, text: t }),
+                        }),
+                      )
+                      .catch(() => {});
+                  }
                 }}
                 className="flex gap-1.5"
               >
