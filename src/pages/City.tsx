@@ -614,6 +614,11 @@ export default function City() {
   // are wired into the 3D scene via refs so equipping is instant.
   const [shopOpen, setShopOpen] = useState(false);
   const [nearShop, setNearShop] = useState(false);
+  // Live Roster TV — agents currently in the vibe-lobby room.
+  const [rosterAgents, setRosterAgents] = useState<RosterAgent[]>([]);
+  const [nearRoster, setNearRoster] = useState(false);
+  const [rosterOpen, setRosterOpen] = useState(false);
+
   const [equippedHat, setEquippedHat] = useState<string>(() => {
     if (typeof window === "undefined") return "none";
     return localStorage.getItem("city.hat") || "none";
