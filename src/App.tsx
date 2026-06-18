@@ -23,6 +23,7 @@ import WorldBuilder from "./pages/WorldBuilder.tsx";
 import EdmTown from "./pages/EdmTown.tsx";
 import AdminWorlds from "./pages/AdminWorlds.tsx";
 import AgentLobby from "./pages/AgentLobby.tsx";
+import VibeProfile from "./pages/VibeProfile.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 
