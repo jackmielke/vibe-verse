@@ -84,10 +84,12 @@ interface World {
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
 
 const OFFICIAL_WORLDS: World[] = [
-  { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
-    blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
+  // Edge Island leads the carousel — first-time visitors land on the
+  // floating papercraft island as the focused world.
   { to: "/city?spawn=island", name: "Edge Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
+  { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
+    blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
   { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",
     blurb: "A tiny landable moon near the island — touch down and plant your flag." },
   { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",
