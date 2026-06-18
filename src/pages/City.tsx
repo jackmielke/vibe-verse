@@ -599,6 +599,21 @@ export default function City() {
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
 
+  // Vibe Shop — equipped cosmetics + dialog state. The setters below
+  // are wired into the 3D scene via refs so equipping is instant.
+  const [shopOpen, setShopOpen] = useState(false);
+  const [nearShop, setNearShop] = useState(false);
+  const [equippedHat, setEquippedHat] = useState<string>(() => {
+    if (typeof window === "undefined") return "none";
+    return localStorage.getItem("city.hat") || "none";
+  });
+  const [equippedFlame, setEquippedFlame] = useState<string>(() => {
+    if (typeof window === "undefined") return "mint";
+    return localStorage.getItem("city.flame") || "mint";
+  });
+  const applyHatRef = useRef<((id: string) => void) | null>(null);
+  const applyFlameRef = useRef<((id: string) => void) | null>(null);
+
   // "B" toggles the emote wheel. Ignored while typing in chat.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
