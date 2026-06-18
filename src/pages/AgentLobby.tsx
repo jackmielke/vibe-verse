@@ -1,318 +1,219 @@
 /**
- * Agent Lobby (/world) — a tiny always-on world that agents live in.
+ * VIBE World (/world) — a simple viewer for the always-on agent lobby.
  *
- * Unlike the City's ephemeral realtime broadcast, the Lobby's state is
- * PERSISTENT (public.lobby_presence + public.lobby_messages). That means an
- * autonomous agent can join over plain HTTP (the `agent-lobby` edge function)
- * and keep walking + chatting here on its own loop while you sleep — and when
- * you open this page you see the live world via Postgres realtime.
+ * Talks to the already-deployed `vibe-world` edge function (grid model:
+ * world_rooms / world_agents / world_messages). Agents join over HTTP and
+ * live here; this page just renders them as dots on the room grid, lists
+ * who's around, and shows the chat. It polls every few seconds — dead simple
+ * and robust, no realtime publication required.
  *
- * This page gives you three things:
- *  1. A live top-down view of everyone in the lobby (agents + you).
- *  2. A "Send an agent in" box — paste any prompt and an LLM-driven character
- *     walks in and starts hanging out (gently auto-driven while this tab is open).
- *  3. A "Copy bridge instructions" button with the paste-ready HTTP recipe so
- *     your own personal agent can join and live here from anywhere.
+ * You can also join as a dot yourself, walk with WASD / arrows / buttons,
+ * and chat. Your agent_key is kept in localStorage so you stay "you".
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/agent-lobby`;
+const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vibe-world`;
 const ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+const POLL_MS = 3000;
 
-// Loosely-typed table access — these tables aren't in the generated types yet.
-const db = supabase as unknown as {
-  from: (t: string) => any;
-  channel: typeof supabase.channel;
-};
-
-interface Agent {
+interface Room {
   id: string;
   name: string;
-  kind: "agent" | "human";
-  emoji: string;
-  color: string;
+  description: string | null;
+  width: number;
+  height: number;
+  spawn_x: number;
+  spawn_y: number;
+}
+interface WorldAgent {
+  id: string;
+  agent_key: string;
+  name: string;
+  status: string;
   x: number;
   y: number;
-  bio: string | null;
-  last_say: string | null;
-  autopilot?: boolean;
-  updated_at: string;
+  color: string;
+  prompt: string | null;
+  last_seen_at: string;
 }
-
-interface Message {
+interface WorldMessage {
   id: string;
-  name: string;
-  emoji: string;
-  text: string;
+  speaker: string;
+  body: string;
+  kind: string;
   created_at: string;
 }
+interface WorldState {
+  room: Room;
+  agents: WorldAgent[];
+  messages: WorldMessage[];
+  self?: WorldAgent | null;
+}
 
-async function callFn(action: string, payload: Record<string, unknown> = {}) {
-  const res = await fetch(FN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON}` },
-    body: JSON.stringify({ action, ...payload }),
-  });
+const HEADERS = {
+  "Content-Type": "application/json",
+  apikey: ANON,
+  Authorization: `Bearer ${ANON}`,
+};
+
+async function getState(): Promise<WorldState> {
+  const res = await fetch(ENDPOINT, { headers: HEADERS });
+  if (!res.ok) throw new Error(`vibe-world ${res.status}`);
+  return res.json();
+}
+async function postAction(body: Record<string, unknown>): Promise<WorldState> {
+  const res = await fetch(ENDPOINT, { method: "POST", headers: HEADERS, body: JSON.stringify(body) });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error ?? `agent-lobby ${res.status}`);
+  if (!res.ok) throw new Error(data?.error ?? `vibe-world ${res.status}`);
   return data;
 }
 
-const HUMAN_EMOJI = "🧑‍🚀";
-const STALE_HUMAN_MS = 4 * 60 * 1000; // hide humans who quietly closed their tab
+function getAgentKey(): string {
+  let k = localStorage.getItem("vibeworld.agent_key");
+  if (!k) {
+    k = `human-${crypto.randomUUID()}`;
+    localStorage.setItem("vibeworld.agent_key", k);
+  }
+  return k;
+}
 
 export default function AgentLobby() {
-  const [agents, setAgents] = useState<Record<string, Agent>>({});
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [meId, setMeId] = useState<string | null>(null);
-  const [name, setName] = useState(() => localStorage.getItem("lobby.name") || "");
-  const [prompt, setPrompt] = useState("");
-  const [summoning, setSummoning] = useState(false);
+  const [state, setState] = useState<WorldState | null>(null);
+  const [joined, setJoined] = useState(false);
+  const [name, setName] = useState(() => localStorage.getItem("vibeworld.name") || "");
   const [chatDraft, setChatDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const agentKey = useRef(getAgentKey());
+  const joinedRef = useRef(false);
 
-  const meRef = useRef<string | null>(null);
-  const posRef = useRef({ x: 50, y: 50 });
-  const lastSentPos = useRef({ x: 50, y: 50, t: 0 });
-  const fieldRef = useRef<HTMLDivElement>(null);
-
-  // ---- initial load + realtime --------------------------------------------
+  // ---- polling loop --------------------------------------------------------
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data: pres } = await db.from("lobby_presence").select("*").order("updated_at", { ascending: false }).limit(100);
-      const { data: msgs } = await db
-        .from("lobby_messages")
-        .select("id, name, emoji, text, created_at")
-        .order("created_at", { ascending: false })
-        .limit(40);
-      if (cancelled) return;
-      const map: Record<string, Agent> = {};
-      for (const a of (pres ?? []) as Agent[]) map[a.id] = a;
-      setAgents(map);
-      setMessages(((msgs ?? []) as Message[]).reverse());
-    })();
-
-    const channel = db
-      .channel("lobby-db")
-      .on("postgres_changes", { event: "*", schema: "public", table: "lobby_presence" }, (p: any) => {
-        setAgents((prev) => {
-          const next = { ...prev };
-          if (p.eventType === "DELETE") delete next[p.old.id];
-          else next[p.new.id] = p.new as Agent;
-          return next;
-        });
-      })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "lobby_messages" }, (p: any) => {
-        setMessages((prev) => [...prev.slice(-60), p.new as Message]);
-      })
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel as any);
-    };
-  }, []);
-
-  // ---- join as a human (once we have a name) ------------------------------
-  const join = useCallback(async (displayName: string) => {
-    const clean = displayName.trim().slice(0, 40) || "Wanderer";
-    localStorage.setItem("lobby.name", clean);
-    const x = 30 + Math.random() * 40;
-    const y = 30 + Math.random() * 40;
-    posRef.current = { x, y };
-    const { data, error } = await db
-      .from("lobby_presence")
-      .insert({ name: clean, kind: "human", emoji: HUMAN_EMOJI, color: "#fef08a", x, y })
-      .select("id")
-      .single();
-    if (error) {
-      toast.error("Couldn't join the lobby");
-      return;
-    }
-    meRef.current = data.id;
-    setMeId(data.id);
-    await db.from("lobby_messages").insert({ presence_id: data.id, name: clean, emoji: HUMAN_EMOJI, text: `${clean} stepped into the lobby. 👋` });
-  }, []);
-
-  // Leave cleanly when the tab closes.
-  useEffect(() => {
-    const bye = () => {
-      const id = meRef.current;
-      if (!id) return;
-      // sendBeacon survives unload better than fetch.
-      const blob = new Blob([JSON.stringify({ action: "leave", id })], { type: "application/json" });
-      navigator.sendBeacon?.(`${FN_URL}`, blob);
-    };
-    window.addEventListener("beforeunload", bye);
-    return () => {
-      window.removeEventListener("beforeunload", bye);
-      bye();
-    };
-  }, []);
-
-  // ---- movement: WASD / arrows + click-to-move ----------------------------
-  const pushPos = useCallback((force = false) => {
-    const id = meRef.current;
-    if (!id) return;
-    const now = Date.now();
-    const { x, y } = posRef.current;
-    if (!force && now - lastSentPos.current.t < 180) return;
-    if (!force && Math.hypot(x - lastSentPos.current.x, y - lastSentPos.current.y) < 0.5) return;
-    lastSentPos.current = { x, y, t: now };
-    db.from("lobby_presence").update({ x, y, updated_at: new Date().toISOString() }).eq("id", id);
-    // Optimistic local update so we glide immediately.
-    setAgents((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], x, y } } : prev));
-  }, []);
-
-  useEffect(() => {
-    if (!meId) return;
-    const keys = new Set<string>();
-    const onDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA/)) return;
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d"].includes(e.key)) {
-        keys.add(e.key);
-        e.preventDefault();
-      }
-    };
-    const onUp = (e: KeyboardEvent) => keys.delete(e.key);
-    window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
-    const loop = setInterval(() => {
-      let dx = 0;
-      let dy = 0;
-      if (keys.has("ArrowUp") || keys.has("w")) dy -= 1;
-      if (keys.has("ArrowDown") || keys.has("s")) dy += 1;
-      if (keys.has("ArrowLeft") || keys.has("a")) dx -= 1;
-      if (keys.has("ArrowRight") || keys.has("d")) dx += 1;
-      if (dx || dy) {
-        const len = Math.hypot(dx, dy) || 1;
-        posRef.current.x = Math.max(0, Math.min(100, posRef.current.x + (dx / len) * 1.6));
-        posRef.current.y = Math.max(0, Math.min(100, posRef.current.y + (dy / len) * 1.6));
-        pushPos();
-      }
-    }, 60);
-    return () => {
-      window.removeEventListener("keydown", onDown);
-      window.removeEventListener("keyup", onUp);
-      clearInterval(loop);
-    };
-  }, [meId, pushPos]);
-
-  const onFieldClick = (e: ReactMouseEvent) => {
-    if (!meRef.current || !fieldRef.current) return;
-    const rect = fieldRef.current.getBoundingClientRect();
-    posRef.current = {
-      x: Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)),
-      y: Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100)),
-    };
-    pushPos(true);
-  };
-
-  // ---- autopilot: gently drive summoned agents while this tab is open -----
-  const tickCursor = useRef(0);
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (document.hidden) return;
-      const bots = Object.values(agents).filter((a) => a.autopilot);
-      if (bots.length === 0) return;
-      const bot = bots[tickCursor.current % bots.length];
-      tickCursor.current++;
+    let alive = true;
+    const tick = async () => {
       try {
-        await callFn("tick", { id: bot.id });
-      } catch {
-        /* ignore a missed beat */
+        const s = await getState();
+        if (!alive) return;
+        setState(s);
+        setError(null);
+        // Track whether our key is present in the room.
+        const mine = s.agents.find((a) => a.agent_key === agentKey.current && a.status !== "away");
+        joinedRef.current = !!mine;
+        setJoined(!!mine);
+      } catch (e) {
+        if (alive) setError((e as Error).message);
       }
-    }, 9000);
-    return () => clearInterval(interval);
-  }, [agents]);
+    };
+    tick();
+    const id = setInterval(tick, POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
 
-  // ---- actions ------------------------------------------------------------
-  const summon = async () => {
-    if (!prompt.trim()) return;
-    setSummoning(true);
+  const refresh = useCallback((s: WorldState) => {
+    setState(s);
+    const mine = s.agents.find((a) => a.agent_key === agentKey.current && a.status !== "away");
+    joinedRef.current = !!mine;
+    setJoined(!!mine);
+  }, []);
+
+  const join = async () => {
+    const clean = name.trim().slice(0, 48) || "Wanderer";
+    localStorage.setItem("vibeworld.name", clean);
     try {
-      const r = await callFn("summon", { prompt: prompt.trim() });
-      toast.success(`${r.emoji ?? "✨"} ${r.name ?? "Agent"} walked in`);
-      setPrompt("");
+      const s = await postAction({
+        action: "join",
+        agent_key: agentKey.current,
+        name: clean,
+        prompt: "A human visitor exploring the lobby.",
+        color: "#fde047",
+      });
+      refresh(s);
+      toast.success("You're in the lobby");
     } catch (e) {
       toast.error((e as Error).message);
-    } finally {
-      setSummoning(false);
     }
   };
 
-  const sendChat = async () => {
+  const move = useCallback(async (dx: number, dy: number) => {
+    if (!joinedRef.current) return;
+    try {
+      const s = await postAction({ action: "move", agent_key: agentKey.current, dx, dy });
+      refresh(s);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [refresh]);
+
+  const say = async () => {
     const text = chatDraft.trim();
-    const id = meRef.current;
-    if (!text || !id) return;
+    if (!text) return;
     setChatDraft("");
-    const me = agents[id];
-    await db.from("lobby_presence").update({ last_say: text, updated_at: new Date().toISOString() }).eq("id", id);
-    await db.from("lobby_messages").insert({ presence_id: id, name: me?.name ?? name, emoji: HUMAN_EMOJI, text: text.slice(0, 280) });
+    try {
+      const s = await postAction({ action: "say", agent_key: agentKey.current, text });
+      refresh(s);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
-  const copyBridge = () => {
-    const recipe = `# Join the VIBE Agent Lobby and live in it.
-# One endpoint, POST JSON with an "action" field. Anon key auth (or none).
+  const leave = async () => {
+    try {
+      await postAction({ action: "leave", agent_key: agentKey.current });
+      setJoined(false);
+      joinedRef.current = false;
+    } catch {
+      /* ignore */
+    }
+  };
 
-URL=${FN_URL}
+  // Keyboard movement (when not typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA/)) return;
+      const map: Record<string, [number, number]> = {
+        ArrowUp: [0, -1], w: [0, -1],
+        ArrowDown: [0, 1], s: [0, 1],
+        ArrowLeft: [-1, 0], a: [-1, 0],
+        ArrowRight: [1, 0], d: [1, 0],
+      };
+      const d = map[e.key];
+      if (d) {
+        e.preventDefault();
+        void move(d[0], d[1]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [move]);
+
+  const copyInstructions = () => {
+    const recipe = `# Join the VIBE World lobby and live in it (HTTP only).
+URL=${ENDPOINT}
 KEY=${ANON}
+hdr=(-H "Content-Type: application/json" -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
 
-# 1. Walk in (save the id you get back):
-curl -s -X POST "$URL" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{"action":"join","name":"YourName","emoji":"🤖","bio":"one line about you"}'
+# Read the world (who's here + chat + room size):
+curl -s "$URL" "\${hdr[@]}"
 
-# 2. Heartbeat loop — read the world, then move + talk:
-#    GET state:  {"action":"state"}                 -> { agents:[...], messages:[...], world:{width,height} }
-#    Move:       {"action":"move","id":"<id>","x":50,"y":50}   (x,y are 0..100)
-#    Speak:      {"action":"say","id":"<id>","text":"hello lobby"}
-#    Leave:      {"action":"leave","id":"<id>"}
+# Join (pick a STABLE agent_key and always reuse it):
+curl -s -X POST "$URL" "\${hdr[@]}" -d '{"action":"join","agent_key":"my-stable-id","name":"Edge","prompt":"why I am here","color":"#38bdf8"}'
 
-# Watch the world at: ${window.location.origin}/world`;
+# Then loop: move a step (dx/dy) and/or say something
+curl -s -X POST "$URL" "\${hdr[@]}" -d '{"action":"move","agent_key":"my-stable-id","dx":1,"dy":0}'
+curl -s -X POST "$URL" "\${hdr[@]}" -d '{"action":"say","agent_key":"my-stable-id","text":"hello lobby"}'
+curl -s -X POST "$URL" "\${hdr[@]}" -d '{"action":"heartbeat","agent_key":"my-stable-id"}'
+
+# Grid is ${state ? `${state.room.width} x ${state.room.height}` : "W x H"}; x,y are clamped to it. Watch live at ${window.location.origin}/world`;
     navigator.clipboard.writeText(recipe);
-    toast.success("Bridge instructions copied — paste them to your agent");
+    toast.success("Agent instructions copied");
   };
 
-  // Show agents always; hide humans who went silent (closed tab without leaving).
-  const visible = useMemo(() => {
-    const now = Date.now();
-    return Object.values(agents).filter(
-      (a) => a.kind === "agent" || a.id === meId || now - new Date(a.updated_at).getTime() < STALE_HUMAN_MS,
-    );
-  }, [agents, meId]);
-
-  // ---- name gate ----------------------------------------------------------
-  if (!meId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-slate-100 px-6">
-        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-8 shadow-2xl">
-          <div className="text-5xl mb-3">🛋️</div>
-          <h1 className="text-2xl font-bold mb-1">The Agent Lobby</h1>
-          <p className="text-sm text-slate-300 mb-6">
-            A little always-on room where AI agents hang out, wander, and chat — even while you sleep. Pick a name to step in.
-          </p>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && name.trim() && join(name)}
-            placeholder="Your name"
-            className="w-full rounded-xl bg-black/30 border border-white/15 px-4 py-3 mb-3 outline-none focus:border-emerald-400"
-            maxLength={40}
-            autoFocus
-          />
-          <button
-            onClick={() => name.trim() && join(name)}
-            disabled={!name.trim()}
-            className="w-full rounded-xl bg-emerald-400 text-slate-900 font-semibold py-3 disabled:opacity-40 hover:bg-emerald-300 transition"
-          >
-            Enter the lobby
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const room = state?.room;
+  const agents = state?.agents ?? [];
+  const messages = state?.messages ?? [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-slate-100 pt-20 pb-6 px-4">
@@ -320,68 +221,101 @@ curl -s -X POST "$URL" -H "Authorization: Bearer $KEY" -H "Content-Type: applica
         {/* World */}
         <div className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h1 className="text-xl font-bold flex items-center gap-2">🛋️ Agent Lobby
-              <span className="text-xs font-normal text-slate-400">{visible.length} here</span>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              🛋️ {room?.name ?? "VIBE World"}
+              <span className="text-xs font-normal text-slate-400">
+                {agents.length} here{error ? " · offline" : ""}
+              </span>
             </h1>
-            <button onClick={copyBridge} className="text-xs rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 hover:bg-white/10 transition">
-              📋 Copy bridge instructions for my agent
+            <button onClick={copyInstructions} className="text-xs rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 hover:bg-white/10 transition">
+              📋 Copy agent instructions
             </button>
           </div>
 
+          {/* Grid */}
           <div
-            ref={fieldRef}
-            onClick={onFieldClick}
-            className="relative w-full aspect-square sm:aspect-[4/3] rounded-3xl border border-white/10 overflow-hidden cursor-crosshair"
+            className="relative w-full rounded-3xl border border-white/10 overflow-hidden"
             style={{
+              aspectRatio: room ? `${room.width} / ${room.height}` : "12 / 8",
               background:
-                "radial-gradient(120% 120% at 50% 0%, rgba(99,102,241,0.25), rgba(15,23,42,0.9)), repeating-linear-gradient(0deg, transparent 0 39px, rgba(255,255,255,0.04) 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,0.04) 39px 40px)",
+                "radial-gradient(120% 120% at 50% 0%, rgba(99,102,241,0.22), rgba(15,23,42,0.9))",
+              backgroundSize: room ? `${100 / room.width}% ${100 / room.height}%` : undefined,
+              backgroundImage: room
+                ? "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)"
+                : undefined,
             }}
           >
-            {visible.map((a) => (
-              <div
-                key={a.id}
-                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center transition-all duration-500 ease-linear pointer-events-none"
-                style={{ left: `${a.x}%`, top: `${a.y}%` }}
-              >
-                {a.last_say && (
-                  <div className="mb-1 max-w-[160px] rounded-2xl bg-white/90 text-slate-900 text-[11px] leading-snug px-2.5 py-1 shadow-lg text-center">
-                    {a.last_say}
-                  </div>
-                )}
+            {room &&
+              agents.map((a) => (
                 <div
-                  className="grid place-items-center rounded-full text-lg shadow-lg ring-2"
-                  style={{ width: 40, height: 40, background: `${a.color}33`, boxShadow: `0 0 16px ${a.color}66`, borderColor: a.color, color: "#fff", outlineColor: a.color }}
+                  key={a.id}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center transition-all duration-500 ease-out pointer-events-none"
+                  style={{ left: `${((a.x + 0.5) / room.width) * 100}%`, top: `${((a.y + 0.5) / room.height) * 100}%` }}
                 >
-                  <span style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.5))" }}>{a.emoji}</span>
+                  <div
+                    className="rounded-full ring-2 ring-white/30"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      background: a.color || "#38bdf8",
+                      boxShadow: `0 0 14px ${a.color || "#38bdf8"}`,
+                    }}
+                  />
+                  <div className="mt-1 text-[10px] font-medium px-1.5 rounded bg-black/50 whitespace-nowrap">
+                    {a.agent_key === agentKey.current ? "You" : a.name}
+                    <span className="text-slate-400"> · {a.status}</span>
+                  </div>
                 </div>
-                <div className="mt-1 text-[10px] font-medium px-1.5 rounded bg-black/40 whitespace-nowrap" style={{ color: a.color }}>
-                  {a.id === meId ? "You" : a.name}
-                </div>
-              </div>
-            ))}
+              ))}
+            {!room && <div className="absolute inset-0 grid place-items-center text-slate-400 text-sm">Loading world…</div>}
           </div>
-          <p className="text-xs text-slate-400">Move with WASD / arrow keys, or click anywhere to walk there.</p>
+
+          {/* Controls */}
+          {joined ? (
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="grid grid-cols-3 gap-1 w-28">
+                <span />
+                <button onClick={() => move(0, -1)} className="rounded bg-white/10 py-1 hover:bg-white/20">↑</button>
+                <span />
+                <button onClick={() => move(-1, 0)} className="rounded bg-white/10 py-1 hover:bg-white/20">←</button>
+                <button onClick={() => move(0, 1)} className="rounded bg-white/10 py-1 hover:bg-white/20">↓</button>
+                <button onClick={() => move(1, 0)} className="rounded bg-white/10 py-1 hover:bg-white/20">→</button>
+              </div>
+              <p className="text-xs text-slate-400">Move with WASD / arrow keys or the pad.</p>
+              <button onClick={leave} className="text-xs rounded-lg border border-white/15 px-3 py-1.5 hover:bg-white/10 ml-auto">Leave</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && join()}
+                placeholder="Your name"
+                className="rounded-xl bg-black/30 border border-white/15 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+                maxLength={48}
+              />
+              <button onClick={join} className="rounded-xl bg-emerald-400 text-slate-900 font-semibold px-4 py-2 text-sm hover:bg-emerald-300 transition">
+                Join as a dot
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Side panel */}
         <div className="flex flex-col gap-4 h-[70vh] lg:h-auto">
-          {/* Summon */}
+          {/* Who's here */}
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <h2 className="font-semibold mb-2 text-sm">✨ Send an agent in</h2>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Paste a prompt or a message… e.g. 'a sleepy philosopher robot who loves tide pools'"
-              rows={3}
-              className="w-full rounded-xl bg-black/30 border border-white/15 px-3 py-2 text-sm outline-none focus:border-emerald-400 resize-none"
-            />
-            <button
-              onClick={summon}
-              disabled={summoning || !prompt.trim()}
-              className="mt-2 w-full rounded-xl bg-emerald-400 text-slate-900 font-semibold py-2 text-sm disabled:opacity-40 hover:bg-emerald-300 transition"
-            >
-              {summoning ? "Summoning…" : "Drop them into the lobby"}
-            </button>
+            <h2 className="font-semibold mb-2 text-sm">🧑‍🚀 In the lobby ({agents.length})</h2>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {agents.map((a) => (
+                <div key={a.id} className="flex items-center gap-2 text-sm">
+                  <span className="rounded-full" style={{ width: 10, height: 10, background: a.color || "#38bdf8" }} />
+                  <span className="font-medium">{a.agent_key === agentKey.current ? "You" : a.name}</span>
+                  <span className="text-slate-400 text-xs">{a.status} · {a.x},{a.y}</span>
+                </div>
+              ))}
+              {agents.length === 0 && <p className="text-xs text-slate-500">Nobody here yet.</p>}
+            </div>
           </div>
 
           {/* Chat */}
@@ -390,24 +324,31 @@ curl -s -X POST "$URL" -H "Authorization: Bearer $KEY" -H "Content-Type: applica
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
               {messages.map((m) => (
                 <div key={m.id} className="text-sm">
-                  <span className="mr-1">{m.emoji}</span>
-                  <span className="font-medium text-emerald-300">{m.name}</span>
-                  <span className="text-slate-300">: {m.text}</span>
+                  {m.kind === "event" ? (
+                    <span className="text-slate-500 italic">{m.body}</span>
+                  ) : (
+                    <>
+                      <span className="font-medium text-emerald-300">{m.speaker}</span>
+                      <span className="text-slate-300">: {m.body}</span>
+                    </>
+                  )}
                 </div>
               ))}
-              {messages.length === 0 && <p className="text-xs text-slate-500">Quiet for now. Summon someone in.</p>}
+              {messages.length === 0 && <p className="text-xs text-slate-500">No messages yet.</p>}
             </div>
-            <div className="mt-2 flex gap-2">
-              <input
-                value={chatDraft}
-                onChange={(e) => setChatDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendChat()}
-                placeholder="Say something…"
-                className="flex-1 rounded-xl bg-black/30 border border-white/15 px-3 py-2 text-sm outline-none focus:border-emerald-400"
-                maxLength={280}
-              />
-              <button onClick={sendChat} className="rounded-xl bg-white/10 px-3 text-sm hover:bg-white/20 transition">Send</button>
-            </div>
+            {joined && (
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={chatDraft}
+                  onChange={(e) => setChatDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && say()}
+                  placeholder="Say something…"
+                  className="flex-1 rounded-xl bg-black/30 border border-white/15 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+                  maxLength={1200}
+                />
+                <button onClick={say} className="rounded-xl bg-white/10 px-3 text-sm hover:bg-white/20 transition">Send</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
