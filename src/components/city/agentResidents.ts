@@ -196,8 +196,9 @@ export function createAgentResidents(opts: {
       console.warn("[agentResidents] fetch failed", error);
       return;
     }
-    for (const row of data ?? []) {
-      if (row.status === "offline") continue;
+    const rows = (data ?? []).filter((r) => r.status !== "offline");
+    console.log(`[agentResidents] spawning ${rows.length} agents from world_agents`, rows);
+    for (const row of rows) {
       const key = (row.agent_key as string) || (row.id as string);
       const name = (row.name as string) || "agent";
       void spawn(key, name);
