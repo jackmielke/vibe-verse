@@ -553,6 +553,13 @@ export function createAgentResidents(opts: {
         }
       }
     },
+    forEachOccupant(cb) {
+      for (const r of residents.values()) {
+        if (r.emote === "jet") continue; // mid-air
+        const p = r.wrapper.position;
+        cb(p.x, p.y, p.z);
+      }
+    },
     dispose() {
       disposed = true;
       supabase.removeChannel(channel);
