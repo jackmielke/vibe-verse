@@ -47,13 +47,20 @@ interface Resident {
   wrapper: THREE.Group;
   inner: THREE.Group;        // the character mesh — we bob/rotate this for emotes
   mixer: THREE.AnimationMixer | null;
+  /** Original tile-derived world position. /respawn returns the resident here. */
+  home: THREE.Vector3;
+  /** Walking target when in "respawn" mode. Otherwise unused. */
   target: THREE.Vector3;
+  /** True while the resident is walking back home. */
+  goingHome: boolean;
   bumpVel: THREE.Vector3;
+  /** Active directional move: unit vector + remaining seconds. */
+  moveDir: THREE.Vector3;
+  moveT: number;
   speed: number;
   yaw: number;
-  idleT: number;
   // Emote state
-  emote: "none" | "jet" | "jump" | "wave" | "dance";
+  emote: "none" | "jet" | "jump" | "wave" | "dance" | "move";
   emoteT: number;            // seconds into the current emote
   baseLift: number;          // resting Y for the inner mesh
   // Bubble
@@ -175,13 +182,20 @@ function makeNameLabel(name: string): THREE.Sprite {
  *   /wave, /hi, /hello                → spin in place + 👋 bubble
  *   /dance, /party, /vibe             → wiggly spin
  */
-function parseEmote(body: string): { emote: Resident["emote"]; text: string } {
+function parseEmote(body: string): {
+  emote: Resident["emote"] | "respawn";
+  text: string;
+  moveDir?: { x: number; z: number };
+  duration?: number;
+} {
   // Look for the first /word token; allow it anywhere, not just leading.
-  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(.*)$/);
+  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(\d+(?:\.\d+)?)?\s*(.*)$/);
   if (!m) return { emote: "none", text: body };
   const cmd = m[2].toLowerCase();
-  const rest = (body.slice(0, m.index ?? 0) + " " + (m[3] || "")).trim();
-  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost")
+  const numArg = m[3] ? parseFloat(m[3]) : undefined;
+  const rest = (body.slice(0, m.index ?? 0) + " " + (m[4] || "")).trim();
+  const dur = Math.max(0.3, Math.min(8, numArg ?? 2));
+  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket" || cmd === "rocketship")
     return { emote: "jet", text: rest || "🚀" };
   if (cmd === "jump" || cmd === "hop")
     return { emote: "jump", text: rest || "⬆️" };
@@ -189,6 +203,16 @@ function parseEmote(body: string): { emote: Resident["emote"]; text: string } {
     return { emote: "wave", text: rest || "👋" };
   if (cmd === "dance" || cmd === "party" || cmd === "vibe")
     return { emote: "dance", text: rest || "💃" };
+  if (cmd === "forward" || cmd === "fwd" || cmd === "f" || cmd === "north" || cmd === "n")
+    return { emote: "move", text: rest || `⬆️ ${dur}s`, moveDir: { x: 0, z: -1 }, duration: dur };
+  if (cmd === "back" || cmd === "backward" || cmd === "b" || cmd === "south" || cmd === "s")
+    return { emote: "move", text: rest || `⬇️ ${dur}s`, moveDir: { x: 0, z: 1 }, duration: dur };
+  if (cmd === "left" || cmd === "l" || cmd === "west" || cmd === "w")
+    return { emote: "move", text: rest || `⬅️ ${dur}s`, moveDir: { x: -1, z: 0 }, duration: dur };
+  if (cmd === "right" || cmd === "r" || cmd === "east" || cmd === "e")
+    return { emote: "move", text: rest || `➡️ ${dur}s`, moveDir: { x: 1, z: 0 }, duration: dur };
+  if (cmd === "respawn" || cmd === "home" || cmd === "reset")
+    return { emote: "respawn", text: rest || "🏠" };
   return { emote: "none", text: body };
 }
 
@@ -252,11 +276,12 @@ export function createAgentResidents(opts: {
     return entry;
   };
 
-  const setTargetFromTile = (r: Resident, x: number | null, y: number | null) => {
+  /** Update the resident's "home" tile. Does NOT pull them back automatically — they only return on /respawn. */
+  const setHomeFromTile = (r: Resident, x: number | null, y: number | null) => {
     if (x == null || y == null) return;
     const tmp = new THREE.Vector3();
     tileToOffset(x, y, radius, tmp);
-    r.target.set(centerX + tmp.x, centerY, centerZ + tmp.z);
+    r.home.set(centerX + tmp.x, centerY, centerZ + tmp.z);
   };
 
   const spawn = async (row: {
@@ -298,6 +323,7 @@ export function createAgentResidents(opts: {
         action.play();
         mixer.update((hashString(row.key + "phase") % 100) / 100);
       }
+      const home = wrapper.position.clone();
       const resident: Resident = {
         key: row.key,
         agentId: row.agentId,
@@ -305,18 +331,20 @@ export function createAgentResidents(opts: {
         wrapper,
         inner,
         mixer,
-        target: wrapper.position.clone(),
+        home,
+        target: home.clone(),
+        goingHome: false,
         bumpVel: new THREE.Vector3(),
+        moveDir: new THREE.Vector3(),
+        moveT: 0,
         speed: 1.6 + (hashString(row.key + "spd") % 100) / 100 * 1.0,
         yaw: 0,
-        idleT: 0.4,
         emote: "none",
         emoteT: 0,
         baseLift: lift,
         bubble: null,
         bubbleT: 0,
       };
-      setTargetFromTile(resident, row.x, row.y);
       group.add(wrapper);
       residents.set(row.key, resident);
       if (row.agentId) byAgentId.set(row.agentId, row.key);
@@ -357,6 +385,22 @@ export function createAgentResidents(opts: {
   const startEmote = (r: Resident, emote: Resident["emote"]) => {
     r.emote = emote;
     r.emoteT = 0;
+  };
+
+  const startMove = (r: Resident, dirX: number, dirZ: number, dur: number) => {
+    const len = Math.hypot(dirX, dirZ) || 1;
+    r.moveDir.set(dirX / len, 0, dirZ / len);
+    r.moveT = dur;
+    r.emote = "move";
+    r.emoteT = 0;
+    r.goingHome = false;
+  };
+
+  const respawn = (r: Resident) => {
+    r.target.copy(r.home);
+    r.goingHome = true;
+    r.moveT = 0;
+    r.emote = "none";
   };
 
   // Initial fetch
@@ -422,7 +466,9 @@ export function createAgentResidents(opts: {
           });
           return;
         }
-        setTargetFromTile(r, row.x ?? null, row.y ?? null);
+        // Keep "home" up to date so /respawn returns them to their latest assigned tile,
+        // but do NOT pull them back here — bumps and manual movement should persist.
+        setHomeFromTile(r, row.x ?? null, row.y ?? null);
       },
     )
     .on(
@@ -451,9 +497,15 @@ export function createAgentResidents(opts: {
         if (!key) return;
         const r = residents.get(key);
         if (!r) return;
-        const { emote, text } = parseEmote(row.body);
-        showBubble(r, text);
-        if (emote !== "none") startEmote(r, emote);
+        const parsed = parseEmote(row.body);
+        showBubble(r, parsed.text);
+        if (parsed.emote === "move" && parsed.moveDir) {
+          startMove(r, parsed.moveDir.x, parsed.moveDir.z, parsed.duration ?? 2);
+        } else if (parsed.emote === "respawn") {
+          respawn(r);
+        } else if (parsed.emote !== "none") {
+          startEmote(r, parsed.emote);
+        }
       },
     )
     .subscribe();
@@ -503,27 +555,43 @@ export function createAgentResidents(opts: {
       }
       for (const r of residents.values()) {
         // ---- movement ----
+        // Residents stay put by default. They only translate when:
+        //   • an active /forward|/back|/left|/right command is running (r.moveT > 0), or
+        //   • /respawn was called (r.goingHome = true), which walks them back to their home tile.
         const p = r.wrapper.position;
-        if (r.idleT > 0) {
-          r.idleT -= dt;
-        } else {
-          tmpVec.copy(r.target).sub(p);
+        let walking = false;
+        let walkDirX = 0, walkDirZ = 0;
+        if (r.moveT > 0) {
+          walking = true;
+          walkDirX = r.moveDir.x;
+          walkDirZ = r.moveDir.z;
+          r.moveT -= dt;
+          if (r.moveT <= 0) {
+            r.moveT = 0;
+            r.emote = "none";
+          }
+        } else if (r.goingHome) {
+          tmpVec.copy(r.home).sub(p);
           tmpVec.y = 0;
           const dist = tmpVec.length();
-          if (dist < 0.4) {
-            r.idleT = 1.2 + Math.random() * 2.0;
+          if (dist < 0.3) {
+            r.goingHome = false;
           } else {
             tmpVec.multiplyScalar(1 / dist);
-            const step = Math.min(dist, r.speed * dt);
-            p.x += tmpVec.x * step;
-            p.z += tmpVec.z * step;
-            const targetYaw = Math.atan2(tmpVec.x, tmpVec.z);
-            let d = targetYaw - r.yaw;
-            while (d > Math.PI) d -= Math.PI * 2;
-            while (d < -Math.PI) d += Math.PI * 2;
-            r.yaw += d * Math.min(1, dt * 6);
-            r.wrapper.rotation.y = r.yaw;
+            walking = true;
+            walkDirX = tmpVec.x;
+            walkDirZ = tmpVec.z;
           }
+        }
+        if (walking) {
+          p.x += walkDirX * r.speed * dt;
+          p.z += walkDirZ * r.speed * dt;
+          const targetYaw = Math.atan2(walkDirX, walkDirZ);
+          let d = targetYaw - r.yaw;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          r.yaw += d * Math.min(1, dt * 6);
+          r.wrapper.rotation.y = r.yaw;
         }
         if (r.bumpVel.lengthSq() > 0.0001) {
           p.x += r.bumpVel.x * dt;
@@ -576,7 +644,8 @@ export function createAgentResidents(opts: {
         }
         // ---- anim ----
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
-          if (r.idleT <= 0 || r.emote === "dance") r.mixer.update(dt);
+          // Animate legs while moving, dancing, or returning home.
+          if (r.moveT > 0 || r.goingHome || r.emote === "dance") r.mixer.update(dt);
         }
       }
     },
@@ -603,7 +672,7 @@ export function createAgentResidents(opts: {
         const shove = Math.min(10, 2.8 + speed * 0.32) * overlap;
         r.bumpVel.x += nx * shove * dt * 14;
         r.bumpVel.z += nz * shove * dt * 14;
-        r.idleT = Math.min(r.idleT, 0.15);
+        // Bumped residents simply stay where they're shoved — no auto-return.
       }
     },
     dispose() {
