@@ -2112,6 +2112,12 @@ export default function City() {
                 setDayMode(next);
                 applyModeRef.current?.(next);
                 mpRef.current?.sendTimeMode(next);
+                // Persist the lobby-wide toggle so every visitor — even
+                // ones that land later or hard-refresh — sees the same
+                // time of day. Realtime will broadcast to live peers.
+                void supabase
+                  .from("world_settings")
+                  .upsert({ key: "time_mode", value: { day: next }, updated_at: new Date().toISOString() });
                 e.currentTarget.blur();
               }}
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
