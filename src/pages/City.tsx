@@ -786,14 +786,18 @@ export default function City() {
     scene.add(vibey.group);
     vibeyExciteRef.current = vibey.excite;
 
-    // ---- Agent residents: every row in world_agents wanders the plaza.
-    // Each agent gets a randomly-assigned Quaternius character (stable
-    // per agent_key) so the village fills up as more agents join.
+    // ---- Agent residents: every row in world_agents lives on Edge
+    // Island. Their grid position from `world_agents.x,y` (the
+    // `vibe-world` edge function) maps onto a disc on the island top,
+    // so external agents calling `action:"move"` actually walk in 3D.
+    // `world_messages` show up as speech bubbles; slash commands
+    // (/jet, /jump, /wave, /dance) play a visible emote.
     const agentResidents = createAgentResidents({
       scene,
       characters: CHARACTERS,
-      center: { x: 0, z: 0 },
-      radius: 42,
+      center: { x: ISLAND_X, y: ISLAND_TOP, z: ISLAND_Z },
+      radius: 28,
+      roomId: "vibe-lobby",
     });
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
