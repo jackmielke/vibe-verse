@@ -138,7 +138,16 @@ export default function WorldPicker({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [query, setQuery] = useState("");
+  useEffect(() => { if (!open) setQuery(""); }, [open]);
   const here = (w: WorldCard) => w.to.split("?")[0] === location.pathname && !w.to.includes("?");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return WORLDS;
+    return WORLDS.filter(
+      (w) => w.name.toLowerCase().includes(q) || w.blurb.toLowerCase().includes(q)
+    );
+  }, [query]);
 
   return createPortal(
     <AnimatePresence>
