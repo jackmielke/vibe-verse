@@ -1433,6 +1433,16 @@ export default function City() {
     let swinging = false; // on the swing
     let rainbowOn = false; // secret star found
     let discoUntil = 0; // "vibe" typed → plaza disco
+    applyRemoteBump = (x, y, z, dirX, dirZ, speed) => {
+      const pos = player.position;
+      if (Math.abs(pos.y - y) > 2.6) return;
+      const dx = pos.x - x;
+      const dz = pos.z - z;
+      if (dx * dx + dz * dz > 1.75 * 1.75) return;
+      const shove = Math.min(10, 2.8 + speed * 0.32);
+      vel.x += dirX * shove;
+      vel.z += dirZ * shove;
+    };
     const zip = island.zipline;
 
     zipGrabRef.current = () => {
