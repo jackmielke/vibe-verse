@@ -47,13 +47,20 @@ interface Resident {
   wrapper: THREE.Group;
   inner: THREE.Group;        // the character mesh — we bob/rotate this for emotes
   mixer: THREE.AnimationMixer | null;
+  /** Original tile-derived world position. /respawn returns the resident here. */
+  home: THREE.Vector3;
+  /** Walking target when in "respawn" mode. Otherwise unused. */
   target: THREE.Vector3;
+  /** True while the resident is walking back home. */
+  goingHome: boolean;
   bumpVel: THREE.Vector3;
+  /** Active directional move: unit vector + remaining seconds. */
+  moveDir: THREE.Vector3;
+  moveT: number;
   speed: number;
   yaw: number;
-  idleT: number;
   // Emote state
-  emote: "none" | "jet" | "jump" | "wave" | "dance";
+  emote: "none" | "jet" | "jump" | "wave" | "dance" | "move";
   emoteT: number;            // seconds into the current emote
   baseLift: number;          // resting Y for the inner mesh
   // Bubble
