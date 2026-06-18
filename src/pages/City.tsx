@@ -1177,6 +1177,43 @@ export default function City() {
     jetLight.position.set(0, 0.4, -0.2);
     player.add(jetLight);
 
+    // ---- Cosmetics: hat + jet flame color, both equippable from the
+    // Vibe Shop. Hat is parented to modelHolder so it tilts with the
+    // pilot. Flame color also tints the jet point light.
+    const hatMount = new THREE.Group();
+    hatMount.position.set(0, 1.78, 0); // just above a ~1.85m model's head
+    modelHolder.add(hatMount);
+    let currentHat: THREE.Group | null = null;
+    const applyHat = (id: string) => {
+      if (currentHat) {
+        hatMount.remove(currentHat);
+        currentHat.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.geometry?.dispose();
+            const mat = m.material as THREE.Material | THREE.Material[];
+            if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+            else mat?.dispose();
+          }
+        });
+        currentHat = null;
+      }
+      const def = HAT_CATALOG.find((h) => h.id === id) ?? HAT_CATALOG[0];
+      const g = def.build();
+      hatMount.add(g);
+      currentHat = g;
+    };
+    applyHatRef.current = applyHat;
+    const applyFlame = (id: string) => {
+      const def = FLAME_CATALOG.find((f) => f.id === id) ?? FLAME_CATALOG[0];
+      flameMat.color.set(def.color);
+      jetLight.color.set(def.core);
+    };
+    applyFlameRef.current = applyFlame;
+    applyHat(localStorage.getItem("city.hat") || "none");
+    applyFlame(localStorage.getItem("city.flame") || "mint");
+
+
     // Zipline T-handle, visible only while riding the cable.
     const zipHandle = new THREE.Group();
     {
