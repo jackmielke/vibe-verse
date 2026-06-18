@@ -55,6 +55,7 @@ import {
   saveEquippedFlame,
   saveEquippedJetpack,
 } from "@/components/city/cosmetics";
+import { setActiveCharacter } from "@/hooks/use-active-character";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
