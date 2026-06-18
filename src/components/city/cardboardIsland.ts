@@ -1004,7 +1004,7 @@ export function buildCardboardIsland(opts: {
   // the back-island side; proximity opens the shop dialog in /city.
   // Sits just to the right of SnackFae (from a player approaching the counter)
   // so you can see both at once when you walk up to grab a snack.
-  const SHOP_X = 22;
+  const SHOP_X = 2;
   const SHOP_Z = 28;
   {
     const shopGroup = new THREE.Group();
