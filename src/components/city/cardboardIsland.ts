@@ -361,7 +361,12 @@ export function buildCardboardIsland(opts: {
   }
 
   // ---- Dream Tree --------------------------------------------------
+  // Moved off the plaza so it no longer crowds the spawn camera; tucked
+  // into the NE lawn between the welcome path and the snack stand.
+  const TREE_X = 20;
+  const TREE_Z = -6;
   const tree = new THREE.Group();
+  tree.position.set(TREE_X, 0, TREE_Z);
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.9, 1.4, 9, 10),
     new THREE.MeshStandardMaterial({ color: "#7a5230", roughness: 0.9 }),
@@ -385,14 +390,24 @@ export function buildCardboardIsland(opts: {
   treeSign.position.set(0, 6.4, 1.8);
   tree.add(treeSign);
   group.add(tree);
-  starSpots.push(new THREE.Vector3(centerX, topY + 14.5, centerZ));
+  starSpots.push(new THREE.Vector3(centerX + TREE_X, topY + 14.5, centerZ + TREE_Z));
 
   // ---- Welcome sign ------------------------------------------------
+  // Sits on the far (north) side of the plaza so it reads as a backdrop
+  // when you spawn looking across at Jerry. Two short side-posts hold
+  // the boards up — no central pole crossing through the lettering.
   const welcome = new THREE.Group();
-  welcome.position.set(0, 0, 14);
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 5.6, 8), cardboardDark);
-  post.position.y = 2.8;
-  welcome.add(post);
+  welcome.position.set(0, 0, -18);
+  // Two slim cardboard posts at the edges of the lower board, just tall
+  // enough to meet its underside.
+  [-2.4, 2.4].forEach((px) => {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.14, 1.3, 8),
+      cardboardDark,
+    );
+    post.position.set(px, 0.65, 0);
+    welcome.add(post);
+  });
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string }> = [
     { lines: ["WELCOME TO", "EDGE ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
     { lines: ["BE KIND · REUSE", "DREAM BIG"], y: 2.2, w: 5.6, h: 2.1, bg: "#cfe6c2", fg: "#2a6a3a" },
@@ -406,7 +421,8 @@ export function buildCardboardIsland(opts: {
       }),
     );
     board.position.y = b.y;
-    board.rotation.y = Math.PI; // face approaching pilots from the city
+    // Face the spawn point at +z, so visitors read it across the plaza.
+    board.rotation.y = 0;
     welcome.add(board);
   });
   group.add(welcome);
