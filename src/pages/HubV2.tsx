@@ -870,7 +870,7 @@ export default function HubV2() {
         const e = easeInOut((introElapsed - FACE_DUR) / ORBIT_DUR);
         const theta = THREE.MathUtils.lerp(HERO_ANGLE, Math.PI, e);
         const r = THREE.MathUtils.lerp(HERO_R, camDist, e);
-        const h = THREE.MathUtils.lerp(vibeyHeadY + 0.7, baseY, e);
+        const h = THREE.MathUtils.lerp(vibeyHeadY, baseY, e);
         camPos = new THREE.Vector3(
           Math.sin(theta) * r,
           h,
