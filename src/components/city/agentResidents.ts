@@ -438,9 +438,47 @@ export function createAgentResidents(opts: {
     .subscribe();
 
   const tmpVec = new THREE.Vector3();
+  // Minimum personal-space radius. When external agents (Telegram bots,
+  // OpenClaw, etc.) all spawn on the same tile, they'd otherwise stack
+  // into a single visual blob — this gentle push keeps them apart.
+  const PERSONAL_SPACE = 1.4;
+  const SEPARATION_STRENGTH = 2.6; // m/s at full overlap
   return {
     group,
     update(dt, playerPos) {
+      // ---- soft separation: nudge stacked agents apart ----
+      const list = [...residents.values()];
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        if (a.emote === "jet") continue; // mid-air, don't shove
+        for (let j = i + 1; j < list.length; j++) {
+          const b = list[j];
+          if (b.emote === "jet") continue;
+          const dx = a.wrapper.position.x - b.wrapper.position.x;
+          const dz = a.wrapper.position.z - b.wrapper.position.z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 >= PERSONAL_SPACE * PERSONAL_SPACE) continue;
+          const d = Math.sqrt(d2);
+          // Deterministic tiny offset so two perfectly stacked agents
+          // (d ≈ 0) still get a direction to peel apart in.
+          let nx: number, nz: number;
+          if (d < 0.0001) {
+            const seed = (hashString(a.key) ^ hashString(b.key)) >>> 0;
+            const ang = (seed / 0xffffffff) * Math.PI * 2;
+            nx = Math.cos(ang);
+            nz = Math.sin(ang);
+          } else {
+            nx = dx / d;
+            nz = dz / d;
+          }
+          const overlap = (PERSONAL_SPACE - d) / PERSONAL_SPACE; // 0..1
+          const push = SEPARATION_STRENGTH * overlap * dt;
+          a.wrapper.position.x += nx * push;
+          a.wrapper.position.z += nz * push;
+          b.wrapper.position.x -= nx * push;
+          b.wrapper.position.z -= nz * push;
+        }
+      }
       for (const r of residents.values()) {
         // ---- movement ----
         const p = r.wrapper.position;
