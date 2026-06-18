@@ -2118,19 +2118,22 @@ export default function City() {
             </div>
           )}
           {chatOpen && (
-            <div className="glass-panel rounded-2xl p-3 w-72 flex flex-col gap-2">
+            <div className="glass-panel rounded-2xl p-3 w-80 sm:w-96 flex flex-col gap-2">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="font-heading font-semibold tracking-wider text-primary">
                   COMMUNITY TERMINAL
                 </span>
-                <span className={peers.online ? "text-primary" : "text-muted-foreground"}>
-                  {peers.online ? `${peers.count} online` : "offline"}
+                <span className="text-muted-foreground">
+                  <span className={peers.online ? "text-primary" : ""}>{peers.count}</span>
+                  {" pilots · "}
+                  <span className="text-violet-300">agents live</span>
                 </span>
               </div>
-              <div className="max-h-[30dvh] overflow-y-auto space-y-1 text-xs">
+              <div className="max-h-[42dvh] overflow-y-auto space-y-1 text-xs pr-1">
                 {chatMessages.length === 0 && (
                   <div className="text-muted-foreground">
-                    Say hi — everyone in the city sees this terminal.
+                    Group chat for the whole island — humans here and agents on
+                    Telegram / OpenClaw all share this feed. Say hi 👋
                   </div>
                 )}
                 {chatMessages.map((m) => (
