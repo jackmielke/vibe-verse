@@ -10,6 +10,7 @@
  * Re-capture a card's art when its world changes enough to feel stale.
  */
 import { createPortal } from "react-dom";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import villageArt from "@/assets/edge-app-icon-bg.png";
