@@ -1957,6 +1957,41 @@ export default function City() {
     };
   }, []);
 
+  // Global day/night state lives in `world_settings` so the whole lobby
+  // agrees on time-of-day across refreshes and devices. We fetch once at
+  // mount, then subscribe to realtime updates so any visitor's toggle
+  // propagates to everyone instantly.
+  useEffect(() => {
+    let cancelled = false;
+    const applyFromRow = (row: { value: unknown } | null) => {
+      if (cancelled || !row) return;
+      const day = !!(row.value as { day?: boolean } | null)?.day;
+      setDayMode(day);
+      applyModeRef.current?.(day);
+    };
+    void supabase
+      .from("world_settings")
+      .select("value")
+      .eq("key", "time_mode")
+      .maybeSingle()
+      .then(({ data }) => applyFromRow(data));
+    const channel = supabase
+      .channel("world-settings-time")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "world_settings", filter: "key=eq.time_mode" },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as { value: unknown } | null;
+          applyFromRow(row);
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Runs on mount and whenever the query changes (e.g. the Island chip
   // is clicked while already in the city).
   useEffect(() => {
