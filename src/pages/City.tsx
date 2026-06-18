@@ -31,7 +31,7 @@ import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
-import { createNpcCrew } from "@/components/city/npcs";
+
 import { createAgentResidents } from "@/components/city/agentResidents";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
