@@ -24,6 +24,7 @@ import VibeAvatar, { VIBE_COLORS } from "@/components/vibe-auth/VibeAvatar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CHARACTERS, findCharacter } from "@/lib/characters";
+import { useActiveCharacter } from "@/hooks/use-active-character";
 
 export default function VibeProfile() {
   const id = useVibeIdentity();
@@ -31,15 +32,10 @@ export default function VibeProfile() {
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
 
-  // Character pick — shared with /lobby and the worlds via localStorage.
-  const [charId, setCharIdState] = useState<string>(() => {
-    if (typeof window === "undefined") return "vibey";
-    return localStorage.getItem("lobby.character") ?? "vibey";
-  });
-  const setCharId = (next: string) => {
-    setCharIdState(next);
-    try { localStorage.setItem("lobby.character", next); } catch {}
-  };
+  // Character pick — shared with /lobby and the worlds via the
+  // useActiveCharacter hook (writes both lobby.character +
+  // city.character and broadcasts so the nav emoji updates live).
+  const { charId, setCharId } = useActiveCharacter();
   const selectedChar = findCharacter(charId);
 
   useEffect(() => {
