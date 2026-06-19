@@ -21,7 +21,7 @@
  * invitation. Extend the city by tweaking the constants in the
  * "City plan" section below; everything regenerates from the seed.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
