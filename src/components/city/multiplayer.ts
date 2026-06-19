@@ -372,13 +372,18 @@ export function createMultiplayer(opts: {
     });
     channel
       .on("presence", { event: "sync" }, () => {
-        const state = channel!.presenceState<{ name: string; char: string; day?: boolean }>();
+        const state = channel!.presenceState<{ name: string; char: string; day?: boolean; userId?: string | null }>();
         const keys = new Set(Object.keys(state));
         // Spawn newcomers, drop leavers.
         for (const key of keys) {
           if (key === sessionId) continue;
           const meta = state[key][0];
-          if (!ghosts.has(key) && meta) void spawnGhost(key, meta.char, meta.name);
+          if (!ghosts.has(key) && meta) {
+            void spawnGhost(key, meta.char, meta.name, meta.userId ?? null);
+          } else if (meta) {
+            const g = ghosts.get(key);
+            if (g && meta.userId && g.userId !== meta.userId) g.userId = meta.userId;
+          }
         }
         for (const key of [...ghosts.keys()]) {
           if (!keys.has(key)) removeGhost(key);
@@ -400,19 +405,20 @@ export function createMultiplayer(opts: {
         onPeers(keys.size, online);
       })
       .on("broadcast", { event: "pos" }, ({ payload }) => {
-        const p = payload as PlayerState & { id: string; name?: string };
+        const p = payload as PlayerState & { id: string; name?: string; userId?: string | null };
         if (!p || p.id === sessionId) return;
         let g = ghosts.get(p.id);
         if (!g) {
-          void spawnGhost(p.id, p.char, p.name ?? "pilot");
+          void spawnGhost(p.id, p.char, p.name ?? "pilot", p.userId ?? null);
           g = ghosts.get(p.id);
         }
         if (g) {
           g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+          if (p.userId && g.userId !== p.userId) g.userId = p.userId;
           if (g.char !== p.char) {
             // Character switched mid-session: respawn the ghost.
             removeGhost(p.id);
-            void spawnGhost(p.id, p.char, g.label);
+            void spawnGhost(p.id, p.char, g.label, g.userId);
           }
         }
       })
