@@ -1025,6 +1025,7 @@ export default function City() {
       radius: 28,
       roomId: "vibe-lobby",
     });
+    agentResidentsRef.current = agentResidents;
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
 
     // ---- Live Roster TV: scoreboard-style screen on the front of the
