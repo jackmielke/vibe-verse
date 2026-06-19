@@ -48,16 +48,30 @@ export const EMOTE_EMOJI: Record<EmoteName, string> = {
   laugh: "😂",
 };
 
+export interface NearbyPerson {
+  kind: "player" | "agent";
+  /** Stable ref used as DM thread participant key. For players: their auth user_id; for agents: world_agents.id. */
+  ref: string;
+  name: string;
+  /** Distance squared from the query point. */
+  distSq: number;
+}
+
 export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
   setName(name: string): void;
+  setUserId(userId: string | null): void;
   sendTimeMode(day: boolean): void;
   sendEmote(emote: EmoteName): void;
   /** Visit every remote ghost position. Used for soft player–player collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   /** Locally shove remote ghosts so bumping other players feels playful. */
   pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
+  /** Nearest other player within `radius` meters (xz), or null. Players without a known userId are skipped. */
+  getNearestPlayer(x: number, y: number, z: number, radius: number): NearbyPerson | null;
+  /** Trigger a local wave emote sprite above a remote ghost (e.g. when someone bumps them). */
+  showEmoteOnGhost(sessionId: string, emote: EmoteName): void;
   dispose(): void;
 }
 
