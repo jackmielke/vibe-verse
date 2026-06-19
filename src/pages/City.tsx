@@ -2170,6 +2170,63 @@ export default function City() {
         fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
       }
 
+      // Project world positions onto floating in-world bubbles (DOM overlays).
+      {
+        const cw = canvas.clientWidth;
+        const ch = canvas.clientHeight;
+        const tmp = new THREE.Vector3();
+        const project = (x: number, y: number, z: number) => {
+          tmp.set(x, y, z);
+          tmp.project(camera);
+          return {
+            sx: (tmp.x * 0.5 + 0.5) * cw,
+            sy: (-tmp.y * 0.5 + 0.5) * ch,
+            inFront: tmp.z < 1 && tmp.z > -1,
+          };
+        };
+        const place = (el: HTMLDivElement | null, wx: number, wy: number, wz: number, show: boolean) => {
+          if (!el) return;
+          if (!show) {
+            if (el.style.opacity !== "0") {
+              el.style.opacity = "0";
+              el.style.pointerEvents = "none";
+            }
+            return;
+          }
+          const p = project(wx, wy, wz);
+          if (!p.inFront) {
+            el.style.opacity = "0";
+            el.style.pointerEvents = "none";
+            return;
+          }
+          el.style.transform = `translate3d(${p.sx.toFixed(1)}px, ${p.sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
+          el.style.opacity = "1";
+          el.style.pointerEvents = "auto";
+        };
+
+        const np = nearPersonRef.current;
+        let personPos: { x: number; y: number; z: number } | null = null;
+        if (np?.kind === "player") personPos = mpRef.current?.getPlayerPosition(np.ref) ?? null;
+        else if (np?.kind === "agent") personPos = agentResidentsRef.current?.getAgentPosition(np.ref) ?? null;
+        place(
+          floatPersonRef.current,
+          personPos?.x ?? 0,
+          (personPos?.y ?? 0) + 3.4,
+          personPos?.z ?? 0,
+          !!(np && personPos),
+        );
+
+        const jp = jerryWorldRef.current;
+        const jerryDist = jp ? Math.hypot(player.position.x - jp.x, player.position.z - jp.z) : Infinity;
+        place(
+          floatJerryRef.current,
+          jp?.x ?? 0,
+          (jp?.y ?? 0) + 3.4,
+          jp?.z ?? 0,
+          !!(jp && jerryDist < 8),
+        );
+      }
+
       renderer.render(scene, camera);
     };
     renderer.setAnimationLoop(tick);
