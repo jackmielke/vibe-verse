@@ -715,6 +715,12 @@ export default function City() {
     };
   }, []);
 
+  // Keep ref + multiplayer presence in sync with the current auth user.
+  useEffect(() => {
+    authUserIdRef.current = authUserId;
+    mpRef.current?.setUserId(authUserId);
+  }, [authUserId]);
+
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
   useEffect(() => {
