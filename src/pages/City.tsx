@@ -3107,13 +3107,57 @@ export default function City() {
                     i % 2 === 0 ? "bg-primary/5" : ""
                   }`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span
-                      className={`inline-block w-2 h-2 rounded-full ${
+                      className={`inline-block w-2 h-2 rounded-full shrink-0 ${
                         a.status === "offline" ? "bg-muted-foreground" : "bg-primary"
                       }`}
                     />
-                    <span className="truncate text-foreground">{a.name}</span>
+                    {isAdmin && editingAgentId === a.id ? (
+                      <input
+                        autoFocus
+                        value={editingAgentName}
+                        onChange={(e) => setEditingAgentName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setEditingAgentId(null);
+                          if (e.key === "Enter") {
+                            const next = editingAgentName.trim();
+                            if (!next || next === a.name) { setEditingAgentId(null); return; }
+                            setSavingAgentId(a.id);
+                            supabase
+                              .from("world_agents")
+                              .update({ name: next })
+                              .eq("id", a.id)
+                              .then(({ error }) => {
+                                setSavingAgentId(null);
+                                setEditingAgentId(null);
+                                if (error) {
+                                  console.warn("[roster] rename failed", error);
+                                  toast({ title: "Couldn't rename", description: error.message, variant: "destructive" as any });
+                                } else {
+                                  toast({ title: "Renamed", description: `${a.name} → ${next}` });
+                                }
+                              });
+                          }
+                        }}
+                        onBlur={() => setEditingAgentId(null)}
+                        className="flex-1 min-w-0 bg-background/60 border border-primary/40 rounded px-2 py-0.5 text-sm text-foreground outline-none focus:border-primary"
+                      />
+                    ) : (
+                      <>
+                        <span className="truncate text-foreground">{a.name}</span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => { setEditingAgentId(a.id); setEditingAgentName(a.name); }}
+                            disabled={savingAgentId === a.id}
+                            className="text-[10px] uppercase tracking-wider text-primary/70 hover:text-primary px-1 disabled:opacity-50"
+                            title="Rename agent (admin)"
+                          >
+                            ✎
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-primary/80 tabular-nums">
                     <span>
