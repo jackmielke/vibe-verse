@@ -830,6 +830,38 @@ export default function City() {
     });
     scene.add(island.group);
 
+    // ---- Vibe Maker spawns: a group anchored at the portal that
+    // mirrors public.island_spawns. The React side owns the data and
+    // calls spawnsApiRef.current.setAll(...) to diff into the scene.
+    const spawnsGroup = new THREE.Group();
+    spawnsGroup.position.copy(island.portal);
+    scene.add(spawnsGroup);
+    const spawnMeshById = new Map<string, THREE.Group>();
+    spawnsApiRef.current = {
+      setAll(rows) {
+        const seen = new Set(rows.map((r) => r.id));
+        spawnMeshById.forEach((mesh, id) => {
+          if (!seen.has(id)) {
+            spawnsGroup.remove(mesh);
+            mesh.traverse((o) => {
+              if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry?.dispose();
+              const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+              if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+              else mat?.dispose();
+            });
+            spawnMeshById.delete(id);
+          }
+        });
+        rows.forEach((r) => {
+          if (!spawnMeshById.has(r.id)) {
+            const m = createSpawnMesh(r);
+            spawnsGroup.add(m);
+            spawnMeshById.set(r.id, m);
+          }
+        });
+      },
+    };
+
     // ---- The Moon (a landable celestial body near the island) -------
     const moonWorld = buildMoon({
       centerX: MOON_X,
