@@ -560,7 +560,32 @@ export function createMultiplayer(opts: {
     },
     setName(name) {
       myName = name;
-      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined });
+      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined, userId: myUserId });
+    },
+    setUserId(userId) {
+      myUserId = userId;
+      if (online && channel) void channel.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined, userId });
+    },
+    getNearestPlayer(x, _y, z, radius) {
+      let best: NearbyPerson | null = null;
+      const r2 = radius * radius;
+      for (const g of ghosts.values()) {
+        if (!g.userId) continue;
+        const p = g.group.position;
+        if (p.y < -100) continue;
+        const dx = p.x - x;
+        const dz = p.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= r2) continue;
+        if (!best || d2 < best.distSq) {
+          best = { kind: "player", ref: g.userId, name: g.label, distSq: d2 };
+        }
+      }
+      return best;
+    },
+    showEmoteOnGhost(sid, emote) {
+      const g = ghosts.get(sid);
+      if (g) playEmoteOn(g, emote);
     },
     sendTimeMode(day) {
       myDay = !!day;
