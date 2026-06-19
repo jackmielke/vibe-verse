@@ -30,6 +30,12 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+export interface NearbyAgent {
+  agentId: string;
+  name: string;
+  distSq: number;
+}
+
 export interface AgentResidents {
   group: THREE.Group;
   update(dt: number, playerPos: THREE.Vector3): void;
@@ -37,6 +43,10 @@ export interface AgentResidents {
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   /** Shove nearby residents away from a moving player. */
   pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
+  /** Nearest resident with a known DB id within `radius` meters (xz), or null. */
+  getNearestAgent(x: number, y: number, z: number, radius: number): NearbyAgent | null;
+  /** Trigger a local wave bubble above an agent (e.g. when the player bumps them). */
+  showWaveAt(agentId: string): void;
   dispose(): void;
 }
 
