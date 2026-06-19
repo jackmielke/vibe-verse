@@ -282,7 +282,7 @@ export function createMultiplayer(opts: {
     return entry;
   };
 
-  const spawnGhost = async (key: string, char: string, label: string) => {
+  const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null) => {
     if (ghosts.has(key) || disposed) return;
     const placeholder: Ghost = {
       group: new THREE.Group(),
@@ -294,6 +294,7 @@ export function createMultiplayer(opts: {
       bumpVel: new THREE.Vector3(),
       char,
       label,
+      userId,
     };
     ghosts.set(key, placeholder);
     try {
