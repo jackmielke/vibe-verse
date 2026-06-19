@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
       .limit(24);
 
     const agentName = (agent.name as string) || "agent";
-    const persona = (agent as { persona?: string }).persona ||
+    const persona = (agent as { prompt?: string }).prompt ||
       `You are ${agentName}, a quirky AI resident wandering Edge Esmeralda island. Reply in 1–2 short, warm, in-character sentences. Plain text. No emoji spam.`;
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
