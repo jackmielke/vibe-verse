@@ -694,6 +694,70 @@ export default function City() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // ---- Auth: who is the player, so we can write island_spawns rows.
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setAuthUserId(data.session?.user.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setAuthUserId(session?.user.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ---- Island spawns: initial fetch + realtime sync. Everyone — even
+  // logged-out viewers — sees every spawn, so this runs unconditionally.
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from("island_spawns")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .limit(500)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setSpawns(data as IslandSpawnRow[]);
+      });
+    const channel = supabase
+      .channel("island_spawns")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "island_spawns" },
+        (payload) => {
+          setSpawns((prev) => {
+            const row = payload.new as IslandSpawnRow;
+            if (prev.some((s) => s.id === row.id)) return prev;
+            return [...prev, row];
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "island_spawns" },
+        (payload) => {
+          const oldRow = payload.old as { id?: string };
+          if (!oldRow.id) return;
+          setSpawns((prev) => prev.filter((s) => s.id !== oldRow.id));
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Mirror the spawn list into the 3D scene whenever it changes.
+  useEffect(() => {
+    spawnsApiRef.current?.setAll(spawns);
+  }, [spawns]);
+
+
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
