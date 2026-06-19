@@ -2104,6 +2104,7 @@ export default function City() {
       zipGrabRef.current = null;
       swingGrabRef.current = null;
       mooRef.current = null;
+      spawnsApiRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
