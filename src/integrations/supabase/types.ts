@@ -2356,11 +2356,13 @@ export type Database = {
           id: string
           kind: string
           label: string | null
+          model_url: string | null
           pos_x: number
           pos_y: number
           pos_z: number
           rot_y: number
           scale: number
+          thumbnail_url: string | null
           user_id: string
         }
         Insert: {
@@ -2369,11 +2371,13 @@ export type Database = {
           id?: string
           kind: string
           label?: string | null
+          model_url?: string | null
           pos_x?: number
           pos_y?: number
           pos_z?: number
           rot_y?: number
           scale?: number
+          thumbnail_url?: string | null
           user_id: string
         }
         Update: {
@@ -2382,11 +2386,13 @@ export type Database = {
           id?: string
           kind?: string
           label?: string | null
+          model_url?: string | null
           pos_x?: number
           pos_y?: number
           pos_z?: number
           rot_y?: number
           scale?: number
+          thumbnail_url?: string | null
           user_id?: string
         }
         Relationships: []
