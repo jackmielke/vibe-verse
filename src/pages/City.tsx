@@ -665,6 +665,10 @@ export default function City() {
   const [rosterAgents, setRosterAgents] = useState<RosterAgent[]>([]);
   const [nearRoster, setNearRoster] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [editingAgentName, setEditingAgentName] = useState("");
+  const [savingAgentId, setSavingAgentId] = useState<string | null>(null);
 
   // Vibe Maker portal — spawn 3D primitives saved to public.island_spawns.
   // The scene exposes a tiny imperative API via ref so we can sync the
