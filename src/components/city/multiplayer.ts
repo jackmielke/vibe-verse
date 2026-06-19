@@ -48,16 +48,30 @@ export const EMOTE_EMOJI: Record<EmoteName, string> = {
   laugh: "😂",
 };
 
+export interface NearbyPerson {
+  kind: "player" | "agent";
+  /** Stable ref used as DM thread participant key. For players: their auth user_id; for agents: world_agents.id. */
+  ref: string;
+  name: string;
+  /** Distance squared from the query point. */
+  distSq: number;
+}
+
 export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
   setName(name: string): void;
+  setUserId(userId: string | null): void;
   sendTimeMode(day: boolean): void;
   sendEmote(emote: EmoteName): void;
   /** Visit every remote ghost position. Used for soft player–player collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   /** Locally shove remote ghosts so bumping other players feels playful. */
   pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
+  /** Nearest other player within `radius` meters (xz), or null. Players without a known userId are skipped. */
+  getNearestPlayer(x: number, y: number, z: number, radius: number): NearbyPerson | null;
+  /** Trigger a local wave emote sprite above a remote ghost (e.g. when someone bumps them). */
+  showEmoteOnGhost(sessionId: string, emote: EmoteName): void;
   dispose(): void;
 }
 
@@ -71,6 +85,8 @@ interface Ghost {
   bumpVel: THREE.Vector3;
   char: string;
   label: string;
+  /** Auth user id, if the peer is signed in. Required for DM threads. */
+  userId: string | null;
   emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
   chat?: { sprite: THREE.Sprite; t: number; life: number };
 }
@@ -229,6 +245,7 @@ export function createMultiplayer(opts: {
 }): Multiplayer {
   const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote, onBump } = opts;
   let myName = opts.name;
+  let myUserId: string | null = null;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
   const loader = new GLTFLoader();
@@ -266,7 +283,7 @@ export function createMultiplayer(opts: {
     return entry;
   };
 
-  const spawnGhost = async (key: string, char: string, label: string) => {
+  const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null) => {
     if (ghosts.has(key) || disposed) return;
     const placeholder: Ghost = {
       group: new THREE.Group(),
@@ -278,6 +295,7 @@ export function createMultiplayer(opts: {
       bumpVel: new THREE.Vector3(),
       char,
       label,
+      userId,
     };
     ghosts.set(key, placeholder);
     try {
@@ -354,13 +372,18 @@ export function createMultiplayer(opts: {
     });
     channel
       .on("presence", { event: "sync" }, () => {
-        const state = channel!.presenceState<{ name: string; char: string; day?: boolean }>();
+        const state = channel!.presenceState<{ name: string; char: string; day?: boolean; userId?: string | null }>();
         const keys = new Set(Object.keys(state));
         // Spawn newcomers, drop leavers.
         for (const key of keys) {
           if (key === sessionId) continue;
           const meta = state[key][0];
-          if (!ghosts.has(key) && meta) void spawnGhost(key, meta.char, meta.name);
+          if (!ghosts.has(key) && meta) {
+            void spawnGhost(key, meta.char, meta.name, meta.userId ?? null);
+          } else if (meta) {
+            const g = ghosts.get(key);
+            if (g && meta.userId && g.userId !== meta.userId) g.userId = meta.userId;
+          }
         }
         for (const key of [...ghosts.keys()]) {
           if (!keys.has(key)) removeGhost(key);
@@ -382,19 +405,20 @@ export function createMultiplayer(opts: {
         onPeers(keys.size, online);
       })
       .on("broadcast", { event: "pos" }, ({ payload }) => {
-        const p = payload as PlayerState & { id: string; name?: string };
+        const p = payload as PlayerState & { id: string; name?: string; userId?: string | null };
         if (!p || p.id === sessionId) return;
         let g = ghosts.get(p.id);
         if (!g) {
-          void spawnGhost(p.id, p.char, p.name ?? "pilot");
+          void spawnGhost(p.id, p.char, p.name ?? "pilot", p.userId ?? null);
           g = ghosts.get(p.id);
         }
         if (g) {
           g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+          if (p.userId && g.userId !== p.userId) g.userId = p.userId;
           if (g.char !== p.char) {
             // Character switched mid-session: respawn the ghost.
             removeGhost(p.id);
-            void spawnGhost(p.id, p.char, g.label);
+            void spawnGhost(p.id, p.char, g.label, g.userId);
           }
         }
       })
@@ -427,7 +451,7 @@ export function createMultiplayer(opts: {
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
-          await channel!.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined });
+          await channel!.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined, userId: myUserId });
         }
         onPeers(Object.keys(channel!.presenceState()).length, online);
       });
@@ -455,7 +479,7 @@ export function createMultiplayer(opts: {
           void channel.send({
             type: "broadcast",
             event: "pos",
-            payload: { id: sessionId, name: myName, ...me },
+            payload: { id: sessionId, name: myName, userId: myUserId, ...me },
           });
         }
       }
@@ -536,7 +560,32 @@ export function createMultiplayer(opts: {
     },
     setName(name) {
       myName = name;
-      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined });
+      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined, userId: myUserId });
+    },
+    setUserId(userId) {
+      myUserId = userId;
+      if (online && channel) void channel.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined, userId });
+    },
+    getNearestPlayer(x, _y, z, radius) {
+      let best: NearbyPerson | null = null;
+      const r2 = radius * radius;
+      for (const g of ghosts.values()) {
+        if (!g.userId) continue;
+        const p = g.group.position;
+        if (p.y < -100) continue;
+        const dx = p.x - x;
+        const dz = p.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= r2) continue;
+        if (!best || d2 < best.distSq) {
+          best = { kind: "player", ref: g.userId, name: g.label, distSq: d2 };
+        }
+      }
+      return best;
+    },
+    showEmoteOnGhost(sid, emote) {
+      const g = ghosts.get(sid);
+      if (g) playEmoteOn(g, emote);
     },
     sendTimeMode(day) {
       myDay = !!day;

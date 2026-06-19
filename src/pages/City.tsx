@@ -32,7 +32,7 @@ import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 
-import { createAgentResidents } from "@/components/city/agentResidents";
+import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 
@@ -59,6 +59,7 @@ import {
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
+import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
   createSpawnMesh,
   updateSpawns,
@@ -456,9 +457,13 @@ export default function City() {
 
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
+  const agentResidentsRef = useRef<AgentResidents | null>(null);
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
   const playLocalChatRef = useRef<((text: string) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
+  // Nearby person (player or agent) for bump/message HUD buttons.
+  const [nearPerson, setNearPerson] = useState<PersonTarget | null>(null);
+  const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
   // Mobile: the whole world-controls chip row collapses behind a single
   // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
   // inline like before.
@@ -660,6 +665,7 @@ export default function City() {
   const [portalOpen, setPortalOpen] = useState(false);
   const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const authUserIdRef = useRef<string | null>(null);
   const spawnsApiRef = useRef<{ setAll: (rows: IslandSpawnRow[]) => void } | null>(null);
 
   const [equippedHat, setEquippedHat] = useState<string>(() => {
@@ -708,6 +714,12 @@ export default function City() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // Keep ref + multiplayer presence in sync with the current auth user.
+  useEffect(() => {
+    authUserIdRef.current = authUserId;
+    mpRef.current?.setUserId(authUserId);
+  }, [authUserId]);
 
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
@@ -1020,6 +1032,7 @@ export default function City() {
       radius: 28,
       roomId: "vibe-lobby",
     });
+    agentResidentsRef.current = agentResidents;
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
 
     // ---- Live Roster TV: scoreboard-style screen on the front of the
@@ -1059,6 +1072,8 @@ export default function City() {
       },
     });
     mpRef.current = mp;
+    // Tell multiplayer who we are so DMs can find us by user id.
+    try { mp.setUserId(authUserIdRef.current); } catch { /* noop */ }
 
     // ---- Cardboard TV: tune in the community photo gallery ----------
     // Same gallery_photos feed the /space TV uses.
@@ -1651,7 +1666,23 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
 
+      // Nearest chattable person (real player OR AI agent) within ~3.2m.
+      const NEAR_RADIUS = 3.2;
+      const nP = mpRef.current?.getNearestPlayer(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
+      const nA = agentResidentsRef.current?.getNearestAgent(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
+      let pick: PersonTarget | null = null;
+      if (nP && (!nA || nP.distSq <= nA.distSq)) {
+        pick = { kind: "player", ref: nP.ref, name: nP.name };
+      } else if (nA) {
+        pick = { kind: "agent", ref: nA.agentId, name: nA.name };
+      }
+      setNearPerson((prev) => {
+        if (!prev && !pick) return prev;
+        if (prev && pick && prev.kind === pick.kind && prev.ref === pick.ref && prev.name === pick.name) return prev;
+        return pick;
+      });
     }, 120);
+
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
     // Arrive a few meters above each landing so you flutter down.
@@ -2154,6 +2185,7 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       agentResidents.dispose();
+      agentResidentsRef.current = null;
       unsubRoster();
       rosterBoard.dispose();
 
@@ -2790,6 +2822,17 @@ export default function City() {
         />
       )}
 
+      {/* 1:1 chat with a nearby player or AI agent. */}
+      {entered && (
+        <PersonChatPanel
+          open={!!chatTarget}
+          onClose={() => setChatTarget(null)}
+          target={chatTarget}
+          authUserId={authUserId}
+          myName={playerName}
+        />
+      )}
+
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
       {/* Bottom-center action stack: context buttons appear as you
@@ -2839,6 +2882,34 @@ export default function City() {
             >
               ✨ Open Vibe Maker
             </button>
+          )}
+          {nearPerson && !chatTarget && (
+            <div className="flex gap-2">
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  if (!nearPerson) return;
+                  if (nearPerson.kind === "agent") {
+                    agentResidentsRef.current?.showWaveAt(nearPerson.ref);
+                  } else {
+                    mpRef.current?.sendEmote("wave");
+                  }
+                  soundsRef.current?.chime(2);
+                }}
+                className="glass-panel rounded-full px-4 py-2.5 text-sm text-amber-300"
+              >
+                👋 Bump {nearPerson.name.slice(0, 14)}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  setChatTarget(nearPerson);
+                }}
+                className="glass-panel rounded-full px-4 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+              >
+                💬 Message
+              </button>
+            </div>
           )}
           {nearRoster && !rosterOpen && (
             <button

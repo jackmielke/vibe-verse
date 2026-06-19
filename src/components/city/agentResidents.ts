@@ -30,6 +30,12 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+export interface NearbyAgent {
+  agentId: string;
+  name: string;
+  distSq: number;
+}
+
 export interface AgentResidents {
   group: THREE.Group;
   update(dt: number, playerPos: THREE.Vector3): void;
@@ -37,6 +43,10 @@ export interface AgentResidents {
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   /** Shove nearby residents away from a moving player. */
   pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
+  /** Nearest resident with a known DB id within `radius` meters (xz), or null. */
+  getNearestAgent(x: number, y: number, z: number, radius: number): NearbyAgent | null;
+  /** Trigger a local wave bubble above an agent (e.g. when the player bumps them). */
+  showWaveAt(agentId: string): void;
   dispose(): void;
 }
 
@@ -673,6 +683,31 @@ export function createAgentResidents(opts: {
         r.bumpVel.x += nx * shove * dt * 14;
         r.bumpVel.z += nz * shove * dt * 14;
         // Bumped residents simply stay where they're shoved — no auto-return.
+      }
+    },
+    getNearestAgent(x, _y, z, radius) {
+      let best: NearbyAgent | null = null;
+      const r2 = radius * radius;
+      for (const r of residents.values()) {
+        if (!r.agentId) continue;
+        const p = r.wrapper.position;
+        const dx = p.x - x;
+        const dz = p.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= r2) continue;
+        if (!best || d2 < best.distSq) {
+          best = { agentId: r.agentId, name: r.name, distSq: d2 };
+        }
+      }
+      return best;
+    },
+    showWaveAt(agentId) {
+      for (const r of residents.values()) {
+        if (r.agentId === agentId) {
+          showBubble(r, "👋");
+          startEmote(r, "wave");
+          return;
+        }
       }
     },
     dispose() {
