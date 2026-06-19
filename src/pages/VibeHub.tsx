@@ -16,6 +16,7 @@ import { Sparkles } from "lucide-react";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
+import VibeShopPanel from "@/components/VibeShopPanel";
 import VibeArc from "@/components/VibeArc";
 
 export default function VibeHub() {
