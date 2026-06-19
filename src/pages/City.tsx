@@ -463,7 +463,15 @@ export default function City() {
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
   // Nearby person (player or agent) for bump/message HUD buttons.
   const [nearPerson, setNearPerson] = useState<PersonTarget | null>(null);
+  const nearPersonRef = useRef<PersonTarget | null>(null);
+  useEffect(() => { nearPersonRef.current = nearPerson; }, [nearPerson]);
   const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
+  // Floating world-space bubbles for the nearest person + Jerry. The render
+  // loop projects 3D positions into these divs every frame via direct DOM
+  // mutation, so React doesn't re-render at 60fps.
+  const floatPersonRef = useRef<HTMLDivElement>(null);
+  const floatJerryRef = useRef<HTMLDivElement>(null);
+  const jerryWorldRef = useRef<{ x: number; y: number; z: number } | null>(null);
   // Mobile: the whole world-controls chip row collapses behind a single
   // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
   // inline like before.
@@ -1661,6 +1669,7 @@ export default function City() {
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
+      jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
@@ -2161,6 +2170,63 @@ export default function City() {
         fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
       }
 
+      // Project world positions onto floating in-world bubbles (DOM overlays).
+      {
+        const cw = canvas.clientWidth;
+        const ch = canvas.clientHeight;
+        const tmp = new THREE.Vector3();
+        const project = (x: number, y: number, z: number) => {
+          tmp.set(x, y, z);
+          tmp.project(camera);
+          return {
+            sx: (tmp.x * 0.5 + 0.5) * cw,
+            sy: (-tmp.y * 0.5 + 0.5) * ch,
+            inFront: tmp.z < 1 && tmp.z > -1,
+          };
+        };
+        const place = (el: HTMLDivElement | null, wx: number, wy: number, wz: number, show: boolean) => {
+          if (!el) return;
+          if (!show) {
+            if (el.style.opacity !== "0") {
+              el.style.opacity = "0";
+              el.style.pointerEvents = "none";
+            }
+            return;
+          }
+          const p = project(wx, wy, wz);
+          if (!p.inFront) {
+            el.style.opacity = "0";
+            el.style.pointerEvents = "none";
+            return;
+          }
+          el.style.transform = `translate3d(${p.sx.toFixed(1)}px, ${p.sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
+          el.style.opacity = "1";
+          el.style.pointerEvents = "auto";
+        };
+
+        const np = nearPersonRef.current;
+        let personPos: { x: number; y: number; z: number } | null = null;
+        if (np?.kind === "player") personPos = mpRef.current?.getPlayerPosition(np.ref) ?? null;
+        else if (np?.kind === "agent") personPos = agentResidentsRef.current?.getAgentPosition(np.ref) ?? null;
+        place(
+          floatPersonRef.current,
+          personPos?.x ?? 0,
+          (personPos?.y ?? 0) + 3.4,
+          personPos?.z ?? 0,
+          !!(np && personPos),
+        );
+
+        const jp = jerryWorldRef.current;
+        const jerryDist = jp ? Math.hypot(player.position.x - jp.x, player.position.z - jp.z) : Infinity;
+        place(
+          floatJerryRef.current,
+          jp?.x ?? 0,
+          (jp?.y ?? 0) + 3.4,
+          jp?.z ?? 0,
+          !!(jp && jerryDist < 8),
+        );
+      }
+
       renderer.render(scene, camera);
     };
     renderer.setAnimationLoop(tick);
@@ -2339,6 +2405,60 @@ export default function City() {
   return (
     <div className="relative w-full h-[100dvh] bg-black overflow-hidden text-foreground">
       <canvas ref={canvasRef} className="w-full h-full block touch-none" />
+
+      {/* In-world floating bubbles. Positioned via direct DOM transforms in the render loop. */}
+      <div
+        ref={floatPersonRef}
+        className="absolute top-0 left-0 z-30 flex gap-1.5 transition-opacity duration-150"
+        style={{ opacity: 0, pointerEvents: "none", willChange: "transform" }}
+      >
+        {nearPerson && !chatTarget && (
+          <>
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur();
+                if (!nearPerson) return;
+                if (nearPerson.kind === "agent") {
+                  agentResidentsRef.current?.showWaveAt(nearPerson.ref);
+                } else {
+                  mpRef.current?.sendEmote("wave");
+                }
+                soundsRef.current?.chime(2);
+              }}
+              className="glass-panel rounded-full px-3 py-1.5 text-xs text-amber-300 whitespace-nowrap shadow-[0_4px_18px_rgba(0,0,0,0.55)]"
+            >
+              👋 Bump
+            </button>
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setChatTarget(nearPerson);
+              }}
+              className="glass-panel rounded-full px-3 py-1.5 text-xs text-primary whitespace-nowrap shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+            >
+              💬 Message
+            </button>
+          </>
+        )}
+      </div>
+
+      <div
+        ref={floatJerryRef}
+        className="absolute top-0 left-0 z-30 transition-opacity duration-150"
+        style={{ opacity: 0, pointerEvents: "none", willChange: "transform" }}
+      >
+        {nearJerry && (
+          <button
+            onClick={(e) => {
+              setNpcTarget("jerry");
+              e.currentTarget.blur();
+            }}
+            className="glass-panel rounded-full px-3 py-1.5 text-xs text-primary whitespace-nowrap animate-pulse shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+          >
+            🐌 Talk to Jerry
+          </button>
+        )}
+      </div>
 
       {/* HUD: altitude / speed / thrust readout. */}
       {entered && (
@@ -2883,34 +3003,7 @@ export default function City() {
               ✨ Open Vibe Maker
             </button>
           )}
-          {nearPerson && !chatTarget && (
-            <div className="flex gap-2">
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  if (!nearPerson) return;
-                  if (nearPerson.kind === "agent") {
-                    agentResidentsRef.current?.showWaveAt(nearPerson.ref);
-                  } else {
-                    mpRef.current?.sendEmote("wave");
-                  }
-                  soundsRef.current?.chime(2);
-                }}
-                className="glass-panel rounded-full px-4 py-2.5 text-sm text-amber-300"
-              >
-                👋 Bump {nearPerson.name.slice(0, 14)}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  setChatTarget(nearPerson);
-                }}
-                className="glass-panel rounded-full px-4 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
-              >
-                💬 Message
-              </button>
-            </div>
-          )}
+          {/* nearPerson bump/message moved to a floating in-world bubble above the character */}
           {nearRoster && !rosterOpen && (
             <button
               onClick={(e) => {
@@ -2934,17 +3027,7 @@ export default function City() {
               🐄 Moo
             </button>
           )}
-          {nearJerry && (
-            <button
-              onClick={(e) => {
-                setNpcTarget("jerry");
-                e.currentTarget.blur();
-              }}
-              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
-            >
-              🐌 Talk to Jerry
-            </button>
-          )}
+          {/* Talk to Jerry moved to a floating in-world bubble above Jerry */}
           {nearSnackfe && (
             <button
               onClick={(e) => {

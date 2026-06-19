@@ -70,6 +70,8 @@ export interface Multiplayer {
   pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
   /** Nearest other player within `radius` meters (xz), or null. Players without a known userId are skipped. */
   getNearestPlayer(x: number, y: number, z: number, radius: number): NearbyPerson | null;
+  /** World position of the remote player with this auth user id, or null. */
+  getPlayerPosition(userId: string): { x: number; y: number; z: number } | null;
   /** Trigger a local wave emote sprite above a remote ghost (e.g. when someone bumps them). */
   showEmoteOnGhost(sessionId: string, emote: EmoteName): void;
   dispose(): void;
@@ -582,6 +584,15 @@ export function createMultiplayer(opts: {
         }
       }
       return best;
+    },
+    getPlayerPosition(userId) {
+      for (const g of ghosts.values()) {
+        if (g.userId === userId) {
+          const p = g.group.position;
+          return { x: p.x, y: p.y, z: p.z };
+        }
+      }
+      return null;
     },
     showEmoteOnGhost(sid, emote) {
       const g = ghosts.get(sid);

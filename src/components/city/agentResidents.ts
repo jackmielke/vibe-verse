@@ -45,6 +45,8 @@ export interface AgentResidents {
   pushFrom(x: number, y: number, z: number, dirX: number, dirZ: number, speed: number, dt: number): void;
   /** Nearest resident with a known DB id within `radius` meters (xz), or null. */
   getNearestAgent(x: number, y: number, z: number, radius: number): NearbyAgent | null;
+  /** World position of the resident with this agent id, or null. */
+  getAgentPosition(agentId: string): { x: number; y: number; z: number } | null;
   /** Trigger a local wave bubble above an agent (e.g. when the player bumps them). */
   showWaveAt(agentId: string): void;
   dispose(): void;
@@ -700,6 +702,15 @@ export function createAgentResidents(opts: {
         }
       }
       return best;
+    },
+    getAgentPosition(agentId) {
+      for (const r of residents.values()) {
+        if (r.agentId === agentId) {
+          const p = r.wrapper.position;
+          return { x: p.x, y: p.y, z: p.z };
+        }
+      }
+      return null;
     },
     showWaveAt(agentId) {
       for (const r of residents.values()) {
