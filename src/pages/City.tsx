@@ -58,6 +58,12 @@ import {
   saveEquippedJetpack,
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
+import VibeMakerPanel from "@/components/VibeMakerPanel";
+import {
+  createSpawnMesh,
+  updateSpawns,
+  type IslandSpawnRow,
+} from "@/components/city/islandSpawns";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
