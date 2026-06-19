@@ -59,6 +59,7 @@ import {
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
+import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
   createSpawnMesh,
   updateSpawns,
