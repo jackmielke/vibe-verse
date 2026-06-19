@@ -2997,6 +2997,24 @@ export default function City() {
         />
       )}
 
+      {/* First-entry name modal — shows once until the user picks/skips. */}
+      {entered && (
+        <NameEntryModal
+          open={nameModalOpen}
+          initialName={playerName}
+          authUserId={authUserId}
+          avatarLabel={charName}
+          onSubmit={(name) => {
+            setPlayerName(name);
+            mpRef.current?.setName(name);
+            setNameModalOpen(false);
+          }}
+          onSkip={() => setNameModalOpen(false)}
+        />
+      )}
+
+
+
       {/* 1:1 chat with a nearby player or AI agent. */}
       {entered && (
         <PersonChatPanel
