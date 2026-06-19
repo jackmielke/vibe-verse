@@ -89,6 +89,8 @@ const OFFICIAL_WORLDS: World[] = [
   // floating papercraft island as the focused world.
   { to: "/city?spawn=island", name: "Edge Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
+  { to: "/island-explorer", name: "Island Explorer", art: islandArt, color: "#fbbf24",
+    blurb: "Pick a character + world (Sunset Cove, Sky Island, Edge Esmeralda) and explore." },
   { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
     blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
   { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",

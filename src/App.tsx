@@ -26,6 +26,7 @@ import AgentLobby from "./pages/AgentLobby.tsx";
 import VibeProfile from "./pages/VibeProfile.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
+import IslandExplorer from "./pages/IslandExplorer.tsx";
 
 const queryClient = new QueryClient();
 
@@ -83,6 +84,10 @@ const App = () => (
           <Route path="/agent-lobby" element={<AgentLobby />} />
           {/* Profile / character picker — replaces the tiny color popover. */}
           <Route path="/profile" element={<VibeProfile />} />
+          {/* Island Explorer — multi-world R3F sandbox: pick a character + world,
+              walk/run/jump with WASD. Imported from the standalone project. */}
+          <Route path="/island-explorer" element={<IslandExplorer />} />
+          <Route path="/island" element={<IslandExplorer />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
