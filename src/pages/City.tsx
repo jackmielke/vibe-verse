@@ -1669,6 +1669,7 @@ export default function City() {
       });
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
+      jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
