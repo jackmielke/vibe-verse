@@ -2249,11 +2249,13 @@ export default function City() {
             }}
             className="md:hidden relative glass-panel rounded-full w-10 h-10 flex items-center justify-center text-base hover:bg-muted/50 transition-colors"
             title="World controls"
-            aria-expanded={hudMenuOpen}
+            aria-expanded={hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen}
             aria-label="World controls"
           >
-            <span className="leading-none">{hudMenuOpen ? "✕" : "⋯"}</span>
-            {!hudMenuOpen && chatUnread > 0 && (
+            <span className="leading-none">
+              {hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen ? "✕" : "⋯"}
+            </span>
+            {!hudMenuOpen && !chatOpen && !emoteWheelOpen && !charPanelOpen && chatUnread > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-1 rounded-full bg-amber-300 text-[10px] font-bold text-black flex items-center justify-center">
                 {chatUnread}
               </span>
