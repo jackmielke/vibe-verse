@@ -2882,6 +2882,34 @@ export default function City() {
               ✨ Open Vibe Maker
             </button>
           )}
+          {nearPerson && !chatTarget && (
+            <div className="flex gap-2">
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  if (!nearPerson) return;
+                  if (nearPerson.kind === "agent") {
+                    agentResidentsRef.current?.showWaveAt(nearPerson.ref);
+                  } else {
+                    mpRef.current?.sendEmote("wave");
+                  }
+                  soundsRef.current?.uiClick();
+                }}
+                className="glass-panel rounded-full px-4 py-2.5 text-sm text-amber-300"
+              >
+                👋 Bump {nearPerson.name.slice(0, 14)}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  setChatTarget(nearPerson);
+                }}
+                className="glass-panel rounded-full px-4 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+              >
+                💬 Message
+              </button>
+            </div>
+          )}
           {nearRoster && !rosterOpen && (
             <button
               onClick={(e) => {
