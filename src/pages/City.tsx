@@ -2185,6 +2185,7 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       agentResidents.dispose();
+      agentResidentsRef.current = null;
       unsubRoster();
       rosterBoard.dispose();
 
