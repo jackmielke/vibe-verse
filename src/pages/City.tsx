@@ -1942,6 +1942,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       
       vibey.update(dt, now);
