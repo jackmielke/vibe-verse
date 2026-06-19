@@ -2821,6 +2821,17 @@ export default function City() {
         />
       )}
 
+      {/* 1:1 chat with a nearby player or AI agent. */}
+      {entered && (
+        <PersonChatPanel
+          open={!!chatTarget}
+          onClose={() => setChatTarget(null)}
+          target={chatTarget}
+          authUserId={authUserId}
+          myName={playerName}
+        />
+      )}
+
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
       {/* Bottom-center action stack: context buttons appear as you
