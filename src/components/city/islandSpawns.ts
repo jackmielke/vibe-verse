@@ -7,6 +7,7 @@
  * enabled on the table, so spawns appear/disappear live for all peers.
  */
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export type SpawnKind =
   | "cube"
@@ -14,7 +15,8 @@ export type SpawnKind =
   | "torus"
   | "cone"
   | "pyramid"
-  | "tetra";
+  | "tetra"
+  | "meshy";
 
 export interface IslandSpawnRow {
   id: string;
@@ -28,6 +30,8 @@ export interface IslandSpawnRow {
   rot_y: number;
   scale: number;
   created_at: string;
+  model_url?: string | null;
+  thumbnail_url?: string | null;
 }
 
 export const SPAWN_KINDS: { id: SpawnKind; emoji: string; label: string }[] = [
