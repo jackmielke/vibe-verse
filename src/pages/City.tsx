@@ -32,7 +32,7 @@ import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 
-import { createAgentResidents } from "@/components/city/agentResidents";
+import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 
