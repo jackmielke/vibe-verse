@@ -479,7 +479,7 @@ export function createMultiplayer(opts: {
           void channel.send({
             type: "broadcast",
             event: "pos",
-            payload: { id: sessionId, name: myName, ...me },
+            payload: { id: sessionId, name: myName, userId: myUserId, ...me },
           });
         }
       }
