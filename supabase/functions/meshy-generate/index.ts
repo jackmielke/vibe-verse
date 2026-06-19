@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           image_url: imageUrl,
           enable_pbr: true,
-          ai_model: "meshy-4",
+          ai_model: "meshy-6",
         }),
       });
       if (!r.ok) throw new Error(`Meshy image-to-3d failed: ${r.status} ${await r.text()}`);
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
           mode: "preview",
           prompt,
           art_style: "realistic",
-          ai_model: "meshy-4",
+          ai_model: "meshy-6",
         }),
       });
       if (!r.ok) throw new Error(`Meshy text-to-3d failed: ${r.status} ${await r.text()}`);
