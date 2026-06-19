@@ -685,6 +685,31 @@ export function createAgentResidents(opts: {
         // Bumped residents simply stay where they're shoved — no auto-return.
       }
     },
+    getNearestAgent(x, _y, z, radius) {
+      let best: NearbyAgent | null = null;
+      const r2 = radius * radius;
+      for (const r of residents.values()) {
+        if (!r.agentId) continue;
+        const p = r.wrapper.position;
+        const dx = p.x - x;
+        const dz = p.z - z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= r2) continue;
+        if (!best || d2 < best.distSq) {
+          best = { agentId: r.agentId, name: r.name, distSq: d2 };
+        }
+      }
+      return best;
+    },
+    showWaveAt(agentId) {
+      for (const r of residents.values()) {
+        if (r.agentId === agentId) {
+          showBubble(r, "👋");
+          startEmote(r, "wave");
+          return;
+        }
+      }
+    },
     dispose() {
       disposed = true;
       supabase.removeChannel(channel);
