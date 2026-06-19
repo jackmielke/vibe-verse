@@ -2313,6 +2313,48 @@ export type Database = {
         }
         Relationships: []
       }
+      island_spawns: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          kind: string
+          label: string | null
+          pos_x: number
+          pos_y: number
+          pos_z: number
+          rot_y: number
+          scale: number
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          kind: string
+          label?: string | null
+          pos_x?: number
+          pos_y?: number
+          pos_z?: number
+          rot_y?: number
+          scale?: number
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          label?: string | null
+          pos_x?: number
+          pos_y?: number
+          pos_z?: number
+          rot_y?: number
+          scale?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       magic_link_tokens: {
         Row: {
           community_id: string

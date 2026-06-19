@@ -58,6 +58,12 @@ import {
   saveEquippedJetpack,
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
+import VibeMakerPanel from "@/components/VibeMakerPanel";
+import {
+  createSpawnMesh,
+  updateSpawns,
+  type IslandSpawnRow,
+} from "@/components/city/islandSpawns";
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
@@ -647,6 +653,15 @@ export default function City() {
   const [nearRoster, setNearRoster] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
 
+  // Vibe Maker portal — spawn 3D primitives saved to public.island_spawns.
+  // The scene exposes a tiny imperative API via ref so we can sync the
+  // 3D group whenever the React-side `spawns` list changes.
+  const [nearPortal, setNearPortal] = useState(false);
+  const [portalOpen, setPortalOpen] = useState(false);
+  const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const spawnsApiRef = useRef<{ setAll: (rows: IslandSpawnRow[]) => void } | null>(null);
+
   const [equippedHat, setEquippedHat] = useState<string>(() => {
     if (typeof window === "undefined") return "none";
     return localStorage.getItem("city.hat") || "none";
@@ -678,6 +693,70 @@ export default function City() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // ---- Auth: who is the player, so we can write island_spawns rows.
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setAuthUserId(data.session?.user.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setAuthUserId(session?.user.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ---- Island spawns: initial fetch + realtime sync. Everyone — even
+  // logged-out viewers — sees every spawn, so this runs unconditionally.
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from("island_spawns")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .limit(500)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setSpawns(data as IslandSpawnRow[]);
+      });
+    const channel = supabase
+      .channel("island_spawns")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "island_spawns" },
+        (payload) => {
+          setSpawns((prev) => {
+            const row = payload.new as IslandSpawnRow;
+            if (prev.some((s) => s.id === row.id)) return prev;
+            return [...prev, row];
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "island_spawns" },
+        (payload) => {
+          const oldRow = payload.old as { id?: string };
+          if (!oldRow.id) return;
+          setSpawns((prev) => prev.filter((s) => s.id !== oldRow.id));
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Mirror the spawn list into the 3D scene whenever it changes.
+  useEffect(() => {
+    spawnsApiRef.current?.setAll(spawns);
+  }, [spawns]);
+
+
 
 
   useEffect(() => {
@@ -814,6 +893,38 @@ export default function City() {
       boxes,
     });
     scene.add(island.group);
+
+    // ---- Vibe Maker spawns: a group anchored at the portal that
+    // mirrors public.island_spawns. The React side owns the data and
+    // calls spawnsApiRef.current.setAll(...) to diff into the scene.
+    const spawnsGroup = new THREE.Group();
+    spawnsGroup.position.copy(island.portal);
+    scene.add(spawnsGroup);
+    const spawnMeshById = new Map<string, THREE.Group>();
+    spawnsApiRef.current = {
+      setAll(rows) {
+        const seen = new Set(rows.map((r) => r.id));
+        spawnMeshById.forEach((mesh, id) => {
+          if (!seen.has(id)) {
+            spawnsGroup.remove(mesh);
+            mesh.traverse((o) => {
+              if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry?.dispose();
+              const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+              if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+              else mat?.dispose();
+            });
+            spawnMeshById.delete(id);
+          }
+        });
+        rows.forEach((r) => {
+          if (!spawnMeshById.has(r.id)) {
+            const m = createSpawnMesh(r);
+            spawnsGroup.add(m);
+            spawnMeshById.set(r.id, m);
+          }
+        });
+      },
+    };
 
     // ---- The Moon (a landable celestial body near the island) -------
     const moonWorld = buildMoon({
@@ -1537,6 +1648,7 @@ export default function City() {
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
+      setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
 
     }, 120);
@@ -1895,6 +2007,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       
       vibey.update(dt, now);
@@ -2055,6 +2168,7 @@ export default function City() {
       zipGrabRef.current = null;
       swingGrabRef.current = null;
       mooRef.current = null;
+      spawnsApiRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
@@ -2667,6 +2781,15 @@ export default function City() {
       )}
 
       {/* Touch controls for phones: joystick + jetpack button. */}
+      {entered && (
+        <VibeMakerPanel
+          open={portalOpen}
+          onClose={() => setPortalOpen(false)}
+          spawns={spawns}
+          authUserId={authUserId}
+        />
+      )}
+
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
       {/* Bottom-center action stack: context buttons appear as you
@@ -2704,6 +2827,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               🛍️ Open Vibe Shop
+            </button>
+          )}
+          {nearPortal && !portalOpen && (
+            <button
+              onClick={(e) => {
+                setPortalOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+            >
+              ✨ Open Vibe Maker
             </button>
           )}
           {nearRoster && !rosterOpen && (
