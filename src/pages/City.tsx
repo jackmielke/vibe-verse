@@ -2781,6 +2781,15 @@ export default function City() {
       )}
 
       {/* Touch controls for phones: joystick + jetpack button. */}
+      {entered && (
+        <VibeMakerPanel
+          open={portalOpen}
+          onClose={() => setPortalOpen(false)}
+          spawns={spawns}
+          authUserId={authUserId}
+        />
+      )}
+
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
 
       {/* Bottom-center action stack: context buttons appear as you
