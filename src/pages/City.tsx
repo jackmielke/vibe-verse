@@ -457,9 +457,13 @@ export default function City() {
 
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
+  const agentResidentsRef = useRef<AgentResidents | null>(null);
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
   const playLocalChatRef = useRef<((text: string) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
+  // Nearby person (player or agent) for bump/message HUD buttons.
+  const [nearPerson, setNearPerson] = useState<PersonTarget | null>(null);
+  const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
   // Mobile: the whole world-controls chip row collapses behind a single
   // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
   // inline like before.
