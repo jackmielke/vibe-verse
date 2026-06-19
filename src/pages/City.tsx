@@ -2820,6 +2820,17 @@ export default function City() {
               🛍️ Open Vibe Shop
             </button>
           )}
+          {nearPortal && !portalOpen && (
+            <button
+              onClick={(e) => {
+                setPortalOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
+            >
+              ✨ Open Vibe Maker
+            </button>
+          )}
           {nearRoster && !rosterOpen && (
             <button
               onClick={(e) => {
