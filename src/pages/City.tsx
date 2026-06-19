@@ -463,7 +463,15 @@ export default function City() {
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
   // Nearby person (player or agent) for bump/message HUD buttons.
   const [nearPerson, setNearPerson] = useState<PersonTarget | null>(null);
+  const nearPersonRef = useRef<PersonTarget | null>(null);
+  useEffect(() => { nearPersonRef.current = nearPerson; }, [nearPerson]);
   const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
+  // Floating world-space bubbles for the nearest person + Jerry. The render
+  // loop projects 3D positions into these divs every frame via direct DOM
+  // mutation, so React doesn't re-render at 60fps.
+  const floatPersonRef = useRef<HTMLDivElement>(null);
+  const floatJerryRef = useRef<HTMLDivElement>(null);
+  const jerryWorldRef = useRef<{ x: number; y: number; z: number } | null>(null);
   // Mobile: the whole world-controls chip row collapses behind a single
   // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
   // inline like before.
