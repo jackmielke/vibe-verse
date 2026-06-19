@@ -85,6 +85,8 @@ interface Ghost {
   bumpVel: THREE.Vector3;
   char: string;
   label: string;
+  /** Auth user id, if the peer is signed in. Required for DM threads. */
+  userId: string | null;
   emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
   chat?: { sprite: THREE.Sprite; t: number; life: number };
 }
