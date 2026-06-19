@@ -1065,6 +1065,8 @@ export default function City() {
       },
     });
     mpRef.current = mp;
+    // Tell multiplayer who we are so DMs can find us by user id.
+    try { mp.setUserId(authUserIdRef.current); } catch { /* noop */ }
 
     // ---- Cardboard TV: tune in the community photo gallery ----------
     // Same gallery_photos feed the /space TV uses.
