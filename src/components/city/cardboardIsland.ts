@@ -54,6 +54,9 @@ export interface IslandWorld {
   setTvPhotos(urls: string[]): void;
   /** The shop counter (modern kiosk behind the TV), in world coordinates. */
   shop: THREE.Vector3;
+  /** Vibe Maker portal — players walk up to spawn 3D shapes that save
+   *  to the database and appear for everyone on the island. */
+  portal: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
