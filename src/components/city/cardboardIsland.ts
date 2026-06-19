@@ -1430,6 +1430,17 @@ export function buildCardboardIsland(opts: {
       });
       snackInteriorLight.intensity = 18 + Math.sin(now * 0.0015) * 4;
 
+      // Vibe Maker portal: ring spin + light pulse.
+      const pg = portalGroup as unknown as {
+        __ring: THREE.Mesh;
+        __inner: THREE.Mesh;
+        __light: THREE.PointLight;
+      };
+      pg.__ring.rotation.z += dt * 0.6;
+      pg.__inner.rotation.z -= dt * 0.3;
+      pg.__light.intensity = 12 + Math.sin(now * 0.003) * 4;
+
+
       // Cardboard TV slideshow.
       tvTimer += dt;
       if (tvTimer > 7 && tvTextures.length > 0) {
