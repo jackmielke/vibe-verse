@@ -21,7 +21,7 @@
  * invitation. Extend the city by tweaking the constants in the
  * "City plan" section below; everything regenerates from the seed.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -609,6 +609,34 @@ export default function City() {
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
+
+  // The "⋯" HUD menu and its sub-panels (chat / emote / character)
+  // share an outside-click + close-all flow so the X button and a tap
+  // anywhere else on screen both dismiss the whole stack instead of
+  // leaving floating panels behind.
+  const hudWrapRef = useRef<HTMLDivElement | null>(null);
+  const closeAllHud = useCallback(() => {
+    setHudMenuOpen(false);
+    setEmoteWheelOpen(false);
+    setCharPanelOpen(false);
+    setChatOpen(false);
+    chatOpenRef.current = false;
+  }, []);
+
+  // Outside-click / tap dismiss for the HUD menu cluster. Only active
+  // while something is open so we don't burn listeners 24/7.
+  useEffect(() => {
+    const anyOpen = hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen;
+    if (!anyOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const el = hudWrapRef.current;
+      if (!el) return;
+      const target = e.target as Node | null;
+      if (target && !el.contains(target)) closeAllHud();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [hudMenuOpen, chatOpen, emoteWheelOpen, charPanelOpen, closeAllHud]);
 
   // Vibe Shop — equipped cosmetics + dialog state. The setters below
   // are wired into the 3D scene via refs so equipping is instant.
@@ -2203,20 +2231,31 @@ export default function City() {
           blur() calls keep focus off the buttons so Space stays on
           the jetpack instead of re-clicking them. */}
       {entered && (
-        <div className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
-          {/* Mobile-only trigger — collapses the whole chip row. */}
+        <div ref={hudWrapRef} className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
+          {/* Mobile-only trigger — collapses the whole chip row. The
+              ✕ state also dismisses every open sub-panel (chat /
+              emote / character) so the close button actually closes
+              everything the user sees, not just the chip strip. */}
           <button
             onClick={(e) => {
-              setHudMenuOpen((v) => !v);
+              const anyOpen =
+                hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen;
+              if (anyOpen) {
+                closeAllHud();
+              } else {
+                setHudMenuOpen(true);
+              }
               e.currentTarget.blur();
             }}
             className="md:hidden relative glass-panel rounded-full w-10 h-10 flex items-center justify-center text-base hover:bg-muted/50 transition-colors"
             title="World controls"
-            aria-expanded={hudMenuOpen}
+            aria-expanded={hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen}
             aria-label="World controls"
           >
-            <span className="leading-none">{hudMenuOpen ? "✕" : "⋯"}</span>
-            {!hudMenuOpen && chatUnread > 0 && (
+            <span className="leading-none">
+              {hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen ? "✕" : "⋯"}
+            </span>
+            {!hudMenuOpen && !chatOpen && !emoteWheelOpen && !charPanelOpen && chatUnread > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-1 rounded-full bg-amber-300 text-[10px] font-bold text-black flex items-center justify-center">
                 {chatUnread}
               </span>
