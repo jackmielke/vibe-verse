@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     // Look up the agent we're speaking for.
     const { data: agent } = await supabase
       .from("world_agents")
-      .select("id, name, persona, agent_key")
+      .select("id, name, prompt, agent_key")
       .eq("id", agentId)
       .maybeSingle();
     if (!agent) return json({ error: "agent not found" }, 404);
