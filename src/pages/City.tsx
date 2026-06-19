@@ -1666,7 +1666,23 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
 
+      // Nearest chattable person (real player OR AI agent) within ~3.2m.
+      const NEAR_RADIUS = 3.2;
+      const nP = mpRef.current?.getNearestPlayer(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
+      const nA = agentResidentsRef.current?.getNearestAgent(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
+      let pick: PersonTarget | null = null;
+      if (nP && (!nA || nP.distSq <= nA.distSq)) {
+        pick = { kind: "player", ref: nP.ref, name: nP.name };
+      } else if (nA) {
+        pick = { kind: "agent", ref: nA.agentId, name: nA.name };
+      }
+      setNearPerson((prev) => {
+        if (!prev && !pick) return prev;
+        if (prev && pick && prev.kind === pick.kind && prev.ref === pick.ref && prev.name === pick.name) return prev;
+        return pick;
+      });
     }, 120);
+
 
     // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
     // Arrive a few meters above each landing so you flutter down.
