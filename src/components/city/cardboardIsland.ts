@@ -1100,6 +1100,91 @@ export function buildCardboardIsland(opts: {
     group.add(shopGroup);
   }
 
+  // ---- Vibe Maker portal: a glowing ring tucked next to the shop -----
+  // Walk up to it to open a mini "vibe coding" panel that spawns 3D
+  // primitives saved to public.island_spawns. Everyone on the island
+  // sees what you make; only you can delete your own creations.
+  const PORTAL_X = -10;
+  const PORTAL_Z = 26;
+  const portalGroup = new THREE.Group();
+  portalGroup.position.set(PORTAL_X, 0, PORTAL_Z);
+  {
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: "#0d1014",
+      roughness: 0.55,
+      metalness: 0.25,
+    });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.4, 24), baseMat);
+    base.position.y = 0.2;
+    portalGroup.add(base);
+
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: "#b78aff",
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.35, 0.13, 16, 48), ringMat);
+    ring.position.y = 1.9;
+    ring.rotation.x = Math.PI / 2;
+    portalGroup.add(ring);
+
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: "#2dd4a8",
+      transparent: true,
+      opacity: 0.32,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    const inner = new THREE.Mesh(new THREE.CircleGeometry(1.22, 36), innerMat);
+    inner.position.y = 1.9;
+    inner.rotation.x = Math.PI / 2;
+    portalGroup.add(inner);
+
+    const portalLight = new THREE.PointLight(0xb78aff, 14, 12, 1.8);
+    portalLight.position.set(0, 2, 0);
+    portalGroup.add(portalLight);
+
+    // Floating "VIBE MAKER" sign above the portal.
+    const sc = document.createElement("canvas");
+    sc.width = 512;
+    sc.height = 128;
+    const sx = sc.getContext("2d")!;
+    sx.fillStyle = "rgba(0,0,0,0)";
+    sx.fillRect(0, 0, 512, 128);
+    sx.font = "bold 70px 'Sora', system-ui, sans-serif";
+    sx.textAlign = "center";
+    sx.textBaseline = "middle";
+    sx.shadowColor = "#b78aff";
+    sx.shadowBlur = 32;
+    sx.fillStyle = "#f0e1ff";
+    sx.fillText("VIBE MAKER", 256, 56);
+    sx.shadowBlur = 0;
+    sx.font = "22px 'Manrope', sans-serif";
+    sx.fillStyle = "#2dd4a8";
+    sx.fillText("spawn anything · saved for everyone", 256, 104);
+    const signTex = new THREE.CanvasTexture(sc);
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 0.85),
+      new THREE.MeshBasicMaterial({ map: signTex, transparent: true, depthWrite: false }),
+    );
+    sign.position.set(0, 3.7, 0);
+    portalGroup.add(sign);
+    // Make the sign always face the player-ish (billboard at update time).
+    (portalGroup as unknown as { __sign: THREE.Mesh }).__sign = sign;
+    (portalGroup as unknown as { __ring: THREE.Mesh }).__ring = ring;
+    (portalGroup as unknown as { __inner: THREE.Mesh }).__inner = inner;
+    (portalGroup as unknown as { __light: THREE.PointLight }).__light = portalLight;
+  }
+  group.add(portalGroup);
+
+
+
 
   // ---- SnackFe: modern neon cafe ---------------------------------------
   // A sleek modern micro-cafe with alternating mint/magenta string lights
