@@ -451,7 +451,7 @@ export function createMultiplayer(opts: {
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
-          await channel!.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined });
+          await channel!.track({ name: myName, char: lastSent?.char ?? "", day: myDay ?? undefined, userId: myUserId });
         }
         onPeers(Object.keys(channel!.presenceState()).length, online);
       });
