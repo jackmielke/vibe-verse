@@ -60,6 +60,7 @@ import {
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
+import NameEntryModal from "@/components/city/NameEntryModal";
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
   createSpawnMesh,
@@ -490,6 +491,12 @@ export default function City() {
     localStorage.setItem("city.playerName", generated);
     return generated;
   });
+  // First-entry name modal: show whenever the player hasn't explicitly
+  // chosen a display name yet (separate key so we don't trigger again
+  // after they pick or skip once).
+  const [nameModalOpen, setNameModalOpen] = useState(
+    () => !localStorage.getItem("city.displayName"),
+  );
 
   // ---- Unified community feed: merge the agent lobby (`world_messages`)
   // into the same terminal as live player chat, and let humans post into
