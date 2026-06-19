@@ -757,6 +757,31 @@ export default function City() {
     return () => { cancelled = true; };
   }, [authUserId]);
 
+  // ---- Prefer the signed-in user's saved `users.name` over the locally
+  // generated Pilot-NNN. If they have one, treat the name modal as done.
+  useEffect(() => {
+    if (!authUserId) return;
+    let cancelled = false;
+    supabase
+      .from("users")
+      .select("name")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const dbName = data?.name?.trim();
+        if (dbName) {
+          setPlayerName(dbName);
+          localStorage.setItem("city.playerName", dbName);
+          localStorage.setItem("city.displayName", dbName);
+          mpRef.current?.setName(dbName);
+          setNameModalOpen(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [authUserId]);
+
+
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
   useEffect(() => {
