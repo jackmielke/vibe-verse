@@ -1046,8 +1046,10 @@ export default function City() {
     // ---- Live Roster TV: scoreboard-style screen on the front of the
     // island showing every current agent and their lobby-grid tile.
     // Clicking it opens a fuller modal with the same list.
-    const ROSTER_LX = -22;
-    const ROSTER_LZ = 14;
+    // Moved further to the right (toward island center / Trade Joe's) so
+    // the board isn't jammed against the Cardboard Cafe.
+    const ROSTER_LX = -6;
+    const ROSTER_LZ = 18;
     const rosterBoard = createAgentRosterBoard({
       position: new THREE.Vector3(ISLAND_X + ROSTER_LX, ISLAND_TOP, ISLAND_Z + ROSTER_LZ),
       rotationY: Math.atan2(-ROSTER_LX, -ROSTER_LZ), // face the island center
