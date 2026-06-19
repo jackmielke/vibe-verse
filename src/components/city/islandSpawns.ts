@@ -7,6 +7,7 @@
  * enabled on the table, so spawns appear/disappear live for all peers.
  */
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export type SpawnKind =
   | "cube"
@@ -14,7 +15,8 @@ export type SpawnKind =
   | "torus"
   | "cone"
   | "pyramid"
-  | "tetra";
+  | "tetra"
+  | "meshy";
 
 export interface IslandSpawnRow {
   id: string;
@@ -28,6 +30,8 @@ export interface IslandSpawnRow {
   rot_y: number;
   scale: number;
   created_at: string;
+  model_url?: string | null;
+  thumbnail_url?: string | null;
 }
 
 export const SPAWN_KINDS: { id: SpawnKind; emoji: string; label: string }[] = [
@@ -109,30 +113,96 @@ export function createSpawnMesh(row: IslandSpawnRow): THREE.Group {
   group.userData.spawnId = row.id;
   group.userData.userId = row.user_id;
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: row.color,
-    emissive: row.color,
-    emissiveIntensity: 0.45,
-    roughness: 0.4,
-    metalness: 0.2,
-  });
-  const mesh = new THREE.Mesh(geomFor(row.kind), mat);
-  mesh.position.y = 0.6 * row.scale;
-  mesh.scale.setScalar(row.scale);
-  mesh.rotation.y = row.rot_y;
-  group.add(mesh);
-  group.userData.bobMesh = mesh;
-  group.userData.bobBaseY = mesh.position.y;
-  group.userData.spin = 0.4 + Math.random() * 0.6;
+  if (row.kind === "meshy" && row.model_url) {
+    // Drop a glowing placeholder while the GLB streams in.
+    const placeholder = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.55, 0),
+      new THREE.MeshStandardMaterial({
+        color: row.color || "#2dd4a8",
+        emissive: row.color || "#2dd4a8",
+        emissiveIntensity: 0.8,
+        wireframe: true,
+      }),
+    );
+    placeholder.position.y = 0.6 * row.scale;
+    group.add(placeholder);
+    group.userData.bobMesh = placeholder;
+    group.userData.bobBaseY = placeholder.position.y;
+    group.userData.spin = 0.4 + Math.random() * 0.6;
+
+    loadMeshyModel(row.model_url).then((model) => {
+      // Fit into a ~1.4 unit box, then apply row.scale.
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const fit = 1.4 / maxDim;
+      model.scale.setScalar(fit * row.scale);
+      // Re-center on origin and lift so feet sit on the ground.
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      model.position.set(-center.x * fit * row.scale, -box.min.y * fit * row.scale, -center.z * fit * row.scale);
+      model.rotation.y = row.rot_y;
+
+      const wrapper = new THREE.Group();
+      wrapper.add(model);
+      wrapper.position.y = 0;
+      group.remove(placeholder);
+      placeholder.geometry.dispose();
+      (placeholder.material as THREE.Material).dispose();
+      group.add(wrapper);
+      group.userData.bobMesh = wrapper;
+      group.userData.bobBaseY = 0;
+    }).catch((err) => {
+      console.warn("Meshy GLB load failed", row.model_url, err);
+    });
+  } else {
+    const mat = new THREE.MeshStandardMaterial({
+      color: row.color,
+      emissive: row.color,
+      emissiveIntensity: 0.45,
+      roughness: 0.4,
+      metalness: 0.2,
+    });
+    const mesh = new THREE.Mesh(geomFor(row.kind as Exclude<SpawnKind, "meshy">), mat);
+    mesh.position.y = 0.6 * row.scale;
+    mesh.scale.setScalar(row.scale);
+    mesh.rotation.y = row.rot_y;
+    group.add(mesh);
+    group.userData.bobMesh = mesh;
+    group.userData.bobBaseY = mesh.position.y;
+    group.userData.spin = 0.4 + Math.random() * 0.6;
+  }
 
   if (row.label) {
     const sprite = makeLabelSprite(row.label);
-    sprite.position.y = 1.4 * row.scale + 0.3;
+    sprite.position.y = 1.6 * row.scale + 0.3;
     group.add(sprite);
   }
 
   group.position.set(row.pos_x, row.pos_y, row.pos_z);
   return group;
+}
+
+// ---- Meshy GLB loader (shared, with simple in-memory cache) -------
+const meshyLoader = new GLTFLoader();
+const meshyCache = new Map<string, Promise<THREE.Group>>();
+
+function loadMeshyModel(url: string): Promise<THREE.Group> {
+  let p = meshyCache.get(url);
+  if (!p) {
+    p = new Promise<THREE.Group>((resolve, reject) => {
+      meshyLoader.load(
+        url,
+        (gltf) => resolve(gltf.scene),
+        undefined,
+        (err) => reject(err),
+      );
+    });
+    meshyCache.set(url, p);
+  }
+  // Clone so each spawn gets its own scene graph.
+  return p.then((scene) => scene.clone(true));
 }
 
 function makeLabelSprite(text: string): THREE.Sprite {
