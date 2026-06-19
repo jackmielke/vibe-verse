@@ -245,6 +245,7 @@ export function createMultiplayer(opts: {
 }): Multiplayer {
   const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote, onBump } = opts;
   let myName = opts.name;
+  let myUserId: string | null = null;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
   const loader = new GLTFLoader();
