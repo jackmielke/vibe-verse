@@ -2313,6 +2313,42 @@ export type Database = {
         }
         Relationships: []
       }
+      island_dms: {
+        Row: {
+          body: string
+          created_at: string
+          from_kind: string
+          from_name: string
+          from_ref: string
+          id: string
+          thread_key: string
+          to_kind: string
+          to_ref: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          from_kind: string
+          from_name: string
+          from_ref: string
+          id?: string
+          thread_key: string
+          to_kind: string
+          to_ref: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          from_kind?: string
+          from_name?: string
+          from_ref?: string
+          id?: string
+          thread_key?: string
+          to_kind?: string
+          to_ref?: string
+        }
+        Relationships: []
+      }
       island_spawns: {
         Row: {
           color: string
