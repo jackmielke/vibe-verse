@@ -1584,6 +1584,7 @@ export default function City() {
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
+      setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
 
     }, 120);
