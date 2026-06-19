@@ -27,6 +27,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
@@ -665,6 +666,10 @@ export default function City() {
   const [rosterAgents, setRosterAgents] = useState<RosterAgent[]>([]);
   const [nearRoster, setNearRoster] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [editingAgentName, setEditingAgentName] = useState("");
+  const [savingAgentId, setSavingAgentId] = useState<string | null>(null);
 
   // Vibe Maker portal — spawn 3D primitives saved to public.island_spawns.
   // The scene exposes a tiny imperative API via ref so we can sync the
@@ -727,6 +732,22 @@ export default function City() {
   useEffect(() => {
     authUserIdRef.current = authUserId;
     mpRef.current?.setUserId(authUserId);
+  }, [authUserId]);
+
+  // ---- Admin check: lets the player rename agents on the Live Roster.
+  useEffect(() => {
+    if (!authUserId) { setIsAdmin(false); return; }
+    let cancelled = false;
+    supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", authUserId)
+      .eq("role", "admin")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setIsAdmin(!!data);
+      });
+    return () => { cancelled = true; };
   }, [authUserId]);
 
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
@@ -1046,8 +1067,10 @@ export default function City() {
     // ---- Live Roster TV: scoreboard-style screen on the front of the
     // island showing every current agent and their lobby-grid tile.
     // Clicking it opens a fuller modal with the same list.
-    const ROSTER_LX = -22;
-    const ROSTER_LZ = 14;
+    // Moved further to the right (toward island center / Trade Joe's) so
+    // the board isn't jammed against the Cardboard Cafe.
+    const ROSTER_LX = -6;
+    const ROSTER_LZ = 18;
     const rosterBoard = createAgentRosterBoard({
       position: new THREE.Vector3(ISLAND_X + ROSTER_LX, ISLAND_TOP, ISLAND_Z + ROSTER_LZ),
       rotationY: Math.atan2(-ROSTER_LX, -ROSTER_LZ), // face the island center
@@ -3085,13 +3108,57 @@ export default function City() {
                     i % 2 === 0 ? "bg-primary/5" : ""
                   }`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span
-                      className={`inline-block w-2 h-2 rounded-full ${
+                      className={`inline-block w-2 h-2 rounded-full shrink-0 ${
                         a.status === "offline" ? "bg-muted-foreground" : "bg-primary"
                       }`}
                     />
-                    <span className="truncate text-foreground">{a.name}</span>
+                    {isAdmin && editingAgentId === a.id ? (
+                      <input
+                        autoFocus
+                        value={editingAgentName}
+                        onChange={(e) => setEditingAgentName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setEditingAgentId(null);
+                          if (e.key === "Enter") {
+                            const next = editingAgentName.trim();
+                            if (!next || next === a.name) { setEditingAgentId(null); return; }
+                            setSavingAgentId(a.id);
+                            supabase
+                              .from("world_agents")
+                              .update({ name: next })
+                              .eq("id", a.id)
+                              .then(({ error }) => {
+                                setSavingAgentId(null);
+                                setEditingAgentId(null);
+                                if (error) {
+                                  console.warn("[roster] rename failed", error);
+                                  toast.error("Couldn't rename", { description: error.message });
+                                } else {
+                                  toast.success("Renamed", { description: `${a.name} → ${next}` });
+                                }
+                              });
+                          }
+                        }}
+                        onBlur={() => setEditingAgentId(null)}
+                        className="flex-1 min-w-0 bg-background/60 border border-primary/40 rounded px-2 py-0.5 text-sm text-foreground outline-none focus:border-primary"
+                      />
+                    ) : (
+                      <>
+                        <span className="truncate text-foreground">{a.name}</span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => { setEditingAgentId(a.id); setEditingAgentName(a.name); }}
+                            disabled={savingAgentId === a.id}
+                            className="text-[10px] uppercase tracking-wider text-primary/70 hover:text-primary px-1 disabled:opacity-50"
+                            title="Rename agent (admin)"
+                          >
+                            ✎
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-primary/80 tabular-nums">
                     <span>
