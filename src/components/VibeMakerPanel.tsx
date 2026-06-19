@@ -27,14 +27,26 @@ interface Props {
 
 export default function VibeMakerPanel({ open, onClose, spawns, authUserId }: Props) {
   const { toast } = useToast();
+  const [tab, setTab] = useState<"shape" | "meshy">("shape");
   const [kind, setKind] = useState<SpawnKind>("cube");
   const [color, setColor] = useState<string>("#2dd4a8");
   const [prompt, setPrompt] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
+  // Meshy tab state
+  const [meshyPrompt, setMeshyPrompt] = useState<string>("");
+  const [meshyImage, setMeshyImage] = useState<string | null>(null); // data URL
+  const [meshyBusy, setMeshyBusy] = useState(false);
+  const [meshyStatus, setMeshyStatus] = useState<string>("");
+
   // Reset prompt when reopening so people don't accidentally re-spawn.
   useEffect(() => {
-    if (open) setPrompt("");
+    if (open) {
+      setPrompt("");
+      setMeshyPrompt("");
+      setMeshyImage(null);
+      setMeshyStatus("");
+    }
   }, [open]);
 
   if (!open) return null;
@@ -74,6 +86,68 @@ export default function VibeMakerPanel({ open, onClose, spawns, authUserId }: Pr
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleMeshyGenerate() {
+    if (!authUserId) {
+      toast({ title: "Sign in to generate", description: "Connect with Vibe first." });
+      return;
+    }
+    if (!meshyPrompt.trim() && !meshyImage) {
+      toast({ title: "Add a prompt or image", description: "Describe what to build, or upload a reference photo." });
+      return;
+    }
+    setMeshyBusy(true);
+    setMeshyStatus("Sending to Meshy… this takes ~30–90s");
+    try {
+      const { data, error } = await supabase.functions.invoke("meshy-generate", {
+        body: {
+          prompt: meshyPrompt.trim() || undefined,
+          image_url: meshyImage || undefined,
+        },
+      });
+      if (error) throw error;
+      if (!data?.model_url) throw new Error("No model returned");
+      setMeshyStatus("Spawning into the world…");
+
+      const offset = pickSpawnOffset();
+      const label = meshyPrompt.trim() ? meshyPrompt.trim().slice(0, 80) : "Meshy creation";
+      const { error: insErr } = await supabase.from("island_spawns").insert({
+        user_id: authUserId,
+        kind: "meshy",
+        color: "#2dd4a8",
+        label,
+        model_url: data.model_url,
+        thumbnail_url: data.thumbnail_url ?? null,
+        ...offset,
+        scale: 1.4,
+      });
+      if (insErr) throw insErr;
+
+      toast({ title: "Generated ✨", description: label });
+      setMeshyPrompt("");
+      setMeshyImage(null);
+      setMeshyStatus("");
+    } catch (e) {
+      toast({
+        title: "Meshy failed",
+        description: e instanceof Error ? e.message : "unknown error",
+        variant: "destructive",
+      });
+      setMeshyStatus("");
+    } finally {
+      setMeshyBusy(false);
+    }
+  }
+
+  async function handleImagePick(file: File) {
+    if (file.size > 4 * 1024 * 1024) {
+      toast({ title: "Image too large", description: "Keep it under 4MB.", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setMeshyImage(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
   }
 
   async function handleDelete(id: string) {
