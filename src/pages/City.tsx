@@ -653,6 +653,15 @@ export default function City() {
   const [nearRoster, setNearRoster] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
 
+  // Vibe Maker portal — spawn 3D primitives saved to public.island_spawns.
+  // The scene exposes a tiny imperative API via ref so we can sync the
+  // 3D group whenever the React-side `spawns` list changes.
+  const [nearPortal, setNearPortal] = useState(false);
+  const [portalOpen, setPortalOpen] = useState(false);
+  const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const spawnsApiRef = useRef<{ setAll: (rows: IslandSpawnRow[]) => void } | null>(null);
+
   const [equippedHat, setEquippedHat] = useState<string>(() => {
     if (typeof window === "undefined") return "none";
     return localStorage.getItem("city.hat") || "none";
