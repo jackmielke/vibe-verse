@@ -3134,9 +3134,9 @@ export default function City() {
                                 setEditingAgentId(null);
                                 if (error) {
                                   console.warn("[roster] rename failed", error);
-                                  toast({ title: "Couldn't rename", description: error.message, variant: "destructive" as any });
+                                  toast.error("Couldn't rename", { description: error.message });
                                 } else {
-                                  toast({ title: "Renamed", description: `${a.name} → ${next}` });
+                                  toast.success("Renamed", { description: `${a.name} → ${next}` });
                                 }
                               });
                           }
