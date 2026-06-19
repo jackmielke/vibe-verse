@@ -610,6 +610,19 @@ export default function City() {
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
 
+  // The "⋯" HUD menu and its sub-panels (chat / emote / character)
+  // share an outside-click + close-all flow so the X button and a tap
+  // anywhere else on screen both dismiss the whole stack instead of
+  // leaving floating panels behind.
+  const hudWrapRef = useRef<HTMLDivElement | null>(null);
+  const closeAllHud = useCallback(() => {
+    setHudMenuOpen(false);
+    setEmoteWheelOpen(false);
+    setCharPanelOpen(false);
+    setChatOpen(false);
+    chatOpenRef.current = false;
+  }, []);
+
   // Vibe Shop — equipped cosmetics + dialog state. The setters below
   // are wired into the 3D scene via refs so equipping is instant.
   const [shopOpen, setShopOpen] = useState(false);
