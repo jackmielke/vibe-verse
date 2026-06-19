@@ -623,6 +623,21 @@ export default function City() {
     chatOpenRef.current = false;
   }, []);
 
+  // Outside-click / tap dismiss for the HUD menu cluster. Only active
+  // while something is open so we don't burn listeners 24/7.
+  useEffect(() => {
+    const anyOpen = hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen;
+    if (!anyOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const el = hudWrapRef.current;
+      if (!el) return;
+      const target = e.target as Node | null;
+      if (target && !el.contains(target)) closeAllHud();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [hudMenuOpen, chatOpen, emoteWheelOpen, charPanelOpen, closeAllHud]);
+
   // Vibe Shop — equipped cosmetics + dialog state. The setters below
   // are wired into the 3D scene via refs so equipping is instant.
   const [shopOpen, setShopOpen] = useState(false);
