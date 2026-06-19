@@ -665,6 +665,7 @@ export default function City() {
   const [portalOpen, setPortalOpen] = useState(false);
   const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const authUserIdRef = useRef<string | null>(null);
   const spawnsApiRef = useRef<{ setAll: (rows: IslandSpawnRow[]) => void } | null>(null);
 
   const [equippedHat, setEquippedHat] = useState<string>(() => {
