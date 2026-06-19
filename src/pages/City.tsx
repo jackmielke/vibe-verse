@@ -733,6 +733,22 @@ export default function City() {
     mpRef.current?.setUserId(authUserId);
   }, [authUserId]);
 
+  // ---- Admin check: lets the player rename agents on the Live Roster.
+  useEffect(() => {
+    if (!authUserId) { setIsAdmin(false); return; }
+    let cancelled = false;
+    supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", authUserId)
+      .eq("role", "admin")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setIsAdmin(!!data);
+      });
+    return () => { cancelled = true; };
+  }, [authUserId]);
+
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
   useEffect(() => {
