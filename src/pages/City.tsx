@@ -2406,6 +2406,60 @@ export default function City() {
     <div className="relative w-full h-[100dvh] bg-black overflow-hidden text-foreground">
       <canvas ref={canvasRef} className="w-full h-full block touch-none" />
 
+      {/* In-world floating bubbles. Positioned via direct DOM transforms in the render loop. */}
+      <div
+        ref={floatPersonRef}
+        className="absolute top-0 left-0 z-30 flex gap-1.5 transition-opacity duration-150"
+        style={{ opacity: 0, pointerEvents: "none", willChange: "transform" }}
+      >
+        {nearPerson && !chatTarget && (
+          <>
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur();
+                if (!nearPerson) return;
+                if (nearPerson.kind === "agent") {
+                  agentResidentsRef.current?.showWaveAt(nearPerson.ref);
+                } else {
+                  mpRef.current?.sendEmote("wave");
+                }
+                soundsRef.current?.chime(2);
+              }}
+              className="glass-panel rounded-full px-3 py-1.5 text-xs text-amber-300 whitespace-nowrap shadow-[0_4px_18px_rgba(0,0,0,0.55)]"
+            >
+              👋 Bump
+            </button>
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setChatTarget(nearPerson);
+              }}
+              className="glass-panel rounded-full px-3 py-1.5 text-xs text-primary whitespace-nowrap shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+            >
+              💬 Message
+            </button>
+          </>
+        )}
+      </div>
+
+      <div
+        ref={floatJerryRef}
+        className="absolute top-0 left-0 z-30 transition-opacity duration-150"
+        style={{ opacity: 0, pointerEvents: "none", willChange: "transform" }}
+      >
+        {nearJerry && (
+          <button
+            onClick={(e) => {
+              setNpcTarget("jerry");
+              e.currentTarget.blur();
+            }}
+            className="glass-panel rounded-full px-3 py-1.5 text-xs text-primary whitespace-nowrap animate-pulse shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+          >
+            🐌 Talk to Jerry
+          </button>
+        )}
+      </div>
+
       {/* HUD: altitude / speed / thrust readout. */}
       {entered && (
         <div className="absolute bottom-4 left-4 glass-panel rounded-2xl px-4 py-3 text-xs font-mono space-y-1 pointer-events-none">
