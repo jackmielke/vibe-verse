@@ -79,6 +79,7 @@ export default function VibeHub() {
         {/* ----- Account + Market + Holders, stacked ----- */}
         <VibeAccountCard variant="card" />
         <VibeCoinPanel />
+        <VibeShopPanel />
         <VibeWalletLeaderboard defaultVisible={8} maxRows={40} />
       </div>
     </div>
