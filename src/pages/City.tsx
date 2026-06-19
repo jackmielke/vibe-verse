@@ -2231,11 +2231,20 @@ export default function City() {
           blur() calls keep focus off the buttons so Space stays on
           the jetpack instead of re-clicking them. */}
       {entered && (
-        <div className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
-          {/* Mobile-only trigger — collapses the whole chip row. */}
+        <div ref={hudWrapRef} className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
+          {/* Mobile-only trigger — collapses the whole chip row. The
+              ✕ state also dismisses every open sub-panel (chat /
+              emote / character) so the close button actually closes
+              everything the user sees, not just the chip strip. */}
           <button
             onClick={(e) => {
-              setHudMenuOpen((v) => !v);
+              const anyOpen =
+                hudMenuOpen || chatOpen || emoteWheelOpen || charPanelOpen;
+              if (anyOpen) {
+                closeAllHud();
+              } else {
+                setHudMenuOpen(true);
+              }
               e.currentTarget.blur();
             }}
             className="md:hidden relative glass-panel rounded-full w-10 h-10 flex items-center justify-center text-base hover:bg-muted/50 transition-colors"
