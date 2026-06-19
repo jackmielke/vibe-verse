@@ -38,6 +38,7 @@ export default function VibeMakerPanel({ open, onClose, spawns, authUserId }: Pr
   const [meshyImage, setMeshyImage] = useState<string | null>(null); // data URL
   const [meshyBusy, setMeshyBusy] = useState(false);
   const [meshyStatus, setMeshyStatus] = useState<string>("");
+  const [dragOver, setDragOver] = useState(false);
 
   // Reset prompt when reopening so people don't accidentally re-spawn.
   useEffect(() => {
@@ -141,12 +142,19 @@ export default function VibeMakerPanel({ open, onClose, spawns, authUserId }: Pr
   }
 
   async function handleImagePick(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Not an image", description: "Drop a PNG, JPG, or WebP.", variant: "destructive" });
+      return;
+    }
     if (file.size > 4 * 1024 * 1024) {
       toast({ title: "Image too large", description: "Keep it under 4MB.", variant: "destructive" });
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setMeshyImage(typeof reader.result === "string" ? reader.result : null);
+    reader.onload = () => {
+      setMeshyImage(typeof reader.result === "string" ? reader.result : null);
+      setTab("meshy"); // auto-switch so the user sees the dropped image
+    };
     reader.readAsDataURL(file);
   }
 
@@ -163,9 +171,30 @@ export default function VibeMakerPanel({ open, onClose, spawns, authUserId }: Pr
       onClick={onClose}
     >
       <div
-        className="glass-panel rounded-2xl w-full max-w-md p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
+        className={`glass-panel rounded-2xl w-full max-w-md p-4 space-y-3 max-h-[90dvh] overflow-y-auto transition-all relative ${
+          dragOver ? "ring-2 ring-primary shadow-[0_0_32px_hsl(var(--primary)/0.6)]" : ""
+        }`}
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+        onDragLeave={(e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (e.currentTarget === e.target) setDragOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault(); e.stopPropagation();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) void handleImagePick(f);
+        }}
       >
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-sm">
+            <div className="font-heading font-bold text-primary text-sm tracking-wider">
+              📥 DROP IMAGE TO GENERATE 3D
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <div className="font-heading font-bold text-base tracking-wide text-primary">

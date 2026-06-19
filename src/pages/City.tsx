@@ -60,6 +60,7 @@ import {
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
+import NameEntryModal from "@/components/city/NameEntryModal";
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
   createSpawnMesh,
@@ -490,6 +491,12 @@ export default function City() {
     localStorage.setItem("city.playerName", generated);
     return generated;
   });
+  // First-entry name modal: show whenever the player hasn't explicitly
+  // chosen a display name yet (separate key so we don't trigger again
+  // after they pick or skip once).
+  const [nameModalOpen, setNameModalOpen] = useState(
+    () => !localStorage.getItem("city.displayName"),
+  );
 
   // ---- Unified community feed: merge the agent lobby (`world_messages`)
   // into the same terminal as live player chat, and let humans post into
@@ -749,6 +756,31 @@ export default function City() {
       });
     return () => { cancelled = true; };
   }, [authUserId]);
+
+  // ---- Prefer the signed-in user's saved `users.name` over the locally
+  // generated Pilot-NNN. If they have one, treat the name modal as done.
+  useEffect(() => {
+    if (!authUserId) return;
+    let cancelled = false;
+    supabase
+      .from("users")
+      .select("name")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const dbName = data?.name?.trim();
+        if (dbName) {
+          setPlayerName(dbName);
+          localStorage.setItem("city.playerName", dbName);
+          localStorage.setItem("city.displayName", dbName);
+          mpRef.current?.setName(dbName);
+          setNameModalOpen(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [authUserId]);
+
 
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
@@ -2964,6 +2996,24 @@ export default function City() {
           authUserId={authUserId}
         />
       )}
+
+      {/* First-entry name modal — shows once until the user picks/skips. */}
+      {entered && (
+        <NameEntryModal
+          open={nameModalOpen}
+          initialName={playerName}
+          authUserId={authUserId}
+          avatarLabel={charName}
+          onSubmit={(name) => {
+            setPlayerName(name);
+            mpRef.current?.setName(name);
+            setNameModalOpen(false);
+          }}
+          onSkip={() => setNameModalOpen(false)}
+        />
+      )}
+
+
 
       {/* 1:1 chat with a nearby player or AI agent. */}
       {entered && (
