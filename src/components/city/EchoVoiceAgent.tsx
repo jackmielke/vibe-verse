@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import { Conversation, type Conversation as ElevenLabsConversation } from "@elevenlabs/client";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
@@ -18,48 +18,18 @@ type Msg = { who: "you" | "echo"; text: string };
 const AGENT_ID_KEY = "city.elevenlabs.agentId";
 
 export function EchoVoiceAgent() {
-  return (
-    <ConversationProvider>
-      <EchoVoiceAgentInner />
-    </ConversationProvider>
-  );
-}
-
-function EchoVoiceAgentInner() {
   const [open, setOpen] = useState(false);
   const [agentId, setAgentId] = useState<string>(
     () => localStorage.getItem(AGENT_ID_KEY) ?? "",
   );
   const [connecting, setConnecting] = useState(false);
+  const [status, setStatus] = useState<"disconnected" | "connecting" | "connected" | "disconnecting">("disconnected");
+  const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [toolCalls, setToolCalls] = useState<string[]>([]);
+  const conversationRef = useRef<ElevenLabsConversation | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const conversation = useConversation({
-    onConnect: () => setError(null),
-    onDisconnect: () => setConnecting(false),
-    onError: (e) => setError(typeof e === "string" ? e : (e as Error)?.message ?? "voice error"),
-    onMessage: (msg: any) => {
-      // The SDK emits varied shapes depending on event; normalize what we can.
-      if (!msg || typeof msg !== "object") return;
-      const source = msg.source ?? msg.type;
-      const text =
-        msg.message ??
-        msg.text ??
-        msg.user_transcription_event?.user_transcript ??
-        msg.agent_response_event?.agent_response;
-      if (typeof text === "string" && text.trim()) {
-        const who: "you" | "echo" =
-          source === "user" || msg.type === "user_transcript" ? "you" : "echo";
-        setMessages((m) => [...m, { who, text }].slice(-20));
-      }
-      if (msg.type === "client_tool_call" || msg.client_tool_call) {
-        const name = msg.client_tool_call?.tool_name ?? msg.tool_name ?? "tool";
-        setToolCalls((t) => [...t, name].slice(-10));
-      }
-    },
-  });
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -82,27 +52,67 @@ function EchoVoiceAgentInner() {
       if (fnErr) throw fnErr;
       if (!data?.token) throw new Error("No token returned");
       localStorage.setItem(AGENT_ID_KEY, id);
-      await conversation.startSession({
+      setStatus("connecting");
+      const conversation = await Conversation.startSession({
         conversationToken: data.token,
         connectionType: "webrtc",
+        onConnect: () => {
+          setError(null);
+          setConnecting(false);
+          setStatus("connected");
+        },
+        onDisconnect: () => {
+          conversationRef.current = null;
+          setConnecting(false);
+          setSpeaking(false);
+          setStatus("disconnected");
+        },
+        onError: (message) => setError(message || "voice error"),
+        onStatusChange: ({ status: nextStatus }) => setStatus(nextStatus),
+        onModeChange: ({ mode }) => setSpeaking(mode === "speaking"),
+        onMessage: (msg) => {
+          if (msg.message?.trim()) {
+            const who: Msg["who"] = msg.role === "user" || msg.source === "user" ? "you" : "echo";
+            setMessages((m) => [
+              ...m,
+              { who, text: msg.message },
+            ].slice(-20));
+          }
+        },
+        onUnhandledClientToolCall: (toolCall) => {
+          setToolCalls((t) => [...t, toolCall.tool_name ?? "tool"].slice(-10));
+        },
       });
+      conversationRef.current = conversation;
     } catch (e: any) {
       setError(e?.message ?? "failed to start");
       setConnecting(false);
+      setStatus("disconnected");
     }
-  }, [agentId, conversation]);
+  }, [agentId]);
 
   const stop = useCallback(async () => {
     try {
-      await conversation.endSession();
+      setStatus("disconnecting");
+      await conversationRef.current?.endSession();
     } catch {
       // ignore
+    } finally {
+      conversationRef.current = null;
+      setConnecting(false);
+      setSpeaking(false);
+      setStatus("disconnected");
     }
-  }, [conversation]);
+  }, []);
 
-  const status = conversation.status; // 'connected' | 'disconnected' | ...
   const isLive = status === "connected";
-  const speaking = conversation.isSpeaking;
+
+  useEffect(() => {
+    return () => {
+      conversationRef.current?.endSession().catch(() => undefined);
+      conversationRef.current = null;
+    };
+  }, []);
 
   return (
     <>
