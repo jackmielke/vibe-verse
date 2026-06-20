@@ -72,9 +72,10 @@ export function EchoVoiceAgent() {
         onModeChange: ({ mode }) => setSpeaking(mode === "speaking"),
         onMessage: (msg) => {
           if (msg.message?.trim()) {
+            const who: Msg["who"] = msg.role === "user" || msg.source === "user" ? "you" : "echo";
             setMessages((m) => [
               ...m,
-              { who: msg.role === "user" || msg.source === "user" ? "you" : "echo", text: msg.message },
+              { who, text: msg.message },
             ].slice(-20));
           }
         },
