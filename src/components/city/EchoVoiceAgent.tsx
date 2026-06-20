@@ -52,27 +52,66 @@ export function EchoVoiceAgent() {
       if (fnErr) throw fnErr;
       if (!data?.token) throw new Error("No token returned");
       localStorage.setItem(AGENT_ID_KEY, id);
-      await conversation.startSession({
+      setStatus("connecting");
+      const conversation = await Conversation.startSession({
         conversationToken: data.token,
         connectionType: "webrtc",
+        onConnect: () => {
+          setError(null);
+          setConnecting(false);
+          setStatus("connected");
+        },
+        onDisconnect: () => {
+          conversationRef.current = null;
+          setConnecting(false);
+          setSpeaking(false);
+          setStatus("disconnected");
+        },
+        onError: (message) => setError(message || "voice error"),
+        onStatusChange: ({ status: nextStatus }) => setStatus(nextStatus),
+        onModeChange: ({ mode }) => setSpeaking(mode === "speaking"),
+        onMessage: (msg) => {
+          if (msg.message?.trim()) {
+            setMessages((m) => [
+              ...m,
+              { who: msg.role === "user" || msg.source === "user" ? "you" : "echo", text: msg.message },
+            ].slice(-20));
+          }
+        },
+        onUnhandledClientToolCall: (toolCall) => {
+          setToolCalls((t) => [...t, toolCall.tool_name ?? "tool"].slice(-10));
+        },
       });
+      conversationRef.current = conversation;
     } catch (e: any) {
       setError(e?.message ?? "failed to start");
       setConnecting(false);
+      setStatus("disconnected");
     }
-  }, [agentId, conversation]);
+  }, [agentId]);
 
   const stop = useCallback(async () => {
     try {
-      await conversation.endSession();
+      setStatus("disconnecting");
+      await conversationRef.current?.endSession();
     } catch {
       // ignore
+    } finally {
+      conversationRef.current = null;
+      setConnecting(false);
+      setSpeaking(false);
+      setStatus("disconnected");
     }
-  }, [conversation]);
+  }, []);
 
-  const status = conversation.status; // 'connected' | 'disconnected' | ...
   const isLive = status === "connected";
-  const speaking = conversation.isSpeaking;
+
+  useEffect(() => {
+    return () => {
+      conversationRef.current?.endSession().catch(() => undefined);
+      conversationRef.current = null;
+    };
+  }, []);
 
   return (
     <>
