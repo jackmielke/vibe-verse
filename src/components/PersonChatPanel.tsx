@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Sparkles, User } from "lucide-react";
+import { AgentVoiceButton } from "@/components/city/AgentVoiceButton";
 
 export interface PersonTarget {
   kind: "player" | "agent";
@@ -161,6 +162,11 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
             <span className="text-xs text-muted-foreground font-normal">
               {isAgent ? "AI agent" : "player"}
             </span>
+            {isAgent && (
+              <span className="ml-auto">
+                <AgentVoiceButton agentName={target.name} />
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
