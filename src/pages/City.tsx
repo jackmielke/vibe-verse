@@ -444,7 +444,13 @@ export default function City() {
     swinging: false,
     nearCow: false,
   });
-  const spentGemsRef = useRef(0);
+  // Persistent ✦ Vibecoin balance — source of truth. Loaded from
+  // `users.vibecoin_balance` for signed-in users, or localStorage for guests.
+  // Incremented when collecting coins, decremented at the shop, debounced-synced.
+  const vibeBalanceRef = useRef(0);
+  const [vibeBalanceTick, setVibeBalanceTick] = useState(0); // forces re-render
+  const persistVibeTimerRef = useRef<number | null>(null);
+  const persistVibeBalanceRef = useRef<(() => void) | null>(null);
   const [purchases, setPurchases] = useState<Record<string, number>>({});
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
@@ -781,6 +787,60 @@ export default function City() {
       });
     return () => { cancelled = true; };
   }, [authUserId]);
+
+  // ---- Persistent ✦ Vibecoin balance: load + debounced sync.
+  // For signed-in users we read/write `users.vibecoin_balance`. Guests use
+  // localStorage. On sign-in we merge (max) so guest progress isn't lost.
+  useEffect(() => {
+    persistVibeBalanceRef.current = () => {
+      if (persistVibeTimerRef.current) window.clearTimeout(persistVibeTimerRef.current);
+      persistVibeTimerRef.current = window.setTimeout(() => {
+        const bal = Math.max(0, Math.round(vibeBalanceRef.current));
+        try { localStorage.setItem("city.vibecoinBalance", String(bal)); } catch { /* noop */ }
+        const uid = authUserIdRef.current;
+        if (uid) {
+          void supabase
+            .from("users")
+            .update({ vibecoin_balance: bal })
+            .eq("auth_user_id", uid);
+        }
+      }, 700);
+    };
+    return () => {
+      if (persistVibeTimerRef.current) window.clearTimeout(persistVibeTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const localBal = Math.max(0, Number(localStorage.getItem("city.vibecoinBalance") ?? 0) || 0);
+    if (!authUserId) {
+      vibeBalanceRef.current = localBal;
+      setVibeBalanceTick((n) => n + 1);
+      return;
+    }
+    void supabase
+      .from("users")
+      .select("vibecoin_balance")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const dbBal = Math.max(0, Number(data?.vibecoin_balance ?? 0) || 0);
+        const merged = Math.max(dbBal, localBal);
+        vibeBalanceRef.current = merged;
+        setVibeBalanceTick((n) => n + 1);
+        if (merged !== dbBal) {
+          void supabase
+            .from("users")
+            .update({ vibecoin_balance: merged })
+            .eq("auth_user_id", authUserId);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [authUserId]);
+
+
 
 
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
@@ -1705,7 +1765,7 @@ export default function City() {
         jet: keys.has("Space") && enteredRef.current,
         stars: collectedCount,
         totalStars: collectibles.length,
-        gems: Math.max(0, collectedCount - spentGemsRef.current),
+        gems: Math.max(0, Math.round(vibeBalanceRef.current)),
         runMs:
           runFinalMs ?? (runStartMs !== null ? performance.now() - runStartMs : null),
         bestMs,
@@ -2088,6 +2148,9 @@ export default function City() {
           c.taken = true;
           c.mesh.visible = false;
           collectedCount++;
+          vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 1;
+          setVibeBalanceTick((n) => n + 1);
+          persistVibeBalanceRef.current?.();
           if (i === collectibles.length - 1) rainbowOn = true; // the secret one
           if (collectedCount === 1) runStartMs = now;
           soundsRef.current?.chime(collectedCount);
@@ -3267,7 +3330,10 @@ export default function City() {
                   key={item.name}
                   disabled={!canAfford}
                   onClick={() => {
-                    spentGemsRef.current += item.cost;
+                    if (vibeBalanceRef.current < item.cost) return;
+                    vibeBalanceRef.current -= item.cost;
+                    setVibeBalanceTick((n) => n + 1);
+                    persistVibeBalanceRef.current?.();
                     setPurchases((p) => ({ ...p, [item.name]: (p[item.name] ?? 0) + 1 }));
                     setSnackMsg(`${item.emoji} ${item.msg}`);
                   }}
