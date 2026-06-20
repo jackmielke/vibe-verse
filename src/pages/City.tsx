@@ -3410,6 +3410,10 @@ export default function City() {
         </div>
       )}
 
+      {entered && <EchoVoiceAgent />}
+
+
+
       {/* Entry overlay. */}
       <AnimatePresence>
         {!entered && (
