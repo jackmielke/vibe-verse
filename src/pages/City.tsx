@@ -61,6 +61,7 @@ import {
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
+import { EchoVoiceAgent } from "@/components/city/EchoVoiceAgent";
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
   createSpawnMesh,
