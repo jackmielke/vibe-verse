@@ -788,6 +788,60 @@ export default function City() {
     return () => { cancelled = true; };
   }, [authUserId]);
 
+  // ---- Persistent ✦ Vibecoin balance: load + debounced sync.
+  // For signed-in users we read/write `users.vibecoin_balance`. Guests use
+  // localStorage. On sign-in we merge (max) so guest progress isn't lost.
+  useEffect(() => {
+    persistVibeBalanceRef.current = () => {
+      if (persistVibeTimerRef.current) window.clearTimeout(persistVibeTimerRef.current);
+      persistVibeTimerRef.current = window.setTimeout(() => {
+        const bal = Math.max(0, Math.round(vibeBalanceRef.current));
+        try { localStorage.setItem("city.vibecoinBalance", String(bal)); } catch { /* noop */ }
+        const uid = authUserIdRef.current;
+        if (uid) {
+          void supabase
+            .from("users")
+            .update({ vibecoin_balance: bal })
+            .eq("auth_user_id", uid);
+        }
+      }, 700);
+    };
+    return () => {
+      if (persistVibeTimerRef.current) window.clearTimeout(persistVibeTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const localBal = Math.max(0, Number(localStorage.getItem("city.vibecoinBalance") ?? 0) || 0);
+    if (!authUserId) {
+      vibeBalanceRef.current = localBal;
+      setVibeBalanceTick((n) => n + 1);
+      return;
+    }
+    void supabase
+      .from("users")
+      .select("vibecoin_balance")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const dbBal = Math.max(0, Number(data?.vibecoin_balance ?? 0) || 0);
+        const merged = Math.max(dbBal, localBal);
+        vibeBalanceRef.current = merged;
+        setVibeBalanceTick((n) => n + 1);
+        if (merged !== dbBal) {
+          void supabase
+            .from("users")
+            .update({ vibecoin_balance: merged })
+            .eq("auth_user_id", authUserId);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [authUserId]);
+
+
+
 
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
