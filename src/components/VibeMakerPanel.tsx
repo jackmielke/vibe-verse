@@ -99,17 +99,41 @@ export default function VibeMakerPanel({ open, onClose, spawns, authUserId }: Pr
       return;
     }
     setMeshyBusy(true);
-    setMeshyStatus("Sending to Meshy… this takes ~30–90s");
+    setMeshyStatus("Sending to Meshy…");
     try {
-      const { data, error } = await supabase.functions.invoke("meshy-generate", {
+      // Phase 1: start the task (fast — returns a task_id).
+      const startRes = await supabase.functions.invoke("meshy-generate", {
         body: {
+          action: "start",
           prompt: meshyPrompt.trim() || undefined,
           image_url: meshyImage || undefined,
         },
       });
-      if (error) throw error;
-      if (!data?.model_url) throw new Error("No model returned");
+      if (startRes.error) throw startRes.error;
+      const taskId: string | undefined = startRes.data?.task_id;
+      const mode: string | undefined = startRes.data?.mode;
+      if (!taskId || !mode) throw new Error("Meshy did not return a task id");
+
+      // Phase 2: poll status every 4s up to ~5 min — dodges the 150s edge timeout.
+      const deadline = Date.now() + 5 * 60 * 1000;
+      let data: any = null;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const poll = await supabase.functions.invoke("meshy-generate", {
+          body: { action: "status", task_id: taskId, mode },
+        });
+        if (poll.error) throw poll.error;
+        const s = poll.data?.status;
+        if (s === "SUCCEEDED") { data = poll.data; break; }
+        if (s === "FAILED" || s === "CANCELED") {
+          throw new Error(poll.data?.error ?? `Meshy ${s}`);
+        }
+        const pct = typeof poll.data?.progress === "number" ? ` ${poll.data.progress}%` : "";
+        setMeshyStatus(`Meshy is sculpting…${pct}`);
+      }
+      if (!data?.model_url) throw new Error("Meshy timed out — try again");
       setMeshyStatus("Spawning into the world…");
+
 
       const offset = pickSpawnOffset();
       const label = meshyPrompt.trim() ? meshyPrompt.trim().slice(0, 80) : "Meshy creation";
