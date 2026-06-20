@@ -27,9 +27,13 @@ Deno.serve(async (req) => {
       const url = new URL(req.url);
       agentId = url.searchParams.get("agentId");
     }
+    // Fall back to server-side default agent
+    if (!agentId) {
+      agentId = Deno.env.get("ELEVENLABS_AGENT_ID") ?? null;
+    }
     if (!agentId) {
       return new Response(
-        JSON.stringify({ error: "Missing agentId" }),
+        JSON.stringify({ error: "No ElevenLabs agent configured" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
