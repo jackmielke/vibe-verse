@@ -3481,7 +3481,7 @@ export default function City() {
         </div>
       )}
 
-      {entered && <EchoVoiceAgent />}
+      {/* EchoVoiceAgent moved into PersonChatPanel for per-agent voice chat */}
 
 
 
