@@ -749,17 +749,22 @@ export default function City() {
   }, [authUserId]);
 
   // ---- Admin check: lets the player rename agents on the Live Roster.
+  // Note: user_roles.user_id stores public.users.id, NOT auth.users.id, so
+  // we call the has_role() SECURITY DEFINER RPC which does the mapping
+  // (same function the RLS policies use).
   useEffect(() => {
     if (!authUserId) { setIsAdmin(false); return; }
     let cancelled = false;
     supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", authUserId)
-      .eq("role", "admin")
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setIsAdmin(!!data);
+      .rpc("has_role", { _user_id: authUserId, _role: "admin" })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.warn("[admin] has_role check failed", error);
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(!!data);
+        }
       });
     return () => { cancelled = true; };
   }, [authUserId]);
