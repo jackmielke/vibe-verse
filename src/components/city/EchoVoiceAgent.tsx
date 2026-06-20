@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useConversation } from "@elevenlabs/react";
+import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
@@ -18,6 +18,14 @@ type Msg = { who: "you" | "echo"; text: string };
 const AGENT_ID_KEY = "city.elevenlabs.agentId";
 
 export function EchoVoiceAgent() {
+  return (
+    <ConversationProvider>
+      <EchoVoiceAgentInner />
+    </ConversationProvider>
+  );
+}
+
+function EchoVoiceAgentInner() {
   const [open, setOpen] = useState(false);
   const [agentId, setAgentId] = useState<string>(
     () => localStorage.getItem(AGENT_ID_KEY) ?? "",
