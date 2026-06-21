@@ -19,6 +19,7 @@ import { ESMERALDA_WORLD } from "@/island/worldEsmeralda";
 import { ESMERALDA_PHOTOREAL_WORLD } from "@/island/worldEsmeraldaPhotoreal";
 import { SKY_ISLAND_WORLD } from "@/island/worldSkyIsland";
 import { WorldMiniScene } from "@/island/WorldMiniScene";
+import { enableVR } from "@/lib/webxr";
 import islandPoster from "@/assets/island-explorer/world-island.jpg";
 import esmeraldaPoster from "@/assets/island-explorer/world-esmeralda.jpg";
 import skyIslandPoster from "@/assets/island-explorer/world-skyisland.jpg";
@@ -349,8 +350,10 @@ export default function IslandExplorer() {
 
   const canvasKey = world?.id ?? "none";
 
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[#0b0b14]">
+    <div ref={wrapRef} className="relative h-screen w-screen overflow-hidden bg-[#0b0b14]">
       {inGame && (
         <Canvas
           key={canvasKey}
@@ -361,6 +364,13 @@ export default function IslandExplorer() {
             antialias: true,
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 0.95,
+          }}
+          onCreated={({ gl }) => {
+            // Mount the WebXR "Enter VR" pill + enable xr on the renderer.
+            // We also have to swap rAF → setAnimationLoop for XR (R3F does
+            // this automatically once xr.enabled flips true).
+            const mount = wrapRef.current;
+            if (mount) enableVR(gl, mount, { referenceSpace: "local-floor" });
           }}
         >
           <Scene
