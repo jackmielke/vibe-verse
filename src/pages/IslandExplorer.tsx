@@ -350,8 +350,10 @@ export default function IslandExplorer() {
 
   const canvasKey = world?.id ?? "none";
 
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[#0b0b14]">
+    <div ref={wrapRef} className="relative h-screen w-screen overflow-hidden bg-[#0b0b14]">
       {inGame && (
         <Canvas
           key={canvasKey}
@@ -362,6 +364,13 @@ export default function IslandExplorer() {
             antialias: true,
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 0.95,
+          }}
+          onCreated={({ gl }) => {
+            // Mount the WebXR "Enter VR" pill + enable xr on the renderer.
+            // We also have to swap rAF → setAnimationLoop for XR (R3F does
+            // this automatically once xr.enabled flips true).
+            const mount = wrapRef.current;
+            if (mount) enableVR(gl, mount, { referenceSpace: "local-floor" });
           }}
         >
           <Scene
