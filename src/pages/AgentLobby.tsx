@@ -218,6 +218,7 @@ curl -s -X POST "$URL" "\${hdr[@]}" -d '{"action":"heartbeat","agent_key":"my-st
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-slate-100 pt-20 pb-6 px-4">
+      <LobbyCelebration agents={agents} selfKey={agentKey.current} />
       <div className="mx-auto max-w-6xl grid gap-4 lg:grid-cols-[1fr_340px]">
         {/* World */}
         <div className="space-y-3">
