@@ -19,6 +19,7 @@ import { ESMERALDA_WORLD } from "@/island/worldEsmeralda";
 import { ESMERALDA_PHOTOREAL_WORLD } from "@/island/worldEsmeraldaPhotoreal";
 import { SKY_ISLAND_WORLD } from "@/island/worldSkyIsland";
 import { WorldMiniScene } from "@/island/WorldMiniScene";
+import { enableVR } from "@/lib/webxr";
 import islandPoster from "@/assets/island-explorer/world-island.jpg";
 import esmeraldaPoster from "@/assets/island-explorer/world-esmeralda.jpg";
 import skyIslandPoster from "@/assets/island-explorer/world-skyisland.jpg";
