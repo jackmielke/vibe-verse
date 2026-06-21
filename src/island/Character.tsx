@@ -119,22 +119,108 @@ export function Character({
     };
   }, [characterScene, loaded]);
 
+  const { gl, scene } = useThree();
+
+  // VR dolly: parent of the camera while presenting. We move the dolly,
+  // never the camera, so the headset pose stays authoritative (this is
+  // the #1 nausea-prevention rule for WebXR).
+  const dollyRef = useRef<THREE.Group | null>(null);
+  if (!dollyRef.current) dollyRef.current = new THREE.Group();
+  const xrYawRef = useRef(0); // accumulated snap-turn yaw applied to dolly
+  const snapTurnLatch = useRef(false);
+  const xrAttachedRef = useRef(false);
+
+  useEffect(() => {
+    const dolly = dollyRef.current!;
+    scene.add(dolly);
+    return () => {
+      // Re-parent camera back to scene root before unmount so we don't strand it.
+      if (camera.parent === dolly) scene.add(camera);
+      scene.remove(dolly);
+    };
+  }, [scene, camera]);
+
   useFrame((_, dt) => {
     dt = Math.min(dt, 0.05);
     const input = inputRef.current;
+    const dolly = dollyRef.current!;
+    const presenting = !!gl.xr?.isPresenting;
 
-    const camYaw = input.cameraYaw;
-    const forwardDir = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
-    const rightDir = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
+    // Attach/detach camera to dolly when entering/leaving XR.
+    if (presenting && !xrAttachedRef.current) {
+      dolly.add(camera);
+      camera.position.set(0, 0, 0);
+      camera.rotation.set(0, 0, 0); // headset will overwrite each frame
+      xrAttachedRef.current = true;
+    } else if (!presenting && xrAttachedRef.current) {
+      scene.add(camera);
+      xrAttachedRef.current = false;
+    }
+
+    // ---- Input → movement direction --------------------------------------
+    let forwardX: number, forwardZ: number, rightX: number, rightZ: number;
+    let stickX = input.strafe;
+    let stickY = input.forward;
+    let runFlag = input.run;
+    let jumpFlag = input.jump;
+
+    if (presenting) {
+      // Use headset facing (yaw only) for movement direction. Keeps the
+      // horizon level and matches what the player physically sees.
+      const headDir = new THREE.Vector3();
+      camera.getWorldDirection(headDir);
+      headDir.y = 0;
+      if (headDir.lengthSq() < 1e-6) headDir.set(0, 0, -1);
+      headDir.normalize();
+      forwardX = headDir.x;
+      forwardZ = headDir.z;
+      rightX = -headDir.z;
+      rightZ = headDir.x;
+
+      // Read XR thumbsticks: left = locomotion, right = snap-turn.
+      const session = gl.xr.getSession?.();
+      if (session) {
+        for (const src of session.inputSources) {
+          const gp = src.gamepad;
+          if (!gp) continue;
+          const ax = gp.axes;
+          const a0 = ax[0] ?? 0, a1 = ax[1] ?? 0, a2 = ax[2] ?? 0, a3 = ax[3] ?? 0;
+          const useHigh = Math.hypot(a2, a3) >= Math.hypot(a0, a1);
+          const rx = useHigh ? a2 : a0;
+          const ry = useHigh ? a3 : a1;
+          if (src.handedness === "right") {
+            // Snap-turn: 30° flick with hysteresis (no smooth rotation
+            // because smooth-turn is the biggest VR motion-sickness source).
+            if (Math.abs(rx) > 0.7 && !snapTurnLatch.current) {
+              xrYawRef.current -= Math.sign(rx) * (Math.PI / 6);
+              snapTurnLatch.current = true;
+            } else if (Math.abs(rx) < 0.3) {
+              snapTurnLatch.current = false;
+            }
+            // Button 4 (A on Quest) = jump.
+            if (gp.buttons[4]?.pressed) jumpFlag = true;
+          } else {
+            // Left stick = move; squeeze trigger (button 0) = run.
+            if (Math.abs(rx) > 0.15) stickX = rx;
+            if (Math.abs(ry) > 0.15) stickY = -ry;
+            if (gp.buttons[0]?.pressed || gp.buttons[1]?.pressed) runFlag = true;
+          }
+        }
+      }
+    } else {
+      const camYaw = input.cameraYaw;
+      forwardX = -Math.sin(camYaw); forwardZ = -Math.cos(camYaw);
+      rightX = Math.cos(camYaw);     rightZ = -Math.sin(camYaw);
+    }
+
     const move = new THREE.Vector3();
     if (controlsEnabled) {
-      move
-        .addScaledVector(forwardDir, input.forward)
-        .addScaledVector(rightDir, input.strafe);
+      move.x = forwardX * stickY + rightX * stickX;
+      move.z = forwardZ * stickY + rightZ * stickX;
     }
 
     const moving = move.lengthSq() > 0.001;
-    const speed = input.run ? 6.5 : 3.0;
+    const speed = runFlag ? 6.5 : 3.0;
     if (moving) {
       move.normalize();
       pos.current.x += move.x * speed * dt;
@@ -162,7 +248,7 @@ export function Character({
       velocityY.current = 0;
       yaw.current = world.spawn.yaw;
     }
-    if (controlsEnabled && input.jump && grounded.current) {
+    if (controlsEnabled && jumpFlag && grounded.current) {
       velocityY.current = 7.5;
       grounded.current = false;
     }
@@ -177,26 +263,35 @@ export function Character({
     if (mixerRef.current) {
       mixerRef.current.update(dt);
       const idleW = moving ? 0 : 1;
-      const walkW = moving && !input.run ? 1 : 0;
-      const runW = moving && input.run ? 1 : 0;
+      const walkW = moving && !runFlag ? 1 : 0;
+      const runW = moving && runFlag ? 1 : 0;
       const lerp = (cur: number, tgt: number) => cur + (tgt - cur) * Math.min(1, dt * 8);
       if (a.idle) a.idle.setEffectiveWeight(lerp(a.idle.getEffectiveWeight(), idleW));
       if (a.walk) a.walk.setEffectiveWeight(lerp(a.walk.getEffectiveWeight(), walkW));
       if (a.run) a.run.setEffectiveWeight(lerp(a.run.getEffectiveWeight(), runW));
     }
 
-    const pitch = input.cameraPitch;
-    const dist = input.cameraDist;
-    const camOffset = new THREE.Vector3(
-      Math.sin(camYaw) * Math.cos(pitch) * dist,
-      Math.sin(pitch) * dist + 1.5,
-      Math.cos(camYaw) * Math.cos(pitch) * dist
-    );
-    const target = pos.current.clone().add(new THREE.Vector3(0, 1.4, 0));
-    const desired = target.clone().add(camOffset);
-    const lerpAmt = controlsEnabled ? Math.min(1, dt * 6) : Math.min(1, dt * 4);
-    camera.position.lerp(desired, lerpAmt);
-    camera.lookAt(target);
+    // ---- Camera --------------------------------------------------------
+    if (presenting) {
+      // Snap (no lerp) the dolly to first-person head position. Lerping
+      // here causes "swim" — the world drifts under a stationary head.
+      dolly.position.set(pos.current.x, pos.current.y + 1.6, pos.current.z);
+      dolly.rotation.set(0, xrYawRef.current, 0); // horizon locked, snap-turn only
+    } else {
+      const pitch = input.cameraPitch;
+      const dist = input.cameraDist;
+      const camYaw = input.cameraYaw;
+      const camOffset = new THREE.Vector3(
+        Math.sin(camYaw) * Math.cos(pitch) * dist,
+        Math.sin(pitch) * dist + 1.5,
+        Math.cos(camYaw) * Math.cos(pitch) * dist
+      );
+      const target = pos.current.clone().add(new THREE.Vector3(0, 1.4, 0));
+      const desired = target.clone().add(camOffset);
+      const lerpAmt = controlsEnabled ? Math.min(1, dt * 6) : Math.min(1, dt * 4);
+      camera.position.lerp(desired, lerpAmt);
+      camera.lookAt(target);
+    }
 
     if (controlsEnabled) {
       for (const s of shells) {
