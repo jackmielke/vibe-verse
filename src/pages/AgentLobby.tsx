@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import LobbyCelebration from "@/components/LobbyCelebration";
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vibe-world`;
 const ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
