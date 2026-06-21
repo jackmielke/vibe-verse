@@ -7,6 +7,11 @@ import type { InputState } from "./useInput";
 import type { CharacterOption } from "./characters";
 import type { World } from "./world";
 
+const XR_DEFAULT_EYE_HEIGHT = 1.6;
+const XR_FLOOR_POSE_MIN_HEIGHT = 0.25;
+const XR_STICK_DEADZONE = 0.22;
+const XR_SNAP_TURN_RADIANS = Math.PI / 6;
+
 type LoadedChar = {
   scene: THREE.Group;
   clips: THREE.AnimationClip[];
@@ -129,6 +134,10 @@ export function Character({
   const xrYawRef = useRef(0); // accumulated snap-turn yaw applied to dolly
   const snapTurnLatch = useRef(false);
   const xrAttachedRef = useRef(false);
+  const xrFrameCountRef = useRef(0);
+  const xrCalibratedRef = useRef(false);
+  const xrOriginOffsetRef = useRef(new THREE.Vector3());
+  const xrOffsetWorldRef = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const dolly = dollyRef.current!;
@@ -151,6 +160,11 @@ export function Character({
       dolly.add(camera);
       camera.position.set(0, 0, 0);
       camera.rotation.set(0, 0, 0); // headset will overwrite each frame
+      xrYawRef.current = 0;
+      xrFrameCountRef.current = 0;
+      xrCalibratedRef.current = false;
+      xrOriginOffsetRef.current.set(0, 0, 0);
+      snapTurnLatch.current = false;
       xrAttachedRef.current = true;
     } else if (!presenting && xrAttachedRef.current) {
       scene.add(camera);
@@ -165,17 +179,13 @@ export function Character({
     let jumpFlag = input.jump;
 
     if (presenting) {
-      // Use headset facing (yaw only) for movement direction. Keeps the
-      // horizon level and matches what the player physically sees.
-      const headDir = new THREE.Vector3();
-      camera.getWorldDirection(headDir);
-      headDir.y = 0;
-      if (headDir.lengthSq() < 1e-6) headDir.set(0, 0, -1);
-      headDir.normalize();
-      forwardX = headDir.x;
-      forwardZ = headDir.z;
-      rightX = -headDir.z;
-      rightZ = headDir.x;
+      // VR comfort: head yaw is view-only. Locomotion follows the stable
+      // body/snap-turn yaw so looking left/right cannot pull the player sideways.
+      const bodyYaw = xrYawRef.current;
+      forwardX = -Math.sin(bodyYaw);
+      forwardZ = -Math.cos(bodyYaw);
+      rightX = Math.cos(bodyYaw);
+      rightZ = -Math.sin(bodyYaw);
 
       // Read XR thumbsticks: left = locomotion, right = snap-turn.
       const session = gl.xr.getSession?.();
@@ -192,7 +202,7 @@ export function Character({
             // Snap-turn: 30° flick with hysteresis (no smooth rotation
             // because smooth-turn is the biggest VR motion-sickness source).
             if (Math.abs(rx) > 0.7 && !snapTurnLatch.current) {
-              xrYawRef.current -= Math.sign(rx) * (Math.PI / 6);
+              xrYawRef.current -= Math.sign(rx) * XR_SNAP_TURN_RADIANS;
               snapTurnLatch.current = true;
             } else if (Math.abs(rx) < 0.3) {
               snapTurnLatch.current = false;
@@ -201,8 +211,8 @@ export function Character({
             if (gp.buttons[4]?.pressed) jumpFlag = true;
           } else {
             // Left stick = move; squeeze trigger (button 0) = run.
-            if (Math.abs(rx) > 0.15) stickX = rx;
-            if (Math.abs(ry) > 0.15) stickY = -ry;
+            stickX = Math.abs(rx) > XR_STICK_DEADZONE ? rx : 0;
+            stickY = Math.abs(ry) > XR_STICK_DEADZONE ? -ry : 0;
             if (gp.buttons[0]?.pressed || gp.buttons[1]?.pressed) runFlag = true;
           }
         }
@@ -273,9 +283,26 @@ export function Character({
 
     // ---- Camera --------------------------------------------------------
     if (presenting) {
-      // Snap (no lerp) the dolly to first-person head position. Lerping
-      // here causes "swim" — the world drifts under a stationary head.
-      dolly.position.set(pos.current.x, pos.current.y + 1.6, pos.current.z);
+      xrFrameCountRef.current += 1;
+      if (!xrCalibratedRef.current && xrFrameCountRef.current > 2) {
+        // Three/WebXR puts the real headset pose on the camera. Capture the
+        // session-start X/Z offset once, otherwise a room-origin offset can make
+        // ordinary head yaw feel like the world is sliding sideways.
+        xrOriginOffsetRef.current.set(camera.position.x, 0, camera.position.z);
+        xrCalibratedRef.current = true;
+      }
+
+      const offsetWorld = xrOffsetWorldRef.current.copy(xrOriginOffsetRef.current);
+      offsetWorld.applyAxisAngle(new THREE.Vector3(0, 1, 0), xrYawRef.current);
+      const usesFloorPose = camera.position.y > XR_FLOOR_POSE_MIN_HEIGHT;
+
+      // Snap (no lerp) the dolly to the avatar floor position. In local-floor
+      // XR, the headset supplies real eye height; fallback sessions get 1.6m.
+      dolly.position.set(
+        pos.current.x - offsetWorld.x,
+        pos.current.y + (usesFloorPose ? 0 : XR_DEFAULT_EYE_HEIGHT),
+        pos.current.z - offsetWorld.z,
+      );
       dolly.rotation.set(0, xrYawRef.current, 0); // horizon locked, snap-turn only
     } else {
       const pitch = input.cameraPitch;
