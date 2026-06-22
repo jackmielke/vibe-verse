@@ -709,6 +709,10 @@ export default function City() {
     return localStorage.getItem("city.jetpack") || "stock";
   });
   const applyHatRef = useRef<((id: string) => void) | null>(null);
+  const setPlayerScaleRef = useRef<((s: number) => void) | null>(null);
+  const [bigMode, setBigMode] = useState(false);
+  const [bigSize, setBigSize] = useState(1);
+  const [secretInput, setSecretInput] = useState("");
   const applyFlameRef = useRef<((id: string) => void) | null>(null);
   const applyJetpackRef = useRef<((id: string) => void) | null>(null);
 
@@ -1289,6 +1293,10 @@ export default function City() {
     scene.add(player);
     const modelHolder = new THREE.Group(); // takes the flight tilt
     player.add(modelHolder);
+    setPlayerScaleRef.current = (s: number) => {
+      const clamped = Math.max(0.4, Math.min(12, s));
+      modelHolder.scale.setScalar(clamped);
+    };
 
     // ---- Local emote bubble (sprite parented to the player) ---------
     let localEmote: { sprite: THREE.Sprite; t: number; life: number; bob: number } | null = null;
@@ -2371,6 +2379,7 @@ export default function City() {
       disposeVR();
       applyModeRef.current = null;
       loadPilotRef.current = null;
+      setPlayerScaleRef.current = null;
       travelRef.current = null;
       resetRunRef.current = null;
       vibeyExciteRef.current = null;
