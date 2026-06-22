@@ -61,6 +61,7 @@ import {
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
+import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
@@ -494,16 +495,16 @@ export default function City() {
   const [playerName, setPlayerName] = useState(() => {
     const stored = localStorage.getItem("city.playerName");
     if (stored) return stored;
-    const generated = `Pilot-${Math.floor(100 + Math.random() * 900)}`;
+    // First-time visitor: seed a fun, memorable name so the entry
+    // screen has something to show without forcing them to type.
+    const generated = generateFunName();
     localStorage.setItem("city.playerName", generated);
     return generated;
   });
-  // First-entry name modal: show whenever the player hasn't explicitly
-  // chosen a display name yet (separate key so we don't trigger again
-  // after they pick or skip once).
-  const [nameModalOpen, setNameModalOpen] = useState(
-    () => !localStorage.getItem("city.displayName"),
-  );
+  // First-entry name modal: only used as a fallback now that the
+  // entry screen collects the name up front. Stays closed unless
+  // the user explicitly reopens it from the HUD.
+  const [nameModalOpen, setNameModalOpen] = useState(false);
 
   // ---- Unified community feed: merge the agent lobby (`world_messages`)
   // into the same terminal as live player chat, and let humans post into
