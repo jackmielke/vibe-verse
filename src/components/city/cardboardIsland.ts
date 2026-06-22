@@ -1190,8 +1190,8 @@ export function buildCardboardIsland(opts: {
   // glowing rings + scrolling scanlines. Walk up to it to open the
   // character picker. Sits on the opposite side of the Vibe Shop from
   // the Vibe Maker so the three form a little plaza row.
-  const AVATAR_X = SHOP_X + 8;
-  const AVATAR_Z = SHOP_Z - 2;
+  const AVATAR_X = PORTAL_X - 5;
+  const AVATAR_Z = PORTAL_Z;
   const avatarPortalGroup = new THREE.Group();
   avatarPortalGroup.position.set(AVATAR_X, 0, AVATAR_Z);
   const avatarHoloRings: THREE.Mesh[] = [];
