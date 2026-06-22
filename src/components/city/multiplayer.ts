@@ -291,15 +291,18 @@ export function createMultiplayer(opts: {
     return entry;
   };
 
-  const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null) => {
+  const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null, initialScale = 1) => {
     if (ghosts.has(key) || disposed) return;
     const placeholder: Ghost = {
       group: new THREE.Group(),
+      inst: null,
+      baseFit: 1,
+      appliedScale: initialScale,
       mixer: null,
       walk: null,
       idle: null,
       active: null,
-      target: { x: 0, y: -500, z: 0, yaw: 0 },
+      target: { x: 0, y: -500, z: 0, yaw: 0, scale: initialScale },
       bumpVel: new THREE.Vector3(),
       char,
       label,
@@ -310,7 +313,7 @@ export function createMultiplayer(opts: {
       const base = await loadBase(char);
       if (disposed || !ghosts.has(key)) return;
       const inst = cloneSkinned(base.scene);
-      inst.scale.setScalar(base.fit);
+      inst.scale.setScalar(base.fit * placeholder.appliedScale);
       inst.position.y = base.lift;
       inst.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -321,6 +324,8 @@ export function createMultiplayer(opts: {
           std.roughness = Math.max(std.roughness, 0.45);
         }
       });
+      placeholder.inst = inst;
+      placeholder.baseFit = base.fit;
       placeholder.group.add(inst);
       placeholder.group.add(makeLabelSprite(label));
       const walkClip = base.clips.find((c) => /walk/i.test(c.name) && !/carry/i.test(c.name));
