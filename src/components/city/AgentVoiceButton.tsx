@@ -63,7 +63,7 @@ export function AgentVoiceButton({ agentName }: { agentName: string }) {
       toast.error(e?.message ?? "voice unavailable");
       setStatus("idle");
     }
-  }, []);
+  }, [agentName]);
 
   const live = status === "live";
   const connecting = status === "connecting";
