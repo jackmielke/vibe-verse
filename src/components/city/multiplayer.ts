@@ -486,6 +486,7 @@ export function createMultiplayer(opts: {
           Math.abs(lastSent.z - me.z) > 0.03 ||
           Math.abs(lastSent.yaw - me.yaw) > 0.02 ||
           lastSent.char !== me.char ||
+          Math.abs((lastSent.scale ?? 1) - (me.scale ?? 1)) > 0.01 ||
           now - lastSend > 1500; // heartbeat
         if (moved) {
           lastSend = now;
