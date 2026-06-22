@@ -426,12 +426,13 @@ export function createMultiplayer(opts: {
           g = ghosts.get(p.id);
         }
         if (g) {
-          g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+          const s = typeof p.scale === "number" && isFinite(p.scale) ? p.scale : 1;
+          g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: s };
           if (p.userId && g.userId !== p.userId) g.userId = p.userId;
           if (g.char !== p.char) {
-            // Character switched mid-session: respawn the ghost.
+            // Character switched mid-session: respawn the ghost (preserve scale).
             removeGhost(p.id);
-            void spawnGhost(p.id, p.char, g.label, g.userId);
+            void spawnGhost(p.id, p.char, g.label, g.userId, s);
           }
         }
       })
