@@ -1326,6 +1326,7 @@ export default function City() {
     setPlayerScaleRef.current = (s: number) => {
       const clamped = Math.max(0.4, Math.min(12, s));
       modelHolder.scale.setScalar(clamped);
+      playerScaleRef.current = clamped;
     };
 
     // ---- Local emote bubble (sprite parented to the player) ---------
