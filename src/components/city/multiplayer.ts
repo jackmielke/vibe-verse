@@ -81,11 +81,15 @@ export interface Multiplayer {
 
 interface Ghost {
   group: THREE.Group;
+  /** The inner character instance — scale lives here so the label sprite isn't blown up too. */
+  inst: THREE.Object3D | null;
+  baseFit: number;
+  appliedScale: number;
   mixer: THREE.AnimationMixer | null;
   walk: THREE.AnimationAction | null;
   idle: THREE.AnimationAction | null;
   active: "walk" | "idle" | null;
-  target: { x: number; y: number; z: number; yaw: number };
+  target: { x: number; y: number; z: number; yaw: number; scale: number };
   bumpVel: THREE.Vector3;
   char: string;
   label: string;
