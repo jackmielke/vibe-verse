@@ -1,8 +1,7 @@
 /**
- * VibeAuthDialog — single-screen sign in / sign up modal styled after
- * the Vibe Arcade login. Lightning-smile logo on top, "Welcome to the Vibe"
- * heading, email + password, white CTA, sign-in/up toggle, then MetaMask &
- * Google as "coming soon" continue-with buttons.
+ * VibeAuthDialog — magic-link-first sign in. Just enter email and get a
+ * one-click link. Password mode is hidden behind a "use a password instead"
+ * toggle for users who prefer it. Google OAuth shown as continue-with.
  */
 import { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -10,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import VibeArc from "@/components/VibeArc";
 
@@ -19,18 +18,24 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+type Mode = "magic" | "password";
+
 export default function VibeAuthDialog({ open, onOpenChange }: Props) {
+  const [mode, setMode] = useState<Mode>("magic");
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
   const reset = () => {
+    setMode("magic");
     setIsSignUp(false);
     setEmail("");
     setPassword("");
     setConfirmPassword("");
+    setSent(false);
   };
 
   const handleClose = (next: boolean) => {
@@ -38,7 +43,29 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     onOpenChange(next);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      toast.error("Enter your email first");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/` },
+      });
+      if (error) throw error;
+      setSent(true);
+      toast.success("Magic link sent — check your email ✨");
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not send magic link");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast.error("Email and password are required");
@@ -78,26 +105,6 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  const handleMagicLink = async () => {
-    if (!email) {
-      toast.error("Enter your email first");
-      return;
-    }
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: `${window.location.origin}/` },
-      });
-      if (error) throw error;
-      toast.success("Magic link sent — check your email ✨");
-    } catch (err: any) {
-      toast.error(err.message ?? "Could not send magic link");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleGoogle = async () => {
     setLoading(true);
     try {
@@ -116,7 +123,6 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md p-0 overflow-hidden border border-white/10 bg-[#0b1220] text-white rounded-2xl">
         <div className="relative px-6 pt-6 pb-7">
-          {/* Back arrow */}
           <button
             onClick={() => handleClose(false)}
             className="absolute left-4 top-4 p-1.5 rounded-full hover:bg-white/10 transition"
@@ -125,14 +131,10 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <ArrowLeft className="h-5 w-5" />
           </button>
 
-          {/* 3D iridescent arc — same asset used on the VIBE coin page.
-              Slowly rotates idle, spins faster on hover, plays a random
-              animation on click. */}
           <div className="flex justify-center mb-2 -mt-2">
             <VibeArc size={140} rotateSeconds={28} />
           </div>
 
-          {/* Heading */}
           <h2
             className="text-center text-2xl font-bold tracking-tight"
             style={{ fontFamily: "'Sora', system-ui, sans-serif" }}
@@ -140,108 +142,162 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             Welcome to the Vibe
           </h2>
           <p className="text-center text-sm text-white/60 mt-1">
-            {isSignUp ? "Create an account to get started" : "Sign in to continue"}
+            {mode === "magic"
+              ? sent
+                ? "Check your inbox for a sign-in link"
+                : "Enter your email — we'll send you a magic link"
+              : isSignUp
+              ? "Create an account with a password"
+              : "Sign in with your password"}
           </p>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4 mt-7">
-            <div className="space-y-1.5">
-              <Label htmlFor="vibe-email" className="text-sm font-medium">
-                Email
-              </Label>
-              <Input
-                id="vibe-email"
-                type="email"
-                autoComplete="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-transparent border-white/15 rounded-xl h-12 placeholder:text-white/30"
-              />
-            </div>
+          {mode === "magic" ? (
+            sent ? (
+              <div className="mt-7 space-y-4 text-center">
+                <div className="mx-auto w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                  <Mail className="w-6 h-6 text-white/80" />
+                </div>
+                <p className="text-sm text-white/70">
+                  We sent a link to <span className="text-white">{email}</span>.
+                  Click it to sign in — no password needed.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSent(false)}
+                  className="text-xs text-white/50 hover:text-white transition"
+                >
+                  Use a different email
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleMagicLink} className="space-y-4 mt-7">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vibe-email" className="text-sm font-medium">
+                    Email
+                  </Label>
+                  <Input
+                    id="vibe-email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="your@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="bg-transparent border-white/15 rounded-xl h-12 placeholder:text-white/30"
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="vibe-password" className="text-sm font-medium">
-                Password
-              </Label>
-              <Input
-                id="vibe-password"
-                type="password"
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="bg-transparent border-white/15 rounded-xl h-12 placeholder:text-white/30"
-              />
-            </div>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Send magic link"
+                  )}
+                </Button>
 
-            {isSignUp && (
+                <button
+                  type="button"
+                  onClick={() => setMode("password")}
+                  className="w-full text-xs text-white/50 hover:text-white transition"
+                >
+                  Use a password instead
+                </button>
+              </form>
+            )
+          ) : (
+            <form onSubmit={handlePasswordSubmit} className="space-y-4 mt-7">
               <div className="space-y-1.5">
-                <Label htmlFor="vibe-confirm" className="text-sm font-medium">
-                  Confirm Password
+                <Label htmlFor="vibe-email" className="text-sm font-medium">
+                  Email
                 </Label>
                 <Input
-                  id="vibe-confirm"
+                  id="vibe-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="bg-transparent border-white/15 rounded-xl h-12 placeholder:text-white/30"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="vibe-password" className="text-sm font-medium">
+                  Password
+                </Label>
+                <Input
+                  id="vibe-password"
                   type="password"
-                  autoComplete="new-password"
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
                   placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
                   className="bg-transparent border-white/15 rounded-xl h-12 placeholder:text-white/30"
                 />
               </div>
-            )}
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isSignUp ? (
-                "Sign Up"
-              ) : (
-                "Sign In"
+              {isSignUp && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="vibe-confirm" className="text-sm font-medium">
+                    Confirm Password
+                  </Label>
+                  <Input
+                    id="vibe-confirm"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="bg-transparent border-white/15 rounded-xl h-12 placeholder:text-white/30"
+                  />
+                </div>
               )}
-            </Button>
 
-            <button
-              type="button"
-              onClick={handleMagicLink}
-              disabled={loading}
-              className="w-full text-xs text-white/60 hover:text-white transition underline-offset-4 hover:underline"
-            >
-              Email me a magic link instead
-            </button>
-          </form>
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isSignUp ? (
+                  "Sign Up"
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
 
-          {/* Toggle */}
-          <div className="text-center mt-4">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setConfirmPassword("");
-              }}
-              className="text-sm text-white/60 hover:text-white transition"
-            >
-              {isSignUp ? (
-                "Already have an account? Sign in"
-              ) : (
-                <>
-                  Don't have an account? <span className="text-white">Sign up</span>
-                </>
-              )}
-            </button>
-          </div>
+              <div className="flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setConfirmPassword("");
+                  }}
+                  className="text-white/60 hover:text-white transition"
+                >
+                  {isSignUp ? "Have an account? Sign in" : "New here? Sign up"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("magic")}
+                  className="text-white/60 hover:text-white transition"
+                >
+                  ← Back to magic link
+                </button>
+              </div>
+            </form>
+          )}
 
-          {/* Divider */}
           <div className="flex items-center gap-3 my-5">
             <div className="flex-1 h-px bg-white/10" />
             <span className="text-[10px] uppercase tracking-[0.18em] text-white/40">
@@ -250,7 +306,6 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
-          {/* Social buttons */}
           <div className="space-y-3">
             <button
               type="button"
@@ -265,8 +320,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
               type="button"
               onClick={handleGoogle}
               disabled={loading}
-
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium"
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium disabled:opacity-50"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
