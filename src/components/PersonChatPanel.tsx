@@ -184,12 +184,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
         </DialogHeader>
 
         <div ref={scrollRef} className="max-h-[55vh] min-h-[260px] overflow-y-auto px-4 py-3 space-y-2 bg-background/40">
-          {!authUserId && (
-            <p className="text-xs text-muted-foreground text-center py-6">
-              Sign in to chat with people on the island.
-            </p>
-          )}
-          {authUserId && messages.length === 0 && (
+          {messages.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-6">
               {isAgent
                 ? `Say hi to ${target.name} — they're an AI agent living here.`
@@ -197,7 +192,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
             </p>
           )}
           {messages.map((m) => {
-            const mine = m.from_kind === "user" && m.from_ref === authUserId;
+            const mine = m.from_kind === "user" && m.from_ref === meRef;
             return (
               <div
                 key={m.id}
@@ -230,12 +225,12 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={authUserId ? `Message ${target.name}…` : "Sign in to chat"}
+            placeholder={`Message ${target.name}…`}
             maxLength={1000}
-            disabled={!authUserId || sending}
+            disabled={sending}
             className="flex-1"
           />
-          <Button type="submit" size="sm" disabled={!draft.trim() || !authUserId || sending}>
+          <Button type="submit" size="sm" disabled={!draft.trim() || sending}>
             Send
           </Button>
         </form>
