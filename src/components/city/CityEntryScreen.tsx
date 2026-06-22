@@ -1,16 +1,14 @@
 /**
  * CityEntryScreen — first-step landing for /city.
  *
- * Two-panel "pick a character + tweak your name" screen, modelled on
- * the IslandExplorer character selector. Everything is pre-filled so
- * a first-time visitor can just hit "Jet in" — no required typing.
+ * Big single 3D preview of the currently picked character + a compact
+ * name grid to swap. Uses ONE WebGL canvas total (the preview) so we
+ * don't blow past the browser's WebGL context limit — there are 50+
+ * characters in the roster and rendering a Canvas per card kills the
+ * main scene's GL context.
  *
- *  - Character: auto-selected (defaults to the last picked one in
- *    localStorage, otherwise a random one from the roster).
- *  - Name: auto-generated fun name (e.g. "Neon Otter 042") if the
- *    visitor has never set a display name; otherwise their stored name.
- *
- * Uses the same 3D <CharacterPreview /> cards as the island selector.
+ * Name is pre-filled with a fun auto-name so visitors can just hit
+ * "Jet in".
  */
 import { useMemo, useState } from "react";
 import { CharacterPreview } from "@/island/CharacterPreview";
@@ -30,7 +28,6 @@ const ACCENTS = [
 ];
 
 function prettyName(raw: string): string {
-  // "BlueSoldier_Male" -> "Blue Soldier"
   return raw.replace(/_/g, " ").replace(/\bMale\b|\bFemale\b/g, "").trim();
 }
 
@@ -82,10 +79,10 @@ export default function CityEntryScreen({
 }: Props) {
   const options = useMemo(() => characters.map((c, i) => toOption(c, i)), [characters]);
   const [picked, setPicked] = useState<string>(initialCharacter);
-  const [hovered, setHovered] = useState<string | null>(null);
   const [name, setName] = useState<string>(initialName);
 
   const currentOption = options.find((o) => o.id === picked) ?? options[0];
+  const accent = currentOption?.accent ?? ACCENTS[0];
 
   return (
     <div className="absolute inset-0 z-20 overflow-y-auto bg-gradient-to-b from-[#0a0f1a] via-[#0b1424] to-[#0a0f1a]">
@@ -93,22 +90,34 @@ export default function CityEntryScreen({
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl" />
         <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-fuchsia-500/10 blur-3xl" />
-        <div className="absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 py-10">
+      <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-8">
         <div className="mb-2 text-[11px] uppercase tracking-[0.4em] text-cyan-300/80">
           Welcome to Vibe City
         </div>
-        <h1 className="font-heading mb-2 text-4xl font-bold tracking-wide text-primary drop-shadow-[0_0_24px_hsl(var(--primary)/0.45)] sm:text-5xl">
+        <h1 className="font-heading mb-1 text-4xl font-bold tracking-wide text-primary drop-shadow-[0_0_24px_hsl(var(--primary)/0.45)] sm:text-5xl">
           Pick your vibe
         </h1>
-        <p className="mb-6 max-w-md text-center text-sm text-muted-foreground">
-          We picked one for you — tap any card to swap. Hover to make them spin.
+        <p className="mb-5 max-w-md text-center text-sm text-muted-foreground">
+          We picked one for you — tap any name to swap.
         </p>
 
+        {/* Single shared 3D preview of the picked character */}
+        {currentOption && (
+          <div
+            className={`relative mb-5 h-64 w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-gradient-to-br ${accent} shadow-[0_0_40px_rgba(0,0,0,0.4)]`}
+          >
+            <CharacterPreview character={currentOption} spinning />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/50 to-transparent" />
+            <div className="absolute bottom-2 left-0 right-0 text-center text-sm font-medium text-white drop-shadow">
+              {currentOption.name}
+            </div>
+          </div>
+        )}
+
         {/* Name field — pre-filled with a fun auto-name */}
-        <div className="mb-7 flex w-full max-w-md flex-col items-center gap-1.5">
+        <div className="mb-5 flex w-full max-w-md flex-col items-center gap-1.5">
           <label className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
             Your name in the city
           </label>
@@ -132,51 +141,40 @@ export default function CityEntryScreen({
           </div>
         </div>
 
-        {/* Character grid */}
-        <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {options.map((c) => {
-            const isPicked = c.id === picked;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onMouseEnter={() => setHovered(c.id)}
-                onMouseLeave={() => setHovered(null)}
-                onClick={() => setPicked(c.id)}
-                className={`group relative flex flex-col items-stretch overflow-hidden rounded-2xl border bg-white/5 p-2 text-left backdrop-blur-sm transition-all ${
-                  isPicked
-                    ? "scale-[1.02] border-primary/80 bg-primary/10 shadow-[0_0_32px_hsl(var(--primary)/0.4)]"
-                    : "border-white/10 hover:border-white/40 hover:bg-white/10"
-                }`}
-              >
-                <div
-                  className={`relative mb-2 h-40 w-full overflow-hidden rounded-xl bg-gradient-to-br ${c.accent} ring-1 ring-white/10 sm:h-44`}
-                >
-                  <CharacterPreview character={c} spinning={hovered === c.id || isPicked} />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/40 to-transparent" />
-                  {isPicked && (
-                    <div className="absolute right-2 top-2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-lg">
-                      Picked
-                    </div>
-                  )}
-                </div>
-                <div className="px-1 pb-1 text-sm font-medium text-foreground">
-                  {c.name}
-                </div>
-              </button>
-            );
-          })}
+        {/* Character name grid — scrollable, lightweight, no per-card canvas */}
+        <div className="mb-6 w-full max-w-3xl">
+          <div className="max-h-56 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-2 backdrop-blur-sm">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4">
+              {options.map((c) => {
+                const isPicked = c.id === picked;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setPicked(c.id)}
+                    className={`truncate rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                      isPicked
+                        ? "bg-primary/25 text-primary ring-1 ring-primary/60"
+                        : "text-foreground/75 hover:bg-white/10 hover:text-foreground"
+                    }`}
+                    title={c.name}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        {/* Enter button */}
         <button
           onClick={() => {
             const cleanName = name.trim() || generateFunName();
-            onEnter({ character: currentOption.id, name: cleanName });
+            onEnter({ character: currentOption?.id ?? picked, name: cleanName });
           }}
-          className="mt-8 rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold uppercase tracking-[0.25em] text-primary-foreground shadow-[0_0_32px_hsl(var(--primary)/0.55)] transition-opacity hover:opacity-90"
+          className="rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold uppercase tracking-[0.25em] text-primary-foreground shadow-[0_0_32px_hsl(var(--primary)/0.55)] transition-opacity hover:opacity-90"
         >
-          ✨ Jet in as {currentOption.name}
+          ✨ Jet in{currentOption ? ` as ${currentOption.name}` : ""}
         </button>
 
         <div className="mt-4 text-[11px] font-mono text-muted-foreground/80">
