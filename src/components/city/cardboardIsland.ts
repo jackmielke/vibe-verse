@@ -1626,6 +1626,24 @@ export function buildCardboardIsland(opts: {
       pg.__inner.rotation.z -= dt * 0.3;
       pg.__light.intensity = 12 + Math.sin(now * 0.003) * 4;
 
+      // Avatar Hologram portal: orbiting rings + figure float + scanline scroll.
+      avatarOrbitRingA.rotation.z += dt * 0.9;
+      avatarOrbitRingB.rotation.z -= dt * 0.5;
+      avatarOrbitRingB.rotation.x = Math.PI / 1.6 + Math.sin(now * 0.0012) * 0.25;
+      const aFloat = Math.sin(now * 0.0022) * 0.08;
+      avatarFigureGroup.position.y = 0.55 + aFloat;
+      avatarFigureGroup.rotation.y = now * 0.0006;
+      const aPulse = 0.45 + (Math.sin(now * 0.004) * 0.5 + 0.5) * 0.3;
+      avatarRingMats.forEach((m, i) => {
+        m.opacity = 0.35 + aPulse + (i % 3) * 0.04;
+      });
+      avatarBeamMat.opacity = 0.1 + (Math.sin(now * 0.0025) * 0.5 + 0.5) * 0.12;
+      avatarPedestalLight.intensity = 14 + Math.sin(now * 0.003) * 5;
+      const apg = avatarPortalGroup as unknown as { __scanTex: THREE.CanvasTexture };
+      apg.__scanTex.offset.y = -(now * 0.00035) % 1;
+      avatarScanMat.opacity = 0.45 + Math.sin(now * 0.0035) * 0.18;
+
+
 
       // Cardboard TV slideshow.
       tvTimer += dt;
