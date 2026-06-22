@@ -690,6 +690,7 @@ export default function City() {
   // 3D group whenever the React-side `spawns` list changes.
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
+  const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
   const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const authUserIdRef = useRef<string | null>(null);
@@ -1794,6 +1795,7 @@ export default function City() {
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
+      setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
 
       // Nearest chattable person (real player OR AI agent) within ~3.2m.
@@ -3143,6 +3145,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {nearAvatarPortal && (
+            <button
+              onClick={(e) => {
+                setCharPanelOpen((v) => !v);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-300 shadow-[0_0_24px_rgba(122,240,255,0.5)]"
+            >
+              🪞 {charPanelOpen ? "Close avatar portal" : "Step into avatar portal"}
             </button>
           )}
           {/* nearPerson bump/message moved to a floating in-world bubble above the character */}
