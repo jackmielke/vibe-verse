@@ -519,6 +519,14 @@ export function createMultiplayer(opts: {
         while (d < -Math.PI) d += Math.PI * 2;
         g.group.rotation.y += d * Math.min(1, dt * 8);
 
+        // Smoothly ease body scale toward the peer's target so size
+        // changes don't pop — and don't blow up the label sprite.
+        if (g.inst) {
+          const sk = 1 - Math.pow(0.01, dt);
+          g.appliedScale += (g.target.scale - g.appliedScale) * sk;
+          g.inst.scale.setScalar(g.baseFit * g.appliedScale);
+        }
+
         // Walk vs idle from how far the ghost still has to travel.
         const moving =
           Math.hypot(g.target.x - p.x, g.target.z - p.z) > 0.25 || Math.abs(wasAt - p.x) > 0.02;
