@@ -47,6 +47,19 @@ function threadKeyFor(meRef: string, target: PersonTarget): string {
   return [me, them].sort().join("|");
 }
 
+// Stable per-browser guest id so visitors can chat without signing in.
+// Stored once in localStorage; matches the uuid shape from_ref expects.
+function getGuestId(): string {
+  if (typeof window === "undefined") return "guest";
+  const KEY = "city.guestId";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = (crypto.randomUUID?.() ?? `guest-${Math.random().toString(36).slice(2)}-${Date.now()}`);
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 export default function PersonChatPanel({ open, onClose, target, authUserId, myName }: Props) {
   const [messages, setMessages] = useState<DmRow[]>([]);
   const [draft, setDraft] = useState("");
@@ -54,9 +67,13 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Use the signed-in user id when available, else a stable guest id so
+  // anonymous visitors can still send/receive messages on the island.
+  const meRef = useMemo(() => authUserId ?? getGuestId(), [authUserId]);
+
   const threadKey = useMemo(
-    () => (authUserId && target ? threadKeyFor(authUserId, target) : null),
-    [authUserId, target],
+    () => (target ? threadKeyFor(meRef, target) : null),
+    [meRef, target],
   );
 
   // Load history + realtime
@@ -104,16 +121,12 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || !authUserId || !target || !threadKey || sending) return;
-    if (!authUserId) {
-      toast.error("Sign in to send messages.");
-      return;
-    }
+    if (!text || !target || !threadKey || sending) return;
     setSending(true);
     const insertRow = {
       thread_key: threadKey,
       from_kind: "user" as const,
-      from_ref: authUserId,
+      from_ref: meRef,
       from_name: myName || "pilot",
       to_kind: target.kind,
       to_ref: target.ref,
@@ -133,7 +146,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
           body: {
             agentId: target.ref,
             threadKey,
-            userId: authUserId,
+            userId: meRef,
             body: insertRow.body,
           },
         });
