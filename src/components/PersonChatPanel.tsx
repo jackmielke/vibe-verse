@@ -47,6 +47,19 @@ function threadKeyFor(meRef: string, target: PersonTarget): string {
   return [me, them].sort().join("|");
 }
 
+// Stable per-browser guest id so visitors can chat without signing in.
+// Stored once in localStorage; matches the uuid shape from_ref expects.
+function getGuestId(): string {
+  if (typeof window === "undefined") return "guest";
+  const KEY = "city.guestId";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = (crypto.randomUUID?.() ?? `guest-${Math.random().toString(36).slice(2)}-${Date.now()}`);
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 export default function PersonChatPanel({ open, onClose, target, authUserId, myName }: Props) {
   const [messages, setMessages] = useState<DmRow[]>([]);
   const [draft, setDraft] = useState("");
@@ -54,9 +67,13 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Use the signed-in user id when available, else a stable guest id so
+  // anonymous visitors can still send/receive messages on the island.
+  const meRef = useMemo(() => authUserId ?? getGuestId(), [authUserId]);
+
   const threadKey = useMemo(
-    () => (authUserId && target ? threadKeyFor(authUserId, target) : null),
-    [authUserId, target],
+    () => (target ? threadKeyFor(meRef, target) : null),
+    [meRef, target],
   );
 
   // Load history + realtime
@@ -104,16 +121,12 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || !authUserId || !target || !threadKey || sending) return;
-    if (!authUserId) {
-      toast.error("Sign in to send messages.");
-      return;
-    }
+    if (!text || !target || !threadKey || sending) return;
     setSending(true);
     const insertRow = {
       thread_key: threadKey,
       from_kind: "user" as const,
-      from_ref: authUserId,
+      from_ref: meRef,
       from_name: myName || "pilot",
       to_kind: target.kind,
       to_ref: target.ref,
@@ -133,7 +146,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
           body: {
             agentId: target.ref,
             threadKey,
-            userId: authUserId,
+            userId: meRef,
             body: insertRow.body,
           },
         });
@@ -171,12 +184,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
         </DialogHeader>
 
         <div ref={scrollRef} className="max-h-[55vh] min-h-[260px] overflow-y-auto px-4 py-3 space-y-2 bg-background/40">
-          {!authUserId && (
-            <p className="text-xs text-muted-foreground text-center py-6">
-              Sign in to chat with people on the island.
-            </p>
-          )}
-          {authUserId && messages.length === 0 && (
+          {messages.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-6">
               {isAgent
                 ? `Say hi to ${target.name} — they're an AI agent living here.`
@@ -184,7 +192,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
             </p>
           )}
           {messages.map((m) => {
-            const mine = m.from_kind === "user" && m.from_ref === authUserId;
+            const mine = m.from_kind === "user" && m.from_ref === meRef;
             return (
               <div
                 key={m.id}
@@ -217,12 +225,12 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={authUserId ? `Message ${target.name}…` : "Sign in to chat"}
+            placeholder={`Message ${target.name}…`}
             maxLength={1000}
-            disabled={!authUserId || sending}
+            disabled={sending}
             className="flex-1"
           />
-          <Button type="submit" size="sm" disabled={!draft.trim() || !authUserId || sending}>
+          <Button type="submit" size="sm" disabled={!draft.trim() || sending}>
             Send
           </Button>
         </form>
