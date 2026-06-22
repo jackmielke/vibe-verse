@@ -2530,7 +2530,30 @@ export default function City() {
     }
   };
 
-  const enter = () => {
+  const enter = (pick?: { character: string; name: string }) => {
+    if (pick) {
+      // Persist the picked character so the 3D pilot loader picks it up.
+      const ch = pick.character;
+      if (ch && CHARACTERS.some((c) => c.name === ch)) {
+        setCharName(ch);
+        charRef.current = ch;
+        localStorage.setItem("city.character", ch);
+        setActiveCharacter(ch);
+        loadPilotRef.current?.(ch);
+      }
+      // Persist + broadcast the chosen name.
+      const nm = pick.name.trim().slice(0, 32);
+      if (nm) {
+        setPlayerName(nm);
+        localStorage.setItem("city.playerName", nm);
+        localStorage.setItem("city.displayName", nm);
+        mpRef.current?.setName(nm);
+        // Best-effort: sync to users.name when signed in.
+        if (authUserId) {
+          void supabase.from("users").update({ name: nm }).eq("auth_user_id", authUserId);
+        }
+      }
+    }
     enteredRef.current = true;
     setEntered(true);
     // AudioContext needs a user gesture — this click is it.
@@ -3558,44 +3581,21 @@ export default function City() {
 
 
 
-      {/* Entry overlay. */}
+      {/* Entry overlay — fancy character picker + auto-name. */}
       <AnimatePresence>
         {!entered && (
           <motion.div
-            className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 backdrop-blur-sm"
+            className="absolute inset-0 z-20"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.5 } }}
           >
-            <motion.div
-              className="glass-panel rounded-3xl px-8 py-7 max-w-md mx-4 text-center space-y-4"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div className="text-3xl">🏙️</div>
-              <h1 className="font-heading text-2xl font-bold tracking-wide text-primary">
-                VIBE CITY
-              </h1>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                A neon district to explore. Hold{" "}
-                <span className="text-primary font-semibold">Space</span> to fire the jetpack, land
-                on rooftops, and collect every{" "}
-                <span className="text-amber-300 font-semibold">✦ star</span>. Then follow the
-                golden beam east — the kids built{" "}
-                <span className="text-primary font-semibold">Edge Island</span> up in the sky.
-              </p>
-              <div className="text-[11px] text-muted-foreground font-mono">
-                WASD / arrows — move · Shift — run · Space — jetpack
-                <br />
-                drag — look around · pinch / scroll — zoom
-              </div>
-              <button
-                onClick={enter}
-                className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-heading font-semibold text-sm tracking-wider uppercase hover:opacity-90 transition-opacity"
-              >
-                Jet in
-              </button>
-            </motion.div>
+            <CityEntryScreen
+              characters={CHARACTERS}
+              initialCharacter={charName}
+              initialName={playerName}
+              onEnter={enter}
+            />
           </motion.div>
         )}
       </AnimatePresence>
