@@ -711,6 +711,7 @@ export default function City() {
   });
   const applyHatRef = useRef<((id: string) => void) | null>(null);
   const setPlayerScaleRef = useRef<((s: number) => void) | null>(null);
+  const playerScaleRef = useRef(1);
   const [bigMode, setBigMode] = useState(false);
   const [bigSize, setBigSize] = useState(1);
   const [secretInput, setSecretInput] = useState("");
