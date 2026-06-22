@@ -2226,6 +2226,7 @@ export default function City() {
         yaw: modelYaw,
         air: !onGround,
         char: charRef.current,
+        scale: playerScaleRef.current,
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
