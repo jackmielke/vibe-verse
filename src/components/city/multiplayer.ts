@@ -25,6 +25,8 @@ export interface PlayerState {
   yaw: number;
   air: boolean;
   char: string;
+  /** Player body scale multiplier (1 = normal). Defaults to 1 if omitted. */
+  scale?: number;
 }
 
 export interface ChatMessage {
@@ -79,11 +81,15 @@ export interface Multiplayer {
 
 interface Ghost {
   group: THREE.Group;
+  /** The inner character instance — scale lives here so the label sprite isn't blown up too. */
+  inst: THREE.Object3D | null;
+  baseFit: number;
+  appliedScale: number;
   mixer: THREE.AnimationMixer | null;
   walk: THREE.AnimationAction | null;
   idle: THREE.AnimationAction | null;
   active: "walk" | "idle" | null;
-  target: { x: number; y: number; z: number; yaw: number };
+  target: { x: number; y: number; z: number; yaw: number; scale: number };
   bumpVel: THREE.Vector3;
   char: string;
   label: string;
@@ -285,15 +291,18 @@ export function createMultiplayer(opts: {
     return entry;
   };
 
-  const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null) => {
+  const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null, initialScale = 1) => {
     if (ghosts.has(key) || disposed) return;
     const placeholder: Ghost = {
       group: new THREE.Group(),
+      inst: null,
+      baseFit: 1,
+      appliedScale: initialScale,
       mixer: null,
       walk: null,
       idle: null,
       active: null,
-      target: { x: 0, y: -500, z: 0, yaw: 0 },
+      target: { x: 0, y: -500, z: 0, yaw: 0, scale: initialScale },
       bumpVel: new THREE.Vector3(),
       char,
       label,
@@ -304,7 +313,7 @@ export function createMultiplayer(opts: {
       const base = await loadBase(char);
       if (disposed || !ghosts.has(key)) return;
       const inst = cloneSkinned(base.scene);
-      inst.scale.setScalar(base.fit);
+      inst.scale.setScalar(base.fit * placeholder.appliedScale);
       inst.position.y = base.lift;
       inst.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -315,6 +324,8 @@ export function createMultiplayer(opts: {
           std.roughness = Math.max(std.roughness, 0.45);
         }
       });
+      placeholder.inst = inst;
+      placeholder.baseFit = base.fit;
       placeholder.group.add(inst);
       placeholder.group.add(makeLabelSprite(label));
       const walkClip = base.clips.find((c) => /walk/i.test(c.name) && !/carry/i.test(c.name));
@@ -415,12 +426,13 @@ export function createMultiplayer(opts: {
           g = ghosts.get(p.id);
         }
         if (g) {
-          g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+          const s = typeof p.scale === "number" && isFinite(p.scale) ? p.scale : 1;
+          g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: s };
           if (p.userId && g.userId !== p.userId) g.userId = p.userId;
           if (g.char !== p.char) {
-            // Character switched mid-session: respawn the ghost.
+            // Character switched mid-session: respawn the ghost (preserve scale).
             removeGhost(p.id);
-            void spawnGhost(p.id, p.char, g.label, g.userId);
+            void spawnGhost(p.id, p.char, g.label, g.userId, s);
           }
         }
       })
@@ -474,6 +486,7 @@ export function createMultiplayer(opts: {
           Math.abs(lastSent.z - me.z) > 0.03 ||
           Math.abs(lastSent.yaw - me.yaw) > 0.02 ||
           lastSent.char !== me.char ||
+          Math.abs((lastSent.scale ?? 1) - (me.scale ?? 1)) > 0.01 ||
           now - lastSend > 1500; // heartbeat
         if (moved) {
           lastSend = now;
@@ -505,6 +518,14 @@ export function createMultiplayer(opts: {
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
         g.group.rotation.y += d * Math.min(1, dt * 8);
+
+        // Smoothly ease body scale toward the peer's target so size
+        // changes don't pop — and don't blow up the label sprite.
+        if (g.inst) {
+          const sk = 1 - Math.pow(0.01, dt);
+          g.appliedScale += (g.target.scale - g.appliedScale) * sk;
+          g.inst.scale.setScalar(g.baseFit * g.appliedScale);
+        }
 
         // Walk vs idle from how far the ghost still has to travel.
         const moving =

@@ -711,6 +711,7 @@ export default function City() {
   });
   const applyHatRef = useRef<((id: string) => void) | null>(null);
   const setPlayerScaleRef = useRef<((s: number) => void) | null>(null);
+  const playerScaleRef = useRef(1);
   const [bigMode, setBigMode] = useState(false);
   const [bigSize, setBigSize] = useState(1);
   const [secretInput, setSecretInput] = useState("");
@@ -1325,6 +1326,7 @@ export default function City() {
     setPlayerScaleRef.current = (s: number) => {
       const clamped = Math.max(0.4, Math.min(12, s));
       modelHolder.scale.setScalar(clamped);
+      playerScaleRef.current = clamped;
     };
 
     // ---- Local emote bubble (sprite parented to the player) ---------
@@ -2224,6 +2226,7 @@ export default function City() {
         yaw: modelYaw,
         air: !onGround,
         char: charRef.current,
+        scale: playerScaleRef.current,
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
