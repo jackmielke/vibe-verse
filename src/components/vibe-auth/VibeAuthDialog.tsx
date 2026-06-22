@@ -78,6 +78,40 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     }
   };
 
+  const handleMagicLink = async () => {
+    if (!email) {
+      toast.error("Enter your email first");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/` },
+      });
+      if (error) throw error;
+      toast.success("Magic link sent — check your email ✨");
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not send magic link");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      toast.error(err.message ?? "Google sign-in failed");
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md p-0 overflow-hidden border border-white/10 bg-[#0b1220] text-white rounded-2xl">
@@ -176,6 +210,15 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                 "Sign In"
               )}
             </Button>
+
+            <button
+              type="button"
+              onClick={handleMagicLink}
+              disabled={loading}
+              className="w-full text-xs text-white/60 hover:text-white transition underline-offset-4 hover:underline"
+            >
+              Email me a magic link instead
+            </button>
           </form>
 
           {/* Toggle */}
@@ -220,7 +263,9 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
 
             <button
               type="button"
-              onClick={() => toast.info("Google sign-in — coming soon")}
+              onClick={handleGoogle}
+              disabled={loading}
+
               className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
