@@ -25,6 +25,8 @@ export interface PlayerState {
   yaw: number;
   air: boolean;
   char: string;
+  /** Player body scale multiplier (1 = normal). Defaults to 1 if omitted. */
+  scale?: number;
 }
 
 export interface ChatMessage {
