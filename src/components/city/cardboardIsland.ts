@@ -1185,6 +1185,190 @@ export function buildCardboardIsland(opts: {
   }
   group.add(portalGroup);
 
+  // ---- Avatar Hologram portal: change your character ------------------
+  // A glowing pedestal that projects a holographic figure made of stacked
+  // glowing rings + scrolling scanlines. Walk up to it to open the
+  // character picker. Sits on the opposite side of the Vibe Shop from
+  // the Vibe Maker so the three form a little plaza row.
+  const AVATAR_X = SHOP_X + 8;
+  const AVATAR_Z = SHOP_Z - 2;
+  const avatarPortalGroup = new THREE.Group();
+  avatarPortalGroup.position.set(AVATAR_X, 0, AVATAR_Z);
+  const avatarHoloRings: THREE.Mesh[] = [];
+  const avatarRingMats: THREE.MeshBasicMaterial[] = [];
+  let avatarBeamMat!: THREE.MeshBasicMaterial;
+  let avatarScanMat!: THREE.MeshBasicMaterial;
+  let avatarOrbitRingA!: THREE.Mesh;
+  let avatarOrbitRingB!: THREE.Mesh;
+  let avatarPedestalLight!: THREE.PointLight;
+  let avatarFigureGroup!: THREE.Group;
+  {
+    // Dark pedestal with a glowing mint top rim.
+    const padMat = new THREE.MeshStandardMaterial({
+      color: "#0a0f14",
+      roughness: 0.4,
+      metalness: 0.55,
+    });
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.95, 0.5, 32), padMat);
+    pad.position.y = 0.25;
+    avatarPortalGroup.add(pad);
+
+    const rimMat = new THREE.MeshBasicMaterial({
+      color: "#2dd4a8",
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.05, 12, 64), rimMat);
+    rim.position.y = 0.52;
+    rim.rotation.x = Math.PI / 2;
+    avatarPortalGroup.add(rim);
+
+    // Vertical "projection beam" — translucent cyan cone pointing up.
+    avatarBeamMat = new THREE.MeshBasicMaterial({
+      color: "#7af0ff",
+      transparent: true,
+      opacity: 0.12,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(1.4, 4.2, 32, 1, true), avatarBeamMat);
+    beam.position.y = 2.6;
+    avatarPortalGroup.add(beam);
+
+    // Scrolling scanline cylinder around the figure — gives it that
+    // "data being projected" feel.
+    const scanCanvas = document.createElement("canvas");
+    scanCanvas.width = 16;
+    scanCanvas.height = 256;
+    const sctx = scanCanvas.getContext("2d")!;
+    sctx.fillStyle = "rgba(0,0,0,0)";
+    sctx.fillRect(0, 0, 16, 256);
+    for (let y = 0; y < 256; y += 4) {
+      sctx.fillStyle = `rgba(122, 240, 255, ${0.12 + Math.random() * 0.18})`;
+      sctx.fillRect(0, y, 16, 1.5);
+    }
+    const scanTex = new THREE.CanvasTexture(scanCanvas);
+    scanTex.wrapS = scanTex.wrapT = THREE.RepeatWrapping;
+    scanTex.repeat.set(2, 1);
+    avatarScanMat = new THREE.MeshBasicMaterial({
+      map: scanTex,
+      color: "#7af0ff",
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    const scanCyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.05, 1.05, 3.6, 32, 1, true),
+      avatarScanMat,
+    );
+    scanCyl.position.y = 2.3;
+    avatarPortalGroup.add(scanCyl);
+
+    // Holographic "figure" silhouette built from stacked discs of
+    // varying radius — reads as a humanoid form without modelling one.
+    avatarFigureGroup = new THREE.Group();
+    avatarFigureGroup.position.y = 0.55;
+    const figureSlices: Array<{ r: number; y: number }> = [
+      { r: 0.42, y: 0.05 }, // feet
+      { r: 0.55, y: 0.35 },
+      { r: 0.65, y: 0.75 }, // hips
+      { r: 0.72, y: 1.15 },
+      { r: 0.78, y: 1.55 }, // chest
+      { r: 0.72, y: 1.9 },
+      { r: 0.55, y: 2.15 }, // shoulders
+      { r: 0.35, y: 2.4 },
+      { r: 0.42, y: 2.7 }, // head
+      { r: 0.38, y: 2.95 },
+    ];
+    figureSlices.forEach((s, i) => {
+      const mat = new THREE.MeshBasicMaterial({
+        color: i % 2 === 0 ? "#7af0ff" : "#b78aff",
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      });
+      const disc = new THREE.Mesh(new THREE.TorusGeometry(s.r, 0.045, 10, 36), mat);
+      disc.position.y = s.y;
+      disc.rotation.x = Math.PI / 2;
+      avatarFigureGroup.add(disc);
+      avatarHoloRings.push(disc);
+      avatarRingMats.push(mat);
+    });
+    avatarPortalGroup.add(avatarFigureGroup);
+
+    // Two orbiting rings around the figure for that sci-fi UI vibe.
+    const orbitMatA = new THREE.MeshBasicMaterial({
+      color: "#2dd4a8",
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    avatarOrbitRingA = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.04, 10, 64), orbitMatA);
+    avatarOrbitRingA.position.y = 1.8;
+    avatarOrbitRingA.rotation.x = Math.PI / 2.3;
+    avatarPortalGroup.add(avatarOrbitRingA);
+
+    const orbitMatB = new THREE.MeshBasicMaterial({
+      color: "#b78aff",
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    avatarOrbitRingB = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.03, 10, 64), orbitMatB);
+    avatarOrbitRingB.position.y = 2.1;
+    avatarOrbitRingB.rotation.x = Math.PI / 1.6;
+    avatarPortalGroup.add(avatarOrbitRingB);
+
+    avatarPedestalLight = new THREE.PointLight(0x7af0ff, 16, 14, 1.8);
+    avatarPedestalLight.position.set(0, 1.6, 0);
+    avatarPortalGroup.add(avatarPedestalLight);
+
+    // Floating "AVATAR" sign above the beam.
+    const ac = document.createElement("canvas");
+    ac.width = 512;
+    ac.height = 128;
+    const ax = ac.getContext("2d")!;
+    ax.fillStyle = "rgba(0,0,0,0)";
+    ax.fillRect(0, 0, 512, 128);
+    ax.font = "bold 70px 'Sora', system-ui, sans-serif";
+    ax.textAlign = "center";
+    ax.textBaseline = "middle";
+    ax.shadowColor = "#7af0ff";
+    ax.shadowBlur = 32;
+    ax.fillStyle = "#e6fbff";
+    ax.fillText("AVATAR", 256, 56);
+    ax.shadowBlur = 0;
+    ax.font = "22px 'Manrope', sans-serif";
+    ax.fillStyle = "#2dd4a8";
+    ax.fillText("step in to change your look", 256, 104);
+    const aSignTex = new THREE.CanvasTexture(ac);
+    aSignTex.colorSpace = THREE.SRGBColorSpace;
+    const aSign = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 0.85),
+      new THREE.MeshBasicMaterial({ map: aSignTex, transparent: true, depthWrite: false }),
+    );
+    aSign.position.set(0, 5.1, 0);
+    avatarPortalGroup.add(aSign);
+    (avatarPortalGroup as unknown as { __sign: THREE.Mesh }).__sign = aSign;
+    (avatarPortalGroup as unknown as { __scanTex: THREE.CanvasTexture }).__scanTex = scanTex;
+  }
+  group.add(avatarPortalGroup);
+
+
 
 
 
