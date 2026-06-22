@@ -1663,6 +1663,7 @@ export function buildCardboardIsland(opts: {
     swingAngle: () => currentSwingAngle,
     shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z - 2.3),
     portal: new THREE.Vector3(centerX + PORTAL_X, topY, centerZ + PORTAL_Z),
+    avatarPortal: new THREE.Vector3(centerX + AVATAR_X, topY, centerZ + AVATAR_Z),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
