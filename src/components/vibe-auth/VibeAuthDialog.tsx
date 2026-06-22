@@ -263,7 +263,9 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
 
             <button
               type="button"
-              onClick={() => toast.info("Google sign-in — coming soon")}
+              onClick={handleGoogle}
+              disabled={loading}
+
               className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
