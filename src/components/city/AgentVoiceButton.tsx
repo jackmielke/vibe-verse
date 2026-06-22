@@ -28,9 +28,24 @@ export function AgentVoiceButton({ agentName }: { agentName: string }) {
     setStatus("connecting");
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Look up this agent's ElevenLabs agent id by name; fall back to
+      // Vibey's known production agent so the call still works even when
+      // the row isn't readable from the client or no override is set.
+      const FALLBACK_AGENT_ID = "agent_8801kq9f9072fgytesm2dvz4m70j";
+      let agentId = FALLBACK_AGENT_ID;
+      try {
+        const { data } = await supabase
+          .from("agents")
+          .select("elevenlabs_agent_id")
+          .eq("name", agentName)
+          .not("elevenlabs_agent_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (data?.elevenlabs_agent_id) agentId = data.elevenlabs_agent_id;
+      } catch { /* ignore — fallback is fine */ }
       const { data, error } = await supabase.functions.invoke(
         "elevenlabs-conversation-token",
-        { body: {} },
+        { body: { agentId } },
       );
       if (error) throw error;
       if (!data?.token) throw new Error("no token");
