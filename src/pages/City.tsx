@@ -3157,15 +3157,65 @@ export default function City() {
             </button>
           )}
           {nearAvatarPortal && (
-            <button
-              onClick={(e) => {
-                setCharPanelOpen((v) => !v);
-                e.currentTarget.blur();
-              }}
-              className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-300 shadow-[0_0_24px_rgba(122,240,255,0.5)]"
-            >
-              🪞 {charPanelOpen ? "Close avatar portal" : "Step into avatar portal"}
-            </button>
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                onClick={(e) => {
+                  setCharPanelOpen((v) => !v);
+                  e.currentTarget.blur();
+                }}
+                className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-300 shadow-[0_0_24px_rgba(122,240,255,0.5)]"
+              >
+                🪞 {charPanelOpen ? "Close avatar portal" : "Step into avatar portal"}
+              </button>
+              {!bigMode ? (
+                <input
+                  type="password"
+                  value={secretInput}
+                  placeholder="whisper the secret word…"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSecretInput(v);
+                    if (v.trim().toLowerCase() === "magically weird") {
+                      setBigMode(true);
+                      setSecretInput("");
+                    }
+                  }}
+                  maxLength={32}
+                  className="glass-panel rounded-full px-3 py-1.5 text-[11px] text-center text-cyan-200 placeholder:text-cyan-300/50 bg-transparent border border-cyan-300/30 focus:outline-none focus:border-cyan-300/80 w-56"
+                />
+              ) : (
+                <div className="glass-panel rounded-2xl px-3 py-2 flex items-center gap-2 border border-cyan-300/40 shadow-[0_0_24px_rgba(122,240,255,0.45)]">
+                  <span className="text-[11px] text-cyan-200">🔮 size</span>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={8}
+                    step={0.1}
+                    value={bigSize}
+                    onChange={(e) => {
+                      const s = Number(e.target.value);
+                      setBigSize(s);
+                      setPlayerScaleRef.current?.(s);
+                    }}
+                    className="w-40 accent-cyan-300"
+                  />
+                  <span className="text-[11px] tabular-nums text-cyan-100 w-10 text-right">
+                    {bigSize.toFixed(1)}x
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      setBigSize(1);
+                      setPlayerScaleRef.current?.(1);
+                      e.currentTarget.blur();
+                    }}
+                    className="text-[10px] text-cyan-300/80 hover:text-cyan-100 px-1"
+                    title="Reset"
+                  >
+                    ↺
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           {/* nearPerson bump/message moved to a floating in-world bubble above the character */}
           {nearRoster && !rosterOpen && (
