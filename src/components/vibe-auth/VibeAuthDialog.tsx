@@ -210,6 +210,15 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                 "Sign In"
               )}
             </Button>
+
+            <button
+              type="button"
+              onClick={handleMagicLink}
+              disabled={loading}
+              className="w-full text-xs text-white/60 hover:text-white transition underline-offset-4 hover:underline"
+            >
+              Email me a magic link instead
+            </button>
           </form>
 
           {/* Toggle */}
