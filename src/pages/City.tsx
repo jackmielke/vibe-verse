@@ -909,7 +909,35 @@ export default function City() {
     if (!canvas) return;
 
     // ---- Renderer / scene / camera ---------------------------------
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    // Pre-acquire the WebGL context ourselves so we can bail cleanly
+    // if the browser refuses (out of contexts, hardware off, etc.)
+    // instead of crashing inside three's WebGLCapabilities highp probe
+    // (which dereferences a null getShaderPrecisionFormat result).
+    const glContext =
+      (canvas.getContext("webgl2", { antialias: true, powerPreference: "high-performance" }) as
+        | WebGL2RenderingContext
+        | null) ??
+      (canvas.getContext("webgl", { antialias: true, powerPreference: "high-performance" }) as
+        | WebGLRenderingContext
+        | null);
+    if (!glContext) {
+      console.warn("[City] WebGL unavailable — skipping 3D scene init.");
+      return;
+    }
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        context: glContext,
+        antialias: true,
+        // mediump avoids the highp precision probe that crashes on
+        // some drivers when getShaderPrecisionFormat returns null.
+        precision: "mediump",
+      });
+    } catch (err) {
+      console.warn("[City] WebGLRenderer init failed:", err);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 
