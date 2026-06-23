@@ -138,6 +138,30 @@ export default function HubV2() {
   const navigate = useNavigate();
   const mountRef = useRef<HTMLDivElement>(null);
 
+  // First-run auto-roll: brand-new visitors (no character + no display
+  // name yet) get a randomly-picked character + auto-generated name and
+  // are dropped straight onto Edge Island. The City page reads the
+  // `fresh=1` flag to skip the entry overlay and surface a small chip
+  // letting them re-roll or open the full picker.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hasChar = !!localStorage.getItem("lobby.character");
+    const hasName =
+      !!localStorage.getItem("city.playerName") ||
+      !!localStorage.getItem("city.displayName");
+    if (hasChar || hasName) return;
+    const pool = ALL_CHARACTERS;
+    if (!pool.length) return;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const autoName = generateCharacterName(pick.label);
+    setActiveCharacter(pick.id);
+    localStorage.setItem("city.playerName", autoName);
+    localStorage.setItem("city.displayName", autoName);
+    navigate("/city?spawn=island&fresh=1", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
   // Row offset (world units). Smoothly chases targetOffset which snaps to slots.
   const offsetRef = useRef(0);
   const targetOffsetRef = useRef(0);
