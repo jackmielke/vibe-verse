@@ -426,8 +426,15 @@ function shortClipName(raw: string) {
 
 export default function City() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [entered, setEntered] = useState(false);
-  const enteredRef = useRef(false);
+  // ?fresh=1 means the visitor was just auto-rolled into Edge Island
+  // from the hub — skip the entry overlay and show a floating chip so
+  // they can re-roll or open the full picker without ever seeing the
+  // sign-in / character grid first.
+  const isFreshDrop =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("fresh") === "1";
+  const [entered, setEntered] = useState(isFreshDrop);
+  const enteredRef = useRef(isFreshDrop);
+  const [showFreshChip, setShowFreshChip] = useState(isFreshDrop);
   const [hud, setHud] = useState({
     alt: 0,
     spd: 0,
