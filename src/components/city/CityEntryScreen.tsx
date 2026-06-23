@@ -161,7 +161,7 @@ export default function CityEntryScreen({
 
         <button
           onClick={() => {
-            const cleanName = name.trim() || generateFunName();
+            const cleanName = name.trim() || generateCharacterName(currentOption?.name);
             onEnter({ character: currentOption?.id ?? picked, name: cleanName });
           }}
           className="rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold uppercase tracking-[0.25em] text-primary-foreground shadow-[0_0_32px_hsl(var(--primary)/0.55)] transition-opacity hover:opacity-90"
