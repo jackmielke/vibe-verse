@@ -325,6 +325,12 @@ export default function Lobby() {
         model.scale.setScalar(fit);
         model.updateMatrixWorld(true);
         const scaled = new THREE.Box3().setFromObject(model);
+        const scaledSize = new THREE.Vector3();
+        scaled.getSize(scaledSize);
+        // Center horizontally on the turntable so the character isn't
+        // hanging off to one side (some GLBs have off-origin pivots).
+        model.position.x = -(scaled.min.x + scaledSize.x / 2);
+        model.position.z = -(scaled.min.z + scaledSize.z / 2);
         model.position.y = 0.05 - scaled.min.y;
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
@@ -485,7 +491,7 @@ export default function Lobby() {
         }
       `}</style>
 
-      <div className="relative z-10 flex flex-col gap-4 px-4 md:px-10 pt-6 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
+      <div className="relative z-10 flex flex-col gap-4 px-4 md:px-10 pt-20 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
         {/* Top bar */}
         <div className="flex items-center gap-2 flex-wrap">
           <Link
@@ -518,11 +524,11 @@ export default function Lobby() {
             >
               <canvas
                 ref={canvasRef}
-                className="w-full block touch-none"
-                style={{ aspectRatio: "4/5", height: "auto" }}
+                className="w-full block touch-none aspect-square md:aspect-[4/5] max-h-[60vh]"
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
               />
+
 
               {/* Scanline + flicker overlay */}
               <div className="absolute inset-0 pointer-events-none holo-scanlines" />
