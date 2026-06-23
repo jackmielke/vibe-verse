@@ -524,11 +524,11 @@ export default function Lobby() {
             >
               <canvas
                 ref={canvasRef}
-                className="w-full block touch-none"
-                style={{ aspectRatio: "4/5", height: "auto" }}
+                className="w-full block touch-none aspect-square md:aspect-[4/5] max-h-[60vh]"
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
               />
+
 
               {/* Scanline + flicker overlay */}
               <div className="absolute inset-0 pointer-events-none holo-scanlines" />
