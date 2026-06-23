@@ -62,6 +62,7 @@ import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
+import { generateCharacterName } from "@/lib/character-naming";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
