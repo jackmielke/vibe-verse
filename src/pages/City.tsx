@@ -62,6 +62,7 @@ import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
+import { generateCharacterName } from "@/lib/character-naming";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
@@ -426,8 +427,15 @@ function shortClipName(raw: string) {
 
 export default function City() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [entered, setEntered] = useState(false);
-  const enteredRef = useRef(false);
+  // ?fresh=1 means the visitor was just auto-rolled into Edge Island
+  // from the hub — skip the entry overlay and show a floating chip so
+  // they can re-roll or open the full picker without ever seeing the
+  // sign-in / character grid first.
+  const isFreshDrop =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("fresh") === "1";
+  const [entered, setEntered] = useState(isFreshDrop);
+  const enteredRef = useRef(isFreshDrop);
+  const [showFreshChip, setShowFreshChip] = useState(isFreshDrop);
   const [hud, setHud] = useState({
     alt: 0,
     spd: 0,
@@ -2682,6 +2690,63 @@ export default function City() {
           </div>
         </div>
       )}
+
+      {/* Fresh-drop chip — only appears after the hub auto-rolled the
+          visitor into Edge Island. Lets them re-roll their character +
+          name on the spot, or jump to the full picker. Dismisses on
+          either action (or on the ✕). */}
+      {entered && showFreshChip && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
+          <div className="glass-panel rounded-full border border-primary/40 pl-3 pr-1 py-1 flex items-center gap-2 shadow-[0_0_24px_hsl(var(--primary)/0.35)]">
+            <span className="text-[10px] font-heading font-semibold uppercase tracking-widest text-primary whitespace-nowrap">
+              You are {playerName}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const pool = CHARACTERS;
+                if (!pool.length) return;
+                let next = pool[Math.floor(Math.random() * pool.length)];
+                if (pool.length > 1) {
+                  while (next.name === charRef.current) {
+                    next = pool[Math.floor(Math.random() * pool.length)];
+                  }
+                }
+                const nm = generateCharacterName(next.name.replace(/_/g, " "));
+                setCharName(next.name);
+                charRef.current = next.name;
+                localStorage.setItem("city.character", next.name);
+                setActiveCharacter(next.name);
+                loadPilotRef.current?.(next.name);
+                setPlayerName(nm);
+                localStorage.setItem("city.playerName", nm);
+                localStorage.setItem("city.displayName", nm);
+                mpRef.current?.setName(nm);
+              }}
+              title="Re-roll character + name"
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-primary/15 hover:bg-primary/25 text-primary transition-colors"
+            >
+              🎲 Re-roll
+            </button>
+            <a
+              href="/lobby"
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white/5 hover:bg-white/10 text-foreground/85 transition-colors"
+              title="Open the full character picker"
+            >
+              👤 Pick
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowFreshChip(false)}
+              className="rounded-full w-6 h-6 text-[11px] text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* World controls: day/night toggle + character picker. The
           blur() calls keep focus off the buttons so Space stays on

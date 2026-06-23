@@ -13,6 +13,7 @@
 import { useMemo, useState } from "react";
 import { CharacterPreview } from "@/island/CharacterPreview";
 import type { CharacterOption } from "@/island/characters";
+import { generateCharacterName } from "@/lib/character-naming";
 
 type CityChar = { name: string; url: string };
 
@@ -46,22 +47,13 @@ function toOption(c: CityChar, i: number): CharacterOption {
   };
 }
 
-const FUN_ADJ = [
-  "Neon", "Cosmic", "Mellow", "Turbo", "Glitchy", "Lucid", "Vibey", "Plush",
-  "Disco", "Solar", "Lunar", "Pixel", "Velvet", "Frosty", "Sparkly", "Drifty",
-  "Cyber", "Holo", "Zesty", "Cozy", "Snappy", "Breezy", "Funky", "Radiant",
-];
-const FUN_NOUN = [
-  "Otter", "Comet", "Jellyfish", "Falcon", "Beetle", "Sprout", "Phantom",
-  "Pixie", "Mango", "Pegasus", "Koi", "Echo", "Rover", "Drifter", "Glider",
-  "Sparrow", "Lynx", "Maple", "Quasar", "Nebula", "Pebble", "Lantern",
-];
-
-export function generateFunName(): string {
-  const a = FUN_ADJ[Math.floor(Math.random() * FUN_ADJ.length)];
-  const n = FUN_NOUN[Math.floor(Math.random() * FUN_NOUN.length)];
-  const num = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-  return `${a} ${n} ${num}`;
+/**
+ * Back-compat shim — still used by City.tsx for the first-time seed.
+ * Delegates to the shared character-aware namer so a roll without
+ * context still feels like the rest of the app.
+ */
+export function generateFunName(label?: string): string {
+  return generateCharacterName(label);
 }
 
 interface Props {
@@ -132,7 +124,7 @@ export default function CityEntryScreen({
             />
             <button
               type="button"
-              onClick={() => setName(generateFunName())}
+              onClick={() => setName(generateCharacterName(currentOption?.name))}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-muted-foreground hover:bg-white/10 hover:text-foreground"
               title="Roll a new fun name"
             >
@@ -169,7 +161,7 @@ export default function CityEntryScreen({
 
         <button
           onClick={() => {
-            const cleanName = name.trim() || generateFunName();
+            const cleanName = name.trim() || generateCharacterName(currentOption?.name);
             onEnter({ character: currentOption?.id ?? picked, name: cleanName });
           }}
           className="rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold uppercase tracking-[0.25em] text-primary-foreground shadow-[0_0_32px_hsl(var(--primary)/0.55)] transition-opacity hover:opacity-90"
