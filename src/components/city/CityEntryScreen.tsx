@@ -124,7 +124,7 @@ export default function CityEntryScreen({
             />
             <button
               type="button"
-              onClick={() => setName(generateFunName())}
+              onClick={() => setName(generateCharacterName(currentOption?.name))}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-muted-foreground hover:bg-white/10 hover:text-foreground"
               title="Roll a new fun name"
             >
