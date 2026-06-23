@@ -325,6 +325,12 @@ export default function Lobby() {
         model.scale.setScalar(fit);
         model.updateMatrixWorld(true);
         const scaled = new THREE.Box3().setFromObject(model);
+        const scaledSize = new THREE.Vector3();
+        scaled.getSize(scaledSize);
+        // Center horizontally on the turntable so the character isn't
+        // hanging off to one side (some GLBs have off-origin pivots).
+        model.position.x = -(scaled.min.x + scaledSize.x / 2);
+        model.position.z = -(scaled.min.z + scaledSize.z / 2);
         model.position.y = 0.05 - scaled.min.y;
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
