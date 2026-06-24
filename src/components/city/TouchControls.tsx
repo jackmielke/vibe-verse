@@ -32,9 +32,12 @@ function safeCapture(el: HTMLElement, pointerId: number) {
 export default function TouchControls({
   moveRef,
   jetRef,
+  mode = "jet",
 }: {
   moveRef: React.MutableRefObject<TouchMove>;
   jetRef: React.MutableRefObject<boolean>;
+  /** "jet" = jetpack thrust (hold), "jump" = parkour jump (tap). */
+  mode?: "jet" | "jump";
 }) {
   const baseRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ x: 0, y: 0 });
