@@ -14,6 +14,20 @@ export interface MarsWorld {
   update(dt: number, now: number): void;
   spawn: THREE.Vector3;
   padCenter: THREE.Vector3;
+  /** Root meshes for raycasting. Each carries userData.gremlinIndex. */
+  gremlinTargets: THREE.Object3D[];
+  /** Returns the gremlin index for a raycast hit, or -1. */
+  hitTest(obj: THREE.Object3D): number;
+  /** Mark a gremlin as dead. Returns true if it was alive. */
+  killGremlin(index: number): boolean;
+  /** Reset all gremlins to alive + a new orbit. */
+  resetGremlins(): void;
+  /** How many are still alive. */
+  aliveCount(): number;
+  /** Total spawned. */
+  totalCount(): number;
+  /** Fires whenever the alive count changes. */
+  onChange(cb: (alive: number, total: number) => void): () => void;
 }
 
 const MARS_RADIUS = 52;
