@@ -1545,6 +1545,92 @@ export default function City() {
       if (start) loadPilot(start.url);
     }
 
+    // ---- Avatar portal hologram preview --------------------------------
+    // A holographic clone of the currently-previewed character that
+    // floats on the avatar portal pedestal so the player can see
+    // themselves before committing. Loads on demand when React tells
+    // us the player is near; tears down when they walk away.
+    let holoModel: THREE.Object3D | null = null;
+    let holoMixer: THREE.AnimationMixer | null = null;
+    let holoGen = 0;
+    const disposeHolo = () => {
+      if (!holoModel) return;
+      island.avatarStage.remove(holoModel);
+      holoModel.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.geometry?.dispose();
+        const mat = m.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+        else mat?.dispose();
+      });
+      holoModel = null;
+      holoMixer?.stopAllAction();
+      holoMixer = null;
+    };
+    const holoLoader = new GLTFLoader();
+    mountAvatarHoloRef.current = (charNameForHolo) => {
+      const gen = ++holoGen;
+      disposeHolo();
+      if (!charNameForHolo) return;
+      const c = CHARACTERS.find((x) => x.name === charNameForHolo);
+      if (!c) return;
+      holoLoader.load(c.url, (gltf) => {
+        if (gen !== holoGen) return; // superseded
+        const model = gltf.scene;
+        model.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const fit = 2.2 / Math.max(size.x, size.y, size.z, 0.0001);
+        model.scale.setScalar(fit);
+        model.updateMatrixWorld(true);
+        const scaled = new THREE.Box3().setFromObject(model);
+        model.position.y = -scaled.min.y;
+        model.position.x = -((scaled.min.x + scaled.max.x) / 2);
+        model.position.z = -((scaled.min.z + scaled.max.z) / 2);
+        // Swap every material with an additive cyan-tinted basic mat so
+        // the silhouette reads as a hologram instead of a real model.
+        model.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const swap = (mat: THREE.Material): THREE.Material => {
+            const std = mat as THREE.MeshStandardMaterial;
+            const base = std.color?.clone() ?? new THREE.Color("#7af0ff");
+            base.lerp(new THREE.Color("#7af0ff"), 0.4);
+            return new THREE.MeshBasicMaterial({
+              color: base,
+              transparent: true,
+              opacity: 0.62,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+              fog: false,
+            });
+          };
+          if (Array.isArray(mesh.material)) {
+            mesh.material = mesh.material.map(swap);
+          } else if (mesh.material) {
+            mesh.material = swap(mesh.material);
+          }
+        });
+        holoModel = model;
+        island.avatarStage.add(model);
+        if (gltf.animations.length) {
+          holoMixer = new THREE.AnimationMixer(model);
+          const idle =
+            gltf.animations.find((a) => /idle/i.test(a.name)) ?? gltf.animations[0];
+          if (idle) holoMixer.clipAction(idle).reset().play();
+        }
+      });
+    };
+    // Per-frame holo tick — gentle spin + animation mixer.
+    const updateAvatarHolo = (dt: number) => {
+      if (holoModel) holoModel.rotation.y += dt * 0.6;
+      holoMixer?.update(dt);
+    };
+
+
+
     // Procedural jetpack: backplate + twin tanks + nozzles + flames.
     const jetpack = new THREE.Group();
     const packMat = new THREE.MeshStandardMaterial({
