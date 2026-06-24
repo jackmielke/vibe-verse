@@ -2082,8 +2082,8 @@ export default function City() {
         mp.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
         agentResidents.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
       }
-      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MOON_X + 80);
-      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MOON_Z - 80, CITY_HALF + 40);
+      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MARS_X + 120);
+      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MARS_Z - 120, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
         pos.x = nx;
         pos.z = nz;
