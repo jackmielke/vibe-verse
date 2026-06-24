@@ -1991,6 +1991,8 @@ export default function City() {
     let onGround = true;
     let prevJetInput = false;
     let coyoteTimer = 0; // grace window so jumping just after leaving ground feels right
+    let wallJumpUsed = false; // one parkour wall-jump per air phase
+    let peakY = 0; // highest Y reached this air phase, for fall-damage
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
