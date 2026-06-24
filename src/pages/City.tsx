@@ -3983,6 +3983,17 @@ export default function City() {
               ✨ Open Vibe Maker
             </button>
           )}
+          {nearNinjaPortal && !underground && (
+            <button
+              onClick={(e) => {
+                enterUndergroundRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-purple-100 border border-purple-400/50 shadow-[0_0_24px_rgba(183,138,255,0.55)] bg-purple-950/30 backdrop-blur-md hover:bg-purple-500/15 transition-colors"
+            >
+              🥷 Enter Ninja Portal
+            </button>
+          )}
           {nearAvatarPortal && (
             <div className="flex flex-col items-center gap-2">
               <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-2 border border-cyan-300/40 shadow-[0_0_28px_rgba(122,240,255,0.55)] bg-cyan-950/30 backdrop-blur-md">
