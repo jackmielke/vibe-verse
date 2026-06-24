@@ -478,6 +478,7 @@ export default function City() {
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
+  const marsSpawnRef = useRef<(() => void) | null>(null);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
