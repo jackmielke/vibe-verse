@@ -513,6 +513,8 @@ export default function City() {
   // Touch controls write straight into these; the tick reads them.
   const touchMoveRef = useRef<TouchMove>({ x: 0, y: 0 });
   const touchJetRef = useRef(false);
+  // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
+  const [respawnFx, setRespawnFx] = useState(0);
   const isTouch =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
