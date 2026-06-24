@@ -71,6 +71,8 @@ import {
   updateSpawns,
   type IslandSpawnRow,
 } from "@/components/city/islandSpawns";
+import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
+
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
