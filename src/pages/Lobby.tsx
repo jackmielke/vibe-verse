@@ -532,7 +532,7 @@ export default function Lobby() {
             >
               <canvas
                 ref={canvasRef}
-                className="w-full block touch-none aspect-square md:aspect-[4/5] max-h-[60vh]"
+                className="w-full block touch-none aspect-[4/5] max-h-[52vh] md:max-h-[60vh]"
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
               />
