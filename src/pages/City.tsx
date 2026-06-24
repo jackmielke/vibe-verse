@@ -479,6 +479,19 @@ export default function City() {
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
+  // Mars minigame: hunt down all the gremlins. The 3D scene owns the
+  // truth (see mars.ts); these refs/state mirror it for the HUD chip.
+  const marsResetRef = useRef<(() => void) | null>(null);
+  const [marsGame, setMarsGame] = useState({
+    onMars: false,
+    alive: 0,
+    total: 0,
+  });
+  // Mirror for click handlers / tick loop without re-binding.
+  const marsGameRef = useRef(marsGame);
+  useEffect(() => {
+    marsGameRef.current = marsGame;
+  }, [marsGame]);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
@@ -1148,6 +1161,12 @@ export default function City() {
       boxes,
     });
     scene.add(marsWorld.group);
+    // Wire the gremlin minigame to the React HUD.
+    setMarsGame((g) => ({ ...g, alive: marsWorld.aliveCount(), total: marsWorld.totalCount() }));
+    const unsubMars = marsWorld.onChange((alive, total) =>
+      setMarsGame((g) => ({ ...g, alive, total })),
+    );
+    marsResetRef.current = () => marsWorld.resetGremlins();
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
@@ -1699,6 +1718,28 @@ export default function City() {
     let dragLast = { x: 0, y: 0 };
     let pinchStart: { dist: number; camDist: number } | null = null;
     const clampDist = (d: number) => THREE.MathUtils.clamp(d, MIN_CAM_DIST, MAX_CAM_DIST);
+    // Tap detection for the Mars gremlin minigame — short press + small
+    // movement counts as a click, separate from camera drag.
+    let tapStart: { x: number; y: number; t: number } | null = null;
+    const marsRaycaster = new THREE.Raycaster();
+    const tryKillGremlin = (cx: number, cy: number) => {
+      if (marsGameRef.current.alive <= 0) return false;
+      // Only allow killing when you're actually on Mars.
+      const p = player.position;
+      const onMars =
+        Math.hypot(p.x - MARS_X, p.z - MARS_Z) < 70 && p.y > MARS_TOP - 30;
+      if (!onMars) return false;
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
+      const ny = -((cy - rect.top) / rect.height) * 2 + 1;
+      marsRaycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const hits = marsRaycaster.intersectObjects(marsWorld.gremlinTargets, true);
+      for (const h of hits) {
+        const idx = marsWorld.hitTest(h.object);
+        if (idx >= 0 && marsWorld.killGremlin(idx)) return true;
+      }
+      return false;
+    };
     const onPointerDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
@@ -1709,10 +1750,12 @@ export default function City() {
       if (pointers.size === 1) {
         dragPointer = e.pointerId;
         dragLast = { x: e.clientX, y: e.clientY };
+        tapStart = { x: e.clientX, y: e.clientY, t: performance.now() };
       } else if (pointers.size === 2) {
         dragPointer = null; // two fingers = pinch, not look
         const [a, b] = [...pointers.values()];
         pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), camDist };
+        tapStart = null;
       }
     };
     const onPointerMove = (e: PointerEvent) => {
@@ -1738,6 +1781,16 @@ export default function City() {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStart = null;
       if (dragPointer === e.pointerId) dragPointer = null;
+      // Treat as a tap if it was quick and barely moved.
+      if (tapStart) {
+        const dx = e.clientX - tapStart.x;
+        const dy = e.clientY - tapStart.y;
+        const dt = performance.now() - tapStart.t;
+        if (dt < 350 && Math.hypot(dx, dy) < 8) {
+          tryKillGremlin(e.clientX, e.clientY);
+        }
+        tapStart = null;
+      }
     };
     // Laptop trackpads report pinches as ctrl+wheel — zoom the camera
     // instead of the page, with a much stronger rate than scrolling.
@@ -1876,6 +1929,11 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
+      // Track whether the player is on Mars so the gremlin HUD shows.
+      const onMarsNow =
+        Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
+        player.position.y > MARS_TOP - 30;
+      setMarsGame((g) => (g.onMars === onMarsNow ? g : { ...g, onMars: onMarsNow }));
 
       // Nearest chattable person (real player OR AI agent) within ~3.2m.
       const NEAR_RADIUS = 3.2;
@@ -2485,6 +2543,8 @@ export default function City() {
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
       marsSpawnRef.current = null;
+      marsResetRef.current = null;
+      unsubMars();
       void voiceRef.current?.end().catch(() => {});
       voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
@@ -2732,6 +2792,29 @@ export default function City() {
           </div>
         </div>
       )}
+
+      {/* Mars gremlin hunt: tap a gremlin to vaporize it. When the
+          pad is clear, you win — Restart respawns all six. */}
+      {entered && marsGame.onMars && (
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
+          <div className="glass-panel rounded-full border border-[#ff7a3c]/50 pl-3 pr-1 py-1 flex items-center gap-2 shadow-[0_0_28px_rgba(255,90,30,0.45)]">
+            <span className="text-[10px] font-heading font-semibold uppercase tracking-widest text-[#ffb27a] whitespace-nowrap">
+              {marsGame.alive > 0
+                ? `👾 Gremlins ${marsGame.total - marsGame.alive}/${marsGame.total}`
+                : "🏆 Mars cleared!"}
+            </span>
+            <button
+              type="button"
+              onClick={() => marsResetRef.current?.()}
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-[#ff5a1f]/20 hover:bg-[#ff5a1f]/35 text-[#ffd2b5] transition-colors"
+              title="Respawn all gremlins"
+            >
+              🔁 Restart
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* Fresh-drop chip — only appears after the hub auto-rolled the
           visitor into Edge Island. Lets them re-roll their character +

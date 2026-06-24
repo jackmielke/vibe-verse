@@ -209,8 +209,11 @@ export function buildMoon(opts: {
     metalness: 0,
   });
   const moon = new THREE.Mesh(new THREE.SphereGeometry(MOON_RADIUS, 48, 36), surfaceMat);
-  // Drop the sphere so its top sits at topY (group origin).
-  moon.position.y = -MOON_RADIUS + 1.2;
+  // Drop the sphere so its CRATERED top sits a hair BELOW the pad —
+  // the noise displacement below can push verts up ~1.5, so we leave
+  // ~3 units of headroom so the pad always rests on top of the body
+  // and the player can't walk through the rim.
+  moon.position.y = -MOON_RADIUS - 2.5;
   // Subtle vertex jitter for a cratered silhouette.
   {
     const pos = moon.geometry.attributes.position as THREE.BufferAttribute;

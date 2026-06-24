@@ -14,6 +14,20 @@ export interface MarsWorld {
   update(dt: number, now: number): void;
   spawn: THREE.Vector3;
   padCenter: THREE.Vector3;
+  /** Root meshes for raycasting. Each carries userData.gremlinIndex. */
+  gremlinTargets: THREE.Object3D[];
+  /** Returns the gremlin index for a raycast hit, or -1. */
+  hitTest(obj: THREE.Object3D): number;
+  /** Mark a gremlin as dead. Returns true if it was alive. */
+  killGremlin(index: number): boolean;
+  /** Reset all gremlins to alive + a new orbit. */
+  resetGremlins(): void;
+  /** How many are still alive. */
+  aliveCount(): number;
+  /** Total spawned. */
+  totalCount(): number;
+  /** Fires whenever the alive count changes. */
+  onChange(cb: (alive: number, total: number) => void): () => void;
 }
 
 const MARS_RADIUS = 52;
@@ -172,7 +186,10 @@ export function buildMars(opts: {
     metalness: 0,
   });
   const planet = new THREE.Mesh(new THREE.SphereGeometry(MARS_RADIUS, 56, 40), planetMat);
-  planet.position.y = -MARS_RADIUS + 1.2;
+  // Sink the planet so its noisy top sits below the landing pad —
+  // otherwise the bowl rises through the pad and the player walks
+  // through the rim. Leaves ~2-3 units of headroom for the pad.
+  planet.position.y = -MARS_RADIUS - 2.5;
   {
     const pos = planet.geometry.attributes.position as THREE.BufferAttribute;
     const v = new THREE.Vector3();
@@ -201,7 +218,7 @@ export function buildMars(opts: {
       depthWrite: false,
     }),
   );
-  halo.position.y = -MARS_RADIUS + 1.2;
+  halo.position.y = -MARS_RADIUS - 2.5;
   group.add(halo);
 
   // ---- Landing pad --------------------------------------------------
@@ -276,7 +293,19 @@ export function buildMars(opts: {
   }
 
   // ---- Gremlins ----------------------------------------------------
-  const gremlins: { mesh: THREE.Group; orbitR: number; speed: number; phase: number; bob: number }[] = [];
+  // The "kill the gremlins" minigame: each one is a click target with
+  // an `alive` flag. When killed we shrink it out, hide it, and emit a
+  // change event so HUDs can update their counters.
+  interface Gremlin {
+    mesh: THREE.Group;
+    orbitR: number;
+    speed: number;
+    phase: number;
+    bob: number;
+    alive: boolean;
+    deathT: number; // 0..1 shrink animation
+  }
+  const gremlins: Gremlin[] = [];
   const N_GREMLINS = 6;
   for (let i = 0; i < N_GREMLINS; i++) {
     const m = makeGremlin();
@@ -284,9 +313,29 @@ export function buildMars(opts: {
     const phase = Math.random() * Math.PI * 2;
     const speed = 0.25 + Math.random() * 0.35;
     m.position.set(Math.cos(phase) * orbitR, 0.05, Math.sin(phase) * orbitR);
+    // Tag every descendant so raycaster hits map back to the index.
+    m.userData.gremlinIndex = i;
+    m.traverse((o) => {
+      o.userData.gremlinIndex = i;
+    });
     group.add(m);
-    gremlins.push({ mesh: m, orbitR, speed: speed * (Math.random() < 0.5 ? -1 : 1), phase, bob: Math.random() * Math.PI * 2 });
+    gremlins.push({
+      mesh: m,
+      orbitR,
+      speed: speed * (Math.random() < 0.5 ? -1 : 1),
+      phase,
+      bob: Math.random() * Math.PI * 2,
+      alive: true,
+      deathT: 0,
+    });
   }
+
+  const changeListeners = new Set<(alive: number, total: number) => void>();
+  const aliveCount = () => gremlins.reduce((n, g) => n + (g.alive ? 1 : 0), 0);
+  const emitChange = () => {
+    const a = aliveCount();
+    changeListeners.forEach((cb) => cb(a, gremlins.length));
+  };
 
   // ---- Dust devil swirl --------------------------------------------
   const dustGeo = new THREE.BufferGeometry();
@@ -337,17 +386,26 @@ export function buildMars(opts: {
       (beam.material as THREE.MeshBasicMaterial).opacity =
         0.2 + Math.sin(now * 0.0019) * 0.12;
       gremlins.forEach((g) => {
-        g.phase += dt * g.speed;
-        const x = Math.cos(g.phase) * g.orbitR;
-        const z = Math.sin(g.phase) * g.orbitR;
-        g.mesh.position.x = x;
-        g.mesh.position.z = z;
-        g.mesh.position.y = 0.05 + Math.sin(now * 0.004 + g.bob) * 0.25;
-        // Face direction of motion.
-        g.mesh.rotation.y = Math.atan2(
-          -Math.sin(g.phase) * g.speed,
-          Math.cos(g.phase) * g.speed,
-        );
+        if (g.alive) {
+          g.phase += dt * g.speed;
+          const x = Math.cos(g.phase) * g.orbitR;
+          const z = Math.sin(g.phase) * g.orbitR;
+          g.mesh.position.x = x;
+          g.mesh.position.z = z;
+          g.mesh.position.y = 0.05 + Math.sin(now * 0.004 + g.bob) * 0.25;
+          g.mesh.rotation.y = Math.atan2(
+            -Math.sin(g.phase) * g.speed,
+            Math.cos(g.phase) * g.speed,
+          );
+        } else if (g.deathT < 1) {
+          // Quick poof: spin + shrink, then hide.
+          g.deathT = Math.min(1, g.deathT + dt * 2.5);
+          const s = Math.max(0.001, 1 - g.deathT);
+          g.mesh.scale.setScalar(s);
+          g.mesh.rotation.y += dt * 12;
+          g.mesh.position.y += dt * 2;
+          if (g.deathT >= 1) g.mesh.visible = false;
+        }
       });
       ringSpinners.forEach((r, i) => {
         r.rotation.z += dt * (0.4 + i * 0.2);
@@ -355,5 +413,43 @@ export function buildMars(opts: {
     },
     spawn: new THREE.Vector3(centerX, topY + 6, centerZ + PAD_HALF * 0.4),
     padCenter: new THREE.Vector3(centerX, topY, centerZ),
+    gremlinTargets: gremlins.map((g) => g.mesh),
+    hitTest(obj) {
+      let cur: THREE.Object3D | null = obj;
+      while (cur) {
+        const idx = cur.userData?.gremlinIndex;
+        if (typeof idx === "number") return idx;
+        cur = cur.parent;
+      }
+      return -1;
+    },
+    killGremlin(index) {
+      const g = gremlins[index];
+      if (!g || !g.alive) return false;
+      g.alive = false;
+      g.deathT = 0;
+      emitChange();
+      return true;
+    },
+    resetGremlins() {
+      gremlins.forEach((g, i) => {
+        g.alive = true;
+        g.deathT = 0;
+        g.mesh.visible = true;
+        g.mesh.scale.setScalar(1);
+        g.phase = (i / gremlins.length) * Math.PI * 2 + Math.random() * 0.6;
+        g.orbitR = PAD_HALF * 0.55 + Math.random() * PAD_HALF * 0.5;
+        g.speed =
+          (0.25 + Math.random() * 0.35) * (Math.random() < 0.5 ? -1 : 1);
+        g.bob = Math.random() * Math.PI * 2;
+      });
+      emitChange();
+    },
+    aliveCount,
+    totalCount: () => gremlins.length,
+    onChange(cb) {
+      changeListeners.add(cb);
+      return () => changeListeners.delete(cb);
+    },
   };
 }
