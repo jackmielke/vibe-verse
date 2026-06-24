@@ -2992,27 +2992,57 @@ export default function City() {
         </div>
       )}
 
-      {/* Mars gremlin hunt: tap a gremlin to vaporize it. When the
-          pad is clear, you win — Restart respawns all six. */}
+      {/* Mars gremlin hunt: JUMP on the gremlins to splat them, don't
+          let them bite you. Clear the pad to lock in a best time. */}
       {entered && marsGame.onMars && (
         <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
-          <div className="glass-panel rounded-full border border-[#ff7a3c]/50 pl-3 pr-1 py-1 flex items-center gap-2 shadow-[0_0_28px_rgba(255,90,30,0.45)]">
-            <span className="text-[10px] font-heading font-semibold uppercase tracking-widest text-[#ffb27a] whitespace-nowrap">
-              {marsGame.alive > 0
-                ? `👾 Gremlins ${marsGame.total - marsGame.alive}/${marsGame.total}`
-                : "🏆 Mars cleared!"}
-            </span>
-            <button
-              type="button"
-              onClick={() => marsResetRef.current?.()}
-              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-[#ff5a1f]/20 hover:bg-[#ff5a1f]/35 text-[#ffd2b5] transition-colors"
-              title="Respawn all gremlins"
-            >
-              🔁 Restart
-            </button>
+          <div className="glass-panel rounded-2xl border border-[#ff7a3c]/50 px-3 py-2 flex flex-col items-center gap-1.5 shadow-[0_0_28px_rgba(255,90,30,0.45)] min-w-[220px]">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-heading font-semibold uppercase tracking-widest text-[#ffb27a] whitespace-nowrap">
+                {marsGame.cleared
+                  ? "🏆 Mars cleared!"
+                  : `👾 Gremlins ${marsGame.total - marsGame.alive}/${marsGame.total}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => marsResetRef.current?.()}
+                className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-[#ff5a1f]/20 hover:bg-[#ff5a1f]/35 text-[#ffd2b5] transition-colors"
+                title="Respawn all gremlins"
+              >
+                🔁
+              </button>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] font-mono text-[#ffd2b5]">
+              <span aria-label="lives">
+                {Array.from({ length: MARS_MAX_HEARTS }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={
+                      i < marsGame.hearts ? "text-rose-400" : "text-rose-400/20"
+                    }
+                  >
+                    ❤
+                  </span>
+                ))}
+              </span>
+              <span className="opacity-90">
+                ⏱ {(marsGame.runMs / 1000).toFixed(1)}s
+              </span>
+              {marsGame.bestMs !== null && (
+                <span className="opacity-60">
+                  best {(marsGame.bestMs / 1000).toFixed(1)}s
+                </span>
+              )}
+            </div>
+            {!marsGame.running && !marsGame.cleared && marsGame.alive === marsGame.total && (
+              <div className="text-[10px] text-[#ffb27a]/80 italic">
+                Jump on a gremlin to start the clock
+              </div>
+            )}
           </div>
         </div>
       )}
+
 
 
       {/* Fresh-drop chip — only appears after the hub auto-rolled the
