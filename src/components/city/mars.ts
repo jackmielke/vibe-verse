@@ -1,37 +1,59 @@
 /**
- * mars — the red planet, far across the sky from the city. A little
- * landable world with a rusty surface, dust devils, and a handful of
- * roaming "gremlins" — small chittery creatures that wander the pad.
+ * mars — the red planet. Home to the gremlins, the mascots of
+ * negativity in this little universe. They want to wreck things; you
+ * want to bonk them. The Mars pad doubles as a tiny speedrun arena:
  *
- * Mirrors the structure of moon.ts: build a Group, push a square
- * collision pad, and return { group, update, spawn, padCenter }.
+ *   - Walk into a gremlin from the side → they bite you (lose a heart)
+ *   - Jump and land on top of one → splat (kill)
+ *   - Gremlins burrow and re-emerge somewhere else, so they never sit
+ *     still long enough to be boring.
+ *
+ * Game state (kills, hearts, timer) lives in the React HUD — this
+ * module owns the world simulation and exposes `processPlayer` so the
+ * main tick can drive collisions every frame.
  */
 import * as THREE from "three";
 import type { WorldBox } from "./cardboardIsland";
 
+export interface MarsPlayerSample {
+  /** World position of the player's feet. */
+  pos: THREE.Vector3;
+  /** Vertical velocity (m/s). Negative = falling. */
+  velY: number;
+}
+
+export interface MarsTickEvents {
+  /** Number of gremlins stomped this frame (usually 0 or 1). */
+  stomps: number;
+  /** True if a roaming gremlin grabbed the player this frame. */
+  hit: boolean;
+}
+
 export interface MarsWorld {
   group: THREE.Group;
   update(dt: number, now: number): void;
+  /** Run collision + behaviour for the player. Call every frame while on Mars. */
+  processPlayer(p: MarsPlayerSample, dt: number, now: number): MarsTickEvents;
   spawn: THREE.Vector3;
   padCenter: THREE.Vector3;
-  /** Root meshes for raycasting. Each carries userData.gremlinIndex. */
-  gremlinTargets: THREE.Object3D[];
-  /** Returns the gremlin index for a raycast hit, or -1. */
-  hitTest(obj: THREE.Object3D): number;
-  /** Mark a gremlin as dead. Returns true if it was alive. */
-  killGremlin(index: number): boolean;
-  /** Reset all gremlins to alive + a new orbit. */
+  /** Reset every gremlin to roaming. */
   resetGremlins(): void;
-  /** How many are still alive. */
   aliveCount(): number;
-  /** Total spawned. */
   totalCount(): number;
-  /** Fires whenever the alive count changes. */
   onChange(cb: (alive: number, total: number) => void): () => void;
 }
 
 const MARS_RADIUS = 52;
 const PAD_HALF = 16;
+const GREMLIN_BODY_R = 0.55;
+const STOMP_HEAD_Y = 1.2;     // gremlin world-Y of "top of head" above pad
+const STOMP_RANGE = 1.4;      // how close (XZ) to count as a stomp
+const HIT_RANGE = 1.05;       // how close (XZ) to bite the player
+const STOMP_MIN_FALL = 0.5;   // need to be moving down at least this fast
+const BURROW_INTERVAL = [4.5, 9] as const;   // seconds between burrows (per gremlin)
+const BURROW_TIME = 0.9;      // sink-into-ground animation length
+const UNDERGROUND_TIME = [1.2, 2.6] as const;
+const EMERGE_TIME = 0.8;
 
 function marsSurfaceTexture(): THREE.CanvasTexture {
   const W = 1024;
@@ -41,7 +63,6 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
   c.height = H;
   const ctx = c.getContext("2d")!;
 
-  // Rusty base.
   const grad = ctx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, "#6b2418");
   grad.addColorStop(0.5, "#c0512a");
@@ -49,7 +70,6 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // Dusty speckle.
   for (let i = 0; i < 5200; i++) {
     ctx.fillStyle = `rgba(${120 + Math.random() * 90},${40 + Math.random() * 50},${
       20 + Math.random() * 40
@@ -57,7 +77,6 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
     ctx.fillRect(Math.random() * W, Math.random() * H, 1.4, 1.4);
   }
 
-  // Dark basalt patches.
   for (let i = 0; i < 16; i++) {
     const x = Math.random() * W;
     const y = 50 + Math.random() * (H - 100);
@@ -71,7 +90,6 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // Crater rings.
   for (let i = 0; i < 80; i++) {
     const x = Math.random() * W;
     const y = 40 + Math.random() * (H - 80);
@@ -93,7 +111,6 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // Polar dust cap hint.
   const cap = ctx.createLinearGradient(0, 0, 0, 60);
   cap.addColorStop(0, "rgba(255,220,200,0.55)");
   cap.addColorStop(1, "rgba(255,220,200,0)");
@@ -106,8 +123,6 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
   return t;
 }
 
-// Tiny gremlin: green body, big eyes, two horns, sits on a hover
-// blob. Built procedurally so we can spawn a handful cheaply.
 function makeGremlin(): THREE.Group {
   const g = new THREE.Group();
   const skin = new THREE.MeshStandardMaterial({
@@ -117,12 +132,11 @@ function makeGremlin(): THREE.Group {
     emissive: "#103d20",
     emissiveIntensity: 0.4,
   });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 12), skin);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(GREMLIN_BODY_R, 14, 12), skin);
   body.scale.set(1, 1.05, 0.95);
   body.position.y = 0.65;
   g.add(body);
 
-  // Eyes.
   const eyeWhite = new THREE.MeshBasicMaterial({ color: "#fff8e0" });
   const pupil = new THREE.MeshBasicMaterial({ color: "#1a0a0a" });
   [-0.18, 0.18].forEach((dx) => {
@@ -134,7 +148,6 @@ function makeGremlin(): THREE.Group {
     g.add(p);
   });
 
-  // Horns.
   const hornMat = new THREE.MeshStandardMaterial({ color: "#1a3a22", roughness: 0.7 });
   [-0.22, 0.22].forEach((dx) => {
     const h = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 8), hornMat);
@@ -143,7 +156,6 @@ function makeGremlin(): THREE.Group {
     g.add(h);
   });
 
-  // Toothy grin.
   const mouth = new THREE.Mesh(
     new THREE.PlaneGeometry(0.32, 0.08),
     new THREE.MeshBasicMaterial({ color: "#220505" }),
@@ -151,7 +163,6 @@ function makeGremlin(): THREE.Group {
   mouth.position.set(0, 0.62, 0.52);
   g.add(mouth);
 
-  // Hover glow.
   const glow = new THREE.Mesh(
     new THREE.SphereGeometry(0.45, 12, 10),
     new THREE.MeshBasicMaterial({
@@ -167,6 +178,47 @@ function makeGremlin(): THREE.Group {
   g.add(glow);
 
   return g;
+}
+
+/** Draws the lore plaque text to a canvas the obelisk can wear. */
+function makeLoreSign(): THREE.Mesh {
+  const W = 512;
+  const H = 320;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d")!;
+  // Backdrop.
+  ctx.fillStyle = "#1a0a06";
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#ff8a3c";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, W - 16, H - 16);
+  // Title.
+  ctx.fillStyle = "#ffd2b5";
+  ctx.font = "bold 44px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("⚠  GREMLINS  ⚠", W / 2, 70);
+  // Body.
+  ctx.fillStyle = "#ffe5d0";
+  ctx.font = "22px ui-sans-serif, system-ui, sans-serif";
+  const lines = [
+    "Bringers of negativity. They burrow,",
+    "they bite, they break what others build.",
+    "",
+    "STOMP them from above to pop them.",
+    "Touch them on the ground and they bite.",
+    "Clear the pad — beat your best time.",
+  ];
+  lines.forEach((ln, i) => ctx.fillText(ln, W / 2, 120 + i * 32));
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(4.4, 2.75),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }),
+  );
+  return mesh;
 }
 
 export function buildMars(opts: {
@@ -186,9 +238,6 @@ export function buildMars(opts: {
     metalness: 0,
   });
   const planet = new THREE.Mesh(new THREE.SphereGeometry(MARS_RADIUS, 56, 40), planetMat);
-  // Sink the planet so its noisy top sits below the landing pad —
-  // otherwise the bowl rises through the pad and the player walks
-  // through the rim. Leaves ~2-3 units of headroom for the pad.
   planet.position.y = -MARS_RADIUS - 2.5;
   {
     const pos = planet.geometry.attributes.position as THREE.BufferAttribute;
@@ -207,7 +256,6 @@ export function buildMars(opts: {
   }
   group.add(planet);
 
-  // Rusty atmospheric halo.
   const halo = new THREE.Mesh(
     new THREE.SphereGeometry(MARS_RADIUS * 1.1, 32, 24),
     new THREE.MeshBasicMaterial({
@@ -262,7 +310,7 @@ export function buildMars(opts: {
     height: topY,
   });
 
-  // ---- Welcome obelisk ---------------------------------------------
+  // ---- Welcome obelisk + lore plaque --------------------------------
   const obelisk = new THREE.Mesh(
     new THREE.ConeGeometry(0.9, 5.5, 4),
     new THREE.MeshStandardMaterial({
@@ -276,6 +324,17 @@ export function buildMars(opts: {
   obelisk.position.set(-PAD_HALF * 0.6, 2.75, -PAD_HALF * 0.4);
   obelisk.rotation.y = Math.PI / 4;
   group.add(obelisk);
+
+  const sign = makeLoreSign();
+  sign.position.set(PAD_HALF * 0.05, 3.2, -PAD_HALF * 0.95);
+  group.add(sign);
+  // Pair of support legs so the sign reads like a planted plaque.
+  const legMat = new THREE.MeshStandardMaterial({ color: "#5a2418", roughness: 0.8 });
+  [-1.5, 1.5].forEach((dx) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 8), legMat);
+    leg.position.set(sign.position.x + dx, 1.6, sign.position.z + 0.05);
+    group.add(leg);
+  });
 
   // Scattered red rocks.
   const rockMat = new THREE.MeshStandardMaterial({ color: "#8a3a22", roughness: 1 });
@@ -293,40 +352,60 @@ export function buildMars(opts: {
   }
 
   // ---- Gremlins ----------------------------------------------------
-  // The "kill the gremlins" minigame: each one is a click target with
-  // an `alive` flag. When killed we shrink it out, hide it, and emit a
-  // change event so HUDs can update their counters.
+  // Game model. Each gremlin cycles through these states:
+  //   roaming    — wandering on the pad, can be stomped, will bite
+  //   dying      — stomped, playing the splat animation, then hides
+  //   burrowing  — sinking into the ground (dust puff), can't be hit
+  //   underground — invisible, waiting to pop up at a new spot
+  //   emerging   — rising up at the new spot, can't bite yet
+  type GState = "roaming" | "dying" | "burrowing" | "underground" | "emerging";
   interface Gremlin {
     mesh: THREE.Group;
-    orbitR: number;
-    speed: number;
-    phase: number;
+    /** Center of current wander orbit. */
+    targetX: number;
+    targetZ: number;
+    /** Velocity for the gentle drift. */
+    vx: number;
+    vz: number;
     bob: number;
+    state: GState;
+    /** Seconds remaining in current state (for non-roaming states). */
+    stateT: number;
+    /** Countdown until next burrow while roaming. */
+    nextBurrow: number;
     alive: boolean;
-    deathT: number; // 0..1 shrink animation
   }
+
   const gremlins: Gremlin[] = [];
   const N_GREMLINS = 6;
+
+  const randPad = () => {
+    // Pick a random point on the pad (away from the very edge).
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * (PAD_HALF - 2.5);
+    return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+  };
+  const randBurrowDelay = () =>
+    BURROW_INTERVAL[0] + Math.random() * (BURROW_INTERVAL[1] - BURROW_INTERVAL[0]);
+  const randUnderTime = () =>
+    UNDERGROUND_TIME[0] + Math.random() * (UNDERGROUND_TIME[1] - UNDERGROUND_TIME[0]);
+
   for (let i = 0; i < N_GREMLINS; i++) {
     const m = makeGremlin();
-    const orbitR = PAD_HALF * 0.55 + Math.random() * PAD_HALF * 0.5;
-    const phase = Math.random() * Math.PI * 2;
-    const speed = 0.25 + Math.random() * 0.35;
-    m.position.set(Math.cos(phase) * orbitR, 0.05, Math.sin(phase) * orbitR);
-    // Tag every descendant so raycaster hits map back to the index.
-    m.userData.gremlinIndex = i;
-    m.traverse((o) => {
-      o.userData.gremlinIndex = i;
-    });
+    const p = randPad();
+    m.position.set(p.x, 0.05, p.z);
     group.add(m);
     gremlins.push({
       mesh: m,
-      orbitR,
-      speed: speed * (Math.random() < 0.5 ? -1 : 1),
-      phase,
+      targetX: p.x,
+      targetZ: p.z,
+      vx: 0,
+      vz: 0,
       bob: Math.random() * Math.PI * 2,
+      state: "roaming",
+      stateT: 0,
+      nextBurrow: randBurrowDelay(),
       alive: true,
-      deathT: 0,
     });
   }
 
@@ -335,6 +414,33 @@ export function buildMars(opts: {
   const emitChange = () => {
     const a = aliveCount();
     changeListeners.forEach((cb) => cb(a, gremlins.length));
+  };
+
+  // Burrow dust puff: a quick ring that pops when they go under or surface.
+  const puffMat = new THREE.MeshBasicMaterial({
+    color: "#ffb27a",
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const puffPool: { mesh: THREE.Mesh; life: number }[] = [];
+  for (let i = 0; i < 8; i++) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.6, 24), puffMat.clone());
+    m.rotation.x = -Math.PI / 2;
+    m.visible = false;
+    group.add(m);
+    puffPool.push({ mesh: m, life: 0 });
+  }
+  let puffIdx = 0;
+  const spawnPuff = (x: number, z: number) => {
+    const p = puffPool[puffIdx++ % puffPool.length];
+    p.mesh.position.set(x, 0.06, z);
+    p.mesh.scale.setScalar(1);
+    (p.mesh.material as THREE.MeshBasicMaterial).opacity = 0.7;
+    p.mesh.visible = true;
+    p.life = 0.6;
   };
 
   // ---- Dust devil swirl --------------------------------------------
@@ -363,7 +469,6 @@ export function buildMars(opts: {
   );
   group.add(dust);
 
-  // Beacon beam (red so you can spot Mars from the city).
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(0.8, 0.8, 260, 12, 1, true),
     new THREE.MeshBasicMaterial({
@@ -379,68 +484,152 @@ export function buildMars(opts: {
   beam.position.set(0, 130, 0);
   group.add(beam);
 
+  // Convert pad-local coords to world for collision checks.
+  const groupOriginX = centerX;
+  const groupOriginZ = centerZ;
+  const groupOriginY = topY;
+
+  const tickGremlin = (g: Gremlin, dt: number) => {
+    if (g.state === "roaming") {
+      // Wander: drift toward a moving target, with occasional re-aim.
+      g.nextBurrow -= dt;
+      if (Math.random() < dt * 0.4) {
+        const p = randPad();
+        g.targetX = p.x;
+        g.targetZ = p.z;
+      }
+      const dx = g.targetX - g.mesh.position.x;
+      const dz = g.targetZ - g.mesh.position.z;
+      const d = Math.hypot(dx, dz);
+      const speed = 2.2;
+      if (d > 0.05) {
+        g.vx = (dx / d) * speed;
+        g.vz = (dz / d) * speed;
+      }
+      g.mesh.position.x += g.vx * dt;
+      g.mesh.position.z += g.vz * dt;
+      // Clamp to pad.
+      const r = Math.hypot(g.mesh.position.x, g.mesh.position.z);
+      if (r > PAD_HALF - 1.5) {
+        g.mesh.position.x *= (PAD_HALF - 1.5) / r;
+        g.mesh.position.z *= (PAD_HALF - 1.5) / r;
+      }
+      g.bob += dt;
+      g.mesh.position.y = 0.05 + Math.sin(g.bob * 4) * 0.22;
+      g.mesh.rotation.y = Math.atan2(g.vx, g.vz);
+
+      if (g.nextBurrow <= 0) {
+        g.state = "burrowing";
+        g.stateT = BURROW_TIME;
+        spawnPuff(g.mesh.position.x, g.mesh.position.z);
+      }
+    } else if (g.state === "burrowing") {
+      g.stateT -= dt;
+      const t = 1 - Math.max(0, g.stateT) / BURROW_TIME;
+      g.mesh.position.y = 0.05 - t * 2.2;
+      g.mesh.rotation.y += dt * 6;
+      if (g.stateT <= 0) {
+        g.state = "underground";
+        g.stateT = randUnderTime();
+        g.mesh.visible = false;
+      }
+    } else if (g.state === "underground") {
+      g.stateT -= dt;
+      if (g.stateT <= 0) {
+        // Pop up somewhere new.
+        const p = randPad();
+        g.mesh.position.set(p.x, -2.2, p.z);
+        g.targetX = p.x;
+        g.targetZ = p.z;
+        g.mesh.visible = true;
+        g.state = "emerging";
+        g.stateT = EMERGE_TIME;
+        spawnPuff(p.x, p.z);
+      }
+    } else if (g.state === "emerging") {
+      g.stateT -= dt;
+      const t = 1 - Math.max(0, g.stateT) / EMERGE_TIME;
+      g.mesh.position.y = -2.2 + t * 2.25;
+      g.mesh.rotation.y += dt * 4;
+      if (g.stateT <= 0) {
+        g.state = "roaming";
+        g.nextBurrow = randBurrowDelay();
+        g.mesh.position.y = 0.05;
+        g.bob = 0;
+      }
+    } else if (g.state === "dying") {
+      g.stateT -= dt;
+      const t = 1 - Math.max(0, g.stateT) / 0.4;
+      const s = Math.max(0.001, 1 - t);
+      g.mesh.scale.setScalar(s);
+      g.mesh.rotation.y += dt * 12;
+      if (g.stateT <= 0) g.mesh.visible = false;
+    }
+  };
+
   return {
     group,
     update(dt, now) {
       dust.rotation.y += dt * 0.12;
       (beam.material as THREE.MeshBasicMaterial).opacity =
         0.2 + Math.sin(now * 0.0019) * 0.12;
-      gremlins.forEach((g) => {
-        if (g.alive) {
-          g.phase += dt * g.speed;
-          const x = Math.cos(g.phase) * g.orbitR;
-          const z = Math.sin(g.phase) * g.orbitR;
-          g.mesh.position.x = x;
-          g.mesh.position.z = z;
-          g.mesh.position.y = 0.05 + Math.sin(now * 0.004 + g.bob) * 0.25;
-          g.mesh.rotation.y = Math.atan2(
-            -Math.sin(g.phase) * g.speed,
-            Math.cos(g.phase) * g.speed,
-          );
-        } else if (g.deathT < 1) {
-          // Quick poof: spin + shrink, then hide.
-          g.deathT = Math.min(1, g.deathT + dt * 2.5);
-          const s = Math.max(0.001, 1 - g.deathT);
-          g.mesh.scale.setScalar(s);
-          g.mesh.rotation.y += dt * 12;
-          g.mesh.position.y += dt * 2;
-          if (g.deathT >= 1) g.mesh.visible = false;
-        }
-      });
+      gremlins.forEach((g) => tickGremlin(g, dt));
       ringSpinners.forEach((r, i) => {
         r.rotation.z += dt * (0.4 + i * 0.2);
       });
+      // Fade burrow puffs.
+      puffPool.forEach((p) => {
+        if (!p.mesh.visible) return;
+        p.life -= dt;
+        const m = p.mesh.material as THREE.MeshBasicMaterial;
+        m.opacity = Math.max(0, p.life / 0.6) * 0.7;
+        p.mesh.scale.multiplyScalar(1 + dt * 4);
+        if (p.life <= 0) p.mesh.visible = false;
+      });
+    },
+    processPlayer(p, _dt, _now) {
+      const events: MarsTickEvents = { stomps: 0, hit: false };
+      // Convert gremlin local coords to world space for distance.
+      for (const g of gremlins) {
+        if (!g.alive || g.state !== "roaming") continue;
+        const gx = groupOriginX + g.mesh.position.x;
+        const gz = groupOriginZ + g.mesh.position.z;
+        const gy = groupOriginY + g.mesh.position.y; // gremlin foot Y
+        const dx = p.pos.x - gx;
+        const dz = p.pos.z - gz;
+        const d = Math.hypot(dx, dz);
+        if (d > 2.0) continue;
+        // Stomp: player must be coming down and above the gremlin's head.
+        const headY = gy + STOMP_HEAD_Y;
+        if (p.velY < -STOMP_MIN_FALL && p.pos.y >= headY - 0.4 && d < STOMP_RANGE) {
+          g.alive = false;
+          g.state = "dying";
+          g.stateT = 0.4;
+          events.stomps++;
+          emitChange();
+          continue;
+        }
+        // Bite: same level as the gremlin and inside their hit ring.
+        if (Math.abs(p.pos.y - gy) < 1.6 && d < HIT_RANGE) {
+          events.hit = true;
+        }
+      }
+      return events;
     },
     spawn: new THREE.Vector3(centerX, topY + 6, centerZ + PAD_HALF * 0.4),
     padCenter: new THREE.Vector3(centerX, topY, centerZ),
-    gremlinTargets: gremlins.map((g) => g.mesh),
-    hitTest(obj) {
-      let cur: THREE.Object3D | null = obj;
-      while (cur) {
-        const idx = cur.userData?.gremlinIndex;
-        if (typeof idx === "number") return idx;
-        cur = cur.parent;
-      }
-      return -1;
-    },
-    killGremlin(index) {
-      const g = gremlins[index];
-      if (!g || !g.alive) return false;
-      g.alive = false;
-      g.deathT = 0;
-      emitChange();
-      return true;
-    },
     resetGremlins() {
-      gremlins.forEach((g, i) => {
+      gremlins.forEach((g) => {
+        const p = randPad();
         g.alive = true;
-        g.deathT = 0;
+        g.state = "roaming";
+        g.stateT = 0;
+        g.nextBurrow = randBurrowDelay();
         g.mesh.visible = true;
         g.mesh.scale.setScalar(1);
-        g.phase = (i / gremlins.length) * Math.PI * 2 + Math.random() * 0.6;
-        g.orbitR = PAD_HALF * 0.55 + Math.random() * PAD_HALF * 0.5;
-        g.speed =
-          (0.25 + Math.random() * 0.35) * (Math.random() < 0.5 ? -1 : 1);
+        g.mesh.position.set(p.x, 0.05, p.z);
+        g.targetX = p.x;
+        g.targetZ = p.z;
         g.bob = Math.random() * Math.PI * 2;
       });
       emitChange();
