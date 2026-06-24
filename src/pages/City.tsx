@@ -3656,6 +3656,11 @@ export default function City() {
 
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} mode={equippedJetpack === "none" ? "jump" : "jet"} />}
 
+      {/* Whimsical fall-damage splat → plaza respawn flash. */}
+      {entered && respawnFx > 0 && (
+        <FallSplat key={respawnFx} onDone={() => setRespawnFx(0)} />
+      )}
+
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
