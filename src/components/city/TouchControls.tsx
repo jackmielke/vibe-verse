@@ -117,9 +117,13 @@ export default function TouchControls({
           jetRef.current = false;
           setJetDown(false);
         }}
-        aria-label="Jetpack"
+        aria-label={mode === "jump" ? "Jump" : "Jetpack"}
       >
-        <Rocket className={`w-8 h-8 ${jetDown ? "text-primary-foreground" : "text-primary"}`} />
+        {mode === "jump" ? (
+          <ChevronsUp className={`w-9 h-9 ${jetDown ? "text-primary-foreground" : "text-primary"}`} strokeWidth={2.5} />
+        ) : (
+          <Rocket className={`w-8 h-8 ${jetDown ? "text-primary-foreground" : "text-primary"}`} />
+        )}
       </button>
     </>
   );
