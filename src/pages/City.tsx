@@ -117,6 +117,18 @@ const MOON_X = 360;
 const MOON_Z = -200;
 const MOON_TOP = 175;
 
+// A second moon, hanging on the opposite side of the city so the
+// skyline has more than one celestial neighbour.
+const MOON2_X = -260;
+const MOON2_Z = -240;
+const MOON2_TOP = 205;
+
+// Mars — much farther out (a real trek with the jetpack). Home to a
+// small clan of green gremlins that loop around the landing pad.
+const MARS_X = 820;
+const MARS_Z = -640;
+const MARS_TOP = 240;
+
 // Movement feel.
 const WALK_SPEED = 7;
 const RUN_SPEED = 16;
