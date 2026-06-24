@@ -186,7 +186,10 @@ export function buildMars(opts: {
     metalness: 0,
   });
   const planet = new THREE.Mesh(new THREE.SphereGeometry(MARS_RADIUS, 56, 40), planetMat);
-  planet.position.y = -MARS_RADIUS + 1.2;
+  // Sink the planet so its noisy top sits below the landing pad —
+  // otherwise the bowl rises through the pad and the player walks
+  // through the rim. Leaves ~2-3 units of headroom for the pad.
+  planet.position.y = -MARS_RADIUS - 2.5;
   {
     const pos = planet.geometry.attributes.position as THREE.BufferAttribute;
     const v = new THREE.Vector3();
@@ -215,7 +218,7 @@ export function buildMars(opts: {
       depthWrite: false,
     }),
   );
-  halo.position.y = -MARS_RADIUS + 1.2;
+  halo.position.y = -MARS_RADIUS - 2.5;
   group.add(halo);
 
   // ---- Landing pad --------------------------------------------------
