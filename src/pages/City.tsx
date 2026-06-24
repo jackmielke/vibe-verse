@@ -1713,6 +1713,28 @@ export default function City() {
     let dragLast = { x: 0, y: 0 };
     let pinchStart: { dist: number; camDist: number } | null = null;
     const clampDist = (d: number) => THREE.MathUtils.clamp(d, MIN_CAM_DIST, MAX_CAM_DIST);
+    // Tap detection for the Mars gremlin minigame — short press + small
+    // movement counts as a click, separate from camera drag.
+    let tapStart: { x: number; y: number; t: number } | null = null;
+    const marsRaycaster = new THREE.Raycaster();
+    const tryKillGremlin = (cx: number, cy: number) => {
+      if (marsGameRef.current.alive <= 0) return false;
+      // Only allow killing when you're actually on Mars.
+      const p = player.position;
+      const onMars =
+        Math.hypot(p.x - MARS_X, p.z - MARS_Z) < 70 && p.y > MARS_TOP - 30;
+      if (!onMars) return false;
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
+      const ny = -((cy - rect.top) / rect.height) * 2 + 1;
+      marsRaycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const hits = marsRaycaster.intersectObjects(marsWorld.gremlinTargets, true);
+      for (const h of hits) {
+        const idx = marsWorld.hitTest(h.object);
+        if (idx >= 0 && marsWorld.killGremlin(idx)) return true;
+      }
+      return false;
+    };
     const onPointerDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
@@ -1723,10 +1745,12 @@ export default function City() {
       if (pointers.size === 1) {
         dragPointer = e.pointerId;
         dragLast = { x: e.clientX, y: e.clientY };
+        tapStart = { x: e.clientX, y: e.clientY, t: performance.now() };
       } else if (pointers.size === 2) {
         dragPointer = null; // two fingers = pinch, not look
         const [a, b] = [...pointers.values()];
         pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), camDist };
+        tapStart = null;
       }
     };
     const onPointerMove = (e: PointerEvent) => {
@@ -1752,6 +1776,16 @@ export default function City() {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStart = null;
       if (dragPointer === e.pointerId) dragPointer = null;
+      // Treat as a tap if it was quick and barely moved.
+      if (tapStart) {
+        const dx = e.clientX - tapStart.x;
+        const dy = e.clientY - tapStart.y;
+        const dt = performance.now() - tapStart.t;
+        if (dt < 350 && Math.hypot(dx, dy) < 8) {
+          tryKillGremlin(e.clientX, e.clientY);
+        }
+        tapStart = null;
+      }
     };
     // Laptop trackpads report pinches as ctrl+wheel — zoom the camera
     // instead of the page, with a much stronger rate than scrolling.
