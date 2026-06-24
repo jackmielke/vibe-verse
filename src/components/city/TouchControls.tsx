@@ -10,7 +10,7 @@
  * The rest of the screen still orbits the camera via the canvas drag.
  */
 import { useRef, useState } from "react";
-import { Rocket } from "lucide-react";
+import { Rocket, ChevronsUp } from "lucide-react";
 
 export interface TouchMove {
   x: number; // -1..1 strafe
@@ -32,9 +32,12 @@ function safeCapture(el: HTMLElement, pointerId: number) {
 export default function TouchControls({
   moveRef,
   jetRef,
+  mode = "jet",
 }: {
   moveRef: React.MutableRefObject<TouchMove>;
   jetRef: React.MutableRefObject<boolean>;
+  /** "jet" = jetpack thrust (hold), "jump" = parkour jump (tap). */
+  mode?: "jet" | "jump";
 }) {
   const baseRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ x: 0, y: 0 });
@@ -114,9 +117,13 @@ export default function TouchControls({
           jetRef.current = false;
           setJetDown(false);
         }}
-        aria-label="Jetpack"
+        aria-label={mode === "jump" ? "Jump" : "Jetpack"}
       >
-        <Rocket className={`w-8 h-8 ${jetDown ? "text-primary-foreground" : "text-primary"}`} />
+        {mode === "jump" ? (
+          <ChevronsUp className={`w-9 h-9 ${jetDown ? "text-primary-foreground" : "text-primary"}`} strokeWidth={2.5} />
+        ) : (
+          <Rocket className={`w-8 h-8 ${jetDown ? "text-primary-foreground" : "text-primary"}`} />
+        )}
       </button>
     </>
   );

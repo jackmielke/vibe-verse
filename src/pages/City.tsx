@@ -513,6 +513,8 @@ export default function City() {
   // Touch controls write straight into these; the tick reads them.
   const touchMoveRef = useRef<TouchMove>({ x: 0, y: 0 });
   const touchJetRef = useRef(false);
+  // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
+  const [respawnFx, setRespawnFx] = useState(0);
   const isTouch =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
@@ -1991,6 +1993,8 @@ export default function City() {
     let onGround = true;
     let prevJetInput = false;
     let coyoteTimer = 0; // grace window so jumping just after leaving ground feels right
+    let wallJumpUsed = false; // one parkour wall-jump per air phase
+    let peakY = 0; // highest Y reached this air phase, for fall-damage
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
@@ -2270,11 +2274,30 @@ export default function City() {
         onGround = false;
       }
       // Parkour jump: edge-trigger when grounded (or within coyote window).
-      if (wantsJump && !prevJetInput && (onGround || coyoteTimer > 0)) {
-        vel.y = 11;
-        onGround = false;
-        coyoteTimer = 0;
-        soundsRef.current?.thud?.(0.15);
+      if (wantsJump && !prevJetInput) {
+        if (onGround || coyoteTimer > 0) {
+          vel.y = 11;
+          onGround = false;
+          coyoteTimer = 0;
+          wallJumpUsed = false;
+          soundsRef.current?.thud?.(0.15);
+        } else if (!wallJumpUsed) {
+          // Wall jump: detect a wall within reach and kick off it sideways.
+          let wx = 0, wz = 0;
+          const r = 0.85;
+          if (blockedAt(pos.x + r, pos.z, pos.y)) wx -= 1;
+          if (blockedAt(pos.x - r, pos.z, pos.y)) wx += 1;
+          if (blockedAt(pos.x, pos.z + r, pos.y)) wz -= 1;
+          if (blockedAt(pos.x, pos.z - r, pos.y)) wz += 1;
+          if (wx !== 0 || wz !== 0) {
+            const len = Math.hypot(wx, wz) || 1;
+            vel.x = (wx / len) * 12;
+            vel.z = (wz / len) * 12;
+            vel.y = 11;
+            wallJumpUsed = true;
+            soundsRef.current?.thud?.(0.2);
+          }
+        }
       }
       vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
       prevJetInput = jetInput;
@@ -2363,10 +2386,34 @@ export default function City() {
         const fall = -vel.y;
         pos.y = support;
         vel.y = 0;
-        if (!onGround && fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
+        if (!onGround) {
+          // Fall damage: any plummet of more than ~16m on hard ground
+          // ends in a whimsical splat and a plaza respawn. Mars / Moons
+          // (low-grav fight zones) are exempt so combat stays forgiving.
+          const dropFromPeak = peakY - support;
+          const inMars = Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 80;
+          const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
+          const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
+          const safeZone = inMars || inMoonA || inMoonB;
+          if (!safeZone && dropFromPeak > 16) {
+            // Splat! Respawn in the plaza with a whimsical poof.
+            soundsRef.current?.thud?.(1);
+            player.position.set(0, 6, 6);
+            vel.set(0, 0, 0);
+            wallJumpUsed = false;
+            peakY = 6;
+            onGround = false;
+            setRespawnFx(Date.now());
+            return;
+          }
+          if (fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
+        }
         onGround = true;
+        wallJumpUsed = false;
+        peakY = pos.y;
       } else if (pos.y > support + 0.05) {
         onGround = false;
+        if (pos.y > peakY) peakY = pos.y;
       }
       } // end of free-movement physics (vs. riding the zipline)
 
@@ -3607,7 +3654,26 @@ export default function City() {
         />
       )}
 
-      {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} />}
+      {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} mode={equippedJetpack === "none" ? "jump" : "jet"} />}
+
+      {/* Whimsical fall-damage splat → plaza respawn flash. */}
+      {entered && respawnFx > 0 && (
+        <div
+          key={respawnFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          onAnimationEnd={() => {
+            // Auto-clear after the fade-in finishes (≈300ms) + a short hold.
+            window.setTimeout(() => setRespawnFx(0), 1300);
+          }}
+        >
+          <div className="absolute inset-0 bg-rose-500/15 backdrop-blur-[1px]" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in">
+            <div className="text-5xl mb-1">💫</div>
+            <div className="text-sm font-semibold text-primary">SPLAT!</div>
+            <div className="text-xs text-muted-foreground">Respawning in the plaza…</div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
