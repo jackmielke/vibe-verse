@@ -1276,6 +1276,35 @@ export default function City() {
       }));
     };
 
+    // ---- Gremlin Mines (underground): pocket dimension at y=-300 ----
+    const undergroundWorld = buildUnderground({
+      centerX: UNDER_X,
+      centerY: UNDER_Y,
+      centerZ: UNDER_Z,
+      boxes,
+    });
+    scene.add(undergroundWorld.group);
+    undergroundWorldRef.current = undergroundWorld;
+
+    // ---- Two ninja portals: Edge Island nook + city alley -----------
+    const ninjaPortalIsland = makeNinjaPortal();
+    ninjaPortalIsland.position.set(
+      NINJA_PORTAL_ISLAND.x,
+      NINJA_PORTAL_ISLAND.y,
+      NINJA_PORTAL_ISLAND.z,
+    );
+    scene.add(ninjaPortalIsland);
+    const ninjaPortalCity = makeNinjaPortal();
+    ninjaPortalCity.position.set(
+      NINJA_PORTAL_CITY.x,
+      NINJA_PORTAL_CITY.y,
+      NINJA_PORTAL_CITY.z,
+    );
+    scene.add(ninjaPortalCity);
+    const ninjaPortals = [ninjaPortalIsland, ninjaPortalCity];
+
+
+
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
       const t = (i + 1) / 7;
