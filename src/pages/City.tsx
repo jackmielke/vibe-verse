@@ -132,6 +132,17 @@ const MARS_X = 820;
 const MARS_Z = -640;
 const MARS_TOP = 240;
 
+// Gremlin Mines — a pocket dimension carved 300m straight down. You
+// reach it through one of the two ninja portals (Edge Island + City).
+const UNDER_X = 0;
+const UNDER_Y = -300;
+const UNDER_Z = 0;
+// Ninja portal placements: behind the plaza on Edge Island, and in
+// a dim alley between two city towers.
+const NINJA_PORTAL_ISLAND = { x: ISLAND_X - 22, y: ISLAND_TOP, z: ISLAND_Z - 28 };
+const NINJA_PORTAL_CITY = { x: -40, y: 0, z: -54 };
+
+
 // Movement feel.
 const WALK_SPEED = 7;
 const RUN_SPEED = 16;
