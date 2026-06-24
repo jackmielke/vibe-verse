@@ -2546,8 +2546,9 @@ export default function City() {
   // is clicked while already in the city).
   useEffect(() => {
     const spawn = new URLSearchParams(routerLocation.search).get("spawn");
-    if (spawn === "island" || spawn === "moon") {
+    if (spawn === "island" || spawn === "moon" || spawn === "mars") {
       if (spawn === "moon") moonSpawnRef.current?.();
+      else if (spawn === "mars") marsSpawnRef.current?.();
       else islandSpawnRef.current?.();
       // Skip the entry overlay — visitors arriving from the hub already
       // chose where to land, so drop them straight into control.
