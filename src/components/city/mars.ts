@@ -293,7 +293,19 @@ export function buildMars(opts: {
   }
 
   // ---- Gremlins ----------------------------------------------------
-  const gremlins: { mesh: THREE.Group; orbitR: number; speed: number; phase: number; bob: number }[] = [];
+  // The "kill the gremlins" minigame: each one is a click target with
+  // an `alive` flag. When killed we shrink it out, hide it, and emit a
+  // change event so HUDs can update their counters.
+  interface Gremlin {
+    mesh: THREE.Group;
+    orbitR: number;
+    speed: number;
+    phase: number;
+    bob: number;
+    alive: boolean;
+    deathT: number; // 0..1 shrink animation
+  }
+  const gremlins: Gremlin[] = [];
   const N_GREMLINS = 6;
   for (let i = 0; i < N_GREMLINS; i++) {
     const m = makeGremlin();
@@ -301,9 +313,29 @@ export function buildMars(opts: {
     const phase = Math.random() * Math.PI * 2;
     const speed = 0.25 + Math.random() * 0.35;
     m.position.set(Math.cos(phase) * orbitR, 0.05, Math.sin(phase) * orbitR);
+    // Tag every descendant so raycaster hits map back to the index.
+    m.userData.gremlinIndex = i;
+    m.traverse((o) => {
+      o.userData.gremlinIndex = i;
+    });
     group.add(m);
-    gremlins.push({ mesh: m, orbitR, speed: speed * (Math.random() < 0.5 ? -1 : 1), phase, bob: Math.random() * Math.PI * 2 });
+    gremlins.push({
+      mesh: m,
+      orbitR,
+      speed: speed * (Math.random() < 0.5 ? -1 : 1),
+      phase,
+      bob: Math.random() * Math.PI * 2,
+      alive: true,
+      deathT: 0,
+    });
   }
+
+  const changeListeners = new Set<(alive: number, total: number) => void>();
+  const aliveCount = () => gremlins.reduce((n, g) => n + (g.alive ? 1 : 0), 0);
+  const emitChange = () => {
+    const a = aliveCount();
+    changeListeners.forEach((cb) => cb(a, gremlins.length));
+  };
 
   // ---- Dust devil swirl --------------------------------------------
   const dustGeo = new THREE.BufferGeometry();
