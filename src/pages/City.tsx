@@ -2464,7 +2464,9 @@ export default function City() {
           const inMars = Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 80;
           const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
           const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
-          const safeZone = inMars || inMoonA || inMoonB;
+          const inUnder = pos.y < -100; // the Gremlin Mines
+          const safeZone = inMars || inMoonA || inMoonB || inUnder;
+
           if (!safeZone && dropFromPeak > 16) {
             // Splat! Respawn in the plaza with a whimsical poof.
             soundsRef.current?.thud?.(1);
