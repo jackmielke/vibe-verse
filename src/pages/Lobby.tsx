@@ -197,7 +197,8 @@ export default function Lobby() {
       100,
     );
     camera.position.set(0, 1.6, 5.5);
-    camera.lookAt(0, 1.1, 0);
+    let lookAtY = 1.1;
+    camera.lookAt(0, lookAtY, 0);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     const key = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -332,6 +333,13 @@ export default function Lobby() {
         model.position.x = -(scaled.min.x + scaledSize.x / 2);
         model.position.z = -(scaled.min.z + scaledSize.z / 2);
         model.position.y = 0.05 - scaled.min.y;
+        // Re-aim the camera at the model's vertical center so short
+        // characters (cow, pug) frame as well as tall ones (alien).
+        lookAtY = 0.05 + scaledSize.y / 2;
+        // Pull the camera back a touch for tall models so heads aren't clipped.
+        const dist = 3.5 + Math.max(0, scaledSize.y - 1.6) * 1.4;
+        camera.position.set(0, lookAtY + 0.35, Math.max(4.5, dist));
+        camera.lookAt(0, lookAtY, 0);
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
           if (!mesh.isMesh) return;
@@ -491,7 +499,7 @@ export default function Lobby() {
         }
       `}</style>
 
-      <div className="relative z-10 flex flex-col gap-4 px-4 md:px-10 pt-20 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
+      <div className="relative z-10 flex flex-col gap-4 px-3 md:px-10 pt-16 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
         {/* Top bar */}
         <div className="flex items-center gap-2 flex-wrap">
           <Link
@@ -524,7 +532,7 @@ export default function Lobby() {
             >
               <canvas
                 ref={canvasRef}
-                className="w-full block touch-none aspect-square md:aspect-[4/5] max-h-[60vh]"
+                className="w-full block touch-none aspect-[4/5] max-h-[52vh] md:max-h-[60vh]"
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
               />
