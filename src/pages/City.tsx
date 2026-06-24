@@ -2534,28 +2534,31 @@ export default function City() {
         vel.y = 0;
         if (!onGround) {
           // Fall damage: any plummet of more than ~16m on hard ground
-          // ends in a whimsical splat and a plaza respawn. Mars / Moons
-          // (low-grav fight zones) are exempt so combat stays forgiving.
+          // ends in a whimsical splat and an Edge Island respawn. Mars /
+          // Moons / Gremlin Mines (combat zones) are exempt so fights
+          // stay forgiving. Underground is also gated by ref-flag so a
+          // teleport-up artifact can't ever trip the splat.
           const dropFromPeak = peakY - support;
           const inMars = Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 80;
           const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
           const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
-          const inUnder = pos.y < -100; // the Gremlin Mines
+          const inUnder = undergroundActiveRef.current || pos.y < -50;
           const safeZone = inMars || inMoonA || inMoonB || inUnder;
 
           if (!safeZone && dropFromPeak > 16) {
-            // Splat! Respawn in the plaza with a whimsical poof.
+            // Splat! Respawn on Edge Island's plaza (where Jerry lives).
             soundsRef.current?.thud?.(1);
-            player.position.set(0, 6, 6);
+            player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
             vel.set(0, 0, 0);
             wallJumpUsed = false;
-            peakY = 6;
+            peakY = ISLAND_TOP + 6;
             onGround = false;
             setRespawnFx(Date.now());
             return;
           }
           if (fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
         }
+
         onGround = true;
         wallJumpUsed = false;
         peakY = pos.y;
