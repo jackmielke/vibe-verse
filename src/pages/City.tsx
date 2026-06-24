@@ -2384,10 +2384,34 @@ export default function City() {
         const fall = -vel.y;
         pos.y = support;
         vel.y = 0;
-        if (!onGround && fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
+        if (!onGround) {
+          // Fall damage: any plummet of more than ~16m on hard ground
+          // ends in a whimsical splat and a plaza respawn. Mars / Moons
+          // (low-grav fight zones) are exempt so combat stays forgiving.
+          const dropFromPeak = peakY - support;
+          const inMars = Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 80;
+          const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
+          const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
+          const safeZone = inMars || inMoonA || inMoonB;
+          if (!safeZone && dropFromPeak > 16) {
+            // Splat! Respawn in the plaza with a whimsical poof.
+            soundsRef.current?.thud?.(1);
+            player.position.set(0, 6, 6);
+            vel.set(0, 0, 0);
+            wallJumpUsed = false;
+            peakY = 6;
+            onGround = false;
+            setRespawnFx(Date.now());
+            return;
+          }
+          if (fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
+        }
         onGround = true;
+        wallJumpUsed = false;
+        peakY = pos.y;
       } else if (pos.y > support + 0.05) {
         onGround = false;
+        if (pos.y > peakY) peakY = pos.y;
       }
       } // end of free-movement physics (vs. riding the zipline)
 
