@@ -1930,6 +1930,12 @@ export default function City() {
       vel.set(0, 0, 0);
       onGround = false;
     };
+    // /city?spawn=mars drops visitors onto the Mars landing pad.
+    marsSpawnRef.current = () => {
+      player.position.copy(marsWorld.spawn);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
 
     // Dev hook for screenshot-driven iteration (and console fun):
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
