@@ -2030,8 +2030,10 @@ export default function City() {
     // island doesn't "catch" a pilot flying far beneath it.
     const supportHeightAt = (x: number, z: number, refY: number): number => {
       // Track the tallest box top at or below refY that overlaps (x,z).
-      // Init to -Infinity so the underground floor (height < 0) is found;
-      // if nothing matches, fall back to 0 (the world's surface street level).
+      // If nothing matches and refY is on/above street level, fall back to
+      // 0 (the world floor). If refY is well below street (in the
+      // Gremlin Mines pocket dimension), fall back to a deep void so the
+      // player can't be "snapped up" to the surface by accident.
       let h = -Infinity;
       for (const b of boxes) {
         if (b.height <= refY &&
@@ -2040,8 +2042,10 @@ export default function City() {
           if (b.height > h) h = b.height;
         }
       }
-      return h === -Infinity ? 0 : h;
+      if (h !== -Infinity) return h;
+      return refY < -50 ? refY - 9999 : 0;
     };
+
 
     // Blocked when the body (feet y .. head y+1.7) overlaps a column.
     const blockedAt = (x: number, z: number, y: number): boolean => {
@@ -2273,8 +2277,14 @@ export default function City() {
       }
       vel.set(0, 0, 0);
       onGround = false;
+      // Reset airborne tracking so the long teleport up doesn't trip
+      // fall damage on the very next landing.
+      peakY = player.position.y;
+      wallJumpUsed = false;
       undergroundActiveRef.current = false;
+      undergroundInvulnRef.current = 0;
       setUnderground(false);
+
       // Reset the mines so the next run starts fresh.
       undergroundWorld.reset();
       setBossHp(undergroundWorld.bossHpRemaining());
@@ -2530,28 +2540,31 @@ export default function City() {
         vel.y = 0;
         if (!onGround) {
           // Fall damage: any plummet of more than ~16m on hard ground
-          // ends in a whimsical splat and a plaza respawn. Mars / Moons
-          // (low-grav fight zones) are exempt so combat stays forgiving.
+          // ends in a whimsical splat and an Edge Island respawn. Mars /
+          // Moons / Gremlin Mines (combat zones) are exempt so fights
+          // stay forgiving. Underground is also gated by ref-flag so a
+          // teleport-up artifact can't ever trip the splat.
           const dropFromPeak = peakY - support;
           const inMars = Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 80;
           const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
           const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
-          const inUnder = pos.y < -100; // the Gremlin Mines
+          const inUnder = undergroundActiveRef.current || pos.y < -50;
           const safeZone = inMars || inMoonA || inMoonB || inUnder;
 
           if (!safeZone && dropFromPeak > 16) {
-            // Splat! Respawn in the plaza with a whimsical poof.
+            // Splat! Respawn on Edge Island's plaza (where Jerry lives).
             soundsRef.current?.thud?.(1);
-            player.position.set(0, 6, 6);
+            player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
             vel.set(0, 0, 0);
             wallJumpUsed = false;
-            peakY = 6;
+            peakY = ISLAND_TOP + 6;
             onGround = false;
             setRespawnFx(Date.now());
             return;
           }
           if (fall > 7) soundsRef.current?.thud(Math.min(1, fall / MAX_FALL));
         }
+
         onGround = true;
         wallJumpUsed = false;
         peakY = pos.y;
@@ -2724,6 +2737,25 @@ export default function City() {
         setUnderground(insideNow);
       }
       if (insideNow) {
+        // Keep the player inside the cavern disc so they can't walk
+        // off the floor and get yanked up to the surface street.
+        const CAVE_R = 66; // a few metres inside FLOOR_R (70) in underground.ts
+        const dxC = pos.x - UNDER_X;
+        const dzC = pos.z - UNDER_Z;
+        const dC = Math.hypot(dxC, dzC);
+        if (dC > CAVE_R) {
+          const k = CAVE_R / dC;
+          pos.x = UNDER_X + dxC * k;
+          pos.z = UNDER_Z + dzC * k;
+          // Bounce velocity back inward so they don't grind the edge.
+          const nx = dxC / dC, nz = dzC / dC;
+          const vDotN = vel.x * nx + vel.z * nz;
+          if (vDotN > 0) {
+            vel.x -= vDotN * nx;
+            vel.z -= vDotN * nz;
+          }
+        }
+
         if (undergroundInvulnRef.current > 0) undergroundInvulnRef.current -= dt;
         const ev = undergroundWorld.processPlayer({ pos, velY: vel.y }, dt, now);
         if (ev.stomps > 0) {
