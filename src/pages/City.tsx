@@ -2277,8 +2277,14 @@ export default function City() {
       }
       vel.set(0, 0, 0);
       onGround = false;
+      // Reset airborne tracking so the long teleport up doesn't trip
+      // fall damage on the very next landing.
+      peakY = player.position.y;
+      wallJumpUsed = false;
       undergroundActiveRef.current = false;
+      undergroundInvulnRef.current = 0;
       setUnderground(false);
+
       // Reset the mines so the next run starts fresh.
       undergroundWorld.reset();
       setBossHp(undergroundWorld.bossHpRemaining());
