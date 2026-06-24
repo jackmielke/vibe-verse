@@ -2613,6 +2613,8 @@ export default function City() {
       disposeVR();
       applyModeRef.current = null;
       loadPilotRef.current = null;
+      mountAvatarHoloRef.current = null;
+      disposeHolo();
       setPlayerScaleRef.current = null;
       travelRef.current = null;
       resetRunRef.current = null;
