@@ -1207,19 +1207,51 @@ export function buildCardboardIsland(opts: {
   let avatarOrbitRingA!: THREE.Mesh;
   let avatarOrbitRingB!: THREE.Mesh;
   let avatarPedestalLight!: THREE.PointLight;
-  let avatarFigureGroup!: THREE.Group;
+  let avatarRimMat!: THREE.MeshBasicMaterial;
+  let avatarDiscMat!: THREE.MeshBasicMaterial;
+  // Stage = where the City scene mounts the live character holo.
+  const avatarStage = new THREE.Group();
   {
-    // Dark pedestal with a glowing mint top rim.
-    const padMat = new THREE.MeshStandardMaterial({
-      color: "#0a0f14",
-      roughness: 0.4,
-      metalness: 0.55,
+    // Clean glowing disc pedestal — no dark side panel anymore, just
+    // a thin emissive puck with a bright mint rim. Replaces the old
+    // dark cylinder whose wider base read as "half black" from a
+    // low angle.
+    const PED_R = 1.95;
+    const PED_H = 0.18;
+    const padMat = new THREE.MeshBasicMaterial({
+      color: "#0d2a24",
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      fog: false,
     });
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.95, 0.5, 32), padMat);
-    pad.position.y = 0.25;
+    const pad = new THREE.Mesh(
+      new THREE.CylinderGeometry(PED_R, PED_R, PED_H, 48),
+      padMat,
+    );
+    pad.position.y = PED_H / 2;
     avatarPortalGroup.add(pad);
 
-    const rimMat = new THREE.MeshBasicMaterial({
+    // Glowing inner disc that fakes a hologram floor — bright mint
+    // glow on top of the puck, additive so it lights up the player's
+    // feet when they step in.
+    avatarDiscMat = new THREE.MeshBasicMaterial({
+      color: "#2dd4a8",
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(PED_R * 0.95, 48),
+      avatarDiscMat,
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = PED_H + 0.005;
+    avatarPortalGroup.add(disc);
+
+    avatarRimMat = new THREE.MeshBasicMaterial({
       color: "#2dd4a8",
       transparent: true,
       opacity: 0.95,
@@ -1227,8 +1259,8 @@ export function buildCardboardIsland(opts: {
       depthWrite: false,
       fog: false,
     });
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.05, 12, 64), rimMat);
-    rim.position.y = 0.52;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(PED_R, 0.05, 12, 64), avatarRimMat);
+    rim.position.y = PED_H + 0.01;
     rim.rotation.x = Math.PI / 2;
     avatarPortalGroup.add(rim);
 
@@ -1236,13 +1268,13 @@ export function buildCardboardIsland(opts: {
     avatarBeamMat = new THREE.MeshBasicMaterial({
       color: "#7af0ff",
       transparent: true,
-      opacity: 0.12,
+      opacity: 0.1,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
       fog: false,
     });
-    const beam = new THREE.Mesh(new THREE.ConeGeometry(1.4, 4.2, 32, 1, true), avatarBeamMat);
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(1.5, 4.6, 32, 1, true), avatarBeamMat);
     beam.position.y = 2.6;
     avatarPortalGroup.add(beam);
 
@@ -1255,7 +1287,7 @@ export function buildCardboardIsland(opts: {
     sctx.fillStyle = "rgba(0,0,0,0)";
     sctx.fillRect(0, 0, 16, 256);
     for (let y = 0; y < 256; y += 4) {
-      sctx.fillStyle = `rgba(122, 240, 255, ${0.12 + Math.random() * 0.18})`;
+      sctx.fillStyle = `rgba(122, 240, 255, ${0.1 + Math.random() * 0.16})`;
       sctx.fillRect(0, y, 16, 1.5);
     }
     const scanTex = new THREE.CanvasTexture(scanCanvas);
@@ -1265,77 +1297,48 @@ export function buildCardboardIsland(opts: {
       map: scanTex,
       color: "#7af0ff",
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.4,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
       fog: false,
     });
     const scanCyl = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.05, 1.05, 3.6, 32, 1, true),
+      new THREE.CylinderGeometry(1.15, 1.15, 3.6, 32, 1, true),
       avatarScanMat,
     );
     scanCyl.position.y = 2.3;
     avatarPortalGroup.add(scanCyl);
 
-    // Holographic "figure" silhouette built from stacked discs of
-    // varying radius — reads as a humanoid form without modelling one.
-    avatarFigureGroup = new THREE.Group();
-    avatarFigureGroup.position.y = 0.55;
-    const figureSlices: Array<{ r: number; y: number }> = [
-      { r: 0.42, y: 0.05 }, // feet
-      { r: 0.55, y: 0.35 },
-      { r: 0.65, y: 0.75 }, // hips
-      { r: 0.72, y: 1.15 },
-      { r: 0.78, y: 1.55 }, // chest
-      { r: 0.72, y: 1.9 },
-      { r: 0.55, y: 2.15 }, // shoulders
-      { r: 0.35, y: 2.4 },
-      { r: 0.42, y: 2.7 }, // head
-      { r: 0.38, y: 2.95 },
-    ];
-    figureSlices.forEach((s, i) => {
-      const mat = new THREE.MeshBasicMaterial({
-        color: i % 2 === 0 ? "#7af0ff" : "#b78aff",
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        fog: false,
-      });
-      const disc = new THREE.Mesh(new THREE.TorusGeometry(s.r, 0.045, 10, 36), mat);
-      disc.position.y = s.y;
-      disc.rotation.x = Math.PI / 2;
-      avatarFigureGroup.add(disc);
-      avatarHoloRings.push(disc);
-      avatarRingMats.push(mat);
-    });
-    avatarPortalGroup.add(avatarFigureGroup);
+    // Avatar mount point — the City scene parents a holographic
+    // clone of the previewed character here.
+    avatarStage.position.y = PED_H + 0.02;
+    avatarPortalGroup.add(avatarStage);
 
-    // Two orbiting rings around the figure for that sci-fi UI vibe.
+    // Two orbiting rings around the character for that sci-fi UI vibe.
     const orbitMatA = new THREE.MeshBasicMaterial({
       color: "#2dd4a8",
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.7,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
     });
-    avatarOrbitRingA = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.04, 10, 64), orbitMatA);
-    avatarOrbitRingA.position.y = 1.8;
+    avatarOrbitRingA = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.035, 10, 64), orbitMatA);
+    avatarOrbitRingA.position.y = 1.6;
     avatarOrbitRingA.rotation.x = Math.PI / 2.3;
     avatarPortalGroup.add(avatarOrbitRingA);
 
     const orbitMatB = new THREE.MeshBasicMaterial({
       color: "#b78aff",
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.65,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
     });
-    avatarOrbitRingB = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.03, 10, 64), orbitMatB);
-    avatarOrbitRingB.position.y = 2.1;
+    avatarOrbitRingB = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.028, 10, 64), orbitMatB);
+    avatarOrbitRingB.position.y = 1.95;
     avatarOrbitRingB.rotation.x = Math.PI / 1.6;
     avatarPortalGroup.add(avatarOrbitRingB);
 
