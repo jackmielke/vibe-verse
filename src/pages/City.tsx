@@ -479,6 +479,14 @@ export default function City() {
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
+  // Mars minigame: hunt down all the gremlins. The 3D scene owns the
+  // truth (see mars.ts); these refs/state mirror it for the HUD chip.
+  const marsResetRef = useRef<(() => void) | null>(null);
+  const [marsGame, setMarsGame] = useState({
+    onMars: false,
+    alive: 0,
+    total: 0,
+  });
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
@@ -1148,6 +1156,12 @@ export default function City() {
       boxes,
     });
     scene.add(marsWorld.group);
+    // Wire the gremlin minigame to the React HUD.
+    setMarsGame((g) => ({ ...g, alive: marsWorld.aliveCount(), total: marsWorld.totalCount() }));
+    const unsubMars = marsWorld.onChange((alive, total) =>
+      setMarsGame((g) => ({ ...g, alive, total })),
+    );
+    marsResetRef.current = () => marsWorld.resetGremlins();
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
