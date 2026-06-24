@@ -1884,28 +1884,9 @@ export default function City() {
     let dragLast = { x: 0, y: 0 };
     let pinchStart: { dist: number; camDist: number } | null = null;
     const clampDist = (d: number) => THREE.MathUtils.clamp(d, MIN_CAM_DIST, MAX_CAM_DIST);
-    // Tap detection for the Mars gremlin minigame — short press + small
-    // movement counts as a click, separate from camera drag.
+    // (Mars gremlins are now killed by stomping in the physics tick,
+    // not by tapping — no raycaster needed.)
     let tapStart: { x: number; y: number; t: number } | null = null;
-    const marsRaycaster = new THREE.Raycaster();
-    const tryKillGremlin = (cx: number, cy: number) => {
-      if (marsGameRef.current.alive <= 0) return false;
-      // Only allow killing when you're actually on Mars.
-      const p = player.position;
-      const onMars =
-        Math.hypot(p.x - MARS_X, p.z - MARS_Z) < 70 && p.y > MARS_TOP - 30;
-      if (!onMars) return false;
-      const rect = canvas.getBoundingClientRect();
-      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
-      const ny = -((cy - rect.top) / rect.height) * 2 + 1;
-      marsRaycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
-      const hits = marsRaycaster.intersectObjects(marsWorld.gremlinTargets, true);
-      for (const h of hits) {
-        const idx = marsWorld.hitTest(h.object);
-        if (idx >= 0 && marsWorld.killGremlin(idx)) return true;
-      }
-      return false;
-    };
     const onPointerDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
