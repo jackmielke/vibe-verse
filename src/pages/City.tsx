@@ -2216,7 +2216,71 @@ export default function City() {
       onGround = false;
     };
 
-    // Dev hook for screenshot-driven iteration (and console fun):
+    // ---- Enter / exit the Gremlin Mines ----------------------------
+    // Saves your character + jetpack, teleports you down, swaps you
+    // into a Ninja skin. Exiting restores everything in place.
+    enterUndergroundRef.current = () => {
+      const p = player.position;
+      // Pick a Ninja character (prefer the male, fall back to anything
+      // starting with "Ninja_", then to current).
+      const ninja =
+        CHARACTERS.find((c) => c.name === "Ninja_Male") ??
+        CHARACTERS.find((c) => c.name.startsWith("Ninja_")) ??
+        CHARACTERS.find((c) => c.name === charRef.current) ??
+        CHARACTERS[0];
+      ninjaStateRef.current = {
+        prevChar: charRef.current,
+        prevJet: localStorage.getItem("city.jetpack") || "stock",
+        returnPos: { x: p.x, y: p.y, z: p.z },
+      };
+      // Swap character (visual only — don't broadcast to the lobby pick).
+      if (ninja && ninja.name !== charRef.current) {
+        loadPilotRef.current?.(ninja.name);
+        charRef.current = ninja.name;
+        setCharName(ninja.name);
+      }
+      // Park the jetpack so Space becomes the jump button down here.
+      applyJetpackRef.current?.("none");
+      setEquippedJetpack("none");
+      // Teleport to the cavern spawn (above the floor → flutter down
+      // through the purple mist column).
+      const sp = undergroundWorld.spawn;
+      player.position.set(sp.x, sp.y, sp.z);
+      vel.set(0, 0, 0);
+      onGround = false;
+      peakY = sp.y;
+      undergroundActiveRef.current = true;
+      setUnderground(true);
+      setBossHp(undergroundWorld.bossHpRemaining());
+      setEnterFx(Date.now());
+    };
+    exitUndergroundRef.current = () => {
+      const st = ninjaStateRef.current;
+      // Restore character + jetpack.
+      if (st) {
+        if (st.prevChar && st.prevChar !== charRef.current) {
+          loadPilotRef.current?.(st.prevChar);
+          charRef.current = st.prevChar;
+          setCharName(st.prevChar);
+        }
+        applyJetpackRef.current?.(st.prevJet);
+        setEquippedJetpack(st.prevJet);
+        // Pop you a couple metres above the portal you came in through.
+        player.position.set(st.returnPos.x, st.returnPos.y + 2, st.returnPos.z);
+      } else {
+        // Fallback: drop into plaza.
+        player.position.set(0, 6, 6);
+      }
+      vel.set(0, 0, 0);
+      onGround = false;
+      undergroundActiveRef.current = false;
+      setUnderground(false);
+      // Reset the mines so the next run starts fresh.
+      undergroundWorld.reset();
+      setBossHp(undergroundWorld.bossHpRemaining());
+    };
+
+
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
     const devWindow = window as unknown as {
       __cityDebug?: { teleport: (x: number, y: number, z: number) => void };
