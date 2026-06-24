@@ -2484,6 +2484,7 @@ export default function City() {
       spawnsApiRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
+      marsSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
       voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
