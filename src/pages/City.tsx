@@ -487,6 +487,11 @@ export default function City() {
     alive: 0,
     total: 0,
   });
+  // Mirror for click handlers / tick loop without re-binding.
+  const marsGameRef = useRef(marsGame);
+  useEffect(() => {
+    marsGameRef.current = marsGame;
+  }, [marsGame]);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
