@@ -1928,14 +1928,9 @@ export default function City() {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStart = null;
       if (dragPointer === e.pointerId) dragPointer = null;
-      // Treat as a tap if it was quick and barely moved.
+      // Tap handling kept here as a hook for future use; the gremlin
+      // hunt is driven by stomping in the physics loop.
       if (tapStart) {
-        const dx = e.clientX - tapStart.x;
-        const dy = e.clientY - tapStart.y;
-        const dt = performance.now() - tapStart.t;
-        if (dt < 350 && Math.hypot(dx, dy) < 8) {
-          tryKillGremlin(e.clientX, e.clientY);
-        }
         tapStart = null;
       }
     };
