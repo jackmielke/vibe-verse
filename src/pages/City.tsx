@@ -679,6 +679,15 @@ export default function City() {
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
+  // Avatar portal holo preview — when the player is near the avatar
+  // portal we mount a holographic clone of the previewed character
+  // onto island.avatarStage. Arrow buttons cycle this index; the
+  // pilot is only committed when they tap "Become this character".
+  const [avatarPreviewIdx, setAvatarPreviewIdx] = useState(() => {
+    const i = CHARACTERS.findIndex((c) => c.name === charName);
+    return i >= 0 ? i : 0;
+  });
+  const mountAvatarHoloRef = useRef<((name: string | null) => void) | null>(null);
 
   // The "⋯" HUD menu and its sub-panels (chat / emote / character)
   // share an outside-click + close-all flow so the X button and a tap
@@ -727,6 +736,26 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+
+  // When the player walks up to the portal, sync the preview index to
+  // their currently-equipped character so it appears in the hologram
+  // first. When they walk away, tear the holo down.
+  useEffect(() => {
+    if (!nearAvatarPortal) {
+      mountAvatarHoloRef.current?.(null);
+      return;
+    }
+    const i = CHARACTERS.findIndex((c) => c.name === charRef.current);
+    if (i >= 0) setAvatarPreviewIdx(i);
+  }, [nearAvatarPortal]);
+
+  // Whenever the previewed character changes (and we're near the
+  // portal), swap the hologram on the pedestal.
+  useEffect(() => {
+    if (!nearAvatarPortal) return;
+    const c = CHARACTERS[avatarPreviewIdx];
+    if (c) mountAvatarHoloRef.current?.(c.name);
+  }, [nearAvatarPortal, avatarPreviewIdx]);
   const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const authUserIdRef = useRef<string | null>(null);
@@ -1536,6 +1565,92 @@ export default function City() {
       if (start) loadPilot(start.url);
     }
 
+    // ---- Avatar portal hologram preview --------------------------------
+    // A holographic clone of the currently-previewed character that
+    // floats on the avatar portal pedestal so the player can see
+    // themselves before committing. Loads on demand when React tells
+    // us the player is near; tears down when they walk away.
+    let holoModel: THREE.Object3D | null = null;
+    let holoMixer: THREE.AnimationMixer | null = null;
+    let holoGen = 0;
+    const disposeHolo = () => {
+      if (!holoModel) return;
+      island.avatarStage.remove(holoModel);
+      holoModel.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.geometry?.dispose();
+        const mat = m.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+        else mat?.dispose();
+      });
+      holoModel = null;
+      holoMixer?.stopAllAction();
+      holoMixer = null;
+    };
+    const holoLoader = new GLTFLoader();
+    mountAvatarHoloRef.current = (charNameForHolo) => {
+      const gen = ++holoGen;
+      disposeHolo();
+      if (!charNameForHolo) return;
+      const c = CHARACTERS.find((x) => x.name === charNameForHolo);
+      if (!c) return;
+      holoLoader.load(c.url, (gltf) => {
+        if (gen !== holoGen) return; // superseded
+        const model = gltf.scene;
+        model.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const fit = 2.2 / Math.max(size.x, size.y, size.z, 0.0001);
+        model.scale.setScalar(fit);
+        model.updateMatrixWorld(true);
+        const scaled = new THREE.Box3().setFromObject(model);
+        model.position.y = -scaled.min.y;
+        model.position.x = -((scaled.min.x + scaled.max.x) / 2);
+        model.position.z = -((scaled.min.z + scaled.max.z) / 2);
+        // Swap every material with an additive cyan-tinted basic mat so
+        // the silhouette reads as a hologram instead of a real model.
+        model.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const swap = (mat: THREE.Material): THREE.Material => {
+            const std = mat as THREE.MeshStandardMaterial;
+            const base = std.color?.clone() ?? new THREE.Color("#7af0ff");
+            base.lerp(new THREE.Color("#7af0ff"), 0.4);
+            return new THREE.MeshBasicMaterial({
+              color: base,
+              transparent: true,
+              opacity: 0.62,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+              fog: false,
+            });
+          };
+          if (Array.isArray(mesh.material)) {
+            mesh.material = mesh.material.map(swap);
+          } else if (mesh.material) {
+            mesh.material = swap(mesh.material);
+          }
+        });
+        holoModel = model;
+        island.avatarStage.add(model);
+        if (gltf.animations.length) {
+          holoMixer = new THREE.AnimationMixer(model);
+          const idle =
+            gltf.animations.find((a) => /idle/i.test(a.name)) ?? gltf.animations[0];
+          if (idle) holoMixer.clipAction(idle).reset().play();
+        }
+      });
+    };
+    // Per-frame holo tick — gentle spin + animation mixer.
+    const updateAvatarHolo = (dt: number) => {
+      if (holoModel) holoModel.rotation.y += dt * 0.6;
+      holoMixer?.update(dt);
+    };
+
+
+
     // Procedural jetpack: backplate + twin tanks + nozzles + flames.
     const jetpack = new THREE.Group();
     const packMat = new THREE.MeshStandardMaterial({
@@ -2316,6 +2431,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      updateAvatarHolo(dt);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
@@ -2517,6 +2633,8 @@ export default function City() {
       disposeVR();
       applyModeRef.current = null;
       loadPilotRef.current = null;
+      mountAvatarHoloRef.current = null;
+      disposeHolo();
       setPlayerScaleRef.current = null;
       travelRef.current = null;
       resetRunRef.current = null;
@@ -3402,15 +3520,53 @@ export default function City() {
             </button>
           )}
           {nearAvatarPortal && (
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-2">
+              <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-2 border border-cyan-300/40 shadow-[0_0_28px_rgba(122,240,255,0.55)] bg-cyan-950/30 backdrop-blur-md">
+                <button
+                  onClick={(e) => {
+                    setAvatarPreviewIdx((i) => (i - 1 + CHARACTERS.length) % CHARACTERS.length);
+                    e.currentTarget.blur();
+                  }}
+                  aria-label="Previous character"
+                  className="w-9 h-9 rounded-full bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-100 text-lg leading-none transition-colors"
+                >
+                  ◀
+                </button>
+                <div className="min-w-[150px] text-center px-1">
+                  <div className="text-[9px] uppercase tracking-[0.25em] text-cyan-300/70">
+                    Hologram · {avatarPreviewIdx + 1}/{CHARACTERS.length}
+                  </div>
+                  <div className="font-heading text-cyan-100 text-sm tracking-wide truncate">
+                    {CHARACTERS[avatarPreviewIdx]?.name.replace(/_/g, " ") ?? "—"}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    setAvatarPreviewIdx((i) => (i + 1) % CHARACTERS.length);
+                    e.currentTarget.blur();
+                  }}
+                  aria-label="Next character"
+                  className="w-9 h-9 rounded-full bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-100 text-lg leading-none transition-colors"
+                >
+                  ▶
+                </button>
+              </div>
               <button
                 onClick={(e) => {
-                  setCharPanelOpen((v) => !v);
+                  const c = CHARACTERS[avatarPreviewIdx];
+                  if (!c) return;
+                  setCharName(c.name);
+                  charRef.current = c.name;
+                  setActiveCharacter(c.name);
+                  loadPilotRef.current?.(c.name);
                   e.currentTarget.blur();
                 }}
-                className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-300 shadow-[0_0_24px_rgba(122,240,255,0.5)]"
+                disabled={CHARACTERS[avatarPreviewIdx]?.name === charName}
+                className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-100 border border-cyan-300/50 shadow-[0_0_24px_rgba(122,240,255,0.5)] disabled:opacity-50 disabled:cursor-default hover:bg-cyan-500/15 transition-colors"
               >
-                🪞 {charPanelOpen ? "Close avatar portal" : "Step into avatar portal"}
+                {CHARACTERS[avatarPreviewIdx]?.name === charName
+                  ? "✓ Equipped"
+                  : "✨ Become this character"}
               </button>
               {!bigMode ? (
                 <input
