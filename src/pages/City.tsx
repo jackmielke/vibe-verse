@@ -2731,6 +2731,25 @@ export default function City() {
         setUnderground(insideNow);
       }
       if (insideNow) {
+        // Keep the player inside the cavern disc so they can't walk
+        // off the floor and get yanked up to the surface street.
+        const CAVE_R = 66; // a few metres inside FLOOR_R (70) in underground.ts
+        const dxC = pos.x - UNDER_X;
+        const dzC = pos.z - UNDER_Z;
+        const dC = Math.hypot(dxC, dzC);
+        if (dC > CAVE_R) {
+          const k = CAVE_R / dC;
+          pos.x = UNDER_X + dxC * k;
+          pos.z = UNDER_Z + dzC * k;
+          // Bounce velocity back inward so they don't grind the edge.
+          const nx = dxC / dC, nz = dzC / dC;
+          const vDotN = vel.x * nx + vel.z * nz;
+          if (vDotN > 0) {
+            vel.x -= vDotN * nx;
+            vel.z -= vDotN * nz;
+          }
+        }
+
         if (undergroundInvulnRef.current > 0) undergroundInvulnRef.current -= dt;
         const ev = undergroundWorld.processPlayer({ pos, velY: vel.y }, dt, now);
         if (ev.stomps > 0) {
