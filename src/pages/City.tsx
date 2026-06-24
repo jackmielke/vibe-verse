@@ -1966,7 +1966,10 @@ export default function City() {
     // Only surfaces at or below refY can support you — so the floating
     // island doesn't "catch" a pilot flying far beneath it.
     const supportHeightAt = (x: number, z: number, refY: number): number => {
-      let h = 0;
+      // Track the tallest box top at or below refY that overlaps (x,z).
+      // Init to -Infinity so the underground floor (height < 0) is found;
+      // if nothing matches, fall back to 0 (the world's surface street level).
+      let h = -Infinity;
       for (const b of boxes) {
         if (b.height <= refY &&
             x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
@@ -1974,8 +1977,9 @@ export default function City() {
           if (b.height > h) h = b.height;
         }
       }
-      return h;
+      return h === -Infinity ? 0 : h;
     };
+
     // Blocked when the body (feet y .. head y+1.7) overlaps a column.
     const blockedAt = (x: number, z: number, y: number): boolean => {
       for (const b of boxes) {
