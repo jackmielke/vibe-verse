@@ -1929,6 +1929,11 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
+      // Track whether the player is on Mars so the gremlin HUD shows.
+      const onMarsNow =
+        Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
+        player.position.y > MARS_TOP - 30;
+      setMarsGame((g) => (g.onMars === onMarsNow ? g : { ...g, onMars: onMarsNow }));
 
       // Nearest chattable person (real player OR AI agent) within ~3.2m.
       const NEAR_RADIUS = 3.2;
