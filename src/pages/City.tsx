@@ -2791,6 +2791,29 @@ export default function City() {
         </div>
       )}
 
+      {/* Mars gremlin hunt: tap a gremlin to vaporize it. When the
+          pad is clear, you win — Restart respawns all six. */}
+      {entered && marsGame.onMars && (
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
+          <div className="glass-panel rounded-full border border-[#ff7a3c]/50 pl-3 pr-1 py-1 flex items-center gap-2 shadow-[0_0_28px_rgba(255,90,30,0.45)]">
+            <span className="text-[10px] font-heading font-semibold uppercase tracking-widest text-[#ffb27a] whitespace-nowrap">
+              {marsGame.alive > 0
+                ? `👾 Gremlins ${marsGame.total - marsGame.alive}/${marsGame.total}`
+                : "🏆 Mars cleared!"}
+            </span>
+            <button
+              type="button"
+              onClick={() => marsResetRef.current?.()}
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-[#ff5a1f]/20 hover:bg-[#ff5a1f]/35 text-[#ffd2b5] transition-colors"
+              title="Respawn all gremlins"
+            >
+              🔁 Restart
+            </button>
+          </div>
+        </div>
+      )}
+
+
       {/* Fresh-drop chip — only appears after the hub auto-rolled the
           visitor into Edge Island. Lets them re-roll their character +
           name on the spot, or jump to the full picker. Dismisses on
