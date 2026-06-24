@@ -197,7 +197,8 @@ export default function Lobby() {
       100,
     );
     camera.position.set(0, 1.6, 5.5);
-    camera.lookAt(0, 1.1, 0);
+    let lookAtY = 1.1;
+    camera.lookAt(0, lookAtY, 0);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     const key = new THREE.DirectionalLight(0xffffff, 1.4);
