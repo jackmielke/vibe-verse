@@ -386,17 +386,26 @@ export function buildMars(opts: {
       (beam.material as THREE.MeshBasicMaterial).opacity =
         0.2 + Math.sin(now * 0.0019) * 0.12;
       gremlins.forEach((g) => {
-        g.phase += dt * g.speed;
-        const x = Math.cos(g.phase) * g.orbitR;
-        const z = Math.sin(g.phase) * g.orbitR;
-        g.mesh.position.x = x;
-        g.mesh.position.z = z;
-        g.mesh.position.y = 0.05 + Math.sin(now * 0.004 + g.bob) * 0.25;
-        // Face direction of motion.
-        g.mesh.rotation.y = Math.atan2(
-          -Math.sin(g.phase) * g.speed,
-          Math.cos(g.phase) * g.speed,
-        );
+        if (g.alive) {
+          g.phase += dt * g.speed;
+          const x = Math.cos(g.phase) * g.orbitR;
+          const z = Math.sin(g.phase) * g.orbitR;
+          g.mesh.position.x = x;
+          g.mesh.position.z = z;
+          g.mesh.position.y = 0.05 + Math.sin(now * 0.004 + g.bob) * 0.25;
+          g.mesh.rotation.y = Math.atan2(
+            -Math.sin(g.phase) * g.speed,
+            Math.cos(g.phase) * g.speed,
+          );
+        } else if (g.deathT < 1) {
+          // Quick poof: spin + shrink, then hide.
+          g.deathT = Math.min(1, g.deathT + dt * 2.5);
+          const s = Math.max(0.001, 1 - g.deathT);
+          g.mesh.scale.setScalar(s);
+          g.mesh.rotation.y += dt * 12;
+          g.mesh.position.y += dt * 2;
+          if (g.deathT >= 1) g.mesh.visible = false;
+        }
       });
       ringSpinners.forEach((r, i) => {
         r.rotation.z += dt * (0.4 + i * 0.2);
@@ -404,5 +413,43 @@ export function buildMars(opts: {
     },
     spawn: new THREE.Vector3(centerX, topY + 6, centerZ + PAD_HALF * 0.4),
     padCenter: new THREE.Vector3(centerX, topY, centerZ),
+    gremlinTargets: gremlins.map((g) => g.mesh),
+    hitTest(obj) {
+      let cur: THREE.Object3D | null = obj;
+      while (cur) {
+        const idx = cur.userData?.gremlinIndex;
+        if (typeof idx === "number") return idx;
+        cur = cur.parent;
+      }
+      return -1;
+    },
+    killGremlin(index) {
+      const g = gremlins[index];
+      if (!g || !g.alive) return false;
+      g.alive = false;
+      g.deathT = 0;
+      emitChange();
+      return true;
+    },
+    resetGremlins() {
+      gremlins.forEach((g, i) => {
+        g.alive = true;
+        g.deathT = 0;
+        g.mesh.visible = true;
+        g.mesh.scale.setScalar(1);
+        g.phase = (i / gremlins.length) * Math.PI * 2 + Math.random() * 0.6;
+        g.orbitR = PAD_HALF * 0.55 + Math.random() * PAD_HALF * 0.5;
+        g.speed =
+          (0.25 + Math.random() * 0.35) * (Math.random() < 0.5 ? -1 : 1);
+        g.bob = Math.random() * Math.PI * 2;
+      });
+      emitChange();
+    },
+    aliveCount,
+    totalCount: () => gremlins.length,
+    onChange(cb) {
+      changeListeners.add(cb);
+      return () => changeListeners.delete(cb);
+    },
   };
 }
