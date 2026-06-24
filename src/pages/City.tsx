@@ -2030,8 +2030,10 @@ export default function City() {
     // island doesn't "catch" a pilot flying far beneath it.
     const supportHeightAt = (x: number, z: number, refY: number): number => {
       // Track the tallest box top at or below refY that overlaps (x,z).
-      // Init to -Infinity so the underground floor (height < 0) is found;
-      // if nothing matches, fall back to 0 (the world's surface street level).
+      // If nothing matches and refY is on/above street level, fall back to
+      // 0 (the world floor). If refY is well below street (in the
+      // Gremlin Mines pocket dimension), fall back to a deep void so the
+      // player can't be "snapped up" to the surface by accident.
       let h = -Infinity;
       for (const b of boxes) {
         if (b.height <= refY &&
@@ -2040,8 +2042,10 @@ export default function City() {
           if (b.height > h) h = b.height;
         }
       }
-      return h === -Infinity ? 0 : h;
+      if (h !== -Infinity) return h;
+      return refY < -50 ? refY - 9999 : 0;
     };
+
 
     // Blocked when the body (feet y .. head y+1.7) overlaps a column.
     const blockedAt = (x: number, z: number, y: number): boolean => {
