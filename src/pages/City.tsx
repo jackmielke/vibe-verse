@@ -482,16 +482,32 @@ export default function City() {
   // Mars minigame: hunt down all the gremlins. The 3D scene owns the
   // truth (see mars.ts); these refs/state mirror it for the HUD chip.
   const marsResetRef = useRef<(() => void) | null>(null);
+  const MARS_MAX_HEARTS = 3;
   const [marsGame, setMarsGame] = useState({
     onMars: false,
     alive: 0,
     total: 0,
+    hearts: MARS_MAX_HEARTS,
+    runMs: 0 as number, // ms since timer started; 0 = not started
+    running: false,
+    cleared: false,
+    bestMs: null as number | null,
   });
-  // Mirror for click handlers / tick loop without re-binding.
+  // Mirror for the tick loop without re-binding.
   const marsGameRef = useRef(marsGame);
   useEffect(() => {
     marsGameRef.current = marsGame;
   }, [marsGame]);
+  // Brief invulnerability after a hit so a single touch costs one heart.
+  const marsInvulnRef = useRef(0);
+  // Load best time once.
+  useEffect(() => {
+    const raw = localStorage.getItem("city.bestMarsRun");
+    if (raw) {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n)) setMarsGame((g) => ({ ...g, bestMs: n }));
+    }
+  }, []);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
