@@ -513,6 +513,14 @@ export default function City() {
   }, [marsGame]);
   // Brief invulnerability after a hit so a single touch costs one heart.
   const marsInvulnRef = useRef(0);
+  // Gremlin Mines (underground) — world handle + per-tick state.
+  const undergroundWorldRef = useRef<UndergroundWorld | null>(null);
+  const undergroundActiveRef = useRef(false);
+  const undergroundInvulnRef = useRef(0);
+  // Snapshot of who you were before entering, so exit restores everything.
+  const ninjaStateRef = useRef<{ prevChar: string; prevJet: string; returnPos: { x: number; y: number; z: number } } | null>(null);
+  const ninjaHurtRef = useRef<((knockFromX: number, knockFromZ: number) => void) | null>(null);
+
   // Load best time once.
   useEffect(() => {
     const raw = localStorage.getItem("city.bestMarsRun");
