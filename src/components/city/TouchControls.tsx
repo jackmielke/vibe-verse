@@ -10,7 +10,7 @@
  * The rest of the screen still orbits the camera via the canvas drag.
  */
 import { useRef, useState } from "react";
-import { Rocket } from "lucide-react";
+import { Rocket, ChevronsUp } from "lucide-react";
 
 export interface TouchMove {
   x: number; // -1..1 strafe
