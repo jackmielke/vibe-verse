@@ -3189,6 +3189,33 @@ export default function City() {
             </button>
             <button
               onClick={(e) => {
+                // Quick jetpack on/off. Off = "none" (parkour mode:
+                // Space becomes a jump). On = restore the previously
+                // equipped pack (default "stock").
+                if (equippedJetpack === "none") {
+                  const last = localStorage.getItem("city.jetpack.last") || "stock";
+                  applyJetpackRef.current?.(last);
+                  setEquippedJetpack(last);
+                  localStorage.setItem("city.jetpack", last);
+                } else {
+                  localStorage.setItem("city.jetpack.last", equippedJetpack);
+                  applyJetpackRef.current?.("none");
+                  setEquippedJetpack("none");
+                  localStorage.setItem("city.jetpack", "none");
+                }
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title={
+                equippedJetpack === "none"
+                  ? "Put your jetpack back on"
+                  : "Take off the jetpack (Space becomes Jump)"
+              }
+            >
+              {equippedJetpack === "none" ? "🎒 Equip jetpack" : "🚫 Take off pack"}
+            </button>
+            <button
+              onClick={(e) => {
                 travelRef.current?.();
                 e.currentTarget.blur();
               }}
