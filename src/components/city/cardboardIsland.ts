@@ -59,6 +59,10 @@ export interface IslandWorld {
   portal: THREE.Vector3;
   /** Avatar Hologram portal — players walk up to change their character. */
   avatarPortal: THREE.Vector3;
+  /** Empty group floating on the avatar portal pedestal. The City
+   *  scene mounts a holographic clone of the currently-previewed
+   *  character into here so the player sees themselves in the portal. */
+  avatarStage: THREE.Group;
 }
 
 const ISLAND_RADIUS = 55;
