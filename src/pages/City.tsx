@@ -2463,6 +2463,60 @@ export default function City() {
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
       marsWorld.update(dt, now);
+
+      // ---- Gremlin Hunt: stomp + bite collisions ---------------------
+      // Only run while you're actually on Mars (cheap distance check
+      // first). Stomping bounces you, biting costs a heart and pushes
+      // you back. Hearts/timer live in React state.
+      {
+        const onMarsTick =
+          Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 70 &&
+          pos.y > MARS_TOP - 30;
+        if (onMarsTick) {
+          if (marsInvulnRef.current > 0) marsInvulnRef.current -= dt;
+          if (marsGameRef.current.running) {
+            // Advance the timer; we throttle React updates to ~10/sec.
+            const prev = marsGameRef.current.runMs;
+            const nextMs = prev + dt * 1000;
+            marsGameRef.current.runMs = nextMs;
+            if (Math.floor(nextMs / 100) !== Math.floor(prev / 100)) {
+              setMarsGame((g) => (g.running ? { ...g, runMs: nextMs } : g));
+            }
+          }
+          const ev = marsWorld.processPlayer({ pos, velY: vel.y }, dt, now);
+          if (ev.stomps > 0) {
+            vel.y = 12; // satisfying little bounce off the splat
+            soundsRef.current?.chime?.(3 + ev.stomps);
+          }
+          if (ev.hit && marsInvulnRef.current <= 0) {
+            marsInvulnRef.current = 1.2;
+            // Knockback away from the pad center.
+            const dx = pos.x - MARS_X;
+            const dz = pos.z - MARS_Z;
+            const d = Math.hypot(dx, dz) || 1;
+            vel.x = (dx / d) * 10;
+            vel.z = (dz / d) * 10;
+            vel.y = 8;
+            soundsRef.current?.thud?.(0.5);
+            setMarsGame((g) => {
+              const hearts = Math.max(0, g.hearts - 1);
+              if (hearts === 0) {
+                // Game over → respawn gremlins, reset everything.
+                marsWorld.resetGremlins();
+                return {
+                  ...g,
+                  hearts: MARS_MAX_HEARTS,
+                  runMs: 0,
+                  running: false,
+                  cleared: false,
+                };
+              }
+              return { ...g, hearts };
+            });
+          }
+        }
+      }
+
       
       vibey.update(dt, now);
       agentResidents.update(dt, pos);
