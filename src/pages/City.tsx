@@ -767,6 +767,19 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+  // Ninja portals → Gremlin Mines (the underground game world).
+  const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
+  const [underground, setUnderground] = useState(false);
+  const [bossHp, setBossHp] = useState(3);
+  const [orbShardWon, setOrbShardWon] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("city.orbShard") === "1";
+  });
+  const [showShardReward, setShowShardReward] = useState(false);
+  const [enterFx, setEnterFx] = useState(0);
+  const enterUndergroundRef = useRef<(() => void) | null>(null);
+  const exitUndergroundRef = useRef<(() => void) | null>(null);
+
 
   // When the player walks up to the portal, sync the preview index to
   // their currently-equipped character so it appears in the hologram
