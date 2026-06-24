@@ -333,6 +333,13 @@ export default function Lobby() {
         model.position.x = -(scaled.min.x + scaledSize.x / 2);
         model.position.z = -(scaled.min.z + scaledSize.z / 2);
         model.position.y = 0.05 - scaled.min.y;
+        // Re-aim the camera at the model's vertical center so short
+        // characters (cow, pug) frame as well as tall ones (alien).
+        lookAtY = 0.05 + scaledSize.y / 2;
+        // Pull the camera back a touch for tall models so heads aren't clipped.
+        const dist = 3.5 + Math.max(0, scaledSize.y - 1.6) * 1.4;
+        camera.position.set(0, lookAtY + 0.35, Math.max(4.5, dist));
+        camera.lookAt(0, lookAtY, 0);
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
           if (!mesh.isMesh) return;
