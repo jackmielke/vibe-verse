@@ -679,6 +679,15 @@ export default function City() {
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
+  // Avatar portal holo preview — when the player is near the avatar
+  // portal we mount a holographic clone of the previewed character
+  // onto island.avatarStage. Arrow buttons cycle this index; the
+  // pilot is only committed when they tap "Become this character".
+  const [avatarPreviewIdx, setAvatarPreviewIdx] = useState(() => {
+    const i = CHARACTERS.findIndex((c) => c.name === charName);
+    return i >= 0 ? i : 0;
+  });
+  const mountAvatarHoloRef = useRef<((name: string | null) => void) | null>(null);
 
   // The "⋯" HUD menu and its sub-panels (chat / emote / character)
   // share an outside-click + close-all flow so the X button and a tap
