@@ -736,6 +736,26 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+
+  // When the player walks up to the portal, sync the preview index to
+  // their currently-equipped character so it appears in the hologram
+  // first. When they walk away, tear the holo down.
+  useEffect(() => {
+    if (!nearAvatarPortal) {
+      mountAvatarHoloRef.current?.(null);
+      return;
+    }
+    const i = CHARACTERS.findIndex((c) => c.name === charRef.current);
+    if (i >= 0) setAvatarPreviewIdx(i);
+  }, [nearAvatarPortal]);
+
+  // Whenever the previewed character changes (and we're near the
+  // portal), swap the hologram on the pedestal.
+  useEffect(() => {
+    if (!nearAvatarPortal) return;
+    const c = CHARACTERS[avatarPreviewIdx];
+    if (c) mountAvatarHoloRef.current?.(c.name);
+  }, [nearAvatarPortal, avatarPreviewIdx]);
   const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const authUserIdRef = useRef<string | null>(null);
