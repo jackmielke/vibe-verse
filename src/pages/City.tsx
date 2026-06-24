@@ -2411,6 +2411,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      updateAvatarHolo(dt);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
