@@ -32,6 +32,7 @@ import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
+import { buildMars } from "@/components/city/mars";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -116,6 +117,18 @@ const ISLAND_TOP = 120;
 const MOON_X = 360;
 const MOON_Z = -200;
 const MOON_TOP = 175;
+
+// A second moon, hanging on the opposite side of the city so the
+// skyline has more than one celestial neighbour.
+const MOON2_X = -260;
+const MOON2_Z = -240;
+const MOON2_TOP = 205;
+
+// Mars — much farther out (a real trek with the jetpack). Home to a
+// small clan of green gremlins that loop around the landing pad.
+const MARS_X = 820;
+const MARS_Z = -640;
+const MARS_TOP = 240;
 
 // Movement feel.
 const WALK_SPEED = 7;
@@ -465,6 +478,7 @@ export default function City() {
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
+  const marsSpawnRef = useRef<(() => void) | null>(null);
   const routerLocation = useLocation();
 
   // Touch controls write straight into these; the tick reads them.
@@ -1116,6 +1130,24 @@ export default function City() {
       boxes,
     });
     scene.add(moonWorld.group);
+
+    // A second, smaller moon on the opposite side of the sky.
+    const moon2World = buildMoon({
+      centerX: MOON2_X,
+      centerZ: MOON2_Z,
+      topY: MOON2_TOP,
+      boxes,
+    });
+    scene.add(moon2World.group);
+
+    // Mars — far across the sky, with a few gremlins on patrol.
+    const marsWorld = buildMars({
+      centerX: MARS_X,
+      centerZ: MARS_Z,
+      topY: MARS_TOP,
+      boxes,
+    });
+    scene.add(marsWorld.group);
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
@@ -1898,6 +1930,12 @@ export default function City() {
       vel.set(0, 0, 0);
       onGround = false;
     };
+    // /city?spawn=mars drops visitors onto the Mars landing pad.
+    marsSpawnRef.current = () => {
+      player.position.copy(marsWorld.spawn);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
 
     // Dev hook for screenshot-driven iteration (and console fun):
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
@@ -2050,8 +2088,8 @@ export default function City() {
         mp.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
         agentResidents.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
       }
-      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MOON_X + 80);
-      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MOON_Z - 80, CITY_HALF + 40);
+      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MARS_X + 120);
+      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MARS_Z - 120, CITY_HALF + 40);
       if (!blockedAt(nx, nz, pos.y)) {
         pos.x = nx;
         pos.z = nz;
@@ -2222,6 +2260,8 @@ export default function City() {
       island.update(dt, now);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
+      moon2World.update(dt, now);
+      marsWorld.update(dt, now);
       
       vibey.update(dt, now);
       agentResidents.update(dt, pos);
@@ -2444,6 +2484,7 @@ export default function City() {
       spawnsApiRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
+      marsSpawnRef.current = null;
       void voiceRef.current?.end().catch(() => {});
       voiceRef.current = null;
       canvas.removeEventListener("pointerdown", onPointerDown);
@@ -2505,8 +2546,9 @@ export default function City() {
   // is clicked while already in the city).
   useEffect(() => {
     const spawn = new URLSearchParams(routerLocation.search).get("spawn");
-    if (spawn === "island" || spawn === "moon") {
+    if (spawn === "island" || spawn === "moon" || spawn === "mars") {
       if (spawn === "moon") moonSpawnRef.current?.();
+      else if (spawn === "mars") marsSpawnRef.current?.();
       else islandSpawnRef.current?.();
       // Skip the entry overlay — visitors arriving from the hub already
       // chose where to land, so drop them straight into control.
