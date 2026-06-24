@@ -123,7 +123,7 @@ function marsSurfaceTexture(): THREE.CanvasTexture {
   return t;
 }
 
-function makeGremlin(): THREE.Group {
+export function makeGremlin(): THREE.Group {
   const g = new THREE.Group();
   const skin = new THREE.MeshStandardMaterial({
     color: "#3ddc7a",

@@ -71,6 +71,8 @@ import {
   updateSpawns,
   type IslandSpawnRow,
 } from "@/components/city/islandSpawns";
+import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
+
 
 // Every Quaternius character can be the pilot — same glob pattern as
 // the Lobby, so these assets are shared with it, not duplicated.
@@ -129,6 +131,17 @@ const MOON2_TOP = 205;
 const MARS_X = 820;
 const MARS_Z = -640;
 const MARS_TOP = 240;
+
+// Gremlin Mines — a pocket dimension carved 300m straight down. You
+// reach it through one of the two ninja portals (Edge Island + City).
+const UNDER_X = 0;
+const UNDER_Y = -300;
+const UNDER_Z = 0;
+// Ninja portal placements: behind the plaza on Edge Island, and in
+// a dim alley between two city towers.
+const NINJA_PORTAL_ISLAND = { x: ISLAND_X - 22, y: ISLAND_TOP, z: ISLAND_Z - 28 };
+const NINJA_PORTAL_CITY = { x: -40, y: 0, z: -54 };
+
 
 // Movement feel.
 const WALK_SPEED = 7;
@@ -500,6 +513,14 @@ export default function City() {
   }, [marsGame]);
   // Brief invulnerability after a hit so a single touch costs one heart.
   const marsInvulnRef = useRef(0);
+  // Gremlin Mines (underground) — world handle + per-tick state.
+  const undergroundWorldRef = useRef<UndergroundWorld | null>(null);
+  const undergroundActiveRef = useRef(false);
+  const undergroundInvulnRef = useRef(0);
+  // Snapshot of who you were before entering, so exit restores everything.
+  const ninjaStateRef = useRef<{ prevChar: string; prevJet: string; returnPos: { x: number; y: number; z: number } } | null>(null);
+  const ninjaHurtRef = useRef<((knockFromX: number, knockFromZ: number) => void) | null>(null);
+
   // Load best time once.
   useEffect(() => {
     const raw = localStorage.getItem("city.bestMarsRun");
@@ -754,6 +775,19 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+  // Ninja portals → Gremlin Mines (the underground game world).
+  const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
+  const [underground, setUnderground] = useState(false);
+  const [bossHp, setBossHp] = useState(3);
+  const [orbShardWon, setOrbShardWon] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("city.orbShard") === "1";
+  });
+  const [showShardReward, setShowShardReward] = useState(false);
+  const [enterFx, setEnterFx] = useState(0);
+  const enterUndergroundRef = useRef<(() => void) | null>(null);
+  const exitUndergroundRef = useRef<(() => void) | null>(null);
+
 
   // When the player walks up to the portal, sync the preview index to
   // their currently-equipped character so it appears in the hologram
@@ -1249,6 +1283,35 @@ export default function City() {
         cleared: false,
       }));
     };
+
+    // ---- Gremlin Mines (underground): pocket dimension at y=-300 ----
+    const undergroundWorld = buildUnderground({
+      centerX: UNDER_X,
+      centerY: UNDER_Y,
+      centerZ: UNDER_Z,
+      boxes,
+    });
+    scene.add(undergroundWorld.group);
+    undergroundWorldRef.current = undergroundWorld;
+
+    // ---- Two ninja portals: Edge Island nook + city alley -----------
+    const ninjaPortalIsland = makeNinjaPortal();
+    ninjaPortalIsland.position.set(
+      NINJA_PORTAL_ISLAND.x,
+      NINJA_PORTAL_ISLAND.y,
+      NINJA_PORTAL_ISLAND.z,
+    );
+    scene.add(ninjaPortalIsland);
+    const ninjaPortalCity = makeNinjaPortal();
+    ninjaPortalCity.position.set(
+      NINJA_PORTAL_CITY.x,
+      NINJA_PORTAL_CITY.y,
+      NINJA_PORTAL_CITY.z,
+    );
+    scene.add(ninjaPortalCity);
+    const ninjaPortals = [ninjaPortalIsland, ninjaPortalCity];
+
+
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
@@ -1966,7 +2029,10 @@ export default function City() {
     // Only surfaces at or below refY can support you — so the floating
     // island doesn't "catch" a pilot flying far beneath it.
     const supportHeightAt = (x: number, z: number, refY: number): number => {
-      let h = 0;
+      // Track the tallest box top at or below refY that overlaps (x,z).
+      // Init to -Infinity so the underground floor (height < 0) is found;
+      // if nothing matches, fall back to 0 (the world's surface street level).
+      let h = -Infinity;
       for (const b of boxes) {
         if (b.height <= refY &&
             x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
@@ -1974,8 +2040,9 @@ export default function City() {
           if (b.height > h) h = b.height;
         }
       }
-      return h;
+      return h === -Infinity ? 0 : h;
     };
+
     // Blocked when the body (feet y .. head y+1.7) overlaps a column.
     const blockedAt = (x: number, z: number, y: number): boolean => {
       for (const b of boxes) {
@@ -2075,11 +2142,19 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
+      // Either ninja portal is "near" if within ~4m.
+      const np1 = new THREE.Vector3(NINJA_PORTAL_ISLAND.x, NINJA_PORTAL_ISLAND.y + 1, NINJA_PORTAL_ISLAND.z);
+      const np2 = new THREE.Vector3(NINJA_PORTAL_CITY.x, NINJA_PORTAL_CITY.y + 1, NINJA_PORTAL_CITY.z);
+      const nearNinja =
+        !undergroundActiveRef.current &&
+        (player.position.distanceTo(np1) < 4 || player.position.distanceTo(np2) < 4);
+      setNearNinjaPortal(nearNinja);
       // Track whether the player is on Mars so the gremlin HUD shows.
       const onMarsNow =
         Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
         player.position.y > MARS_TOP - 30;
       setMarsGame((g) => (g.onMars === onMarsNow ? g : { ...g, onMars: onMarsNow }));
+
 
       // Nearest chattable person (real player OR AI agent) within ~3.2m.
       const NEAR_RADIUS = 3.2;
@@ -2141,7 +2216,71 @@ export default function City() {
       onGround = false;
     };
 
-    // Dev hook for screenshot-driven iteration (and console fun):
+    // ---- Enter / exit the Gremlin Mines ----------------------------
+    // Saves your character + jetpack, teleports you down, swaps you
+    // into a Ninja skin. Exiting restores everything in place.
+    enterUndergroundRef.current = () => {
+      const p = player.position;
+      // Pick a Ninja character (prefer the male, fall back to anything
+      // starting with "Ninja_", then to current).
+      const ninja =
+        CHARACTERS.find((c) => c.name === "Ninja_Male") ??
+        CHARACTERS.find((c) => c.name.startsWith("Ninja_")) ??
+        CHARACTERS.find((c) => c.name === charRef.current) ??
+        CHARACTERS[0];
+      ninjaStateRef.current = {
+        prevChar: charRef.current,
+        prevJet: localStorage.getItem("city.jetpack") || "stock",
+        returnPos: { x: p.x, y: p.y, z: p.z },
+      };
+      // Swap character (visual only — don't broadcast to the lobby pick).
+      if (ninja && ninja.name !== charRef.current) {
+        loadPilotRef.current?.(ninja.name);
+        charRef.current = ninja.name;
+        setCharName(ninja.name);
+      }
+      // Park the jetpack so Space becomes the jump button down here.
+      applyJetpackRef.current?.("none");
+      setEquippedJetpack("none");
+      // Teleport to the cavern spawn (above the floor → flutter down
+      // through the purple mist column).
+      const sp = undergroundWorld.spawn;
+      player.position.set(sp.x, sp.y, sp.z);
+      vel.set(0, 0, 0);
+      onGround = false;
+      peakY = sp.y;
+      undergroundActiveRef.current = true;
+      setUnderground(true);
+      setBossHp(undergroundWorld.bossHpRemaining());
+      setEnterFx(Date.now());
+    };
+    exitUndergroundRef.current = () => {
+      const st = ninjaStateRef.current;
+      // Restore character + jetpack.
+      if (st) {
+        if (st.prevChar && st.prevChar !== charRef.current) {
+          loadPilotRef.current?.(st.prevChar);
+          charRef.current = st.prevChar;
+          setCharName(st.prevChar);
+        }
+        applyJetpackRef.current?.(st.prevJet);
+        setEquippedJetpack(st.prevJet);
+        // Pop you a couple metres above the portal you came in through.
+        player.position.set(st.returnPos.x, st.returnPos.y + 2, st.returnPos.z);
+      } else {
+        // Fallback: drop into plaza.
+        player.position.set(0, 6, 6);
+      }
+      vel.set(0, 0, 0);
+      onGround = false;
+      undergroundActiveRef.current = false;
+      setUnderground(false);
+      // Reset the mines so the next run starts fresh.
+      undergroundWorld.reset();
+      setBossHp(undergroundWorld.bossHpRemaining());
+    };
+
+
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
     const devWindow = window as unknown as {
       __cityDebug?: { teleport: (x: number, y: number, z: number) => void };
@@ -2231,9 +2370,12 @@ export default function City() {
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
       const jetInput = enteredRef.current && (keys.has("Space") || touchJetRef.current);
-      const thrusting = jetpackEquipped && jetInput;
-      // Parkour mode: no jetpack means Space / mobile jet button becomes a jump.
-      const wantsJump = !jetpackEquipped && jetInput;
+      // The Gremlin Mines deaden the jetpack — you fight on foot down there.
+      const undergroundNow = undergroundActiveRef.current;
+      const thrusting = jetpackEquipped && jetInput && !undergroundNow;
+      // Parkour mode: no jetpack (or underground) means Space becomes a jump.
+      const wantsJump = (!jetpackEquipped || undergroundNow) && jetInput;
+
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
@@ -2394,7 +2536,9 @@ export default function City() {
           const inMars = Math.hypot(pos.x - MARS_X, pos.z - MARS_Z) < 80;
           const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
           const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
-          const safeZone = inMars || inMoonA || inMoonB;
+          const inUnder = pos.y < -100; // the Gremlin Mines
+          const safeZone = inMars || inMoonA || inMoonB || inUnder;
+
           if (!safeZone && dropFromPeak > 16) {
             // Splat! Respawn in the plaza with a whimsical poof.
             soundsRef.current?.thud?.(1);
@@ -2563,6 +2707,52 @@ export default function City() {
           }
         }
       }
+
+      // ---- Gremlin Mines: same loop as Mars, plus a 3-stomp boss ----
+      undergroundWorld.update(dt, now);
+      // Spin the two surface portals so they read as alive.
+      for (const np of ninjaPortals) {
+        const r = (np as unknown as { __ring?: THREE.Mesh }).__ring;
+        const sw = (np as unknown as { __swirl?: THREE.Mesh }).__swirl;
+        if (r) r.rotation.z += dt * 1.2;
+        if (sw) sw.rotation.z -= dt * 2.2;
+      }
+      // Detect underground transitions so jetpack toggles cleanly.
+      const insideNow = undergroundWorld.isInside(pos);
+      if (insideNow !== undergroundActiveRef.current) {
+        undergroundActiveRef.current = insideNow;
+        setUnderground(insideNow);
+      }
+      if (insideNow) {
+        if (undergroundInvulnRef.current > 0) undergroundInvulnRef.current -= dt;
+        const ev = undergroundWorld.processPlayer({ pos, velY: vel.y }, dt, now);
+        if (ev.stomps > 0) {
+          vel.y = 12;
+          soundsRef.current?.chime?.(3 + ev.stomps);
+        }
+        if (ev.bossStomped) {
+          vel.y = 16;
+          soundsRef.current?.fanfare?.();
+          setBossHp(undergroundWorld.bossHpRemaining());
+        }
+        if (ev.bossDefeated) {
+          try { localStorage.setItem("city.orbShard", "1"); } catch { /* ignore */ }
+          setOrbShardWon(true);
+          setShowShardReward(true);
+        }
+        if (ev.hit && undergroundInvulnRef.current <= 0) {
+          undergroundInvulnRef.current = 1.2;
+          const dx = pos.x - UNDER_X;
+          const dz = pos.z - UNDER_Z;
+          const d = Math.hypot(dx, dz) || 1;
+          vel.x = (dx / d) * 10;
+          vel.z = (dz / d) * 10;
+          vel.y = 8;
+          soundsRef.current?.thud?.(0.5);
+        }
+      }
+
+
 
       
       vibey.update(dt, now);
@@ -3675,6 +3865,76 @@ export default function City() {
         </div>
       )}
 
+      {/* Ninja portal descent flash + arrival pulse. */}
+      {entered && enterFx > 0 && (
+        <div
+          key={enterFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          onAnimationEnd={() => window.setTimeout(() => setEnterFx(0), 900)}
+        >
+          <div className="absolute inset-0 bg-purple-700/30 backdrop-blur-md" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in border border-purple-400/60 shadow-[0_0_40px_rgba(183,138,255,0.6)]">
+            <div className="text-5xl mb-1">🥷</div>
+            <div className="text-sm font-semibold text-purple-200">THE GREMLIN MINES</div>
+            <div className="text-xs text-purple-300/80">Purple mist deadens your jetpack…</div>
+          </div>
+        </div>
+      )}
+
+      {/* Underground HUD: boss HP + "Go back" exit. */}
+      {entered && underground && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none">
+          <div className="glass-panel rounded-full px-4 py-1.5 text-xs text-purple-200 border border-purple-400/40 shadow-[0_0_20px_rgba(183,138,255,0.4)] bg-purple-950/40 backdrop-blur-md flex items-center gap-2">
+            <span>⚔ Boss HP</span>
+            <span className="font-mono tracking-widest">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <span key={i} className={i < bossHp ? "text-rose-300" : "text-rose-900/50"}>
+                  ❤
+                </span>
+              ))}
+            </span>
+          </div>
+          <button
+            onClick={() => exitUndergroundRef.current?.()}
+            className="pointer-events-auto glass-panel rounded-full px-4 py-1.5 text-xs text-cyan-100 border border-cyan-300/50 shadow-[0_0_18px_rgba(122,235,255,0.5)] hover:bg-cyan-500/15 transition-colors"
+          >
+            🔼 Return to surface
+          </button>
+        </div>
+      )}
+
+      {/* God Orb shard reward — appears once when the boss falls. */}
+      {entered && showShardReward && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in"
+          onClick={() => setShowShardReward(false)}
+        >
+          <div
+            className="glass-panel rounded-3xl px-8 py-6 max-w-sm text-center border border-amber-300/50 shadow-[0_0_50px_rgba(255,210,120,0.55)] animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-6xl mb-3">✨</div>
+            <div className="font-heading text-xl text-amber-200 mb-1">A God Orb Shard!</div>
+            <div className="text-xs text-amber-100/80 mb-4 leading-relaxed">
+              The boss gremlin shatters. The missing half of the God Orb
+              splits into shards — you've recovered the first. Find the
+              others to restore the light to the city.
+            </div>
+            <button
+              onClick={() => {
+                setShowShardReward(false);
+                exitUndergroundRef.current?.();
+              }}
+              className="glass-panel rounded-full px-5 py-2 text-sm text-amber-100 border border-amber-300/50 hover:bg-amber-500/15 transition-colors"
+            >
+              Return to the surface
+            </button>
+          </div>
+        </div>
+      )}
+
+
+
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
@@ -3721,6 +3981,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {nearNinjaPortal && !underground && (
+            <button
+              onClick={(e) => {
+                enterUndergroundRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-purple-100 border border-purple-400/50 shadow-[0_0_24px_rgba(183,138,255,0.55)] bg-purple-950/30 backdrop-blur-md hover:bg-purple-500/15 transition-colors"
+            >
+              🥷 Enter Ninja Portal
             </button>
           )}
           {nearAvatarPortal && (
