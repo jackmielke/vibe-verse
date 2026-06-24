@@ -499,7 +499,7 @@ export default function Lobby() {
         }
       `}</style>
 
-      <div className="relative z-10 flex flex-col gap-4 px-4 md:px-10 pt-20 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
+      <div className="relative z-10 flex flex-col gap-4 px-3 md:px-10 pt-16 md:pt-10 pb-6 md:pb-10 max-w-6xl mx-auto">
         {/* Top bar */}
         <div className="flex items-center gap-2 flex-wrap">
           <Link
