@@ -3865,6 +3865,76 @@ export default function City() {
         </div>
       )}
 
+      {/* Ninja portal descent flash + arrival pulse. */}
+      {entered && enterFx > 0 && (
+        <div
+          key={enterFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          onAnimationEnd={() => window.setTimeout(() => setEnterFx(0), 900)}
+        >
+          <div className="absolute inset-0 bg-purple-700/30 backdrop-blur-md" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in border border-purple-400/60 shadow-[0_0_40px_rgba(183,138,255,0.6)]">
+            <div className="text-5xl mb-1">🥷</div>
+            <div className="text-sm font-semibold text-purple-200">THE GREMLIN MINES</div>
+            <div className="text-xs text-purple-300/80">Purple mist deadens your jetpack…</div>
+          </div>
+        </div>
+      )}
+
+      {/* Underground HUD: boss HP + "Go back" exit. */}
+      {entered && underground && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none">
+          <div className="glass-panel rounded-full px-4 py-1.5 text-xs text-purple-200 border border-purple-400/40 shadow-[0_0_20px_rgba(183,138,255,0.4)] bg-purple-950/40 backdrop-blur-md flex items-center gap-2">
+            <span>⚔ Boss HP</span>
+            <span className="font-mono tracking-widest">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <span key={i} className={i < bossHp ? "text-rose-300" : "text-rose-900/50"}>
+                  ❤
+                </span>
+              ))}
+            </span>
+          </div>
+          <button
+            onClick={() => exitUndergroundRef.current?.()}
+            className="pointer-events-auto glass-panel rounded-full px-4 py-1.5 text-xs text-cyan-100 border border-cyan-300/50 shadow-[0_0_18px_rgba(122,235,255,0.5)] hover:bg-cyan-500/15 transition-colors"
+          >
+            🔼 Return to surface
+          </button>
+        </div>
+      )}
+
+      {/* God Orb shard reward — appears once when the boss falls. */}
+      {entered && showShardReward && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in"
+          onClick={() => setShowShardReward(false)}
+        >
+          <div
+            className="glass-panel rounded-3xl px-8 py-6 max-w-sm text-center border border-amber-300/50 shadow-[0_0_50px_rgba(255,210,120,0.55)] animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-6xl mb-3">✨</div>
+            <div className="font-heading text-xl text-amber-200 mb-1">A God Orb Shard!</div>
+            <div className="text-xs text-amber-100/80 mb-4 leading-relaxed">
+              The boss gremlin shatters. The missing half of the God Orb
+              splits into shards — you've recovered the first. Find the
+              others to restore the light to the city.
+            </div>
+            <button
+              onClick={() => {
+                setShowShardReward(false);
+                exitUndergroundRef.current?.();
+              }}
+              className="glass-panel rounded-full px-5 py-2 text-sm text-amber-100 border border-amber-300/50 hover:bg-amber-500/15 transition-colors"
+            >
+              Return to the surface
+            </button>
+          </div>
+        </div>
+      )}
+
+
+
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
