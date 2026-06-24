@@ -2636,6 +2636,52 @@ export default function City() {
         }
       }
 
+      // ---- Gremlin Mines: same loop as Mars, plus a 3-stomp boss ----
+      undergroundWorld.update(dt, now);
+      // Spin the two surface portals so they read as alive.
+      for (const np of ninjaPortals) {
+        const r = (np as unknown as { __ring?: THREE.Mesh }).__ring;
+        const sw = (np as unknown as { __swirl?: THREE.Mesh }).__swirl;
+        if (r) r.rotation.z += dt * 1.2;
+        if (sw) sw.rotation.z -= dt * 2.2;
+      }
+      // Detect underground transitions so jetpack toggles cleanly.
+      const insideNow = undergroundWorld.isInside(pos);
+      if (insideNow !== undergroundActiveRef.current) {
+        undergroundActiveRef.current = insideNow;
+        setUnderground(insideNow);
+      }
+      if (insideNow) {
+        if (undergroundInvulnRef.current > 0) undergroundInvulnRef.current -= dt;
+        const ev = undergroundWorld.processPlayer({ pos, velY: vel.y }, dt, now);
+        if (ev.stomps > 0) {
+          vel.y = 12;
+          soundsRef.current?.chime?.(3 + ev.stomps);
+        }
+        if (ev.bossStomped) {
+          vel.y = 16;
+          soundsRef.current?.fanfare?.();
+          setBossHp(undergroundWorld.bossHpRemaining());
+        }
+        if (ev.bossDefeated) {
+          try { localStorage.setItem("city.orbShard", "1"); } catch { /* ignore */ }
+          setOrbShardWon(true);
+          setShowShardReward(true);
+        }
+        if (ev.hit && undergroundInvulnRef.current <= 0) {
+          undergroundInvulnRef.current = 1.2;
+          const dx = pos.x - UNDER_X;
+          const dz = pos.z - UNDER_Z;
+          const d = Math.hypot(dx, dz) || 1;
+          vel.x = (dx / d) * 10;
+          vel.z = (dz / d) * 10;
+          vel.y = 8;
+          soundsRef.current?.thud?.(0.5);
+        }
+      }
+
+
+
       
       vibey.update(dt, now);
       agentResidents.update(dt, pos);
