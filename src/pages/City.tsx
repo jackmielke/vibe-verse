@@ -3520,15 +3520,53 @@ export default function City() {
             </button>
           )}
           {nearAvatarPortal && (
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-2">
+              <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-2 border border-cyan-300/40 shadow-[0_0_28px_rgba(122,240,255,0.55)] bg-cyan-950/30 backdrop-blur-md">
+                <button
+                  onClick={(e) => {
+                    setAvatarPreviewIdx((i) => (i - 1 + CHARACTERS.length) % CHARACTERS.length);
+                    e.currentTarget.blur();
+                  }}
+                  aria-label="Previous character"
+                  className="w-9 h-9 rounded-full bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-100 text-lg leading-none transition-colors"
+                >
+                  ◀
+                </button>
+                <div className="min-w-[150px] text-center px-1">
+                  <div className="text-[9px] uppercase tracking-[0.25em] text-cyan-300/70">
+                    Hologram · {avatarPreviewIdx + 1}/{CHARACTERS.length}
+                  </div>
+                  <div className="font-heading text-cyan-100 text-sm tracking-wide truncate">
+                    {CHARACTERS[avatarPreviewIdx]?.name.replace(/_/g, " ") ?? "—"}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    setAvatarPreviewIdx((i) => (i + 1) % CHARACTERS.length);
+                    e.currentTarget.blur();
+                  }}
+                  aria-label="Next character"
+                  className="w-9 h-9 rounded-full bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-100 text-lg leading-none transition-colors"
+                >
+                  ▶
+                </button>
+              </div>
               <button
                 onClick={(e) => {
-                  setCharPanelOpen((v) => !v);
+                  const c = CHARACTERS[avatarPreviewIdx];
+                  if (!c) return;
+                  setCharName(c.name);
+                  charRef.current = c.name;
+                  setActiveCharacter(c.name);
+                  loadPilotRef.current?.(c.name);
                   e.currentTarget.blur();
                 }}
-                className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-300 shadow-[0_0_24px_rgba(122,240,255,0.5)]"
+                disabled={CHARACTERS[avatarPreviewIdx]?.name === charName}
+                className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-100 border border-cyan-300/50 shadow-[0_0_24px_rgba(122,240,255,0.5)] disabled:opacity-50 disabled:cursor-default hover:bg-cyan-500/15 transition-colors"
               >
-                🪞 {charPanelOpen ? "Close avatar portal" : "Step into avatar portal"}
+                {CHARACTERS[avatarPreviewIdx]?.name === charName
+                  ? "✓ Equipped"
+                  : "✨ Become this character"}
               </button>
               {!bigMode ? (
                 <input
