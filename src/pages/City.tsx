@@ -1131,6 +1131,24 @@ export default function City() {
     });
     scene.add(moonWorld.group);
 
+    // A second, smaller moon on the opposite side of the sky.
+    const moon2World = buildMoon({
+      centerX: MOON2_X,
+      centerZ: MOON2_Z,
+      topY: MOON2_TOP,
+      boxes,
+    });
+    scene.add(moon2World.group);
+
+    // Mars — far across the sky, with a few gremlins on patrol.
+    const marsWorld = buildMars({
+      centerX: MARS_X,
+      centerZ: MARS_Z,
+      topY: MARS_TOP,
+      boxes,
+    });
+    scene.add(marsWorld.group);
+
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
       const t = (i + 1) / 7;
