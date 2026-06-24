@@ -3658,7 +3658,21 @@ export default function City() {
 
       {/* Whimsical fall-damage splat → plaza respawn flash. */}
       {entered && respawnFx > 0 && (
-        <FallSplat key={respawnFx} onDone={() => setRespawnFx(0)} />
+        <div
+          key={respawnFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          onAnimationEnd={() => {
+            // Auto-clear after the fade-in finishes (≈300ms) + a short hold.
+            window.setTimeout(() => setRespawnFx(0), 1300);
+          }}
+        >
+          <div className="absolute inset-0 bg-rose-500/15 backdrop-blur-[1px]" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in">
+            <div className="text-5xl mb-1">💫</div>
+            <div className="text-sm font-semibold text-primary">SPLAT!</div>
+            <div className="text-xs text-muted-foreground">Respawning in the plaza…</div>
+          </div>
+        </div>
       )}
 
       {/* Bottom-center action stack: context buttons appear as you
