@@ -1207,11 +1207,46 @@ export default function City() {
     });
     scene.add(marsWorld.group);
     // Wire the gremlin minigame to the React HUD.
-    setMarsGame((g) => ({ ...g, alive: marsWorld.aliveCount(), total: marsWorld.totalCount() }));
+    setMarsGame((g) => ({
+      ...g,
+      alive: marsWorld.aliveCount(),
+      total: marsWorld.totalCount(),
+    }));
     const unsubMars = marsWorld.onChange((alive, total) =>
-      setMarsGame((g) => ({ ...g, alive, total })),
+      setMarsGame((g) => {
+        const next = { ...g, alive, total };
+        // First kill starts the timer.
+        if (!g.running && !g.cleared && alive < total) {
+          next.running = true;
+          next.runMs = 0;
+        }
+        // Last kill stops the timer and records the best.
+        if (alive === 0 && total > 0 && g.running) {
+          next.running = false;
+          next.cleared = true;
+          if (g.bestMs === null || g.runMs < g.bestMs) {
+            next.bestMs = g.runMs;
+            try {
+              localStorage.setItem("city.bestMarsRun", String(Math.round(g.runMs)));
+            } catch {
+              /* ignore quota errors */
+            }
+          }
+        }
+        return next;
+      }),
     );
-    marsResetRef.current = () => marsWorld.resetGremlins();
+    marsResetRef.current = () => {
+      marsWorld.resetGremlins();
+      marsInvulnRef.current = 0;
+      setMarsGame((g) => ({
+        ...g,
+        hearts: MARS_MAX_HEARTS,
+        runMs: 0,
+        running: false,
+        cleared: false,
+      }));
+    };
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
     const starTrail = Array.from({ length: 6 }, (_, i) => {
