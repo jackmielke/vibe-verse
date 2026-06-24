@@ -1190,10 +1190,12 @@ export function buildCardboardIsland(opts: {
   // glowing rings + scrolling scanlines. Walk up to it to open the
   // character picker. Sits on the opposite side of the Vibe Shop from
   // the Vibe Maker so the three form a little plaza row.
-  const AVATAR_X = PORTAL_X - 5;
-  const AVATAR_Z = PORTAL_Z;
+  // Perched on the roof of Trader Joe's (see SHOPS[0] at x=-30, z=-8, h=9).
+  const AVATAR_X = -30;
+  const AVATAR_Z = -8;
+  const AVATAR_Y = 9; // Trader Joe's roof height (matches SHOPS[0].h)
   const avatarPortalGroup = new THREE.Group();
-  avatarPortalGroup.position.set(AVATAR_X, 0, AVATAR_Z);
+  avatarPortalGroup.position.set(AVATAR_X, AVATAR_Y, AVATAR_Z);
   const avatarHoloRings: THREE.Mesh[] = [];
   const avatarRingMats: THREE.MeshBasicMaterial[] = [];
   let avatarBeamMat!: THREE.MeshBasicMaterial;
