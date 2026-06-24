@@ -2272,11 +2272,30 @@ export default function City() {
         onGround = false;
       }
       // Parkour jump: edge-trigger when grounded (or within coyote window).
-      if (wantsJump && !prevJetInput && (onGround || coyoteTimer > 0)) {
-        vel.y = 11;
-        onGround = false;
-        coyoteTimer = 0;
-        soundsRef.current?.thud?.(0.15);
+      if (wantsJump && !prevJetInput) {
+        if (onGround || coyoteTimer > 0) {
+          vel.y = 11;
+          onGround = false;
+          coyoteTimer = 0;
+          wallJumpUsed = false;
+          soundsRef.current?.thud?.(0.15);
+        } else if (!wallJumpUsed) {
+          // Wall jump: detect a wall within reach and kick off it sideways.
+          let wx = 0, wz = 0;
+          const r = 0.85;
+          if (blockedAt(pos.x + r, pos.z, pos.y)) wx -= 1;
+          if (blockedAt(pos.x - r, pos.z, pos.y)) wx += 1;
+          if (blockedAt(pos.x, pos.z + r, pos.y)) wz -= 1;
+          if (blockedAt(pos.x, pos.z - r, pos.y)) wz += 1;
+          if (wx !== 0 || wz !== 0) {
+            const len = Math.hypot(wx, wz) || 1;
+            vel.x = (wx / len) * 12;
+            vel.z = (wz / len) * 12;
+            vel.y = 11;
+            wallJumpUsed = true;
+            soundsRef.current?.thud?.(0.2);
+          }
+        }
       }
       vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
       prevJetInput = jetInput;
