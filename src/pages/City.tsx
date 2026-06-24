@@ -2142,11 +2142,19 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
+      // Either ninja portal is "near" if within ~4m.
+      const np1 = new THREE.Vector3(NINJA_PORTAL_ISLAND.x, NINJA_PORTAL_ISLAND.y + 1, NINJA_PORTAL_ISLAND.z);
+      const np2 = new THREE.Vector3(NINJA_PORTAL_CITY.x, NINJA_PORTAL_CITY.y + 1, NINJA_PORTAL_CITY.z);
+      const nearNinja =
+        !undergroundActiveRef.current &&
+        (player.position.distanceTo(np1) < 4 || player.position.distanceTo(np2) < 4);
+      setNearNinjaPortal(nearNinja);
       // Track whether the player is on Mars so the gremlin HUD shows.
       const onMarsNow =
         Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
         player.position.y > MARS_TOP - 30;
       setMarsGame((g) => (g.onMars === onMarsNow ? g : { ...g, onMars: onMarsNow }));
+
 
       // Nearest chattable person (real player OR AI agent) within ~3.2m.
       const NEAR_RADIUS = 3.2;
