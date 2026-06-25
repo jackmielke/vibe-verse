@@ -183,6 +183,39 @@ function buildPropeller(): THREE.Group {
   return g;
 }
 
+function buildStickerHat(): THREE.Group {
+  const g = new THREE.Group();
+  // Holographic sticker-pack hat: chrome dome with rainbow emissive stickers.
+  const chrome = new THREE.MeshStandardMaterial({
+    color: "#f8fbff", roughness: 0.15, metalness: 0.95,
+    emissive: "#7dfce0", emissiveIntensity: 0.25,
+  });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.34, 28, 18, 0, Math.PI * 2, 0, Math.PI / 2), chrome);
+  dome.position.y = 0.05; g.add(dome);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.04, 28), chrome);
+  brim.position.y = 0.05; g.add(brim);
+  // Glowing star stickers around the crown.
+  const colors = ["#ff6ad5", "#c084fc", "#7dfce0", "#ffd166", "#5db8e8"];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const c = colors[i % colors.length];
+    const star = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.06, 0),
+      new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.4, roughness: 0.3, metalness: 0.4 }),
+    );
+    star.position.set(Math.cos(a) * 0.34, 0.18 + Math.sin(a * 2) * 0.06, Math.sin(a) * 0.34);
+    g.add(star);
+  }
+  // Sparkle on top.
+  const top = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.09, 0),
+    new THREE.MeshStandardMaterial({ color: "#ffffff", emissive: "#ff6ad5", emissiveIntensity: 1.8, roughness: 0.2, metalness: 0.6 }),
+  );
+  top.position.y = 0.46;
+  g.add(top);
+  return g;
+}
+
 export const HAT_CATALOG: HatDef[] = [
   { id: "none",       name: "No Hat",       emoji: "🙅", price: 0,   build: () => new THREE.Group() },
   { id: "cap",        name: "Mint Cap",     emoji: "🧢", price: 25,  build: buildCap },
@@ -192,7 +225,32 @@ export const HAT_CATALOG: HatDef[] = [
   { id: "propeller",  name: "Propeller",    emoji: "🚁", price: 90,  build: buildPropeller },
   { id: "crown",      name: "Crown",        emoji: "👑", price: 250, build: buildCrown },
   { id: "halo",       name: "Halo",         emoji: "😇", price: 400, build: buildHalo },
+  { id: "sticker",    name: "Holo Sticker", emoji: "✨", price: 0,   build: buildStickerHat },
 ];
+
+// ---- Unlocks (cosmetics earned via on-chain purchases) ------------------
+const UNLOCK_STORAGE = "city.unlockedHats";
+
+export function loadUnlockedHats(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(UNLOCK_STORAGE);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch { return []; }
+}
+
+export function unlockHat(id: string, account?: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const cur = new Set(loadUnlockedHats());
+    cur.add(id);
+    localStorage.setItem(UNLOCK_STORAGE, JSON.stringify([...cur]));
+    if (account) {
+      const key = `city.unlockedHats:${account.toLowerCase()}`;
+      localStorage.setItem(key, JSON.stringify([...cur]));
+    }
+  } catch { /* ignore quota */ }
+}
 
 export const FLAME_CATALOG: FlameDef[] = [
   { id: "mint",   name: "Mint Stock",   emoji: "🌿", price: 0,   color: "#7dfce0", core: "#7dfce0" },
