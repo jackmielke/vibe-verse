@@ -63,6 +63,8 @@ export interface IslandWorld {
    *  scene mounts a holographic clone of the currently-previewed
    *  character into here so the player sees themselves in the portal. */
   avatarStage: THREE.Group;
+  /** Esmeralda Jump arcade cabinet — walk up to launch the game. */
+  arcade: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
