@@ -62,6 +62,7 @@ import {
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
+import { ArcadeModal } from "@/components/city/ArcadeModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
@@ -794,6 +795,8 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+  const [nearArcade, setNearArcade] = useState(false);
+  const [arcadeOpen, setArcadeOpen] = useState(false);
   // Ninja portals → Gremlin Mines (the underground game world).
   const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
   const [underground, setUnderground] = useState(false);
@@ -2167,6 +2170,7 @@ export default function City() {
       setNearShop(player.position.distanceTo(island.shop) < 7);
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
+      setNearArcade(player.position.distanceTo(island.arcade) < 4);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
       // Either ninja portal is "near" if within ~4m.
       const np1 = new THREE.Vector3(NINJA_PORTAL_ISLAND.x, NINJA_PORTAL_ISLAND.y + 1, NINJA_PORTAL_ISLAND.z);
@@ -3865,6 +3869,9 @@ export default function City() {
         />
       )}
 
+      <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
+
+
 
 
       {/* 1:1 chat with a nearby player or AI agent. */}
@@ -4011,6 +4018,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {nearArcade && !arcadeOpen && (
+            <button
+              onClick={(e) => {
+                setArcadeOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-fuchsia-100 border border-fuchsia-300/50 shadow-[0_0_24px_rgba(232,121,249,0.55)] bg-fuchsia-950/30 backdrop-blur-md hover:bg-fuchsia-500/15 transition-colors"
+            >
+              🕹️ Play Esmeralda Jump
             </button>
           )}
           {nearNinjaPortal && !underground && (

@@ -63,6 +63,8 @@ export interface IslandWorld {
    *  scene mounts a holographic clone of the currently-previewed
    *  character into here so the player sees themselves in the portal. */
   avatarStage: THREE.Group;
+  /** Esmeralda Jump arcade cabinet — walk up to launch the game. */
+  arcade: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
@@ -1474,6 +1476,137 @@ export function buildCardboardIsland(opts: {
   }
   group.add(avatarPortalGroup);
 
+  // ------------------------------------------------------------------
+  // Esmeralda Jump arcade cabinet — a chunky cardboard arcade machine
+  // tucked on the island plaza. Walk up to launch the embedded game
+  // (which lives in its own Lovable project) in a fullscreen modal.
+  // ------------------------------------------------------------------
+  const ARCADE_X = 18;
+  const ARCADE_Z = 14;
+  const arcadeGroup = new THREE.Group();
+  arcadeGroup.position.set(ARCADE_X, 0, ARCADE_Z);
+  arcadeGroup.rotation.y = -Math.PI / 5;
+  {
+    // Body
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: "#1b1330",
+      roughness: 0.6,
+      metalness: 0.2,
+    });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.6, 1.1), bodyMat);
+    body.position.y = 1.3;
+    body.castShadow = true;
+    arcadeGroup.add(body);
+    // Sloped control panel
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.35, 0.7),
+      new THREE.MeshStandardMaterial({ color: "#2a1a4a", roughness: 0.55 }),
+    );
+    panel.position.set(0, 1.05, 0.55);
+    panel.rotation.x = -Math.PI / 7;
+    arcadeGroup.add(panel);
+    // Joystick
+    const stick = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 0.2, 12),
+      new THREE.MeshStandardMaterial({ color: "#111" }),
+    );
+    stick.position.set(-0.35, 1.25, 0.7);
+    stick.rotation.x = -Math.PI / 14;
+    arcadeGroup.add(stick);
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 16, 12),
+      new THREE.MeshStandardMaterial({ color: "#ff2e7e", emissive: "#ff2e7e", emissiveIntensity: 0.6 }),
+    );
+    ball.position.set(-0.35, 1.36, 0.71);
+    arcadeGroup.add(ball);
+    // Buttons
+    const btnColors = ["#22d3ee", "#fde047", "#a78bfa"];
+    btnColors.forEach((c, i) => {
+      const b = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 0.04, 16),
+        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.5 }),
+      );
+      b.position.set(0.05 + i * 0.18, 1.27, 0.7);
+      b.rotation.x = -Math.PI / 14;
+      arcadeGroup.add(b);
+    });
+    // Marquee screen (the "screen" face)
+    const screenCanvas = document.createElement("canvas");
+    screenCanvas.width = 256;
+    screenCanvas.height = 256;
+    const scx = screenCanvas.getContext("2d")!;
+    const grad = scx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, "#1a0033");
+    grad.addColorStop(1, "#330066");
+    scx.fillStyle = grad;
+    scx.fillRect(0, 0, 256, 256);
+    // pixel character
+    scx.fillStyle = "#39ff88";
+    scx.fillRect(108, 90, 40, 40);
+    scx.fillRect(98, 110, 60, 10);
+    scx.fillStyle = "#fff";
+    scx.fillRect(118, 100, 6, 6);
+    scx.fillRect(132, 100, 6, 6);
+    // ground
+    scx.fillStyle = "#8b5a2b";
+    scx.fillRect(0, 200, 256, 56);
+    // title
+    scx.font = "bold 28px sans-serif";
+    scx.fillStyle = "#fde047";
+    scx.textAlign = "center";
+    scx.fillText("ESMERALDA", 128, 40);
+    scx.font = "bold 22px sans-serif";
+    scx.fillStyle = "#22d3ee";
+    scx.fillText("JUMP", 128, 70);
+    const screenTex = new THREE.CanvasTexture(screenCanvas);
+    screenTex.colorSpace = THREE.SRGBColorSpace;
+    const screen = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 1.0),
+      new THREE.MeshBasicMaterial({ map: screenTex }),
+    );
+    screen.position.set(0, 1.95, 0.561);
+    arcadeGroup.add(screen);
+    // Marquee top
+    const topCanvas = document.createElement("canvas");
+    topCanvas.width = 512;
+    topCanvas.height = 128;
+    const tcx = topCanvas.getContext("2d")!;
+    tcx.fillStyle = "#ff2e7e";
+    tcx.fillRect(0, 0, 512, 128);
+    tcx.font = "bold 64px sans-serif";
+    tcx.fillStyle = "#fff8";
+    tcx.textAlign = "center";
+    tcx.textBaseline = "middle";
+    tcx.fillText("ARCADE", 256, 64);
+    tcx.fillStyle = "#fff";
+    tcx.fillText("ARCADE", 254, 62);
+    const topTex = new THREE.CanvasTexture(topCanvas);
+    topTex.colorSpace = THREE.SRGBColorSpace;
+    const marquee = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 0.38),
+      new THREE.MeshBasicMaterial({ map: topTex }),
+    );
+    marquee.position.set(0, 2.55, 0.561);
+    arcadeGroup.add(marquee);
+    // Glow halo on the floor under the cabinet
+    const halo = new THREE.Mesh(
+      new THREE.CircleGeometry(1.4, 32),
+      new THREE.MeshBasicMaterial({
+        color: "#ff2e7e",
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.y = 0.02;
+    arcadeGroup.add(halo);
+  }
+  group.add(arcadeGroup);
+
+
+
 
 
 
@@ -1901,6 +2034,7 @@ export function buildCardboardIsland(opts: {
     portal: new THREE.Vector3(centerX + PORTAL_X, topY, centerZ + PORTAL_Z),
     avatarPortal: new THREE.Vector3(centerX + AVATAR_X, topY + AVATAR_Y, centerZ + AVATAR_Z),
     avatarStage,
+    arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
