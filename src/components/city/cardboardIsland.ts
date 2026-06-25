@@ -1590,8 +1590,8 @@ export function buildCardboardIsland(opts: {
   generatorGroup.add(genBody);
   boxes.push({
     minX: centerX + GEN_X - 0.9, maxX: centerX + GEN_X + 0.9,
-    minY: topY, maxY: topY + 1.8,
     minZ: centerZ + GEN_Z - 0.7, maxZ: centerZ + GEN_Z + 0.7,
+    base: topY, height: 1.8,
   });
 
   // Glowing orb chamber on top.
