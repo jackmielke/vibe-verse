@@ -114,7 +114,7 @@ const WORLDS: WorldCard[] = [
     blurb: "Slice fruit in VR (or with the mouse) and chase the high score.",
   },
   {
-    to: "/vibe",
+    to: "/coin",
     emoji: "🪙",
     name: "VIBE",
     art: vibeArt,

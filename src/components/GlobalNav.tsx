@@ -36,7 +36,7 @@ const ALL_WORLDS: Destination[] = [
   { to: "/lobby", emoji: "🏎️", label: "Lobby" },
   { to: "/museum", emoji: "🖼️", label: "Museum" },
   { to: "/ninja", emoji: "🍉", label: "Fruit Ninja" },
-  { to: "/vibe", emoji: "🪙", label: "VIBE" },
+  { to: "/coin", emoji: "🪙", label: "VIBE" },
   { to: "/about", emoji: "✨", label: "About" },
 ];
 

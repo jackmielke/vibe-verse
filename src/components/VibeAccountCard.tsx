@@ -844,7 +844,7 @@ function PillView({
   if (!authUserId) {
     return (
       <a
-        href="/vibe"
+        href="/coin"
         className="glass-panel rounded-full px-3 py-1.5 text-[11px] font-heading font-semibold hover:bg-primary/15 transition-colors"
       >
         Sign in

@@ -1316,7 +1316,7 @@ function ComposePage({
         ) : (
           <>
             <span className="opacity-70">writing anonymously.</span>{" "}
-            <a href="/vibe" className="underline font-semibold" style={{ color: "#2e1f10" }}>
+            <a href="/coin" className="underline font-semibold" style={{ color: "#2e1f10" }}>
               sign in
             </a>{" "}
             <span className="opacity-70">so vibey knows it's you.</span>
