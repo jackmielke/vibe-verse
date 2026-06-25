@@ -64,8 +64,9 @@ const App = () => (
           <Route path="/gallery" element={<Navigate to="/garden" replace />} />
           {/* Fractal Museum. */}
           <Route path="/museum" element={<Museum />} />
-          {/* VIBE Hub — wallet login, community holders, market. */}
-          <Route path="/vibe" element={<VibeHub />} />
+          {/* COIN Hub — wallet login, community holders, market. */}
+          <Route path="/coin" element={<VibeHub />} />
+          <Route path="/vibe" element={<Navigate to="/coin" replace />} />
           {/* Fruit Ninja. */}
           <Route path="/ninja" element={<FruitNinja />} />
           {/* EDM Town — low-poly party world with photo mode + guestbook. */}

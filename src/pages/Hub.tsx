@@ -63,7 +63,7 @@ const WORLDS: World[] = [
     blurb: "A walkable, Seuss-flavored gallery of famous fractals." },
   { to: "/ninja", emoji: "🍉", name: "Fruit Ninja", art: ninjaArt, color: "#fda4af",
     blurb: "Slice fruit in VR (or mouse) — chase the high score." },
-  { to: "/vibe", emoji: "🪙", name: "VIBE", art: vibeArt, color: "#fcd34d",
+  { to: "/coin", emoji: "🪙", name: "VIBE", art: vibeArt, color: "#fcd34d",
     blurb: "$VIBE — community currency, holders, and market." },
   { to: "/about", emoji: "✨", name: "About", art: aboutArt, color: "#c4b5fd",
     blurb: "What this is and how it's stitched together." },

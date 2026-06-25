@@ -111,7 +111,7 @@ const OFFICIAL_WORLDS: World[] = [
     blurb: "Pick your character and vehicle, Mario-Kart style." },
   { to: "/ninja", name: "Fruit Ninja", art: ninjaArt, color: "#fda4af",
     blurb: "Slice fruit in VR (or mouse) — chase the high score." },
-  { to: "/vibe", name: "VIBE Hub", art: vibeArt, color: "#fcd34d",
+  { to: "/coin", name: "VIBE Hub", art: vibeArt, color: "#fcd34d",
     blurb: "$VIBE — community currency, holders, and market." },
   { to: "/", name: "Healdsburg Village", art: villageArt, color: "#5eead4",
     blurb: "The real-world map — Vibey, choppers, spawnables." },

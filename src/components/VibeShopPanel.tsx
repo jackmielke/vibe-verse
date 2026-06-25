@@ -21,6 +21,11 @@ import {
   VIBE_TOKEN_SYMBOL,
   type Address,
 } from "@/lib/vibe-wallet";
+import { unlockHat } from "@/components/city/cosmetics";
+
+// Hat cosmetic granted by buying the sticker pack.
+const REWARD_HAT_ID = "sticker";
+const REWARD_HAT_NAME = "Holo Sticker Hat";
 
 // Where $VIBE payments go. Configurable here so it's obvious.
 const MERCHANT_ADDRESS: Address = "0x6bDa0Bd9D8AE76dE24b9C2F7Be9ab2D4b3b888a5";
@@ -47,6 +52,7 @@ function toVibeUnits(amount: number): bigint {
 
 export default function VibeShopPanel() {
   const [busy, setBusy] = useState(false);
+  const [unlocked, setUnlocked] = useState<{ hash: string; account: Address } | null>(null);
 
   async function handleBuy() {
     if (busy) return;
@@ -58,9 +64,13 @@ export default function VibeShopPanel() {
         to: MERCHANT_ADDRESS,
         amount: toVibeUnits(ITEM.priceVibe),
       });
+      // Grant the cosmetic hat tied to this wallet.
+      unlockHat(REWARD_HAT_ID, from);
+      try { localStorage.setItem("city.hat", REWARD_HAT_ID); } catch { /* ignore */ }
+      setUnlocked({ hash, account: from });
       const url = `https://basescan.org/tx/${hash}`;
-      toast.success(`Payment sent! ${ITEM.priceVibe} $VIBE on the way.`, {
-        description: `From ${shortAddress(from)} → ${shortAddress(MERCHANT_ADDRESS)}`,
+      toast.success(`🎩 ${REWARD_HAT_NAME} unlocked!`, {
+        description: `Equipped automatically. Strut into /city to show it off.`,
         action: {
           label: "View tx",
           onClick: () => window.open(url, "_blank", "noopener,noreferrer"),
@@ -135,6 +145,36 @@ export default function VibeShopPanel() {
           </>
         )}
       </button>
+
+      {unlocked && (
+        <div
+          className="rounded-xl border p-4 flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2"
+          style={{
+            borderColor: "hsl(150 80% 60% / 0.55)",
+            background:
+              "linear-gradient(135deg, hsl(280 80% 60% / 0.18), hsl(150 80% 60% / 0.18))",
+            boxShadow: "0 0 24px hsl(150 80% 60% / 0.25)",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-2xl" aria-hidden>🎩✨</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-heading font-semibold text-sm text-foreground">
+                {REWARD_HAT_NAME} unlocked
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Tied to {shortAddress(unlocked.account)} — auto-equipped on your avatar.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/city"
+            className="w-full rounded-lg px-3 py-2 text-center text-xs font-heading font-semibold uppercase tracking-wide bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Strut into /city →
+          </a>
+        </div>
+      )}
 
       <p className="text-[10px] text-muted-foreground/80 leading-relaxed">
         Opens MetaMask (or any browser wallet) on Base. Pays{" "}
