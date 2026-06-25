@@ -538,7 +538,9 @@ export default function City() {
   const [respawnFx, setRespawnFx] = useState(0);
   const [fallDamageEnabled, setFallDamageEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem("city.fallDamage") === "on";
+    const saved = localStorage.getItem("city.fallDamage");
+    if (saved) return saved === "on";
+    return localStorage.getItem("city.jetpack") === "none";
   });
   const fallDamageEnabledRef = useRef(fallDamageEnabled);
   const isTouch =
