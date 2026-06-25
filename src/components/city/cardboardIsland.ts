@@ -2088,7 +2088,8 @@ export function buildCardboardIsland(opts: {
 
 
 
-      // God Orb generator pulse + twinkle lights breathing.
+      // God Orb dome: slow majestic rotation + inner core pulse.
+      orbStruts.rotation.y += dt * 0.08;
       const orbK = 0.5 + Math.sin(now * 0.0022) * 0.5;
       (genOrb.material as THREE.MeshBasicMaterial).opacity = 0.7 + orbK * 0.3;
       genOrb.scale.setScalar(0.95 + orbK * 0.12);
