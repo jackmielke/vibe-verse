@@ -2034,6 +2034,7 @@ export function buildCardboardIsland(opts: {
     portal: new THREE.Vector3(centerX + PORTAL_X, topY, centerZ + PORTAL_Z),
     avatarPortal: new THREE.Vector3(centerX + AVATAR_X, topY + AVATAR_Y, centerZ + AVATAR_Z),
     avatarStage,
+    arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
