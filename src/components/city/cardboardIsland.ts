@@ -1816,7 +1816,8 @@ export function buildCardboardIsland(opts: {
       });
       currentSwingAngle = Math.sin(now * 0.0013) * 0.52;
       swingPivot.rotation.x = currentSwingAngle;
-      jerryGroup.rotation.y = Math.PI + 0.5 + Math.sin(now * 0.0008) * 0.12;
+      jerryGroup.rotation.y = JERRY_ROT_Y + Math.sin(now * 0.0008) * 0.12;
+      benGroup.rotation.y = BEN_ROT_Y + Math.sin(now * 0.0009 + 1.3) * 0.14;
       jerryParts.stalks.forEach((s, i) => {
         s.rotation.x = Math.sin(now * 0.0027 + i * 2.1) * 0.16;
       });
