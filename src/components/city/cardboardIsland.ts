@@ -861,30 +861,42 @@ export function buildCardboardIsland(opts: {
 
   group.add(plazaGroup);
 
-  // ---- Jerry the snail --------------------------------------------------
-  // Mayor of Jerry's Plaza. Hand-built cardboard snail: slug body, a
-  // shell with a painted spiral, googly eye stalks, a JERRY sign.
-  const jerryGroup = new THREE.Group();
-  jerryGroup.position.set(PLAZA_CX, 0.18, PLAZA_CZ); // sit at the center of the plaza pad
-  jerryGroup.rotation.y = Math.PI + 0.5; // face the welcome path
-  const jerryParts = { stalks: [] as THREE.Mesh[] };
-  {
-    const bodyMat = new THREE.MeshStandardMaterial({ color: "#d9c36b", roughness: 0.8 });
+  // ---- Snails of Jerry's Plaza -----------------------------------------
+  // Mayor Jerry sits on a red mayor's chair at the plaza center. Ben — a
+  // slightly bigger snail with a different paint job — hangs out nearby.
+  const allStalks: THREE.Mesh[] = [];
+  const snailGroups: THREE.Group[] = [];
+
+  const buildSnail = (opts: {
+    name: string;
+    pos: [number, number, number];
+    rotY: number;
+    scale: number;
+    bodyColor: string;
+    shellBase: string;
+    shellSpiral: string;
+    signFill: string;
+    signInk: string;
+  }) => {
+    const g = new THREE.Group();
+    g.position.set(opts.pos[0], opts.pos[1], opts.pos[2]);
+    g.rotation.y = opts.rotY;
+    g.scale.setScalar(opts.scale);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: opts.bodyColor, roughness: 0.8 });
     const body = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), bodyMat);
     body.scale.set(1.5, 0.55, 0.75);
     body.position.y = 0.55;
-    jerryGroup.add(body);
+    g.add(body);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 14, 12), bodyMat);
     head.position.set(1.25, 1.05, 0);
-    jerryGroup.add(head);
-    // Shell: sphere with a painted spiral.
+    g.add(head);
     const shellTex = (() => {
       const c = document.createElement("canvas");
       c.width = c.height = 256;
       const ctx = c.getContext("2d")!;
-      ctx.fillStyle = "#c08a4e";
+      ctx.fillStyle = opts.shellBase;
       ctx.fillRect(0, 0, 256, 256);
-      ctx.strokeStyle = "#6a4520";
+      ctx.strokeStyle = opts.shellSpiral;
       ctx.lineWidth = 10;
       ctx.beginPath();
       for (let a = 0; a < Math.PI * 7; a += 0.1) {
@@ -905,47 +917,120 @@ export function buildCardboardIsland(opts: {
     );
     shell.position.set(-0.5, 1.5, 0);
     shell.rotation.z = 0.25;
-    jerryGroup.add(shell);
-    // Googly eye stalks.
+    g.add(shell);
     [-0.22, 0.22].forEach((z) => {
       const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.75, 6), bodyMat);
       stalk.position.set(1.45, 1.65, z);
       stalk.rotation.z = -0.25;
-      jerryGroup.add(stalk);
-      jerryParts.stalks.push(stalk);
+      g.add(stalk);
+      allStalks.push(stalk);
       const eye = new THREE.Mesh(
         new THREE.SphereGeometry(0.16, 10, 8),
         new THREE.MeshBasicMaterial({ color: "#ffffff" }),
       );
       eye.position.set(1.55, 2.05, z);
-      jerryGroup.add(eye);
+      g.add(eye);
       const pupil = new THREE.Mesh(
         new THREE.SphereGeometry(0.07, 8, 6),
         new THREE.MeshBasicMaterial({ color: "#1a1a1a" }),
       );
       pupil.position.set(1.68, 2.07, z);
-      jerryGroup.add(pupil);
+      g.add(pupil);
     });
-    // Tiny name plaque pinned to the front of the shell — small enough
-    // that it doesn't tower over Jerry or block the plaza signs behind.
-    const jerrySign = new THREE.Mesh(
+    const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(1.1, 0.42),
       new THREE.MeshBasicMaterial({
-        map: signTexture(["JERRY"], "#eaa7c0", "#6a2c42"),
+        map: signTexture([opts.name], opts.signFill, opts.signInk),
         side: THREE.DoubleSide,
       }),
     );
-    jerrySign.position.set(0.68, 1.55, 0);
-    jerrySign.rotation.y = Math.PI / 2; // face forward, same way as Jerry's head
-    jerryGroup.add(jerrySign);
-  }
-  group.add(jerryGroup);
+    sign.position.set(0.68, 1.55, 0);
+    sign.rotation.y = Math.PI / 2;
+    g.add(sign);
+    group.add(g);
+    snailGroups.push(g);
+    return g;
+  };
 
-  // Jerry is solid — players (and roaming agents) bump off him instead
-  // of walking through the snail mayor.
+  // Mayor's red chair — a chunky cardboard throne behind Jerry. Static
+  // (doesn't wiggle with him), positioned so the seat tucks under his
+  // body and the tall backrest rises behind his shell.
+  const JERRY_ROT_Y = Math.PI + 0.5;
   {
-    const JR = 1.8; // half-width footprint
-    const JH = 2.6; // shell + head height
+    const chair = new THREE.Group();
+    chair.position.set(PLAZA_CX, 0, PLAZA_CZ);
+    chair.rotation.y = JERRY_ROT_Y;
+    const redSeat = new THREE.MeshStandardMaterial({ color: "#c62828", roughness: 0.7 });
+    const redBack = new THREE.MeshStandardMaterial({ color: "#a91e1e", roughness: 0.7 });
+    const trim = new THREE.MeshStandardMaterial({ color: "#f1c948", roughness: 0.6 });
+    // Seat slab, tucked slightly back so Jerry's body rests on top.
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.45, 2.2), redSeat);
+    seat.position.set(-0.2, 0.42, 0);
+    chair.add(seat);
+    // Four stubby legs.
+    [[-1.1, -0.95], [-1.1, 0.95], [0.7, -0.95], [0.7, 0.95]].forEach(([x, z]) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.42, 0.28), redBack);
+      leg.position.set(x, 0.21, z);
+      chair.add(leg);
+    });
+    // Tall backrest behind Jerry's shell.
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.35, 3.4, 2.3), redBack);
+    back.position.set(-1.4, 1.9, 0);
+    chair.add(back);
+    // Gold crown trim on top of the backrest.
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 2.5), trim);
+    crown.position.set(-1.4, 3.7, 0);
+    chair.add(crown);
+    [-0.9, 0, 0.9].forEach((z) => {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 4), trim);
+      spike.position.set(-1.4, 4.05, z);
+      chair.add(spike);
+    });
+    // Armrests.
+    [-1.05, 1.05].forEach((z) => {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.3, 0.28), redBack);
+      arm.position.set(-0.2, 1.0, z);
+      chair.add(arm);
+    });
+    group.add(chair);
+  }
+
+  // Jerry — the mayor. Sits on the chair (raised slightly so his slug
+  // body rests on the seat slab).
+  const jerryGroup = buildSnail({
+    name: "JERRY",
+    pos: [PLAZA_CX, 0.62, PLAZA_CZ],
+    rotY: JERRY_ROT_Y,
+    scale: 1,
+    bodyColor: "#d9c36b",
+    shellBase: "#c08a4e",
+    shellSpiral: "#6a4520",
+    signFill: "#eaa7c0",
+    signInk: "#6a2c42",
+  });
+
+  // Ben — slightly bigger, cooler color palette, parked off to the side
+  // of the plaza so he doesn't crowd the mayor.
+  const BEN_X = PLAZA_CX + 5.2;
+  const BEN_Z = PLAZA_CZ + 3.8;
+  const BEN_ROT_Y = Math.PI + 1.2;
+  const benGroup = buildSnail({
+    name: "BEN",
+    pos: [BEN_X, 0.18, BEN_Z],
+    rotY: BEN_ROT_Y,
+    scale: 1.25,
+    bodyColor: "#9bc46b",
+    shellBase: "#4e7fc0",
+    shellSpiral: "#20406a",
+    signFill: "#c5e1a5",
+    signInk: "#2c5a2c",
+  });
+
+  // Collision: chair + Jerry footprint (a bit wider to cover the throne),
+  // and Ben's larger footprint.
+  {
+    const JR = 2.2;
+    const JH = 4.4; // includes chair backrest
     boxes.push({
       minX: centerX + PLAZA_CX - JR,
       maxX: centerX + PLAZA_CX + JR,
@@ -954,7 +1039,19 @@ export function buildCardboardIsland(opts: {
       base: topY,
       height: topY + JH,
     });
+    const BR = 2.2 * 1.25;
+    const BH = 2.6 * 1.25;
+    boxes.push({
+      minX: centerX + BEN_X - BR,
+      maxX: centerX + BEN_X + BR,
+      minZ: centerZ + BEN_Z - BR,
+      maxZ: centerZ + BEN_Z + BR,
+      base: topY,
+      height: topY + BH,
+    });
   }
+  // Preserve legacy alias for the wiggle animation below.
+  const jerryParts = { stalks: allStalks };
 
   // ---- Cardboard TV: the island photo gallery ---------------------------
   const tv = new THREE.Group();
