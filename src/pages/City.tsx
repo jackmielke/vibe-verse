@@ -794,6 +794,8 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+  const [nearArcade, setNearArcade] = useState(false);
+  const [arcadeOpen, setArcadeOpen] = useState(false);
   // Ninja portals → Gremlin Mines (the underground game world).
   const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
   const [underground, setUnderground] = useState(false);
@@ -2167,6 +2169,7 @@ export default function City() {
       setNearShop(player.position.distanceTo(island.shop) < 7);
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
+      setNearArcade(player.position.distanceTo(island.arcade) < 4);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
       // Either ninja portal is "near" if within ~4m.
       const np1 = new THREE.Vector3(NINJA_PORTAL_ISLAND.x, NINJA_PORTAL_ISLAND.y + 1, NINJA_PORTAL_ISLAND.z);
