@@ -1769,6 +1769,20 @@ export function buildCardboardIsland(opts: {
 
 
 
+      // God Orb generator pulse + twinkle lights breathing.
+      const orbK = 0.5 + Math.sin(now * 0.0022) * 0.5;
+      (genOrb.material as THREE.MeshBasicMaterial).opacity = 0.7 + orbK * 0.3;
+      genOrb.scale.setScalar(0.95 + orbK * 0.12);
+      (genHalo.material as THREE.MeshBasicMaterial).opacity = 0.18 + orbK * 0.18;
+      genHalo.scale.setScalar(1 + orbK * 0.25);
+      genLight.intensity = 6 + orbK * 6;
+      for (let i = 0; i < twinkleLights.length; i++) {
+        const t = twinkleLights[i];
+        const k = 0.5 + Math.sin(now * 0.003 + t.phase) * 0.5;
+        t.mat.opacity = 0.35 + k * 0.6;
+        t.mesh.scale.setScalar(0.7 + k * 0.7);
+      }
+
       // Cardboard TV slideshow.
       tvTimer += dt;
       if (tvTimer > 7 && tvTextures.length > 0) {
