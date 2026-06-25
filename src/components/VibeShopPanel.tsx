@@ -52,6 +52,7 @@ function toVibeUnits(amount: number): bigint {
 
 export default function VibeShopPanel() {
   const [busy, setBusy] = useState(false);
+  const [unlocked, setUnlocked] = useState<{ hash: string; account: Address } | null>(null);
 
   async function handleBuy() {
     if (busy) return;
@@ -63,9 +64,13 @@ export default function VibeShopPanel() {
         to: MERCHANT_ADDRESS,
         amount: toVibeUnits(ITEM.priceVibe),
       });
+      // Grant the cosmetic hat tied to this wallet.
+      unlockHat(REWARD_HAT_ID, from);
+      try { localStorage.setItem("city.hat", REWARD_HAT_ID); } catch { /* ignore */ }
+      setUnlocked({ hash, account: from });
       const url = `https://basescan.org/tx/${hash}`;
-      toast.success(`Payment sent! ${ITEM.priceVibe} $VIBE on the way.`, {
-        description: `From ${shortAddress(from)} → ${shortAddress(MERCHANT_ADDRESS)}`,
+      toast.success(`🎩 ${REWARD_HAT_NAME} unlocked!`, {
+        description: `Equipped automatically. Strut into /city to show it off.`,
         action: {
           label: "View tx",
           onClick: () => window.open(url, "_blank", "noopener,noreferrer"),
