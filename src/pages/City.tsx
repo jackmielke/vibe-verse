@@ -3869,6 +3869,9 @@ export default function City() {
         />
       )}
 
+      <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
+
+
 
 
       {/* 1:1 chat with a nearby player or AI agent. */}
