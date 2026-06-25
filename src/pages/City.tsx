@@ -62,6 +62,7 @@ import {
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
+import { ArcadeModal } from "@/components/city/ArcadeModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
@@ -4014,6 +4015,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {nearArcade && !arcadeOpen && (
+            <button
+              onClick={(e) => {
+                setArcadeOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-fuchsia-100 border border-fuchsia-300/50 shadow-[0_0_24px_rgba(232,121,249,0.55)] bg-fuchsia-950/30 backdrop-blur-md hover:bg-fuchsia-500/15 transition-colors"
+            >
+              🕹️ Play Esmeralda Jump
             </button>
           )}
           {nearNinjaPortal && !underground && (
