@@ -3828,6 +3828,7 @@ export default function City() {
                         setEquippedJetpack(j.id);
                         saveEquippedJetpack(j.id);
                         applyJetpackRef.current?.(j.id);
+                        setFallDamageEnabled(!j.equipped);
                       }}
                       className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
                         eq
