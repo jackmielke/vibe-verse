@@ -536,8 +536,24 @@ export default function City() {
   const touchJetRef = useRef(false);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
+  const [fallDamageEnabled, setFallDamageEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("city.fallDamage") === "on";
+  });
+  const fallDamageEnabledRef = useRef(fallDamageEnabled);
   const isTouch =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
+  useEffect(() => {
+    fallDamageEnabledRef.current = fallDamageEnabled;
+    localStorage.setItem("city.fallDamage", fallDamageEnabled ? "on" : "off");
+  }, [fallDamageEnabled]);
+
+  useEffect(() => {
+    if (respawnFx <= 0) return;
+    const timer = window.setTimeout(() => setRespawnFx(0), 1800);
+    return () => window.clearTimeout(timer);
+  }, [respawnFx]);
 
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
@@ -2551,7 +2567,9 @@ export default function City() {
           const inUnder = undergroundActiveRef.current || pos.y < -50;
           const safeZone = inMars || inMoonA || inMoonB || inUnder;
 
-          if (!safeZone && dropFromPeak > 16) {
+          const fallDamageArmed = fallDamageEnabledRef.current && !jetpackEquipped;
+
+          if (fallDamageArmed && !safeZone && dropFromPeak > 16) {
             // Splat! Respawn on Edge Island's plaza (where Jerry lives).
             soundsRef.current?.thud?.(1);
             player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
@@ -3466,11 +3484,13 @@ export default function City() {
                   applyJetpackRef.current?.(last);
                   setEquippedJetpack(last);
                   localStorage.setItem("city.jetpack", last);
+                  setFallDamageEnabled(false);
                 } else {
                   localStorage.setItem("city.jetpack.last", equippedJetpack);
                   applyJetpackRef.current?.("none");
                   setEquippedJetpack("none");
                   localStorage.setItem("city.jetpack", "none");
+                  setFallDamageEnabled(true);
                 }
                 e.currentTarget.blur();
               }}
@@ -3482,6 +3502,16 @@ export default function City() {
               }
             >
               {equippedJetpack === "none" ? "🎒 Equip jetpack" : "🚫 Take off pack"}
+            </button>
+            <button
+              onClick={(e) => {
+                setFallDamageEnabled((v) => !v);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title={fallDamageEnabled ? "Turn fall damage off" : "Turn fall damage on"}
+            >
+              {fallDamageEnabled ? "💥 Splat" : "🛟 Safe"}
             </button>
             <button
               onClick={(e) => {
@@ -3883,16 +3913,12 @@ export default function City() {
         <div
           key={respawnFx}
           className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
-          onAnimationEnd={() => {
-            // Auto-clear after the fade-in finishes (≈300ms) + a short hold.
-            window.setTimeout(() => setRespawnFx(0), 1300);
-          }}
         >
           <div className="absolute inset-0 bg-rose-500/15 backdrop-blur-[1px]" />
           <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in">
             <div className="text-5xl mb-1">💫</div>
             <div className="text-sm font-semibold text-primary">SPLAT!</div>
-            <div className="text-xs text-muted-foreground">Respawning in the plaza…</div>
+            <div className="text-xs text-muted-foreground">Respawning on Edge Island…</div>
           </div>
         </div>
       )}
