@@ -88,7 +88,10 @@ export default function CityEntryScreen({
         <div className="mb-2 text-[11px] uppercase tracking-[0.4em] text-cyan-300/80">
           Welcome to Vibe City
         </div>
-        <h1 className="font-heading mb-1 text-4xl font-bold tracking-wide text-primary drop-shadow-[0_0_24px_hsl(var(--primary)/0.45)] sm:text-5xl">
+        <h1
+          className="mb-1 text-5xl text-primary drop-shadow-[0_0_28px_hsl(var(--primary)/0.55)] sm:text-6xl"
+          style={{ fontFamily: "'Pacifico', cursive", lineHeight: 1.1 }}
+        >
           Pick your vibe
         </h1>
         <p className="mb-5 max-w-md text-center text-sm text-muted-foreground">
@@ -98,15 +101,19 @@ export default function CityEntryScreen({
         {/* Single shared 3D preview of the picked character */}
         {currentOption && (
           <div
-            className={`relative mb-5 h-64 w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-gradient-to-br ${accent} shadow-[0_0_40px_rgba(0,0,0,0.4)]`}
+            className={`relative mb-5 h-[60vh] max-h-[520px] min-h-[360px] w-full max-w-md overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br ${accent} shadow-[0_0_40px_rgba(0,0,0,0.4)]`}
           >
             <CharacterPreview character={currentOption} spinning />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/50 to-transparent" />
-            <div className="absolute bottom-2 left-0 right-0 text-center text-sm font-medium text-white drop-shadow">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+            <div
+              className="absolute bottom-3 left-0 right-0 text-center text-lg text-white drop-shadow"
+              style={{ fontFamily: "'Pacifico', cursive" }}
+            >
               {currentOption.name}
             </div>
           </div>
         )}
+
 
         {/* Name field — pre-filled with a fun auto-name */}
         <div className="mb-5 flex w-full max-w-md flex-col items-center gap-1.5">
