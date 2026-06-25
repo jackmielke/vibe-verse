@@ -3097,10 +3097,20 @@ export default function City() {
   // is clicked while already in the city).
   useEffect(() => {
     const spawn = new URLSearchParams(routerLocation.search).get("spawn");
-    if (spawn === "island" || spawn === "moon" || spawn === "mars") {
+    if (
+      spawn === "island" ||
+      spawn === "moon" ||
+      spawn === "mars" ||
+      spawn === "underworld" ||
+      spawn === "mines"
+    ) {
       if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
-      else islandSpawnRef.current?.();
+      else if (spawn === "underworld" || spawn === "mines") {
+        // Direct portal into the Gremlin Mines — no falling down a
+        // mineshaft, just blink straight in with the entry-flash effect.
+        enterUndergroundRef.current?.();
+      } else islandSpawnRef.current?.();
       // Skip the entry overlay — visitors arriving from the hub already
       // chose where to land, so drop them straight into control.
       if (!enteredRef.current) {
@@ -3111,6 +3121,7 @@ export default function City() {
       }
     }
   }, [routerLocation.search]);
+
 
   const fmtMs = (ms: number) => {
     const s = Math.floor(ms / 1000);
