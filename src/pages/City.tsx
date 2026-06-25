@@ -2604,8 +2604,11 @@ export default function City() {
         modelYaw += d * Math.min(1, dt * 10);
         modelHolder.rotation.y = modelYaw;
       }
-      const tiltTarget = !onGround ? Math.min(hSpeed / RUN_SPEED, 1) * 0.38 : 0;
-      modelHolder.rotation.x += (tiltTarget - modelHolder.rotation.x) * Math.min(1, dt * 6);
+      // Keep the character upright in the air — the previous forward
+      // lean read as a sideways tilt whenever the model's yaw didn't
+      // match the camera (e.g. strafing or curved jetpack arcs).
+      modelHolder.rotation.x += (0 - modelHolder.rotation.x) * Math.min(1, dt * 8);
+      modelHolder.rotation.z += (0 - modelHolder.rotation.z) * Math.min(1, dt * 8);
 
       // Animation state machine.
       if (actions.size) {
