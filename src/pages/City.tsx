@@ -473,6 +473,7 @@ export default function City() {
     bestMs: null as number | null,
     nearIsland: false,
     nearMoon: false,
+    nearMars: false,
     nearZip: false,
     riding: false,
     nearSwing: false,
@@ -2146,6 +2147,9 @@ export default function City() {
         nearMoon:
           Math.hypot(player.position.x - MOON_X, player.position.z - MOON_Z) < 60 &&
           player.position.y > MOON_TOP - 30,
+        nearMars:
+          Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
+          player.position.y > MARS_TOP - 30,
         nearZip:
           Math.abs(
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
@@ -2196,15 +2200,19 @@ export default function City() {
     }, 120);
 
 
-    // Fast travel: cycle between plaza → Cardboard Island → Moon → plaza.
+    // Fast travel: cycle plaza → Cardboard Island → Moon → Mars → plaza.
     // Arrive a few meters above each landing so you flutter down.
     travelRef.current = () => {
       const p = player.position;
-      const onIsland = p.x > 250 && p.z > -120;
+      const onIsland = p.x > 250 && p.z > -120 && p.y < MOON_TOP - 30;
       const onMoon =
         Math.hypot(p.x - MOON_X, p.z - MOON_Z) < 60 && p.y > MOON_TOP - 20;
-      if (onMoon) {
+      const onMars =
+        Math.hypot(p.x - MARS_X, p.z - MARS_Z) < 70 && p.y > MARS_TOP - 20;
+      if (onMars) {
         p.set(0, 0, 6);
+      } else if (onMoon) {
+        p.copy(marsWorld.spawn);
       } else if (onIsland) {
         p.set(MOON_X, MOON_TOP + 6, MOON_Z + 4);
       } else {
@@ -3484,7 +3492,7 @@ export default function City() {
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
               title="Fast travel"
             >
-              {hud.nearMoon ? "🏙️ Plaza" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
+              {hud.nearMars ? "🏙️ Plaza" : hud.nearMoon ? "🔴 Mars" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
             </button>
             {hud.stars > 0 && (
               <button

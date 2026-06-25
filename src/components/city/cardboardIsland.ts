@@ -1018,7 +1018,7 @@ export function buildCardboardIsland(opts: {
     name: "BEN",
     pos: [BEN_X, 0.18, BEN_Z],
     rotY: BEN_ROT_Y,
-    scale: 1.25,
+    scale: 0.35,
     bodyColor: "#9bc46b",
     shellBase: "#4e7fc0",
     shellSpiral: "#20406a",
