@@ -1563,6 +1563,122 @@ export function buildCardboardIsland(opts: {
     group.add(arm);
   }
 
+  // ------------------------------------------------------------------
+  // GOD ORB GENERATOR + TWINKLE LIGHTS
+  // A mysterious glowing box tucked between Ninja's Palace (x=26,z=-18)
+  // and the Wish Wall (x=-4,z=-32). It "powers" a constellation of
+  // twinkle lights scattered across the island lawn.
+  // ------------------------------------------------------------------
+  const GEN_X = 12;
+  const GEN_Z = -26;
+  const generatorGroup = new THREE.Group();
+  generatorGroup.position.set(GEN_X, 0, GEN_Z);
+  group.add(generatorGroup);
+
+  // Dark obsidian housing.
+  const genBody = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 1.8, 1.2),
+    new THREE.MeshStandardMaterial({
+      color: "#0a0d14",
+      roughness: 0.4,
+      metalness: 0.7,
+      emissive: "#1a2f55",
+      emissiveIntensity: 0.25,
+    }),
+  );
+  genBody.position.y = 0.9;
+  generatorGroup.add(genBody);
+  boxes.push({
+    minX: centerX + GEN_X - 0.9, maxX: centerX + GEN_X + 0.9,
+    minZ: centerZ + GEN_Z - 0.7, maxZ: centerZ + GEN_Z + 0.7,
+    base: topY, height: 1.8,
+  });
+
+  // Glowing orb chamber on top.
+  const genOrb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.42, 24, 18),
+    new THREE.MeshBasicMaterial({ color: "#9bf7c8", transparent: true, opacity: 0.9 }),
+  );
+  genOrb.position.y = 2.1;
+  generatorGroup.add(genOrb);
+
+  const genHalo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 20, 14),
+    new THREE.MeshBasicMaterial({
+      color: "#46e88c",
+      transparent: true,
+      opacity: 0.25,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  genHalo.position.y = 2.1;
+  generatorGroup.add(genHalo);
+
+  const genLight = new THREE.PointLight("#7fffc4", 8, 18, 2);
+  genLight.position.y = 2.2;
+  generatorGroup.add(genLight);
+
+  // Engraved plaque: "POWERED BY THE GOD ORB".
+  const plaqueCanvas = document.createElement("canvas");
+  plaqueCanvas.width = 512; plaqueCanvas.height = 128;
+  {
+    const ctx = plaqueCanvas.getContext("2d")!;
+    ctx.fillStyle = "#0b0f17";
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.strokeStyle = "#46e88c";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(8, 8, 496, 112);
+    ctx.fillStyle = "#9bf7c8";
+    ctx.font = "bold 38px ui-monospace, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "#46e88c";
+    ctx.shadowBlur = 14;
+    ctx.fillText("POWERED BY THE GOD ORB", 256, 64);
+  }
+  const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
+  plaqueTex.colorSpace = THREE.SRGBColorSpace;
+  const plaque = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 0.36),
+    new THREE.MeshBasicMaterial({ map: plaqueTex, transparent: true }),
+  );
+  plaque.position.set(0, 1.05, 0.61);
+  generatorGroup.add(plaque);
+
+  // Twinkle lights scattered across the lawn — small glowing pucks
+  // sitting on the grass, color-rotating between mint and warm amber.
+  const twinkleLights: { mat: THREE.MeshBasicMaterial; mesh: THREE.Mesh; phase: number; hue: number }[] = [];
+  const twinkleGeo = new THREE.SphereGeometry(0.12, 10, 8);
+  const islandR = 56;
+  // Avoid stomping on buildings/portals: keep an exclusion zone around each shop.
+  const avoid: { x: number; z: number; r: number }[] = SHOPS.map((s) => ({
+    x: s.x, z: s.z, r: Math.max(s.w, s.d) * 0.7 + 2,
+  }));
+  avoid.push({ x: GEN_X, z: GEN_Z, r: 2 });
+  avoid.push({ x: 0, z: 0, r: 4 }); // central plaza
+  let placed = 0;
+  let tries = 0;
+  while (placed < 90 && tries < 600) {
+    tries++;
+    const a = Math.random() * Math.PI * 2;
+    const r = 6 + Math.random() * (islandR - 8);
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    if (avoid.some((v) => Math.hypot(v.x - x, v.z - z) < v.r)) continue;
+    const warm = Math.random() < 0.45;
+    const color = warm ? "#ffd58a" : "#9bf7c8";
+    const mat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    });
+    const mesh = new THREE.Mesh(twinkleGeo, mat);
+    mesh.position.set(x, 0.18, z);
+    group.add(mesh);
+    twinkleLights.push({ mat, mesh, phase: Math.random() * Math.PI * 2, hue: warm ? 1 : 0 });
+    placed++;
+  }
+
   // Light beam: visible from the city day or night, fog-exempt.
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(1.1, 1.1, 320, 12, 1, true),
@@ -1652,6 +1768,20 @@ export function buildCardboardIsland(opts: {
       avatarScanMat.opacity = 0.35 + Math.sin(now * 0.0035) * 0.15;
 
 
+
+      // God Orb generator pulse + twinkle lights breathing.
+      const orbK = 0.5 + Math.sin(now * 0.0022) * 0.5;
+      (genOrb.material as THREE.MeshBasicMaterial).opacity = 0.7 + orbK * 0.3;
+      genOrb.scale.setScalar(0.95 + orbK * 0.12);
+      (genHalo.material as THREE.MeshBasicMaterial).opacity = 0.18 + orbK * 0.18;
+      genHalo.scale.setScalar(1 + orbK * 0.25);
+      genLight.intensity = 6 + orbK * 6;
+      for (let i = 0; i < twinkleLights.length; i++) {
+        const t = twinkleLights[i];
+        const k = 0.5 + Math.sin(now * 0.003 + t.phase) * 0.5;
+        t.mat.opacity = 0.35 + k * 0.6;
+        t.mesh.scale.setScalar(0.7 + k * 0.7);
+      }
 
       // Cardboard TV slideshow.
       tvTimer += dt;
