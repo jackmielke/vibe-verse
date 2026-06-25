@@ -21,6 +21,11 @@ import {
   VIBE_TOKEN_SYMBOL,
   type Address,
 } from "@/lib/vibe-wallet";
+import { unlockHat } from "@/components/city/cosmetics";
+
+// Hat cosmetic granted by buying the sticker pack.
+const REWARD_HAT_ID = "sticker";
+const REWARD_HAT_NAME = "Holo Sticker Hat";
 
 // Where $VIBE payments go. Configurable here so it's obvious.
 const MERCHANT_ADDRESS: Address = "0x6bDa0Bd9D8AE76dE24b9C2F7Be9ab2D4b3b888a5";
