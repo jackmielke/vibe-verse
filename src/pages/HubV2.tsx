@@ -1115,6 +1115,23 @@ export default function HubV2() {
       </Dialog>
 
 
+
+      {/* First-run welcome overlay — only renders for brand-new visitors
+          who don't have a saved character or display name yet. */}
+      {freshPick && (
+        <CityEntryScreen
+          characters={freshCharacters}
+          initialCharacter={freshPick.id}
+          initialName={freshPick.name}
+          eyebrow="Welcome to the VibeVerse"
+          title="Pick your vibe"
+          subtitle="We rolled a random character — tap any name to swap, and pick what people should call you."
+          ctaLabel="✨ Jet into the world"
+          agentInviteUrl="https://myvibeverse.com"
+          onEnter={commitFreshEntry}
+        />
+      )}
+
       {/* Character picker moved to the /profile page — it lives in the
           global-nav "Sign in" dropdown as "Choose your character". The
           full Lobby-style grid (every Quaternius character) is the
