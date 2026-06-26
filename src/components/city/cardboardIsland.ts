@@ -404,38 +404,69 @@ export function buildCardboardIsland(opts: {
   starSpots.push(new THREE.Vector3(centerX + TREE_X, topY + 14.5, centerZ + TREE_Z));
 
   // ---- Welcome sign ------------------------------------------------
-  // Sits on the far (north) side of the plaza so it reads as a backdrop
-  // when you spawn looking across at Jerry. Two short side-posts hold
-  // the boards up — no central pole crossing through the lettering.
+  // A big hand-painted arch on the north side of the plaza: greets
+  // visitors with "WELCOME TO THE CITY OF CARDBOARD WHATEVER" and a
+  // smaller tagline locating us in the wider Galaxy of Creative
+  // Whatever. Two chunky posts hold the stacked boards.
   const welcome = new THREE.Group();
   welcome.position.set(0, 0, -18);
-  // Two slim cardboard posts at the edges of the lower board, just tall
-  // enough to meet its underside.
-  [-2.4, 2.4].forEach((px) => {
+  [-7, 7].forEach((px) => {
     const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.14, 1.3, 8),
+      new THREE.CylinderGeometry(0.22, 0.28, 8.6, 10),
       cardboardDark,
     );
-    post.position.set(px, 0.65, 0);
+    post.position.set(px, 4.3, 0);
     welcome.add(post);
+    // Crayon-stripe wrap so the posts feel kid-painted.
+    const wrap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.24, 0.5, 10),
+      new THREE.MeshStandardMaterial({ color: px < 0 ? "#ff6b6b" : "#2f7ad9", roughness: 0.7 }),
+    );
+    wrap.position.set(px, 1.0, 0);
+    welcome.add(wrap);
   });
-  const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string }> = [
-    { lines: ["WELCOME TO", "EDGE ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
-    { lines: ["BE KIND · REUSE", "DREAM BIG"], y: 2.2, w: 5.6, h: 2.1, bg: "#cfe6c2", fg: "#2a6a3a" },
+  const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string; glow?: boolean }> = [
+    // BIG headline arch.
+    { lines: ["WELCOME TO THE", "CITY OF CARDBOARD", "WHATEVER"], y: 9.6, w: 16, h: 5.8, bg: "#f4e6c2", fg: "#8a2a2a" },
+    // Sub-banner: locate us in the wider story.
+    { lines: ["☆ part of the GALAXY of ☆", "CREATIVE WHATEVER"], y: 5.1, w: 13, h: 3.0, bg: "#cfe6c2", fg: "#1f5fa8" },
+    // Tiny rules-of-the-road slat.
+    { lines: ["be kind · reuse · dream big"], y: 2.6, w: 10, h: 1.4, bg: "#ffd9a0", fg: "#5a3a1a" },
   ];
   boards.forEach((b) => {
     const board = new THREE.Mesh(
       new THREE.PlaneGeometry(b.w, b.h),
       new THREE.MeshBasicMaterial({
-        map: signTexture(b.lines, b.bg, b.fg),
+        map: signTexture(b.lines, b.bg, b.fg, b.glow),
         side: THREE.DoubleSide,
       }),
     );
     board.position.y = b.y;
-    // Face the spawn point at +z, so visitors read it across the plaza.
-    board.rotation.y = 0;
     welcome.add(board);
+    // Slim cardboard frame behind each board for depth.
+    const backer = new THREE.Mesh(
+      new THREE.BoxGeometry(b.w + 0.3, b.h + 0.3, 0.15),
+      cardboardDark,
+    );
+    backer.position.set(0, b.y, -0.08);
+    welcome.add(backer);
   });
+  // Little rainbow bunting strung between the posts, just under the
+  // headline — echoes the real-world arch in the reference photo.
+  const buntingColors = ["#ff5b5b", "#ff9f43", "#ffd166", "#1ec96b", "#1f7be0", "#9b4bd6"];
+  for (let i = 0; i < 14; i++) {
+    const t = i / 13;
+    const flag = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.7, 0.9),
+      new THREE.MeshStandardMaterial({ color: buntingColors[i % buntingColors.length], roughness: 0.8, side: THREE.DoubleSide }),
+    );
+    // Catenary droop between posts.
+    const x = THREE.MathUtils.lerp(-6.6, 6.6, t);
+    const sag = Math.sin(t * Math.PI) * 0.5;
+    flag.position.set(x, 7.2 - sag, 0.12);
+    flag.rotation.z = (0.5 - t) * 0.3;
+    welcome.add(flag);
+  }
   group.add(welcome);
 
   // ---- Windmill ----------------------------------------------------
