@@ -128,16 +128,16 @@ export default function CityEntryScreen({
 
       <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-8">
         <div className="mb-2 text-[11px] uppercase tracking-[0.4em] text-cyan-300/80">
-          Welcome to Vibe City
+          {eyebrow}
         </div>
         <h1
           className="mb-1 text-5xl text-primary drop-shadow-[0_0_28px_hsl(var(--primary)/0.55)] sm:text-6xl"
           style={{ fontFamily: "'Pacifico', cursive", lineHeight: 1.1 }}
         >
-          Pick your vibe
+          {title}
         </h1>
         <p className="mb-5 max-w-md text-center text-sm text-muted-foreground">
-          We picked one for you — tap any name to swap.
+          {subtitle}
         </p>
 
         {/* Single shared 3D preview of the picked character */}
