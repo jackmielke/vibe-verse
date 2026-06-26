@@ -3081,6 +3081,7 @@ export default function City() {
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
       marsSpawnRef.current = null;
+      tjsSpawnRef.current = null;
       marsResetRef.current = null;
       unsubMars();
       void voiceRef.current?.end().catch(() => {});
