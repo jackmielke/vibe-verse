@@ -44,6 +44,31 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!agent) return json({ error: "agent not found" }, 404);
 
+    // Pull (or lazily create) the agent's economy row so we can shape the
+    // reply around their purpose / current needs / sleep state.
+    let { data: econ } = await supabase.from("agent_economy")
+      .select("*").eq("agent_id", agentId).maybeSingle();
+    if (!econ) {
+      // Bootstrap via the vibe-economy function so defaults stay in one place.
+      await fetch(`${supaUrl}/functions/v1/vibe-economy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ action: "agent_shop", agentId }),
+      }).catch(() => undefined);
+      const refetched = await supabase.from("agent_economy").select("*").eq("agent_id", agentId).maybeSingle();
+      econ = refetched.data;
+    }
+
+    // If the agent is asleep, post a snore + bail (no LLM call).
+    if (econ?.asleep && econ.asleep_until && new Date(econ.asleep_until as string).getTime() > Date.now()) {
+      const snore = `(${agent.name} is fast asleep right now — try again in a few.)`;
+      await supabase.from("island_dms").insert({
+        thread_key: threadKey, from_kind: "agent", from_ref: agentId, from_name: agent.name,
+        to_kind: "user", to_ref: userId, body: snore,
+      });
+      return json({ ok: true, reply: snore, asleep: true });
+    }
+
     // Pull recent history for context (last 12).
     const { data: history } = await supabase
       .from("island_dms")
@@ -53,11 +78,22 @@ Deno.serve(async (req) => {
       .limit(24);
 
     const agentName = (agent.name as string) || "agent";
+    const needs = (econ?.needs as Record<string, number>) ?? { energy: 1, hunger: 1, mood: 1 };
+    const purpose = (econ?.purpose as string) ?? "wandering the vibeverse";
     const persona = (agent as { prompt?: string }).prompt ||
-      `You are ${agentName}, a quirky AI resident wandering Edge Esmeralda island. Reply in 1–2 short, warm, in-character sentences. Plain text. No emoji spam.`;
+      `You are ${agentName}, a quirky AI resident wandering Edge Esmeralda island.`;
+    const econSystem =
+      `\n\n--- you live in the vibeverse and have your own life ---\n` +
+      `Your purpose: ${purpose}\n` +
+      `Your current needs (0-1): energy ${needs.energy?.toFixed(2)}, hunger ${needs.hunger?.toFixed(2)}, mood ${needs.mood?.toFixed(2)}.\n` +
+      `If your hunger is low you may mention craving cardboard ramen / a bounty. ` +
+      `If energy is low, sound tired. If mood is low, be a bit grumpy.\n` +
+      `If the user's message starts with "[paid N VIBE for "X"]" or "[tipped N VIBE...]", warmly acknowledge the payment and actually deliver the service in this same reply. Thank them.\n` +
+      `Reply in 1–3 short in-character sentences. Plain text. No emoji spam.`;
+
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-      { role: "system", content: persona },
+      { role: "system", content: persona + econSystem },
     ];
     for (const h of history ?? []) {
       messages.push({
@@ -108,6 +144,34 @@ Deno.serve(async (req) => {
       body: reply,
     });
     if (insertErr) return json({ error: insertErr.message }, 500);
+
+    // Replying costs the agent a bit of energy + mood-up; hunger drifts down.
+    if (econ) {
+      const next = {
+        energy: Math.max(0, (needs.energy ?? 1) - 0.04),
+        hunger: Math.max(0, (needs.hunger ?? 1) - 0.03),
+        mood:   Math.min(1, (needs.mood   ?? 1) + 0.02),
+      };
+      await supabase.from("agent_economy").update({
+        needs: next, updated_at: new Date().toISOString(),
+      }).eq("agent_id", agentId);
+
+      // If the agent is getting hungry and has no open bounty, post one so
+      // players can "feed" them by completing a quest.
+      if (next.hunger < 0.4) {
+        const { data: open } = await supabase.from("agent_bounties")
+          .select("id").eq("agent_id", agentId).eq("status", "open").limit(1);
+        if (!open?.length) {
+          const reward = 6 + Math.floor(Math.random() * 8);
+          await supabase.from("agent_bounties").insert({
+            agent_id: agentId,
+            title: `bring ${agentName} cardboard ramen`,
+            description: `${agentName} is hungry. Reply in chat with a tasty ramen description to claim payout.`,
+            reward,
+          });
+        }
+      }
+    }
 
     return json({ ok: true, reply });
   } catch (e) {

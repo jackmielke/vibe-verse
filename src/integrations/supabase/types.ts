@@ -29,6 +29,56 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_bounties: {
+        Row: {
+          agent_id: string
+          claimed_at: string | null
+          claimed_by_kind: string | null
+          claimed_by_ref: string | null
+          created_at: string
+          description: string | null
+          id: string
+          paid_at: string | null
+          reward: number
+          status: string
+          title: string
+        }
+        Insert: {
+          agent_id: string
+          claimed_at?: string | null
+          claimed_by_kind?: string | null
+          claimed_by_ref?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          paid_at?: string | null
+          reward: number
+          status?: string
+          title: string
+        }
+        Update: {
+          agent_id?: string
+          claimed_at?: string | null
+          claimed_by_kind?: string | null
+          claimed_by_ref?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          paid_at?: string | null
+          reward?: number
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_bounties_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "world_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_chat_logs: {
         Row: {
           agent_id: string
@@ -100,6 +150,50 @@ export type Database = {
             columns: ["community_id"]
             isOneToOne: false
             referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_economy: {
+        Row: {
+          agent_id: string
+          asleep: boolean
+          asleep_until: string | null
+          items: Json
+          last_tick: string
+          needs: Json
+          purpose: string
+          services: Json
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          asleep?: boolean
+          asleep_until?: string | null
+          items?: Json
+          last_tick?: string
+          needs?: Json
+          purpose?: string
+          services?: Json
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          asleep?: boolean
+          asleep_until?: string | null
+          items?: Json
+          last_tick?: string
+          needs?: Json
+          purpose?: string
+          services?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_economy_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: true
+            referencedRelation: "world_agents"
             referencedColumns: ["id"]
           },
         ]
@@ -3751,6 +3845,104 @@ export type Database = {
           world_id_nullifier_hash?: string | null
           world_id_verified?: boolean | null
           world_id_verified_at?: string | null
+        }
+        Relationships: []
+      }
+      vibe_balances: {
+        Row: {
+          balance: number
+          owner_kind: string
+          owner_ref: string
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          owner_kind: string
+          owner_ref: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          owner_kind?: string
+          owner_ref?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      vibe_inventory: {
+        Row: {
+          acquired_at: string
+          cosmetic_key: string | null
+          id: string
+          item_key: string
+          item_title: string
+          owner_kind: string
+          owner_ref: string
+          source_agent_id: string | null
+        }
+        Insert: {
+          acquired_at?: string
+          cosmetic_key?: string | null
+          id?: string
+          item_key: string
+          item_title: string
+          owner_kind: string
+          owner_ref: string
+          source_agent_id?: string | null
+        }
+        Update: {
+          acquired_at?: string
+          cosmetic_key?: string | null
+          id?: string
+          item_key?: string
+          item_title?: string
+          owner_kind?: string
+          owner_ref?: string
+          source_agent_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_inventory_source_agent_id_fkey"
+            columns: ["source_agent_id"]
+            isOneToOne: false
+            referencedRelation: "world_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vibe_ledger: {
+        Row: {
+          amount: number
+          created_at: string
+          from_kind: string | null
+          from_ref: string | null
+          id: string
+          memo: string | null
+          reason: string
+          to_kind: string | null
+          to_ref: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          from_kind?: string | null
+          from_ref?: string | null
+          id?: string
+          memo?: string | null
+          reason?: string
+          to_kind?: string | null
+          to_ref?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          from_kind?: string | null
+          from_ref?: string | null
+          id?: string
+          memo?: string | null
+          reason?: string
+          to_kind?: string | null
+          to_ref?: string | null
         }
         Relationships: []
       }
