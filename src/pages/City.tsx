@@ -504,6 +504,7 @@ export default function City() {
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
+  const tjsSpawnRef = useRef<(() => void) | null>(null);
   // Mars minigame: hunt down all the gremlins. The 3D scene owns the
   // truth (see mars.ts); these refs/state mirror it for the HUD chip.
   const marsResetRef = useRef<(() => void) | null>(null);
