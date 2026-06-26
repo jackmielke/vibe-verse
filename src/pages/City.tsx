@@ -2163,6 +2163,9 @@ export default function City() {
         nearMars:
           Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
           player.position.y > MARS_TOP - 30,
+        nearTjs:
+          Math.hypot(player.position.x - TJS_X, player.position.z - TJS_Z) < TJS_ISLET_R * 3 &&
+          player.position.y > TJS_TOP - 30,
         nearZip:
           Math.abs(
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
