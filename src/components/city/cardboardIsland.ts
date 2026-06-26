@@ -1908,6 +1908,94 @@ export function buildCardboardIsland(opts: {
     orbStruts.add(ball);
   }
 
+  // ------------------------------------------------------------------
+  // DIVINE SPHERE — full geodesic sphere floating high over the island.
+  // Lore-wise it complements the God Orb (the half-dome): the Divine
+  // Sphere is the "whole" form, suspended between the digital and the
+  // physical, slowly rotating in the sky as a beacon.
+  // ------------------------------------------------------------------
+  const divineSphere = new THREE.Group();
+  // Floats out over the lagoon NW of the plaza, well above building
+  // tops so it reads as a sky object from anywhere on the island.
+  divineSphere.position.set(-26, 30, 16);
+  group.add(divineSphere);
+
+  const DIV_R = 5.0;
+  const divIcosa = new THREE.IcosahedronGeometry(DIV_R, 2);
+  const dPos = divIcosa.attributes.position as THREE.BufferAttribute;
+  const dVerts: THREE.Vector3[] = [];
+  const dVMap = new Map<string, number>();
+  const dKey = (v: THREE.Vector3) => `${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`;
+  for (let i = 0; i < dPos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(dPos, i);
+    const k = dKey(v);
+    if (!dVMap.has(k)) { dVMap.set(k, dVerts.length); dVerts.push(v); }
+  }
+  const dEdgeSet = new Set<string>();
+  const dEdges: [number, number][] = [];
+  for (let i = 0; i < dPos.count; i += 3) {
+    const ids = [0, 1, 2].map((o) => {
+      const v = new THREE.Vector3().fromBufferAttribute(dPos, i + o);
+      return dVMap.get(dKey(v))!;
+    });
+    for (const [a, b] of [[ids[0], ids[1]], [ids[1], ids[2]], [ids[2], ids[0]]]) {
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      if (dEdgeSet.has(key)) continue;
+      dEdgeSet.add(key);
+      dEdges.push([a, b]);
+    }
+  }
+  const divinePalette = [
+    new THREE.MeshStandardMaterial({ color: "#d92b2b", roughness: 0.4, metalness: 0.2, emissive: "#3a0606", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#ff8a1c", roughness: 0.4, metalness: 0.2, emissive: "#3a1a00", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#ffd166", roughness: 0.4, metalness: 0.2, emissive: "#3a2a00", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#2f7ad9", roughness: 0.4, metalness: 0.2, emissive: "#061a3a", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#f4f4f4", roughness: 0.55, metalness: 0.05, emissive: "#333", emissiveIntensity: 0.35 }),
+  ];
+  const divineStrutGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 6, 1);
+  let divIdx = 0;
+  for (const [a, b] of dEdges) {
+    const va = dVerts[a]; const vb = dVerts[b];
+    const mid = new THREE.Vector3().addVectors(va, vb).multiplyScalar(0.5);
+    const dir = new THREE.Vector3().subVectors(vb, va);
+    const len = dir.length();
+    const strut = new THREE.Mesh(divineStrutGeo, divinePalette[divIdx % divinePalette.length]);
+    strut.position.copy(mid);
+    strut.scale.y = len;
+    strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    divineSphere.add(strut);
+    divIdx++;
+  }
+  const divNodeGeo = new THREE.SphereGeometry(0.14, 10, 8);
+  const divNodeMat = new THREE.MeshStandardMaterial({ color: "#fafafa", roughness: 0.3, metalness: 0.25, emissive: "#666", emissiveIntensity: 0.4 });
+  for (const v of dVerts) {
+    const ball = new THREE.Mesh(divNodeGeo, divNodeMat);
+    ball.position.copy(v);
+    divineSphere.add(ball);
+  }
+  // Glowing inner core to read against the sky.
+  const divineCore = new THREE.Mesh(
+    new THREE.SphereGeometry(1.4, 24, 18),
+    new THREE.MeshBasicMaterial({ color: "#fff4c8", transparent: true, opacity: 0.85 }),
+  );
+  divineSphere.add(divineCore);
+  const divineHalo = new THREE.Mesh(
+    new THREE.SphereGeometry(2.6, 24, 18),
+    new THREE.MeshBasicMaterial({
+      color: "#ffe0a0",
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  divineSphere.add(divineHalo);
+  const divineLight = new THREE.PointLight("#fff0c0", 8, 40, 2);
+  divineSphere.add(divineLight);
+  const divineBaseY = divineSphere.position.y;
+
+
+
   const orbFloor = new THREE.Mesh(
     new THREE.CircleGeometry(ORB_R * 0.98, 48),
     new THREE.MeshStandardMaterial({ color: "#1a1f2b", roughness: 0.9, metalness: 0.1 }),
