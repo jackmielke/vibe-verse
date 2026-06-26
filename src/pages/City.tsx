@@ -2725,6 +2725,7 @@ export default function City() {
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
       marsWorld.update(dt, now);
+      tjsWorld.update(dt, now);
 
       // ---- Gremlin Hunt: stomp + bite collisions ---------------------
       // Only run while you're actually on Mars (cheap distance check
