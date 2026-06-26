@@ -16,7 +16,7 @@
  *
  * No category filters here — the WorldPicker handles deeper browsing.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import * as THREE from "three";
