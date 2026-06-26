@@ -145,6 +145,34 @@ Deno.serve(async (req) => {
     });
     if (insertErr) return json({ error: insertErr.message }, 500);
 
+    // Replying costs the agent a bit of energy + mood-up; hunger drifts down.
+    if (econ) {
+      const next = {
+        energy: Math.max(0, (needs.energy ?? 1) - 0.04),
+        hunger: Math.max(0, (needs.hunger ?? 1) - 0.03),
+        mood:   Math.min(1, (needs.mood   ?? 1) + 0.02),
+      };
+      await supabase.from("agent_economy").update({
+        needs: next, updated_at: new Date().toISOString(),
+      }).eq("agent_id", agentId);
+
+      // If the agent is getting hungry and has no open bounty, post one so
+      // players can "feed" them by completing a quest.
+      if (next.hunger < 0.4) {
+        const { data: open } = await supabase.from("agent_bounties")
+          .select("id").eq("agent_id", agentId).eq("status", "open").limit(1);
+        if (!open?.length) {
+          const reward = 6 + Math.floor(Math.random() * 8);
+          await supabase.from("agent_bounties").insert({
+            agent_id: agentId,
+            title: `bring ${agentName} cardboard ramen`,
+            description: `${agentName} is hungry. Reply in chat with a tasty ramen description to claim payout.`,
+            reward,
+          });
+        }
+      }
+    }
+
     return json({ ok: true, reply });
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
