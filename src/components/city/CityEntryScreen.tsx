@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { CharacterPreview } from "@/island/CharacterPreview";
 import type { CharacterOption } from "@/island/characters";
 import { generateCharacterName } from "@/lib/character-naming";
+import { Copy, Check } from "lucide-react";
 
 type CityChar = { name: string; url: string };
 
