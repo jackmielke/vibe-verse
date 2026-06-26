@@ -85,6 +85,7 @@ import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
+import CityEntryScreen from "@/components/city/CityEntryScreen";
 
 const OFFICIAL_WORLDS: World[] = [
   // Edge Island leads the carousel — first-time visitors land on the
