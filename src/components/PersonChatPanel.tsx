@@ -184,6 +184,14 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
           </DialogTitle>
         </DialogHeader>
 
+        {isAgent && (
+          <AgentEconomyStrip
+            agentId={target.ref}
+            ownerKind="user"
+            ownerRef={meRef}
+          />
+        )}
+
         <div ref={scrollRef} className="max-h-[55vh] min-h-[260px] overflow-y-auto px-4 py-3 space-y-2 bg-background/40">
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-6">
