@@ -133,6 +133,14 @@ const MARS_X = 820;
 const MARS_Z = -640;
 const MARS_TOP = 240;
 
+// Trader Joe's Galaxy — a floating archipelago of TJ's outposts,
+// placed off in the opposite quadrant from Mars so the skyline reads
+// uniquely from each world.
+const TJS_X = -780;
+const TJS_Z = 540;
+const TJS_TOP = 120;
+const TJS_ISLET_R = 22; // landing tolerance for fast-travel detection
+
 // Gremlin Mines — a pocket dimension carved 300m straight down. You
 // reach it through one of the two ninja portals (Edge Island + City).
 const UNDER_X = 0;
