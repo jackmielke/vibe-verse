@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
 
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-      { role: "system", content: persona },
+      { role: "system", content: persona + econSystem },
     ];
     for (const h of history ?? []) {
       messages.push({
