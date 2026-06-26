@@ -233,27 +233,36 @@ export function buildTradersGalaxy(opts: {
       height: topY + o.body.h,
     });
 
-    // Front sign on the body
+    // Sign layout: split the front face vertically so the main sign
+    // (top ~55%) and sub neon (bottom ~30%) never overlap. We pick
+    // signW to fit within the body width AND keep the target height.
+    const frontZ = o.dz - 2 + o.body.d / 2 + 0.06;
     const tex = signTexture(o.signLines, o.bg, o.fg);
     const aspect = (tex.image as HTMLCanvasElement).height / (tex.image as HTMLCanvasElement).width;
-    const signW = o.body.w * 0.85;
+    const mainTargetH = o.body.h * 0.42;
+    let mainW = mainTargetH / aspect;
+    if (mainW > o.body.w * 0.9) mainW = o.body.w * 0.9;
+    const mainH = mainW * aspect;
     const sign = new THREE.Mesh(
-      new THREE.PlaneGeometry(signW, signW * aspect),
+      new THREE.PlaneGeometry(mainW, mainH),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
     );
-    sign.position.set(o.dx, o.body.h - 1.4, o.dz - 2 + o.body.d / 2 + 0.05);
+    sign.position.set(o.dx, o.body.h - mainH / 2 - 0.4, frontZ);
     group.add(sign);
 
-    // Sub neon sign
+    // Sub neon sign — anchored to the bottom of the body.
     if (o.sub) {
       const stex = signTexture(o.sub.lines, o.sub.bg, o.sub.fg, !!o.sub.glow);
       const sa = (stex.image as HTMLCanvasElement).height / (stex.image as HTMLCanvasElement).width;
-      const sw = o.body.w * 0.55;
+      const subTargetH = o.body.h * 0.3;
+      let subW = subTargetH / sa;
+      if (subW > o.body.w * 0.75) subW = o.body.w * 0.75;
+      const subH = subW * sa;
       const sub = new THREE.Mesh(
-        new THREE.PlaneGeometry(sw, sw * sa),
+        new THREE.PlaneGeometry(subW, subH),
         new THREE.MeshBasicMaterial({ map: stex, side: THREE.DoubleSide, transparent: true }),
       );
-      sub.position.set(o.dx, o.body.h * 0.45, o.dz - 2 + o.body.d / 2 + 0.08);
+      sub.position.set(o.dx, subH / 2 + 0.6, frontZ + 0.02);
       group.add(sub);
     }
 
