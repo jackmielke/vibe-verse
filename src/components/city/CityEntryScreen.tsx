@@ -215,8 +215,19 @@ export default function CityEntryScreen({
           }}
           className="rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold uppercase tracking-[0.25em] text-primary-foreground shadow-[0_0_32px_hsl(var(--primary)/0.55)] transition-opacity hover:opacity-90"
         >
-          ✨ Jet in{currentOption ? ` as ${currentOption.name}` : ""}
+          {ctaLabel ?? `✨ Jet in${currentOption ? ` as ${currentOption.name}` : ""}`}
         </button>
+
+        {agentInviteUrl && (
+          <button
+            onClick={copyAgentPrompt}
+            className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-5 py-2.5 text-xs font-medium text-cyan-200 hover:bg-cyan-400/20 transition-colors"
+            title="Copies an invite prompt you can paste to your agent"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Copied — paste it to your agent" : "Invite your agent to join"}
+          </button>
+        )}
 
         <div className="mt-4 text-[11px] font-mono text-muted-foreground/80">
           WASD / arrows — move · Shift — run · Space — jetpack · drag — look
