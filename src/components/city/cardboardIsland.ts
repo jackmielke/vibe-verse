@@ -72,7 +72,7 @@ const ISLAND_RADIUS = 55;
 // ------------------------------------------------------------------
 // Canvas helpers — everything on the island is "drawn by hand".
 // ------------------------------------------------------------------
-function cardboardTexture(): THREE.CanvasTexture {
+export function cardboardTexture(): THREE.CanvasTexture {
   const S = 256;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
