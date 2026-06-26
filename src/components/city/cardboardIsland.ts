@@ -404,38 +404,69 @@ export function buildCardboardIsland(opts: {
   starSpots.push(new THREE.Vector3(centerX + TREE_X, topY + 14.5, centerZ + TREE_Z));
 
   // ---- Welcome sign ------------------------------------------------
-  // Sits on the far (north) side of the plaza so it reads as a backdrop
-  // when you spawn looking across at Jerry. Two short side-posts hold
-  // the boards up — no central pole crossing through the lettering.
+  // A big hand-painted arch on the north side of the plaza: greets
+  // visitors with "WELCOME TO THE CITY OF CARDBOARD WHATEVER" and a
+  // smaller tagline locating us in the wider Galaxy of Creative
+  // Whatever. Two chunky posts hold the stacked boards.
   const welcome = new THREE.Group();
   welcome.position.set(0, 0, -18);
-  // Two slim cardboard posts at the edges of the lower board, just tall
-  // enough to meet its underside.
-  [-2.4, 2.4].forEach((px) => {
+  [-7, 7].forEach((px) => {
     const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.14, 1.3, 8),
+      new THREE.CylinderGeometry(0.22, 0.28, 8.6, 10),
       cardboardDark,
     );
-    post.position.set(px, 0.65, 0);
+    post.position.set(px, 4.3, 0);
     welcome.add(post);
+    // Crayon-stripe wrap so the posts feel kid-painted.
+    const wrap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.24, 0.5, 10),
+      new THREE.MeshStandardMaterial({ color: px < 0 ? "#ff6b6b" : "#2f7ad9", roughness: 0.7 }),
+    );
+    wrap.position.set(px, 1.0, 0);
+    welcome.add(wrap);
   });
-  const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string }> = [
-    { lines: ["WELCOME TO", "EDGE ISLAND"], y: 4.7, w: 7, h: 2.9, bg: "#e8d9b8", fg: "#5a3a1a" },
-    { lines: ["BE KIND · REUSE", "DREAM BIG"], y: 2.2, w: 5.6, h: 2.1, bg: "#cfe6c2", fg: "#2a6a3a" },
+  const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string; glow?: boolean }> = [
+    // BIG headline arch.
+    { lines: ["WELCOME TO THE", "CITY OF CARDBOARD", "WHATEVER"], y: 9.6, w: 16, h: 5.8, bg: "#f4e6c2", fg: "#8a2a2a" },
+    // Sub-banner: locate us in the wider story.
+    { lines: ["☆ part of the GALAXY of ☆", "CREATIVE WHATEVER"], y: 5.1, w: 13, h: 3.0, bg: "#cfe6c2", fg: "#1f5fa8" },
+    // Tiny rules-of-the-road slat.
+    { lines: ["be kind · reuse · dream big"], y: 2.6, w: 10, h: 1.4, bg: "#ffd9a0", fg: "#5a3a1a" },
   ];
   boards.forEach((b) => {
     const board = new THREE.Mesh(
       new THREE.PlaneGeometry(b.w, b.h),
       new THREE.MeshBasicMaterial({
-        map: signTexture(b.lines, b.bg, b.fg),
+        map: signTexture(b.lines, b.bg, b.fg, b.glow),
         side: THREE.DoubleSide,
       }),
     );
     board.position.y = b.y;
-    // Face the spawn point at +z, so visitors read it across the plaza.
-    board.rotation.y = 0;
     welcome.add(board);
+    // Slim cardboard frame behind each board for depth.
+    const backer = new THREE.Mesh(
+      new THREE.BoxGeometry(b.w + 0.3, b.h + 0.3, 0.15),
+      cardboardDark,
+    );
+    backer.position.set(0, b.y, -0.08);
+    welcome.add(backer);
   });
+  // Little rainbow bunting strung between the posts, just under the
+  // headline — echoes the real-world arch in the reference photo.
+  const buntingColors = ["#ff5b5b", "#ff9f43", "#ffd166", "#1ec96b", "#1f7be0", "#9b4bd6"];
+  for (let i = 0; i < 14; i++) {
+    const t = i / 13;
+    const flag = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.7, 0.9),
+      new THREE.MeshStandardMaterial({ color: buntingColors[i % buntingColors.length], roughness: 0.8, side: THREE.DoubleSide }),
+    );
+    // Catenary droop between posts.
+    const x = THREE.MathUtils.lerp(-6.6, 6.6, t);
+    const sag = Math.sin(t * Math.PI) * 0.5;
+    flag.position.set(x, 7.2 - sag, 0.12);
+    flag.rotation.z = (0.5 - t) * 0.3;
+    welcome.add(flag);
+  }
   group.add(welcome);
 
   // ---- Windmill ----------------------------------------------------
@@ -1877,6 +1908,94 @@ export function buildCardboardIsland(opts: {
     orbStruts.add(ball);
   }
 
+  // ------------------------------------------------------------------
+  // DIVINE SPHERE — full geodesic sphere floating high over the island.
+  // Lore-wise it complements the God Orb (the half-dome): the Divine
+  // Sphere is the "whole" form, suspended between the digital and the
+  // physical, slowly rotating in the sky as a beacon.
+  // ------------------------------------------------------------------
+  const divineSphere = new THREE.Group();
+  // Floats out over the lagoon NW of the plaza, well above building
+  // tops so it reads as a sky object from anywhere on the island.
+  divineSphere.position.set(-26, 30, 16);
+  group.add(divineSphere);
+
+  const DIV_R = 5.0;
+  const divIcosa = new THREE.IcosahedronGeometry(DIV_R, 2);
+  const dPos = divIcosa.attributes.position as THREE.BufferAttribute;
+  const dVerts: THREE.Vector3[] = [];
+  const dVMap = new Map<string, number>();
+  const dKey = (v: THREE.Vector3) => `${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`;
+  for (let i = 0; i < dPos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(dPos, i);
+    const k = dKey(v);
+    if (!dVMap.has(k)) { dVMap.set(k, dVerts.length); dVerts.push(v); }
+  }
+  const dEdgeSet = new Set<string>();
+  const dEdges: [number, number][] = [];
+  for (let i = 0; i < dPos.count; i += 3) {
+    const ids = [0, 1, 2].map((o) => {
+      const v = new THREE.Vector3().fromBufferAttribute(dPos, i + o);
+      return dVMap.get(dKey(v))!;
+    });
+    for (const [a, b] of [[ids[0], ids[1]], [ids[1], ids[2]], [ids[2], ids[0]]]) {
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      if (dEdgeSet.has(key)) continue;
+      dEdgeSet.add(key);
+      dEdges.push([a, b]);
+    }
+  }
+  const divinePalette = [
+    new THREE.MeshStandardMaterial({ color: "#d92b2b", roughness: 0.4, metalness: 0.2, emissive: "#3a0606", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#ff8a1c", roughness: 0.4, metalness: 0.2, emissive: "#3a1a00", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#ffd166", roughness: 0.4, metalness: 0.2, emissive: "#3a2a00", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#2f7ad9", roughness: 0.4, metalness: 0.2, emissive: "#061a3a", emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#f4f4f4", roughness: 0.55, metalness: 0.05, emissive: "#333", emissiveIntensity: 0.35 }),
+  ];
+  const divineStrutGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 6, 1);
+  let divIdx = 0;
+  for (const [a, b] of dEdges) {
+    const va = dVerts[a]; const vb = dVerts[b];
+    const mid = new THREE.Vector3().addVectors(va, vb).multiplyScalar(0.5);
+    const dir = new THREE.Vector3().subVectors(vb, va);
+    const len = dir.length();
+    const strut = new THREE.Mesh(divineStrutGeo, divinePalette[divIdx % divinePalette.length]);
+    strut.position.copy(mid);
+    strut.scale.y = len;
+    strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    divineSphere.add(strut);
+    divIdx++;
+  }
+  const divNodeGeo = new THREE.SphereGeometry(0.14, 10, 8);
+  const divNodeMat = new THREE.MeshStandardMaterial({ color: "#fafafa", roughness: 0.3, metalness: 0.25, emissive: "#666", emissiveIntensity: 0.4 });
+  for (const v of dVerts) {
+    const ball = new THREE.Mesh(divNodeGeo, divNodeMat);
+    ball.position.copy(v);
+    divineSphere.add(ball);
+  }
+  // Glowing inner core to read against the sky.
+  const divineCore = new THREE.Mesh(
+    new THREE.SphereGeometry(1.4, 24, 18),
+    new THREE.MeshBasicMaterial({ color: "#fff4c8", transparent: true, opacity: 0.85 }),
+  );
+  divineSphere.add(divineCore);
+  const divineHalo = new THREE.Mesh(
+    new THREE.SphereGeometry(2.6, 24, 18),
+    new THREE.MeshBasicMaterial({
+      color: "#ffe0a0",
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  divineSphere.add(divineHalo);
+  const divineLight = new THREE.PointLight("#fff0c0", 8, 40, 2);
+  divineSphere.add(divineLight);
+  const divineBaseY = divineSphere.position.y;
+
+
+
   const orbFloor = new THREE.Mesh(
     new THREE.CircleGeometry(ORB_R * 0.98, 48),
     new THREE.MeshStandardMaterial({ color: "#1a1f2b", roughness: 0.9, metalness: 0.1 }),
@@ -2090,6 +2209,16 @@ export function buildCardboardIsland(opts: {
 
       // God Orb dome: slow majestic rotation + inner core pulse.
       orbStruts.rotation.y += dt * 0.08;
+      // Divine Sphere: slow majestic spin + gentle sky-bob + halo pulse.
+      divineSphere.rotation.y += dt * 0.18;
+      divineSphere.rotation.x += dt * 0.05;
+      divineSphere.position.y = divineBaseY + Math.sin(now * 0.0008) * 1.2;
+      const divK = 0.5 + Math.sin(now * 0.0018) * 0.5;
+      (divineCore.material as THREE.MeshBasicMaterial).opacity = 0.7 + divK * 0.28;
+      divineCore.scale.setScalar(0.92 + divK * 0.14);
+      (divineHalo.material as THREE.MeshBasicMaterial).opacity = 0.16 + divK * 0.18;
+      divineHalo.scale.setScalar(1 + divK * 0.25);
+      divineLight.intensity = 5 + divK * 5;
       const orbK = 0.5 + Math.sin(now * 0.0022) * 0.5;
       (genOrb.material as THREE.MeshBasicMaterial).opacity = 0.7 + orbK * 0.3;
       genOrb.scale.setScalar(0.95 + orbK * 0.12);
