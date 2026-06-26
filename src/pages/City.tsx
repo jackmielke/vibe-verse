@@ -1274,6 +1274,16 @@ export default function City() {
       boxes,
     });
     scene.add(marsWorld.group);
+
+    // Trader Joe's Galaxy — a separate floating archipelago of TJ's
+    // outposts. Same physics; just another fast-travel destination.
+    const tjsWorld = buildTradersGalaxy({
+      centerX: TJS_X,
+      centerZ: TJS_Z,
+      topY: TJS_TOP,
+      boxes,
+    });
+    scene.add(tjsWorld.group);
     // Wire the gremlin minigame to the React HUD.
     setMarsGame((g) => ({
       ...g,
