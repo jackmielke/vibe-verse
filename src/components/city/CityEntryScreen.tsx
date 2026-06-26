@@ -62,6 +62,16 @@ interface Props {
   initialCharacter: string;
   initialName: string;
   onEnter: (pick: { character: string; name: string }) => void;
+  /** Optional eyebrow/title overrides so the same screen can front
+   *  /city, the lobby hub, or any other "pick a vibe" entry surface. */
+  eyebrow?: string;
+  title?: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  /** If set, render a "Copy invite prompt for your agent" button
+   *  pointing at this URL. The user will share the copied text with
+   *  their agent so it can join the same world. */
+  agentInviteUrl?: string;
 }
 
 export default function CityEntryScreen({
@@ -69,13 +79,44 @@ export default function CityEntryScreen({
   initialCharacter,
   initialName,
   onEnter,
+  eyebrow = "Welcome to Vibe City",
+  title = "Pick your vibe",
+  subtitle = "We picked one for you — tap any name to swap.",
+  ctaLabel,
+  agentInviteUrl,
 }: Props) {
   const options = useMemo(() => characters.map((c, i) => toOption(c, i)), [characters]);
   const [picked, setPicked] = useState<string>(initialCharacter);
   const [name, setName] = useState<string>(initialName);
+  const [copied, setCopied] = useState(false);
 
   const currentOption = options.find((o) => o.id === picked) ?? options[0];
   const accent = currentOption?.accent ?? ACCENTS[0];
+
+  async function copyAgentPrompt() {
+    if (!agentInviteUrl) return;
+    const who = name.trim() || "my friend";
+    const prompt =
+      `Hey! I just joined the VibeVerse as "${who}". ` +
+      `Hop in and join me — open ${agentInviteUrl} in a browser, ` +
+      `pick a character, give yourself a name, and walk over to say hi. ` +
+      `It's a multiplayer 3D world; you'll see me running around.`;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Fallback: select-and-copy via a temp textarea
+      const ta = document.createElement("textarea");
+      ta.value = prompt;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      ta.remove();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    }
+  }
 
   return (
     <div className="absolute inset-0 z-20 overflow-y-auto bg-gradient-to-b from-[#0a0f1a] via-[#0b1424] to-[#0a0f1a]">
