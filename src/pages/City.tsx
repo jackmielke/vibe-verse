@@ -484,6 +484,7 @@ export default function City() {
     nearIsland: false,
     nearMoon: false,
     nearMars: false,
+    nearTjs: false,
     nearZip: false,
     riding: false,
     nearSwing: false,
