@@ -281,18 +281,30 @@ export function buildTradersGalaxy(opts: {
     }
   }
 
-  // ---- Bridges between plaza and each outer islet ----
+  // ---- Bridges ----
+  // Inner ring outposts connect to the plaza.
+  // Outer ring outposts connect to whichever inner outpost is nearest.
   const plaza = OUTPOSTS[0];
+  const innerCount = INNER.length;
   for (let i = 1; i < OUTPOSTS.length; i++) {
     const o = OUTPOSTS[i];
-    // Pull each bridge endpoint into the islet rim so it visually sits on the disc.
-    const dirX = o.dx - plaza.dx;
-    const dirZ = o.dz - plaza.dz;
+    // Pick anchor: plaza for inner ring, nearest inner outpost for outer ring.
+    let anchor = plaza;
+    if (i >= innerCount) {
+      let bestD = Infinity;
+      for (let k = 0; k < innerCount; k++) {
+        const cand = OUTPOSTS[k];
+        const d = Math.hypot(o.dx - cand.dx, o.dz - cand.dz);
+        if (d < bestD) { bestD = d; anchor = cand; }
+      }
+    }
+    const dirX = o.dx - anchor.dx;
+    const dirZ = o.dz - anchor.dz;
     const dist = Math.hypot(dirX, dirZ);
     const ux = dirX / dist;
     const uz = dirZ / dist;
-    const fromX = plaza.dx + ux * (plaza.islet - 1);
-    const fromZ = plaza.dz + uz * (plaza.islet - 1);
+    const fromX = anchor.dx + ux * (anchor.islet - 1);
+    const fromZ = anchor.dz + uz * (anchor.islet - 1);
     const toX = o.dx - ux * (o.islet - 1);
     const toZ = o.dz - uz * (o.islet - 1);
     const b = bridge(fromX, fromZ, toX, toZ);
