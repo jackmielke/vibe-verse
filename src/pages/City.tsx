@@ -3534,7 +3534,7 @@ export default function City() {
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
               title="Fast travel"
             >
-              {hud.nearMars ? "🏙️ Plaza" : hud.nearMoon ? "🔴 Mars" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
+              {hud.nearTjs ? "🏙️ Plaza" : hud.nearMars ? "🛒 TJ's Galaxy" : hud.nearMoon ? "🔴 Mars" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
             </button>
             {hud.stars > 0 && (
               <button
