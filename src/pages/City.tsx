@@ -3149,11 +3149,13 @@ export default function City() {
       spawn === "island" ||
       spawn === "moon" ||
       spawn === "mars" ||
+      spawn === "tjs" ||
       spawn === "underworld" ||
       spawn === "mines"
     ) {
       if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
+      else if (spawn === "tjs") tjsSpawnRef.current?.();
       else if (spawn === "underworld" || spawn === "mines") {
         // Direct portal into the Gremlin Mines — no falling down a
         // mineshaft, just blink straight in with the entry-flash effect.
