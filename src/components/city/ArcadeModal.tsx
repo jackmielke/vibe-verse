@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
  * setting `localStorage.esmeraldaJumpUrl` to a custom value — handy
  * if the published URL ever changes.
  */
-const DEFAULT_URL = "https://8141ac0a-31e6-4d48-8829-28ac6924067a.lovableproject.com/";
+const DEFAULT_URL = "https://esmeralda-jump.lovable.app/";
 
 export function ArcadeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
