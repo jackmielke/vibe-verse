@@ -2228,7 +2228,7 @@ export default function City() {
     }, 120);
 
 
-    // Fast travel: cycle plaza → Cardboard Island → Moon → Mars → plaza.
+    // Fast travel: cycle plaza → Cardboard Island → Moon → Mars → TJ's Galaxy → plaza.
     // Arrive a few meters above each landing so you flutter down.
     travelRef.current = () => {
       const p = player.position;
@@ -2237,8 +2237,12 @@ export default function City() {
         Math.hypot(p.x - MOON_X, p.z - MOON_Z) < 60 && p.y > MOON_TOP - 20;
       const onMars =
         Math.hypot(p.x - MARS_X, p.z - MARS_Z) < 70 && p.y > MARS_TOP - 20;
-      if (onMars) {
+      const onTjs =
+        Math.hypot(p.x - TJS_X, p.z - TJS_Z) < TJS_ISLET_R * 3 && p.y > TJS_TOP - 20;
+      if (onTjs) {
         p.set(0, 0, 6);
+      } else if (onMars) {
+        p.copy(tjsWorld.spawn);
       } else if (onMoon) {
         p.copy(marsWorld.spawn);
       } else if (onIsland) {
@@ -2270,6 +2274,12 @@ export default function City() {
     // /city?spawn=mars drops visitors onto the Mars landing pad.
     marsSpawnRef.current = () => {
       player.position.copy(marsWorld.spawn);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
+    // /city?spawn=tjs drops visitors onto TJ's Galaxy plaza.
+    tjsSpawnRef.current = () => {
+      player.position.copy(tjsWorld.spawn);
       vel.set(0, 0, 0);
       onGround = false;
     };
