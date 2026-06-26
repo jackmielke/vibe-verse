@@ -1,61 +1,56 @@
-# Social Core v1 — Duels + Leave-behinds
+# Trader Joe's Galaxy — new world + game brainstorm
 
-Building on what already works in `/city`: real-time presence, chat bubbles, and the emote wheel (`src/components/city/multiplayer.ts` + `src/pages/City.tsx`). Two new threads, both designed to feel alive even when nobody's online (async-friendly).
+## What I'll build (this turn, if you approve)
 
-## 1. Walk-up duels: RPS + Emote Match
+A brand-new destination called **TJ's Galaxy** (working title) that slots into the existing fast-travel cycle right next to Mars. Same character, same physics, same jetpack/parkour/fall-damage rules — just a different "biome" stacked with Trader Joe's-themed cardboard buildings in the style of the reference photo (kraft cardboard, vines, twinkle lights, "GOOD FOOD GOOD VIBES" neon, banana crates, hibiscus).
 
-**Trigger.** When your player stands within ~2.5m of another peer for >0.6s, a "👋 Challenge {name}" prompt appears above their head. Press **E** (or tap the prompt on mobile) to send a duel invite. The other player sees an Accept / Decline toast for 8s.
+### Layout
+A small floating archipelago of 5 mini-islets in the sky, each holding a different Trader Joe's outpost, connected by short cardboard bridges:
 
-**Round flow (shared overlay).**
-- Coin flip picks game: **Rock-Paper-Scissors** or **Emote Match** (mirror the opponent's emote within 3s).
-- Best-of-3. Each round ~5s. Result floats above both players ("WIN" / "LOSE" / "TIE") and broadcasts a sparkle emote.
-- Win streaks tracked per-session; "first blood / 3-streak" gets a chat bubble shout-out.
-
-**Transport.** Add three new message kinds to the existing presence channel — no new tables yet:
-- `duel:invite { fromId, toId, game, nonce }`
-- `duel:move { duelId, round, choice }` (rock|paper|scissors, or emote name)
-- `duel:end { duelId, winnerId, score }`
-Both clients are authoritative for their own move; tie-break by lower peer-id on conflict.
-
-**UI.** New `src/components/city/DuelOverlay.tsx` — centered glass card, 3 big choice buttons, round counter, opponent name. Reuses the emote sprite system for "throw" animation.
-
-## 2. Leave-behinds at locations
-
-A persistent, world-anchored note/gift/graffiti you drop where you stand. Anyone in `/city` later sees it floating as a small glowing icon; click to read.
-
-**New table `world_leavebehinds`** (Lovable Cloud / Supabase):
-- `id, world` (text, e.g. 'city'), `x, y, z` (real)
-- `kind` ('note' | 'gift' | 'graffiti')
-- `emoji` (text, optional), `text` (text, ≤140 chars)
-- `author_name` (text, from vibe identity), `author_id` (uuid nullable — works signed-out)
-- `color` (text, from vibe palette), `created_at`, `expires_at` (default now()+14 days)
-- RLS: public read; insert allowed for anyone (rate-limited client-side, 1/min); delete by author_id only when signed in.
-- GRANTs: `SELECT` to anon+authenticated; `INSERT` to anon+authenticated; `UPDATE/DELETE` to authenticated; ALL to service_role.
-
-**In-world rendering.** New `src/components/city/leavebehinds.ts` — loads all rows for `world='city'` on spawn, renders each as a small `THREE.Sprite` with the emoji on a translucent disc in the vibe color. Approaching (<2m) opens a little popover with the text + author. A "🪧 Leave something here" HUD button (next to Emote) opens a tiny composer: kind picker (note/gift/graffiti), emoji, ≤140 chars, post.
-
-**Discovery.** Tiny "+N nearby" counter near the minimap so empty plazas feel populated by past visitors.
-
-## Out of scope (next slices)
-- Plaza/Lobby for idle players
-- VIBECOIN in mini-games
-- Homes + Agent Village bridge
-
-## Technical notes
-- No schema changes for duels; reuses presence channel.
-- Leave-behinds is the only DB change — single migration with GRANTs + RLS as above.
-- All new UI uses existing semantic tokens; no hardcoded colors.
-- Mobile: duel prompt + composer use the same glass-panel pattern as the emote wheel.
-
-## Files
-
-```text
-new   src/components/city/DuelOverlay.tsx
-new   src/components/city/leavebehinds.ts
-new   src/components/city/LeaveBehindComposer.tsx
-edit  src/components/city/multiplayer.ts   // duel message kinds + handlers
-edit  src/pages/City.tsx                   // wire overlay, proximity prompt, HUD button
-db    migration: create public.world_leavebehinds + GRANTs + RLS
+```
+        [ FROZEN AISLE ]            <- icy-blue cardboard, frosty signs
+              |
+[ FEARLESS FLYER ]---[ TJ'S PLAZA ]---[ SNACK SHACK ]
+                          |
+                    [ BANANA STAND ]   <- giant banana crate, 19¢ sign
 ```
 
-Want me to start with **duels first**, **leave-behinds first**, or build them in parallel?
+- **TJ's Plaza** (center): big "TRADER JOE'S — ISLAND OUTPOST 0002" sign, hula-girl bobblehead, "TODAY'S FINDS" board listing rotating items, solar panel roof, string lights, vine overgrowth.
+- **Fearless Flyer**: hanging wooden sign, newsprint flyer wall you can read up close.
+- **Frozen Aisle**: pale-blue tinted cardboard, "EVERYTHING BUT THE BAGEL" frost-neon, foggy floor.
+- **Snack Shack**: dark-chocolate / almond-butter palette, stacked snack-crate stalls.
+- **Banana Stand**: oversized "ORGANIC BANANAS" crate as a building.
+
+Lit by warm sunset lighting (matching the reference image) — slightly different sky tint than Cardboard Island so it reads as a separate world.
+
+### Fast-travel integration
+- Cycle becomes: Plaza → Cardboard Island → Moon → Mars → **TJ's Galaxy** → Plaza.
+- HUD label updates to show "🛒 TJ's Galaxy" as the next destination.
+- New `?spawn=tjs` URL deep-link.
+- Lands you on TJ's Plaza islet, jetpack stays equipped, all collisions/fall-damage behave as today.
+
+### Files touched
+- New: `src/components/city/tradersGalaxy.ts` (builder, mirrors `cardboardIsland.ts` patterns).
+- `src/pages/City.tsx`: register world, add spawn ref, extend travel cycle, HUD label.
+
+## Game brainstorm (no code yet — pick a favorite and I'll plan it next)
+
+1. **Fearless Flyer Scavenger Hunt** — a rotating shopping list appears (Mango, Coconut Water, Dark Chocolate, Everything But The Bagel…). Items spawn as glowing pickups hidden across the islets. Grab them all before the timer ends → leaderboard time. Pure speedrun.
+2. **Cart Run** — you push a runaway cardboard shopping cart down a winding ramp between islets, dodging banana peels and stacking items into it for combo points. Endless-runner energy.
+3. **Restock Rush** — co-op/solo: trucks drop pallets at the plaza, you jetpack them to the right outpost (frozen → Frozen Aisle, snacks → Snack Shack). Wrong drop = lose a heart. Survive 5 waves.
+4. **Hidden Hibiscus** — daily easter-egg hunt: one tiny red hibiscus is tucked somewhere new each day; first finder gets a cosmetic (a TJ's paper-bag hat that joins the Holo Sticker Hat).
+5. **Two-Buck Chuck Bowling** — knock over stacked wine-box pins with a rolling banana from the top of the ramp. Mini-arcade, fits in a modal like Esmeralda Jump.
+6. **Aisle Parkour Time Trial** — checkpoint course weaving through the 5 outposts, leveraging existing wall-jump + jetpack. Fastest lap saved locally.
+
+My pick for best fit with current engine: **#1 Fearless Flyer Scavenger Hunt** (reuses pickup + HUD timer patterns from Mars; minimal new systems).
+
+## Technical notes
+
+- New world placed at e.g. `(TJS_X = -600, TJS_Z = -400, TJS_TOP = 90)` — far from Cardboard Island so you don't see both at once, similar pattern to Mars.
+- Reuses `cardboardTexture()` / `signTexture()` helpers exported from `cardboardIsland.ts` to keep the aesthetic identical; add a `frostedCardboardMat` variant for the Frozen Aisle.
+- Each islet = small cylinder + collision box pushed into the shared `boxes` array, identical to existing buildings.
+- No physics, jetpack, character, multiplayer, or networking changes.
+
+## What I need from you
+- Approve the world build as described, and
+- Tell me which game idea (1–6) to spec out next (or pick a mash-up).

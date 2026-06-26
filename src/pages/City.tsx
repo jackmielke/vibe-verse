@@ -33,6 +33,7 @@ import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
+import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -132,6 +133,14 @@ const MOON2_TOP = 205;
 const MARS_X = 820;
 const MARS_Z = -640;
 const MARS_TOP = 240;
+
+// Trader Joe's Galaxy — a floating archipelago of TJ's outposts,
+// placed off in the opposite quadrant from Mars so the skyline reads
+// uniquely from each world.
+const TJS_X = -780;
+const TJS_Z = 540;
+const TJS_TOP = 120;
+const TJS_ISLET_R = 22; // landing tolerance for fast-travel detection
 
 // Gremlin Mines — a pocket dimension carved 300m straight down. You
 // reach it through one of the two ninja portals (Edge Island + City).
@@ -475,6 +484,7 @@ export default function City() {
     nearIsland: false,
     nearMoon: false,
     nearMars: false,
+    nearTjs: false,
     nearZip: false,
     riding: false,
     nearSwing: false,
@@ -494,6 +504,7 @@ export default function City() {
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
+  const tjsSpawnRef = useRef<(() => void) | null>(null);
   // Mars minigame: hunt down all the gremlins. The 3D scene owns the
   // truth (see mars.ts); these refs/state mirror it for the HUD chip.
   const marsResetRef = useRef<(() => void) | null>(null);
@@ -1264,6 +1275,16 @@ export default function City() {
       boxes,
     });
     scene.add(marsWorld.group);
+
+    // Trader Joe's Galaxy — a separate floating archipelago of TJ's
+    // outposts. Same physics; just another fast-travel destination.
+    const tjsWorld = buildTradersGalaxy({
+      centerX: TJS_X,
+      centerZ: TJS_Z,
+      topY: TJS_TOP,
+      boxes,
+    });
+    scene.add(tjsWorld.group);
     // Wire the gremlin minigame to the React HUD.
     setMarsGame((g) => ({
       ...g,
@@ -2153,6 +2174,9 @@ export default function City() {
         nearMars:
           Math.hypot(player.position.x - MARS_X, player.position.z - MARS_Z) < 70 &&
           player.position.y > MARS_TOP - 30,
+        nearTjs:
+          Math.hypot(player.position.x - TJS_X, player.position.z - TJS_Z) < TJS_ISLET_R * 3 &&
+          player.position.y > TJS_TOP - 30,
         nearZip:
           Math.abs(
             Math.hypot(player.position.x - zip.x, player.position.z - zip.z) - zip.radius,
@@ -2204,7 +2228,7 @@ export default function City() {
     }, 120);
 
 
-    // Fast travel: cycle plaza → Cardboard Island → Moon → Mars → plaza.
+    // Fast travel: cycle plaza → Cardboard Island → Moon → Mars → TJ's Galaxy → plaza.
     // Arrive a few meters above each landing so you flutter down.
     travelRef.current = () => {
       const p = player.position;
@@ -2213,8 +2237,12 @@ export default function City() {
         Math.hypot(p.x - MOON_X, p.z - MOON_Z) < 60 && p.y > MOON_TOP - 20;
       const onMars =
         Math.hypot(p.x - MARS_X, p.z - MARS_Z) < 70 && p.y > MARS_TOP - 20;
-      if (onMars) {
+      const onTjs =
+        Math.hypot(p.x - TJS_X, p.z - TJS_Z) < TJS_ISLET_R * 3 && p.y > TJS_TOP - 20;
+      if (onTjs) {
         p.set(0, 0, 6);
+      } else if (onMars) {
+        p.copy(tjsWorld.spawn);
       } else if (onMoon) {
         p.copy(marsWorld.spawn);
       } else if (onIsland) {
@@ -2246,6 +2274,12 @@ export default function City() {
     // /city?spawn=mars drops visitors onto the Mars landing pad.
     marsSpawnRef.current = () => {
       player.position.copy(marsWorld.spawn);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
+    // /city?spawn=tjs drops visitors onto TJ's Galaxy plaza.
+    tjsSpawnRef.current = () => {
+      player.position.copy(tjsWorld.spawn);
       vel.set(0, 0, 0);
       onGround = false;
     };
@@ -2493,8 +2527,8 @@ export default function City() {
         mp.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
         agentResidents.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
       }
-      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, -CITY_HALF - 40, MARS_X + 120);
-      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MARS_Z - 120, CITY_HALF + 40);
+      const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, Math.min(-CITY_HALF - 40, TJS_X - 120), MARS_X + 120);
+      const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MARS_Z - 120, Math.max(CITY_HALF + 40, TJS_Z + 120));
       if (!blockedAt(nx, nz, pos.y)) {
         pos.x = nx;
         pos.z = nz;
@@ -2702,6 +2736,7 @@ export default function City() {
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
       marsWorld.update(dt, now);
+      tjsWorld.update(dt, now);
 
       // ---- Gremlin Hunt: stomp + bite collisions ---------------------
       // Only run while you're actually on Mars (cheap distance check
@@ -3046,6 +3081,7 @@ export default function City() {
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
       marsSpawnRef.current = null;
+      tjsSpawnRef.current = null;
       marsResetRef.current = null;
       unsubMars();
       void voiceRef.current?.end().catch(() => {});
@@ -3113,11 +3149,13 @@ export default function City() {
       spawn === "island" ||
       spawn === "moon" ||
       spawn === "mars" ||
+      spawn === "tjs" ||
       spawn === "underworld" ||
       spawn === "mines"
     ) {
       if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
+      else if (spawn === "tjs") tjsSpawnRef.current?.();
       else if (spawn === "underworld" || spawn === "mines") {
         // Direct portal into the Gremlin Mines — no falling down a
         // mineshaft, just blink straight in with the entry-flash effect.
@@ -3496,7 +3534,7 @@ export default function City() {
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
               title="Fast travel"
             >
-              {hud.nearMars ? "🏙️ Plaza" : hud.nearMoon ? "🔴 Mars" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
+              {hud.nearTjs ? "🏙️ Plaza" : hud.nearMars ? "🛒 TJ's Galaxy" : hud.nearMoon ? "🔴 Mars" : hud.nearIsland ? "🌙 Moon" : "🏝️ Island"}
             </button>
             {hud.stars > 0 && (
               <button
