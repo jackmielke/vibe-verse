@@ -163,7 +163,7 @@ function islandGroundTexture(): THREE.CanvasTexture {
   return t;
 }
 
-function signTexture(lines: string[], bg: string, fg: string, glow = false): THREE.CanvasTexture {
+export function signTexture(lines: string[], bg: string, fg: string, glow = false): THREE.CanvasTexture {
   const W = 512;
   const H = 128 + lines.length * 96;
   const canvas = document.createElement("canvas");
