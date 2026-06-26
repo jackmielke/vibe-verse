@@ -32,47 +32,113 @@ interface Outpost {
   signLines: string[];
 }
 
-const OUTPOSTS: Outpost[] = [
+// Inner ring (5 original outposts) + outer ring of 15 themed shops.
+// Bodies are tall enough that the main + sub signs never overlap;
+// see the sign layout math in the build loop below.
+const INNER: Outpost[] = [
   {
     name: "PLAZA",
-    dx: 0, dz: 0, islet: 20,
-    body: { w: 18, h: 10, d: 12 },
+    dx: 0, dz: 0, islet: 22,
+    body: { w: 20, h: 14, d: 13 },
     bg: "#e8d9b8", fg: "#c0392b",
     sub: { lines: ["GOOD FOOD", "GOOD VIBES"], bg: "#10241a", fg: "#46e88c", glow: true },
     signLines: ["TRADER", "JOE'S"],
   },
   {
     name: "FEARLESS",
-    dx: -56, dz: 0, islet: 14,
-    body: { w: 12, h: 8, d: 9 },
+    dx: -58, dz: 0, islet: 14,
+    body: { w: 13, h: 12, d: 10 },
     bg: "#d8b884", fg: "#7a2618",
     sub: { lines: ["FEARLESS", "FLYER"], bg: "#fff4d6", fg: "#7a2618" },
     signLines: ["FEARLESS", "FLYER"],
   },
   {
     name: "SNACK",
-    dx: 56, dz: 0, islet: 14,
-    body: { w: 12, h: 8, d: 10 },
+    dx: 58, dz: 0, islet: 14,
+    body: { w: 13, h: 12, d: 10 },
     bg: "#b88560", fg: "#3a2412",
-    sub: { lines: ["DARK CHOC", "& ALMOND"], bg: "#241510", fg: "#f0c070" },
+    sub: { lines: ["DARK CHOC", "ALMOND"], bg: "#241510", fg: "#f0c070" },
     signLines: ["SNACK", "SHACK"],
   },
   {
     name: "FROZEN",
-    dx: 0, dz: -56, islet: 14,
-    body: { w: 13, h: 8, d: 9 },
+    dx: 0, dz: -58, islet: 14,
+    body: { w: 14, h: 12, d: 10 },
     bg: "#bcd9e8", fg: "#1c4a6a",
-    sub: { lines: ["EVERYTHING", "BUT THE BAGEL"], bg: "#0a2030", fg: "#9ae8ff", glow: true },
+    sub: { lines: ["EVERYTHING", "BAGEL"], bg: "#0a2030", fg: "#9ae8ff", glow: true },
     signLines: ["FROZEN", "AISLE"],
   },
   {
     name: "BANANA",
-    dx: 0, dz: 56, islet: 14,
-    body: { w: 11, h: 7, d: 11 },
+    dx: 0, dz: 58, islet: 14,
+    body: { w: 13, h: 11, d: 10 },
     bg: "#f2d34a", fg: "#3a2a08",
     sub: { lines: ["ORGANIC", "19¢ EACH"], bg: "#fff8c8", fg: "#3a2a08" },
     signLines: ["BANANA", "STAND"],
   },
+];
+
+// 15 more outposts arranged in a wide outer ring at radius ~120.
+const OUTER_SPECS: Array<Omit<Outpost, "dx" | "dz" | "islet">> = [
+  { name: "WINE",     body: { w: 12, h: 11, d: 9 }, bg: "#722f3a", fg: "#fde7c6",
+    sub: { lines: ["TWO BUCK", "CHUCK"], bg: "#1a0a0e", fg: "#ff8aa0", glow: true },
+    signLines: ["WINE", "SHOP"] },
+  { name: "FLOWERS",  body: { w: 12, h: 11, d: 9 }, bg: "#e89bb6", fg: "#3a1428",
+    sub: { lines: ["CHEAP", "BOUQUETS"], bg: "#fff0f5", fg: "#a83265" },
+    signLines: ["FLOWER", "STAND"] },
+  { name: "CHEESE",   body: { w: 12, h: 11, d: 9 }, bg: "#f2c14a", fg: "#5a3a08",
+    sub: { lines: ["UNEXPECTED", "CHEDDAR"], bg: "#fff8c8", fg: "#7a4a08" },
+    signLines: ["CHEESE", "CAVE"] },
+  { name: "COFFEE",   body: { w: 12, h: 11, d: 9 }, bg: "#3a2412", fg: "#f0c070",
+    sub: { lines: ["JOE", "COFFEE"], bg: "#1a0e08", fg: "#ffb066", glow: true },
+    signLines: ["COFFEE", "BAR"] },
+  { name: "PIZZA",    body: { w: 12, h: 11, d: 9 }, bg: "#c0392b", fg: "#fff4d6",
+    sub: { lines: ["CAULI", "CRUST"], bg: "#fff4d6", fg: "#c0392b" },
+    signLines: ["PIZZA", "HUT"] },
+  { name: "DUMPLING", body: { w: 12, h: 11, d: 9 }, bg: "#e8a87c", fg: "#3a1a08",
+    sub: { lines: ["GYOZA", "TIME"], bg: "#1a0e08", fg: "#ffc888", glow: true },
+    signLines: ["DUMPLING", "DOCK"] },
+  { name: "SAMPLES",  body: { w: 12, h: 11, d: 9 }, bg: "#fff4d6", fg: "#c0392b",
+    sub: { lines: ["FREE", "SAMPLES"], bg: "#10241a", fg: "#46e88c", glow: true },
+    signLines: ["SAMPLE", "STAND"] },
+  { name: "HAWAII",   body: { w: 12, h: 11, d: 9 }, bg: "#26a69a", fg: "#fff4d6",
+    sub: { lines: ["ALOHA", "FRIEND"], bg: "#fff4d6", fg: "#26a69a" },
+    signLines: ["HAWAIIAN", "HUT"] },
+  { name: "SPICE",    body: { w: 12, h: 11, d: 9 }, bg: "#d2691e", fg: "#fff8c8",
+    sub: { lines: ["EVERYTHING", "BAGEL"], bg: "#241510", fg: "#f4c068" },
+    signLines: ["SPICE", "BAZAAR"] },
+  { name: "PARKING",  body: { w: 12, h: 11, d: 9 }, bg: "#666666", fg: "#fff4d6",
+    sub: { lines: ["ALWAYS", "FULL"], bg: "#000000", fg: "#ffcc44", glow: true },
+    signLines: ["PARKING", "LOT"] },
+  { name: "CARTS",    body: { w: 12, h: 11, d: 9 }, bg: "#b8c0c8", fg: "#1c2a3a",
+    sub: { lines: ["MINI", "CARTS"], bg: "#1c2a3a", fg: "#b8c0c8" },
+    signLines: ["CART", "CORRAL"] },
+  { name: "RETURNS",  body: { w: 12, h: 11, d: 9 }, bg: "#f0ece2", fg: "#2a2a2a",
+    sub: { lines: ["NO RECEIPT", "NEEDED"], bg: "#2a2a2a", fg: "#9ae8ff", glow: true },
+    signLines: ["RETURNS", "DESK"] },
+  { name: "CHECKOUT", body: { w: 12, h: 11, d: 9 }, bg: "#e8d9b8", fg: "#c0392b",
+    sub: { lines: ["ALOHA", "SHIRTS"], bg: "#26a69a", fg: "#fff4d6" },
+    signLines: ["CHECK", "OUT"] },
+  { name: "BAKERY",   body: { w: 12, h: 11, d: 9 }, bg: "#caa05e", fg: "#3a1a08",
+    sub: { lines: ["FRESH", "SOURDOUGH"], bg: "#fff8c8", fg: "#7a4a18" },
+    signLines: ["BAKERY", "STAND"] },
+  { name: "JOEJOES",  body: { w: 12, h: 11, d: 9 }, bg: "#3a2412", fg: "#f4c068",
+    sub: { lines: ["COOKIE", "LAND"], bg: "#f4c068", fg: "#3a2412" },
+    signLines: ["JOE", "JOE'S"] },
+];
+
+const OUTER_RADIUS = 120;
+const OUTPOSTS: Outpost[] = [
+  ...INNER,
+  ...OUTER_SPECS.map((spec, i) => {
+    const angle = (i / OUTER_SPECS.length) * Math.PI * 2 + Math.PI / OUTER_SPECS.length;
+    return {
+      ...spec,
+      dx: Math.cos(angle) * OUTER_RADIUS,
+      dz: Math.sin(angle) * OUTER_RADIUS,
+      islet: 13,
+    } as Outpost;
+  }),
 ];
 
 function bridge(fromX: number, fromZ: number, toX: number, toZ: number): {
@@ -167,27 +233,36 @@ export function buildTradersGalaxy(opts: {
       height: topY + o.body.h,
     });
 
-    // Front sign on the body
+    // Sign layout: split the front face vertically so the main sign
+    // (top ~55%) and sub neon (bottom ~30%) never overlap. We pick
+    // signW to fit within the body width AND keep the target height.
+    const frontZ = o.dz - 2 + o.body.d / 2 + 0.06;
     const tex = signTexture(o.signLines, o.bg, o.fg);
     const aspect = (tex.image as HTMLCanvasElement).height / (tex.image as HTMLCanvasElement).width;
-    const signW = o.body.w * 0.85;
+    const mainTargetH = o.body.h * 0.42;
+    let mainW = mainTargetH / aspect;
+    if (mainW > o.body.w * 0.9) mainW = o.body.w * 0.9;
+    const mainH = mainW * aspect;
     const sign = new THREE.Mesh(
-      new THREE.PlaneGeometry(signW, signW * aspect),
+      new THREE.PlaneGeometry(mainW, mainH),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
     );
-    sign.position.set(o.dx, o.body.h - 1.4, o.dz - 2 + o.body.d / 2 + 0.05);
+    sign.position.set(o.dx, o.body.h - mainH / 2 - 0.4, frontZ);
     group.add(sign);
 
-    // Sub neon sign
+    // Sub neon sign — anchored to the bottom of the body.
     if (o.sub) {
       const stex = signTexture(o.sub.lines, o.sub.bg, o.sub.fg, !!o.sub.glow);
       const sa = (stex.image as HTMLCanvasElement).height / (stex.image as HTMLCanvasElement).width;
-      const sw = o.body.w * 0.55;
+      const subTargetH = o.body.h * 0.3;
+      let subW = subTargetH / sa;
+      if (subW > o.body.w * 0.75) subW = o.body.w * 0.75;
+      const subH = subW * sa;
       const sub = new THREE.Mesh(
-        new THREE.PlaneGeometry(sw, sw * sa),
+        new THREE.PlaneGeometry(subW, subH),
         new THREE.MeshBasicMaterial({ map: stex, side: THREE.DoubleSide, transparent: true }),
       );
-      sub.position.set(o.dx, o.body.h * 0.45, o.dz - 2 + o.body.d / 2 + 0.08);
+      sub.position.set(o.dx, subH / 2 + 0.6, frontZ + 0.02);
       group.add(sub);
     }
 
@@ -206,18 +281,30 @@ export function buildTradersGalaxy(opts: {
     }
   }
 
-  // ---- Bridges between plaza and each outer islet ----
+  // ---- Bridges ----
+  // Inner ring outposts connect to the plaza.
+  // Outer ring outposts connect to whichever inner outpost is nearest.
   const plaza = OUTPOSTS[0];
+  const innerCount = INNER.length;
   for (let i = 1; i < OUTPOSTS.length; i++) {
     const o = OUTPOSTS[i];
-    // Pull each bridge endpoint into the islet rim so it visually sits on the disc.
-    const dirX = o.dx - plaza.dx;
-    const dirZ = o.dz - plaza.dz;
+    // Pick anchor: plaza for inner ring, nearest inner outpost for outer ring.
+    let anchor = plaza;
+    if (i >= innerCount) {
+      let bestD = Infinity;
+      for (let k = 0; k < innerCount; k++) {
+        const cand = OUTPOSTS[k];
+        const d = Math.hypot(o.dx - cand.dx, o.dz - cand.dz);
+        if (d < bestD) { bestD = d; anchor = cand; }
+      }
+    }
+    const dirX = o.dx - anchor.dx;
+    const dirZ = o.dz - anchor.dz;
     const dist = Math.hypot(dirX, dirZ);
     const ux = dirX / dist;
     const uz = dirZ / dist;
-    const fromX = plaza.dx + ux * (plaza.islet - 1);
-    const fromZ = plaza.dz + uz * (plaza.islet - 1);
+    const fromX = anchor.dx + ux * (anchor.islet - 1);
+    const fromZ = anchor.dz + uz * (anchor.islet - 1);
     const toX = o.dx - ux * (o.islet - 1);
     const toZ = o.dz - uz * (o.islet - 1);
     const b = bridge(fromX, fromZ, toX, toZ);
