@@ -2209,6 +2209,16 @@ export function buildCardboardIsland(opts: {
 
       // God Orb dome: slow majestic rotation + inner core pulse.
       orbStruts.rotation.y += dt * 0.08;
+      // Divine Sphere: slow majestic spin + gentle sky-bob + halo pulse.
+      divineSphere.rotation.y += dt * 0.18;
+      divineSphere.rotation.x += dt * 0.05;
+      divineSphere.position.y = divineBaseY + Math.sin(now * 0.0008) * 1.2;
+      const divK = 0.5 + Math.sin(now * 0.0018) * 0.5;
+      (divineCore.material as THREE.MeshBasicMaterial).opacity = 0.7 + divK * 0.28;
+      divineCore.scale.setScalar(0.92 + divK * 0.14);
+      (divineHalo.material as THREE.MeshBasicMaterial).opacity = 0.16 + divK * 0.18;
+      divineHalo.scale.setScalar(1 + divK * 0.25);
+      divineLight.intensity = 5 + divK * 5;
       const orbK = 0.5 + Math.sin(now * 0.0022) * 0.5;
       (genOrb.material as THREE.MeshBasicMaterial).opacity = 0.7 + orbK * 0.3;
       genOrb.scale.setScalar(0.95 + orbK * 0.12);
