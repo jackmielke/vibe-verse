@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Sparkles, User } from "lucide-react";
 import { AgentVoiceButton } from "@/components/city/AgentVoiceButton";
+import AgentEconomyStrip from "@/components/city/AgentEconomyStrip";
 
 export interface PersonTarget {
   kind: "player" | "agent";
