@@ -16,7 +16,7 @@
  *
  * No category filters here — the WorldPicker handles deeper browsing.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import * as THREE from "three";
@@ -85,6 +85,7 @@ import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
+import CityEntryScreen from "@/components/city/CityEntryScreen";
 
 const OFFICIAL_WORLDS: World[] = [
   // Edge Island leads the carousel — first-time visitors land on the
@@ -138,11 +139,12 @@ export default function HubV2() {
   const navigate = useNavigate();
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // First-run auto-roll: brand-new visitors (no character + no display
-  // name yet) get a randomly-picked character + auto-generated name and
-  // are dropped straight onto Edge Island. The City page reads the
-  // `fresh=1` flag to skip the entry overlay and surface a small chip
-  // letting them re-roll or open the full picker.
+  // First-run welcome overlay: brand-new visitors (no character + no
+  // display name yet) get a randomly-picked character + auto-generated
+  // name AND a real "pick your vibe" screen with a name field and an
+  // "invite your agent" prompt button. Once they hit Jet in we drop
+  // them onto Edge Island. Returning visitors skip this entirely.
+  const [freshPick, setFreshPick] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const hasChar = !!localStorage.getItem("lobby.character");
@@ -153,13 +155,22 @@ export default function HubV2() {
     const pool = ALL_CHARACTERS;
     if (!pool.length) return;
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    const autoName = generateCharacterName(pick.label);
-    setActiveCharacter(pick.id);
-    localStorage.setItem("city.playerName", autoName);
-    localStorage.setItem("city.displayName", autoName);
-    navigate("/city?spawn=island&fresh=1", { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setFreshPick({ id: pick.id, name: generateCharacterName(pick.label) });
   }, []);
+
+  const freshCharacters = useMemo(
+    () => ALL_CHARACTERS.map((c) => ({ name: c.id, url: c.url })),
+    [],
+  );
+
+  function commitFreshEntry(pick: { character: string; name: string }) {
+    setActiveCharacter(pick.character);
+    localStorage.setItem("city.playerName", pick.name);
+    localStorage.setItem("city.displayName", pick.name);
+    setFreshPick(null);
+    navigate("/city?spawn=island&fresh=1", { replace: true });
+  }
+
 
 
   // Row offset (world units). Smoothly chases targetOffset which snaps to slots.
@@ -1103,6 +1114,23 @@ export default function HubV2() {
         </DialogContent>
       </Dialog>
 
+
+
+      {/* First-run welcome overlay — only renders for brand-new visitors
+          who don't have a saved character or display name yet. */}
+      {freshPick && (
+        <CityEntryScreen
+          characters={freshCharacters}
+          initialCharacter={freshPick.id}
+          initialName={freshPick.name}
+          eyebrow="Welcome to the VibeVerse"
+          title="Pick your vibe"
+          subtitle="We rolled a random character — tap any name to swap, and pick what people should call you."
+          ctaLabel="✨ Jet into the world"
+          agentInviteUrl="https://myvibeverse.com"
+          onEnter={commitFreshEntry}
+        />
+      )}
 
       {/* Character picker moved to the /profile page — it lives in the
           global-nav "Sign in" dropdown as "Choose your character". The

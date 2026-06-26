@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { CharacterPreview } from "@/island/CharacterPreview";
 import type { CharacterOption } from "@/island/characters";
 import { generateCharacterName } from "@/lib/character-naming";
+import { Copy, Check } from "lucide-react";
 
 type CityChar = { name: string; url: string };
 
@@ -61,6 +62,16 @@ interface Props {
   initialCharacter: string;
   initialName: string;
   onEnter: (pick: { character: string; name: string }) => void;
+  /** Optional eyebrow/title overrides so the same screen can front
+   *  /city, the lobby hub, or any other "pick a vibe" entry surface. */
+  eyebrow?: string;
+  title?: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  /** If set, render a "Copy invite prompt for your agent" button
+   *  pointing at this URL. The user will share the copied text with
+   *  their agent so it can join the same world. */
+  agentInviteUrl?: string;
 }
 
 export default function CityEntryScreen({
@@ -68,13 +79,44 @@ export default function CityEntryScreen({
   initialCharacter,
   initialName,
   onEnter,
+  eyebrow = "Welcome to Vibe City",
+  title = "Pick your vibe",
+  subtitle = "We picked one for you — tap any name to swap.",
+  ctaLabel,
+  agentInviteUrl,
 }: Props) {
   const options = useMemo(() => characters.map((c, i) => toOption(c, i)), [characters]);
   const [picked, setPicked] = useState<string>(initialCharacter);
   const [name, setName] = useState<string>(initialName);
+  const [copied, setCopied] = useState(false);
 
   const currentOption = options.find((o) => o.id === picked) ?? options[0];
   const accent = currentOption?.accent ?? ACCENTS[0];
+
+  async function copyAgentPrompt() {
+    if (!agentInviteUrl) return;
+    const who = name.trim() || "my friend";
+    const prompt =
+      `Hey! I just joined the VibeVerse as "${who}". ` +
+      `Hop in and join me — open ${agentInviteUrl} in a browser, ` +
+      `pick a character, give yourself a name, and walk over to say hi. ` +
+      `It's a multiplayer 3D world; you'll see me running around.`;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Fallback: select-and-copy via a temp textarea
+      const ta = document.createElement("textarea");
+      ta.value = prompt;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      ta.remove();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    }
+  }
 
   return (
     <div className="absolute inset-0 z-20 overflow-y-auto bg-gradient-to-b from-[#0a0f1a] via-[#0b1424] to-[#0a0f1a]">
@@ -86,16 +128,16 @@ export default function CityEntryScreen({
 
       <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-8">
         <div className="mb-2 text-[11px] uppercase tracking-[0.4em] text-cyan-300/80">
-          Welcome to Vibe City
+          {eyebrow}
         </div>
         <h1
           className="mb-1 text-5xl text-primary drop-shadow-[0_0_28px_hsl(var(--primary)/0.55)] sm:text-6xl"
           style={{ fontFamily: "'Pacifico', cursive", lineHeight: 1.1 }}
         >
-          Pick your vibe
+          {title}
         </h1>
         <p className="mb-5 max-w-md text-center text-sm text-muted-foreground">
-          We picked one for you — tap any name to swap.
+          {subtitle}
         </p>
 
         {/* Single shared 3D preview of the picked character */}
@@ -173,8 +215,19 @@ export default function CityEntryScreen({
           }}
           className="rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold uppercase tracking-[0.25em] text-primary-foreground shadow-[0_0_32px_hsl(var(--primary)/0.55)] transition-opacity hover:opacity-90"
         >
-          ✨ Jet in{currentOption ? ` as ${currentOption.name}` : ""}
+          {ctaLabel ?? `✨ Jet in${currentOption ? ` as ${currentOption.name}` : ""}`}
         </button>
+
+        {agentInviteUrl && (
+          <button
+            onClick={copyAgentPrompt}
+            className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-5 py-2.5 text-xs font-medium text-cyan-200 hover:bg-cyan-400/20 transition-colors"
+            title="Copies an invite prompt you can paste to your agent"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Copied — paste it to your agent" : "Invite your agent to join"}
+          </button>
+        )}
 
         <div className="mt-4 text-[11px] font-mono text-muted-foreground/80">
           WASD / arrows — move · Shift — run · Space — jetpack · drag — look
