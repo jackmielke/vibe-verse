@@ -2459,7 +2459,20 @@ export default function City() {
               const rx = useHigh ? a2 : a0;
               const ry = useHigh ? a3 : a1;
               if (Math.hypot(rx, ry) > Math.hypot(mx, my)) { mx = rx; my = ry; }
-              for (const b of gp.buttons) if (b?.pressed) jet = true;
+              // Trigger (0), squeeze (1), thumbstick-click (3) = jetpack.
+              // A/X (4) and B/Y (5) are reserved for the view toggle so
+              // gripping the controller doesn't accidentally swap views.
+              const hand = src.handedness ?? "none";
+              for (let i = 0; i < gp.buttons.length; i++) {
+                const pressed = !!gp.buttons[i]?.pressed;
+                if (pressed && (i === 0 || i === 1 || i === 3)) jet = true;
+                if (i === 4 || i === 5) {
+                  const key = `${hand}:${i}`;
+                  const prev = vrPrevBtn.get(key) ?? false;
+                  if (pressed && !prev) vrFirstPerson = !vrFirstPerson;
+                  vrPrevBtn.set(key, pressed);
+                }
+              }
             }
           }
         }
