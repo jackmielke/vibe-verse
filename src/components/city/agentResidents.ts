@@ -732,7 +732,7 @@ export function createAgentResidents(opts: {
         // ---- anim ----
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
           // Animate legs while moving, dancing, or returning home.
-          if (r.moveT > 0 || r.goingHome || r.emote === "dance") r.mixer.update(dt);
+          if (r.walkT > 0 || r.goingHome || r.emote === "dance") r.mixer.update(dt);
         }
       }
     },
