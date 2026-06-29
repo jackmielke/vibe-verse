@@ -4161,6 +4161,23 @@ export default function City() {
         </div>
       )}
 
+      {/* Transcendence Portal flash — voluntary entry or out-of-world catch. */}
+      {entered && transcendFx > 0 && (
+        <div
+          key={transcendFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+        >
+          <div className="absolute inset-0 bg-emerald-400/20 backdrop-blur-md" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in border border-emerald-300/60 shadow-[0_0_40px_rgba(125,255,200,0.65)]">
+            <div className="text-5xl mb-1">✨</div>
+            <div className="text-sm font-semibold text-emerald-200">TRANSCENDED</div>
+            <div className="text-xs text-emerald-100/80">Skydiving back into the plaza…</div>
+          </div>
+        </div>
+      )}
+
+
+
       {/* Ninja portal descent flash + arrival pulse. */}
       {entered && enterFx > 0 && (
         <div
