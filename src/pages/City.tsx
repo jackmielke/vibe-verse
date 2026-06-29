@@ -2027,6 +2027,26 @@ export default function City() {
     let camYaw = Math.PI;
     let camPitch = 0.42;
     let camDist = 9;
+    // VR-only: stable "body yaw" the dolly is parked behind. This is
+    // intentionally decoupled from the headset rotation so turning your
+    // head doesn't slide the world (the #1 source of sim-sickness here).
+    // We lerp it toward the player's movement direction when they walk,
+    // and otherwise it just holds — head can swivel freely inside it.
+    let vrBodyYaw = Math.PI;
+    let vrFirstPerson = false;
+    // Edge-detect controller buttons (A/B = indices 4/5 on xr-standard)
+    // so a single press toggles 1st/3rd person without re-firing each frame.
+    const vrPrevBtn = new Map<string, boolean>();
+
+    // Toggle 1st/3rd person with "V" on desktop (mirrors the VR button).
+    const onToggleView = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.code === "KeyV") {
+        vrFirstPerson = !vrFirstPerson;
+      }
+    };
+    window.addEventListener("keydown", onToggleView);
     // Manual delta tracking (movementX is unreliable for touch
     // pointers on mobile Safari). One finger drags the camera; two
     // fingers on the canvas pinch-zoom, all the way out to god view.
@@ -2439,7 +2459,20 @@ export default function City() {
               const rx = useHigh ? a2 : a0;
               const ry = useHigh ? a3 : a1;
               if (Math.hypot(rx, ry) > Math.hypot(mx, my)) { mx = rx; my = ry; }
-              for (const b of gp.buttons) if (b?.pressed) jet = true;
+              // Trigger (0), squeeze (1), thumbstick-click (3) = jetpack.
+              // A/X (4) and B/Y (5) are reserved for the view toggle so
+              // gripping the controller doesn't accidentally swap views.
+              const hand = src.handedness ?? "none";
+              for (let i = 0; i < gp.buttons.length; i++) {
+                const pressed = !!gp.buttons[i]?.pressed;
+                if (pressed && (i === 0 || i === 1 || i === 3)) jet = true;
+                if (i === 4 || i === 5) {
+                  const key = `${hand}:${i}`;
+                  const prev = vrPrevBtn.get(key) ?? false;
+                  if (pressed && !prev) vrFirstPerson = !vrFirstPerson;
+                  vrPrevBtn.set(key, pressed);
+                }
+              }
             }
           }
         }
@@ -2970,41 +3003,68 @@ export default function City() {
       padMat.opacity = 0.55 + Math.sin(now * 0.0024) * 0.3;
 
       if (xrPresenting) {
-        // Third-person VR: park the dolly behind/above the avatar
-        // along the headset's current look direction so the player
-        // sees themselves walking around (much more comfortable than
-        // a tiny FPS view, and matches the screen experience).
-        const headDir = new THREE.Vector3();
-        camera.getWorldDirection(headDir);
-        headDir.y = 0;
-        if (headDir.lengthSq() > 1e-6) headDir.normalize();
-        else headDir.set(0, 0, -1);
-        // Pulled further back + higher up so the avatar reads as a
-        // small figure in the world. A bigger frame of reference is
-        // much gentler on motion-sick VR viewers than a tight chase
-        // cam — the periphery moves less per head turn.
-        const back = 6.5;
-        const up = 3.4;
-        // Compensate for the headset's own offset inside the dolly so
-        // the resulting camera world position is exactly back+up from
-        // the avatar (not back+up + headset translation).
+        // CRUCIAL for comfort: the dolly is parked behind the avatar
+        // along a STABLE body yaw — never along the headset's current
+        // look direction. Coupling the camera rig to head yaw is what
+        // made turning your head slide the world sideways (classic
+        // vestibular mismatch / sim-sickness). The head still rotates
+        // freely inside the dolly; only the world stays put.
+        //
+        // vrBodyYaw lerps toward the player's actual movement heading
+        // when they walk, so the chase cam gently reorients with the
+        // direction of travel — but never with passive head turns.
+        const horizSpd = Math.hypot(vel.x, vel.z);
+        if (horizSpd > 1.2) {
+          const moveYaw = Math.atan2(-vel.x, -vel.z);
+          // Shortest-angle lerp.
+          let d = moveYaw - vrBodyYaw;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          vrBodyYaw += d * (1 - Math.pow(0.2, dt));
+        }
+        const bodyDirX = -Math.sin(vrBodyYaw);
+        const bodyDirZ = -Math.cos(vrBodyYaw);
+
+        // Subtract the headset's local offset inside the dolly so the
+        // resulting CAMERA world position is exactly where we want,
+        // regardless of where the player has physically walked in their
+        // room-scale play area.
         const camWorld = new THREE.Vector3();
         camera.getWorldPosition(camWorld);
         const headLocal = camWorld.clone().sub(dolly.position);
-        const desired = new THREE.Vector3(
-          pos.x - headDir.x * back - headLocal.x,
-          pos.y + up - headLocal.y,
-          pos.z - headDir.z * back - headLocal.z,
-        );
-        // Slower lerp = the camera glides toward the target instead of
-        // snapping. Higher base → smaller per-frame catch-up fraction.
-        dolly.position.lerp(desired, 1 - Math.pow(0.015, dt));
+
+        let desired: THREE.Vector3;
+        if (vrFirstPerson) {
+          // First person: camera sits at the avatar's eye level.
+          desired = new THREE.Vector3(
+            pos.x - headLocal.x,
+            pos.y + 1.55 - headLocal.y,
+            pos.z - headLocal.z,
+          );
+        } else {
+          // Third person: parked back+up along the stable body yaw.
+          const back = 6.5;
+          const up = 3.4;
+          desired = new THREE.Vector3(
+            pos.x - bodyDirX * back - headLocal.x,
+            pos.y + up - headLocal.y,
+            pos.z - bodyDirZ * back - headLocal.z,
+          );
+        }
+        // First-person needs a snappier follow so the camera tracks
+        // the avatar tightly; third-person glides for comfort.
+        const followBase = vrFirstPerson ? 0.0001 : 0.015;
+        dolly.position.lerp(desired, 1 - Math.pow(followBase, dt));
+        // Hide the avatar mesh in first-person — otherwise the camera
+        // is inside the player's head and the view fills with model.
+        modelHolder.visible = !vrFirstPerson;
 
         // Keep fog comfy in VR (no zoom-out gesture available).
         const fogNow = scene.fog as THREE.Fog;
         fogNow.near = baseFogNear;
         fogNow.far = baseFogFar;
       } else {
+        modelHolder.visible = true;
         // Chase camera.
         const eye = new THREE.Vector3(
           pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
@@ -3118,6 +3178,7 @@ export default function City() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("keydown", onTypeEgg);
+      window.removeEventListener("keydown", onToggleView);
       zipGrabRef.current = null;
       swingGrabRef.current = null;
       mooRef.current = null;
