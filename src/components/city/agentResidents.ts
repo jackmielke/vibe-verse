@@ -644,7 +644,13 @@ export function createAgentResidents(opts: {
       }
       for (const r of residents.values()) {
         // ---- pop next queued command if idle ----
-        const idle = r.walkT <= 0 && r.turnRemaining <= 0 && r.emote === "none" && !r.goingHome;
+        const idle =
+          r.walkT <= 0 &&
+          r.turnRemaining <= 0 &&
+          r.emote === "none" &&
+          !r.goingHome &&
+          r.flightDur <= 0 &&
+          !r.landing;
         if (idle && r.queue.length) {
           const next = r.queue.shift()!;
           if (next.kind === "walk") {
@@ -656,6 +662,20 @@ export function createAgentResidents(opts: {
             r.turnRate = r.turnRemaining / Math.max(0.05, next.dur);
           } else if (next.kind === "emote") {
             startEmote(r, next.emote, next.dur);
+          } else if (next.kind === "fly") {
+            r.flying = true;
+            r.flightT = 0;
+            r.flightDur = next.dur;
+            r.flightDir = next.dir;
+            // Set/raise altitude target. Forward/back/hover cruise at ~8m.
+            // /up adds altitude, /down reduces it.
+            if (next.dir === "up") r.targetAltitude = Math.min(40, r.altitude + 4 * next.dur);
+            else if (next.dir === "down") r.targetAltitude = Math.max(0, r.altitude - 4 * next.dur);
+            else r.targetAltitude = Math.max(r.altitude, 8);
+          } else if (next.kind === "land") {
+            r.landing = true;
+            r.flying = false;
+            r.flightDur = 0;
           } else if (next.kind === "respawn") {
             respawn(r);
           }
