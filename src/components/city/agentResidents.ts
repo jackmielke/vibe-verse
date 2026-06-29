@@ -52,6 +52,17 @@ export interface AgentResidents {
   dispose(): void;
 }
 
+/**
+ * One queued motor command. Body-local: "forward" walks toward whatever
+ * direction the agent is currently facing, not world-north. /turn rotates
+ * in place; /strafe walks sideways without changing facing.
+ */
+type QueuedCmd =
+  | { kind: "walk"; dir: "forward" | "back" | "strafeL" | "strafeR"; dur: number }
+  | { kind: "turn"; deltaYaw: number; dur: number } // radians
+  | { kind: "emote"; emote: "jet" | "jump" | "wave" | "dance"; dur: number }
+  | { kind: "respawn" };
+
 interface Resident {
   key: string;
   agentId: string | null;
@@ -66,14 +77,21 @@ interface Resident {
   /** True while the resident is walking back home. */
   goingHome: boolean;
   bumpVel: THREE.Vector3;
-  /** Active directional move: unit vector + remaining seconds. */
-  moveDir: THREE.Vector3;
-  moveT: number;
+  /** Queue of pending motor commands; popped one at a time. */
+  queue: QueuedCmd[];
+  /** Active walk (body-local dir). */
+  walkDir: "forward" | "back" | "strafeL" | "strafeR" | null;
+  walkT: number;
+  /** Active turn. */
+  turnRemaining: number;     // radians left to rotate
+  turnSign: number;          // +1 / -1
+  turnRate: number;          // radians per second
   speed: number;
   yaw: number;
   // Emote state
-  emote: "none" | "jet" | "jump" | "wave" | "dance" | "move";
+  emote: "none" | "jet" | "jump" | "wave" | "dance";
   emoteT: number;            // seconds into the current emote
+  emoteDur: number;
   baseLift: number;          // resting Y for the inner mesh
   // Bubble
   bubble: THREE.Sprite | null;
