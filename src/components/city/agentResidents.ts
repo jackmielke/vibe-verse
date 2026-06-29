@@ -910,8 +910,11 @@ export function createAgentResidents(opts: {
         // ---- anim ----
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
           // Animate legs while moving, dancing, or returning home.
-          if (r.walkT > 0 || r.goingHome || r.emote === "dance" || r.flying || r.landing) r.mixer.update(dt);
+          if (r.walkT > 0 || r.goingHome || r.gotoTarget || r.emote === "dance" || r.flying || r.landing) r.mixer.update(dt);
         }
+        // Keep the world-index POI in sync so peers can /goto NAME and
+        // get the agent's current position, not its spawn tile.
+        updatePOIPosition(`agent:${r.key}`, p.x, p.y, p.z);
       }
     },
     forEachOccupant(cb) {
