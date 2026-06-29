@@ -114,6 +114,10 @@ interface Resident {
   // Bubble
   bubble: THREE.Sprite | null;
   bubbleT: number;           // seconds remaining
+  // Goal-directed navigation (Stage 2 /goto, /follow)
+  gotoTarget: THREE.Vector3 | null;
+  gotoLabel: string | null;
+  followAgentKey: string | null; // for /follow
 }
 
 const ANIM_CULL_DIST_SQ = 200 * 200;
