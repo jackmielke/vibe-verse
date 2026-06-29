@@ -619,8 +619,53 @@ export function createAgentResidents(opts: {
         if (!key) return;
         const r = residents.get(key);
         if (!r) return;
-        const parsed = parseCommands(row.body);
-        showBubble(r, parsed.text);
+        // Pre-pass: pull out /goto NAME, /follow NAME, /stop, /where.
+        // These are name-bearing commands the regex parser can't handle.
+        let body = row.body;
+        const navRe = /\/(goto|follow|stop|where)(?:\s+([^/\n]+?))?(?=\s*\/|\s*$)/gi;
+        let nm: RegExpExecArray | null;
+        const navRanges: [number, number][] = [];
+        let navBubble: string | null = null;
+        while ((nm = navRe.exec(row.body)) !== null) {
+          const verb = nm[1].toLowerCase();
+          const arg = (nm[2] ?? "").trim();
+          navRanges.push([nm.index, nm.index + nm[0].length]);
+          if (verb === "stop") {
+            r.queue.length = 0;
+            r.walkT = 0; r.walkDir = null;
+            r.turnRemaining = 0;
+            r.gotoTarget = null; r.gotoLabel = null; r.followAgentKey = null;
+            r.landing = r.flying || r.altitude > 0.1;
+            r.flying = false; r.flightDur = 0;
+          } else if (verb === "where") {
+            const snap = getSnapshot(r.wrapper.position, { yaw: r.yaw, ignoreKey: `agent:${r.key}` });
+            navBubble = formatSnapshot(snap);
+          } else if (verb === "goto" || verb === "follow") {
+            const poi = arg ? findPOI(arg) : null;
+            if (!poi) {
+              navBubble = `…couldn't find "${arg}" nearby.`;
+            } else {
+              r.queue.length = 0;
+              r.walkT = 0; r.walkDir = null;
+              r.turnRemaining = 0;
+              r.gotoTarget = poi.position.clone();
+              r.gotoLabel = poi.name;
+              r.followAgentKey = verb === "follow" && poi.kind === "agent"
+                ? poi.key.replace(/^agent:/, "")
+                : null;
+            }
+          }
+        }
+        if (navRanges.length) {
+          let out = "";
+          let cursor = 0;
+          for (const [s, e] of navRanges) { out += body.slice(cursor, s); cursor = e; }
+          out += body.slice(cursor);
+          body = out.replace(/\s+/g, " ").trim();
+        }
+        const parsed = parseCommands(body);
+        const bubbleText = navBubble ?? parsed.text;
+        if (bubbleText) showBubble(r, bubbleText);
         if (parsed.cmds.length) enqueue(r, parsed.cmds);
       },
     )
