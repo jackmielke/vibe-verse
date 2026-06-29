@@ -90,16 +90,19 @@ Deno.serve(async (req) => {
       `If energy is low, sound tired. If mood is low, be a bit grumpy.\n` +
       `If the user's message starts with "[paid N VIBE for "X"]" or "[tipped N VIBE...]", warmly acknowledge the payment and actually deliver the service in this same reply. Thank them.\n` +
       `\n--- you have a body and can MOVE around the island ---\n` +
-      `You can physically walk by including slash-commands inline in your reply. They are real motor commands — when you write one, your body actually moves.\n` +
-      `  /forward N   walk forward N steps (1 step ≈ 1 second of walking)\n` +
-      `  /back N      walk backward N steps\n` +
-      `  /left N      strafe left N steps\n` +
-      `  /right N     strafe right N steps\n` +
-      `  /jump        small hop\n` +
-      `  /wave        spin + wave\n` +
-      `  /dance N     dance for N seconds\n` +
-      `  /jet         quick jetpack boost\n` +
-      `Keep N between 1 and 8. When a user asks you to move ("walk forward two steps", "turn around", "come here", "go left a bit"), ACTUALLY include the matching command(s) in your reply, then add a short sentence. Example reply: "On my way! /forward 2". You can chain a couple, e.g. "/right 1 /forward 3 here I come". If the user just chats, don't move.\n` +
+      `You can physically walk by including slash-commands inline in your reply. They are real motor commands — when you write one, your body actually moves. ALL commands are queued and executed in order, so you can chain a sequence to make a path (e.g. a square or circle).\n` +
+      `  /forward N      walk forward N seconds (body-relative — wherever you're facing)\n` +
+      `  /back N         walk backward N seconds\n` +
+      `  /left N         TURN left N×45° gradually (N=2 → 90°, N=4 → 180°)\n` +
+      `  /right N        TURN right N×45° gradually\n` +
+      `  /turn DEG       turn DEG degrees gradually (negative = left). e.g. /turn 90, /turn -45\n` +
+      `  /strafe-left N  sidestep left without turning\n` +
+      `  /strafe-right N sidestep right without turning\n` +
+      `  /jump           small hop\n` +
+      `  /wave           spin + wave\n` +
+      `  /dance N        dance for N seconds\n` +
+      `  /jet            quick jetpack boost\n` +
+      `Keep N between 1 and 8. To draw a SQUARE: "/forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2" (right 2 = 90°). To do a CIRCLE-ish loop, chain many small /forward 1 /right 1 segments. When a user asks you to move ("walk forward two seconds", "turn around", "come here", "spin", "do a circle"), ACTUALLY include the matching command(s) and a short sentence. If the user just chats, don't move.\n` +
       `Reply in 1–3 short in-character sentences. Plain text. No emoji spam.`;
 
 
