@@ -3138,6 +3138,7 @@ export default function City() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("keydown", onTypeEgg);
+      window.removeEventListener("keydown", onToggleView);
       zipGrabRef.current = null;
       swingGrabRef.current = null;
       mooRef.current = null;
