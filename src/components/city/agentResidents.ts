@@ -722,7 +722,8 @@ export function createAgentResidents(opts: {
           r.emote === "none" &&
           !r.goingHome &&
           r.flightDur <= 0 &&
-          !r.landing;
+          !r.landing &&
+          !r.gotoTarget;
         if (idle && r.queue.length) {
           const next = r.queue.shift()!;
           if (next.kind === "walk") {
