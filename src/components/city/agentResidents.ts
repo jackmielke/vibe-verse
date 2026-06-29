@@ -418,6 +418,13 @@ export function createAgentResidents(opts: {
         emoteT: 0,
         emoteDur: 0,
         baseLift: lift,
+        flying: false,
+        flightT: 0,
+        flightDur: 0,
+        flightDir: "forward",
+        altitude: 0,
+        targetAltitude: 0,
+        landing: false,
         bubble: null,
         bubbleT: 0,
       };
