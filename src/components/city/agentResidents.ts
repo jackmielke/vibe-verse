@@ -451,6 +451,9 @@ export function createAgentResidents(opts: {
         landing: false,
         bubble: null,
         bubbleT: 0,
+        gotoTarget: null,
+        gotoLabel: null,
+        followAgentKey: null,
       };
       group.add(wrapper);
       residents.set(row.key, resident);
