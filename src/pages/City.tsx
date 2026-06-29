@@ -1127,6 +1127,109 @@ export default function City() {
     scene.add(dolly);
     dolly.add(camera);
 
+    // ---- VR controllers + point-and-click interaction ------------------
+    // Left controller drives the jetpack. Right controller is a laser
+    // pointer: aim at a person and squeeze the trigger to pop a small
+    // in-world action menu (Wave / Hi! / Dance). Same handlers as the
+    // desktop proximity bubble, so behaviour stays uniform.
+    const vrCtrlHand: Array<"left" | "right" | "none"> = ["none", "none"];
+    const vrControllers: THREE.Group[] = [];
+    const vrRays: THREE.Line[] = [];
+    for (let i = 0; i < 2; i++) {
+      const c = renderer.xr.getController(i);
+      dolly.add(c);
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -1),
+      ]);
+      const mat = new THREE.LineBasicMaterial({
+        color: 0x6effc8,
+        transparent: true,
+        opacity: 0.55,
+      });
+      const ray = new THREE.Line(geo, mat);
+      ray.scale.z = 12;
+      ray.visible = false;
+      c.add(ray);
+      vrControllers.push(c);
+      vrRays.push(ray);
+      c.addEventListener("connected", (e: unknown) => {
+        const hand = (e as { data?: { handedness?: string } })?.data?.handedness;
+        vrCtrlHand[i] = hand === "left" || hand === "right" ? hand : "none";
+        ray.visible = true;
+      });
+      c.addEventListener("disconnected", () => {
+        vrCtrlHand[i] = "none";
+        ray.visible = false;
+      });
+    }
+
+    // Build the floating action menu (3 emoji sprites) used in VR.
+    const vrMenuGroup = new THREE.Group();
+    vrMenuGroup.visible = false;
+    scene.add(vrMenuGroup);
+    const makeVrButton = (emoji: string, label: string, color: string) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const g = canvas.getContext("2d")!;
+      g.clearRect(0, 0, 256, 256);
+      g.fillStyle = "rgba(10, 18, 28, 0.88)";
+      g.beginPath();
+      g.arc(128, 128, 116, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = color;
+      g.lineWidth = 6;
+      g.stroke();
+      g.font = "120px serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText(emoji, 128, 120);
+      g.font = "bold 30px sans-serif";
+      g.fillStyle = color;
+      g.fillText(label, 128, 222);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.anisotropy = 4;
+      const sm = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthTest: false,
+      });
+      const sp = new THREE.Sprite(sm);
+      sp.scale.set(0.45, 0.45, 1);
+      sp.renderOrder = 9999;
+      return sp;
+    };
+    type VrBtn = {
+      sprite: THREE.Sprite;
+      run: (target: PersonTarget) => void;
+    };
+    const vrButtons: VrBtn[] = [
+      {
+        sprite: makeVrButton("👋", "Wave", "#6effc8"),
+        run: (t) => {
+          if (t.kind === "agent") agentResidentsRef.current?.showWaveAt(t.ref);
+          else mpRef.current?.sendEmote("wave");
+        },
+      },
+      {
+        sprite: makeVrButton("💬", "Hi!", "#7ad7ff"),
+        run: (t) => mpRef.current?.sendChat(`👋 Hey ${t.name}!`),
+      },
+      {
+        sprite: makeVrButton("💃", "Dance", "#ffb86b"),
+        run: () => mpRef.current?.sendEmote("dance"),
+      },
+    ];
+    vrButtons.forEach((b) => vrMenuGroup.add(b.sprite));
+    // Menu state, mutated by the VR input block in the tick loop.
+    const vrMenu: {
+      target: PersonTarget | null;
+      hoverIdx: number;
+      // Per-controller previous trigger state for edge-detection.
+      prevTrigger: Map<number, boolean>;
+    } = { target: null, hoverIdx: -1, prevTrigger: new Map() };
+
     const ambient = new THREE.AmbientLight(0x8899bb, 0.5);
     scene.add(ambient);
     const hemi = new THREE.HemisphereLight(0x32445e, 0x0c1018, 1.1);
