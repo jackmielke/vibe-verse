@@ -2618,15 +2618,23 @@ export default function City() {
 
       // VR input: read the strongest thumbstick from any connected
       // controller and feed it through the same touch refs that the
-      // on-screen joystick uses. Any controller button (trigger, grip,
-      // A/B/X/Y) doubles as the jetpack — same gesture as touch.
+      // on-screen joystick uses. LEFT controller buttons fire the
+      // jetpack; RIGHT controller trigger is the "click" for the
+      // point-and-click action menu (handled further down).
       const xrPresenting = renderer.xr.isPresenting;
+      // Edge-detected right-trigger clicks (consumed by interaction below).
+      let vrRightClickEdge = false;
+      // Per-controller indexed click — so we can use the actual right
+      // controller's pose when raycasting on the same frame as the press.
+      const vrRightClickCtrlIdx: number[] = [];
       if (xrPresenting) {
         const session = renderer.xr.getSession();
         let mx = 0, my = 0, jet = false;
         if (session) {
+          let srcIdx = 0;
           for (const src of session.inputSources) {
             const gp = src.gamepad;
+            const hand = src.handedness ?? "none";
             if (gp) {
               const a0 = gp.axes[0] ?? 0;
               const a1 = gp.axes[1] ?? 0;
@@ -2636,13 +2644,28 @@ export default function City() {
               const rx = useHigh ? a2 : a0;
               const ry = useHigh ? a3 : a1;
               if (Math.hypot(rx, ry) > Math.hypot(mx, my)) { mx = rx; my = ry; }
-              // Trigger (0), squeeze (1), thumbstick-click (3) = jetpack.
-              // A/X (4) and B/Y (5) are reserved for the view toggle so
-              // gripping the controller doesn't accidentally swap views.
-              const hand = src.handedness ?? "none";
+              // Jetpack: LEFT controller only (trigger/grip/stick-click).
+              // Right controller is reserved for pointing/clicking so the
+              // jet doesn't fire while you're trying to interact.
+              // A/X (4) and B/Y (5) on either side toggle 1st/3rd person.
               for (let i = 0; i < gp.buttons.length; i++) {
                 const pressed = !!gp.buttons[i]?.pressed;
-                if (pressed && (i === 0 || i === 1 || i === 3)) jet = true;
+                if (hand === "left" && pressed && (i === 0 || i === 1 || i === 3)) jet = true;
+                if (hand === "right" && i === 0) {
+                  // Right trigger edge → interaction click.
+                  const key = -1 - srcIdx; // distinct from view-toggle keys
+                  const prev = vrPrevBtn.get(`rt:${srcIdx}`) ? true : false;
+                  if (pressed && !prev) {
+                    vrRightClickEdge = true;
+                    // Find which xr-controller index matches this input
+                    // source so we can read its world pose for raycast.
+                    for (let ci = 0; ci < vrCtrlHand.length; ci++) {
+                      if (vrCtrlHand[ci] === "right") vrRightClickCtrlIdx.push(ci);
+                    }
+                  }
+                  vrPrevBtn.set(`rt:${srcIdx}`, pressed);
+                  void key;
+                }
                 if (i === 4 || i === 5) {
                   const key = `${hand}:${i}`;
                   const prev = vrPrevBtn.get(key) ?? false;
@@ -2651,6 +2674,7 @@ export default function City() {
                 }
               }
             }
+            srcIdx++;
           }
         }
         if (Math.hypot(mx, my) < 0.15) { mx = 0; my = 0; }
@@ -2665,6 +2689,120 @@ export default function City() {
           if (!soundsRef.current) soundsRef.current = createCitySounds();
           soundsRef.current?.setMuted(muted);
         }
+      }
+
+      // VR point-and-click: raycast from the right controller, highlight
+      // the targeted person, and drive the floating action menu.
+      if (xrPresenting) {
+        // Find the right controller's three.js Group (already positioned
+        // by xr each frame). Fall back to any controller if handedness
+        // hasn't been reported yet.
+        let rIdx = vrCtrlHand.indexOf("right");
+        if (rIdx < 0) rIdx = vrCtrlHand.findIndex((h) => h !== "none");
+        const rCtrl = rIdx >= 0 ? vrControllers[rIdx] : null;
+        if (rCtrl) {
+          // World-space ray from the controller, pointing -Z.
+          const origin = new THREE.Vector3().setFromMatrixPosition(rCtrl.matrixWorld);
+          const rot = new THREE.Matrix4().extractRotation(rCtrl.matrixWorld);
+          const dir = new THREE.Vector3(0, 0, -1).applyMatrix4(rot).normalize();
+
+          // If the menu is up, raycast against its buttons first.
+          let hoverIdx = -1;
+          if (vrMenu.target && vrMenuGroup.visible) {
+            const raycaster = new THREE.Raycaster(origin, dir, 0.1, 30);
+            const hits = raycaster.intersectObjects(
+              vrButtons.map((b) => b.sprite),
+              false,
+            );
+            if (hits.length) {
+              const hitSprite = hits[0].object as THREE.Sprite;
+              hoverIdx = vrButtons.findIndex((b) => b.sprite === hitSprite);
+            }
+          }
+          vrMenu.hoverIdx = hoverIdx;
+
+          // If no button is hovered, probe forward along the ray for a
+          // person at a few distances. Cheap and good enough — avoids
+          // wiring iteration APIs into multiplayer/agent modules.
+          let aimed: PersonTarget | null = null;
+          if (hoverIdx < 0) {
+            const probes = [1.2, 2.5, 4, 6, 9, 13, 18];
+            for (const t of probes) {
+              const px = origin.x + dir.x * t;
+              const py = origin.y + dir.y * t;
+              const pz = origin.z + dir.z * t;
+              const nP = mpRef.current?.getNearestPlayer(px, py, pz, 1.6) ?? null;
+              const nA = agentResidentsRef.current?.getNearestAgent(px, py, pz, 1.6) ?? null;
+              if (nP && (!nA || nP.distSq <= nA.distSq)) {
+                aimed = { kind: "player", ref: nP.ref, name: nP.name };
+                break;
+              } else if (nA) {
+                aimed = { kind: "agent", ref: nA.agentId, name: nA.name };
+                break;
+              }
+            }
+          }
+
+          // Right-trigger click handling.
+          if (vrRightClickEdge) {
+            if (hoverIdx >= 0 && vrMenu.target) {
+              // Click a menu button → fire it and close the menu.
+              try { vrButtons[hoverIdx].run(vrMenu.target); } catch { /* ignore */ }
+              vrMenu.target = null;
+              vrMenuGroup.visible = false;
+            } else if (aimed) {
+              // Click in empty space while pointing at a person → open
+              // the menu on them.
+              vrMenu.target = aimed;
+              vrMenuGroup.visible = true;
+            } else {
+              // Click on nothing → dismiss.
+              vrMenu.target = null;
+              vrMenuGroup.visible = false;
+            }
+          }
+
+          // Each frame, keep the menu anchored above the live position of
+          // its target. If the target has wandered off / disconnected,
+          // close the menu.
+          if (vrMenu.target) {
+            const t = vrMenu.target;
+            const tp = t.kind === "player"
+              ? mpRef.current?.getPlayerPosition(t.ref) ?? null
+              : agentResidentsRef.current?.getAgentPosition(t.ref) ?? null;
+            if (!tp) {
+              vrMenu.target = null;
+              vrMenuGroup.visible = false;
+            } else {
+              vrMenuGroup.position.set(tp.x, tp.y + 2.55, tp.z);
+              vrButtons.forEach((b, i) => {
+                const off = (i - (vrButtons.length - 1) / 2) * 0.55;
+                b.sprite.position.set(off, 0, 0);
+                const targetScale = vrMenu.hoverIdx === i ? 0.62 : 0.45;
+                b.sprite.scale.x += (targetScale - b.sprite.scale.x) * 0.3;
+                b.sprite.scale.y = b.sprite.scale.x;
+              });
+            }
+          }
+
+          // Tint the right-controller ray when it's aimed at something
+          // interactable so the user feels the "lock".
+          const rRay = vrRays[rIdx];
+          if (rRay) {
+            const litColor = hoverIdx >= 0
+              ? 0xffe066
+              : aimed
+              ? 0x6effc8
+              : 0x4a8a78;
+            (rRay.material as THREE.LineBasicMaterial).color.setHex(litColor);
+            (rRay.material as THREE.LineBasicMaterial).opacity =
+              hoverIdx >= 0 || aimed ? 0.85 : 0.4;
+          }
+        }
+      } else if (vrMenuGroup.visible) {
+        // Exited VR with the menu still up → hide it.
+        vrMenuGroup.visible = false;
+        vrMenu.target = null;
       }
 
       // Input → camera-relative move intent (keyboard or thumbstick).
