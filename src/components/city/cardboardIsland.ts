@@ -65,6 +65,8 @@ export interface IslandWorld {
   avatarStage: THREE.Group;
   /** Esmeralda Jump arcade cabinet — walk up to launch the game. */
   arcade: THREE.Vector3;
+  /** Cardboard TV (community photo gallery) — walk up to open the holo-gallery. */
+  tv: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
