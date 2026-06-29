@@ -448,24 +448,24 @@ export function createAgentResidents(opts: {
     r.bubbleT = BUBBLE_DURATION;
   };
 
-  const startEmote = (r: Resident, emote: Resident["emote"]) => {
+  const startEmote = (r: Resident, emote: "jet" | "jump" | "wave" | "dance", dur?: number) => {
     r.emote = emote;
     r.emoteT = 0;
+    r.emoteDur = dur ?? (emote === "jet" ? 1.6 : emote === "jump" ? 0.5 : emote === "wave" ? 1.4 : 3.0);
   };
 
-  const startMove = (r: Resident, dirX: number, dirZ: number, dur: number) => {
-    const len = Math.hypot(dirX, dirZ) || 1;
-    r.moveDir.set(dirX / len, 0, dirZ / len);
-    r.moveT = dur;
-    r.emote = "move";
-    r.emoteT = 0;
-    r.goingHome = false;
+  /** Enqueue motor commands; the per-frame update pops them one at a time. */
+  const enqueue = (r: Resident, cmds: QueuedCmd[]) => {
+    r.queue.push(...cmds);
   };
 
   const respawn = (r: Resident) => {
+    r.queue.length = 0;
+    r.walkDir = null;
+    r.walkT = 0;
+    r.turnRemaining = 0;
     r.target.copy(r.home);
     r.goingHome = true;
-    r.moveT = 0;
     r.emote = "none";
   };
 
