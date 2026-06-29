@@ -786,6 +786,32 @@ export function createAgentResidents(opts: {
             walkDirX = tmpVec.x;
             walkDirZ = tmpVec.z;
           }
+        } else if (r.gotoTarget) {
+          // Stage 2: straight-line steering to a named POI. /follow keeps
+          // re-acquiring the target's current position each frame.
+          if (r.followAgentKey) {
+            const other = residents.get(r.followAgentKey);
+            if (other) r.gotoTarget.copy(other.wrapper.position);
+          }
+          tmpVec.copy(r.gotoTarget).sub(p);
+          tmpVec.y = 0;
+          const dist = tmpVec.length();
+          const arriveAt = r.followAgentKey ? 3.0 : 1.6;
+          if (dist < arriveAt) {
+            if (r.followAgentKey) {
+              // Stand near the target; recheck next frame.
+            } else {
+              const label = r.gotoLabel ?? "the spot";
+              r.gotoTarget = null;
+              r.gotoLabel = null;
+              showBubble(r, `arrived at ${label} ✨`);
+            }
+          } else {
+            tmpVec.multiplyScalar(1 / dist);
+            walking = true;
+            walkDirX = tmpVec.x;
+            walkDirZ = tmpVec.z;
+          }
         }
         if (walking) {
           p.x += walkDirX * r.speed * dt;
