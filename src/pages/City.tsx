@@ -3923,6 +3923,11 @@ export default function City() {
       )}
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
+      <PhotoGalleryModal
+        open={galleryOpen}
+        photos={galleryPhotos}
+        onClose={() => setGalleryOpen(false)}
+      />
 
 
 
