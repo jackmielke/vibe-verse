@@ -1495,17 +1495,25 @@ export default function City() {
     // Same gallery_photos feed the /space TV uses.
     void supabase
       .from("gallery_photos")
-      .select("image_url")
+      .select("image_url, title, description, residency_name")
       .eq("community_id", "4202857f-13fd-4407-8906-3f8ffe63e510")
       .eq("is_visible", true)
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(16)
+      .limit(64)
       .then(({ data }) => {
-        const urls = (data ?? [])
-          .map((row) => row.image_url as string)
-          .filter(Boolean);
-        if (urls.length) island.setTvPhotos(urls);
+        const rows = (data ?? [])
+          .map((row) => ({
+            url: row.image_url as string,
+            title: (row.title as string | null) ?? null,
+            description: (row.description as string | null) ?? null,
+            residency: (row.residency_name as string | null) ?? null,
+          }))
+          .filter((r) => !!r.url);
+        if (rows.length) {
+          island.setTvPhotos(rows.map((r) => r.url));
+          setGalleryPhotos(rows);
+        }
       });
 
     // Stars + moon (fog-exempt so they read at any distance).
