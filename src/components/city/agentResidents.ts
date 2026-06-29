@@ -458,6 +458,17 @@ export function createAgentResidents(opts: {
       group.add(wrapper);
       residents.set(row.key, resident);
       if (row.agentId) byAgentId.set(row.agentId, row.key);
+      // Stage 1 perception: every agent is a queryable POI for its
+      // peers. Region label matches the wander zone so snapshots read
+      // naturally ("Edge — 12m N on Cardboard Island").
+      registerPOI({
+        key: `agent:${row.key}`,
+        name: row.name,
+        region: "Cardboard Island",
+        position: wrapper.position,
+        kind: "agent",
+        aliases: [row.name, row.name.split(/\s+/)[0]],
+      });
     } catch (err) {
       console.warn("[agentResidents] failed to load", ch.url, err);
     }
