@@ -614,22 +614,45 @@ export function createAgentResidents(opts: {
         }
       }
       for (const r of residents.values()) {
+        // ---- pop next queued command if idle ----
+        const idle = r.walkT <= 0 && r.turnRemaining <= 0 && r.emote === "none" && !r.goingHome;
+        if (idle && r.queue.length) {
+          const next = r.queue.shift()!;
+          if (next.kind === "walk") {
+            r.walkDir = next.dir;
+            r.walkT = next.dur;
+          } else if (next.kind === "turn") {
+            r.turnRemaining = Math.abs(next.deltaYaw);
+            r.turnSign = Math.sign(next.deltaYaw) || 1;
+            r.turnRate = r.turnRemaining / Math.max(0.05, next.dur);
+          } else if (next.kind === "emote") {
+            startEmote(r, next.emote, next.dur);
+          } else if (next.kind === "respawn") {
+            respawn(r);
+          }
+        }
+
         // ---- movement ----
-        // Residents stay put by default. They only translate when:
-        //   • an active /forward|/back|/left|/right command is running (r.moveT > 0), or
-        //   • /respawn was called (r.goingHome = true), which walks them back to their home tile.
         const p = r.wrapper.position;
         let walking = false;
         let walkDirX = 0, walkDirZ = 0;
-        if (r.moveT > 0) {
+        // Body-local forward = (sin(yaw), cos(yaw)) so it matches the
+        // wrapper's facing (see targetYaw = atan2(x,z) convention below).
+        const fwdX = Math.sin(r.yaw), fwdZ = Math.cos(r.yaw);
+        const rightX = Math.cos(r.yaw), rightZ = -Math.sin(r.yaw);
+        if (r.walkT > 0 && r.walkDir) {
           walking = true;
-          walkDirX = r.moveDir.x;
-          walkDirZ = r.moveDir.z;
-          r.moveT -= dt;
-          if (r.moveT <= 0) {
-            r.moveT = 0;
-            r.emote = "none";
-          }
+          if (r.walkDir === "forward")      { walkDirX = fwdX;     walkDirZ = fwdZ; }
+          else if (r.walkDir === "back")    { walkDirX = -fwdX;    walkDirZ = -fwdZ; }
+          else if (r.walkDir === "strafeR") { walkDirX = rightX;   walkDirZ = rightZ; }
+          else                              { walkDirX = -rightX;  walkDirZ = -rightZ; }
+          r.walkT -= dt;
+          if (r.walkT <= 0) { r.walkT = 0; r.walkDir = null; }
+        } else if (r.turnRemaining > 0) {
+          const step = Math.min(r.turnRemaining, r.turnRate * dt);
+          r.yaw += step * r.turnSign;
+          r.turnRemaining -= step;
+          r.wrapper.rotation.y = r.yaw;
         } else if (r.goingHome) {
           tmpVec.copy(r.home).sub(p);
           tmpVec.y = 0;
@@ -646,11 +669,15 @@ export function createAgentResidents(opts: {
         if (walking) {
           p.x += walkDirX * r.speed * dt;
           p.z += walkDirZ * r.speed * dt;
-          const targetYaw = Math.atan2(walkDirX, walkDirZ);
-          let d = targetYaw - r.yaw;
-          while (d > Math.PI) d -= Math.PI * 2;
-          while (d < -Math.PI) d += Math.PI * 2;
-          r.yaw += d * Math.min(1, dt * 6);
+          // For forward/back/respawn, face the direction of travel.
+          // For strafe, keep current facing.
+          if (r.walkDir !== "strafeL" && r.walkDir !== "strafeR") {
+            const targetYaw = Math.atan2(walkDirX, walkDirZ);
+            let d = targetYaw - r.yaw;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            r.yaw += d * Math.min(1, dt * 6);
+          }
           r.wrapper.rotation.y = r.yaw;
         }
         if (r.bumpVel.lengthSq() > 0.0001) {
