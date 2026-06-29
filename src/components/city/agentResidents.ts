@@ -828,7 +828,7 @@ export function createAgentResidents(opts: {
       const nx = dirX / len;
       const nz = dirZ / len;
       for (const r of residents.values()) {
-        if (r.emote === "jet" || Math.abs(r.wrapper.position.y - y) > 2.6) continue;
+        if (r.emote === "jet" || r.flying || r.landing || Math.abs(r.wrapper.position.y - y) > 2.6) continue;
         const dx = r.wrapper.position.x - x;
         const dz = r.wrapper.position.z - z;
         const d2 = dx * dx + dz * dz;
