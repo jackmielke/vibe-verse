@@ -265,8 +265,20 @@ function parseCommands(body: string): { text: string; cmds: QueuedCmd[] } {
       cmds.push({ kind: "emote", emote: "wave", dur: 1.4 });
     } else if (cmd === "dance" || cmd === "party" || cmd === "vibe") {
       cmds.push({ kind: "emote", emote: "dance", dur: Math.max(1, dur) });
-    } else if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket") {
+    } else if (cmd === "jet" || cmd === "jetpack" || cmd === "boost" || cmd === "rocket") {
       cmds.push({ kind: "emote", emote: "jet", dur: 1.6 });
+    } else if (cmd === "fly" || cmd === "flyforward" || cmd === "flyfwd") {
+      cmds.push({ kind: "fly", dir: "forward", dur });
+    } else if (cmd === "flyback" || cmd === "flybackward") {
+      cmds.push({ kind: "fly", dir: "back", dur });
+    } else if (cmd === "hover" || cmd === "float") {
+      cmds.push({ kind: "fly", dir: "hover", dur });
+    } else if (cmd === "up" || cmd === "ascend" || cmd === "rise") {
+      cmds.push({ kind: "fly", dir: "up", dur });
+    } else if (cmd === "down" || cmd === "descend") {
+      cmds.push({ kind: "fly", dir: "down", dur });
+    } else if (cmd === "land") {
+      cmds.push({ kind: "land" });
     } else if (cmd === "respawn" || cmd === "home" || cmd === "reset") {
       cmds.push({ kind: "respawn" });
     } else {
