@@ -75,6 +75,7 @@ import {
   type IslandSpawnRow,
 } from "@/components/city/islandSpawns";
 import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
+import { registerPOI } from "@/world/worldIndex";
 
 
 // Every Quaternius character can be the pilot — same glob pattern as
