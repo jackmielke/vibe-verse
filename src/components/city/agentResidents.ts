@@ -563,15 +563,9 @@ export function createAgentResidents(opts: {
         if (!key) return;
         const r = residents.get(key);
         if (!r) return;
-        const parsed = parseEmote(row.body);
+        const parsed = parseCommands(row.body);
         showBubble(r, parsed.text);
-        if (parsed.emote === "move" && parsed.moveDir) {
-          startMove(r, parsed.moveDir.x, parsed.moveDir.z, parsed.duration ?? 2);
-        } else if (parsed.emote === "respawn") {
-          respawn(r);
-        } else if (parsed.emote !== "none") {
-          startEmote(r, parsed.emote);
-        }
+        if (parsed.cmds.length) enqueue(r, parsed.cmds);
       },
     )
     .subscribe();
