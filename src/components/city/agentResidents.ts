@@ -95,6 +95,14 @@ interface Resident {
   emoteT: number;            // seconds into the current emote
   emoteDur: number;
   baseLift: number;          // resting Y for the inner mesh
+  // Sustained flight (jetpack travel)
+  flying: boolean;
+  flightT: number;           // elapsed seconds in current flight cmd
+  flightDur: number;
+  flightDir: "forward" | "back" | "hover" | "up" | "down";
+  altitude: number;          // current altitude above baseLift (meters)
+  targetAltitude: number;    // altitude the jetpack is climbing toward
+  landing: boolean;          // descending back to ground
   // Bubble
   bubble: THREE.Sprite | null;
   bubbleT: number;           // seconds remaining
