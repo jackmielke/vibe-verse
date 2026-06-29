@@ -736,6 +736,36 @@ export function createAgentResidents(opts: {
         } else {
           r.bumpVel.set(0, 0, 0);
         }
+        if (r.bumpVel.lengthSq() > 0.0001) {
+          p.x += r.bumpVel.x * dt;
+          p.z += r.bumpVel.z * dt;
+          r.bumpVel.multiplyScalar(Math.pow(0.025, dt));
+        } else {
+          r.bumpVel.set(0, 0, 0);
+        }
+        // ---- sustained jetpack flight ----
+        if (r.flightDur > 0) {
+          r.flightT += dt;
+          // Lerp altitude toward target at ~6 m/s.
+          const altStep = 6 * dt;
+          if (r.altitude < r.targetAltitude) r.altitude = Math.min(r.targetAltitude, r.altitude + altStep);
+          else if (r.altitude > r.targetAltitude) r.altitude = Math.max(r.targetAltitude, r.altitude - altStep);
+          // Horizontal cruise (faster than walking).
+          const cruise = 7.5;
+          if (r.flightDir === "forward") { p.x += fwdX * cruise * dt; p.z += fwdZ * cruise * dt; }
+          else if (r.flightDir === "back") { p.x -= fwdX * cruise * dt; p.z -= fwdZ * cruise * dt; }
+          if (r.flightT >= r.flightDur) {
+            r.flightDur = 0;
+            r.flightT = 0;
+            // Auto-land after the last queued flight cmd unless more flight cmds follow.
+            const hasMoreFlight = r.queue.some((c) => c.kind === "fly" || c.kind === "land");
+            if (!hasMoreFlight && r.altitude > 0.1) r.landing = true;
+          }
+        } else if (r.landing) {
+          r.altitude = Math.max(0, r.altitude - 6 * dt);
+          if (r.altitude <= 0.001) { r.altitude = 0; r.landing = false; r.flying = false; }
+        }
+        r.inner.position.y = r.baseLift + r.altitude;
         // ---- emote ----
         if (r.emote !== "none") {
           r.emoteT += dt;
@@ -744,8 +774,8 @@ export function createAgentResidents(opts: {
             const T = 1.6;
             const t = Math.min(1, r.emoteT / T);
             const h = Math.sin(t * Math.PI) * 6.0; // peak ~6m
-            r.inner.position.y = r.baseLift + h;
-            if (r.emoteT >= T) { r.inner.position.y = r.baseLift; r.emote = "none"; }
+            r.inner.position.y = r.baseLift + r.altitude + h;
+            if (r.emoteT >= T) { r.inner.position.y = r.baseLift + r.altitude; r.emote = "none"; }
           } else if (r.emote === "jump") {
             const T = 0.5;
             const t = Math.min(1, r.emoteT / T);
