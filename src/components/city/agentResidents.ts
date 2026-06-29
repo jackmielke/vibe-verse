@@ -52,6 +52,17 @@ export interface AgentResidents {
   dispose(): void;
 }
 
+/**
+ * One queued motor command. Body-local: "forward" walks toward whatever
+ * direction the agent is currently facing, not world-north. /turn rotates
+ * in place; /strafe walks sideways without changing facing.
+ */
+type QueuedCmd =
+  | { kind: "walk"; dir: "forward" | "back" | "strafeL" | "strafeR"; dur: number }
+  | { kind: "turn"; deltaYaw: number; dur: number } // radians
+  | { kind: "emote"; emote: "jet" | "jump" | "wave" | "dance"; dur: number }
+  | { kind: "respawn" };
+
 interface Resident {
   key: string;
   agentId: string | null;
@@ -66,14 +77,21 @@ interface Resident {
   /** True while the resident is walking back home. */
   goingHome: boolean;
   bumpVel: THREE.Vector3;
-  /** Active directional move: unit vector + remaining seconds. */
-  moveDir: THREE.Vector3;
-  moveT: number;
+  /** Queue of pending motor commands; popped one at a time. */
+  queue: QueuedCmd[];
+  /** Active walk (body-local dir). */
+  walkDir: "forward" | "back" | "strafeL" | "strafeR" | null;
+  walkT: number;
+  /** Active turn. */
+  turnRemaining: number;     // radians left to rotate
+  turnSign: number;          // +1 / -1
+  turnRate: number;          // radians per second
   speed: number;
   yaw: number;
   // Emote state
-  emote: "none" | "jet" | "jump" | "wave" | "dance" | "move";
+  emote: "none" | "jet" | "jump" | "wave" | "dance";
   emoteT: number;            // seconds into the current emote
+  emoteDur: number;
   baseLift: number;          // resting Y for the inner mesh
   // Bubble
   bubble: THREE.Sprite | null;
@@ -184,48 +202,79 @@ function makeNameLabel(name: string): THREE.Sprite {
 }
 
 /**
- * Detect a slash-command emote anywhere in the message and map it to a
- * 3D animation. Tolerant of leading whitespace, mixed case, and a few
- * common aliases so agents don't have to memorise exact spelling.
+ * Parse ALL slash commands in a message, in order, into a motor queue.
+ * Returns the clean text (with slash tokens stripped) and the command list.
  *
- * Supported:
- *   /jet, /jetpack, /fly, /boost     → quick boost into the sky
- *   /jump, /hop                       → small hop
- *   /wave, /hi, /hello                → spin in place + 👋 bubble
- *   /dance, /party, /vibe             → wiggly spin
+ * Commands (case-insensitive, N optional):
+ *   /forward N        walk forward N seconds (body-local)
+ *   /back N           walk backward
+ *   /strafe-left N    sidestep left (no rotation)
+ *   /strafe-right N   sidestep right
+ *   /left N           turn left N×45°, gradual
+ *   /right N          turn right N×45°, gradual
+ *   /turn N           turn N degrees (negative = left)
+ *   /jump /wave /dance N /jet
+ *   /respawn
  */
-function parseEmote(body: string): {
-  emote: Resident["emote"] | "respawn";
-  text: string;
-  moveDir?: { x: number; z: number };
-  duration?: number;
-} {
-  // Look for the first /word token; allow it anywhere, not just leading.
-  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(\d+(?:\.\d+)?)?\s*(.*)$/);
-  if (!m) return { emote: "none", text: body };
-  const cmd = m[2].toLowerCase();
-  const numArg = m[3] ? parseFloat(m[3]) : undefined;
-  const rest = (body.slice(0, m.index ?? 0) + " " + (m[4] || "")).trim();
-  const dur = Math.max(0.3, Math.min(8, numArg ?? 2));
-  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket" || cmd === "rocketship")
-    return { emote: "jet", text: rest || "🚀" };
-  if (cmd === "jump" || cmd === "hop")
-    return { emote: "jump", text: rest || "⬆️" };
-  if (cmd === "wave" || cmd === "hi" || cmd === "hello")
-    return { emote: "wave", text: rest || "👋" };
-  if (cmd === "dance" || cmd === "party" || cmd === "vibe")
-    return { emote: "dance", text: rest || "💃" };
-  if (cmd === "forward" || cmd === "fwd" || cmd === "f" || cmd === "north" || cmd === "n")
-    return { emote: "move", text: rest || `⬆️ ${dur}s`, moveDir: { x: 0, z: -1 }, duration: dur };
-  if (cmd === "back" || cmd === "backward" || cmd === "b" || cmd === "south" || cmd === "s")
-    return { emote: "move", text: rest || `⬇️ ${dur}s`, moveDir: { x: 0, z: 1 }, duration: dur };
-  if (cmd === "left" || cmd === "l" || cmd === "west" || cmd === "w")
-    return { emote: "move", text: rest || `⬅️ ${dur}s`, moveDir: { x: -1, z: 0 }, duration: dur };
-  if (cmd === "right" || cmd === "r" || cmd === "east" || cmd === "e")
-    return { emote: "move", text: rest || `➡️ ${dur}s`, moveDir: { x: 1, z: 0 }, duration: dur };
-  if (cmd === "respawn" || cmd === "home" || cmd === "reset")
-    return { emote: "respawn", text: rest || "🏠" };
-  return { emote: "none", text: body };
+function parseCommands(body: string): { text: string; cmds: QueuedCmd[] } {
+  const cmds: QueuedCmd[] = [];
+  // Find every "/word [num]" token, anywhere in the body.
+  const re = /\/([a-zA-Z][a-zA-Z-]*)\s*(-?\d+(?:\.\d+)?)?/g;
+  let cleaned = body;
+  let m: RegExpExecArray | null;
+  const ranges: [number, number][] = [];
+  while ((m = re.exec(body)) !== null) {
+    const cmd = m[1].toLowerCase().replace(/-/g, "");
+    const num = m[2] !== undefined ? parseFloat(m[2]) : undefined;
+    const dur = Math.max(0.3, Math.min(8, num ?? 2));
+    ranges.push([m.index, m.index + m[0].length]);
+    if (cmd === "forward" || cmd === "fwd" || cmd === "f") {
+      cmds.push({ kind: "walk", dir: "forward", dur });
+    } else if (cmd === "back" || cmd === "backward" || cmd === "b") {
+      cmds.push({ kind: "walk", dir: "back", dur });
+    } else if (cmd === "strafeleft" || cmd === "sidestepleft" || cmd === "stepleft") {
+      cmds.push({ kind: "walk", dir: "strafeL", dur });
+    } else if (cmd === "straferight" || cmd === "sidestepright" || cmd === "stepright") {
+      cmds.push({ kind: "walk", dir: "strafeR", dur });
+    } else if (cmd === "left" || cmd === "l" || cmd === "turnleft") {
+      // N×45° turn, gradual (~120°/s)
+      const deg = (num ?? 1) * 45;
+      const rad = (deg * Math.PI) / 180;
+      cmds.push({ kind: "turn", deltaYaw: -rad, dur: Math.max(0.25, deg / 120) });
+    } else if (cmd === "right" || cmd === "r" || cmd === "turnright") {
+      const deg = (num ?? 1) * 45;
+      const rad = (deg * Math.PI) / 180;
+      cmds.push({ kind: "turn", deltaYaw: rad, dur: Math.max(0.25, deg / 120) });
+    } else if (cmd === "turn" || cmd === "rotate") {
+      const deg = num ?? 90;
+      const rad = (deg * Math.PI) / 180;
+      cmds.push({ kind: "turn", deltaYaw: rad, dur: Math.max(0.25, Math.abs(deg) / 120) });
+    } else if (cmd === "jump" || cmd === "hop") {
+      cmds.push({ kind: "emote", emote: "jump", dur: 0.5 });
+    } else if (cmd === "wave" || cmd === "hi" || cmd === "hello") {
+      cmds.push({ kind: "emote", emote: "wave", dur: 1.4 });
+    } else if (cmd === "dance" || cmd === "party" || cmd === "vibe") {
+      cmds.push({ kind: "emote", emote: "dance", dur: Math.max(1, dur) });
+    } else if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket") {
+      cmds.push({ kind: "emote", emote: "jet", dur: 1.6 });
+    } else if (cmd === "respawn" || cmd === "home" || cmd === "reset") {
+      cmds.push({ kind: "respawn" });
+    } else {
+      ranges.pop(); // unrecognised — leave the text in
+    }
+  }
+  // Strip recognised tokens from the bubble text.
+  if (ranges.length) {
+    let out = "";
+    let cursor = 0;
+    for (const [s, e] of ranges) {
+      out += body.slice(cursor, s);
+      cursor = e;
+    }
+    out += body.slice(cursor);
+    cleaned = out.replace(/\s+/g, " ").trim();
+  }
+  return { text: cleaned || (cmds.length ? "…" : body), cmds };
 }
 
 export function createAgentResidents(opts: {
@@ -347,12 +396,17 @@ export function createAgentResidents(opts: {
         target: home.clone(),
         goingHome: false,
         bumpVel: new THREE.Vector3(),
-        moveDir: new THREE.Vector3(),
-        moveT: 0,
+        queue: [],
+        walkDir: null,
+        walkT: 0,
+        turnRemaining: 0,
+        turnSign: 0,
+        turnRate: 0,
         speed: 1.6 + (hashString(row.key + "spd") % 100) / 100 * 1.0,
         yaw: 0,
         emote: "none",
         emoteT: 0,
+        emoteDur: 0,
         baseLift: lift,
         bubble: null,
         bubbleT: 0,
@@ -394,24 +448,24 @@ export function createAgentResidents(opts: {
     r.bubbleT = BUBBLE_DURATION;
   };
 
-  const startEmote = (r: Resident, emote: Resident["emote"]) => {
+  const startEmote = (r: Resident, emote: "jet" | "jump" | "wave" | "dance", dur?: number) => {
     r.emote = emote;
     r.emoteT = 0;
+    r.emoteDur = dur ?? (emote === "jet" ? 1.6 : emote === "jump" ? 0.5 : emote === "wave" ? 1.4 : 3.0);
   };
 
-  const startMove = (r: Resident, dirX: number, dirZ: number, dur: number) => {
-    const len = Math.hypot(dirX, dirZ) || 1;
-    r.moveDir.set(dirX / len, 0, dirZ / len);
-    r.moveT = dur;
-    r.emote = "move";
-    r.emoteT = 0;
-    r.goingHome = false;
+  /** Enqueue motor commands; the per-frame update pops them one at a time. */
+  const enqueue = (r: Resident, cmds: QueuedCmd[]) => {
+    r.queue.push(...cmds);
   };
 
   const respawn = (r: Resident) => {
+    r.queue.length = 0;
+    r.walkDir = null;
+    r.walkT = 0;
+    r.turnRemaining = 0;
     r.target.copy(r.home);
     r.goingHome = true;
-    r.moveT = 0;
     r.emote = "none";
   };
 
@@ -509,15 +563,9 @@ export function createAgentResidents(opts: {
         if (!key) return;
         const r = residents.get(key);
         if (!r) return;
-        const parsed = parseEmote(row.body);
+        const parsed = parseCommands(row.body);
         showBubble(r, parsed.text);
-        if (parsed.emote === "move" && parsed.moveDir) {
-          startMove(r, parsed.moveDir.x, parsed.moveDir.z, parsed.duration ?? 2);
-        } else if (parsed.emote === "respawn") {
-          respawn(r);
-        } else if (parsed.emote !== "none") {
-          startEmote(r, parsed.emote);
-        }
+        if (parsed.cmds.length) enqueue(r, parsed.cmds);
       },
     )
     .subscribe();
@@ -566,22 +614,45 @@ export function createAgentResidents(opts: {
         }
       }
       for (const r of residents.values()) {
+        // ---- pop next queued command if idle ----
+        const idle = r.walkT <= 0 && r.turnRemaining <= 0 && r.emote === "none" && !r.goingHome;
+        if (idle && r.queue.length) {
+          const next = r.queue.shift()!;
+          if (next.kind === "walk") {
+            r.walkDir = next.dir;
+            r.walkT = next.dur;
+          } else if (next.kind === "turn") {
+            r.turnRemaining = Math.abs(next.deltaYaw);
+            r.turnSign = Math.sign(next.deltaYaw) || 1;
+            r.turnRate = r.turnRemaining / Math.max(0.05, next.dur);
+          } else if (next.kind === "emote") {
+            startEmote(r, next.emote, next.dur);
+          } else if (next.kind === "respawn") {
+            respawn(r);
+          }
+        }
+
         // ---- movement ----
-        // Residents stay put by default. They only translate when:
-        //   • an active /forward|/back|/left|/right command is running (r.moveT > 0), or
-        //   • /respawn was called (r.goingHome = true), which walks them back to their home tile.
         const p = r.wrapper.position;
         let walking = false;
         let walkDirX = 0, walkDirZ = 0;
-        if (r.moveT > 0) {
+        // Body-local forward = (sin(yaw), cos(yaw)) so it matches the
+        // wrapper's facing (see targetYaw = atan2(x,z) convention below).
+        const fwdX = Math.sin(r.yaw), fwdZ = Math.cos(r.yaw);
+        const rightX = Math.cos(r.yaw), rightZ = -Math.sin(r.yaw);
+        if (r.walkT > 0 && r.walkDir) {
           walking = true;
-          walkDirX = r.moveDir.x;
-          walkDirZ = r.moveDir.z;
-          r.moveT -= dt;
-          if (r.moveT <= 0) {
-            r.moveT = 0;
-            r.emote = "none";
-          }
+          if (r.walkDir === "forward")      { walkDirX = fwdX;     walkDirZ = fwdZ; }
+          else if (r.walkDir === "back")    { walkDirX = -fwdX;    walkDirZ = -fwdZ; }
+          else if (r.walkDir === "strafeR") { walkDirX = rightX;   walkDirZ = rightZ; }
+          else                              { walkDirX = -rightX;  walkDirZ = -rightZ; }
+          r.walkT -= dt;
+          if (r.walkT <= 0) { r.walkT = 0; r.walkDir = null; }
+        } else if (r.turnRemaining > 0) {
+          const step = Math.min(r.turnRemaining, r.turnRate * dt);
+          r.yaw += step * r.turnSign;
+          r.turnRemaining -= step;
+          r.wrapper.rotation.y = r.yaw;
         } else if (r.goingHome) {
           tmpVec.copy(r.home).sub(p);
           tmpVec.y = 0;
@@ -598,11 +669,15 @@ export function createAgentResidents(opts: {
         if (walking) {
           p.x += walkDirX * r.speed * dt;
           p.z += walkDirZ * r.speed * dt;
-          const targetYaw = Math.atan2(walkDirX, walkDirZ);
-          let d = targetYaw - r.yaw;
-          while (d > Math.PI) d -= Math.PI * 2;
-          while (d < -Math.PI) d += Math.PI * 2;
-          r.yaw += d * Math.min(1, dt * 6);
+          // For forward/back/respawn, face the direction of travel.
+          // For strafe, keep current facing.
+          if (r.walkDir !== "strafeL" && r.walkDir !== "strafeR") {
+            const targetYaw = Math.atan2(walkDirX, walkDirZ);
+            let d = targetYaw - r.yaw;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            r.yaw += d * Math.min(1, dt * 6);
+          }
           r.wrapper.rotation.y = r.yaw;
         }
         if (r.bumpVel.lengthSq() > 0.0001) {
@@ -657,7 +732,7 @@ export function createAgentResidents(opts: {
         // ---- anim ----
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
           // Animate legs while moving, dancing, or returning home.
-          if (r.moveT > 0 || r.goingHome || r.emote === "dance") r.mixer.update(dt);
+          if (r.walkT > 0 || r.goingHome || r.emote === "dance") r.mixer.update(dt);
         }
       }
     },
