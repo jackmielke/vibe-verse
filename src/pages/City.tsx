@@ -2027,6 +2027,26 @@ export default function City() {
     let camYaw = Math.PI;
     let camPitch = 0.42;
     let camDist = 9;
+    // VR-only: stable "body yaw" the dolly is parked behind. This is
+    // intentionally decoupled from the headset rotation so turning your
+    // head doesn't slide the world (the #1 source of sim-sickness here).
+    // We lerp it toward the player's movement direction when they walk,
+    // and otherwise it just holds — head can swivel freely inside it.
+    let vrBodyYaw = Math.PI;
+    let vrFirstPerson = false;
+    // Edge-detect controller buttons (A/B = indices 4/5 on xr-standard)
+    // so a single press toggles 1st/3rd person without re-firing each frame.
+    const vrPrevBtn = new Map<string, boolean>();
+
+    // Toggle 1st/3rd person with "V" on desktop (mirrors the VR button).
+    const onToggleView = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.code === "KeyV") {
+        vrFirstPerson = !vrFirstPerson;
+      }
+    };
+    window.addEventListener("keydown", onToggleView);
     // Manual delta tracking (movementX is unreliable for touch
     // pointers on mobile Safari). One finger drags the camera; two
     // fingers on the canvas pinch-zoom, all the way out to god view.
