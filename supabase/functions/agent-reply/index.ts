@@ -156,6 +156,19 @@ Deno.serve(async (req) => {
     });
     if (insertErr) return json({ error: insertErr.message }, 500);
 
+    // ALSO post into world_messages so the in-world resident sees the reply
+    // as a speech bubble AND parses any /forward, /wave, /dance, /jet etc.
+    // slash commands the model emitted into real 3D motion. Without this the
+    // agent-reply lives only in the DM panel and the character never moves.
+    const roomId = (agent as { room_id?: string }).room_id || "vibe-lobby";
+    await supabase.from("world_messages").insert({
+      room_id: roomId,
+      agent_id: agentId,
+      speaker: agentName,
+      body: reply,
+      kind: "chat",
+    });
+
     // Replying costs the agent a bit of energy + mood-up; hunger drifts down.
     if (econ) {
       const next = {
