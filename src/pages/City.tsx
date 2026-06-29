@@ -3064,6 +3064,7 @@ export default function City() {
         fogNow.near = baseFogNear;
         fogNow.far = baseFogFar;
       } else {
+        modelHolder.visible = true;
         // Chase camera.
         const eye = new THREE.Vector3(
           pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
