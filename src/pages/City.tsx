@@ -64,6 +64,7 @@ import { setActiveCharacter } from "@/hooks/use-active-character";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
 import { ArcadeModal } from "@/components/city/ArcadeModal";
+import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
@@ -808,6 +809,11 @@ export default function City() {
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
   const [nearArcade, setNearArcade] = useState(false);
   const [arcadeOpen, setArcadeOpen] = useState(false);
+  const [nearTv, setNearTv] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryPhotos, setGalleryPhotos] = useState<
+    { url: string; title?: string | null; description?: string | null; residency?: string | null }[]
+  >([]);
   // Ninja portals → Gremlin Mines (the underground game world).
   const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
   const [underground, setUnderground] = useState(false);
@@ -1490,17 +1496,25 @@ export default function City() {
     // Same gallery_photos feed the /space TV uses.
     void supabase
       .from("gallery_photos")
-      .select("image_url")
+      .select("image_url, title, description, residency_name")
       .eq("community_id", "4202857f-13fd-4407-8906-3f8ffe63e510")
       .eq("is_visible", true)
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(16)
+      .limit(64)
       .then(({ data }) => {
-        const urls = (data ?? [])
-          .map((row) => row.image_url as string)
-          .filter(Boolean);
-        if (urls.length) island.setTvPhotos(urls);
+        const rows = (data ?? [])
+          .map((row) => ({
+            url: row.image_url as string,
+            title: (row.title as string | null) ?? null,
+            description: (row.description as string | null) ?? null,
+            residency: (row.residency_name as string | null) ?? null,
+          }))
+          .filter((r) => !!r.url);
+        if (rows.length) {
+          island.setTvPhotos(rows.map((r) => r.url));
+          setGalleryPhotos(rows);
+        }
       });
 
     // Stars + moon (fog-exempt so they read at any distance).
@@ -2195,6 +2209,7 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearArcade(player.position.distanceTo(island.arcade) < 4);
+      setNearTv(player.position.distanceTo(island.tv) < 5.5);
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
       // Either ninja portal is "near" if within ~4m.
       const np1 = new THREE.Vector3(NINJA_PORTAL_ISLAND.x, NINJA_PORTAL_ISLAND.y + 1, NINJA_PORTAL_ISLAND.z);
@@ -3908,6 +3923,11 @@ export default function City() {
       )}
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
+      <PhotoGalleryModal
+        open={galleryOpen}
+        photos={galleryPhotos}
+        onClose={() => setGalleryOpen(false)}
+      />
 
 
 
@@ -4067,6 +4087,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-fuchsia-100 border border-fuchsia-300/50 shadow-[0_0_24px_rgba(232,121,249,0.55)] bg-fuchsia-950/30 backdrop-blur-md hover:bg-fuchsia-500/15 transition-colors"
             >
               🕹️ Play Esmeralda Jump
+            </button>
+          )}
+          {nearTv && !galleryOpen && galleryPhotos.length > 0 && (
+            <button
+              onClick={(e) => {
+                setGalleryOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-100 border border-cyan-300/50 shadow-[0_0_24px_rgba(122,240,255,0.55)] bg-cyan-950/30 backdrop-blur-md hover:bg-cyan-300/15 transition-colors"
+            >
+              📸 Open Holo Gallery ({galleryPhotos.length})
             </button>
           )}
           {nearNinjaPortal && !underground && (

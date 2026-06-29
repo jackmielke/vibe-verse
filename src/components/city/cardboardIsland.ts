@@ -65,6 +65,8 @@ export interface IslandWorld {
   avatarStage: THREE.Group;
   /** Esmeralda Jump arcade cabinet — walk up to launch the game. */
   arcade: THREE.Vector3;
+  /** Cardboard TV (community photo gallery) — walk up to open the holo-gallery. */
+  tv: THREE.Vector3;
 }
 
 const ISLAND_RADIUS = 55;
@@ -2253,10 +2255,11 @@ export function buildCardboardIsland(opts: {
     avatarPortal: new THREE.Vector3(centerX + AVATAR_X, topY + AVATAR_Y, centerZ + AVATAR_Z),
     avatarStage,
     arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
+    tv: new THREE.Vector3(centerX + 18, topY, centerZ + 22),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
-      urls.slice(0, 16).forEach((url) => {
+      urls.slice(0, 32).forEach((url) => {
         loader2.load(url, (t) => {
           t.colorSpace = THREE.SRGBColorSpace;
           tvTextures.push(t);
