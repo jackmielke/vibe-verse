@@ -29,6 +29,14 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  registerPOI,
+  unregisterPOI,
+  updatePOIPosition,
+  findPOI,
+  getSnapshot,
+  formatSnapshot,
+} from "@/world/worldIndex";
 
 export interface NearbyAgent {
   agentId: string;
