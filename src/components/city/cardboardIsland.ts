@@ -2259,7 +2259,7 @@ export function buildCardboardIsland(opts: {
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
-      urls.slice(0, 16).forEach((url) => {
+      urls.slice(0, 32).forEach((url) => {
         loader2.load(url, (t) => {
           t.colorSpace = THREE.SRGBColorSpace;
           tvTextures.push(t);
