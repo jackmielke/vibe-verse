@@ -1455,20 +1455,11 @@ export default function City() {
     }
     scene.add(transcendPortal);
 
-    // Trigger state: cooldown so re-entering doesn't loop instantly.
-    let transcendCooldown = 0;
-    const triggerTranscend = (fromVoid: boolean) => {
-      if (transcendCooldown > 0) return;
-      transcendCooldown = 2.5;
-      // Drop you back in from on high so you skydive into the plaza.
-      pos.set(0, 60, 0);
-      vel.set(0, 0, 0);
-      onGround = false;
-      peakY = pos.y;
-      wallJumpUsed = false;
-      setTranscendFx(Date.now());
-      soundsRef.current?.chime?.(fromVoid ? 6 : 4);
-    };
+    // Cooldown ref so re-entering the disc doesn't loop instantly.
+    // The physics loop (further below) reads TRANSCEND_POS / transcendState
+    // to detect both voluntary entries and out-of-world falls.
+    const transcendState = { cooldown: 0 };
+
 
 
 
