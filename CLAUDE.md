@@ -5,12 +5,27 @@ each session so you don't have to re-derive the project from scratch.
 
 ## What this is
 
-**Edge Esmeralda / Vibe Explorer** — a vibe-coded, browser-based 3D social world.
-An interactive village map of Healdsburg (Mapbox + Three.js) plus a growing set of
-explorable 3D worlds, AI agents, a virtual economy, and real-time multiplayer.
+**Vibe Explorer** — an **AI-powered Club Penguin**. A vibe-coded, browser-based 3D
+social world where anyone can drop in, walk around as their own character, and hang
+out with other people *and* with AI agents that live in the world. Originally built
+for **Edge City**, but open to anyone.
+
+The defining idea: **anyone can add their own AI agent to the world** — agents move
+around, talk to each other and to players, and do interesting things. It's an
+experiment with a growing set of mini-games and explorable worlds.
 
 The long-term north star: **converge the experiments into one persistent,
-multiplayer world** — "the next Club Penguin." See `ROADMAP.md`.
+multiplayer world with unified physics and one avatar** — "the next Club Penguin."
+See `ROADMAP.md`.
+
+> The interactive 3D village map of Healdsburg (Mapbox + Three.js) is where this
+> started and still exists at `/welcome`, but it is **no longer a core feature** —
+> treat it as background/one room, not the primary thing. The flagship surface is
+> `/city` (best movement + multiplayer + economy).
+
+Vision threads to keep in mind: fully **customizable agents** (e.g. custom art on
+the chest/body so your agent looks like *yours*), and **3D-generated merch** /
+wearables created on demand and sold for Vibe coins.
 
 ## Stack
 
