@@ -2743,14 +2743,19 @@ export default function City() {
       mixer?.update(dt);
 
       // Jetpack VFX.
+      // In first-person VR the nozzles are inches from the headset, so
+      // the flame light + exhaust particles wash the whole view white.
+      // Suppress the bright VFX while the camera is inside the avatar.
+      const suppressJetVfx = xrPresenting && vrFirstPerson;
       flames.forEach((f) => {
-        f.visible = thrusting;
+        f.visible = thrusting && !suppressJetVfx;
         if (thrusting) {
           const s = 0.8 + Math.random() * 0.5;
           f.scale.set(s, s * (1 + Math.random() * 0.4), s);
         }
       });
-      jetLight.intensity = thrusting ? 26 + Math.random() * 14 : 0;
+      jetLight.intensity = thrusting && !suppressJetVfx ? 26 + Math.random() * 14 : 0;
+      particles.visible = !suppressJetVfx;
       if (thrusting) {
         for (let s = 0; s < 3; s++) {
           const i = nextParticle++ % P_COUNT;
