@@ -488,6 +488,7 @@ export function createAgentResidents(opts: {
       }
     });
     if (r.agentId) byAgentId.delete(r.agentId);
+    unregisterPOI(`agent:${key}`);
     residents.delete(key);
   };
 
