@@ -4089,6 +4089,17 @@ export default function City() {
               🕹️ Play Esmeralda Jump
             </button>
           )}
+          {nearTv && !galleryOpen && galleryPhotos.length > 0 && (
+            <button
+              onClick={(e) => {
+                setGalleryOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-cyan-100 border border-cyan-300/50 shadow-[0_0_24px_rgba(122,240,255,0.55)] bg-cyan-950/30 backdrop-blur-md hover:bg-cyan-300/15 transition-colors"
+            >
+              📸 Open Holo Gallery ({galleryPhotos.length})
+            </button>
+          )}
           {nearNinjaPortal && !underground && (
             <button
               onClick={(e) => {
