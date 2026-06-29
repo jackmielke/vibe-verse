@@ -808,6 +808,11 @@ export default function City() {
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
   const [nearArcade, setNearArcade] = useState(false);
   const [arcadeOpen, setArcadeOpen] = useState(false);
+  const [nearTv, setNearTv] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryPhotos, setGalleryPhotos] = useState<
+    { url: string; title?: string | null; description?: string | null; residency?: string | null }[]
+  >([]);
   // Ninja portals → Gremlin Mines (the underground game world).
   const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
   const [underground, setUnderground] = useState(false);
