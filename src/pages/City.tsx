@@ -551,6 +551,9 @@ export default function City() {
   const touchJetRef = useRef(false);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
+  // Transcendence Portal — fires whenever the player falls through the
+  // world OR voluntarily steps onto the plaza portal disc.
+  const [transcendFx, setTranscendFx] = useState(0);
   const [fallDamageEnabled, setFallDamageEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     const saved = localStorage.getItem("city.fallDamage");
