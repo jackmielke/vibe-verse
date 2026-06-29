@@ -61,6 +61,8 @@ type QueuedCmd =
   | { kind: "walk"; dir: "forward" | "back" | "strafeL" | "strafeR"; dur: number }
   | { kind: "turn"; deltaYaw: number; dur: number } // radians
   | { kind: "emote"; emote: "jet" | "jump" | "wave" | "dance"; dur: number }
+  | { kind: "fly"; dir: "forward" | "back" | "hover" | "up" | "down"; dur: number }
+  | { kind: "land" }
   | { kind: "respawn" };
 
 interface Resident {
