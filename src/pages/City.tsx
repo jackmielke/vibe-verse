@@ -551,6 +551,9 @@ export default function City() {
   const touchJetRef = useRef(false);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
+  // Transcendence Portal — fires whenever the player falls through the
+  // world OR voluntarily steps onto the plaza portal disc.
+  const [transcendFx, setTranscendFx] = useState(0);
   const [fallDamageEnabled, setFallDamageEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     const saved = localStorage.getItem("city.fallDamage");
@@ -571,6 +574,13 @@ export default function City() {
     const timer = window.setTimeout(() => setRespawnFx(0), 1800);
     return () => window.clearTimeout(timer);
   }, [respawnFx]);
+
+  useEffect(() => {
+    if (transcendFx <= 0) return;
+    const timer = window.setTimeout(() => setTranscendFx(0), 1600);
+    return () => window.clearTimeout(timer);
+  }, [transcendFx]);
+
 
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
@@ -1388,6 +1398,70 @@ export default function City() {
     );
     scene.add(ninjaPortalCity);
     const ninjaPortals = [ninjaPortalIsland, ninjaPortalCity];
+
+    // ---- Transcendence Portal (plaza) ---------------------------------
+    // A glowing mint vortex you can step into to "transcend" — the same
+    // FX also catches you if you ever slip through level geometry, so
+    // you're never just falling forever into the void.
+    const TRANSCEND_POS = new THREE.Vector3(14, 0.05, 14);
+    const transcendPortal = new THREE.Group();
+    transcendPortal.position.copy(TRANSCEND_POS);
+    {
+      // Mint outer ring.
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(2.4, 0.18, 12, 48),
+        new THREE.MeshStandardMaterial({
+          color: 0x7affd1,
+          emissive: 0x4dffb8,
+          emissiveIntensity: 1.6,
+          metalness: 0.4,
+          roughness: 0.25,
+        }),
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.05;
+      transcendPortal.add(ring);
+      // Inner swirling disc.
+      const swirl = new THREE.Mesh(
+        new THREE.CircleGeometry(2.2, 48),
+        new THREE.MeshBasicMaterial({
+          color: 0x4dffd1,
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide,
+        }),
+      );
+      swirl.rotation.x = -Math.PI / 2;
+      swirl.position.y = 0.08;
+      transcendPortal.add(swirl);
+      // Glow pillar so you can see it from anywhere in the plaza.
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 1.8, 26, 24, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0x9affe0,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      beam.position.y = 13;
+      transcendPortal.add(beam);
+      const light = new THREE.PointLight(0x6fffc4, 1.4, 22, 2);
+      light.position.y = 1.6;
+      transcendPortal.add(light);
+      (transcendPortal as unknown as { __ring: THREE.Mesh; __swirl: THREE.Mesh }).__ring = ring;
+      (transcendPortal as unknown as { __ring: THREE.Mesh; __swirl: THREE.Mesh }).__swirl = swirl;
+    }
+    scene.add(transcendPortal);
+
+    // Cooldown ref so re-entering the disc doesn't loop instantly.
+    // The physics loop (further below) reads TRANSCEND_POS / transcendState
+    // to detect both voluntary entries and out-of-world falls.
+    const transcendState = { cooldown: 0 };
+
+
+
 
 
 
@@ -2882,12 +2956,44 @@ export default function City() {
         if (r) r.rotation.z += dt * 1.2;
         if (sw) sw.rotation.z -= dt * 2.2;
       }
+      // Spin the transcendence portal and gently pulse it.
+      {
+        const r = (transcendPortal as unknown as { __ring?: THREE.Mesh }).__ring;
+        const sw = (transcendPortal as unknown as { __swirl?: THREE.Mesh }).__swirl;
+        if (r) r.rotation.z += dt * 0.9;
+        if (sw) {
+          sw.rotation.z -= dt * 1.6;
+          const mat = sw.material as THREE.MeshBasicMaterial;
+          mat.opacity = 0.45 + Math.sin(now * 0.004) * 0.18;
+        }
+      }
       // Detect underground transitions so jetpack toggles cleanly.
       const insideNow = undergroundWorld.isInside(pos);
       if (insideNow !== undergroundActiveRef.current) {
         undergroundActiveRef.current = insideNow;
         setUnderground(insideNow);
       }
+
+      // ---- Transcendence Portal: voluntary entry + void safety net ---
+      if (transcendState.cooldown > 0) transcendState.cooldown -= dt;
+      if (transcendState.cooldown <= 0 && !insideNow) {
+        const dxT = pos.x - TRANSCEND_POS.x;
+        const dzT = pos.z - TRANSCEND_POS.z;
+        const onDisc =
+          dxT * dxT + dzT * dzT < 2.4 * 2.4 && Math.abs(pos.y - TRANSCEND_POS.y) < 1.5;
+        const fellOutOfWorld = pos.y < -25;
+        if (onDisc || fellOutOfWorld) {
+          transcendState.cooldown = 2.5;
+          pos.set(0, 60, 0);
+          vel.set(0, 0, 0);
+          onGround = false;
+          peakY = pos.y;
+          wallJumpUsed = false;
+          setTranscendFx(Date.now());
+          soundsRef.current?.chime?.(fellOutOfWorld ? 6 : 4);
+        }
+      }
+
       if (insideNow) {
         // Keep the player inside the cavern disc so they can't walk
         // off the floor and get yanked up to the surface street.
@@ -4054,6 +4160,23 @@ export default function City() {
           </div>
         </div>
       )}
+
+      {/* Transcendence Portal flash — voluntary entry or out-of-world catch. */}
+      {entered && transcendFx > 0 && (
+        <div
+          key={transcendFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+        >
+          <div className="absolute inset-0 bg-emerald-400/20 backdrop-blur-md" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in border border-emerald-300/60 shadow-[0_0_40px_rgba(125,255,200,0.65)]">
+            <div className="text-5xl mb-1">✨</div>
+            <div className="text-sm font-semibold text-emerald-200">TRANSCENDED</div>
+            <div className="text-xs text-emerald-100/80">Skydiving back into the plaza…</div>
+          </div>
+        </div>
+      )}
+
+
 
       {/* Ninja portal descent flash + arrival pulse. */}
       {entered && enterFx > 0 && (
