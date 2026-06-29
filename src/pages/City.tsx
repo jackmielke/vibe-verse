@@ -1399,6 +1399,79 @@ export default function City() {
     scene.add(ninjaPortalCity);
     const ninjaPortals = [ninjaPortalIsland, ninjaPortalCity];
 
+    // ---- Transcendence Portal (plaza) ---------------------------------
+    // A glowing mint vortex you can step into to "transcend" — the same
+    // FX also catches you if you ever slip through level geometry, so
+    // you're never just falling forever into the void.
+    const TRANSCEND_POS = new THREE.Vector3(14, 0.05, 14);
+    const transcendPortal = new THREE.Group();
+    transcendPortal.position.copy(TRANSCEND_POS);
+    {
+      // Mint outer ring.
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(2.4, 0.18, 12, 48),
+        new THREE.MeshStandardMaterial({
+          color: 0x7affd1,
+          emissive: 0x4dffb8,
+          emissiveIntensity: 1.6,
+          metalness: 0.4,
+          roughness: 0.25,
+        }),
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.05;
+      transcendPortal.add(ring);
+      // Inner swirling disc.
+      const swirl = new THREE.Mesh(
+        new THREE.CircleGeometry(2.2, 48),
+        new THREE.MeshBasicMaterial({
+          color: 0x4dffd1,
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide,
+        }),
+      );
+      swirl.rotation.x = -Math.PI / 2;
+      swirl.position.y = 0.08;
+      transcendPortal.add(swirl);
+      // Glow pillar so you can see it from anywhere in the plaza.
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 1.8, 26, 24, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0x9affe0,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      beam.position.y = 13;
+      transcendPortal.add(beam);
+      const light = new THREE.PointLight(0x6fffc4, 1.4, 22, 2);
+      light.position.y = 1.6;
+      transcendPortal.add(light);
+      (transcendPortal as unknown as { __ring: THREE.Mesh; __swirl: THREE.Mesh }).__ring = ring;
+      (transcendPortal as unknown as { __ring: THREE.Mesh; __swirl: THREE.Mesh }).__swirl = swirl;
+    }
+    scene.add(transcendPortal);
+
+    // Trigger state: cooldown so re-entering doesn't loop instantly.
+    let transcendCooldown = 0;
+    const triggerTranscend = (fromVoid: boolean) => {
+      if (transcendCooldown > 0) return;
+      transcendCooldown = 2.5;
+      // Drop you back in from on high so you skydive into the plaza.
+      pos.set(0, 60, 0);
+      vel.set(0, 0, 0);
+      onGround = false;
+      peakY = pos.y;
+      wallJumpUsed = false;
+      setTranscendFx(Date.now());
+      soundsRef.current?.chime?.(fromVoid ? 6 : 4);
+    };
+
+
+
 
 
     // ---- Collectible stars: plaza → rooftops → sky trail → island ---
