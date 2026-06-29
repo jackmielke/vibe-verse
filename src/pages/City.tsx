@@ -3055,6 +3055,9 @@ export default function City() {
         // the avatar tightly; third-person glides for comfort.
         const followBase = vrFirstPerson ? 0.0001 : 0.015;
         dolly.position.lerp(desired, 1 - Math.pow(followBase, dt));
+        // Hide the avatar mesh in first-person — otherwise the camera
+        // is inside the player's head and the view fills with model.
+        modelHolder.visible = !vrFirstPerson;
 
         // Keep fog comfy in VR (no zoom-out gesture available).
         const fogNow = scene.fog as THREE.Fog;
