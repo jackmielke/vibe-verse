@@ -817,7 +817,7 @@ export function createAgentResidents(opts: {
     },
     forEachOccupant(cb) {
       for (const r of residents.values()) {
-        if (r.emote === "jet") continue; // mid-air
+        if (r.emote === "jet" || r.flying || r.landing) continue; // mid-air
         const p = r.wrapper.position;
         cb(p.x, p.y, p.z);
       }
