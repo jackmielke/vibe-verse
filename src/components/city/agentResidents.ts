@@ -29,6 +29,14 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  registerPOI,
+  unregisterPOI,
+  updatePOIPosition,
+  findPOI,
+  getSnapshot,
+  formatSnapshot,
+} from "@/world/worldIndex";
 
 export interface NearbyAgent {
   agentId: string;
@@ -106,6 +114,10 @@ interface Resident {
   // Bubble
   bubble: THREE.Sprite | null;
   bubbleT: number;           // seconds remaining
+  // Goal-directed navigation (Stage 2 /goto, /follow)
+  gotoTarget: THREE.Vector3 | null;
+  gotoLabel: string | null;
+  followAgentKey: string | null; // for /follow
 }
 
 const ANIM_CULL_DIST_SQ = 200 * 200;
@@ -439,10 +451,24 @@ export function createAgentResidents(opts: {
         landing: false,
         bubble: null,
         bubbleT: 0,
+        gotoTarget: null,
+        gotoLabel: null,
+        followAgentKey: null,
       };
       group.add(wrapper);
       residents.set(row.key, resident);
       if (row.agentId) byAgentId.set(row.agentId, row.key);
+      // Stage 1 perception: every agent is a queryable POI for its
+      // peers. Region label matches the wander zone so snapshots read
+      // naturally ("Edge — 12m N on Cardboard Island").
+      registerPOI({
+        key: `agent:${row.key}`,
+        name: row.name,
+        region: "Cardboard Island",
+        position: wrapper.position,
+        kind: "agent",
+        aliases: [row.name, row.name.split(/\s+/)[0]],
+      });
     } catch (err) {
       console.warn("[agentResidents] failed to load", ch.url, err);
     }
@@ -462,6 +488,7 @@ export function createAgentResidents(opts: {
       }
     });
     if (r.agentId) byAgentId.delete(r.agentId);
+    unregisterPOI(`agent:${key}`);
     residents.delete(key);
   };
 
@@ -592,8 +619,53 @@ export function createAgentResidents(opts: {
         if (!key) return;
         const r = residents.get(key);
         if (!r) return;
-        const parsed = parseCommands(row.body);
-        showBubble(r, parsed.text);
+        // Pre-pass: pull out /goto NAME, /follow NAME, /stop, /where.
+        // These are name-bearing commands the regex parser can't handle.
+        let body = row.body;
+        const navRe = /\/(goto|follow|stop|where)(?:\s+([^/\n]+?))?(?=\s*\/|\s*$)/gi;
+        let nm: RegExpExecArray | null;
+        const navRanges: [number, number][] = [];
+        let navBubble: string | null = null;
+        while ((nm = navRe.exec(row.body)) !== null) {
+          const verb = nm[1].toLowerCase();
+          const arg = (nm[2] ?? "").trim();
+          navRanges.push([nm.index, nm.index + nm[0].length]);
+          if (verb === "stop") {
+            r.queue.length = 0;
+            r.walkT = 0; r.walkDir = null;
+            r.turnRemaining = 0;
+            r.gotoTarget = null; r.gotoLabel = null; r.followAgentKey = null;
+            r.landing = r.flying || r.altitude > 0.1;
+            r.flying = false; r.flightDur = 0;
+          } else if (verb === "where") {
+            const snap = getSnapshot(r.wrapper.position, { yaw: r.yaw, ignoreKey: `agent:${r.key}` });
+            navBubble = formatSnapshot(snap);
+          } else if (verb === "goto" || verb === "follow") {
+            const poi = arg ? findPOI(arg) : null;
+            if (!poi) {
+              navBubble = `…couldn't find "${arg}" nearby.`;
+            } else {
+              r.queue.length = 0;
+              r.walkT = 0; r.walkDir = null;
+              r.turnRemaining = 0;
+              r.gotoTarget = poi.position.clone();
+              r.gotoLabel = poi.name;
+              r.followAgentKey = verb === "follow" && poi.kind === "agent"
+                ? poi.key.replace(/^agent:/, "")
+                : null;
+            }
+          }
+        }
+        if (navRanges.length) {
+          let out = "";
+          let cursor = 0;
+          for (const [s, e] of navRanges) { out += body.slice(cursor, s); cursor = e; }
+          out += body.slice(cursor);
+          body = out.replace(/\s+/g, " ").trim();
+        }
+        const parsed = parseCommands(body);
+        const bubbleText = navBubble ?? parsed.text;
+        if (bubbleText) showBubble(r, bubbleText);
         if (parsed.cmds.length) enqueue(r, parsed.cmds);
       },
     )
@@ -650,7 +722,8 @@ export function createAgentResidents(opts: {
           r.emote === "none" &&
           !r.goingHome &&
           r.flightDur <= 0 &&
-          !r.landing;
+          !r.landing &&
+          !r.gotoTarget;
         if (idle && r.queue.length) {
           const next = r.queue.shift()!;
           if (next.kind === "walk") {
@@ -708,6 +781,32 @@ export function createAgentResidents(opts: {
           const dist = tmpVec.length();
           if (dist < 0.3) {
             r.goingHome = false;
+          } else {
+            tmpVec.multiplyScalar(1 / dist);
+            walking = true;
+            walkDirX = tmpVec.x;
+            walkDirZ = tmpVec.z;
+          }
+        } else if (r.gotoTarget) {
+          // Stage 2: straight-line steering to a named POI. /follow keeps
+          // re-acquiring the target's current position each frame.
+          if (r.followAgentKey) {
+            const other = residents.get(r.followAgentKey);
+            if (other) r.gotoTarget.copy(other.wrapper.position);
+          }
+          tmpVec.copy(r.gotoTarget).sub(p);
+          tmpVec.y = 0;
+          const dist = tmpVec.length();
+          const arriveAt = r.followAgentKey ? 3.0 : 1.6;
+          if (dist < arriveAt) {
+            if (r.followAgentKey) {
+              // Stand near the target; recheck next frame.
+            } else {
+              const label = r.gotoLabel ?? "the spot";
+              r.gotoTarget = null;
+              r.gotoLabel = null;
+              showBubble(r, `arrived at ${label} ✨`);
+            }
           } else {
             tmpVec.multiplyScalar(1 / dist);
             walking = true;
@@ -811,8 +910,11 @@ export function createAgentResidents(opts: {
         // ---- anim ----
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
           // Animate legs while moving, dancing, or returning home.
-          if (r.walkT > 0 || r.goingHome || r.emote === "dance" || r.flying || r.landing) r.mixer.update(dt);
+          if (r.walkT > 0 || r.goingHome || r.gotoTarget || r.emote === "dance" || r.flying || r.landing) r.mixer.update(dt);
         }
+        // Keep the world-index POI in sync so peers can /goto NAME and
+        // get the agent's current position, not its spawn tile.
+        updatePOIPosition(`agent:${r.key}`, p.x, p.y, p.z);
       }
     },
     forEachOccupant(cb) {

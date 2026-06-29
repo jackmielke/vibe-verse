@@ -75,6 +75,7 @@ import {
   type IslandSpawnRow,
 } from "@/components/city/islandSpawns";
 import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
+import { registerPOI } from "@/world/worldIndex";
 
 
 // Every Quaternius character can be the pilot — same glob pattern as
@@ -1291,6 +1292,34 @@ export default function City() {
       boxes,
     });
     scene.add(tjsWorld.group);
+
+    // ---- World index: register named POIs so agents can /goto them
+    // and answer "what's around me?" with real coords (Stage 1 of the
+    // Agent Embodiment Roadmap). Modules that own a landmark register it
+    // by its actual world position; agentResidents registers itself for
+    // the "agents" half of the snapshot.
+    {
+      const reg = (
+        key: string,
+        name: string,
+        region: string,
+        pos: THREE.Vector3,
+        aliases: string[] = [],
+      ) => registerPOI({ key, name, region, position: pos, kind: "landmark", aliases });
+      reg("plaza", "Plaza Spawn", "Plaza", new THREE.Vector3(0, 0, 0), ["spawn", "lobby", "start"]);
+      reg("cardboard-island", "Cardboard Island", "Cardboard Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard"]);
+      reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
+      reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
+      reg("snackfe", "SnackFe Cafe", "Cardboard Island", island.snackfe, ["snackfe", "cafe", "snack", "ramen"]);
+      reg("vibe-shop", "Vibe Coin Shop", "Cardboard Island", island.shop, ["shop", "coin shop", "vibe shop", "store"]);
+      reg("portal", "Maker Portal", "Cardboard Island", island.portal, ["maker", "maker portal", "spawns"]);
+      reg("avatar-portal", "Avatar Portal", "Cardboard Island", island.avatarPortal, ["avatar", "hologram", "character"]);
+      reg("photo-tv", "Cardboard TV", "Cardboard Island", island.tv, ["tv", "photo tv", "gallery", "holo gallery"]);
+      reg("moon", "The Moon", "Moon", new THREE.Vector3(MOON_X, MOON_TOP, MOON_Z), ["moon", "luna"]);
+      reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
+      reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
+      reg("traders-galaxy", "Trader Joe's Galaxy", "Trader's Galaxy", new THREE.Vector3(TJS_X, TJS_TOP, TJS_Z), ["traders", "trader joes", "tj", "galaxy"]);
+    }
     // Wire the gremlin minigame to the React HUD.
     setMarsGame((g) => ({
       ...g,
