@@ -61,6 +61,8 @@ type QueuedCmd =
   | { kind: "walk"; dir: "forward" | "back" | "strafeL" | "strafeR"; dur: number }
   | { kind: "turn"; deltaYaw: number; dur: number } // radians
   | { kind: "emote"; emote: "jet" | "jump" | "wave" | "dance"; dur: number }
+  | { kind: "fly"; dir: "forward" | "back" | "hover" | "up" | "down"; dur: number }
+  | { kind: "land" }
   | { kind: "respawn" };
 
 interface Resident {
@@ -93,6 +95,14 @@ interface Resident {
   emoteT: number;            // seconds into the current emote
   emoteDur: number;
   baseLift: number;          // resting Y for the inner mesh
+  // Sustained flight (jetpack travel)
+  flying: boolean;
+  flightT: number;           // elapsed seconds in current flight cmd
+  flightDur: number;
+  flightDir: "forward" | "back" | "hover" | "up" | "down";
+  altitude: number;          // current altitude above baseLift (meters)
+  targetAltitude: number;    // altitude the jetpack is climbing toward
+  landing: boolean;          // descending back to ground
   // Bubble
   bubble: THREE.Sprite | null;
   bubbleT: number;           // seconds remaining
@@ -255,8 +265,20 @@ function parseCommands(body: string): { text: string; cmds: QueuedCmd[] } {
       cmds.push({ kind: "emote", emote: "wave", dur: 1.4 });
     } else if (cmd === "dance" || cmd === "party" || cmd === "vibe") {
       cmds.push({ kind: "emote", emote: "dance", dur: Math.max(1, dur) });
-    } else if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket") {
+    } else if (cmd === "jet" || cmd === "jetpack" || cmd === "boost" || cmd === "rocket") {
       cmds.push({ kind: "emote", emote: "jet", dur: 1.6 });
+    } else if (cmd === "fly" || cmd === "flyforward" || cmd === "flyfwd") {
+      cmds.push({ kind: "fly", dir: "forward", dur });
+    } else if (cmd === "flyback" || cmd === "flybackward") {
+      cmds.push({ kind: "fly", dir: "back", dur });
+    } else if (cmd === "hover" || cmd === "float") {
+      cmds.push({ kind: "fly", dir: "hover", dur });
+    } else if (cmd === "up" || cmd === "ascend" || cmd === "rise") {
+      cmds.push({ kind: "fly", dir: "up", dur });
+    } else if (cmd === "down" || cmd === "descend") {
+      cmds.push({ kind: "fly", dir: "down", dur });
+    } else if (cmd === "land") {
+      cmds.push({ kind: "land" });
     } else if (cmd === "respawn" || cmd === "home" || cmd === "reset") {
       cmds.push({ kind: "respawn" });
     } else {
@@ -408,6 +430,13 @@ export function createAgentResidents(opts: {
         emoteT: 0,
         emoteDur: 0,
         baseLift: lift,
+        flying: false,
+        flightT: 0,
+        flightDur: 0,
+        flightDir: "forward",
+        altitude: 0,
+        targetAltitude: 0,
+        landing: false,
         bubble: null,
         bubbleT: 0,
       };
@@ -584,10 +613,10 @@ export function createAgentResidents(opts: {
       const list = [...residents.values()];
       for (let i = 0; i < list.length; i++) {
         const a = list[i];
-        if (a.emote === "jet") continue; // mid-air, don't shove
+        if (a.emote === "jet" || a.flying || a.landing) continue; // mid-air, don't shove
         for (let j = i + 1; j < list.length; j++) {
           const b = list[j];
-          if (b.emote === "jet") continue;
+          if (b.emote === "jet" || b.flying || b.landing) continue;
           const dx = a.wrapper.position.x - b.wrapper.position.x;
           const dz = a.wrapper.position.z - b.wrapper.position.z;
           const d2 = dx * dx + dz * dz;
@@ -615,7 +644,13 @@ export function createAgentResidents(opts: {
       }
       for (const r of residents.values()) {
         // ---- pop next queued command if idle ----
-        const idle = r.walkT <= 0 && r.turnRemaining <= 0 && r.emote === "none" && !r.goingHome;
+        const idle =
+          r.walkT <= 0 &&
+          r.turnRemaining <= 0 &&
+          r.emote === "none" &&
+          !r.goingHome &&
+          r.flightDur <= 0 &&
+          !r.landing;
         if (idle && r.queue.length) {
           const next = r.queue.shift()!;
           if (next.kind === "walk") {
@@ -627,6 +662,20 @@ export function createAgentResidents(opts: {
             r.turnRate = r.turnRemaining / Math.max(0.05, next.dur);
           } else if (next.kind === "emote") {
             startEmote(r, next.emote, next.dur);
+          } else if (next.kind === "fly") {
+            r.flying = true;
+            r.flightT = 0;
+            r.flightDur = next.dur;
+            r.flightDir = next.dir;
+            // Set/raise altitude target. Forward/back/hover cruise at ~8m.
+            // /up adds altitude, /down reduces it.
+            if (next.dir === "up") r.targetAltitude = Math.min(40, r.altitude + 4 * next.dur);
+            else if (next.dir === "down") r.targetAltitude = Math.max(0, r.altitude - 4 * next.dur);
+            else r.targetAltitude = Math.max(r.altitude, 8);
+          } else if (next.kind === "land") {
+            r.landing = true;
+            r.flying = false;
+            r.flightDur = 0;
           } else if (next.kind === "respawn") {
             respawn(r);
           }
@@ -687,6 +736,36 @@ export function createAgentResidents(opts: {
         } else {
           r.bumpVel.set(0, 0, 0);
         }
+        if (r.bumpVel.lengthSq() > 0.0001) {
+          p.x += r.bumpVel.x * dt;
+          p.z += r.bumpVel.z * dt;
+          r.bumpVel.multiplyScalar(Math.pow(0.025, dt));
+        } else {
+          r.bumpVel.set(0, 0, 0);
+        }
+        // ---- sustained jetpack flight ----
+        if (r.flightDur > 0) {
+          r.flightT += dt;
+          // Lerp altitude toward target at ~6 m/s.
+          const altStep = 6 * dt;
+          if (r.altitude < r.targetAltitude) r.altitude = Math.min(r.targetAltitude, r.altitude + altStep);
+          else if (r.altitude > r.targetAltitude) r.altitude = Math.max(r.targetAltitude, r.altitude - altStep);
+          // Horizontal cruise (faster than walking).
+          const cruise = 7.5;
+          if (r.flightDir === "forward") { p.x += fwdX * cruise * dt; p.z += fwdZ * cruise * dt; }
+          else if (r.flightDir === "back") { p.x -= fwdX * cruise * dt; p.z -= fwdZ * cruise * dt; }
+          if (r.flightT >= r.flightDur) {
+            r.flightDur = 0;
+            r.flightT = 0;
+            // Auto-land after the last queued flight cmd unless more flight cmds follow.
+            const hasMoreFlight = r.queue.some((c) => c.kind === "fly" || c.kind === "land");
+            if (!hasMoreFlight && r.altitude > 0.1) r.landing = true;
+          }
+        } else if (r.landing) {
+          r.altitude = Math.max(0, r.altitude - 6 * dt);
+          if (r.altitude <= 0.001) { r.altitude = 0; r.landing = false; r.flying = false; }
+        }
+        r.inner.position.y = r.baseLift + r.altitude;
         // ---- emote ----
         if (r.emote !== "none") {
           r.emoteT += dt;
@@ -695,8 +774,8 @@ export function createAgentResidents(opts: {
             const T = 1.6;
             const t = Math.min(1, r.emoteT / T);
             const h = Math.sin(t * Math.PI) * 6.0; // peak ~6m
-            r.inner.position.y = r.baseLift + h;
-            if (r.emoteT >= T) { r.inner.position.y = r.baseLift; r.emote = "none"; }
+            r.inner.position.y = r.baseLift + r.altitude + h;
+            if (r.emoteT >= T) { r.inner.position.y = r.baseLift + r.altitude; r.emote = "none"; }
           } else if (r.emote === "jump") {
             const T = 0.5;
             const t = Math.min(1, r.emoteT / T);
@@ -732,13 +811,13 @@ export function createAgentResidents(opts: {
         // ---- anim ----
         if (r.mixer && p.distanceToSquared(playerPos) < ANIM_CULL_DIST_SQ) {
           // Animate legs while moving, dancing, or returning home.
-          if (r.walkT > 0 || r.goingHome || r.emote === "dance") r.mixer.update(dt);
+          if (r.walkT > 0 || r.goingHome || r.emote === "dance" || r.flying || r.landing) r.mixer.update(dt);
         }
       }
     },
     forEachOccupant(cb) {
       for (const r of residents.values()) {
-        if (r.emote === "jet") continue; // mid-air
+        if (r.emote === "jet" || r.flying || r.landing) continue; // mid-air
         const p = r.wrapper.position;
         cb(p.x, p.y, p.z);
       }
@@ -749,7 +828,7 @@ export function createAgentResidents(opts: {
       const nx = dirX / len;
       const nz = dirZ / len;
       for (const r of residents.values()) {
-        if (r.emote === "jet" || Math.abs(r.wrapper.position.y - y) > 2.6) continue;
+        if (r.emote === "jet" || r.flying || r.landing || Math.abs(r.wrapper.position.y - y) > 2.6) continue;
         const dx = r.wrapper.position.x - x;
         const dz = r.wrapper.position.z - z;
         const d2 = dx * dx + dz * dz;

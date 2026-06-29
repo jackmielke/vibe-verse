@@ -101,8 +101,17 @@ Deno.serve(async (req) => {
       `  /jump           small hop\n` +
       `  /wave           spin + wave\n` +
       `  /dance N        dance for N seconds\n` +
-      `  /jet            quick jetpack boost\n` +
-      `Keep N between 1 and 8. To draw a SQUARE: "/forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2" (right 2 = 90°). To do a CIRCLE-ish loop, chain many small /forward 1 /right 1 segments. When a user asks you to move ("walk forward two seconds", "turn around", "come here", "spin", "do a circle"), ACTUALLY include the matching command(s) and a short sentence. If the user just chats, don't move.\n` +
+      `  /jet            quick jetpack pop (1.6s bounce up & down)\n` +
+      `  --- sustained jetpack FLIGHT (much faster than walking) ---\n` +
+      `  /fly N          fire jetpack and FLY forward for N seconds at ~8m altitude\n` +
+      `  /flyback N      fly backward N seconds\n` +
+      `  /hover N        hover in place for N seconds\n` +
+      `  /up N           ascend higher (adds altitude)\n` +
+      `  /down N         descend lower\n` +
+      `  /land           settle back to the ground\n` +
+      `Flight auto-lands at the end of the last flight command unless more flight commands follow. You can chain like "/fly 4 /turn 90 /fly 3 /land" to cruise across the island. When the user asks you to fly somewhere, USE /fly with enough seconds to actually get there (each second ≈ 7.5 meters).\n` +
+      `Keep N between 1 and 8. To draw a SQUARE: "/forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2" (right 2 = 90°). When a user asks you to move ("walk forward two seconds", "turn around", "fly over there", "come here", "spin", "do a circle"), ACTUALLY include the matching command(s) and a short sentence. If the user just chats, don't move.\n` +
+      
       `Reply in 1–3 short in-character sentences. Plain text. No emoji spam.`;
 
 
