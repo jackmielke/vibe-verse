@@ -613,10 +613,10 @@ export function createAgentResidents(opts: {
       const list = [...residents.values()];
       for (let i = 0; i < list.length; i++) {
         const a = list[i];
-        if (a.emote === "jet") continue; // mid-air, don't shove
+        if (a.emote === "jet" || a.flying || a.landing) continue; // mid-air, don't shove
         for (let j = i + 1; j < list.length; j++) {
           const b = list[j];
-          if (b.emote === "jet") continue;
+          if (b.emote === "jet" || b.flying || b.landing) continue;
           const dx = a.wrapper.position.x - b.wrapper.position.x;
           const dz = a.wrapper.position.z - b.wrapper.position.z;
           const d2 = dx * dx + dz * dz;
