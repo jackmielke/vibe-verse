@@ -202,48 +202,79 @@ function makeNameLabel(name: string): THREE.Sprite {
 }
 
 /**
- * Detect a slash-command emote anywhere in the message and map it to a
- * 3D animation. Tolerant of leading whitespace, mixed case, and a few
- * common aliases so agents don't have to memorise exact spelling.
+ * Parse ALL slash commands in a message, in order, into a motor queue.
+ * Returns the clean text (with slash tokens stripped) and the command list.
  *
- * Supported:
- *   /jet, /jetpack, /fly, /boost     → quick boost into the sky
- *   /jump, /hop                       → small hop
- *   /wave, /hi, /hello                → spin in place + 👋 bubble
- *   /dance, /party, /vibe             → wiggly spin
+ * Commands (case-insensitive, N optional):
+ *   /forward N        walk forward N seconds (body-local)
+ *   /back N           walk backward
+ *   /strafe-left N    sidestep left (no rotation)
+ *   /strafe-right N   sidestep right
+ *   /left N           turn left N×45°, gradual
+ *   /right N          turn right N×45°, gradual
+ *   /turn N           turn N degrees (negative = left)
+ *   /jump /wave /dance N /jet
+ *   /respawn
  */
-function parseEmote(body: string): {
-  emote: Resident["emote"] | "respawn";
-  text: string;
-  moveDir?: { x: number; z: number };
-  duration?: number;
-} {
-  // Look for the first /word token; allow it anywhere, not just leading.
-  const m = body.match(/(^|\s)\/([a-zA-Z]+)\b\s*(\d+(?:\.\d+)?)?\s*(.*)$/);
-  if (!m) return { emote: "none", text: body };
-  const cmd = m[2].toLowerCase();
-  const numArg = m[3] ? parseFloat(m[3]) : undefined;
-  const rest = (body.slice(0, m.index ?? 0) + " " + (m[4] || "")).trim();
-  const dur = Math.max(0.3, Math.min(8, numArg ?? 2));
-  if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket" || cmd === "rocketship")
-    return { emote: "jet", text: rest || "🚀" };
-  if (cmd === "jump" || cmd === "hop")
-    return { emote: "jump", text: rest || "⬆️" };
-  if (cmd === "wave" || cmd === "hi" || cmd === "hello")
-    return { emote: "wave", text: rest || "👋" };
-  if (cmd === "dance" || cmd === "party" || cmd === "vibe")
-    return { emote: "dance", text: rest || "💃" };
-  if (cmd === "forward" || cmd === "fwd" || cmd === "f" || cmd === "north" || cmd === "n")
-    return { emote: "move", text: rest || `⬆️ ${dur}s`, moveDir: { x: 0, z: -1 }, duration: dur };
-  if (cmd === "back" || cmd === "backward" || cmd === "b" || cmd === "south" || cmd === "s")
-    return { emote: "move", text: rest || `⬇️ ${dur}s`, moveDir: { x: 0, z: 1 }, duration: dur };
-  if (cmd === "left" || cmd === "l" || cmd === "west" || cmd === "w")
-    return { emote: "move", text: rest || `⬅️ ${dur}s`, moveDir: { x: -1, z: 0 }, duration: dur };
-  if (cmd === "right" || cmd === "r" || cmd === "east" || cmd === "e")
-    return { emote: "move", text: rest || `➡️ ${dur}s`, moveDir: { x: 1, z: 0 }, duration: dur };
-  if (cmd === "respawn" || cmd === "home" || cmd === "reset")
-    return { emote: "respawn", text: rest || "🏠" };
-  return { emote: "none", text: body };
+function parseCommands(body: string): { text: string; cmds: QueuedCmd[] } {
+  const cmds: QueuedCmd[] = [];
+  // Find every "/word [num]" token, anywhere in the body.
+  const re = /\/([a-zA-Z][a-zA-Z-]*)\s*(-?\d+(?:\.\d+)?)?/g;
+  let cleaned = body;
+  let m: RegExpExecArray | null;
+  const ranges: [number, number][] = [];
+  while ((m = re.exec(body)) !== null) {
+    const cmd = m[1].toLowerCase().replace(/-/g, "");
+    const num = m[2] !== undefined ? parseFloat(m[2]) : undefined;
+    const dur = Math.max(0.3, Math.min(8, num ?? 2));
+    ranges.push([m.index, m.index + m[0].length]);
+    if (cmd === "forward" || cmd === "fwd" || cmd === "f") {
+      cmds.push({ kind: "walk", dir: "forward", dur });
+    } else if (cmd === "back" || cmd === "backward" || cmd === "b") {
+      cmds.push({ kind: "walk", dir: "back", dur });
+    } else if (cmd === "strafeleft" || cmd === "sidestepleft" || cmd === "stepleft") {
+      cmds.push({ kind: "walk", dir: "strafeL", dur });
+    } else if (cmd === "straferight" || cmd === "sidestepright" || cmd === "stepright") {
+      cmds.push({ kind: "walk", dir: "strafeR", dur });
+    } else if (cmd === "left" || cmd === "l" || cmd === "turnleft") {
+      // N×45° turn, gradual (~120°/s)
+      const deg = (num ?? 1) * 45;
+      const rad = (deg * Math.PI) / 180;
+      cmds.push({ kind: "turn", deltaYaw: -rad, dur: Math.max(0.25, deg / 120) });
+    } else if (cmd === "right" || cmd === "r" || cmd === "turnright") {
+      const deg = (num ?? 1) * 45;
+      const rad = (deg * Math.PI) / 180;
+      cmds.push({ kind: "turn", deltaYaw: rad, dur: Math.max(0.25, deg / 120) });
+    } else if (cmd === "turn" || cmd === "rotate") {
+      const deg = num ?? 90;
+      const rad = (deg * Math.PI) / 180;
+      cmds.push({ kind: "turn", deltaYaw: rad, dur: Math.max(0.25, Math.abs(deg) / 120) });
+    } else if (cmd === "jump" || cmd === "hop") {
+      cmds.push({ kind: "emote", emote: "jump", dur: 0.5 });
+    } else if (cmd === "wave" || cmd === "hi" || cmd === "hello") {
+      cmds.push({ kind: "emote", emote: "wave", dur: 1.4 });
+    } else if (cmd === "dance" || cmd === "party" || cmd === "vibe") {
+      cmds.push({ kind: "emote", emote: "dance", dur: Math.max(1, dur) });
+    } else if (cmd === "jet" || cmd === "jetpack" || cmd === "fly" || cmd === "boost" || cmd === "rocket") {
+      cmds.push({ kind: "emote", emote: "jet", dur: 1.6 });
+    } else if (cmd === "respawn" || cmd === "home" || cmd === "reset") {
+      cmds.push({ kind: "respawn" });
+    } else {
+      ranges.pop(); // unrecognised — leave the text in
+    }
+  }
+  // Strip recognised tokens from the bubble text.
+  if (ranges.length) {
+    let out = "";
+    let cursor = 0;
+    for (const [s, e] of ranges) {
+      out += body.slice(cursor, s);
+      cursor = e;
+    }
+    out += body.slice(cursor);
+    cleaned = out.replace(/\s+/g, " ").trim();
+  }
+  return { text: cleaned || (cmds.length ? "…" : body), cmds };
 }
 
 export function createAgentResidents(opts: {
