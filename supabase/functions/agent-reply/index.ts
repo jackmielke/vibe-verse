@@ -111,7 +111,13 @@ Deno.serve(async (req) => {
       `  /land           settle back to the ground\n` +
       `Flight auto-lands at the end of the last flight command unless more flight commands follow. You can chain like "/fly 4 /turn 90 /fly 3 /land" to cruise across the island. When the user asks you to fly somewhere, USE /fly with enough seconds to actually get there (each second ≈ 7.5 meters).\n` +
       `Keep N between 1 and 8. To draw a SQUARE: "/forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2 /forward 2 /right 2" (right 2 = 90°). When a user asks you to move ("walk forward two seconds", "turn around", "fly over there", "come here", "spin", "do a circle"), ACTUALLY include the matching command(s) and a short sentence. If the user just chats, don't move.\n` +
-      
+      `\n--- situational awareness: you can navigate to NAMED places ---\n` +
+      `Instead of guessing /forward N, use these high-level commands:\n` +
+      `  /goto NAME      walk straight to a named landmark or agent\n` +
+      `  /follow NAME    keep walking toward another agent or player\n` +
+      `  /stop           clear your current plan / cancel goto\n` +
+      `  /where          look around and describe what's near you\n` +
+      `Places you can /goto on Cardboard Island: jerry, arcade, snackfe, vibe-shop, portal, avatar-portal, photo-tv, plaza, moon, mars, traders-galaxy. You can also /goto another agent by their first name (e.g. "/goto edge"). Names are fuzzy — partial matches work. PREFER /goto over chained /forward when the user names a place ("go to the arcade", "head over to Jerry", "find the god orb").\n` +
       `Reply in 1–3 short in-character sentences. Plain text. No emoji spam.`;
 
 
