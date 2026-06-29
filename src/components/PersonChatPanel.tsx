@@ -3,15 +3,17 @@
  * the AI agent residents. Messages persist to `public.island_dms` and
  * stream back through Supabase realtime. When the target is an agent,
  * the `agent-reply` edge function generates an in-character reply.
+ *
+ * Renders as a compact corner widget by default so the player can keep
+ * watching the agent move in the 3D world, with an expand toggle that
+ * opens a full chat view (including the agent economy strip).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Sparkles, User } from "lucide-react";
+import { Sparkles, User, Maximize2, Minimize2, X } from "lucide-react";
 import { AgentVoiceButton } from "@/components/city/AgentVoiceButton";
 import AgentEconomyStrip from "@/components/city/AgentEconomyStrip";
 
@@ -49,7 +51,6 @@ function threadKeyFor(meRef: string, target: PersonTarget): string {
 }
 
 // Stable per-browser guest id so visitors can chat without signing in.
-// Stored once in localStorage; matches the uuid shape from_ref expects.
 function getGuestId(): string {
   if (typeof window === "undefined") return "guest";
   const KEY = "city.guestId";
@@ -65,17 +66,23 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
   const [messages, setMessages] = useState<DmRow[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // Default to the compact widget so the player can still see the agent
+  // walk around. Toggle to expanded for the full chat + economy strip.
+  const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Use the signed-in user id when available, else a stable guest id so
-  // anonymous visitors can still send/receive messages on the island.
   const meRef = useMemo(() => authUserId ?? getGuestId(), [authUserId]);
 
   const threadKey = useMemo(
     () => (target ? threadKeyFor(meRef, target) : null),
     [meRef, target],
   );
+
+  // Reset to mini mode whenever the panel opens for a new target.
+  useEffect(() => {
+    if (open) setExpanded(false);
+  }, [open, target?.ref]);
 
   // Load history + realtime
   useEffect(() => {
@@ -113,12 +120,25 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
     if (!open) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, open]);
+  }, [messages, open, expanded]);
 
-  // Focus input on open
+  // Focus input on open / mode change
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 80);
-  }, [open]);
+  }, [open, expanded]);
+
+  // Esc closes (only when expanded, so mini mode doesn't fight game input)
+  useEffect(() => {
+    if (!open || !expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, expanded]);
 
   const send = async () => {
     const text = draft.trim();
@@ -140,7 +160,6 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
       setSending(false);
       return;
     }
-    // For agents, kick off the AI reply.
     if (target.kind === "agent") {
       try {
         await supabase.functions.invoke("agent-reply", {
@@ -159,30 +178,139 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
     setTimeout(() => inputRef.current?.focus(), 30);
   };
 
-  if (!target) return null;
+  if (!open || !target) return null;
   const isAgent = target.kind === "agent";
 
+  // Show the last few messages in mini mode so the widget stays compact.
+  const recent = messages.slice(-3);
+
+  // ---- MINI WIDGET (default) ----------------------------------------
+  // Floating bottom-right card. No backdrop, no economy strip — the
+  // 3D world stays fully visible so you can watch the agent move.
+  if (!expanded) {
+    return (
+      <div
+        className="fixed z-50 bottom-3 right-3 w-[min(360px,calc(100vw-1.5rem))] rounded-xl border border-border/70 bg-background/95 backdrop-blur shadow-2xl pointer-events-auto flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-background/70">
+          {isAgent ? (
+            <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+          ) : (
+            <User className="h-3.5 w-3.5 text-primary shrink-0" />
+          )}
+          <span className="text-sm font-medium truncate">{target.name}</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {isAgent ? "agent" : "player"}
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            {isAgent && <AgentVoiceButton agentName={target.name} />}
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Expand"
+              aria-label="Expand chat"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Close"
+              aria-label="Close chat"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {recent.length > 0 && (
+          <div
+            ref={scrollRef}
+            className="max-h-32 overflow-y-auto px-3 py-2 space-y-1.5 text-xs"
+          >
+            {recent.map((m) => {
+              const mine = m.from_kind === "user" && m.from_ref === meRef;
+              return (
+                <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[85%] rounded-lg px-2 py-1 leading-snug break-words ${
+                      mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                    }`}
+                  >
+                    {m.body}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); void send(); }}
+          className="flex gap-1.5 px-2 py-2 border-t border-border/60 bg-background"
+        >
+          <Input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={isAgent ? `Ask ${target.name} to move…` : `Message ${target.name}…`}
+            maxLength={1000}
+            disabled={sending}
+            className="flex-1 h-8 text-sm"
+          />
+          <Button type="submit" size="sm" className="h-8 px-3" disabled={!draft.trim() || sending}>
+            Send
+          </Button>
+        </form>
+      </div>
+    );
+  }
+
+  // ---- EXPANDED VIEW ------------------------------------------------
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
-        <DialogHeader className="px-4 py-3 border-b border-border/60">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            {isAgent ? (
-              <Sparkles className="h-4 w-4 text-primary" />
-            ) : (
-              <User className="h-4 w-4 text-primary" />
-            )}
-            <span className="truncate">{target.name}</span>
-            <span className="text-xs text-muted-foreground font-normal">
-              {isAgent ? "AI agent" : "player"}
-            </span>
-            {isAgent && (
-              <span className="ml-auto">
-                <AgentVoiceButton agentName={target.name} />
-              </span>
-            )}
-          </DialogTitle>
-        </DialogHeader>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={() => setExpanded(false)}
+    >
+      <div
+        className="w-full max-w-md max-h-[90vh] rounded-xl border border-border/70 bg-background shadow-2xl flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60">
+          {isAgent ? (
+            <Sparkles className="h-4 w-4 text-primary" />
+          ) : (
+            <User className="h-4 w-4 text-primary" />
+          )}
+          <span className="text-base font-medium truncate">{target.name}</span>
+          <span className="text-xs text-muted-foreground">
+            {isAgent ? "AI agent" : "player"}
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            {isAgent && <AgentVoiceButton agentName={target.name} />}
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Minimize"
+              aria-label="Minimize chat"
+            >
+              <Minimize2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Close"
+              aria-label="Close chat"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
 
         {isAgent && (
           <AgentEconomyStrip
@@ -192,7 +320,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
           />
         )}
 
-        <div ref={scrollRef} className="max-h-[55vh] min-h-[260px] overflow-y-auto px-4 py-3 space-y-2 bg-background/40">
+        <div ref={scrollRef} className="flex-1 max-h-[55vh] min-h-[260px] overflow-y-auto px-4 py-3 space-y-2 bg-background/40">
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-6">
               {isAgent
@@ -203,15 +331,10 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
           {messages.map((m) => {
             const mine = m.from_kind === "user" && m.from_ref === meRef;
             return (
-              <div
-                key={m.id}
-                className={`flex ${mine ? "justify-end" : "justify-start"}`}
-              >
+              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm leading-snug break-words ${
-                    mine
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-foreground"
+                    mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                   }`}
                 >
                   {!mine && (
@@ -243,7 +366,7 @@ export default function PersonChatPanel({ open, onClose, target, authUserId, myN
             Send
           </Button>
         </form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
