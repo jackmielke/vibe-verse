@@ -2956,12 +2956,44 @@ export default function City() {
         if (r) r.rotation.z += dt * 1.2;
         if (sw) sw.rotation.z -= dt * 2.2;
       }
+      // Spin the transcendence portal and gently pulse it.
+      {
+        const r = (transcendPortal as unknown as { __ring?: THREE.Mesh }).__ring;
+        const sw = (transcendPortal as unknown as { __swirl?: THREE.Mesh }).__swirl;
+        if (r) r.rotation.z += dt * 0.9;
+        if (sw) {
+          sw.rotation.z -= dt * 1.6;
+          const mat = sw.material as THREE.MeshBasicMaterial;
+          mat.opacity = 0.45 + Math.sin(now * 0.004) * 0.18;
+        }
+      }
       // Detect underground transitions so jetpack toggles cleanly.
       const insideNow = undergroundWorld.isInside(pos);
       if (insideNow !== undergroundActiveRef.current) {
         undergroundActiveRef.current = insideNow;
         setUnderground(insideNow);
       }
+
+      // ---- Transcendence Portal: voluntary entry + void safety net ---
+      if (transcendState.cooldown > 0) transcendState.cooldown -= dt;
+      if (transcendState.cooldown <= 0 && !insideNow) {
+        const dxT = pos.x - TRANSCEND_POS.x;
+        const dzT = pos.z - TRANSCEND_POS.z;
+        const onDisc =
+          dxT * dxT + dzT * dzT < 2.4 * 2.4 && Math.abs(pos.y - TRANSCEND_POS.y) < 1.5;
+        const fellOutOfWorld = pos.y < -25;
+        if (onDisc || fellOutOfWorld) {
+          transcendState.cooldown = 2.5;
+          pos.set(0, 60, 0);
+          vel.set(0, 0, 0);
+          onGround = false;
+          peakY = pos.y;
+          wallJumpUsed = false;
+          setTranscendFx(Date.now());
+          soundsRef.current?.chime?.(fellOutOfWorld ? 6 : 4);
+        }
+      }
+
       if (insideNow) {
         // Keep the player inside the cavern disc so they can't walk
         // off the floor and get yanked up to the surface street.
