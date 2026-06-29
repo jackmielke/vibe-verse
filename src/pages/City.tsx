@@ -575,6 +575,13 @@ export default function City() {
     return () => window.clearTimeout(timer);
   }, [respawnFx]);
 
+  useEffect(() => {
+    if (transcendFx <= 0) return;
+    const timer = window.setTimeout(() => setTranscendFx(0), 1600);
+    return () => window.clearTimeout(timer);
+  }, [transcendFx]);
+
+
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
   const agentResidentsRef = useRef<AgentResidents | null>(null);
