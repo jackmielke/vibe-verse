@@ -1827,10 +1827,10 @@ export default function City() {
     let baseFogNear = 90;
     let baseFogFar = 520;
     const applyMode = (day: boolean) => {
-      const sky = day ? "#9fd1f0" : "#05080d";
+      const sky = day ? "#7ec0ee" : "#05080d";
       (scene.background as THREE.Color).set(sky);
       const fog = scene.fog as THREE.Fog;
-      fog.color.set(sky);
+      fog.color.set(day ? "#cfe6f5" : sky);
       baseFogNear = day ? 170 : 90;
       baseFogFar = day ? 1100 : 520;
       fog.near = baseFogNear;
