@@ -1919,7 +1919,13 @@ export default function City() {
       });
       plateMat.map = day ? groundDay : groundNight;
       plateMat.needsUpdate = true;
-      apronMat.color.set(day ? 0x67717d : 0x04060a);
+      waterUniforms.uDay.value = day ? 1 : 0;
+      waterUniforms.uShallow.set(day ? "#3aa9c4" : "#0a1a2a");
+      waterUniforms.uDeep.set(day ? "#0a2238" : "#02060d");
+      waterUniforms.uSky.set(day ? "#bcdff5" : "#0a1322");
+      waterUniforms.uFogColor.set(day ? "#cfe6f5" : "#05080d");
+      waterUniforms.uFogNear.value = day ? 170 : 90;
+      waterUniforms.uFogFar.value = day ? 1100 : 520;
     };
     applyModeRef.current = applyMode;
 
