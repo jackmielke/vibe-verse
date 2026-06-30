@@ -1920,10 +1920,10 @@ export default function City() {
       plateMat.map = day ? groundDay : groundNight;
       plateMat.needsUpdate = true;
       waterUniforms.uDay.value = day ? 1 : 0;
-      waterUniforms.uShallow.set(day ? "#3aa9c4" : "#0a1a2a");
-      waterUniforms.uDeep.set(day ? "#0a2238" : "#02060d");
-      waterUniforms.uSky.set(day ? "#bcdff5" : "#0a1322");
-      waterUniforms.uFogColor.set(day ? "#cfe6f5" : "#05080d");
+      waterUniforms.uShallow.value.set(day ? "#3aa9c4" : "#0a1a2a");
+      waterUniforms.uDeep.value.set(day ? "#0a2238" : "#02060d");
+      waterUniforms.uSky.value.set(day ? "#bcdff5" : "#0a1322");
+      waterUniforms.uFogColor.value.set(day ? "#cfe6f5" : "#05080d");
       waterUniforms.uFogNear.value = day ? 170 : 90;
       waterUniforms.uFogFar.value = day ? 1100 : 520;
     };
