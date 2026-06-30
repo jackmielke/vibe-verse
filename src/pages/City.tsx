@@ -1874,8 +1874,9 @@ export default function City() {
           clouds.add(s);
         }
       };
-      make(60, 70,  130, 220, 480, 90,  220); // mid clouds around the city
-      make(40, 160, 260, 600, 1100, 240, 480); // distant horizon clouds
+      // Keep clouds well outside the city footprint so the skyline reads clean.
+      make(25, 90,  150, 360, 600, 110, 220); // mid clouds ringing the city
+      make(20, 180, 280, 700, 1200, 260, 480); // distant horizon clouds
     }
     scene.add(clouds);
     const updateClouds = (now: number) => {
