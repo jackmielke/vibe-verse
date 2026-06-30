@@ -3434,6 +3434,7 @@ export default function City() {
       
       vibey.update(dt, now);
       updateClouds(now);
+      updateWater(now);
       agentResidents.update(dt, pos);
       rosterBoard.update(dt);
 
