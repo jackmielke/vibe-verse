@@ -1750,6 +1750,77 @@ export default function City() {
     moon.position.set(620, 430, -900);
     scene.add(moon);
 
+    // ---- Puffy daytime clouds ---------------------------------------
+    // Sprite-based fluffy clouds drifting around the city. Visible only
+    // in day mode so the night sky stays inky. Texture is a soft radial
+    // gradient generated in-canvas — zero network cost, looks fluffy.
+    const cloudTex = (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const g = c.getContext("2d")!;
+      // Build a puff of overlapping radial blobs for that anime-cloud look.
+      const blobs = [
+        { x: 128, y: 140, r: 90, a: 0.95 },
+        { x: 80,  y: 150, r: 70, a: 0.85 },
+        { x: 180, y: 150, r: 75, a: 0.85 },
+        { x: 110, y: 110, r: 60, a: 0.80 },
+        { x: 160, y: 115, r: 55, a: 0.78 },
+      ];
+      for (const b of blobs) {
+        const grad = g.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+        grad.addColorStop(0,    `rgba(255,255,255,${b.a})`);
+        grad.addColorStop(0.55, `rgba(245,250,255,${b.a * 0.55})`);
+        grad.addColorStop(1,    "rgba(255,255,255,0)");
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 256, 256);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+    const cloudMat = new THREE.SpriteMaterial({
+      map: cloudTex,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      fog: false,
+      color: 0xffffff,
+    });
+    const clouds = new THREE.Group();
+    {
+      const r = rng(`${CITY_SEED}-clouds`);
+      // Two layers: a near low band sitting around the rooftops, and a
+      // distant high band that wraps the horizon for depth.
+      const make = (count: number, yMin: number, yMax: number, radMin: number, radMax: number, scaleMin: number, scaleMax: number) => {
+        for (let i = 0; i < count; i++) {
+          const theta = r() * Math.PI * 2;
+          const rad = radMin + r() * (radMax - radMin);
+          const s = new THREE.Sprite(cloudMat);
+          const sc = scaleMin + r() * (scaleMax - scaleMin);
+          s.scale.set(sc, sc * (0.45 + r() * 0.2), 1);
+          s.position.set(Math.cos(theta) * rad, yMin + r() * (yMax - yMin), Math.sin(theta) * rad);
+          // Per-instance drift speed via userData.
+          s.userData.drift = 0.00002 + r() * 0.00004;
+          s.userData.theta0 = theta;
+          s.userData.rad = rad;
+          s.userData.y = s.position.y;
+          clouds.add(s);
+        }
+      };
+      make(60, 70,  130, 220, 480, 90,  220); // mid clouds around the city
+      make(40, 160, 260, 600, 1100, 240, 480); // distant horizon clouds
+    }
+    scene.add(clouds);
+    const updateClouds = (now: number) => {
+      if (!clouds.visible) return;
+      for (const child of clouds.children) {
+        const s = child as THREE.Sprite;
+        const t = s.userData.theta0 + now * s.userData.drift;
+        s.position.x = Math.cos(t) * s.userData.rad;
+        s.position.z = Math.sin(t) * s.userData.rad;
+      }
+    };
+
     // ---- Day / night ------------------------------------------------
     // One function flips the whole atmosphere: sky, fog, lights,
     // window glow, stars. The moon doubles as the daytime sun disk.
