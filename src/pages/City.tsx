@@ -1296,11 +1296,78 @@ export default function City() {
     );
     plate.rotation.x = -Math.PI / 2;
     scene.add(plate);
-    const apronMat = new THREE.MeshStandardMaterial({ color: "#04060a", roughness: 1 });
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), apronMat);
+    // Surrounding "ocean": a shader plane around the city plate. Gentle
+    // animated waves, fresnel sky reflection, sun glints, and a day/night
+    // tint so the world feels like a city on an island.
+    const waterUniforms = {
+      uTime: { value: 0 },
+      uDay: { value: 1 },
+      uShallow: { value: new THREE.Color("#3aa9c4") },
+      uDeep: { value: new THREE.Color("#0a2238") },
+      uSky: { value: new THREE.Color("#bcdff5") },
+      uFogColor: { value: new THREE.Color("#cfe6f5") },
+      uFogNear: { value: 170 },
+      uFogFar: { value: 1100 },
+    };
+    const apronMat = new THREE.ShaderMaterial({
+      uniforms: waterUniforms,
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      vertexShader: `
+        uniform float uTime;
+        varying vec3 vWorld;
+        void main(){
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          float t = uTime;
+          wp.y += sin(wp.x * 0.012 + t * 0.9) * 0.35
+                + sin(wp.z * 0.017 - t * 0.7) * 0.30
+                + sin((wp.x + wp.z) * 0.008 + t * 0.5) * 0.20;
+          vWorld = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uDay;
+        uniform vec3 uShallow;
+        uniform vec3 uDeep;
+        uniform vec3 uSky;
+        uniform vec3 uFogColor;
+        uniform float uFogNear;
+        uniform float uFogFar;
+        varying vec3 vWorld;
+        void main(){
+          float t = uTime;
+          vec3 n = normalize(vec3(
+            sin(vWorld.x * 0.06 + t * 1.3) * 0.18 + sin(vWorld.x * 0.19 - t * 1.8) * 0.07,
+            1.0,
+            sin(vWorld.z * 0.07 + t * 1.1) * 0.18 + sin(vWorld.z * 0.22 - t * 1.5) * 0.07
+          ));
+          vec3 viewDir = normalize(cameraPosition - vWorld);
+          float fres = pow(1.0 - max(dot(viewDir, n), 0.0), 3.0);
+          float dist = length(vWorld.xz);
+          float depthMix = smoothstep(180.0, 900.0, dist);
+          vec3 col = mix(uShallow, uDeep, depthMix);
+          col = mix(col, uSky, fres * 0.7);
+          vec3 sunDir = normalize(vec3(0.4, 0.9, 0.3));
+          vec3 h = normalize(viewDir + sunDir);
+          float spec = pow(max(dot(n, h), 0.0), 180.0);
+          col += vec3(1.0, 0.95, 0.8) * spec * 1.4 * uDay;
+          float dCam = length(cameraPosition - vWorld);
+          float fogF = smoothstep(uFogNear, uFogFar, dCam);
+          col = mix(col, uFogColor, fogF);
+          gl_FragColor = vec4(col, 0.97);
+        }
+      `,
+    });
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000, 80, 80), apronMat);
     apron.rotation.x = -Math.PI / 2;
     apron.position.y = -0.05;
     scene.add(apron);
+    const updateWater = (now: number) => {
+      waterUniforms.uTime.value = now * 0.001;
+    };
 
     // Plaza spawn ring + marquee.
     const padMat = new THREE.MeshBasicMaterial({
