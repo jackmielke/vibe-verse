@@ -1843,6 +1843,7 @@ export default function City() {
       moonlight.intensity = day ? 2.3 : 1.05;
       plazaGlow.intensity = day ? 0 : 60;
       stars.visible = !day;
+      clouds.visible = day;
       moonMat.color.set(day ? 0xfff6cf : 0xe8f1ff);
       buildingSkins.forEach((s) => {
         s.mat.map = day ? s.dayMap : s.nightMap;
