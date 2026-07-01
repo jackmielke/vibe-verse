@@ -34,6 +34,7 @@ import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
+import { buildMiniIslands } from "@/components/city/miniIslands";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -1475,6 +1476,13 @@ export default function City() {
     });
     scene.add(tjsWorld.group);
 
+    // ---- Mini floating islands scattered around the sky ------------
+    // Little grassy rocks with a lone tree, a pagoda, an arch, etc. —
+    // landable via the shared collision box list, so you can bounce
+    // between them with the jetpack.
+    const miniIslands = buildMiniIslands({ boxes });
+    scene.add(miniIslands.group);
+
     // ---- World index: register named POIs so agents can /goto them
     // and answer "what's around me?" with real coords (Stage 1 of the
     // Agent Embodiment Roadmap). Modules that own a landmark register it
@@ -1501,6 +1509,9 @@ export default function City() {
       reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
       reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
       reg("traders-galaxy", "Trader Joe's Galaxy", "Trader's Galaxy", new THREE.Vector3(TJS_X, TJS_TOP, TJS_Z), ["traders", "trader joes", "tj", "galaxy"]);
+      for (const pad of miniIslands.pads) {
+        reg(pad.key, pad.name, "Sky Islets", pad.pos.clone(), ["islet", "mini island", "floating rock"]);
+      }
     }
     // Wire the gremlin minigame to the React HUD.
     setMarsGame((g) => ({
@@ -3282,6 +3293,7 @@ export default function City() {
       moon2World.update(dt, now);
       marsWorld.update(dt, now);
       tjsWorld.update(dt, now);
+      miniIslands.update(dt, now);
 
       // ---- Gremlin Hunt: stomp + bite collisions ---------------------
       // Only run while you're actually on Mars (cheap distance check
