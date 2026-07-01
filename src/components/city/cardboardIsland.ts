@@ -467,10 +467,10 @@ export function buildCardboardIsland(opts: {
   });
 
   const billboard = new THREE.Group();
-  // Pushed back and re-angled so it fits the plaza layout without crowding the path.
+  // Moved further left and segmented away from Trader Joe's so it no longer hovers over the shop.
   const BILLBOARD_BASE_Y = 6.5;
-  billboard.position.set(-22, BILLBOARD_BASE_Y, -4);
-  billboard.rotation.y = Math.atan2(22, 4); // face plaza center from its new back-left spot
+  billboard.position.set(-40, BILLBOARD_BASE_Y, -8);
+  billboard.rotation.y = Math.atan2(40, 8); // face plaza center from its back-left spot
   billboard.scale.setScalar(0.7); // ~30% smaller
   const bbW = 16;
   const bbH = 9;
