@@ -1,10 +1,9 @@
 /**
  * GlobalNav — top nav with World chips (left/center) + Vibe Profile (right).
  *
- * The chip row shows: 🌐 Worlds (opens the full picker) + the 4 most
- * recently visited worlds + ⋯ More (everything else). Visiting any world
- * promotes it to the front of the recents list, so the row is always
- * "the worlds you actually hop between".
+ * The chip row shows: 🌐 Worlds (opens the full picker) + a fixed set of
+ * primary destinations + ⋯ More (everything else). Keep the order stable so
+ * the nav feels like a map instead of a recents list.
  *
  * The Vibe Profile button sits in its OWN pill at top-right, with the
  * same height/glass treatment as the nav row so they line up perfectly
@@ -22,16 +21,16 @@ interface Destination {
   matchPaths?: string[];
 }
 
-// Every hoppable world. Order = default recents seed (most-loved first).
+// Every hoppable world. Order = stable header order.
 const ALL_WORLDS: Destination[] = [
   { to: "/character-select", emoji: "🧍", label: "Characters", matchPaths: ["/characters", "/profile", "/lobby"] },
+  { to: "/city?spawn=island", emoji: "🏝️", label: "Island" },
   { to: "/world", emoji: "🛋️", label: "VIBE World", matchPaths: ["/agent-lobby"] },
   { to: "/city", emoji: "🏙️", label: "City" },
-  { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
   { to: "/space", emoji: "🌌", label: "Space", matchPaths: ["/unit7"] },
+  { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
   { to: "/evolve", emoji: "🧬", label: "Evolve", matchPaths: ["/bestiary"] },
   { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
-  { to: "/city?spawn=island", emoji: "🏝️", label: "Island" },
   { to: "/city?spawn=moon", emoji: "🌙", label: "Moon" },
   { to: "/hub", emoji: "🪐", label: "Hub" },
   { to: "/lobby", emoji: "🏎️", label: "Lobby" },
@@ -41,49 +40,12 @@ const ALL_WORLDS: Destination[] = [
   { to: "/about", emoji: "✨", label: "About" },
 ];
 
-const RECENTS_KEY = "vibe.nav.recents";
-const VISIBLE = 4;
-
-function loadRecents(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveRecents(list: string[]) {
-  try {
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 12)));
-  } catch {}
-}
+const VISIBLE = 5;
 
 export default function GlobalNav() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [recents, setRecents] = useState<string[]>(() => loadRecents());
-
-  // Promote the current route to the front of the recents list whenever
-  // it matches a known world.
-  useEffect(() => {
-    const currentKey =
-      location.pathname === "/city" && location.search.includes("spawn=island")
-        ? "/city?spawn=island"
-        : location.pathname === "/city" && location.search.includes("spawn=moon")
-          ? "/city?spawn=moon"
-          : location.pathname;
-    const isWorld = ALL_WORLDS.some((w) => w.to === currentKey);
-    if (!isWorld) return;
-    setRecents((prev) => {
-      const next = [currentKey, ...prev.filter((k) => k !== currentKey)];
-      saveRecents(next);
-      return next;
-    });
-  }, [location.pathname, location.search]);
 
   // Collapse the dropdown / picker on any navigation.
   useEffect(() => {
@@ -91,29 +53,9 @@ export default function GlobalNav() {
     setPickerOpen(false);
   }, [location.pathname, location.search]);
 
-  // Resolve recents → ordered list of Destinations, padded with the
-  // default seed so we always show VISIBLE chips.
   const visible = useMemo<Destination[]>(() => {
-    const byKey = new Map(ALL_WORLDS.map((w) => [w.to, w]));
-    const ordered: Destination[] = [];
-    const seen = new Set<string>();
-    for (const key of recents) {
-      const w = byKey.get(key);
-      if (w && !seen.has(key)) {
-        ordered.push(w);
-        seen.add(key);
-        if (ordered.length >= VISIBLE) break;
-      }
-    }
-    for (const w of ALL_WORLDS) {
-      if (ordered.length >= VISIBLE) break;
-      if (!seen.has(w.to)) {
-        ordered.push(w);
-        seen.add(w.to);
-      }
-    }
-    return ordered;
-  }, [recents]);
+    return ALL_WORLDS.slice(0, VISIBLE);
+  }, []);
 
   const overflow = useMemo<Destination[]>(
     () => ALL_WORLDS.filter((w) => !visible.some((v) => v.to === w.to)),

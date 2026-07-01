@@ -456,8 +456,8 @@ export function buildCardboardIsland(opts: {
   group.add(welcome);
 
   // ---- Vibeverse Billboard -----------------------------------------
-  // A big aspirational poster floating off the left edge of the island,
-  // well clear of Trader Joe's, facing the plaza center.
+  // A skyborne poster that reads like a portal sign over the island,
+  // clear of the shop rooftops and angled back toward the plaza.
   const vibeverseUrl = "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
   const vibeverseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   new THREE.TextureLoader().load(vibeverseUrl, (tex) => {
@@ -467,11 +467,10 @@ export function buildCardboardIsland(opts: {
   });
 
   const billboard = new THREE.Group();
-  // Moved further left and segmented away from Trader Joe's so it no longer hovers over the shop.
-  const BILLBOARD_BASE_Y = 6.5;
-  billboard.position.set(-40, BILLBOARD_BASE_Y, -8);
-  billboard.rotation.y = Math.atan2(40, 8); // face plaza center from its back-left spot
-  billboard.scale.setScalar(0.7); // ~30% smaller
+  const BILLBOARD_BASE_Y = 20.5;
+  billboard.position.set(30, BILLBOARD_BASE_Y, -24);
+  billboard.rotation.y = Math.atan2(-30, 24); // face plaza center from its upper-right sky perch
+  billboard.scale.setScalar(0.68);
   const bbW = 16;
   const bbH = 9;
   const bbBacker = new THREE.Mesh(
@@ -2178,8 +2177,8 @@ export function buildCardboardIsland(opts: {
       lantern.position.y = 11 + Math.sin(now * 0.0012) * 0.4;
 
       // Vibeverse billboard hovers with a gentle bob + tilt.
-      billboard.position.y = BILLBOARD_BASE_Y + Math.sin(now * 0.0009) * 0.35;
-      billboard.rotation.z = Math.sin(now * 0.0007) * 0.03;
+      billboard.position.y = BILLBOARD_BASE_Y + Math.sin(now * 0.0009) * 0.55;
+      billboard.rotation.z = Math.sin(now * 0.0007) * 0.025;
 
       // Firewall flames flicker; the swing sways; Jerry wiggles.
       firewallFlames.forEach((f, i) => {
