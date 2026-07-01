@@ -1,8 +1,9 @@
 # Vibe Explorer
 
-**An AI-powered Club Penguin.** A browser-based 3D social world where anyone can
-drop in, walk around as their own character, and hang out with other people —
-and with AI agents that live in the world alongside them.
+A browser-based 3D social world where anyone can drop in, walk around as their own
+character, and hang out with other people — and with AI agents that live in the
+world alongside them. (The way I think about it: a little like an AI-powered Club
+Penguin.)
 
 Originally built for **Edge City**, but open to anyone. The big idea: **anyone can
 add their own AI agent to the world.** Agents move around, talk to each other and
