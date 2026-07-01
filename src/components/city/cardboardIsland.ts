@@ -199,6 +199,108 @@ export function signTexture(lines: string[], bg: string, fg: string, glow = fals
   return t;
 }
 
+function roundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+
+function vibeBuildSignTexture(): THREE.CanvasTexture {
+  const W = 1024;
+  const H = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+
+  const sky = ctx.createLinearGradient(0, 0, W, H);
+  sky.addColorStop(0, "#68d8ff");
+  sky.addColorStop(0.42, "#8df3d4");
+  sky.addColorStop(1, "#25318f");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  const glow = ctx.createRadialGradient(W * 0.38, H * 0.35, 30, W * 0.38, H * 0.35, 420);
+  glow.addColorStop(0, "rgba(255,255,255,0.9)");
+  glow.addColorStop(0.35, "rgba(255,255,255,0.22)");
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalAlpha = 0.38;
+  for (let i = 0; i < 11; i++) {
+    const x = 80 + i * 92;
+    const y = 72 + ((i * 53) % 320);
+    ctx.strokeStyle = i % 2 ? "#ffffff" : "#1cffc9";
+    ctx.lineWidth = i % 3 === 0 ? 4 : 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 18 + (i % 4) * 8, 0.2, Math.PI * 1.35);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  roundedRectPath(ctx, 54, 48, W - 108, H - 96, 44);
+  ctx.fillStyle = "rgba(8, 16, 45, 0.68)";
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(255,255,255,0.42)";
+  ctx.stroke();
+
+  roundedRectPath(ctx, 78, 72, W - 156, H - 144, 32);
+  const panel = ctx.createLinearGradient(78, 72, W - 78, H - 72);
+  panel.addColorStop(0, "rgba(255,255,255,0.2)");
+  panel.addColorStop(0.52, "rgba(26,255,198,0.1)");
+  panel.addColorStop(1, "rgba(255,92,205,0.18)");
+  ctx.fillStyle = panel;
+  ctx.fill();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(25,255,203,0.85)";
+  ctx.shadowBlur = 26;
+  ctx.fillStyle = "#f7fffb";
+  ctx.font = "900 92px Inter, ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("vibe and build", W / 2, 182, W - 190);
+
+  ctx.shadowBlur = 0;
+  ctx.font = "800 42px Inter, ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#d7fff5";
+  ctx.fillText("Wednesday, July 8th", W / 2, 282, W - 180);
+
+  ctx.font = "700 34px Inter, ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("10:00 a.m. Pacific Time", W / 2, 344, W - 180);
+
+  ctx.fillStyle = "rgba(28,255,201,0.88)";
+  roundedRectPath(ctx, 360, 392, 304, 38, 19);
+  ctx.fill();
+  ctx.fillStyle = "#0a1030";
+  ctx.font = "900 18px Inter, ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("EDGE ISLAND LIVE", W / 2, 411, 260);
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 // ------------------------------------------------------------------
 // Builders
 // ------------------------------------------------------------------
@@ -455,40 +557,38 @@ export function buildCardboardIsland(opts: {
   }
   group.add(welcome);
 
-  // ---- Vibeverse Billboard -----------------------------------------
-  // A skyborne poster that reads like a portal sign over the island,
-  // clear of the shop rooftops and angled back toward the plaza.
-  const vibeverseUrl = "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
-  const vibeverseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-  new THREE.TextureLoader().load(vibeverseUrl, (tex) => {
-    tex.colorSpace = THREE.SRGBColorSpace;
-    vibeverseMat.map = tex;
-    vibeverseMat.needsUpdate = true;
-  });
-
+  // ---- Vibe Build Billboard ----------------------------------------
   const billboard = new THREE.Group();
-  const BILLBOARD_BASE_Y = 20.5;
-  billboard.position.set(30, BILLBOARD_BASE_Y, -24);
-  billboard.rotation.y = Math.atan2(-30, 24); // face plaza center from its upper-right sky perch
-  billboard.scale.setScalar(0.68);
-  const bbW = 16;
-  const bbH = 9;
+  const BILLBOARD_BASE_Y = 16.5;
+  billboard.position.set(22, BILLBOARD_BASE_Y, -23);
+  billboard.rotation.y = Math.atan2(-22, 23); // face plaza center from its upper-right sky perch
+  billboard.scale.setScalar(0.74);
+  const bbW = 15.5;
+  const bbH = 7.75;
   const bbBacker = new THREE.Mesh(
-    new THREE.BoxGeometry(bbW + 0.5, bbH + 0.5, 0.22),
-    cardboardDark,
+    new THREE.BoxGeometry(bbW + 0.5, bbH + 0.5, 0.34),
+    new THREE.MeshStandardMaterial({
+      color: "#121a36",
+      metalness: 0.25,
+      roughness: 0.45,
+      emissive: "#071226",
+      emissiveIntensity: 0.4,
+    }),
   );
   bbBacker.position.set(0, 0, -0.12);
   billboard.add(bbBacker);
   const poster = new THREE.Mesh(
     new THREE.PlaneGeometry(bbW, bbH),
-    vibeverseMat,
+    new THREE.MeshBasicMaterial({
+      map: vibeBuildSignTexture(),
+      side: THREE.DoubleSide,
+    }),
   );
   poster.position.set(0, 0, 0.02);
   billboard.add(poster);
-  // Subtle glow halo so the floating sign reads as magical rather than broken.
   const bbHalo = new THREE.Mesh(
-    new THREE.PlaneGeometry(bbW + 3, bbH + 3),
-    new THREE.MeshBasicMaterial({ color: 0x46e88c, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.PlaneGeometry(bbW + 2.8, bbH + 2.8),
+    new THREE.MeshBasicMaterial({ color: 0x1cffc9, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }),
   );
   bbHalo.position.set(0, 0, -0.2);
   billboard.add(bbHalo);
