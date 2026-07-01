@@ -456,9 +456,10 @@ export function buildCardboardIsland(opts: {
   group.add(welcome);
 
   // ---- Vibeverse Billboard -----------------------------------------
-  // A big aspirational poster on the north edge facing the plaza.
+  // A big aspirational poster angled diagonally between Trader Joe's
+  // and the Live Roster, facing the plaza center.
   const vibeverseUrl = "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
-  const vibeverseMat = new THREE.MeshBasicMaterial({ color: 0x1a1a2e, side: THREE.DoubleSide });
+  const vibeverseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   new THREE.TextureLoader().load(vibeverseUrl, (tex) => {
     tex.colorSpace = THREE.SRGBColorSpace;
     vibeverseMat.map = tex;
@@ -466,7 +467,8 @@ export function buildCardboardIsland(opts: {
   });
 
   const billboard = new THREE.Group();
-  billboard.position.set(0, 0, -36);
+  billboard.position.set(-18, 0, 5);
+  billboard.rotation.y = Math.atan2(18, -5); // face island center diagonally
   [-7.5, 7.5].forEach((px) => {
     const post = new THREE.Mesh(
       new THREE.CylinderGeometry(0.28, 0.34, 10.5, 10),
@@ -505,9 +507,10 @@ export function buildCardboardIsland(opts: {
   vibeversePlaque.position.set(0, 13.4, 0.15);
   billboard.add(vibeversePlaque);
   group.add(billboard);
+  const halfW = bbW / 2 + 1;
   boxes.push({
-    minX: centerX - bbW / 2, maxX: centerX + bbW / 2,
-    minZ: centerZ - 36 - 0.5, maxZ: centerZ - 36 + 0.5,
+    minX: centerX - 18 - halfW, maxX: centerX - 18 + halfW,
+    minZ: centerZ + 5 - halfW, maxZ: centerZ + 5 + halfW,
     base: topY,
     height: topY + 11,
   });
