@@ -467,53 +467,35 @@ export function buildCardboardIsland(opts: {
   });
 
   const billboard = new THREE.Group();
-  billboard.position.set(-18, 0, 5);
-  billboard.rotation.y = Math.atan2(18, -5); // face island center diagonally
-  [-7.5, 7.5].forEach((px) => {
-    const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.34, 10.5, 10),
-      cardboardDark,
-    );
-    post.position.set(px, 5.25, 0);
-    billboard.add(post);
-    const wrap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.30, 0.30, 0.6, 10),
-      new THREE.MeshStandardMaterial({ color: px < 0 ? "#ff6b6b" : "#2f7ad9", roughness: 0.7 }),
-    );
-    wrap.position.set(px, 1.2, 0);
-    billboard.add(wrap);
-  });
+  // Pushed back and re-angled so it fits the plaza layout without crowding the path.
+  const BILLBOARD_BASE_Y = 6.5;
+  billboard.position.set(-22, BILLBOARD_BASE_Y, -4);
+  billboard.rotation.y = Math.atan2(22, 4); // face plaza center from its new back-left spot
+  billboard.scale.setScalar(0.7); // ~30% smaller
   const bbW = 16;
   const bbH = 9;
   const bbBacker = new THREE.Mesh(
     new THREE.BoxGeometry(bbW + 0.5, bbH + 0.5, 0.22),
     cardboardDark,
   );
-  bbBacker.position.set(0, 8.5, -0.12);
+  bbBacker.position.set(0, 0, -0.12);
   billboard.add(bbBacker);
   const poster = new THREE.Mesh(
     new THREE.PlaneGeometry(bbW, bbH),
     vibeverseMat,
   );
-  poster.position.set(0, 8.5, 0.02);
+  poster.position.set(0, 0, 0.02);
   billboard.add(poster);
-  const vibeversePlaque = new THREE.Mesh(
-    new THREE.PlaneGeometry(4, 1),
-    new THREE.MeshBasicMaterial({
-      map: signTexture(["VIBEVERSE"], "#1a1a2e", "#46e88c", true),
-      side: THREE.DoubleSide,
-    }),
+  // Subtle glow halo so the floating sign reads as magical rather than broken.
+  const bbHalo = new THREE.Mesh(
+    new THREE.PlaneGeometry(bbW + 3, bbH + 3),
+    new THREE.MeshBasicMaterial({ color: 0x46e88c, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }),
   );
-  vibeversePlaque.position.set(0, 13.4, 0.15);
-  billboard.add(vibeversePlaque);
+  bbHalo.position.set(0, 0, -0.2);
+  billboard.add(bbHalo);
   group.add(billboard);
-  const halfW = bbW / 2 + 1;
-  boxes.push({
-    minX: centerX - 18 - halfW, maxX: centerX - 18 + halfW,
-    minZ: centerZ + 5 - halfW, maxZ: centerZ + 5 + halfW,
-    base: topY,
-    height: topY + 11,
-  });
+  // No collision box — it hovers freely above the ground.
+
 
   // ---- Windmill ----------------------------------------------------
   const mill = new THREE.Group();
