@@ -34,7 +34,8 @@ import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
-import { buildSkyIslands } from "@/components/city/skyIslands";
+import { buildSkyIslands, type PowerUpKind } from "@/components/city/skyIslands";
+import { buildSumoArena, SUMO_X, SUMO_Z, SUMO_TOP, SUMO_ZONE_R, SUMO_RESPAWN } from "@/components/city/sumoArena";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -875,6 +876,8 @@ export default function City() {
   const applyHatRef = useRef<((id: string) => void) | null>(null);
   const setPlayerScaleRef = useRef<((s: number) => void) | null>(null);
   const playerScaleRef = useRef(1);
+  // Active ?-block power-up, mirrored into a HUD pill by the hud timer.
+  const [powerHud, setPowerHud] = useState<{ icon: string; label: string; left: number } | null>(null);
   const [bigMode, setBigMode] = useState(false);
   const [bigSize, setBigSize] = useState(1);
   const [secretInput, setSecretInput] = useState("");
@@ -1479,6 +1482,31 @@ export default function City() {
     const skyIslands = buildSkyIslands({ boxes });
     scene.add(skyIslands.group);
 
+    // ---- Splash Sumo: ring over the southern ocean -----------------
+    const sumoWorld = buildSumoArena({ boxes });
+    scene.add(sumoWorld.group);
+
+    // ---- Splash FX pool: expanding water rings on KO ---------------
+    const splashes: { ring: THREE.Mesh; t: number }[] = [];
+    const splashAt = (x: number, z: number) => {
+      for (const s0 of [0.6, 1.6]) {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(s0, s0 + 0.5, 28),
+          new THREE.MeshBasicMaterial({
+            color: 0xdff4ff,
+            transparent: true,
+            opacity: 0.85,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(x, 0.15, z);
+        scene.add(ring);
+        splashes.push({ ring, t: 0 });
+      }
+    };
+
     // ---- World index: register named POIs so agents can /goto them
     // and answer "what's around me?" with real coords (Stage 1 of the
     // Agent Embodiment Roadmap). Modules that own a landmark register it
@@ -1508,6 +1536,7 @@ export default function City() {
       for (const pad of skyIslands.pads) {
         reg(pad.key, pad.name, "Sky Islands", pad.pos.clone(), ["sky island", "floating island", "islet"]);
       }
+      reg("splash-sumo", "Splash Sumo Arena", "Splash Sumo", new THREE.Vector3(SUMO_X, SUMO_TOP, SUMO_Z), ["sumo", "arena", "minigame", "splash"]);
     }
     // Wire the gremlin minigame to the React HUD.
     setMarsGame((g) => ({
@@ -2511,6 +2540,14 @@ export default function City() {
     let swinging = false; // on the swing
     let rainbowOn = false; // secret star found
     let discoUntil = 0; // "vibe" typed → plaza disco
+    // ?-block power-up: one active at a time, 25s each.
+    const POWER_MS = 25000;
+    const POWER_META: Record<PowerUpKind, { icon: string; label: string }> = {
+      turbo: { icon: "⚡", label: "TURBO SPRINT" },
+      moon: { icon: "🌙", label: "MOON GRAVITY" },
+      giant: { icon: "🐘", label: "GIANT MODE" },
+    };
+    const power: { kind: PowerUpKind | null; until: number } = { kind: null, until: 0 };
     applyRemoteBump = (x, y, z, dirX, dirZ, speed) => {
       const pos = player.position;
       if (Math.abs(pos.y - y) > 2.6) return;
@@ -2582,6 +2619,16 @@ export default function City() {
         nearCow: false,
 
       });
+      // Active ?-block power-up pill (with a seconds countdown).
+      setPowerHud(
+        power.kind && performance.now() < power.until
+          ? {
+              icon: POWER_META[power.kind].icon,
+              label: POWER_META[power.kind].label,
+              left: Math.ceil((power.until - performance.now()) / 1000),
+            }
+          : null,
+      );
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
@@ -2752,14 +2799,21 @@ export default function City() {
 
 
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
+    // __cityDebug.zeppelin() reports the blimp's live position + deck Y.
     const devWindow = window as unknown as {
-      __cityDebug?: { teleport: (x: number, y: number, z: number) => void };
+      __cityDebug?: {
+        teleport: (x: number, y: number, z: number) => void;
+        zeppelin: () => { x: number; y: number; z: number; deckTopY: number };
+        pos: () => { x: number; y: number; z: number };
+      };
     };
     devWindow.__cityDebug = {
       teleport: (x, y, z) => {
         player.position.set(x, y, z);
         vel.set(0, 0, 0);
       },
+      zeppelin: () => skyIslands.zeppelinState(),
+      pos: () => ({ x: player.position.x, y: player.position.y, z: player.position.z }),
     };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
@@ -2993,14 +3047,27 @@ export default function City() {
       const jetInput = enteredRef.current && (keys.has("Space") || touchJetRef.current);
       // The Gremlin Mines deaden the jetpack — you fight on foot down there.
       const undergroundNow = undergroundActiveRef.current;
-      const thrusting = jetpackEquipped && jetInput && !undergroundNow;
-      // Parkour mode: no jetpack (or underground) means Space becomes a jump.
-      const wantsJump = (!jetpackEquipped || undergroundNow) && jetInput;
+      // So does the Splash Sumo arena: shove, don't hover.
+      const inSumoZone =
+        Math.hypot(player.position.x - SUMO_X, player.position.z - SUMO_Z) < SUMO_ZONE_R &&
+        player.position.y < 40;
+      const thrusting = jetpackEquipped && jetInput && !undergroundNow && !inSumoZone;
+      // Parkour mode: no jetpack (or underground/sumo) means Space becomes a jump.
+      const wantsJump = (!jetpackEquipped || undergroundNow || inSumoZone) && jetInput;
+
+      // ?-block power-up: resolve the active kind, expire when it's done.
+      if (power.kind && now >= power.until) {
+        if (power.kind === "giant") setPlayerScaleRef.current?.(1);
+        power.kind = null;
+        soundsRef.current?.chime(1);
+      }
+      const powered = power.kind;
 
       if (intent.lengthSq() > 0) intent.normalize();
-      const targetSpeed = onGround
+      const speedMul = powered === "turbo" ? 1.75 : 1;
+      const targetSpeed = (onGround
         ? running ? RUN_SPEED : WALK_SPEED
-        : running ? FLY_RUN_SPEED : FLY_SPEED;
+        : running ? FLY_RUN_SPEED : FLY_SPEED) * speedMul;
 
       const pos = player.position;
       if (swinging) {
@@ -3030,8 +3097,8 @@ export default function City() {
       vel.x += (intent.x * targetSpeed - vel.x) * k;
       vel.z += (intent.z * targetSpeed - vel.z) * k;
 
-      // Vertical: gravity vs. jetpack.
-      vel.y -= GRAVITY * dt;
+      // Vertical: gravity vs. jetpack. Moon gravity floats everything.
+      vel.y -= GRAVITY * (powered === "moon" ? 0.42 : 1) * dt;
       if (thrusting) {
         vel.y += THRUST * dt;
         onGround = false;
@@ -3071,8 +3138,10 @@ export default function City() {
       // both reachable.
       const movingSpeed = Math.hypot(vel.x, vel.z);
       if (movingSpeed > 0.5 && enteredRef.current) {
-        mp.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
-        agentResidents.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, movingSpeed, dt);
+        // Giants shove with authority — a sumo power play.
+        const shoveSpeed = movingSpeed * (powered === "giant" ? 1.8 : 1);
+        mp.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, shoveSpeed, dt);
+        agentResidents.pushFrom(pos.x, pos.y, pos.z, vel.x, vel.z, shoveSpeed, dt);
       }
       const nx = THREE.MathUtils.clamp(pos.x + vel.x * dt, Math.min(-CITY_HALF - 40, TJS_X - 120), MARS_X + 120);
       const nz = THREE.MathUtils.clamp(pos.z + vel.z * dt, MARS_Z - 120, Math.max(CITY_HALF + 40, TJS_Z + 120));
@@ -3143,8 +3212,44 @@ export default function City() {
         }
       }
 
+      // Mystery ?-blocks: bonk one from below for a random power-up.
+      if (vel.y > 0) {
+        const kind = skyIslands.checkBonk(pos.x, pos.z, prevY, pos.y);
+        if (kind) {
+          vel.y = 0;
+          power.kind = kind;
+          power.until = now + POWER_MS;
+          if (kind === "giant") setPlayerScaleRef.current?.(1.7);
+          soundsRef.current?.bonk();
+          soundsRef.current?.powerup();
+        }
+      }
+
       // Land on whatever is underneath (street, rooftop, or island).
       const support = supportHeightAt(pos.x, pos.z, prevY + 0.1);
+
+      // SPLASH: touching down at sea level beyond the city plate means
+      // you hit water, not ground. Ring of foam, a sploosh, and a
+      // respawn — on the sumo dock if you were KO'd in the arena zone,
+      // otherwise back on Edge Island.
+      if (pos.y <= support && vel.y <= 0 && support === 0 && pos.y > -50 &&
+          Math.max(Math.abs(pos.x), Math.abs(pos.z)) > CITY_HALF + 6 &&
+          !undergroundActiveRef.current) {
+        splashAt(pos.x, pos.z);
+        soundsRef.current?.splash();
+        if (Math.hypot(pos.x - SUMO_X, pos.z - SUMO_Z) < SUMO_ZONE_R + 30) {
+          player.position.copy(SUMO_RESPAWN);
+        } else {
+          player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
+        }
+        vel.set(0, 0, 0);
+        wallJumpUsed = false;
+        peakY = player.position.y;
+        onGround = false;
+        setRespawnFx(Date.now());
+        return;
+      }
+
       if (pos.y <= support && vel.y <= 0) {
         const fall = -vel.y;
         pos.y = support;
@@ -3184,6 +3289,15 @@ export default function City() {
       } else if (pos.y > support + 0.05) {
         onGround = false;
         if (pos.y > peakY) peakY = pos.y;
+      }
+
+      // Standing on the zeppelin deck? It carries you along its orbit.
+      if (onGround) {
+        const zc = skyIslands.zeppelinCarry(pos.x, pos.y, pos.z);
+        if (zc) {
+          pos.x += zc.dx;
+          pos.z += zc.dz;
+        }
       }
       } // end of free-movement physics (vs. riding the zipline)
 
@@ -3290,6 +3404,22 @@ export default function City() {
       marsWorld.update(dt, now);
       tjsWorld.update(dt, now);
       skyIslands.update(dt, now);
+      sumoWorld.update(dt, now);
+
+      // Splash rings: grow + fade + retire.
+      for (let i = splashes.length - 1; i >= 0; i--) {
+        const s = splashes[i];
+        s.t += dt;
+        const k = s.t / 0.9;
+        s.ring.scale.setScalar(1 + k * 5);
+        (s.ring.material as THREE.MeshBasicMaterial).opacity = 0.85 * Math.max(0, 1 - k);
+        if (k >= 1) {
+          scene.remove(s.ring);
+          s.ring.geometry.dispose();
+          (s.ring.material as THREE.Material).dispose();
+          splashes.splice(i, 1);
+        }
+      }
 
       // ---- Gremlin Hunt: stomp + bite collisions ---------------------
       // Only run while you're actually on Mars (cheap distance check
@@ -3458,6 +3588,15 @@ export default function City() {
         scale: playerScaleRef.current,
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
+      // Proximity ambience: windmill whoosh + shrine music box.
+      {
+        const p = player.position;
+        const w = skyIslands.ambience.windmill;
+        const m = skyIslands.ambience.musicBox;
+        const dw = Math.hypot(p.x - w.x, p.y - w.y, p.z - w.z);
+        const dm = Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z);
+        soundsRef.current?.setAmbience(Math.max(0, 1 - dw / 55), Math.max(0, 1 - dm / 40));
+      }
 
       // Local emote bubble lifecycle.
       if (localEmote) {
@@ -3947,6 +4086,12 @@ export default function City() {
             {"  ·  "}
             SPD <span className="text-foreground">{hud.spd.toFixed(0)} m/s</span>
           </div>
+          {powerHud && (
+            <div className="text-amber-300">
+              {powerHud.icon} {powerHud.label}{" "}
+              <span className="text-foreground">{powerHud.left}s</span>
+            </div>
+          )}
           <div
             className={
               hud.totalStars > 0 && hud.stars === hud.totalStars

@@ -25,11 +25,28 @@
 import * as THREE from "three";
 import type { WorldBox } from "./cardboardIsland";
 
+export type PowerUpKind = "turbo" | "moon" | "giant";
+
 export interface SkyIslandsWorld {
   group: THREE.Group;
   update(dt: number, now: number): void;
   /** Landing pad centers, in world coords — used for fast-travel + POIs. */
   pads: { key: string; name: string; pos: THREE.Vector3 }[];
+  /** World positions of the ambient-audio emitters (windmill / music box). */
+  ambience: { windmill: THREE.Vector3; musicBox: THREE.Vector3 };
+  /**
+   * If (px,py,pz) is standing on the zeppelin deck, returns this frame's
+   * deck movement so the caller can carry the player along. Null when
+   * not aboard.
+   */
+  zeppelinCarry(px: number, py: number, pz: number): { dx: number; dz: number } | null;
+  /** Live zeppelin position + deck height (debug / boarding aid). */
+  zeppelinState(): { x: number; y: number; z: number; deckTopY: number };
+  /**
+   * Mario-style ?-block bonk test for a rising player. Pass the previous
+   * and new feet Y; returns the granted power-up when a block was hit.
+   */
+  checkBonk(px: number, pz: number, prevY: number, newY: number): PowerUpKind | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +307,12 @@ function makeTree(
 // Theme builders — each dresses an island top and may add collision boxes
 // ---------------------------------------------------------------------------
 
+interface Spinner {
+  obj: THREE.Object3D;
+  speed: number; // rad/s
+  axis: "y" | "z";
+}
+
 interface ThemeCtx {
   island: THREE.Group; // local y=0 is the walkable top
   radius: number;
@@ -300,14 +323,50 @@ interface ThemeCtx {
   boxes: WorldBox[];
   pulsers: Pulser[];
   bobbers: Bobber[];
+  spinners: Spinner[];
+  /** Ambient-audio emitter positions, filled in by themes (world coords). */
+  emitters: { windmill?: THREE.Vector3; musicBox?: THREE.Vector3 };
 }
 
 /** One giant hero tree on a meadow — the poster's left island. */
-function themeLoneTree({ island, radius, rand }: ThemeCtx) {
+function themeLoneTree({ island, radius, x, y, z, rand, spinners, emitters }: ThemeCtx) {
   const hero = makeTree(radius * 0.95, radius * 0.42, rand);
   hero.scale.setScalar(1); // ~19m tall on a 20m island: properly giant
   hero.position.set(-radius * 0.15, 0, -radius * 0.1);
   island.add(hero);
+
+  // A little wooden windmill at the meadow's edge — you hear its blades
+  // whooshing as you approach (see setAmbience in citySounds).
+  {
+    const wood = new THREE.MeshStandardMaterial({ color: 0x8a6742, roughness: 1 });
+    const lx = radius * 0.42;
+    const lz = radius * 0.5;
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.95, 8.5, 8), wood);
+    tower.position.set(lx, 4.25, lz);
+    tower.castShadow = true;
+    island.add(tower);
+    const nacelle = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.6), wood);
+    nacelle.position.set(lx, 8.7, lz);
+    island.add(nacelle);
+    // Rotor: four canvas-colored blades on a hub, spinning face-out.
+    const rotor = new THREE.Group();
+    const blade = new THREE.MeshStandardMaterial({ color: 0xf4eee0, roughness: 0.8 });
+    for (let i = 0; i < 4; i++) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.55, 3.6, 0.1), blade);
+      b.position.y = 2.1;
+      const arm = new THREE.Group();
+      arm.add(b);
+      arm.rotation.z = (i / 4) * Math.PI * 2;
+      rotor.add(arm);
+    }
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), wood);
+    rotor.add(hub);
+    rotor.position.set(lx, 8.7, lz + 1.0);
+    // Face the rotor outward, toward the plaza approach.
+    island.add(rotor);
+    spinners.push({ obj: rotor, speed: 1.2, axis: "z" });
+    emitters.windmill = new THREE.Vector3(x + lx, y + 8.7, z + lz);
+  }
 
   for (let i = 0; i < 3; i++) {
     const bush = new THREE.Mesh(
@@ -412,7 +471,7 @@ function themeCrystalCity({ island, radius, x, y, z, rand, boxes, pulsers }: The
 }
 
 /** Red three-tier pagoda with cherry trees — the poster's right island. */
-function themeSkyShrine({ island, radius, x, y, z, rand, boxes, pulsers }: ThemeCtx) {
+function themeSkyShrine({ island, radius, x, y, z, rand, boxes, pulsers, spinners, emitters }: ThemeCtx) {
   const roofMat = new THREE.MeshStandardMaterial({ color: 0xd0483a, roughness: 0.6, flatShading: true });
   const wallMat = new THREE.MeshStandardMaterial({ color: 0xf1e4cc, roughness: 0.9 });
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2f1a, roughness: 1 });
@@ -506,6 +565,35 @@ function themeSkyShrine({ island, radius, x, y, z, rand, boxes, pulsers }: Theme
   torii.add(beam);
   torii.position.set(0, 0, radius * 0.72);
   island.add(torii);
+
+  // A tiny gilded music box on a stone pedestal — its lullaby drifts
+  // across the shrine as you get close (see setAmbience in citySounds).
+  {
+    const lx = -radius * 0.32;
+    const lz = radius * 0.42;
+    const pedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5, 0.6, 1.0, 8),
+      new THREE.MeshStandardMaterial({ color: 0xb6afa4, roughness: 1 }),
+    );
+    pedestal.position.set(lx, 0.5, lz);
+    island.add(pedestal);
+    const boxMat = new THREE.MeshStandardMaterial({
+      color: 0xd9a441,
+      emissive: 0x6b4a10,
+      emissiveIntensity: 0.4,
+      metalness: 0.6,
+      roughness: 0.35,
+    });
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.6), boxMat);
+    chest.position.set(lx, 1.25, lz);
+    island.add(chest);
+    // A little spinning cylinder "dancer" on the lid sells the motion.
+    const dancer = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 6), boxMat);
+    dancer.position.set(lx, 1.75, lz);
+    island.add(dancer);
+    spinners.push({ obj: dancer, speed: 2.2, axis: "y" });
+    emitters.musicBox = new THREE.Vector3(x + lx, y + 1.3, z + lz);
+  }
 
   // Two glowing stone lanterns along the approach.
   for (const side of [-1, 1]) {
@@ -602,13 +690,29 @@ function themeLanternGrove({ island, radius, rand, pulsers, bobbers }: ThemeCtx)
 }
 
 // ---------------------------------------------------------------------------
-// Zeppelin — cream hull, red fins, endlessly circling the city (decoration)
+// Zeppelin — cream hull, red fins, circling the city. LANDABLE: there's a
+// boardwalk deck along the top of the hull, its collision box tracks the
+// orbit each frame, and zeppelinCarry() drags whoever's standing on it.
 // ---------------------------------------------------------------------------
 
-function buildZeppelin(): { group: THREE.Group; update: (now: number) => void } {
+const ZEP = { CX: 40, CZ: -60, CY: 148, R: 230, OMEGA: 0.006 }; // slow enough to board
+const DECK_HALF_W = 1.9; // local x
+const DECK_HALF_L = 7.5; // local z (long axis)
+const DECK_TOP_LOCAL = 4.55; // above hull center
+
+interface ZeppelinRig {
+  group: THREE.Group;
+  /** Recompute position; sync the deck's WorldBox; remember the delta. */
+  update(now: number): void;
+  carry(px: number, py: number, pz: number): { dx: number; dz: number } | null;
+  state(): { x: number; y: number; z: number; deckTopY: number };
+}
+
+function buildZeppelin(boxes: WorldBox[]): ZeppelinRig {
   const g = new THREE.Group();
   const cream = new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 0.65 });
   const red = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.7 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8a6742, roughness: 0.9 });
 
   // Long axis along +Z so yaw math stays simple.
   const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), cream);
@@ -634,14 +738,185 @@ function buildZeppelin(): { group: THREE.Group; update: (now: number) => void } 
   cabin.position.y = -4.6;
   g.add(cabin);
 
-  const CX = 40, CZ = -60, CY = 148, R = 230, OMEGA = 0.018;
+  // The boardwalk deck: planks along the hull's spine, with low rails so
+  // it reads as "you're supposed to stand here".
+  const deck = new THREE.Mesh(
+    new THREE.BoxGeometry(DECK_HALF_W * 2, 0.3, DECK_HALF_L * 2),
+    wood,
+  );
+  deck.position.y = DECK_TOP_LOCAL - 0.15;
+  g.add(deck);
+  const railGeo = new THREE.BoxGeometry(0.12, 0.8, DECK_HALF_L * 2);
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(railGeo, wood);
+    rail.position.set(side * (DECK_HALF_W - 0.06), DECK_TOP_LOCAL + 0.4, 0);
+    g.add(rail);
+  }
+  // Pennant flag on a stub mast, because of course.
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 5), wood);
+  mast.position.set(0, DECK_TOP_LOCAL + 0.8, -DECK_HALF_L + 0.4);
+  g.add(mast);
+  const flag = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 3), red);
+  flag.rotation.z = Math.PI / 2;
+  flag.position.set(0, DECK_TOP_LOCAL + 1.4, -DECK_HALF_L + 0.9);
+  g.add(flag);
+
+  // The deck's collision box — registered once, then re-aimed every frame
+  // as the zeppelin orbits. height is the ABSOLUTE deck-top Y as usual.
+  const deckBox: WorldBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, base: 0, height: 0 };
+  boxes.push(deckBox);
+
+  let x = ZEP.CX + ZEP.R;
+  let z = ZEP.CZ;
+  let y = ZEP.CY;
+  let dx = 0;
+  let dz = 0;
+
   return {
     group: g,
     update(now: number) {
-      const a = now * 0.001 * OMEGA * Math.PI * 2;
-      g.position.set(CX + Math.cos(a) * R, CY + Math.sin(now * 0.0005) * 2.5, CZ + Math.sin(a) * R);
+      const a = now * 0.001 * ZEP.OMEGA * Math.PI * 2;
+      const nx = ZEP.CX + Math.cos(a) * ZEP.R;
+      const nz = ZEP.CZ + Math.sin(a) * ZEP.R;
+      y = ZEP.CY + Math.sin(now * 0.0005) * 2.5;
+      dx = nx - x;
+      dz = nz - z;
+      x = nx;
+      z = nz;
+      g.position.set(x, y, z);
       // Face along the orbit tangent (-sin a, 0, cos a).
-      g.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a));
+      const yaw = Math.atan2(-Math.sin(a), Math.cos(a));
+      g.rotation.y = yaw;
+      // World-space AABB of the yawed deck.
+      const hx = Math.abs(Math.sin(yaw)) * DECK_HALF_L + Math.abs(Math.cos(yaw)) * DECK_HALF_W;
+      const hz = Math.abs(Math.cos(yaw)) * DECK_HALF_L + Math.abs(Math.sin(yaw)) * DECK_HALF_W;
+      deckBox.minX = x - hx;
+      deckBox.maxX = x + hx;
+      deckBox.minZ = z - hz;
+      deckBox.maxZ = z + hz;
+      deckBox.height = y + DECK_TOP_LOCAL;
+      deckBox.base = deckBox.height - 0.5;
+    },
+    carry(px, py, pz) {
+      if (Math.abs(py - deckBox.height) > 1.2) return null;
+      if (px < deckBox.minX - 0.5 || px > deckBox.maxX + 0.5) return null;
+      if (pz < deckBox.minZ - 0.5 || pz > deckBox.maxZ + 0.5) return null;
+      return { dx, dz };
+    },
+    state() {
+      return { x, y, z, deckTopY: y + DECK_TOP_LOCAL };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mystery ?-blocks — bonk from below for one of three power-ups
+// ---------------------------------------------------------------------------
+
+const BLOCK_SIZE = 1.2;
+const BLOCK_RESPAWN_MS = 20000;
+
+// One over the plaza spawn, one per sky island, one at the sumo dock.
+const BLOCK_SPOTS: Array<[number, number, number]> = [
+  [10, 3.6, 6],
+  [-148, 58.6, 122],
+  [-228, 88.6, -10],
+  [-134, 118.6, -172],
+  [46, 83.6, -222],
+  [0, 15.6, 452],
+];
+
+function makeQuestionTexture(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d")!;
+  const grad = ctx.createLinearGradient(0, 0, 0, 128);
+  grad.addColorStop(0, "#ffd35c");
+  grad.addColorStop(1, "#e09a1f");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = "#8a5a10";
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, 118, 118);
+  ctx.fillStyle = "#6b4207";
+  ctx.font = "bold 78px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("?", 64, 70);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+interface MysteryBlock {
+  mesh: THREE.Mesh;
+  x: number;
+  y: number; // block center world Y
+  z: number;
+  active: boolean;
+  respawnAt: number;
+  popT: number; // >0 while playing the little hit pop
+}
+
+function buildMysteryBlocks(root: THREE.Group): {
+  blocks: MysteryBlock[];
+  update(dt: number, now: number): void;
+  check(px: number, pz: number, prevY: number, newY: number, now: number): PowerUpKind | null;
+} {
+  const tex = makeQuestionTexture();
+  const activeMat = new THREE.MeshStandardMaterial({
+    map: tex,
+    emissive: 0xffb020,
+    emissiveIntensity: 0.25,
+    roughness: 0.5,
+  });
+  const usedMat = new THREE.MeshStandardMaterial({ color: 0x8f8a80, roughness: 0.9 });
+
+  const blocks: MysteryBlock[] = BLOCK_SPOTS.map(([x, y, z]) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), activeMat);
+    mesh.position.set(x, y, z);
+    root.add(mesh);
+    return { mesh, x, y, z, active: true, respawnAt: 0, popT: 0 };
+  });
+
+  return {
+    blocks,
+    update(dt, now) {
+      const t = now * 0.001;
+      for (const b of blocks) {
+        if (!b.active && now >= b.respawnAt) {
+          b.active = true;
+          b.mesh.material = activeMat;
+        }
+        // Gentle idle: bob + slow turn while active; still when spent.
+        if (b.active) {
+          b.mesh.position.y = b.y + Math.sin(t * 1.4 + b.x) * 0.12;
+          b.mesh.rotation.y += dt * 0.6;
+        }
+        if (b.popT > 0) {
+          // Quick pop: hop up and back over ~0.25s.
+          b.popT = Math.max(0, b.popT - dt * 4);
+          const k = Math.sin((1 - b.popT) * Math.PI);
+          b.mesh.position.y = b.y + k * 0.45;
+        }
+      }
+    },
+    check(px, pz, prevY, newY, now) {
+      for (const b of blocks) {
+        if (!b.active) continue;
+        const base = b.y - BLOCK_SIZE / 2;
+        if (prevY + 1.8 <= base && newY + 1.8 > base &&
+            Math.abs(px - b.x) < BLOCK_SIZE / 2 + 0.5 &&
+            Math.abs(pz - b.z) < BLOCK_SIZE / 2 + 0.5) {
+          b.active = false;
+          b.respawnAt = now + BLOCK_RESPAWN_MS;
+          b.popT = 1;
+          b.mesh.material = usedMat;
+          const kinds: PowerUpKind[] = ["turbo", "moon", "giant"];
+          return kinds[Math.floor(Math.random() * kinds.length)];
+        }
+      }
+      return null;
     },
   };
 }
@@ -675,6 +950,8 @@ export function buildSkyIslands({ boxes }: { boxes: WorldBox[] }): SkyIslandsWor
   const root = new THREE.Group();
   const bobbers: Bobber[] = [];
   const pulsers: Pulser[] = [];
+  const spinners: Spinner[] = [];
+  const emitters: ThemeCtx["emitters"] = {};
   const pads: SkyIslandsWorld["pads"] = [];
 
   for (const s of SPECS) {
@@ -685,7 +962,7 @@ export function buildSkyIslands({ boxes }: { boxes: WorldBox[] }): SkyIslandsWor
     root.add(island);
 
     island.add(makeIslandBase(s.radius, rand, bobbers));
-    s.theme({ island, radius: s.radius, x: s.x, y: s.y, z: s.z, rand, boxes, pulsers, bobbers });
+    s.theme({ island, radius: s.radius, x: s.x, y: s.y, z: s.z, rand, boxes, pulsers, bobbers, spinners, emitters });
 
     // Ground collider. height is the ABSOLUTE top Y (see header comment).
     // The island itself never moves — a solid floor beats a bobbing one.
@@ -702,13 +979,22 @@ export function buildSkyIslands({ boxes }: { boxes: WorldBox[] }): SkyIslandsWor
     pads.push({ key: s.key, name: s.name, pos: new THREE.Vector3(s.x, s.y + 0.6, s.z) });
   }
 
-  const zeppelin = buildZeppelin();
+  const zeppelin = buildZeppelin(boxes);
   root.add(zeppelin.group);
+
+  const mystery = buildMysteryBlocks(root);
 
   return {
     group: root,
     pads,
-    update(_dt, now) {
+    ambience: {
+      windmill: emitters.windmill ?? new THREE.Vector3(0, -9999, 0),
+      musicBox: emitters.musicBox ?? new THREE.Vector3(0, -9999, 0),
+    },
+    zeppelinCarry: (px, py, pz) => zeppelin.carry(px, py, pz),
+    zeppelinState: () => zeppelin.state(),
+    checkBonk: (px, pz, prevY, newY) => mystery.check(px, pz, prevY, newY, performance.now()),
+    update(dt, now) {
       const t = now * 0.001;
       for (const b of bobbers) {
         b.obj.position.y = b.baseY + Math.sin(t * 0.6 + b.phase) * b.amp;
@@ -717,7 +1003,11 @@ export function buildSkyIslands({ boxes }: { boxes: WorldBox[] }): SkyIslandsWor
       for (const p of pulsers) {
         p.mat.emissiveIntensity = p.base + Math.sin(t * p.speed + p.phase) * p.amp;
       }
+      for (const s of spinners) {
+        s.obj.rotation[s.axis] += s.speed * dt;
+      }
       zeppelin.update(now);
+      mystery.update(dt, now);
     },
   };
 }

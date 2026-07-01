@@ -21,6 +21,18 @@ export interface CitySounds {
   fanfare(): void;
   /** A comedy moo for the cow Easter egg. */
   moo(): void;
+  /** Big water splash — KO'd into the ocean. */
+  splash(): void;
+  /** Mario-ish block bonk. */
+  bonk(): void;
+  /** Ascending jingle for a power-up pickup. */
+  powerup(): void;
+  /**
+   * Per-frame ambience levels (0..1): `windmill` drives a throbbing wind
+   * bed near the Lone Tree windmill; `music` drives a gentle music-box
+   * melody near the Sky Shrine. Both fade with distance.
+   */
+  setAmbience(windmill: number, music: number): void;
   setMuted(muted: boolean): void;
   dispose(): void;
 }
@@ -61,6 +73,16 @@ export function createCitySounds(): CitySounds | null {
   const thrust = makeNoiseBed("bandpass", 320);
   thrust.filter.Q.value = 0.8;
   const wind = makeNoiseBed("lowpass", 480);
+  // Windmill ambience: a low airy bed whose level throbs like turning
+  // blades. The throb is applied in setAmbience from the caller's clock.
+  const mill = makeNoiseBed("lowpass", 260);
+  // Music box: no loop asset — a tiny scheduler plays a lullaby phrase
+  // note by note while the player is close enough to hear it.
+  let musicLevel = 0;
+  let nextNoteAt = 0;
+  let noteIdx = 0;
+  // "Twinkle"-ish contour on the pentatonic set, up an octave — glassy.
+  const LULLABY = [0, 0, 3, 3, 4, 4, 3, -1, 2, 2, 1, 1, 0, -1];
 
   const blip = (freq: number, t0: number, dur: number, level: number, type: OscillatorType) => {
     const osc = ctx.createOscillator();
@@ -136,6 +158,62 @@ export function createCitySounds(): CitySounds | null {
       vib.start(t);
       osc.stop(t + 0.75);
       vib.stop(t + 0.75);
+    },
+    splash() {
+      const t = ctx.currentTime;
+      // White-noise burst swept down through a lowpass — the "sploosh".
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(1600, t);
+      lp.frequency.exponentialRampToValueAtTime(220, t + 0.5);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.55, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      src.connect(lp).connect(g).connect(master);
+      src.start(t);
+      src.stop(t + 0.7);
+      // A deep bloop underneath as the water swallows you.
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(260, t);
+      osc.frequency.exponentialRampToValueAtTime(70, t + 0.3);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.3, t);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      osc.connect(og).connect(master);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    },
+    bonk() {
+      const t = ctx.currentTime;
+      blip(340, t, 0.12, 0.3, "square");
+      blip(510, t + 0.02, 0.1, 0.15, "square");
+    },
+    powerup() {
+      const t = ctx.currentTime;
+      [0, 2, 4, 5].forEach((s, i) => {
+        blip(PENTATONIC[s % 5] * (s >= 5 ? 2 : 1) * 1.5, t + i * 0.07, 0.3, 0.18, "triangle");
+      });
+    },
+    setAmbience(windmill, music) {
+      const t = ctx.currentTime;
+      // Whoosh…whoosh… — the throb reads as blades passing.
+      const throb = 0.7 + 0.3 * Math.sin(t * 2.4);
+      mill.gain.gain.setTargetAtTime(windmill * 0.16 * throb, t, 0.2);
+      musicLevel = music;
+      if (musicLevel > 0.03 && t >= nextNoteAt) {
+        const step = LULLABY[noteIdx % LULLABY.length];
+        noteIdx++;
+        nextNoteAt = t + 0.42;
+        if (step >= 0) {
+          // Sine + faint 4× partial ≈ the tine of a music box.
+          const f = PENTATONIC[step] * 2;
+          blip(f, t, 0.9, 0.1 * musicLevel, "sine");
+          blip(f * 4, t, 0.35, 0.02 * musicLevel, "sine");
+        }
+      }
     },
     setMuted(muted) {
       master.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);
