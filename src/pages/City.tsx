@@ -1726,8 +1726,8 @@ export default function City() {
     // ---- Live Roster TV: scoreboard-style screen on the front of the
     // island showing every current agent and their lobby-grid tile.
     // Clicking it opens a fuller modal with the same list.
-    // Moved further to the right (toward island center / Trade Joe's) so
-    // the board isn't jammed against the Cardboard Cafe.
+    // Moved further to the right (toward island center / Trader Joe's) so
+    // the board has clear space on the plaza edge.
     const ROSTER_LX = -6;
     const ROSTER_LZ = 18;
     const rosterBoard = createAgentRosterBoard({

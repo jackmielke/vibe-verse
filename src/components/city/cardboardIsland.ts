@@ -229,22 +229,6 @@ const SHOPS: ShopSpec[] = [
     bg: "#7d4ea8", fg: "#f2a134",
     tier: { w: 8, h: 6, d: 7 },
   },
-  {
-    lines: ["HOSPITAL"],
-    x: 30, z: 16, w: 12, h: 8, d: 9,
-    bg: "#f0ece2", fg: "#cc3333",
-    cross: true,
-  },
-  {
-    lines: ["CARDBOARD", "CAFE"],
-    x: -24, z: 20, w: 11, h: 7, d: 8,
-    bg: "#caa05e", fg: "#5a3a1a",
-  },
-  {
-    lines: ["WISH", "WALL"],
-    x: -4, z: -32, w: 13, h: 6, d: 2.5,
-    bg: "#eaa7c0", fg: "#8a2c52",
-  },
   // JERRY'S PLAZA is now a real plaza built around Jerry, not a building.
 ];
 
@@ -432,7 +416,6 @@ export function buildCardboardIsland(opts: {
     { lines: ["WELCOME TO", "VIBE ISLAND"], y: 9.6, w: 16, h: 4.5, bg: "#f4e6c2", fg: "#8a2a2a" },
     // Sub-banner: locate us in the wider story.
     { lines: ["inspired by the creative galaxy of whatever"], y: 5.1, w: 13, h: 1.8, bg: "#cfe6c2", fg: "#1f5fa8" },
-    { lines: ["City of Cardboard · Edge Esmeralda 2026"], y: 2.8, w: 13, h: 1.6, bg: "#e8f4d9", fg: "#2a6b3a" },
     // Tiny rules-of-the-road slat.
     { lines: ["be kind · reuse · dream big"], y: 2.6, w: 10, h: 1.4, bg: "#ffd9a0", fg: "#5a3a1a" },
   ];
@@ -471,6 +454,63 @@ export function buildCardboardIsland(opts: {
     welcome.add(flag);
   }
   group.add(welcome);
+
+  // ---- Vibeverse Billboard -----------------------------------------
+  // A big aspirational poster on the north edge facing the plaza.
+  const vibeverseUrl = "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
+  const vibeverseMat = new THREE.MeshBasicMaterial({ color: 0x1a1a2e, side: THREE.DoubleSide });
+  new THREE.TextureLoader().load(vibeverseUrl, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    vibeverseMat.map = tex;
+    vibeverseMat.needsUpdate = true;
+  });
+
+  const billboard = new THREE.Group();
+  billboard.position.set(0, 0, -36);
+  [-7.5, 7.5].forEach((px) => {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.34, 10.5, 10),
+      cardboardDark,
+    );
+    post.position.set(px, 5.25, 0);
+    billboard.add(post);
+    const wrap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.30, 0.30, 0.6, 10),
+      new THREE.MeshStandardMaterial({ color: px < 0 ? "#ff6b6b" : "#2f7ad9", roughness: 0.7 }),
+    );
+    wrap.position.set(px, 1.2, 0);
+    billboard.add(wrap);
+  });
+  const bbW = 16;
+  const bbH = 9;
+  const bbBacker = new THREE.Mesh(
+    new THREE.BoxGeometry(bbW + 0.5, bbH + 0.5, 0.22),
+    cardboardDark,
+  );
+  bbBacker.position.set(0, 8.5, -0.12);
+  billboard.add(bbBacker);
+  const poster = new THREE.Mesh(
+    new THREE.PlaneGeometry(bbW, bbH),
+    vibeverseMat,
+  );
+  poster.position.set(0, 8.5, 0.02);
+  billboard.add(poster);
+  const vibeversePlaque = new THREE.Mesh(
+    new THREE.PlaneGeometry(4, 1),
+    new THREE.MeshBasicMaterial({
+      map: signTexture(["VIBEVERSE"], "#1a1a2e", "#46e88c", true),
+      side: THREE.DoubleSide,
+    }),
+  );
+  vibeversePlaque.position.set(0, 13.4, 0.15);
+  billboard.add(vibeversePlaque);
+  group.add(billboard);
+  boxes.push({
+    minX: centerX - bbW / 2, maxX: centerX + bbW / 2,
+    minZ: centerZ - 36 - 0.5, maxZ: centerZ - 36 + 0.5,
+    base: topY,
+    height: topY + 11,
+  });
 
   // ---- Windmill ----------------------------------------------------
   const mill = new THREE.Group();
