@@ -2177,6 +2177,10 @@ export function buildCardboardIsland(opts: {
         0.28 + Math.sin(now * 0.0016) * 0.12;
       lantern.position.y = 11 + Math.sin(now * 0.0012) * 0.4;
 
+      // Vibeverse billboard hovers with a gentle bob + tilt.
+      billboard.position.y = BILLBOARD_BASE_Y + Math.sin(now * 0.0009) * 0.35;
+      billboard.rotation.z = Math.sin(now * 0.0007) * 0.03;
+
       // Firewall flames flicker; the swing sways; Jerry wiggles.
       firewallFlames.forEach((f, i) => {
         const s = 0.75 + Math.abs(Math.sin(now * 0.011 + i * 1.7)) * 0.5;
