@@ -1509,6 +1509,9 @@ export default function City() {
       reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
       reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
       reg("traders-galaxy", "Trader Joe's Galaxy", "Trader's Galaxy", new THREE.Vector3(TJS_X, TJS_TOP, TJS_Z), ["traders", "trader joes", "tj", "galaxy"]);
+      for (const pad of miniIslands.pads) {
+        reg(pad.key, pad.name, "Sky Islets", pad.pos.clone(), ["islet", "mini island", "floating rock"]);
+      }
     }
     // Wire the gremlin minigame to the React HUD.
     setMarsGame((g) => ({
