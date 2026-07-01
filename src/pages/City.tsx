@@ -1361,7 +1361,9 @@ export default function City() {
         }
       `,
     });
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000, 80, 80), apronMat);
+    // Circular ocean disc — matches Earth's horizon better than a square
+    // plane; corners no longer cut off in fog.
+    const apron = new THREE.Mesh(new THREE.CircleGeometry(2000, 128), apronMat);
     apron.rotation.x = -Math.PI / 2;
     apron.position.y = -0.05;
     scene.add(apron);
