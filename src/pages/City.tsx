@@ -34,6 +34,7 @@ import { buildCardboardIsland } from "@/components/city/cardboardIsland";
 import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
+import { buildMiniIslands } from "@/components/city/miniIslands";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
