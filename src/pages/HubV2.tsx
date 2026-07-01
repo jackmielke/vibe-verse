@@ -152,14 +152,35 @@ export default function HubV2() {
       !!localStorage.getItem("city.playerName") ||
       !!localStorage.getItem("city.displayName");
     if (hasChar || hasName) return;
-    const pool = ALL_CHARACTERS;
+    const reliableFirstRunIds = [
+      "Pirate_Anne",
+      "Wizard",
+      "Ninja_Female",
+      "Knight_Golden_Male",
+      "BlueSoldier_Female",
+      "Cowboy_Female",
+      "Chef_Male",
+      "Kimono_Female",
+      "Pug",
+      "Cow",
+    ];
+    const pool = reliableFirstRunIds
+      .map((id) => ALL_CHARACTERS.find((c) => c.id === id))
+      .filter(Boolean) as typeof ALL_CHARACTERS;
     if (!pool.length) return;
     const pick = pool[Math.floor(Math.random() * pool.length)];
     setFreshPick({ id: pick.id, name: generateCharacterName(pick.label) });
   }, []);
 
   const freshCharacters = useMemo(
-    () => ALL_CHARACTERS.map((c) => ({ name: c.id, url: c.url })),
+    () =>
+      ALL_CHARACTERS.map((c) => ({
+        name: c.id,
+        url: c.url,
+        label: c.label,
+        blurb: c.blurb,
+        accent: c.accent,
+      })),
     [],
   );
 
@@ -1123,10 +1144,10 @@ export default function HubV2() {
           characters={freshCharacters}
           initialCharacter={freshPick.id}
           initialName={freshPick.name}
-          eyebrow="Welcome to the VibeVerse"
-          title="Pick your vibe"
-          subtitle="We rolled a random character — tap any name to swap, and pick what people should call you."
-          ctaLabel="✨ Jet into the world"
+          eyebrow="Step 1 of 2 · Pick your character"
+          title="Choose your character"
+          subtitle="Your character follows you across the VibeVerse. Pick one now, then fall into Edge Island."
+          ctaLabel="Enter Edge Island"
           agentInviteUrl="https://myvibeverse.com"
           onEnter={commitFreshEntry}
         />

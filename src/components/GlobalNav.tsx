@@ -24,6 +24,7 @@ interface Destination {
 
 // Every hoppable world. Order = default recents seed (most-loved first).
 const ALL_WORLDS: Destination[] = [
+  { to: "/character-select", emoji: "🧍", label: "Characters", matchPaths: ["/characters", "/profile", "/lobby"] },
   { to: "/world", emoji: "🛋️", label: "VIBE World", matchPaths: ["/agent-lobby"] },
   { to: "/city", emoji: "🏙️", label: "City" },
   { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
