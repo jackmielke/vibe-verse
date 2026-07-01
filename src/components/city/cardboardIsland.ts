@@ -429,9 +429,10 @@ export function buildCardboardIsland(opts: {
   });
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string; glow?: boolean }> = [
     // BIG headline arch.
-    { lines: ["WELCOME TO THE", "CITY OF CARDBOARD", "WHATEVER"], y: 9.6, w: 16, h: 5.8, bg: "#f4e6c2", fg: "#8a2a2a" },
+    { lines: ["WELCOME TO", "VIBE ISLAND"], y: 9.6, w: 16, h: 4.5, bg: "#f4e6c2", fg: "#8a2a2a" },
     // Sub-banner: locate us in the wider story.
-    { lines: ["☆ part of the GALAXY of ☆", "CREATIVE WHATEVER"], y: 5.1, w: 13, h: 3.0, bg: "#cfe6c2", fg: "#1f5fa8" },
+    { lines: ["inspired by the creative galaxy of whatever"], y: 5.1, w: 13, h: 1.8, bg: "#cfe6c2", fg: "#1f5fa8" },
+    { lines: ["City of Cardboard · Edge Esmeralda 2026"], y: 2.8, w: 13, h: 1.6, bg: "#e8f4d9", fg: "#2a6b3a" },
     // Tiny rules-of-the-road slat.
     { lines: ["be kind · reuse · dream big"], y: 2.6, w: 10, h: 1.4, bg: "#ffd9a0", fg: "#5a3a1a" },
   ];
