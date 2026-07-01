@@ -3625,7 +3625,11 @@ export default function City() {
             el.style.pointerEvents = "none";
             return;
           }
-          el.style.transform = `translate3d(${p.sx.toFixed(1)}px, ${p.sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
+          // Shrink labels as the camera pulls away so distant buttons don't dominate the frame.
+          const dist = Math.hypot(wx - camera.position.x, wy - camera.position.y, wz - camera.position.z);
+          const s = Math.max(0.28, Math.min(1, 8 / Math.max(1, dist)));
+          el.style.transformOrigin = "center bottom";
+          el.style.transform = `translate3d(${p.sx.toFixed(1)}px, ${p.sy.toFixed(1)}px, 0) translate(-50%, -100%) scale(${s.toFixed(3)})`;
           el.style.opacity = "1";
           el.style.pointerEvents = "auto";
         };
