@@ -10,7 +10,32 @@ function findClip(clips: THREE.AnimationClip[], names: string[]): THREE.Animatio
     const c = clips.find((x) => x.name.toLowerCase().includes(n.toLowerCase()));
     if (c) return c;
   }
-  return clips[0] ?? null;
+  return null;
+}
+
+function visibleMeshBounds(object: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  const meshBox = new THREE.Box3();
+  let found = false;
+
+  object.updateMatrixWorld(true);
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    if (!mesh.geometry.boundingBox) return;
+    meshBox.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+    if (!Number.isFinite(meshBox.min.x) || !Number.isFinite(meshBox.max.x)) return;
+    if (meshBox.isEmpty()) return;
+    if (!found) {
+      box.copy(meshBox);
+      found = true;
+    } else {
+      box.union(meshBox);
+    }
+  });
+
+  return found ? box : new THREE.Box3().setFromObject(object);
 }
 
 function PreviewModel({
@@ -40,25 +65,33 @@ function PreviewModel({
       });
       cloned.scale.setScalar(character.scale);
 
-      // Auto-frame: recenter on x/z, plant feet at y=0
-      const box = new THREE.Box3().setFromObject(cloned);
+      // Normalize from visible mesh bounds only. Some GLBs include armature,
+      // helper, or root nodes with huge bounds, which made real characters
+      // render as tiny dots in the picker.
+      const box = visibleMeshBounds(cloned);
       const size = new THREE.Vector3();
-      const center = new THREE.Vector3();
       box.getSize(size);
-      box.getCenter(center);
+      const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
+      cloned.scale.multiplyScalar(2.2 / maxDim);
+      cloned.updateMatrixWorld(true);
+
+      // Auto-frame: recenter on x/z, plant feet at y=0
+      const fitBox = visibleMeshBounds(cloned);
+      const fitSize = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      fitBox.getSize(fitSize);
+      fitBox.getCenter(center);
       cloned.position.x -= center.x;
       cloned.position.z -= center.z;
-      cloned.position.y -= box.min.y;
+      cloned.position.y -= fitBox.min.y;
       cloned.position.y += character.yOffset;
 
       const mixer = new THREE.AnimationMixer(cloned);
-      const clip =
-        findClip(gltf.animations, ["idle"]) ??
-        findClip(gltf.animations, ["walk", "survey", "dance", "run"]);
+      const clip = findClip(gltf.animations, ["idle", "stand", "breath"]);
       if (clip) mixer.clipAction(clip).play();
       mixerRef.current = mixer;
       setScene(cloned);
-      onFit(size);
+      onFit(fitSize);
     }).catch(() => {});
     return () => {
       alive = false;

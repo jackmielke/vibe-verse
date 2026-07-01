@@ -5,7 +5,7 @@ import { useGame } from "./store";
 import { AnimalCreature, PlantCreature, PredatorCreature, ApexCreature, HerbivoreCreature, DragonCreature, GoatCreature } from "./Creature";
 import { input } from "./input";
 import { clampToIsland, clampToWorld, isInWater } from "./island";
-import { spawnFireball } from "./fireballs";
+import { spawnFireball } from "./fireballState";
 
 const keys: Record<string, boolean> = {};
 function clearKeys() {

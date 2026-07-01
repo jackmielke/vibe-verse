@@ -68,6 +68,7 @@ import { ArcadeModal } from "@/components/city/ArcadeModal";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
+import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import {
@@ -78,20 +79,15 @@ import {
 import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
 import { registerPOI } from "@/world/worldIndex";
 
-
-// Every Quaternius character can be the pilot — same glob pattern as
-// the Lobby, so these assets are shared with it, not duplicated.
-const CHARACTER_URLS = import.meta.glob(
-  "@/assets/glb/characters/*.glb",
-  { eager: true, query: "?url", import: "default" },
-) as Record<string, string>;
-
-const CHARACTERS = Object.entries(CHARACTER_URLS)
-  .map(([path, url]) => ({
-    name: path.split("/").pop()!.replace(/\.glb$/, ""),
-    url,
-  }))
-  .sort((a, b) => a.name.localeCompare(b.name));
+// Universal playable character catalog. Keep City/Edge Island aligned
+// with /character-select, /profile, and the global active-character hook.
+const CHARACTERS = UNIVERSAL_CHARACTERS.map((c) => ({
+  name: c.id,
+  url: c.url,
+  label: c.label,
+  blurb: c.blurb,
+  accent: c.accent,
+}));
 
 // Honor a character picked in the Lobby; fall back to the soldier.
 function initialCharacter(): string {
