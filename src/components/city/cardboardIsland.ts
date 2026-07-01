@@ -495,15 +495,15 @@ export function buildCardboardIsland(opts: {
   );
   poster.position.set(0, 8.5, 0.02);
   billboard.add(poster);
-  const plaque = new THREE.Mesh(
+  const vibeversePlaque = new THREE.Mesh(
     new THREE.PlaneGeometry(4, 1),
     new THREE.MeshBasicMaterial({
       map: signTexture(["VIBEVERSE"], "#1a1a2e", "#46e88c", true),
       side: THREE.DoubleSide,
     }),
   );
-  plaque.position.set(0, 13.4, 0.15);
-  billboard.add(plaque);
+  vibeversePlaque.position.set(0, 13.4, 0.15);
+  billboard.add(vibeversePlaque);
   group.add(billboard);
   boxes.push({
     minX: centerX - bbW / 2, maxX: centerX + bbW / 2,
