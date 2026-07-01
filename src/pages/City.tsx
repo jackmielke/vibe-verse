@@ -1476,6 +1476,13 @@ export default function City() {
     });
     scene.add(tjsWorld.group);
 
+    // ---- Mini floating islands scattered around the sky ------------
+    // Little grassy rocks with a lone tree, a pagoda, an arch, etc. —
+    // landable via the shared collision box list, so you can bounce
+    // between them with the jetpack.
+    const miniIslands = buildMiniIslands({ boxes });
+    scene.add(miniIslands.group);
+
     // ---- World index: register named POIs so agents can /goto them
     // and answer "what's around me?" with real coords (Stage 1 of the
     // Agent Embodiment Roadmap). Modules that own a landmark register it
