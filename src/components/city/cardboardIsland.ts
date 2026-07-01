@@ -456,8 +456,8 @@ export function buildCardboardIsland(opts: {
   group.add(welcome);
 
   // ---- Vibeverse Billboard -----------------------------------------
-  // A big aspirational poster angled diagonally between Trader Joe's
-  // and the Live Roster, facing the plaza center.
+  // A big aspirational poster floating off the left edge of the island,
+  // well clear of Trader Joe's, facing the plaza center.
   const vibeverseUrl = "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
   const vibeverseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   new THREE.TextureLoader().load(vibeverseUrl, (tex) => {
