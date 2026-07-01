@@ -229,22 +229,6 @@ const SHOPS: ShopSpec[] = [
     bg: "#7d4ea8", fg: "#f2a134",
     tier: { w: 8, h: 6, d: 7 },
   },
-  {
-    lines: ["HOSPITAL"],
-    x: 30, z: 16, w: 12, h: 8, d: 9,
-    bg: "#f0ece2", fg: "#cc3333",
-    cross: true,
-  },
-  {
-    lines: ["CARDBOARD", "CAFE"],
-    x: -24, z: 20, w: 11, h: 7, d: 8,
-    bg: "#caa05e", fg: "#5a3a1a",
-  },
-  {
-    lines: ["WISH", "WALL"],
-    x: -4, z: -32, w: 13, h: 6, d: 2.5,
-    bg: "#eaa7c0", fg: "#8a2c52",
-  },
   // JERRY'S PLAZA is now a real plaza built around Jerry, not a building.
 ];
 
