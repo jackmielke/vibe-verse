@@ -14,7 +14,10 @@
  *   - "Lantern Grove"     (y 80)  — pond, fireflies, glowing lanterns
  *
  * A cream-and-red zeppelin slowly circles the city between them (poster
- * nod; decoration only, not landable).
+ * nod) — and it's rideable: a plank deck runs along the top of the hull,
+ * so you can jetpack onto it as it passes and cruise the whole loop.
+ * Its live position/yaw are exposed via `zeppelin` so the player physics
+ * in City can stick to (and be carried by) the moving deck.
  *
  * IMPORTANT collision semantics: WorldBox.height is the ABSOLUTE top Y of
  * the box, not a thickness — supportHeightAt() returns b.height directly
@@ -25,11 +28,27 @@
 import * as THREE from "three";
 import type { WorldBox } from "./cardboardIsland";
 
+/** Live ride state for the circling zeppelin's walkable deck. */
+export interface ZeppelinRide {
+  /** Hull center in world coords, updated every frame. */
+  pos: THREE.Vector3;
+  prevPos: THREE.Vector3;
+  yaw: number;
+  prevYaw: number;
+  /** Local Y of the deck walking surface above the hull center. */
+  deckY: number;
+  /** Deck half-extents in the zeppelin's local frame. */
+  halfW: number;
+  halfL: number;
+}
+
 export interface SkyIslandsWorld {
   group: THREE.Group;
   update(dt: number, now: number): void;
   /** Landing pad centers, in world coords — used for fast-travel + POIs. */
   pads: { key: string; name: string; pos: THREE.Vector3 }[];
+  /** The circling zeppelin — its deck is a moving platform you can ride. */
+  zeppelin: ZeppelinRide;
 }
 
 // ---------------------------------------------------------------------------
@@ -602,10 +621,11 @@ function themeLanternGrove({ island, radius, rand, pulsers, bobbers }: ThemeCtx)
 }
 
 // ---------------------------------------------------------------------------
-// Zeppelin — cream hull, red fins, endlessly circling the city (decoration)
+// Zeppelin — cream hull, red fins, endlessly circling the city. Rideable:
+// hop onto the plank deck along the top of the hull and it carries you.
 // ---------------------------------------------------------------------------
 
-function buildZeppelin(): { group: THREE.Group; update: (now: number) => void } {
+function buildZeppelin(): { group: THREE.Group; update: (now: number) => void; ride: ZeppelinRide } {
   const g = new THREE.Group();
   const cream = new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 0.65 });
   const red = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.7 });
@@ -634,14 +654,71 @@ function buildZeppelin(): { group: THREE.Group; update: (now: number) => void } 
   cabin.position.y = -4.6;
   g.add(cabin);
 
-  const CX = 40, CZ = -60, CY = 148, R = 230, OMEGA = 0.018;
+  // Walkable plank deck along the top of the hull, with rope-rail posts
+  // so it reads as "you can stand here" from a distance.
+  const DECK_Y = 4.3;
+  const DECK_HALF_W = 1.8;
+  const DECK_HALF_L = 5.75;
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8b6a45, roughness: 0.85 });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(DECK_HALF_W * 2, 0.24, DECK_HALF_L * 2), wood);
+  deck.position.y = DECK_Y;
+  g.add(deck);
+  // Plank seams.
+  const seamMat = new THREE.MeshStandardMaterial({ color: 0x6f5233, roughness: 0.9 });
+  for (let i = -4; i <= 4; i++) {
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(DECK_HALF_W * 2 + 0.02, 0.02, 0.07), seamMat);
+    seam.position.set(0, DECK_Y + 0.13, i * 1.25);
+    g.add(seam);
+  }
+  // Rail posts + top rail on both sides.
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 0.8 });
+  for (const side of [-1, 1]) {
+    for (let i = -2; i <= 2; i++) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.85, 8), railMat);
+      post.position.set(side * (DECK_HALF_W - 0.12), DECK_Y + 0.54, i * 2.6);
+      g.add(post);
+    }
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, DECK_HALF_L * 2 - 0.4, 8), railMat);
+    rail.rotation.x = Math.PI / 2;
+    rail.position.set(side * (DECK_HALF_W - 0.12), DECK_Y + 0.95, 0);
+    g.add(rail);
+  }
+  // Little pennant at the bow of the deck.
+  const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2, 6), railMat);
+  flagPole.position.set(0, DECK_Y + 0.72, DECK_HALF_L - 0.25);
+  g.add(flagPole);
+  const flag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.7, 0.4),
+    new THREE.MeshBasicMaterial({ color: 0xe94f8a, side: THREE.DoubleSide }),
+  );
+  flag.position.set(0.36, DECK_Y + 1.15, DECK_HALF_L - 0.25);
+  flag.rotation.y = Math.PI / 2;
+  g.add(flag);
+
+  // OMEGA tuned so deck speed (~14.5 m/s) sits under jetpack cruise
+  // (22 m/s) — you can actually chase it down and hop on.
+  const CX = 40, CZ = -60, CY = 148, R = 230, OMEGA = 0.01;
+  const ride: ZeppelinRide = {
+    pos: new THREE.Vector3(CX + R, CY, CZ),
+    prevPos: new THREE.Vector3(CX + R, CY, CZ),
+    yaw: Math.atan2(-0, 1),
+    prevYaw: Math.atan2(-0, 1),
+    deckY: DECK_Y + 0.12, // top of the plank slab
+    halfW: DECK_HALF_W,
+    halfL: DECK_HALF_L,
+  };
   return {
     group: g,
+    ride,
     update(now: number) {
+      ride.prevPos.copy(ride.pos);
+      ride.prevYaw = ride.yaw;
       const a = now * 0.001 * OMEGA * Math.PI * 2;
       g.position.set(CX + Math.cos(a) * R, CY + Math.sin(now * 0.0005) * 2.5, CZ + Math.sin(a) * R);
       // Face along the orbit tangent (-sin a, 0, cos a).
       g.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a));
+      ride.pos.copy(g.position);
+      ride.yaw = g.rotation.y;
     },
   };
 }
@@ -708,6 +785,7 @@ export function buildSkyIslands({ boxes }: { boxes: WorldBox[] }): SkyIslandsWor
   return {
     group: root,
     pads,
+    zeppelin: zeppelin.ride,
     update(_dt, now) {
       const t = now * 0.001;
       for (const b of bobbers) {

@@ -312,49 +312,6 @@ function facadeTexture(tint: string, trim: string): THREE.CanvasTexture {
   return t;
 }
 
-/** Striped canvas awning. */
-function awningTexture(color: string): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 64;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#f6efe2";
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = color;
-  for (let x = 0; x < 256; x += 32) ctx.fillRect(x, 0, 16, 64);
-  const t = new THREE.CanvasTexture(canvas);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-/** Vertically-scrolling waterfall ribbon. */
-function waterfallTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 256;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createLinearGradient(0, 0, 64, 0);
-  g.addColorStop(0, "rgba(190,235,255,0.05)");
-  g.addColorStop(0.5, "rgba(210,240,255,0.55)");
-  g.addColorStop(1, "rgba(190,235,255,0.05)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 256);
-  ctx.strokeStyle = "rgba(255,255,255,0.65)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 9; i++) {
-    const x = 6 + ((i * 23) % 52);
-    ctx.beginPath();
-    ctx.moveTo(x, (i * 47) % 256);
-    ctx.lineTo(x + 2, ((i * 47) % 256) + 34 + (i % 3) * 12);
-    ctx.stroke();
-  }
-  const t = new THREE.CanvasTexture(canvas);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 function roundedRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -590,18 +547,17 @@ export function buildCardboardIsland(opts: {
     });
   }
 
-  // ---- Spring + waterfall on the east rim ---------------------------
-  // A small pool spills off the edge in a soft ribbon with mist below.
+  // ---- Spring pool on the east lawn ---------------------------------
+  // A calm stone-ringed pool with a soft shimmer. (It used to spill off
+  // the rim as a waterfall — cut; the island reads cleaner without it.)
   {
     const POOL_X = 36, POOL_Z = 10;
-    const pool = new THREE.Mesh(
-      new THREE.CircleGeometry(4.2, 28),
-      new THREE.MeshStandardMaterial({
-        color: "#5fc4de", roughness: 0.25, metalness: 0.1,
-        transparent: true, opacity: 0.9,
-        emissive: "#1a4a5a", emissiveIntensity: 0.25,
-      }),
-    );
+    const poolMat = new THREE.MeshStandardMaterial({
+      color: "#5fc4de", roughness: 0.25, metalness: 0.1,
+      transparent: true, opacity: 0.9,
+      emissive: "#1a4a5a", emissiveIntensity: 0.25,
+    });
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(4.2, 28), poolMat);
     pool.rotation.x = -Math.PI / 2;
     pool.position.set(POOL_X, 0.09, POOL_Z);
     group.add(pool);
@@ -615,53 +571,8 @@ export function buildCardboardIsland(opts: {
       stone.rotation.y = a * 3;
       group.add(stone);
     }
-    // Stream strip to the rim.
-    const streamDir = Math.atan2(POOL_Z, POOL_X);
-    const rimR = (ISLAND_RADIUS + 1.2) * (1 + landRim(streamDir));
-    const rimX = Math.cos(streamDir) * rimR;
-    const rimZ = Math.sin(streamDir) * rimR;
-    const streamLen = Math.hypot(rimX - POOL_X, rimZ - POOL_Z);
-    const stream = new THREE.Mesh(
-      new THREE.PlaneGeometry(streamLen, 2.4),
-      new THREE.MeshStandardMaterial({
-        color: "#6fd0e8", roughness: 0.3, transparent: true, opacity: 0.85,
-      }),
-    );
-    stream.rotation.x = -Math.PI / 2;
-    stream.rotation.z = -streamDir;
-    stream.position.set((POOL_X + rimX) / 2, 0.08, (POOL_Z + rimZ) / 2);
-    group.add(stream);
-    // The falling ribbon.
-    const fallTex = waterfallTexture();
-    const FALL_H = 26;
-    const fall = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.6, FALL_H),
-      new THREE.MeshBasicMaterial({
-        map: fallTex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-      }),
-    );
-    fall.position.set(rimX + Math.cos(streamDir) * 0.6, -FALL_H / 2 + 0.4, rimZ + Math.sin(streamDir) * 0.6);
-    fall.rotation.y = -streamDir + Math.PI / 2;
-    group.add(fall);
-    // Mist puffs at the bottom of the fall.
-    const mistMat = new THREE.SpriteMaterial({
-      color: 0xdfF4ff, transparent: true, opacity: 0.35, depthWrite: false,
-    });
-    const mists: THREE.Sprite[] = [];
-    for (let i = 0; i < 3; i++) {
-      const m = new THREE.Sprite(mistMat.clone() as THREE.SpriteMaterial);
-      m.position.set(rimX + Math.cos(streamDir) * (0.5 + i * 0.5), -FALL_H + 1.5, rimZ + Math.sin(streamDir) * (0.5 + i * 0.5));
-      m.scale.set(4 + i, 2.4 + i * 0.5, 1);
-      group.add(m);
-      mists.push(m);
-    }
-    craftAnims.push((dt, now) => {
-      fallTex.offset.y += dt * 0.55;
-      mists.forEach((m, i) => {
-        const k = ((now * 0.0004 + i * 0.33) % 1);
-        (m.material as THREE.SpriteMaterial).opacity = 0.38 * (1 - k);
-        m.scale.set(4 + i + k * 2.5, 2.4 + i * 0.5 + k * 1.5, 1);
-      });
+    craftAnims.push((_dt, now) => {
+      poolMat.emissiveIntensity = 0.25 + Math.sin(now * 0.0011) * 0.1;
     });
   }
 
@@ -678,9 +589,9 @@ export function buildCardboardIsland(opts: {
   // ---- Shops (craft pass: real architecture you can walk into) ------
   // Each shop is now four true walls with a doorway cut into the face
   // that looks at the island center, a warm lit interior with furniture,
-  // an awning, a swinging bracket sign, window boxes — and per-wall
-  // collision so you can actually step inside (and still land on the
-  // roof from above).
+  // a swinging bracket sign, window boxes — and per-wall collision so
+  // you can actually step inside (and still land on the roof from
+  // above).
   const signMats: THREE.MeshBasicMaterial[] = [];
   const WALL_T = 0.4;
   const DOOR_W = 2.2;
@@ -768,20 +679,8 @@ export function buildCardboardIsland(opts: {
       height: topY + s.h + 0.5,
     });
 
-    // Striped awning over the door.
-    {
-      const [ax, az] = toLocal(fs * (U / 2 + 0.9), 0);
-      const awn = new THREE.Mesh(
-        new THREE.PlaneGeometry(DOOR_W + 1.8, 2.0),
-        new THREE.MeshStandardMaterial({
-          map: awningTexture(s.fg), side: THREE.DoubleSide, roughness: 0.9,
-        }),
-      );
-      awn.position.set(ax, DOOR_H + 0.75, az);
-      awn.rotation.y = rotY;
-      awn.rotateX(-0.5);
-      shop.add(awn);
-    }
+    // (No awning over the door — it used to hide the facade signs.
+    // The trimmed doorway alone reads as a welcoming open entrance.)
 
     // Warm interior: rug, counter, shelf goods, hanging lamp + light.
     {
@@ -1822,23 +1721,88 @@ export function buildCardboardIsland(opts: {
   const shopLight = new THREE.PointLight(0x2dd4a8, 22, 14, 2);
   shopLight.position.set(0, 2.4, 0.3);
   shopGroup.add(shopLight);
-  // Two little display pedestal items
-  const pedHat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.3, 16), shopBody);
-  pedHat.position.set(-1.4, 2.18, -0.55);
-  shopGroup.add(pedHat);
-  const tinyHat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.32, 18), shopMagenta);
-  tinyHat.position.set(-1.4, 2.55, -0.55);
-  shopGroup.add(tinyHat);
-  const pedFlame = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.3, 16), shopBody);
-  pedFlame.position.set(1.4, 2.18, -0.55);
-  shopGroup.add(pedFlame);
-  const tinyFlame = new THREE.Mesh(
-    new THREE.ConeGeometry(0.16, 0.5, 12),
-    new THREE.MeshBasicMaterial({ color: "#7dfce0", transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending }),
-  );
-  tinyFlame.position.set(1.4, 2.6, -0.55);
-  tinyFlame.rotation.x = Math.PI;
-  shopGroup.add(tinyFlame);
+  // Shelf merchandise: a row of lit display goods so walking up feels
+  // like window-shopping something valuable, not an empty counter.
+  {
+    const goodsSpec: Array<{ color: string; kind: "hat" | "flame" | "gem" | "pack" }> = [
+      { color: "#e85d75", kind: "hat" },
+      { color: "#ffd166", kind: "gem" },
+      { color: "#7dfce0", kind: "flame" },
+      { color: "#9a7bff", kind: "pack" },
+      { color: "#5db8e8", kind: "hat" },
+      { color: "#ff9d5c", kind: "gem" },
+    ];
+    goodsSpec.forEach((spec, i) => {
+      const shelfRow = i < 3 ? 0 : 1;
+      const x = (i % 3 - 1) * 1.6;
+      const y = 2.0 + shelfRow * 1.0;
+      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.22, 14), shopBody);
+      ped.position.set(x, y + 0.11, -0.55);
+      shopGroup.add(ped);
+      let item: THREE.Mesh;
+      if (spec.kind === "hat") {
+        item = new THREE.Mesh(
+          new THREE.ConeGeometry(0.2, 0.34, 16),
+          new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.5, roughness: 0.4 }),
+        );
+      } else if (spec.kind === "flame") {
+        item = new THREE.Mesh(
+          new THREE.ConeGeometry(0.15, 0.46, 12),
+          new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending }),
+        );
+        item.rotation.x = Math.PI;
+      } else if (spec.kind === "gem") {
+        item = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.2),
+          new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.4 }),
+        );
+      } else {
+        item = new THREE.Mesh(
+          new THREE.BoxGeometry(0.28, 0.36, 0.2),
+          new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.35, roughness: 0.45, metalness: 0.3 }),
+        );
+      }
+      const baseY = y + 0.42;
+      item.position.set(x, baseY, -0.55);
+      shopGroup.add(item);
+      craftAnims.push((_dt, now) => {
+        item.rotation.y = now * 0.0008 + i * 1.1;
+        item.position.y = baseY + Math.sin(now * 0.0016 + i * 0.9) * 0.045;
+      });
+    });
+  }
+  // Big holographic vibe coin spinning over the kiosk — visible from
+  // across the plaza, the "something valuable lives here" beacon.
+  {
+    const coin = new THREE.Group();
+    const face = new THREE.MeshStandardMaterial({
+      color: "#ffd166", emissive: "#ffb700", emissiveIntensity: 0.9,
+      roughness: 0.25, metalness: 0.7,
+    });
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.14, 28), face);
+    disc.rotation.x = Math.PI / 2;
+    coin.add(disc);
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.85, 0.07, 10, 32),
+      new THREE.MeshStandardMaterial({ color: "#fff3c2", emissive: "#ffd166", emissiveIntensity: 1.2, roughness: 0.3 }),
+    );
+    coin.add(rim);
+    const spark = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.3),
+      new THREE.MeshBasicMaterial({ color: "#fff8dc" }),
+    );
+    coin.add(spark);
+    coin.position.set(0, 5.9, 0);
+    shopGroup.add(coin);
+    const coinGlow = new THREE.PointLight(0xffc84a, 14, 12, 2);
+    coinGlow.position.set(0, 5.9, 0);
+    shopGroup.add(coinGlow);
+    craftAnims.push((_dt, now) => {
+      coin.rotation.y = now * 0.0012;
+      coin.position.y = 5.9 + Math.sin(now * 0.0014) * 0.18;
+      coinGlow.intensity = 12 + Math.sin(now * 0.003) * 4;
+    });
+  }
 
     group.add(shopGroup);
   }
@@ -2367,6 +2331,135 @@ export function buildCardboardIsland(opts: {
   );
   counter.position.set(0, 1.05, SNACK_D / 2 + 0.55);
   snackGroup.add(counter);
+
+  // Glass display case on the counter, stocked with glowing treats —
+  // walking up should feel like eyeing the pastry shelf.
+  {
+    const caseGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.9, 0.62),
+      new THREE.MeshStandardMaterial({
+        color: "#bfe8ff", roughness: 0.05, metalness: 0.1,
+        transparent: true, opacity: 0.22,
+      }),
+    );
+    caseGlass.position.set(-0.6, 1.62, SNACK_D / 2 + 0.55);
+    snackGroup.add(caseGlass);
+    const caseLight = new THREE.PointLight(0xfff0c0, 6, 4, 2);
+    caseLight.position.set(-0.6, 1.75, SNACK_D / 2 + 0.55);
+    snackGroup.add(caseLight);
+    const treats: Array<{ color: string; w: number; h: number }> = [
+      { color: "#ff8fae", w: 0.3, h: 0.26 },  // strawberry cake
+      { color: "#f2d59b", w: 0.34, h: 0.2 },  // croissant
+      { color: "#8be8c8", w: 0.24, h: 0.3 },  // mint float
+      { color: "#c9a2ff", w: 0.26, h: 0.24 }, // mochi
+    ];
+    treats.forEach((t, i) => {
+      const treat = new THREE.Mesh(
+        new THREE.BoxGeometry(t.w, t.h, 0.3),
+        new THREE.MeshStandardMaterial({ color: t.color, emissive: t.color, emissiveIntensity: 0.25, roughness: 0.5 }),
+      );
+      treat.position.set(-1.6 + i * 0.68, 1.35 + t.h / 2, SNACK_D / 2 + 0.55);
+      treat.rotation.y = i * 0.5;
+      snackGroup.add(treat);
+    });
+    // A steaming espresso cup at the order end of the counter.
+    const cup = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.1, 0.18, 14),
+      new THREE.MeshStandardMaterial({ color: "#fff5e8", roughness: 0.4 }),
+    );
+    cup.position.set(1.7, 1.25, SNACK_D / 2 + 0.55);
+    snackGroup.add(cup);
+    const steam = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.3, 0.5),
+      new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    steam.position.set(1.7, 1.65, SNACK_D / 2 + 0.55);
+    snackGroup.add(steam);
+    craftAnims.push((_dt, now) => {
+      const k = (now * 0.0006) % 1;
+      steam.position.y = 1.55 + k * 0.5;
+      (steam.material as THREE.MeshBasicMaterial).opacity = 0.32 * (1 - k);
+      steam.rotation.z = Math.sin(now * 0.002) * 0.2;
+    });
+  }
+
+  // Giant slowly-spinning soft-serve on the roof — the classic "come
+  // eat here" beacon you can spot from across the island.
+  {
+    const swirl = new THREE.Group();
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.55, 1.1, 14),
+      new THREE.MeshStandardMaterial({ color: "#d4a574", roughness: 0.8 }),
+    );
+    cone.rotation.x = Math.PI;
+    cone.position.y = 0.55;
+    swirl.add(cone);
+    const scoopMat = new THREE.MeshStandardMaterial({
+      color: "#fdf3ff", emissive: "#f9d8ff", emissiveIntensity: 0.35, roughness: 0.55,
+    });
+    for (let i = 0; i < 3; i++) {
+      const scoop = new THREE.Mesh(new THREE.SphereGeometry(0.52 - i * 0.13, 16, 12), scoopMat);
+      scoop.position.y = 1.25 + i * 0.42;
+      swirl.add(scoop);
+    }
+    const cherry = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 10, 8),
+      new THREE.MeshStandardMaterial({ color: "#e94f8a", emissive: "#e94f8a", emissiveIntensity: 0.8, roughness: 0.4 }),
+    );
+    cherry.position.y = 2.32;
+    swirl.add(cherry);
+    swirl.position.set(-SNACK_W / 2 + 1.3, SNACK_H + 0.28, 0.4);
+    snackGroup.add(swirl);
+    craftAnims.push((_dt, now) => {
+      swirl.rotation.y = now * 0.0006;
+    });
+  }
+
+  // A-frame chalk menu board by the stools.
+  {
+    const board = new THREE.Group();
+    const face = (() => {
+      const c = document.createElement("canvas");
+      c.width = 256; c.height = 320;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = "#1b1f24";
+      ctx.fillRect(0, 0, 256, 320);
+      ctx.strokeStyle = "#8b5e34";
+      ctx.lineWidth = 14;
+      ctx.strokeRect(7, 7, 242, 306);
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#fff2c8";
+      ctx.font = "bold 34px 'Comic Sans MS', cursive, sans-serif";
+      ctx.fillText("SnackFe", 128, 58);
+      ctx.font = "22px 'Comic Sans MS', cursive, sans-serif";
+      ctx.fillStyle = "#46e88c";
+      ctx.fillText("🍓 strawberry — 1✦", 128, 112);
+      ctx.fillText("🍦 mint float — 2✦", 128, 152);
+      ctx.fillText("🥐 croissant — 3✦", 128, 192);
+      ctx.fillText("☕ espresso — 3✦", 128, 232);
+      ctx.fillStyle = "#e94f8a";
+      ctx.font = "italic 20px 'Comic Sans MS', cursive, sans-serif";
+      ctx.fillText("today's vibe: peachy", 128, 286);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    for (const lean of [-1, 1]) {
+      const panel = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.15, 1.45),
+        lean === 1
+          ? new THREE.MeshBasicMaterial({ map: face })
+          : new THREE.MeshStandardMaterial({ color: "#1b1f24", roughness: 0.9, side: THREE.DoubleSide }),
+      );
+      panel.position.set(0, 0.72, lean * 0.17);
+      panel.rotation.x = lean * -0.22;
+      if (lean === -1) panel.rotation.y = Math.PI;
+      board.add(panel);
+    }
+    board.position.set(3.6, 0, SNACK_D / 2 + 1.6);
+    board.rotation.y = -0.3;
+    snackGroup.add(board);
+  }
   [-1.6, 1.6].forEach((sx) => {
     const stoolPole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.06, 0.06, 0.9, 8),

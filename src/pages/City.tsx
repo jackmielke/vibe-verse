@@ -2585,6 +2585,8 @@ export default function City() {
     let coyoteTimer = 0; // grace window so jumping just after leaving ground feels right
     let wallJumpUsed = false; // one parkour wall-jump per air phase
     let peakY = 0; // highest Y reached this air phase, for fall-damage
+    let ridingZeppelin = false; // standing on the circling zeppelin's deck
+    let zeppelinToastShown = false;
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
@@ -2850,13 +2852,30 @@ export default function City() {
 
 
     // __cityDebug.teleport(330, 130, -30) drops you over the island.
+    // __cityDebug.zeppelin() returns the live deck center [x, y, z].
+    // player() / setCam() exist so headless tests can assert and frame.
     const devWindow = window as unknown as {
-      __cityDebug?: { teleport: (x: number, y: number, z: number) => void };
+      __cityDebug?: {
+        teleport: (x: number, y: number, z: number) => void;
+        zeppelin: () => [number, number, number];
+        player: () => [number, number, number];
+        setCam: (yaw: number, pitch?: number, dist?: number) => void;
+      };
     };
     devWindow.__cityDebug = {
       teleport: (x, y, z) => {
         player.position.set(x, y, z);
         vel.set(0, 0, 0);
+      },
+      zeppelin: () => {
+        const z = skyIslands.zeppelin;
+        return [z.pos.x, z.pos.y + z.deckY, z.pos.z];
+      },
+      player: () => [player.position.x, player.position.y, player.position.z],
+      setCam: (yaw, pitch, dist) => {
+        camYaw = yaw;
+        if (pitch !== undefined) camPitch = pitch;
+        if (dist !== undefined) camDist = dist;
       },
     };
 
@@ -3389,6 +3408,56 @@ export default function City() {
       tjsWorld.update(dt, now);
       skyIslands.update(dt, now);
       skyGames.update(dt, now, player.position);
+
+      // ---- Ride the zeppelin ------------------------------------------
+      // Its deck is a moving platform: hop on (jetpack up as it passes)
+      // and the hull's per-frame translation + turn are applied to you,
+      // so you cruise the whole city loop just by standing there.
+      {
+        const zep = skyIslands.zeppelin;
+        const pp = player.position;
+        // Detect against the PREVIOUS pose — the one the player's
+        // physics step just stood on — then carry to the current pose.
+        // Checking the new pose instead would drop riders whenever a
+        // slow frame lets the hull sweep several meters between ticks.
+        const dx = pp.x - zep.prevPos.x;
+        const dz = pp.z - zep.prevPos.z;
+        const cy = Math.cos(zep.prevYaw), sy = Math.sin(zep.prevYaw);
+        const lx = dx * cy - dz * sy;
+        const lz = dx * sy + dz * cy;
+        const deckPrevY = zep.prevPos.y + zep.deckY;
+        const catchBand = ridingZeppelin ? 1.8 : 1.0; // sticky once aboard
+        const overDeck = Math.abs(lx) <= zep.halfW + 0.3 && Math.abs(lz) <= zep.halfL + 0.3;
+        if (
+          overDeck &&
+          vel.y <= 0.6 && // jumping or jetpacking up releases you
+          pp.y >= deckPrevY - catchBand &&
+          pp.y <= deckPrevY + catchBand + 0.6
+        ) {
+          // Stick to the deck and apply this frame's hull motion
+          // (translate + turn about the hull center).
+          const dyaw = zep.yaw - zep.prevYaw;
+          const c = Math.cos(dyaw), s = Math.sin(dyaw);
+          pp.x = zep.pos.x + dx * c + dz * s;
+          pp.z = zep.pos.z - dx * s + dz * c;
+          pp.y = zep.pos.y + zep.deckY;
+          if (vel.y < 0) vel.y = 0;
+          onGround = true;
+          wallJumpUsed = false;
+          peakY = pp.y;
+          if (!ridingZeppelin) {
+            ridingZeppelin = true;
+            if (!zeppelinToastShown) {
+              zeppelinToastShown = true;
+              toast("🎈 All aboard!", {
+                description: "The zeppelin loops the whole city — ride as long as you like.",
+              });
+            }
+          }
+        } else {
+          ridingZeppelin = false;
+        }
+      }
 
       // ---- Gremlin Hunt: stomp + bite collisions ---------------------
       // Only run while you're actually on Mars (cheap distance check
@@ -4474,155 +4543,213 @@ export default function City() {
         </div>
       )}
 
-      {/* Vibe Shop dialog — hats + jet boost cosmetics. Free during
-          early access; vibe coin prices are shown for the future. */}
+      {/* Vibe Shop dialog — styled like stepping inside the neon kiosk:
+          marquee header, string lights, and goods sitting on lit shelves.
+          Free during early access; coin prices are shown for the future. */}
       {entered && shopOpen && (
         <div
           className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-3 sm:p-6 bg-background/70 backdrop-blur-sm"
           onClick={() => setShopOpen(false)}
         >
           <div
-            className="glass-panel rounded-2xl w-full max-w-md p-4 space-y-3 max-h-[90dvh] overflow-y-auto"
+            className="rounded-2xl w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden ring-1 ring-emerald-300/30 shadow-[0_0_60px_rgba(45,212,168,0.18)]"
+            style={{ background: "linear-gradient(180deg, #0c1118 0%, #10141c 40%, #131a24 100%)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
+            {/* Marquee header */}
+            <div
+              className="relative px-4 pt-4 pb-3 shrink-0"
+              style={{ background: "linear-gradient(180deg, rgba(45,212,168,0.16), rgba(45,212,168,0.03))" }}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div
+                    className="font-heading font-bold text-lg tracking-[0.14em] text-emerald-200"
+                    style={{ textShadow: "0 0 18px rgba(45,212,168,0.75)" }}
+                  >
+                    🛍️ VIBE SHOP
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/50">
+                    Vibe Island flagship · open all night
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-amber-300/10 ring-1 ring-amber-300/40 px-2.5 py-1 text-xs font-heading font-semibold text-amber-300">
+                    ✦ {hud.gems}
+                  </span>
+                  <button
+                    onClick={() => setShopOpen(false)}
+                    className="text-emerald-100/50 hover:text-emerald-100 text-lg leading-none px-2"
+                    aria-label="Close shop"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+              {/* String lights along the header edge */}
+              <div className="absolute bottom-0 left-0 right-0 flex justify-between px-3 translate-y-1/2">
+                {Array.from({ length: 11 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{
+                      background: i % 2 === 0 ? "#46e88c" : "#e94f8a",
+                      boxShadow: `0 0 6px ${i % 2 === 0 ? "#46e88c" : "#e94f8a"}`,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 pt-5 space-y-5 overflow-y-auto">
               <div>
-                <div className="font-heading font-bold text-base tracking-wide text-primary">
-                  🛍️ VIBE SHOP
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
+                    HATS
+                  </span>
+                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
                 </div>
-                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Early access · everything free
-                </div>
-              </div>
-              <button
-                onClick={() => setShopOpen(false)}
-                className="text-muted-foreground hover:text-foreground text-lg leading-none px-2"
-                aria-label="Close shop"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div>
-              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
-                HATS
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {HAT_CATALOG.map((h) => {
-                  const eq = equippedHat === h.id;
-                  return (
-                    <button
-                      key={h.id}
-                      onClick={() => {
-                        setEquippedHat(h.id);
-                        saveEquippedHat(h.id);
-                        applyHatRef.current?.(h.id);
-                      }}
-                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
-                        eq
-                          ? "bg-primary/25 ring-1 ring-primary text-primary"
-                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
-                      }`}
-                    >
-                      <span className="text-2xl">{h.emoji}</span>
-                      <span className="text-[10px] text-center leading-tight">{h.name}</span>
-                      <span className="text-[9px] text-muted-foreground">
-                        {h.price === 0 ? "free" : `${h.price} 🪙`}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
-                JET BOOSTS
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {FLAME_CATALOG.map((f) => {
-                  const eq = equippedFlame === f.id;
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={() => {
-                        setEquippedFlame(f.id);
-                        saveEquippedFlame(f.id);
-                        applyFlameRef.current?.(f.id);
-                      }}
-                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
-                        eq
-                          ? "bg-primary/25 ring-1 ring-primary text-primary"
-                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
-                      }`}
-                    >
-                      <span className="text-xl">{f.emoji}</span>
-                      <span
-                        className="w-6 h-1.5 rounded-full"
-                        style={{ background: f.color, boxShadow: `0 0 10px ${f.color}` }}
-                      />
-                      <span className="text-[10px] text-center leading-tight">{f.name}</span>
-                      <span className="text-[9px] text-muted-foreground">
-                        {f.price === 0 ? "free" : `${f.price} 🪙`}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[11px] font-heading font-semibold tracking-wider text-foreground/80 mb-1.5">
-                JET PACKS
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {JETPACK_CATALOG.map((j) => {
-                  const eq = equippedJetpack === j.id;
-                  const returned = !j.equipped;
-                  return (
-                    <button
-                      key={j.id}
-                      onClick={() => {
-                        setEquippedJetpack(j.id);
-                        saveEquippedJetpack(j.id);
-                        applyJetpackRef.current?.(j.id);
-                        setFallDamageEnabled(!j.equipped);
-                      }}
-                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${
-                        eq
-                          ? "bg-primary/25 ring-1 ring-primary text-primary"
-                          : "bg-muted/30 hover:bg-muted/60 text-foreground/80"
-                      }`}
-                    >
-                      <span className="text-xl">{j.emoji}</span>
-                      {returned ? (
-                        <span className="w-6 h-1.5 rounded-full bg-muted-foreground/40" />
-                      ) : (
-                        <span className="flex gap-0.5">
-                          <span
-                            className="w-3 h-1.5 rounded-l-full"
-                            style={{ background: j.body }}
-                          />
-                          <span
-                            className="w-3 h-1.5 rounded-r-full"
-                            style={{ background: j.trim, boxShadow: `0 0 8px ${j.trim}` }}
-                          />
+                <div className="grid grid-cols-4 gap-2">
+                  {HAT_CATALOG.map((h) => {
+                    const eq = equippedHat === h.id;
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          setEquippedHat(h.id);
+                          saveEquippedHat(h.id);
+                          applyHatRef.current?.(h.id);
+                        }}
+                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 hover:-translate-y-0.5 ${
+                          eq
+                            ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
+                            : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
+                        }`}
+                      >
+                        {eq && (
+                          <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-300 text-emerald-950 text-[8px] font-bold px-1.5 leading-relaxed">
+                            ON
+                          </span>
+                        )}
+                        <span className="text-2xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{h.emoji}</span>
+                        <span className="text-[10px] text-center leading-tight">{h.name}</span>
+                        <span className="text-[9px] font-mono text-amber-300/80">
+                          {h.price === 0 ? "free" : `${h.price} 🪙`}
                         </span>
-                      )}
-                      <span className="text-[10px] text-center leading-tight">{j.name}</span>
-                      <span className="text-[9px] text-muted-foreground">
-                        {j.price === 0 ? (returned ? "return" : "free") : `${j.price} 🪙`}
-                      </span>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-gradient-to-r from-amber-900/70 via-amber-800/60 to-amber-900/70 shadow-[0_2px_6px_rgba(0,0,0,0.5)]" />
               </div>
-            </div>
 
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
+                    JET BOOSTS
+                  </span>
+                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {FLAME_CATALOG.map((f) => {
+                    const eq = equippedFlame === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          setEquippedFlame(f.id);
+                          saveEquippedFlame(f.id);
+                          applyFlameRef.current?.(f.id);
+                        }}
+                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 hover:-translate-y-0.5 ${
+                          eq
+                            ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
+                            : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
+                        }`}
+                      >
+                        {eq && (
+                          <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-300 text-emerald-950 text-[8px] font-bold px-1.5 leading-relaxed">
+                            ON
+                          </span>
+                        )}
+                        <span className="text-xl">{f.emoji}</span>
+                        <span
+                          className="w-6 h-1.5 rounded-full"
+                          style={{ background: f.color, boxShadow: `0 0 10px ${f.color}` }}
+                        />
+                        <span className="text-[10px] text-center leading-tight">{f.name}</span>
+                        <span className="text-[9px] font-mono text-amber-300/80">
+                          {f.price === 0 ? "free" : `${f.price} 🪙`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-gradient-to-r from-amber-900/70 via-amber-800/60 to-amber-900/70 shadow-[0_2px_6px_rgba(0,0,0,0.5)]" />
+              </div>
 
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
+                    JET PACKS
+                  </span>
+                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {JETPACK_CATALOG.map((j) => {
+                    const eq = equippedJetpack === j.id;
+                    const returned = !j.equipped;
+                    return (
+                      <button
+                        key={j.id}
+                        onClick={() => {
+                          setEquippedJetpack(j.id);
+                          saveEquippedJetpack(j.id);
+                          applyJetpackRef.current?.(j.id);
+                          setFallDamageEnabled(!j.equipped);
+                        }}
+                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 hover:-translate-y-0.5 ${
+                          eq
+                            ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
+                            : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
+                        }`}
+                      >
+                        {eq && (
+                          <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-300 text-emerald-950 text-[8px] font-bold px-1.5 leading-relaxed">
+                            ON
+                          </span>
+                        )}
+                        <span className="text-xl">{j.emoji}</span>
+                        {returned ? (
+                          <span className="w-6 h-1.5 rounded-full bg-muted-foreground/40" />
+                        ) : (
+                          <span className="flex gap-0.5">
+                            <span
+                              className="w-3 h-1.5 rounded-l-full"
+                              style={{ background: j.body }}
+                            />
+                            <span
+                              className="w-3 h-1.5 rounded-r-full"
+                              style={{ background: j.trim, boxShadow: `0 0 8px ${j.trim}` }}
+                            />
+                          </span>
+                        )}
+                        <span className="text-[10px] text-center leading-tight">{j.name}</span>
+                        <span className="text-[9px] font-mono text-amber-300/80">
+                          {j.price === 0 ? (returned ? "return" : "free") : `${j.price} 🪙`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-gradient-to-r from-amber-900/70 via-amber-800/60 to-amber-900/70 shadow-[0_2px_6px_rgba(0,0,0,0.5)]" />
+              </div>
 
-            <div className="text-[10px] text-muted-foreground text-center pt-1">
-              Hold Space to test your new boost · the look saves across visits.
+              <div className="text-[10px] text-emerald-100/40 text-center pb-1">
+                Early access — everything's free while the island grows.
+                <br />
+                Hold Space to test your new boost · the look saves across visits.
+              </div>
             </div>
           </div>
         </div>
@@ -5179,76 +5306,109 @@ export default function City() {
       )}
 
       {snackOpen && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-4 w-[min(92vw,24rem)] flex flex-col gap-3 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <span className="font-heading font-semibold tracking-wider text-primary text-xs">
-              SNACKFE · open late
-            </span>
-            <button
-              onClick={() => setSnackOpen(false)}
-              className="text-muted-foreground hover:text-foreground px-1"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="flex items-center justify-between rounded-lg bg-foreground/5 px-3 py-2">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">your gems</span>
-            <span className="text-base font-heading font-semibold text-amber-300">
-              ✦ {hud.gems}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-1.5">
-            {[
-              { emoji: "🍓", name: "Strawberry", cost: 1, msg: "Sweet and bright. A tiny burst of summer." },
-              { emoji: "🍦", name: "Mint coin float", cost: 2, msg: "An icy mint float in a tall glass. +1 vibe." },
-              { emoji: "🥐", name: "Sunrise croissant", cost: 3, msg: "Flaky, buttery, still warm." },
-              { emoji: "☕", name: "Edge espresso", cost: 3, msg: "Tiny cup, big punch. Your jetpack feels lighter." },
-              { emoji: "🍡", name: "Neon mochi skewer", cost: 4, msg: "Three little glowing mochi on a stick." },
-              { emoji: "🍉", name: "Watermelon slice", cost: 5, msg: "Cold, crunchy, dripping. The good kind of mess." },
-            ].map((item) => {
-              const owned = purchases[item.name] ?? 0;
-              const canAfford = hud.gems >= item.cost;
-              return (
-                <button
-                  key={item.name}
-                  disabled={!canAfford}
-                  onClick={() => {
-                    if (vibeBalanceRef.current < item.cost) return;
-                    vibeBalanceRef.current -= item.cost;
-                    setVibeBalanceTick((n) => n + 1);
-                    persistVibeBalanceRef.current?.();
-                    setPurchases((p) => ({ ...p, [item.name]: (p[item.name] ?? 0) + 1 }));
-                    setSnackMsg(`${item.emoji} ${item.msg}`);
-                  }}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
-                    canAfford
-                      ? "bg-foreground/5 hover:bg-primary/15"
-                      : "bg-foreground/5 opacity-40 cursor-not-allowed"
-                  }`}
+        <div
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 rounded-2xl w-[min(92vw,24rem)] flex flex-col overflow-hidden animate-fade-in ring-4 ring-[#8b5e34] shadow-[0_10px_50px_rgba(0,0,0,0.6)]"
+          style={{ background: "radial-gradient(120% 100% at 50% 0%, #232a2f 0%, #191f24 55%, #14181d 100%)" }}
+        >
+          {/* Chalkboard header with string lights, like the real counter */}
+          <div className="relative px-4 pt-3.5 pb-3 border-b border-white/10">
+            <div className="flex items-center justify-between">
+              <div>
+                <span
+                  className="font-heading font-bold tracking-[0.12em] text-base text-emerald-300"
+                  style={{ textShadow: "0 0 16px rgba(70,232,140,0.6)" }}
                 >
-                  <span className="text-xl">{item.emoji}</span>
-                  <span className="flex-1 text-foreground/90">
-                    {item.name}
-                    {owned > 0 && (
-                      <span className="ml-2 text-[10px] text-muted-foreground">×{owned}</span>
-                    )}
-                  </span>
-                  <span className="text-xs font-mono text-amber-300">✦ {item.cost}</span>
-                </button>
-              );
-            })}
+                  SnackFe
+                </span>
+                <span className="ml-2 text-[10px] uppercase tracking-[0.22em] text-pink-300/80">
+                  · open late · vibes inside ·
+                </span>
+              </div>
+              <button
+                onClick={() => setSnackOpen(false)}
+                className="text-white/40 hover:text-white px-1"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="absolute -bottom-1 left-0 right-0 flex justify-between px-4">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    background: i % 2 === 0 ? "#46e88c" : "#e94f8a",
+                    boxShadow: `0 0 6px ${i % 2 === 0 ? "#46e88c" : "#e94f8a"}`,
+                  }}
+                />
+              ))}
+            </div>
           </div>
-          {snackMsg && (
-            <div className="text-xs text-primary bg-primary/10 rounded-lg px-3 py-2 animate-fade-in">
-              {snackMsg}
+
+          <div className="p-4 pt-3 flex flex-col gap-3">
+            <div className="flex items-center justify-between rounded-lg bg-white/[0.04] ring-1 ring-white/10 px-3 py-2">
+              <span className="text-[11px] uppercase tracking-wider text-white/45">your gems</span>
+              <span className="text-base font-heading font-semibold text-amber-300">
+                ✦ {hud.gems}
+              </span>
             </div>
-          )}
-          {hud.gems === 0 && (
-            <div className="text-[10px] text-muted-foreground text-center">
-              collect ✦ gems around Edge Island and the city to spend here
+            {/* The menu, chalk-style: dotted leaders out to the price */}
+            <div className="grid grid-cols-1 gap-1">
+              {[
+                { emoji: "🍓", name: "Strawberry", cost: 1, msg: "Sweet and bright. A tiny burst of summer." },
+                { emoji: "🍦", name: "Mint coin float", cost: 2, msg: "An icy mint float in a tall glass. +1 vibe." },
+                { emoji: "🥐", name: "Sunrise croissant", cost: 3, msg: "Flaky, buttery, still warm." },
+                { emoji: "☕", name: "Edge espresso", cost: 3, msg: "Tiny cup, big punch. Your jetpack feels lighter." },
+                { emoji: "🍡", name: "Neon mochi skewer", cost: 4, msg: "Three little glowing mochi on a stick." },
+                { emoji: "🍉", name: "Watermelon slice", cost: 5, msg: "Cold, crunchy, dripping. The good kind of mess." },
+              ].map((item) => {
+                const owned = purchases[item.name] ?? 0;
+                const canAfford = hud.gems >= item.cost;
+                return (
+                  <button
+                    key={item.name}
+                    disabled={!canAfford}
+                    onClick={() => {
+                      if (vibeBalanceRef.current < item.cost) return;
+                      vibeBalanceRef.current -= item.cost;
+                      setVibeBalanceTick((n) => n + 1);
+                      persistVibeBalanceRef.current?.();
+                      setPurchases((p) => ({ ...p, [item.name]: (p[item.name] ?? 0) + 1 }));
+                      setSnackMsg(`${item.emoji} ${item.msg}`);
+                    }}
+                    className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                      canAfford
+                        ? "hover:bg-emerald-400/10 hover:ring-1 hover:ring-emerald-300/30"
+                        : "opacity-35 cursor-not-allowed"
+                    }`}
+                  >
+                    <span className="text-xl drop-shadow-[0_2px_5px_rgba(0,0,0,0.6)] transition-transform group-hover:scale-110">
+                      {item.emoji}
+                    </span>
+                    <span className="text-white/90 whitespace-nowrap">
+                      {item.name}
+                      {owned > 0 && (
+                        <span className="ml-1.5 text-[10px] text-emerald-300/70">×{owned}</span>
+                      )}
+                    </span>
+                    <span className="flex-1 border-b border-dotted border-white/25 translate-y-1" />
+                    <span className="text-xs font-mono text-amber-300">✦ {item.cost}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
+            {snackMsg && (
+              <div className="text-xs text-emerald-200 bg-emerald-400/10 ring-1 ring-emerald-300/25 rounded-lg px-3 py-2 animate-fade-in">
+                {snackMsg}
+              </div>
+            )}
+            {hud.gems === 0 && (
+              <div className="text-[10px] text-white/40 text-center">
+                collect ✦ gems around Vibe Island and the city to spend here
+              </div>
+            )}
+          </div>
         </div>
       )}
       {npcTarget !== null && (
