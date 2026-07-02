@@ -691,7 +691,9 @@ export function buildCardboardIsland(opts: {
     // Door faces the island center along the dominant axis.
     const alongX = Math.abs(s.x) > Math.abs(s.z);
     const fs = alongX ? -Math.sign(s.x) : -Math.sign(s.z); // facing sign
-    const rotY = alongX ? (fs > 0 ? -Math.PI / 2 : Math.PI / 2) : fs > 0 ? Math.PI : 0;
+    // Plane fronts must point AWAY from the wall (+x face → rotY π/2,
+    // -x face → -π/2; +z face → 0, -z face → π) or the text mirrors.
+    const rotY = alongX ? (fs > 0 ? Math.PI / 2 : -Math.PI / 2) : fs > 0 ? 0 : Math.PI;
     // Local frame: u = facing axis (door face at u = fs*U/2), v = the other.
     const U = alongX ? s.w : s.d;
     const V = alongX ? s.d : s.w;
