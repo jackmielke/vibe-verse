@@ -123,45 +123,81 @@ export function cardboardTexture(): THREE.CanvasTexture {
 }
 
 function islandGroundTexture(): THREE.CanvasTexture {
-  const S = 512;
+  const S = 1024;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#d8c39a"; // sandy base
+
+  // Lush lawn base with soft mowed-stripe variation.
+  ctx.fillStyle = "#79c258";
   ctx.fillRect(0, 0, S, S);
-  // Green patches around the rim.
-  ctx.fillStyle = "rgba(106, 158, 88, 0.75)";
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * Math.PI * 2;
-    const r = S * 0.34 + ((i * 37) % 60);
-    const x = S / 2 + Math.cos(a) * r * 0.5;
-    const y = S / 2 + Math.sin(a) * r * 0.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 26 + ((i * 13) % 20), 16 + ((i * 7) % 14), a, 0, Math.PI * 2);
-    ctx.fill();
+  for (let i = 0; i < 14; i++) {
+    ctx.fillStyle = i % 2 ? "rgba(255,255,255,0.045)" : "rgba(30,80,30,0.05)";
+    ctx.save();
+    ctx.translate(S / 2, S / 2);
+    ctx.rotate(0.35);
+    ctx.fillRect(-S, -S / 2 + i * (S / 14), S * 2, S / 28);
+    ctx.restore();
   }
-  // Stone path cross through the middle.
-  ctx.fillStyle = "rgba(160, 150, 134, 0.9)";
-  for (let i = -8; i <= 8; i++) {
-    ctx.beginPath();
-    ctx.ellipse(S / 2 + i * 26, S / 2, 11, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(S / 2, S / 2 + i * 26, 8, 11, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Flowers.
-  const petals = ["#e85d75", "#f2b134", "#b78ae0", "#ffffff"];
-  for (let i = 0; i < 30; i++) {
-    ctx.fillStyle = petals[i % petals.length];
+  // Mottled grass texture: soft darker blobs.
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = i % 3 ? "rgba(52,120,52,0.10)" : "rgba(150,210,110,0.12)";
     const x = (i * 131 + 40) % S;
-    const y = (i * 89 + 60) % S;
+    const y = (i * 197 + 60) % S;
     ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 22 + ((i * 13) % 26), 14 + ((i * 7) % 18), i, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Sandy path cross with a soft edge, then crisp stepping stones on top.
+  const path = (horizontal: boolean) => {
+    const g = horizontal
+      ? ctx.createLinearGradient(0, S / 2 - 30, 0, S / 2 + 30)
+      : ctx.createLinearGradient(S / 2 - 30, 0, S / 2 + 30, 0);
+    g.addColorStop(0, "rgba(226,206,164,0)");
+    g.addColorStop(0.25, "rgba(226,206,164,0.95)");
+    g.addColorStop(0.75, "rgba(226,206,164,0.95)");
+    g.addColorStop(1, "rgba(226,206,164,0)");
+    ctx.fillStyle = g;
+    if (horizontal) ctx.fillRect(0, S / 2 - 30, S, 60);
+    else ctx.fillRect(S / 2 - 30, 0, 60, S);
+  };
+  path(true);
+  path(false);
+  for (let i = -10; i <= 10; i++) {
+    for (const [dx, dy, horiz] of [[i * 42, 0, true], [0, i * 42, false]] as const) {
+      if (!horiz && Math.abs(i) < 1) continue; // don't double the center
+      ctx.fillStyle = "#d3bd97";
+      ctx.strokeStyle = "rgba(120,100,70,0.28)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(S / 2 + dx + (i % 2 ? 5 : -5), S / 2 + dy, horiz ? 11 : 8, horiz ? 8 : 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  // Clover flowers scattered on the lawn (kept off the paths).
+  const petals = ["#ff8fae", "#ffd166", "#c9a2ff", "#ffffff"];
+  for (let i = 0; i < 64; i++) {
+    const x = (i * 263 + 40) % S;
+    const y = (i * 389 + 60) % S;
+    if (Math.abs(x - S / 2) < 60 || Math.abs(y - S / 2) < 60) continue;
+    ctx.fillStyle = petals[i % petals.length];
+    for (let p = 0; p < 4; p++) {
+      const pa = (p / 4) * Math.PI * 2 + i;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(pa) * 3.2, y + Math.sin(pa) * 3.2, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#f7f3d0";
+    ctx.beginPath();
+    ctx.arc(x, y, 1.8, 0, Math.PI * 2);
     ctx.fill();
   }
   const t = new THREE.CanvasTexture(canvas);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
   return t;
 }
 
@@ -195,6 +231,126 @@ export function signTexture(lines: string[], bg: string, fg: string, glow = fals
     ctx.restore();
   });
   const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// ------------------------------------------------------------------
+// Craft-pass helpers: organic landform + refined facades.
+// ------------------------------------------------------------------
+
+/** Deterministic RNG so the island's silhouette never reshuffles. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Smooth looping noise over angle [0..2π) — shared by every landform
+ * layer so the grass lip, dirt band and rock cone silhouettes match. */
+function makeRimNoise(rand: () => number, amp: number, knots = 12): (a: number) => number {
+  const vals = Array.from({ length: knots }, () => (rand() * 2 - 1) * amp);
+  return (a: number) => {
+    const t = ((a / (Math.PI * 2)) % 1 + 1) % 1 * knots;
+    const i = Math.floor(t);
+    const f = t - i;
+    const s = f * f * (3 - 2 * f);
+    return vals[i % knots] + (vals[(i + 1) % knots] - vals[i % knots]) * s;
+  };
+}
+
+/** Push vertices radially in/out by rimFn(angle) — organic, not a lathe. */
+function displaceRadial(geo: THREE.BufferGeometry, rimFn: (a: number) => number) {
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const z = p.getZ(i);
+    const r = Math.hypot(x, z);
+    if (r < 0.01) continue;
+    const s = 1 + rimFn(Math.atan2(z, x));
+    p.setX(i, x * s);
+    p.setZ(i, z * s);
+  }
+  p.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/** Clean painted facade: soft color wash, paper grain, baseboard and a
+ * trim line — handmade-but-tidy, replacing the raw doodle cardboard. */
+function facadeTexture(tint: string, trim: string): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = tint;
+  ctx.fillRect(0, 0, S, S);
+  // Paper grain: sparse soft strokes, two tones.
+  for (let i = 0; i < 46; i++) {
+    ctx.strokeStyle = i % 2 ? "rgba(255,255,255,0.05)" : "rgba(60,40,20,0.05)";
+    ctx.lineWidth = 1 + (i % 3);
+    const y = (i * 61) % S;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(S * 0.3, y + 3, S * 0.7, y - 3, S, y);
+    ctx.stroke();
+  }
+  // Baseboard + upper trim line.
+  ctx.fillStyle = trim;
+  ctx.globalAlpha = 0.85;
+  ctx.fillRect(0, S - 18, S, 18);
+  ctx.globalAlpha = 0.4;
+  ctx.fillRect(0, 26, S, 5);
+  ctx.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Striped canvas awning. */
+function awningTexture(color: string): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#f6efe2";
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = color;
+  for (let x = 0; x < 256; x += 32) ctx.fillRect(x, 0, 16, 64);
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Vertically-scrolling waterfall ribbon. */
+function waterfallTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 64, 0);
+  g.addColorStop(0, "rgba(190,235,255,0.05)");
+  g.addColorStop(0.5, "rgba(210,240,255,0.55)");
+  g.addColorStop(1, "rgba(190,235,255,0.05)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 256);
+  ctx.strokeStyle = "rgba(255,255,255,0.65)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 9; i++) {
+    const x = 6 + ((i * 23) % 52);
+    ctx.beginPath();
+    ctx.moveTo(x, (i * 47) % 256);
+    ctx.lineTo(x + 2, ((i * 47) % 256) + 34 + (i % 3) * 12);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -350,22 +506,164 @@ export function buildCardboardIsland(opts: {
   const cardboardMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.92 });
   const cardboardDark = new THREE.MeshStandardMaterial({ color: "#9a7a4e", roughness: 0.95 });
 
-  // ---- Island body -------------------------------------------------
-  // Cylinder material order is [side, top, bottom].
-  const top = new THREE.Mesh(
-    new THREE.CylinderGeometry(ISLAND_RADIUS, ISLAND_RADIUS + 3, 7, 40),
-    [
-      cardboardDark,
-      new THREE.MeshStandardMaterial({ map: islandGroundTexture(), roughness: 0.9 }),
-      cardboardDark,
-    ],
-  );
-  top.position.y = -3.5;
+  // ---- Island body (craft pass) -------------------------------------
+  // An organic landform instead of a lathe: every layer shares ONE rim
+  // noise so the grass lip, dirt band and rock strata line up, like the
+  // island was torn out of a hillside. Per-frame anims register here.
+  const craftAnims: Array<(dt: number, now: number) => void> = [];
+  const landRand = mulberry32(7331);
+  const landRim = makeRimNoise(landRand, 0.07);
+
+  // Grass cap — flat walkable top, wobbly rim with a lip that overhangs
+  // the dirt below. Cylinder material order is [side, top, bottom].
+  const capGeo = new THREE.CylinderGeometry(ISLAND_RADIUS + 1.6, ISLAND_RADIUS - 0.6, 3.2, 56, 1);
+  displaceRadial(capGeo, landRim);
+  const grassSide = new THREE.MeshStandardMaterial({ color: "#5da944", roughness: 0.95, flatShading: true });
+  const top = new THREE.Mesh(capGeo, [
+    grassSide,
+    new THREE.MeshStandardMaterial({ map: islandGroundTexture(), roughness: 0.9 }),
+    grassSide,
+  ]);
+  top.position.y = -1.6;
   group.add(top);
-  const under = new THREE.Mesh(new THREE.ConeGeometry(ISLAND_RADIUS + 1, 34, 36), cardboardMat);
-  under.rotation.x = Math.PI;
-  under.position.y = -24;
-  group.add(under);
+
+  // Dirt band under the lip.
+  const dirtGeo = new THREE.CylinderGeometry(ISLAND_RADIUS - 0.5, ISLAND_RADIUS - 4.5, 5.5, 56, 1);
+  displaceRadial(dirtGeo, landRim);
+  const dirt = new THREE.Mesh(
+    dirtGeo,
+    new THREE.MeshStandardMaterial({ color: "#8a6a44", roughness: 1, flatShading: true }),
+  );
+  dirt.position.y = -5.9;
+  group.add(dirt);
+
+  // Rock strata cone — jittered vertices for a chiselled underside.
+  const rockGeo = new THREE.ConeGeometry(ISLAND_RADIUS - 4, 30, 40, 4);
+  displaceRadial(rockGeo, landRim);
+  {
+    const p = rockGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i)) > 14.6) continue; // keep the apex sharp
+      const n = 0.92 + landRand() * 0.16;
+      p.setX(i, p.getX(i) * n);
+      p.setZ(i, p.getZ(i) * n);
+    }
+    p.needsUpdate = true;
+    rockGeo.computeVertexNormals();
+  }
+  const rock = new THREE.Mesh(
+    rockGeo,
+    new THREE.MeshStandardMaterial({ color: "#6b5540", roughness: 1, flatShading: true }),
+  );
+  rock.rotation.x = Math.PI;
+  rock.position.y = -23.6;
+  group.add(rock);
+
+  // Hanging roots trailing off the dirt band.
+  const rootMat = new THREE.MeshStandardMaterial({ color: "#6e4f32", roughness: 1 });
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + landRand();
+    const len = 3 + landRand() * 5;
+    const root = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.22, len, 5), rootMat);
+    const rr = (ISLAND_RADIUS - 3) * (1 + landRim(a));
+    root.position.set(Math.cos(a) * rr, -8.5 - len / 2, Math.sin(a) * rr);
+    root.rotation.z = (landRand() - 0.5) * 0.3;
+    group.add(root);
+  }
+
+  // Drifting rock shards beneath — that "torn out of the earth" look.
+  const shardGeo = new THREE.IcosahedronGeometry(1, 0);
+  const shardMat = new THREE.MeshStandardMaterial({ color: "#75604a", roughness: 1, flatShading: true });
+  for (let i = 0; i < 8; i++) {
+    const shard = new THREE.Mesh(shardGeo, shardMat);
+    const a = (i / 8) * Math.PI * 2 + 0.7;
+    const rr = ISLAND_RADIUS * (0.45 + landRand() * 0.5);
+    const baseYS = -16 - landRand() * 14;
+    shard.position.set(Math.cos(a) * rr, baseYS, Math.sin(a) * rr);
+    shard.scale.setScalar(0.5 + landRand() * 1.4);
+    shard.rotation.set(landRand() * 3, landRand() * 3, landRand() * 3);
+    group.add(shard);
+    const phase = landRand() * Math.PI * 2;
+    craftAnims.push((dt, now) => {
+      shard.position.y = baseYS + Math.sin(now * 0.0005 + phase) * 0.6;
+      shard.rotation.y += dt * 0.08;
+    });
+  }
+
+  // ---- Spring + waterfall on the east rim ---------------------------
+  // A small pool spills off the edge in a soft ribbon with mist below.
+  {
+    const POOL_X = 36, POOL_Z = 10;
+    const pool = new THREE.Mesh(
+      new THREE.CircleGeometry(4.2, 28),
+      new THREE.MeshStandardMaterial({
+        color: "#5fc4de", roughness: 0.25, metalness: 0.1,
+        transparent: true, opacity: 0.9,
+        emissive: "#1a4a5a", emissiveIntensity: 0.25,
+      }),
+    );
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(POOL_X, 0.09, POOL_Z);
+    group.add(pool);
+    // Stone lip around the pool.
+    const lipMat = new THREE.MeshStandardMaterial({ color: "#b3a68d", roughness: 0.95, flatShading: true });
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), lipMat);
+      stone.position.set(POOL_X + Math.cos(a) * 4.5, 0.25, POOL_Z + Math.sin(a) * 4.5);
+      stone.scale.set(1, 0.6, 1);
+      stone.rotation.y = a * 3;
+      group.add(stone);
+    }
+    // Stream strip to the rim.
+    const streamDir = Math.atan2(POOL_Z, POOL_X);
+    const rimR = (ISLAND_RADIUS + 1.2) * (1 + landRim(streamDir));
+    const rimX = Math.cos(streamDir) * rimR;
+    const rimZ = Math.sin(streamDir) * rimR;
+    const streamLen = Math.hypot(rimX - POOL_X, rimZ - POOL_Z);
+    const stream = new THREE.Mesh(
+      new THREE.PlaneGeometry(streamLen, 2.4),
+      new THREE.MeshStandardMaterial({
+        color: "#6fd0e8", roughness: 0.3, transparent: true, opacity: 0.85,
+      }),
+    );
+    stream.rotation.x = -Math.PI / 2;
+    stream.rotation.z = -streamDir;
+    stream.position.set((POOL_X + rimX) / 2, 0.08, (POOL_Z + rimZ) / 2);
+    group.add(stream);
+    // The falling ribbon.
+    const fallTex = waterfallTexture();
+    const FALL_H = 26;
+    const fall = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.6, FALL_H),
+      new THREE.MeshBasicMaterial({
+        map: fallTex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      }),
+    );
+    fall.position.set(rimX + Math.cos(streamDir) * 0.6, -FALL_H / 2 + 0.4, rimZ + Math.sin(streamDir) * 0.6);
+    fall.rotation.y = -streamDir + Math.PI / 2;
+    group.add(fall);
+    // Mist puffs at the bottom of the fall.
+    const mistMat = new THREE.SpriteMaterial({
+      color: 0xdfF4ff, transparent: true, opacity: 0.35, depthWrite: false,
+    });
+    const mists: THREE.Sprite[] = [];
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Sprite(mistMat.clone() as THREE.SpriteMaterial);
+      m.position.set(rimX + Math.cos(streamDir) * (0.5 + i * 0.5), -FALL_H + 1.5, rimZ + Math.sin(streamDir) * (0.5 + i * 0.5));
+      m.scale.set(4 + i, 2.4 + i * 0.5, 1);
+      group.add(m);
+      mists.push(m);
+    }
+    craftAnims.push((dt, now) => {
+      fallTex.offset.y += dt * 0.55;
+      mists.forEach((m, i) => {
+        const k = ((now * 0.0004 + i * 0.33) % 1);
+        (m.material as THREE.SpriteMaterial).opacity = 0.38 * (1 - k);
+        m.scale.set(4 + i + k * 2.5, 2.4 + i * 0.5 + k * 1.5, 1);
+      });
+    });
+  }
 
   // Platform collision: a square inset into the round island so the
   // visual edge slightly overhangs. Flying under it stays clear.
@@ -377,24 +675,215 @@ export function buildCardboardIsland(opts: {
     height: topY,
   });
 
-  // ---- Shops -------------------------------------------------------
+  // ---- Shops (craft pass: real architecture you can walk into) ------
+  // Each shop is now four true walls with a doorway cut into the face
+  // that looks at the island center, a warm lit interior with furniture,
+  // an awning, a swinging bracket sign, window boxes — and per-wall
+  // collision so you can actually step inside (and still land on the
+  // roof from above).
   const signMats: THREE.MeshBasicMaterial[] = [];
+  const WALL_T = 0.4;
+  const DOOR_W = 2.2;
+  const DOOR_H = 2.7;
   for (const s of SHOPS) {
     const shop = new THREE.Group();
     shop.position.set(s.x, 0, s.z);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(s.w, s.h, s.d), cardboardMat);
-    body.position.y = s.h / 2;
-    shop.add(body);
-    // Wonky cardboard roof slab.
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(s.w + 1.4, 0.5, s.d + 1.4), cardboardDark);
-    roof.position.y = s.h + 0.25;
-    roof.rotation.z = 0.025;
-    shop.add(roof);
-    if (s.tier) {
-      const tier = new THREE.Mesh(
-        new THREE.BoxGeometry(s.tier.w, s.tier.h, s.tier.d),
-        cardboardMat,
+    // Door faces the island center along the dominant axis.
+    const alongX = Math.abs(s.x) > Math.abs(s.z);
+    const fs = alongX ? -Math.sign(s.x) : -Math.sign(s.z); // facing sign
+    const rotY = alongX ? (fs > 0 ? -Math.PI / 2 : Math.PI / 2) : fs > 0 ? Math.PI : 0;
+    // Local frame: u = facing axis (door face at u = fs*U/2), v = the other.
+    const U = alongX ? s.w : s.d;
+    const V = alongX ? s.d : s.w;
+    const toLocal = (u: number, v: number): [number, number] =>
+      alongX ? [u, v] : [v, u];
+
+    const wallMat = new THREE.MeshStandardMaterial({
+      map: facadeTexture(s.bg, s.fg),
+      roughness: 0.85,
+    });
+    const trimMat = new THREE.MeshStandardMaterial({ color: s.fg, roughness: 0.6 });
+
+    // A wall panel: centered at (u,v) in the local frame, sized (du,dv,h),
+    // rendered AND collided so interiors are real.
+    const wallBoxes: WorldBox[] = [];
+    const panel = (u: number, v: number, du: number, dv: number, h: number, yBase = 0) => {
+      const [lx, lz] = toLocal(u, v);
+      // Sizes rotate with the frame: alongX keeps (du,dv), otherwise swap.
+      const sw = alongX ? du : dv;
+      const sd = alongX ? dv : du;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sw, h, sd), wallMat);
+      mesh.position.set(lx, yBase + h / 2, lz);
+      shop.add(mesh);
+      wallBoxes.push({
+        minX: centerX + s.x + lx - sw / 2, maxX: centerX + s.x + lx + sw / 2,
+        minZ: centerZ + s.z + lz - sd / 2, maxZ: centerZ + s.z + lz + sd / 2,
+        base: topY + yBase,
+        height: topY + yBase + h,
+      });
+    };
+
+    // Back wall, side walls, and the split front wall with a door gap.
+    panel(-fs * (U / 2 - WALL_T / 2), 0, WALL_T, V, s.h);
+    panel(0, -(V / 2 - WALL_T / 2), U - 2 * WALL_T, WALL_T, s.h);
+    panel(0, +(V / 2 - WALL_T / 2), U - 2 * WALL_T, WALL_T, s.h);
+    const frontU = fs * (U / 2 - WALL_T / 2);
+    const segV = (V - DOOR_W) / 2 - WALL_T;
+    panel(frontU, -(DOOR_W / 2 + segV / 2 + WALL_T), WALL_T, segV, s.h);
+    panel(frontU, +(DOOR_W / 2 + segV / 2 + WALL_T), WALL_T, segV, s.h);
+    // Header above the doorway (walk under, no jetpacking through).
+    panel(frontU, 0, WALL_T, DOOR_W, s.h - DOOR_H, DOOR_H);
+
+    // Door frame trim: posts + lintel in the accent color.
+    for (const side of [-1, 1]) {
+      const [px, pz] = toLocal(fs * (U / 2 - WALL_T / 2), side * (DOOR_W / 2 + 0.12));
+      const post = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 0.5 : 0.28, DOOR_H + 0.15, alongX ? 0.28 : 0.5), trimMat);
+      post.position.set(px, (DOOR_H + 0.15) / 2, pz);
+      shop.add(post);
+    }
+    {
+      const [lx, lz] = toLocal(fs * (U / 2 - WALL_T / 2), 0);
+      const lintel = new THREE.Mesh(
+        new THREE.BoxGeometry(alongX ? 0.5 : DOOR_W + 0.5, 0.3, alongX ? DOOR_W + 0.5 : 0.5),
+        trimMat,
       );
+      lintel.position.set(lx, DOOR_H + 0.08, lz);
+      shop.add(lintel);
+    }
+
+    // Roof slab with a proper overhang + fascia trim (still landable).
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(s.w + 1.6, 0.5, s.d + 1.6), cardboardDark);
+    roof.position.y = s.h + 0.25;
+    roof.rotation.z = 0.015;
+    shop.add(roof);
+    const fascia = new THREE.Mesh(new THREE.BoxGeometry(s.w + 1.75, 0.18, s.d + 1.75), trimMat);
+    fascia.position.y = s.h + 0.06;
+    shop.add(fascia);
+    boxes.push({
+      minX: centerX + s.x - s.w / 2 - 0.8, maxX: centerX + s.x + s.w / 2 + 0.8,
+      minZ: centerZ + s.z - s.d / 2 - 0.8, maxZ: centerZ + s.z + s.d / 2 + 0.8,
+      base: topY + s.h,
+      height: topY + s.h + 0.5,
+    });
+
+    // Striped awning over the door.
+    {
+      const [ax, az] = toLocal(fs * (U / 2 + 0.9), 0);
+      const awn = new THREE.Mesh(
+        new THREE.PlaneGeometry(DOOR_W + 1.8, 2.0),
+        new THREE.MeshStandardMaterial({
+          map: awningTexture(s.fg), side: THREE.DoubleSide, roughness: 0.9,
+        }),
+      );
+      awn.position.set(ax, DOOR_H + 0.75, az);
+      awn.rotation.y = rotY;
+      awn.rotateX(-0.5);
+      shop.add(awn);
+    }
+
+    // Warm interior: rug, counter, shelf goods, hanging lamp + light.
+    {
+      const rug = new THREE.Mesh(
+        new THREE.CircleGeometry(Math.min(U, V) * 0.28, 24),
+        new THREE.MeshStandardMaterial({ color: s.fg, roughness: 0.95, transparent: true, opacity: 0.55 }),
+      );
+      rug.rotation.x = -Math.PI / 2;
+      rug.position.y = 0.05;
+      shop.add(rug);
+      const [cx2, cz2] = toLocal(-fs * (U / 2 - 1.4), 0);
+      const counter = new THREE.Mesh(
+        new THREE.BoxGeometry(alongX ? 1 : V * 0.5, 1.1, alongX ? V * 0.5 : 1), cardboardDark);
+      counter.position.set(cx2, 0.55, cz2);
+      shop.add(counter);
+      const goods = ["#e85d75", "#ffd166", "#8cd16a", "#5db8e8"];
+      for (let gi = 0; gi < 4; gi++) {
+        const item = new THREE.Mesh(
+          new THREE.BoxGeometry(0.45, 0.4, 0.45),
+          new THREE.MeshStandardMaterial({ color: goods[gi], roughness: 0.7 }),
+        );
+        const [gx, gz] = toLocal(-fs * (U / 2 - 1.4), (gi - 1.5) * 0.7);
+        item.position.set(gx, 1.35, gz);
+        item.rotation.y = gi * 0.7;
+        shop.add(item);
+      }
+      const lampCone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.5, 0.5, 12, 1, true),
+        new THREE.MeshStandardMaterial({ color: "#2c2c34", roughness: 0.5, side: THREE.DoubleSide }),
+      );
+      lampCone.position.y = s.h - 0.7;
+      shop.add(lampCone);
+      const bulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 10, 8),
+        new THREE.MeshBasicMaterial({ color: "#ffe9b8" }),
+      );
+      bulb.position.y = s.h - 0.85;
+      shop.add(bulb);
+      const glow = new THREE.PointLight(0xffd9a0, 9, Math.max(U, V) * 1.4, 1.8);
+      glow.position.y = s.h - 1.1;
+      shop.add(glow);
+    }
+
+    // Glowing windows with mullions + flower boxes on the side walls.
+    for (const side of [-1, 1]) {
+      const [wx, wz] = toLocal(0, side * (V / 2 + 0.03));
+      const pane = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.2, 1.5),
+        new THREE.MeshStandardMaterial({
+          color: "#fff3cf", emissive: "#ffcf7a", emissiveIntensity: 0.85,
+          roughness: 0.4, side: THREE.DoubleSide,
+        }),
+      );
+      pane.position.set(wx, 2.2, wz);
+      pane.rotation.y = alongX ? 0 : Math.PI / 2;
+      shop.add(pane);
+      for (const mull of [0, 1]) {
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(mull ? 2.35 : 0.1, mull ? 0.1 : 1.6, 0.08),
+          trimMat,
+        );
+        bar.position.set(wx, 2.2, wz);
+        bar.rotation.y = alongX ? 0 : Math.PI / 2;
+        shop.add(bar);
+      }
+      const box = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 2.3 : 0.5, 0.35, alongX ? 0.5 : 2.3), cardboardDark);
+      const [bx2, bz2] = toLocal(0, side * (V / 2 + 0.28));
+      box.position.set(bx2, 1.3, bz2);
+      shop.add(box);
+      for (let f = 0; f < 3; f++) {
+        const flower = new THREE.Mesh(
+          new THREE.SphereGeometry(0.13, 8, 6),
+          new THREE.MeshStandardMaterial({ color: ["#ff8fae", "#ffd166", "#c9a2ff"][f], roughness: 0.7 }),
+        );
+        const [fx, fz] = toLocal((f - 1) * 0.7, side * (V / 2 + 0.28));
+        flower.position.set(fx, 1.55, fz);
+        shop.add(flower);
+      }
+    }
+
+    // Hanging bracket sign by the door — sways gently.
+    {
+      const [ax, az] = toLocal(fs * (U / 2 + 0.55), DOOR_W / 2 + 1.1);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 1.1 : 0.12, 0.12, alongX ? 0.12 : 1.1), trimMat);
+      arm.position.set((alongX ? ax - fs * 0.35 : ax), DOOR_H + 1.15, alongX ? az : az - 0.35);
+      shop.add(arm);
+      const hanger = new THREE.Group();
+      hanger.position.set(ax, DOOR_H + 1.1, az);
+      const smallTex = signTexture([s.lines[0]], s.bg, s.fg);
+      const smallMat = new THREE.MeshBasicMaterial({ map: smallTex, side: THREE.DoubleSide });
+      signMats.push(smallMat);
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.8), smallMat);
+      board.position.y = -0.55;
+      hanger.add(board);
+      shop.add(hanger);
+      const phase = Math.random() * Math.PI * 2;
+      craftAnims.push((_dt, now) => {
+        hanger.rotation.x = Math.sin(now * 0.0012 + phase) * 0.1;
+        hanger.rotation.z = Math.cos(now * 0.0009 + phase) * 0.08;
+      });
+    }
+
+    if (s.tier) {
+      const tier = new THREE.Mesh(new THREE.BoxGeometry(s.tier.w, s.tier.h, s.tier.d), wallMat);
       tier.position.y = s.h + 0.5 + s.tier.h / 2;
       shop.add(tier);
       const tierRoof = new THREE.Mesh(
@@ -406,10 +895,7 @@ export function buildCardboardIsland(opts: {
       shop.add(tierRoof);
     }
 
-    // Sign facing the Dream Tree at the island center.
-    const towardCenter = Math.abs(s.x) > Math.abs(s.z)
-      ? { x: -Math.sign(s.x), z: 0, rotY: Math.sign(s.x) < 0 ? Math.PI / 2 : -Math.PI / 2 }
-      : { x: 0, z: -Math.sign(s.z), rotY: Math.sign(s.z) < 0 ? 0 : Math.PI };
+    // Marquee + sub boards above the door face.
     const addBoard = (
       lines: string[], bg: string, fg: string, glow: boolean, width: number, y: number, out: number,
     ) => {
@@ -418,16 +904,13 @@ export function buildCardboardIsland(opts: {
       const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
       signMats.push(mat);
       const board = new THREE.Mesh(new THREE.PlaneGeometry(width, width * ratio), mat);
-      board.position.set(
-        towardCenter.x * (Math.abs(s.x) > Math.abs(s.z) ? s.w / 2 + out : 0),
-        y,
-        towardCenter.z * (Math.abs(s.x) > Math.abs(s.z) ? 0 : s.d / 2 + out),
-      );
-      board.rotation.y = towardCenter.rotY;
+      const [bx, bz] = toLocal(fs * (U / 2 + out), 0);
+      board.position.set(bx, y, bz);
+      board.rotation.y = rotY;
       shop.add(board);
     };
-    addBoard(s.lines, s.bg, s.fg, false, Math.min(s.w * 0.85, 11), s.h * 0.72, 0.12);
-    if (s.sub) addBoard(s.sub.lines, s.sub.bg, s.sub.fg, s.sub.glow ?? false, 5.5, s.h * 0.3, 0.18);
+    addBoard(s.lines, s.bg, s.fg, false, Math.min(s.w * 0.8, 10), s.h * 0.78, 0.14);
+    if (s.sub) addBoard(s.sub.lines, s.sub.bg, s.sub.fg, s.sub.glow ?? false, 4.6, s.h * 0.42, 0.2);
     if (s.cross) {
       const crossMat = new THREE.MeshBasicMaterial({ color: "#cc3333" });
       const barA = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.4, 0.3), crossMat);
@@ -439,13 +922,8 @@ export function buildCardboardIsland(opts: {
     }
     group.add(shop);
 
-    // Collision (main body; the pagoda tier is landable too).
-    boxes.push({
-      minX: centerX + s.x - s.w / 2, maxX: centerX + s.x + s.w / 2,
-      minZ: centerZ + s.z - s.d / 2, maxZ: centerZ + s.z + s.d / 2,
-      base: topY,
-      height: topY + s.h + 0.5,
-    });
+    // Register the per-wall colliders (replaces the old solid body box).
+    for (const wb of wallBoxes) boxes.push(wb);
     if (s.tier) {
       boxes.push({
         minX: centerX + s.x - s.tier.w / 2, maxX: centerX + s.x + s.tier.w / 2,
@@ -1924,6 +2402,139 @@ export function buildCardboardIsland(opts: {
   });
 
 
+  // ---- Craft details: lamps, bunting, benches, tufts, butterflies ----
+  {
+    // Warm path lamps at the four path shoulders.
+    const lampPostMat = new THREE.MeshStandardMaterial({ color: "#3d4653", roughness: 0.55, metalness: 0.3 });
+    const lampGlowMat = new THREE.MeshBasicMaterial({ color: "#ffdf9e" });
+    for (const [lx, lz] of [[4.4, 9], [-4.4, -9], [9, -4.4], [-9, 4.4]] as const) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 2.6, 8), lampPostMat);
+      post.position.set(lx, 1.3, lz);
+      group.add(post);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.3, 8), lampPostMat);
+      cap.position.set(lx, 2.85, lz);
+      group.add(cap);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lampGlowMat);
+      orb.position.set(lx, 2.62, lz);
+      group.add(orb);
+      craftAnims.push((_dt, now) => {
+        (orb.material as THREE.MeshBasicMaterial).color.setHSL(0.11, 0.75, 0.72 + Math.sin(now * 0.002 + lx) * 0.08);
+      });
+    }
+
+    // Pennant bunting: two sagging strings of little flags.
+    const flagColors = [0xff8fae, 0xffd166, 0x8cd16a, 0x5db8e8, 0xc9a2ff];
+    const bunting = (a: THREE.Vector3, b: THREE.Vector3, sag: number) => {
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(
+          Array.from({ length: 17 }, (_, i) => {
+            const t = i / 16;
+            const p = a.clone().lerp(b, t);
+            p.y -= Math.sin(t * Math.PI) * sag;
+            return p;
+          }),
+        ),
+        new THREE.LineBasicMaterial({ color: 0xf6efe2, transparent: true, opacity: 0.8 }),
+      );
+      group.add(line);
+      for (let i = 1; i < 12; i++) {
+        const t = i / 12;
+        const p = a.clone().lerp(b, t);
+        p.y -= Math.sin(t * Math.PI) * sag;
+        const flag = new THREE.Mesh(
+          new THREE.ConeGeometry(0.22, 0.5, 3),
+          new THREE.MeshStandardMaterial({ color: flagColors[i % flagColors.length], roughness: 0.85, side: THREE.DoubleSide }),
+        );
+        flag.position.set(p.x, p.y - 0.28, p.z);
+        flag.rotation.x = Math.PI;
+        group.add(flag);
+        craftAnims.push((_dt, now) => {
+          flag.rotation.z = Math.sin(now * 0.0016 + i) * 0.18;
+        });
+      }
+    };
+    bunting(new THREE.Vector3(0, 5.1, 14), new THREE.Vector3(-13, 8.4, 25), 0.7);
+    bunting(new THREE.Vector3(-14, 8.4, 26), new THREE.Vector3(14, 14.6, 3), 1.1);
+
+    // Two slat benches facing the plaza paths.
+    const benchWood = new THREE.MeshStandardMaterial({ color: "#a8794a", roughness: 0.9 });
+    for (const [bx, bz, ry] of [[7, 17, -0.5], [-19, 3, 1.1]] as const) {
+      const bench = new THREE.Group();
+      bench.position.set(bx, 0, bz);
+      bench.rotation.y = ry;
+      for (let sl = 0; sl < 3; sl++) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.28), benchWood);
+        slat.position.set(0, 0.55, -0.32 + sl * 0.32);
+        bench.add(slat);
+      }
+      for (const side of [-1, 1]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.9), cardboardDark);
+        leg.position.set(side * 1.0, 0.27, 0);
+        bench.add(leg);
+      }
+      const back = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.55, 0.08), benchWood);
+      back.position.set(0, 1.0, -0.48);
+      back.rotation.x = -0.18;
+      bench.add(back);
+      group.add(bench);
+    }
+
+    // Grass tufts sprinkled across the lawn (instanced, path-aware).
+    const tuftGeo = new THREE.ConeGeometry(0.16, 0.55, 5);
+    const tuftMat = new THREE.MeshStandardMaterial({ color: "#4f9c3c", roughness: 1, flatShading: true });
+    const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, 70);
+    const tuftM = new THREE.Matrix4();
+    const tuftRand = mulberry32(4242);
+    let placed = 0;
+    while (placed < 70) {
+      const a = tuftRand() * Math.PI * 2;
+      const r = 8 + tuftRand() * (ISLAND_RADIUS - 12);
+      const tx = Math.cos(a) * r;
+      const tz = Math.sin(a) * r;
+      if (Math.abs(tx) < 6 || Math.abs(tz) < 6) continue; // keep paths clean
+      const sc = 0.7 + tuftRand() * 0.9;
+      tuftM.makeRotationY(tuftRand() * Math.PI);
+      tuftM.scale(new THREE.Vector3(sc, sc, sc));
+      tuftM.setPosition(tx, 0.22 * sc, tz);
+      tufts.setMatrixAt(placed, tuftM);
+      placed++;
+    }
+    tufts.instanceMatrix.needsUpdate = true;
+    group.add(tufts);
+
+    // Butterflies fluttering figure-eights over the lawns.
+    const flutterColors = [0xffb3c9, 0x9fd8ff, 0xfff0a8];
+    for (let i = 0; i < 5; i++) {
+      const b = new THREE.Group();
+      const wingMat = new THREE.MeshBasicMaterial({
+        color: flutterColors[i % flutterColors.length], side: THREE.DoubleSide,
+        transparent: true, opacity: 0.9,
+      });
+      const wings: THREE.Mesh[] = [];
+      for (const side of [-1, 1]) {
+        const wing = new THREE.Mesh(new THREE.CircleGeometry(0.18, 8), wingMat);
+        wing.position.x = side * 0.1;
+        b.add(wing);
+        wings.push(wing);
+      }
+      const cx3 = (i - 2) * 11;
+      const cz3 = 8 + (i % 3) * 9;
+      group.add(b);
+      craftAnims.push((_dt, now) => {
+        const t = now * 0.00035 + i * 2.1;
+        b.position.set(
+          cx3 + Math.sin(t) * 5,
+          2 + Math.sin(t * 2.3) * 0.8,
+          cz3 + Math.sin(t * 0.7) * 4,
+        );
+        b.rotation.y = Math.cos(t) * 0.8;
+        const flap = Math.sin(now * 0.02 + i) * 0.9;
+        wings[0].rotation.y = flap;
+        wings[1].rotation.y = -flap;
+      });
+    }
+  }
+
   // ---- Zipline: a cable loop riding the island's perimeter ----------
   // Grab it under any stretch of cable and it carries you around the
   // whole cardboard city. Poles sit just outside the cable so riders
@@ -2270,6 +2881,7 @@ export function buildCardboardIsland(opts: {
   return {
     group,
     update(dt, now) {
+      for (const fn of craftAnims) fn(dt, now);
       spinners[0].rotation.z += dt * 1.1; // windmill
       const beamMesh = spinners[1] as THREE.Mesh;
       (beamMesh.material as THREE.MeshBasicMaterial).opacity =
