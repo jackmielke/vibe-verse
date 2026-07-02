@@ -36,6 +36,7 @@ import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
+import { buildKart } from "@/components/city/karts";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -696,6 +697,13 @@ export default function City() {
   const [nearVibey, setNearVibey] = useState(false);
   const [nearJerry, setNearJerry] = useState(false);
   const [nearSnackfe, setNearSnackfe] = useState(false);
+  // Vibe karts: which parked kart is in hop-on range, and which one
+  // (if any) we're driving. The ref mirrors state for the tick loop.
+  const [nearKart, setNearKart] = useState(-1);
+  const [drivingKart, setDrivingKart] = useState(-1);
+  const drivingKartRef = useRef(-1);
+  const enterKartRef = useRef<((i: number) => void) | null>(null);
+  const exitKartRef = useRef<(() => void) | null>(null);
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMsg, setSnackMsg] = useState<string | null>(null);
   const [npcTarget, setNpcTarget] = useState<"vibey" | "jerry" | null>(null);
@@ -1553,6 +1561,44 @@ export default function City() {
         });
     };
 
+    // ---- Vibe karts (V1): two drivable go-karts ----------------------
+    // One parked at the city plaza, one on the Vibe Island lawn. The
+    // mesh comes from karts.ts; the arcade driving physics live in the
+    // tick below (throttle + steer, wall sliding, ground follow — and
+    // yes, you can drive straight off the island rim).
+    const kartStates = [
+      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b") },
+      { x: ISLAND_X - 13, y: ISLAND_TOP, z: ISLAND_Z + 15, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c") },
+    ];
+    for (const k of kartStates) {
+      k.mesh.group.position.set(k.x, k.y, k.z);
+      k.mesh.group.rotation.y = k.yaw;
+      scene.add(k.mesh.group);
+    }
+    enterKartRef.current = (i) => {
+      if (i < 0 || i >= kartStates.length) return;
+      drivingKartRef.current = i;
+      setDrivingKart(i);
+      soundsRef.current?.chime(4);
+    };
+    exitKartRef.current = () => {
+      const i = drivingKartRef.current;
+      if (i < 0) return;
+      const k = kartStates[i];
+      drivingKartRef.current = -1;
+      setDrivingKart(-1);
+      k.speed = 0;
+      k.steer = 0;
+      // Hop off to the kart's right with a small pop.
+      player.position.set(
+        k.x + Math.cos(k.yaw) * 1.9,
+        k.y + 0.6,
+        k.z - Math.sin(k.yaw) * 1.9,
+      );
+      vel.set(0, 3.5, 0);
+      onGround = false;
+    };
+
     // ---- World index: register named POIs so agents can /goto them
     // and answer "what's around me?" with real coords (Stage 1 of the
     // Agent Embodiment Roadmap). Modules that own a landmark register it
@@ -1900,77 +1946,100 @@ export default function City() {
     moon.position.set(620, 430, -900);
     scene.add(moon);
 
-    // ---- Puffy daytime clouds ---------------------------------------
-    // Sprite-based fluffy clouds drifting around the city. Visible only
-    // in day mode so the night sky stays inky. Texture is a soft radial
-    // gradient generated in-canvas — zero network cost, looks fluffy.
-    const cloudTex = (() => {
-      const c = document.createElement("canvas");
-      c.width = c.height = 256;
-      const g = c.getContext("2d")!;
-      // Build a puff of overlapping radial blobs for that anime-cloud look.
-      const blobs = [
-        { x: 128, y: 140, r: 90, a: 0.95 },
-        { x: 80,  y: 150, r: 70, a: 0.85 },
-        { x: 180, y: 150, r: 75, a: 0.85 },
-        { x: 110, y: 110, r: 60, a: 0.80 },
-        { x: 160, y: 115, r: 55, a: 0.78 },
-      ];
-      for (const b of blobs) {
-        const grad = g.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
-        grad.addColorStop(0,    `rgba(255,255,255,${b.a})`);
-        grad.addColorStop(0.55, `rgba(245,250,255,${b.a * 0.55})`);
-        grad.addColorStop(1,    "rgba(255,255,255,0)");
-        g.fillStyle = grad;
-        g.fillRect(0, 0, 256, 256);
-      }
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      return tex;
-    })();
-    const cloudMat = new THREE.SpriteMaterial({
-      map: cloudTex,
-      transparent: true,
-      opacity: 0.92,
-      depthWrite: false,
-      fog: false,
-      color: 0xffffff,
-    });
+    // ---- Puffy daytime clouds (v2: solid low-poly puffs) -------------
+    // The old version used giant billboard sprites in a low ring — when
+    // one drifted over Vibe Island the camera ended up inside a
+    // 200m-wide white plane and the whole screen blew out. These are
+    // opaque flat-shaded blob clusters instead (they shade like real
+    // objects, no transparency sorting, no whiteout), banded high above
+    // every walkable surface, kept out of exclusion zones around each
+    // world, and drifting at a third of the old speed.
     const clouds = new THREE.Group();
-    {
+    const updateClouds = (() => {
+      const puffGeo = new THREE.IcosahedronGeometry(1, 1);
+      const puffMat = new THREE.MeshLambertMaterial({
+        color: 0xfdfdff,
+        flatShading: true,
+        fog: false,
+      });
+      // No clouds within these XZ discs — every landable world + the
+      // arrival camera path stays crystal clear.
+      const AVOID: Array<[number, number, number]> = [
+        [ISLAND_X, ISLAND_Z, 200], // Vibe Island + arrival swoop
+        [MOON_X, MOON_Z, 140],
+        [MOON2_X, MOON2_Z, 140],
+        [MARS_X, MARS_Z, 180],
+        [TJS_X, TJS_Z, 180],
+      ];
       const r = rng(`${CITY_SEED}-clouds`);
-      // Two layers: a near low band sitting around the rooftops, and a
-      // distant high band that wraps the horizon for depth.
-      const make = (count: number, yMin: number, yMax: number, radMin: number, radMax: number, scaleMin: number, scaleMax: number) => {
+      const drifters: Array<{ g: THREE.Group; theta0: number; rad: number; y0: number; drift: number; bobPhase: number }> = [];
+      const make = (
+        count: number,
+        yMin: number, yMax: number,
+        radMin: number, radMax: number,
+        sizeMin: number, sizeMax: number,
+      ) => {
         for (let i = 0; i < count; i++) {
-          const theta = r() * Math.PI * 2;
-          const rad = radMin + r() * (radMax - radMin);
-          const s = new THREE.Sprite(cloudMat);
-          const sc = scaleMin + r() * (scaleMax - scaleMin);
-          s.scale.set(sc, sc * (0.45 + r() * 0.2), 1);
-          s.position.set(Math.cos(theta) * rad, yMin + r() * (yMax - yMin), Math.sin(theta) * rad);
-          // Per-instance drift speed via userData.
-          s.userData.drift = 0.00002 + r() * 0.00004;
-          s.userData.theta0 = theta;
-          s.userData.rad = rad;
-          s.userData.y = s.position.y;
-          clouds.add(s);
+          // Rejection-sample a spot outside every exclusion zone.
+          let theta = 0, rad = 0, x = 0, z = 0;
+          let ok = false;
+          for (let tries = 0; tries < 24 && !ok; tries++) {
+            theta = r() * Math.PI * 2;
+            rad = radMin + r() * (radMax - radMin);
+            x = Math.cos(theta) * rad;
+            z = Math.sin(theta) * rad;
+            ok = AVOID.every(([ax, az, ar]) => Math.hypot(x - ax, z - az) > ar + sizeMax);
+          }
+          if (!ok) continue; // rare: just skip this cloud
+          const cloud = new THREE.Group();
+          const size = sizeMin + r() * (sizeMax - sizeMin);
+          // 4-7 flattened lumps: one core + satellites hugging its waist.
+          const lumps = 4 + Math.floor(r() * 4);
+          for (let p = 0; p < lumps; p++) {
+            const lump = new THREE.Mesh(puffGeo, puffMat);
+            const core = p === 0;
+            const lr = core ? size : size * (0.38 + r() * 0.34);
+            lump.scale.set(lr, lr * (0.52 + r() * 0.14), lr * (0.8 + r() * 0.35));
+            if (!core) {
+              const a = r() * Math.PI * 2;
+              lump.position.set(
+                Math.cos(a) * size * (0.55 + r() * 0.5),
+                (r() - 0.35) * size * 0.28,
+                Math.sin(a) * size * (0.55 + r() * 0.5),
+              );
+            }
+            lump.rotation.y = r() * Math.PI;
+            cloud.add(lump);
+          }
+          const y0 = yMin + r() * (yMax - yMin);
+          cloud.position.set(x, y0, z);
+          clouds.add(cloud);
+          drifters.push({
+            g: cloud,
+            theta0: theta,
+            rad,
+            y0,
+            drift: 0.000007 + r() * 0.000013, // ~1/3 the old speed
+            bobPhase: r() * Math.PI * 2,
+          });
         }
       };
-      // Keep clouds well outside the city footprint so the skyline reads clean.
-      make(25, 90,  150, 360, 600, 110, 220); // mid clouds ringing the city
-      make(20, 180, 280, 700, 1200, 260, 480); // distant horizon clouds
-    }
+      // Mid band rings the city well above the island lawn (y 120) and
+      // the zeppelin loop (y ~150, radius ≤ ~300 from origin).
+      make(25, 165, 225, 430, 620, 26, 46);
+      // Distant horizon band for depth.
+      make(20, 230, 330, 700, 1150, 55, 95);
+      return (now: number) => {
+        if (!clouds.visible) return;
+        for (const d of drifters) {
+          const t = d.theta0 + now * d.drift;
+          d.g.position.x = Math.cos(t) * d.rad;
+          d.g.position.z = Math.sin(t) * d.rad;
+          d.g.position.y = d.y0 + Math.sin(now * 0.00012 + d.bobPhase) * 3;
+        }
+      };
+    })();
     scene.add(clouds);
-    const updateClouds = (now: number) => {
-      if (!clouds.visible) return;
-      for (const child of clouds.children) {
-        const s = child as THREE.Sprite;
-        const t = s.userData.theta0 + now * s.userData.drift;
-        s.position.x = Math.cos(t) * s.userData.rad;
-        s.position.z = Math.sin(t) * s.userData.rad;
-      }
-    };
 
     // ---- Day / night ------------------------------------------------
     // One function flips the whole atmosphere: sky, fog, lights,
@@ -2674,6 +2743,20 @@ export default function City() {
       jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
+      // Nearest parked kart in hop-on range (hidden while driving).
+      {
+        let nk = -1;
+        if (drivingKartRef.current < 0) {
+          for (let i = 0; i < kartStates.length; i++) {
+            const k = kartStates[i];
+            if (
+              Math.hypot(player.position.x - k.x, player.position.z - k.z) < 5 &&
+              Math.abs(player.position.y - k.y) < 4
+            ) { nk = i; break; }
+          }
+        }
+        setNearKart(nk);
+      }
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearArcade(player.position.distanceTo(island.arcade) < 4);
@@ -3141,6 +3224,79 @@ export default function City() {
         vel.set(-Math.sin(zipAngle), 0, Math.cos(zipAngle)).multiplyScalar(ZIP_SPEED);
         onGround = false;
         if (thrusting) riding = false;
+      } else if (drivingKartRef.current >= 0) {
+        // ---- Driving a vibe kart (V1 arcade physics) ----------------
+        // Kart-relative controls: W/S (or joystick Y) throttle + brake,
+        // A/D (or joystick X) steer. Space hops you out.
+        const kart = kartStates[drivingKartRef.current];
+        const thIn = THREE.MathUtils.clamp(
+          ((keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+            (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0)) +
+            (touchLen > 0.12 ? -tm.y : 0),
+          -1, 1,
+        );
+        const stIn = THREE.MathUtils.clamp(
+          ((keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
+            (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0)) +
+            (touchLen > 0.12 ? tm.x : 0),
+          -1, 1,
+        );
+        // Throttle + rolling drag (heavier drag when coasting).
+        const KART_MAX = running ? 32 : 23;
+        kart.speed += thIn * 28 * dt;
+        kart.speed -= kart.speed * (thIn === 0 ? 1.5 : 0.22) * dt;
+        kart.speed = THREE.MathUtils.clamp(kart.speed, -9, KART_MAX);
+        // Steering strength scales up with speed, flips in reverse.
+        kart.steer += (stIn - kart.steer) * Math.min(1, dt * 10);
+        const grip = THREE.MathUtils.clamp(Math.abs(kart.speed) / 8, 0, 1);
+        kart.yaw -= kart.steer * 1.85 * grip * Math.sign(kart.speed || 1) * dt;
+        // Integrate with the same axis-separated wall sliding players use.
+        const kdx = Math.sin(kart.yaw) * kart.speed * dt;
+        const kdz = Math.cos(kart.yaw) * kart.speed * dt;
+        const knx = kart.x + kdx;
+        const knz = kart.z + kdz;
+        if (!blockedAt(knx, knz, kart.y + 0.5)) {
+          kart.x = knx;
+          kart.z = knz;
+        } else if (!blockedAt(knx, kart.z, kart.y + 0.5)) {
+          kart.x = knx;
+          kart.speed *= 0.6;
+        } else if (!blockedAt(kart.x, knz, kart.y + 0.5)) {
+          kart.z = knz;
+          kart.speed *= 0.6;
+        } else {
+          kart.speed *= -0.25; // soft bounce off a dead-on wall
+          soundsRef.current?.thud?.(0.3);
+        }
+        // Ground follow — and real gravity past an edge (island rim!).
+        const ksup = supportHeightAt(kart.x, kart.z, kart.y + 1.2);
+        if (kart.y <= ksup + 0.4 && kart.vy <= 0) {
+          kart.y = ksup;
+          kart.vy = 0;
+        } else {
+          kart.vy = Math.max(kart.vy - GRAVITY * dt, -MAX_FALL);
+          kart.y += kart.vy * dt;
+          if (kart.y < ksup) {
+            kart.y = ksup;
+            kart.vy = 0;
+          }
+        }
+        // Stand the driver on the rear deck; velocity mirrors the kart
+        // so the run animation + exit momentum feel right.
+        pos.set(kart.x, kart.y + 0.72, kart.z);
+        vel.set(Math.sin(kart.yaw) * kart.speed, 0, Math.cos(kart.yaw) * kart.speed);
+        onGround = true;
+        peakY = pos.y;
+        // Camera eases in behind the kart, Mario-Kart style.
+        {
+          let dyaw = kart.yaw + Math.PI - camYaw;
+          while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+          camYaw += dyaw * Math.min(1, dt * 2.5);
+        }
+        // Space (jetpack input) hops out.
+        if (jetInput && !prevJetInput) exitKartRef.current?.();
+        prevJetInput = jetInput;
       } else {
       // Horizontal velocity eases toward intent; lighter control mid-air.
       const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
@@ -3456,6 +3612,20 @@ export default function City() {
           }
         } else {
           ridingZeppelin = false;
+        }
+      }
+
+      // Sync kart meshes; spin wheels + steer the front axle on the
+      // driven one. Parked karts idle with a faint underglow.
+      for (let i = 0; i < kartStates.length; i++) {
+        const k = kartStates[i];
+        k.mesh.group.position.set(k.x, k.y, k.z);
+        k.mesh.group.rotation.y = k.yaw;
+        if (drivingKartRef.current === i) {
+          for (const w of k.mesh.wheels) w.rotateY((k.speed * dt) / 0.32);
+          for (const p of k.mesh.frontPivots) p.rotation.y = -k.steer * 0.42;
+          (k.mesh.glow.material as THREE.MeshBasicMaterial).opacity =
+            0.3 + Math.min(0.25, Math.abs(k.speed) / 60);
         }
       }
 
@@ -4934,7 +5104,7 @@ export default function City() {
                 VIBE ISLAND
               </h1>
               <p className="mt-2 text-sm tracking-[0.3em] uppercase text-white/75">
-                the kids' world in the sky
+                a magically weird world in the sky
               </p>
             </motion.div>
           </motion.div>
@@ -4964,6 +5134,22 @@ export default function City() {
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+          {drivingKart >= 0 && (
+            <div className="flex items-center gap-2 animate-fade-in">
+              <span className="glass-panel rounded-full px-4 py-2 text-xs text-muted-foreground">
+                {isTouch ? "joystick = drive + steer" : "W/S drive · A/D steer"}
+              </span>
+              <button
+                onClick={(e) => {
+                  exitKartRef.current?.();
+                  e.currentTarget.blur();
+                }}
+                className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary"
+              >
+                ⏏ Hop out
+              </button>
+            </div>
+          )}
           {nearGamePrompt && !gameHud && (
             <button
               onClick={(e) => {
@@ -5176,6 +5362,17 @@ export default function City() {
             </button>
           )}
           {/* Talk to Jerry moved to a floating in-world bubble above Jerry */}
+          {nearKart >= 0 && drivingKart < 0 && (
+            <button
+              onClick={(e) => {
+                enterKartRef.current?.(nearKart);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🏎️ Drive the vibe kart
+            </button>
+          )}
           {nearSnackfe && (
             <button
               onClick={(e) => {

@@ -76,7 +76,7 @@ const WORLDS: WorldCard[] = [
     emoji: "🏝️",
     name: "Vibe Island",
     art: islandArt,
-    blurb: "The kids' world in the sky — Jerry, the SnackFe cafe, the zipline, the waterfall. Lands you right on it.",
+    blurb: "A magically weird world in the sky — Jerry, the SnackFe cafe, the zipline, the rideable zeppelin. Lands you right on it.",
   },
   {
     to: "/city?spawn=moon",

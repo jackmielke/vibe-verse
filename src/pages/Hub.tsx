@@ -54,7 +54,7 @@ const WORLDS: World[] = [
   { to: "/city", emoji: "🏙️", name: "Vibe City", art: cityArt, color: "#f0abfc",
     blurb: "Jetpack a neon district — multiplayer + NPCs." },
   { to: "/city?spawn=island", emoji: "🏝️", name: "Vibe Island", art: islandArt, color: "#fde68a",
-    blurb: "The kids' world in the sky — Jerry, SnackFe, zipline, Firewall." },
+    blurb: "A magically weird world in the sky — Jerry, SnackFe, zipline, Firewall." },
   { to: "/", emoji: "🗺️", name: "Village", art: villageArt, color: "#5eead4",
     blurb: "The real Healdsburg map — Vibey, choppers, spawnables." },
   { to: "/lobby", emoji: "🏎️", name: "Lobby", art: lobbyArt, color: "#fca5a5",

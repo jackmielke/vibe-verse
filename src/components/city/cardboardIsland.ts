@@ -334,79 +334,102 @@ function roundedRectPath(
   ctx.closePath();
 }
 
-function vibeBuildSignTexture(): THREE.CanvasTexture {
+/**
+ * The VibeVerse marquee for the welcome arch: candy-colored letters
+ * bouncing across a sunset-galaxy gradient with sparkles and tiny
+ * floating islands. Deliberately saturated everywhere — no black or
+ * white fields — so it reads vivid from any angle, day or night.
+ */
+function vibeverseArchTexture(): THREE.CanvasTexture {
   const W = 1024;
-  const H = 512;
+  const H = 288;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  const sky = ctx.createLinearGradient(0, 0, W, H);
-  sky.addColorStop(0, "#68d8ff");
-  sky.addColorStop(0.42, "#8df3d4");
-  sky.addColorStop(1, "#25318f");
+  // Sunset-galaxy sky.
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#43217a");
+  sky.addColorStop(0.4, "#a4459a");
+  sky.addColorStop(0.75, "#ff7d6b");
+  sky.addColorStop(1, "#ffc46b");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
-
-  const glow = ctx.createRadialGradient(W * 0.38, H * 0.35, 30, W * 0.38, H * 0.35, 420);
-  glow.addColorStop(0, "rgba(255,255,255,0.9)");
-  glow.addColorStop(0.35, "rgba(255,255,255,0.22)");
-  glow.addColorStop(1, "rgba(255,255,255,0)");
+  // Warm center glow so the wordmark pops.
+  const glow = ctx.createRadialGradient(W / 2, H * 0.45, 40, W / 2, H * 0.45, 560);
+  glow.addColorStop(0, "rgba(255,235,190,0.4)");
+  glow.addColorStop(1, "rgba(255,235,190,0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
 
-  ctx.save();
-  ctx.globalAlpha = 0.38;
-  for (let i = 0; i < 11; i++) {
-    const x = 80 + i * 92;
-    const y = 72 + ((i * 53) % 320);
-    ctx.strokeStyle = i % 2 ? "#ffffff" : "#1cffc9";
-    ctx.lineWidth = i % 3 === 0 ? 4 : 2;
+  // Sparkles.
+  for (let i = 0; i < 46; i++) {
+    const x = (i * 199.7) % W;
+    const y = (i * 83.3) % H;
+    const r = 1 + (i % 3);
+    ctx.fillStyle = i % 4 === 0 ? "rgba(255,224,138,0.9)" : "rgba(255,255,255,0.75)";
     ctx.beginPath();
-    ctx.arc(x, y, 18 + (i % 4) * 8, 0.2, Math.PI * 1.35);
-    ctx.stroke();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
-  ctx.restore();
 
-  roundedRectPath(ctx, 54, 48, W - 108, H - 96, 44);
-  ctx.fillStyle = "rgba(8, 16, 45, 0.68)";
-  ctx.fill();
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = "rgba(255,255,255,0.42)";
-  ctx.stroke();
+  // Tiny floating islands drifting at the edges.
+  const isle = (x: number, y: number, s: number) => {
+    ctx.fillStyle = "#5a3a78";
+    ctx.beginPath();
+    ctx.moveTo(x - 26 * s, y);
+    ctx.lineTo(x + 26 * s, y);
+    ctx.lineTo(x, y + 30 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#7bd88a";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 3 * s, 28 * s, 9 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  isle(86, 84, 1);
+  isle(944, 66, 0.8);
+  isle(902, 210, 0.6);
 
-  roundedRectPath(ctx, 78, 72, W - 156, H - 144, 32);
-  const panel = ctx.createLinearGradient(78, 72, W - 78, H - 72);
-  panel.addColorStop(0, "rgba(255,255,255,0.2)");
-  panel.addColorStop(0.52, "rgba(26,255,198,0.1)");
-  panel.addColorStop(1, "rgba(255,92,205,0.18)");
-  ctx.fillStyle = panel;
-  ctx.fill();
-
+  // "VIBEVERSE" — one candy color per letter, chunky white outline,
+  // gentle per-letter bounce + tilt like a hand-hung marquee.
+  const word = "VIBEVERSE";
+  const palette = [
+    "#ffd166", "#7bf1a8", "#7ad7ff", "#ff9fb2", "#c9a2ff",
+    "#8ef5d2", "#ffe08a", "#9ad0ff", "#ffb37b",
+  ];
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(25,255,203,0.85)";
-  ctx.shadowBlur = 26;
-  ctx.fillStyle = "#f7fffb";
-  ctx.font = "900 92px Inter, ui-sans-serif, system-ui, sans-serif";
-  ctx.fillText("vibe and build", W / 2, 182, W - 190);
+  ctx.font = "900 138px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
+  const step = (W - 190) / (word.length - 1);
+  for (let i = 0; i < word.length; i++) {
+    const cx = 95 + i * step;
+    const cy = 128 + Math.sin(i * 1.7) * 10;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.sin(i * 2.3) * 0.06);
+    ctx.lineWidth = 16;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#fff6e8";
+    ctx.shadowColor = "rgba(60,20,90,0.55)";
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 6;
+    ctx.strokeText(word[i], 0, 0);
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = palette[i % palette.length];
+    ctx.fillText(word[i], 0, 0);
+    ctx.restore();
+  }
 
-  ctx.shadowBlur = 0;
-  ctx.font = "800 42px Inter, ui-sans-serif, system-ui, sans-serif";
-  ctx.fillStyle = "#d7fff5";
-  ctx.fillText("Wednesday, July 8th", W / 2, 282, W - 180);
-
-  ctx.font = "700 34px Inter, ui-sans-serif, system-ui, sans-serif";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText("10:00 a.m. Pacific Time", W / 2, 344, W - 180);
-
-  ctx.fillStyle = "rgba(28,255,201,0.88)";
-  roundedRectPath(ctx, 360, 392, 304, 38, 19);
-  ctx.fill();
-  ctx.fillStyle = "#0a1030";
-  ctx.font = "900 18px Inter, ui-sans-serif, system-ui, sans-serif";
-  ctx.fillText("EDGE ISLAND LIVE", W / 2, 411, 260);
+  // Sub-line: still the welcome sign, just wearing the brand.
+  ctx.font = "700 34px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#fff2d5";
+  ctx.shadowColor = "rgba(60,20,90,0.6)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  ctx.fillText("· welcome to VIBE ISLAND ·", W / 2, 240);
+  ctx.shadowColor = "transparent";
 
   const t = new THREE.CanvasTexture(canvas);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -892,9 +915,24 @@ export function buildCardboardIsland(opts: {
     wrap.position.set(px, 1.0, 0);
     welcome.add(wrap);
   });
+  // BIG headline arch: the VibeVerse marquee — candy letters on a
+  // sunset gradient (this is the brand sign; the old flat "WELCOME TO
+  // VIBE ISLAND" board and the floating billboard both retired here).
+  {
+    const marquee = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 4.5),
+      new THREE.MeshBasicMaterial({ map: vibeverseArchTexture(), side: THREE.DoubleSide }),
+    );
+    marquee.position.y = 9.6;
+    welcome.add(marquee);
+    const marqueeBacker = new THREE.Mesh(
+      new THREE.BoxGeometry(16.3, 4.8, 0.15),
+      cardboardDark,
+    );
+    marqueeBacker.position.set(0, 9.6, -0.08);
+    welcome.add(marqueeBacker);
+  }
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string; glow?: boolean }> = [
-    // BIG headline arch.
-    { lines: ["WELCOME TO", "VIBE ISLAND"], y: 9.6, w: 16, h: 4.5, bg: "#f4e6c2", fg: "#8a2a2a" },
     // Sub-banner: locate us in the wider story.
     { lines: ["inspired by the creative galaxy of whatever"], y: 5.1, w: 13, h: 1.8, bg: "#cfe6c2", fg: "#1f5fa8" },
     // Tiny rules-of-the-road slat.
@@ -936,44 +974,10 @@ export function buildCardboardIsland(opts: {
   }
   group.add(welcome);
 
-  // ---- Vibe Build Billboard ----------------------------------------
-  const billboard = new THREE.Group();
-  const BILLBOARD_BASE_Y = 16.5;
-  billboard.position.set(22, BILLBOARD_BASE_Y, -23);
-  billboard.rotation.y = Math.atan2(-22, 23); // face plaza center from its upper-right sky perch
-  billboard.scale.setScalar(0.74);
-  const bbW = 15.5;
-  const bbH = 7.75;
-  const bbBacker = new THREE.Mesh(
-    new THREE.BoxGeometry(bbW + 0.5, bbH + 0.5, 0.34),
-    new THREE.MeshStandardMaterial({
-      color: "#121a36",
-      metalness: 0.25,
-      roughness: 0.45,
-      emissive: "#071226",
-      emissiveIntensity: 0.4,
-    }),
-  );
-  bbBacker.position.set(0, 0, -0.12);
-  billboard.add(bbBacker);
-  const poster = new THREE.Mesh(
-    new THREE.PlaneGeometry(bbW, bbH),
-    new THREE.MeshBasicMaterial({
-      map: vibeBuildSignTexture(),
-      side: THREE.DoubleSide,
-    }),
-  );
-  poster.position.set(0, 0, 0.02);
-  billboard.add(poster);
-  const bbHalo = new THREE.Mesh(
-    new THREE.PlaneGeometry(bbW + 2.8, bbH + 2.8),
-    new THREE.MeshBasicMaterial({ color: 0x1cffc9, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  bbHalo.position.set(0, 0, -0.2);
-  billboard.add(bbHalo);
-  group.add(billboard);
-  // No collision box — it hovers freely above the ground.
-
+  // (The floating "vibe and build" billboard that hovered over Ninja's
+  // Palace is gone — it sat in a weird spot and read as a black slab
+  // from across the plaza. The VibeVerse marquee on the welcome arch
+  // is the brand sign now.)
 
   // ---- Windmill ----------------------------------------------------
   const mill = new THREE.Group();
@@ -2982,10 +2986,6 @@ export function buildCardboardIsland(opts: {
       (beamMesh.material as THREE.MeshBasicMaterial).opacity =
         0.28 + Math.sin(now * 0.0016) * 0.12;
       lantern.position.y = 11 + Math.sin(now * 0.0012) * 0.4;
-
-      // Vibeverse billboard hovers with a gentle bob + tilt.
-      billboard.position.y = BILLBOARD_BASE_Y + Math.sin(now * 0.0009) * 0.55;
-      billboard.rotation.z = Math.sin(now * 0.0007) * 0.025;
 
       // Firewall flames flicker; the swing sways; Jerry wiggles.
       firewallFlames.forEach((f, i) => {

@@ -1,17 +1,22 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import CityEntryScreen from "@/components/city/CityEntryScreen";
-import { setActiveCharacter } from "@/hooks/use-active-character";
+import { setActiveCharacter, useActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
 
 export default function CharacterSelect() {
   const navigate = useNavigate();
+  const { charId } = useActiveCharacter();
 
+  // Open on the character you're already playing as (your saved /
+  // most-recent pick). Brand-new visitors get a random one.
   const initialCharacter = useMemo(() => {
+    const saved = CHARACTERS.find((c) => c.id === charId);
+    if (saved) return saved.id;
     const random = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
     return random?.id ?? "Pirate_Anne";
-  }, []);
+  }, [charId]);
 
   const initialName = useMemo(() => {
     if (typeof window === "undefined") return generateCharacterName("Vibey");
@@ -48,8 +53,8 @@ export default function CharacterSelect() {
       initialName={initialName}
       eyebrow="Step 1 of 2 · Pick your character"
       title="Choose your character"
-      subtitle="Your character follows you across the VibeVerse. Pick one now, then fall into Edge Island."
-      ctaLabel="Enter Edge Island"
+      subtitle="Your character follows you across the VibeVerse. Pick one now, then fall into Vibe Island."
+      ctaLabel="Enter Vibe Island"
       onEnter={enterWorld}
     />
   );

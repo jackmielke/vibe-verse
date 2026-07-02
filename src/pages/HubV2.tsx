@@ -1146,8 +1146,8 @@ export default function HubV2() {
           initialName={freshPick.name}
           eyebrow="Step 1 of 2 · Pick your character"
           title="Choose your character"
-          subtitle="Your character follows you across the VibeVerse. Pick one now, then fall into Edge Island."
-          ctaLabel="Enter Edge Island"
+          subtitle="Your character follows you across the VibeVerse. Pick one now, then fall into Vibe Island."
+          ctaLabel="Enter Vibe Island"
           agentInviteUrl="https://myvibeverse.com"
           onEnter={commitFreshEntry}
         />
