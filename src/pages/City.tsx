@@ -531,6 +531,9 @@ export default function City() {
   // Lantern Echo). The 3D module owns the game state; these mirror just
   // enough for the HUD chip + start/quit buttons.
   const skyGamesRef = useRef<SkyGamesWorld | null>(null);
+  // Vibe Island arrival: a sky-gradient title card that fades out while
+  // the camera swoops in, hiding the first-load pop-in.
+  const [arriving, setArriving] = useState(false);
   const [gameHud, setGameHud] = useState<string | null>(null);
   const [nearGamePrompt, setNearGamePrompt] = useState<{ key: SkyGameKey; name: string } | null>(null);
   // Gremlin Mines (underground) — world handle + per-tick state.
@@ -1564,7 +1567,7 @@ export default function City() {
         aliases: string[] = [],
       ) => registerPOI({ key, name, region, position: pos, kind: "landmark", aliases });
       reg("plaza", "Plaza Spawn", "Plaza", new THREE.Vector3(0, 0, 0), ["spawn", "lobby", "start"]);
-      reg("cardboard-island", "Cardboard Island", "Cardboard Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard"]);
+      reg("cardboard-island", "Vibe Island", "Vibe Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard", "edge island", "cardboard island"]);
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
       reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
       reg("snackfe", "SnackFe Cafe", "Cardboard Island", island.snackfe, ["snackfe", "cafe", "snack", "ramen"]);
@@ -2407,6 +2410,7 @@ export default function City() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTyping(e) || !enteredRef.current || !handled.has(e.code)) return;
       e.preventDefault();
+      arrivalStart = 0; // input ends the arrival cinematic
       keys.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -2430,6 +2434,11 @@ export default function City() {
     let camYaw = Math.PI;
     let camPitch = 0.42;
     let camDist = 9;
+    // Vibe Island arrival cinematic: while set, the camera starts far
+    // out and swoops down to the lawn over ~4.5s of WALL time. Any
+    // input hands control straight back.
+    let arrivalStart = 0;
+    const ARRIVAL_MS = 4500;
     // VR-only: stable "body yaw" the dolly is parked behind. This is
     // intentionally decoupled from the headset rotation so turning your
     // head doesn't slide the world (the #1 source of sim-sickness here).
@@ -2462,6 +2471,7 @@ export default function City() {
     // not by tapping — no raycaster needed.)
     let tapStart: { x: number; y: number; t: number } | null = null;
     const onPointerDown = (e: PointerEvent) => {
+      arrivalStart = 0; // input ends the arrival cinematic
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
         canvas.setPointerCapture(e.pointerId);
@@ -2729,12 +2739,25 @@ export default function City() {
     // frame shows the character's face, not the back of their head — the
     // chase-cam re-orients to behind as soon as the player drags or moves.
     islandSpawnRef.current = () => {
-      // Spawn inside Jerry's Plaza, a few steps south of Jerry himself.
-      player.position.set(ISLAND_X, ISLAND_TOP + 6, ISLAND_Z + 7);
+      // Land right on the plaza lawn (no drop — arriving used to feel
+      // like popping up from under the island) and roll the arrival
+      // cinematic: a far establishing shot that swoops down to you.
+      player.position.set(ISLAND_X, ISLAND_TOP + 0.4, ISLAND_Z + 7);
       vel.set(0, 0, 0);
       onGround = false;
-      camYaw = 0;
-      camPitch = 0.18;
+      // Open on the cinematic's far pose and snap the camera straight
+      // there — otherwise the first frame lerps in from wherever the
+      // camera was and streaks across the city.
+      camYaw = 0.85;
+      camPitch = 0.5;
+      camDist = 150;
+      arrivalStart = performance.now();
+      camera.position.set(
+        player.position.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+        player.position.y + Math.sin(camPitch) * camDist + 1.4,
+        player.position.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
+      );
+      camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
     };
     // /city?spawn=moon drops visitors onto the moon's landing pad.
     moonSpawnRef.current = () => {
@@ -3651,7 +3674,28 @@ export default function City() {
         fogNow.far = baseFogFar;
       } else {
         modelHolder.visible = true;
-        // Chase camera.
+        // Vibe Island arrival: sweep from a far, high establishing shot
+      // down behind the player. Wall-clock so slow devices never see a
+      // stretched-out crawl.
+      if (arrivalStart > 0) {
+        const k = (now - arrivalStart) / ARRIVAL_MS;
+        if (k >= 1) {
+          // Land on the exact end pose — on very slow devices the
+          // first tick can arrive after the whole window, and camDist
+          // would otherwise stay stuck at the far shot.
+          arrivalStart = 0;
+          camDist = 9.5;
+          camPitch = 0.2;
+          camYaw = 0;
+        } else {
+          const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+          camDist = THREE.MathUtils.lerp(150, 9.5, e);
+          camPitch = THREE.MathUtils.lerp(0.5, 0.2, e);
+          camYaw = (1 - e) * 0.85; // gentle quarter-sweep as it dives
+        }
+      }
+
+      // Chase camera.
         const eye = new THREE.Vector3(
           pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
           pos.y + Math.sin(camPitch) * camDist + 1.4,
@@ -3659,7 +3703,9 @@ export default function City() {
         );
         // Keep the camera out of the street floor.
         eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
-        camera.position.lerp(eye, 1 - Math.pow(0.0008, dt));
+        // During the arrival cinematic the eased path IS the motion —
+        // follow it exactly so slow devices don't trail the swoop.
+        camera.position.lerp(eye, arrivalStart > 0 ? 1 : 1 - Math.pow(0.0008, dt));
         camera.lookAt(pos.x, pos.y + 1.5, pos.z);
 
         // Zoomed way out, the fog backs off so the diorama stays visible.
@@ -3858,7 +3904,10 @@ export default function City() {
         // Direct portal into the Gremlin Mines — no falling down a
         // mineshaft, just blink straight in with the entry-flash effect.
         enterUndergroundRef.current?.();
-      } else islandSpawnRef.current?.();
+      } else {
+        islandSpawnRef.current?.();
+        setArriving(true);
+      }
       // Skip the entry overlay — visitors arriving from the hub already
       // chose where to land, so drop them straight into control.
       if (!enteredRef.current) {
@@ -3882,7 +3931,7 @@ export default function City() {
   // proper character parameter.
   const JERRY_PREFIX =
     "(For this reply you are JERRY THE SNAIL — the beloved cardboard snail mayor of " +
-    "Jerry's Plaza on Edge Island, which the kids at the Edge Esmeralda creative " +
+    "Jerry's Plaza on Vibe Island, which the kids at the Edge Esmeralda creative " +
     "residency built. You are slow, kind, a little philosophical, and very proud of " +
     "the kids. Stay fully in character as Jerry the snail.) ";
   const sendToNpc = async (target: "vibey" | "jerry", text: string) => {
@@ -4638,7 +4687,7 @@ export default function City() {
           <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in">
             <div className="text-5xl mb-1">💫</div>
             <div className="text-sm font-semibold text-primary">SPLAT!</div>
-            <div className="text-xs text-muted-foreground">Respawning on Edge Island…</div>
+            <div className="text-xs text-muted-foreground">Respawning on Vibe Island…</div>
           </div>
         </div>
       )}
@@ -4729,6 +4778,41 @@ export default function City() {
       )}
 
 
+
+      {/* Vibe Island arrival card: covers the first-load pop-in with a
+          sky gradient + wordmark, then fades out as the camera swoops
+          down to the lawn. Purely visual — input passes straight through. */}
+      <AnimatePresence>
+        {arriving && (
+          <motion.div
+            key="island-arrival"
+            className="fixed inset-0 z-40 pointer-events-none flex items-center justify-center"
+            style={{
+              background:
+                "linear-gradient(180deg, #0b1c33 0%, #1b4a6b 34%, #58a7c8 68%, #a8dcE8 100%)",
+            }}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 1.9, delay: 0.9, ease: "easeInOut" }}
+            onAnimationComplete={() => setArriving(false)}
+          >
+            <motion.div
+              className="text-center"
+              initial={{ opacity: 0, y: 14, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+            >
+              <div className="text-5xl mb-3">🏝️</div>
+              <h1 className="font-heading text-4xl sm:text-5xl font-bold tracking-[0.18em] text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.45)]">
+                VIBE ISLAND
+              </h1>
+              <p className="mt-2 text-sm tracking-[0.3em] uppercase text-white/75">
+                the kids' world in the sky
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Live mini-game status chip — sits under the top nav while a
           sky-island game is running, with a quit ✕. */}

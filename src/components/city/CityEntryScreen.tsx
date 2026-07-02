@@ -287,7 +287,7 @@ export default function CityEntryScreen({
                 }}
                 className="mt-5 inline-flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 text-sm font-extrabold uppercase tracking-[0.2em] text-slate-900 shadow-[0_18px_50px_rgba(255,255,255,0.28)] transition hover:-translate-y-0.5 hover:bg-white/92"
               >
-                {ctaLabel ?? `Enter Edge Island`}
+                {ctaLabel ?? `Enter Vibe Island`}
                 <ArrowRight className="h-4 w-4" />
               </button>
 
@@ -303,7 +303,7 @@ export default function CityEntryScreen({
               )}
 
               <div className="mt-4 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-white/65">
-                Step 2 is the world. Default: Edge Island.
+                Step 2 is the world. Default: Vibe Island.
               </div>
             </div>
           </div>

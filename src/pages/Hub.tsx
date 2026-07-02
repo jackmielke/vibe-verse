@@ -53,7 +53,7 @@ const WORLDS: World[] = [
     blurb: "Vibey's memory garden and the outdoor art fair." },
   { to: "/city", emoji: "🏙️", name: "Vibe City", art: cityArt, color: "#f0abfc",
     blurb: "Jetpack a neon district — multiplayer + NPCs." },
-  { to: "/city?spawn=island", emoji: "🏝️", name: "Edge Island", art: islandArt, color: "#fde68a",
+  { to: "/city?spawn=island", emoji: "🏝️", name: "Vibe Island", art: islandArt, color: "#fde68a",
     blurb: "The kids' world in the sky — Jerry, SnackFe, zipline, Firewall." },
   { to: "/", emoji: "🗺️", name: "Village", art: villageArt, color: "#5eead4",
     blurb: "The real Healdsburg map — Vibey, choppers, spawnables." },

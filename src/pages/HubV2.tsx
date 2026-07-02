@@ -90,7 +90,7 @@ import CityEntryScreen from "@/components/city/CityEntryScreen";
 const OFFICIAL_WORLDS: World[] = [
   // Edge Island leads the carousel — first-time visitors land on the
   // floating papercraft island as the focused world.
-  { to: "/city?spawn=island", name: "Edge Island", art: islandArt, color: "#fde68a",
+  { to: "/city?spawn=island", name: "Vibe Island", art: islandArt, color: "#fde68a",
     blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
   { to: "/island-explorer", name: "Island Explorer", art: islandArt, color: "#fbbf24",
     blurb: "Pick a character + world (Sunset Cove, Sky Island, Edge Esmeralda) and explore." },
@@ -143,7 +143,7 @@ export default function HubV2() {
   // display name yet) get a randomly-picked character + auto-generated
   // name AND a real "pick your vibe" screen with a name field and an
   // "invite your agent" prompt button. Once they hit Jet in we drop
-  // them onto Edge Island. Returning visitors skip this entirely.
+  // them onto Vibe Island. Returning visitors skip this entirely.
   const [freshPick, setFreshPick] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -72,7 +72,7 @@ export function ArcadeModal({ open, onClose }: { open: boolean; onClose: () => v
                 ESMERALDA JUMP
               </div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200/80">
-                Edge Island Arcade · by Leo
+                Vibe Island Arcade · by Leo
               </div>
             </div>
           </div>
