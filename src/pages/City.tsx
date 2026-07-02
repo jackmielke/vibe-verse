@@ -22,7 +22,7 @@
  * "City plan" section below; everything regenerates from the seed.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -30,7 +30,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
-import { buildCardboardIsland } from "@/components/city/cardboardIsland";
+import { buildCardboardIsland, VIBEVERSE_POSTER_URL } from "@/components/city/cardboardIsland";
+import VibeAccountCard from "@/components/VibeAccountCard";
+import VibeArc from "@/components/VibeArc";
+import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
 import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
@@ -1422,6 +1425,55 @@ export default function City() {
     });
     scene.add(island.group);
 
+    // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
+    // floating above the Vibe Shop kiosk so the shop reads as "backed
+    // by Vibe Coin" from across the plaza.
+    let vibeEmblem: THREE.Group | null = null;
+    const VIBE_EMBLEM_Y = ISLAND_TOP + 6.2;
+    new GLTFLoader().load(
+      iridescentArcUrl,
+      (gltf) => {
+        const emblem = gltf.scene;
+        const box3 = new THREE.Box3().setFromObject(emblem);
+        const sz = new THREE.Vector3();
+        box3.getSize(sz);
+        const s = 2.8 / Math.max(sz.x, sz.y, sz.z, 0.0001);
+        emblem.scale.setScalar(s);
+        const c = new THREE.Vector3();
+        box3.getCenter(c);
+        emblem.position.set(-c.x * s, -c.y * s, -c.z * s);
+        // Same self-lit treatment as VibeArc on /coin — the city scene
+        // has no environment map, so bake the shimmer into emissive.
+        emblem.traverse((obj) => {
+          const m = obj as THREE.Mesh;
+          if (!m.isMesh) return;
+          const apply = (mat: THREE.Material) => {
+            const std = mat as THREE.MeshStandardMaterial;
+            if (!std || !("metalness" in std)) return;
+            std.metalness = Math.min(std.metalness, 0.3);
+            std.roughness = Math.max(std.roughness, 0.35);
+            if (std.map) {
+              std.emissiveMap = std.map;
+              std.emissive = new THREE.Color(0xffffff);
+              std.emissiveIntensity = 0.7;
+            }
+            std.needsUpdate = true;
+          };
+          const mat = m.material;
+          if (Array.isArray(mat)) mat.forEach(apply);
+          else if (mat) apply(mat);
+        });
+        const holder = new THREE.Group();
+        holder.add(emblem);
+        // Above the kiosk (kiosk center sits 2.3 behind the walk-up anchor).
+        holder.position.set(island.shop.x, VIBE_EMBLEM_Y, island.shop.z + 2.3);
+        scene.add(holder);
+        vibeEmblem = holder;
+      },
+      undefined,
+      (err) => console.warn("[city] vibe emblem failed to load", err),
+    );
+
     // ---- Vibe Maker spawns: a group anchored at the portal that
     // mirrors public.island_spawns. The React side owns the data and
     // calls spawnsApiRef.current.setAll(...) to diff into the scene.
@@ -1895,7 +1947,30 @@ export default function City() {
     try { mp.setUserId(authUserIdRef.current); } catch { /* noop */ }
 
     // ---- Cardboard TV: tune in the community photo gallery ----------
-    // Same gallery_photos feed the /space TV uses.
+    // Same gallery_photos feed the /space TV uses. The VibeVerse brand
+    // poster leads the rotation whenever it actually loads (probed via
+    // an Image so a missing asset can never wedge a broken frame in).
+    const posterRow = {
+      url: VIBEVERSE_POSTER_URL,
+      title: "VIBEVERSE",
+      description: "Every builder grows the universe.",
+      residency: null as string | null,
+    };
+    let tvRows: string[] = [];
+    let posterOk = false;
+    const applyTv = () => {
+      const urls = [...(posterOk ? [posterRow.url] : []), ...tvRows];
+      if (urls.length) island.setTvPhotos(urls);
+    };
+    const posterProbe = new Image();
+    posterProbe.onload = () => {
+      posterOk = true;
+      applyTv();
+      setGalleryPhotos((prev) =>
+        prev.some((p) => p.url === posterRow.url) ? prev : [posterRow, ...prev],
+      );
+    };
+    posterProbe.src = VIBEVERSE_POSTER_URL;
     void supabase
       .from("gallery_photos")
       .select("image_url, title, description, residency_name")
@@ -1914,8 +1989,12 @@ export default function City() {
           }))
           .filter((r) => !!r.url);
         if (rows.length) {
-          island.setTvPhotos(rows.map((r) => r.url));
-          setGalleryPhotos(rows);
+          tvRows = rows.map((r) => r.url);
+          applyTv();
+          setGalleryPhotos((prev) => {
+            const lead = prev.filter((p) => p.url === posterRow.url);
+            return [...lead, ...rows];
+          });
         }
       });
 
@@ -3615,6 +3694,12 @@ export default function City() {
         }
       }
 
+      // The $VIBE emblem over the shop spins slowly and bobs.
+      if (vibeEmblem) {
+        vibeEmblem.rotation.y = now * 0.0006;
+        vibeEmblem.position.y = VIBE_EMBLEM_Y + Math.sin(now * 0.0014) * 0.2;
+      }
+
       // Sync kart meshes; spin wheels + steer the front axle on the
       // driven one. Parked karts idle with a faint underglow.
       for (let i = 0; i < kartStates.length; i++) {
@@ -4732,15 +4817,21 @@ export default function City() {
               style={{ background: "linear-gradient(180deg, rgba(45,212,168,0.16), rgba(45,212,168,0.03))" }}
             >
               <div className="flex items-center justify-between">
-                <div>
-                  <div
-                    className="font-heading font-bold text-lg tracking-[0.14em] text-emerald-200"
-                    style={{ textShadow: "0 0 18px rgba(45,212,168,0.75)" }}
-                  >
-                    🛍️ VIBE SHOP
+                <div className="flex items-center gap-2">
+                  {/* The same iridescent emblem the /coin page spins. */}
+                  <div className="-my-2 -ml-1 shrink-0">
+                    <VibeArc size={62} rotateSeconds={18} />
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/50">
-                    Vibe Island flagship · open all night
+                  <div>
+                    <div
+                      className="font-heading font-bold text-lg tracking-[0.14em] text-emerald-200"
+                      style={{ textShadow: "0 0 18px rgba(45,212,168,0.75)" }}
+                    >
+                      VIBE SHOP
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/50">
+                      backed by $VIBE · Vibe Island flagship
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4772,6 +4863,25 @@ export default function City() {
             </div>
 
             <div className="p-4 pt-5 space-y-5 overflow-y-auto">
+              {/* The /coin page's account interface, synced in here so
+                  it's obvious this shop runs on Vibe Coin: profile,
+                  wallet link, live $VIBE balance. */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
+                    YOUR VIBE ACCOUNT
+                  </span>
+                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
+                  <Link
+                    to="/coin"
+                    className="text-[10px] uppercase tracking-[0.18em] text-emerald-300/80 hover:text-emerald-200 transition-colors"
+                  >
+                    open the vibe page →
+                  </Link>
+                </div>
+                <VibeAccountCard variant="card" />
+              </div>
+
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">

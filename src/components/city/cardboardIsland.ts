@@ -334,11 +334,49 @@ function roundedRectPath(
   ctx.closePath();
 }
 
+/** Fluffy poster-style cloud: a cluster of white ellipses. */
+function drawPosterCloud(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, s: number, alpha = 1,
+) {
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  const puffs: Array<[number, number, number, number]> = [
+    [0, 0, 30, 13], [-24, 4, 20, 10], [24, 4, 21, 10], [-10, -8, 18, 10], [12, -7, 16, 9],
+  ];
+  for (const [dx, dy, rx, ry] of puffs) {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * s, y + dy * s, rx * s, ry * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Poster-style floating island: rocky cone under a grassy cap. */
+function drawPosterIsle(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
+  ctx.fillStyle = "#7a5a3e";
+  ctx.beginPath();
+  ctx.moveTo(x - 26 * s, y);
+  ctx.lineTo(x + 26 * s, y);
+  ctx.lineTo(x + 6 * s, y + 30 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#66c46a";
+  ctx.beginPath();
+  ctx.ellipse(x, y - 3 * s, 29 * s, 9 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // A tiny tree so it reads "alive" even from far away.
+  ctx.fillStyle = "#5a3d28";
+  ctx.fillRect(x - 2 * s, y - 18 * s, 4 * s, 10 * s);
+  ctx.fillStyle = "#3f9a4d";
+  ctx.beginPath();
+  ctx.arc(x, y - 22 * s, 10 * s, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 /**
- * The VibeVerse marquee for the welcome arch: candy-colored letters
- * bouncing across a sunset-galaxy gradient with sparkles and tiny
- * floating islands. Deliberately saturated everywhere — no black or
- * white fields — so it reads vivid from any angle, day or night.
+ * The VibeVerse marquee for the welcome arch, matching the brand
+ * poster: chunky WHITE PIXEL letters on a bright blue sky with fluffy
+ * clouds and little floating islands. The pixel look comes from
+ * rendering the wordmark tiny and upscaling with image smoothing off.
  */
 function vibeverseArchTexture(): THREE.CanvasTexture {
   const W = 1024;
@@ -348,88 +386,131 @@ function vibeverseArchTexture(): THREE.CanvasTexture {
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // Sunset-galaxy sky.
+  // Bright poster-blue sky.
   const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, "#43217a");
-  sky.addColorStop(0.4, "#a4459a");
-  sky.addColorStop(0.75, "#ff7d6b");
-  sky.addColorStop(1, "#ffc46b");
+  sky.addColorStop(0, "#2470dd");
+  sky.addColorStop(0.55, "#4f9bee");
+  sky.addColorStop(1, "#8fcbf6");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
-  // Warm center glow so the wordmark pops.
-  const glow = ctx.createRadialGradient(W / 2, H * 0.45, 40, W / 2, H * 0.45, 560);
-  glow.addColorStop(0, "rgba(255,235,190,0.4)");
-  glow.addColorStop(1, "rgba(255,235,190,0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, W, H);
 
-  // Sparkles.
-  for (let i = 0; i < 46; i++) {
-    const x = (i * 199.7) % W;
-    const y = (i * 83.3) % H;
-    const r = 1 + (i % 3);
-    ctx.fillStyle = i % 4 === 0 ? "rgba(255,224,138,0.9)" : "rgba(255,255,255,0.75)";
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Clouds behind everything, hugging the edges + horizon.
+  drawPosterCloud(ctx, 70, 226, 1.5, 0.95);
+  drawPosterCloud(ctx, 250, 262, 1.1, 0.85);
+  drawPosterCloud(ctx, 950, 240, 1.6, 0.95);
+  drawPosterCloud(ctx, 760, 270, 1.0, 0.8);
+  drawPosterCloud(ctx, 120, 60, 0.8, 0.7);
+  drawPosterCloud(ctx, 910, 64, 0.7, 0.7);
 
-  // Tiny floating islands drifting at the edges.
-  const isle = (x: number, y: number, s: number) => {
-    ctx.fillStyle = "#5a3a78";
-    ctx.beginPath();
-    ctx.moveTo(x - 26 * s, y);
-    ctx.lineTo(x + 26 * s, y);
-    ctx.lineTo(x, y + 30 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#7bd88a";
-    ctx.beginPath();
-    ctx.ellipse(x, y - 3 * s, 28 * s, 9 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-  };
-  isle(86, 84, 1);
-  isle(944, 66, 0.8);
-  isle(902, 210, 0.6);
+  // Floating islands drifting at the sides.
+  drawPosterIsle(ctx, 98, 130, 1.05);
+  drawPosterIsle(ctx, 934, 128, 0.85);
 
-  // "VIBEVERSE" — one candy color per letter, chunky white outline,
-  // gentle per-letter bounce + tilt like a hand-hung marquee.
-  const word = "VIBEVERSE";
-  const palette = [
-    "#ffd166", "#7bf1a8", "#7ad7ff", "#ff9fb2", "#c9a2ff",
-    "#8ef5d2", "#ffe08a", "#9ad0ff", "#ffb37b",
-  ];
+  // Eyebrow, straight off the poster.
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "900 138px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
-  const step = (W - 190) / (word.length - 1);
-  for (let i = 0; i < word.length; i++) {
-    const cx = 95 + i * step;
-    const cy = 128 + Math.sin(i * 1.7) * 10;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(Math.sin(i * 2.3) * 0.06);
-    ctx.lineWidth = 16;
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#fff6e8";
-    ctx.shadowColor = "rgba(60,20,90,0.55)";
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 6;
-    ctx.strokeText(word[i], 0, 0);
-    ctx.shadowColor = "transparent";
-    ctx.fillStyle = palette[i % palette.length];
-    ctx.fillText(word[i], 0, 0);
-    ctx.restore();
+  ctx.font = "700 21px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#eaf5ff";
+  ctx.fillText("E V E R Y   B U I L D E R   G R O W S   T H E   U N I V E R S E", W / 2, 34);
+
+  // "VIBEVERSE" — rendered small, upscaled 4× with smoothing off so
+  // the letterforms get real pixel steps like the poster wordmark.
+  {
+    const tiny = document.createElement("canvas");
+    tiny.width = 232;
+    tiny.height = 46;
+    const t2 = tiny.getContext("2d")!;
+    t2.textAlign = "center";
+    t2.textBaseline = "middle";
+    t2.font = "900 30px 'Arial Black', 'Arial', sans-serif";
+    // Deep-blue drop shadow baked into the tiny canvas, then white.
+    t2.fillStyle = "#1a4fa0";
+    t2.fillText("VIBEVERSE", 117.5, 25.5);
+    t2.fillStyle = "#ffffff";
+    t2.fillText("VIBEVERSE", 116, 23);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tiny, 0, 0, 232, 46, 48, 56, 928, 184);
+    ctx.imageSmoothingEnabled = true;
   }
 
-  // Sub-line: still the welcome sign, just wearing the brand.
-  ctx.font = "700 34px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
-  ctx.fillStyle = "#fff2d5";
-  ctx.shadowColor = "rgba(60,20,90,0.6)";
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetY = 3;
-  ctx.fillText("· welcome to VIBE ISLAND ·", W / 2, 240);
-  ctx.shadowColor = "transparent";
+  // The poster's question, in its bookish serif.
+  ctx.font = "italic 600 33px Georgia, 'Times New Roman', serif";
+  ctx.fillStyle = "#0f2c50";
+  ctx.fillText("welcome to Vibe Island — what kind of adventure do you want today?", W / 2, 254);
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * The real VibeVerse brand poster, hosted by the app itself. Painted
+ * onto the plaza poster stand and seeded into the TV / holo gallery.
+ */
+export const VIBEVERSE_POSTER_URL =
+  "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
+
+/**
+ * Hand-drawn stand-in for the poster (3:2) shown until the real PNG
+ * arrives — and forever, wherever the asset can't be fetched. Same
+ * language: blue sky, pixel wordmark, clouds, floating islands.
+ */
+function vibeversePosterFallbackTexture(): THREE.CanvasTexture {
+  const W = 768;
+  const H = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#2470dd");
+  sky.addColorStop(0.6, "#4f9bee");
+  sky.addColorStop(1, "#9fd4f8");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  drawPosterCloud(ctx, 90, 400, 1.6, 0.95);
+  drawPosterCloud(ctx, 690, 370, 1.4, 0.9);
+  drawPosterCloud(ctx, 620, 470, 1.8, 1);
+  drawPosterCloud(ctx, 140, 480, 1.9, 1);
+  drawPosterCloud(ctx, 380, 500, 2.2, 1);
+  drawPosterIsle(ctx, 120, 250, 1.3);
+  drawPosterIsle(ctx, 650, 230, 1.0);
+  drawPosterIsle(ctx, 560, 330, 0.6);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "700 20px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#eaf5ff";
+  ctx.fillText("E V E R Y   B U I L D E R   G R O W S   T H E   U N I V E R S E", W / 2, 48);
+
+  {
+    const tiny = document.createElement("canvas");
+    tiny.width = 232;
+    tiny.height = 46;
+    const t2 = tiny.getContext("2d")!;
+    t2.textAlign = "center";
+    t2.textBaseline = "middle";
+    t2.font = "900 30px 'Arial Black', 'Arial', sans-serif";
+    t2.fillStyle = "#1a4fa0";
+    t2.fillText("VIBEVERSE", 117.5, 25.5);
+    t2.fillStyle = "#ffffff";
+    t2.fillText("VIBEVERSE", 116, 23);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tiny, 0, 0, 232, 46, 24, 86, 720, 143);
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  ctx.font = "italic 600 30px Georgia, 'Times New Roman', serif";
+  ctx.fillStyle = "#0f2c50";
+  ctx.fillText("What kind of adventure", W / 2, 268);
+  ctx.fillText("do you want today?", W / 2, 306);
+
+  ctx.font = "700 17px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("EXPLORE  ·  BUILD  ·  CREATE  ·  CONNECT", W / 2, 452);
 
   const t = new THREE.CanvasTexture(canvas);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -599,15 +680,27 @@ export function buildCardboardIsland(opts: {
     });
   }
 
-  // Platform collision: a square inset into the round island so the
-  // visual edge slightly overhangs. Flying under it stays clear.
-  const half = ISLAND_RADIUS * 0.74;
-  boxes.push({
-    minX: centerX - half, maxX: centerX + half,
-    minZ: centerZ - half, maxZ: centerZ + half,
-    base: topY - 9,
-    height: topY,
-  });
+  // Platform collision: horizontal strips approximating the full round
+  // cap. (This used to be a single square with half-extent ~40.7 — but
+  // the grass reaches ~55 and the zipline ring sits at radius 42, so
+  // walking to the zipline along an axis dropped you straight through
+  // visually-solid lawn. Nine strips cover the whole disc.)
+  {
+    const DISC_R = 54;
+    const STRIPS = 9;
+    const stripH = (DISC_R * 2) / STRIPS;
+    for (let i = 0; i < STRIPS; i++) {
+      const z0 = -DISC_R + i * stripH;
+      const zm = z0 + stripH / 2;
+      const halfX = Math.sqrt(Math.max(0, DISC_R * DISC_R - zm * zm));
+      boxes.push({
+        minX: centerX - halfX, maxX: centerX + halfX,
+        minZ: centerZ + z0, maxZ: centerZ + z0 + stripH,
+        base: topY - 9,
+        height: topY,
+      });
+    }
+  }
 
   // ---- Shops (craft pass: real architecture you can walk into) ------
   // Each shop is now four true walls with a doorway cut into the face
@@ -973,6 +1066,59 @@ export function buildCardboardIsland(opts: {
     welcome.add(flag);
   }
   group.add(welcome);
+
+  // ---- VibeVerse poster stand ---------------------------------------
+  // The actual brand poster on a framed easel beside the arch — loads
+  // the hosted PNG and falls back to a hand-drawn rendition, so it can
+  // never show up black. A slat below plugs the weekly build session.
+  {
+    const stand = new THREE.Group();
+    stand.position.set(16, 0, -26);
+    stand.rotation.y = Math.atan2(-16, 26); // face the plaza center
+    const frameMat = new THREE.MeshStandardMaterial({ color: "#4a3524", roughness: 0.85 });
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(8.3, 5.8, 0.22), frameMat);
+    frame.position.y = 4.3;
+    stand.add(frame);
+    const posterMat = new THREE.MeshBasicMaterial({ map: vibeversePosterFallbackTexture() });
+    new THREE.TextureLoader().load(
+      VIBEVERSE_POSTER_URL,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        posterMat.map = tex;
+        posterMat.needsUpdate = true;
+      },
+      undefined,
+      () => { /* offline / asset missing → keep the fallback */ },
+    );
+    const poster = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 5.14), posterMat);
+    poster.position.set(0, 4.3, 0.13);
+    stand.add(poster);
+    for (const side of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 1.5, 8), frameMat);
+      leg.position.set(side * 3.6, 0.75, 0);
+      stand.add(leg);
+    }
+    // Weekly event slat: the standing invitation.
+    const slat = new THREE.Mesh(
+      new THREE.PlaneGeometry(6.4, 1.0),
+      new THREE.MeshBasicMaterial({
+        map: signTexture(["vibe & build · wednesdays · 10am PT"], "#ffd9a0", "#5a3a1a"),
+        side: THREE.DoubleSide,
+      }),
+    );
+    slat.position.set(0, 0.95, 0.15);
+    stand.add(slat);
+    group.add(stand);
+    // Coarse blocker for the rotated frame (axis-aligned, so a bit
+    // deeper than the board itself).
+    boxes.push({
+      minX: centerX + 16 - 3.6, maxX: centerX + 16 + 3.6,
+      minZ: centerZ - 26 - 2.1, maxZ: centerZ - 26 + 2.1,
+      base: topY + 1.4,
+      height: topY + 7.2,
+    });
+  }
 
   // (The floating "vibe and build" billboard that hovered over Ninja's
   // Palace is gone — it sat in a weird spot and read as a black slab
@@ -1775,36 +1921,15 @@ export function buildCardboardIsland(opts: {
       });
     });
   }
-  // Big holographic vibe coin spinning over the kiosk — visible from
-  // across the plaza, the "something valuable lives here" beacon.
+  // (The beacon above the kiosk is the real iridescent $VIBE emblem —
+  // the same GLB the /coin page spins — loaded by City and parked at
+  // this kiosk's sky slot. A soft gold light here sells its glow.)
   {
-    const coin = new THREE.Group();
-    const face = new THREE.MeshStandardMaterial({
-      color: "#ffd166", emissive: "#ffb700", emissiveIntensity: 0.9,
-      roughness: 0.25, metalness: 0.7,
-    });
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.14, 28), face);
-    disc.rotation.x = Math.PI / 2;
-    coin.add(disc);
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.85, 0.07, 10, 32),
-      new THREE.MeshStandardMaterial({ color: "#fff3c2", emissive: "#ffd166", emissiveIntensity: 1.2, roughness: 0.3 }),
-    );
-    coin.add(rim);
-    const spark = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.3),
-      new THREE.MeshBasicMaterial({ color: "#fff8dc" }),
-    );
-    coin.add(spark);
-    coin.position.set(0, 5.9, 0);
-    shopGroup.add(coin);
-    const coinGlow = new THREE.PointLight(0xffc84a, 14, 12, 2);
+    const coinGlow = new THREE.PointLight(0xffd9a0, 12, 12, 2);
     coinGlow.position.set(0, 5.9, 0);
     shopGroup.add(coinGlow);
     craftAnims.push((_dt, now) => {
-      coin.rotation.y = now * 0.0012;
-      coin.position.y = 5.9 + Math.sin(now * 0.0014) * 0.18;
-      coinGlow.intensity = 12 + Math.sin(now * 0.003) * 4;
+      coinGlow.intensity = 10 + Math.sin(now * 0.003) * 4;
     });
   }
 
