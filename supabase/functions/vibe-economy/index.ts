@@ -15,6 +15,8 @@
 //   claim_bounty   { fromKind, fromRef, bountyId }
 //   complete_bounty{ bountyId, agentApproves: true }      (called from agent-reply when agent says "done")
 //   tick_agent     { agentId }                            -> decays needs, may put agent to sleep / wake them
+//   game_reward    { ownerKind, ownerRef, game, score }   -> mints $VIBE for a sky-island mini-game run
+//                                                            (server-side score clamp + 3 rewarded plays/game/day)
 //
 // fromKind/ownerKind ∈ {"user","agent"}.  ownerRef is a uuid for signed-in
 // users + agents and a stable guest-id string for anonymous visitors.
@@ -50,6 +52,7 @@ Deno.serve(async (req) => {
       case "buy_item":       return ok(await buyItem(supabase, body));
       case "claim_bounty":   return ok(await claimBounty(supabase, body));
       case "complete_bounty":return ok(await completeBounty(supabase, body));
+      case "game_reward":    return ok(await gameReward(supabase, body));
       default: return json({ error: `unknown action: ${action}` }, 400);
     }
   } catch (e) {
@@ -293,4 +296,67 @@ async function completeBounty(supabase: Supa, b: any) {
     status: "paid", paid_at: new Date().toISOString(),
   }).eq("id", bountyId);
   return { ...tx, bounty };
+}
+
+// ---- mini-game rewards --------------------------------------------------
+//
+// Each sky-island game reports a raw score; the payout formula lives HERE
+// so the client can't invent amounts. Scores are clamped to what's actually
+// achievable in a run, payouts are capped per play, and only the first
+// GAME_PLAYS_PER_DAY runs per game per owner pay out each UTC day.
+
+const GAME_PLAYS_PER_DAY = 3;
+const GAME_MAX_PAYOUT = 150;
+
+const GAME_SPECS: Record<string, { maxScore: number; toVibe: (s: number) => number }> = {
+  "mole-meadow":   { maxScore: 40,  toVibe: (s) => s * 2 },       // bops ×2       (≤80)
+  "crystal-climb": { maxScore: 90,  toVibe: (s) => s },           // 90 - seconds  (≤90)
+  "shrine-dive":   { maxScore: 100, toVibe: (s) => s },           // rings×8 +20   (≤100)
+  "lantern-echo":  { maxScore: 12,  toVibe: (s) => s * 10 },      // rounds ×10    (≤120)
+};
+
+async function gameReward(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  const game = String(b.game ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+  const spec = GAME_SPECS[game];
+  if (!spec) throw new Error(`unknown game: ${game}`);
+
+  const rawScore = Math.max(0, Math.floor(Number(b.score) || 0));
+  const score = Math.min(rawScore, spec.maxScore);
+  const amount = Math.min(GAME_MAX_PAYOUT, Math.max(0, Math.round(spec.toVibe(score))));
+
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef, 0);
+  if (amount <= 0) return { amount: 0, balance, capped: false, playsLeft: null };
+
+  // Daily cap: count today's rewarded runs of this game for this owner.
+  const midnight = new Date();
+  midnight.setUTCHours(0, 0, 0, 0);
+  const { count } = await supabase.from("vibe_ledger")
+    .select("id", { count: "exact", head: true })
+    .eq("to_kind", ownerKind).eq("to_ref", ownerRef)
+    .eq("reason", "game_reward").like("memo", `${game}%`)
+    .gte("created_at", midnight.toISOString());
+  const played = count ?? 0;
+  if (played >= GAME_PLAYS_PER_DAY) {
+    return { amount: 0, balance, capped: true, playsLeft: 0 };
+  }
+
+  // Mint from the treasury (like the starter grant — no source debit).
+  const { error: e1 } = await supabase.from("vibe_balances")
+    .update({ balance: balance + amount, updated_at: new Date().toISOString() })
+    .eq("owner_kind", ownerKind).eq("owner_ref", ownerRef);
+  if (e1) throw new Error(e1.message);
+  await supabase.from("vibe_ledger").insert({
+    from_kind: "system", from_ref: "treasury",
+    to_kind: ownerKind, to_ref: ownerRef,
+    amount, reason: "game_reward", memo: `${game} · score ${score}`,
+  });
+  return {
+    amount,
+    balance: balance + amount,
+    capped: false,
+    playsLeft: GAME_PLAYS_PER_DAY - played - 1,
+  };
 }

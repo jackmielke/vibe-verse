@@ -35,6 +35,8 @@ import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
+import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
+import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -525,6 +527,12 @@ export default function City() {
   }, [marsGame]);
   // Brief invulnerability after a hit so a single touch costs one heart.
   const marsInvulnRef = useRef(0);
+  // Sky-island mini games (Mole Meadow / Crystal Climb / Shrine Dive /
+  // Lantern Echo). The 3D module owns the game state; these mirror just
+  // enough for the HUD chip + start/quit buttons.
+  const skyGamesRef = useRef<SkyGamesWorld | null>(null);
+  const [gameHud, setGameHud] = useState<string | null>(null);
+  const [nearGamePrompt, setNearGamePrompt] = useState<{ key: SkyGameKey; name: string } | null>(null);
   // Gremlin Mines (underground) — world handle + per-tick state.
   const undergroundWorldRef = useRef<UndergroundWorld | null>(null);
   const undergroundActiveRef = useRef(false);
@@ -1478,6 +1486,69 @@ export default function City() {
     // circling the city. All landable via the shared collision boxes.
     const skyIslands = buildSkyIslands({ boxes });
     scene.add(skyIslands.group);
+
+    // ---- Sky-island mini games: one per island, paid in $VIBE --------
+    const skyGames = buildSkyGames();
+    scene.add(skyGames.group);
+    skyGamesRef.current = skyGames;
+    skyGames.onCue = (cue) => {
+      const s = soundsRef.current;
+      if (!s) return;
+      if (cue === "pop") s.chime(2);
+      else if (cue === "good") s.chime(5);
+      else if (cue === "bad") s.thud(0.6);
+      else if (cue === "tick") s.chime(0);
+      else if (cue === "go") s.chime(8);
+    };
+    skyGames.onEnd = ({ key, name, score, detail }) => {
+      if (score <= 0) {
+        toast(`${name} over`, { description: detail });
+        return;
+      }
+      soundsRef.current?.fanfare();
+      // Payouts are minted server-side (score clamps + daily caps live in
+      // vibe-economy), then mirrored into the in-city ✦ balance so the
+      // coins are instantly visible and spendable at SnackFe.
+      const ownerRef =
+        authUserIdRef.current ??
+        (() => {
+          const KEY = "city.guestId";
+          let id = localStorage.getItem(KEY);
+          if (!id) {
+            id = crypto.randomUUID?.() ?? `guest-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+            localStorage.setItem(KEY, id);
+          }
+          return id;
+        })();
+      void VibeEconomy.gameReward("user", ownerRef, key, score)
+        .then((r) => {
+          if (r.capped) {
+            toast.info(`${name}: ${detail}`, {
+              description: "Daily $VIBE cap for this game reached — this run was for glory!",
+            });
+            return;
+          }
+          if (r.amount > 0) {
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + r.amount;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+            toast.success(`+${r.amount} ✦ VIBE — ${name}`, {
+              description:
+                detail +
+                (r.playsLeft != null ? ` · ${r.playsLeft} rewarded run${r.playsLeft === 1 ? "" : "s"} left today` : ""),
+            });
+          }
+        })
+        .catch(() => {
+          // Offline / ledger unreachable: keep the fun, pay a modest
+          // local consolation like the star pickups do.
+          const fallback = Math.min(40, score);
+          vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + fallback;
+          setVibeBalanceTick((n) => n + 1);
+          persistVibeBalanceRef.current?.();
+          toast.success(`+${fallback} ✦ (offline) — ${name}`, { description: detail });
+        });
+    };
 
     // ---- World index: register named POIs so agents can /goto them
     // and answer "what's around me?" with real coords (Stage 1 of the
@@ -2582,6 +2653,10 @@ export default function City() {
         nearCow: false,
 
       });
+      // Sky-island mini games: start prompt + live status line.
+      const ng = skyGames.nearGame(player.position);
+      setNearGamePrompt((prev) => (prev?.key === ng?.key ? prev : ng));
+      setGameHud(skyGames.hudLine());
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
       jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
@@ -3290,6 +3365,7 @@ export default function City() {
       marsWorld.update(dt, now);
       tjsWorld.update(dt, now);
       skyIslands.update(dt, now);
+      skyGames.update(dt, now, player.position);
 
       // ---- Gremlin Hunt: stomp + bite collisions ---------------------
       // Only run while you're actually on Mars (cheap distance check
@@ -3693,6 +3769,9 @@ export default function City() {
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("keydown", onTypeEgg);
       window.removeEventListener("keydown", onToggleView);
+      skyGames.onEnd = null;
+      skyGames.onCue = null;
+      skyGamesRef.current = null;
       zipGrabRef.current = null;
       swingGrabRef.current = null;
       mooRef.current = null;
@@ -4651,10 +4730,40 @@ export default function City() {
 
 
 
+      {/* Live mini-game status chip — sits under the top nav while a
+          sky-island game is running, with a quit ✕. */}
+      {gameHud && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full pl-4 pr-2 py-2 flex items-center gap-2 text-sm">
+          <span className="text-primary font-heading font-semibold">{gameHud}</span>
+          <button
+            onClick={(e) => {
+              skyGamesRef.current?.cancel();
+              e.currentTarget.blur();
+            }}
+            className="rounded-full w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            aria-label="Quit game"
+            title="Quit game"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+          {nearGamePrompt && !gameHud && (
+            <button
+              onClick={(e) => {
+                skyGamesRef.current?.start(nearGamePrompt.key);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🎮 Play {nearGamePrompt.name} <span className="text-amber-300">· earn ✦</span>
+            </button>
+          )}
           {(hud.nearZip || hud.riding) && (
             <button
               onClick={(e) => {

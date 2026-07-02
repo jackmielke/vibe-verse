@@ -57,4 +57,11 @@ export const VibeEconomy = {
     call<{ fromBalance: number; item: { title: string } }>("buy_item", { fromKind, fromRef, agentId, itemId }),
   claimBounty: (fromKind: OwnerKind, fromRef: string, bountyId: string) =>
     call("claim_bounty", { fromKind, fromRef, bountyId }),
+  /** Mint $VIBE for a sky-island mini-game run. The server clamps the
+   * score, caps the payout, and limits rewarded runs per game per day. */
+  gameReward: (ownerKind: OwnerKind, ownerRef: string, game: string, score: number) =>
+    call<{ amount: number; balance: number; capped: boolean; playsLeft: number | null }>(
+      "game_reward",
+      { ownerKind, ownerRef, game, score },
+    ),
 };
