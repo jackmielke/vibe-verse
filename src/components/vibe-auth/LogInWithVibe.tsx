@@ -41,20 +41,31 @@ export default function LogInWithVibe({
     return <div className={`${iconBtn} bg-white/5 animate-pulse`} />;
   }
 
-  // Signed OUT — glowing "Log in" pill.
+  // Signed OUT — a round chip instead of a wordy pill: the face of the
+  // character you're playing as (everyone has one, account or not), or
+  // a "?" if you've never picked. Tapping it opens the login dialog.
   if (!id.session) {
+    const hasPick =
+      typeof window !== "undefined" &&
+      (localStorage.getItem("lobby.character") ?? localStorage.getItem("city.character")) !== null;
+    const ring = hasPick ? `${character.accent}90` : "hsl(var(--primary) / 0.55)";
     return (
       <>
         <button
           onClick={() => setOpen(true)}
-          className="group relative h-7 px-3 rounded-full border border-primary/40 bg-primary/10 text-primary text-[11px] font-semibold tracking-wide hover:bg-primary/20 hover:border-primary/70 transition-all shadow-[0_0_12px_-2px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_-1px_hsl(var(--primary)/0.85)]"
-          title="Log in with Vibe"
+          className={`group relative ${iconBtn} bg-primary/10 hover:bg-primary/20 text-[15px] leading-none shadow-[0_0_12px_-2px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_-1px_hsl(var(--primary)/0.85)]`}
+          style={{ boxShadow: `0 0 0 1.5px ${ring}` }}
+          title={hasPick ? `Playing as ${character.label} — log in to save your vibe` : "Log in with Vibe"}
           aria-label="Log in"
         >
-          <span className="relative z-10">Log in</span>
+          <span className="relative z-10" aria-hidden>
+            {hasPick ? character.emoji : (
+              <span className="text-primary text-[13px] font-bold">?</span>
+            )}
+          </span>
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full opacity-60 blur-[6px] bg-primary/30 group-hover:opacity-90 transition-opacity"
+            className="pointer-events-none absolute inset-0 rounded-full opacity-50 blur-[6px] bg-primary/25 group-hover:opacity-80 transition-opacity"
           />
         </button>
         <VibeAuthDialog open={open} onOpenChange={setOpen} />

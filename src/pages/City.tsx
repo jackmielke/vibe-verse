@@ -1449,6 +1449,47 @@ export default function City() {
     });
     scene.add(ninjaShow.group);
 
+    // ---- Zeppelin Heist ----------------------------------------------
+    // Every few minutes a golden vibe coin materializes on the blimp's
+    // deck with a sky-high beacon — visible from the whole island.
+    // Chase the zeppelin down (jetpack or ride it) and grab the coin.
+    const heist = (() => {
+      const g = new THREE.Group();
+      const coinMat = new THREE.MeshStandardMaterial({
+        color: "#ffd166", emissive: "#ffb700", emissiveIntensity: 1.0,
+        roughness: 0.25, metalness: 0.7,
+      });
+      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 24), coinMat);
+      coin.rotation.x = Math.PI / 2;
+      g.add(coin);
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.55, 0.06, 8, 24),
+        new THREE.MeshStandardMaterial({
+          color: "#fff3c2", emissive: "#ffd166", emissiveIntensity: 1.3, roughness: 0.3,
+        }),
+      );
+      g.add(rim);
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 1.6, 70, 10, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: "#ffd166", transparent: true, opacity: 0.2,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+          side: THREE.DoubleSide, fog: false,
+        }),
+      );
+      beacon.position.y = 35;
+      g.add(beacon);
+      const light = new THREE.PointLight(0xffc84a, 10, 10, 2);
+      g.add(light);
+      g.visible = false;
+      scene.add(g);
+      return g;
+    })();
+    const HEIST_REWARD = 15;
+    const HEIST_PERIOD_MS = 150_000; // ~2.5 minutes between coins
+    let heistNextAt = performance.now() + 45_000; // first coin lands soon
+    let heistActive = false;
+
     // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
     // floating just above the Vibe Shop kiosk sign. Click/tap it and
     // something fun happens, same spirit as the emblem on /coin.
@@ -3794,6 +3835,41 @@ export default function City() {
           }
         } else {
           ridingZeppelin = false;
+        }
+      }
+
+      // Zeppelin Heist: spawn the sky coin on schedule, ride it around
+      // on the deck, and pay out when someone grabs it.
+      {
+        const zep = skyIslands.zeppelin;
+        if (!heistActive && now >= heistNextAt) {
+          heistActive = true;
+          heist.visible = true;
+          if (enteredRef.current) {
+            toast("🪙 Vibe coin on the zeppelin!", {
+              description: "It's riding the deck around the city — go get it.",
+            });
+          }
+        }
+        if (heistActive) {
+          heist.position.set(
+            zep.pos.x,
+            zep.pos.y + zep.deckY + 1.0 + Math.sin(now * 0.004) * 0.15,
+            zep.pos.z,
+          );
+          heist.rotation.y = now * 0.003;
+          if (player.position.distanceTo(heist.position) < 1.9) {
+            heistActive = false;
+            heist.visible = false;
+            heistNextAt = now + HEIST_PERIOD_MS;
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + HEIST_REWARD;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+            soundsRef.current?.fanfare?.();
+            toast.success(`+${HEIST_REWARD} ✦ — Zeppelin Heist!`, {
+              description: "You caught the sky coin. Another lands in a few minutes.",
+            });
+          }
         }
       }
 
