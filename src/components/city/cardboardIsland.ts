@@ -885,10 +885,12 @@ export function buildCardboardIsland(opts: {
   // ---- Dream Tree --------------------------------------------------
   // Moved off the plaza so it no longer crowds the spawn camera; tucked
   // into the NE lawn between the welcome path and the snack stand.
-  const TREE_X = -14;
-  const TREE_Z = 26;
+  // Town plan: the Dream Tree anchors the SW corner of the ring.
+  const TREE_X = -28;
+  const TREE_Z = 20;
   const tree = new THREE.Group();
   tree.position.set(TREE_X, 0, TREE_Z);
+  tree.rotation.y = Math.atan2(-TREE_X, -TREE_Z); // sign faces the plaza
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.9, 1.4, 9, 10),
     new THREE.MeshStandardMaterial({ color: "#7a5230", roughness: 0.9 }),
@@ -1021,7 +1023,11 @@ export function buildCardboardIsland(opts: {
 
   // ---- Windmill ----------------------------------------------------
   const mill = new THREE.Group();
-  mill.position.set(14, 0, 2);
+  // Town plan: the windmill is a NE-rim landmark behind Ninja's Palace
+  // now — it used to spin right at the plaza's edge.
+  const MILL_X = 40;
+  const MILL_Z = -26;
+  mill.position.set(MILL_X, 0, MILL_Z);
   const towerH = 15;
   const tower = new THREE.Mesh(new THREE.BoxGeometry(4.5, towerH, 4.5), cardboardMat);
   tower.position.y = towerH / 2;
@@ -1044,8 +1050,8 @@ export function buildCardboardIsland(opts: {
   spinners.push(hub);
   group.add(mill);
   boxes.push({
-    minX: centerX + 14 - 2.25, maxX: centerX + 14 + 2.25,
-    minZ: centerZ + 2 - 2.25, maxZ: centerZ + 2 + 2.25,
+    minX: centerX + MILL_X - 2.25, maxX: centerX + MILL_X + 2.25,
+    minZ: centerZ + MILL_Z - 2.25, maxZ: centerZ + MILL_Z + 2.25,
     base: topY,
     height: topY + towerH,
   });
@@ -1101,7 +1107,10 @@ export function buildCardboardIsland(opts: {
   // across the top and a row of flickering flame cones along the edge.
   // No collision — you're meant to jetpack straight through it.
   const firewall = new THREE.Group();
-  firewall.position.set(-17, 0, -20);
+  // Town plan: the firewall burns on the west ring north of Trader
+  // Joe's, facing the plaza — rim art instead of mid-lawn clutter.
+  firewall.position.set(-34, 0, -20);
+  firewall.rotation.y = Math.atan2(34, 20);
   {
     const tex = (() => {
       const c = document.createElement("canvas");
@@ -1155,8 +1164,13 @@ export function buildCardboardIsland(opts: {
   group.add(firewall);
 
   // ---- The swing -------------------------------------------------------
+  // Town plan: the swing lives on the NW rim now, turned to face the
+  // open ocean — swinging out over the edge of the world.
+  const SWING_X = -30;
+  const SWING_Z = -28;
   const swing = new THREE.Group();
-  swing.position.set(-13, 0, -12);
+  swing.position.set(SWING_X, 0, SWING_Z);
+  swing.rotation.y = Math.atan2(SWING_X, SWING_Z); // face outward, away from the plaza
   {
     const legGeo = new THREE.CylinderGeometry(0.12, 0.16, 3.8, 8);
     [-1.3, 1.3].forEach((x) => {
@@ -1637,9 +1651,13 @@ export function buildCardboardIsland(opts: {
   const jerryParts = { stalks: allStalks };
 
   // ---- Cardboard TV: the island photo gallery ---------------------------
+  // Town plan: the TV sits on the east ring by the spring pool, part
+  // of the SE hangout corner (it used to crowd the plaza lawn).
+  const TV_X = 30;
+  const TV_Z = 22;
   const tv = new THREE.Group();
-  tv.position.set(18, 0, 22);
-  tv.rotation.y = Math.atan2(0 - 18, 0 - 22); // screen faces the plaza center
+  tv.position.set(TV_X, 0, TV_Z);
+  tv.rotation.y = Math.atan2(0 - TV_X, 0 - TV_Z); // screen faces the plaza center
   const tvTextures: THREE.Texture[] = [];
   let tvIndex = 0;
   let tvTimer = 0;
@@ -1690,13 +1708,13 @@ export function buildCardboardIsland(opts: {
   }
   group.add(tv);
 
-  // ---- Vibe Shop: a modern neon kiosk tucked behind the TV ------------
+  // ---- Vibe Shop: a modern neon kiosk on the south ring ---------------
   // Sleek dark counter with mint signage. Player walks up to it from
   // the back-island side; proximity opens the shop dialog in /city.
   // Sits just to the right of SnackFae (from a player approaching the counter)
   // so you can see both at once when you walk up to grab a snack.
-  const SHOP_X = 2;
-  const SHOP_Z = 28;
+  const SHOP_X = 5;
+  const SHOP_Z = 35;
   {
     const shopGroup = new THREE.Group();
     shopGroup.position.set(SHOP_X, 0, SHOP_Z);
@@ -1836,8 +1854,9 @@ export function buildCardboardIsland(opts: {
   // Walk up to it to open a mini "vibe coding" panel that spawns 3D
   // primitives saved to public.island_spawns. Everyone on the island
   // sees what you make; only you can delete your own creations.
-  const PORTAL_X = -10;
-  const PORTAL_Z = 26;
+  // Town plan: south ring, clear of the shop pair.
+  const PORTAL_X = -16;
+  const PORTAL_Z = 31;
   const portalGroup = new THREE.Group();
   portalGroup.position.set(PORTAL_X, 0, PORTAL_Z);
   {
@@ -1921,8 +1940,11 @@ export function buildCardboardIsland(opts: {
   // character picker. Sits on the opposite side of the Vibe Shop from
   // the Vibe Maker so the three form a little plaza row.
   // Perched on the roof of Trader Joe's (see SHOPS[0] at x=-30, z=-8, h=9).
-  const AVATAR_X = -30;
-  const AVATAR_Z = -8;
+  // Town plan: out of Trader Joe's interior (the craft pass gave TJ
+  // real walls and this portal ended up literally inside the shop) and
+  // onto the west ring south of it, beam visible from the plaza.
+  const AVATAR_X = -34;
+  const AVATAR_Z = 10;
   const AVATAR_Y = 9; // Trader Joe's roof height (matches SHOPS[0].h)
   const avatarPortalGroup = new THREE.Group();
   avatarPortalGroup.position.set(AVATAR_X, AVATAR_Y, AVATAR_Z);
@@ -2108,8 +2130,9 @@ export function buildCardboardIsland(opts: {
   // tucked on the island plaza. Walk up to launch the embedded game
   // (which lives in its own Lovable project) in a fullscreen modal.
   // ------------------------------------------------------------------
-  const ARCADE_X = 18;
-  const ARCADE_Z = 14;
+  // Town plan: the arcade joins the SE hangout corner with SnackFe.
+  const ARCADE_X = 26;
+  const ARCADE_Z = 28;
   const arcadeGroup = new THREE.Group();
   arcadeGroup.position.set(ARCADE_X, 0, ARCADE_Z);
   arcadeGroup.rotation.y = -Math.PI / 5;
@@ -2241,8 +2264,9 @@ export function buildCardboardIsland(opts: {
   // ---- SnackFe: modern neon cafe ---------------------------------------
   // A sleek modern micro-cafe with alternating mint/magenta string lights
   // along the front awning. Walk up to it to order a snack.
-  const SNACK_X = 12;
-  const SNACK_Z = 28;
+  // Town plan: pushed out to the SE ring so the mid-lawn stays open.
+  const SNACK_X = 16;
+  const SNACK_Z = 33;
   const SNACK_W = 9;
   const SNACK_D = 6;
   const SNACK_H = 4.4;
@@ -2684,12 +2708,14 @@ export function buildCardboardIsland(opts: {
 
   // ------------------------------------------------------------------
   // GOD ORB GENERATOR + TWINKLE LIGHTS
-  // A mysterious glowing box tucked between Ninja's Palace (x=26,z=-18)
-  // and the Wish Wall (x=-4,z=-32). It "powers" a constellation of
-  // twinkle lights scattered across the island lawn.
+  // A mysterious glowing dome at the island's north rim. It "powers" a
+  // constellation of twinkle lights scattered across the island lawn.
   // ------------------------------------------------------------------
-  const GEN_X = 12;
-  const GEN_Z = -26;
+  // Town plan: the orb anchors the NORTH RIM at the end of the north
+  // path — a mystic beacon framed by the welcome arch sightline. (It
+  // used to sit in the middle of THE PALACE courtyard.)
+  const GEN_X = 6;
+  const GEN_Z = -36;
   const generatorGroup = new THREE.Group();
   generatorGroup.position.set(GEN_X, 0, GEN_Z);
   group.add(generatorGroup);
@@ -2900,7 +2926,7 @@ export function buildCardboardIsland(opts: {
       maxX: centerX + GEN_X + Math.max(x0, x1) + 0.1,
       minZ: centerZ + GEN_Z + Math.min(z0, z1) - 0.1,
       maxZ: centerZ + GEN_Z + Math.max(z0, z1) + 0.1,
-      base: topY, height: 0.8,
+      base: topY, height: topY + 0.8,
     });
   }
 
@@ -3104,7 +3130,8 @@ export function buildCardboardIsland(opts: {
     zipline: { x: centerX, z: centerZ, y: topY + ZIP_HEIGHT, radius: ZIP_RADIUS },
     jerry: new THREE.Vector3(centerX, topY, centerZ),
     snackfe: new THREE.Vector3(centerX + SNACK_X, topY, centerZ + SNACK_Z - SNACK_D / 2 - 1.4),
-    swingMount: new THREE.Vector3(centerX + -13, topY, centerZ + -12 + 2.5),
+    // Mount point sits on the plaza side of the (outward-facing) swing.
+    swingMount: new THREE.Vector3(centerX + SWING_X + 1.8, topY, centerZ + SWING_Z + 1.7),
     swingSeat: swingSeatMarker,
     swingAngle: () => currentSwingAngle,
     shop: new THREE.Vector3(centerX + SHOP_X, topY, centerZ + SHOP_Z - 2.3),
@@ -3112,7 +3139,7 @@ export function buildCardboardIsland(opts: {
     avatarPortal: new THREE.Vector3(centerX + AVATAR_X, topY + AVATAR_Y, centerZ + AVATAR_Z),
     avatarStage,
     arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
-    tv: new THREE.Vector3(centerX + 18, topY, centerZ + 22),
+    tv: new THREE.Vector3(centerX + TV_X, topY, centerZ + TV_Z),
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");

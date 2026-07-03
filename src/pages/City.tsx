@@ -1692,7 +1692,7 @@ export default function City() {
     // yes, you can drive straight off the island rim).
     const kartStates = [
       { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b") },
-      { x: ISLAND_X - 13, y: ISLAND_TOP, z: ISLAND_Z + 15, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c") },
+      { x: ISLAND_X - 19, y: ISLAND_TOP, z: ISLAND_Z + 17, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c") },
     ];
     for (const k of kartStates) {
       k.mesh.group.position.set(k.x, k.y, k.z);
@@ -1981,8 +1981,9 @@ export default function City() {
     // Clicking it opens a fuller modal with the same list.
     // Moved further to the right (toward island center / Trader Joe's) so
     // the board has clear space on the plaza edge.
-    const ROSTER_LX = -6;
-    const ROSTER_LZ = 18;
+    // Town plan: just outside the plaza on the south path's west side.
+    const ROSTER_LX = -8;
+    const ROSTER_LZ = 23;
     const rosterBoard = createAgentRosterBoard({
       position: new THREE.Vector3(ISLAND_X + ROSTER_LX, ISLAND_TOP, ISLAND_Z + ROSTER_LZ),
       rotationY: Math.atan2(-ROSTER_LX, -ROSTER_LZ), // face the island center
