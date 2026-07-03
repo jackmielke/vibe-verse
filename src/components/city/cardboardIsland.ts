@@ -956,14 +956,16 @@ export function buildCardboardIsland(opts: {
       undefined,
       () => { /* offline / asset missing → keep the fallback */ },
     );
+    // Poster floats 6cm proud of its backer — anything closer
+    // z-fights and shimmers at distance.
     const marquee = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 7), posterMat);
-    marquee.position.y = 10.85; // bottom sits just above the bunting
+    marquee.position.set(0, 10.85, 0.06); // bottom sits just above the bunting
     welcome.add(marquee);
     const marqueeBacker = new THREE.Mesh(
       new THREE.BoxGeometry(10.8, 7.3, 0.15),
       cardboardDark,
     );
-    marqueeBacker.position.set(0, 10.85, -0.08);
+    marqueeBacker.position.set(0, 10.85, -0.12);
     welcome.add(marqueeBacker);
   }
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string; glow?: boolean }> = [
@@ -980,14 +982,15 @@ export function buildCardboardIsland(opts: {
         side: THREE.DoubleSide,
       }),
     );
-    board.position.y = b.y;
+    // 6cm off the backer face — coplanar boards z-fight and shimmer.
+    board.position.set(0, b.y, 0.06);
     welcome.add(board);
     // Slim cardboard frame behind each board for depth.
     const backer = new THREE.Mesh(
       new THREE.BoxGeometry(b.w + 0.3, b.h + 0.3, 0.15),
       cardboardDark,
     );
-    backer.position.set(0, b.y, -0.08);
+    backer.position.set(0, b.y, -0.12);
     welcome.add(backer);
   });
   // Little rainbow bunting strung between the posts, just under the
@@ -1668,8 +1671,10 @@ export function buildCardboardIsland(opts: {
     const body = new THREE.Mesh(new THREE.BoxGeometry(4.4, 3.1, 0.7), cardboardMat);
     body.position.y = 2.5;
     tv.add(body);
+    // Screen sits 10cm proud of the cabinet face — 3cm used to
+    // z-fight against the box and flicker from across the plaza.
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.3), tvScreenMat);
-    screen.position.set(0, 2.5, 0.38);
+    screen.position.set(0, 2.5, 0.45);
     tv.add(screen);
     [-1.5, 1.5].forEach((x) => {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1, 8), cardboardDark);

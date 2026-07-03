@@ -40,6 +40,17 @@ import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
 import { buildKart } from "@/components/city/karts";
+import {
+  GRAVITY,
+  WALK_SPEED,
+  RUN_SPEED,
+  FLY_SPEED,
+  FLY_RUN_SPEED,
+  JUMP_VELOCITY,
+  MAX_RISE,
+  MAX_FALL,
+  PLAYER_RADIUS,
+} from "@/lib/worldPhysics";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -158,17 +169,10 @@ const NINJA_PORTAL_ISLAND = { x: ISLAND_X - 22, y: ISLAND_TOP, z: ISLAND_Z - 28 
 const NINJA_PORTAL_CITY = { x: -40, y: 0, z: -54 };
 
 
-// Movement feel.
-const WALK_SPEED = 7;
-const RUN_SPEED = 16;
-const FLY_SPEED = 22; // jetpack cruising is faster than running…
-const FLY_RUN_SPEED = 34; // …and Shift opens the throttle for island runs
+// Movement feel — the canonical constants live in worldPhysics so
+// every world (City, Island Explorer, …) shares the exact same body.
 const ZIP_SPEED = 10; // zipline glide, m/s
-const GRAVITY = 24;
 const THRUST = 50; // jetpack accel (net climb = THRUST - GRAVITY)
-const MAX_RISE = 19;
-const MAX_FALL = 32;
-const PLAYER_RADIUS = 0.55;
 const MIN_CAM_DIST = 4.5;
 const MAX_CAM_DIST = 750; // pinch all the way out to a god view
 
@@ -1339,9 +1343,14 @@ export default function City() {
         void main(){
           vec4 wp = modelMatrix * vec4(position, 1.0);
           float t = uTime;
-          wp.y += sin(wp.x * 0.012 + t * 0.9) * 0.35
+          // Waves flatten to a calm sheet under and around the city
+          // plate (half-diagonal ~255m) — they used to crest ABOVE the
+          // ground plane and shimmer through the streets.
+          float damp = smoothstep(265.0, 420.0, length(wp.xz));
+          wp.y += (sin(wp.x * 0.012 + t * 0.9) * 0.35
                 + sin(wp.z * 0.017 - t * 0.7) * 0.30
-                + sin((wp.x + wp.z) * 0.008 + t * 0.5) * 0.20;
+                + sin((wp.x + wp.z) * 0.008 + t * 0.5) * 0.20) * damp
+                - 0.12;
           vWorld = wp.xyz;
           gl_Position = projectionMatrix * viewMatrix * wp;
         }
@@ -1426,10 +1435,50 @@ export default function City() {
     scene.add(island.group);
 
     // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
-    // floating above the Vibe Shop kiosk so the shop reads as "backed
-    // by Vibe Coin" from across the plaza.
+    // floating just above the Vibe Shop kiosk sign. Click/tap it and
+    // something fun happens, same spirit as the emblem on /coin.
     let vibeEmblem: THREE.Group | null = null;
-    const VIBE_EMBLEM_Y = ISLAND_TOP + 6.2;
+    let vibeEmblemHit: THREE.Object3D | null = null;
+    let emblemAnim: { kind: number; start: number } | null = null;
+    let lastEmblemKind = -1;
+    const emblemSparks: Array<{
+      s: THREE.Sprite; vx: number; vy: number; vz: number; born: number;
+    }> = [];
+    const EMBLEM_SPARK_COLORS = [0xff7fc8, 0x8de3ff, 0xa8ffd6, 0xffe27a, 0xb392ff];
+    const VIBE_EMBLEM_Y = ISLAND_TOP + 5.5;
+    const triggerEmblemFun = () => {
+      if (!vibeEmblem) return;
+      // pulse / tumble / confetti — never the same one twice in a row.
+      let kind = Math.floor(Math.random() * 3);
+      if (kind === lastEmblemKind) kind = (kind + 1) % 3;
+      lastEmblemKind = kind;
+      emblemAnim = { kind, start: performance.now() };
+      const snd = soundsRef.current;
+      if (kind === 0) snd?.chime(6);
+      else if (kind === 1) snd?.chime(3);
+      else {
+        snd?.fanfare?.();
+        for (let i = 0; i < 14; i++) {
+          const mat = new THREE.SpriteMaterial({
+            color: EMBLEM_SPARK_COLORS[i % EMBLEM_SPARK_COLORS.length],
+            transparent: true,
+            depthWrite: false,
+          });
+          const sp = new THREE.Sprite(mat);
+          sp.position.copy(vibeEmblem.position);
+          sp.scale.setScalar(0.2);
+          const a = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
+          emblemSparks.push({
+            s: sp,
+            vx: Math.cos(a) * (2.5 + Math.random() * 2),
+            vy: 2.5 + Math.random() * 3.5,
+            vz: Math.sin(a) * (2.5 + Math.random() * 2),
+            born: performance.now(),
+          });
+          scene.add(sp);
+        }
+      }
+    };
     new GLTFLoader().load(
       iridescentArcUrl,
       (gltf) => {
@@ -1437,7 +1486,7 @@ export default function City() {
         const box3 = new THREE.Box3().setFromObject(emblem);
         const sz = new THREE.Vector3();
         box3.getSize(sz);
-        const s = 2.8 / Math.max(sz.x, sz.y, sz.z, 0.0001);
+        const s = 0.95 / Math.max(sz.x, sz.y, sz.z, 0.0001);
         emblem.scale.setScalar(s);
         const c = new THREE.Vector3();
         box3.getCenter(c);
@@ -1465,10 +1514,18 @@ export default function City() {
         });
         const holder = new THREE.Group();
         holder.add(emblem);
+        // Generous invisible hit sphere so taps land easily even though
+        // the emblem itself is small.
+        const hit = new THREE.Mesh(
+          new THREE.SphereGeometry(1.1, 8, 6),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
+        holder.add(hit);
         // Above the kiosk (kiosk center sits 2.3 behind the walk-up anchor).
         holder.position.set(island.shop.x, VIBE_EMBLEM_Y, island.shop.z + 2.3);
         scene.add(holder);
         vibeEmblem = holder;
+        vibeEmblemHit = hit;
       },
       undefined,
       (err) => console.warn("[city] vibe emblem failed to load", err),
@@ -2660,9 +2717,23 @@ export default function City() {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStart = null;
       if (dragPointer === e.pointerId) dragPointer = null;
-      // Tap handling kept here as a hook for future use; the gremlin
-      // hunt is driven by stomping in the physics loop.
+      // Tap (not drag): raycast for clickable props — currently the
+      // $VIBE emblem over the shop. Gremlin stomps stay physics-driven.
       if (tapStart) {
+        const moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y);
+        const held = performance.now() - tapStart.t;
+        if (moved < 8 && held < 450 && vibeEmblemHit) {
+          const rect = canvas.getBoundingClientRect();
+          const ndc = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -(((e.clientY - rect.top) / rect.height) * 2 - 1),
+          );
+          const ray = new THREE.Raycaster();
+          ray.setFromCamera(ndc, camera);
+          if (ray.intersectObject(vibeEmblemHit, false).length > 0) {
+            triggerEmblemFun();
+          }
+        }
         tapStart = null;
       }
     };
@@ -3022,6 +3093,7 @@ export default function City() {
         zeppelin: () => [number, number, number];
         player: () => [number, number, number];
         setCam: (yaw: number, pitch?: number, dist?: number) => void;
+        emblemFun: () => void;
       };
     };
     devWindow.__cityDebug = {
@@ -3039,6 +3111,7 @@ export default function City() {
         if (pitch !== undefined) camPitch = pitch;
         if (dist !== undefined) camDist = dist;
       },
+      emblemFun: () => triggerEmblemFun(),
     };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
@@ -3391,7 +3464,7 @@ export default function City() {
       // Parkour jump: edge-trigger when grounded (or within coyote window).
       if (wantsJump && !prevJetInput) {
         if (onGround || coyoteTimer > 0) {
-          vel.y = 11;
+          vel.y = JUMP_VELOCITY;
           onGround = false;
           coyoteTimer = 0;
           wallJumpUsed = false;
@@ -3408,7 +3481,7 @@ export default function City() {
             const len = Math.hypot(wx, wz) || 1;
             vel.x = (wx / len) * 12;
             vel.z = (wz / len) * 12;
-            vel.y = 11;
+            vel.y = JUMP_VELOCITY;
             wallJumpUsed = true;
             soundsRef.current?.thud?.(0.2);
           }
@@ -3555,9 +3628,11 @@ export default function City() {
       modelHolder.rotation.x += (0 - modelHolder.rotation.x) * Math.min(1, dt * 8);
       modelHolder.rotation.z += (0 - modelHolder.rotation.z) * Math.min(1, dt * 8);
 
-      // Animation state machine.
+      // Animation state machine. Jetpack thrust deliberately skips the
+      // jump tuck — you just rise, standing tall.
       if (actions.size) {
-        if (!onGround) playClip([/jump_idle/i, /jump/i, /fall/i, /idle/i], true);
+        if (thrusting) playClip([/^idle$/i, /idle/i], true);
+        else if (!onGround) playClip([/jump_idle/i, /jump/i, /fall/i, /idle/i], true);
         else if (hSpeed > 6.5) playClip([/^run/i, /run/i, /walk/i], true);
         else if (hSpeed > 0.6) playClip([/^walk/i, /walk/i, /run/i], true);
         else playClip([/^idle$/i, /idle/i], true);
@@ -3694,10 +3769,49 @@ export default function City() {
         }
       }
 
-      // The $VIBE emblem over the shop spins slowly and bobs.
+      // The $VIBE emblem over the shop spins slowly and bobs — and a
+      // click winds up one of three party tricks (pulse / barrel roll /
+      // confetti), cousin to the emblem on /coin.
       if (vibeEmblem) {
-        vibeEmblem.rotation.y = now * 0.0006;
-        vibeEmblem.position.y = VIBE_EMBLEM_Y + Math.sin(now * 0.0014) * 0.2;
+        let spinMul = 1;
+        let extraX = 0;
+        let scl = 1;
+        if (emblemAnim) {
+          const dur = emblemAnim.kind === 1 ? 1600 : 850;
+          const k = (now - emblemAnim.start) / dur;
+          if (k >= 1) {
+            emblemAnim = null;
+          } else if (emblemAnim.kind === 0) {
+            scl = 1 + Math.sin(k * Math.PI) * 1.1; // balloon and snap back
+            spinMul = 8;
+          } else if (emblemAnim.kind === 1) {
+            const e2 = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+            extraX = e2 * Math.PI * 2; // full barrel roll
+            spinMul = 6;
+          } else {
+            spinMul = 10; // confetti frenzy spin
+            scl = 1 + Math.sin(k * Math.PI * 6) * 0.08;
+          }
+        }
+        vibeEmblem.rotation.y += dt * 0.6 * spinMul;
+        vibeEmblem.rotation.x = extraX;
+        vibeEmblem.scale.setScalar(scl);
+        vibeEmblem.position.y = VIBE_EMBLEM_Y + Math.sin(now * 0.0014) * 0.12;
+      }
+      for (let i = emblemSparks.length - 1; i >= 0; i--) {
+        const sp = emblemSparks[i];
+        const age = (now - sp.born) / 1400;
+        if (age >= 1) {
+          scene.remove(sp.s);
+          (sp.s.material as THREE.SpriteMaterial).dispose();
+          emblemSparks.splice(i, 1);
+          continue;
+        }
+        sp.vy -= 9 * dt;
+        sp.s.position.x += sp.vx * dt;
+        sp.s.position.y += sp.vy * dt;
+        sp.s.position.z += sp.vz * dt;
+        (sp.s.material as THREE.SpriteMaterial).opacity = 1 - age;
       }
 
       // Sync kart meshes; spin wheels + steer the front axle on the

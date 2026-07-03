@@ -6,6 +6,7 @@ import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { InputState } from "./useInput";
 import type { CharacterOption } from "./characters";
 import type { World } from "./world";
+import { GRAVITY, WALK_SPEED, RUN_SPEED, JUMP_VELOCITY } from "@/lib/worldPhysics";
 
 const XR_DEFAULT_EYE_HEIGHT = 1.6;
 const XR_FLOOR_POSE_MIN_HEIGHT = 0.25;
@@ -230,7 +231,9 @@ export function Character({
     }
 
     const moving = move.lengthSq() > 0.001;
-    const speed = runFlag ? 6.5 : 3.0;
+    // Same body as Vibe City — shared speeds/gravity/jump from
+    // worldPhysics so hopping between worlds feels seamless.
+    const speed = runFlag ? RUN_SPEED : WALK_SPEED;
     if (moving) {
       move.normalize();
       pos.current.x += move.x * speed * dt;
@@ -244,7 +247,7 @@ export function Character({
 
     const rawGround = world.heightAt(pos.current.x, pos.current.z);
     const groundY = rawGround < -50 ? rawGround : Math.max(0.0, rawGround);
-    velocityY.current -= 18 * dt;
+    velocityY.current -= GRAVITY * dt;
     pos.current.y += velocityY.current * dt;
     if (pos.current.y <= groundY) {
       pos.current.y = groundY;
@@ -259,7 +262,7 @@ export function Character({
       yaw.current = world.spawn.yaw;
     }
     if (controlsEnabled && jumpFlag && grounded.current) {
-      velocityY.current = 7.5;
+      velocityY.current = JUMP_VELOCITY;
       grounded.current = false;
     }
     input.jump = false;
