@@ -373,80 +373,8 @@ function drawPosterIsle(ctx: CanvasRenderingContext2D, x: number, y: number, s: 
 }
 
 /**
- * The VibeVerse marquee for the welcome arch, matching the brand
- * poster: chunky WHITE PIXEL letters on a bright blue sky with fluffy
- * clouds and little floating islands. The pixel look comes from
- * rendering the wordmark tiny and upscaling with image smoothing off.
- */
-function vibeverseArchTexture(): THREE.CanvasTexture {
-  const W = 1024;
-  const H = 288;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
-
-  // Bright poster-blue sky.
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, "#2470dd");
-  sky.addColorStop(0.55, "#4f9bee");
-  sky.addColorStop(1, "#8fcbf6");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H);
-
-  // Clouds behind everything, hugging the edges + horizon.
-  drawPosterCloud(ctx, 70, 226, 1.5, 0.95);
-  drawPosterCloud(ctx, 250, 262, 1.1, 0.85);
-  drawPosterCloud(ctx, 950, 240, 1.6, 0.95);
-  drawPosterCloud(ctx, 760, 270, 1.0, 0.8);
-  drawPosterCloud(ctx, 120, 60, 0.8, 0.7);
-  drawPosterCloud(ctx, 910, 64, 0.7, 0.7);
-
-  // Floating islands drifting at the sides.
-  drawPosterIsle(ctx, 98, 130, 1.05);
-  drawPosterIsle(ctx, 934, 128, 0.85);
-
-  // Eyebrow, straight off the poster.
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = "700 21px 'Sora', 'Segoe UI', ui-sans-serif, system-ui, sans-serif";
-  ctx.fillStyle = "#eaf5ff";
-  ctx.fillText("E V E R Y   B U I L D E R   G R O W S   T H E   U N I V E R S E", W / 2, 34);
-
-  // "VIBEVERSE" — rendered small, upscaled 4× with smoothing off so
-  // the letterforms get real pixel steps like the poster wordmark.
-  {
-    const tiny = document.createElement("canvas");
-    tiny.width = 232;
-    tiny.height = 46;
-    const t2 = tiny.getContext("2d")!;
-    t2.textAlign = "center";
-    t2.textBaseline = "middle";
-    t2.font = "900 30px 'Arial Black', 'Arial', sans-serif";
-    // Deep-blue drop shadow baked into the tiny canvas, then white.
-    t2.fillStyle = "#1a4fa0";
-    t2.fillText("VIBEVERSE", 117.5, 25.5);
-    t2.fillStyle = "#ffffff";
-    t2.fillText("VIBEVERSE", 116, 23);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(tiny, 0, 0, 232, 46, 48, 56, 928, 184);
-    ctx.imageSmoothingEnabled = true;
-  }
-
-  // The poster's question, in its bookish serif.
-  ctx.font = "italic 600 33px Georgia, 'Times New Roman', serif";
-  ctx.fillStyle = "#0f2c50";
-  ctx.fillText("welcome to Vibe Island — what kind of adventure do you want today?", W / 2, 254);
-
-  const t = new THREE.CanvasTexture(canvas);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
-/**
- * The real VibeVerse brand poster, hosted by the app itself. Painted
- * onto the plaza poster stand and seeded into the TV / holo gallery.
+ * The real VibeVerse brand poster, hosted by the app itself. Crowns
+ * the welcome arch and leads the TV / holo gallery rotation.
  */
 export const VIBEVERSE_POSTER_URL =
   "/__l5e/assets-v1/445589ab-f974-45bf-8630-1d90a1fd8797/vibeverse-poster.png";
@@ -1008,21 +936,34 @@ export function buildCardboardIsland(opts: {
     wrap.position.set(px, 1.0, 0);
     welcome.add(wrap);
   });
-  // BIG headline arch: the VibeVerse marquee — candy letters on a
-  // sunset gradient (this is the brand sign; the old flat "WELCOME TO
-  // VIBE ISLAND" board and the floating billboard both retired here).
+  // BIG headline: the REAL VibeVerse poster crowning the arch (3:2,
+  // same proportions as the artwork). Starts on the hand-drawn
+  // fallback and swaps to the hosted PNG the moment it loads — so it
+  // shows the actual brand image in production and never goes black.
   {
-    const marquee = new THREE.Mesh(
-      new THREE.PlaneGeometry(16, 4.5),
-      new THREE.MeshBasicMaterial({ map: vibeverseArchTexture(), side: THREE.DoubleSide }),
+    const posterMat = new THREE.MeshBasicMaterial({
+      map: vibeversePosterFallbackTexture(),
+      side: THREE.DoubleSide,
+    });
+    new THREE.TextureLoader().load(
+      VIBEVERSE_POSTER_URL,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        posterMat.map = tex;
+        posterMat.needsUpdate = true;
+      },
+      undefined,
+      () => { /* offline / asset missing → keep the fallback */ },
     );
-    marquee.position.y = 9.6;
+    const marquee = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 7), posterMat);
+    marquee.position.y = 10.85; // bottom sits just above the bunting
     welcome.add(marquee);
     const marqueeBacker = new THREE.Mesh(
-      new THREE.BoxGeometry(16.3, 4.8, 0.15),
+      new THREE.BoxGeometry(10.8, 7.3, 0.15),
       cardboardDark,
     );
-    marqueeBacker.position.set(0, 9.6, -0.08);
+    marqueeBacker.position.set(0, 10.85, -0.08);
     welcome.add(marqueeBacker);
   }
   const boards: Array<{ lines: string[]; y: number; w: number; h: number; bg: string; fg: string; glow?: boolean }> = [
@@ -1067,58 +1008,8 @@ export function buildCardboardIsland(opts: {
   }
   group.add(welcome);
 
-  // ---- VibeVerse poster stand ---------------------------------------
-  // The actual brand poster on a framed easel beside the arch — loads
-  // the hosted PNG and falls back to a hand-drawn rendition, so it can
-  // never show up black. A slat below plugs the weekly build session.
-  {
-    const stand = new THREE.Group();
-    stand.position.set(16, 0, -26);
-    stand.rotation.y = Math.atan2(-16, 26); // face the plaza center
-    const frameMat = new THREE.MeshStandardMaterial({ color: "#4a3524", roughness: 0.85 });
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(8.3, 5.8, 0.22), frameMat);
-    frame.position.y = 4.3;
-    stand.add(frame);
-    const posterMat = new THREE.MeshBasicMaterial({ map: vibeversePosterFallbackTexture() });
-    new THREE.TextureLoader().load(
-      VIBEVERSE_POSTER_URL,
-      (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 4;
-        posterMat.map = tex;
-        posterMat.needsUpdate = true;
-      },
-      undefined,
-      () => { /* offline / asset missing → keep the fallback */ },
-    );
-    const poster = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 5.14), posterMat);
-    poster.position.set(0, 4.3, 0.13);
-    stand.add(poster);
-    for (const side of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 1.5, 8), frameMat);
-      leg.position.set(side * 3.6, 0.75, 0);
-      stand.add(leg);
-    }
-    // Weekly event slat: the standing invitation.
-    const slat = new THREE.Mesh(
-      new THREE.PlaneGeometry(6.4, 1.0),
-      new THREE.MeshBasicMaterial({
-        map: signTexture(["vibe & build · wednesdays · 10am PT"], "#ffd9a0", "#5a3a1a"),
-        side: THREE.DoubleSide,
-      }),
-    );
-    slat.position.set(0, 0.95, 0.15);
-    stand.add(slat);
-    group.add(stand);
-    // Coarse blocker for the rotated frame (axis-aligned, so a bit
-    // deeper than the board itself).
-    boxes.push({
-      minX: centerX + 16 - 3.6, maxX: centerX + 16 + 3.6,
-      minZ: centerZ - 26 - 2.1, maxZ: centerZ - 26 + 2.1,
-      base: topY + 1.4,
-      height: topY + 7.2,
-    });
-  }
+  // (The standalone poster easel that used to sit beside the arch is
+  // gone — the real poster now crowns the welcome arch itself.)
 
   // (The floating "vibe and build" billboard that hovered over Ninja's
   // Palace is gone — it sat in a weird spot and read as a black slab
