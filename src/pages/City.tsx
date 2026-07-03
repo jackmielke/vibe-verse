@@ -708,6 +708,13 @@ export default function City() {
   const [nearVibey, setNearVibey] = useState(false);
   const [nearJerry, setNearJerry] = useState(false);
   const [nearSnackfe, setNearSnackfe] = useState(false);
+  // God Orb wish portal — click the sky orb, ask the universe for
+  // anything, it lands in the build queue (and Jack's Telegram).
+  const [wishOpen, setWishOpen] = useState(false);
+  const [wishText, setWishText] = useState("");
+  const [wishSending, setWishSending] = useState(false);
+  const [wishDone, setWishDone] = useState(false);
+  const wishBurstRef = useRef<(() => void) | null>(null);
   // Vibe karts: which parked kart is in hop-on range, and which one
   // (if any) we're driving. The ref mirrors state for the tick loop.
   const [nearKart, setNearKart] = useState(-1);
@@ -1448,6 +1455,39 @@ export default function City() {
       topY: ISLAND_TOP,
     });
     scene.add(ninjaShow.group);
+
+    // ---- God Orb wish portal -----------------------------------------
+    // Generous invisible hit sphere on the sky orb so taps land from
+    // any distance; a spark burst plays when a wish is accepted.
+    const divineHit = new THREE.Mesh(
+      new THREE.SphereGeometry(8, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    island.divineSphere.add(divineHit);
+    wishBurstRef.current = () => {
+      const p = new THREE.Vector3();
+      island.divineSphere.getWorldPosition(p);
+      for (let i = 0; i < 18; i++) {
+        const mat = new THREE.SpriteMaterial({
+          color: EMBLEM_SPARK_COLORS[i % EMBLEM_SPARK_COLORS.length],
+          transparent: true,
+          depthWrite: false,
+        });
+        const sp = new THREE.Sprite(mat);
+        sp.position.copy(p);
+        sp.scale.setScalar(0.6);
+        const a = (i / 18) * Math.PI * 2 + Math.random() * 0.4;
+        emblemSparks.push({
+          s: sp,
+          vx: Math.cos(a) * (4 + Math.random() * 4),
+          vy: 1 + Math.random() * 6,
+          vz: Math.sin(a) * (4 + Math.random() * 4),
+          born: performance.now(),
+        });
+        scene.add(sp);
+      }
+      soundsRef.current?.fanfare?.();
+    };
 
     // ---- Zeppelin Heist ----------------------------------------------
     // Every few minutes a golden vibe coin materializes on the blimp's
@@ -2774,12 +2814,13 @@ export default function City() {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStart = null;
       if (dragPointer === e.pointerId) dragPointer = null;
-      // Tap (not drag): raycast for clickable props — currently the
-      // $VIBE emblem over the shop. Gremlin stomps stay physics-driven.
+      // Tap (not drag): raycast for clickable props — the $VIBE emblem
+      // over the shop and the God Orb in the sky. Gremlin stomps stay
+      // physics-driven.
       if (tapStart) {
         const moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y);
         const held = performance.now() - tapStart.t;
-        if (moved < 8 && held < 450 && vibeEmblemHit) {
+        if (moved < 8 && held < 450) {
           const rect = canvas.getBoundingClientRect();
           const ndc = new THREE.Vector2(
             ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -2787,8 +2828,10 @@ export default function City() {
           );
           const ray = new THREE.Raycaster();
           ray.setFromCamera(ndc, camera);
-          if (ray.intersectObject(vibeEmblemHit, false).length > 0) {
+          if (vibeEmblemHit && ray.intersectObject(vibeEmblemHit, false).length > 0) {
             triggerEmblemFun();
+          } else if (ray.intersectObject(divineHit, false).length > 0) {
+            setWishOpen(true);
           }
         }
         tapStart = null;
@@ -4462,6 +4505,28 @@ export default function City() {
   }, [routerLocation.search]);
 
 
+  // Send a God Orb wish to the build queue (+ Telegram ping to the
+  // builder). The promise made in-world: granted within ~10 hours.
+  const submitWish = async () => {
+    const text = wishText.trim();
+    if (!text || wishSending) return;
+    setWishSending(true);
+    try {
+      const ownerRef =
+        authUserId ?? (typeof window !== "undefined" ? localStorage.getItem("city.guestId") : null);
+      const { error } = await supabase.functions.invoke("god-orb-wish", {
+        body: { text, author: playerName || "anonymous", owner_ref: ownerRef },
+      });
+      if (error) throw error;
+      setWishDone(true);
+      wishBurstRef.current?.();
+    } catch {
+      toast.error("The orb flickered — try again in a moment.");
+    } finally {
+      setWishSending(false);
+    }
+  };
+
   const fmtMs = (ms: number) => {
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -5458,6 +5523,80 @@ export default function City() {
       )}
 
 
+
+      {/* God Orb wish portal — ask the universe, it gets built. */}
+      {wishOpen && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-background/70 backdrop-blur-sm"
+          onClick={() => {
+            setWishOpen(false);
+            setWishDone(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden ring-1 ring-amber-300/40 shadow-[0_0_60px_rgba(255,200,100,0.25)]"
+            style={{ background: "radial-gradient(120% 120% at 50% 0%, #2a2040 0%, #171226 55%, #0d0a18 100%)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 space-y-4 text-center">
+              <div className="text-4xl">🔮</div>
+              <div>
+                <h2 className="font-heading text-xl font-bold tracking-[0.14em] text-amber-200"
+                    style={{ textShadow: "0 0 18px rgba(255,200,100,0.6)" }}>
+                  THE GOD ORB
+                </h2>
+                <p className="text-xs text-amber-100/60 mt-1 tracking-wide">
+                  every builder grows the universe
+                </p>
+              </div>
+              {wishDone ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-amber-50/90 leading-relaxed">
+                    🌠 The universe heard you. Your wish is in the build
+                    queue — check back soon and it'll be part of the world.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setWishOpen(false);
+                      setWishDone(false);
+                      setWishText("");
+                    }}
+                    className="w-full h-11 rounded-xl bg-amber-300 text-amber-950 font-semibold hover:bg-amber-200 transition-colors"
+                  >
+                    Back to the island
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-amber-50/80 leading-relaxed">
+                    Ask for anything — a building, a creature, a game, a
+                    whole new island — and the universe will build it.
+                  </p>
+                  <textarea
+                    autoFocus
+                    value={wishText}
+                    onChange={(e) => setWishText(e.target.value.slice(0, 500))}
+                    placeholder="I wish the island had…"
+                    rows={3}
+                    className="w-full rounded-xl bg-white/5 border border-amber-200/25 focus:border-amber-200/60 outline-none p-3 text-sm text-amber-50 placeholder:text-amber-100/30 resize-none"
+                  />
+                  <button
+                    onClick={() => void submitWish()}
+                    disabled={wishSending || !wishText.trim()}
+                    className="w-full h-11 rounded-xl bg-amber-300 text-amber-950 font-semibold hover:bg-amber-200 transition-colors disabled:opacity-40"
+                  >
+                    {wishSending ? "Sending to the universe…" : "Send it to the universe"}
+                  </button>
+                  <p className="text-[10px] text-amber-100/45 tracking-wide">
+                    wishes are currently granted within ~10 hours ·
+                    soon: ~10 minutes ⚡
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Vibe Island arrival card: covers the first-load pop-in with a
           sky gradient + wordmark, then fades out as the camera swoops

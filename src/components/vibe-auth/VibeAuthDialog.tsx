@@ -1,7 +1,8 @@
 /**
- * VibeAuthDialog — magic-link-first sign in. Just enter email and get a
- * one-click link. Password mode is hidden behind a "use a password instead"
- * toggle for users who prefer it. Google OAuth shown as continue-with.
+ * VibeAuthDialog — code-first sign in, no app-switching required. Enter
+ * your email, get a 6-digit code, paste it right here. The same email
+ * also carries a magic link for people who prefer tapping it. Password
+ * mode is hidden behind a toggle; wallet/Google are marked coming soon.
  */
 import { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import VibeArc from "@/components/VibeArc";
 
@@ -28,6 +29,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [code, setCode] = useState("");
 
   const reset = () => {
     setMode("magic");
@@ -36,6 +38,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     setPassword("");
     setConfirmPassword("");
     setSent(false);
+    setCode("");
   };
 
   const handleClose = (next: boolean) => {
@@ -57,9 +60,35 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
       });
       if (error) throw error;
       setSent(true);
-      toast.success("Magic link sent — check your email ✨");
-    } catch (err: any) {
-      toast.error(err.message ?? "Could not send magic link");
+      setCode("");
+      toast.success("Code sent — check your email ✨");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send the code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Paste the 6-digit code from the email — no app-switching needed.
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = code.replace(/\D/g, "");
+    if (token.length < 6) {
+      toast.error("Enter the 6-digit code from the email");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: "email",
+      });
+      if (error) throw error;
+      toast.success("Welcome to the Vibe ✨");
+      handleClose(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "That code didn't match — try again");
     } finally {
       setLoading(false);
     }
@@ -98,23 +127,9 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
         toast.success("Welcome back ✨");
       }
       handleClose(false);
-    } catch (err: any) {
-      toast.error(err.message ?? "Authentication failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Authentication failed");
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogle = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/` },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      toast.error(err.message ?? "Google sign-in failed");
       setLoading(false);
     }
   };
@@ -144,8 +159,8 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
           <p className="text-center text-sm text-white/60 mt-1">
             {mode === "magic"
               ? sent
-                ? "Check your inbox for a sign-in link"
-                : "Enter your email — we'll send you a magic link"
+                ? "Enter the 6-digit code we emailed you"
+                : "Enter your email — we'll send you a 6-digit code"
               : isSignUp
               ? "Create an account with a password"
               : "Sign in with your password"}
@@ -153,22 +168,49 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
 
           {mode === "magic" ? (
             sent ? (
-              <div className="mt-7 space-y-4 text-center">
-                <div className="mx-auto w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
-                  <Mail className="w-6 h-6 text-white/80" />
-                </div>
-                <p className="text-sm text-white/70">
-                  We sent a link to <span className="text-white">{email}</span>.
-                  Click it to sign in — no password needed.
+              <form onSubmit={handleVerifyCode} className="mt-7 space-y-4">
+                <p className="text-sm text-white/70 text-center">
+                  We emailed <span className="text-white">{email}</span>. Paste
+                  the code below — or just tap the link in the email, either
+                  works.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setSent(false)}
-                  className="text-xs text-white/50 hover:text-white transition"
+                <Input
+                  autoFocus
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="bg-transparent border-white/15 rounded-xl h-14 text-center text-2xl tracking-[0.5em] font-mono placeholder:text-white/20 placeholder:tracking-[0.5em]"
+                />
+                <Button
+                  type="submit"
+                  disabled={loading || code.length < 6}
+                  className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90 disabled:opacity-40"
                 >
-                  Use a different email
-                </button>
-              </div>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enter the Vibe"}
+                </Button>
+                <div className="flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSent(false);
+                      setCode("");
+                    }}
+                    className="text-white/50 hover:text-white transition"
+                  >
+                    Use a different email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => void handleMagicLink(e as unknown as React.FormEvent)}
+                    disabled={loading}
+                    className="text-white/50 hover:text-white transition disabled:opacity-40"
+                  >
+                    Resend code
+                  </button>
+                </div>
+              </form>
             ) : (
               <form onSubmit={handleMagicLink} className="space-y-4 mt-7">
                 <div className="space-y-1.5">
@@ -195,7 +237,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    "Send magic link"
+                    "Send me a code"
                   )}
                 </Button>
 
@@ -310,17 +352,19 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <button
               type="button"
               onClick={() => toast.info("MetaMask sign-in — coming soon")}
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium"
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/60"
             >
-              <span className="text-lg leading-none">🦊</span>
+              <span className="text-lg leading-none opacity-70">🦊</span>
               Continue with MetaMask
+              <span className="ml-1 text-[9px] uppercase tracking-widest rounded-full border border-white/20 px-1.5 py-0.5 text-white/45">
+                soon
+              </span>
             </button>
 
             <button
               type="button"
-              onClick={handleGoogle}
-              disabled={loading}
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium disabled:opacity-50"
+              onClick={() => toast.info("Google sign-in — coming soon")}
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/60"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -341,6 +385,9 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                 />
               </svg>
               Continue with Google
+              <span className="ml-1 text-[9px] uppercase tracking-widest rounded-full border border-white/20 px-1.5 py-0.5 text-white/45">
+                soon
+              </span>
             </button>
           </div>
         </div>

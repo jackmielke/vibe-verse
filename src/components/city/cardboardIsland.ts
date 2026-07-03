@@ -65,6 +65,8 @@ export interface IslandWorld {
   avatarStage: THREE.Group;
   /** Esmeralda Jump arcade cabinet — walk up to launch the game. */
   arcade: THREE.Vector3;
+  /** The God Orb in the sky — click it to wish something into the world. */
+  divineSphere: THREE.Group;
   /** Cardboard TV (community photo gallery) — walk up to open the holo-gallery. */
   tv: THREE.Vector3;
 }
@@ -2707,101 +2709,15 @@ export function buildCardboardIsland(opts: {
   }
 
   // ------------------------------------------------------------------
-  // GOD ORB GENERATOR + TWINKLE LIGHTS
-  // A mysterious glowing dome at the island's north rim. It "powers" a
-  // constellation of twinkle lights scattered across the island lawn.
-  // ------------------------------------------------------------------
-  // Town plan: the orb anchors the NORTH RIM at the end of the north
-  // path — a mystic beacon framed by the welcome arch sightline. (It
-  // used to sit in the middle of THE PALACE courtyard.)
-  const GEN_X = 6;
-  const GEN_Z = -36;
-  const generatorGroup = new THREE.Group();
-  generatorGroup.position.set(GEN_X, 0, GEN_Z);
-  group.add(generatorGroup);
-
-  // -- The God Orb (half-dome) --------------------------------------
-  // A Zometool-style geodesic half-sphere: red / white / blue struts
-  // joined at white ball nodes. Lore: this is HALF of the God Orb —
-  // the other half is lost somewhere between the digital and physical
-  // worlds. We render the upper hemisphere only.
-  const ORB_R = 4.2;
-  const orbCenterY = 0.4;
-  const orbStruts = new THREE.Group();
-  orbStruts.position.y = orbCenterY;
-  generatorGroup.add(orbStruts);
-
-  const icosa = new THREE.IcosahedronGeometry(ORB_R, 2);
-  const posAttr = icosa.attributes.position as THREE.BufferAttribute;
-  const orbVerts: THREE.Vector3[] = [];
-  const vertKey = (v: THREE.Vector3) =>
-    `${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`;
-  const vertMap = new Map<string, number>();
-  for (let i = 0; i < posAttr.count; i++) {
-    const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
-    const k = vertKey(v);
-    if (!vertMap.has(k)) {
-      vertMap.set(k, orbVerts.length);
-      orbVerts.push(v);
-    }
-  }
-  const edgeSet = new Set<string>();
-  const orbEdges: [number, number][] = [];
-  for (let i = 0; i < posAttr.count; i += 3) {
-    const ids = [0, 1, 2].map((o) => {
-      const v = new THREE.Vector3().fromBufferAttribute(posAttr, i + o);
-      return vertMap.get(vertKey(v))!;
-    });
-    for (const [a, b] of [[ids[0], ids[1]], [ids[1], ids[2]], [ids[2], ids[0]]]) {
-      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
-      if (edgeSet.has(key)) continue;
-      edgeSet.add(key);
-      orbEdges.push([a, b]);
-    }
-  }
-
-  const strutMatRed = new THREE.MeshStandardMaterial({ color: "#d92b2b", roughness: 0.45, metalness: 0.15, emissive: "#3a0606", emissiveIntensity: 0.4 });
-  const strutMatWhite = new THREE.MeshStandardMaterial({ color: "#f4f4f4", roughness: 0.55, metalness: 0.05, emissive: "#222222", emissiveIntensity: 0.2 });
-  const strutMatBlue = new THREE.MeshStandardMaterial({ color: "#2f7ad9", roughness: 0.45, metalness: 0.15, emissive: "#061a3a", emissiveIntensity: 0.4 });
-  const palette = [strutMatRed, strutMatWhite, strutMatBlue, strutMatRed, strutMatRed, strutMatBlue, strutMatWhite];
-  const strutGeo = new THREE.CylinderGeometry(0.055, 0.055, 1, 6, 1);
-
-  let strutCount = 0;
-  for (const [a, b] of orbEdges) {
-    const va = orbVerts[a];
-    const vb = orbVerts[b];
-    if (va.y < -0.01 || vb.y < -0.01) continue;
-    const mid = new THREE.Vector3().addVectors(va, vb).multiplyScalar(0.5);
-    const dir = new THREE.Vector3().subVectors(vb, va);
-    const len = dir.length();
-    const mat = palette[strutCount % palette.length];
-    const strut = new THREE.Mesh(strutGeo, mat);
-    strut.position.copy(mid);
-    strut.scale.y = len;
-    strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-    orbStruts.add(strut);
-    strutCount++;
-  }
-
-  const nodeGeo = new THREE.SphereGeometry(0.13, 10, 8);
-  const nodeMat = new THREE.MeshStandardMaterial({ color: "#fafafa", roughness: 0.35, metalness: 0.2, emissive: "#444", emissiveIntensity: 0.25 });
-  for (const v of orbVerts) {
-    if (v.y < -0.01) continue;
-    const ball = new THREE.Mesh(nodeGeo, nodeMat);
-    ball.position.copy(v);
-    orbStruts.add(ball);
-  }
-
-  // ------------------------------------------------------------------
-  // DIVINE SPHERE — full geodesic sphere floating high over the island.
-  // Lore-wise it complements the God Orb (the half-dome): the Divine
-  // Sphere is the "whole" form, suspended between the digital and the
-  // physical, slowly rotating in the sky as a beacon.
+  // THE GOD ORB — one full geodesic sphere in the sky. (There used to
+  // be a half-dome "generator" on the ground; retired. The sky orb is
+  // the whole deal now: the island's crown, and the portal for asking
+  // the universe to build things — click it and make a wish.)
   // ------------------------------------------------------------------
   const divineSphere = new THREE.Group();
-  // Floats out over the lagoon NW of the plaza, well above building
-  // tops so it reads as a sky object from anywhere on the island.
-  divineSphere.position.set(-26, 30, 16);
+  // Crowning the island: directly above the plaza, well above every
+  // rooftop, visible from anywhere.
+  divineSphere.position.set(0, 42, 0);
   group.add(divineSphere);
 
   const DIV_R = 5.0;
@@ -2878,94 +2794,33 @@ export function buildCardboardIsland(opts: {
   divineSphere.add(divineLight);
   const divineBaseY = divineSphere.position.y;
 
-
-
-  const orbFloor = new THREE.Mesh(
-    new THREE.CircleGeometry(ORB_R * 0.98, 48),
-    new THREE.MeshStandardMaterial({ color: "#1a1f2b", roughness: 0.9, metalness: 0.1 }),
-  );
-  orbFloor.rotation.x = -Math.PI / 2;
-  orbFloor.position.y = 0.02;
-  generatorGroup.add(orbFloor);
-
-  const genOrb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.85, 24, 18),
-    new THREE.MeshBasicMaterial({ color: "#ffe9a8", transparent: true, opacity: 0.85 }),
-  );
-  genOrb.position.y = orbCenterY + 0.6;
-  generatorGroup.add(genOrb);
-
-  const genHalo = new THREE.Mesh(
-    new THREE.SphereGeometry(1.5, 20, 14),
-    new THREE.MeshBasicMaterial({
-      color: "#ffd166",
-      transparent: true,
-      opacity: 0.25,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
-  );
-  genHalo.position.y = orbCenterY + 0.6;
-  generatorGroup.add(genHalo);
-
-  const genLight = new THREE.PointLight("#ffd9a0", 10, 24, 2);
-  genLight.position.y = orbCenterY + 0.7;
-  generatorGroup.add(genLight);
-
-  // Low cylindrical footprint collision ring.
-  const NSIDES = 10;
-  for (let i = 0; i < NSIDES; i++) {
-    const a0 = (i / NSIDES) * Math.PI * 2;
-    const a1 = ((i + 1) / NSIDES) * Math.PI * 2;
-    const x0 = Math.cos(a0) * ORB_R * 0.9;
-    const z0 = Math.sin(a0) * ORB_R * 0.9;
-    const x1 = Math.cos(a1) * ORB_R * 0.9;
-    const z1 = Math.sin(a1) * ORB_R * 0.9;
-    boxes.push({
-      minX: centerX + GEN_X + Math.min(x0, x1) - 0.1,
-      maxX: centerX + GEN_X + Math.max(x0, x1) + 0.1,
-      minZ: centerZ + GEN_Z + Math.min(z0, z1) - 0.1,
-      maxZ: centerZ + GEN_Z + Math.max(z0, z1) + 0.1,
-      base: topY, height: topY + 0.8,
-    });
-  }
-
-  // Multi-color "GOD ORB" plaque matching the physical sign.
-  const plaqueCanvas = document.createElement("canvas");
-  plaqueCanvas.width = 512; plaqueCanvas.height = 160;
+  // Floating invitation under the orb — the whole pitch in one line.
   {
-    const ctx = plaqueCanvas.getContext("2d")!;
-    ctx.fillStyle = "#fafafa";
-    ctx.fillRect(0, 0, 512, 160);
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(10, 10, 492, 140);
+    const c = document.createElement("canvas");
+    c.width = 640;
+    c.height = 96;
+    const ctx = c.getContext("2d")!;
+    ctx.beginPath();
+    ctx.roundRect(8, 14, 624, 68, 34);
+    ctx.fillStyle = "rgba(10, 12, 20, 0.62)";
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 220, 140, 0.8)";
+    ctx.stroke();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "bold 72px ui-sans-serif, system-ui, sans-serif";
-    const word = "GOD ORB";
-    const colors = ["#ff5b5b", "#1ec96b", "#1f7be0", "#111111", "#ff8a1c", "#d63bd6", "#1ec96b"];
-    const totalW = ctx.measureText(word).width;
-    let x = 256 - totalW / 2;
-    for (let i = 0; i < word.length; i++) {
-      const ch = word[i];
-      ctx.fillStyle = colors[i % colors.length];
-      const w = ctx.measureText(ch).width;
-      ctx.fillText(ch, x + w / 2, 64);
-      x += w;
-    }
-    ctx.fillStyle = "#444";
-    ctx.font = "italic 22px ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText("½ found — the other half is in the imagination", 256, 124);
+    ctx.font = "600 34px 'Sora', 'Segoe UI', sans-serif";
+    ctx.fillStyle = "#ffe9b8";
+    ctx.fillText("🌠 tap the orb — wish something into the world", 320, 50);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const tag = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }),
+    );
+    tag.scale.set(10, 1.5, 1);
+    tag.position.set(0, divineBaseY - 8.5, 0);
+    group.add(tag);
   }
-  const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
-  plaqueTex.colorSpace = THREE.SRGBColorSpace;
-  const plaque = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.6, 0.82),
-    new THREE.MeshBasicMaterial({ map: plaqueTex, transparent: true, side: THREE.DoubleSide }),
-  );
-  plaque.position.set(0, 1.2, ORB_R + 0.05);
-  generatorGroup.add(plaque);
 
   // Twinkle lights scattered across the lawn — small glowing pucks
   // sitting on the grass, color-rotating between mint and warm amber.
@@ -2976,7 +2831,6 @@ export function buildCardboardIsland(opts: {
   const avoid: { x: number; z: number; r: number }[] = SHOPS.map((s) => ({
     x: s.x, z: s.z, r: Math.max(s.w, s.d) * 0.7 + 2,
   }));
-  avoid.push({ x: GEN_X, z: GEN_Z, r: 2 });
   avoid.push({ x: 0, z: 0, r: 4 }); // central plaza
   let placed = 0;
   let tries = 0;
@@ -3092,9 +2946,7 @@ export function buildCardboardIsland(opts: {
 
 
 
-      // God Orb dome: slow majestic rotation + inner core pulse.
-      orbStruts.rotation.y += dt * 0.08;
-      // Divine Sphere: slow majestic spin + gentle sky-bob + halo pulse.
+      // God Orb: slow majestic spin + gentle sky-bob + halo pulse.
       divineSphere.rotation.y += dt * 0.18;
       divineSphere.rotation.x += dt * 0.05;
       divineSphere.position.y = divineBaseY + Math.sin(now * 0.0008) * 1.2;
@@ -3104,12 +2956,6 @@ export function buildCardboardIsland(opts: {
       (divineHalo.material as THREE.MeshBasicMaterial).opacity = 0.16 + divK * 0.18;
       divineHalo.scale.setScalar(1 + divK * 0.25);
       divineLight.intensity = 5 + divK * 5;
-      const orbK = 0.5 + Math.sin(now * 0.0022) * 0.5;
-      (genOrb.material as THREE.MeshBasicMaterial).opacity = 0.7 + orbK * 0.3;
-      genOrb.scale.setScalar(0.95 + orbK * 0.12);
-      (genHalo.material as THREE.MeshBasicMaterial).opacity = 0.18 + orbK * 0.18;
-      genHalo.scale.setScalar(1 + orbK * 0.25);
-      genLight.intensity = 6 + orbK * 6;
       for (let i = 0; i < twinkleLights.length; i++) {
         const t = twinkleLights[i];
         const k = 0.5 + Math.sin(now * 0.003 + t.phase) * 0.5;
@@ -3140,6 +2986,7 @@ export function buildCardboardIsland(opts: {
     avatarStage,
     arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
     tv: new THREE.Vector3(centerX + TV_X, topY, centerZ + TV_Z),
+    divineSphere,
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
