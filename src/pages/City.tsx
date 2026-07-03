@@ -40,6 +40,7 @@ import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
 import { buildKart } from "@/components/city/karts";
+import { buildNinjaPalaceShow, NINJA_CAST } from "@/components/city/ninjaPalace";
 import {
   GRAVITY,
   WALK_SPEED,
@@ -173,6 +174,9 @@ const NINJA_PORTAL_CITY = { x: -40, y: 0, z: -54 };
 // every world (City, Island Explorer, …) shares the exact same body.
 const ZIP_SPEED = 10; // zipline glide, m/s
 const THRUST = 50; // jetpack accel (net climb = THRUST - GRAVITY)
+
+// Talkable NPCs: the island icons plus the five Palace housemates.
+type NpcKey = "vibey" | "jerry" | "kage" | "ember" | "miso" | "pixel" | "shuri";
 const MIN_CAM_DIST = 4.5;
 const MAX_CAM_DIST = 750; // pinch all the way out to a god view
 
@@ -713,15 +717,17 @@ export default function City() {
   const exitKartRef = useRef<(() => void) | null>(null);
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMsg, setSnackMsg] = useState<string | null>(null);
-  const [npcTarget, setNpcTarget] = useState<"vibey" | "jerry" | null>(null);
+  const [npcTarget, setNpcTarget] = useState<NpcKey | null>(null);
   const [vibeyThinking, setVibeyThinking] = useState(false);
   const [vibeyDraft, setVibeyDraft] = useState("");
   const [npcLogs, setNpcLogs] = useState<
-    Record<"vibey" | "jerry", Array<{ who: "you" | "npc"; text: string }>>
-  >({ vibey: [], jerry: [] });
+    Record<NpcKey, Array<{ who: "you" | "npc"; text: string }>>
+  >({ vibey: [], jerry: [], kage: [], ember: [], miso: [], pixel: [], shuri: [] });
   const npcHistoryRef = useRef<
-    Record<"vibey" | "jerry", Array<{ role: "user" | "assistant"; content: string }>>
-  >({ vibey: [], jerry: [] });
+    Record<NpcKey, Array<{ role: "user" | "assistant"; content: string }>>
+  >({ vibey: [], jerry: [], kage: [], ember: [], miso: [], pixel: [], shuri: [] });
+  // Which Palace housemate is in talk range (key + display name).
+  const [nearNinjaCast, setNearNinjaCast] = useState<{ key: NpcKey; name: string } | null>(null);
   const vibeyExciteRef = useRef<(() => void) | null>(null);
   const zipGrabRef = useRef<(() => void) | null>(null);
   const swingGrabRef = useRef<(() => void) | null>(null);
@@ -1433,6 +1439,15 @@ export default function City() {
       boxes,
     });
     scene.add(island.group);
+
+    // THE PALACE — the ninja reality show in the courtyard of Ninja's
+    // Palace. Five talkable housemates, one empty throne, live drama.
+    const ninjaShow = buildNinjaPalaceShow({
+      centerX: ISLAND_X,
+      centerZ: ISLAND_Z,
+      topY: ISLAND_TOP,
+    });
+    scene.add(ninjaShow.group);
 
     // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
     // floating just above the Vibe Shop kiosk sign. Click/tap it and
@@ -2890,6 +2905,17 @@ export default function City() {
       setGameHud(skyGames.hudLine());
       setNearVibey(player.position.distanceTo(vibey.position) < 8);
       setNearJerry(player.position.distanceTo(island.jerry) < 8);
+      // Nearest Palace housemate in talk range.
+      {
+        let hit: { key: NpcKey; name: string } | null = null;
+        for (const n of ninjaShow.positions()) {
+          if (player.position.distanceTo(n.pos) < 3.8) {
+            hit = { key: n.key, name: n.name };
+            break;
+          }
+        }
+        setNearNinjaCast((prev) => (prev?.key === hit?.key ? prev : hit));
+      }
       jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
@@ -3710,6 +3736,7 @@ export default function City() {
       }
 
       island.update(dt, now);
+      ninjaShow.update(dt, now);
       updateAvatarHolo(dt);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
@@ -4372,14 +4399,67 @@ export default function City() {
     "Jerry's Plaza on Vibe Island, which the kids at the Edge Esmeralda creative " +
     "residency built. You are slow, kind, a little philosophical, and very proud of " +
     "the kids. Stay fully in character as Jerry the snail.) ";
-  const sendToNpc = async (target: "vibey" | "jerry", text: string) => {
+  // THE PALACE personas. One shared lore block so all five housemates
+  // gossip about the SAME episode from their own angles — that's what
+  // makes it feel like a real show instead of five chatbots.
+  const PALACE_LORE =
+    "(You are a cast member of THE PALACE — the VibeVerse's ninja reality show, filmed " +
+    "live at Ninja's Palace on Vibe Island. Season 1: the Grand Ninja throne sits empty, " +
+    "and at the season finale the island's visitors vote ONE of the five housemates onto " +
+    "it. The cast: Kage the strategist, Ember the hothead, Miso the soup sage, Pixel the " +
+    "streamer, and Grandma Shuri the 'retired' legend. THIS WEEK'S EPISODE: someone hid " +
+    "Ember's practice sword in Miso's soup pot and everyone suspects Kage — but it was " +
+    "secretly Grandma Shuri, and only Miso knows. Speak in short, punchy reality-show " +
+    "confessional style, 1-3 sentences. Court the visitor's finale vote. Drama always, " +
+    "actual violence never. Stay fully in character.) ";
+  const NINJA_PREFIX: Record<string, string> = {
+    kage:
+      PALACE_LORE +
+      "(You are KAGE, the violet strategist. Calm, precise, speaks in fortune-cookie " +
+      "koans, quietly running three alliances at once. You did NOT hide the sword and it " +
+      "genuinely wounds you that everyone assumes you did. You are secretly terrified of " +
+      "the plaza butterflies but will never admit why.) ",
+    ember:
+      PALACE_LORE +
+      "(You are EMBER, the red hothead. Dramatic, loud, magnificent. You are CONVINCED " +
+      "Kage hid your practice sword and you bring it up constantly. You believe the " +
+      "throne is already rightfully yours and you challenge visitors you like to " +
+      "rock-paper-scissors duels.) ",
+    miso:
+      PALACE_LORE +
+      "(You are MISO, the soup sage. Serene, warm, endlessly stirring the courtyard pot. " +
+      "You know EXACTLY who hid the sword — you found it in your soup — but you only " +
+      "drop foggy hints, and only after the visitor compliments your soup. Neutrality is " +
+      "your brand; soup is your currency.) ",
+    pixel:
+      PALACE_LORE +
+      "(You are PIXEL, the youngest housemate and a chronic streamer. You narrate " +
+      "everything like you're live, call the visitor 'chat', maintain a theory board " +
+      "about the sword incident, and keep asking people to subscribe to the season. Your " +
+      "current top theory is embarrassingly wrong.) ",
+    shuri:
+      PALACE_LORE +
+      "(You are GRANDMA SHURI, the retired legend. Sweet, knits between takes, offers " +
+      "everyone tea. You actually run every alliance in the house and YOU hid the sword " +
+      "in the soup pot to stir up the season. Deny it with grandmotherly charm — unless " +
+      "a visitor truly, cleverly earns the confession.) ",
+  };
+  const palaceCast = Object.fromEntries(NINJA_CAST.map((n) => [n.key, n]));
+  const npcDisplayName = (k: NpcKey) =>
+    k === "jerry" ? "Jerry" : k === "vibey" ? "Vibey" : palaceCast[k]?.name ?? k;
+  const sendToNpc = async (target: NpcKey, text: string) => {
     setNpcLogs((l) => ({ ...l, [target]: [...l[target], { who: "you" as const, text }] }));
     setVibeyThinking(true);
     try {
       const { data, error } = await supabase.functions.invoke("unit7-chat", {
         body: {
           history: npcHistoryRef.current[target].slice(-12),
-          text: target === "jerry" ? JERRY_PREFIX + text : text,
+          text:
+            target === "jerry"
+              ? JERRY_PREFIX + text
+              : NINJA_PREFIX[target]
+                ? NINJA_PREFIX[target] + text
+                : text,
         },
       });
       if (error) throw error;
@@ -4398,7 +4478,9 @@ export default function City() {
       const fallback =
         target === "jerry"
           ? "Jerry blinks slowly… the signal crawls even slower than he does. Try again soon."
-          : "My uplink is fuzzy out here — try me again in a moment.";
+          : NINJA_PREFIX[target]
+            ? "The producers cut the confessional feed. Very suspicious. Try again in a moment."
+            : "My uplink is fuzzy out here — try me again in a moment.";
       setNpcLogs((l) => ({
         ...l,
         [target]: [...l[target], { who: "npc" as const, text: fallback }],
@@ -5620,6 +5702,18 @@ export default function City() {
               💬 Talk to Vibey
             </button>
           )}
+          {nearNinjaCast && (
+            <button
+              onClick={(e) => {
+                setNpcTarget(nearNinjaCast.key);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🥷 Talk to {nearNinjaCast.name}{" "}
+              <span className="text-amber-300">· THE PALACE</span>
+            </button>
+          )}
         </div>
       )}
       {rosterOpen && (
@@ -5836,7 +5930,11 @@ export default function City() {
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-3 w-[min(92vw,26rem)] flex flex-col gap-2">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-heading font-semibold tracking-wider text-primary">
-              {npcTarget === "jerry" ? "JERRY · snail of Jerry's Plaza" : "VIBEY · community agent"}
+              {npcTarget === "jerry"
+                ? "JERRY · snail of Jerry's Plaza"
+                : npcTarget === "vibey"
+                  ? "VIBEY · community agent"
+                  : `${npcDisplayName(npcTarget).toUpperCase()} · ${palaceCast[npcTarget]?.title ?? ""} · THE PALACE`}
             </span>
             <button
               onClick={() => {
@@ -5888,20 +5986,26 @@ export default function City() {
               <div className="text-muted-foreground">
                 {npcTarget === "jerry"
                   ? "Jerry's eye stalks swivel toward you. Very slowly."
-                  : "Vibey hovers a little closer, waiting for you to say something."}
+                  : npcTarget === "vibey"
+                    ? "Vibey hovers a little closer, waiting for you to say something."
+                    : `${npcDisplayName(npcTarget)} adjusts their mask and glances at the confessional cam.`}
               </div>
             )}
             {npcLogs[npcTarget].map((m, i) => (
               <div key={i}>
                 <span className={m.who === "npc" ? "text-primary" : "text-amber-300"}>
-                  {m.who === "npc" ? (npcTarget === "jerry" ? "Jerry" : "Vibey") : playerName}
+                  {m.who === "npc" ? npcDisplayName(npcTarget) : playerName}
                 </span>{" "}
                 <span className="text-foreground/90">{m.text}</span>
               </div>
             ))}
             {vibeyThinking && (
               <div className="text-muted-foreground animate-pulse">
-                {npcTarget === "jerry" ? "Jerry is thinking… slowly…" : "Vibey is thinking…"}
+                {npcTarget === "jerry"
+                  ? "Jerry is thinking… slowly…"
+                  : npcTarget === "vibey"
+                    ? "Vibey is thinking…"
+                    : `${npcDisplayName(npcTarget)} is choosing their words for the cameras…`}
               </div>
             )}
           </div>
@@ -5918,7 +6022,7 @@ export default function City() {
             <input
               value={vibeyDraft}
               onChange={(e) => setVibeyDraft(e.target.value)}
-              placeholder={npcTarget === "jerry" ? "say something to Jerry" : "say something to Vibey"}
+              placeholder={`say something to ${npcDisplayName(npcTarget)}`}
               maxLength={280}
               className="flex-1 min-w-0 bg-muted/40 border border-border/40 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary/60"
             />
