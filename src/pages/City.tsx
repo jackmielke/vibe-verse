@@ -44,6 +44,7 @@ import { buildNinjaPalaceShow, NINJA_CAST } from "@/components/city/ninjaPalace"
 import { buildSkiWorld } from "@/components/city/skiWorld";
 import { buildMoonGolf } from "@/components/city/moonGolf";
 import { buildCloudKingdom } from "@/components/city/cloudKingdom";
+import { buildRebelDefense } from "@/components/city/rebelDefense";
 import {
   GRAVITY,
   WALK_SPEED,
@@ -716,6 +717,13 @@ export default function City() {
   const [nearSkiReturn, setNearSkiReturn] = useState(false);
   const [onPowderPeak, setOnPowderPeak] = useState(false);
   const [moonGolfHud, setMoonGolfHud] = useState<string | null>(null);
+  // Rebel Defense (the Vibe Star shooter): HUD + hit flash + prompts.
+  const [rebelHud, setRebelHud] = useState<{ active: boolean; wave: number; kills: number; hp: number } | null>(null);
+  const [nearBlasterRack, setNearBlasterRack] = useState(false);
+  const [rebelFlash, setRebelFlash] = useState(0);
+  const rebelStartRef = useRef<(() => void) | null>(null);
+  const rebelFireRef = useRef<(() => void) | null>(null);
+  const vibeStarSpawnRef = useRef<(() => void) | null>(null);
   const skiTravelRef = useRef<((to: "peak" | "island") => void) | null>(null);
 
   // God Orb wish portal — click the sky orb, ask the universe for
@@ -1778,6 +1786,60 @@ export default function City() {
     });
     scene.add(moon2World.group);
 
+    // THE VIBE STAR: the grey battle-station moon hosts Rebel Defense —
+    // grab the blaster, hold the pad against waves of doom troopers.
+    const rebel = buildRebelDefense({
+      cx: MOON2_X,
+      cz: MOON2_Z,
+      topY: MOON2_TOP,
+      padHalf: 14,
+      boxes,
+    });
+    scene.add(rebel.group);
+    rebel.onKill = () => {
+      vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 2;
+      setVibeBalanceTick((n) => n + 1);
+      persistVibeBalanceRef.current?.();
+      soundsRef.current?.chime(6);
+    };
+    rebel.onWave = (w) => {
+      vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 5;
+      setVibeBalanceTick((n) => n + 1);
+      persistVibeBalanceRef.current?.();
+      soundsRef.current?.fanfare?.();
+      toast.success(`⭐ Wave ${w} cleared! +5 ✦`, {
+        description: "Reinforcements inbound — hold the pad.",
+      });
+    };
+    rebel.onPlayerHit = (hpLeft) => {
+      soundsRef.current?.thud?.(0.5);
+      setRebelFlash(Date.now());
+      window.setTimeout(() => setRebelFlash(0), 380);
+      if (hpLeft > 0 && hpLeft <= 2) {
+        toast(`⚠️ ${hpLeft} ♥ left`, { description: "Use the crates as cover!" });
+      }
+    };
+    rebel.onDefeat = () => {
+      toast("💥 Overrun!", {
+        description: "The troopers took the pad. Grab the blaster to try again.",
+      });
+    };
+    rebelStartRef.current = () => {
+      rebel.start();
+      soundsRef.current?.chime(8);
+      toast("🔫 Blaster up, rebel!", {
+        description: "Doom troopers incoming. FIRE auto-aims the nearest one — they can't aim, you can.",
+      });
+    };
+    rebelFireRef.current = () => {
+      if (rebel.fire(player.position)) soundsRef.current?.chime(1);
+    };
+    vibeStarSpawnRef.current = () => {
+      player.position.set(MOON2_X, MOON2_TOP + 4, MOON2_Z + 6);
+      vel.set(0, 0, 0);
+      onGround = false;
+    };
+
     // Mars — far across the sky, with a few gremlins on patrol.
     const marsWorld = buildMars({
       centerX: MARS_X,
@@ -1923,6 +1985,7 @@ export default function City() {
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
       reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
       reg("powder-peak", "Powder Peak (ski world)", "Powder Peak", skiWorld.spawn, ["ski", "powder peak", "mountain", "snow", "ski town"]);
+      reg("vibe-star", "The Vibe Star (Rebel Defense)", "The Vibe Star", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["vibe star", "rebel defense", "shooter", "troopers", "battle station"]);
       reg("snackfe", "SnackFe Cafe", "Cardboard Island", island.snackfe, ["snackfe", "cafe", "snack", "ramen"]);
       reg("vibe-shop", "Vibe Coin Shop", "Cardboard Island", island.shop, ["shop", "coin shop", "vibe shop", "store"]);
       reg("portal", "Maker Portal", "Cardboard Island", island.portal, ["maker", "maker portal", "spawns"]);
@@ -3016,6 +3079,7 @@ export default function City() {
     // Cloud Kingdom: launches and cloud-trampoline bounces briefly lift
     // the vertical speed cap so you can actually reach the sky.
     let superBounceUntil = 0;
+    let lastRebelShot = 0; // KeyF autofire cooldown
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
@@ -3118,6 +3182,15 @@ export default function City() {
       setNearSkiReturn(player.position.distanceTo(skiWorld.returnPortal) < 6);
       setOnPowderPeak(skiWorld.inZone(player.position.x, player.position.z));
       setMoonGolfHud(moonGolf.hudLine(player.position));
+      {
+        const rs = rebel.state();
+        setRebelHud((prev) =>
+          prev?.active === rs.active && prev?.wave === rs.wave && prev?.kills === rs.kills && prev?.hp === rs.hp
+            ? prev
+            : rs,
+        );
+        setNearBlasterRack(!rs.active && rebel.nearRack(player.position));
+      }
       // Nearest parked kart in hop-on range (hidden while driving).
       {
         let nk = -1;
@@ -3994,6 +4067,12 @@ export default function City() {
       skyGames.update(dt, now, player.position);
       skiWorld.update(dt, now);
       moonGolf.update(dt, now, player.position, vel);
+      rebel.update(dt, now, player.position);
+      // F = rapid fire (button on mobile). 220ms between bolts.
+      if (keys.has("KeyF") && now - lastRebelShot > 220) {
+        lastRebelShot = now;
+        rebelFireRef.current?.();
+      }
 
       // ---- Ride the zeppelin ------------------------------------------
       // Its deck is a moving platform: hop on (jetpack up as it passes)
@@ -4691,6 +4770,7 @@ export default function City() {
       spawn === "mars" ||
       spawn === "tjs" ||
       spawn === "ski" ||
+      spawn === "vibestar" ||
       spawn === "underworld" ||
       spawn === "mines"
     ) {
@@ -4698,6 +4778,7 @@ export default function City() {
       else if (spawn === "mars") marsSpawnRef.current?.();
       else if (spawn === "tjs") tjsSpawnRef.current?.();
       else if (spawn === "ski") skiTravelRef.current?.("peak");
+      else if (spawn === "vibestar") vibeStarSpawnRef.current?.();
       else if (spawn === "underworld" || spawn === "mines") {
         // Direct portal into the Gremlin Mines — no falling down a
         // mineshaft, just blink straight in with the entry-flash effect.
@@ -5858,6 +5939,36 @@ export default function City() {
         </div>
       )}
 
+      {/* Rebel Defense battle HUD + FIRE button + hit vignette. */}
+      {entered && rebelHud?.active && (
+        <>
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs flex items-center gap-3">
+            <span className="text-rose-300 font-heading font-semibold">⭐ REBEL DEFENSE</span>
+            <span className="text-muted-foreground">wave {rebelHud.wave} · {rebelHud.kills} down</span>
+            <span className="tracking-tighter text-rose-400">
+              {"♥".repeat(Math.max(0, rebelHud.hp))}
+              <span className="text-muted-foreground/40">{"♥".repeat(Math.max(0, 5 - rebelHud.hp))}</span>
+            </span>
+          </div>
+          <button
+            onPointerDown={(e) => {
+              rebelFireRef.current?.();
+              e.currentTarget.blur();
+            }}
+            className="fixed bottom-28 right-5 z-30 w-20 h-20 rounded-full bg-rose-500/90 text-white font-heading font-bold text-sm shadow-[0_0_30px_rgba(244,63,94,0.5)] active:scale-90 transition-transform select-none touch-none"
+          >
+            FIRE
+          </button>
+        </>
+      )}
+      {rebelFlash > 0 && (
+        <div
+          key={rebelFlash}
+          className="pointer-events-none fixed inset-0 z-30"
+          style={{ background: "radial-gradient(120% 120% at 50% 50%, transparent 55%, rgba(244,63,94,0.4) 100%)" }}
+        />
+      )}
+
       {/* Live mini-game status chip — sits under the top nav while a
           sky-island game is running, with a quit ✕. */}
       {gameHud && (
@@ -6109,6 +6220,17 @@ export default function City() {
             </button>
           )}
           {/* Talk to Jerry moved to a floating in-world bubble above Jerry */}
+          {nearBlasterRack && (
+            <button
+              onClick={(e) => {
+                rebelStartRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-rose-300 animate-pulse"
+            >
+              🔫 Grab the blaster · REBEL DEFENSE
+            </button>
+          )}
           {nearSkiGate && (
             <button
               onClick={(e) => {
