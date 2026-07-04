@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
-import { buildCardboardIsland, VIBEVERSE_POSTER_URL } from "@/components/city/cardboardIsland";
+import { buildCardboardIsland, signTexture, VIBEVERSE_POSTER_URL } from "@/components/city/cardboardIsland";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeArc from "@/components/VibeArc";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
@@ -41,6 +41,7 @@ import { buildSkyIslands } from "@/components/city/skyIslands";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
 import { buildKart } from "@/components/city/karts";
 import { buildNinjaPalaceShow, NINJA_CAST } from "@/components/city/ninjaPalace";
+import { buildSkiWorld } from "@/components/city/skiWorld";
 import {
   GRAVITY,
   WALK_SPEED,
@@ -708,6 +709,12 @@ export default function City() {
   const [nearVibey, setNearVibey] = useState(false);
   const [nearJerry, setNearJerry] = useState(false);
   const [nearSnackfe, setNearSnackfe] = useState(false);
+  // Powder Peak travel prompts + on-snow hint chip.
+  const [nearSkiGate, setNearSkiGate] = useState(false);
+  const [nearSkiReturn, setNearSkiReturn] = useState(false);
+  const [onPowderPeak, setOnPowderPeak] = useState(false);
+  const skiTravelRef = useRef<((to: "peak" | "island") => void) | null>(null);
+
   // God Orb wish portal — click the sky orb, ask the universe for
   // anything, it lands in the build queue (and Jack's Telegram).
   const [wishOpen, setWishOpen] = useState(false);
@@ -1456,6 +1463,65 @@ export default function City() {
     });
     scene.add(ninjaShow.group);
 
+    // ---- POWDER PEAK: the ski world ----------------------------------
+    // A heightfield mountain far out in the ocean fog — same body, same
+    // physics; skiing is a movement branch on its snow. You get there
+    // through the gateway arch on the island's east rim.
+    const skiWorld = buildSkiWorld({ boxes });
+    scene.add(skiWorld.group);
+    // Gateway arch on the island's east rim.
+    const SKI_GATE = new THREE.Vector3(ISLAND_X + 40, ISLAND_TOP, ISLAND_Z - 8);
+    {
+      const gate = new THREE.Group();
+      gate.position.copy(SKI_GATE);
+      gate.rotation.y = Math.atan2(-40, 8); // face the plaza
+      const post = new THREE.MeshStandardMaterial({ color: "#5a4a38", roughness: 0.85 });
+      for (const side of [-1, 1]) {
+        const p = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 4.6, 8), post);
+        p.position.set(side * 2.1, 2.3, 0);
+        gate.add(p);
+      }
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.5, 0.5), post);
+      lintel.position.y = 4.55;
+      gate.add(lintel);
+      const gateSign = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.6, 1.15),
+        new THREE.MeshBasicMaterial({
+          map: signTexture(["⛷ POWDER PEAK · ski world"], "#dfedfb", "#1f4f7a"),
+          side: THREE.DoubleSide,
+          transparent: true,
+        }),
+      );
+      gateSign.position.y = 5.6;
+      gate.add(gateSign);
+      // Shimmering doorway film.
+      const film = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.8, 4.2),
+        new THREE.MeshBasicMaterial({
+          color: "#bfe6ff", transparent: true, opacity: 0.28,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        }),
+      );
+      film.position.y = 2.2;
+      gate.add(film);
+      scene.add(gate);
+    }
+    skiTravelRef.current = (to) => {
+      if (to === "peak") {
+        player.position.copy(skiWorld.spawn);
+        player.position.y += 2;
+        toast("⛷ Welcome to Powder Peak", {
+          description: "Ski down with WASD — carve, don't fight it. Jetpack works as the lift.",
+        });
+      } else {
+        player.position.set(ISLAND_X, ISLAND_TOP + 2, ISLAND_Z + 7);
+        toast("🏝 Back on Vibe Island");
+      }
+      vel.set(0, 0, 0);
+      onGround = false;
+      soundsRef.current?.chime(7);
+    };
+
     // ---- God Orb wish portal -----------------------------------------
     // Generous invisible hit sphere on the sky orb so taps land from
     // any distance; a spark burst plays when a wish is accepted.
@@ -1821,6 +1887,7 @@ export default function City() {
       reg("cardboard-island", "Vibe Island", "Vibe Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard", "edge island", "cardboard island"]);
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
       reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
+      reg("powder-peak", "Powder Peak (ski world)", "Powder Peak", skiWorld.spawn, ["ski", "powder peak", "mountain", "snow", "ski town"]);
       reg("snackfe", "SnackFe Cafe", "Cardboard Island", island.snackfe, ["snackfe", "cafe", "snack", "ramen"]);
       reg("vibe-shop", "Vibe Coin Shop", "Cardboard Island", island.shop, ["shop", "coin shop", "vibe shop", "store"]);
       reg("portal", "Maker Portal", "Cardboard Island", island.portal, ["maker", "maker portal", "spawns"]);
@@ -2880,6 +2947,11 @@ export default function City() {
           if (b.height > h) h = b.height;
         }
       }
+      // Powder Peak's snow is analytic ground, not a box — treat any
+      // surface at/below (or a small step above) the player as support
+      // so walking uphill works like stairs.
+      const skiH = skiWorld.heightAt(x, z);
+      if (skiH !== null && skiH <= refY + 0.6 && skiH > h) h = skiH;
       if (h !== -Infinity) return h;
       return refY < -50 ? refY - 9999 : 0;
     };
@@ -3004,6 +3076,9 @@ export default function City() {
       jerryWorldRef.current = { x: island.jerry.x, y: island.jerry.y, z: island.jerry.z };
       setNearSnackfe(player.position.distanceTo(island.snackfe) < 7);
       setNearShop(player.position.distanceTo(island.shop) < 7);
+      setNearSkiGate(player.position.distanceTo(SKI_GATE) < 6);
+      setNearSkiReturn(player.position.distanceTo(skiWorld.returnPortal) < 6);
+      setOnPowderPeak(skiWorld.inZone(player.position.x, player.position.z));
       // Nearest parked kart in hop-on range (hidden while driving).
       {
         let nk = -1;
@@ -3561,10 +3636,34 @@ export default function City() {
         if (jetInput && !prevJetInput) exitKartRef.current?.();
         prevJetInput = jetInput;
       } else {
-      // Horizontal velocity eases toward intent; lighter control mid-air.
-      const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
-      vel.x += (intent.x * targetSpeed - vel.x) * k;
-      vel.z += (intent.z * targetSpeed - vel.z) * k;
+      // Horizontal velocity: on Powder Peak snow you SKI — gravity
+      // pulls along the slope gradient, momentum carries, and input
+      // carves instead of teleporting your velocity. Everywhere else,
+      // the usual ease-toward-intent walk.
+      const onSnow =
+        onGround && !undergroundNow && skiWorld.inZone(pos.x, pos.z) &&
+        skiWorld.heightAt(pos.x, pos.z) !== null;
+      if (onSnow) {
+        const grad = skiWorld.gradientAt(pos.x, pos.z);
+        vel.x += -grad.gx * 26 * dt;
+        vel.z += -grad.gz * 26 * dt;
+        const carve = running ? 16 : 10;
+        vel.x += intent.x * carve * dt;
+        vel.z += intent.z * carve * dt;
+        const glide = Math.pow(0.55, dt); // low friction, keeps the run alive
+        vel.x *= glide;
+        vel.z *= glide;
+        const sp = Math.hypot(vel.x, vel.z);
+        const MAX_SKI = 38;
+        if (sp > MAX_SKI) {
+          vel.x *= MAX_SKI / sp;
+          vel.z *= MAX_SKI / sp;
+        }
+      } else {
+        const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
+        vel.x += (intent.x * targetSpeed - vel.x) * k;
+        vel.z += (intent.z * targetSpeed - vel.z) * k;
+      }
 
       // Vertical: gravity vs. jetpack.
       vel.y -= GRAVITY * dt;
@@ -3696,7 +3795,9 @@ export default function City() {
           const inMoonA = Math.hypot(pos.x - MOON_X, pos.z - MOON_Z) < 70;
           const inMoonB = Math.hypot(pos.x - MOON2_X, pos.z - MOON2_Z) < 70;
           const inUnder = undergroundActiveRef.current || pos.y < -50;
-          const safeZone = inMars || inMoonA || inMoonB || inUnder;
+          // Powder Peak is a soft-snow zone — hucking cliffs is the point.
+          const inSki = skiWorld.inZone(pos.x, pos.z);
+          const safeZone = inMars || inMoonA || inMoonB || inUnder || inSki;
 
           const fallDamageArmed = fallDamageEnabledRef.current && !jetpackEquipped;
 
@@ -3830,6 +3931,7 @@ export default function City() {
       tjsWorld.update(dt, now);
       skyIslands.update(dt, now);
       skyGames.update(dt, now, player.position);
+      skiWorld.update(dt, now);
 
       // ---- Ride the zeppelin ------------------------------------------
       // Its deck is a moving platform: hop on (jetpack up as it passes)
@@ -5633,6 +5735,14 @@ export default function City() {
         )}
       </AnimatePresence>
 
+      {/* On-snow hint chip while you're on Powder Peak. */}
+      {entered && onPowderPeak && !gameHud && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs">
+          <span className="text-primary font-heading font-semibold">⛷ POWDER PEAK</span>
+          <span className="text-muted-foreground"> · carve with A/D · Space hops · jetpack = ski lift</span>
+        </div>
+      )}
+
       {/* Live mini-game status chip — sits under the top nav while a
           sky-island game is running, with a quit ✕. */}
       {gameHud && (
@@ -5884,6 +5994,28 @@ export default function City() {
             </button>
           )}
           {/* Talk to Jerry moved to a floating in-world bubble above Jerry */}
+          {nearSkiGate && (
+            <button
+              onClick={(e) => {
+                skiTravelRef.current?.("peak");
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              ⛷ Ski Powder Peak
+            </button>
+          )}
+          {nearSkiReturn && (
+            <button
+              onClick={(e) => {
+                skiTravelRef.current?.("island");
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🏝 Back to Vibe Island
+            </button>
+          )}
           {nearKart >= 0 && drivingKart < 0 && (
             <button
               onClick={(e) => {
