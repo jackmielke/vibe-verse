@@ -144,10 +144,10 @@ export function buildCloudKingdom(opts: {
   padGroup.add(padSkin);
   const padSign = (() => {
     const c = document.createElement("canvas");
-    c.width = 512; c.height = 96;
+    c.width = 720; c.height = 100;
     const ctx = c.getContext("2d")!;
     ctx.beginPath();
-    ctx.roundRect(6, 10, 500, 76, 30);
+    ctx.roundRect(8, 12, 704, 76, 32);
     ctx.fillStyle = "rgba(12, 16, 26, 0.68)";
     ctx.fill();
     ctx.strokeStyle = "rgba(122, 215, 255, 0.9)";
@@ -155,9 +155,9 @@ export function buildCloudKingdom(opts: {
     ctx.stroke();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "600 34px 'Sora', 'Segoe UI', sans-serif";
+    ctx.font = "600 38px 'Sora', 'Segoe UI', sans-serif";
     ctx.fillStyle = "#c8ecff";
-    ctx.fillText("☁️ CLOUD KINGDOM — step on to launch", 256, 50);
+    ctx.fillText("☁️ CLOUD KINGDOM · step on!", 360, 52);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
@@ -165,7 +165,7 @@ export function buildCloudKingdom(opts: {
   const padTag = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: padSign, transparent: true, depthWrite: false }),
   );
-  padTag.scale.set(7.4, 1.4, 1);
+  padTag.scale.set(8.6, 1.2, 1);
   padTag.position.y = 3;
   padGroup.add(padTag);
   group.add(padGroup);

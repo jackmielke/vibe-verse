@@ -3772,7 +3772,14 @@ export default function City() {
           vel.z *= MAX_SKI / sp;
         }
       } else {
-        const k = onGround ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.05, dt);
+        // During a Cloud Kingdom launch/bounce with no input, keep the
+        // ballistic momentum — the usual air easing was dragging the
+        // launch drift to zero so you never reached the arrival cloud.
+        const airK =
+          now < superBounceUntil && intent.lengthSq() < 0.01
+            ? 1 - Math.pow(0.7, dt)
+            : 1 - Math.pow(0.05, dt);
+        const k = onGround ? 1 - Math.pow(0.0001, dt) : airK;
         vel.x += (intent.x * targetSpeed - vel.x) * k;
         vel.z += (intent.z * targetSpeed - vel.z) * k;
       }
@@ -3946,9 +3953,9 @@ export default function City() {
           cloudKingdom.inZone(pos.x, pos.z) &&
           support > ISLAND_TOP + 100
         ) {
-          vel.y = 26 + Math.hypot(vel.x, vel.z) * 0.25;
+          vel.y = 30 + Math.hypot(vel.x, vel.z) * 0.3;
           onGround = false;
-          superBounceUntil = now + 1500;
+          superBounceUntil = now + 2000;
           peakY = pos.y;
           soundsRef.current?.chime(3);
         }

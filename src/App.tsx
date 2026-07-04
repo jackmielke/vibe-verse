@@ -26,6 +26,7 @@ import AdminWorlds from "./pages/AdminWorlds.tsx";
 import AgentLobby from "./pages/AgentLobby.tsx";
 import VibeProfile from "./pages/VibeProfile.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
+import VibeRadio from "./components/VibeRadio.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 import IslandExplorer from "./pages/IslandExplorer.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
@@ -42,6 +43,9 @@ const App = () => (
           {/* Global top-center destination nav — visible on every route
               so the user always has one-click access to all the worlds. */}
           <GlobalNav />
+          {/* VIBE FM — the cassette deck rides above the router so the
+              music keeps playing across world hops. */}
+          <VibeRadio />
           <Routes>
           {/* Hub is now the landing page — the VibeVerse lobby. */}
           <Route path="/" element={<HubV2 />} />

@@ -17,6 +17,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { toast } from "sonner";
 import { CHARACTERS, type CharSpec } from "@/lib/characters";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
@@ -120,10 +122,127 @@ export default function VibeGo() {
   const [collection, setCollection] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem("vibego.collection") ?? "{}"); } catch { return {}; }
   });
+  // Personal escort: 3 wilds guaranteed within walking distance, rolled
+  // fresh each epoch from wherever you're standing.
+  const [personalWilds, setPersonalWilds] = useState<Wild[]>([]);
+  // Your real 3D avatar, rendered once to an image for the map marker.
+  const [avatarImg, setAvatarImg] = useState<string | null>(null);
+  // AR: live camera behind the catch screen.
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [arOn, setArOn] = useState(false);
 
   posRef.current = pos;
 
-  // ---- Wild set for the 3×3 cells around us -------------------------------
+  // Roll the personal escort when position first locks / epoch turns.
+  useEffect(() => {
+    if (!pos) return;
+    const rand = mulberry32((epoch * 7919 + 13) >>> 0);
+    const kx = Math.cos(pos.lat * (Math.PI / 180)) * 111320;
+    const out: Wild[] = [];
+    for (let i = 0; i < 3; i++) {
+      const roll = rand();
+      const tier: Rarity = roll < 0.03 ? "legendary" : roll < 0.15 ? "epic" : roll < 0.45 ? "uncommon" : "common";
+      const pool = CHARACTERS.filter((c) => rarityOf(c.id) === tier);
+      const char = pool[Math.floor(rand() * pool.length)] ?? CHARACTERS[0];
+      const bearing = rand() * Math.PI * 2;
+      const dist = 30 + rand() * 60; // 30–90m: always a short stroll
+      out.push({
+        key: `near_${epoch}_${i}`,
+        char,
+        rarity: rarityOf(char.id),
+        lat: pos.lat + (Math.cos(bearing) * dist) / 110574,
+        lng: pos.lng + (Math.sin(bearing) * dist) / kx,
+        misses: 0,
+        fled: false,
+      });
+    }
+    setPersonalWilds(out);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [epoch, pos === null]);
+
+  // Render the chosen character's GLB to a little transparent portrait
+  // so the player marker is YOUR avatar, not an emoji.
+  useEffect(() => {
+    let disposed = false;
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 160;
+    let renderer: THREE.WebGLRenderer | null = null;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setClearColor(0x000000, 0);
+      const scene = new THREE.Scene();
+      const cam = new THREE.PerspectiveCamera(30, 128 / 160, 0.1, 60);
+      scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+      const dir = new THREE.DirectionalLight(0xffffff, 1.8);
+      dir.position.set(2, 4, 3);
+      scene.add(dir);
+      new GLTFLoader().load(
+        myChar.url,
+        (gltf) => {
+          if (disposed || !renderer) return;
+          const m = gltf.scene;
+          const box = new THREE.Box3().setFromObject(m);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const c = new THREE.Vector3();
+          box.getCenter(c);
+          m.position.sub(c);
+          m.rotation.y = 0.35;
+          scene.add(m);
+          const h = Math.max(size.y, 0.3);
+          cam.position.set(0, h * 0.06, h * 2.2);
+          cam.lookAt(0, 0, 0);
+          renderer.render(scene, cam);
+          setAvatarImg(canvas.toDataURL("image/png"));
+          renderer.dispose();
+        },
+        undefined,
+        () => { /* keep the emoji fallback */ },
+      );
+    } catch { /* emoji fallback */ }
+    return () => {
+      disposed = true;
+      renderer?.dispose();
+    };
+  }, [myChar.url]);
+
+  // AR camera behind the catch screen: acquire on open, release on close.
+  useEffect(() => {
+    if (!target) {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setArOn(false);
+      return;
+    }
+    let cancelled = false;
+    navigator.mediaDevices
+      ?.getUserMedia?.({ video: { facingMode: "environment" } })
+      .then((s) => {
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = s;
+        setArOn(true);
+      })
+      .catch(() => setArOn(false));
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target === null]);
+  useEffect(() => {
+    if (arOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play().catch(() => { /* autoplay policies */ });
+    }
+  }, [arOn]);
+
+  // ---- Wild set: shared cell spawns + your personal escort ----------------
   const wilds = useMemo(() => {
     if (!pos) return [] as Wild[];
     const cx = Math.floor(pos.lng / CELL_DEG);
@@ -134,8 +253,9 @@ export default function VibeGo() {
         out.push(...spawnsForCell(cx + dx, cy + dy, epoch));
       }
     }
+    out.push(...personalWilds);
     return out.filter((w) => !fledKeys.has(w.key) && !caughtKeys.has(w.key));
-  }, [pos ? Math.floor(pos.lng / CELL_DEG) : 0, pos ? Math.floor(pos.lat / CELL_DEG) : 0, epoch, fledKeys, caughtKeys, pos === null]);
+  }, [pos ? Math.floor(pos.lng / CELL_DEG) : 0, pos ? Math.floor(pos.lat / CELL_DEG) : 0, epoch, fledKeys, caughtKeys, pos === null, personalWilds]);
 
   // Epoch ticker: new spawn set every 30 minutes.
   useEffect(() => {
@@ -236,7 +356,12 @@ export default function VibeGo() {
     if (!playerMarkerRef.current) {
       const el = document.createElement("div");
       el.className = "vibego-player";
-      el.innerHTML = `
+      el.innerHTML = avatarImg
+        ? `
+        <div class="vibego-range"></div>
+        <img class="vibego-me-img" src="${avatarImg}" alt="" />
+      `
+        : `
         <div class="vibego-range"></div>
         <div class="vibego-me" style="box-shadow:0 0 0 3px ${myChar.accent}cc, 0 4px 14px rgba(0,0,0,.5)">${myChar.emoji}</div>
       `;
@@ -244,7 +369,13 @@ export default function VibeGo() {
     } else {
       playerMarkerRef.current.setLngLat([pos.lng, pos.lat]);
     }
-  }, [pos, mapReady, myChar]);
+  }, [pos, mapReady, myChar, avatarImg]);
+
+  // Swap the marker for the real avatar portrait once it's rendered.
+  useEffect(() => {
+    playerMarkerRef.current?.remove();
+    playerMarkerRef.current = null;
+  }, [avatarImg]);
 
   // Wild markers.
   useEffect(() => {
@@ -354,6 +485,7 @@ export default function VibeGo() {
         .vibego-range { position:absolute; left:50%; top:50%; width:110px; height:110px; transform:translate(-50%,-50%);
           border-radius:9999px; background:rgba(122,215,255,.12); border:2px solid rgba(122,215,255,.45); animation: vibego-pulse 2.4s ease-in-out infinite; }
         .vibego-me { position:relative; width:44px; height:44px; border-radius:9999px; background:#101826; display:flex; align-items:center; justify-content:center; font-size:24px; }
+        .vibego-me-img { position:relative; width:56px; height:70px; object-fit:contain; filter: drop-shadow(0 5px 9px rgba(0,0,0,.55)); }
         .vibego-wild { cursor:pointer; }
         .vibego-wild-chip { width:46px; height:46px; border-radius:9999px; background:rgba(10,16,30,.85); border:2.5px solid; display:flex; align-items:center; justify-content:center; animation: vibego-bob 2s ease-in-out infinite; }
         .vibego-wild-emoji { font-size:26px; }
@@ -438,9 +570,13 @@ export default function VibeGo() {
               })}
               <div className="vibego-player absolute left-1/2 top-1/2" style={{ transform: "translate(-50%,-50%)" }}>
                 <div className="vibego-range" />
-                <div className="vibego-me" style={{ boxShadow: `0 0 0 3px ${myChar.accent}cc, 0 4px 14px rgba(0,0,0,.5)` }}>
-                  {myChar.emoji}
-                </div>
+                {avatarImg ? (
+                  <img className="vibego-me-img" src={avatarImg} alt="" />
+                ) : (
+                  <div className="vibego-me" style={{ boxShadow: `0 0 0 3px ${myChar.accent}cc, 0 4px 14px rgba(0,0,0,.5)` }}>
+                    {myChar.emoji}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -515,10 +651,26 @@ export default function VibeGo() {
         </>
       )}
 
-      {/* Catch screen. */}
+      {/* Catch screen — with the real world behind it when the camera
+          is available (AR mode), the vibe gradient when it isn't. */}
       {target && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-between py-10 px-6"
-             style={{ background: "radial-gradient(120% 90% at 50% 10%, rgba(16,53,34,.94) 0%, rgba(7,26,15,.97) 70%)" }}>
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-between py-10 px-6 overflow-hidden"
+             style={!arOn ? { background: "radial-gradient(120% 90% at 50% 10%, rgba(16,53,34,.94) 0%, rgba(7,26,15,.97) 70%)" } : undefined}>
+          {arOn && (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover -z-10"
+              />
+              <div
+                className="absolute inset-0 -z-10"
+                style={{ background: "radial-gradient(120% 90% at 50% 20%, rgba(4,12,8,0.15) 0%, rgba(4,12,8,0.62) 85%)" }}
+              />
+            </>
+          )}
           <div className="text-center">
             <div className="text-xs uppercase tracking-[0.3em]" style={{ color: RARITY_META[target.rarity].color }}>
               {RARITY_META[target.rarity].label} · wild

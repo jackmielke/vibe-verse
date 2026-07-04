@@ -1,0 +1,7 @@
+{
+  "_howto": "Drop .mp3 files into public/audio/ and add them here — the VIBE FM deck picks this list up on load.",
+  "tracks": [
+    { "file": "fleetwood-mac-dreams.mp3", "title": "Dreams", "artist": "Fleetwood Mac" },
+    { "file": "declan-mckenna-brazil.mp3", "title": "Brazil", "artist": "Declan McKenna" }
+  ]
+}
