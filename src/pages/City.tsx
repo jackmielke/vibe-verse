@@ -42,6 +42,8 @@ import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components
 import { buildKart } from "@/components/city/karts";
 import { buildNinjaPalaceShow, NINJA_CAST } from "@/components/city/ninjaPalace";
 import { buildSkiWorld } from "@/components/city/skiWorld";
+import { buildMoonGolf } from "@/components/city/moonGolf";
+import { buildCloudKingdom } from "@/components/city/cloudKingdom";
 import {
   GRAVITY,
   WALK_SPEED,
@@ -713,6 +715,7 @@ export default function City() {
   const [nearSkiGate, setNearSkiGate] = useState(false);
   const [nearSkiReturn, setNearSkiReturn] = useState(false);
   const [onPowderPeak, setOnPowderPeak] = useState(false);
+  const [moonGolfHud, setMoonGolfHud] = useState<string | null>(null);
   const skiTravelRef = useRef<((to: "peak" | "island") => void) | null>(null);
 
   // God Orb wish portal — click the sky orb, ask the universe for
@@ -1522,6 +1525,37 @@ export default function City() {
       soundsRef.current?.chime(7);
     };
 
+    // ---- CLOUD BOUNCE KINGDOM ------------------------------------------
+    // Trampoline clouds 130m above the island. Step on the launch pad,
+    // get yeeted into the sky, bounce cloud to cloud collecting rings.
+    const cloudKingdom = buildCloudKingdom({
+      cx: ISLAND_X,
+      cz: ISLAND_Z,
+      baseY: ISLAND_TOP,
+      boxes,
+    });
+    scene.add(cloudKingdom.group);
+
+    // ---- MOON GOLF -----------------------------------------------------
+    // Kick-golf on the lunar landing pad: run into the ball, watch it
+    // arc through low gravity, sink the glowing hole in few strokes.
+    const moonGolf = buildMoonGolf({ cx: MOON_X, cz: MOON_Z, topY: MOON_TOP, padHalf: 14 });
+    scene.add(moonGolf.group);
+    moonGolf.onKick = () => soundsRef.current?.thud?.(0.25);
+    moonGolf.onOut = () => {
+      toast("🌑 Into the void…", { description: "The ball drifted off the pad. +1 stroke, back to the tee." });
+    };
+    moonGolf.onSink = (strokes) => {
+      const reward = strokes <= 3 ? 25 : strokes <= 5 ? 10 : 3;
+      vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + reward;
+      setVibeBalanceTick((n) => n + 1);
+      persistVibeBalanceRef.current?.();
+      soundsRef.current?.fanfare?.();
+      toast.success(`⛳ Holed it in ${strokes}! +${reward} ✦`, {
+        description: strokes <= 3 ? "Lunar birdie. The flag salutes you." : "The moon keeps no judgments.",
+      });
+    };
+
     // ---- God Orb wish portal -----------------------------------------
     // Generous invisible hit sphere on the sky orb so taps land from
     // any distance; a spark burst plays when a wish is accepted.
@@ -1595,6 +1629,7 @@ export default function City() {
     const HEIST_PERIOD_MS = 150_000; // ~2.5 minutes between coins
     let heistNextAt = performance.now() + 45_000; // first coin lands soon
     let heistActive = false;
+    let heistToastShown = false;
 
     // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
     // floating just above the Vibe Shop kiosk sign. Click/tap it and
@@ -2978,6 +3013,9 @@ export default function City() {
     let peakY = 0; // highest Y reached this air phase, for fall-damage
     let ridingZeppelin = false; // standing on the circling zeppelin's deck
     let zeppelinToastShown = false;
+    // Cloud Kingdom: launches and cloud-trampoline bounces briefly lift
+    // the vertical speed cap so you can actually reach the sky.
+    let superBounceUntil = 0;
     let modelYaw = 0;
     let lastTime = performance.now();
     let riding = false; // on the zipline
@@ -3079,6 +3117,7 @@ export default function City() {
       setNearSkiGate(player.position.distanceTo(SKI_GATE) < 6);
       setNearSkiReturn(player.position.distanceTo(skiWorld.returnPortal) < 6);
       setOnPowderPeak(skiWorld.inZone(player.position.x, player.position.z));
+      setMoonGolfHud(moonGolf.hudLine(player.position));
       // Nearest parked kart in hop-on range (hidden while driving).
       {
         let nk = -1;
@@ -3697,7 +3736,11 @@ export default function City() {
           }
         }
       }
-      vel.y = THREE.MathUtils.clamp(vel.y, -MAX_FALL, MAX_RISE);
+      vel.y = THREE.MathUtils.clamp(
+        vel.y,
+        -MAX_FALL,
+        now < superBounceUntil ? 90 : MAX_RISE,
+      );
       prevJetInput = jetInput;
       coyoteTimer = onGround ? 0.12 : Math.max(0, coyoteTimer - dt);
 
@@ -3797,7 +3840,12 @@ export default function City() {
           const inUnder = undergroundActiveRef.current || pos.y < -50;
           // Powder Peak is a soft-snow zone — hucking cliffs is the point.
           const inSki = skiWorld.inZone(pos.x, pos.z);
-          const safeZone = inMars || inMoonA || inMoonB || inUnder || inSki;
+          // Falls that started up in the Cloud Kingdom land soft too —
+          // the launch pad yeets people 130m up; that can't be a trap.
+          const fromClouds =
+            peakY > ISLAND_TOP + 90 &&
+            Math.hypot(pos.x - ISLAND_X, pos.z - ISLAND_Z) < 80;
+          const safeZone = inMars || inMoonA || inMoonB || inUnder || inSki || fromClouds;
 
           const fallDamageArmed = fallDamageEnabledRef.current && !jetpackEquipped;
 
@@ -3818,6 +3866,19 @@ export default function City() {
         onGround = true;
         wallJumpUsed = false;
         peakY = pos.y;
+
+        // Cloud Kingdom trampolines: landing on a cloud top bounces you
+        // right back up — higher when you carry speed into it.
+        if (
+          cloudKingdom.inZone(pos.x, pos.z) &&
+          support > ISLAND_TOP + 100
+        ) {
+          vel.y = 26 + Math.hypot(vel.x, vel.z) * 0.25;
+          onGround = false;
+          superBounceUntil = now + 1500;
+          peakY = pos.y;
+          soundsRef.current?.chime(3);
+        }
       } else if (pos.y > support + 0.05) {
         onGround = false;
         if (pos.y > peakY) peakY = pos.y;
@@ -3932,6 +3993,7 @@ export default function City() {
       skyIslands.update(dt, now);
       skyGames.update(dt, now, player.position);
       skiWorld.update(dt, now);
+      moonGolf.update(dt, now, player.position, vel);
 
       // ---- Ride the zeppelin ------------------------------------------
       // Its deck is a moving platform: hop on (jetpack up as it passes)
@@ -3990,9 +4052,13 @@ export default function City() {
         if (!heistActive && now >= heistNextAt) {
           heistActive = true;
           heist.visible = true;
-          if (enteredRef.current) {
-            toast("🪙 Vibe coin on the zeppelin!", {
-              description: "It's riding the deck around the city — go get it.",
+          // Announce only once per session — the golden beacon is the
+          // real signal; repeat toasts read as confusing spam.
+          if (enteredRef.current && !heistToastShown) {
+            heistToastShown = true;
+            toast("🪙 Zeppelin Heist", {
+              description:
+                "A sky coin appears on the zeppelin every few minutes — look for the golden beacon and grab it for +15 ✦.",
             });
           }
         }
@@ -4061,6 +4127,49 @@ export default function City() {
         sp.s.position.y += sp.vy * dt;
         sp.s.position.z += sp.vz * dt;
         (sp.s.material as THREE.SpriteMaterial).opacity = 1 - age;
+      }
+
+      // Cloud Kingdom: the launch trampoline yeets grounded players
+      // skyward; golden rings collect on touch.
+      cloudKingdom.update(dt, now);
+      {
+        const pp = player.position;
+        if (
+          onGround &&
+          Math.hypot(pp.x - cloudKingdom.launchPad.x, pp.z - cloudKingdom.launchPad.z) < 2.2 &&
+          Math.abs(pp.y - cloudKingdom.launchPad.y) < 3
+        ) {
+          // Straight up + a drift toward the kingdom's center so the
+          // arc delivers you onto the big arrival cloud.
+          vel.y = 82;
+          const ldx = ISLAND_X - pp.x;
+          const ldz = ISLAND_Z - pp.z;
+          const llen = Math.hypot(ldx, ldz) || 1;
+          vel.x = (ldx / llen) * 7;
+          vel.z = (ldz / llen) * 7;
+          onGround = false;
+          superBounceUntil = now + 4200; // covers the whole 3.4s ascent
+          peakY = pp.y;
+          cloudKingdom.squashPad();
+          soundsRef.current?.chime(8);
+          toast("☁️ To the Cloud Kingdom!", {
+            description: "Bounce cloud to cloud — collect all nine golden rings.",
+          });
+        }
+        const remaining = cloudKingdom.tryCollect(pp);
+        if (remaining !== null) {
+          if (remaining === 0) {
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 30;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+            soundsRef.current?.fanfare?.();
+            toast.success("👑 All nine rings! +30 ✦", {
+              description: "The Cloud Kingdom crowns you. Rings return in a bit.",
+            });
+          } else {
+            soundsRef.current?.chime(5);
+          }
+        }
       }
 
       // Sync kart meshes; spin wheels + steer the front axle on the
@@ -4581,12 +4690,14 @@ export default function City() {
       spawn === "moon" ||
       spawn === "mars" ||
       spawn === "tjs" ||
+      spawn === "ski" ||
       spawn === "underworld" ||
       spawn === "mines"
     ) {
       if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
       else if (spawn === "tjs") tjsSpawnRef.current?.();
+      else if (spawn === "ski") skiTravelRef.current?.("peak");
       else if (spawn === "underworld" || spawn === "mines") {
         // Direct portal into the Gremlin Mines — no falling down a
         // mineshaft, just blink straight in with the entry-flash effect.
@@ -5727,9 +5838,6 @@ export default function City() {
               <h1 className="font-heading text-4xl sm:text-5xl font-bold tracking-[0.18em] text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.45)]">
                 VIBE ISLAND
               </h1>
-              <p className="mt-2 text-sm tracking-[0.3em] uppercase text-white/75">
-                a magically weird world in the sky
-              </p>
             </motion.div>
           </motion.div>
         )}
@@ -5740,6 +5848,13 @@ export default function City() {
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs">
           <span className="text-primary font-heading font-semibold">⛷ POWDER PEAK</span>
           <span className="text-muted-foreground"> · carve with A/D · Space hops · jetpack = ski lift</span>
+        </div>
+      )}
+
+      {/* Moon Golf status chip while you're on the lunar pad. */}
+      {entered && moonGolfHud && !gameHud && !onPowderPeak && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs">
+          <span className="text-primary font-heading font-semibold">{moonGolfHud}</span>
         </div>
       )}
 

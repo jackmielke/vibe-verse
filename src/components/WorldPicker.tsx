@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import villageArt from "@/assets/edge-app-icon-bg.png";
 import cityArt from "@/assets/worlds/city.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
+import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
 import lobbyArt from "@/assets/worlds/lobby.png";
 import gardenArt from "@/assets/worlds/garden.jpg";
@@ -77,6 +78,13 @@ const WORLDS: WorldCard[] = [
     name: "Vibe Island",
     art: islandArt,
     blurb: "A magically weird world in the sky — Jerry, the SnackFe cafe, the zipline, the rideable zeppelin. Lands you right on it.",
+  },
+  {
+    to: "/city?spawn=ski",
+    emoji: "⛷️",
+    name: "Powder Peak",
+    art: skiArt,
+    blurb: "The ski world — carve real slopes, ride the gondola, warm up at the Vibe Lodge.",
   },
   {
     to: "/city?spawn=moon",

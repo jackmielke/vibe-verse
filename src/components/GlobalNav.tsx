@@ -25,6 +25,7 @@ interface Destination {
 const ALL_WORLDS: Destination[] = [
   { to: "/character-select", emoji: "🧍", label: "Characters", matchPaths: ["/characters", "/profile", "/lobby"] },
   { to: "/city?spawn=island", emoji: "🏝️", label: "Island" },
+  { to: "/city?spawn=ski", emoji: "⛷️", label: "Ski" },
   { to: "/world", emoji: "🛋️", label: "VIBE World", matchPaths: ["/agent-lobby"] },
   { to: "/city", emoji: "🏙️", label: "City" },
   { to: "/space", emoji: "🌌", label: "Space", matchPaths: ["/unit7"] },
@@ -68,17 +69,15 @@ export default function GlobalNav() {
       location.pathname === path || !!d.matchPaths?.includes(location.pathname);
     if (!pathHit) return false;
     if (path === "/city") {
-      const wants = query?.includes("spawn=moon")
-        ? "moon"
-        : query?.includes("spawn=island")
-          ? "island"
-          : "city";
-      const at = location.search.includes("spawn=moon")
-        ? "moon"
-        : location.search.includes("spawn=island")
-          ? "island"
-          : "city";
-      return wants === at;
+      const spawnOf = (s: string | undefined) =>
+        s?.includes("spawn=moon")
+          ? "moon"
+          : s?.includes("spawn=island")
+            ? "island"
+            : s?.includes("spawn=ski")
+              ? "ski"
+              : "city";
+      return spawnOf(query) === spawnOf(location.search);
     }
     return true;
   };

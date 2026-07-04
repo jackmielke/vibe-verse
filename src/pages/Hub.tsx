@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import cityArt from "@/assets/worlds/city.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
+import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
 import lobbyArt from "@/assets/worlds/lobby.png";
 import gardenArt from "@/assets/worlds/garden.jpg";
@@ -55,6 +56,8 @@ const WORLDS: World[] = [
     blurb: "Jetpack a neon district — multiplayer + NPCs." },
   { to: "/city?spawn=island", emoji: "🏝️", name: "Vibe Island", art: islandArt, color: "#fde68a",
     blurb: "A magically weird world in the sky — Jerry, SnackFe, zipline, Firewall." },
+  { to: "/city?spawn=ski", emoji: "⛷️", name: "Powder Peak", art: skiArt, color: "#bfe6ff",
+    blurb: "The ski world — real slopes, gondolas, the Vibe Lodge." },
   { to: "/", emoji: "🗺️", name: "Village", art: villageArt, color: "#5eead4",
     blurb: "The real Healdsburg map — Vibey, choppers, spawnables." },
   { to: "/lobby", emoji: "🏎️", name: "Lobby", art: lobbyArt, color: "#fca5a5",
