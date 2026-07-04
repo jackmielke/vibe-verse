@@ -163,11 +163,16 @@ const TJS_Z = 540;
 const TJS_TOP = 120;
 const TJS_ISLET_R = 22; // landing tolerance for fast-travel detection
 
-// Gremlin Mines — a pocket dimension carved 300m straight down. You
-// reach it through one of the two ninja portals (Edge Island + City).
-const UNDER_X = 0;
+// Gremlin Mines — a pocket dimension deep below the open ocean, well
+// away from every walkable world (but inside the world-edge clamp in
+// the physics tick). You only ever reach it through a ninja portal
+// (Edge Island + City). It used to sit at (0,-300,0) — directly under
+// the plaza — and its floor's collision box shadowed the city street,
+// which made walkers sink straight through downtown. Never put world
+// geometry under the city again.
+const UNDER_X = 620;
 const UNDER_Y = -300;
-const UNDER_Z = 0;
+const UNDER_Z = 480;
 // Ninja portal placements: behind the plaza on Edge Island, and in
 // a dim alley between two city towers.
 const NINJA_PORTAL_ISLAND = { x: ISLAND_X - 22, y: ISLAND_TOP, z: ISLAND_Z - 28 };
@@ -3033,10 +3038,6 @@ export default function City() {
     // island doesn't "catch" a pilot flying far beneath it.
     const supportHeightAt = (x: number, z: number, refY: number): number => {
       // Track the tallest box top at or below refY that overlaps (x,z).
-      // If nothing matches and refY is on/above street level, fall back to
-      // 0 (the world floor). If refY is well below street (in the
-      // Gremlin Mines pocket dimension), fall back to a deep void so the
-      // player can't be "snapped up" to the surface by accident.
       let h = -Infinity;
       for (const b of boxes) {
         if (b.height <= refY &&
@@ -3050,6 +3051,14 @@ export default function City() {
       // so walking uphill works like stairs.
       const skiH = skiWorld.heightAt(x, z);
       if (skiH !== null && skiH <= refY + 0.6 && skiH > h) h = skiH;
+      // The street plate (y=0) is real ground everywhere on the surface,
+      // and it COMPETES with box tops rather than acting as a fallback —
+      // otherwise any box with a sunken top (the Gremlin Mines floor at
+      // y=-300 once sat directly under the plaza) silently wins and the
+      // player sinks straight through downtown. Only below y=-50 (the
+      // underworld's domain) does the implicit floor disappear, so mines
+      // visitors aren't snapped 300m up to the surface.
+      if (refY >= -50 && h < 0) h = 0;
       if (h !== -Infinity) return h;
       return refY < -50 ? refY - 9999 : 0;
     };
@@ -3392,6 +3401,9 @@ export default function City() {
         player: () => [number, number, number];
         setCam: (yaw: number, pitch?: number, dist?: number) => void;
         emblemFun: () => void;
+        support: (x: number, y: number, z: number) => number;
+        boxesNear: (x: number, z: number) => Array<Record<string, number>>;
+        mines: () => [boolean, boolean, number, number, number];
       };
     };
     devWindow.__cityDebug = {
@@ -3410,6 +3422,22 @@ export default function City() {
         if (dist !== undefined) camDist = dist;
       },
       emblemFun: () => triggerEmblemFun(),
+      // Physics probes for headless ground-truth tests.
+      support: (x, y, z) => supportHeightAt(x, z, y),
+      boxesNear: (x, z) =>
+        boxes
+          .filter(
+            (b) =>
+              x >= b.minX - 2 && x <= b.maxX + 2 && z >= b.minZ - 2 && z <= b.maxZ + 2,
+          )
+          .map((b) => ({ ...b })),
+      mines: () => [
+        undergroundWorld.isInside(player.position),
+        undergroundActiveRef.current,
+        undergroundWorld.spawn.x,
+        undergroundWorld.spawn.y,
+        undergroundWorld.spawn.z,
+      ],
     };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
