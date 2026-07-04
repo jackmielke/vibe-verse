@@ -32,6 +32,7 @@ const ALL_WORLDS: Destination[] = [
   { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
   { to: "/evolve", emoji: "🧬", label: "Evolve", matchPaths: ["/bestiary"] },
   { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
+  { to: "/go", emoji: "🧭", label: "Vibe GO" },
   { to: "/city?spawn=moon", emoji: "🌙", label: "Moon" },
   { to: "/hub", emoji: "🪐", label: "Hub" },
   { to: "/lobby", emoji: "🏎️", label: "Lobby" },

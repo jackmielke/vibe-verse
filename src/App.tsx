@@ -15,6 +15,7 @@ import Evolve from "./pages/Evolve.tsx";
 import Bestiary from "./pages/Bestiary.tsx";
 import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
+import VibeGo from "./pages/VibeGo.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
 import HubV2 from "./pages/HubV2.tsx";
@@ -68,6 +69,8 @@ const App = () => (
           {/* COIN Hub — wallet login, community holders, market. */}
           <Route path="/coin" element={<VibeHub />} />
           <Route path="/vibe" element={<Navigate to="/coin" replace />} />
+          {/* VIBE GO — Pokémon-GO-style real-world catching, PWA-first. */}
+          <Route path="/go" element={<VibeGo />} />
           {/* Fruit Ninja. */}
           <Route path="/ninja" element={<FruitNinja />} />
           {/* EDM Town — low-poly party world with photo mode + guestbook. */}
