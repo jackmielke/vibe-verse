@@ -12,6 +12,7 @@
  * and list them there; the deck picks them up on load.
  */
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 interface Track {
   file: string;
@@ -20,6 +21,7 @@ interface Track {
 }
 
 export default function VibeRadio() {
+  const location = useLocation();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [idx, setIdx] = useState(() => Number(localStorage.getItem("vibefm.idx") ?? "0"));
@@ -67,7 +69,9 @@ export default function VibeRadio() {
     play(n);
   };
 
-  if (!tracks.length) return null;
+  // Keep the deck out of the onboarding flow's way (audio keeps
+  // playing — only the UI hides).
+  if (!tracks.length || location.pathname === "/start") return null;
 
   return (
     <>

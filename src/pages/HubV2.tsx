@@ -144,6 +144,8 @@ export default function HubV2() {
   // name AND a real "pick your vibe" screen with a name field and an
   // "invite your agent" prompt button. Once they hit Jet in we drop
   // them onto Vibe Island. Returning visitors skip this entirely.
+  // Brand-new visitors (no saved name or character) get the dedicated
+  // onboarding flow instead of dropping into the heavy 3D lobby.
   const [freshPick, setFreshPick] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -152,24 +154,8 @@ export default function HubV2() {
       !!localStorage.getItem("city.playerName") ||
       !!localStorage.getItem("city.displayName");
     if (hasChar || hasName) return;
-    const reliableFirstRunIds = [
-      "Pirate_Anne",
-      "Wizard",
-      "Ninja_Female",
-      "Knight_Golden_Male",
-      "BlueSoldier_Female",
-      "Cowboy_Female",
-      "Chef_Male",
-      "Kimono_Female",
-      "Pug",
-      "Cow",
-    ];
-    const pool = reliableFirstRunIds
-      .map((id) => ALL_CHARACTERS.find((c) => c.id === id))
-      .filter(Boolean) as typeof ALL_CHARACTERS;
-    if (!pool.length) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    setFreshPick({ id: pick.id, name: generateCharacterName(pick.label) });
+    navigate("/start", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const freshCharacters = useMemo(
