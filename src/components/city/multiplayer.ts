@@ -59,6 +59,17 @@ export interface NearbyPerson {
   distSq: number;
 }
 
+/** Rebel Defense co-op sync.
+ *  - "sync": a wave just spawned on some peer — {seed, wave} lets anyone
+ *    near the Vibe Star adopt the same deterministic fight.
+ *  - "kill": a peer's bolt downed trooper `killId` — mirror it locally. */
+export interface RebelEvent {
+  t: "sync" | "kill";
+  seed?: number;
+  wave?: number;
+  killId?: number;
+}
+
 export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
   sendChat(text: string): void;
@@ -66,6 +77,7 @@ export interface Multiplayer {
   setUserId(userId: string | null): void;
   sendTimeMode(day: boolean): void;
   sendEmote(emote: EmoteName): void;
+  sendRebel(ev: RebelEvent): void;
   /** Visit every remote ghost position. Used for soft player–player collision. */
   forEachOccupant(cb: (x: number, y: number, z: number) => void): void;
   /** Locally shove remote ghosts so bumping other players feels playful. */
@@ -250,8 +262,9 @@ export function createMultiplayer(opts: {
   onTimeMode?: (day: boolean, fromPeer: boolean) => void;
   onEmote?: (emote: EmoteName, fromPeer: boolean) => void;
   onBump?: (x: number, y: number, z: number, dirX: number, dirZ: number, speed: number) => void;
+  onRebel?: (ev: RebelEvent) => void;
 }): Multiplayer {
-  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote, onBump } = opts;
+  const { scene, characterUrl, onChat, onPeers, onTimeMode, onEmote, onBump, onRebel } = opts;
   let myName = opts.name;
   let myUserId: string | null = null;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
@@ -462,6 +475,11 @@ export function createMultiplayer(opts: {
         if (!p || p.id === sessionId) return;
         onBump?.(p.x, p.y, p.z, p.dirX, p.dirZ, p.speed);
       })
+      .on("broadcast", { event: "rebel" }, ({ payload }) => {
+        const p = payload as RebelEvent & { id: string };
+        if (!p || p.id === sessionId) return;
+        onRebel?.(p);
+      })
       .subscribe(async (status) => {
         online = status === "SUBSCRIBED";
         if (online) {
@@ -638,6 +656,15 @@ export function createMultiplayer(opts: {
           type: "broadcast",
           event: "emote",
           payload: { id: sessionId, emote },
+        });
+      }
+    },
+    sendRebel(ev) {
+      if (online && channel) {
+        void channel.send({
+          type: "broadcast",
+          event: "rebel",
+          payload: { ...ev, id: sessionId },
         });
       }
     },

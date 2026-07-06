@@ -23,7 +23,22 @@ const ENEMY_SPREAD = 0.35; // radians of wobble — they could not hit a barn
 const FIRE_RANGE = 48;
 const PLAYER_MAX_HP = 5;
 
+// Deterministic RNG so co-op peers spawn identical waves from a shared
+// seed. Movement after spawn stays local (positions drift a little
+// between clients) — kills are id-authoritative, so it doesn't matter.
+function mulberry32(a: number): () => number {
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 interface Trooper {
+  /** Stable across co-op peers: wave * 100 + spawn index. */
+  id: number;
   g: THREE.Group;
   hp: number;
   target: THREE.Vector3;
@@ -43,14 +58,23 @@ interface Bolt {
 export interface RebelDefense {
   group: THREE.Group;
   update(dt: number, now: number, playerPos: THREE.Vector3): void;
-  start(): void;
+  /** Begin a session. Pass a seed to share the fight with co-op peers. */
+  start(seed?: number): void;
+  /** Adopt a peer's in-progress session at a given wave (co-op late join). */
+  startAt(seed: number, wave: number): void;
   stop(): void;
   /** Fire at the nearest living trooper. Returns true if a bolt left. */
   fire(playerPos: THREE.Vector3): boolean;
+  /** A co-op peer killed this trooper — mirror it locally (no rewards). */
+  killById(id: number): void;
   nearRack(playerPos: THREE.Vector3): boolean;
-  state(): { active: boolean; wave: number; kills: number; hp: number };
-  onKill: ((kills: number) => void) | null;
+  state(): { active: boolean; wave: number; kills: number; hp: number; seed: number };
+  /** Local kill (your bolt landed). id is stable across co-op peers. */
+  onKill: ((kills: number, id: number) => void) | null;
   onWave: ((wave: number) => void) | null;
+  /** Fires whenever a wave spawns (start, adopt, or auto-advance) — the
+   *  co-op layer broadcasts {seed, wave} here so late joiners can sync. */
+  onSpawnWave: ((wave: number, seed: number) => void) | null;
   onPlayerHit: ((hp: number) => void) | null;
   onDefeat: (() => void) | null;
 }
@@ -156,6 +180,7 @@ export function buildRebelDefense(opts: {
   let wave = 0;
   let kills = 0;
   let hp = PLAYER_MAX_HP;
+  let seed = 0;
   let troopers: Trooper[] = [];
   let bolts: Bolt[] = [];
   let waveBreakUntil = 0;
@@ -164,31 +189,43 @@ export function buildRebelDefense(opts: {
   const friendlyMat = new THREE.MeshBasicMaterial({ color: "#4defd0" });
   const enemyMat = new THREE.MeshBasicMaterial({ color: "#ff4444" });
 
-  const randomPadPoint = () =>
+  const randomPadPoint = (rand: () => number = Math.random) =>
     new THREE.Vector3(
-      cx + (Math.random() * 2 - 1) * (padHalf - 2),
+      cx + (rand() * 2 - 1) * (padHalf - 2),
       topY,
-      cz + (Math.random() * 2 - 1) * (padHalf - 2),
+      cz + (rand() * 2 - 1) * (padHalf - 2),
     );
 
+  // Spawn placement is deterministic from (seed, wave) so every co-op
+  // peer fields the same troopers with the same ids.
   const spawnWave = (n: number, now: number) => {
+    const rand = mulberry32((seed ^ Math.imul(n, 2654435761)) >>> 0);
     const count = 2 + n;
     for (let i = 0; i < count; i++) {
       const g = makeTrooper();
       // Enter from the pad's rim.
-      const a = Math.random() * Math.PI * 2;
+      const a = rand() * Math.PI * 2;
       g.position.set(cx + Math.cos(a) * (padHalf - 1), topY, cz + Math.sin(a) * (padHalf - 1));
       group.add(g);
       troopers.push({
+        id: n * 100 + i,
         g,
         hp: n >= 3 ? 2 : 1,
-        target: randomPadPoint(),
+        target: randomPadPoint(rand),
         pauseUntil: 0,
-        shotAt: now + 1000 + Math.random() * 2000,
+        shotAt: now + 1000 + rand() * 2000,
         alive: true,
-        bob: Math.random() * Math.PI * 2,
+        bob: rand() * Math.PI * 2,
       });
     }
+    api.onSpawnWave?.(n, seed);
+  };
+
+  // Shared death FX for local and remote kills.
+  const downTrooper = (t: Trooper) => {
+    t.alive = false;
+    t.g.rotation.x = Math.PI / 2;
+    window.setTimeout(() => group.remove(t.g), 1200);
   };
 
   const clearField = () => {
@@ -215,22 +252,43 @@ export function buildRebelDefense(opts: {
     group,
     onKill: null,
     onWave: null,
+    onSpawnWave: null,
     onPlayerHit: null,
     onDefeat: null,
     nearRack: (p) => p.distanceTo(rackPos) < 5,
-    state: () => ({ active, wave, kills, hp }),
-    start() {
+    state: () => ({ active, wave, kills, hp, seed }),
+    start(seedIn) {
       if (active) return;
       active = true;
+      seed = seedIn ?? ((Math.random() * 2 ** 31) | 0);
       wave = 1;
       kills = 0;
       hp = PLAYER_MAX_HP;
       clearField();
+      waveBreakUntil = 0;
+      spawnWave(wave, performance.now());
+    },
+    startAt(seedIn, waveIn) {
+      if (active) return;
+      active = true;
+      seed = seedIn;
+      wave = Math.max(1, waveIn);
+      kills = 0;
+      hp = PLAYER_MAX_HP;
+      clearField();
+      waveBreakUntil = 0;
       spawnWave(wave, performance.now());
     },
     stop() {
       active = false;
       clearField();
+    },
+    killById(id) {
+      if (!active) return;
+      const t = troopers.find((x) => x.id === id && x.alive);
+      if (!t) return; // already dead here, or a different wave — fine
+      kills++;
+      downTrooper(t);
     },
     fire(playerPos) {
       if (!active) return false;
@@ -318,12 +376,9 @@ export function buildRebelDefense(opts: {
               t.hp--;
               dead = true;
               if (t.hp <= 0) {
-                t.alive = false;
                 kills++;
-                // Defeat pose: tip over, sink, remove.
-                t.g.rotation.x = Math.PI / 2;
-                window.setTimeout(() => group.remove(t.g), 1200);
-                api.onKill?.(kills);
+                downTrooper(t);
+                api.onKill?.(kills, t.id);
               }
               break;
             }

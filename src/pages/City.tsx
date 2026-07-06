@@ -45,6 +45,7 @@ import { buildSkiWorld } from "@/components/city/skiWorld";
 import { buildMoonGolf } from "@/components/city/moonGolf";
 import { buildCloudKingdom } from "@/components/city/cloudKingdom";
 import { buildRebelDefense } from "@/components/city/rebelDefense";
+import { buildHeistChase } from "@/components/city/heistChase";
 import { makeBoombox } from "@/components/city/boombox";
 import {
   GRAVITY,
@@ -72,6 +73,7 @@ import {
   type ChatMessage,
   type EmoteName,
   type Multiplayer,
+  type RebelEvent,
 } from "@/components/city/multiplayer";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
 import { startVibeyVoice, type VibeyVoiceSession } from "@/lib/vibeyVoice";
@@ -730,6 +732,10 @@ export default function City() {
   const rebelStartRef = useRef<(() => void) | null>(null);
   const rebelFireRef = useRef<(() => void) | null>(null);
   const vibeStarSpawnRef = useRef<(() => void) | null>(null);
+  // Co-op: remote peers' Rebel Defense events (wave syncs + kills).
+  const rebelRemoteRef = useRef<((ev: RebelEvent) => void) | null>(null);
+  // THE GETAWAY — the chaseable city heist. HUD chip while it's loose.
+  const [heistChaseOn, setHeistChaseOn] = useState(false);
   const skiTravelRef = useRef<((to: "peak" | "island") => void) | null>(null);
 
   // God Orb wish portal — click the sky orb, ask the universe for
@@ -1670,6 +1676,16 @@ export default function City() {
     let heistActive = false;
     let heistToastShown = false;
 
+    // ---- THE GETAWAY: the chaseable city heist -----------------------
+    // A masked gremlin robs the vault and tears through the streets in
+    // a stolen kart. Ram it (run, drive, or fly) to recover the loot.
+    const heistChase = buildHeistChase();
+    scene.add(heistChase.group);
+    const CHASE_REWARD = 25;
+    const CHASE_PERIOD_MS = 240_000;
+    let chaseNextAt = performance.now() + 75_000;
+    let chaseAnnounced = false;
+
     // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
     // floating just above the Vibe Shop kiosk sign. Click/tap it and
     // something fun happens, same spirit as the emblem on /coin.
@@ -1827,11 +1843,43 @@ export default function City() {
       boxes,
     });
     scene.add(rebel.group);
-    rebel.onKill = () => {
+    rebel.onKill = (_kills, id) => {
       vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 2;
       setVibeBalanceTick((n) => n + 1);
       persistVibeBalanceRef.current?.();
       soundsRef.current?.chime(6);
+      // Co-op: mirror this kill on every peer fighting the same wave.
+      mpRef.current?.sendRebel({ t: "kill", killId: id });
+    };
+    // Every wave spawn broadcasts {seed, wave} so anyone near the Vibe
+    // Star can adopt the same deterministic fight (late join included).
+    rebel.onSpawnWave = (w, seed) => {
+      mpRef.current?.sendRebel({ t: "sync", seed, wave: w });
+    };
+    let rebelHintMutedUntil = 0;
+    rebelRemoteRef.current = (ev) => {
+      if (ev.t === "kill" && typeof ev.killId === "number") {
+        rebel.killById(ev.killId);
+        return;
+      }
+      if (ev.t === "sync" && typeof ev.seed === "number" && typeof ev.wave === "number") {
+        if (rebel.state().active) return; // already in the fight
+        const nearStar =
+          Math.hypot(player.position.x - MOON2_X, player.position.z - MOON2_Z) < 50 &&
+          player.position.y > MOON2_TOP - 30;
+        if (nearStar) {
+          rebel.startAt(ev.seed, ev.wave);
+          soundsRef.current?.chime(8);
+          toast(`⭐ Joined the defense — wave ${ev.wave}`, {
+            description: "Another rebel is holding the pad with you. FIRE at will!",
+          });
+        } else if (performance.now() > rebelHintMutedUntil && enteredRef.current) {
+          rebelHintMutedUntil = performance.now() + 180_000;
+          toast("⭐ Rebel Defense is live on the Vibe Star", {
+            description: "A rebel is holding the pad right now — fly over and join the fight!",
+          });
+        }
+      }
     };
     rebel.onWave = (w) => {
       vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 5;
@@ -2292,6 +2340,8 @@ export default function City() {
         agentResidents.pushFrom(x, y, z, dirX, dirZ, speed, 1 / 30);
         applyRemoteBump(x, y, z, dirX, dirZ, speed);
       },
+      // Rebel Defense co-op: peers' wave syncs + kills land here.
+      onRebel: (ev) => rebelRemoteRef.current?.(ev),
     });
     mpRef.current = mp;
     // Tell multiplayer who we are so DMs can find us by user id.
@@ -3436,6 +3486,10 @@ export default function City() {
         boxesNear: (x: number, z: number) => Array<Record<string, number>>;
         mines: () => [boolean, boolean, number, number, number];
         snapshot: () => string;
+        heistGo: () => void;
+        heistPos: () => [number, number, number] | null;
+        rebelRemote: (ev: RebelEvent) => void;
+        rebelState: () => { active: boolean; wave: number; kills: number; hp: number; seed: number };
       };
     };
     devWindow.__cityDebug = {
@@ -3477,6 +3531,16 @@ export default function City() {
         renderer.render(scene, camera);
         return canvas.toDataURL("image/png");
       },
+      heistGo: () => {
+        chaseNextAt = 0;
+      },
+      heistPos: () => {
+        if (!heistChase.isActive()) return null;
+        const p = heistChase.pos();
+        return [p.x, p.y, p.z];
+      },
+      rebelRemote: (ev) => rebelRemoteRef.current?.(ev),
+      rebelState: () => rebel.state(),
     };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
@@ -4238,6 +4302,41 @@ export default function City() {
             soundsRef.current?.fanfare?.();
             toast.success(`+${HEIST_REWARD} ✦ — Zeppelin Heist!`, {
               description: "You caught the sky coin. Another lands in a few minutes.",
+            });
+          }
+        }
+      }
+
+      // THE GETAWAY: launch the chase on schedule, drive the lap, and
+      // settle the outcome (rammed → loot recovered, timer → escaped).
+      {
+        if (!heistChase.isActive() && now >= chaseNextAt) {
+          heistChase.start(now);
+          setHeistChaseOn(true);
+          if (enteredRef.current) {
+            toast("🚨 HEIST!", {
+              description: chaseAnnounced
+                ? "The getaway kart is back on the city streets."
+                : "A gremlin cracked the city vault! Chase the getaway kart through the streets and ram it to recover the loot (+25 ✦).",
+            });
+          }
+          chaseAnnounced = true;
+        }
+        const chaseEv = heistChase.update(dt, now, player.position);
+        if (chaseEv) {
+          setHeistChaseOn(false);
+          chaseNextAt = now + CHASE_PERIOD_MS;
+          if (chaseEv === "caught") {
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + CHASE_REWARD;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+            soundsRef.current?.fanfare?.();
+            toast.success(`💰 Heist foiled! +${CHASE_REWARD} ✦`, {
+              description: "You rammed the getaway kart and recovered the loot. The gremlin respects it.",
+            });
+          } else if (enteredRef.current) {
+            toast("🚁 The getaway kart escaped…", {
+              description: "The gremlin vanished into an alley with the loot. It'll be back.",
             });
           }
         }
@@ -6016,6 +6115,14 @@ export default function City() {
       {entered && moonGolfHud && !gameHud && !onPowderPeak && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs">
           <span className="text-primary font-heading font-semibold">{moonGolfHud}</span>
+        </div>
+      )}
+
+      {/* THE GETAWAY: pulsing bounty chip while the kart is loose. */}
+      {entered && heistChaseOn && !gameHud && !onPowderPeak && !rebelHud?.active && (
+        <div className="fixed top-28 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs border border-rose-400/50 shadow-[0_0_24px_rgba(244,63,94,0.45)] animate-pulse">
+          <span className="text-rose-300 font-heading font-semibold">🚨 GETAWAY KART LOOSE</span>
+          <span className="text-muted-foreground"> · ram it in the city streets · +25 ✦</span>
         </div>
       )}
 
