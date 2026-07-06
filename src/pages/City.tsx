@@ -3435,6 +3435,7 @@ export default function City() {
         support: (x: number, y: number, z: number) => number;
         boxesNear: (x: number, z: number) => Array<Record<string, number>>;
         mines: () => [boolean, boolean, number, number, number];
+        snapshot: () => string;
       };
     };
     devWindow.__cityDebug = {
@@ -3469,6 +3470,13 @@ export default function City() {
         undergroundWorld.spawn.y,
         undergroundWorld.spawn.z,
       ],
+      // Render one fresh frame and read it back in the same task —
+      // works without preserveDrawingBuffer, so headless tests can
+      // take reliable stills of the world.
+      snapshot: () => {
+        renderer.render(scene, camera);
+        return canvas.toDataURL("image/png");
+      },
     };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
