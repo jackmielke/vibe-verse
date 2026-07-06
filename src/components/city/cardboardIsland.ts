@@ -1936,18 +1936,18 @@ export function buildCardboardIsland(opts: {
   }
   group.add(portalGroup);
 
-  // ---- Avatar Hologram portal: change your character ------------------
-  // A glowing pedestal that projects a holographic figure made of stacked
-  // glowing rings + scrolling scanlines. Walk up to it to open the
-  // character picker. Sits on the opposite side of the Vibe Shop from
-  // the Vibe Maker so the three form a little plaza row.
-  // Perched on the roof of Trader Joe's (see SHOPS[0] at x=-30, z=-8, h=9).
-  // Town plan: out of Trader Joe's interior (the craft pass gave TJ
-  // real walls and this portal ended up literally inside the shop) and
-  // onto the west ring south of it, beam visible from the plaza.
+  // ---- CHARACTER STUDIO: the hologram station ------------------------
+  // A glowing ground-level stage that projects a hologram of the
+  // character you're previewing. Walk up, cycle the holograms, become
+  // one. Projector pylons ring the back arc; a sparkle column rises
+  // through the figure.
+  // Town plan: on the west ring south of Trader Joe's, beam visible
+  // from the plaza. (It once sat at TJ-roof height — y=9 — which left
+  // it hovering in the sky after the town re-plan and out of reach of
+  // its own walk-up radius. It lives on the ground now.)
   const AVATAR_X = -34;
   const AVATAR_Z = 10;
-  const AVATAR_Y = 9; // Trader Joe's roof height (matches SHOPS[0].h)
+  const AVATAR_Y = 0;
   const avatarPortalGroup = new THREE.Group();
   avatarPortalGroup.position.set(AVATAR_X, AVATAR_Y, AVATAR_Z);
   const avatarHoloRings: THREE.Mesh[] = [];
@@ -1959,6 +1959,9 @@ export function buildCardboardIsland(opts: {
   let avatarPedestalLight!: THREE.PointLight;
   let avatarRimMat!: THREE.MeshBasicMaterial;
   let avatarDiscMat!: THREE.MeshBasicMaterial;
+  let avatarSparkles!: THREE.Points;
+  let avatarSparkleGeo!: THREE.BufferGeometry;
+  const avatarPylonTipMats: THREE.MeshBasicMaterial[] = [];
   // Stage = where the City scene mounts the live character holo.
   const avatarStage = new THREE.Group();
   {
@@ -2096,31 +2099,148 @@ export function buildCardboardIsland(opts: {
     avatarPedestalLight.position.set(0, 1.6, 0);
     avatarPortalGroup.add(avatarPedestalLight);
 
-    // Floating "AVATAR" sign above the beam.
+    // Faint concentric ground rings that anchor the studio to the lawn
+    // and read as a "stage area" from across the plaza.
+    for (const [r, op] of [
+      [2.7, 0.3],
+      [3.3, 0.16],
+    ] as const) {
+      const gRing = new THREE.Mesh(
+        new THREE.RingGeometry(r - 0.06, r, 56),
+        new THREE.MeshBasicMaterial({
+          color: "#2dd4a8",
+          transparent: true,
+          opacity: op,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          fog: false,
+        }),
+      );
+      gRing.rotation.x = -Math.PI / 2;
+      gRing.position.y = 0.02;
+      avatarPortalGroup.add(gRing);
+    }
+
+    // Three projector pylons on the back (west) arc — little angled
+    // posts whose glowing tips fire thin beams at the hologram's
+    // chest, so the figure reads as "projected", not just floating.
+    // The east side stays open: that's the approach from the plaza.
+    const pylonPostMat = new THREE.MeshStandardMaterial({
+      color: "#1c2733",
+      roughness: 0.55,
+      metalness: 0.4,
+    });
+    const HOLO_FOCUS = new THREE.Vector3(0, 1.55, 0);
+    for (const ang of [Math.PI * 0.75, Math.PI, Math.PI * 1.25]) {
+      const px = Math.cos(ang) * 2.75;
+      const pz = Math.sin(ang) * 2.75;
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09, 0.14, 1.15, 10),
+        pylonPostMat,
+      );
+      post.position.set(px, 0.575, pz);
+      post.lookAt(HOLO_FOCUS.x, 3.4, HOLO_FOCUS.z); // slight inward lean
+      post.rotateX(Math.PI / 2);
+      avatarPortalGroup.add(post);
+
+      const tipMat = new THREE.MeshBasicMaterial({
+        color: "#7af0ff",
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      });
+      avatarPylonTipMats.push(tipMat);
+      const tipPos = new THREE.Vector3(px * 0.88, 1.12, pz * 0.88);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), tipMat);
+      tip.position.copy(tipPos);
+      avatarPortalGroup.add(tip);
+
+      // Thin beam from tip to the hologram focus point.
+      const beamVec = HOLO_FOCUS.clone().sub(tipPos);
+      const beamLen = beamVec.length();
+      const pBeam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.035, beamLen, 6, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: "#7af0ff",
+          transparent: true,
+          opacity: 0.22,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          fog: false,
+        }),
+      );
+      pBeam.position.copy(tipPos).addScaledVector(beamVec, 0.5);
+      pBeam.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        beamVec.clone().normalize(),
+      );
+      avatarPortalGroup.add(pBeam);
+    }
+
+    // Sparkle column — drifting motes rising through the figure.
+    {
+      const N = 46;
+      const pts = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * 1.15;
+        pts[i * 3] = Math.cos(a) * r;
+        pts[i * 3 + 1] = Math.random() * 3.6;
+        pts[i * 3 + 2] = Math.sin(a) * r;
+      }
+      avatarSparkleGeo = new THREE.BufferGeometry();
+      avatarSparkleGeo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+      avatarSparkles = new THREE.Points(
+        avatarSparkleGeo,
+        new THREE.PointsMaterial({
+          color: "#a8fff0",
+          size: 0.085,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          fog: false,
+        }),
+      );
+      avatarSparkles.position.y = 0.2;
+      avatarPortalGroup.add(avatarSparkles);
+    }
+
+    // Floating "CHARACTER STUDIO" sign above the beam, facing the plaza.
     const ac = document.createElement("canvas");
-    ac.width = 512;
+    ac.width = 640;
     ac.height = 128;
     const ax = ac.getContext("2d")!;
     ax.fillStyle = "rgba(0,0,0,0)";
-    ax.fillRect(0, 0, 512, 128);
-    ax.font = "bold 70px 'Sora', system-ui, sans-serif";
+    ax.fillRect(0, 0, 640, 128);
+    ax.font = "bold 52px 'Sora', system-ui, sans-serif";
     ax.textAlign = "center";
     ax.textBaseline = "middle";
     ax.shadowColor = "#7af0ff";
-    ax.shadowBlur = 32;
+    ax.shadowBlur = 30;
     ax.fillStyle = "#e6fbff";
-    ax.fillText("AVATAR", 256, 56);
+    ax.fillText("CHARACTER STUDIO", 320, 50);
     ax.shadowBlur = 0;
-    ax.font = "22px 'Manrope', sans-serif";
+    ax.font = "24px 'Manrope', sans-serif";
     ax.fillStyle = "#2dd4a8";
-    ax.fillText("step in to change your look", 256, 104);
+    ax.fillText("walk up · become anyone", 320, 100);
     const aSignTex = new THREE.CanvasTexture(ac);
     aSignTex.colorSpace = THREE.SRGBColorSpace;
     const aSign = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.4, 0.85),
-      new THREE.MeshBasicMaterial({ map: aSignTex, transparent: true, depthWrite: false }),
+      new THREE.PlaneGeometry(4.2, 0.84),
+      new THREE.MeshBasicMaterial({
+        map: aSignTex,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
     );
     aSign.position.set(0, 5.1, 0);
+    aSign.rotation.y = Math.PI / 2; // face the plaza (east, +x)
     avatarPortalGroup.add(aSign);
     (avatarPortalGroup as unknown as { __sign: THREE.Mesh }).__sign = aSign;
     (avatarPortalGroup as unknown as { __scanTex: THREE.CanvasTexture }).__scanTex = scanTex;
@@ -2943,6 +3063,20 @@ export function buildCardboardIsland(opts: {
       const apg = avatarPortalGroup as unknown as { __scanTex: THREE.CanvasTexture };
       apg.__scanTex.offset.y = -(now * 0.00035) % 1;
       avatarScanMat.opacity = 0.35 + Math.sin(now * 0.0035) * 0.15;
+      // Sparkle motes drift up through the hologram and wrap.
+      {
+        const p = avatarSparkleGeo.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < p.count; i++) {
+          let y = p.getY(i) + dt * 0.55;
+          if (y > 3.6) y -= 3.6;
+          p.setY(i, y);
+        }
+        p.needsUpdate = true;
+      }
+      for (let i = 0; i < avatarPylonTipMats.length; i++) {
+        avatarPylonTipMats[i].opacity =
+          0.65 + Math.sin(now * 0.004 + i * 2.1) * 0.3;
+      }
 
 
 

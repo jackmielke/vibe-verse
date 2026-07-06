@@ -45,6 +45,7 @@ import { buildSkiWorld } from "@/components/city/skiWorld";
 import { buildMoonGolf } from "@/components/city/moonGolf";
 import { buildCloudKingdom } from "@/components/city/cloudKingdom";
 import { buildRebelDefense } from "@/components/city/rebelDefense";
+import { makeBoombox } from "@/components/city/boombox";
 import {
   GRAVITY,
   WALK_SPEED,
@@ -880,6 +881,9 @@ export default function City() {
   const [nearArcade, setNearArcade] = useState(false);
   const [arcadeOpen, setArcadeOpen] = useState(false);
   const [nearTv, setNearTv] = useState(false);
+  // VIBE FM boomboxes — walking up shows the tune-in prompt; walking
+  // away folds the deck UI (the music itself keeps playing).
+  const [nearRadio, setNearRadio] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryPhotos, setGalleryPhotos] = useState<
     { url: string; title?: string | null; description?: string | null; residency?: string | null }[]
@@ -917,6 +921,11 @@ export default function City() {
     const c = CHARACTERS[avatarPreviewIdx];
     if (c) mountAvatarHoloRef.current?.(c.name);
   }, [nearAvatarPortal, avatarPreviewIdx]);
+
+  // Walking away from a boombox folds the VIBE FM deck.
+  useEffect(() => {
+    if (!nearRadio) window.dispatchEvent(new Event("vibefm:close"));
+  }, [nearRadio]);
   const [spawns, setSpawns] = useState<IslandSpawnRow[]>([]);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const authUserIdRef = useRef<string | null>(null);
@@ -1470,6 +1479,23 @@ export default function City() {
     });
     scene.add(island.group);
 
+    // ---- VIBE FM boomboxes: the radio lives in the world now ---------
+    // One on the island's hangout corner by SnackFe, one at the city
+    // plaza. Walk up → tune-in prompt → the retro deck opens (and the
+    // needle drops). The music follows you everywhere after that.
+    const islandRadio = makeBoombox();
+    islandRadio.group.position.set(ISLAND_X + 11, ISLAND_TOP, ISLAND_Z + 27);
+    islandRadio.group.rotation.y = Math.atan2(-11, -27); // face the island plaza
+    scene.add(islandRadio.group);
+    const cityRadio = makeBoombox();
+    cityRadio.group.position.set(-12, 0, 12);
+    cityRadio.group.rotation.y = Math.atan2(12, -12); // face the plaza ring
+    scene.add(cityRadio.group);
+    const radioAnchors = [
+      new THREE.Vector3(ISLAND_X + 11, ISLAND_TOP + 1, ISLAND_Z + 27),
+      new THREE.Vector3(-12, 1, 12),
+    ];
+
     // THE PALACE — the ninja reality show in the courtyard of Ninja's
     // Palace. Five talkable housemates, one empty throne, live drama.
     const ninjaShow = buildNinjaPalaceShow({
@@ -1994,8 +2020,9 @@ export default function City() {
       reg("snackfe", "SnackFe Cafe", "Cardboard Island", island.snackfe, ["snackfe", "cafe", "snack", "ramen"]);
       reg("vibe-shop", "Vibe Coin Shop", "Cardboard Island", island.shop, ["shop", "coin shop", "vibe shop", "store"]);
       reg("portal", "Maker Portal", "Cardboard Island", island.portal, ["maker", "maker portal", "spawns"]);
-      reg("avatar-portal", "Avatar Portal", "Cardboard Island", island.avatarPortal, ["avatar", "hologram", "character"]);
+      reg("avatar-portal", "Character Studio", "Cardboard Island", island.avatarPortal, ["avatar", "hologram", "character", "studio"]);
       reg("photo-tv", "Cardboard TV", "Cardboard Island", island.tv, ["tv", "photo tv", "gallery", "holo gallery"]);
+      reg("vibe-fm", "VIBE FM Radio", "Cardboard Island", radioAnchors[0], ["radio", "music", "fm", "boombox", "vibe fm"]);
       reg("moon", "The Moon", "Moon", new THREE.Vector3(MOON_X, MOON_TOP, MOON_Z), ["moon", "luna"]);
       reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
       reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
@@ -3218,6 +3245,10 @@ export default function City() {
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearArcade(player.position.distanceTo(island.arcade) < 4);
       setNearTv(player.position.distanceTo(island.tv) < 5.5);
+      setNearRadio(
+        player.position.distanceTo(radioAnchors[0]) < 4.5 ||
+          player.position.distanceTo(radioAnchors[1]) < 4.5,
+      );
       setNearRoster(player.position.distanceTo(rosterBoard.position) < 7);
       // Either ninja portal is "near" if within ~4m.
       const np1 = new THREE.Vector3(NINJA_PORTAL_ISLAND.x, NINJA_PORTAL_ISLAND.y + 1, NINJA_PORTAL_ISLAND.z);
@@ -4093,6 +4124,12 @@ export default function City() {
       island.update(dt, now);
       ninjaShow.update(dt, now);
       updateAvatarHolo(dt);
+      {
+        const fmOn = !!(window as unknown as { __vibefm?: { playing: boolean } })
+          .__vibefm?.playing;
+        islandRadio.update(dt, now, fmOn);
+        cityRadio.update(dt, now, fmOn);
+      }
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
@@ -6107,6 +6144,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-fuchsia-100 border border-fuchsia-300/50 shadow-[0_0_24px_rgba(232,121,249,0.55)] bg-fuchsia-950/30 backdrop-blur-md hover:bg-fuchsia-500/15 transition-colors"
             >
               🕹️ Play Esmeralda Jump
+            </button>
+          )}
+          {nearRadio && (
+            <button
+              onClick={(e) => {
+                window.dispatchEvent(new Event("vibefm:open"));
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-amber-100 border border-amber-300/50 shadow-[0_0_24px_rgba(255,179,71,0.55)] bg-amber-950/30 backdrop-blur-md hover:bg-amber-400/15 transition-colors"
+            >
+              📻 Tune VIBE FM
             </button>
           )}
           {nearTv && !galleryOpen && galleryPhotos.length > 0 && (
