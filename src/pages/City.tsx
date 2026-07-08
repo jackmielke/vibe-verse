@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Rocket } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
-import { buildCardboardIsland, signTexture, VIBEVERSE_POSTER_URL } from "@/components/city/cardboardIsland";
+import { buildCardboardIsland, signTexture, VIBEVERSE_POSTER_URL, SNACK_MENU } from "@/components/city/cardboardIsland";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeArc from "@/components/VibeArc";
 import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
@@ -547,6 +547,10 @@ export default function City() {
   const persistVibeTimerRef = useRef<number | null>(null);
   const persistVibeBalanceRef = useRef<(() => void) | null>(null);
   const [purchases, setPurchases] = useState<Record<string, number>>({});
+  // Repaints the SnackFe kiosk menu board (set once the island is built).
+  const islandSnackRef = useRef<
+    ((gems: number, owned: Record<string, number>, justBought?: string | null) => void) | null
+  >(null);
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
@@ -572,6 +576,22 @@ export default function City() {
   useEffect(() => {
     marsGameRef.current = marsGame;
   }, [marsGame]);
+  // Keep the SnackFe kiosk board in sync with gems + what you've bought.
+  useEffect(() => {
+    islandSnackRef.current?.(hud.gems, purchases);
+  }, [hud.gems, purchases]);
+  // Buy a snack straight from the order rail (reuses the exact economy
+  // path the old popup used, so balances/persistence are unchanged).
+  const buySnack = (item: (typeof SNACK_MENU)[number]) => {
+    if (vibeBalanceRef.current < item.cost) return;
+    vibeBalanceRef.current -= item.cost;
+    setVibeBalanceTick((n) => n + 1);
+    persistVibeBalanceRef.current?.();
+    const nextOwned = { ...purchases, [item.name]: (purchases[item.name] ?? 0) + 1 };
+    setPurchases(nextOwned);
+    setSnackMsg(`${item.emoji} ${item.msg}`);
+    islandSnackRef.current?.(Math.max(0, Math.round(vibeBalanceRef.current)), nextOwned, item.name);
+  };
   // Brief invulnerability after a hit so a single touch costs one heart.
   const marsInvulnRef = useRef(0);
   // Sky-island mini games (Mole Meadow / Crystal Climb / Shrine Dive /
@@ -775,8 +795,13 @@ export default function City() {
   const drivingKartRef = useRef(-1);
   const enterKartRef = useRef<((i: number) => void) | null>(null);
   const exitKartRef = useRef<(() => void) | null>(null);
-  const [snackOpen, setSnackOpen] = useState(false);
   const [snackMsg, setSnackMsg] = useState<string | null>(null);
+  // The order-rail flavor line fades on its own a few seconds after a buy.
+  useEffect(() => {
+    if (!snackMsg) return;
+    const t = window.setTimeout(() => setSnackMsg(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [snackMsg]);
   const [npcTarget, setNpcTarget] = useState<NpcKey | null>(null);
   const [vibeyThinking, setVibeyThinking] = useState(false);
   const [vibeyDraft, setVibeyDraft] = useState("");
@@ -1507,6 +1532,9 @@ export default function City() {
       boxes,
     });
     scene.add(island.group);
+    // Let React drive the SnackFe kiosk board; paint the opening state.
+    islandSnackRef.current = (g, o, jb) => island.setSnackMenu(g, o, jb);
+    island.setSnackMenu(Math.max(0, Math.round(vibeBalanceRef.current)), {});
 
     // ---- VIBE FM boomboxes: the radio lives in the world now ---------
     // One on the island's hangout corner by SnackFe, one at the city
@@ -3562,6 +3590,7 @@ export default function City() {
         heistPos: () => [number, number, number] | null;
         rebelRemote: (ev: RebelEvent) => void;
         rebelState: () => { active: boolean; wave: number; kills: number; hp: number; seed: number };
+        addVibe: (n: number) => void;
       };
     };
     devWindow.__cityDebug = {
@@ -3613,6 +3642,12 @@ export default function City() {
       },
       rebelRemote: (ev) => rebelRemoteRef.current?.(ev),
       rebelState: () => rebel.state(),
+      // Test aid: grant ✦ so economy features (SnackFe, shop) can be
+      // exercised headlessly without grinding gems first.
+      addVibe: (n: number) => {
+        vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + n;
+        setVibeBalanceTick((k) => k + 1);
+      },
     };
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
@@ -6537,16 +6572,51 @@ export default function City() {
             </button>
           )}
           {nearSnackfe && (
-            <button
-              onClick={(e) => {
-                setSnackOpen(true);
-                setSnackMsg(null);
-                e.currentTarget.blur();
-              }}
-              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
-            >
-              🍦 Order at SnackFe
-            </button>
+            <div className="flex flex-col items-center gap-1.5 animate-fade-in">
+              {snackMsg && (
+                <div className="text-[11px] text-emerald-100 bg-emerald-500/15 ring-1 ring-emerald-300/30 rounded-full px-3 py-1 max-w-[18rem] text-center">
+                  {snackMsg}
+                </div>
+              )}
+              <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-1.5 border border-emerald-300/30 shadow-[0_0_24px_rgba(70,232,140,0.35)] bg-[#14181d]/70 backdrop-blur-md">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-emerald-300/80 pl-1 pr-0.5 hidden sm:inline">
+                  order
+                </span>
+                {SNACK_MENU.map((item) => {
+                  const canAfford = hud.gems >= item.cost;
+                  const owned = purchases[item.name] ?? 0;
+                  return (
+                    <button
+                      key={item.name}
+                      disabled={!canAfford}
+                      title={`${item.name} — ✦${item.cost}`}
+                      onClick={(e) => {
+                        buySnack(item);
+                        e.currentTarget.blur();
+                      }}
+                      className={`relative flex flex-col items-center rounded-xl px-2 py-1 transition-all ${
+                        canAfford
+                          ? "hover:bg-emerald-400/15 hover:ring-1 hover:ring-emerald-300/40 active:scale-95"
+                          : "opacity-35 cursor-not-allowed"
+                      }`}
+                    >
+                      <span className="text-xl leading-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">
+                        {item.emoji}
+                      </span>
+                      <span className="text-[9px] font-mono text-amber-300 mt-0.5">✦{item.cost}</span>
+                      {owned > 0 && (
+                        <span className="absolute -top-1 -right-0.5 text-[8px] font-bold text-emerald-950 bg-emerald-300 rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                          {owned}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                <span className="text-xs font-heading font-semibold text-amber-300 pl-1 pr-1 whitespace-nowrap">
+                  ✦ {hud.gems}
+                </span>
+              </div>
+            </div>
           )}
           {nearVibey && (
             <button
@@ -6677,112 +6747,6 @@ export default function City() {
         </div>
       )}
 
-      {snackOpen && (
-        <div
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 rounded-2xl w-[min(92vw,24rem)] flex flex-col overflow-hidden animate-fade-in ring-4 ring-[#8b5e34] shadow-[0_10px_50px_rgba(0,0,0,0.6)]"
-          style={{ background: "radial-gradient(120% 100% at 50% 0%, #232a2f 0%, #191f24 55%, #14181d 100%)" }}
-        >
-          {/* Chalkboard header with string lights, like the real counter */}
-          <div className="relative px-4 pt-3.5 pb-3 border-b border-white/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <span
-                  className="font-heading font-bold tracking-[0.12em] text-base text-emerald-300"
-                  style={{ textShadow: "0 0 16px rgba(70,232,140,0.6)" }}
-                >
-                  SnackFe
-                </span>
-                <span className="ml-2 text-[10px] uppercase tracking-[0.22em] text-pink-300/80">
-                  · open late · vibes inside ·
-                </span>
-              </div>
-              <button
-                onClick={() => setSnackOpen(false)}
-                className="text-white/40 hover:text-white px-1"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="absolute -bottom-1 left-0 right-0 flex justify-between px-4">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <span
-                  key={i}
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    background: i % 2 === 0 ? "#46e88c" : "#e94f8a",
-                    boxShadow: `0 0 6px ${i % 2 === 0 ? "#46e88c" : "#e94f8a"}`,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="p-4 pt-3 flex flex-col gap-3">
-            <div className="flex items-center justify-between rounded-lg bg-white/[0.04] ring-1 ring-white/10 px-3 py-2">
-              <span className="text-[11px] uppercase tracking-wider text-white/45">your gems</span>
-              <span className="text-base font-heading font-semibold text-amber-300">
-                ✦ {hud.gems}
-              </span>
-            </div>
-            {/* The menu, chalk-style: dotted leaders out to the price */}
-            <div className="grid grid-cols-1 gap-1">
-              {[
-                { emoji: "🍓", name: "Strawberry", cost: 1, msg: "Sweet and bright. A tiny burst of summer." },
-                { emoji: "🍦", name: "Mint coin float", cost: 2, msg: "An icy mint float in a tall glass. +1 vibe." },
-                { emoji: "🥐", name: "Sunrise croissant", cost: 3, msg: "Flaky, buttery, still warm." },
-                { emoji: "☕", name: "Edge espresso", cost: 3, msg: "Tiny cup, big punch. Your jetpack feels lighter." },
-                { emoji: "🍡", name: "Neon mochi skewer", cost: 4, msg: "Three little glowing mochi on a stick." },
-                { emoji: "🍉", name: "Watermelon slice", cost: 5, msg: "Cold, crunchy, dripping. The good kind of mess." },
-              ].map((item) => {
-                const owned = purchases[item.name] ?? 0;
-                const canAfford = hud.gems >= item.cost;
-                return (
-                  <button
-                    key={item.name}
-                    disabled={!canAfford}
-                    onClick={() => {
-                      if (vibeBalanceRef.current < item.cost) return;
-                      vibeBalanceRef.current -= item.cost;
-                      setVibeBalanceTick((n) => n + 1);
-                      persistVibeBalanceRef.current?.();
-                      setPurchases((p) => ({ ...p, [item.name]: (p[item.name] ?? 0) + 1 }));
-                      setSnackMsg(`${item.emoji} ${item.msg}`);
-                    }}
-                    className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all ${
-                      canAfford
-                        ? "hover:bg-emerald-400/10 hover:ring-1 hover:ring-emerald-300/30"
-                        : "opacity-35 cursor-not-allowed"
-                    }`}
-                  >
-                    <span className="text-xl drop-shadow-[0_2px_5px_rgba(0,0,0,0.6)] transition-transform group-hover:scale-110">
-                      {item.emoji}
-                    </span>
-                    <span className="text-white/90 whitespace-nowrap">
-                      {item.name}
-                      {owned > 0 && (
-                        <span className="ml-1.5 text-[10px] text-emerald-300/70">×{owned}</span>
-                      )}
-                    </span>
-                    <span className="flex-1 border-b border-dotted border-white/25 translate-y-1" />
-                    <span className="text-xs font-mono text-amber-300">✦ {item.cost}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {snackMsg && (
-              <div className="text-xs text-emerald-200 bg-emerald-400/10 ring-1 ring-emerald-300/25 rounded-lg px-3 py-2 animate-fade-in">
-                {snackMsg}
-              </div>
-            )}
-            {hud.gems === 0 && (
-              <div className="text-[10px] text-white/40 text-center">
-                collect ✦ gems around Vibe Island and the city to spend here
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {npcTarget !== null && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-2xl p-3 w-[min(92vw,26rem)] flex flex-col gap-2">
           <div className="flex items-center justify-between text-[11px]">

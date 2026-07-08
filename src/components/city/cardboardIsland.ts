@@ -52,6 +52,10 @@ export interface IslandWorld {
   swingAngle(): number;
   /** Feed the cardboard TV a list of photo URLs to slideshow. */
   setTvPhotos(urls: string[]): void;
+  /** Repaint the SnackFe kiosk menu board — highlights what you can
+   *  afford and ✓ what you already bought. Call whenever gems or
+   *  purchase counts change. `justBought` briefly flashes that row. */
+  setSnackMenu(gems: number, owned: Record<string, number>, justBought?: string | null): void;
   /** The shop counter (modern kiosk behind the TV), in world coordinates. */
   shop: THREE.Vector3;
   /** Vibe Maker portal — players walk up to spawn 3D shapes that save
@@ -72,6 +76,23 @@ export interface IslandWorld {
 }
 
 const ISLAND_RADIUS = 55;
+
+/** The SnackFe menu — one source of truth for the 3D kiosk board and
+ *  the order rail in City. `msg` is the flavor line shown on purchase. */
+export interface SnackItem {
+  emoji: string;
+  name: string;
+  cost: number;
+  msg: string;
+}
+export const SNACK_MENU: SnackItem[] = [
+  { emoji: "🍓", name: "Strawberry", cost: 1, msg: "Sweet and bright. A tiny burst of summer." },
+  { emoji: "🍦", name: "Mint coin float", cost: 2, msg: "An icy mint float in a tall glass. +1 vibe." },
+  { emoji: "🥐", name: "Sunrise croissant", cost: 3, msg: "Flaky, buttery, still warm." },
+  { emoji: "☕", name: "Edge espresso", cost: 3, msg: "Tiny cup, big punch. Your jetpack feels lighter." },
+  { emoji: "🍡", name: "Neon mochi skewer", cost: 4, msg: "Three little glowing mochi on a stick." },
+  { emoji: "🍉", name: "Watermelon slice", cost: 5, msg: "Cold, crunchy, dripping. The good kind of mess." },
+];
 
 // ------------------------------------------------------------------
 // Canvas helpers — everything on the island is "drawn by hand".
@@ -2413,12 +2434,85 @@ export function buildCardboardIsland(opts: {
   snackPanel.position.set(0, SNACK_H * 0.22, SNACK_D / 2 + 0.06);
   snackGroup.add(snackPanel);
 
-  // Service window cutout (a glowing rectangle).
+  // Service window: a live menu board (was a blank glowing rectangle).
+  // The board is redrawn by setSnackMenu() as gems/purchases change, so
+  // the menu lives on the kiosk screen instead of a popup overlay.
+  const snackMenuCanvas = document.createElement("canvas");
+  snackMenuCanvas.width = 700;
+  snackMenuCanvas.height = 360;
+  const snackMenuCtx = snackMenuCanvas.getContext("2d")!;
+  const snackMenuTex = new THREE.CanvasTexture(snackMenuCanvas);
+  snackMenuTex.colorSpace = THREE.SRGBColorSpace;
+  let snackFlash: { name: string; t: number } | null = null;
+  let lastSnackGems = 0;
+  let lastSnackOwned: Record<string, number> = {};
+  const drawSnackMenu = (gems: number, owned: Record<string, number>) => {
+    lastSnackGems = gems;
+    lastSnackOwned = owned;
+    const ctx = snackMenuCtx;
+    const W = snackMenuCanvas.width;
+    const H = snackMenuCanvas.height;
+    // Warm-lit interior board.
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#241a10");
+    bg.addColorStop(1, "#17110a");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(255,210,138,0.5)";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(4, 4, W - 8, H - 8);
+    // Header.
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.font = "bold 40px 'Sora', system-ui, sans-serif";
+    ctx.fillStyle = "#46e88c";
+    ctx.shadowColor = "#46e88c";
+    ctx.shadowBlur = 16;
+    ctx.fillText("SnackFe", 28, 40);
+    ctx.shadowBlur = 0;
+    ctx.textAlign = "right";
+    ctx.font = "bold 28px 'Manrope', system-ui, sans-serif";
+    ctx.fillStyle = "#ffd166";
+    ctx.fillText(`✦ ${gems}`, W - 28, 40);
+    ctx.textAlign = "left";
+    // Rows.
+    SNACK_MENU.forEach((item, i) => {
+      const y = 92 + i * 44;
+      const afford = gems >= item.cost;
+      const has = (owned[item.name] ?? 0) > 0;
+      const flash = snackFlash?.name === item.name ? snackFlash.t : 0;
+      ctx.globalAlpha = afford ? 1 : 0.4;
+      ctx.font = "30px 'Manrope', system-ui, sans-serif";
+      ctx.fillStyle = flash > 0 ? "#bfffe0" : "#f3e4c8";
+      ctx.fillText(`${item.emoji}  ${item.name}`, 28, y);
+      if (has) {
+        ctx.fillStyle = "#46e88c";
+        ctx.font = "22px 'Manrope', system-ui, sans-serif";
+        ctx.fillText(`✓${owned[item.name]}`, 360, y);
+      }
+      // Dotted leader out to the price.
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      ctx.moveTo(430, y + 4);
+      ctx.lineTo(W - 90, y + 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.textAlign = "right";
+      ctx.font = "bold 28px 'Manrope', system-ui, sans-serif";
+      ctx.fillStyle = afford ? "#ffd166" : "#8a7a55";
+      ctx.fillText(`✦${item.cost}`, W - 28, y);
+      ctx.textAlign = "left";
+      ctx.globalAlpha = 1;
+    });
+    snackMenuTex.needsUpdate = true;
+  };
+  drawSnackMenu(0, {});
   const snackWindow = new THREE.Mesh(
-    new THREE.PlaneGeometry(SNACK_W * 0.7, SNACK_H * 0.34),
-    new THREE.MeshBasicMaterial({ color: "#fff2c8" }),
+    new THREE.PlaneGeometry(SNACK_W * 0.74, SNACK_H * 0.4),
+    new THREE.MeshBasicMaterial({ map: snackMenuTex }),
   );
-  snackWindow.position.set(0, SNACK_H * 0.62, SNACK_D / 2 + 0.07);
+  snackWindow.position.set(0, SNACK_H * 0.6, SNACK_D / 2 + 0.07);
   snackGroup.add(snackWindow);
 
   // Interior warm glow that spills out of the window.
@@ -3097,6 +3191,14 @@ export function buildCardboardIsland(opts: {
         t.mesh.scale.setScalar(0.7 + k * 0.7);
       }
 
+      // SnackFe purchase flash fades over ~0.8s, then settles the board.
+      if (snackFlash) {
+        snackFlash.t -= dt / 0.8;
+        if (snackFlash.t <= 0) {
+          snackFlash = null;
+          drawSnackMenu(lastSnackGems, lastSnackOwned);
+        }
+      }
       // Cardboard TV slideshow.
       tvTimer += dt;
       if (tvTimer > 7 && tvTextures.length > 0) {
@@ -3121,6 +3223,10 @@ export function buildCardboardIsland(opts: {
     arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
     tv: new THREE.Vector3(centerX + TV_X, topY, centerZ + TV_Z),
     divineSphere,
+    setSnackMenu(gems, owned, justBought) {
+      if (justBought) snackFlash = { name: justBought, t: 1 };
+      drawSnackMenu(gems, owned);
+    },
     setTvPhotos(urls) {
       const loader2 = new THREE.TextureLoader();
       loader2.setCrossOrigin("anonymous");
