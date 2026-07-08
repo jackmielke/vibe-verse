@@ -102,6 +102,30 @@ export default function StartBackdrop({ companionUrl }: { companionUrl?: string 
         );
         orb.position.set(0, r * 0.95, 0);
         g.add(orb);
+        // Additive halo so it reads as a glowing wish-orb, not a tan
+        // ball — the pulse is driven from the tick via this name.
+        const haloCanvas = document.createElement("canvas");
+        haloCanvas.width = haloCanvas.height = 64;
+        const hx = haloCanvas.getContext("2d")!;
+        const grad = hx.createRadialGradient(32, 32, 2, 32, 32, 31);
+        grad.addColorStop(0, "rgba(255,236,190,0.95)");
+        grad.addColorStop(0.4, "rgba(255,214,120,0.45)");
+        grad.addColorStop(1, "rgba(255,209,102,0)");
+        hx.fillStyle = grad;
+        hx.fillRect(0, 0, 64, 64);
+        const halo = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: new THREE.CanvasTexture(haloCanvas),
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            fog: false,
+          }),
+        );
+        halo.name = "orbHalo";
+        halo.scale.setScalar(6);
+        halo.position.copy(orb.position);
+        g.add(halo);
         const orbGlow = new THREE.PointLight(0xffd166, 12, 26, 2);
         orbGlow.position.copy(orb.position);
         g.add(orbGlow);
@@ -261,6 +285,11 @@ export default function StartBackdrop({ companionUrl }: { companionUrl?: string 
       companionMixer?.update(dt);
       const comp = (camera as unknown as { __companion?: THREE.Group }).__companion;
       if (comp) comp.position.y = -1.05 + Math.sin(t * 1.3) * 0.05;
+      const halo = island.getObjectByName("orbHalo") as THREE.Sprite | undefined;
+      if (halo) {
+        halo.scale.setScalar(6 + Math.sin(t * 1.7) * 0.8);
+        (halo.material as THREE.SpriteMaterial).opacity = 0.8 + Math.sin(t * 1.7) * 0.15;
+      }
       zep.position.set(Math.cos(-t * 0.09 + 1) * 24, 16 + Math.sin(t * 0.4) * 0.8, Math.sin(-t * 0.09 + 1) * 24);
       zep.rotation.y = -(-t * 0.09 + 1) - Math.PI / 2;
       for (const c of clouds) {

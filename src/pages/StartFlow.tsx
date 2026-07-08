@@ -291,7 +291,7 @@ export default function StartFlow() {
             <h1 className="font-heading text-4xl sm:text-6xl font-bold tracking-[0.14em] drop-shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
               VIBEVERSE
             </h1>
-            <p className="mt-3 text-sm sm:text-base text-white/90 italic">
+            <p className="mt-3 text-sm sm:text-base text-white/90 italic drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]">
               What kind of adventure do you want today?
             </p>
             <div
@@ -306,7 +306,7 @@ export default function StartFlow() {
                 style={{ animation: "start-sweep 2.2s ease-in-out both" }}
               />
             </div>
-            <p className="mt-3 text-xs text-white/60">tap anywhere</p>
+            <p className="mt-3 text-xs text-white/60 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]">tap anywhere</p>
           </div>
         </button>
       )}

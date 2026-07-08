@@ -50,6 +50,10 @@ export default function GlobalNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // /start is the first sixty seconds of the VibeVerse — Vibey hosts it
+  // full-bleed, so the world chips and profile pill stay out of frame.
+  const onboarding = location.pathname === "/start";
+
   // Collapse the dropdown / picker on any navigation.
   useEffect(() => {
     setMoreOpen(false);
@@ -93,6 +97,8 @@ export default function GlobalNav() {
 
   const labelClass =
     "text-[10.5px] font-heading font-semibold tracking-wider uppercase leading-none hidden sm:inline";
+
+  if (onboarding) return null;
 
   return (
     <>
