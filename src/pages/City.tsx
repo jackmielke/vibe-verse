@@ -3591,6 +3591,7 @@ export default function City() {
         rebelRemote: (ev: RebelEvent) => void;
         rebelState: () => { active: boolean; wave: number; kills: number; hp: number; seed: number };
         addVibe: (n: number) => void;
+        residentNear: (x: number, z: number) => { name: string; x: number; y: number; z: number } | null;
       };
     };
     devWindow.__cityDebug = {
@@ -3647,6 +3648,14 @@ export default function City() {
       addVibe: (n: number) => {
         vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + n;
         setVibeBalanceTick((k) => k + 1);
+      },
+      // Test aid: locate the nearest AI resident so headless runs can
+      // frame its name label without knowing where it wandered.
+      residentNear: (x: number, z: number) => {
+        const n = agentResidents.getNearestAgent(x, 0, z, 99999);
+        if (!n) return null;
+        const p = agentResidents.getAgentPosition(n.agentId);
+        return p ? { name: n.name, x: p.x, y: p.y, z: p.z } : null;
       },
     };
 

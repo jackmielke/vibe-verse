@@ -31,7 +31,7 @@
     { "idea": "Per-resident profiles: unique avatars", "status": "Not started", "area": "Product" },
     { "idea": "Esmeralda Jump: weekly prize pool", "status": "Not started", "area": "Product" },
     { "idea": "Paste-a-GitHub-link world remixing", "status": "Not started", "area": "Tech" },
-    { "idea": "Robot/human distinction beyond 🤖", "status": "Not started", "area": "UX" },
+    { "idea": "Robot/human name pills (🤖 vs 👤)", "status": "Done", "area": "UX" },
     { "idea": "Passport with your name — polished", "status": "Not started", "area": "UX" },
     { "idea": "Agent messaging → backlog + voice", "status": "Not started", "area": "Tech" },
     { "idea": "Mobile app", "status": "Not started", "area": "Product" },

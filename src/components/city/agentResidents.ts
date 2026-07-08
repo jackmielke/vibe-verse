@@ -42,6 +42,7 @@ import {
   getSnapshot,
   formatSnapshot,
 } from "@/world/worldIndex";
+import { drawNamePill } from "@/components/city/multiplayer";
 
 export interface NearbyAgent {
   agentId: string;
@@ -222,17 +223,17 @@ function makeBubble(text: string): THREE.Sprite {
 }
 
 function makeNameLabel(name: string): THREE.Sprite {
+  // AI residents wear 🤖 on a purple pill — the human-player twin (teal 👤)
+  // lives in multiplayer.ts, sharing drawNamePill so the two read as a pair.
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 128;
   const ctx = canvas.getContext("2d")!;
-  ctx.font = "bold 56px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.9)";
-  ctx.shadowBlur = 12;
-  ctx.fillStyle = "#c4b5fd";
-  ctx.fillText(`🤖 ${name.slice(0, 16)}`, 256, 64);
+  drawNamePill(ctx, `🤖 ${name.slice(0, 16)}`, {
+    fill: "rgba(139, 92, 246, 0.32)",
+    border: "rgba(196, 181, 253, 0.85)",
+    text: "#f1ecff",
+  });
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(

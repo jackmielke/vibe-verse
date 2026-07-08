@@ -231,24 +231,64 @@ export function makeChatBubbleSprite(text: string): THREE.Sprite {
 export const CHAT_BUBBLE_DURATION = CHAT_BUBBLE_LIFE;
 
 
+/** Draw a centered name label on a rounded, tinted "pill" background so
+ *  robot vs human residents read at a glance. Shared by the AI-resident
+ *  and human-ghost labels (same shape, different palette). */
+export function drawNamePill(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  palette: { fill: string; border: string; text: string },
+): void {
+  const canvas = ctx.canvas;
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "bold 52px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const tw = Math.min(canvas.width - 24, ctx.measureText(text).width);
+  const pillW = tw + 52;
+  const pillH = 78;
+  const x = cx - pillW / 2;
+  const y = cy - pillH / 2;
+  const r = pillH / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + pillW, y, x + pillW, y + pillH, r);
+  ctx.arcTo(x + pillW, y + pillH, x, y + pillH, r);
+  ctx.arcTo(x, y + pillH, x, y, r);
+  ctx.arcTo(x, y, x + pillW, y, r);
+  ctx.closePath();
+  ctx.fillStyle = palette.fill;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = palette.border;
+  ctx.stroke();
+  ctx.shadowColor = "rgba(0,0,0,0.85)";
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = palette.text;
+  ctx.fillText(text, cx, cy + 2);
+  ctx.shadowBlur = 0;
+}
+
 function makeLabelSprite(name: string): THREE.Sprite {
+  // Real people wear a 👤 on a teal pill so they read at a glance as human,
+  // distinct from the 🤖 purple pill the AI residents carry.
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 112;
   const ctx = canvas.getContext("2d")!;
-  ctx.font = "bold 56px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.9)";
-  ctx.shadowBlur = 10;
-  ctx.fillStyle = "#baffe9";
-  ctx.fillText(name.slice(0, 18), 256, 56);
+  drawNamePill(ctx, `👤 ${name.slice(0, 16)}`, {
+    fill: "rgba(16, 185, 132, 0.30)",
+    border: "rgba(110, 255, 220, 0.85)",
+    text: "#e3fff5",
+  });
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }),
   );
-  sprite.scale.set(3.4, 0.75, 1);
+  sprite.scale.set(3.6, 0.79, 1);
   sprite.position.y = 2.35;
   return sprite;
 }
