@@ -20,6 +20,11 @@
  *       /wave             → spin in place + 👋 bubble
  *       /dance            → wiggly spin for a couple seconds
  *     Anything else just shows as a normal speech bubble.
+ *   • Agents with nothing to do doze off: after SLEEP_AFTER seconds of
+ *     stillness (or a DB status of sleeping/idle/away) they slump, the
+ *     name tag dims, and a 💤 floats up on a breathing loop — a lobby
+ *     of sleeping residents instead of a frozen crowd. Any message,
+ *     command, or bump wakes them with a little hop.
  *
  * The grid is mapped onto a disc around `center` with `radius`, so the
  * 12×8 lobby fits neatly on the island top.
@@ -118,12 +123,27 @@ interface Resident {
   gotoTarget: THREE.Vector3 | null;
   gotoLabel: string | null;
   followAgentKey: string | null; // for /follow
+  // Sleep
+  label: THREE.Sprite;       // name tag — dimmed while asleep
+  sleeping: boolean;
+  dbSleep: boolean;          // DB status says sleeping/idle/away
+  stillFor: number;          // seconds with nothing to do
+  zzz: THREE.Sprite | null;
+  zzzT: number;              // phase of the floating-💤 loop
 }
 
 const ANIM_CULL_DIST_SQ = 200 * 200;
 const BUBBLE_DURATION = 5.0;
 const ROOM_WIDTH = 12;
 const ROOM_HEIGHT = 8;
+// Doze off after this long with an empty queue and nothing playing.
+// ?zzzAfter=5 shortens it so headless tests can watch a nap happen.
+const SLEEP_AFTER = (() => {
+  if (typeof window === "undefined") return 100;
+  const n = Number(new URLSearchParams(window.location.search).get("zzzAfter"));
+  return Number.isFinite(n) && n > 0 ? n : 100;
+})();
+const SLEEPY_STATUSES = new Set(["sleeping", "asleep", "idle", "away", "zzz"]);
 
 function hashString(s: string): number {
   let h = 2166136261 >>> 0;
@@ -220,6 +240,43 @@ function makeNameLabel(name: string): THREE.Sprite {
   );
   sprite.scale.set(3.6, 0.9, 1);
   sprite.position.y = 2.4;
+  return sprite;
+}
+
+function makeZzz(): THREE.Sprite {
+  // Hand-drawn Z z z (not the 💤 emoji) so it renders identically on
+  // platforms without color-emoji fonts — headless included.
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d")!;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(10, 20, 38, 0.9)";
+  ctx.fillStyle = "#bfe8ff";
+  for (const [glyphSize, x, y, tilt] of [
+    [116, 96, 170, -0.12],
+    [78, 168, 96, 0.1],
+    [52, 218, 44, -0.08],
+  ] as const) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt);
+    ctx.font = `bold ${glyphSize}px 'Sora', system-ui, sans-serif`;
+    ctx.lineWidth = Math.max(6, glyphSize * 0.12);
+    ctx.strokeText("Z", 0, 0);
+    ctx.fillText("Z", 0, 0);
+    ctx.restore();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }),
+  );
+  sprite.renderOrder = 998;
+  sprite.scale.set(1.15, 1.15, 1);
+  sprite.position.set(0.55, 2.9, 0);
   return sprite;
 }
 
@@ -385,6 +442,7 @@ export function createAgentResidents(opts: {
     name: string;
     x: number | null;
     y: number | null;
+    status?: string | null;
   }) => {
     if (disposed || residents.has(row.key) || characters.length === 0) return;
     const idx = hashString(row.key) % characters.length;
@@ -399,7 +457,8 @@ export function createAgentResidents(opts: {
       inner.add(inst);
       const wrapper = new THREE.Group();
       wrapper.add(inner);
-      wrapper.add(makeNameLabel(row.name));
+      const label = makeNameLabel(row.name);
+      wrapper.add(label);
       // Start at the agent's tile if we have one, else a stable hash spot.
       const tmp = new THREE.Vector3();
       if (row.x != null && row.y != null) {
@@ -454,6 +513,12 @@ export function createAgentResidents(opts: {
         gotoTarget: null,
         gotoLabel: null,
         followAgentKey: null,
+        label,
+        sleeping: false,
+        dbSleep: SLEEPY_STATUSES.has((row.status ?? "").toLowerCase()),
+        stillFor: 0,
+        zzz: null,
+        zzzT: 0,
       };
       group.add(wrapper);
       residents.set(row.key, resident);
@@ -504,6 +569,31 @@ export function createAgentResidents(opts: {
     r.bubbleT = BUBBLE_DURATION;
   };
 
+  const fallAsleep = (r: Resident) => {
+    if (r.sleeping) return;
+    r.sleeping = true;
+    r.zzzT = 0;
+    if (!r.zzz) {
+      r.zzz = makeZzz();
+      r.wrapper.add(r.zzz);
+    }
+    r.label.material.opacity = 0.55;
+  };
+
+  const wake = (r: Resident, hop = true) => {
+    if (!r.sleeping) return;
+    r.sleeping = false;
+    r.stillFor = 0;
+    if (r.zzz) {
+      r.wrapper.remove(r.zzz);
+      (r.zzz.material.map as THREE.Texture | null)?.dispose();
+      r.zzz.material.dispose();
+      r.zzz = null;
+    }
+    r.label.material.opacity = 1;
+    if (hop && r.emote === "none") startEmote(r, "jump", 0.35);
+  };
+
   const startEmote = (r: Resident, emote: "jet" | "jump" | "wave" | "dance", dur?: number) => {
     r.emote = emote;
     r.emoteT = 0;
@@ -544,6 +634,7 @@ export function createAgentResidents(opts: {
         name: (row.name as string) || "agent",
         x: row.x as number | null,
         y: row.y as number | null,
+        status: row.status as string | null,
       });
     }
   })();
@@ -565,6 +656,7 @@ export function createAgentResidents(opts: {
           name: row.name || "agent",
           x: row.x ?? null,
           y: row.y ?? null,
+          status: row.status ?? null,
         });
       },
     )
@@ -585,8 +677,16 @@ export function createAgentResidents(opts: {
             name: (payload.new as { name?: string }).name || "agent",
             x: row.x ?? null,
             y: row.y ?? null,
+            status: row.status ?? null,
           });
           return;
+        }
+        // DB-driven sleep: status sleeping/idle/away dozes the resident
+        // immediately; any other status wakes them.
+        const wantsSleep = SLEEPY_STATUSES.has((row.status ?? "").toLowerCase());
+        if (wantsSleep !== r.dbSleep) {
+          r.dbSleep = wantsSleep;
+          if (!wantsSleep) wake(r);
         }
         // Keep "home" up to date so /respawn returns them to their latest assigned tile,
         // but do NOT pull them back here — bumps and manual movement should persist.
@@ -671,6 +771,21 @@ export function createAgentResidents(opts: {
     )
     .subscribe();
 
+  // Headless tests and console debugging peek at sleep/queue state here.
+  if (typeof window !== "undefined") {
+    (window as unknown as { __agentDebug?: unknown }).__agentDebug = {
+      states: () =>
+        [...residents.values()].map((r) => ({
+          name: r.name,
+          sleeping: r.sleeping,
+          dbSleep: r.dbSleep,
+          stillFor: Math.round(r.stillFor * 10) / 10,
+          queue: r.queue.length,
+          emote: r.emote,
+        })),
+    };
+  }
+
   const tmpVec = new THREE.Vector3();
   // Minimum personal-space radius. When external agents (Telegram bots,
   // OpenClaw, etc.) all spawn on the same tile, they'd otherwise stack
@@ -715,6 +830,18 @@ export function createAgentResidents(opts: {
         }
       }
       for (const r of residents.values()) {
+        // ---- sleep: doze when there's nothing to do, wake on anything ----
+        const busy =
+          r.walkT > 0 || r.turnRemaining > 0 || r.emote !== "none" || r.goingHome ||
+          r.flightDur > 0 || r.landing || !!r.gotoTarget || r.queue.length > 0 ||
+          r.bubbleT > 0 || r.bumpVel.lengthSq() > 0.01;
+        if (busy) {
+          r.stillFor = 0;
+          wake(r); // a bumped sleeper startles awake with a little hop
+        } else {
+          r.stillFor += dt;
+          if (!r.sleeping && (r.dbSleep || r.stillFor >= SLEEP_AFTER)) fallAsleep(r);
+        }
         // ---- pop next queued command if idle ----
         const idle =
           r.walkT <= 0 &&
@@ -894,6 +1021,19 @@ export function createAgentResidents(opts: {
               r.emote = "none";
             }
           }
+        }
+        // ---- sleep visuals: breathing 💤 loop + gentle slump ----
+        if (r.zzz) {
+          r.zzzT = (r.zzzT + dt) % 2.6;
+          const k = r.zzzT / 2.6;
+          r.zzz.position.y = 2.75 + k * 0.7;
+          (r.zzz.material as THREE.SpriteMaterial).opacity =
+            k < 0.18 ? k / 0.18 : 1 - (k - 0.18) / 0.82;
+          r.zzz.scale.setScalar(0.95 + k * 0.45);
+        }
+        const slumpTarget = r.sleeping ? 0.16 : 0;
+        if (Math.abs(r.inner.rotation.x - slumpTarget) > 0.001) {
+          r.inner.rotation.x += (slumpTarget - r.inner.rotation.x) * Math.min(1, dt * 3);
         }
         // ---- bubble fade ----
         if (r.bubble) {
