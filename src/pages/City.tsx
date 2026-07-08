@@ -46,6 +46,7 @@ import { buildMoonGolf } from "@/components/city/moonGolf";
 import { buildCloudKingdom } from "@/components/city/cloudKingdom";
 import { buildRebelDefense } from "@/components/city/rebelDefense";
 import { buildHeistChase } from "@/components/city/heistChase";
+import { buildRoadmapBoard } from "@/components/city/roadmapBoard";
 import { makeBoombox } from "@/components/city/boombox";
 import {
   GRAVITY,
@@ -1497,6 +1498,14 @@ export default function City() {
     cityRadio.group.position.set(-12, 0, 12);
     cityRadio.group.rotation.y = Math.atan2(12, -12); // face the plaza ring
     scene.add(cityRadio.group);
+
+    // 🛸 MISSION CONTROL — the living roadmap billboard on the plaza's
+    // south-west corner. Renders /roadmap.json, which Claude's recurring
+    // sweep regenerates from the Notion roadmap database.
+    const roadmapBoard = buildRoadmapBoard();
+    roadmapBoard.group.position.set(-16, 0, -14);
+    roadmapBoard.group.rotation.y = Math.atan2(16, 14); // face the plaza center
+    scene.add(roadmapBoard.group);
     const radioAnchors = [
       new THREE.Vector3(ISLAND_X + 11, ISLAND_TOP + 1, ISLAND_Z + 27),
       new THREE.Vector3(-12, 1, 12),
@@ -2071,6 +2080,7 @@ export default function City() {
       reg("avatar-portal", "Character Studio", "Cardboard Island", island.avatarPortal, ["avatar", "hologram", "character", "studio"]);
       reg("photo-tv", "Cardboard TV", "Cardboard Island", island.tv, ["tv", "photo tv", "gallery", "holo gallery"]);
       reg("vibe-fm", "VIBE FM Radio", "Cardboard Island", radioAnchors[0], ["radio", "music", "fm", "boombox", "vibe fm"]);
+      reg("mission-control", "Mission Control (roadmap)", "Plaza", new THREE.Vector3(-16, 0, -14), ["roadmap", "mission control", "board", "notion"]);
       reg("moon", "The Moon", "Moon", new THREE.Vector3(MOON_X, MOON_TOP, MOON_Z), ["moon", "luna"]);
       reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
       reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
@@ -4202,6 +4212,7 @@ export default function City() {
         islandRadio.update(dt, now, fmOn);
         cityRadio.update(dt, now, fmOn);
       }
+      roadmapBoard.update(dt, now);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
