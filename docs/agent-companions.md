@@ -6,6 +6,13 @@ back to steer. Built on top of what already exists (`world_agents`,
 `agent-reply`, the shared-bot Telegram send used by `god-orb-wish` /
 `agent-selfie`).
 
+> **Where it lives (Jack's call): a separate, experimental place — not the
+> main City.** Build it as its own route/world (e.g. `/companions` or a new
+> "Agent Lab" world) so it can move fast and stay clearly experimental,
+> rather than grafting the creation flow into the shared city scene. The
+> data + edge-function layer below is shared; only the entry point and the
+> "hatch" UI live in the new place.
+
 ## The bot model — dedicated shared bot + per-user chat link
 
 We use **one dedicated VibeVerse Telegram bot** for everyone, and link each

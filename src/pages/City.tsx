@@ -3485,14 +3485,24 @@ export default function City() {
       camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
     };
     // /city?spawn=hub — the default landing for new arrivals. Drop beside
-    // an active player when anyone's around (land in the thick of it),
-    // otherwise the town square. Deliberately NOT Vibe Island — that's
-    // now a place you travel to, reached via the explicit 🏝️ buttons.
+    // an active player when anyone's around (land in the thick of it);
+    // otherwise open on Vibe Island — the flagship welcome (Jack's call:
+    // "loading in for the first time, I'd rather spawn on the island").
     hubSpawnRef.current = () => {
       const occupants: { x: number; y: number; z: number }[] = [];
       mp.forEachOccupant((x, y, z) => occupants.push({ x, y, z }));
-      const groundY = supportHeightAt(0, 6, 20);
-      const target = pickHubSpawn(occupants, { x: 0, y: groundY + 0.4, z: 6 });
+      if (occupants.length === 0) {
+        // First load / nobody around → Vibe Island with its arrival cinematic.
+        islandSpawnRef.current?.();
+        setArriving(true);
+        return;
+      }
+      // Someone's already here → drop into the action beside them.
+      const target = pickHubSpawn(occupants, {
+        x: ISLAND_X,
+        y: ISLAND_TOP + 0.4,
+        z: ISLAND_Z + 7,
+      });
       player.position.set(target.x, target.y, target.z);
       vel.set(0, 0, 0);
       onGround = false;
