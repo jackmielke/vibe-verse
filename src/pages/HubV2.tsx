@@ -175,7 +175,7 @@ export default function HubV2() {
     localStorage.setItem("city.playerName", pick.name);
     localStorage.setItem("city.displayName", pick.name);
     setFreshPick(null);
-    navigate("/city?spawn=island&fresh=1", { replace: true });
+    navigate("/city?spawn=hub&fresh=1", { replace: true });
   }
 
 

@@ -43,7 +43,7 @@ export default function CharacterSelect() {
     setActiveCharacter(pick.character);
     localStorage.setItem("city.playerName", pick.name);
     localStorage.setItem("city.displayName", pick.name);
-    navigate("/city?spawn=island");
+    navigate("/city?spawn=hub");
   }
 
   return (

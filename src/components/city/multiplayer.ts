@@ -91,6 +91,41 @@ export interface Multiplayer {
   dispose(): void;
 }
 
+/** Choose where a newcomer should land: beside an active player when
+ *  anyone is around (drop into the action), otherwise the town square.
+ *  `occupants` are the current remote-player world positions. Pure so it
+ *  can be unit-tested without a live presence channel. */
+export function pickHubSpawn(
+  occupants: { x: number; y: number; z: number }[],
+  plaza: { x: number; y: number; z: number },
+): { x: number; y: number; z: number; nearPeer: boolean } {
+  if (occupants.length === 0) {
+    return { x: plaza.x, y: plaza.y, z: plaza.z, nearPeer: false };
+  }
+  // Land beside whoever's most in the thick of it — the occupant nearest
+  // the group's centroid — so you arrive in the middle of the action
+  // rather than next to a straggler off at the edge of the world.
+  let cx = 0;
+  let cz = 0;
+  for (const o of occupants) {
+    cx += o.x;
+    cz += o.z;
+  }
+  cx /= occupants.length;
+  cz /= occupants.length;
+  let best = occupants[0];
+  let bestD = Infinity;
+  for (const o of occupants) {
+    const d = (o.x - cx) ** 2 + (o.z - cz) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = o;
+    }
+  }
+  // A couple of metres to the side so we don't spawn inside them.
+  return { x: best.x + 2.2, y: best.y, z: best.z + 2.2, nearPeer: true };
+}
+
 interface Ghost {
   group: THREE.Group;
   /** The inner character instance — scale lives here so the label sprite isn't blown up too. */

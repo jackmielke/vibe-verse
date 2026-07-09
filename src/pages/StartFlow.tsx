@@ -125,12 +125,12 @@ export default function StartFlow() {
       localStorage.setItem("city.displayName", finalName);
       if (adv) localStorage.setItem("vibe.adventure", adv);
     } catch { /* private mode */ }
-    navigate("/city?spawn=island&fresh=1", { replace: true });
+    navigate("/city?spawn=hub&fresh=1", { replace: true });
   };
 
   // Until the Supabase email template shows the 6-digit code, the email
   // leads with a magic LINK. Tapping it signs this browser in (auth
-  // state syncs across tabs) — ride the session straight onto the island.
+  // state syncs across tabs) — ride the session straight into the world.
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
       if (session && latest.current.step === "account") {
@@ -176,7 +176,7 @@ export default function StartFlow() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: em,
-        options: { emailRedirectTo: `${window.location.origin}/city?spawn=island` },
+        options: { emailRedirectTo: `${window.location.origin}/city?spawn=hub` },
       });
       if (error) throw error;
       setCodeSent(true);

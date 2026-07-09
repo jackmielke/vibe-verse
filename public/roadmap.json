@@ -1,6 +1,7 @@
 {
   "generated": "2026-07-08",
   "items": [
+    { "idea": "Land near active players (no island default)", "status": "Done", "area": "UX" },
     { "idea": "Shareable link previews (unfurl)", "status": "Done", "area": "UX" },
     { "idea": "Fix city fall-through physics for good", "status": "Done", "area": "Tech" },
     { "idea": "First-time onboarding flow (/start)", "status": "Done", "area": "UX" },

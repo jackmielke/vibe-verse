@@ -451,7 +451,7 @@ export default function Lobby() {
     localStorage.setItem("city.playerName", cleanName);
     localStorage.setItem("city.displayName", cleanName);
     if (destination === "island") {
-      navigate("/city?spawn=island&fresh=1");
+      navigate("/city?spawn=hub&fresh=1");
     } else {
       navigate("/space");
     }

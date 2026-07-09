@@ -69,6 +69,7 @@ import { createVibeyNpc } from "@/components/city/vibeyNpc";
 import TouchControls, { type TouchMove } from "@/components/city/TouchControls";
 import {
   createMultiplayer,
+  pickHubSpawn,
   EMOTE_EMOJI,
   makeChatBubbleSprite,
   CHAT_BUBBLE_DURATION,
@@ -554,6 +555,7 @@ export default function City() {
   const travelRef = useRef<(() => void) | null>(null);
   const resetRunRef = useRef<(() => void) | null>(null);
   const islandSpawnRef = useRef<(() => void) | null>(null);
+  const hubSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
   const tjsSpawnRef = useRef<(() => void) | null>(null);
@@ -3482,6 +3484,30 @@ export default function City() {
       );
       camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
     };
+    // /city?spawn=hub — the default landing for new arrivals. Drop beside
+    // an active player when anyone's around (land in the thick of it),
+    // otherwise the town square. Deliberately NOT Vibe Island — that's
+    // now a place you travel to, reached via the explicit 🏝️ buttons.
+    hubSpawnRef.current = () => {
+      const occupants: { x: number; y: number; z: number }[] = [];
+      mp.forEachOccupant((x, y, z) => occupants.push({ x, y, z }));
+      const groundY = supportHeightAt(0, 6, 20);
+      const target = pickHubSpawn(occupants, { x: 0, y: groundY + 0.4, z: 6 });
+      player.position.set(target.x, target.y, target.z);
+      vel.set(0, 0, 0);
+      onGround = false;
+      // Open facing the avatar's front; the chase-cam swings behind as
+      // soon as they move or drag.
+      camYaw = 0;
+      camPitch = 0.16;
+      camDist = 8.5;
+      camera.position.set(
+        player.position.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+        player.position.y + Math.sin(camPitch) * camDist + 1.4,
+        player.position.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
+      );
+      camera.lookAt(player.position.x, player.position.y + 1.2, player.position.z);
+    };
     // /city?spawn=moon drops visitors onto the moon's landing pad.
     moonSpawnRef.current = () => {
       player.position.copy(moonWorld.spawn);
@@ -5063,6 +5089,7 @@ export default function City() {
     const spawn = new URLSearchParams(routerLocation.search).get("spawn");
     if (
       spawn === "island" ||
+      spawn === "hub" ||
       spawn === "moon" ||
       spawn === "mars" ||
       spawn === "tjs" ||
@@ -5071,7 +5098,8 @@ export default function City() {
       spawn === "underworld" ||
       spawn === "mines"
     ) {
-      if (spawn === "moon") moonSpawnRef.current?.();
+      if (spawn === "hub") hubSpawnRef.current?.();
+      else if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
       else if (spawn === "tjs") tjsSpawnRef.current?.();
       else if (spawn === "ski") skiTravelRef.current?.("peak");
