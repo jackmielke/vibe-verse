@@ -1,6 +1,7 @@
 {
   "generated": "2026-07-08",
   "items": [
+    { "idea": "Cleaner, dismissible notifications", "status": "Done", "area": "UX" },
     { "idea": "Spawn near active players (else Vibe Island)", "status": "Done", "area": "UX" },
     { "idea": "Shareable link previews (unfurl)", "status": "Done", "area": "UX" },
     { "idea": "Fix city fall-through physics for good", "status": "Done", "area": "Tech" },

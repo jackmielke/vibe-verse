@@ -781,6 +781,11 @@ export default function City() {
   const rebelRemoteRef = useRef<((ev: RebelEvent) => void) | null>(null);
   // THE GETAWAY — the chaseable city heist. HUD chip while it's loose.
   const [heistChaseOn, setHeistChaseOn] = useState(false);
+  // Let players dismiss the bounty chip; it comes back on the next heist.
+  const [heistChipDismissed, setHeistChipDismissed] = useState(false);
+  useEffect(() => {
+    if (heistChaseOn) setHeistChipDismissed(false);
+  }, [heistChaseOn]);
   const skiTravelRef = useRef<((to: "peak" | "island") => void) | null>(null);
 
   // God Orb wish portal — click the sky orb, ask the universe for
@@ -6274,11 +6279,25 @@ export default function City() {
         </div>
       )}
 
-      {/* THE GETAWAY: pulsing bounty chip while the kart is loose. */}
-      {entered && heistChaseOn && !gameHud && !onPowderPeak && !rebelHud?.active && (
-        <div className="fixed top-28 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs border border-rose-400/50 shadow-[0_0_24px_rgba(244,63,94,0.45)] animate-pulse">
-          <span className="text-rose-300 font-heading font-semibold">🚨 GETAWAY KART LOOSE</span>
-          <span className="text-muted-foreground"> · ram it in the city streets · +25 ✦</span>
+      {/* THE GETAWAY: bounty chip while the kart is loose — dismissible. */}
+      {entered && heistChaseOn && !heistChipDismissed && !gameHud && !onPowderPeak && !rebelHud?.active && (
+        <div className="fixed top-28 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full pl-4 pr-1.5 py-1.5 text-xs border border-rose-400/40 shadow-[0_0_24px_rgba(244,63,94,0.35)] flex items-center gap-2 animate-fade-in">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-70 animate-ping" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-400" />
+          </span>
+          <span className="text-rose-300 font-heading font-semibold">GETAWAY KART LOOSE</span>
+          <span className="text-muted-foreground hidden sm:inline">· ram it for +25 ✦</span>
+          <button
+            onClick={(e) => {
+              setHeistChipDismissed(true);
+              e.currentTarget.blur();
+            }}
+            aria-label="Dismiss"
+            className="ml-0.5 grid place-items-center h-5 w-5 rounded-full text-muted-foreground/70 hover:text-foreground hover:bg-white/10 transition-colors"
+          >
+            ✕
+          </button>
         </div>
       )}
 
