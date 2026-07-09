@@ -2,6 +2,7 @@
   "generated": "2026-07-08",
   "items": [
     { "idea": "Graceful crash screen (no white-screen deaths)", "status": "Done", "area": "Tech" },
+    { "idea": "Capture async errors (loop-learns groundwork)", "status": "Done", "area": "Tech" },
     { "idea": "Cleaner, dismissible notifications", "status": "Done", "area": "UX" },
     { "idea": "Spawn near active players (else Vibe Island)", "status": "Done", "area": "UX" },
     { "idea": "Shareable link previews (unfurl)", "status": "Done", "area": "UX" },

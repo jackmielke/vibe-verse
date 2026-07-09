@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { recordError } from "@/lib/errorLog";
 
 /** The friendly fallback shown when a render crash is caught — exported
  *  on its own so it can be previewed/verified without forcing a crash. */
@@ -45,8 +46,8 @@ interface State {
 }
 
 /** Top-level boundary so a render crash shows a friendly reload screen
- *  instead of a blank white page. Also records the error (console +
- *  sessionStorage) so it can later be forwarded to the build loop. */
+ *  instead of a blank white page. Records the crash via the shared
+ *  errorLog (console + sessionStorage) for later forwarding to the loop. */
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   state: State = { error: null };
 
@@ -55,23 +56,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[VibeVerse] render crash caught by ErrorBoundary:", error, info);
-    try {
-      sessionStorage.setItem(
-        "vibe.lastError",
-        JSON.stringify({
-          message: error.message,
-          stack: error.stack?.slice(0, 2000),
-          componentStack: info.componentStack?.slice(0, 2000),
-          at: new Date().toISOString(),
-          url: window.location.href,
-        }),
-      );
-    } catch {
-      /* storage may be unavailable in private mode */
-    }
-    // TODO(loop-learns-from-users): forward to Supabase so the build loop
-    // can triage real crashes. Needs a client_errors sink first.
+    recordError("render", error, info.componentStack ?? undefined);
   }
 
   render() {
