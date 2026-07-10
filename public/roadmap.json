@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-08",
+  "generated": "2026-07-10",
   "items": [
     { "idea": "Graceful crash screen (no white-screen deaths)", "status": "Done", "area": "Tech" },
     { "idea": "Loop learns from users: crashes auto-report to the build loop", "status": "Done", "area": "Tech" },
@@ -43,7 +43,7 @@
     { "idea": "Mobile app", "status": "Not started", "area": "Product" },
     { "idea": "Google auth", "status": "Not started", "area": "UX" },
     { "idea": "Realistic grass, waves, etc", "status": "Not started", "area": "UX" },
-    { "idea": "More common dances from agents", "status": "Not started", "area": "UX" },
+    { "idea": "More common dances from agents", "status": "Done", "area": "UX" },
     { "idea": "Fly / collab with your agent", "status": "Not started", "area": "Product" },
     { "idea": "Refine voice mode", "status": "Not started", "area": "Tech" }
   ]

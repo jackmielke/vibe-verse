@@ -108,6 +108,7 @@ interface Resident {
   emote: "none" | "jet" | "jump" | "wave" | "dance";
   emoteT: number;            // seconds into the current emote
   emoteDur: number;
+  ambientT: number;          // countdown to next ambient dance (only ticks while a player is near)
   baseLift: number;          // resting Y for the inner mesh
   // Sustained flight (jetpack travel)
   flying: boolean;
@@ -145,6 +146,17 @@ const SLEEP_AFTER = (() => {
   return Number.isFinite(n) && n > 0 ? n : 100;
 })();
 const SLEEPY_STATUSES = new Set(["sleeping", "asleep", "idle", "away", "zzz"]);
+// Awake residents bust an ambient move roughly this often (seconds) while a
+// player lingers nearby — the world feels alive when you're watching, and
+// still settles into naps once you wander off. ?danceEvery=3 shortens it so
+// headless tests can watch one happen.
+const AMBIENT_EMOTE_BASE = (() => {
+  if (typeof window === "undefined") return 30;
+  const n = Number(new URLSearchParams(window.location.search).get("danceEvery"));
+  return Number.isFinite(n) && n > 0 ? n : 30;
+})();
+// Only dance when a player is close enough to enjoy it (metres, squared below).
+const AMBIENT_EMOTE_RADIUS = 16;
 
 function hashString(s: string): number {
   let h = 2166136261 >>> 0;
@@ -501,6 +513,8 @@ export function createAgentResidents(opts: {
         emote: "none",
         emoteT: 0,
         emoteDur: 0,
+        // Stagger the first ambient dance so residents don't all move in lockstep.
+        ambientT: AMBIENT_EMOTE_BASE * (0.2 + (hashString(row.key + "amb") % 100) / 100 * 0.9),
         baseLift: lift,
         flying: false,
         flightT: 0,
@@ -842,6 +856,30 @@ export function createAgentResidents(opts: {
         } else {
           r.stillFor += dt;
           if (!r.sleeping && (r.dbSleep || r.stillFor >= SLEEP_AFTER)) fallAsleep(r);
+        }
+        // ---- ambient life: awake residents dance when a player is watching ----
+        // Honors "more common dances from agents" without fighting the nap
+        // system: dances only fire while a player lingers close by (which also
+        // resets the still-timer, keeping watched residents lively). Walk away
+        // and the timer freezes, they go still, and doze off exactly as before.
+        if (
+          playerPos &&
+          !r.sleeping && !r.dbSleep &&
+          r.emote === "none" &&
+          r.walkT <= 0 && r.turnRemaining <= 0 &&
+          r.queue.length === 0 && !r.goingHome && !r.gotoTarget &&
+          !r.flying && !r.landing && r.altitude < 0.1
+        ) {
+          const adx = r.wrapper.position.x - playerPos.x;
+          const adz = r.wrapper.position.z - playerPos.z;
+          if (adx * adx + adz * adz < AMBIENT_EMOTE_RADIUS * AMBIENT_EMOTE_RADIUS) {
+            r.ambientT -= dt;
+            if (r.ambientT <= 0) {
+              // Mostly a dance, sometimes a friendly wave.
+              startEmote(r, Math.random() < 0.7 ? "dance" : "wave");
+              r.ambientT = AMBIENT_EMOTE_BASE * (0.7 + Math.random() * 0.9);
+            }
+          }
         }
         // ---- pop next queued command if idle ----
         const idle =
