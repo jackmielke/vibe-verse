@@ -1,11 +1,12 @@
+import { supabase } from "@/integrations/supabase/client";
+
 /**
  * One capture path for every kind of client error — React render crashes
  * (via ErrorBoundary), unhandled promise rejections, and global runtime
- * errors. Keeps a rolling list in sessionStorage so the last handful are
- * inspectable when debugging a session, plus console for live dev.
- *
- * TODO(loop-learns-from-users): forward these to a Supabase client_errors
- * sink so the autonomous build loop can triage real user crashes.
+ * errors. Keeps a rolling list in sessionStorage (inspectable when
+ * debugging a session), logs to console, and best-effort forwards to the
+ * public.client_errors table so the autonomous build loop can read and
+ * triage real user crashes — the "loop learns from users" sink.
  */
 export interface CapturedError {
   kind: "render" | "error" | "unhandledrejection";
@@ -42,6 +43,27 @@ export function recordError(kind: CapturedError["kind"], err: unknown, extra?: s
     sessionStorage.setItem(KEY, JSON.stringify(list));
   } catch {
     /* storage unavailable in private mode */
+  }
+  // Best-effort forward to the build loop's sink. Fully fire-and-forget:
+  // the .catch swallows failures (offline / blocked) so reporting an error
+  // can never itself throw or spawn another unhandled rejection.
+  try {
+    void supabase
+      .from("client_errors")
+      .insert({
+        kind: entry.kind,
+        message: entry.message,
+        stack: entry.stack,
+        extra: entry.extra,
+        url: entry.url,
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 300) : null,
+      })
+      .then(
+        () => {},
+        () => {},
+      );
+  } catch {
+    /* client unavailable — the sessionStorage copy still exists */
   }
 }
 
