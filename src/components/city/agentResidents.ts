@@ -109,6 +109,7 @@ interface Resident {
   emoteT: number;            // seconds into the current emote
   emoteDur: number;
   ambientT: number;          // countdown to next ambient dance (only ticks while a player is near)
+  ambientFaceYaw: number | null; // yaw to turn toward while ambient-dancing (faces the watching player)
   baseLift: number;          // resting Y for the inner mesh
   // Sustained flight (jetpack travel)
   flying: boolean;
@@ -515,6 +516,7 @@ export function createAgentResidents(opts: {
         emoteDur: 0,
         // Stagger the first ambient dance so residents don't all move in lockstep.
         ambientT: AMBIENT_EMOTE_BASE * (0.2 + (hashString(row.key + "amb") % 100) / 100 * 0.9),
+        ambientFaceYaw: null,
         baseLift: lift,
         flying: false,
         flightT: 0,
@@ -797,6 +799,9 @@ export function createAgentResidents(opts: {
           stillFor: Math.round(r.stillFor * 10) / 10,
           queue: r.queue.length,
           emote: r.emote,
+          yaw: Math.round(r.wrapper.rotation.y * 100) / 100,
+          x: Math.round(r.wrapper.position.x * 10) / 10,
+          z: Math.round(r.wrapper.position.z * 10) / 10,
         })),
     };
   }
@@ -875,7 +880,8 @@ export function createAgentResidents(opts: {
           if (adx * adx + adz * adz < AMBIENT_EMOTE_RADIUS * AMBIENT_EMOTE_RADIUS) {
             r.ambientT -= dt;
             if (r.ambientT <= 0) {
-              // Mostly a dance, sometimes a friendly wave.
+              // Turn to face the watching player, then mostly a dance, sometimes a wave.
+              r.ambientFaceYaw = Math.atan2(playerPos.x - r.wrapper.position.x, playerPos.z - r.wrapper.position.z);
               startEmote(r, Math.random() < 0.7 ? "dance" : "wave");
               r.ambientT = AMBIENT_EMOTE_BASE * (0.7 + Math.random() * 0.9);
             }
@@ -1034,6 +1040,15 @@ export function createAgentResidents(opts: {
         // ---- emote ----
         if (r.emote !== "none") {
           r.emoteT += dt;
+          // While greeting a nearby player, the body turns to face them
+          // (the emote wiggle rides on r.inner, so facing on r.wrapper is free).
+          if (r.ambientFaceYaw != null && (r.emote === "dance" || r.emote === "wave")) {
+            let fd = r.ambientFaceYaw - r.yaw;
+            while (fd > Math.PI) fd -= Math.PI * 2;
+            while (fd < -Math.PI) fd += Math.PI * 2;
+            r.yaw += fd * Math.min(1, dt * 5);
+            r.wrapper.rotation.y = r.yaw;
+          }
           if (r.emote === "jet") {
             // 1.6s arc up + drift back down
             const T = 1.6;
@@ -1049,7 +1064,7 @@ export function createAgentResidents(opts: {
           } else if (r.emote === "wave") {
             const T = 1.4;
             r.inner.rotation.y = Math.sin(r.emoteT * 6) * 0.5;
-            if (r.emoteT >= T) { r.inner.rotation.y = 0; r.emote = "none"; }
+            if (r.emoteT >= T) { r.inner.rotation.y = 0; r.emote = "none"; r.ambientFaceYaw = null; }
           } else if (r.emote === "dance") {
             const T = 3.0;
             r.inner.rotation.y = Math.sin(r.emoteT * 10) * 0.7;
@@ -1058,6 +1073,7 @@ export function createAgentResidents(opts: {
               r.inner.rotation.y = 0;
               r.inner.position.y = r.baseLift;
               r.emote = "none";
+              r.ambientFaceYaw = null;
             }
           }
         }
