@@ -110,6 +110,7 @@ interface Resident {
   emoteDur: number;
   ambientT: number;          // countdown to next ambient dance (only ticks while a player is near)
   ambientFaceYaw: number | null; // yaw to turn toward while ambient-dancing (faces the watching player)
+  greeted: boolean;          // has said hello to the player currently in range (re-arms once they leave)
   baseLift: number;          // resting Y for the inner mesh
   // Sustained flight (jetpack travel)
   flying: boolean;
@@ -158,6 +159,11 @@ const AMBIENT_EMOTE_BASE = (() => {
 })();
 // Only dance when a player is close enough to enjoy it (metres, squared below).
 const AMBIENT_EMOTE_RADIUS = 16;
+// Warm hello when you walk up: greet once inside GREET_RADIUS, re-arm once the
+// player leaves GREET_RELEASE (hysteresis stops it flapping at the boundary).
+const GREET_RADIUS = 7;
+const GREET_RELEASE = 12;
+const GREETINGS = ["hey! 👋", "welcome to the Vibe ✨", "oh, hi there!", "good to see you!", "hey, you made it!", "welcome, friend!", "yo! 🌟", "hi hi!"];
 
 function hashString(s: string): number {
   let h = 2166136261 >>> 0;
@@ -517,6 +523,7 @@ export function createAgentResidents(opts: {
         // Stagger the first ambient dance so residents don't all move in lockstep.
         ambientT: AMBIENT_EMOTE_BASE * (0.2 + (hashString(row.key + "amb") % 100) / 100 * 0.9),
         ambientFaceYaw: null,
+        greeted: false,
         baseLift: lift,
         flying: false,
         flightT: 0,
@@ -802,11 +809,16 @@ export function createAgentResidents(opts: {
           yaw: Math.round(r.wrapper.rotation.y * 100) / 100,
           x: Math.round(r.wrapper.position.x * 10) / 10,
           z: Math.round(r.wrapper.position.z * 10) / 10,
+          bubbleT: Math.round(r.bubbleT * 10) / 10,
+          greeted: r.greeted,
         })),
     };
   }
 
   const tmpVec = new THREE.Vector3();
+  // Global greet throttle: walking through a crowd should yield a staggered
+  // trickle of hellos, not a wall of bubbles all at once.
+  let greetCooldownT = 0;
   // Minimum personal-space radius. When external agents (Telegram bots,
   // OpenClaw, etc.) all spawn on the same tile, they'd otherwise stack
   // into a single visual blob — this gentle push keeps them apart.
@@ -816,6 +828,7 @@ export function createAgentResidents(opts: {
   return {
     group,
     update(dt, playerPos) {
+      if (greetCooldownT > 0) greetCooldownT -= dt;
       // ---- soft separation: nudge stacked agents apart ----
       const list = [...residents.values()];
       for (let i = 0; i < list.length; i++) {
@@ -861,6 +874,22 @@ export function createAgentResidents(opts: {
         } else {
           r.stillFor += dt;
           if (!r.sleeping && (r.dbSleep || r.stillFor >= SLEEP_AFTER)) fallAsleep(r);
+        }
+        // ---- warm hello: greet the player once when they walk up ----
+        // Reuses the speech-bubble; a sleeper stirs awake (hop) to say hi. The
+        // global cooldown keeps a plaza crowd from all shouting at once.
+        if (playerPos && !r.dbSleep) {
+          const gdx = r.wrapper.position.x - playerPos.x;
+          const gdz = r.wrapper.position.z - playerPos.z;
+          const gd2 = gdx * gdx + gdz * gdz;
+          if (!r.greeted && gd2 < GREET_RADIUS * GREET_RADIUS && greetCooldownT <= 0) {
+            r.greeted = true;
+            greetCooldownT = 1.2;
+            if (r.sleeping) wake(r); // stir awake with a little hop
+            showBubble(r, GREETINGS[hashString(r.key + "greet") % GREETINGS.length]);
+          } else if (r.greeted && gd2 > GREET_RELEASE * GREET_RELEASE) {
+            r.greeted = false; // re-arm once they wander off
+          }
         }
         // ---- ambient life: awake residents dance when a player is watching ----
         // Honors "more common dances from agents" without fighting the nap
