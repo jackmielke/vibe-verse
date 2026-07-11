@@ -63,6 +63,8 @@ export interface AgentResidents {
   getAgentPosition(agentId: string): { x: number; y: number; z: number } | null;
   /** Trigger a local wave bubble above an agent (e.g. when the player bumps them). */
   showWaveAt(agentId: string): void;
+  /** Make the agent break into a happy dance (e.g. celebrating your duel win). */
+  celebrateAt(agentId: string): void;
   dispose(): void;
 }
 
@@ -1197,6 +1199,16 @@ export function createAgentResidents(opts: {
         if (r.agentId === agentId) {
           showBubble(r, "👋");
           startEmote(r, "wave");
+          return;
+        }
+      }
+    },
+    celebrateAt(agentId) {
+      for (const r of residents.values()) {
+        if (r.agentId === agentId) {
+          if (r.sleeping) wake(r, false);
+          showBubble(r, "🎉");
+          startEmote(r, "dance");
           return;
         }
       }

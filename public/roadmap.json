@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-10",
+  "generated": "2026-07-11",
   "items": [
     { "idea": "Graceful crash screen (no white-screen deaths)", "status": "Done", "area": "Tech" },
     { "idea": "Loop learns from users: crashes auto-report to the build loop", "status": "Done", "area": "Tech" },
@@ -27,12 +27,12 @@
     { "idea": "Agents sleeping = zzz bubbles", "status": "Done", "area": "UX" },
     { "idea": "SnackFe: menu on its screen (no popup)", "status": "Done", "area": "UX" },
     { "idea": "Less glitchy boot up + character screen", "status": "In progress", "area": "UX" },
-    { "idea": "Circular (more realistic) ocean", "status": "Not started", "area": "UX" },
+    { "idea": "Circular (more realistic) ocean", "status": "Done", "area": "UX" },
     { "idea": "Character power-ups & stats", "status": "Not started", "area": "Product" },
     { "idea": "Fix glitchy bird flocks", "status": "Not started", "area": "Tech" },
     { "idea": "Choose-your-world page with previews", "status": "Not started", "area": "UX" },
     { "idea": "World Builder polish: 2D/3D + on-brand", "status": "Not started", "area": "UX" },
-    { "idea": "Walk-up duels: rock-paper-scissors v1", "status": "Not started", "area": "Product" },
+    { "idea": "Walk-up duels: rock-paper-scissors v1", "status": "Done", "area": "Product" },
     { "idea": "Vibe Merch: buyable sticker with $VIBE", "status": "Not started", "area": "Product" },
     { "idea": "Per-resident profiles: unique avatars", "status": "Not started", "area": "Product" },
     { "idea": "Esmeralda Jump: weekly prize pool", "status": "Not started", "area": "Product" },

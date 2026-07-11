@@ -99,6 +99,7 @@ import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
+import RpsDuelModal from "@/components/RpsDuelModal";
 import {
   createSpawnMesh,
   updateSpawns,
@@ -670,6 +671,7 @@ export default function City() {
   const nearPersonRef = useRef<PersonTarget | null>(null);
   useEffect(() => { nearPersonRef.current = nearPerson; }, [nearPerson]);
   const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
+  const [duelTarget, setDuelTarget] = useState<PersonTarget | null>(null);
   // Floating world-space bubbles for the nearest person + Jerry. The render
   // loop projects 3D positions into these divs every frame via direct DOM
   // mutation, so React doesn't re-render at 60fps.
@@ -5333,6 +5335,18 @@ export default function City() {
             >
               💬 Message
             </button>
+            {nearPerson.kind === "agent" && (
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  setDuelTarget(nearPerson);
+                  soundsRef.current?.chime(3);
+                }}
+                className="glass-panel rounded-full px-3 py-1.5 text-xs text-emerald-300 whitespace-nowrap shadow-[0_4px_18px_rgba(0,0,0,0.55)]"
+              >
+                ✊ Duel
+              </button>
+            )}
           </>
         )}
       </div>
@@ -6051,6 +6065,14 @@ export default function City() {
           target={chatTarget}
           authUserId={authUserId}
           myName={playerName}
+        />
+      )}
+
+      {duelTarget && (
+        <RpsDuelModal
+          agentName={duelTarget.name}
+          onWin={() => agentResidentsRef.current?.celebrateAt(duelTarget.ref)}
+          onClose={() => setDuelTarget(null)}
         />
       )}
 
