@@ -135,6 +135,13 @@ const WORLDS: WorldCard[] = [
     art: aboutArt,
     blurb: "What this is and how it's stitched together, told on a floating asteroid.",
   },
+  {
+    to: "/companions",
+    emoji: "🧪",
+    name: "Agent Lab",
+    art: evolveArt,
+    blurb: "Experimental — hatch your own companion: name it, give it a personality, pick a look.",
+  },
 ];
 
 export default function WorldPicker({

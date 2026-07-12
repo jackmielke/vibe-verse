@@ -1,6 +1,7 @@
 {
-  "generated": "2026-07-11",
+  "generated": "2026-07-12",
   "items": [
+    { "idea": "Agent Lab — hatch your own companion (v1)", "status": "Done", "area": "Product" },
     { "idea": "Graceful crash screen (no white-screen deaths)", "status": "Done", "area": "Tech" },
     { "idea": "Loop learns from users: crashes auto-report to the build loop", "status": "Done", "area": "Tech" },
     { "idea": "Capture async errors (loop-learns groundwork)", "status": "Done", "area": "Tech" },
