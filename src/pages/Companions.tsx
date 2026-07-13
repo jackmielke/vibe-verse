@@ -84,6 +84,8 @@ export default function Companions() {
 
   return (
     <div className="min-h-screen w-full overflow-y-auto bg-background px-4 py-10">
+      {/* Scoped: hatched companions gently bob so they feel alive. */}
+      <style>{`@keyframes companionFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}`}</style>
       <div className="mx-auto flex max-w-3xl flex-col gap-8">
         <header className="text-center space-y-1">
           <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">🧪 Experimental</div>
@@ -190,7 +192,7 @@ export default function Companions() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {companions.map((c) => (
+              {companions.map((c, i) => (
                 <div
                   key={c.id}
                   data-testid="companion-card"
@@ -202,7 +204,12 @@ export default function Companions() {
                     style={{ background: `hsl(${c.hue} 70% 55% / 0.2)` }}
                     aria-hidden
                   >
-                    {c.emoji}
+                    <span
+                      className="inline-block"
+                      style={{ animation: `companionFloat 3s ease-in-out ${(i % 5) * 0.4}s infinite` }}
+                    >
+                      {c.emoji}
+                    </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-heading font-semibold">{c.name}</div>
