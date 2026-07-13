@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -32,6 +33,11 @@ import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 import IslandExplorer from "./pages/IslandExplorer.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
+
+// Chamber OS — lazy-loaded so the wine-country demo doesn't weigh down the VibeVerse bundle.
+const ChamberOS = lazy(() =>
+  import("./pages/chamber/ChamberOS.tsx").then((m) => ({ default: m.ChamberOS })),
+);
 
 const queryClient = new QueryClient();
 
@@ -106,6 +112,15 @@ const App = () => (
           <Route path="/island" element={<IslandExplorer />} />
           {/* Agent Lab — hatch-your-own companion (experimental, client-only v1). */}
           <Route path="/companions" element={<Companions />} />
+          {/* Chamber OS — AI-native ChamberMaster replacement demo (Healdsburg). */}
+          <Route
+            path="/chamber"
+            element={
+              <Suspense fallback={null}>
+                <ChamberOS />
+              </Suspense>
+            }
+          />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
