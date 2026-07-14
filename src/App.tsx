@@ -39,6 +39,11 @@ const ChamberOS = lazy(() =>
   import("./pages/chamber/ChamberOS.tsx").then((m) => ({ default: m.ChamberOS })),
 );
 
+// $VIBE dashboard — lazy so viem + the chart code stay out of the main bundle.
+const VibeDashboard = lazy(() =>
+  import("./pages/vibe-dashboard/VibeDashboard.tsx").then((m) => ({ default: m.VibeDashboard })),
+);
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -118,6 +123,15 @@ const App = () => (
             element={
               <Suspense fallback={null}>
                 <ChamberOS />
+              </Suspense>
+            }
+          />
+          {/* $VIBE dashboard — ownership / supply / market cap + buildathon payouts. */}
+          <Route
+            path="/vibe-dashboard"
+            element={
+              <Suspense fallback={null}>
+                <VibeDashboard />
               </Suspense>
             }
           />
