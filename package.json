@@ -10,9 +10,14 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "mobile:sync": "vite build && cap sync ios",
+    "mobile:open": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@elevenlabs/client": "^1.11.0",
     "@elevenlabs/react": "^1.7.0",
     "@hookform/resolvers": "^3.10.0",
