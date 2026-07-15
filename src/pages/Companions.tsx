@@ -2,18 +2,21 @@
  * Companions — the "Agent Lab", an experimental place to hatch your own
  * companion: name it, give it a one-line personality, pick a look.
  *
- * v1 is deliberately self-contained and client-only: companions live in
- * localStorage, so this ships safely on its own route without touching the
- * shared world, any account/credential, or the database. It's chunk 1 of
- * the Agent Companions roadmap (docs/agent-companions.md) — the creation
- * experience. Later chunks move persistence to the shared data layer and
- * bring companions to life in-world / on Telegram.
+ * Persistence is hybrid: signed-in users' companions are real
+ * `world_agents` rows in the dedicated `agent-lab` room (owner_id = you;
+ * RLS fences user rows into that room so nothing can appear in the shared
+ * city), which is the trunk both future homes — roaming a shared world or
+ * a dedicated Agent Lab world — build on. Guests keep localStorage, and
+ * their locally-hatched companions migrate into the account automatically
+ * on the first signed-in visit.
  *
- * The `personality` line is written to read straight as an agent prompt
- * later ("what's it like / what should it do for you?").
+ * The `personality` line is stored as the agent `prompt`, so it reads
+ * straight as the companion's system prompt when it comes alive.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 
 interface Companion {
   id: string;
@@ -44,7 +47,38 @@ function save(list: Companion[]) {
   }
 }
 
+/** world_agents row (agent-lab room) → the Lab's Companion shape. */
+interface CompanionRow {
+  id: string;
+  name: string;
+  prompt: string | null;
+  metadata: { emoji?: string; hue?: number } | null;
+  created_at: string;
+}
+function fromRow(r: CompanionRow): Companion {
+  return {
+    id: r.id,
+    name: r.name,
+    personality: r.prompt ?? "",
+    emoji: r.metadata?.emoji ?? LOOKS[0],
+    hue: r.metadata?.hue ?? HUES[0],
+    createdAt: Date.parse(r.created_at) || 0,
+  };
+}
+const ROW_SELECT = "id, name, prompt, metadata, created_at";
+function toInsert(c: Omit<Companion, "id" | "createdAt">, ownerId: string) {
+  return {
+    room_id: "agent-lab",
+    agent_key: `companion-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+    name: c.name,
+    prompt: c.personality || null,
+    owner_id: ownerId,
+    metadata: { emoji: c.emoji, hue: c.hue },
+  };
+}
+
 export default function Companions() {
+  const { user, loading: identityLoading } = useVibeIdentity();
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [name, setName] = useState("");
   const [personality, setPersonality] = useState("");
@@ -52,24 +86,64 @@ export default function Companions() {
   const [hue, setHue] = useState(HUES[0]);
 
   useEffect(() => {
-    setCompanions(load());
-  }, []);
+    if (identityLoading) return;
+    if (!user) {
+      setCompanions(load());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      // One-time adoption: companions hatched as a guest move into the
+      // account, so nothing is lost by signing in.
+      const local = load();
+      if (local.length) {
+        const { error } = await supabase
+          .from("world_agents")
+          .insert(local.map((c) => toInsert(c, user.id)));
+        if (!error) localStorage.removeItem(KEY);
+      }
+      const { data, error } = await supabase
+        .from("world_agents")
+        .select(ROW_SELECT)
+        .eq("owner_id", user.id)
+        .eq("room_id", "agent-lab")
+        .order("created_at", { ascending: false });
+      if (!cancelled && !error) setCompanions((data ?? []).map(fromRow));
+    })();
+    return () => { cancelled = true; };
+  }, [identityLoading, user]);
 
   const canHatch = name.trim().length > 0;
 
   const hatch = () => {
     if (!canHatch) return;
-    const c: Companion = {
-      id: crypto.randomUUID?.() ?? `c-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    const draft = {
       name: name.trim().slice(0, 40),
       personality: personality.trim().slice(0, 160),
       emoji,
       hue,
-      createdAt: Date.now(),
     };
-    const next = [c, ...companions];
-    setCompanions(next);
-    save(next);
+    if (user) {
+      void supabase
+        .from("world_agents")
+        .insert(toInsert(draft, user.id))
+        .select(ROW_SELECT)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) setCompanions((prev) => [fromRow(data as CompanionRow), ...prev]);
+        });
+    } else {
+      const c: Companion = {
+        id: crypto.randomUUID?.() ?? `c-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        ...draft,
+        createdAt: Date.now(),
+      };
+      setCompanions((prev) => {
+        const next = [c, ...prev];
+        save(next);
+        return next;
+      });
+    }
     setName("");
     setPersonality("");
     setEmoji(LOOKS[Math.floor(Math.random() * LOOKS.length)]);
@@ -77,9 +151,12 @@ export default function Companions() {
   };
 
   const release = (id: string) => {
-    const next = companions.filter((c) => c.id !== id);
-    setCompanions(next);
-    save(next);
+    setCompanions((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      if (!user) save(next);
+      return next;
+    });
+    if (user) void supabase.from("world_agents").delete().eq("id", id).eq("owner_id", user.id);
   };
 
   return (
@@ -231,7 +308,11 @@ export default function Companions() {
         </section>
 
         <footer className="pb-4 text-center text-xs text-muted-foreground">
-          <p>More coming: your companions will soon come alive in-world and message you.</p>
+          <p data-testid="storage-mode">
+            {user
+              ? "Saved to your account ✓ — soon they'll come alive in-world and message you."
+              : "Saved on this device — sign in and they move to your account automatically."}
+          </p>
           <Link to="/" className="mt-2 inline-block text-primary/80 hover:text-primary">
             ← back to the VibeVerse
           </Link>
