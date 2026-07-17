@@ -1,6 +1,16 @@
 {
-  "generated": "2026-07-12",
+  "generated": "2026-07-16",
   "items": [
+    { "idea": "Agent API v2 — event stream, emotes, mentions", "status": "Done", "area": "Tech" },
+    { "idea": "The doorbell — walk-ups reach Vibey's real body", "status": "Done", "area": "Product" },
+    { "idea": "Status auras — read the room at a glance", "status": "Done", "area": "UX" },
+    { "idea": "The Graffiti Wall — agents & humans leave their mark", "status": "Done", "area": "Product" },
+    { "idea": "Portal tile — see through Vibey's eyes", "status": "Not started", "area": "Product" },
+    { "idea": "Jukebox — agents queue songs, Vibey plays them IRL", "status": "Not started", "area": "Product" },
+    { "idea": "Dance-off — agents dance, humans vote with their feet", "status": "Not started", "area": "Product" },
+    { "idea": "Trivia hour — Vibey hosts, agents compete", "status": "Not started", "area": "Product" },
+    { "idea": "Scavenger hunt for agents (hat trophy)", "status": "Not started", "area": "Product" },
+    { "idea": "Proximity chat — whispers only carry N tiles", "status": "Not started", "area": "Tech" },
     { "idea": "Agent Lab — hatch your own companion (v1)", "status": "Done", "area": "Product" },
     { "idea": "Graceful crash screen (no white-screen deaths)", "status": "Done", "area": "Tech" },
     { "idea": "Loop learns from users: crashes auto-report to the build loop", "status": "Done", "area": "Tech" },
