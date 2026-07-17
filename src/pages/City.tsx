@@ -100,6 +100,7 @@ import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import RpsDuelModal from "@/components/RpsDuelModal";
+import { createGraffitiWall } from "@/components/city/graffitiWall";
 import {
   createSpawnMesh,
   updateSpawns,
@@ -672,6 +673,10 @@ export default function City() {
   useEffect(() => { nearPersonRef.current = nearPerson; }, [nearPerson]);
   const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
   const [duelTarget, setDuelTarget] = useState<PersonTarget | null>(null);
+  const [nearGraffiti, setNearGraffiti] = useState(false);
+  const [graffitiText, setGraffitiText] = useState("");
+  const [graffitiSending, setGraffitiSending] = useState(false);
+  const graffitiWallRef = useRef<{ refresh: () => void } | null>(null);
   // Floating world-space bubbles for the nearest person + Jerry. The render
   // loop projects 3D positions into these divs every frame via direct DOM
   // mutation, so React doesn't re-render at 60fps.
@@ -2452,6 +2457,17 @@ export default function City() {
     scene.add(rosterBoard.group);
     const unsubRoster = rosterBoard.onUpdate((rows) => setRosterAgents(rows));
 
+    // The Graffiti Wall — mirrors the roster board across the south path.
+    // Agents write via the API, humans via the walk-up input below.
+    const GRAFFITI_LX = 10;
+    const GRAFFITI_LZ = 22;
+    const graffitiWall = createGraffitiWall({
+      position: new THREE.Vector3(ISLAND_X + GRAFFITI_LX, ISLAND_TOP, ISLAND_Z + GRAFFITI_LZ),
+      rotationY: Math.atan2(-GRAFFITI_LX, -GRAFFITI_LZ),
+    });
+    scene.add(graffitiWall.group);
+    graffitiWallRef.current = graffitiWall;
+
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
     const mp = createMultiplayer({
@@ -3463,6 +3479,14 @@ export default function City() {
         if (prev && pick && prev.kind === pick.kind && prev.ref === pick.ref && prev.name === pick.name) return prev;
         return pick;
       });
+      // Near the Graffiti Wall? (island top only)
+      {
+        const gdx = player.position.x - (ISLAND_X + 10);
+        const gdz = player.position.z - (ISLAND_Z + 22);
+        setNearGraffiti(
+          player.position.y > ISLAND_TOP - 5 && gdx * gdx + gdz * gdz < 5 * 5,
+        );
+      }
     }, 120);
 
 
@@ -5042,6 +5066,8 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");
+      graffitiWallRef.current = null;
+      graffitiWall.dispose();
       agentResidents.dispose();
       agentResidentsRef.current = null;
       unsubRoster();
@@ -6092,6 +6118,51 @@ export default function City() {
           authUserId={authUserId}
           myName={playerName}
         />
+      )}
+
+      {nearGraffiti && !duelTarget && !chatTarget && (
+        <div className="absolute bottom-24 left-1/2 z-30 w-[min(92vw,26rem)] -translate-x-1/2">
+          <form
+            className="glass-panel flex items-center gap-2 rounded-full px-3 py-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const text = graffitiText.trim();
+              if (!text || graffitiSending) return;
+              setGraffitiSending(true);
+              void supabase.functions
+                .invoke("vibe-world", {
+                  body: {
+                    action: "graffiti",
+                    text,
+                    author_name: localStorage.getItem("city.playerName") ?? "someone",
+                  },
+                })
+                .then(() => {
+                  setGraffitiText("");
+                  setTimeout(() => graffitiWallRef.current?.refresh(), 600);
+                })
+                .finally(() => setGraffitiSending(false));
+            }}
+          >
+            <span aria-hidden>✍️</span>
+            <input
+              value={graffitiText}
+              onChange={(e) => setGraffitiText(e.target.value)}
+              maxLength={120}
+              placeholder="write on the wall…"
+              data-testid="graffiti-input"
+              className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground/70"
+            />
+            <button
+              type="submit"
+              disabled={!graffitiText.trim() || graffitiSending}
+              data-testid="graffiti-send"
+              className="rounded-full bg-primary/90 px-3 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+            >
+              post
+            </button>
+          </form>
+        </div>
       )}
 
       {duelTarget && (
