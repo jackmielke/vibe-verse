@@ -113,6 +113,8 @@ interface Resident {
   ambientT: number;          // countdown to next ambient dance (only ticks while a player is near)
   ambientFaceYaw: number | null; // yaw to turn toward while ambient-dancing (faces the watching player)
   greeted: boolean;          // has said hello to the player currently in range (re-arms once they leave)
+  statusText: string;        // latest DB status (present/wandering/chatting/busy/afk…)
+  aura: THREE.Mesh;          // status ring under the feet — lets everyone read the room
   baseLift: number;          // resting Y for the inner mesh
   // Sustained flight (jetpack travel)
   flying: boolean;
@@ -399,6 +401,9 @@ export function createAgentResidents(opts: {
   radius?: number;
   /** Optional filter by world_agents.room_id (defaults to "vibe-lobby"). */
   roomId?: string;
+  /** Fired once each time the local player walks up to a resident (same
+   *  edge as the greeting) — the city's side of the physical doorbell. */
+  onProximity?: (info: { agentKey: string; agentId: string | null; name: string }) => void;
 }): AgentResidents {
   const { scene, characters } = opts;
   const centerX = opts.center?.x ?? 0;
@@ -481,6 +486,16 @@ export function createAgentResidents(opts: {
       wrapper.add(inner);
       const label = makeNameLabel(row.name);
       wrapper.add(label);
+      const aura = new THREE.Mesh(
+        new THREE.RingGeometry(0.55, 0.72, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0x34d399, transparent: true, opacity: 0.5,
+          side: THREE.DoubleSide, depthWrite: false,
+        }),
+      );
+      aura.rotation.x = -Math.PI / 2;
+      aura.position.y = 0.06;
+      wrapper.add(aura);
       // Start at the agent's tile if we have one, else a stable hash spot.
       const tmp = new THREE.Vector3();
       if (row.x != null && row.y != null) {
@@ -526,6 +541,8 @@ export function createAgentResidents(opts: {
         ambientT: AMBIENT_EMOTE_BASE * (0.2 + (hashString(row.key + "amb") % 100) / 100 * 0.9),
         ambientFaceYaw: null,
         greeted: false,
+        statusText: (row.status ?? "").toLowerCase(),
+        aura,
         baseLift: lift,
         flying: false,
         flightT: 0,
@@ -548,6 +565,7 @@ export function createAgentResidents(opts: {
       };
       group.add(wrapper);
       residents.set(row.key, resident);
+      updateAura(resident);
       if (row.agentId) byAgentId.set(row.agentId, row.key);
       // Stage 1 perception: every agent is a queryable POI for its
       // peers. Region label matches the wander zone so snapshots read
@@ -583,6 +601,19 @@ export function createAgentResidents(opts: {
     residents.delete(key);
   };
 
+  // Status auras: a soft ring under the feet, colored by what the agent is
+  // up to, so agents (and humans) can read the room before engaging.
+  const AURA_COLORS: Record<string, number> = {
+    sleeping: 0x8b5cf6, chatting: 0x22d3ee, chatty: 0x22d3ee,
+    busy: 0xf59e0b, afk: 0x94a3b8, away: 0x94a3b8, idle: 0x94a3b8,
+  };
+  const updateAura = (r: Resident) => {
+    const key = r.sleeping ? "sleeping" : (r.statusText || "").toLowerCase();
+    const mat = r.aura.material as THREE.MeshBasicMaterial;
+    mat.color.setHex(AURA_COLORS[key] ?? 0x34d399);
+    mat.opacity = r.sleeping ? 0.28 : 0.5;
+  };
+
   const showBubble = (r: Resident, text: string) => {
     if (r.bubble) {
       r.wrapper.remove(r.bubble);
@@ -604,6 +635,7 @@ export function createAgentResidents(opts: {
       r.wrapper.add(r.zzz);
     }
     r.label.material.opacity = 0.55;
+    updateAura(r);
   };
 
   const wake = (r: Resident, hop = true) => {
@@ -617,6 +649,7 @@ export function createAgentResidents(opts: {
       r.zzz = null;
     }
     r.label.material.opacity = 1;
+    updateAura(r);
     if (hop && r.emote === "none") startEmote(r, "jump", 0.35);
   };
 
@@ -714,6 +747,8 @@ export function createAgentResidents(opts: {
           r.dbSleep = wantsSleep;
           if (!wantsSleep) wake(r);
         }
+        r.statusText = (row.status ?? r.statusText).toLowerCase();
+        updateAura(r);
         // Keep "home" up to date so /respawn returns them to their latest assigned tile,
         // but do NOT pull them back here — bumps and manual movement should persist.
         setHomeFromTile(r, row.x ?? null, row.y ?? null);
@@ -745,6 +780,14 @@ export function createAgentResidents(opts: {
         if (!key) return;
         const r = residents.get(key);
         if (!r) return;
+        // First-class emotes (API v2): play the animation, no speech
+        // bubble — body language shouldn't clutter the chat.
+        if (row.kind === "emote") {
+          const parsed = parseCommands(row.body);
+          if (parsed.cmds.length) enqueue(r, parsed.cmds);
+          wake(r);
+          return;
+        }
         // Pre-pass: pull out /goto NAME, /follow NAME, /stop, /where.
         // These are name-bearing commands the regex parser can't handle.
         let body = row.body;
@@ -813,6 +856,7 @@ export function createAgentResidents(opts: {
           z: Math.round(r.wrapper.position.z * 10) / 10,
           bubbleT: Math.round(r.bubbleT * 10) / 10,
           greeted: r.greeted,
+          aura: (r.aura.material as THREE.MeshBasicMaterial).color.getHexString(),
         })),
     };
   }
@@ -889,6 +933,9 @@ export function createAgentResidents(opts: {
             greetCooldownT = 1.2;
             if (r.sleeping) wake(r); // stir awake with a little hop
             showBubble(r, GREETINGS[hashString(r.key + "greet") % GREETINGS.length]);
+            // The physical doorbell: tell the world API someone walked up,
+            // so agents with real bodies (hi Vibey) can react in the room.
+            opts.onProximity?.({ agentKey: r.key, agentId: r.agentId, name: r.name });
           } else if (r.greeted && gd2 > GREET_RELEASE * GREET_RELEASE) {
             r.greeted = false; // re-arm once they wander off
           }

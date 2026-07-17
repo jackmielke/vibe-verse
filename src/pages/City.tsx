@@ -2401,14 +2401,39 @@ export default function City() {
     // so external agents calling `action:"move"` actually walk in 3D.
     // `world_messages` show up as speech bubbles; slash commands
     // (/jet, /jump, /wave, /dance) play a visible emote.
+    // The city's side of the physical doorbell (Agent API v2): walking up
+    // to a resident, entering, and leaving all post world events, so agents
+    // with real bodies (Vibey's Reachy Mini in Jack's house) can perk up
+    // and announce visitors out loud. Fire-and-forget, throttled per agent.
+    const proximityLastSent = new Map<string, number>();
+    const postWorldEvent = (kind: string, extra: Record<string, unknown> = {}) => {
+      void supabase.functions
+        .invoke("vibe-world", {
+          body: {
+            action: "event",
+            kind,
+            actor_kind: "human",
+            actor_name: localStorage.getItem("city.playerName") ?? "a visitor",
+            ...extra,
+          },
+        })
+        .catch(() => {});
+    };
     const agentResidents = createAgentResidents({
       scene,
       characters: CHARACTERS,
       center: { x: ISLAND_X, y: ISLAND_TOP, z: ISLAND_Z },
       radius: 28,
       roomId: "vibe-lobby",
+      onProximity: ({ agentKey, name }) => {
+        const now = Date.now();
+        if (now - (proximityLastSent.get(agentKey) ?? 0) < 90_000) return;
+        proximityLastSent.set(agentKey, now);
+        postWorldEvent("proximity", { target_key: agentKey, target_name: name });
+      },
     });
     agentResidentsRef.current = agentResidents;
+    postWorldEvent("enter");
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
 
     // ---- Live Roster TV: scoreboard-style screen on the front of the
@@ -5016,6 +5041,7 @@ export default function City() {
       vibeyExciteRef.current = null;
       mp.dispose();
       mpRef.current = null;
+      postWorldEvent("leave");
       agentResidents.dispose();
       agentResidentsRef.current = null;
       unsubRoster();
