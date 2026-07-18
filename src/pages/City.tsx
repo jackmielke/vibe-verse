@@ -103,6 +103,7 @@ import RpsDuelModal from "@/components/RpsDuelModal";
 import { createGraffitiWall } from "@/components/city/graffitiWall";
 import { createNewsstand } from "@/components/city/newsstand";
 import { createWorldEventFeed, tickerLine } from "@/components/city/worldEventFeed";
+import { createWishConstruction } from "@/components/city/wishConstruction";
 import { createLiveDirector } from "@/components/city/liveDirector";
 import {
   createSpawnMesh,
@@ -1599,8 +1600,16 @@ export default function City() {
     wishGarden.group.rotation.y = Math.atan2(-7, -23); // sign faces the plaza
     scene.add(wishGarden.group);
 
-    // One fetch feeds both: the board's 🌠 strip (first 3) and the
-    // garden's plants (blooms for granted, buds for pending).
+    // 🏗️ Construction row — the town's south edge, where pending wishes
+    // are visibly being built. Granted wishes leave the row and bloom in
+    // the garden instead: the island grows outward, wish by wish.
+    const wishSites = createWishConstruction();
+    wishSites.group.position.set(ISLAND_X, ISLAND_TOP, ISLAND_Z + 31);
+    scene.add(wishSites.group);
+
+    // One fetch feeds all three: the board's 🌠 strip (first 3), the
+    // garden's plants (blooms for granted, buds for pending), and the
+    // construction row (top pending wishes).
     void (supabase as unknown as {
       from: (t: string) => {
         select: (c: string) => {
@@ -1615,6 +1624,7 @@ export default function City() {
         if (data?.length) {
           roadmapBoard.setWishes(data.slice(0, 3));
           wishGarden.setWishes(data);
+          wishSites.setWishes(data);
         }
       })
       .catch(() => { /* board shows "the orb is listening…", garden stays soil */ });
@@ -5129,6 +5139,7 @@ export default function City() {
       postWorldEvent("leave");
       liveDirector?.dispose();
       liveFeed?.dispose();
+      wishSites.dispose();
       newsstand.dispose();
       graffitiWallRef.current = null;
       graffitiWall.dispose();
