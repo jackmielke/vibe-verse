@@ -32,6 +32,7 @@ import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 import IslandExplorer from "./pages/IslandExplorer.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
+import VibeTimes from "./pages/VibeTimes.tsx";
 
 const queryClient = new QueryClient();
 
@@ -106,6 +107,8 @@ const App = () => (
           <Route path="/island" element={<IslandExplorer />} />
           {/* Agent Lab — hatch-your-own companion (experimental, client-only v1). */}
           <Route path="/companions" element={<Companions />} />
+          {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
+          <Route path="/times" element={<VibeTimes />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

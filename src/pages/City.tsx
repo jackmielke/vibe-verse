@@ -101,6 +101,7 @@ import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import RpsDuelModal from "@/components/RpsDuelModal";
 import { createGraffitiWall } from "@/components/city/graffitiWall";
+import { createNewsstand } from "@/components/city/newsstand";
 import {
   createSpawnMesh,
   updateSpawns,
@@ -674,6 +675,7 @@ export default function City() {
   const [chatTarget, setChatTarget] = useState<PersonTarget | null>(null);
   const [duelTarget, setDuelTarget] = useState<PersonTarget | null>(null);
   const [nearGraffiti, setNearGraffiti] = useState(false);
+  const [nearNews, setNearNews] = useState(false);
   const [graffitiText, setGraffitiText] = useState("");
   const [graffitiSending, setGraffitiSending] = useState(false);
   const graffitiWallRef = useRef<{ refresh: () => void } | null>(null);
@@ -2468,6 +2470,15 @@ export default function City() {
     scene.add(graffitiWall.group);
     graffitiWallRef.current = graffitiWall;
 
+    // The Vibe Times newsstand — front page of the loop's nightly paper.
+    const NEWS_LX = -12;
+    const NEWS_LZ = 17;
+    const newsstand = createNewsstand({
+      position: new THREE.Vector3(ISLAND_X + NEWS_LX, ISLAND_TOP, ISLAND_Z + NEWS_LZ),
+      rotationY: Math.atan2(-NEWS_LX, -NEWS_LZ),
+    });
+    scene.add(newsstand.group);
+
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
     const mp = createMultiplayer({
@@ -3485,6 +3496,14 @@ export default function City() {
         const gdz = player.position.z - (ISLAND_Z + 22);
         setNearGraffiti(
           player.position.y > ISLAND_TOP - 5 && gdx * gdx + gdz * gdz < 5 * 5,
+        );
+      }
+      // Near the newsstand?
+      {
+        const ndx = player.position.x - (ISLAND_X - 12);
+        const ndz = player.position.z - (ISLAND_Z + 17);
+        setNearNews(
+          player.position.y > ISLAND_TOP - 5 && ndx * ndx + ndz * ndz < 5 * 5,
         );
       }
     }, 120);
@@ -5066,6 +5085,7 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");
+      newsstand.dispose();
       graffitiWallRef.current = null;
       graffitiWall.dispose();
       agentResidents.dispose();
@@ -6118,6 +6138,18 @@ export default function City() {
           authUserId={authUserId}
           myName={playerName}
         />
+      )}
+
+      {nearNews && !duelTarget && !chatTarget && (
+        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2">
+          <a
+            href="/times"
+            className="glass-panel block rounded-full px-4 py-2 text-sm text-primary whitespace-nowrap shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+            data-testid="read-times"
+          >
+            📰 read today's Vibe Times
+          </a>
+        </div>
       )}
 
       {nearGraffiti && !duelTarget && !chatTarget && (
