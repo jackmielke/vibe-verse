@@ -102,6 +102,8 @@ import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel
 import RpsDuelModal from "@/components/RpsDuelModal";
 import { createGraffitiWall } from "@/components/city/graffitiWall";
 import { createNewsstand } from "@/components/city/newsstand";
+import { createWorldEventFeed, tickerLine } from "@/components/city/worldEventFeed";
+import { createLiveDirector } from "@/components/city/liveDirector";
 import {
   createSpawnMesh,
   updateSpawns,
@@ -500,9 +502,14 @@ export default function City() {
   // sign-in / character grid first.
   const isFreshDrop =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("fresh") === "1";
-  const [entered, setEntered] = useState(isFreshDrop);
-  const enteredRef = useRef(isFreshDrop);
+  // /live — spectator broadcast mode: no entry overlay, no HUD, an
+  // invisible camera anchor, and the AI director runs the show.
+  const isLive = typeof window !== "undefined" && window.location.pathname === "/live";
+  const [entered, setEntered] = useState(isFreshDrop || isLive);
+  const enteredRef = useRef(isFreshDrop || isLive);
   const [showFreshChip, setShowFreshChip] = useState(isFreshDrop);
+  const [liveLines, setLiveLines] = useState<string[]>([]);
+  const [liveShot, setLiveShot] = useState("");
 
   // Fresh visitors picked an adventure with Vibey on /start — greet
   // them with a pointer that matches it, once the arrival cinematic
@@ -2725,6 +2732,7 @@ export default function City() {
 
     // ---- Pilot + jetpack rig ----------------------------------------
     const player = new THREE.Group(); // origin = feet
+    if (isLive) player.visible = false; // /live: the player is a camera dolly
     player.position.set(0, 0, 6);
     scene.add(player);
     const modelHolder = new THREE.Group(); // takes the flight tilt
@@ -3769,6 +3777,40 @@ export default function City() {
         return p ? { name: n.name, x: p.x, y: p.y, z: p.z } : null;
       },
     };
+
+    // ---- /live: the world streams itself -----------------------------
+    // An AI director cuts between residents and points of interest, and
+    // the event stream feeds both the cuts and the broadcast ticker.
+    let liveDirector: ReturnType<typeof createLiveDirector> | null = null;
+    let liveFeed: ReturnType<typeof createWorldEventFeed> | null = null;
+    if (isLive) {
+      liveDirector = createLiveDirector({
+        moveTo: (x, y, z) => {
+          player.position.set(x, y, z);
+          vel.set(0, 0, 0);
+        },
+        aim: (yaw, pitch, dist) => {
+          camYaw = yaw;
+          if (pitch !== undefined) camPitch = pitch;
+          if (dist !== undefined) camDist = dist;
+        },
+        cast: () => agentResidents.listAgents(),
+        pois: [
+          [ISLAND_X, ISLAND_TOP, ISLAND_Z + 7, "the plaza"],
+          [ISLAND_X + 10, ISLAND_TOP, ISLAND_Z + 22, "the graffiti wall"],
+          [ISLAND_X - 12, ISLAND_TOP, ISLAND_Z + 17, "the newsstand"],
+          [ISLAND_X - 8, ISLAND_TOP, ISLAND_Z + 23, "the roster board"],
+        ],
+        onShot: (label) => setLiveShot(label),
+      });
+      liveFeed = createWorldEventFeed({
+        onEvent: (ev) => {
+          liveDirector?.notify(ev);
+          const line = tickerLine(ev);
+          if (line) setLiveLines((prev) => [...prev.slice(-5), line]);
+        },
+      });
+    }
 
     const disposeVR = enableVR(renderer, canvas.parentElement!, {
       referenceSpace: "local-floor",
@@ -5085,6 +5127,8 @@ export default function City() {
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");
+      liveDirector?.dispose();
+      liveFeed?.dispose();
       newsstand.dispose();
       graffitiWallRef.current = null;
       graffitiWall.dispose();
@@ -5381,7 +5425,7 @@ export default function City() {
         className="absolute top-0 left-0 z-30 flex gap-1.5 transition-opacity duration-150"
         style={{ opacity: 0, pointerEvents: "none", willChange: "transform" }}
       >
-        {nearPerson && !chatTarget && (
+        {nearPerson && !chatTarget && !isLive && (
           <>
             <button
               onClick={(e) => {
@@ -5442,7 +5486,7 @@ export default function City() {
       </div>
 
       {/* HUD: altitude / speed / thrust readout. */}
-      {entered && (
+      {entered && !isLive && (
         <div className="absolute bottom-4 left-4 glass-panel rounded-2xl px-4 py-3 text-xs font-mono space-y-1 pointer-events-none">
           <div className="flex items-center gap-2">
             <Rocket
@@ -5534,7 +5578,7 @@ export default function City() {
       {/* World controls: day/night toggle + character picker. The
           blur() calls keep focus off the buttons so Space stays on
           the jetpack instead of re-clicking them. */}
-      {entered && (
+      {entered && !isLive && (
         <div ref={hudWrapRef} className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
           {/* Mobile-only trigger — collapses the whole chip row. The
               ✕ state also dismisses every open sub-panel (chat /
@@ -6140,7 +6184,7 @@ export default function City() {
         />
       )}
 
-      {nearNews && !duelTarget && !chatTarget && (
+      {nearNews && !duelTarget && !chatTarget && !isLive && (
         <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2">
           <a
             href="/times"
@@ -6152,7 +6196,7 @@ export default function City() {
         </div>
       )}
 
-      {nearGraffiti && !duelTarget && !chatTarget && (
+      {nearGraffiti && !duelTarget && !chatTarget && !isLive && (
         <div className="absolute bottom-24 left-1/2 z-30 w-[min(92vw,26rem)] -translate-x-1/2">
           <form
             className="glass-panel flex items-center gap-2 rounded-full px-3 py-2"
@@ -7076,11 +7120,50 @@ export default function City() {
       )}
 
       {/* Controls hint, fades in once you enter. */}
-      {entered && (
+      {entered && !isLive && (
         <div className="absolute bottom-4 right-4 glass-panel rounded-2xl px-4 py-3 text-[11px] text-muted-foreground pointer-events-none hidden sm:block">
           WASD move · Shift run · <span className="text-primary">Space hold = jetpack</span> · drag
           look · pinch / scroll zoom
         </div>
+      )}
+
+      {/* /live broadcast chrome: LIVE badge + shot label + event ticker. */}
+      {isLive && (
+        <>
+          <div className="absolute left-4 top-4 z-40 flex items-center gap-2">
+            <span className="glass-panel flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-widest">
+              <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" aria-hidden />
+              Live
+            </span>
+            {liveShot && (
+              <span className="glass-panel rounded-full px-3 py-1.5 text-xs text-muted-foreground" data-testid="live-shot">
+                cam · {liveShot}
+              </span>
+            )}
+          </div>
+          <div className="absolute right-4 top-4 z-40">
+            <span className="glass-panel rounded-full px-3 py-1.5 text-xs tracking-widest text-muted-foreground">
+              myvibeverse.com
+            </span>
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 z-40 border-t border-border/40 bg-background/70 px-4 py-2 backdrop-blur">
+            <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap text-sm" data-testid="live-ticker">
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.25em] text-primary">
+                world feed
+              </span>
+              {liveLines.length ? (
+                [...liveLines].reverse().map((l, i) => (
+                  <span key={`${l}-${i}`} className={i === 0 ? "text-foreground" : "text-muted-foreground/60"}>
+                    {l}
+                    {i < liveLines.length - 1 ? <span className="mx-2 text-muted-foreground/40">·</span> : null}
+                  </span>
+                ))
+              ) : (
+                <span className="text-muted-foreground/60">the island is quiet… residents are wandering</span>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* EchoVoiceAgent moved into PersonChatPanel for per-agent voice chat */}

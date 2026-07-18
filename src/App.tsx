@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -36,6 +36,18 @@ import VibeTimes from "./pages/VibeTimes.tsx";
 
 const queryClient = new QueryClient();
 
+/** App chrome (nav + radio) — hidden on /live so the broadcast is clean. */
+const AppChrome = () => {
+  const { pathname } = useLocation();
+  if (pathname === "/live") return null;
+  return (
+    <>
+      <GlobalNav />
+      <VibeRadio />
+    </>
+  );
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -43,12 +55,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <VibeIdentityProvider>
-          {/* Global top-center destination nav — visible on every route
-              so the user always has one-click access to all the worlds. */}
-          <GlobalNav />
-          {/* VIBE FM — the cassette deck rides above the router so the
-              music keeps playing across world hops. */}
-          <VibeRadio />
+          {/* Global top-center destination nav + VIBE FM — on every route
+              except the clean /live broadcast. */}
+          <AppChrome />
           <Routes>
           {/* Hub is now the landing page — the VibeVerse lobby. */}
           <Route path="/" element={<HubV2 />} />
@@ -65,6 +74,8 @@ const App = () => (
           <Route path="/unit7" element={<Unit7Playground />} />
           {/* Vibe City — procedural neon district you explore with a jetpack. */}
           <Route path="/city" element={<City />} />
+          {/* /live — the world streams itself: AI camera director + ticker. */}
+          <Route path="/live" element={<City />} />
           {/* Evolve — the Genesis Bloom evolution sim. */}
           <Route path="/evolve" element={<Evolve />} />
           <Route path="/bestiary" element={<Bestiary />} />

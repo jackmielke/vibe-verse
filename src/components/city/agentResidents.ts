@@ -61,6 +61,8 @@ export interface AgentResidents {
   getNearestAgent(x: number, y: number, z: number, radius: number): NearbyAgent | null;
   /** World position of the resident with this agent id, or null. */
   getAgentPosition(agentId: string): { x: number; y: number; z: number } | null;
+  /** Live positions of everyone in the room (the /live director's cast list). */
+  listAgents(): Array<{ key: string; agentId: string | null; name: string; x: number; y: number; z: number }>;
   /** Trigger a local wave bubble above an agent (e.g. when the player bumps them). */
   showWaveAt(agentId: string): void;
   /** Make the agent break into a happy dance (e.g. celebrating your duel win). */
@@ -1249,6 +1251,16 @@ export function createAgentResidents(opts: {
           return;
         }
       }
+    },
+    listAgents() {
+      return [...residents.values()].map((r) => ({
+        key: r.key,
+        agentId: r.agentId,
+        name: r.name,
+        x: r.wrapper.position.x,
+        y: r.wrapper.position.y,
+        z: r.wrapper.position.z,
+      }));
     },
     celebrateAt(agentId) {
       for (const r of residents.values()) {
