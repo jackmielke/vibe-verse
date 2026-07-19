@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
+const iridescentArcUrl = "/models/iridescent-arc.glb";
 import { playSound, ensureAudioRunning } from "@/lib/vibey-sounds";
 
 type ClickAnim = "pulse" | "tumble" | "dance" | "confetti" | "frenzy";

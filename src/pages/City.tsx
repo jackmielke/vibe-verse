@@ -33,7 +33,7 @@ import { enableVR } from "@/lib/webxr";
 import { buildCardboardIsland, signTexture, VIBEVERSE_POSTER_URL, SNACK_MENU } from "@/components/city/cardboardIsland";
 import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeArc from "@/components/VibeArc";
-import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
+const iridescentArcUrl = "/models/iridescent-arc.glb";
 import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";

@@ -30,7 +30,7 @@ import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
 import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
 import unit7ModelUrl from "@/assets/glb/robot-expressive.glb";
-import iridescentArcUrl from "@/assets/glb/iridescent-arc.glb";
+const iridescentArcUrl = "/models/iridescent-arc.glb";
 import floatingAstronautUrl from "@/assets/glb/floating-astronaut.glb";
 import floatingIslandUrl from "@/assets/glb/floating-island.glb";
 import pixelTouchUrl from "@/assets/glb/pixel-touch.glb";
