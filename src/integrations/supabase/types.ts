@@ -1096,6 +1096,39 @@ export type Database = {
           },
         ]
       }
+      client_errors: {
+        Row: {
+          created_at: string
+          extra: string | null
+          id: string
+          kind: string | null
+          message: string | null
+          stack: string | null
+          url: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          extra?: string | null
+          id?: string
+          kind?: string | null
+          message?: string | null
+          stack?: string | null
+          url?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          extra?: string | null
+          id?: string
+          kind?: string | null
+          message?: string | null
+          stack?: string | null
+          url?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       communities: {
         Row: {
           agent_avatar_url: string | null
@@ -2098,6 +2131,71 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      face_samples: {
+        Row: {
+          created_at: string
+          embedding: number[]
+          face_id: string
+          id: string
+          snapshot: string | null
+        }
+        Insert: {
+          created_at?: string
+          embedding: number[]
+          face_id: string
+          id?: string
+          snapshot?: string | null
+        }
+        Update: {
+          created_at?: string
+          embedding?: number[]
+          face_id?: string
+          id?: string
+          snapshot?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "face_samples_face_id_fkey"
+            columns: ["face_id"]
+            isOneToOne: false
+            referencedRelation: "faces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faces: {
+        Row: {
+          embedding: number[] | null
+          first_seen: string
+          id: string
+          last_seen: string
+          name: string | null
+          notes: string | null
+          snapshot: string | null
+          times_seen: number
+        }
+        Insert: {
+          embedding?: number[] | null
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          name?: string | null
+          notes?: string | null
+          snapshot?: string | null
+          times_seen?: number
+        }
+        Update: {
+          embedding?: number[] | null
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          name?: string | null
+          notes?: string | null
+          snapshot?: string | null
+          times_seen?: number
+        }
+        Relationships: []
       }
       gallery_photos: {
         Row: {
@@ -3560,6 +3658,36 @@ export type Database = {
         }
         Relationships: []
       }
+      universe_requests: {
+        Row: {
+          author: string | null
+          created_at: string
+          id: string
+          owner_ref: string | null
+          source: string
+          status: string
+          text: string
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          id?: string
+          owner_ref?: string | null
+          source?: string
+          status?: string
+          text: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          id?: string
+          owner_ref?: string | null
+          source?: string
+          status?: string
+          text?: string
+        }
+        Relationships: []
+      }
       user_embeddings: {
         Row: {
           bio_embedding: string | null
@@ -4536,6 +4664,7 @@ export type Database = {
           last_seen_at: string
           metadata: Json
           name: string
+          owner_id: string | null
           prompt: string | null
           room_id: string
           status: string
@@ -4551,6 +4680,7 @@ export type Database = {
           last_seen_at?: string
           metadata?: Json
           name: string
+          owner_id?: string | null
           prompt?: string | null
           room_id: string
           status?: string
@@ -4566,6 +4696,7 @@ export type Database = {
           last_seen_at?: string
           metadata?: Json
           name?: string
+          owner_id?: string | null
           prompt?: string | null
           room_id?: string
           status?: string
@@ -4583,6 +4714,91 @@ export type Database = {
           },
         ]
       }
+      world_events: {
+        Row: {
+          actor_key: string | null
+          actor_kind: string
+          actor_name: string | null
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          room_id: string
+          target_key: string | null
+          target_name: string | null
+        }
+        Insert: {
+          actor_key?: string | null
+          actor_kind?: string
+          actor_name?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          payload?: Json
+          room_id: string
+          target_key?: string | null
+          target_name?: string | null
+        }
+        Update: {
+          actor_key?: string | null
+          actor_kind?: string
+          actor_name?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          room_id?: string
+          target_key?: string | null
+          target_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_events_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "world_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_graffiti: {
+        Row: {
+          author_kind: string
+          author_name: string
+          color: string
+          created_at: string
+          id: string
+          room_id: string
+          text: string
+        }
+        Insert: {
+          author_kind?: string
+          author_name?: string
+          color?: string
+          created_at?: string
+          id?: string
+          room_id: string
+          text: string
+        }
+        Update: {
+          author_kind?: string
+          author_name?: string
+          color?: string
+          created_at?: string
+          id?: string
+          room_id?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_graffiti_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "world_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_messages: {
         Row: {
           agent_id: string | null
@@ -4590,6 +4806,7 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          mentions: string[]
           room_id: string
           speaker: string
         }
@@ -4599,6 +4816,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          mentions?: string[]
           room_id: string
           speaker: string
         }
@@ -4608,6 +4826,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          mentions?: string[]
           room_id?: string
           speaker?: string
         }
@@ -4968,6 +5187,15 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      orb_wishes_public: {
+        Row: {
+          author: string | null
+          created_at: string | null
+          status: string | null
+          text: string | null
+        }
+        Relationships: []
       }
       wc_leaderboard: {
         Row: {

@@ -50,6 +50,14 @@
       "url": "/models/littlest-tokyo.glb",
       "format": "glb",
       "size_bytes": 4194304
+    },
+    {
+      "id": "iridescent-arc",
+      "name": "Iridescent Arc",
+      "description": "The community-currency hero ornament on /coin. Half-torus arch with PBR iridescent shader — reads best when lit with a RoomEnvironment HDRI.",
+      "url": "/models/iridescent-arc.glb",
+      "format": "glb",
+      "size_bytes": 14651324
     }
   ]
 }
