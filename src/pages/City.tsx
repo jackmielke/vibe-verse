@@ -102,6 +102,7 @@ import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel
 import RpsDuelModal from "@/components/RpsDuelModal";
 import { createGraffitiWall } from "@/components/city/graffitiWall";
 import { createNewsstand } from "@/components/city/newsstand";
+import { createStudioEmbassy } from "@/components/city/studioEmbassy";
 import { createWorldEventFeed, tickerLine } from "@/components/city/worldEventFeed";
 import { createWishConstruction } from "@/components/city/wishConstruction";
 import { createLiveDirector } from "@/components/city/liveDirector";
@@ -684,6 +685,7 @@ export default function City() {
   const [duelTarget, setDuelTarget] = useState<PersonTarget | null>(null);
   const [nearGraffiti, setNearGraffiti] = useState(false);
   const [nearNews, setNearNews] = useState(false);
+  const [nearStudio, setNearStudio] = useState(false);
   const [graffitiText, setGraffitiText] = useState("");
   const [graffitiSending, setGraffitiSending] = useState(false);
   const graffitiWallRef = useRef<{ refresh: () => void } | null>(null);
@@ -2204,6 +2206,7 @@ export default function City() {
       reg("vibe-fm", "VIBE FM Radio", "Cardboard Island", radioAnchors[0], ["radio", "music", "fm", "boombox", "vibe fm"]);
       reg("mission-control", "Mission Control (roadmap)", "Cardboard Island", new THREE.Vector3(ISLAND_X - 14, ISLAND_TOP, ISLAND_Z - 18), ["roadmap", "mission control", "board", "notion"]);
       reg("wish-garden", "Wish Garden", "Cardboard Island", new THREE.Vector3(ISLAND_X + 7, ISLAND_TOP, ISLAND_Z + 23), ["wish", "wishes", "garden", "flowers", "blooms"]);
+      reg("studio-embassy", "Vibe Ventures Studio Embassy", "Cardboard Island", new THREE.Vector3(ISLAND_X + 9, ISLAND_TOP, ISLAND_Z - 35), ["studio", "embassy", "vibe ventures", "network globe", "hubs"]);
       reg("moon", "The Moon", "Moon", new THREE.Vector3(MOON_X, MOON_TOP, MOON_Z), ["moon", "luna"]);
       reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
       reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
@@ -2495,6 +2498,17 @@ export default function City() {
       rotationY: Math.atan2(-NEWS_LX, -NEWS_LZ),
     });
     scene.add(newsstand.group);
+
+    // The Vibe Ventures Studio embassy — the studio's mini network
+    // globe, in-world. The studio site shows the Vibeverse as a moon;
+    // here the Vibeverse holds the studio's constellation in return.
+    const STUDIO_LX = 9;
+    const STUDIO_LZ = -35;
+    const studioEmbassy = createStudioEmbassy({
+      position: new THREE.Vector3(ISLAND_X + STUDIO_LX, ISLAND_TOP, ISLAND_Z + STUDIO_LZ),
+      rotationY: Math.atan2(-STUDIO_LX, -STUDIO_LZ),
+    });
+    scene.add(studioEmbassy.group);
 
 
     // ---- Multiplayer: presence ghosts + the community terminal ------
@@ -3524,6 +3538,14 @@ export default function City() {
           player.position.y > ISLAND_TOP - 5 && ndx * ndx + ndz * ndz < 5 * 5,
         );
       }
+      // Near the studio embassy?
+      {
+        const sdx = player.position.x - (ISLAND_X + 9);
+        const sdz = player.position.z - (ISLAND_Z - 35);
+        setNearStudio(
+          player.position.y > ISLAND_TOP - 5 && sdx * sdx + sdz * sdz < 6 * 6,
+        );
+      }
     }, 120);
 
 
@@ -3810,6 +3832,7 @@ export default function City() {
           [ISLAND_X + 10, ISLAND_TOP, ISLAND_Z + 22, "the graffiti wall"],
           [ISLAND_X - 12, ISLAND_TOP, ISLAND_Z + 17, "the newsstand"],
           [ISLAND_X - 8, ISLAND_TOP, ISLAND_Z + 23, "the roster board"],
+          [ISLAND_X + 9, ISLAND_TOP, ISLAND_Z - 35, "the studio embassy"],
         ],
         onShot: (label) => setLiveShot(label),
       });
@@ -4482,6 +4505,7 @@ export default function City() {
         cityRadio.update(dt, now, fmOn);
       }
       roadmapBoard.update(dt, now);
+      studioEmbassy.update(dt, now);
       wishGarden.update(dt, now, player.position);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
@@ -5141,6 +5165,7 @@ export default function City() {
       liveFeed?.dispose();
       wishSites.dispose();
       newsstand.dispose();
+      studioEmbassy.dispose();
       graffitiWallRef.current = null;
       graffitiWall.dispose();
       agentResidents.dispose();
@@ -6203,6 +6228,20 @@ export default function City() {
             data-testid="read-times"
           >
             📰 read today's Vibe Times
+          </a>
+        </div>
+      )}
+
+      {nearStudio && !duelTarget && !chatTarget && !isLive && (
+        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2">
+          <a
+            href="https://vibe-ventures-studio.lovable.app/?from=vibeverse"
+            target="_blank"
+            rel="noreferrer"
+            className="glass-panel block rounded-full px-4 py-2 text-sm text-primary whitespace-nowrap shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+            data-testid="visit-studio"
+          >
+            🌐 visit Vibe Ventures Studio →
           </a>
         </div>
       )}
