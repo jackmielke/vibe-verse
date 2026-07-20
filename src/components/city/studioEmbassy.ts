@@ -424,7 +424,50 @@ export function createStudioEmbassy(opts: {
       for (const url of FALLBACK_CARDS) addToDeck(url, "vibe island");
     });
 
+  // ---- Drifting motes: the same ambient constellation dust the studio
+  // site now floats behind its globe, echoed here around the embassy so
+  // both worlds share one visual signature. ----------------------------
+  const MOTE_COUNT = 46;
+  const moteBase: THREE.Vector3[] = [];
+  const motePhase: number[] = [];
+  for (let i = 0; i < MOTE_COUNT; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 1.6 + Math.random() * 2.6;
+    moteBase.push(new THREE.Vector3(Math.cos(a) * r, 1.2 + Math.random() * 5.4, Math.sin(a) * r));
+    motePhase.push(Math.random() * Math.PI * 2);
+  }
+  const motePositions = new Float32Array(MOTE_COUNT * 3);
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute("position", new THREE.BufferAttribute(motePositions, 3));
+  const motePoints = new THREE.Points(
+    moteGeo,
+    new THREE.PointsMaterial({
+      color: EMERALD_BRIGHT,
+      size: 0.03,
+      transparent: true,
+      opacity: 0.32,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  group.add(motePoints);
+
   const update = (dt: number, now: number) => {
+    // Motes drift on slow independent sine paths — ambient, not busy.
+    const mt = now / 1000;
+    const posAttr = moteGeo.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < MOTE_COUNT; i++) {
+      const b = moteBase[i];
+      const ph = motePhase[i];
+      posAttr.setXYZ(
+        i,
+        b.x + Math.sin(mt * 0.25 + ph) * 0.35,
+        b.y + Math.sin(mt * 0.18 + ph * 1.7) * 0.4,
+        b.z + Math.cos(mt * 0.22 + ph) * 0.35,
+      );
+    }
+    posAttr.needsUpdate = true;
+
     // Postcard rotation — a new card every few seconds once loaded
     if (deck.length > 1 && now >= nextSwapAt) {
       nextSwapAt = now + 6500;
