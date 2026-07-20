@@ -287,7 +287,150 @@ export function createStudioEmbassy(opts: {
   sign.position.set(0, 0, 4.4);
   group.add(sign);
 
+  // ---- Postcard easel: photos from the physical world -----------------
+  // The studio site's community photo library is public (same endpoint
+  // its own gallery uses). Real moments from the hubs — SF, Lisbon,
+  // Patagonia — cycling on an easel inside the digital world. If the
+  // fetch fails we fall back to the town's own postcards, so the easel
+  // never sits empty.
+  const STUDIO_GALLERY =
+    "https://vkfiehpsniioeqddxtwo.supabase.co/functions/v1/api-gallery?limit=40";
+  const FALLBACK_CARDS = [
+    "/postcards/plaza-day.jpg",
+    "/postcards/arch-night.jpg",
+    "/postcards/island-day.jpg",
+    "/postcards/zeppelin-day.jpg",
+    "/postcards/palace-night.jpg",
+    "/postcards/snackfe-day.jpg",
+  ];
+
+  const easel = new THREE.Group();
+  const legMat = new THREE.MeshLambertMaterial({ color: "#6b4d30" });
+  for (const [lx, lz, tilt] of [
+    [-0.55, 0.12, 0.16],
+    [0.55, 0.12, -0.16],
+    [0, -0.5, -0.3],
+  ] as const) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.1, 0.09), legMat);
+    leg.position.set(lx, 1.0, lz);
+    leg.rotation.z = tilt * (lx === 0 ? 0 : 1);
+    if (lx === 0) leg.rotation.x = tilt;
+    easel.add(leg);
+  }
+  const tray = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.07, 0.14), legMat);
+  tray.position.set(0, 0.82, 0.2);
+  easel.add(tray);
+
+  const cardCanvas = document.createElement("canvas");
+  cardCanvas.width = 512;
+  cardCanvas.height = 420;
+  const cardCtx = cardCanvas.getContext("2d")!;
+  const cardTexture = new THREE.CanvasTexture(cardCanvas);
+  cardTexture.colorSpace = THREE.SRGBColorSpace;
+  const cardBoard = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.45, 1.19),
+    new THREE.MeshBasicMaterial({ map: cardTexture, side: THREE.DoubleSide }),
+  );
+  cardBoard.position.set(0, 1.5, 0.16);
+  cardBoard.rotation.x = -0.08;
+  easel.add(cardBoard);
+  // Between the sign and the plinth's left edge, angled at the path.
+  easel.position.set(-3.2, 0, 2.6);
+  easel.rotation.y = 0.5;
+  group.add(easel);
+
+  interface Postcard {
+    img: HTMLImageElement;
+    caption: string;
+  }
+  const deck: Postcard[] = [];
+  let deckIdx = -1;
+  let nextSwapAt = 0;
+
+  const drawCard = (card: Postcard | null) => {
+    const W = cardCanvas.width;
+    const H = cardCanvas.height;
+    cardCtx.fillStyle = "#0b1310";
+    cardCtx.fillRect(0, 0, W, H);
+    const frame = 14;
+    if (card) {
+      // Cover-fit the photo into the frame above the caption strip
+      const ph = H - 74 - frame * 2;
+      const pw = W - frame * 2;
+      const scale = Math.max(pw / card.img.width, ph / card.img.height);
+      const sw = pw / scale;
+      const sh = ph / scale;
+      cardCtx.save();
+      cardCtx.beginPath();
+      cardCtx.rect(frame, frame, pw, ph);
+      cardCtx.clip();
+      cardCtx.drawImage(
+        card.img,
+        (card.img.width - sw) / 2,
+        (card.img.height - sh) / 2,
+        sw,
+        sh,
+        frame,
+        frame,
+        pw,
+        ph,
+      );
+      cardCtx.restore();
+      cardCtx.fillStyle = "rgba(230,255,246,0.85)";
+      cardCtx.font = "22px 'Courier New', monospace";
+      cardCtx.textAlign = "center";
+      cardCtx.fillText(card.caption.slice(0, 36), W / 2, H - 44);
+    } else {
+      cardCtx.fillStyle = "rgba(230,255,246,0.4)";
+      cardCtx.font = "24px 'Courier New', monospace";
+      cardCtx.textAlign = "center";
+      cardCtx.fillText("developing…", W / 2, H / 2);
+    }
+    cardCtx.fillStyle = "rgba(90,235,190,0.7)";
+    cardCtx.font = "16px 'Courier New', monospace";
+    cardCtx.textAlign = "center";
+    cardCtx.fillText("postcards from the physical world", cardCanvas.width / 2, H - 18);
+    cardCtx.strokeStyle = "rgba(90,235,190,0.45)";
+    cardCtx.lineWidth = 3;
+    cardCtx.strokeRect(6, 6, W - 12, H - 12);
+    cardTexture.needsUpdate = true;
+  };
+  drawCard(null);
+
+  const addToDeck = (url: string, caption: string) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      deck.push({ img, caption });
+      // First arrival goes straight onto the easel
+      if (deckIdx === -1) {
+        deckIdx = 0;
+        drawCard(deck[0]);
+      }
+    };
+    img.src = url;
+  };
+
+  fetch(STUDIO_GALLERY)
+    .then((r) => r.json())
+    .then((data: { photos?: { image_url: string; title?: string | null; residency_name?: string | null }[] }) => {
+      const photos = (data.photos ?? []).filter((p) => p.image_url);
+      if (photos.length === 0) throw new Error("empty gallery");
+      for (const p of photos.slice(0, 24)) {
+        addToDeck(p.image_url, p.residency_name || p.title || "the studio network");
+      }
+    })
+    .catch(() => {
+      for (const url of FALLBACK_CARDS) addToDeck(url, "vibe island");
+    });
+
   const update = (dt: number, now: number) => {
+    // Postcard rotation — a new card every few seconds once loaded
+    if (deck.length > 1 && now >= nextSwapAt) {
+      nextSwapAt = now + 6500;
+      deckIdx = (deckIdx + 1) % deck.length;
+      drawCard(deck[deckIdx]);
+    }
     const t = now / 1000;
     globe.rotation.y += dt * 0.25;
     globe.position.y = GLOBE_Y + Math.sin(t * 0.7) * 0.12;
@@ -312,6 +455,7 @@ export function createStudioEmbassy(opts: {
     dispose() {
       haloTexture.dispose();
       signTexture.dispose();
+      cardTexture.dispose();
       group.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh || (o as THREE.Points).type === "Points" || (o as THREE.Line).type === "Line") {
