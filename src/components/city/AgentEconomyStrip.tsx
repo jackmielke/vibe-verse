@@ -174,56 +174,78 @@ export default function AgentEconomyStrip({ agentId, ownerKind, ownerRef, onTxn 
       {/* tab body */}
       {shop && tab === "services" && (
         <div className="flex flex-col gap-1">
-          {shop.economy.services.map((s) => (
-            <button
-              key={s.id}
-              disabled={busy || asleep}
-              onClick={() => buyService(s.id, s.title, s.price)}
-              className="flex items-center justify-between gap-2 rounded-md bg-background px-2 py-1.5 text-left hover:bg-background/70 disabled:opacity-50"
-            >
-              <span className="flex flex-col">
-                <span className="font-medium">{s.title}</span>
-                <span className="text-[10px] text-muted-foreground">{s.desc}</span>
-              </span>
-              <span className="font-mono text-primary whitespace-nowrap">{s.price} VIBE</span>
-            </button>
-          ))}
+          {shop.economy.services.map((s) => {
+            const cantAfford = balance !== null && balance < s.price;
+            return (
+              <button
+                key={s.id}
+                disabled={busy || asleep || cantAfford}
+                onClick={() => buyService(s.id, s.title, s.price)}
+                title={cantAfford ? `Need ${s.price - (balance ?? 0)} more VIBE` : undefined}
+                className="flex items-center justify-between gap-2 rounded-md bg-background px-2 py-1.5 text-left hover:bg-background/70 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="flex flex-col">
+                  <span className="font-medium">{s.title}</span>
+                  <span className="text-[10px] text-muted-foreground">{s.desc}</span>
+                </span>
+                <span className={`font-mono whitespace-nowrap ${cantAfford ? "text-muted-foreground line-through" : "text-primary"}`}>
+                  {s.price} VIBE
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
       {shop && tab === "items" && (
         <div className="flex flex-col gap-1">
-          {shop.economy.items.map((s) => (
-            <button
-              key={s.id}
-              disabled={busy || asleep}
-              onClick={() => buyItem(s.id, s.title, s.price)}
-              className="flex items-center justify-between gap-2 rounded-md bg-background px-2 py-1.5 text-left hover:bg-background/70 disabled:opacity-50"
-            >
-              <span className="flex flex-col">
-                <span className="font-medium">{s.title}</span>
-                <span className="text-[10px] text-muted-foreground">{s.desc}</span>
-              </span>
-              <span className="font-mono text-primary whitespace-nowrap">{s.price} VIBE</span>
-            </button>
-          ))}
+          {shop.economy.items.map((s) => {
+            const cantAfford = balance !== null && balance < s.price;
+            return (
+              <button
+                key={s.id}
+                disabled={busy || asleep || cantAfford}
+                onClick={() => buyItem(s.id, s.title, s.price)}
+                title={cantAfford ? `Need ${s.price - (balance ?? 0)} more VIBE` : undefined}
+                className="flex items-center justify-between gap-2 rounded-md bg-background px-2 py-1.5 text-left hover:bg-background/70 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="flex flex-col">
+                  <span className="font-medium">{s.title}</span>
+                  <span className="text-[10px] text-muted-foreground">{s.desc}</span>
+                </span>
+                <span className={`font-mono whitespace-nowrap ${cantAfford ? "text-muted-foreground line-through" : "text-primary"}`}>
+                  {s.price} VIBE
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {tab === "tip" && (
-        <div className="flex items-center gap-1.5">
-          <Input
-            value={tipAmount}
-            onChange={(e) => setTipAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-            className="h-7 w-20 text-xs"
-            inputMode="decimal"
-          />
-          <span className="text-muted-foreground">VIBE</span>
-          <Button size="sm" className="h-7 ml-auto" disabled={busy} onClick={tip}>
-            Send tip
-          </Button>
-        </div>
-      )}
+
+      {tab === "tip" && (() => {
+        const amt = Number(tipAmount);
+        const cantAfford = balance !== null && Number.isFinite(amt) && amt > balance;
+        const invalid = !Number.isFinite(amt) || amt <= 0;
+        return (
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={tipAmount}
+              onChange={(e) => setTipAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+              className="h-7 w-20 text-xs"
+              inputMode="decimal"
+            />
+            <span className="text-muted-foreground">VIBE</span>
+            {cantAfford && (
+              <span className="text-[10px] text-destructive">Not enough VIBE</span>
+            )}
+            <Button size="sm" className="h-7 ml-auto" disabled={busy || cantAfford || invalid} onClick={tip}>
+              Send tip
+            </Button>
+          </div>
+        );
+      })()}
+
 
       {shop && tab === "bounties" && (
         <div className="flex flex-col gap-1">
