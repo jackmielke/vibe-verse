@@ -5664,6 +5664,9 @@ export default function City() {
         </div>
       )}
 
+      {/* Tag mini-game HUD: only appears once you've bumped another player. */}
+      {entered && <TagHud game={tagGameRef.current} />}
+
       {/* Mars gremlin hunt: JUMP on the gremlins to splat them, don't
           let them bite you. Clear the pad to lock in a best time. */}
       {entered && marsGame.onMars && (
