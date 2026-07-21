@@ -4390,11 +4390,9 @@ export default function City() {
           const inUnder = undergroundActiveRef.current || pos.y < -50;
           // Powder Peak is a soft-snow zone — hucking cliffs is the point.
           const inSki = skiWorld.inZone(pos.x, pos.z);
-          // Falls that started up in the Cloud Kingdom land soft too —
-          // the launch pad yeets people 130m up; that can't be a trap.
-          const fromClouds =
-            peakY > ISLAND_TOP + 90 &&
-            Math.hypot(pos.x - ISLAND_X, pos.z - ISLAND_Z) < 80;
+          // Falls that started up in the Cloud Kingdom OR the drifting
+          // ambient cloud band land soft — nothing up there should trap.
+          const fromClouds = peakY > ISLAND_TOP + 90;
           const safeZone = inMars || inMoonA || inMoonB || inUnder || inSki || fromClouds;
 
           const fallDamageArmed = fallDamageEnabledRef.current && !jetpackEquipped;
