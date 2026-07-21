@@ -4557,8 +4557,16 @@ export default function City() {
       for (let i = 0; i < collectibles.length; i++) {
         const c = collectibles[i];
         if (c.taken) continue;
-        c.mesh.rotation.y += dt * 2.4;
-        c.mesh.position.y = c.baseY + Math.sin(now * 0.003 + i) * 0.35;
+        if (c.kind === "gem") {
+          // Gentle floor gem: slow spin, tiny hover.
+          c.mesh.rotation.y += dt * 1.2;
+          c.mesh.position.y = c.baseY + Math.sin(now * 0.002 + i) * 0.12;
+        } else {
+          // Hoop stays put; the coin inside spins fast like a pickup.
+          c.mesh.position.y = c.baseY + Math.sin(now * 0.003 + i) * 0.35;
+          c.coin!.rotation.y += dt * 4.2;
+          c.hoop!.rotation.z += dt * 0.6;
+        }
         if (!enteredRef.current) continue;
         const dx = c.mesh.position.x - pos.x;
         const dy = c.mesh.position.y - (pos.y + 1.2);
