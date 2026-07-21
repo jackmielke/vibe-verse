@@ -4428,6 +4428,13 @@ export default function City() {
           superBounceUntil = now + 2000;
           peakY = pos.y;
           soundsRef.current?.chime(3);
+        } else if (support > 140 && support < 260) {
+          // Ambient drifting clouds: gentle trampoline hop between puffs.
+          vel.y = 16 + Math.hypot(vel.x, vel.z) * 0.15;
+          onGround = false;
+          superBounceUntil = now + 1200;
+          peakY = pos.y;
+          soundsRef.current?.chime?.(2);
         }
       } else if (pos.y > support + 0.05) {
         onGround = false;
