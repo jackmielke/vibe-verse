@@ -63,6 +63,8 @@ import {
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
+import { createTagGame, type TagGame } from "@/components/city/tagGame";
+import { TagHud } from "@/components/city/TagHud";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 
@@ -674,6 +676,10 @@ export default function City() {
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
   const agentResidentsRef = useRef<AgentResidents | null>(null);
+  // Tag mini-game: walk into another real player to score a tag; streak
+  // decays if you loiter. Instantiated lazily so it survives HMR.
+  const tagGameRef = useRef<TagGame | null>(null);
+  if (!tagGameRef.current) tagGameRef.current = createTagGame();
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
   const playLocalChatRef = useRef<((text: string) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
@@ -3595,6 +3601,13 @@ export default function City() {
       const NEAR_RADIUS = 3.2;
       const nP = mpRef.current?.getNearestPlayer(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
       const nA = agentResidentsRef.current?.getNearestAgent(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
+      // Tag mini-game: any real-player body inside ~1.6m counts as a tag
+      // (per-player cooldown suppresses double-counting a hug). Also
+      // ticks the game so streaks decay when you loiter.
+      tagGameRef.current?.tick(performance.now());
+      if (nP && nP.distSq < 1.6 * 1.6 && enteredRef.current) {
+        tagGameRef.current?.tryTag(nP.ref, nP.name);
+      }
       let pick: PersonTarget | null = null;
       if (nP && (!nA || nP.distSq <= nA.distSq)) {
         pick = { kind: "player", ref: nP.ref, name: nP.name };
@@ -5650,6 +5663,9 @@ export default function City() {
           </div>
         </div>
       )}
+
+      {/* Tag mini-game HUD: only appears once you've bumped another player. */}
+      {entered && <TagHud game={tagGameRef.current} />}
 
       {/* Mars gremlin hunt: JUMP on the gremlins to splat them, don't
           let them bite you. Clear the pad to lock in a best time. */}
