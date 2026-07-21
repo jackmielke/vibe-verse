@@ -674,6 +674,10 @@ export default function City() {
   // Multiplayer lobby + community terminal.
   const mpRef = useRef<Multiplayer | null>(null);
   const agentResidentsRef = useRef<AgentResidents | null>(null);
+  // Tag mini-game: walk into another real player to score a tag; streak
+  // decays if you loiter. Instantiated lazily so it survives HMR.
+  const tagGameRef = useRef<TagGame | null>(null);
+  if (!tagGameRef.current) tagGameRef.current = createTagGame();
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
   const playLocalChatRef = useRef<((text: string) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
