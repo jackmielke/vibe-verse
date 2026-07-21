@@ -17,6 +17,7 @@ import VibeAccountCard from "@/components/VibeAccountCard";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
 import VibeShopPanel from "@/components/VibeShopPanel";
+import CharacterPortalPanel from "@/components/CharacterPortalPanel";
 import VibeArc from "@/components/VibeArc";
 
 export default function VibeHub() {
