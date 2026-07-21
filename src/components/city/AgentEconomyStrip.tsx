@@ -223,20 +223,29 @@ export default function AgentEconomyStrip({ agentId, ownerKind, ownerRef, onTxn 
       )}
 
 
-      {tab === "tip" && (
-        <div className="flex items-center gap-1.5">
-          <Input
-            value={tipAmount}
-            onChange={(e) => setTipAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-            className="h-7 w-20 text-xs"
-            inputMode="decimal"
-          />
-          <span className="text-muted-foreground">VIBE</span>
-          <Button size="sm" className="h-7 ml-auto" disabled={busy} onClick={tip}>
-            Send tip
-          </Button>
-        </div>
-      )}
+      {tab === "tip" && (() => {
+        const amt = Number(tipAmount);
+        const cantAfford = balance !== null && Number.isFinite(amt) && amt > balance;
+        const invalid = !Number.isFinite(amt) || amt <= 0;
+        return (
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={tipAmount}
+              onChange={(e) => setTipAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+              className="h-7 w-20 text-xs"
+              inputMode="decimal"
+            />
+            <span className="text-muted-foreground">VIBE</span>
+            {cantAfford && (
+              <span className="text-[10px] text-destructive">Not enough VIBE</span>
+            )}
+            <Button size="sm" className="h-7 ml-auto" disabled={busy || cantAfford || invalid} onClick={tip}>
+              Send tip
+            </Button>
+          </div>
+        );
+      })()}
+
 
       {shop && tab === "bounties" && (
         <div className="flex flex-col gap-1">
