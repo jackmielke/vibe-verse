@@ -63,6 +63,8 @@ import {
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
+import { createTagGame, type TagGame } from "@/components/city/tagGame";
+import { TagHud } from "@/components/city/TagHud";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
 import { createVibeyNpc } from "@/components/city/vibeyNpc";
 
