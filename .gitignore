@@ -33,6 +33,12 @@ public/models/*.glb
 # other agent / tool / pipeline can fetch them.
 !public/models/vibey.glb
 !public/models/expressive-vibey.glb
+# Exception: the iridescent arc (14 MB) — the "/coin" hero ornament and
+# the vibe emblem in /city. A prior commit deleted its bundled copy and
+# referenced this public path without ever committing the file, which
+# silently broke every same-origin and cross-origin load of it. Same
+# stable-URL rationale as the Vibey models above.
+!public/models/iridescent-arc.glb
 
 # Supabase CLI local cache (linked-project metadata, version files, etc.)
 supabase/.temp/
