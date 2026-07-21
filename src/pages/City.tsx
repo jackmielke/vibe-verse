@@ -2644,12 +2644,25 @@ export default function City() {
         [TJS_X, TJS_Z, 180],
       ];
       const r = rng(`${CITY_SEED}-clouds`);
-      const drifters: Array<{ g: THREE.Group; theta0: number; rad: number; y0: number; drift: number; bobPhase: number }> = [];
+      // Each landable cloud carries a WorldBox so the collision system
+      // treats its puffy top as a real platform. The box is mutated in
+      // place every frame as the cloud drifts and bobs.
+      const drifters: Array<{
+        g: THREE.Group;
+        theta0: number;
+        rad: number;
+        y0: number;
+        drift: number;
+        bobPhase: number;
+        box: BuildingBox | null;
+        size: number;
+      }> = [];
       const make = (
         count: number,
         yMin: number, yMax: number,
         radMin: number, radMax: number,
         sizeMin: number, sizeMax: number,
+        landable: boolean,
       ) => {
         for (let i = 0; i < count; i++) {
           // Rejection-sample a spot outside every exclusion zone.
@@ -2686,6 +2699,20 @@ export default function City() {
           const y0 = yMin + r() * (yMax - yMin);
           cloud.position.set(x, y0, z);
           clouds.add(cloud);
+          // Turn the closer band into landable trampoline platforms —
+          // step tops sit ~0.3*size above center; base is well below so
+          // you can never accidentally clip inside the puff.
+          let box: BuildingBox | null = null;
+          if (landable) {
+            const half = size * 1.0;
+            box = {
+              minX: x - half, maxX: x + half,
+              minZ: z - half, maxZ: z + half,
+              base: y0 - size * 1.2,
+              height: y0 + size * 0.35,
+            };
+            boxes.push(box);
+          }
           drifters.push({
             g: cloud,
             theta0: theta,
@@ -2693,21 +2720,31 @@ export default function City() {
             y0,
             drift: 0.000007 + r() * 0.000013, // ~1/3 the old speed
             bobPhase: r() * Math.PI * 2,
+            box,
+            size,
           });
         }
       };
       // Mid band rings the city well above the island lawn (y 120) and
-      // the zeppelin loop (y ~150, radius ≤ ~300 from origin).
-      make(25, 165, 225, 430, 620, 26, 46);
-      // Distant horizon band for depth.
-      make(20, 230, 330, 700, 1150, 55, 95);
+      // the zeppelin loop (y ~150, radius ≤ ~300 from origin). LANDABLE.
+      make(25, 165, 225, 430, 620, 26, 46, true);
+      // Distant horizon band for depth (scenery only).
+      make(20, 230, 330, 700, 1150, 55, 95, false);
       return (now: number) => {
         if (!clouds.visible) return;
         for (const d of drifters) {
           const t = d.theta0 + now * d.drift;
-          d.g.position.x = Math.cos(t) * d.rad;
-          d.g.position.z = Math.sin(t) * d.rad;
-          d.g.position.y = d.y0 + Math.sin(now * 0.00012 + d.bobPhase) * 3;
+          const x = Math.cos(t) * d.rad;
+          const z = Math.sin(t) * d.rad;
+          const y = d.y0 + Math.sin(now * 0.00012 + d.bobPhase) * 3;
+          d.g.position.set(x, y, z);
+          if (d.box) {
+            const half = d.size * 1.0;
+            d.box.minX = x - half; d.box.maxX = x + half;
+            d.box.minZ = z - half; d.box.maxZ = z + half;
+            d.box.base = y - d.size * 1.2;
+            d.box.height = y + d.size * 0.35;
+          }
         }
       };
     })();
