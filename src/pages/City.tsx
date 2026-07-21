@@ -2380,21 +2380,68 @@ export default function City() {
       // your jetpack burn rainbow for the rest of the session.
       new THREE.Vector3(ISLAND_X, ISLAND_TOP - 46, ISLAND_Z),
     ];
-    const collectGeo = new THREE.OctahedronGeometry(0.9);
-    const collectMat = new THREE.MeshBasicMaterial({
-      color: "#ffd166",
+    // Two flavors of pickup — floor gems and hoop-caged coins.
+    //   Gem  = crystalline emerald octahedron, sitting on the floor of
+    //          Vibe Island (or the plaza). Snaps to ground level.
+    //   Coin = gold cylinder floating inside a mint torus "hoop" —
+    //          fly through the ring to grab it.
+    // A pickup counts as a "gem" if it sits near a floor (plaza y≈2 or
+    // island top). Everything aerial becomes a hoop coin.
+    const gemGeo = new THREE.OctahedronGeometry(0.7, 0);
+    const gemMat = new THREE.MeshStandardMaterial({
+      color: "#2dd4a8",
+      emissive: "#0fa07a",
+      emissiveIntensity: 1.2,
+      metalness: 0.4,
+      roughness: 0.15,
       transparent: true,
       opacity: 0.95,
+    });
+    const coinGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.12, 24);
+    const coinMat = new THREE.MeshStandardMaterial({
+      color: "#ffd166",
+      emissive: "#c9891a",
+      emissiveIntensity: 0.9,
+      metalness: 0.85,
+      roughness: 0.25,
+    });
+    const hoopGeo = new THREE.TorusGeometry(1.3, 0.09, 10, 32);
+    const hoopMat = new THREE.MeshBasicMaterial({
+      color: "#baffe9",
+      transparent: true,
+      opacity: 0.85,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
     });
     const collectibles = starPositions.map((p, i) => {
-      const mesh = new THREE.Mesh(collectGeo, collectMat);
-      mesh.position.copy(p);
-      mesh.rotation.y = i;
-      scene.add(mesh);
-      return { mesh, baseY: p.y, taken: false };
+      const nearIslandTop = Math.abs(p.y - ISLAND_TOP) < 2.5;
+      const nearPlazaFloor = p.y < 3.5;
+      const isGem = nearIslandTop || nearPlazaFloor;
+      if (isGem) {
+        const mesh = new THREE.Mesh(gemGeo, gemMat);
+        // Sit gems just above the floor so they don't z-fight.
+        const y = nearPlazaFloor ? 0.9 : ISLAND_TOP + 0.75;
+        mesh.position.set(p.x, y, p.z);
+        mesh.rotation.y = i;
+        scene.add(mesh);
+        return { mesh, baseY: y, taken: false, kind: "gem" as const };
+      }
+      // Hoop with a coin spinning inside it.
+      const group = new THREE.Group();
+      const coin = new THREE.Mesh(coinGeo, coinMat);
+      coin.rotation.x = Math.PI / 2;
+      group.add(coin);
+      const hoop = new THREE.Mesh(hoopGeo, hoopMat);
+      group.add(hoop);
+      group.position.copy(p);
+      group.rotation.y = i;
+      // Face the hoop toward the plaza so it reads as a ring from the
+      // main approach angle.
+      const facing = Math.atan2(p.x, p.z);
+      hoop.rotation.y = facing;
+      scene.add(group);
+      return { mesh: group, baseY: p.y, taken: false, kind: "hoop" as const, coin, hoop };
     });
     let collectedCount = 0;
 
