@@ -1,15 +1,8 @@
 /**
- * VibeShopPanel — buy a demo item with $VIBE.
+ * VibeShopPanel — buy demo items with $VIBE.
  *
- * Flow:
- *   1. User clicks "Buy with $VIBE"
- *   2. We pop MetaMask (or any EIP-1193 wallet) via `connectWallet()`,
- *      which also switches them to Base.
- *   3. We build an ERC-20 transfer to MERCHANT_ADDRESS and ask the
- *      wallet to sign + broadcast via `sendVibe()`.
- *   4. Toast with a link to the tx on BaseScan.
- *
- * No backend, no order log — just a real on-chain payment.
+ * Each item unlocks a cosmetic hat that's tied to the paying wallet.
+ * Payments go direct on-chain to MERCHANT_ADDRESS (no custody, no backend).
  */
 import { useState } from "react";
 import { Loader2, ShoppingBag, ExternalLink, Sparkles } from "lucide-react";
@@ -23,53 +16,110 @@ import {
 } from "@/lib/vibe-wallet";
 import { unlockHat } from "@/components/city/cosmetics";
 
-// Hat cosmetic granted by buying the sticker pack.
-const REWARD_HAT_ID = "sticker";
-const REWARD_HAT_NAME = "Holo Sticker Hat";
-
-// Where $VIBE payments go. Configurable here so it's obvious.
+// Where $VIBE payments go.
 const MERCHANT_ADDRESS: Address = "0x6bDa0Bd9D8AE76dE24b9C2F7Be9ab2D4b3b888a5";
 
-// The single demo item. Bump these or swap the copy any time.
-const ITEM = {
-  name: "Vibe Sticker Pack",
-  blurb:
-    "A limited holographic sticker pack — pay in $VIBE, claim it next time we see you IRL.",
-  emoji: "✨",
-  priceVibe: 100,
+type Item = {
+  id: string;
+  name: string;
+  blurb: string;
+  emoji: string;
+  priceVibe: number;
+  hatId: string;
+  hatName: string;
+  accent: string; // hsl triplet for gradient tint
 };
 
-// 18 decimals — same as `VIBE_TOKEN_DECIMALS`. Inlined here so we
-// don't need a separate import; the helper expects a `bigint` already
-// scaled to the token's smallest unit.
+// Catalog. Each item's `hatId` must exist in HAT_CATALOG so it can be
+// equipped in-game right after purchase.
+const ITEMS: Item[] = [
+  {
+    id: "sticker",
+    name: "Holo Sticker Pack",
+    blurb: "Limited holographic stickers + the Holo Sticker Hat unlock.",
+    emoji: "✨",
+    priceVibe: 100,
+    hatId: "sticker",
+    hatName: "Holo Sticker Hat",
+    accent: "150 80% 60%",
+  },
+  {
+    id: "cap",
+    name: "Mint Cap Drop",
+    blurb: "Our house colorway on a curved-brim cap. Fits every character.",
+    emoji: "🧢",
+    priceVibe: 60,
+    hatId: "cap",
+    hatName: "Mint Cap",
+    accent: "160 80% 55%",
+  },
+  {
+    id: "party",
+    name: "Party Cone",
+    blurb: "For plaza dance-offs and impromptu birthday parties.",
+    emoji: "🥳",
+    priceVibe: 120,
+    hatId: "party",
+    hatName: "Party Cone",
+    accent: "200 90% 65%",
+  },
+  {
+    id: "propeller",
+    name: "Propeller Beanie",
+    blurb: "Spins while you fly. Certified goofy-mode gear.",
+    emoji: "🚁",
+    priceVibe: 180,
+    hatId: "propeller",
+    hatName: "Propeller Hat",
+    accent: "0 80% 65%",
+  },
+  {
+    id: "crown",
+    name: "Cardboard Crown",
+    blurb: "Rule Vibe Island in style. Gold-plated, gem-tipped.",
+    emoji: "👑",
+    priceVibe: 500,
+    hatId: "crown",
+    hatName: "Crown",
+    accent: "45 95% 60%",
+  },
+  {
+    id: "halo",
+    name: "Halo of the Vibe",
+    blurb: "Ultra-rare. Floats above your head with divine glow.",
+    emoji: "😇",
+    priceVibe: 800,
+    hatId: "halo",
+    hatName: "Halo",
+    accent: "50 100% 75%",
+  },
+];
+
 function toVibeUnits(amount: number): bigint {
-  // Split into integer + fractional so we don't lose precision on
-  // weird floats (100.1 etc).
   const [whole, frac = ""] = String(amount).split(".");
   const fracPadded = (frac + "000000000000000000").slice(0, 18);
   return BigInt(whole) * 10n ** 18n + BigInt(fracPadded || "0");
 }
 
 export default function VibeShopPanel() {
-  const [busy, setBusy] = useState(false);
-  const [unlocked, setUnlocked] = useState<{ hash: string; account: Address } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState<{ item: Item; hash: string; account: Address } | null>(null);
 
-  async function handleBuy() {
-    if (busy) return;
-    setBusy(true);
+  async function handleBuy(item: Item) {
+    if (busyId) return;
+    setBusyId(item.id);
     try {
       const from = await connectWallet();
       const hash = await sendVibe({
         from,
         to: MERCHANT_ADDRESS,
-        amount: toVibeUnits(ITEM.priceVibe),
+        amount: toVibeUnits(item.priceVibe),
       });
-      // Grant the cosmetic hat tied to this wallet.
-      unlockHat(REWARD_HAT_ID, from);
-      try { localStorage.setItem("city.hat", REWARD_HAT_ID); } catch { /* ignore */ }
-      setUnlocked({ hash, account: from });
+      unlockHat(item.hatId, from);
+      try { localStorage.setItem("city.hat", item.hatId); } catch { /* ignore */ }
+      setUnlocked({ item, hash, account: from });
       const url = `https://basescan.org/tx/${hash}`;
-      toast.success(`🎩 ${REWARD_HAT_NAME} unlocked!`, {
+      toast.success(`🎩 ${item.hatName} unlocked!`, {
         description: `Equipped automatically. Strut into /city to show it off.`,
         action: {
           label: "View tx",
@@ -82,14 +132,13 @@ export default function VibeShopPanel() {
         (err as { shortMessage?: string; message?: string })?.shortMessage ||
         (err as { message?: string })?.message ||
         "Transaction failed";
-      // User-rejected sigs are noisy — soften them.
       if (/reject|denied|user/i.test(msg)) {
         toast("Payment cancelled");
       } else {
         toast.error("Couldn't send payment", { description: msg });
       }
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
 
@@ -102,49 +151,61 @@ export default function VibeShopPanel() {
         </p>
       </div>
 
-      <div className="flex items-center gap-4 rounded-xl border border-border/60 bg-background/30 p-4">
-        <div
-          className="shrink-0 w-16 h-16 rounded-xl flex items-center justify-center text-3xl"
-          style={{
-            background:
-              "linear-gradient(135deg, hsl(150 80% 60% / 0.25), hsl(280 80% 60% / 0.15))",
-            border: "1px solid hsl(150 80% 60% / 0.35)",
-          }}
-          aria-hidden
-        >
-          {ITEM.emoji}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-heading text-base font-semibold text-foreground">
-            {ITEM.name}
-          </p>
-          <p className="text-xs text-muted-foreground leading-snug mt-0.5">
-            {ITEM.blurb}
-          </p>
-          <p className="mt-2 text-sm font-mono text-primary">
-            {ITEM.priceVibe.toLocaleString()} ${VIBE_TOKEN_SYMBOL}
-          </p>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {ITEMS.map((item) => {
+          const busy = busyId === item.id;
+          return (
+            <div
+              key={item.id}
+              className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/30 p-4"
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="shrink-0 w-14 h-14 rounded-xl flex items-center justify-center text-2xl"
+                  style={{
+                    background: `linear-gradient(135deg, hsl(${item.accent} / 0.28), hsl(280 80% 60% / 0.15))`,
+                    border: `1px solid hsl(${item.accent} / 0.4)`,
+                  }}
+                  aria-hidden
+                >
+                  {item.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-heading text-sm font-semibold text-foreground leading-tight">
+                    {item.name}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-snug mt-1">
+                    {item.blurb}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 mt-auto">
+                <p className="text-sm font-mono text-primary">
+                  {item.priceVibe.toLocaleString()} ${VIBE_TOKEN_SYMBOL}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleBuy(item)}
+                  disabled={!!busyId}
+                  className="rounded-lg px-3 py-2 font-heading font-semibold text-xs tracking-wide uppercase bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                >
+                  {busy ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Confirm…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Buy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
-
-      <button
-        type="button"
-        onClick={handleBuy}
-        disabled={busy}
-        className="w-full rounded-xl px-4 py-3 font-heading font-semibold text-sm tracking-wide uppercase bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-      >
-        {busy ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Confirm in wallet…
-          </>
-        ) : (
-          <>
-            <Sparkles className="w-4 h-4" />
-            Buy with ${VIBE_TOKEN_SYMBOL}
-          </>
-        )}
-      </button>
 
       {unlocked && (
         <div
@@ -160,7 +221,7 @@ export default function VibeShopPanel() {
             <span className="text-2xl" aria-hidden>🎩✨</span>
             <div className="flex-1 min-w-0">
               <p className="font-heading font-semibold text-sm text-foreground">
-                {REWARD_HAT_NAME} unlocked
+                {unlocked.item.hatName} unlocked
               </p>
               <p className="text-[11px] text-muted-foreground leading-snug">
                 Tied to {shortAddress(unlocked.account)} — auto-equipped on your avatar.
