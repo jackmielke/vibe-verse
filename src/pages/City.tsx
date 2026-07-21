@@ -3601,6 +3601,13 @@ export default function City() {
       const NEAR_RADIUS = 3.2;
       const nP = mpRef.current?.getNearestPlayer(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
       const nA = agentResidentsRef.current?.getNearestAgent(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
+      // Tag mini-game: any real-player body inside ~1.6m counts as a tag
+      // (per-player cooldown suppresses double-counting a hug). Also
+      // ticks the game so streaks decay when you loiter.
+      tagGameRef.current?.tick(performance.now());
+      if (nP && nP.distSq < 1.6 * 1.6 && enteredRef.current) {
+        tagGameRef.current?.tryTag(nP.ref, nP.name);
+      }
       let pick: PersonTarget | null = null;
       if (nP && (!nA || nP.distSq <= nA.distSq)) {
         pick = { kind: "player", ref: nP.ref, name: nP.name };
