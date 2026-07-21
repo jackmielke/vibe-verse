@@ -6,3 +6,11 @@ project_id = "efdqqnubowgwsnwvlalp"
 # secret URL back to the client.
 [functions.avatar-proxy]
 verify_jwt = false
+
+# World Pulse is the Vibeverse's public heartbeat, fetched cross-origin
+# by other sites (e.g. the Vibe Ventures Studio globe) with a plain GET
+# and no Supabase client. It returns a narrow read-only shape: agent
+# names/statuses, activity counts, recent event lines — never ids,
+# message bodies, or payloads.
+[functions.world-pulse]
+verify_jwt = false
