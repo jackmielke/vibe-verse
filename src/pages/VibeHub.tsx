@@ -80,7 +80,10 @@ export default function VibeHub() {
         {/* ----- Account + Market + Holders, stacked ----- */}
         <VibeAccountCard variant="card" />
         <VibeCoinPanel />
-        <VibeShopPanel />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <VibeShopPanel />
+          <CharacterPortalPanel />
+        </div>
         <VibeWalletLeaderboard defaultVisible={8} maxRows={40} />
       </div>
     </div>
