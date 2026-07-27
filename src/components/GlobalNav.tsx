@@ -53,6 +53,10 @@ export default function GlobalNav() {
   // /start is the first sixty seconds of the VibeVerse — Vibey hosts it
   // full-bleed, so the world chips and profile pill stay out of frame.
   const onboarding = location.pathname === "/start";
+  // Globetrotter is a full-bleed game — world chips floating over the
+  // satellite view break the immersion, and the game carries its own
+  // exit affordance in the HUD.
+  const fullBleedGame = ["/globetrotter", "/geo"].includes(location.pathname);
   // ?embed=1 — another site is framing us as a broadcast (the studio's
   // VIBE TV tunes into /live). Pure picture, no chrome.
   const embedded = new URLSearchParams(location.search).get("embed") === "1";
@@ -101,7 +105,7 @@ export default function GlobalNav() {
   const labelClass =
     "text-[10.5px] font-heading font-semibold tracking-wider uppercase leading-none hidden sm:inline";
 
-  if (onboarding || embedded) return null;
+  if (onboarding || embedded || fullBleedGame) return null;
 
   return (
     <>

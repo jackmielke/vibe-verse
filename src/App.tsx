@@ -30,6 +30,7 @@ import GlobalNav from "./components/GlobalNav.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 import IslandExplorer from "./pages/IslandExplorer.tsx";
+import Globetrotter from "./pages/Globetrotter.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
@@ -116,6 +117,10 @@ const App = () => (
               walk/run/jump with WASD. Imported from the standalone project. */}
           <Route path="/island-explorer" element={<IslandExplorer />} />
           <Route path="/island" element={<IslandExplorer />} />
+
+          {/* The world, inside the world — real-earth geoguessing */}
+          <Route path="/globetrotter" element={<Globetrotter />} />
+          <Route path="/geo" element={<Globetrotter />} />
           {/* Agent Lab — hatch-your-own companion (experimental, client-only v1). */}
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
