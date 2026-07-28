@@ -28,8 +28,8 @@ import path from "node:path";
 export const SHOTS = {
   skyline: {
     label: "Downtown skyline from Telegraph Hill at golden hour",
-    pos: [-390, 150, -980],
-    look: [200, 60, 300],
+    pos: [-620, 236, -1290],
+    look: [220, 70, 340],
     tod: 18.1,
     fog: 0.32,
     fov: 55,

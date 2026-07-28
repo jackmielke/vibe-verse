@@ -12,12 +12,14 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { QUALITY, WORLD_SEED, type QualityTier } from "./config";
 import { frame, resetFrame, useSfStore } from "./state/store";
-import { SHOT_POSES, installShotHook, readShotRequest } from "./debug/shotHook";
-import { SPAWNS, terrainHeight, WORLD } from "./geo/sfGeo";
+import { SHOT_POSES, installShotHook, readShotRequest, resolvePose } from "./debug/shotHook";
+import { SPAWNS, terrainHeight, walkableHeight, WORLD } from "./geo/sfGeo";
 import Terrain from "./world/Terrain";
 import Bay from "./world/Bay";
 import Sky from "./sky/Sky";
 import Buildings from "./world/buildings/Buildings";
+import Landmarks from "./world/landmarks/Landmarks";
+import Streets from "./world/street";
 
 /* ------------------------------------------------------------------ *
  * Renderer configuration — the AAA baseline every other system assumes.
@@ -99,8 +101,9 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
   // Apply the harness pose once the scene exists.
   useEffect(() => {
     if (!shotKey) return;
-    const pose = SHOT_POSES[shotKey];
-    if (!pose) return;
+    const raw = SHOT_POSES[shotKey];
+    if (!raw) return;
+    const pose = resolvePose(raw, walkableHeight);
     const cam = camera as THREE.PerspectiveCamera;
     cam.position.set(...pose.pos);
     cam.lookAt(new THREE.Vector3(...pose.look));
@@ -117,8 +120,13 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
 /** In shot mode the camera is frozen at the requested pose. */
 function ShotCamera({ shotKey, fov }: { shotKey: string; fov: number }) {
   const { camera } = useThree();
+  // Resolved once: terrain height is deterministic, so re-solving it every
+  // frame would only burn CPU to arrive at the same number.
+  const pose = useMemo(() => {
+    const raw = SHOT_POSES[shotKey];
+    return raw ? resolvePose(raw, walkableHeight) : null;
+  }, [shotKey]);
   useFrame(() => {
-    const pose = SHOT_POSES[shotKey];
     if (!pose) return;
     const cam = camera as THREE.PerspectiveCamera;
     cam.position.set(...pose.pos);
@@ -142,6 +150,8 @@ function World() {
       <Terrain />
       <Bay />
       <Buildings />
+      <Streets />
+      <Landmarks />
     </>
   );
 }
