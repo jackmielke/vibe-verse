@@ -57,6 +57,13 @@ const STAGES = [
 export async function boot(opts: EngineOptions, onProgress?: BootProgress): Promise<BootResult> {
   const engine = new Engine(opts);
 
+  // The post-processing system publishes its composer's render function here
+  // rather than reaching into the engine, so it stays a plain System like
+  // everything else. Passing null hands rendering back to the forward path.
+  engine.on("palmas:postfx", (fn) => {
+    engine.renderOverride = typeof fn === "function" ? (fn as (dt: number) => void) : null;
+  });
+
   for (let i = 0; i < STAGES.length; i++) {
     const stage = STAGES[i];
     onProgress?.(stage.label, i / STAGES.length);
