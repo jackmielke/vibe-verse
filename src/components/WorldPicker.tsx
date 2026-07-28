@@ -35,8 +35,16 @@ interface WorldCard {
 }
 
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
+import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/sf",
+    emoji: "🌉",
+    name: "San Francisco",
+    art: sanFranciscoArt,
+    blurb: "FREE FALL — an open-world shooter across a real-geometry San Francisco. Grapple, wingsuit, chaos.",
+  },
   {
     to: "/edm-town",
     emoji: "🪩",

@@ -14,6 +14,7 @@ import { QUALITY } from "../config";
 import { useSfStore } from "../state/store";
 import {
   districtAt,
+  districtInfluence,
   isPark,
   isRoad,
   landSDF,
@@ -41,8 +42,15 @@ const RINGS: Ring[] = [
  * the streets run, grass in the parks, sand at the waterline, dry California
  * gold on the hills, and dark rock on the steep cuts. Baking this into vertex
  * colour lets one draw call carry the whole landform.
+ *
+ * `cell` is the clipmap ring's vertex spacing in metres, and it matters a lot.
+ * A 9 m street sampled on a 96 m grid does not become a thin line — it becomes
+ * a 96 m black band wherever a vertex happens to land on tarmac, and the city
+ * reads as if someone drew over it with a marker. So road detail is only
+ * resolved on rings fine enough to carry it; coarser rings get the *average*
+ * tone of the block instead, which is what a real mip level would give you.
  */
-function groundColor(x: number, z: number, out: THREE.Color): THREE.Color {
+function groundColor(x: number, z: number, out: THREE.Color, cell: number): THREE.Color {
   const sd = landSDF(x, z);
   const h = terrainHeight(x, z);
   const slope = terrainSlope(x, z, 6);
@@ -57,8 +65,12 @@ function groundColor(x: number, z: number, out: THREE.Color): THREE.Color {
   // Beach / seawall band.
   const beach = 1 - smoothstep(6, 46, sd);
 
-  // Urban asphalt + sidewalk concrete.
-  const road = isRoad(x, z) ? 1 : 0;
+  // Only resolve individual carriageways when the ring can actually carry the
+  // frequency. A 9 m street needs better than ~4 m spacing to survive point
+  // sampling; at 12 m you get a smeared 12 m-wide band instead of a road, so
+  // the innermost ring paints roadway and nothing else does.
+  const roadResolve = 1 - smoothstep(4, 9, cell);
+  const road = roadResolve > 0 && isRoad(x, z) ? roadResolve : 0;
   const park = isPark(x, z) ? 1 : 0;
 
   // Dry-grass gold on the exposed hills, greener in the fog belt to the west.
@@ -71,17 +83,32 @@ function groundColor(x: number, z: number, out: THREE.Color): THREE.Color {
   const rock = smoothstep(0.42, 0.72, slope);
 
   const d = districtAt(x, z);
-  const urban = clamp01(1 - Math.hypot(x - d.x, z - d.z) / (d.radius * 1.8));
+  const urban = clamp01(districtInfluence(x, z, d) * 1.15);
 
   const asphalt = new THREE.Color(0.052, 0.054, 0.058);
   const concrete = new THREE.Color(0.30, 0.295, 0.285);
   const sand = new THREE.Color(0.62, 0.56, 0.44);
   const stone = new THREE.Color(0.24, 0.225, 0.205);
 
+  // The block average: what a built-up city block resolves to once you are far
+  // enough away that individual streets and roofs merge. Mostly the dark grey
+  // of tarmac and shadowed lightwells, lifted by sidewalk concrete and roof
+  // gravel, and tinted slightly toward the district's own palette so the
+  // Sunset's pale stucco and Dogpatch's rusted metal stay distinguishable from
+  // the air. Real cities read grey-brown from above; they never read green.
+  const pal = d.palette[0] ?? 0x9a958c;
+  const blockAvg = new THREE.Color(
+    0.118 + ((pal >> 16) & 255) / 255 * 0.052,
+    0.116 + ((pal >> 8) & 255) / 255 * 0.050,
+    0.112 + (pal & 255) / 255 * 0.048,
+  );
+
   out.copy(grass);
   out.lerp(stone, rock * 0.8);
-  // Urban ground: concrete base, asphalt on the carriageway.
-  out.lerp(concrete, urban * (1 - park) * 0.82);
+  // Urban ground: the block average first, then resolve concrete and asphalt
+  // on top of it only on rings fine enough to show them.
+  out.lerp(blockAvg, urban * (1 - park));
+  out.lerp(concrete, urban * (1 - park) * 0.55 * roadResolve);
   out.lerp(asphalt, road * (1 - park) * 0.95);
   out.lerp(grass, park * 0.85);
   out.lerp(sand, beach * 0.9);
@@ -138,7 +165,7 @@ function buildRing(inner: number, outer: number, cell: number): THREE.BufferGeom
 }
 
 /** Sample heights + colours into a ring geometry positioned at (ox,oz). */
-function displaceRing(geo: THREE.BufferGeometry, ox: number, oz: number): void {
+function displaceRing(geo: THREE.BufferGeometry, ox: number, oz: number, cell: number): void {
   const pos = geo.getAttribute("position") as THREE.BufferAttribute;
   const col = geo.getAttribute("color") as THREE.BufferAttribute;
   const arr = pos.array as Float32Array;
@@ -148,7 +175,7 @@ function displaceRing(geo: THREE.BufferGeometry, ox: number, oz: number): void {
     const wx = arr[i] + ox;
     const wz = arr[i + 2] + oz;
     arr[i + 1] = terrainHeight(wx, wz);
-    groundColor(wx, wz, c);
+    groundColor(wx, wz, c, cell);
     carr[i] = c.r;
     carr[i + 1] = c.g;
     carr[i + 2] = c.b;
@@ -160,7 +187,17 @@ function displaceRing(geo: THREE.BufferGeometry, ox: number, oz: number): void {
   if (geo.boundingSphere) geo.boundingSphere.radius *= 2.2;
 }
 
-function ClipmapRing({ inner, outer, cell }: { inner: number; outer: number; cell: number }) {
+function ClipmapRing({
+  inner,
+  outer,
+  cell,
+  receive,
+}: {
+  inner: number;
+  outer: number;
+  cell: number;
+  receive: boolean;
+}) {
   const meshRef = useRef<THREE.Mesh>(null);
   const geo = useMemo(() => buildRing(inner, outer, cell), [inner, outer, cell]);
   const last = useRef({ x: Infinity, z: Infinity });
@@ -179,11 +216,11 @@ function ClipmapRing({ inner, outer, cell }: { inner: number; outer: number; cel
     last.current.x = sx;
     last.current.z = sz;
     mesh.position.set(sx, 0, sz);
-    displaceRing(geo, sx, sz);
+    displaceRing(geo, sx, sz, cell);
   });
 
   return (
-    <mesh ref={meshRef} geometry={geo} receiveShadow castShadow={false} frustumCulled={false}>
+    <mesh ref={meshRef} geometry={geo} receiveShadow={receive} castShadow={false} frustumCulled={false}>
       <meshStandardMaterial
         vertexColors
         roughness={0.94}
@@ -199,21 +236,32 @@ export default function Terrain() {
   const q = QUALITY[tier];
   const rings = useMemo(() => {
     const budget = q.drawDistance;
-    const list: { inner: number; outer: number; cell: number }[] = [];
+    const list: { inner: number; outer: number; cell: number; receive: boolean }[] = [];
     let inner = 0;
     for (const r of RINGS) {
       if (inner > budget) break;
       const cell = tier === "low" ? r.cell * 2 : tier === "ultra" ? r.cell * 0.75 : r.cell;
-      list.push({ inner, outer: r.extent, cell });
+      // Only rings that lie inside the shadow volume may receive shadows.
+      // A ring reaching 14 km still samples the 900 m shadow map, and outside
+      // the light frustum that lookup degenerates into a repeating grid of
+      // phantom shadows smeared across the whole landform — which is exactly
+      // what it looks like: someone drew the street grid on the hills in pen.
+      list.push({ inner, outer: r.extent, cell, receive: inner < q.shadowDistance });
       inner = r.extent;
     }
     return list;
-  }, [q.drawDistance, tier]);
+  }, [q.drawDistance, q.shadowDistance, tier]);
 
   return (
     <group name="terrain">
       {rings.map((r) => (
-        <ClipmapRing key={`${r.inner}-${r.outer}`} inner={r.inner} outer={r.outer} cell={r.cell} />
+        <ClipmapRing
+          key={`${r.inner}-${r.outer}`}
+          inner={r.inner}
+          outer={r.outer}
+          cell={r.cell}
+          receive={r.receive}
+        />
       ))}
     </group>
   );

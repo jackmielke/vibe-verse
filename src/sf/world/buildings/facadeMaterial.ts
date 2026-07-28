@@ -284,8 +284,10 @@ const SURFACE_GLSL = /* glsl */ `
     // Cap-sheet seams every 0.95 m, and pale patches where it has been redone.
     float seam = 1.0 - smoothstep(0.03, 0.075, abs(fract(P.x / 0.95) - 0.5) * 0.95);
     albedo = mix(albedo, albedo * 0.72, seam * dFine * 0.8);
-    float patch = smoothstep(0.56, 0.70, sfFbm(P * 0.13 + bh * 61.0));
-    albedo = mix(albedo, albedo * 1.55 + vec3(0.03), patch * 0.7);
+    // NB: 'patch' is a reserved word in GLSL ES — naming this variable that
+    // silently fails the whole program link and every building disappears.
+    float repaved = smoothstep(0.56, 0.70, sfFbm(P * 0.13 + bh * 61.0));
+    albedo = mix(albedo, albedo * 1.55 + vec3(0.03), repaved * 0.7);
     // Ponding water — dead flat roofs never drain properly.
     float pond = smoothstep(0.62, 0.78, sfFbm(P * 0.09 + 91.0 * bh));
     sfRough = mix(0.95, 0.18, pond);

@@ -261,13 +261,15 @@ export class GeoSink {
     const u1 = uOffset + len;
     const v0 = y0 - vBase;
     const v1 = y1 - vBase;
-    // Front face is the side you see walking anticlockwise around the
-    // footprint; callers always feed the footprint anticlockwise.
+    // Winding is chosen so the flat normal (b-a)x(c-a) points *outward* for a
+    // footprint fed anticlockwise (the order `box` and `extrude` produce).
+    // Getting this backwards lights every wall from inside the building, which
+    // is the single most common way a procedural city ends up looking black.
     this.quad(
       x0, y0, z0, u0, v0,
-      x1, y0, z1, u1, v0,
-      x1, y1, z1, u1, v1,
       x0, y1, z0, u0, v1,
+      x1, y1, z1, u1, v1,
+      x1, y0, z1, u1, v0,
     );
   }
 
@@ -281,9 +283,9 @@ export class GeoSink {
     up = true,
   ): void {
     if (up) {
-      this.quad(ax, y, az, ax, az, bx, y, bz, bx, bz, cx, y, cz, cx, cz, dx, y, dz, dx, dz);
-    } else {
       this.quad(ax, y, az, ax, az, dx, y, dz, dx, dz, cx, y, cz, cx, cz, bx, y, bz, bx, bz);
+    } else {
+      this.quad(ax, y, az, ax, az, bx, y, bz, bx, bz, cx, y, cz, cx, cz, dx, y, dz, dx, dz);
     }
   }
 
@@ -361,7 +363,7 @@ export class GeoSink {
       ccz /= n;
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
-        this.tri(ccx, y1, ccz, ccx, ccz, fx[i], y1, fz[i], fx[i], fz[i], fx[j], y1, fz[j], fx[j], fz[j]);
+        this.tri(ccx, y1, ccz, ccx, ccz, fx[j], y1, fz[j], fx[j], fz[j], fx[i], y1, fz[i], fx[i], fz[i]);
       }
     }
   }
@@ -394,9 +396,9 @@ export class GeoSink {
       const z1t = cz + Math.sin(a1) * rTop;
       this.quad(
         x0b, y0, z0b, u0, y0 - vBase,
-        x1b, y0, z1b, u1, y0 - vBase,
-        x1t, y1, z1t, u1, y1 - vBase,
         x0t, y1, z0t, u0, y1 - vBase,
+        x1t, y1, z1t, u1, y1 - vBase,
+        x1b, y0, z1b, u1, y0 - vBase,
       );
     }
     if (capTop && rTop > 1e-3) {
@@ -405,8 +407,8 @@ export class GeoSink {
         const a1 = phase + ((i + 1) / segs) * Math.PI * 2;
         this.tri(
           cx, y1, cz, cx, cz,
-          cx + Math.cos(a0) * rTop, y1, cz + Math.sin(a0) * rTop, cx + Math.cos(a0) * rTop, cz + Math.sin(a0) * rTop,
           cx + Math.cos(a1) * rTop, y1, cz + Math.sin(a1) * rTop, cx + Math.cos(a1) * rTop, cz + Math.sin(a1) * rTop,
+          cx + Math.cos(a0) * rTop, y1, cz + Math.sin(a0) * rTop, cx + Math.cos(a0) * rTop, cz + Math.sin(a0) * rTop,
         );
       }
     }
@@ -416,8 +418,8 @@ export class GeoSink {
         const a1 = phase + ((i + 1) / segs) * Math.PI * 2;
         this.tri(
           cx, y0, cz, cx, cz,
-          cx + Math.cos(a1) * rBottom, y0, cz + Math.sin(a1) * rBottom, cx + Math.cos(a1) * rBottom, cz + Math.sin(a1) * rBottom,
           cx + Math.cos(a0) * rBottom, y0, cz + Math.sin(a0) * rBottom, cx + Math.cos(a0) * rBottom, cz + Math.sin(a0) * rBottom,
+          cx + Math.cos(a1) * rBottom, y0, cz + Math.sin(a1) * rBottom, cx + Math.cos(a1) * rBottom, cz + Math.sin(a1) * rBottom,
         );
       }
     }
@@ -441,9 +443,9 @@ export class GeoSink {
         const u1 = ((i + 1) / segs) * Math.PI * 2 * r;
         this.quad(
           cx + Math.cos(a0) * r0, y0, cz + Math.sin(a0) * r0, u0, y0 - vBase,
-          cx + Math.cos(a1) * r0, y0, cz + Math.sin(a1) * r0, u1, y0 - vBase,
-          cx + Math.cos(a1) * r1, y1, cz + Math.sin(a1) * r1, u1, y1 - vBase,
           cx + Math.cos(a0) * r1, y1, cz + Math.sin(a0) * r1, u0, y1 - vBase,
+          cx + Math.cos(a1) * r1, y1, cz + Math.sin(a1) * r1, u1, y1 - vBase,
+          cx + Math.cos(a1) * r0, y0, cz + Math.sin(a1) * r0, u1, y0 - vBase,
         );
       }
     }

@@ -17,6 +17,7 @@ import { SPAWNS, terrainHeight, WORLD } from "./geo/sfGeo";
 import Terrain from "./world/Terrain";
 import Bay from "./world/Bay";
 import Sky from "./sky/Sky";
+import Buildings from "./world/buildings/Buildings";
 
 /* ------------------------------------------------------------------ *
  * Renderer configuration — the AAA baseline every other system assumes.
@@ -140,6 +141,7 @@ function World() {
       <Sky />
       <Terrain />
       <Bay />
+      <Buildings />
     </>
   );
 }
