@@ -23,8 +23,8 @@ import type { QualityTier, SkyService, System, SystemFactory } from "../types";
 // Tuning
 // ---------------------------------------------------------------------------
 
-/** Where the cycle starts: late afternoon, sun ~28° up in the west-south-west. */
-const DEFAULT_TIME = 0.665;
+/** Where the cycle starts: golden hour, sun ~17° up in the west-south-west. */
+const DEFAULT_TIME = 0.7;
 
 /** Real seconds for one full 0..1 revolution. ~24 min — slow enough to sit in. */
 const DAY_LENGTH = 1440;
@@ -42,18 +42,20 @@ const SUN_ARC_TILT = THREE.MathUtils.degToRad(22);
  * defaults — that halo is most of the "golden hour" read.
  */
 const ATMOSPHERE = {
-  turbidity: 7.5,
-  rayleigh: 2.1,
-  mieCoefficient: 0.011,
+  turbidity: 9,
+  rayleigh: 3,
+  mieCoefficient: 0.014,
   mieG: 0.8,
 };
 
 /**
- * Preetham radiance is authored against ACES at exposure 0.5; the engine runs
- * at 1.0, so scale the sky by the difference. ACES applies exposure as a plain
- * pre-multiply, which makes this exactly equivalent to re-exposing.
+ * Preetham radiance is enormous in absolute terms; this is the exposure that
+ * lands a noon zenith near white-blue and a golden-hour zenith near
+ * sRGB(105,140,167) once ACES and the 1.0 engine exposure have had their say.
+ * Because ACES applies exposure as a plain pre-multiply, scaling here is
+ * exactly equivalent to re-exposing the whole sky.
  */
-const SKY_BOOST = 0.52;
+const SKY_BOOST = 0.24;
 
 /** Cloud deck altitudes (metres above sea level) and horizontal feature size. */
 const CUMULUS_HEIGHT = 2200;
@@ -109,8 +111,9 @@ const GROUND_BOUNCE = new THREE.Color().setRGB(0.17, 0.135, 0.095);
 const TOTAL_RAYLEIGH: [number, number, number] = [
   5.804542996261093e-6, 1.3562911419845635e-5, 3.0265902468824876e-5,
 ];
-const MIE_CONST: [number, number, number] = [
-  1.8399918514433978e14, 2.7798023919660528e14, 4.0790479543861094e14,
+/** Mie primaries with Preetham's 1E-17 aerosol term folded in (see the GLSL). */
+const MIE_SCALED: [number, number, number] = [
+  1.8399918514433978e-3, 2.779802391966053e-3, 4.079047954386109e-3,
 ];
 const RAYLEIGH_ZENITH = 8.4e3;
 const MIE_ZENITH = 1.25e3;
@@ -253,10 +256,11 @@ uniform sampler2D uNoise;
 
 varying vec3 vDir;
 
-const float PI = 3.141592653589793;
 const vec3  UPV = vec3(0.0, 1.0, 0.0);
 const vec3  TOTAL_RAYLEIGH = vec3(5.804542996261093E-6, 1.3562911419845635E-5, 3.0265902468824876E-5);
-const vec3  MIE_CONST = vec3(1.8399918514433978E14, 2.7798023919660528E14, 4.0790479543861094E14);
+// Preetham's mie primaries with the 1E-17 aerosol term already folded in, so
+// nothing in this shader ever has to hold a 1E14 intermediate.
+const vec3  MIE_SCALED = vec3(1.8399918514433978E-3, 2.7798023919660528E-3, 4.0790479543861094E-3);
 const float RAYLEIGH_ZENITH = 8.4E3;
 const float MIE_ZENITH = 1.25E3;
 const float CUTOFF_ANGLE = 1.6110731556870734;
@@ -272,8 +276,7 @@ float sunIntensity(float zenithAngleCos) {
 }
 
 vec3 totalMie(float T) {
-  float c = (0.2 * T) * 10E-18;
-  return 0.434 * c * MIE_CONST;
+  return 0.434 * (0.2 * T) * MIE_SCALED;
 }
 
 float rayleighPhase(float cosTheta) {
@@ -477,7 +480,10 @@ float fbm(vec2 p) {
   #if OCTAVES > 3
   v += texture2D(uNoise, p * 8.73 + vec2(0.219, 0.887)).b * ${(weights[3] ?? 0).toFixed(3)};
   #endif
-  return v / FBM_NORM;
+  // Summing decorrelated octaves pulls the distribution hard toward its mean,
+  // which would give a uniformly milky sky. Expand the contrast back out so
+  // the deck breaks into real cloud and real blue instead of grey soup.
+  return (v / FBM_NORM - 0.5) * 2.3 + 0.5;
 }
 
 void main() {
@@ -500,9 +506,9 @@ void main() {
   {
     vec2 q = (uCamXZ + d.xz * (cirrusH / d.y)) * ${CIRRUS_SCALE.toExponential(6)};
     q.x *= 0.34;
-    q += wind * 0.00022;
+    q += wind * 0.0011;   // ~28 m/s aloft — jet-stream cirrus
     float n = fbm(q);
-    float c = smoothstep(0.50, 0.86, n) * uCirrusAmount;
+    float c = smoothstep(0.56, 0.82, n) * uCirrusAmount;
     float glow = 1.0 + 2.2 * hgPhase(dot(d, uSunDir), 0.62);
     col = mix(uAmbientColor * 0.9, uSunColor * glow * 0.55 + uAmbientColor * 0.5, 0.72);
     alpha = c * horizonFade;
@@ -512,14 +518,15 @@ void main() {
   // ---- Cumulus deck -------------------------------------------------------
   {
     vec2 p = (uCamXZ + d.xz * (cumulusH / d.y)) * ${CUMULUS_SCALE.toExponential(6)};
-    p += wind * 0.00035;
+    p += wind * 0.0014;   // ~13 m/s trade wind
 
-    // Domain warp: the single cheapest way to stop fbm looking like fbm.
-    vec2 warp = (texture2D(uNoise, p * 0.31 + wind * 0.00012).gb - 0.5) * 0.42;
+    // Domain warp: the single cheapest way to stop fbm looking like fbm. The
+    // warp field drifts at its own rate, so the deck evolves as well as moves.
+    vec2 warp = (texture2D(uNoise, p * 0.31 + wind * 0.0004).gb - 0.5) * 0.42;
     vec2 sp = p + warp;
 
     float n = fbm(sp);
-    float cover = smoothstep(uCover, uCover + 0.24, n);
+    float cover = smoothstep(uCover, uCover + 0.22, n);
 
     // Self-shadowing: march a couple of taps toward the sun and treat the
     // density we accumulate as optical depth. Two taps is enough to give the
@@ -535,12 +542,12 @@ void main() {
     #endif
 
     // Forward-scattered silver lining, strongest when you look at the sun.
-    float silver = 1.0 + 3.4 * hgPhase(dot(d, uSunDir), 0.74);
+    float silver = 1.0 + 2.2 * hgPhase(dot(d, uSunDir), 0.74);
     // Powder: thin edges transmit, so they blow out relative to the core.
     float powder = 1.0 + 0.85 * (1.0 - cover);
 
     vec3 shaded = uAmbientColor * 0.85 + uHorizonColor * 0.22;
-    vec3 sunlit = uSunColor * lit * silver * 0.34 * powder;
+    vec3 sunlit = uSunColor * lit * silver * 0.30 * powder;
     vec3 cumCol = shaded + sunlit;
 
     float cumA = cover * horizonFade;
@@ -572,17 +579,22 @@ const cpuOut: [number, number, number] = [0, 0, 0];
  * Only the zenith angle and the angle to the sun matter, so the caller passes
  * scalars. Returns linear RGB (no sun disc, no night term).
  */
-function skyRadiance(dirY: number, cosTheta: number, sunUp: number): [number, number, number] {
+function skyRadiance(
+  dirY: number,
+  cosTheta: number,
+  sunUp: number,
+  turbidity: number,
+): [number, number, number] {
   const sunE =
     SUN_EE *
     Math.max(0, 1 - Math.exp(-((CUTOFF_ANGLE - Math.acos(THREE.MathUtils.clamp(sunUp, -1, 1))) / STEEPNESS)));
   const sunfade = 1 - THREE.MathUtils.clamp(1 - Math.exp(sunUp * 0.889), 0, 1);
   const rc = Math.max(0.05, ATMOSPHERE.rayleigh - (1 - sunfade));
 
-  const mieBase = 0.434 * (0.2 * ATMOSPHERE.turbidity * 1e-17) * ATMOSPHERE.mieCoefficient;
+  const mieBase = 0.434 * (0.2 * turbidity) * ATMOSPHERE.mieCoefficient;
   for (let i = 0; i < 3; i++) {
     cpuBetaR[i] = TOTAL_RAYLEIGH[i] * rc;
-    cpuBetaM[i] = MIE_CONST[i] * mieBase;
+    cpuBetaM[i] = MIE_SCALED[i] * mieBase;
   }
 
   const zenithAngle = Math.acos(Math.max(0, dirY));
@@ -836,7 +848,7 @@ const createSky: SystemFactory = (ctx) => {
    * and anti-sun bearings — those are where the eye actually looks, and where
    * the haze is most strongly coloured.
    */
-  function computeHorizon(out: THREE.Color): void {
+  function computeHorizon(out: THREE.Color, turbidity: number): void {
     // Sun bearing, +90°, anti-sun, -90°.
     const weights = [0.3, 0.2, 0.3, 0.2];
     let r = 0;
@@ -854,7 +866,7 @@ const createSky: SystemFactory = (ctx) => {
       horizonSample
         .set(azimuth.x * cs - azimuth.z * sn, 0.035, azimuth.x * sn + azimuth.z * cs)
         .normalize();
-      const c = skyRadiance(horizonSample.y, horizonSample.dot(sunDir), sunDir.y);
+      const c = skyRadiance(horizonSample.y, horizonSample.dot(sunDir), sunDir.y, turbidity);
       r += c[0] * weights[i];
       g += c[1] * weights[i];
       b += c[2] * weights[i];
@@ -893,12 +905,15 @@ const createSky: SystemFactory = (ctx) => {
     skyUniforms.uMoonDir.value.copy(moonDir);
     skyUniforms.uNight.value = night;
     // The air thickens as the sun drops: more aerosol scatter, warmer horizon.
-    skyUniforms.uTurbidity.value = ATMOSPHERE.turbidity + (1 - daylight) * 2.4;
+    // Whatever we pick here goes to the dome AND the CPU mirror below, so the
+    // haze can never describe a different atmosphere than the one on screen.
+    const turbidity = ATMOSPHERE.turbidity + (1 - daylight) * 2.4;
+    skyUniforms.uTurbidity.value = turbidity;
 
     // ---- Derived sky colours ----------------------------------------------
-    const zen = skyRadiance(1, y, y);
+    const zen = skyRadiance(1, y, y, turbidity);
     zenithColor.setRGB(zen[0], zen[1], zen[2]);
-    computeHorizon(horizonColor);
+    computeHorizon(horizonColor, turbidity);
 
     // Night floor, matching the dome's own night gradient so the fog cannot
     // pull away from the sky it is meant to be part of.
@@ -935,9 +950,9 @@ const createSky: SystemFactory = (ctx) => {
     // light exists for everything else (Lambert/Phong props, particles) and is
     // deliberately weak so the two do not double-count.
     ambientColor.copy(zenithColor).lerp(horizonColor, 0.35);
-    hemi.color.copy(ambientColor).multiplyScalar(1.6);
+    hemi.color.copy(ambientColor).multiplyScalar(1.35);
     hemi.groundColor.copy(GROUND_BOUNCE).multiplyScalar(0.25 + 0.75 * daylight);
-    hemi.intensity = 0.12 + 0.46 * daylight;
+    hemi.intensity = 0.1 + 0.4 * daylight;
 
     // ---- Cloud lighting ----------------------------------------------------
     cloudUniforms.uSunDir.value.copy(keyDirection);
@@ -945,8 +960,9 @@ const createSky: SystemFactory = (ctx) => {
     cloudUniforms.uAmbientColor.value.copy(ambientColor).multiplyScalar(0.9);
     cloudUniforms.uHorizonColor.value.copy(horizonColor);
     cloudUniforms.uOpacity.value = 0.94;
-    // Tropical afternoons build cumulus; dawn is thinner and higher.
-    cloudUniforms.uCover.value = 0.44 + 0.06 * Math.cos((time - 0.62) * Math.PI * 2);
+    // Tropical afternoons build cumulus; dawn is thinner and higher. Higher
+    // uCover = less sky covered, so the minimum lands mid-afternoon.
+    cloudUniforms.uCover.value = 0.52 + 0.06 * Math.cos((time - 0.62) * Math.PI * 2);
     cloudUniforms.uCirrusAmount.value = 0.34 + 0.2 * daylight;
   }
 

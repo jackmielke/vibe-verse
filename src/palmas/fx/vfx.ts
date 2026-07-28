@@ -8,13 +8,13 @@
  * ------------
  * Seven persistent draw calls, allocated once at boot and never grown:
  *
- *   billboardAdd   Points, additive      fire glow, flash, embers, heat haze
- *   billboardAlpha Points, alpha         fireball→smoke, dust, splinters, mist
- *   streaks        instanced quads       sparks, tracers, debris trails
- *   ringAdd        instanced flat quads  shockwave, metal ping, water ripple
- *   ringDust       instanced flat quads  ground dust ring
- *   decals         instanced quads       bullet holes, scorch, blood
- *   debris         InstancedMesh         physics chunks (the only CPU sim)
+ *   billboardAdd   instanced quads, add   fire glow, flash, embers, heat haze
+ *   billboardAlpha instanced quads, alpha fireball→smoke, dust, splinters, mist
+ *   streaks        velocity-aligned quads sparks, tracers, debris trails
+ *   ringAdd        surface-aligned quads  shockwave, metal ping, water ripple
+ *   ringDust       surface-aligned quads  ground dust ring
+ *   decals         surface-aligned quads  bullet holes, scorch, blood
+ *   debris         InstancedMesh          physics chunks (the only CPU sim)
  *
  * Every one of those is a ring buffer of fixed capacity — a spawn writes a
  * handful of floats into a slot, marks a dirty span, and the GPU integrates
@@ -272,7 +272,7 @@ const IMPACTS: Record<ImpactMaterial, ImpactProfile> = {
     flash: 0.5, flashRamp: RAMP.flash,
     ring: 0, ringRamp: RAMP.dust, ringAdditive: false,
     decals: [DECAL.holeConcrete, DECAL.holeConcrete2, DECAL.scuff], decalSize: 0.34,
-    decalTint: 0xffffff, decalLife: 26, sound: "impact_concrete",
+    decalTint: 0xffffff, decalLife: 55, sound: "impact_concrete",
   },
   metal: {
     puffRamp: RAMP.smokeLight, puffCount: 2, puffSize: 0.24, puffSpeed: 1.6, puffLife: 0.5, puffDrag: 4,
@@ -281,7 +281,7 @@ const IMPACTS: Record<ImpactMaterial, ImpactProfile> = {
     flash: 1.9, flashRamp: RAMP.flash,
     ring: 0.85, ringRamp: RAMP.shock, ringAdditive: true,
     decals: [DECAL.holeMetal, DECAL.holeMetal2], decalSize: 0.3,
-    decalTint: 0xffffff, decalLife: 26, sound: "impact_metal",
+    decalTint: 0xffffff, decalLife: 55, sound: "impact_metal",
   },
   wood: {
     puffRamp: RAMP.wood, puffCount: 5, puffSize: 0.34, puffSpeed: 2.0, puffLife: 0.7, puffDrag: 3.4,
@@ -290,7 +290,7 @@ const IMPACTS: Record<ImpactMaterial, ImpactProfile> = {
     flash: 0.25, flashRamp: RAMP.flash,
     ring: 0, ringRamp: RAMP.dust, ringAdditive: false,
     decals: [DECAL.holeWood, DECAL.holeWood, DECAL.scuff], decalSize: 0.32,
-    decalTint: 0xd9c2a0, decalLife: 26, sound: "impact_wood",
+    decalTint: 0xd9c2a0, decalLife: 55, sound: "impact_wood",
   },
   dirt: {
     puffRamp: RAMP.dirt, puffCount: 8, puffSize: 0.55, puffSpeed: 2.6, puffLife: 1.0, puffDrag: 2.6,
@@ -299,7 +299,7 @@ const IMPACTS: Record<ImpactMaterial, ImpactProfile> = {
     flash: 0.15, flashRamp: RAMP.flash,
     ring: 0, ringRamp: RAMP.dust, ringAdditive: false,
     decals: [DECAL.holeDirt, DECAL.holeDirt, DECAL.soot], decalSize: 0.5,
-    decalTint: 0xffffff, decalLife: 22, sound: "impact_dirt",
+    decalTint: 0xffffff, decalLife: 45, sound: "impact_dirt",
   },
   water: {
     puffRamp: RAMP.water, puffCount: 10, puffSize: 0.5, puffSpeed: 3.4, puffLife: 0.8, puffDrag: 2.2,
@@ -316,7 +316,7 @@ const IMPACTS: Record<ImpactMaterial, ImpactProfile> = {
     flash: 1.1, flashRamp: RAMP.glass,
     ring: 0.5, ringRamp: RAMP.glass, ringAdditive: true,
     decals: [DECAL.glassWeb, DECAL.crackWeb], decalSize: 0.75,
-    decalTint: 0xffffff, decalLife: 30, sound: "impact_glass",
+    decalTint: 0xffffff, decalLife: 70, sound: "impact_glass",
   },
   flesh: {
     puffRamp: RAMP.blood, puffCount: 9, puffSize: 0.3, puffSpeed: 3.0, puffLife: 0.55, puffDrag: 4.5,
@@ -325,7 +325,7 @@ const IMPACTS: Record<ImpactMaterial, ImpactProfile> = {
     flash: 0, flashRamp: RAMP.flash,
     ring: 0, ringRamp: RAMP.blood, ringAdditive: false,
     decals: [DECAL.blood, DECAL.blood2], decalSize: 0.85,
-    decalTint: 0xffffff, decalLife: 20, sound: "impact_flesh",
+    decalTint: 0xffffff, decalLife: 50, sound: "impact_flesh",
   },
 };
 
@@ -788,56 +788,63 @@ const SOFT_APPLY = /* glsl */ `
 `;
 
 // ---------------------------------------------------------------------------
-// Billboard particle layer (GPU-integrated THREE.Points)
+// Billboard particle layer (GPU-integrated, instanced camera-facing quads)
+//
+// Deliberately NOT gl.POINTS. Point sprites clip on their centre, so a
+// 30-metre fireball puff vanishes the instant its origin leaves the frustum,
+// and every driver caps gl_PointSize somewhere around 1024 px. Instanced quads
+// cost three extra vertices per particle and remove both problems, and rolling
+// the sprite in the vertex shader means the fragment stage never pays for a
+// sin/cos or a uv clamp.
 // ---------------------------------------------------------------------------
 
 const BILLBOARD_VERT = /* glsl */ `
 uniform float uTime;
-uniform float uPixelScale;
 uniform vec3  uWind;
 
-attribute vec3 aVel;
-attribute vec4 aLife;    // spawn, lifetime, seed, drag
-attribute vec4 aStyle;   // size0, size1, rampRow, brightness
-attribute vec4 aMotion;  // buoyancy (m/s^2), spin (rad/s), atlas cell u, v
+attribute vec3 iPos;
+attribute vec3 iVel;
+attribute vec4 iLife;    // spawn, lifetime, seed, drag
+attribute vec4 iStyle;   // size0, size1, rampRow, brightness
+attribute vec4 iMotion;  // buoyancy (m/s^2), spin (rad/s), atlas cell u, v
 
+varying vec2 vUv;
 varying float vT;
 varying float vRow;
 varying float vBright;
-varying float vRot;
 varying float vViewZ;
-varying vec2 vCell;
 
 void main() {
-  float age = uTime - aLife.x;
-  float t = age / max(aLife.y, 0.0001);
+  float age = uTime - iLife.x;
+  float t = age / max(iLife.y, 0.0001);
   float dead = step(1.0, t) + step(age, -0.00001);
 
   // Exponential drag has a closed form, so the whole trajectory is a function
   // of age — no per-frame CPU integration anywhere.
-  float k = aLife.w;
+  float k = iLife.w;
   float damp = k > 0.001 ? (1.0 - exp(-k * age)) / k : age;
-  vec3 p = position + aVel * damp;
-  p.y += 0.5 * aMotion.x * age * age;
+  vec3 p = iPos + iVel * damp;
+  p.y += 0.5 * iMotion.x * age * age;
   p += uWind * (0.5 * age * age) * clamp(k * 0.5, 0.0, 1.2);
 
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  vec4 mv = viewMatrix * vec4(p, 1.0);
+
+  // Face the camera by expanding in view space; roll the quad, not the uvs.
+  float size = mix(iStyle.x, iStyle.y, clamp(t, 0.0, 1.0));
+  float rot = iLife.z * 6.28318 + iMotion.y * age;
+  float cr = cos(rot);
+  float sr = sin(rot);
+  mv.xy += vec2(position.x * cr - position.y * sr,
+                position.x * sr + position.y * cr) * size;
+
   vViewZ = -mv.z;
   gl_Position = projectionMatrix * mv;
+  if (dead > 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 
-  float size = mix(aStyle.x, aStyle.y, clamp(t, 0.0, 1.0));
-  gl_PointSize = min(size * uPixelScale / max(vViewZ, 0.05), 1400.0);
-
-  if (dead > 0.0) {
-    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-    gl_PointSize = 0.0;
-  }
-
+  vUv = uv * 0.5 + iMotion.zw;
   vT = clamp(t, 0.0, 1.0);
-  vRow = aStyle.z;
-  vBright = aStyle.w;
-  vRot = aLife.z * 6.28318 + aMotion.y * age;
-  vCell = aMotion.zw;
+  vRow = iStyle.z;
+  vBright = iStyle.w;
 }
 `;
 
@@ -846,27 +853,18 @@ uniform sampler2D uMap;
 uniform sampler2D uRamp;
 uniform vec3 uTint;
 
+varying vec2 vUv;
 varying float vT;
 varying float vRow;
 varying float vBright;
-varying float vRot;
 varying float vViewZ;
-varying vec2 vCell;
 
 #include <packing>
 ${FOG_PARS}
 ${SOFT_PARS}
 
 void main() {
-  vec2 uv = gl_PointCoord - 0.5;
-  float c = cos(vRot);
-  float s = sin(vRot);
-  uv = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c) + 0.5;
-  // Clamp before folding into the atlas cell: a rotated corner must sample the
-  // cell's own transparent gutter, never the sprite next door.
-  uv = clamp(uv, 0.0, 1.0) * 0.5 + vCell;
-
-  vec4 tex = texture2D(uMap, uv);
+  vec4 tex = texture2D(uMap, vUv);
   vec4 ramp = texture2D(uRamp, vec2(vT, vRow));
   float a = tex.a * ramp.a;
   if (a < 0.004) discard;
@@ -1005,7 +1003,7 @@ void main() {
   vRow = iStyle.x;
   vBright = iStyle.y;
   vInner = iStyle.z;
-  vNoiseUv = uv * 2.4 + vec2(iLife.x * 0.37, iLife.x * 0.19);
+  vNoiseUv = uv * 2.4 + fract(vec2(iLife.x * 0.37, iLife.x * 0.19));
 }
 `;
 
@@ -1189,7 +1187,6 @@ const createVfx: SystemFactory = (ctx) => {
   const uFogColor = { value: new THREE.Color(0x9fd6ea) };
   const uFogParams = { value: new THREE.Vector3(500, 4200, 0.0006) };
   const uFogKind = { value: 1 };
-  const uPixelScale = { value: 600 };
   const uResolution = { value: new THREE.Vector2(1, 1) };
   const uCamRange = { value: new THREE.Vector2(0.08, 12000) };
   /** Sun-driven tint applied to everything lit rather than emissive. */
@@ -1206,9 +1203,9 @@ const createVfx: SystemFactory = (ctx) => {
   // =========================================================================
 
   interface BillboardLayer {
-    points: THREE.Points;
+    mesh: THREE.Mesh;
     ring: Ring;
-    attrs: THREE.BufferAttribute[];
+    attrs: THREE.InstancedBufferAttribute[];
     pos: Float32Array;
     vel: Float32Array;
     life: Float32Array;
@@ -1223,31 +1220,39 @@ const createVfx: SystemFactory = (ctx) => {
     order: number,
     name: string,
   ): BillboardLayer {
-    const geo = new THREE.BufferGeometry();
+    const geo = new THREE.InstancedBufferGeometry();
+    const q = quadArrays(-0.5, 0.5);
+    geo.setIndex(new THREE.BufferAttribute(q.index, 1));
+    geo.setAttribute("position", new THREE.BufferAttribute(q.position, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(q.uv, 2));
+
     const pos = new Float32Array(cap * 3);
     const vel = new Float32Array(cap * 3);
     const life = new Float32Array(cap * 4);
     const style = new Float32Array(cap * 4);
     const motion = new Float32Array(cap * 4);
-    // Dead until spawned: lifetime 0 pushes t to +inf on the first frame.
+    // Dead until spawned: a spawn time far in the past with a zero lifetime
+    // sends t past 1 on the very first frame, so nothing flashes at boot.
     for (let i = 0; i < cap; i++) life[i * 4] = -1e9;
 
-    const aPos = new THREE.BufferAttribute(pos, 3);
-    const aVel = new THREE.BufferAttribute(vel, 3);
-    const aLife = new THREE.BufferAttribute(life, 4);
-    const aStyle = new THREE.BufferAttribute(style, 4);
-    const aMotion = new THREE.BufferAttribute(motion, 4);
-    for (const a of [aPos, aVel, aLife, aStyle, aMotion]) a.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute("position", aPos);
-    geo.setAttribute("aVel", aVel);
-    geo.setAttribute("aLife", aLife);
-    geo.setAttribute("aStyle", aStyle);
-    geo.setAttribute("aMotion", aMotion);
+    const attrs = [
+      new THREE.InstancedBufferAttribute(pos, 3),
+      new THREE.InstancedBufferAttribute(vel, 3),
+      new THREE.InstancedBufferAttribute(life, 4),
+      new THREE.InstancedBufferAttribute(style, 4),
+      new THREE.InstancedBufferAttribute(motion, 4),
+    ];
+    const names = ["iPos", "iVel", "iLife", "iStyle", "iMotion"];
+    attrs.forEach((a, i) => {
+      a.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute(names[i], a);
+    });
+    geo.instanceCount = cap;
     geo.boundingSphere = INFINITE_SPHERE();
 
     const material = new THREE.ShaderMaterial({
       uniforms: {
-        uTime, uWind, uPixelScale, uFogColor, uFogParams, uFogKind,
+        uTime, uWind, uFogColor, uFogParams, uFogKind,
         uResolution, uCamRange,
         uMap: { value: texSprites },
         uRamp: { value: texRamp },
@@ -1261,23 +1266,21 @@ const createVfx: SystemFactory = (ctx) => {
       transparent: true,
       depthWrite: false,
       depthTest: true,
+      side: THREE.DoubleSide,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
 
-    const points = new THREE.Points(geo, material);
-    points.name = name;
-    points.frustumCulled = false;
-    points.matrixAutoUpdate = false;
-    points.renderOrder = order;
-    points.raycast = NO_RAYCAST;
-    ctx.scene.add(points);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.name = name;
+    mesh.frustumCulled = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.renderOrder = order;
+    mesh.raycast = NO_RAYCAST;
+    ctx.scene.add(mesh);
     materials.push(material);
     geometries.push(geo);
 
-    return {
-      points, ring: new Ring(cap), pos, vel, life, style, motion, material,
-      attrs: [aPos, aVel, aLife, aStyle, aMotion],
-    };
+    return { mesh, ring: new Ring(cap), pos, vel, life, style, motion, material, attrs };
   }
 
   // Both layers sample the same sprite atlas; only blend mode and ramp range
@@ -1481,7 +1484,11 @@ const createVfx: SystemFactory = (ctx) => {
   const UNIT_Z = new THREE.Vector3(0, 0, 1);
   const UNIT_Y = new THREE.Vector3(0, 1, 0);
 
-  /** Builds the quaternion that lays a +Z quad flat against `n`, with roll. */
+  /**
+   * Builds the quaternion that lays a +Z quad flat against `n`, with roll.
+   * Side effect by design: leaves the normalised, guarded normal in `tmpVec`
+   * so callers that also need to offset along it don't re-normalise.
+   */
   function orientTo(n: THREE.Vector3, roll: number): THREE.Quaternion {
     tmpVec.copy(n);
     if (tmpVec.lengthSq() < 1e-8) tmpVec.copy(UNIT_Y);
@@ -1593,7 +1600,8 @@ const createVfx: SystemFactory = (ctx) => {
     const i4 = i * 4;
     const i2 = i * 2;
     const q = orientTo(n, rng() * Math.PI * 2);
-    // Lift off the surface so the quad never sinks into the wall it marks.
+    // orientTo left the normalised normal in tmpVec: lift off the surface so
+    // the quad never sinks into the wall it marks.
     dPos[i3] = px + tmpVec.x * 0.025;
     dPos[i3 + 1] = py + tmpVec.y * 0.025;
     dPos[i3 + 2] = pz + tmpVec.z * 0.025;
@@ -1711,6 +1719,8 @@ const createVfx: SystemFactory = (ctx) => {
     dur: number;
     peak: number;
     flicker: number;
+    /** Decorrelates simultaneous blasts so they don't strobe in lockstep. */
+    phase: number;
   }
   const lights: FlashLight[] = [];
   for (let i = 0; i < budget.lights; i++) {
@@ -1718,7 +1728,7 @@ const createVfx: SystemFactory = (ctx) => {
     l.castShadow = false;
     l.visible = true;
     ctx.scene.add(l);
-    lights.push({ light: l, life: 0, dur: 1, peak: 0, flicker: 0 });
+    lights.push({ light: l, life: 0, dur: 1, peak: 0, flicker: 0, phase: rng() * 6.283 });
   }
 
   /** Grabs the dimmest slot so a new blast never steals a brighter one. */
@@ -1743,6 +1753,7 @@ const createVfx: SystemFactory = (ctx) => {
     best.dur = duration;
     best.life = duration;
     best.flicker = flicker;
+    best.phase = rng() * 6.283;
     best.light.intensity = peak;
   }
 
@@ -1963,13 +1974,13 @@ const createVfx: SystemFactory = (ctx) => {
         emitDecal(px, gy, pz, gn,
           rr(3.2, 4.6) * s,
           s > 1.6 ? (rng() < 0.5 ? DECAL.scorch : DECAL.scorch2) : DECAL.scorchSmall,
-          40, 0xffffff, 0.92);
+          110, 0xffffff, 0.92);
         if (s > 1.2) {
           for (let i = 0; i < n(3); i++) {
             const a = rng() * Math.PI * 2;
             const d = rr(1.5, 4) * s;
             emitDecal(px + Math.cos(a) * d, groundY(px + Math.cos(a) * d, pz + Math.sin(a) * d, gy),
-              pz + Math.sin(a) * d, gn, rr(1.2, 2.4) * s, DECAL.soot, 34, 0xffffff, 0.55);
+              pz + Math.sin(a) * d, gn, rr(1.2, 2.4) * s, DECAL.soot, 90, 0xffffff, 0.55);
           }
         }
       }
@@ -2238,9 +2249,9 @@ const createVfx: SystemFactory = (ctx) => {
 
       // --- Uniform sync -----------------------------------------------------
       const cam = ctx.camera;
+      // Soft particles reconstruct scene depth from gl_FragCoord, so the
+      // resolution must track the drawing buffer, not the CSS size.
       ctx.renderer.getDrawingBufferSize(drawSize);
-      // gl_PointSize is in framebuffer pixels: worldSize * f / viewZ * h/2.
-      uPixelScale.value = drawSize.y * 0.5 * cam.projectionMatrix.elements[5];
       uResolution.value.set(drawSize.x, drawSize.y);
       uCamRange.value.set(cam.near, cam.far);
 
@@ -2261,7 +2272,8 @@ const createVfx: SystemFactory = (ctx) => {
       // the sun so the same puff reads warm at noon and cold blue at night.
       const sky = ctx.services.sky;
       const daylight = THREE.MathUtils.clamp(sky?.daylight ?? 1, 0, 1);
-      sunTint.copy(sky?.sunColor ?? sunTint.setHex(0xfff3e0));
+      if (sky?.sunColor) sunTint.copy(sky.sunColor);
+      else sunTint.setHex(0xfff3e0);
       uLitTint.value.copy(nightTint).lerp(sunTint, daylight);
       uLitTint.value.multiplyScalar(0.42 + 0.72 * daylight);
 
@@ -2350,7 +2362,7 @@ const createVfx: SystemFactory = (ctx) => {
         // Sharp peak, long ember tail — the shape of an actual fireball.
         let k = remain * remain * (0.35 + 0.65 * remain);
         if (fl.flicker > 0) {
-          k *= 1 + fl.flicker * Math.sin(ctx.elapsed * 47 + fl.dur * 13);
+          k *= 1 + fl.flicker * Math.sin(ctx.elapsed * 47 + fl.phase);
         }
         fl.light.intensity = Math.max(0, fl.peak * k);
       }
@@ -2399,15 +2411,11 @@ const createVfx: SystemFactory = (ctx) => {
       }
     },
 
-    resize(width, height) {
-      uResolution.value.set(width, height);
-    },
-
     dispose() {
       offShake();
       offDepth();
       for (const obj of [
-        bbAdd.points, bbAlpha.points, streakMesh, decalMesh, debrisMesh,
+        bbAdd.mesh, bbAlpha.mesh, streakMesh, decalMesh, debrisMesh,
         ringAdd.mesh, ringDust.mesh,
       ] as THREE.Object3D[]) {
         obj.parent?.remove(obj);

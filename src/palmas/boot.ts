@@ -67,7 +67,14 @@ export async function boot(opts: EngineOptions, onProgress?: BootProgress): Prom
   for (let i = 0; i < STAGES.length; i++) {
     const stage = STAGES[i];
     onProgress?.(stage.label, i / STAGES.length);
-    await engine.add(stage.factory);
+    // A subsystem that throws must not take the whole world down with it —
+    // losing audio or post-processing should cost you those features, not the
+    // game. The failure is loud in the console but never fatal.
+    try {
+      await engine.add(stage.factory);
+    } catch (err) {
+      console.error(`[San Palmas] system "${stage.label}" failed to boot:`, err);
+    }
     // Yield to the browser so the loading screen can actually paint.
     await new Promise((r) => setTimeout(r, 0));
   }

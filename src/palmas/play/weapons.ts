@@ -92,6 +92,17 @@ const _t2 = new THREE.Vector3();
 const _ta = new THREE.Vector3();
 const _tb = new THREE.Vector3();
 const _hs = new THREE.Vector3();
+/**
+ * Reusable RayHit for terrain impacts. `CollisionService.raycast` allocates its
+ * own, but terrain is marched here and a 1450 rpm minigun would otherwise
+ * produce 24 throwaway hits and 48 vectors a second.
+ */
+const _terrainHit: RayHit = {
+  point: new THREE.Vector3(),
+  normal: new THREE.Vector3(0, 1, 0),
+  distance: 0,
+  tag: "dirt",
+};
 const _q1 = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _e1 = new THREE.Euler(0, 0, 0, "YXZ");
@@ -1746,13 +1757,11 @@ const createWeapons: SystemFactory = (ctx: WorldCtx) => {
             else lo = mid;
           }
           dist = hi;
-          _v3.copy(origin).addScaledVector(dir, dist);
-          hit = {
-            point: _v3.clone(),
-            normal: terrain.normalAt(_v3.x, _v3.z, new THREE.Vector3()),
-            distance: dist,
-            tag: terrain.isWater(_v3.x, _v3.z) ? "water" : "dirt",
-          };
+          _terrainHit.point.copy(origin).addScaledVector(dir, dist);
+          terrain.normalAt(_terrainHit.point.x, _terrainHit.point.z, _terrainHit.normal);
+          _terrainHit.distance = dist;
+          _terrainHit.tag = terrain.isWater(_terrainHit.point.x, _terrainHit.point.z) ? "water" : "dirt";
+          hit = _terrainHit;
           break;
         }
       }

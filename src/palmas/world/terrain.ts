@@ -57,6 +57,7 @@ import {
   STRAIT,
   WORLD_SIZE,
   biomeAt,
+  districtAt,
   hillHeight,
   landSignedDistance,
   shoreProfile,
@@ -463,6 +464,28 @@ function buildCivic() {
 const CIVIC = buildCivic();
 const DISTRICT_MARGIN = 1.18;
 const AVENUE_MARGIN = 118;
+/** Peak amplitude of the civic wobble, so the bounds below can't clip it. */
+const CIVIC_WOBBLE = 49;
+
+/**
+ * Everything the civic footprint can possibly reach, plus the wobble and the
+ * smooth-max blend width. Outside this box `civicLand` cannot influence the
+ * result, and skipping it there removes ~90% of the coastline bake's cost.
+ */
+const CIVIC_BOUNDS = (() => {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  const grow = (x: number, z: number, r: number) => {
+    x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r);
+    z0 = Math.min(z0, z - r); z1 = Math.max(z1, z + r);
+  };
+  for (const d of DISTRICTS) grow(d.x, d.z, d.radius * DISTRICT_MARGIN);
+  for (const a of AVENUES) for (const [x, z] of a.points) grow(x, z, AVENUE_MARGIN);
+  for (let i = 0; i < CIVIC.nodes.length; i += 4) {
+    grow(CIVIC.nodes[i], CIVIC.nodes[i + 1], CIVIC.nodes[i + 2]);
+  }
+  const pad = CIVIC_WOBBLE + 90; // wobble + smooth-max blend width
+  return { x0: x0 - pad, x1: x1 + pad, z0: z0 - pad, z1: z1 + pad };
+})();
 
 function civicLand(x: number, z: number): number {
   let best = -1e9;
@@ -494,15 +517,54 @@ function civicLand(x: number, z: number): number {
   return best;
 }
 
+/**
+ * `atlas.landSignedDistance` with its strait clause omitted.
+ *
+ * WORKAROUND — delete the moment atlas.ts guards its own clause. The atlas runs
+ * `d = min(d, -channel * endFade)` for every point inside the strait's z-band,
+ * including the whole map either side of the channel, where `channel` is
+ * negative and the expression is therefore a small *positive* number. At the
+ * band's ends `endFade` reaches zero, so d is pinned to ~0 — a shoreline ruled
+ * straight across the entire world at z = -1500 and z = -700. Both creases are
+ * plainly visible in a relief render. Everything below is copied verbatim from
+ * `landSignedDistance` minus that clause; it is only ever consulted in the band
+ * and outside the channel, and only as a `max`, so if the atlas is corrected
+ * this silently becomes a no-op.
+ */
+function atlasWithoutStrait(x: number, z: number): number {
+  const r = Math.hypot(x * 1.0, (z + 120) * 0.86);
+  let d = LAND_RADIUS - r;
+  const bay = 1180 - Math.hypot((x - 980) * 0.78, (z + 900) * 1.05);
+  d = Math.min(d, -bay);
+  d = Math.min(d, x + 1560);
+  return (
+    d +
+    Math.sin(x * 0.0034 + z * 0.0021) * 52 +
+    Math.sin(x * 0.0091 - z * 0.0072) * 24 +
+    Math.sin(z * 0.0157 + 1.7) * 11
+  );
+}
+
 /** Authoritative land signed distance: the atlas, reconciled with the city. */
 function landDistance(x: number, z: number): number {
-  let d = smax(landSignedDistance(x, z), civicLand(x, z), 90);
-  // Re-cut the strait: nothing the city adds is allowed to fill it in.
+  let atlas = landSignedDistance(x, z);
+  let channel = -1;
+  let endFade = 0;
   if (z > STRAIT.zFrom && z < STRAIT.zTo) {
-    const channel = STRAIT.halfWidth - Math.abs(x - STRAIT.x);
-    const endFade = Math.min(1, Math.min(z - STRAIT.zFrom, STRAIT.zTo - z) / 160);
-    d = Math.min(d, -channel * endFade);
+    channel = STRAIT.halfWidth - Math.abs(x - STRAIT.x);
+    endFade = Math.min(1, Math.min(z - STRAIT.zFrom, STRAIT.zTo - z) / 160);
+    if (channel <= 0) atlas = Math.max(atlas, atlasWithoutStrait(x, z));
   }
+
+  let d =
+    x < CIVIC_BOUNDS.x0 || x > CIVIC_BOUNDS.x1 || z < CIVIC_BOUNDS.z0 || z > CIVIC_BOUNDS.z1
+      ? atlas
+      : smax(atlas, civicLand(x, z), 90);
+
+  // Re-cut the channel: nothing the city adds is allowed to fill it in, and
+  // Puente Dorado has to have something to span.
+  if (channel > 0) d = Math.min(d, -channel * endFade);
+
   // And keep the Pacific open on the west edge.
   return Math.min(d, x + 1560 + Math.sin(z * 0.0041) * 44);
 }
@@ -616,8 +678,9 @@ const createTerrain: SystemFactory = async (ctx) => {
       for (let i = 0; i < RES; i++) {
         const x = -FIELD_EXTENT + i * step;
         const o = (j * RES + i) * F_STRIDE;
-        FDATA[o + F_DIST] = landDistance(x, z);
-        FDATA[o + F_CALM] = 1 - 0.88 * urbanMask(x, z);
+        const d = landDistance(x, z);
+        FDATA[o + F_DIST] = d;
+        FDATA[o + F_CALM] = d > 0 ? 1 - 0.88 * urbanMask(x, z) : 1;
       }
     }
 
@@ -653,21 +716,24 @@ const createTerrain: SystemFactory = async (ctx) => {
           nSwell(x * 0.0017, z * 0.0017) * 0.5 +
           nSwell(x * 0.0035, z * 0.0035) * 0.25) * 11 * inland;
 
-        // One ridged stack, read twice. The low octaves carve the wild country
-        // away from the authored hills — the north headland and the outer coast
-        // need relief of their own or they read as a table — and the high
-        // octaves become drainage spurs down the flanks of the named hills.
-        let wide = 0, spur = 0, amp = 1, f = 0.00115;
-        for (let k = 0; k < 4; k++) {
+        // Ridged relief for the wild country away from the authored hills — the
+        // north headland and the outer coast need character of their own or they
+        // read as a table.
+        //
+        // NOTHING baked into this grid may run above ~1/(8 * lattice step), or
+        // bilinear reconstruction turns it into a quilt of axis-aligned facets.
+        // At 17 m that caps us near a 140 m wavelength; the three octaves below
+        // bottom out at 190 m. Everything finer is evaluated analytically in
+        // `heightAt`, where there is no lattice to alias against.
+        let wide = 0, amp = 1, f = 0.00115;
+        for (let k = 0; k < 3; k++) {
           const t = 1 - Math.abs(nRidge(x * f + 91.3, z * f - 44.1));
-          const v = t * t * amp;
-          if (k < 2) wide += v; else spur += v;
+          wide += t * t * amp;
           amp *= 0.5;
-          f *= 2.28;
+          f *= 2.15;
         }
         const urban = 1 - FDATA[o + F_CALM]; // 0..0.88
-        h += (wide / 1.5 - 0.34) * 44 * (1 - hillInfluence(x, z) * 0.88) * inland * (1 - urban);
-        h += (spur / 0.375 - 0.55) * 22 * clamp01(hills / 55) * inland * (1 - urban);
+        h += (wide / 1.75 - 0.32) * 46 * (1 - hillInfluence(x, z) * 0.88) * inland * (1 - urban);
 
         FDATA[o + F_MACRO] = h;
         elev[c] = shoreProfile(d) + h;
@@ -684,16 +750,26 @@ const createTerrain: SystemFactory = async (ctx) => {
       for (let i = 0; i < RES; i++) {
         const x = -FIELD_EXTENT + i * step;
         const c = j * RES + i;
+        const d = FDATA[c * F_STRIDE + F_DIST];
+
+        // The reconciled distance is a smooth *max* of the atlas SDF and the
+        // civic footprint, so d <= 0 implies the atlas SDF is also <= 0, which
+        // implies `biomeAt` would return "ocean". Skipping the call there is
+        // exact, and it is three quarters of the map.
+        if (d <= 0) {
+          FDATA[c * F_STRIDE + F_VEG] = 0.16;
+          continue;
+        }
+
         const e = elev[c];
         const ex = elev[j * RES + Math.min(RES - 1, i + 1)] - elev[j * RES + Math.max(0, i - 1)];
         const ez = elev[jp + i] - elev[jm + i];
         const grad = Math.sqrt(ex * ex + ez * ez) / (2 * step);
         const slope = 1 - 1 / Math.sqrt(1 + grad * grad);
-        const d = FDATA[c * F_STRIDE + F_DIST];
 
         // The atlas classifies; we only turn its verdict into a blend weight.
         let biome = biomeAt(x, z, e, slope);
-        if (biome === "ocean" && d > 0) {
+        if (biome === "ocean") {
           // Reconciled land the atlas SDF still believes is bay (see the CIVIC
           // LANDMASS note). Re-run the rest of `biomeAt`'s tree against the
           // coastline we actually built.
@@ -710,8 +786,7 @@ const createTerrain: SystemFactory = async (ctx) => {
           case "cliff": arid = 0.80; break;
           case "city": arid = 0.66; break;
           case "hillside": arid = 0.93; break;
-          case "ocean": arid = 0.16; break;
-          default: arid = 0.10; break; // jungle
+          default: arid = 0.10; break; // jungle — "ocean" was handled above
         }
         FDATA[c * F_STRIDE + F_VEG] = arid;
       }
@@ -725,14 +800,14 @@ const createTerrain: SystemFactory = async (ctx) => {
     // holds true for every sun angle — which matters, because the sky system
     // moves the sun. Pure array reads now that `elev` is cached.
     const RAD = [2, 5, 11];
+    const DIR = [1, 0, 1, 1, 0, 1, -1, 1, -1, 0, -1, -1, 0, -1, 1, -1];
     for (let j = 0; j < RES; j++) {
       for (let i = 0; i < RES; i++) {
         const c = j * RES + i;
         const e = elev[c];
         let occ = 0;
         for (let a = 0; a < 8; a++) {
-          const ca = Math.round(Math.cos((a * Math.PI) / 4));
-          const sa = Math.round(Math.sin((a * Math.PI) / 4));
+          const ca = DIR[a * 2], sa = DIR[a * 2 + 1];
           let hmax = 0;
           for (let k = 0; k < 3; k++) {
             const si = Math.min(RES - 1, Math.max(0, i + ca * RAD[k]));
@@ -798,10 +873,19 @@ const createTerrain: SystemFactory = async (ctx) => {
     if (d > 0) {
       const inland = clamp01(d / DETAIL_FADE);
       const calm = f[F_CALM];
+      // Drainage spurs. This octave lives here rather than in the baked grid
+      // because at a ~230 m wavelength the lattice would quilt it, and it is
+      // the band that gives a hillside its gullies and shoulders. Masked to the
+      // flanks of raised ground so the flats stay flat.
+      const flank = smoothstep(26, 105, h) * inland * calm;
+      if (flank > 0.002) {
+        const t = 1 - Math.abs(nRidge(x * 0.0043, z * 0.0043));
+        h += (t * t - 0.42) * 17 * flank;
+      }
       // Mid detail: the metre-scale lumpiness that makes a hillside walkable
       // rather than a ramp. Damped under the districts so streets stay flat.
       h += (nDetail(x * 0.0115, z * 0.0115) + nDetail(x * 0.0237, z * 0.0237) * 0.45) *
-        2.3 * inland * calm;
+        3.1 * inland * calm;
       // Fine grain — sub-metre, always present, gives footfall something to read.
       h += nDetail(x * 0.062, z * 0.062) * 0.33 * calm;
       // Dunes: only in the beach band, aligned nowhere in particular.
@@ -841,7 +925,9 @@ const createTerrain: SystemFactory = async (ctx) => {
   const splatOut = new Float32Array(4);
 
   function splatAt(h: number, slope: number, d: number, veg: number): Float32Array {
-    const rock = smoothstep(0.24, 0.60, slope);
+    // `slope` is 1 - normal.y, so a 30° face is only 0.13 and a 55° face 0.43.
+    // The thresholds have to be read in those terms, not in degrees.
+    const rock = clamp01(smoothstep(0.13, 0.40, slope) + smoothstep(175, 255, h) * 0.55);
     let sand: number, jungle: number, grass: number;
 
     if (d <= 0) {
@@ -852,7 +938,7 @@ const createTerrain: SystemFactory = async (ctx) => {
       splatOut[2] = Math.max(rock * 0.8, smoothstep(-120, -420, d) * 0.45);
     } else {
       // Beach: wide where the shore is shallow, pinched where it is a cliff.
-      const beach = smoothstep(52, 5, d) * (1 - smoothstep(2.5, 10, h)) * (1 - rock * 0.7);
+      const beach = smoothstep(85, 6, d) * (1 - smoothstep(3.5, 14, h)) * (1 - rock * 0.8);
       // Aridity from the atlas biome, pushed further by raw altitude — the
       // jungle canopy gives out on the exposed tops.
       const arid = clamp01(veg * 1.15 - 0.10 + smoothstep(90, 190, h) * 0.55);
@@ -995,7 +1081,7 @@ const createTerrain: SystemFactory = async (ctx) => {
           vec4 w = vSplat;
           // Re-derive rock per pixel: the vertex weight is interpolated, and a
           // lerped cliff edge looks like a smear.
-          w.z = max( w.z, smoothstep( 0.20, 0.52, steep ) );
+          w.z = max( w.z, smoothstep( 0.13, 0.40, steep ) );
           w.x *= 1.0 + ( mic.r - 0.5 ) * 0.9;
           w.y *= 1.0 + ( mic.g - 0.5 ) * 1.1 + ( mac.b - 0.5 ) * 0.8;
           w.w *= 1.0 + ( mic.b - 0.5 ) * 1.1 - ( mac.b - 0.5 ) * 0.8;
