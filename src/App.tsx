@@ -34,6 +34,7 @@ import Globetrotter from "./pages/Globetrotter.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
+import SanPalmas from "./pages/SanPalmas.tsx";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,9 @@ const queryClient = new QueryClient();
 const AppChrome = () => {
   const { pathname } = useLocation();
   if (pathname === "/live") return null;
+  // San Palmas is a fullscreen pointer-locked FPS — the nav would sit on top
+  // of the crosshair.
+  if (pathname === "/san-palmas" || pathname === "/fps") return null;
   return (
     <>
       <GlobalNav />
@@ -125,6 +129,9 @@ const App = () => (
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
           <Route path="/times" element={<VibeTimes />} />
+          {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
+          <Route path="/san-palmas" element={<SanPalmas />} />
+          <Route path="/fps" element={<SanPalmas />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
