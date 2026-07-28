@@ -34,13 +34,17 @@ import Globetrotter from "./pages/Globetrotter.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
+import SanFrancisco from "./pages/SanFrancisco.tsx";
 
 const queryClient = new QueryClient();
 
-/** App chrome (nav + radio) — hidden on /live so the broadcast is clean. */
+/** App chrome (nav + radio) — hidden on /live so the broadcast is clean, and
+    on the San Francisco routes, which own the whole viewport and the pointer. */
+const CHROMELESS = new Set(["/live", "/sf", "/san-francisco", "/free-fall"]);
+
 const AppChrome = () => {
   const { pathname } = useLocation();
-  if (pathname === "/live") return null;
+  if (CHROMELESS.has(pathname)) return null;
   return (
     <>
       <GlobalNav />
@@ -125,6 +129,10 @@ const App = () => (
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
           <Route path="/times" element={<VibeTimes />} />
+          {/* San Francisco: Free Fall — open-world shooter, real SF geometry. */}
+          <Route path="/sf" element={<SanFrancisco />} />
+          <Route path="/san-francisco" element={<SanFrancisco />} />
+          <Route path="/free-fall" element={<SanFrancisco />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
