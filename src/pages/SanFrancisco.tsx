@@ -4,8 +4,8 @@
  * The Vibeverse's open-world shooter. Grapple, wingsuit and shoot your way
  * across a real-geometry San Francisco, from the Golden Gate to the Bay Bridge.
  */
-import { Suspense, lazy, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 const SanFranciscoGame = lazy(() => import("@/sf/SanFranciscoGame"));
 
@@ -26,9 +26,63 @@ function Loader() {
   );
 }
 
+/**
+ * The thin chrome over the canvas: a way out, and a controls hint that gets out
+ * of the way. Hidden entirely in capture mode so it never lands in a shot.
+ */
+function Overlay() {
+  const [hint, setHint] = useState(true);
+  const [touch, setTouch] = useState(false);
+
+  useEffect(() => {
+    setTouch(window.matchMedia("(hover: none), (pointer: coarse)").matches);
+    const t = window.setTimeout(() => setHint(false), 9000);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  return (
+    <div
+      className="pointer-events-none fixed inset-0 z-10 select-none"
+      style={{
+        paddingTop: "max(env(safe-area-inset-top), 12px)",
+        paddingLeft: "max(env(safe-area-inset-left), 12px)",
+        paddingRight: "max(env(safe-area-inset-right), 12px)",
+        paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
+      }}
+    >
+      <Link
+        to="/worlds"
+        className="pointer-events-auto inline-flex min-h-[44px] items-center gap-2 rounded-xl
+                   bg-black/45 px-3.5 text-[11px] font-semibold uppercase tracking-[0.18em]
+                   text-white/80 backdrop-blur-sm ring-1 ring-white/15 transition
+                   active:scale-95 hover:text-white"
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        ← Worlds
+      </Link>
+
+      <div
+        className={`absolute inset-x-0 bottom-0 flex justify-center transition-opacity duration-700
+                    ${hint ? "opacity-100" : "opacity-0"}`}
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)" }}
+      >
+        <p
+          className="mx-4 rounded-full bg-black/50 px-4 py-2 text-center text-[11px]
+                     leading-relaxed text-white/70 backdrop-blur-sm ring-1 ring-white/10"
+        >
+          {touch
+            ? "Left thumb to move · right thumb to look"
+            : "Click to capture the mouse · WASD to fly · Shift to boost · Space / C for altitude"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function SanFrancisco() {
   const [params] = useSearchParams();
   const spawn = params.get("spawn") ?? "coit";
+  const capturing = params.has("shot");
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -41,6 +95,7 @@ export default function SanFrancisco() {
   return (
     <Suspense fallback={<Loader />}>
       <SanFranciscoGame spawn={spawn} />
+      {capturing ? null : <Overlay />}
     </Suspense>
   );
 }

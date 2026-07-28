@@ -35,12 +35,23 @@ import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
 import SanFrancisco from "./pages/SanFrancisco.tsx";
+import SanPalmas from "./pages/SanPalmas.tsx";
+import Worlds from "./pages/Worlds.tsx";
 
 const queryClient = new QueryClient();
 
-/** App chrome (nav + radio) — hidden on /live so the broadcast is clean, and
-    on the San Francisco routes, which own the whole viewport and the pointer. */
-const CHROMELESS = new Set(["/live", "/sf", "/san-francisco", "/free-fall"]);
+/** App chrome (nav + radio) — hidden anywhere that owns the whole viewport and
+    the pointer: the clean /live broadcast, and both fullscreen shooters, where
+    the nav would sit on top of the crosshair. */
+const CHROMELESS = new Set([
+  "/live",
+  "/sf",
+  "/san-francisco",
+  "/free-fall",
+  "/san-palmas",
+  "/fps",
+  "/worlds",
+]);
 
 const AppChrome = () => {
   const { pathname } = useLocation();
@@ -129,10 +140,15 @@ const App = () => (
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
           <Route path="/times" element={<VibeTimes />} />
+          {/* WORLDS — the shooter picker. Choose a city, then drop in. */}
+          <Route path="/worlds" element={<Worlds />} />
           {/* San Francisco: Free Fall — open-world shooter, real SF geometry. */}
           <Route path="/sf" element={<SanFrancisco />} />
           <Route path="/san-francisco" element={<SanFrancisco />} />
           <Route path="/free-fall" element={<SanFrancisco />} />
+          {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
+          <Route path="/san-palmas" element={<SanPalmas />} />
+          <Route path="/fps" element={<SanPalmas />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

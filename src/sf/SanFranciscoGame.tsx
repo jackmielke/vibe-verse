@@ -20,6 +20,7 @@ import Sky from "./sky/Sky";
 import Buildings from "./world/buildings/Buildings";
 import Landmarks from "./world/landmarks/Landmarks";
 import Streets from "./world/street";
+import Explorer from "./player/Explorer";
 
 /* ------------------------------------------------------------------ *
  * Renderer configuration — the AAA baseline every other system assumes.
@@ -206,7 +207,7 @@ export default function SanFranciscoGame({ spawn = "coit" }: SanFranciscoGamePro
       >
         <RendererSetup tier={quality} />
         <FrameDriver shotKey={shot?.key ?? null} />
-        {shot ? <ShotCamera shotKey={shot.key} fov={shot.fov} /> : null}
+        {shot ? <ShotCamera shotKey={shot.key} fov={shot.fov} /> : <Explorer />}
         <Suspense fallback={null}>
           <World />
         </Suspense>
