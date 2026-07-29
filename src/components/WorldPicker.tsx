@@ -49,8 +49,19 @@ import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
+import terminalArt from "@/assets/worlds/terminal.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/terminal",
+    emoji: "🛫",
+    name: "The Terminal",
+    art: terminalArt,
+    blurb: "The front door. Stand on a platform in the sky with every world floating around you, and pick one.",
+    featured: true,
+    status: "Playable — the lobby",
+    accent: "#38bdf8",
+  },
   {
     to: "/island-2",
     emoji: "🏝️",
@@ -332,7 +343,16 @@ export default function WorldPicker({
                     <div className="font-heading font-semibold text-sm">
                       {w.emoji} {w.name}
                     </div>
-                    <div className="text-[11px] text-muted-foreground leading-snug mt-0.5 hidden sm:block">
+                    {/* Featured worlds always explain themselves. Hiding the
+                        blurb on small screens meant a card could say only "The
+                        Terminal" on a phone — a name is not an explanation, and
+                        the whole job of this screen is telling you what is
+                        behind each door. */}
+                    <div
+                      className={`text-[11px] text-muted-foreground leading-snug mt-0.5 ${
+                        w.featured ? "block" : "hidden sm:block"
+                      }`}
+                    >
                       {w.blurb}
                     </div>
                   </div>

@@ -85,6 +85,7 @@ import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
+import terminalArt from "@/assets/worlds/terminal.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
@@ -99,6 +100,8 @@ const OFFICIAL_WORLDS: World[] = [
     blurb: "Pick a character + world (Sunset Cove, Sky Island, Edge Esmeralda) and explore." },
   { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
     blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
+  { to: "/terminal", name: "The Terminal", art: terminalArt, color: "#38bdf8",
+    blurb: "The front door — every world floating around you. Pick one and go." },
   { to: "/island-2", name: "Vibe Island II", art: vibeIsland2Art, color: "#ffb347",
     blurb: "The floating archipelago, rebuilt — lagoon, keels, cloud sea." },
   { to: "/san-palmas", name: "San Palmas", art: sanPalmasArt, color: "#ffb020",
