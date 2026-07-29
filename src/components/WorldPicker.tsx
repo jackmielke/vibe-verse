@@ -48,8 +48,19 @@ interface WorldCard {
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
+import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/island-2",
+    emoji: "🏝️",
+    name: "Vibe Island II",
+    art: vibeIsland2Art,
+    blurb: "The floating archipelago, rebuilt — a carved lagoon that spills into the clouds, and islands you can fly underneath.",
+    featured: true,
+    status: "In progress — fly it now",
+    accent: "#ffb347",
+  },
   {
     to: "/san-palmas",
     emoji: "🌴",

@@ -37,6 +37,7 @@ import VibeTimes from "./pages/VibeTimes.tsx";
 import SanFrancisco from "./pages/SanFrancisco.tsx";
 import SanPalmas from "./pages/SanPalmas.tsx";
 import Worlds from "./pages/Worlds.tsx";
+import VibeIsland2 from "./pages/VibeIsland2.tsx";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,8 @@ const CHROMELESS = new Set([
   "/san-palmas",
   "/fps",
   "/worlds",
+  "/island-2",
+  "/vibe-island-2",
 ]);
 
 const AppChrome = () => {
@@ -146,6 +149,9 @@ const App = () => (
           <Route path="/sf" element={<SanFrancisco />} />
           <Route path="/san-francisco" element={<SanFrancisco />} />
           <Route path="/free-fall" element={<SanFrancisco />} />
+          {/* Vibe Island II — the floating archipelago, rebuilt. */}
+          <Route path="/island-2" element={<VibeIsland2 />} />
+          <Route path="/vibe-island-2" element={<VibeIsland2 />} />
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
           <Route path="/san-palmas" element={<SanPalmas />} />
           <Route path="/fps" element={<SanPalmas />} />
