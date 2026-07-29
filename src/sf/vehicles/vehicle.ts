@@ -43,7 +43,7 @@ import * as THREE from "three";
 import type * as RAPIER from "@dimforge/rapier3d-compat";
 import { CHAOS, QUALITY, type QualityTier } from "../config";
 import { frame, useSfStore } from "../state/store";
-import { terrainHeight, WORLD } from "../geo/sfGeo";
+import { isPark, isRoad, isWater, terrainHeight, WORLD } from "../geo/sfGeo";
 import { clamp01, damp, makeRng, type Rng } from "../math/rng";
 import {
   Boat,
@@ -69,6 +69,7 @@ import {
 import {
   VEHICLE_DEFS,
   buildVehicleModel,
+  originYFor,
   paintFor,
   toPhysicsSpec,
   type LampState,
@@ -128,27 +129,99 @@ interface Component {
 
 export type DamageKind = "bullet" | "explosion" | "collision" | "fire" | "melee";
 
-/** What the audio layer is told, once per frame per audible vehicle. */
+/**
+ * Engine archetypes, for whatever is synthesising the sound.
+ *
+ * Deliberately a plain string rather than an import from the audio module: the
+ * vehicle layer must not fail to compile because the mixer is mid-rewrite, and
+ * "what kind of engine is this" is a stable enough concept to name in prose.
+ * The strings match `audio/vehicleSounds.ts`'s archetype set.
+ */
+export type EngineArchetype =
+  | "sedan" | "sports" | "muscle" | "truck" | "bus"
+  | "police" | "motorcycle" | "electric" | "helicopter";
+
+export const ENGINE_ARCHETYPE: Record<VehicleKind, EngineArchetype> = {
+  sedan: "sedan",
+  taxi: "sedan",
+  suv: "truck",
+  sports: "sports",
+  pickup: "muscle",
+  van: "truck",
+  boxtruck: "truck",
+  semi: "truck",
+  police: "police",
+  swatvan: "truck",
+  ambulance: "truck",
+  firetruck: "truck",
+  bus: "bus",
+  cablecar: "electric",
+  motorcycle: "motorcycle",
+  helicopter: "helicopter",
+  gunship: "helicopter",
+  aircraft: "helicopter",
+  speedboat: "muscle",
+  jetski: "motorcycle",
+};
+
+/** What the tyres are rolling on. Matches the mixer's surface set. */
+export type RoadSurfaceTag =
+  | "asphalt" | "concrete" | "gravel" | "dirt" | "grass" | "sand" | "water" | "metal";
+
+/**
+ * One frame of a vehicle's acoustic state.
+ *
+ * The field names are chosen to match `audio/vehicleSounds.ts`'s
+ * `VehicleAudioState` exactly, so wiring a mixer in is a pass-through rather
+ * than a translation layer:
+ *
+ *   vehicleRuntime.onAudio = (f) => sfAudio.updateVehicle(f.id, f.archetype, f, f.dt);
+ *   vehicleRuntime.onAudioRelease = (id) => sfAudio.releaseVehicle(id);
+ *
+ * The struct is reused between calls — copy what you need, do not retain it.
+ */
 export interface EngineAudioFrame {
   id: number;
   kind: VehicleKind;
+  archetype: EngineArchetype;
+  dt: number;
+
   x: number;
   y: number;
   z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  /** Unit forward vector, for the exhaust cone. */
+  fx: number;
+  fy: number;
+  fz: number;
+
   rpm: number;
-  /** 0..1 throttle-derived load. */
+  /** 0..1 pedal. */
+  throttle: number;
+  /** 0..1 how hard the engine is actually working. */
   load: number;
-  /** m/s, signed. */
-  speed: number;
-  /** 0..1 peak wheel slip — screech. */
-  slip: number;
   gear: number;
+  /** Signed ground speed, m/s. */
+  speed: number;
+  /** 0..1 peak wheel slip — the skid layer. */
+  slip: number;
+  grounded: boolean;
+  surface: RoadSurfaceTag;
+  /** 0..1 suspension impulse this frame — fires a knock. */
+  suspension: number;
+  /** 0..1 collision impulse this frame. */
+  impact: number;
+  /** 0..1 helicopter collective / aircraft throttle. */
+  collective: number;
+
   /** true on the frame a gear change fires. */
   shifted: boolean;
   running: boolean;
   siren: number;
   horn: number;
-  /** 0..1 rotor/prop speed for aircraft. */
+  /** 0..1 rotor/prop speed. */
   rotor: number;
   /** Distance to the listener, metres. */
   distance: number;
@@ -163,12 +236,15 @@ const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _local = new THREE.Vector3();
-const _mat = new THREE.Matrix4();
+const _scale = new THREE.Vector3(1, 1, 1);
 const _lamp: LampState = { head: 0, brake: 0, reverse: 0, indicator: 0, siren: 0, highBeam: 0 };
 const _wheelVis: WheelVisual = { suspension: 0, spin: 0, steer: 0, flat: 0 };
 const _audioFrame: EngineAudioFrame = {
-  id: 0, kind: "sedan", x: 0, y: 0, z: 0, rpm: 0, load: 0, speed: 0, slip: 0,
-  gear: 1, shifted: false, running: false, siren: 0, horn: 0, rotor: 0, distance: 0,
+  id: 0, kind: "sedan", archetype: "sedan", dt: 1 / 60,
+  x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: -1,
+  rpm: 0, throttle: 0, load: 0, gear: 1, speed: 0, slip: 0,
+  grounded: false, surface: "asphalt", suspension: 0, impact: 0, collective: 0,
+  shifted: false, running: false, siren: 0, horn: 0, rotor: 0, distance: 0,
 };
 
 let nextVehicleId = 1;
@@ -280,6 +356,13 @@ export class VehicleInstance {
     return k === "heli" || k === "plane" || k === "boat";
   }
 
+  /** 0..1 collision impulse this frame; decays. Read by the audio frame. */
+  impactPulse = 0;
+  /** 0..1 suspension knock this frame; from real per-step travel. */
+  suspensionPulse = 0;
+  /** True on the frame the gearbox changed ratio. */
+  shifted = false;
+  private prevSuspension: Float32Array | null = null;
   private lastGear = 1;
   private exhaustAcc = 0;
   private skidAcc = 0;
@@ -341,7 +424,7 @@ export class VehicleInstance {
     // generated procedurally and a metre of error puts a car in the pavement.
     if (d.klass !== "boat") {
       const g = terrainHeight(this.wantX, this.wantZ);
-      if (this.wantY < g + 0.2) this.wantY = g + d.wheelRadius + d.suspension + 0.1;
+      if (this.wantY < g + 0.2) this.wantY = g + originYFor(d) + 0.25;
     } else {
       this.wantY = Math.max(this.wantY, WORLD.seaLevel + d.hullDraft * 0.2);
     }
@@ -450,6 +533,33 @@ export class VehicleInstance {
       this.fuel = Math.max(0, this.fuel - burn * dt * (1 + this.leakRate() * 40));
       if (this.fuel <= 0) this.stall();
     }
+
+    /* ---- transients ------------------------------------------- */
+    // Suspension knock: the largest single-frame change in any strut's length.
+    // Taken from the solver's measured travel rather than from the body's
+    // vertical velocity, so a single wheel dropping into a pothole knocks and
+    // the whole car landing flat thumps.
+    if (this.car) {
+      const n = this.car.wheels.length;
+      if (!this.prevSuspension || this.prevSuspension.length !== n) {
+        this.prevSuspension = new Float32Array(n);
+        for (let i = 0; i < n; i++) this.prevSuspension[i] = this.car.wheels[i].suspension;
+      }
+      let peak = 0;
+      for (let i = 0; i < n; i++) {
+        const d = this.prevSuspension[i] - this.car.wheels[i].suspension;
+        if (d > peak) peak = d;
+        this.prevSuspension[i] = this.car.wheels[i].suspension;
+      }
+      // A 6 cm compression in one frame is a solid hit.
+      this.suspensionPulse = clamp01(peak / 0.06);
+      this.shifted = this.car.gear !== this.lastGear;
+      this.lastGear = this.car.gear;
+    } else {
+      this.suspensionPulse = 0;
+      this.shifted = false;
+    }
+    this.impactPulse = Math.max(0, this.impactPulse - dt * 6);
 
     /* ---- doors ------------------------------------------------ */
     for (let i = 0; i < this.doorOpen.length; i++) {
@@ -591,10 +701,9 @@ export class VehicleInstance {
     }
   }
 
-  /** Suspension origin offset — the model's y=0 relative to the body centre. */
+  /** Height of the chassis centre above the road — the authoring offset. */
   private originY(): number {
-    const d = this.def;
-    return d.wheelRadius + d.suspension - (d.wheelRadius + d.suspension);
+    return originYFor(this.def);
   }
 
   /* ---------------- damage ---------------- */
@@ -1067,8 +1176,20 @@ class VehicleRuntime {
   onOccupantKilled: ((v: VehicleInstance, p: Passenger, x: number, y: number, z: number) => void) | null = null;
   /** Called once per frame per audible vehicle; wire an audio mixer to it. */
   onAudio: ((f: EngineAudioFrame) => void) | null = null;
-  /** Called on every significant impact: (vehicle, speedDelta, worldPoint). */
+  /** Called when a vehicle goes away, so its voice can be released. */
+  onAudioRelease: ((id: number) => void) | null = null;
+  /** Called on every significant impact: (vehicle, energy, worldPoint). */
   onImpact: ((v: VehicleInstance, energy: number, x: number, y: number, z: number) => void) | null = null;
+  /**
+   * Second impact hook, owned by `driving.ts`.
+   *
+   * Two slots rather than one because the driving system needs a subscription
+   * whose lifetime is "while the player is in a car", and it must not be able
+   * to stomp whatever the mission layer put in `onImpact`. Chaining through a
+   * saved previous handler works right up until two systems unsubscribe out of
+   * order, and then it silently leaks a stale closure.
+   */
+  onPlayerImpact: ((v: VehicleInstance, energy: number, x: number, y: number, z: number) => void) | null = null;
 
   /* ---------------- lifecycle ---------------- */
 
@@ -1111,6 +1232,7 @@ class VehicleRuntime {
       voice.stop();
       this.voices.delete(id);
     }
+    this.onAudioRelease?.(id);
     v.dispose();
     this.byId.delete(id);
     const i = this.vehicles.indexOf(v);
@@ -1205,7 +1327,7 @@ class VehicleRuntime {
     }
 
     this.assignHeroModels();
-    this.updateAudio(camX, camY, camZ);
+    this.updateAudio(dt, camX, camY, camZ);
 
     this.stats.count = this.vehicles.length;
     this.stats.wrecked = wrecked;
@@ -1262,7 +1384,7 @@ class VehicleRuntime {
    * Everything else is reported through `onAudio` so a proper mixer can do
    * better, but the built-in synth keeps the game from being silent.
    */
-  private updateAudio(camX: number, camY: number, camZ: number): void {
+  private updateAudio(dt: number, camX: number, camY: number, camZ: number): void {
     if (!this.onAudio && !audioEnabled) return;
     const list = this.heroSorted;
     list.length = 0;
@@ -1276,23 +1398,39 @@ class VehicleRuntime {
       const v = list[i];
       const audible = i < maxVoices && v.running && !v.wrecked;
       if (this.onAudio) {
-        _audioFrame.id = v.id;
-        _audioFrame.kind = v.kind;
-        _audioFrame.x = v.position.x;
-        _audioFrame.y = v.position.y;
-        _audioFrame.z = v.position.z;
-        _audioFrame.rpm = v.car ? v.car.rpm : v.heli ? v.heli.rotorSpeed * 3400 : 900;
-        _audioFrame.load = v.car ? v.car.load : v.heli ? v.heli.input.collective : 0;
-        _audioFrame.speed = v.speed;
-        _audioFrame.slip = v.car ? v.car.slip : 0;
-        _audioFrame.gear = v.car ? v.car.gear : 1;
-        _audioFrame.shifted = false;
-        _audioFrame.running = v.running;
-        _audioFrame.siren = v.lights.siren;
-        _audioFrame.horn = v.horn;
-        _audioFrame.rotor = v.heli ? v.heli.rotorSpeed : v.rotorSpeed;
-        _audioFrame.distance = v.distance;
-        this.onAudio(_audioFrame);
+        const f = _audioFrame;
+        f.id = v.id;
+        f.kind = v.kind;
+        f.archetype = ENGINE_ARCHETYPE[v.kind];
+        f.dt = dt;
+        f.x = v.position.x;
+        f.y = v.position.y;
+        f.z = v.position.z;
+        f.vx = v.velocity.x;
+        f.vy = v.velocity.y;
+        f.vz = v.velocity.z;
+        _v.set(0, 0, -1).applyQuaternion(v.quaternion);
+        f.fx = _v.x;
+        f.fy = _v.y;
+        f.fz = _v.z;
+        f.rpm = v.car ? v.car.rpm : v.heli ? 600 + v.heli.rotorSpeed * 900 : 900;
+        f.throttle = v.car ? v.car.input.throttle : v.heli ? v.heli.input.collective : 0;
+        f.load = v.car ? v.car.load : v.heli ? v.heli.input.collective : 0;
+        f.gear = v.car ? v.car.gear : 1;
+        f.speed = v.speed;
+        f.slip = v.car ? v.car.slip : 0;
+        f.grounded = v.car ? v.car.grounded : v.def.klass === "boat";
+        f.surface = surfaceUnder(v);
+        f.suspension = v.suspensionPulse;
+        f.impact = v.impactPulse;
+        f.collective = v.heli ? v.heli.input.collective : v.rotorSpeed;
+        f.shifted = v.shifted;
+        f.running = v.running;
+        f.siren = v.lights.siren;
+        f.horn = v.horn;
+        f.rotor = v.heli ? v.heli.rotorSpeed : v.rotorSpeed;
+        f.distance = v.distance;
+        this.onAudio(f);
       }
       if (!audioEnabled || !audioCtx || !masterGain) continue;
 
@@ -1358,6 +1496,7 @@ class VehicleRuntime {
       const py = _v.y + e.dirY * sign * 0.3;
       const pz = _v.z + e.dirZ * sign * v.def.length * 0.4;
 
+      v.impactPulse = Math.max(v.impactPulse, clamp01(energy / 6));
       v.hit(px, py, pz, energy * 26, "collision");
       if (v.model) {
         v.worldToLocal(px, py, pz, _local);
@@ -1365,6 +1504,7 @@ class VehicleRuntime {
         if (energy > 4.5) v.model.breakGlass("front");
       }
       this.onImpact?.(v, energy, px, py, pz);
+      this.onPlayerImpact?.(v, energy, px, py, pz);
     }
   }
 }
@@ -1374,6 +1514,22 @@ export const vehicleRuntime = new VehicleRuntime();
 /* ================================================================== *
  * Helpers other subsystems want
  * ================================================================== */
+
+/**
+ * What this vehicle's tyres (or hull) are on.
+ *
+ * Read from `sfGeo` rather than from a physics surface tag because the tag is
+ * whatever collider the wheel happened to hit this step, which flickers between
+ * road and kerb at exactly the moment a skid is loudest.
+ */
+function surfaceUnder(v: VehicleInstance): RoadSurfaceTag {
+  const x = v.position.x;
+  const z = v.position.z;
+  if (v.def.klass === "boat" || isWater(x, z)) return "water";
+  if (isRoad(x, z)) return "asphalt";
+  if (isPark(x, z)) return "grass";
+  return "concrete";
+}
 
 /** Is this world point inside (or on) a vehicle? Used by grapple and hijack. */
 export function vehicleAt(x: number, y: number, z: number, slack = 0.6): VehicleInstance | null {
@@ -1397,7 +1553,5 @@ export function vehicleAt(x: number, y: number, z: number, slack = 0.6): Vehicle
 
 /** World-space matrix for a vehicle, for anything that needs to parent to it. */
 export function vehicleMatrix(v: VehicleInstance, out: THREE.Matrix4): THREE.Matrix4 {
-  return out.compose(v.position, v.quaternion, _v2.set(1, 1, 1));
+  return out.compose(v.position, v.quaternion, _scale);
 }
-
-export { _mat as vehicleScratchMatrix };

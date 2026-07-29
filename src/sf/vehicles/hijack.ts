@@ -42,6 +42,7 @@ import { clamp, clamp01, damp, smoothstep } from "../math/rng";
 import { cameraRig, grappleSystem, input, playerCtrl } from "@/sf/player";
 import { playerController as charCtrl } from "@/sf/physics";
 import { drivingSystem, nearestSeat } from "./driving";
+import { originYFor } from "./models";
 import { vehicleRuntime, type VehicleInstance } from "./vehicle";
 
 /* ================================================================== *
@@ -320,7 +321,7 @@ class HijackSystem {
     this.t += dt;
     const u = clamp01(this.t / this.duration);
     const def = v.def;
-    const originY = def.wheelRadius + def.suspension;
+    const originY = originYFor(def);
     const s = def.seats[this.seat] ?? def.seats[0];
     const side = Math.sign((s?.x ?? -1) || -1);
 
@@ -377,7 +378,7 @@ class HijackSystem {
     const heading = Math.atan2(-_fwd.x, -_fwd.z);
     const yawTarget =
       this.kind === "ground" && u > 0.34 && u < 0.62 ? heading + side * 0.85 : heading;
-    let d = ((yawTarget - frame.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const d = ((yawTarget - frame.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     frame.yaw += d * clamp01(9 * dt);
     frame.pitch = damp(frame.pitch, this.kind === "air" && u < 0.5 ? -0.5 : -0.05, 7, dt);
 
@@ -434,7 +435,7 @@ class HijackSystem {
         continue;
       }
       v.worldToLocal(frame.position.x, feetY, frame.position.z, _v);
-      const originY = def.wheelRadius + def.suspension;
+      const originY = originYFor(def);
       const top = def.roof - originY;
       if (
         Math.abs(_v.x) < def.width * 0.5 + 0.25 &&
@@ -485,7 +486,7 @@ class HijackSystem {
     // Re-anchor from where the player actually is; they may have walked.
     v.worldToLocal(frame.position.x, frame.position.y, frame.position.z, _v);
     const def = v.def;
-    const originY = def.wheelRadius + def.suspension;
+    const originY = originYFor(def);
     const top = def.roof - originY;
     const onBody =
       Math.abs(_v.x) < def.width * 0.5 + 0.45 &&
@@ -522,7 +523,7 @@ class HijackSystem {
     // Standing on a moving roof is not free: it shakes, and hard cornering
     // slides you toward the outside of the turn.
     const shake = clamp01(Math.abs(v.speed) / 34);
-    if (shake > 0.05) cameraRig.addTrauma(shake * 0.05 * dt * 60 * 0.016);
+    if (shake > 0.05) cameraRig.addTrauma(shake * 0.9 * dt);
     if (v.car) {
       const lat = clamp(v.car.accelLat, -18, 18);
       _v2.set(1, 0, 0).applyQuaternion(v.quaternion).multiplyScalar(-lat * 0.014 * dt);

@@ -224,7 +224,7 @@ function def(p: Partial<VehicleDef> & { kind: VehicleKind }): VehicleDef {
     length: 4.85, width: 1.84, height: 1.46, clearance: 0.15,
     frontZ: -1.42, rearZ: 1.43, tandemZ: 0, trailerZ: 0,
     wheelRadius: 0.34, wheelWidth: 0.23, track: 1.56, suspension: 0.36,
-    cabinFrontZ: -0.42, cabinRearZ: 1.28,
+    cabinFrontZ: -0.55, cabinRearZ: 1.42,
     beltline: 1.02, roof: 1.46, bonnet: 0.94, boxiness: 0.36, tumblehome: 0.17,
     seats: [], doors: [], fuelTanks: [],
     livery: "none", palette: CITY_PAINT,
@@ -266,18 +266,27 @@ function defaultDoors(d: VehicleDef): DoorDef[] {
   if (d.klass === "bike" || d.klass === "boat" || d.openSides) return [];
   const y0 = d.clearance + (d.beltline - d.clearance) * 0.24;
   const y1 = d.beltline - 0.02;
-  const fz0 = d.cabinFrontZ + 0.1;
-  const fz1 = Math.min(d.cabinRearZ - 0.08, fz0 + 1.05);
-  const out: DoorDef[] = [
-    { side: -1, z0: fz0, z1: fz1, y0, y1, hinge: "front", max: 1.18 },
-    { side: 1, z0: fz0, z1: fz1, y0, y1, hinge: "front", max: 1.18 },
-  ];
-  const rz0 = fz1 + 0.07;
-  const rz1 = d.cabinRearZ - 0.1;
-  if (rz1 - rz0 > 0.55) {
-    out.push({ side: -1, z0: rz0, z1: rz1, y0, y1, hinge: "front", max: 1.1 });
-    out.push({ side: 1, z0: rz0, z1: rz1, y0, y1, hinge: "front", max: 1.1 });
+  const z0 = d.cabinFrontZ + 0.1;
+  const z1 = d.cabinRearZ - 0.1;
+  const span = z1 - z0;
+  const out: DoorDef[] = [];
+  if (span > 1.7) {
+    // Four doors: split the cabin at the B-pillar. Splitting evenly rather
+    // than fixing the front door's length is what makes a long-wheelbase
+    // saloon look right and a short one not end up with a 40 cm rear stub.
+    const mid = z0 + span * 0.5;
+    for (const side of [-1, 1] as const) {
+      out.push({ side, z0, z1: mid - 0.04, y0, y1, hinge: "front", max: 1.18 });
+      out.push({ side, z0: mid + 0.04, z1, y0, y1, hinge: "front", max: 1.1 });
+    }
+  } else {
+    for (const side of [-1, 1] as const) {
+      out.push({ side, z0, z1, y0, y1, hinge: "front", max: 1.18 });
+    }
   }
+  // Model order is FL, FR, RL, RR — sort so `openDoorNear` and the hijack
+  // sequence can assume it.
+  out.sort((a, b) => a.z0 - b.z0 || a.side - b.side);
   return out;
 }
 
@@ -401,7 +410,7 @@ export const VEHICLE_DEFS: Record<VehicleKind, VehicleDef> = {
     kind: "police", label: "Police Cruiser",
     length: 5.02, width: 1.96, height: 1.53, clearance: 0.16,
     frontZ: -1.5, rearZ: 1.5, wheelRadius: 0.36, wheelWidth: 0.25, track: 1.62,
-    cabinFrontZ: -0.44, cabinRearZ: 1.32, beltline: 1.06, roof: 1.53, bonnet: 0.98,
+    cabinFrontZ: -0.58, cabinRearZ: 1.46, beltline: 1.06, roof: 1.53, bonnet: 0.98,
     boxiness: 0.42, tumblehome: 0.15,
     livery: "police", palette: [0xe9eaec], lightbar: true, pushbar: true,
     mass: 1930, peakTorque: 480, peakTorqueRpm: 4200, redlineRpm: 6800,
@@ -640,6 +649,27 @@ export function chassisMetrics(d: VehicleDef): { hx: number; hy: number; hz: num
   };
 }
 
+const _originCache = new Map<VehicleKind, number>();
+
+/**
+ * Height of the chassis collider centre above the road, cached per kind.
+ *
+ * The models are *authored* from the ground up because that is how every real
+ * dimension is quoted, but they are *driven* from the collider centre because
+ * that is what Rapier moves. This is the one number that converts between the
+ * two, and every module that positions something on a vehicle must use it
+ * rather than guessing — a guess is how you get a driver's eye 30 cm inside the
+ * roof lining.
+ */
+export function originYFor(d: VehicleDef): number {
+  let v = _originCache.get(d.kind);
+  if (v === undefined) {
+    v = chassisMetrics(d).originY;
+    _originCache.set(d.kind, v);
+  }
+  return v;
+}
+
 /**
  * Every axle this vehicle has, front to back, as (z, steered, powered).
  * Kept in one place because the model builder, the physics spec and the
@@ -682,9 +712,14 @@ export function toPhysicsSpec(d: VehicleDef): PhysicsVehicleSpec {
     // rigs run closer to 55/45 because their rear axles carry the load.
     const front = i === 0;
     const bias = (front ? 0.62 : 0.38 / Math.max(1, axles.length - 1)) / 2;
-    for (const sign of [-1, 1] as const) {
+    // A motorcycle has one wheel per axle, not two on top of each other. The
+    // raycast chassis stays upright on two contact points because the solver
+    // never lets the body tip past its angular damping — which is a lie, but it
+    // is the same lie every open-world game tells about bikes.
+    const sides = d.klass === "bike" ? ([0] as const) : ([-1, 1] as const);
+    for (const sign of sides) {
       wheels.push({
-        x: sign * (d.klass === "bike" ? 0 : halfTrack),
+        x: sign * halfTrack,
         // Hard point sits a full suspension travel above the wheel centre.
         y: d.wheelRadius + d.suspension - m.originY,
         z: a.z,
@@ -695,7 +730,7 @@ export function toPhysicsSpec(d: VehicleDef): PhysicsVehicleSpec {
         brakeBias: bias,
         handbrake: i === lastPowered && i > 0,
         restLength: d.suspension,
-        gripScale: i === 0 ? 1 : 1.04,
+        gripScale: (i === 0 ? 1 : 1.04) * (d.klass === "bike" ? 1.35 : 1),
       });
     }
   }
@@ -2141,10 +2176,20 @@ export interface VehicleUniforms {
   uGrime: { value: number };
   uBurn: { value: number };
   uWet: { value: number };
-  uBounds: { value: THREE.Vector3 };
+  /** Model-space bounding-box minimum — the livery mask's origin. */
+  uBoundsMin: { value: THREE.Vector3 };
+  /** Model-space bounding-box size. */
+  uBoundsSize: { value: THREE.Vector3 };
 }
 
-function makeUniforms(paint: THREE.Color, paint2: THREE.Color, livery: number, seed: number, bounds: THREE.Vector3): VehicleUniforms {
+function makeUniforms(
+  paint: THREE.Color,
+  paint2: THREE.Color,
+  livery: number,
+  seed: number,
+  boundsMin: THREE.Vector3,
+  boundsSize: THREE.Vector3,
+): VehicleUniforms {
   return {
     uPaint: { value: paint },
     uPaint2: { value: paint2 },
@@ -2153,7 +2198,8 @@ function makeUniforms(paint: THREE.Color, paint2: THREE.Color, livery: number, s
     uGrime: { value: 0.22 },
     uBurn: { value: 0 },
     uWet: { value: 0 },
-    uBounds: { value: bounds },
+    uBoundsMin: { value: boundsMin },
+    uBoundsSize: { value: boundsSize },
   };
 }
 
@@ -2185,7 +2231,7 @@ function makePaintMaterial(u: VehicleUniforms): THREE.MeshStandardMaterial {
     shader.fragmentShader = `
       uniform vec3 uPaint; uniform vec3 uPaint2; uniform float uLivery;
       uniform float uSeed; uniform float uGrime; uniform float uBurn; uniform float uWet;
-      uniform vec3 uBounds;
+      uniform vec3 uBoundsMin; uniform vec3 uBoundsSize;
       varying vec3 vLocalP; varying float vWear; varying float vDent;
       ${NOISE_GLSL}
     ` + shader.fragmentShader;
@@ -2197,8 +2243,8 @@ function makePaintMaterial(u: VehicleUniforms): THREE.MeshStandardMaterial {
         vec2 sp = vLocalP.xz * 2.4 + vLocalP.y * 1.1 + uSeed;
 
         // ---- livery. Evaluated from position, so no UVs and no textures.
-        float ny = (vLocalP.y + uBounds.y) / max(0.001, 2.0 * uBounds.y);
-        float nz = (vLocalP.z + uBounds.z) / max(0.001, 2.0 * uBounds.z);
+        float ny = (vLocalP.y - uBoundsMin.y) / max(0.001, uBoundsSize.y);
+        float nz = (vLocalP.z - uBoundsMin.z) / max(0.001, uBoundsSize.z);
         if (uLivery > 0.5 && uLivery < 1.5) {
           // Police: black doors, white everything else, a thin gold stripe.
           float band = step(0.22, nz) * step(nz, 0.62) * step(ny, 0.66);
@@ -2450,9 +2496,15 @@ export interface VehicleMaterialSet {
   uniforms: VehicleUniforms;
 }
 
-function makeMaterials(d: VehicleDef, paint: THREE.Color, seed: number, bounds: THREE.Vector3): VehicleMaterialSet {
+function makeMaterials(
+  d: VehicleDef,
+  paint: THREE.Color,
+  seed: number,
+  boundsMin: THREE.Vector3,
+  boundsSize: THREE.Vector3,
+): VehicleMaterialSet {
   const paint2 = paint.clone().multiplyScalar(0.55);
-  const u = makeUniforms(paint, paint2, LIVERY_INDEX[d.livery], seed, bounds);
+  const u = makeUniforms(paint, paint2, LIVERY_INDEX[d.livery], seed, boundsMin, boundsSize);
   const glass = makeGlassMaterial(u);
   const glassSide = makeGlassMaterial(u);
   return {
@@ -2569,14 +2621,13 @@ function bake(kind: VehicleKind): BakedModel {
       if (!k || k.idx.length === 0) continue;
       computeNormals(k);
       const g = new THREE.BufferGeometry();
-      // Shift into part-local space and drop the model onto the chassis origin.
-      const pos = new Float32Array(k.pos.length);
-      for (let i = 0; i < k.pos.length; i += 3) {
-        pos[i] = k.pos[i] - p.px;
-        pos[i + 1] = k.pos[i + 1] - p.py;
-        pos[i + 2] = k.pos[i + 2] - p.pz;
-      }
-      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      // Geometry is authored in each part's *own* frame. The body part's pivot
+      // is the origin, so its geometry is authored in ground coordinates and
+      // gets dropped onto the chassis centre by the group transform below;
+      // wheels, doors and rotors are authored around their hinge/axle. Do not
+      // subtract the pivot here as well — that was a real bug, and it buried
+      // every wheel half a radius in the tarmac.
+      g.setAttribute("position", new THREE.Float32BufferAttribute(k.pos, 3));
       g.setAttribute("normal", new THREE.Float32BufferAttribute(k.nrm, 3));
       g.setAttribute("uv", new THREE.Float32BufferAttribute(k.uv, 2));
       g.setAttribute("aWear", new THREE.Float32BufferAttribute(k.wear, 1));
@@ -2682,6 +2733,8 @@ export class VehicleModel {
   /** Part groups by name, for anything that needs to reach in. */
   readonly partByName = new Map<string, THREE.Group>();
   private wheelGroups: THREE.Group[] = [];
+  /** Inner frame per wheel: steering and roll only. */
+  private wheelSpinners: THREE.Group[] = [];
   private doorGroups: THREE.Group[] = [];
   private rotorMain: THREE.Group | null = null;
   private rotorTail: THREE.Group | null = null;
@@ -2711,9 +2764,10 @@ export class VehicleModel {
     // sRGB palette entries have to be converted or every car reads washed out
     // in a linear-workflow renderer.
     paint.convertSRGBToLinear();
-    const half = new THREE.Vector3();
-    baked.bounds.getSize(half).multiplyScalar(0.5);
-    this.materials = makeMaterials(this.def, paint, seed, half);
+    const bMin = baked.bounds.min.clone();
+    const bSize = new THREE.Vector3();
+    baked.bounds.getSize(bSize);
+    this.materials = makeMaterials(this.def, paint, seed, bMin, bSize);
     this.hardPointY = this.def.wheelRadius + this.def.suspension - baked.originY;
 
     this.root.name = `sf-vehicle-${kind}`;
@@ -2723,6 +2777,17 @@ export class VehicleModel {
       const g = new THREE.Group();
       g.position.set(p.px, p.py, p.pz);
       g.name = p.name;
+      // A wheel needs two frames: the outer one carries suspension travel and
+      // the flat-tyre squash (which must stay vertical in the *vehicle's*
+      // frame), the inner one carries steering and roll. One group cannot do
+      // both — scale is applied inside rotation, so a squashed spinning wheel
+      // would wobble like a buckled rim.
+      const spinner = p.name.startsWith("wheel") ? new THREE.Group() : null;
+      if (spinner) {
+        spinner.name = `${p.name}:spin`;
+        g.add(spinner);
+      }
+      const holder = spinner ?? g;
       const dentable = p.name === "body" || p.name.startsWith("door");
       for (const [ch, src] of p.geo) {
         let geo = src;
@@ -2742,11 +2807,14 @@ export class VehicleModel {
           mesh.renderOrder = 4;
           this.glassMeshes.set(`${p.name}:${ch}`, mesh);
         }
-        g.add(mesh);
+        holder.add(mesh);
       }
       this.root.add(g);
       this.partByName.set(p.name, g);
-      if (p.name.startsWith("wheel")) this.wheelGroups.push(g);
+      if (p.name.startsWith("wheel")) {
+        this.wheelGroups.push(g);
+        this.wheelSpinners.push(spinner!);
+      }
       else if (p.name.startsWith("door")) this.doorGroups.push(g);
       else if (p.name === "rotorMain") this.rotorMain = g;
       else if (p.name === "rotorTail") this.rotorTail = g;
@@ -2768,10 +2836,14 @@ export class VehicleModel {
    */
   setWheel(i: number, w: WheelVisual): void {
     const g = this.wheelGroups[i];
-    if (!g) return;
+    const spin = this.wheelSpinners[i];
+    if (!g || !spin) return;
     g.position.y = this.hardPointY - w.suspension;
-    g.rotation.set(w.spin, w.steer, 0, "YXZ");
-    // A flat tyre squats onto its rim and loses its round silhouette.
+    // Steer about the kingpin (Y), then roll about the axle (X). The axle is
+    // lateral because the vehicle's nose is −Z.
+    spin.rotation.set(w.spin, w.steer, 0, "YXZ");
+    // A flat tyre squats onto its rim and loses its round silhouette. Applied
+    // on the outer frame so the flat spot does not rotate with the wheel.
     const squat = 1 - w.flat * 0.34;
     g.scale.set(1, squat, 1);
   }
@@ -2929,15 +3001,12 @@ export class VehicleModel {
         mesh.visible = false;
       }
     }
-    const gu = (this.materials.glass as unknown as { userData: Record<string, unknown> });
-    void gu;
     for (const m of [this.materials.glass, this.materials.glassSide]) {
       // The crack uniform lives on the compiled shader, added in onBeforeCompile.
       const s = (m as unknown as { userData?: { shader?: { uniforms: Record<string, { value: number }> } } }).userData?.shader;
       if (s && s.uniforms.uCrack) s.uniforms.uCrack.value = 1;
       m.opacity = 0.5;
       m.roughness = 0.42;
-      m.needsUpdate = false;
     }
   }
 
@@ -3033,6 +3102,7 @@ export class VehicleModel {
     this.partByName.clear();
     this.glassMeshes.clear();
     this.wheelGroups.length = 0;
+    this.wheelSpinners.length = 0;
     this.doorGroups.length = 0;
   }
 }

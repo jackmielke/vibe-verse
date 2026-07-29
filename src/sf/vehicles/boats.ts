@@ -165,7 +165,6 @@ const _v = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _up = new THREE.Vector3();
-const _n = new THREE.Vector3();
 
 /* ================================================================== *
  * Per-boat state
@@ -442,5 +441,3 @@ export const boatSystem = new BoatSystem();
 export function seaLevelAt(x: number, z: number): number {
   return waveHeight(x, z, frame.time);
 }
-
-export { _n as boatScratchNormal };

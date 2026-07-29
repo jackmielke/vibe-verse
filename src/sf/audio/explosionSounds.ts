@@ -36,7 +36,9 @@ import { playBuffer, scratchOptions, distanceTo, voicePool, type VoiceOptions } 
 import {
   MODAL_LIBRARY,
   SPEED_OF_SOUND,
+  bakeOffline,
   bakeSync,
+  bakedBuffer,
   dcBlock,
   edgeFade,
   fillNoise,
@@ -285,7 +287,7 @@ function renderDebris(
     // Big pieces land early and loudly; late events are small and sharp.
     const size = clamp01(1 - t / duration);
     const gain = rng.range(0.15, 1) * (0.25 + size * 0.9) * (1 / (1 + pitch));
-    const len = Math.min(n - Math.round(t * sr), Math.round(sr * 0.45));
+    const len = Math.min(n - Math.round(t * sr), Math.round(sr * 0.3));
     if (len <= 16) continue;
     const tmp = new Float32Array(len);
     renderModal(tmp, sr, spec, rng);
@@ -385,6 +387,72 @@ function debrisBuffer(kind: DebrisKind, variant: number): AudioBuffer | null {
   );
 }
 
+/**
+ * The far-field blast — a *real* convolution, rendered offline.
+ *
+ * Beyond a few hundred metres what reaches you is not the blast plus some
+ * reverb: it is the blast convolved with the entire city, low-passed by a
+ * kilometre of air, with the direct sound almost gone. Building that as a live
+ * graph would mean a ConvolverNode per explosion, which is unaffordable. So we
+ * render it once per (size × environment) through an OfflineAudioContext and
+ * replay the result like any other buffer.
+ *
+ * The first distant explosion in a new environment uses the numeric tail while
+ * this renders in the background; every one after it gets the convolved
+ * version. That is the correct trade — the render takes a few tens of
+ * milliseconds off-thread and the fallback is already good.
+ */
+function farBlastBuffer(kind: ExplosionKind, env: EnvironmentKind): AudioBuffer | null {
+  const ctx = audioEngine.ctx;
+  if (!ctx) return null;
+  const key = `blast:far:${kind}:${env}`;
+  const hit = bakedBuffer(ctx, key);
+  if (hit) return hit;
+
+  const core = coreBuffer(kind, 0);
+  const ir = audioEngine.impulseResponse(env);
+  if (!core || !ir) return null;
+
+  const seconds = Math.min(8, core.duration + ir.duration + 0.2);
+  void bakeOffline(ctx, key, seconds, 2, (octx) => {
+    const src = octx.createBufferSource();
+    src.buffer = core;
+    // Distance eats the top end and stretches the event; both, together, are
+    // what "far away" means.
+    src.playbackRate.value = 0.82;
+
+    const air = octx.createBiquadFilter();
+    air.type = "lowpass";
+    air.frequency.value = 620;
+    air.Q.value = 0.5;
+
+    const shelf = octx.createBiquadFilter();
+    shelf.type = "lowshelf";
+    shelf.frequency.value = 120;
+    shelf.gain.value = 7;
+
+    const conv = octx.createConvolver();
+    conv.normalize = true;
+    conv.buffer = ir;
+
+    // The reflected field dominates; a little direct sound keeps the onset.
+    const wet = octx.createGain();
+    wet.gain.value = 1;
+    const dry = octx.createGain();
+    dry.gain.value = 0.22;
+
+    src.connect(air);
+    air.connect(shelf);
+    shelf.connect(conv);
+    shelf.connect(dry);
+    conv.connect(wet);
+    wet.connect(octx.destination);
+    dry.connect(octx.destination);
+    src.start(0);
+  });
+  return null;
+}
+
 function tailBuffer(kind: ExplosionKind, env: EnvironmentKind): AudioBuffer | null {
   const ctx = audioEngine.ctx;
   if (!ctx) return null;
@@ -443,6 +511,11 @@ export function playExplosion(opts: ExplosionOptions): void {
   const now = ctx.currentTime;
 
   const variant = blastVariant++ % 3;
+  const env = audioEngine.environment;
+
+  // Past ~320 m the offline-convolved version is the whole sound; use it if it
+  // has finished rendering, and kick off the render if it has not.
+  const far = dist > 320 ? farBlastBuffer(kind, env) : null;
 
   const o = scratchOptions as VoiceOptions;
   o.x = opts.x;
@@ -453,7 +526,7 @@ export function playExplosion(opts: ExplosionOptions): void {
   o.vz = 0;
   o.bus = "weapons";
   o.local = false;
-  o.gain = vol;
+  o.gain = far ? vol * 1.4 : vol;
   o.pitch = pitch;
   o.priority = 1;
   o.loudness = p.loudness * scale;
@@ -461,11 +534,11 @@ export function playExplosion(opts: ExplosionOptions): void {
   o.noOcclusion = false;
   o.when = undefined;
   o.duration = undefined;
-  playBuffer(coreBuffer(kind, variant), o);
+  playBuffer(far ?? coreBuffer(kind, variant), o);
 
   /* ---- reflections ---- */
-  const env = audioEngine.environment;
-  const tail = tailBuffer(kind, env);
+  // The convolved far-field already contains the reflections.
+  const tail = far ? null : tailBuffer(kind, env);
   if (tail) {
     const preset = ENVIRONMENTS[env];
     const distFactor = 0.55 + clamp01(dist / 220) * 1.2;

@@ -62,6 +62,7 @@ import {
   tracerTrail,
 } from "@/sf/vfx";
 import { drivingSystem } from "./driving";
+import { originYFor } from "./models";
 import { vehicleRuntime, type VehicleInstance } from "./vehicle";
 
 /* ================================================================== *
@@ -521,8 +522,10 @@ class FlightSystem {
     const klass = v.def.klass;
     if (klass !== "heli" && klass !== "plane") return;
 
-    if (klass === "heli") this.updateHelicopter(dt, v);
-    else this.updateAircraft(dt, v);
+    const bailed = klass === "heli" ? this.updateHelicopter(dt, v) : this.updateAircraft(dt, v);
+    // Bailing hands the frame to the wingsuit; the aircraft we just left must
+    // not keep taking trigger pulls on the way down.
+    if (bailed) return;
 
     this.updateWeapons(dt, v);
     this.updateTelemetry(v);
@@ -530,9 +533,9 @@ class FlightSystem {
 
   /* ---------------- helicopter ---------------- */
 
-  private updateHelicopter(dt: number, v: VehicleInstance): void {
+  private updateHelicopter(dt: number, v: VehicleInstance): boolean {
     const h = v.heli;
-    if (!h) return;
+    if (!h) return false;
     const s = input.snapshot;
     const inp = h.input;
 
@@ -602,15 +605,17 @@ class FlightSystem {
     }
 
     // Rotor vibration into the camera. A helicopter is never still.
-    cameraRig.addTrauma(h.rotorSpeed * 0.02 * dt);
+    // A helicopter is never still: a constant low-level thrum, settling at
+    // about 0.3 trauma against the rig's 1.45/s bleed-off.
+    cameraRig.addTrauma(h.rotorSpeed * 0.45 * dt);
     v.rotorSpeed = h.rotorSpeed;
 
-    this.handleBail(v);
+    return this.handleBail(v);
   }
 
   /* ---------------- aircraft ---------------- */
 
-  private updateAircraft(dt: number, v: VehicleInstance): void {
+  private updateAircraft(dt: number, v: VehicleInstance): boolean {
     const a = this.attachAero(v);
     const s = input.snapshot;
 
@@ -632,11 +637,12 @@ class FlightSystem {
       v.car.input.brake = onGround && input.held("crouch") ? 1 : 0;
       // Nosewheel steering while rolling.
       v.car.input.steer = onGround ? clamp(s.moveX, -1, 1) * clamp01(1 - a.airspeed / 40) : 0;
-      v.car.input.handbrake = input.held("handbrakeUnused" as never) ? 1 : 0;
+      // Parking brake: hold crouch on the ground to hold position for run-up.
+      v.car.input.handbrake = onGround && input.held("crouch") && a.airspeed < 3 ? 1 : 0;
     }
 
     // Stall buffet — you feel it before the wing lets go.
-    if (a.stall > 0.02) cameraRig.addTrauma(a.stall * 0.16 * dt * 8);
+    if (a.stall > 0.02) cameraRig.addTrauma(a.stall * 1.6 * dt);
     // Auto-level for the aeroplane is a wing-leveller, not an attitude hold:
     // with the stick centred it rolls the wings level and leaves pitch alone.
     const body = v.body;
@@ -656,7 +662,7 @@ class FlightSystem {
       this.telemetry.levelling = Math.abs(tiltZ) > 0.03;
     }
 
-    this.handleBail(v);
+    return this.handleBail(v);
   }
 
   /* ---------------- weapons ---------------- */
@@ -696,7 +702,7 @@ class FlightSystem {
 
   private fireGun(v: VehicleInstance): void {
     const def = v.def;
-    const originY = def.wheelRadius + def.suspension;
+    const originY = originYFor(def);
     // Chin gun sits under the nose and points where the nose points, with a
     // small convergence toward the crosshair so it is usable without a turret.
     v.localToWorld(0, def.clearance + 0.28 - originY, -def.length * 0.5 + 0.3, _v);
@@ -736,7 +742,7 @@ class FlightSystem {
 
   private fireRocket(v: VehicleInstance): void {
     const def = v.def;
-    const originY = def.wheelRadius + def.suspension;
+    const originY = originYFor(def);
     const hw = def.width * 0.5;
     this.rocketSide = -this.rocketSide;
     const podX = this.rocketSide * (hw + (def.klass === "heli" ? 0.95 : def.wingSpan * 0.28));
@@ -762,10 +768,10 @@ class FlightSystem {
    * is height for it. Jumping out of a burning gunship over the Financial
    * District and flying away is the sort of thing this whole game is for.
    */
-  private handleBail(v: VehicleInstance): void {
-    if (!input.held("parachute") && !input.held("wingsuit")) return;
+  private handleBail(v: VehicleInstance): boolean {
+    if (!input.held("parachute") && !input.held("wingsuit")) return false;
     const agl = v.position.y - terrainHeight(v.position.x, v.position.z);
-    if (agl < 2.5) return;
+    if (agl < 2.5) return false;
 
     const wantWing = input.held("wingsuit");
     drivingSystem.exit(true);
@@ -780,6 +786,7 @@ class FlightSystem {
     } else if (parachute.canDeploy()) {
       parachute.deploy();
     }
+    return true;
   }
 
   /* ---------------- telemetry ---------------- */

@@ -59,7 +59,7 @@ import { boatSystem, installWaterSampler } from "./boats";
 import { drivingSystem } from "./driving";
 import { flightSystem } from "./flight";
 import { hijackSystem } from "./hijack";
-import { disposeVehicleAssets, type VehicleKind } from "./models";
+import { disposeVehicleAssets, originYFor, type VehicleKind } from "./models";
 import { vehicleRuntime, type SpawnOptions, type VehicleInstance } from "./vehicle";
 
 /* ================================================================== *
@@ -268,14 +268,20 @@ export default function Vehicles({
   );
 
   /* ---- mount ---- */
+  // Attach once. Quality is a separate effect on purpose: rebuilding the whole
+  // vehicle world because the player nudged a slider would despawn the car they
+  // are sitting in.
   useEffect(() => {
     const g = groupRef.current ?? scene;
     vehicleRuntime.attach(g, tier);
-    vehicleRuntime.setQuality(tier);
-    vehicleRuntime.realHeadlights = realHeadlights;
     installWaterSampler();
     if (owned) scene.add(owned.group);
     return () => {
+      // Hand the player back to the character controller before anything is
+      // torn down, or unmounting mid-drive leaves `frame.vehicleId` pointing at
+      // a vehicle that no longer exists and the capsule frozen in a seat.
+      hijackSystem.cancel();
+      if (drivingSystem.active) drivingSystem.exit(false);
       if (owned) {
         scene.remove(owned.group);
         owned.dispose();
@@ -287,7 +293,16 @@ export default function Vehicles({
       state.specialIds.clear();
       disposeVehicleAssets();
     };
-  }, [scene, tier, owned, realHeadlights, state]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, owned, state]);
+
+  useEffect(() => {
+    vehicleRuntime.setQuality(tier);
+  }, [tier]);
+
+  useEffect(() => {
+    vehicleRuntime.realHeadlights = realHeadlights;
+  }, [realHeadlights]);
 
   /* ---- the frame ---- */
   useFrame((_, delta) => {
@@ -362,12 +377,23 @@ function streamParked(state: StreamState, cx: number, cz: number, tier: string, 
   const wanted = new Set<string>();
   let count = state.parkedIds.size;
 
+  // Slot indices are integers anchored to the grid origin, never to the
+  // player. Deriving them from the player's fractional block position — which
+  // is what an earlier version did — meant the same kerb produced different
+  // slot keys depending on where you were standing, and cars re-rolled
+  // themselves as you walked. Determinism here is load-bearing: the screenshot
+  // harness photographs the same street twice and expects the same cars.
+  const uCentre = Math.round(du);
+  const vCentre = Math.round(dv / SLOT_STRIDE);
+  const vSteps = Math.ceil(vSpan / SLOT_STRIDE);
+
   for (let ui = -uSpan; ui <= uSpan; ui++) {
-    const u = Math.round(du) + ui;
-    for (let vi = -vSpan / SLOT_STRIDE; vi <= vSpan / SLOT_STRIDE; vi++) {
-      const vAlong = Math.round(dv / SLOT_STRIDE) * SLOT_STRIDE + vi * SLOT_STRIDE;
+    const u = uCentre + ui;
+    for (let vi = -vSteps; vi <= vSteps; vi++) {
+      const vIndex = vCentre + vi;
+      const vAlong = vIndex * SLOT_STRIDE;
       for (const side of [-1, 1] as const) {
-        const key = `${g.name}:${u}:${vAlong.toFixed(2)}:${side}`;
+        const key = `${g.name}:${u}:${vIndex}:${side}`;
         // One deterministic RNG per slot: occupancy, kind, colour and the
         // little parking jitter all come out of the same stream.
         const rng = makeRng(hashSeed(key));
@@ -511,15 +537,12 @@ function pushAmbient(batch: VehicleBatch): void {
     _up.set(0, 1, 0).applyQuaternion(v.quaternion);
     _right.set(1, 0, 0).applyQuaternion(v.quaternion);
 
-    // Their yaw is measured for a +X nose: forward = (cos y, sin y).
-    const yaw = Math.atan2(-_fwd.z, -_fwd.x) + Math.PI;
-    // Nose up is positive; leaning left is positive roll (their +Z is left).
+    // Their nose is +X: a vertex at (1,0,0) lands on (cos y, sin y).
+    const yaw = Math.atan2(_fwd.z, _fwd.x);
+    // Nose up is positive pitch. Positive roll leans *left*, because with +X
+    // forward and +Y up their +Z points to the driver's left.
     const pitch = Math.asin(Math.max(-1, Math.min(1, _fwd.y)));
-    const roll = Math.asin(Math.max(-1, Math.min(1, -_up.x * _right.x - _up.z * _right.z)));
-
-    const originY = v.def.wheelRadius + v.def.suspension;
-    const groundY = v.position.y - (v.def.clearance + (v.def.height - v.def.clearance) * 0) - 0;
-    void originY;
+    const roll = Math.atan2(_right.y, Math.max(1e-4, _up.y));
 
     _col.setHex(v.paint).convertSRGBToLinear();
 
@@ -529,7 +552,7 @@ function pushAmbient(batch: VehicleBatch): void {
     batch.push(
       kind,
       v.position.x,
-      groundY - v.def.clearance * 0.0 - (v.def.wheelRadius + v.def.suspension - v.def.wheelRadius) * 0 - chassisDrop(v),
+      v.position.y - chassisDrop(v),
       v.position.z,
       yaw,
       pitch,
@@ -552,14 +575,12 @@ function pushAmbient(batch: VehicleBatch): void {
  * How far below the body origin the road surface is.
  *
  * The instanced meshes are authored from the ground up; ours from the chassis
- * centre. This is the one number that reconciles them, and getting it wrong is
- * the classic "traffic floats six inches above the tarmac" bug.
+ * collider centre. `chassisMetrics` is the single definition of where that
+ * centre sits, so reusing it here is what stops the far-LOD traffic from
+ * floating six inches above the tarmac — the classic version of this bug.
  */
 function chassisDrop(v: VehicleInstance): number {
-  const d = v.def;
-  const top = Math.min(d.roof, d.beltline + 0.42);
-  const bottom = d.clearance;
-  return bottom + (top - bottom) * 0.5;
+  return originYFor(v.def);
 }
 
 /* ================================================================== *

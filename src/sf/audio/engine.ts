@@ -295,8 +295,14 @@ export function setOcclusionProbe(p: OcclusionProbe | null): void {
   occlusionProbe = p;
 }
 
-/** Terrain-only fallback: how much of SF's topography is in the way. */
-function terrainOcclusion(
+/**
+ * Terrain-only fallback: how much of SF's topography is in the way.
+ *
+ * Exported because the physics-backed probe installed by `Audio.tsx` needs
+ * something sane to return before Rapier has finished booting — and "no
+ * occlusion at all" is a worse answer than "the hill is still there".
+ */
+export function terrainOcclusion(
   sx: number,
   sy: number,
   sz: number,
@@ -719,6 +725,18 @@ class AudioEngine {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * The generated impulse response for a space.
+   *
+   * Public because the explosion module renders its far-field blasts through
+   * this IR offline — a real convolution of the dry blast with the city, which
+   * is a better answer than any hand-tuned tail for something heard a
+   * kilometre away.
+   */
+  impulseResponse(kind: EnvironmentKind): AudioBuffer | null {
+    return this.irFor(kind);
   }
 
   private installIR(kind: EnvironmentKind, immediate: boolean): void {

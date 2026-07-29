@@ -52,6 +52,7 @@ import { terrainHeight, terrainSlope, walkableHeight } from "../geo/sfGeo";
 import { clamp, clamp01, damp } from "../math/rng";
 import { cameraRig, playerCtrl, input, type ActionName } from "@/sf/player";
 import { QUERY_STATIC, makeRayHit, sphereCast, type RayHit } from "@/sf/physics";
+import { originYFor } from "./models";
 import { vehicleRuntime, type VehicleInstance } from "./vehicle";
 
 /* ================================================================== *
@@ -143,14 +144,12 @@ const TUNING: Record<CameraMode, CameraTuning> = {
 const PROBE_R = 0.3;
 
 const _desired = new THREE.Vector3();
-const _smoothed = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _tmp2 = new THREE.Vector3();
 const _hit: RayHit = makeRayHit();
-const _euler = new THREE.Euler(0, 0, 0, "YXZ");
 
 /**
  * The chase camera.
@@ -168,8 +167,6 @@ export class VehicleCamera {
   private pos = new THREE.Vector3();
   /** Auto-centre timer: how long since the player last moved the look stick. */
   private idleLook = 0;
-  /** Smoothed yaw the camera orbits at, in world space. */
-  private orbitYaw = 0;
 
   reset(): void {
     this.fresh = true;
@@ -211,23 +208,20 @@ export class VehicleCamera {
       // Behind the car when moving forward, in front of it when reversing —
       // reversing with the camera behind you is how you hit a fire hydrant.
       const target = opts.reverse && speed < -1.5 ? heading + Math.PI : heading;
-      let delta = ((target - frame.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const delta = ((target - frame.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       const rate = clamp01((Math.abs(speed) - 3) / 14) * 3.2;
       frame.yaw += delta * clamp01(rate * dt);
       // Level the pitch out gently too; nobody wants to drive looking at the sky.
       frame.pitch = damp(frame.pitch, -0.06, 1.4, dt);
-      void delta;
     }
-    this.orbitYaw = frame.yaw;
 
     /* ---- desired eye -------------------------------------------- */
     if (this.mode === "cockpit" || this.mode === "hood") {
+      const originY = originYFor(def);
       if (this.mode === "cockpit") {
         const s = def.seats[0];
-        const originY = def.wheelRadius + def.suspension;
         _tmp.set(s ? s.x : 0, (s ? s.y : 1) - originY + 0.66, s ? s.z - 0.06 : 0);
       } else {
-        const originY = def.wheelRadius + def.suspension;
         _tmp.set(0, def.bonnet - originY + 0.28, def.cabinFrontZ - 0.15);
       }
       _desired.copy(_tmp).applyQuaternion(v.quaternion).add(v.position);
@@ -242,9 +236,12 @@ export class VehicleCamera {
         v.position.y + t.height * this.scale + def.height * 0.42 - frame.pitch * dist * 0.8,
         v.position.z + cy * dist,
       );
-      // Lead the car: the eye slides toward where the nose is pointing, which
-      // opens the corner up before you turn into it.
-      _desired.addScaledVector(_fwd, -Math.abs(speed) * t.lookAhead * 0.0);
+      // Lead the car. Two separate leads, and both matter:
+      //  · longitudinal — the anchor slides toward where the nose is pointing,
+      //    so at speed you see further up the road than you do at a standstill;
+      //  · lateral — the eye drifts to the outside of a corner under lateral
+      //    load, which opens the apex up before you have turned into it.
+      _desired.addScaledVector(_fwd, Math.abs(speed) * t.lookAhead);
       _desired.addScaledVector(_right, clamp(v.car ? -v.car.accelLat * 0.035 : 0, -1.4, 1.4));
 
       // Never let the eye sink below the road; on a 25% grade the naive orbit
@@ -290,7 +287,6 @@ export class VehicleCamera {
       }
     }
 
-    _smoothed.copy(this.pos);
     return out.copy(this.pos);
   }
 }
@@ -330,6 +326,19 @@ export class DrivingSystem {
   /** Set by hijack.ts while a hijack animation is playing — input is ignored. */
   scripted = false;
 
+  /**
+   * Deterministic jitter for crash shake.
+   *
+   * `Math.random()` is banned under `src/sf` because the screenshot harness
+   * needs the world to be reproducible. A hashed counter is just as unbiased
+   * for a one-frame camera kick and costs a multiply.
+   */
+  private noiseCounter = 0;
+  private shakeNoise(): number {
+    this.noiseCounter = (this.noiseCounter * 1664525 + 1013904223) >>> 0;
+    return this.noiseCounter / 4294967296;
+  }
+
   get cameraMode(): CameraMode {
     return this.camera.mode;
   }
@@ -365,21 +374,23 @@ export class DrivingSystem {
     playerCtrl.enterVehicle(vehicleId);
     frame.vehicleId = vehicleId;
 
-    // Crash feedback is routed through here so the shake is consistent whether
-    // the impact came from the player or from a truck hitting them.
-    this.detachImpact = null;
-    const prev = vehicleRuntime.onImpact;
-    vehicleRuntime.onImpact = (veh, energy) => {
-      prev?.(veh, energy, veh.position.x, veh.position.y, veh.position.z);
+    // Crash feedback: the shake is identical whether the player hit something
+    // or something hit them, which is the only way a collision reads as an
+    // event rather than as a control glitch.
+    vehicleRuntime.onPlayerImpact = (veh, energy) => {
       if (veh !== this.vehicle) return;
       cameraRig.addTrauma(clamp01(energy * 0.16));
-      cameraRig.addKick(-energy * 0.008, (Math.random() - 0.5) * energy * 0.006, (Math.random() - 0.5) * energy * 0.012);
+      cameraRig.addKick(
+        -energy * 0.008,
+        (this.shakeNoise() - 0.5) * energy * 0.006,
+        (this.shakeNoise() - 0.5) * energy * 0.012,
+      );
       input.rumble(90 + energy * 30, clamp01(energy * 0.2), clamp01(energy * 0.3));
       // A hard enough shunt hurts the driver too.
       if (energy > 3.4) useSfStore.getState().damage((energy - 3.4) * 5.5);
     };
     this.detachImpact = () => {
-      vehicleRuntime.onImpact = prev;
+      vehicleRuntime.onPlayerImpact = null;
     };
 
     useSfStore.getState().notify(`${v.def.label}`, "info");
@@ -648,11 +659,18 @@ export class DrivingSystem {
     const car = v.car!;
 
     // Body lean. A real driver's head tips with lateral g; feeding the rig's
-    // roll spring an impulse proportional to lateral acceleration produces
-    // exactly that, and it decays on its own when the corner ends.
+    // roll spring a steady impulse proportional to lateral acceleration
+    // produces exactly that, and it decays on its own when the corner ends.
+    //
+    // The coefficients are derived, not guessed. The rig's kick spring is
+    // v += p·K·0.08 with K = 160, so a constant per-frame p at 60 Hz settles at
+    // x = 4.8·p radians. Two degrees of lean at 8 m/s² of lateral load — which
+    // is about what a driver's head actually does — wants p = 9e-4 per m/s².
+    // Scaling by dt·60 keeps it identical on a 144 Hz monitor.
     const lat = clamp(car.accelLat, -25, 25);
     const lon = clamp(car.accelLong, -25, 25);
-    cameraRig.addKick(-lon * 0.00042 * dt * 60 * 0.016, 0, lat * 0.00075 * dt * 60 * 0.016);
+    const rate = dt * 60;
+    cameraRig.addKick(-lon * 0.0006 * rate, 0, lat * 0.0009 * rate);
 
     // Gear change: a small downward kick and a rumble tick.
     if (car.gear !== this.lastGear) {
@@ -664,11 +682,13 @@ export class DrivingSystem {
     }
 
     // Redline / surface vibration, scaled so it is felt and not seen.
+    // Trauma bleeds off at 1.45/s, so a steady feed of f·dt settles at f/1.45.
+    // Redline sits at ~0.4, which reads as a hum rather than as damage.
     const rev = clamp01((car.rpm - car.spec.redlineRpm * 0.9) / (car.spec.redlineRpm * 0.12));
-    if (rev > 0.02) cameraRig.addTrauma(rev * 0.035 * dt);
+    if (rev > 0.02) cameraRig.addTrauma(rev * 0.6 * dt);
 
     // Wheel slip screeches into the trauma channel too — you feel a lock-up.
-    if (car.slip > 1.2) cameraRig.addTrauma(clamp01((car.slip - 1.2) * 0.12) * dt);
+    if (car.slip > 1.2) cameraRig.addTrauma(clamp01((car.slip - 1.2) * 0.8) * 1.2 * dt);
   }
 }
 
@@ -702,5 +722,3 @@ export function vehicleHeading(v: VehicleInstance): number {
   _fwd.set(0, 0, -1).applyQuaternion(v.quaternion);
   return Math.atan2(-_fwd.x, -_fwd.z);
 }
-
-export { _euler as drivingScratchEuler, _smoothed as drivingScratchVec };

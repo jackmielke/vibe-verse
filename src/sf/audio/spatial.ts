@@ -118,6 +118,14 @@ export class Voice {
   private out: GainNode;
   private connectedBus: BusName | null = null;
   private usingPanner = false;
+  /**
+   * Head-locked voices (ambience beds, music, first-person foley) are exempt
+   * from distance, air absorption and occlusion entirely. Without this flag a
+   * bed anchored at the world origin gets muffled as the player walks away
+   * from Montgomery & Market, which is both wrong and extremely confusing to
+   * debug — it sounds like the mix is broken rather than the geometry.
+   */
+  private isLocal = false;
 
   /** Housekeeping, read by the pool. */
   active = false;
@@ -208,6 +216,7 @@ export class Voice {
     }
 
     const local = !!opts.local;
+    this.isLocal = local;
     const wantPanner = !local && !!this.panner;
     if (wantPanner !== this.usingPanner || !this.active) {
       try {
@@ -233,7 +242,10 @@ export class Voice {
       this.occlusion = 0;
       this.occlusionTarget = 0;
       this.distance = 0;
-      this.out.gain.value = 1;
+      const t0 = ctx.currentTime;
+      this.out.gain.cancelScheduledValues(t0);
+      this.out.gain.setValueAtTime(this.out.gain.value, t0);
+      this.out.gain.linearRampToValueAtTime(1, t0 + 0.004);
     } else {
       const ref = opts.refDistance ?? clamp(this.loudness * 0.035, 2.5, 40);
       const max = opts.maxDistance ?? Math.max(ref * 4, this.loudness);
@@ -336,23 +348,37 @@ export class Voice {
    * away rather than went behind something.
    */
   private applyFilter(immediate: boolean): void {
+    if (this.isLocal) return;
     const air = airCutoff(this.distance) * audioEngine.env.airDamping;
     const occ = this.occlusion;
     const occCut = 20000 * Math.pow(0.028, occ * occ);
     const cut = clamp(Math.min(air, occCut), 180, 20000);
     const t = audioEngine.now;
-    if (immediate) this.lp.frequency.setValueAtTime(cut, t);
-    else this.lp.frequency.setTargetAtTime(cut, t, 0.12);
+    // Guard on change: 48 voices × 2 params × 60 Hz is 5,760 automation events
+    // a second, almost all of them setting a value to what it already is.
+    if (immediate) {
+      this.lp.frequency.cancelScheduledValues(t);
+      this.lp.frequency.setValueAtTime(cut, t);
+    } else if (Math.abs(this.lp.frequency.value - cut) > cut * 0.02) {
+      this.lp.frequency.setTargetAtTime(cut, t, 0.12);
+    }
 
     // Occlusion also loses a little level — a wall absorbs, it does not only
     // filter. Modest, because the filter is doing the heavy lifting.
     const level = 1 - occ * 0.45;
-    if (immediate) this.out.gain.setValueAtTime(level, t);
-    else this.out.gain.setTargetAtTime(level, t, 0.12);
+    if (immediate) {
+      // Ramp rather than jump: this voice may still be fading out from a steal.
+      this.out.gain.cancelScheduledValues(t);
+      this.out.gain.setValueAtTime(this.out.gain.value, t);
+      this.out.gain.linearRampToValueAtTime(level, t + 0.004);
+    } else if (Math.abs(this.out.gain.value - level) > 0.01) {
+      this.out.gain.setTargetAtTime(level, t, 0.12);
+    }
   }
 
   /** Per-frame maintenance, driven by the pool. */
   tick(dt: number): void {
+    if (this.isLocal) return;
     const l = audioEngine.listener;
     const dx = this.x - l.x;
     const dy = this.y - l.y;
@@ -393,8 +419,9 @@ export class Voice {
       try {
         this.out.gain.cancelScheduledValues(now);
         this.out.gain.setValueAtTime(this.out.gain.value, now);
+        // Fade to silence and stay there. `begin` ramps back up when this
+        // slot is reused, so a recycled voice never inherits a stale level.
         this.out.gain.linearRampToValueAtTime(0, now + fade);
-        this.out.gain.setValueAtTime(1, now + fade + 0.001);
       } catch {
         /* context closing */
       }
@@ -410,6 +437,7 @@ export class Voice {
     }
     this.active = false;
     this.hold = false;
+    this.isLocal = false;
     this.priority = 0;
     this.onSteal = null;
   }

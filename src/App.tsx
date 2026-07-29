@@ -38,6 +38,7 @@ import SanFrancisco from "./pages/SanFrancisco.tsx";
 import SanPalmas from "./pages/SanPalmas.tsx";
 import Worlds from "./pages/Worlds.tsx";
 import VibeIsland2 from "./pages/VibeIsland2.tsx";
+import Terminal from "./pages/Terminal.tsx";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,7 @@ const CHROMELESS = new Set([
   "/worlds",
   "/island-2",
   "/vibe-island-2",
+  "/terminal",
 ]);
 
 const AppChrome = () => {
@@ -149,6 +151,8 @@ const App = () => (
           <Route path="/sf" element={<SanFrancisco />} />
           <Route path="/san-francisco" element={<SanFrancisco />} />
           <Route path="/free-fall" element={<SanFrancisco />} />
+          {/* THE TERMINAL — the front door. Stand in the sky, pick a world. */}
+          <Route path="/terminal" element={<Terminal />} />
           {/* Vibe Island II — the floating archipelago, rebuilt. */}
           <Route path="/island-2" element={<VibeIsland2 />} />
           <Route path="/vibe-island-2" element={<VibeIsland2 />} />
