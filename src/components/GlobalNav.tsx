@@ -31,6 +31,7 @@ const ALL_WORLDS: Destination[] = [
   { to: "/space", emoji: "🌌", label: "Space", matchPaths: ["/unit7"] },
   { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
   { to: "/sf", emoji: "🌉", label: "San Francisco", matchPaths: ["/san-francisco", "/free-fall"] },
+  { to: "/san-palmas", emoji: "🌴", label: "San Palmas", matchPaths: ["/fps"] },
   { to: "/evolve", emoji: "🧬", label: "Evolve", matchPaths: ["/bestiary"] },
   { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
   { to: "/go", emoji: "🧭", label: "Vibe GO" },
