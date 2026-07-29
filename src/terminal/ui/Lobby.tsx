@@ -17,6 +17,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GATES } from "../geo/terminalGeo";
+import island2Art from "@/assets/worlds/vibe-island-2.jpg";
+import sfArt from "@/assets/worlds/san-francisco.jpg";
+import palmasArt from "@/assets/worlds/san-palmas.jpg";
+import cityArt from "@/assets/worlds/city.jpg";
+import edmArt from "@/assets/worlds/edm-town.jpg";
+import skiArt from "@/assets/worlds/ski.jpg";
+import gardenArt from "@/assets/worlds/garden.jpg";
+import spaceArt from "@/assets/worlds/space.jpg";
+import museumArt from "@/assets/worlds/museum.jpg";
+import evolveArt from "@/assets/worlds/evolve.jpg";
+
+/**
+ * Real captures for the cards. These already existed in the repo for the
+ * worlds gateway — an earlier pass shipped gradient placeholders instead,
+ * which is worse in every way: a card is a promise about what is behind it,
+ * and a coloured rectangle promises nothing.
+ */
+const GATE_ART: Record<string, string> = {
+  "island-2": island2Art,
+  sf: sfArt,
+  "san-palmas": palmasArt,
+  city: cityArt,
+  "edm-town": edmArt,
+  ski: skiArt,
+  garden: gardenArt,
+  space: spaceArt,
+  museum: museumArt,
+  evolve: evolveArt,
+};
 
 export interface LobbyProps {
   focusedIndex: number;
@@ -174,14 +203,32 @@ export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
                     : "0 8px 22px rgba(0,30,70,.3)",
                 }}
               >
-                <div
-                  className="aspect-[3/4] w-full"
-                  style={{
-                    background: `linear-gradient(168deg, #${gate.accent
-                      .toString(16)
-                      .padStart(6, "0")}dd 0%, rgba(8,22,44,.94) 72%)`,
-                  }}
-                />
+                <div className="relative aspect-[3/4] w-full overflow-hidden bg-slate-900">
+                  {GATE_ART[gate.key] ? (
+                    <img
+                      src={GATE_ART[gate.key]}
+                      alt={gate.name}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="h-full w-full"
+                      style={{
+                        background: `linear-gradient(168deg, #${gate.accent
+                          .toString(16)
+                          .padStart(6, "0")}dd 0%, rgba(8,22,44,.94) 72%)`,
+                      }}
+                    />
+                  )}
+                  {/* A wash of the world's accent keeps the strip reading as one
+                      set rather than ten unrelated photographs. */}
+                  <div
+                    className="absolute inset-0 mix-blend-soft-light"
+                    style={{ background: `#${gate.accent.toString(16).padStart(6, "0")}`, opacity: isFocus ? 0.24 : 0.42 }}
+                  />
+                </div>
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2.5">
                   <div className={`font-bold text-white ${isFocus ? "text-[13px]" : "text-[10px]"}`}>
                     {gate.name}
