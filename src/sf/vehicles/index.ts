@@ -52,6 +52,7 @@ export type {
 
 /* ---- runtime ---- */
 export {
+  ENGINE_ARCHETYPE,
   VehicleInstance,
   enableVehicleAudio,
   setVehicleAudioVolume,
@@ -61,7 +62,9 @@ export {
 } from "./vehicle";
 export type {
   DamageKind,
+  EngineArchetype,
   EngineAudioFrame,
+  RoadSurfaceTag,
   Passenger,
   SpawnOptions,
   VehicleFaction,

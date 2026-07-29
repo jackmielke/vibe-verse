@@ -41,7 +41,7 @@ import {
   terrainHeight,
 } from "../geo/sfGeo";
 import { audioEngine } from "./engine";
-import { playBuffer, voicePool, scratchOptions, type Voice, type VoiceOptions } from "./spatial";
+import { playBuffer, voicePool, beginOptions, type Voice, type VoiceOptions } from "./spatial";
 import {
   MODAL_LIBRARY,
   bakeSync,
@@ -712,7 +712,7 @@ function oneShot(
   if (!ctx) return;
   const buf = bakeSync(ctx, key, seconds, 1, (ch, sr, rng) => render(ch[0], sr, rng));
   if (!buf) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = x;
   o.y = y;
   o.z = z;
@@ -834,7 +834,7 @@ class WorldAmbience {
 
     // One held, head-locked voice carries every bed. Ambience must not pan
     // with head movement and must never be stolen.
-    const o = scratchOptions as VoiceOptions;
+    const o = beginOptions();
     o.x = 0;
     o.y = 0;
     o.z = 0;
@@ -848,9 +848,6 @@ class WorldAmbience {
     o.propagate = false;
     o.duration = 1e9;
     const v = voicePool.acquire(o);
-    o.local = false;
-    o.noOcclusion = false;
-    o.duration = undefined;
     if (!v) return false;
     v.hold = true;
     this.voice = v;

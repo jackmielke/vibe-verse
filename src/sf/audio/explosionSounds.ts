@@ -32,7 +32,7 @@
  */
 import { clamp, clamp01, makeRng } from "../math/rng";
 import { audioEngine, ENVIRONMENTS, type EnvironmentKind } from "./engine";
-import { playBuffer, scratchOptions, distanceTo, voicePool, type VoiceOptions } from "./spatial";
+import { playBuffer, beginOptions, distanceTo, voicePool, type VoiceOptions } from "./spatial";
 import {
   MODAL_LIBRARY,
   SPEED_OF_SOUND,
@@ -517,7 +517,7 @@ export function playExplosion(opts: ExplosionOptions): void {
   // has finished rendering, and kick off the render if it has not.
   const far = dist > 320 ? farBlastBuffer(kind, env) : null;
 
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -549,8 +549,6 @@ export function playExplosion(opts: ExplosionOptions): void {
     o.noOcclusion = true;
     o.propagate = false;
     playBuffer(tail, o);
-    o.when = undefined;
-    o.noOcclusion = false;
   }
 
   /* ---- debris ---- */
@@ -647,7 +645,7 @@ export function playDebrisShower(kind: DebrisKind, opts: DebrisOptions): void {
   if (!ctx) return;
   const buf = debrisBuffer(kind, (blastVariant + 1) % 2);
   if (!buf) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -661,7 +659,6 @@ export function playDebrisShower(kind: DebrisKind, opts: DebrisOptions): void {
   o.noOcclusion = false;
   o.when = ctx.currentTime + (opts.delay ?? 0);
   playBuffer(buf, o);
-  o.when = undefined;
 }
 
 /* ================================================================== *
@@ -688,7 +685,7 @@ export function playTinnitus(intensity: number): void {
   const now = ctx.currentTime;
   if (tinnitusVoice && now < tinnitusUntil) return; // do not stack rings
 
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = 0;
   o.y = 0;
   o.z = 0;
@@ -703,9 +700,6 @@ export function playTinnitus(intensity: number): void {
   o.duration = seconds + 0.3;
   o.when = undefined;
   const v = voicePool.acquire(o);
-  o.local = false;
-  o.noOcclusion = false;
-  o.duration = undefined;
   if (!v) return;
 
   tinnitusVoice = v;
@@ -815,7 +809,7 @@ function shortNoiseBurst(
 export function playIgnition(x: number, y: number, z: number, volume = 1): void {
   const ctx = audioEngine.ctx;
   if (!ctx || !audioEngine.available) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = x;
   o.y = y;
   o.z = z;
@@ -828,7 +822,6 @@ export function playIgnition(x: number, y: number, z: number, volume = 1): void 
   o.propagate = false;
   o.duration = 1.2;
   const v = voicePool.acquire(o);
-  o.duration = undefined;
   if (!v) return;
   const now = ctx.currentTime;
   shortNoiseBurst(ctx, v.input, now, 0.9, 320, 0.55);

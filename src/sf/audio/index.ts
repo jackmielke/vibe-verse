@@ -46,6 +46,7 @@ export {
   distanceTo,
   dopplerRate,
   scratchOptions,
+  beginOptions,
   Voice,
   type VoiceOptions,
 } from "./spatial";

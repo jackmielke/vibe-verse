@@ -1028,7 +1028,16 @@ export class VehicleInstance {
  * induction roar. It is not a V8, but it is unmistakably an engine, it tracks
  * rpm continuously, and it costs four oscillators.
  *
- * Deliberately opt-in: the screenshot harness must never create an AudioContext.
+ * Deliberately opt-in, for two reasons: the screenshot harness must never
+ * create an AudioContext, and this is a *fallback*. When the game's audio
+ * subsystem is mounted it does all of this properly — granular pulse trains,
+ * exhaust cones, load-dependent layers — and the right wiring is to leave this
+ * synth off and forward `onAudio` to it instead:
+ *
+ *   vehicleRuntime.onAudio = (f) => sfAudio.updateVehicle(f.id, f.archetype, f, f.dt);
+ *   vehicleRuntime.onAudioRelease = (id) => sfAudio.releaseVehicle(id);
+ *
+ * What this buys is that a build with no audio subsystem is not silent.
  */
 
 let audioCtx: AudioContext | null = null;

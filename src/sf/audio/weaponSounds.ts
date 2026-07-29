@@ -36,7 +36,7 @@
  */
 import { clamp, clamp01, makeRng, type Rng } from "../math/rng";
 import { audioEngine, ENVIRONMENTS, type EnvironmentKind } from "./engine";
-import { playBuffer, scratchOptions, distanceTo, type VoiceOptions } from "./spatial";
+import { playBuffer, beginOptions, distanceTo, type VoiceOptions } from "./spatial";
 import {
   MODAL_LIBRARY,
   SPEED_OF_SOUND,
@@ -985,7 +985,7 @@ export function playShot(bank: string, opts: ShotOptions): void {
   const variant = variantCursor++ % CORE_VARIANTS;
   const core = far ? distantBuffer(p) : coreBuffer(p, variant);
 
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -1031,16 +1031,13 @@ export function playShot(bank: string, opts: ShotOptions): void {
   o.propagate = false;
   o.local = local || dist < 25;
   playBuffer(tail, o);
-  o.when = undefined;
-  o.local = false;
-  o.noOcclusion = false;
 }
 
 /** Explicitly play the far-field version (used for scripted distant gunfire). */
 export function playDistantShot(bank: string, opts: ShotOptions): void {
   if (!audioEngine.available) return;
   const p = gunProfile(bank, opts.suppressed);
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -1061,7 +1058,7 @@ export function playWeaponMech(bank: string, opts: ShotOptions): void {
   const buf = mechBuffer(bank);
   if (!buf) return;
   const b = MECH_BANKS[bank];
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;

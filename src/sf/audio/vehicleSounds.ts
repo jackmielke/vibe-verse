@@ -38,7 +38,7 @@
  */
 import { clamp, clamp01, makeRng, type Rng } from "../math/rng";
 import { audioEngine } from "./engine";
-import { Voice, voicePool, scratchOptions, distanceTo, type VoiceOptions } from "./spatial";
+import { Voice, voicePool, beginOptions, distanceTo, type VoiceOptions } from "./spatial";
 import {
   MODAL_LIBRARY,
   bakeSync,
@@ -613,7 +613,7 @@ export class VehicleVoice {
     if (this.started || this.disposed) return this.started;
     const ctx = this.ctx;
 
-    const o = scratchOptions as VoiceOptions;
+    const o = beginOptions();
     o.x = state.x;
     o.y = state.y;
     o.z = state.z;
@@ -631,7 +631,6 @@ export class VehicleVoice {
     o.when = undefined;
     o.duration = 1e9;
     const v = voicePool.acquire(o);
-    o.duration = undefined;
     if (!v) return false;
     v.hold = true; // engines are never stolen mid-note
     v.onSteal = () => this.stop();
@@ -1157,7 +1156,7 @@ export class HelicopterVoice {
   private start(s: VehicleAudioState): boolean {
     if (this.started) return true;
     const ctx = this.ctx;
-    const o = scratchOptions as VoiceOptions;
+    const o = beginOptions();
     o.x = s.x;
     o.y = s.y;
     o.z = s.z;
@@ -1177,8 +1176,6 @@ export class HelicopterVoice {
     o.noOcclusion = true;
     o.duration = 1e9;
     const v = voicePool.acquire(o);
-    o.duration = undefined;
-    o.noOcclusion = false;
     if (!v) return false;
     v.hold = true;
     v.onSteal = () => this.stop();
@@ -1409,7 +1406,7 @@ export const vehicleAudio = new VehicleAudioManager();
 export function playHorn(x: number, y: number, z: number, kind = 0, duration = 0.4): void {
   const ctx = audioEngine.ctx;
   if (!ctx || !audioEngine.available) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = x;
   o.y = y;
   o.z = z;
@@ -1423,7 +1420,6 @@ export function playHorn(x: number, y: number, z: number, kind = 0, duration = 0
   o.noOcclusion = false;
   o.duration = duration + 0.2;
   const v = voicePool.acquire(o);
-  o.duration = undefined;
   if (!v) return;
 
   const now = ctx.currentTime;

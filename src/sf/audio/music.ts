@@ -31,7 +31,7 @@ import { clamp01, makeRng, type Rng } from "../math/rng";
 import { WORLD_SEED } from "../config";
 import { frame, useSfStore } from "../state/store";
 import { audioEngine } from "./engine";
-import { voicePool, scratchOptions, type Voice, type VoiceOptions } from "./spatial";
+import { voicePool, beginOptions, type Voice, type VoiceOptions } from "./spatial";
 import {
   bakeSync,
   dcBlock,
@@ -210,7 +210,7 @@ class MusicDirector {
     this.ctx = ctx;
 
     // Music is head-locked and never occluded — it is not in the world.
-    const o = scratchOptions as VoiceOptions;
+    const o = beginOptions();
     o.x = 0;
     o.y = 0;
     o.z = 0;
@@ -224,9 +224,6 @@ class MusicDirector {
     o.propagate = false;
     o.duration = 1e9;
     const v = voicePool.acquire(o);
-    o.local = false;
-    o.noOcclusion = false;
-    o.duration = undefined;
     if (!v) return false;
     v.hold = true;
     this.voice = v;

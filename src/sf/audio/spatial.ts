@@ -98,6 +98,49 @@ export interface VoiceOptions {
 /** Reusable options record for hot paths that must not allocate. */
 export const scratchOptions: VoiceOptions = { x: 0, y: 0, z: 0 };
 
+/**
+ * Reset the shared scratch record and hand it back.
+ *
+ * Every play path in this directory starts here. Reusing one mutable options
+ * object is what keeps a 900 RPM LMG from allocating fifteen objects a second,
+ * but it means a field left over from the *previous* sound leaks into the
+ * next one — a stale `when` schedules a footstep half a second late, a stale
+ * velocity gives a stationary impact the doppler of the car that fired at it.
+ * Those bugs are miserable to find by ear, so the reset is not optional and
+ * not the caller's judgement call.
+ */
+export function beginOptions(): VoiceOptions {
+  const o = scratchOptions;
+  o.x = 0;
+  o.y = 0;
+  o.z = 0;
+  o.vx = 0;
+  o.vy = 0;
+  o.vz = 0;
+  o.bus = "world";
+  o.gain = 1;
+  o.pitch = 1;
+  o.priority = 0.5;
+  o.loudness = undefined;
+  o.refDistance = undefined;
+  o.maxDistance = undefined;
+  o.rolloff = undefined;
+  o.local = false;
+  o.pan = 0;
+  o.occlusion = undefined;
+  o.noOcclusion = false;
+  o.propagate = false;
+  o.when = undefined;
+  o.duration = undefined;
+  o.coneInner = undefined;
+  o.coneOuter = undefined;
+  o.coneOuterGain = undefined;
+  o.dx = undefined;
+  o.dy = undefined;
+  o.dz = undefined;
+  return o;
+}
+
 /* ================================================================== *
  * Voice
  * ================================================================== */
@@ -731,23 +774,16 @@ export function playBufferAt(
   pitch = 1,
   pan = 0,
 ): Voice | null {
-  scratchOptions.x = 0;
-  scratchOptions.y = 0;
-  scratchOptions.z = 0;
-  scratchOptions.local = true;
-  scratchOptions.bus = bus;
-  scratchOptions.gain = gain;
-  scratchOptions.pitch = pitch;
-  scratchOptions.pan = pan;
-  scratchOptions.priority = 0.4;
-  scratchOptions.when = when;
-  scratchOptions.propagate = false;
-  scratchOptions.noOcclusion = true;
-  const v = playBuffer(buffer, scratchOptions);
-  scratchOptions.when = undefined;
-  scratchOptions.local = false;
-  scratchOptions.noOcclusion = false;
-  return v;
+  const o = beginOptions();
+  o.local = true;
+  o.bus = bus;
+  o.gain = gain;
+  o.pitch = pitch;
+  o.pan = pan;
+  o.priority = 0.4;
+  o.when = when;
+  o.noOcclusion = true;
+  return playBuffer(buffer, o);
 }
 
 /** Stop and recycle a voice you are holding. */

@@ -34,7 +34,7 @@ import { clamp, clamp01, makeRng } from "../math/rng";
 import { frame } from "../state/store";
 import { isPark, isRoad, isWater, terrainSlope } from "../geo/sfGeo";
 import { audioEngine } from "./engine";
-import { playBuffer, scratchOptions, voicePool, type VoiceOptions } from "./spatial";
+import { playBuffer, beginOptions, voicePool, type VoiceOptions } from "./spatial";
 import {
   MODAL_LIBRARY,
   bakeSync,
@@ -505,7 +505,7 @@ export function playFootstep(surface: string, opts: FootstepOptions): void {
   const buf = footBuffer(surface, hard, variant);
   if (!buf) return;
 
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -524,8 +524,6 @@ export function playFootstep(surface: string, opts: FootstepOptions): void {
   o.noOcclusion = !!opts.local;
   o.when = undefined;
   playBuffer(buf, o);
-  o.local = false;
-  o.noOcclusion = false;
 }
 
 /** Landing after a fall. `impact` is the vertical speed in m/s. */
@@ -573,7 +571,7 @@ export function playImpact(surface: string, opts: ImpactOptions): void {
   if (!buf) return;
   const power = clamp01(opts.power ?? 0.6);
 
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -597,7 +595,7 @@ export function playRicochet(opts: ImpactOptions): void {
   if (!audioEngine.available) return;
   const buf = ricochetBuffer(footVariant++ % 3);
   if (!buf) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = opts.x;
   o.y = opts.y;
   o.z = opts.z;
@@ -647,7 +645,7 @@ export function playFoley(
   if (i < 0.03) return;
   const buf = foleyBuffer(kind, footVariant % 3);
   if (!buf) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = x;
   o.y = y;
   o.z = z;
@@ -661,8 +659,6 @@ export function playFoley(
   o.propagate = false;
   o.noOcclusion = local;
   playBuffer(buf, o);
-  o.local = false;
-  o.noOcclusion = false;
 }
 
 /* ================================================================== *
@@ -773,7 +769,7 @@ export function updateFootsteps(dt: number): void {
 function playCanopy(parachute: boolean): void {
   const ctx = audioEngine.ctx;
   if (!ctx) return;
-  const o = scratchOptions as VoiceOptions;
+  const o = beginOptions();
   o.x = 0;
   o.y = 0;
   o.z = 0;
@@ -787,9 +783,6 @@ function playCanopy(parachute: boolean): void {
   o.propagate = false;
   o.duration = 1.6;
   const v = voicePool.acquire(o);
-  o.local = false;
-  o.noOcclusion = false;
-  o.duration = undefined;
   if (!v) return;
 
   const nb = noiseBuffer(ctx, 2, "white", 5);

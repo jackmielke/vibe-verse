@@ -58,10 +58,16 @@ export function worldToLatLon(x: number, z: number): { lat: number; lon: number 
  * Bay Bridge. Roughly 9.5 km × 9.5 km of playable space.
  */
 export const WORLD = {
-  minX: -7600,
-  maxX: 2200,
-  minZ: -4600,
-  maxZ: 5000,
+  // These must actually contain everything this file places. An earlier pass
+  // set them by eye from the downtown skyline and they quietly excluded the
+  // south and west of the city: real Bayview sits at z ~ 7080 and Ocean Beach
+  // at x ~ -9600, so four missions and three districts were being generated
+  // outside the world they belong to. Widened to hold the whole peninsula plus
+  // the offshore approaches the wingsuit and boat routes use.
+  minX: -10200,
+  maxX: 2600,
+  minZ: -5200,
+  maxZ: 7800,
   /** Sea level. Everything below this is bay/ocean. */
   seaLevel: 0,
   /** Ceiling used by the wingsuit, aircraft and the fog/atmosphere solver. */
