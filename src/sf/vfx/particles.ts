@@ -850,8 +850,6 @@ export function emitTrail(
 ): void {
   const spread = o.spread ?? 0;
   const jit = o.jitter ?? 0;
-  const now = frame.time;
-  void now;
   for (let i = 0; i < o.count; i++) {
     const t = (i + vfxRng.range(0, 1)) / o.count;
     Object.assign(_E, base);

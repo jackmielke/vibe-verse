@@ -57,10 +57,18 @@ function makeCanvas(w: number, h: number): Surf | null {
     canvas = c;
   }
   if (!canvas) return null;
-  const ctx = (canvas as HTMLCanvasElement).getContext("2d", {
-    willReadFrequently: true,
-    alpha: true,
-  }) as CanvasRenderingContext2D | null;
+  // jsdom *throws* from getContext rather than returning null, and a webview
+  // with a broken 2D backend can do the same. Either way the answer is "no
+  // canvas", not "crash the level".
+  let ctx: CanvasRenderingContext2D | null = null;
+  try {
+    ctx = (canvas as HTMLCanvasElement).getContext("2d", {
+      willReadFrequently: true,
+      alpha: true,
+    }) as CanvasRenderingContext2D | null;
+  } catch {
+    ctx = null;
+  }
   if (!ctx) return null;
   return { canvas, ctx, w, h };
 }
@@ -119,16 +127,151 @@ function blur(f: Field, px: number, radius: number): Field {
   return out;
 }
 
-/**
- * Domain-warped fbm — the difference between "noise" and "turbulence". Warping
- * the lookup by a second, lower-frequency noise gives the stretched, sheared
- * filaments that make a smoke puff look like it was pushed through air rather
- * than sampled from a grid.
+/* ------------------------------------------------------------------ *
+ * Shared tileable noise fields
+ * ------------------------------------------------------------------ *
+ * The naive version of this file called `fbm2` per pixel per tile. That is
+ * correct and it costs 4.3 seconds of blocked main thread at the `high` tier —
+ * a hitch the player sees as a hang, for textures nobody can tell apart from
+ * the cheap version.
+ *
+ * So: bake four 128x128 *tileable* noise fields once (about 60 ms total), then
+ * every sprite, flipbook frame and decal samples them bilinearly with its own
+ * scale and offset. Sampling is two multiplies and four array reads, so the
+ * whole texture set drops to roughly 200 ms — and because the fields are
+ * resolution-independent they are shared across quality tiers too.
+ *
+ * Tileability matters because sprites sample at arbitrary offsets and a wrap
+ * seam would show up as a hard line through a smoke puff. It is bought with
+ * the standard four-quadrant cross-blend, then renormalised because that blend
+ * eats about a third of the contrast.
  */
-function turbulence(u: number, v: number, freq: number, seed: number, octaves = 5): number {
-  const wx = fbm2(u * freq * 0.42 + 11.3, v * freq * 0.42 - 4.7, 3, 2, 0.5, seed + 91) * 0.9;
-  const wy = fbm2(u * freq * 0.42 - 7.1, v * freq * 0.42 + 19.4, 3, 2, 0.5, seed + 277) * 0.9;
-  return fbm2(u * freq + wx, v * freq + wy, octaves, 2.07, 0.52, seed);
+
+const FIELD_RES = 128;
+
+/** Cross-blend a raw field with itself, offset by half, to make it wrap. */
+function makeTileable(raw: Field, R: number): Field {
+  const out = new Float32Array(R * R);
+  const h = R >> 1;
+  let lo = Infinity, hi = -Infinity;
+  for (let y = 0; y < R; y++) {
+    for (let x = 0; x < R; x++) {
+      const xr = (x + h) % R;
+      const yr = (y + h) % R;
+      const wx = x / R;
+      const wy = y / R;
+      const v =
+        raw[y * R + x] * (1 - wx) * (1 - wy) +
+        raw[y * R + xr] * wx * (1 - wy) +
+        raw[yr * R + x] * (1 - wx) * wy +
+        raw[yr * R + xr] * wx * wy;
+      out[y * R + x] = v;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  // Restore the contrast the blend cost us, back into [-1,1].
+  const span = hi - lo || 1;
+  for (let i = 0; i < out.length; i++) out[i] = ((out[i] - lo) / span) * 2 - 1;
+  return out;
+}
+
+const fieldCache = new Map<string, Field>();
+
+function bakeField(key: string, gen: (u: number, v: number) => number): Field {
+  const hit = fieldCache.get(key);
+  if (hit) return hit;
+  const R = FIELD_RES;
+  const raw = new Float32Array(R * R);
+  for (let y = 0; y < R; y++) {
+    for (let x = 0; x < R; x++) raw[y * R + x] = gen((x + 0.5) / R, (y + 0.5) / R);
+  }
+  const out = makeTileable(raw, R);
+  fieldCache.set(key, out);
+  return out;
+}
+
+/** Domain-warped fbm — stretched, sheared filaments. The smoke field. */
+function fTurb(): Field {
+  return bakeField("turb", (u, v) => {
+    const D = 6;
+    const wx = fbm2(u * D * 0.42 + 11.3, v * D * 0.42 - 4.7, 3, 2, 0.5, 91) * 0.9;
+    const wy = fbm2(u * D * 0.42 - 7.1, v * D * 0.42 + 19.4, 3, 2, 0.5, 277) * 0.9;
+    return fbm2(u * D + wx, v * D + wy, 5, 2.07, 0.52, 1337);
+  });
+}
+
+/** High-frequency grain: powder, grit, paper crease, spall dust. */
+function fFine(): Field {
+  return bakeField("fine", (u, v) => fbm2(u * 11, v * 11, 3, 2.1, 0.5, 4801));
+}
+
+/** Ridged multifractal — flame licks and crack ridges. In [0,1]. */
+function fRidge(): Field {
+  return bakeField("ridge", (u, v) => ridged2(u * 5, v * 5, 4, 5501) * 2 - 1);
+}
+
+/** Cellular F1, remapped so 1 is a cell centre. Billows and blistering. */
+function fCell(): Field {
+  return bakeField("cell", (u, v) => {
+    const w = worley2(u * 5, v * 5, 7717);
+    return 1 - Math.min(1, w.f1 * 2.4) * 2;
+  });
+}
+
+/** Wrapped bilinear sample. `u`/`v` tile at 1.0. */
+function fs(f: Field, u: number, v: number): number {
+  const R = FIELD_RES;
+  let x = (u - Math.floor(u)) * R;
+  let y = (v - Math.floor(v)) * R;
+  const x0 = x | 0;
+  const y0 = y | 0;
+  const fx = x - x0;
+  const fy = y - y0;
+  const x1 = x0 + 1 === R ? 0 : x0 + 1;
+  const y1 = y0 + 1 === R ? 0 : y0 + 1;
+  const r0 = y0 * R;
+  const r1 = y1 * R;
+  const a = f[r0 + x0], b = f[r0 + x1], c = f[r1 + x0], d = f[r1 + x1];
+  const top = a + (b - a) * fx;
+  return top + (c + (d - c) * fx - top) * fy;
+}
+
+/** Seed → a decorrelated offset into a field. Golden-ratio, so it spreads. */
+function offX(seed: number): number {
+  return (seed * 0.6180339887498949) % 1;
+}
+function offY(seed: number): number {
+  return (seed * 0.3819660112501051) % 1;
+}
+
+/**
+ * Drop-in for `fbm2` inside the painters. The octave/lacunarity/gain arguments
+ * are accepted and ignored — the field is pre-baked at fixed settings, and the
+ * caller's *scale* is what actually controls how detailed the result looks.
+ */
+function nfbm(x: number, y: number, _o = 4, _l = 2, _g = 0.5, seed = 0): number {
+  return fs(fTurb(), x * 0.16 + offX(seed), y * 0.16 + offY(seed));
+}
+
+/** Drop-in for `ridged2`, in [0,1]. */
+function nridge(x: number, y: number, _o = 4, seed = 0): number {
+  return fs(fRidge(), x * 0.16 + offX(seed), y * 0.16 + offY(seed)) * 0.5 + 0.5;
+}
+
+/** Drop-in for a worley F1 lookup: returns "how close to a cell centre", 0..1. */
+function ncell(x: number, y: number, seed = 0): number {
+  return fs(fCell(), x * 0.16 + offX(seed), y * 0.16 + offY(seed)) * 0.5 + 0.5;
+}
+
+/** Grain lookup for powder, grit and creases. */
+function nfine(x: number, y: number, seed = 0): number {
+  return fs(fFine(), x * 0.16 + offX(seed), y * 0.16 + offY(seed));
+}
+
+/** Domain-warped turbulence at an explicit frequency, in roughly [-1,1]. */
+function turbulence(u: number, v: number, freq: number, seed: number): number {
+  return fs(fTurb(), u * freq * 0.15 + offX(seed), v * freq * 0.15 + offY(seed));
 }
 
 /* ================================================================== *
@@ -208,8 +351,7 @@ function puffDensity(px: number, seed: number, opts: {
       let d = 1 - smoothstep(0.12 + opts.softness * 0.25, 0.96, r);
 
       const t = turbulence(u, v, opts.detail, seed);
-      const w = worley2(u * opts.cell, v * opts.cell, seed + 5501);
-      const billow = 1 - clamp01(w.f1 * opts.cell * 0.55);
+      const billow = ncell(u * opts.cell, v * opts.cell, seed + 5501);
 
       d *= 0.62 + 0.5 * t + 0.34 * billow;
       // Erosion: subtract noise near the rim only, so the core stays dense and
@@ -355,7 +497,7 @@ function tileFire(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageDat
       const dx = u - 0.5, dy = v - 0.5;
       const r = Math.sqrt(dx * dx + dy * dy) * 2;
       let d = 1 - smoothstep(0.0, 0.92, r);
-      const t = ridged2(u * 5.5 + 3.1, v * 5.5 - 2.2, 4, seed);
+      const t = nridge(u * 5.5 + 3.1, v * 5.5 - 2.2, 4, seed);
       d *= 0.35 + 1.1 * t * t;
       d -= 0.5 * clamp01(r * 1.6) * (0.4 + 0.6 * turbulence(u, v, 9.0, seed + 17));
       f[y * px + x] = clamp01(d);
@@ -397,7 +539,7 @@ function tileSpark(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageDa
       const core = Math.exp(-dx * dx * 46);
       // Taper: bright head at v=0.35, fading tail downward.
       const along = clamp01(1 - Math.abs(dy + 0.28) * 0.92) * (1 - smoothstep(0.5, 1.0, Math.abs(dy)));
-      const flick = 0.7 + 0.5 * fbm2(v * 14, seed * 0.001, 2, 2, 0.5, seed);
+      const flick = 0.7 + 0.5 * nfine(v * 14, seed * 0.001, seed);
       const a = clamp01(core * along * flick);
       const p = (y * px + x) * 4;
       data[p] = 255;
@@ -488,9 +630,14 @@ function tileSplash(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageD
     const rr = rng.range(0.025, 0.075);
     const stretch = rng.range(1.2, 2.6);
     const sa = Math.sin(ang), ca = Math.cos(ang);
-    for (let y = 0; y < px; y++) {
+    const ext = rr * stretch + 0.01;
+    const bx0 = Math.max(0, Math.floor((cx - ext) * px));
+    const bx1 = Math.min(px - 1, Math.ceil((cx + ext) * px));
+    const by0 = Math.max(0, Math.floor((cy - ext) * px));
+    const by1 = Math.min(px - 1, Math.ceil((cy + ext) * px));
+    for (let y = by0; y <= by1; y++) {
       const v = (y + 0.5) / px;
-      for (let x = 0; x < px; x++) {
+      for (let x = bx0; x <= bx1; x++) {
         const u = (x + 0.5) / px;
         const ex = u - cx, ey = v - cy;
         const lx = ex * ca + ey * sa;
@@ -525,7 +672,7 @@ function tileSpeck(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageDa
       const dx = (u - 0.5) * 2, dy = (v - 0.5) * 2;
       const ang = Math.atan2(dy, dx);
       // Irregular convex-ish silhouette: radius modulated by angular noise.
-      const rad = 0.62 + 0.26 * fbm2(Math.cos(ang) * 2 + 5, Math.sin(ang) * 2 - 3, 3, 2, 0.5, seed);
+      const rad = 0.62 + 0.26 * nfbm(Math.cos(ang) * 2 + 5, Math.sin(ang) * 2 - 3, 3, 2, 0.5, seed);
       const r = Math.sqrt(dx * dx + dy * dy);
       const a = 1 - smoothstep(rad - 0.09, rad, r);
       // Faceted shading so a chip has a lit side and a dark side.
@@ -551,21 +698,27 @@ function tileBlood(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageDa
       const u = (x + 0.5) / px;
       const dx = (u - 0.5) * 2, dy = (v - 0.5) * 2;
       const ang = Math.atan2(dy, dx);
-      const rad = 0.5 + 0.2 * fbm2(Math.cos(ang) * 3, Math.sin(ang) * 3, 4, 2, 0.55, seed);
+      const rad = 0.5 + 0.2 * nfbm(Math.cos(ang) * 3, Math.sin(ang) * 3, 4, 2, 0.55, seed);
       const r = Math.sqrt(dx * dx + dy * dy);
       f[y * px + x] = 1 - smoothstep(rad - 0.06, rad, r);
     }
   }
   // Satellite droplets, biased outward — that is what makes it look thrown.
+  // Each droplet only touches its own bounding box; scanning the whole tile 22
+  // times over is 1.4 M wasted hypots for 22 blobs a few pixels across.
   for (let i = 0; i < 22; i++) {
     const ang = rng.range(0, Math.PI * 2);
     const dist = rng.range(0.32, 0.48);
     const cx = 0.5 + Math.cos(ang) * dist;
     const cy = 0.5 + Math.sin(ang) * dist;
     const rr = rng.range(0.012, 0.05);
-    for (let y = 0; y < px; y++) {
+    const x0 = Math.max(0, Math.floor((cx - rr) * px));
+    const x1 = Math.min(px - 1, Math.ceil((cx + rr) * px));
+    const y0 = Math.max(0, Math.floor((cy - rr) * px));
+    const y1 = Math.min(px - 1, Math.ceil((cy + rr) * px));
+    for (let y = y0; y <= y1; y++) {
       const v = (y + 0.5) / px;
-      for (let x = 0; x < px; x++) {
+      for (let x = x0; x <= x1; x++) {
         const u = (x + 0.5) / px;
         const d = Math.hypot(u - cx, v - cy);
         const a = 1 - smoothstep(rr * 0.6, rr, d);
@@ -647,12 +800,12 @@ function tileLitter(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageD
     for (let x = 0; x < px; x++) {
       const u = (x + 0.5) * inv;
       // A crumpled quad: rectangle warped by noise, with creases shaded in.
-      const wu = u + 0.09 * fbm2(u * 3, v * 3, 2, 2, 0.5, seed);
-      const wv = v + 0.09 * fbm2(u * 3 + 9, v * 3 - 5, 2, 2, 0.5, seed + 3);
+      const wu = u + 0.09 * nfbm(u * 3, v * 3, 2, 2, 0.5, seed);
+      const wv = v + 0.09 * nfbm(u * 3 + 9, v * 3 - 5, 2, 2, 0.5, seed + 3);
       const inside =
         (1 - smoothstep(0.72, 0.8, Math.abs(wu - 0.5) * 2)) *
         (1 - smoothstep(0.66, 0.76, Math.abs(wv - 0.5) * 2));
-      const crease = 0.6 + 0.4 * Math.abs(fbm2(u * 7, v * 7, 3, 2, 0.5, seed + 77));
+      const crease = 0.6 + 0.4 * Math.abs(nfbm(u * 7, v * 7, 3, 2, 0.5, seed + 77));
       const p = (y * px + x) * 4;
       const lum = clamp01(0.66 + crease * 0.34);
       data[p] = (lum * 236) | 0;
@@ -803,8 +956,8 @@ function paintSmokeFrame(ctx: CanvasRenderingContext2D, px: number, t: number, i
       const r = Math.hypot(dx, dy) * grow;
       let d = 1 - smoothstep(0.16, 0.98, r);
       const tt = turbulence(ru * 0.5 + 0.5, rv * 0.5 + 0.5, 4.1 + t * 1.1, seed);
-      const w = worley2((ru * 0.5 + 0.5) * 3.0, (rv * 0.5 + 0.5) * 3.0 + t * 0.6, seed + 5501);
-      d *= 0.58 + 0.55 * tt + 0.3 * (1 - clamp01(w.f1 * 1.7));
+      const billow = ncell((ru * 0.5 + 0.5) * 3.0, (rv * 0.5 + 0.5) * 3.0 + t * 0.6, seed + 5501);
+      d *= 0.58 + 0.55 * tt + 0.3 * billow;
       // Erosion accelerates with age — old smoke is holes held together by
       // wishful thinking.
       d -= (0.34 + t * 0.5) * clamp01(r * 1.2) * (0.5 + 0.5 * turbulence(ru + 4, rv - 2, 9, seed + 31));
@@ -844,7 +997,7 @@ function paintFireFrame(ctx: CanvasRenderingContext2D, px: number, t: number, i:
       d *= smoothstep(0.0, 0.14, h) * (1 - smoothstep(0.62 + t * 0.2, 1.0, h));
       // Advected turbulence: the field scrolls upward, which is the entire
       // reason it reads as flame rather than as an orange triangle.
-      const tt = ridged2(u * 4.2 + 3.1, (v + rise) * 3.4, 4, seed);
+      const tt = nridge(u * 4.2 + 3.1, (v + rise) * 3.4, 4, seed);
       d *= 0.28 + 1.35 * tt * tt;
       d -= 0.42 * (1 - h) * (0.4 + 0.6 * turbulence(u * 1.4, v * 1.4 + rise, 8, seed + 11));
       d = clamp01(d);
@@ -905,14 +1058,14 @@ function decalScorch(ctx: CanvasRenderingContext2D, px: number, rng: Rng, big: b
       const ang = Math.atan2(dy, dx);
       const r = Math.hypot(dx, dy);
       // Ragged boundary + radial soot streaks flung outward from the seat.
-      const wob = 0.16 * fbm2(Math.cos(ang) * 2.4, Math.sin(ang) * 2.4, 4, 2, 0.55, seed);
+      const wob = 0.16 * nfbm(Math.cos(ang) * 2.4, Math.sin(ang) * 2.4, 4, 2, 0.55, seed);
       const rad = (big ? 0.82 : 0.66) + wob;
       let a = 1 - smoothstep(rad * 0.45, rad, r);
-      const streak = clamp01(fbm2(ang * 5.5, r * 3.0, 4, 2.1, 0.5, seed + 401) * 1.6);
+      const streak = clamp01(nfbm(ang * 5.5, r * 3.0, 4, 2.1, 0.5, seed + 401) * 1.6);
       a *= 0.55 + 0.65 * streak;
       // Hot centre is nearly pure carbon; the outer ring is grey ash.
       const carbon = clamp01(1 - r / (rad * 0.7));
-      const lum = 0.055 + (1 - carbon) * 0.14 + 0.06 * fbm2(u * 22, v * 22, 3, 2, 0.5, seed + 9);
+      const lum = 0.055 + (1 - carbon) * 0.14 + 0.06 * nfbm(u * 22, v * 22, 3, 2, 0.5, seed + 9);
       const p = (y * px + x) * 4;
       data[p] = (clamp01(lum * 1.06) * 255) | 0;
       data[p + 1] = (clamp01(lum * 0.98) * 255) | 0;
@@ -946,20 +1099,21 @@ function decalHole(
       const dx = (u - 0.5) * 2, dy = (v - 0.5) * 2;
       const r = Math.hypot(dx, dy);
       const ang = Math.atan2(dy, dx);
-      const wob = 0.07 * fbm2(Math.cos(ang) * 4, Math.sin(ang) * 4, 3, 2, 0.5, seed);
+      const wob = 0.07 * nfbm(Math.cos(ang) * 4, Math.sin(ang) * 4, 3, 2, 0.5, seed);
       const holeR = 0.17 + wob;
       const spallR = holeR + spall;
 
       const hole = 1 - smoothstep(holeR * 0.82, holeR, r);
       const dust = (1 - smoothstep(spallR * 0.5, spallR, r)) *
-        clamp01(0.35 + 0.9 * fbm2(u * 15, v * 15, 3, 2, 0.5, seed + 5));
+        clamp01(0.35 + 0.9 * nfbm(u * 15, v * 15, 3, 2, 0.5, seed + 5));
 
       let crack = 0;
-      for (let i = 0; i < cracks; i++) {
+      const maxCrack = r > holeR * 0.8 ? 1 : 0;
+      for (let i = 0; maxCrack > 0 && i < cracks; i++) {
         let da = ang - crackAng[i];
         da = Math.atan2(Math.sin(da), Math.cos(da));
         const line = Math.exp(-da * da * (kind === "glass" ? 900 : 380));
-        crack = Math.max(crack, line * clamp01(1 - r / crackLen[i]) * (r > holeR * 0.8 ? 1 : 0));
+        crack = Math.max(crack, line * clamp01(1 - r / crackLen[i]));
       }
 
       const a = clamp01(hole + dust * 0.6 + crack * (kind === "glass" ? 0.85 : 0.5));
@@ -993,12 +1147,12 @@ function decalOil(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageDat
       const dx = (u - 0.5) * 2, dy = (v - 0.5) * 2.2;
       const ang = Math.atan2(dy, dx);
       const r = Math.hypot(dx, dy);
-      const rad = 0.68 + 0.22 * fbm2(Math.cos(ang) * 2, Math.sin(ang) * 2, 3, 2, 0.6, seed);
+      const rad = 0.68 + 0.22 * nfbm(Math.cos(ang) * 2, Math.sin(ang) * 2, 3, 2, 0.6, seed);
       const a = 1 - smoothstep(rad - 0.12, rad, r);
       // Thin-film iridescence at the edge — the one detail that makes an oil
       // slick unmistakably oil and not a shadow.
       const film = clamp01((1 - a) * a * 5);
-      const ph = fbm2(u * 6, v * 6, 3, 2, 0.5, seed + 7) * 6.28;
+      const ph = nfbm(u * 6, v * 6, 3, 2, 0.5, seed + 7) * 6.28;
       const p = (y * px + x) * 4;
       data[p] = (clamp01(0.045 + film * (0.4 + 0.4 * Math.sin(ph))) * 255) | 0;
       data[p + 1] = (clamp01(0.04 + film * (0.4 + 0.4 * Math.sin(ph + 2.1))) * 255) | 0;
@@ -1021,8 +1175,8 @@ function decalTyre(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageDa
       // Two bands with a gap: that is a tyre's contact patch, not a stripe.
       const cu = Math.abs(u - 0.5) * 2;
       const band = (1 - smoothstep(0.62, 0.86, cu)) * (0.35 + 0.65 * smoothstep(0.05, 0.2, cu));
-      const tread = 0.55 + 0.45 * Math.abs(Math.sin(v * Math.PI * 26 + fbm2(u * 4, v * 4, 2, 2, 0.5, seed) * 3));
-      const wear = 0.5 + 0.7 * fbm2(u * 9, v * 3, 4, 2, 0.5, seed + 2);
+      const tread = 0.55 + 0.45 * Math.abs(Math.sin(v * Math.PI * 26 + nfbm(u * 4, v * 4, 2, 2, 0.5, seed) * 3));
+      const wear = 0.5 + 0.7 * nfbm(u * 9, v * 3, 4, 2, 0.5, seed + 2);
       const a = clamp01(band * tread * wear * 0.9) * (1 - smoothstep(0.85, 1.0, Math.abs(v - 0.5) * 2));
       const p = (y * px + x) * 4;
       data[p] = 26; data[p + 1] = 25; data[p + 2] = 26;
@@ -1067,7 +1221,7 @@ function decalGraffiti(ctx: CanvasRenderingContext2D, px: number, rng: Rng, vari
     for (let x = 0; x < px; x++) {
       const p = (y * px + x) * 4;
       if (data[p + 3] > 8) continue;
-      const n = fbm2(x * 0.35, y * 0.35, 2, 2, 0.5, seed);
+      const n = nfbm(x * 0.35, y * 0.35, 2, 2, 0.5, seed);
       if (n > 0.42) {
         data[p] = 120; data[p + 1] = 110; data[p + 2] = 116;
         data[p + 3] = ((n - 0.42) * 130) | 0;
@@ -1087,9 +1241,10 @@ function decalCrack(ctx: CanvasRenderingContext2D, px: number, rng: Rng): ImageD
   for (let y = 0; y < px; y++) {
     for (let x = 0; x < px; x++) {
       const u = (x + 0.5) / px, v = (y + 0.5) / px;
-      const w = worley2(u * 5, v * 5, seed);
-      // The ridge between cells *is* the crack.
-      const ridge = clamp01(1 - Math.abs(w.f2 - w.f1) * 16);
+      // The boundary between cells *is* the crack: the cell field peaks at
+      // centres, so the crack is where it is closest to its mid value.
+      const c = ncell(u * 5, v * 5, seed);
+      const ridge = clamp01(1 - Math.abs(c - 0.42) * 9);
       const fade = 1 - smoothstep(0.55, 1.0, Math.hypot(u - 0.5, v - 0.5) * 2);
       const a = clamp01(ridge * fade * 0.85);
       const p = (y * px + x) * 4;
@@ -1112,9 +1267,9 @@ function decalPatch(
     for (let x = 0; x < px; x++) {
       const u = (x + 0.5) / px;
       const r = Math.hypot(u - 0.5, v - 0.5) * 2;
-      const n = 0.5 + 0.5 * fbm2(u * freq, v * freq, 4, 2, 0.55, seed);
+      const n = 0.5 + 0.5 * nfbm(u * freq, v * freq, 4, 2, 0.55, seed);
       const a = clamp01((1 - smoothstep(0.3, 0.95, r)) * n * alpha);
-      const lum = 0.6 + 0.5 * fbm2(u * freq * 3, v * freq * 3, 3, 2, 0.5, seed + 3);
+      const lum = 0.6 + 0.5 * nfbm(u * freq * 3, v * freq * 3, 3, 2, 0.5, seed + 3);
       const p = (y * px + x) * 4;
       data[p] = (clamp01(tint[0] * lum) * 255) | 0;
       data[p + 1] = (clamp01(tint[1] * lum) * 255) | 0;
@@ -1131,8 +1286,29 @@ function decalPatch(
 
 const cache = new Map<string, THREE.Texture>();
 
-/** Tile resolution by quality tier. The atlas is 4x this on each side. */
+/**
+ * Tile resolution by quality tier. The atlas is 4x this on each side.
+ *
+ * These are smaller than they look like they should be, on purpose. A particle
+ * sprite is a soft blob that is almost never on screen at more than ~150 px,
+ * and every doubling here quadruples a bake that blocks the main thread. 96 px
+ * tiles (a 384² atlas) are indistinguishable in motion from 192 px ones.
+ */
 export function tilePxForTier(tier: QualityTier): number {
+  switch (tier) {
+    case "low": return 48;
+    case "medium": return 64;
+    case "ultra": return 128;
+    default: return 96;
+  }
+}
+
+/**
+ * Decal tiles are bigger than particle tiles: a scorch mark on the ground sits
+ * still, at a known scale, right under the player's feet, and it is the one
+ * place a soft texture reads as a *blurry* texture.
+ */
+export function decalTilePxForTier(tier: QualityTier): number {
   switch (tier) {
     case "low": return 64;
     case "medium": return 96;
@@ -1199,7 +1375,7 @@ export function fireFlipbook(tilePx = 128): THREE.Texture {
 }
 
 /** The 4x4 decal atlas; `Decal.*` indexes it. */
-export function decalAtlas(tilePx = 256): THREE.Texture {
+export function decalAtlas(tilePx = 128): THREE.Texture {
   const key = `decals:${tilePx}`;
   const hit = cache.get(key);
   if (hit) return hit;
@@ -1304,7 +1480,52 @@ export function trailProfileTexture(): THREE.DataTexture {
   return tex;
 }
 
-/** Free every generated texture. Called by the VFX root on unmount. */
+/**
+ * Bake every VFX texture for a tier ahead of time, yielding to the browser
+ * between atlases.
+ *
+ * The whole set costs roughly half a second of main thread at `high`. That is
+ * fine on a loading screen and unacceptable as a hitch the first time somebody
+ * throws a grenade, so the integrator should call this from the same place it
+ * calls `materials.preload()`. If it never does, the textures simply bake on
+ * first use and the only cost is one bad frame.
+ */
+export async function preloadVfxTextures(
+  tier: QualityTier,
+  onProgress?: (fraction: number, label: string) => void,
+): Promise<void> {
+  const px = tilePxForTier(tier);
+  const steps: Array<[string, () => void]> = [
+    ["Painting smoke and fire", () => { particleAtlas(px); }],
+    ["Animating the smoke sheet", () => { smokeFlipbook(px); }],
+    ["Animating the flame sheet", () => { fireFlipbook(px); }],
+    ["Scorching the pavement", () => { decalAtlas(decalTilePxForTier(tier)); }],
+    ["Mixing the fire ramp", () => { fireRampTexture(); trailProfileTexture(); }],
+  ];
+  for (let i = 0; i < steps.length; i++) {
+    onProgress?.(i / steps.length, steps[i][1] ? steps[i][0] : "");
+    await new Promise<void>((resolve) => {
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+      else setTimeout(resolve, 0);
+    });
+    try {
+      steps[i][1]();
+    } catch (err) {
+      // One failed atlas must not take the level down; the cache falls back to
+      // a flat white texture and the effect degrades rather than disappearing.
+      console.error(`[sf/vfx] texture step failed: ${steps[i][0]}`, err);
+    }
+  }
+  onProgress?.(1, "Ready");
+}
+
+/**
+ * Free every generated texture. Called by the VFX root on unmount.
+ *
+ * The shared noise *fields* are deliberately kept: they are a few hundred
+ * kilobytes, they are resolution- and tier-independent, and re-baking them on
+ * every quality change would reintroduce the stall this design exists to avoid.
+ */
 export function disposeVfxTextures(): void {
   for (const t of cache.values()) t.dispose();
   cache.clear();
