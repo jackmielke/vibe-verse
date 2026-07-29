@@ -28,7 +28,15 @@ const MAX_SLOPE = Math.cos(THREE.MathUtils.degToRad(52));
 
 const createPlayer: SystemFactory = (ctx) => {
   const camera = ctx.camera;
-  const terrain = ctx.services.terrain;
+  /**
+   * Read live rather than captured. Systems register in an order that is not
+   * guaranteed, and if terrain registers after the player then a captured
+   * `const terrain` stays undefined for the entire session — every heightAt
+   * falls back to 0, the player stands at y=2 while the city sits tens of
+   * metres above, and you spend the game underneath the terrain looking up at
+   * the underside of the streets.
+   */
+  const getTerrain = () => ctx.services.terrain;
 
   const position = new THREE.Vector3(0, 0, 0);
   const velocity = new THREE.Vector3();
@@ -41,9 +49,64 @@ const createPlayer: SystemFactory = (ctx) => {
   let coyote = 0;
   let jumpBuffer = 0;
 
-  // Spawn on the highest ground near the origin so we never start inside a hill.
-  const spawnY = (terrain?.heightAt(0, 0) ?? 0) + 2;
+  // Spawn on the ground near the origin so we never start inside a hill.
+  const spawnY = (getTerrain()?.heightAt(0, 0) ?? 0) + 2;
   position.set(0, spawnY, 0);
+
+  /**
+   * The origin is downtown, and downtown is where the buildings are — so
+   * spawning at (0,0) reliably put the player *inside* one, staring at an
+   * interior wall with no way to tell which direction was out. The collision
+   * service is not built yet at construction time, so the real spawn is
+   * resolved on the first frame that has it.
+   *
+   * `resolveCapsule` returns true when it had to push the capsule out of
+   * something, which is exactly the test for "this spot is occupied". Walk a
+   * widening spiral until a clear one turns up; the spiral keeps the player
+   * near the intended start rather than teleporting them across the map.
+   */
+  let spawnResolved = false;
+  const findClearSpawn = (): void => {
+    const collision = ctx.services.collision;
+    const terrain = getTerrain();
+    if (!collision || !terrain) return;
+    spawnResolved = true;
+
+    // Whatever happens below, get the player onto the ground first.
+    position.y = terrain.heightAt(position.x, position.z) + 2;
+
+    const probe = new THREE.Vector3();
+    /**
+     * Clear means *roomy*, not merely non-overlapping. Testing the capsule
+     * alone finds spots flush against a wall, where you spawn nose-to-render
+     * with a facade and cannot tell which way is out. Sweeping a capsule four
+     * times the player's radius asks for a spot with elbow room — which in a
+     * gridded city means the street rather than the gap between two buildings.
+     */
+    const settle = (x: number, z: number): boolean => {
+      probe.set(x, (getTerrain()?.heightAt(x, z) ?? 0) + 2, z);
+      return !collision.resolveCapsule(probe, RADIUS * 4, 1.8);
+    };
+
+    if (settle(0, 0)) return; // origin was fine after all
+
+    // ~8 m steps out to 160 m, sixteen bearings per ring. Streets in this city
+    // are well under 160 m apart, so a clear spot is always within reach.
+    for (let r = 8; r <= 160; r += 8) {
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        const x = Math.cos(a) * r;
+        const z = Math.sin(a) * r;
+        if (settle(x, z)) {
+          position.set(x, (getTerrain()?.heightAt(x, z) ?? 0) + 2, z);
+          // Face back toward the middle of the map: whatever pushed us out is
+          // behind us, and the interesting silhouette is ahead.
+          yaw = Math.atan2(x, z);
+          return;
+        }
+      }
+    }
+  };
 
   const service: PlayerService = {
     position,
@@ -105,8 +168,8 @@ const createPlayer: SystemFactory = (ctx) => {
       const wishLen = wish.length();
       if (wishLen > 0.0001) wish.divideScalar(wishLen);
 
-      const groundY = terrain?.heightAt(position.x, position.z) ?? 0;
-      const seaLevel = terrain?.seaLevel ?? 0;
+      const groundY = getTerrain()?.heightAt(position.x, position.z) ?? 0;
+      const seaLevel = getTerrain()?.seaLevel ?? 0;
       const inWater = position.y < seaLevel - 0.4 && groundY < seaLevel;
 
       if (!externallyDriven) {
@@ -162,13 +225,14 @@ const createPlayer: SystemFactory = (ctx) => {
       position.addScaledVector(velocity, dt);
 
       // --- Collide against city geometry ---------------------------------
+      if (!spawnResolved) findClearSpawn();
       ctx.services.collision?.resolveCapsule(position, RADIUS, 1.8);
 
       // --- Ground / terrain resolve --------------------------------------
-      const gy = terrain?.heightAt(position.x, position.z) ?? 0;
+      const gy = getTerrain()?.heightAt(position.x, position.z) ?? 0;
       const wasAirborne = !grounded;
       if (position.y <= gy) {
-        const slope = terrain?.normalAt(position.x, position.z, normal) ?? normal.set(0, 1, 0);
+        const slope = getTerrain()?.normalAt(position.x, position.z, normal) ?? normal.set(0, 1, 0);
         if (slope.dot(up) < MAX_SLOPE) {
           // Too steep to stand on — slide down it.
           const slide = normal.clone().projectOnPlane(up).normalize().multiplyScalar(18 * dt);
@@ -193,7 +257,7 @@ const createPlayer: SystemFactory = (ctx) => {
       }
 
       // Never let the player leave the island bowl.
-      const limit = (terrain?.worldSize ?? 3000) * 1.35;
+      const limit = (getTerrain()?.worldSize ?? 3000) * 1.35;
       position.x = THREE.MathUtils.clamp(position.x, -limit, limit);
       position.z = THREE.MathUtils.clamp(position.z, -limit, limit);
 
