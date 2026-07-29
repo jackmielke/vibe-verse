@@ -59,8 +59,32 @@ import { buildingIndex } from "./spatialIndex";
 
 /** Milliseconds of generation allowed per frame once the city is up. */
 const BUDGET_MS = 5.0;
-/** A more generous budget while the initial set is still filling in. */
+/**
+ * Budget while the initial set is still filling in, at the baseline detail
+ * radius. Scaled up for higher tiers by `warmupBudget` below.
+ *
+ * A fixed warmup budget was a real bug: a higher tier asks for a bigger detail
+ * radius, chunk count grows with the *area* of that radius, and so Ultra had
+ * roughly five times the work to do with exactly the same milliseconds per
+ * frame to do it in. The visible result was backwards — the city filled in
+ * fastest on Medium and slowest on Ultra, so the high tiers looked emptier
+ * than the low ones for the first several seconds.
+ */
 const WARMUP_BUDGET_MS = 11.0;
+/** The detail radius the warmup budget above was tuned against. */
+const BASELINE_DETAIL_RADIUS = 640;
+/**
+ * Hard ceiling on warmup work per frame. Streaming is a loading phase, so a
+ * lower framerate is acceptable there — but not an unresponsive one, and the
+ * touch camera still has to feel alive while the city arrives.
+ */
+const WARMUP_BUDGET_CAP_MS = 26.0;
+
+/** Per-frame generation budget during warmup, scaled to the tier's workload. */
+function warmupBudget(detailRadius: number): number {
+  const areaRatio = (detailRadius / BASELINE_DETAIL_RADIUS) ** 2;
+  return Math.min(WARMUP_BUDGET_CAP_MS, WARMUP_BUDGET_MS * Math.max(1, areaRatio));
+}
 /** How far the camera must move before the resident set is recomputed. */
 const RESCAN_DISTANCE = 48;
 const RESCAN_SECONDS = 0.4;
@@ -494,7 +518,7 @@ export default function Buildings() {
     // --- generation budget ---
     const pending = queue.length + impQueue.length;
     if (warm.current && pending === 0) warm.current = false;
-    const budget = warm.current ? WARMUP_BUDGET_MS : BUDGET_MS;
+    const budget = warm.current ? warmupBudget(q.detailRadius) : BUDGET_MS;
     const deadline = now + budget;
 
     while (queue.length > 0 && performance.now() < deadline) {

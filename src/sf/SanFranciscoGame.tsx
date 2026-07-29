@@ -95,7 +95,17 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
 
     if (shotKey) {
       hook.framesSincePose++;
-      if (hook.framesSincePose > 12 && !hook.ready) hook.ready = true;
+      // `ready` means "this frame is worth photographing", which is NOT the
+      // same as "a frame has been drawn". Waiting a fixed 12 frames meant the
+      // harness photographed a city that was still streaming in — so every
+      // capture judged so far was of a half-built San Francisco, and the
+      // higher the tier the emptier the picture. Require the streaming queue
+      // to have actually drained, with a frame floor so the pose settles and
+      // a ceiling so a stuck queue cannot hang the capture forever.
+      const drained = hook.pendingChunks === 0;
+      const settled = hook.framesSincePose > 12;
+      const timedOut = hook.framesSincePose > 900;
+      if (!hook.ready && settled && (drained || timedOut)) hook.ready = true;
     }
   });
 
