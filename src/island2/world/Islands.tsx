@@ -46,6 +46,11 @@ const BIOME_COLOR: Record<Biome, THREE.Color> = {
   terrace: new THREE.Color(0.52, 0.54, 0.22),
   stone: new THREE.Color(0.40, 0.34, 0.29),
   summit: new THREE.Color(0.58, 0.51, 0.36),
+  // Snow is never pure white in warm light — it takes the sun's colour on the
+  // lit side and goes blue in shadow, and the toon/PBR lighting supplies that
+  // contrast as long as the albedo itself stays slightly cool and under 1.0.
+  snow: new THREE.Color(0.90, 0.93, 0.98),
+  scree: new THREE.Color(0.44, 0.40, 0.38),
 };
 
 /** The keel is bare rock, banded by depth like a cliff face. */
