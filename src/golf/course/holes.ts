@@ -5,7 +5,7 @@
  * to "everything at once". Every hole is built around a single idea and named
  * after it; the name on the loading card should tell you what the hole wants.
  *
- * Two rules govern everything below.
+ * Three rules govern everything below.
  *
  * 1. **Every hole is completable with geometry alone.** Portals and cannons
  *    are real, implemented mechanics so holes may depend on them. Everything
@@ -17,6 +17,42 @@
  * 2. **The cup always sits on a flat run of green** at least six metres wide,
  *    with a backstop wherever the approach is fast. A ball that physically
  *    cannot stop next to the cup is the worst bug a golf game can have.
+ * 3. **No shot may take longer than a few seconds to resolve.** Two authoring
+ *    rules enforce that, and both are load-bearing — see below.
+ *
+ * ## Rule 3a — never author a slope a rolling ball cannot stop on
+ *
+ * The solver applies rolling resistance as a *constant* deceleration,
+ * `rollDrag × 9.81`, against gravity's along-slope pull of `22 × sinθ`. So a
+ * ball stops on a slope if and only if
+ *
+ *     sinθ  <  rollDrag × 9.81 / 22
+ *
+ * which gives a hard ceiling per material:
+ *
+ *     green 5°   ·   metal 4°   ·   stone 6°   ·   wood 8°   ·   fairway 9°
+ *     rough 20°  ·   sand 49°   ·   ice 0.5°
+ *
+ * Anything steeper than that on a long run is not a hill, it is a conveyor
+ * belt to nowhere: the ball accelerates forever and the shot never ends. So
+ * fairway and green are authored **flat or nearly flat**, and every real
+ * gradient is tagged `rough` (or `sand`) so the ball can actually stop on it.
+ * Holes read as *plateaus joined by banks*, not as one long ramp.
+ *
+ * ## Rule 3b — never author a 90° crease a ball can roll into
+ *
+ * The settle test only fires when the nearest surface under the ball has a
+ * normal pointing meaningfully upward (`n.y > 0.25`). Park a ball in the
+ * corner where a flat green meets a vertical wall and the nearest edge is the
+ * *wall*, whose normal is horizontal — so the ball sits there, motionless,
+ * and the shot never resolves. That single geometry mistake was responsible
+ * for every multi-minute "the ball just sits there" hang in the game.
+ *
+ * The cure is geometric and total: **nothing in this file presents a vertical
+ * face flush with a surface a ball can rest on.** `backstop()` is a banked
+ * lip, not a wall. `wall()` splays into chamfered feet. Gulch floors are
+ * `basin()` bowls whose ends rise into the cliffs. Anything else standing on
+ * the deck gets `feet()`. A ball always finds ground with "up" in it.
  *
  * Ranges you can design against (standard ball, gravity −22, drag as tuned):
  *   full power ≈ 94 m carry at 45°, peak 26 m; 51 m straight up
@@ -141,14 +177,52 @@ function plat(x0: number, x1: number, top: number, material: SurfaceMaterial = "
   return block(x0, top - thick, x1 - x0, thick, material);
 }
 
-/** A vertical wall standing on the ground. */
-function wall(x: number, y0: number, y1: number, w = 3, material: SurfaceMaterial = "stone"): Surface {
-  return block(x, y0, w, y1 - y0, material);
+/**
+ * A vertical wall standing on the ground.
+ *
+ * The bottom corners splay into 45° feet whose outer tips are buried just
+ * under the deck. That chamfer is not decoration: a ball that rolls up against
+ * a raw vertical face reports a horizontal contact normal, which the solver's
+ * settle test reads as "unsupported", so the ball sits there motionless while
+ * the shot clock runs out. A buried foot hands it back a normal with real "up"
+ * in it and the ball settles in a quarter of a second. Burying the tip matters
+ * too — a foot that starts exactly at deck height just moves the bad normal
+ * out to its own knife edge.
+ *
+ * `cap` re-materials the top 0.5 m. Use it whenever the top of the wall is
+ * something a ball can land on and the body is springy: a ball on a rubber
+ * roof bounces for half a minute.
+ */
+function wall(
+  x: number, y0: number, y1: number, w = 3,
+  material: SurfaceMaterial = "stone",
+  cap?: SurfaceMaterial,
+): Surface[] {
+  const f = Math.max(0.2, Math.min(0.9, w * 0.4, (y1 - y0) * 0.3));
+  const body: Surface = {
+    points: [
+      v2(x - f * 1.6, y0 - f * 0.6), v2(x + w + f * 1.6, y0 - f * 0.6),
+      v2(x + w, y0 + f), v2(x + w, y1),
+      v2(x, y1), v2(x, y0 + f),
+    ],
+    material,
+    closed: true,
+  };
+  return cap ? [body, block(x, y1, w, 0.5, cap)] : [body];
 }
 
-/** A slab hanging in the air — roofs, overhangs, canopies. `under` is its underside. */
-function roof(x0: number, x1: number, under: number, thick = 5, material: SurfaceMaterial = "stone"): Surface {
-  return block(x0, under, x1 - x0, thick, material);
+/**
+ * A slab hanging in the air — roofs, overhangs, canopies. `under` is its
+ * underside. `cap` re-materials the top face for the same reason `wall` has
+ * one: the underside wants to be rubber or metal, the walkable top does not.
+ */
+function roof(
+  x0: number, x1: number, under: number, thick = 5,
+  material: SurfaceMaterial = "stone",
+  cap?: SurfaceMaterial,
+): Surface[] {
+  const body = block(x0, under, x1 - x0, thick, material);
+  return cap ? [body, block(x0, under + thick, x1 - x0, 0.7, cap)] : [body];
 }
 
 /** A lethal basin. `top` is the waterline; the ball dies the instant it touches. */
@@ -156,14 +230,80 @@ function pool(x0: number, x1: number, top: number, material: SurfaceMaterial = "
   return block(x0, top - depth, x1 - x0, depth, material);
 }
 
-/** A green with a wall behind it, so a hot approach is caught instead of lost. */
-function backstop(x: number, y: number, h = 7, material: SurfaceMaterial = "stone"): Surface {
-  return block(x, y, 2.6, h, material);
+/**
+ * A solid whose top face is a sampled curve — the general shape behind banks,
+ * lips and bowls. Wound to match `block()`.
+ */
+function bank(profile: Pt[], base: number, material: SurfaceMaterial = "rough"): Surface {
+  const top = ground(profile, material, 0.55).points;
+  const pts: Vec2[] = [v2(top[0].x, base), v2(top[top.length - 1].x, base)];
+  for (let i = top.length - 1; i >= 0; i--) pts.push(v2(top[i].x, top[i].y));
+  return { points: pts, material, closed: true };
+}
+
+/**
+ * A green with a bank behind it, so a hot approach is caught and fed back to
+ * the pin instead of lost. Deliberately *not* a wall: the toe rolls out of the
+ * putting surface at a few degrees and steepens to about 60°, so there is no
+ * crease for a ball to die in and a fast approach spends its speed climbing.
+ */
+function backstop(x: number, y: number, h = 7, material: SurfaceMaterial = "rough"): Surface[] {
+  const run = Math.max(3, h * 0.7);
+  return [
+    // Deck under the mound. Ground bands are extruded down to the hole floor
+    // by the renderer; closed solids are not — so without this strip the bank
+    // hangs in the sky with daylight beneath it. Buried inside the bank, so
+    // the ball never touches it.
+    ground([[x, y - 0.07], [x + run + 2.6, y - 0.07]], material, 4),
+    bank(
+      [
+        [x - 1.8, y - 0.06],
+        [x + run * 0.30, y + h * 0.26],
+        [x + run * 0.72, y + h * 0.78],
+        [x + run, y + h],
+        [x + run + 2.6, y + h + 0.4],
+      ],
+      y - 2.5,
+      material,
+    ),
+  ];
+}
+
+/**
+ * A gulch floor. Shaped as a shallow bowl whose ends rise into the cliffs at
+ * about 22° — steeper than rough can hold, so a ball that drops in always
+ * trickles to the middle and stops there rather than wedging against a wall.
+ */
+function basin(x0: number, x1: number, top: number, material: SurfaceMaterial = "rough", drop = 1.6): Surface {
+  const m = (x0 + x1) * 0.5;
+  return ground(
+    [[x0, top], [x0 + 4, top - drop], [m, top - drop * 0.85], [x1 - 4, top - drop], [x1, top]],
+    material,
+  );
+}
+
+/** A 45° wedge tucked into the crease where a face meets the deck. */
+function fillet(x: number, y: number, dir: 1 | -1, size = 1.0, material: SurfaceMaterial = "stone"): Surface {
+  return {
+    points: dir > 0
+      ? [v2(x, y), v2(x + size, y), v2(x, y + size)]
+      : [v2(x - size, y), v2(x, y), v2(x, y + size)],
+    material,
+    closed: true,
+  };
+}
+
+/** Both feet of something standing on the deck — breakables, towers, panels. */
+function feet(x0: number, x1: number, y: number, material: SurfaceMaterial = "stone"): Surface[] {
+  return [fillet(x0, y, -1, 1.0, material), fillet(x1, y, 1, 1.0, material)];
 }
 
 /** A threading gap: two towers with a window between `lo` and `hi`. */
 function keyhole(x: number, base: number, lo: number, hi: number, top: number, w = 3, material: SurfaceMaterial = "stone"): Surface[] {
-  return [block(x, base, w, lo - base, material), block(x, hi, w, top - hi, material)];
+  return [
+    ...wall(x, base, lo, w, material),
+    block(x, hi, w, top - hi, material),
+  ];
 }
 
 // --- Props ------------------------------------------------------------------
@@ -316,6 +456,10 @@ function collect(parts: Part[], s: Surface[], p: PropSpec[]): void {
  * Flatten a spec into a `Hole`, deriving bounds from the geometry. Deriving
  * rather than hand-authoring them removes a whole class of bug: a hole whose
  * bounds quietly clip the very platform you have to land on.
+ *
+ * The floor is the kill plane, so it is kept as close under the geometry as
+ * the hole allows: a ball that leaves the hole should be adjudicated in under
+ * a second, not after a long silent fall.
  */
 function makeHole(spec: HoleSpec, theme: CourseTheme, id: string): Hole {
   const surfaces: Surface[] = [];
@@ -372,17 +516,26 @@ function makeCourse(
 
 const SUNSET_LINKS: HoleSpec[] = [
   {
+    // The first hole anyone plays, so it teaches the shape of every other one:
+    // three flat plateaus — tee, fairway, green — joined by short rough banks,
+    // a bunker guarding the front, and a grass bank behind the pin that feeds
+    // a long approach back down to the cup. Nothing here rolls forever and
+    // nothing here is invisible.
     name: "Opening Drive",
     par: 3,
     hint: "Drag back from the ball and let go. Further back is harder.",
     tee: [6, 10],
-    cup: [84, 10],
+    cup: [80.6, 9.6],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [16, 10], [30, 8], [46, 11], [60, 13], [74, 10]],
-        ["green", [74, 10], [92, 10]],
-        ["rough", [92, 10], [104, 13], [116, 17]],
+        ["fairway", [-10, 10], [6, 10], [20, 10]],
+        ["rough", [20, 10], [25, 9.4], [30, 8.6]],
+        ["fairway", [30, 8.6], [38, 8.6], [46, 8.6]],
+        ["sand", [46, 8.6], [50, 8.1], [54, 8.6]],
+        ["rough", [54, 8.6], [56.5, 9.1], [59, 9.6]],
+        ["green", [59, 9.6], [70, 9.6], [83, 9.6]],
       ),
+      backstop(83, 9.6, 6),
     ],
   },
   {
@@ -392,15 +545,15 @@ const SUNSET_LINKS: HoleSpec[] = [
     tee: [6, 11],
     cup: [86, 11],
     parts: [
-      terrain(["fairway", [-8, 11], [16, 11], [28, 11.6], [34, 11]]),
+      terrain(["fairway", [-8, 11], [16, 11], [28, 11.4], [34, 11]]),
       wall(32, 5, 11, 2),
       pool(34, 62, 6.5, "water", 5),
       wall(62, 5, 11, 2),
       terrain(
         ["fairway", [64, 11], [78, 11]],
-        ["green", [78, 11], [96, 11]],
-        ["rough", [96, 11], [110, 13]],
+        ["green", [78, 11], [88, 11], [98, 11]],
       ),
+      backstop(98, 11, 6),
     ],
   },
   {
@@ -411,14 +564,14 @@ const SUNSET_LINKS: HoleSpec[] = [
     cup: [108, 12],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [18, 10], [34, 9]],
-        ["sand", [34, 9], [42, 8.4], [48, 8.6]],
-        ["fairway", [48, 8.6], [66, 10], [80, 12]],
+        ["fairway", [-8, 10], [18, 10], [34, 9.4]],
+        ["sand", [34, 9.4], [42, 8.8], [48, 9.4]],
+        ["fairway", [48, 9.4], [66, 10.6], [80, 12]],
         ["sand", [80, 12], [86, 11.4], [92, 11.6]],
         ["fairway", [92, 11.6], [100, 12]],
-        ["green", [100, 12], [118, 12]],
-        ["rough", [118, 12], [130, 15]],
+        ["green", [100, 12], [110, 12], [120, 12]],
       ),
+      backstop(120, 12, 7),
     ],
   },
   {
@@ -431,27 +584,43 @@ const SUNSET_LINKS: HoleSpec[] = [
       terrain(
         ["fairway", [-8, 10], [16, 10]],
         ["rough", [16, 10], [28, 9.4], [40, 9]],
-        ["fairway", [40, 9], [56, 9]],
+        ["fairway", [40, 9], [48, 9], [56, 9]],
         ["rough", [56, 9], [66, 9.4], [74, 10]],
-        ["fairway", [74, 10], [84, 11]],
-        ["green", [84, 11], [98, 11]],
-        ["rough", [98, 11], [112, 14]],
+        ["fairway", [74, 10], [84, 10.8]],
+        ["green", [84, 11], [92, 11], [100, 11]],
       ),
+      backstop(100, 11, 6),
     ],
   },
   {
+    // Was the worst hole in the game: three shelves separated by unmarked
+    // bottomless gaps rendered in the same blue as the sky, so the opening tee
+    // shot vanished into a void the player never saw. Every gap is now a
+    // flooded channel with its waterline five metres under the tee — in frame
+    // from the moment you aim — and a pale sand apron marks the lip you are
+    // standing on. Falling in costs a stroke, which is what it should cost.
     name: "Cliff Terrace",
     par: 4,
-    hint: "Three shelves. Take them one at a time — nobody clears all three.",
+    hint: "Three shelves, water in every gap. Take them one at a time.",
     tee: [6, 8],
-    cup: [96, 26],
+    cup: [98, 22],
     parts: [
-      terrain(["fairway", [-8, 8], [20, 8], [30, 7]]),
-      mesa(34, 56, 15, "fairway", -6),
-      mesa(60, 78, 21, "rough", -6),
-      mesa(82, 118, 26, "green", -6),
-      backstop(118, 26, 8),
+      terrain(
+        ["fairway", [-10, 8], [10, 8], [19, 8]],
+        // A ten-metre apron of pale sand along the lip. The chasm has to be
+        // legible from the tee, before the player commits — a hazard you only
+        // discover on the way down is a coin flip, not difficulty.
+        ["sand", [19, 8], [24, 7.9], [30, 8]],
+      ),
+      pool(30, 38, 4.5, "water", 5),
+      mesa(38, 62, 13, "fairway", -0.5),
+      pool(62, 68, 4.5, "water", 5),
+      mesa(68, 84, 18, "rough", -0.5),
+      pool(84, 90, 4.5, "water", 5),
+      mesa(90, 122, 22, "green", -0.5),
+      backstop(122, 22, 7),
     ],
+    floor: -4,
   },
   {
     name: "Backboard",
@@ -461,9 +630,9 @@ const SUNSET_LINKS: HoleSpec[] = [
     cup: [90, 10],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [24, 10], [44, 9], [62, 10], [70, 10]],
+        ["fairway", [-8, 10], [24, 10], [44, 9.4], [62, 10], [70, 10]],
         ["sand", [70, 10], [76, 9.6], [84, 10]],
-        ["green", [84, 10], [96, 10]],
+        ["green", [84, 10], [90, 10], [96, 10]],
       ),
       wall(97, 10, 28, 3, "rubber"),
     ],
@@ -475,21 +644,24 @@ const SUNSET_LINKS: HoleSpec[] = [
     tee: [6, 10],
     cup: [99, 10],
     parts: [
-      terrain(["fairway", [-8, 10], [16, 10], [26, 10.4], [30, 10]]),
-      wall(28, 4, 10.2, 2),
+      terrain(["fairway", [-8, 10], [16, 10], [26, 10.3], [30, 10]]),
+      wall(28, 4, 10, 2),
       pool(30, 74, 4.5),
-      wall(74, 4, 10.2, 2),
+      wall(74, 4, 10, 2),
       terrain(
         ["fairway", [76, 10], [90, 10]],
-        ["green", [90, 10], [108, 10]],
-        ["rough", [108, 10], [120, 13]],
+        ["green", [90, 10], [100, 10], [110, 10]],
       ),
+      backstop(110, 10, 6),
       bumper(42, 9, 1.4),
       bumper(56, 12.5, 1.4),
       bumper(66, 8.5, 1.2),
     ],
   },
   {
+    // The fairway runs unbroken under the towers now. The window is still the
+    // only way through at ground level, but a weak shot rests against the
+    // stonework instead of dropping into a hole that was never drawn.
     name: "The Keyhole",
     par: 3,
     hint: "A four-metre window at head height, or a very brave lob over the top.",
@@ -497,14 +669,13 @@ const SUNSET_LINKS: HoleSpec[] = [
     cup: [96, 10],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [20, 10], [34, 10]],
-        ["fairway", [47, 10], [60, 8.6], [74, 9.4]],
-        ["sand", [74, 9.4], [82, 9]],
-        ["fairway", [82, 9], [88, 10]],
-        ["green", [88, 10], [106, 10]],
-        ["rough", [106, 10], [118, 13]],
+        ["fairway", [-8, 10], [20, 10], [34, 10], [52, 9.6], [66, 9.6]],
+        ["sand", [66, 9.6], [74, 9.2], [82, 9.6]],
+        ["fairway", [82, 9.6], [88, 10]],
+        ["green", [88, 10], [96, 10], [106, 10]],
       ),
       keyhole(44, 10, 16, 20.5, 30),
+      backstop(106, 10, 6),
     ],
   },
   {
@@ -517,14 +688,14 @@ const SUNSET_LINKS: HoleSpec[] = [
       terrain(
         ["fairway", [-8, 10], [22, 10], [34, 9.4]],
         ["sand", [34, 9.4], [44, 9], [52, 9.4]],
-        ["fairway", [52, 9.4], [62, 11], [70, 11]],
+        ["fairway", [52, 9.4], [62, 10.6], [70, 11]],
       ),
-      wall(68, 5, 11.2, 2),
+      wall(68, 5, 11, 2),
       pool(70, 100, 5.5),
-      wall(100, 5, 11.2, 2),
+      wall(100, 5, 11, 2),
       terrain(
-        ["fairway", [102, 11], [110, 12]],
-        ["rough", [110, 12], [118, 13]],
+        ["fairway", [102, 11], [110, 11.6]],
+        ["rough", [110, 11.6], [118, 13]],
       ),
       mesa(118, 154, 20, "green", -6),
       backstop(154, 20, 8),
@@ -546,10 +717,10 @@ const EMERALD_HOLLOW: HoleSpec[] = [
     cup: [92, 10],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [20, 10], [40, 9], [62, 10], [84, 10]],
-        ["green", [84, 10], [102, 10]],
-        ["rough", [102, 10], [116, 13]],
+        ["fairway", [-8, 10], [20, 10], [40, 9.4], [62, 10], [84, 10]],
+        ["green", [84, 10], [94, 10], [104, 10]],
       ),
+      backstop(104, 10, 6),
       roof(30, 72, 20, 7, "wood"),
     ],
   },
@@ -563,13 +734,13 @@ const EMERALD_HOLLOW: HoleSpec[] = [
       terrain(["fairway", [-8, 10], [18, 10], [34, 10]]),
       wall(32, -4, 10, 2),
       belt(36, 64, 10, -7, "wood"),
-      terrain(["rough", [36, -4], [64, -4]]),
+      basin(36, 64, -4),
       wall(64, -4, 10, 2),
       terrain(
         ["fairway", [66, 10], [78, 10]],
-        ["green", [78, 10], [94, 10]],
-        ["rough", [94, 10], [106, 12]],
+        ["green", [78, 10], [86, 10], [96, 10]],
       ),
+      backstop(96, 10, 6),
     ],
   },
   {
@@ -584,9 +755,9 @@ const EMERALD_HOLLOW: HoleSpec[] = [
       mesa(48, 102, 26, "rough", 16),
       terrain(
         ["fairway", [50, 10], [70, 10]],
-        ["green", [70, 10], [96, 10]],
+        ["green", [70, 10], [86, 10], [96, 10]],
       ),
-      backstop(98, 10, 7),
+      backstop(96, 10, 5, "stone"),
     ],
   },
   {
@@ -598,7 +769,7 @@ const EMERALD_HOLLOW: HoleSpec[] = [
     parts: [
       terrain(["fairway", [-8, 10], [18, 10], [34, 10]]),
       wall(34, -3, 10, 2),
-      terrain(["rough", [36, -3], [68, -3]]),
+      basin(36, 68, -3),
       lift("vine", 46, 60, 14, [[53, 14], [53, 25]], 3.2, "wood"),
       mesa(70, 110, 26, "green", -3),
       backstop(110, 26, 8),
@@ -612,12 +783,12 @@ const EMERALD_HOLLOW: HoleSpec[] = [
     cup: [82, 10],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [20, 10], [30, 10]],
-        ["fairway", [37, 10], [56, 9], [70, 10]],
-        ["green", [70, 10], [92, 10]],
-        ["rough", [92, 10], [104, 12]],
+        ["fairway", [-8, 10], [20, 10], [34, 10], [52, 9.4], [70, 10]],
+        ["green", [70, 10], [82, 10], [94, 10]],
       ),
+      backstop(94, 10, 6),
       breakable(33, 37, 10, 22),
+      feet(33, 37, 10, "wood"),
       block(33, 22, 4, 6, "stone"),
     ],
   },
@@ -645,7 +816,7 @@ const EMERALD_HOLLOW: HoleSpec[] = [
     parts: [
       terrain(["fairway", [-8, 10], [18, 10], [30, 10]]),
       belt(34, 58, 12, 12, "wood"),
-      terrain(["rough", [34, 0], [82, 0]]),
+      basin(34, 82, 0),
       bumper(64, 15, 1.5),
       bumper(76, 21, 1.5),
       mesa(84, 122, 24, "green", 0),
@@ -671,10 +842,11 @@ const EMERALD_HOLLOW: HoleSpec[] = [
       pool(64, 76, 4),
       terrain(
         ["fairway", [76, 8], [84, 8]],
-        ["green", [84, 8], [106, 8]],
+        ["green", [84, 8], [94, 8], [106, 8]],
       ),
-      backstop(108, 8, 8),
+      backstop(106, 8, 8, "stone"),
       breakable(58, 60, 8, 12, "wood"),
+      feet(58, 60, 8, "wood"),
     ],
   },
   {
@@ -686,11 +858,11 @@ const EMERALD_HOLLOW: HoleSpec[] = [
     parts: [
       terrain(["fairway", [-8, 10], [20, 10], [34, 10]]),
       pool(34, 52, 6),
-      wall(32, 4, 10.2, 2),
+      wall(32, 4, 10, 2),
       terrain(["rough", [54, 10], [66, 12], [70, 13]]),
       belt(72, 94, 15, 10, "wood"),
       boost(88, 15, 42, 22),
-      terrain(["rough", [94, -2], [114, -2]]),
+      basin(94, 114, -2),
       mesa(114, 154, 22, "green", -2),
       backstop(154, 22, 8),
     ],
@@ -703,18 +875,24 @@ const EMERALD_HOLLOW: HoleSpec[] = [
 
 const RED_MESA: HoleSpec[] = [
   {
+    // The gaps between terraces read as a canyon river rather than as blue
+    // nothing, so it is obvious from the tee what a short shot costs.
     name: "Mesa Steps",
     par: 3,
-    hint: "Three terraces. Each one is an easy hop from the last.",
+    hint: "Three terraces over the river. Each one is an easy hop from the last.",
     tee: [6, 8],
     cup: [98, 26],
     parts: [
       terrain(["fairway", [-8, 8], [18, 8], [26, 8]]),
-      mesa(30, 50, 14, "fairway", -8),
-      mesa(54, 76, 20, "rough", -8),
-      mesa(80, 116, 26, "green", -8),
-      backstop(116, 26, 8),
+      pool(26, 30, 1.5, "water", 5),
+      mesa(30, 50, 14, "fairway", -3),
+      pool(50, 54, 1.5, "water", 5),
+      mesa(54, 76, 20, "rough", -3),
+      pool(76, 80, 1.5, "water", 5),
+      mesa(80, 116, 26, "green", -3),
+      backstop(116, 26, 8, "stone"),
     ],
+    floor: -8,
   },
   {
     name: "The Chasm",
@@ -725,13 +903,13 @@ const RED_MESA: HoleSpec[] = [
     parts: [
       terrain(["fairway", [-8, 12], [24, 12], [40, 12]]),
       wall(40, -14, 12, 2),
-      terrain(["rough", [42, -14], [82, -14]]),
+      basin(42, 82, -14),
       wall(82, -14, 12, 2),
       terrain(
         ["fairway", [84, 12], [100, 12]],
-        ["green", [100, 12], [122, 12]],
-        ["rough", [122, 12], [134, 15]],
+        ["green", [100, 12], [112, 12], [124, 12]],
       ),
+      backstop(124, 12, 7, "stone"),
     ],
   },
   {
@@ -743,13 +921,13 @@ const RED_MESA: HoleSpec[] = [
     parts: [
       terrain(["fairway", [-8, 10], [20, 10], [32, 10]]),
       wall(32, -10, 10, 2),
-      terrain(["rough", [34, -10], [68, -10]]),
+      basin(34, 68, -10),
       wall(68, -10, 10, 2),
       terrain(
         ["fairway", [70, 10], [80, 10]],
-        ["green", [80, 10], [100, 10]],
-        ["rough", [100, 10], [112, 13]],
+        ["green", [80, 10], [90, 10], [102, 10]],
       ),
+      backstop(102, 10, 7, "stone"),
       windZone(32, 70, 8, 34, 180, 12),
     ],
   },
@@ -763,13 +941,13 @@ const RED_MESA: HoleSpec[] = [
       terrain(["fairway", [-8, 10], [24, 10], [40, 10], [52, 10]]),
       cannon(44, 11.2, 60, 40),
       wall(52, -12, 10, 2),
-      terrain(["rough", [54, -12], [82, -12]]),
+      basin(54, 82, -12),
       wall(82, -12, 10, 2),
       terrain(
         ["fairway", [84, 10], [96, 10]],
-        ["green", [96, 10], [118, 10]],
-        ["rough", [118, 10], [130, 13]],
+        ["green", [96, 10], [106, 10], [118, 10]],
       ),
+      backstop(118, 10, 7, "stone"),
     ],
   },
   {
@@ -782,10 +960,10 @@ const RED_MESA: HoleSpec[] = [
       terrain(
         ["fairway", [-8, 10], [22, 10], [38, 10]],
         ["sand", [38, 10], [46, 9.7], [52, 10]],
-        ["fairway", [55, 10], [70, 9], [84, 10]],
-        ["green", [84, 10], [104, 10]],
-        ["rough", [104, 10], [116, 13]],
+        ["fairway", [55, 10], [70, 9.4], [84, 10]],
+        ["green", [84, 10], [94, 10], [104, 10]],
       ),
+      backstop(104, 10, 7, "stone"),
       roof(40, 44, 18, 16, "stone"),
       wall(52, 10, 28, 3, "rubber"),
     ],
@@ -798,10 +976,11 @@ const RED_MESA: HoleSpec[] = [
     cup: [116, 10],
     parts: [
       terrain(
-        ["fairway", [-8, 10], [22, 10], [46, 9], [70, 10], [96, 10]],
-        ["green", [104, 10], [126, 10]],
-        ["rough", [126, 10], [138, 13]],
+        ["fairway", [-8, 10], [22, 10], [46, 9.4], [70, 10], [96, 10]],
+        ["fairway", [96, 10], [104, 10]],
+        ["green", [104, 10], [116, 10], [128, 10]],
       ),
+      backstop(128, 10, 7, "stone"),
       wall(34, 10, 24, 2.5),
       wall(52, 10, 28, 2.5),
       wall(70, 10, 22, 2.5),
@@ -819,7 +998,7 @@ const RED_MESA: HoleSpec[] = [
       mesa(43, 51, 18, "rough", -6),
       fan(47, 12, 6, 26, 90, 34),
       mesa(56, 100, 30, "green", -6),
-      backstop(100, 30, 8),
+      backstop(100, 30, 8, "stone"),
     ],
   },
   {
@@ -834,7 +1013,7 @@ const RED_MESA: HoleSpec[] = [
       mesa(68, 90, 10, "fairway", -18),
       cannon(84, 11.2, 34, 40),
       mesa(118, 158, 14, "green", -18),
-      backstop(158, 14, 8),
+      backstop(158, 14, 8, "stone"),
     ],
     floor: -26,
   },
@@ -851,7 +1030,7 @@ const RED_MESA: HoleSpec[] = [
       mesa(82, 120, 16, "fairway", -16),
       boost(110, 16, 55, 24),
       mesa(126, 166, 28, "green", -16),
-      backstop(166, 28, 8),
+      backstop(166, 28, 8, "stone"),
     ],
     floor: -24,
   },
@@ -863,19 +1042,22 @@ const RED_MESA: HoleSpec[] = [
 
 const NEON_CIRCUIT: HoleSpec[] = [
   {
+    // The deck runs unbroken under every ring wall on this course. The wall is
+    // still impassable at ground level — the ring is still the route — but a
+    // short shot now stops against the panel instead of dropping into an
+    // undrawn pit between the fairway and the wall.
     name: "Warp One",
     par: 3,
     hint: "That wall does not open. Post the ball through the ring instead.",
     tee: [6, 10],
     cup: [86, 10],
     parts: [
-      terrain(["fairway", [-8, 10], [20, 10], [34, 10]]),
-      wall(38, 10, 42, 4, "metal"),
       terrain(
-        ["fairway", [48, 10], [64, 10], [76, 10]],
-        ["green", [76, 10], [98, 10]],
-        ["rough", [98, 10], [110, 13]],
+        ["fairway", [-8, 10], [20, 10], [34, 10], [52, 10], [76, 10]],
+        ["green", [76, 10], [88, 10], [100, 10]],
       ),
+      backstop(100, 10, 6, "metal"),
+      wall(38, 10, 42, 4, "metal"),
       portals("w1", [36.4, 15, 180], [58, 15, 0], 2.6),
     ],
   },
@@ -889,10 +1071,10 @@ const NEON_CIRCUIT: HoleSpec[] = [
       terrain(
         ["fairway", [-8, 10], [24, 10], [48, 10], [72, 10]],
         ["metal", [72, 10], [92, 10]],
-        ["green", [92, 10], [110, 10]],
+        ["green", [92, 10], [102, 10], [112, 10]],
       ),
-      roof(30, 90, 16, 4, "rubber"),
-      backstop(112, 10, 8),
+      roof(30, 90, 16, 4, "rubber", "stone"),
+      backstop(112, 10, 8, "metal"),
     ],
   },
   {
@@ -902,14 +1084,15 @@ const NEON_CIRCUIT: HoleSpec[] = [
     tee: [6, 10],
     cup: [92, 12],
     parts: [
-      terrain(["fairway", [-8, 10], [22, 10], [40, 10]]),
-      wall(46, 10, 44, 3, "metal"),
       terrain(
-        ["fairway", [56, 12], [78, 12]],
-        ["green", [78, 12], [104, 12]],
-        ["rough", [104, 12], [116, 15]],
+        ["fairway", [-8, 10], [22, 10], [40, 10], [52, 10]],
+        ["rough", [52, 10], [56, 11], [60, 12]],
+        ["fairway", [60, 12], [78, 12]],
+        ["green", [78, 12], [92, 12], [106, 12]],
       ),
-      portals("ra", [44.4, 15, 180], [60, 13, 60], 2.4),
+      backstop(106, 12, 6, "metal"),
+      wall(46, 10, 44, 3, "metal"),
+      portals("ra", [44.4, 15, 180], [62, 13, 60], 2.4),
     ],
   },
   {
@@ -920,14 +1103,14 @@ const NEON_CIRCUIT: HoleSpec[] = [
     cup: [112, 10],
     parts: [
       terrain(
-        ["metal", [-8, 10], [30, 10], [60, 10], [90, 10]],
-        ["green", [100, 10], [122, 10]],
+        ["metal", [-8, 10], [30, 10], [60, 10], [96, 10]],
+        ["green", [96, 10], [112, 10], [124, 10]],
       ),
-      roof(22, 96, 14, 4, "metal"),
+      roof(22, 92, 14, 4, "metal", "stone"),
       boost(34, 10, 0, 18),
       boost(58, 10, 0, 18),
       boost(82, 10, 0, 18),
-      backstop(124, 10, 8),
+      backstop(124, 10, 8, "metal"),
     ],
   },
   {
@@ -945,7 +1128,7 @@ const NEON_CIRCUIT: HoleSpec[] = [
       bumper(58, 26, 1.6),
       bumper(70, 19, 1.4),
       mesa(80, 122, 12, "green", -4),
-      backstop(122, 12, 8),
+      backstop(122, 12, 8, "metal"),
     ],
   },
   {
@@ -956,15 +1139,15 @@ const NEON_CIRCUIT: HoleSpec[] = [
     cup: [82, 12],
     parts: [
       mesa(-8, 22, 40, "metal", -8),
-      wall(22, 20, 40, 2, "rubber"),
+      wall(22, 20, 39.4, 2, "rubber"),
       mesa(30, 46, 30, "metal", -8),
-      wall(46, 12, 30, 2, "rubber"),
+      wall(46, 12, 29.4, 2, "rubber"),
       mesa(54, 66, 20, "metal", -8),
       terrain(
         ["metal", [70, 12], [74, 12]],
-        ["green", [74, 12], [96, 12]],
+        ["green", [74, 12], [84, 12], [96, 12]],
       ),
-      backstop(96, 12, 8),
+      backstop(96, 12, 8, "metal"),
     ],
   },
   {
@@ -977,13 +1160,14 @@ const NEON_CIRCUIT: HoleSpec[] = [
       terrain(["fairway", [-8, 10], [16, 10], [30, 10]]),
       belt(30, 62, 10, -8),
       breakable(33, 36, 10, 22, "metal"),
+      feet(33, 36, 10, "metal"),
       block(33, 22, 3, 12, "metal"),
-      wall(64, 10, 34, 3, "metal"),
       terrain(
-        ["metal", [78, 10], [90, 10]],
-        ["green", [90, 10], [112, 10]],
+        ["metal", [62, 10], [78, 10], [90, 10]],
+        ["green", [90, 10], [100, 10], [112, 10]],
       ),
-      backstop(112, 10, 8),
+      wall(64, 10, 34, 3, "metal"),
+      backstop(112, 10, 8, "metal"),
       portals("gl", [62.4, 15, 180], [80, 14, 0], 2.2),
     ],
   },
@@ -994,11 +1178,10 @@ const NEON_CIRCUIT: HoleSpec[] = [
     tee: [6, 10],
     cup: [108, 12],
     parts: [
-      terrain(["fairway", [-8, 10], [18, 10], [32, 10]]),
+      terrain(["fairway", [-8, 10], [18, 10], [32, 10], [50, 10], [78, 10]]),
       wall(36, 10, 42, 3, "metal"),
-      terrain(["fairway", [50, 10], [66, 10], [78, 10]]),
       mesa(94, 126, 12, "green", -6),
-      backstop(126, 12, 8),
+      backstop(126, 12, 8, "metal"),
       portals("sc-lo", [34.4, 15, 180], [52, 12, 0], 2.2),
       portals("sc-hi", [34.4, 28, 180], [100, 22, 0], 1.8),
     ],
@@ -1010,17 +1193,19 @@ const NEON_CIRCUIT: HoleSpec[] = [
     tee: [6, 10],
     cup: [148, 16],
     parts: [
-      terrain(["metal", [-8, 10], [24, 10], [46, 10]]),
-      roof(20, 44, 14, 4, "metal"),
+      terrain(
+        ["metal", [-8, 10], [24, 10], [46, 10]],
+        ["fairway", [46, 10], [66, 10], [84, 10]],
+      ),
+      roof(20, 44, 14, 4, "metal", "stone"),
       boost(30, 10, 0, 18),
       wall(48, 10, 40, 3, "metal"),
-      terrain(["fairway", [66, 10], [84, 10]]),
       pool(86, 122, 3),
-      wall(84, 3, 10.2, 2, "rubber"),
+      wall(84, 3, 10, 2, "rubber"),
       bumper(96, 16, 1.5),
       bumper(110, 22, 1.5),
       mesa(122, 164, 16, "green", -4),
-      backstop(164, 16, 8),
+      backstop(164, 16, 8, "metal"),
       portals("cf", [46.4, 14, 180], [68, 14, 0], 2.2),
     ],
   },
@@ -1194,9 +1379,9 @@ const CINDER_RISE: HoleSpec[] = [
       wall(72, 2, 12, 2),
       terrain(
         ["fairway", [74, 12], [82, 12]],
-        ["green", [82, 12], [102, 12]],
-        ["rough", [102, 12], [114, 15]],
+        ["green", [82, 12], [92, 12], [104, 12]],
       ),
+      backstop(104, 12, 7, "stone"),
     ],
   },
   {
@@ -1210,7 +1395,7 @@ const CINDER_RISE: HoleSpec[] = [
       pool(30, 110, 4, "lava"),
       mesa(52, 72, 12, "rough", 4),
       mesa(110, 150, 12, "green", 4),
-      backstop(150, 12, 8),
+      backstop(150, 12, 8, "stone"),
     ],
   },
   {
@@ -1221,12 +1406,12 @@ const CINDER_RISE: HoleSpec[] = [
     cup: [84, 12],
     parts: [
       terrain(
-        ["fairway", [-8, 12], [20, 12], [30, 12]],
-        ["fairway", [37, 12], [56, 11], [72, 12]],
-        ["green", [72, 12], [94, 12]],
-        ["rough", [94, 12], [106, 15]],
+        ["fairway", [-8, 12], [20, 12], [34, 12], [54, 11.4], [72, 12]],
+        ["green", [72, 12], [84, 12], [96, 12]],
       ),
+      backstop(96, 12, 7, "stone"),
       breakable(32, 36, 12, 22, "stone"),
+      feet(32, 36, 12, "stone"),
       block(32, 22, 4, 4, "stone"),
     ],
   },
@@ -1241,7 +1426,7 @@ const CINDER_RISE: HoleSpec[] = [
       pool(30, 96, 4, "lava"),
       lift("magma", 50, 64, 14, [[57, 14], [57, 27]], 3.0),
       mesa(96, 142, 26, "green", 4),
-      backstop(142, 26, 8),
+      backstop(142, 26, 8, "stone"),
     ],
   },
   {
@@ -1256,7 +1441,7 @@ const CINDER_RISE: HoleSpec[] = [
       pool(26, 120, 3, "lava"),
       mesa(68, 92, 12, "rough", 3),
       mesa(96, 138, 12, "green", 3),
-      backstop(138, 12, 8),
+      backstop(138, 12, 8, "stone"),
     ],
   },
   {
@@ -1270,7 +1455,7 @@ const CINDER_RISE: HoleSpec[] = [
       pool(34, 46, 3, "lava"),
       fan(40, 10, 8, 30, 90, 40),
       mesa(46, 104, 34, "green", 2),
-      backstop(104, 34, 8),
+      backstop(104, 34, 8, "stone"),
     ],
   },
   {
@@ -1287,7 +1472,7 @@ const CINDER_RISE: HoleSpec[] = [
       breakable(68, 78, 10.6, 12),
       breakable(84, 94, 10.6, 12),
       mesa(104, 144, 12, "green", 4),
-      backstop(144, 12, 8),
+      backstop(144, 12, 8, "stone"),
     ],
   },
   {
@@ -1304,7 +1489,7 @@ const CINDER_RISE: HoleSpec[] = [
       mesa(98, 112, 10, "rough", -4),
       mesa(116, 130, 20, "rough", -4),
       mesa(134, 172, 30, "green", -4),
-      backstop(172, 30, 8),
+      backstop(172, 30, 8, "stone"),
     ],
   },
   {
@@ -1321,7 +1506,7 @@ const CINDER_RISE: HoleSpec[] = [
       fan(84, 14, 5, 22, 80, 26),
       mesa(116, 134, 32, "rough", 3),
       mesa(142, 180, 40, "green", 3),
-      backstop(180, 40, 8),
+      backstop(180, 40, 8, "stone"),
     ],
   },
 ];
@@ -1329,6 +1514,10 @@ const CINDER_RISE: HoleSpec[] = [
 // ===========================================================================
 // 7 — HOARFROST (glacier). Ice takes the brakes off everything.
 // ===========================================================================
+//
+// Ice stops a ball on nothing steeper than half a degree, so every sheet here
+// is authored dead flat and always ends in a snow (rough) collar. Ice that
+// tilts is ice the ball never gets off.
 
 const HOARFROST: HoleSpec[] = [
   {
@@ -1340,11 +1529,11 @@ const HOARFROST: HoleSpec[] = [
     parts: [
       terrain(
         ["fairway", [-8, 10], [20, 10]],
-        ["ice", [20, 10], [48, 9.4], [72, 10]],
-        ["rough", [72, 10], [78, 10]],
-        ["green", [78, 10], [98, 10]],
+        ["ice", [20, 10], [38, 10], [56, 10]],
+        ["rough", [56, 10], [66, 10], [78, 10]],
+        ["green", [78, 10], [88, 10], [98, 10]],
       ),
-      backstop(98, 10, 8),
+      backstop(98, 10, 7),
     ],
   },
   {
@@ -1361,7 +1550,7 @@ const HOARFROST: HoleSpec[] = [
       terrain(
         ["ice", [86, 10], [96, 10]],
         ["rough", [96, 10], [100, 10]],
-        ["green", [100, 10], [120, 10]],
+        ["green", [100, 10], [110, 10], [120, 10]],
       ),
       backstop(120, 10, 8),
     ],
@@ -1375,10 +1564,10 @@ const HOARFROST: HoleSpec[] = [
     parts: [
       terrain(
         ["fairway", [-8, 10], [14, 10]],
-        ["ice", [14, 10], [50, 10], [84, 10]],
-        ["sand", [84, 10], [90, 9.7]],
-        ["green", [90, 9.7], [108, 9.7]],
-        ["ice", [108, 9.7], [116, 8]],
+        ["ice", [14, 10], [42, 10], [70, 10]],
+        ["sand", [70, 10], [80, 9.9], [90, 9.8]],
+        ["green", [90, 9.8], [98, 9.8], [108, 9.8]],
+        ["rough", [108, 9.8], [114, 9.4]],
       ),
       pool(116, 140, 8),
     ],
@@ -1397,7 +1586,7 @@ const HOARFROST: HoleSpec[] = [
       terrain(
         ["ice", [90, 4], [98, 4]],
         ["rough", [98, 4], [102, 4]],
-        ["green", [102, 4], [124, 4]],
+        ["green", [102, 4], [112, 4], [124, 4]],
       ),
       backstop(124, 4, 8),
     ],
@@ -1420,9 +1609,9 @@ const HOARFROST: HoleSpec[] = [
       pool(58, 70, 5),
       terrain(
         ["rough", [70, 10], [76, 10]],
-        ["green", [76, 10], [94, 10]],
+        ["green", [76, 10], [84, 10], [94, 10]],
       ),
-      backstop(94, 10, 6),
+      backstop(94, 10, 5),
     ],
   },
   {
@@ -1438,7 +1627,7 @@ const HOARFROST: HoleSpec[] = [
       terrain(
         ["ice", [64, 10], [80, 10]],
         ["rough", [80, 10], [84, 10]],
-        ["green", [84, 10], [104, 10]],
+        ["green", [84, 10], [94, 10], [104, 10]],
       ),
       backstop(104, 10, 8),
     ],
@@ -1459,9 +1648,10 @@ const HOARFROST: HoleSpec[] = [
       mesa(80, 96, 34, "rough", -4),
       terrain(
         ["rough", [96, 40], [100, 40]],
-        ["green", [100, 40], [122, 40]],
+        ["green", [100, 40], [110, 40], [122, 40]],
       ),
       block(96, 24, 30, 16, "stone"),
+      fillet(96, 34, -1, 1.0, "rough"),
       backstop(122, 40, 8),
     ],
   },
@@ -1472,15 +1662,13 @@ const HOARFROST: HoleSpec[] = [
     tee: [6, 10],
     cup: [102, 10],
     parts: [
-      terrain(["ice", [-8, 10], [20, 10], [32, 10]]),
-      wall(36, 10, 40, 3, "stone"),
       terrain(
-        ["ice", [60, 10], [86, 10]],
-        ["rough", [86, 10], [92, 10]],
-        ["green", [92, 10], [112, 10]],
-        ["ice", [112, 10], [120, 9]],
+        ["ice", [-8, 10], [20, 10], [32, 10], [50, 10], [74, 10]],
+        ["rough", [74, 10], [84, 10], [92, 10]],
+        ["green", [92, 10], [102, 10], [112, 10]],
       ),
-      pool(120, 142, 9),
+      wall(36, 10, 40, 3, "stone"),
+      backstop(112, 10, 7),
       portals("fc", [34.4, 16, 180], [62, 14, 0], 2.2),
     ],
   },
@@ -1499,7 +1687,7 @@ const HOARFROST: HoleSpec[] = [
       terrain(
         ["ice", [108, 10], [140, 10]],
         ["rough", [140, 10], [148, 10]],
-        ["green", [148, 10], [168, 10]],
+        ["green", [148, 10], [158, 10], [168, 10]],
       ),
       backstop(168, 10, 8),
       portals("hc", [78.4, 16, 180], [108, 15, 0], 2.4),

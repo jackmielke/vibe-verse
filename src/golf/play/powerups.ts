@@ -92,134 +92,219 @@ const PICKUP_WEIGHTS: Partial<Record<BallType, number>> = {
 const INVENTORY_CAP = 9;
 const BALL_R = 0.32;
 
+/**
+ * Pickup presentation.
+ *
+ * These numbers exist because a pickup has to survive a 430 px-wide phone.
+ * The old wireframe octahedron drew ~30 px of see-through line art with an
+ * 8 px glyph inside it, floating over the sky — it read as background
+ * decoration, or worse, as a hazard. So: a big opaque coin, anchored to the
+ * ground it sits over, in the item's own unlit colour.
+ */
+/** Radius of the opaque coin body, metres. ~1.8× the old cage. */
+const PICKUP_R = 1.6;
+/** How far above its ground anchor a pickup floats. Short enough to read as
+ *  "reachable", tall enough that the tether and contact ring are visible. */
+const PICKUP_LIFT = 2.7;
+/** Slow, upward-feeling bob. */
+const PICKUP_BOB = 0.34;
+const PICKUP_BOB_RATE = 1.15;
+/** Outline ink. Nothing in the sky/water/grass/mountain palette is this dark,
+ *  so a ring of it separates the coin from every background it can sit on. */
+const INK = 0x070b16;
+
 // ---------------------------------------------------------------------------
 // Procedural glyphs — one small canvas per ball type, drawn as paths so we
 // never depend on a font being present.
+//
+// Rule for these: they are *silhouettes*, not line drawings. Everything is
+// fill-first and fat-stroked and spans ~80% of the canvas, because a pickup
+// icon on a 430 px phone is roughly 40 px across and any detail below a
+// tenth of the icon width is gone. No faces, no skulls — a pickup must never
+// be mistakable for a hazard.
 // ---------------------------------------------------------------------------
 
 function glyphTexture(type: BallType): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
+  c.width = 256;
+  c.height = 256;
   const g = c.getContext("2d");
   if (!g) return null;
 
   g.strokeStyle = "#ffffff";
   g.fillStyle = "#ffffff";
-  g.lineWidth = 12;
+  g.lineWidth = 30;
   g.lineCap = "round";
   g.lineJoin = "round";
-  const cx = 64;
-  const cy = 64;
+  const cx = 128;
+  const cy = 128;
 
-  const chevron = (x: number, y: number, s: number, rot: number) => {
-    g.save();
-    g.translate(x, y);
-    g.rotate(rot);
+  const poly = (pts: [number, number][]) => {
     g.beginPath();
-    g.moveTo(-s, -s);
-    g.lineTo(s, 0);
-    g.lineTo(-s, s);
-    g.stroke();
-    g.restore();
+    g.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+    g.closePath();
+    g.fill();
+  };
+  const dot = (x: number, y: number, r: number) => {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
   };
 
   switch (type) {
     case "sticky": {
-      // A splat: fat centre plus a few thrown droplets.
-      g.beginPath();
-      g.arc(cx, cy - 4, 30, 0, Math.PI * 2);
-      g.fill();
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2 + 0.5;
-        g.beginPath();
-        g.arc(cx + Math.cos(a) * 42, cy - 4 + Math.sin(a) * 42, 7 + (i % 2) * 4, 0, Math.PI * 2);
-        g.fill();
+      // A fat splat: one heavy blob, four thrown droplets.
+      dot(cx, cy + 6, 62);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + 0.7;
+        dot(cx + Math.cos(a) * 88, cy + 6 + Math.sin(a) * 88, 20 + (i % 2) * 6);
       }
       break;
     }
     case "ice": {
-      // Six-spoke snowflake with barbs.
+      // Six-spoke snowflake, fat enough to survive downscale.
       for (let i = 0; i < 3; i++) {
         const a = (i / 3) * Math.PI;
         g.beginPath();
-        g.moveTo(cx - Math.cos(a) * 46, cy - Math.sin(a) * 46);
-        g.lineTo(cx + Math.cos(a) * 46, cy + Math.sin(a) * 46);
+        g.moveTo(cx - Math.cos(a) * 100, cy - Math.sin(a) * 100);
+        g.lineTo(cx + Math.cos(a) * 100, cy + Math.sin(a) * 100);
         g.stroke();
       }
-      g.lineWidth = 8;
+      g.lineWidth = 22;
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2;
-        const px = cx + Math.cos(a) * 30;
-        const py = cy + Math.sin(a) * 30;
+        const px = cx + Math.cos(a) * 62;
+        const py = cy + Math.sin(a) * 62;
         g.beginPath();
         g.moveTo(px, py);
-        g.lineTo(px + Math.cos(a + 0.9) * 16, py + Math.sin(a + 0.9) * 16);
+        g.lineTo(px + Math.cos(a + 0.85) * 36, py + Math.sin(a + 0.85) * 36);
         g.moveTo(px, py);
-        g.lineTo(px + Math.cos(a - 0.9) * 16, py + Math.sin(a - 0.9) * 16);
+        g.lineTo(px + Math.cos(a - 0.85) * 36, py + Math.sin(a - 0.85) * 36);
         g.stroke();
       }
+      dot(cx, cy, 20);
       break;
     }
     case "nitro":
-      chevron(cx - 16, cy, 22, 0);
-      chevron(cx + 18, cy, 22, 0);
+      // Lightning bolt. One shape, no interior detail.
+      poly([[158, 22], [72, 140], [118, 140], [96, 234], [190, 106], [140, 106]]);
       break;
     case "super":
-      chevron(cx, cy - 18, 24, -Math.PI / 2);
-      chevron(cx, cy + 18, 24, -Math.PI / 2);
+      // Bounce: a fat arrow launching upward.
+      poly([[128, 20], [40, 118], [86, 118], [86, 200], [170, 200], [170, 118], [216, 118]]);
+      poly([[62, 224], [194, 224], [194, 244], [62, 244]]);
       break;
     case "multi":
-      for (const [dx, dy] of [[0, -26], [-26, 20], [26, 20]] as [number, number][]) {
-        g.beginPath();
-        g.arc(cx + dx, cy + dy, 15, 0, Math.PI * 2);
-        g.fill();
-      }
+      // Three balls.
+      dot(cx, 74, 46);
+      dot(72, 182, 46);
+      dot(184, 182, 46);
       break;
     case "ghost": {
+      // "Passes through solid things": an arrow crossing a wall. Explicitly
+      // NOT a face — a ghost face reads as a hazard, which is the opposite
+      // of what a pickup means.
+      g.lineWidth = 30;
       g.beginPath();
-      g.arc(cx, cy - 8, 34, Math.PI, 0);
-      g.lineTo(cx + 34, cy + 30);
-      for (let i = 0; i < 3; i++) {
-        g.quadraticCurveTo(cx + 34 - (i * 2 + 1) * 11.3, cy + 12, cx + 34 - (i + 1) * 22.7, cy + 30);
-      }
-      g.closePath();
-      g.fill();
+      g.moveTo(178, 26);
+      g.lineTo(178, 230);
+      g.stroke();
+      // Punch a clean corridor through the wall so the arrow reads as
+      // passing *through* it rather than sitting on top of it.
       g.globalCompositeOperation = "destination-out";
+      g.lineWidth = 92;
       g.beginPath();
-      g.arc(cx - 12, cy - 8, 8, 0, Math.PI * 2);
-      g.arc(cx + 12, cy - 8, 8, 0, Math.PI * 2);
-      g.fill();
+      g.moveTo(0, cy);
+      g.lineTo(256, cy);
+      g.stroke();
       g.globalCompositeOperation = "source-over";
+      g.lineWidth = 28;
+      g.beginPath();
+      g.moveTo(26, cy);
+      g.lineTo(212, cy);
+      g.stroke();
+      poly([[160, 80], [238, cy], [160, 176]]);
       break;
     }
     case "heavy":
-      g.beginPath();
-      g.moveTo(cx, cy - 40);
-      g.lineTo(cx, cy + 14);
-      g.stroke();
-      g.beginPath();
-      g.moveTo(cx - 22, cy - 8);
-      g.lineTo(cx, cy + 18);
-      g.lineTo(cx + 22, cy - 8);
-      g.stroke();
-      g.beginPath();
-      g.moveTo(cx - 30, cy + 40);
-      g.lineTo(cx + 30, cy + 40);
-      g.stroke();
+      // Mass dropping onto a plate.
+      poly([[100, 24], [156, 24], [156, 112], [200, 112], [128, 194], [56, 112], [100, 112]]);
+      poly([[46, 212], [210, 212], [210, 240], [46, 240]]);
       break;
-    default:
-      g.lineWidth = 14;
+    default: {
+      // A star: the universal "collect me".
       g.beginPath();
-      g.arc(cx, cy, 32, 0, Math.PI * 2);
-      g.stroke();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i / 10) * Math.PI * 2;
+        const r = i % 2 === 0 ? 106 : 46;
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r;
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fill();
       break;
+    }
   }
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 2;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/**
+ * The name badge under each pickup. Two identical wireframe diamonds that
+ * differ only in hue taught the playtesters nothing; a word does. Drawn as an
+ * ink pill with a tinted border so it is legible over sky, water and grass
+ * alike, and it degrades to a plain pill if the browser has no usable font.
+ */
+function labelTexture(name: string, tint: number): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 128;
+  const g = c.getContext("2d");
+  if (!g) return null;
+
+  const hex = `#${tint.toString(16).padStart(6, "0")}`;
+  const r = 46;
+  const x0 = 10;
+  const y0 = 16;
+  const w = 492;
+  const h = 96;
+  g.beginPath();
+  g.moveTo(x0 + r, y0);
+  g.lineTo(x0 + w - r, y0);
+  g.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + r);
+  g.lineTo(x0 + w, y0 + h - r);
+  g.quadraticCurveTo(x0 + w, y0 + h, x0 + w - r, y0 + h);
+  g.lineTo(x0 + r, y0 + h);
+  g.quadraticCurveTo(x0, y0 + h, x0, y0 + h - r);
+  g.lineTo(x0, y0 + r);
+  g.quadraticCurveTo(x0, y0, x0 + r, y0);
+  g.closePath();
+  g.fillStyle = "rgba(7,11,22,0.92)";
+  g.fill();
+  g.lineWidth = 7;
+  g.strokeStyle = hex;
+  g.stroke();
+
+  g.fillStyle = "#ffffff";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "bold 58px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
+  const text = name.toUpperCase();
+  // If the platform has no font at all, measureText returns 0 and fillText
+  // would draw nothing — the pill alone still reads as a badge.
+  if (g.measureText(text).width > 1) g.fillText(text, 256, 66);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
 

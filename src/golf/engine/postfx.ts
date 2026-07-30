@@ -94,21 +94,21 @@ const GRADES: Record<CourseTheme, Grade> = {
   // Sunny tropical par 3. Warm key, cool sea-bounce shadow, fairway hottest.
   seaside: {
     exposure: 1.34, gain: [1.09, 1.015, 0.90], lift: [0.010, 0.026, 0.044], hi: [1.10, 1.035, 0.93],
-    contrast: 1.05, saturation: 1.18, scurve: 0.40, green: 0.60,
+    contrast: 1.04, saturation: 1.18, scurve: 0.40, green: 0.85,
     vignette: 0.20, aberration: 0.0014, grain: 0.011,
     bloom: 0.42, threshold: 2.85,
   },
   // Humid and deep — sunlight punching through the canopy, shade stays green.
   jungle: {
     exposure: 1.30, gain: [1.00, 1.045, 0.92], lift: [0.010, 0.028, 0.030], hi: [1.11, 1.045, 0.88],
-    contrast: 1.07, saturation: 1.14, scurve: 0.40, green: 0.58,
+    contrast: 1.06, saturation: 1.14, scurve: 0.40, green: 0.80,
     vignette: 0.22, aberration: 0.0014, grain: 0.012,
     bloom: 0.36, threshold: 2.95,
   },
   // Baked red rock: amber highlights, violet shade.
   canyon: {
     exposure: 1.36, gain: [1.13, 1.00, 0.885], lift: [0.030, 0.010, 0.040], hi: [1.15, 1.00, 0.84],
-    contrast: 1.06, saturation: 1.13, scurve: 0.38, green: 0.35,
+    contrast: 1.06, saturation: 1.13, scurve: 0.38, green: 0.30,
     vignette: 0.22, aberration: 0.0018, grain: 0.013,
     bloom: 0.42, threshold: 2.80,
   },
@@ -122,7 +122,7 @@ const GRADES: Record<CourseTheme, Grade> = {
   // Thin air: lifted blacks, low contrast, almost no vignette.
   sky: {
     exposure: 1.38, gain: [0.99, 1.005, 1.05], lift: [0.020, 0.030, 0.044], hi: [1.06, 1.045, 1.05],
-    contrast: 0.99, saturation: 1.08, scurve: 0.30, green: 0.45,
+    contrast: 0.99, saturation: 1.08, scurve: 0.30, green: 0.55,
     vignette: 0.14, aberration: 0.0010, grain: 0.010,
     bloom: 0.55, threshold: 2.60,
   },
@@ -218,7 +218,7 @@ uniform vec3 uGain, uLift, uHi;
 uniform float uExposure, uContrast, uSaturation, uSCurve, uGreen;
 uniform float uVignette, uAberration, uGrain, uBloom;
 uniform float uTime, uShock, uAspect;
-uniform vec2 uShockAt;
+uniform vec2 uShockAt, uOverscan;
 varying vec2 vUv;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -271,6 +271,13 @@ void main() {
   }
 #endif
 
+  // Overscan. A handful of pixels at the very border of the colour buffer are
+  // not reliably covered by scene geometry — the sky quad is sized to the
+  // frustum and a rounding pixel either way leaves the clear colour showing as
+  // a flat desaturated strip up the edge of frame. Sampling a few pixels in
+  // and stretching costs ~1% of framing and guarantees the border is picture.
+  uv = 0.5 + (uv - 0.5) * uOverscan;
+
   vec3 col;
 #ifdef ABERRATION
   // Radial split ramped by r^2, so the centre of frame — where the ball lives
@@ -311,7 +318,12 @@ void main() {
   float sat = (mx - mn) / max(mx, 1e-4);
   float gw = clamp((col.g - max(col.r, col.b)) * 3.2, 0.0, 1.0)
            * smoothstep(0.26, 0.56, sat);
-  col = mix(col, col * vec3(1.22, 1.16, 0.88) + vec3(0.020, 0.028, 0.0), gw * uGreen);
+  // A per-channel gamma, not a gain: it lifts a grass pixel sitting in shade
+  // far more than one in full sun, so the dark side of the fairway keeps its
+  // blade texture instead of collapsing into a black mass, while the lit side
+  // only warms. Red lifts alongside green, which swings the whole surface
+  // yellow-green rather than deeper into cold emerald.
+  col = mix(col, pow(max(col, vec3(1e-4)), vec3(0.80, 0.74, 0.96)), gw * uGreen);
   col = clamp(col, 0.0, 1.0);
 
   // Midtone S. Weighted off the toe so it widens the gap between the parallax
@@ -348,6 +360,16 @@ const GLOW_DIV = 4;
 
 /** Border, in ¼-res uv, over which the bright pass fades to black. */
 const GLOW_EDGE = 0.035;
+
+/** CSS pixels trimmed off each edge by the grade pass's overscan. */
+const OVERSCAN_PX = 6;
+
+/** Per-axis uv scale that trims `OVERSCAN_PX` from both edges of a w×h frame. */
+function overscan(out: THREE.Vector2, w: number, h: number): THREE.Vector2 {
+  const sx = 1 - (2 * OVERSCAN_PX) / Math.max(1, w);
+  const sy = 1 - (2 * OVERSCAN_PX) / Math.max(1, h);
+  return out.set(THREE.MathUtils.clamp(sx, 0.9, 1), THREE.MathUtils.clamp(sy, 0.9, 1));
+}
 
 /**
  * Threshold + separable blur into a private half-float target. `needsSwap` is
@@ -513,7 +535,7 @@ const createPostFx: SystemFactory = async (ctx) => {
         uContrast: { value: 1 },
         uSaturation: { value: 1 },
         uSCurve: { value: 0.40 },
-        uGreen: { value: 0.6 },
+        uGreen: { value: 0.85 },
         uVignette: { value: 0.20 },
         uAberration: { value: 0.0014 },
         uGrain: { value: 0.011 },
@@ -522,6 +544,7 @@ const createPostFx: SystemFactory = async (ctx) => {
         uShock: { value: 0 },
         uAspect: { value: Math.max(0.01, size.x / Math.max(1, size.y)) },
         uShockAt: { value: new THREE.Vector2(0.5, 0.5) },
+        uOverscan: { value: overscan(new THREE.Vector2(), size.x, size.y) },
       },
       vertexShader: FS_VERT,
       fragmentShader: GRADE_FRAG,
@@ -663,6 +686,7 @@ const createPostFx: SystemFactory = async (ctx) => {
           composer.setPixelRatio(ratio);
           composer.setSize(w, h);
           U.uAspect.value = Math.max(0.01, w / Math.max(1, h));
+          overscan(U.uOverscan.value as THREE.Vector2, w, h);
           fxaa?.material.uniforms.resolution.value.set(1 / (w * ratio), 1 / (h * ratio));
         } catch (err) {
           console.error("[Vibe Golf] postfx resize failed:", err);
