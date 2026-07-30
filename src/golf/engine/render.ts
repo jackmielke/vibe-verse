@@ -41,9 +41,9 @@ import { LAYER } from "./core";
 
 /** Base albedo tint per material — the generated texture is drawn over this. */
 const COLORS: Record<SurfaceMaterial, number> = {
-  fairway: 0x4fa83f,
-  green: 0x63c94d,
-  rough: 0x357a2c,
+  fairway: 0x5cb63c,
+  green: 0x74d24a,
+  rough: 0x3d8a2a,
   sand: 0xe6d29a,
   stone: 0x6e7b8c,
   metal: 0x9aa4ad,
@@ -57,8 +57,8 @@ const COLORS: Record<SurfaceMaterial, number> = {
 
 /** World metres per texture tile. World-space UVs mean no seams between slabs. */
 const TILE: Record<SurfaceMaterial, number> = {
-  fairway: 5, green: 3.6, rough: 5, sand: 3.4, stone: 3, metal: 2.4,
-  wood: 2.2, ice: 3.6, rubber: 1.8, water: 6, lava: 6, outOfBounds: 8,
+  fairway: 5, green: 3.6, rough: 5, sand: 3.4, stone: 6.5, metal: 4.2,
+  wood: 3.4, ice: 4.4, rubber: 1.8, water: 6, lava: 6, outOfBounds: 8,
 };
 
 /** roughness, metalness, normal-map strength. */
@@ -90,8 +90,15 @@ const EDGE_EXTENT: Record<EdgeKind, [number, number]> = {
 };
 
 /** How far below a ground strip the solid slab extends, metres. */
-const SLAB_DEPTH = 26;
+const SLAB_DEPTH = 90;
 const EXTRUDE = 3.2;
+
+/**
+ * How far (world metres) an overlay dressing — a mown green, a bunker — fades
+ * out at its left and right ends. Blitting the lighter material as a hard
+ * axis-aligned edge is the single loudest "unclipped quad" artefact there is.
+ */
+const OVERLAY_FADE = 4.0;
 
 // ---------------------------------------------------------------------------
 // Theme dressing
@@ -112,57 +119,72 @@ interface ThemeSpec {
   tint: number; tintAmt: number;
   /** Sky cloud density (0 = clear) and the colour they are lit in. */
   clouds: number; cloudCol: number;
+  /** Silhouette grammar for the parallax tiers. */
+  relief: "peak" | "mesa" | "city" | "cloud";
+  /** Vegetation planted along the mid / near ridges. */
+  veg: "palm" | "conifer" | "canopy" | "none";
+  /** Whether tier 2 is an open water plane with a hard horizon. */
+  sea: boolean;
+  /** Snow caps on the tallest far peaks. */
+  snow: boolean;
 }
 
 const THEMES: Record<CourseTheme, ThemeSpec> = {
   seaside: {
-    skyTop: 0x12305e, skyMid: 0x3f86b4, skyBot: 0xffc489, sun: 0xffd9a6,
-    sunAt: [46, 40], sunSize: 2.6, key: 0xffe3bc, keyI: 2.5,
-    hemiSky: 0x9fd0ff, hemiGround: 0x24402c, hemiI: 1.1, fog: 0x3a6f92,
-    far: 0x3d7ea6, mid: 0x2b6285, near: 0x1c4763, accent: 0xffb44d,
-    stars: false, tint: 0x8fd8ff, tintAmt: 0.06, clouds: 0.55, cloudCol: 0xffcb96,
+    skyTop: 0x123f78, skyMid: 0x4691bf, skyBot: 0xffc98f, sun: 0xffd9a6,
+    sunAt: [-32, 30], sunSize: 2.6, key: 0xffe3bc, keyI: 2.5,
+    hemiSky: 0x9fd0ff, hemiGround: 0x24402c, hemiI: 1.1, fog: 0x64a2c4,
+    far: 0x3f83ae, mid: 0x2f6d97, near: 0x235a83, accent: 0xffb44d,
+    stars: false, tint: 0x8fd8ff, tintAmt: 0.05, clouds: 0.5, cloudCol: 0xf2e0cd,
+    relief: "peak", veg: "palm", sea: true, snow: false,
   },
   jungle: {
-    skyTop: 0x0b3a36, skyMid: 0x2c8a63, skyBot: 0xe4f2a8, sun: 0xfff3c4,
-    sunAt: [40, 46], sunSize: 2.2, key: 0xfff0c4, keyI: 2.4,
-    hemiSky: 0xa8ecc8, hemiGround: 0x1a3a20, hemiI: 1.15, fog: 0x2e735a,
-    far: 0x3f9080, mid: 0x276b5c, near: 0x164539, accent: 0xffd34d,
-    stars: false, tint: 0x7fffc0, tintAmt: 0.07, clouds: 0.4, cloudCol: 0xf4ffd8,
+    skyTop: 0x11563f, skyMid: 0x49a97a, skyBot: 0xe4f2a8, sun: 0xfff3c4,
+    sunAt: [-28, 34], sunSize: 2.2, key: 0xfff0c4, keyI: 2.4,
+    hemiSky: 0xa8ecc8, hemiGround: 0x1a3a20, hemiI: 1.15, fog: 0x76bb9a,
+    far: 0x5aa792, mid: 0x459182, near: 0x357c6c, accent: 0xffd34d,
+    stars: false, tint: 0x7fffc0, tintAmt: 0.06, clouds: 0.34, cloudCol: 0xdff0d4,
+    relief: "peak", veg: "canopy", sea: false, snow: false,
   },
   canyon: {
-    skyTop: 0x2b1e50, skyMid: 0xb8613c, skyBot: 0xffd095, sun: 0xffcf90,
-    sunAt: [52, 32], sunSize: 3.0, key: 0xffd2a2, keyI: 2.6,
-    hemiSky: 0xffc79a, hemiGround: 0x3a2018, hemiI: 1.0, fog: 0x8f5a3e,
-    far: 0x9a635a, mid: 0x6d4344, near: 0x452c32, accent: 0xffa552,
-    stars: false, tint: 0xffb27a, tintAmt: 0.1, clouds: 0.45, cloudCol: 0xffbd85,
+    skyTop: 0x3c2a5e, skyMid: 0xc2734a, skyBot: 0xffd095, sun: 0xffcf90,
+    sunAt: [-34, 26], sunSize: 3.0, key: 0xffd2a2, keyI: 2.6,
+    hemiSky: 0xffc79a, hemiGround: 0x3a2018, hemiI: 1.0, fog: 0xc08a63,
+    far: 0xb08272, mid: 0x93655c, near: 0x7a4f4c, accent: 0xffa552,
+    stars: false, tint: 0xffb27a, tintAmt: 0.08, clouds: 0.36, cloudCol: 0xf0c39a,
+    relief: "mesa", veg: "conifer", sea: false, snow: false,
   },
   neon: {
-    skyTop: 0x05041a, skyMid: 0x180f3f, skyBot: 0x40195f, sun: 0x8be6ff,
-    sunAt: [58, 52], sunSize: 1.4, key: 0xb7e8ff, keyI: 1.7,
-    hemiSky: 0x7b5bff, hemiGround: 0x140a2c, hemiI: 1.25, fog: 0x1c1042,
-    far: 0x2b1f60, mid: 0x1d1546, near: 0x130c2e, accent: 0x2ff5d0,
-    stars: true, tint: 0x8fa8ff, tintAmt: 0.12, clouds: 0.3, cloudCol: 0x40256e,
+    skyTop: 0x05041a, skyMid: 0x211656, skyBot: 0x4d1f72, sun: 0x8be6ff,
+    sunAt: [-36, 44], sunSize: 1.4, key: 0xb7e8ff, keyI: 1.7,
+    hemiSky: 0x7b5bff, hemiGround: 0x140a2c, hemiI: 1.25, fog: 0x2c1a63,
+    far: 0x3c2c7d, mid: 0x2f2266, near: 0x24194f, accent: 0x2ff5d0,
+    stars: true, tint: 0x8fa8ff, tintAmt: 0.1, clouds: 0.24, cloudCol: 0x4a2c7a,
+    relief: "city", veg: "none", sea: false, snow: false,
   },
   sky: {
     skyTop: 0x2a72d4, skyMid: 0x8fd2f6, skyBot: 0xf4fbff, sun: 0xffffff,
-    sunAt: [44, 44], sunSize: 2.4, key: 0xffffff, keyI: 2.7,
-    hemiSky: 0xdcf1ff, hemiGround: 0x4a6a80, hemiI: 1.3, fog: 0xcfe8fa,
-    far: 0xd8ecfb, mid: 0xb0d8f2, near: 0x86bde5, accent: 0xffd166,
-    stars: false, tint: 0xffffff, tintAmt: 0.05, clouds: 0.9, cloudCol: 0xffffff,
+    sunAt: [-30, 34], sunSize: 2.4, key: 0xffffff, keyI: 2.7,
+    hemiSky: 0xdcf1ff, hemiGround: 0x4a6a80, hemiI: 1.3, fog: 0xd7edfb,
+    far: 0xbcdcf2, mid: 0xa4cbe9, near: 0x86b8de, accent: 0xffd166,
+    stars: false, tint: 0xffffff, tintAmt: 0.04, clouds: 0.7, cloudCol: 0xffffff,
+    relief: "cloud", veg: "none", sea: false, snow: false,
   },
   volcano: {
-    skyTop: 0x160812, skyMid: 0x561523, skyBot: 0xff7a33, sun: 0xff9a4a,
-    sunAt: [50, 28], sunSize: 2.0, key: 0xffb583, keyI: 2.1,
-    hemiSky: 0xff8a52, hemiGround: 0x2a0e08, hemiI: 1.15, fog: 0x5c1e18,
-    far: 0x612c38, mid: 0x401a22, near: 0x261017, accent: 0xff9036,
-    stars: true, tint: 0xff9a6a, tintAmt: 0.12, clouds: 0.55, cloudCol: 0x582a20,
+    skyTop: 0x260f1c, skyMid: 0x6d2029, skyBot: 0xff7a33, sun: 0xff9a4a,
+    sunAt: [-30, 24], sunSize: 2.0, key: 0xffb583, keyI: 2.1,
+    hemiSky: 0xff8a52, hemiGround: 0x2a0e08, hemiI: 1.15, fog: 0x8a3526,
+    far: 0x82464b, mid: 0x6b3439, near: 0x55272e, accent: 0xff9036,
+    stars: true, tint: 0xff9a6a, tintAmt: 0.1, clouds: 0.4, cloudCol: 0x7a3c2c,
+    relief: "peak", veg: "conifer", sea: false, snow: false,
   },
   glacier: {
-    skyTop: 0x0d2c58, skyMid: 0x63aedb, skyBot: 0xeaf7ff, sun: 0xe8f6ff,
-    sunAt: [42, 42], sunSize: 2.2, key: 0xe6f2ff, keyI: 2.4,
-    hemiSky: 0xcfeaff, hemiGround: 0x2b4a5f, hemiI: 1.25, fog: 0xa5cde5,
-    far: 0xafd6ee, mid: 0x86b6da, near: 0x5387b2, accent: 0x7df0ff,
-    stars: false, tint: 0xbfe8ff, tintAmt: 0.12, clouds: 0.5, cloudCol: 0xeaf6ff,
+    skyTop: 0x1a4a80, skyMid: 0x7cc0e6, skyBot: 0xeaf7ff, sun: 0xe8f6ff,
+    sunAt: [-30, 32], sunSize: 2.2, key: 0xe6f2ff, keyI: 2.4,
+    hemiSky: 0xcfeaff, hemiGround: 0x2b4a5f, hemiI: 1.25, fog: 0xbcdcee,
+    far: 0xafd6ee, mid: 0x96c4e2, near: 0x79aed2, accent: 0x7df0ff,
+    stars: false, tint: 0xbfe8ff, tintAmt: 0.1, clouds: 0.42, cloudCol: 0xeaf6ff,
+    relief: "peak", veg: "conifer", sea: true, snow: true,
   },
 };
 
@@ -184,6 +206,64 @@ function pad(w: number, h: number): Pad | null {
 const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
 const rgba = (n: number, a: number) =>
   `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+
+const _cA = new THREE.Color();
+const _cB = new THREE.Color();
+const _hsl = { h: 0, s: 0, l: 0 };
+
+/**
+ * The depth contract in one function: push a silhouette colour toward the sky,
+ * bleed its saturation out and lift it. Every background tier goes through
+ * this, which is what stops decorative scenery from sharing the play surface's
+ * value band and reading as something you could land on.
+ */
+function haze(base: number, sky: number, amt: number, desat: number, lift = 0): number {
+  _cA.setHex(base).getHSL(_hsl);
+  _cA.setHSL(_hsl.h, _hsl.s * (1 - desat), Math.min(0.92, _hsl.l + lift));
+  _cA.lerp(_cB.setHex(sky), amt);
+  return _cA.getHex();
+}
+
+/** Linear blend of two packed colours — used for lit / shadow face splits. */
+function mixHex(a: number, b: number, t: number): number {
+  return _cA.setHex(a).lerp(_cB.setHex(b), t).getHex();
+}
+
+/**
+ * Blur a horizontally-tiling pad without opening a seam: the source is laid
+ * down three times side by side so the kernel always has real neighbours, and
+ * the bottom rows are re-solidified afterwards because a blurred alpha edge
+ * there would let sky through the layer's skirt.
+ */
+function blurTiling(p: Pad, radius: number, bottomFill?: string): Pad {
+  if (radius <= 0.05) return p;
+  const W = p.cv.width;
+  const H = p.cv.height;
+  const wide = pad(W * 3, H);
+  const soft = pad(W * 3, H);
+  const out = pad(W, H);
+  if (!wide || !soft || !out) return p;
+  wide.g.drawImage(p.cv, 0, 0);
+  wide.g.drawImage(p.cv, W, 0);
+  wide.g.drawImage(p.cv, W * 2, 0);
+  try {
+    soft.g.filter = `blur(${radius}px)`;
+  } catch {
+    /* Canvas filters are optional; an unblurred layer is still correct. */
+  }
+  // Blur the whole triple-width image, *then* cut the middle out. Blurring a
+  // source sub-rect instead would fade the kernel into transparency at the
+  // crop edge and leave a visible vertical seam every tile.
+  soft.g.drawImage(wide.cv, 0, 0);
+  soft.g.filter = "none";
+  out.g.drawImage(soft.cv, W, 0, W, H, 0, 0, W, H);
+  if (bottomFill) {
+    const band = Math.ceil(radius) + 2;
+    out.g.fillStyle = bottomFill;
+    out.g.fillRect(0, H - band, W, band);
+  }
+  return out;
+}
 
 /**
  * Wrapping vertical shade: light → dark → light, so a tile never shows a hard
@@ -239,14 +319,21 @@ function surfaceCanvas(m: SurfaceMaterial, S: number, rng: () => number): Pad | 
     case "fairway":
     case "green":
     case "rough": {
-      const top = m === "green" ? "#5cc34c" : m === "rough" ? "#2b6d25" : "#48a03a";
-      const bot = m === "green" ? "#4dae3f" : m === "rough" ? "#235c1e" : "#3c8c31";
+      const top = m === "green" ? "#79d94f" : m === "rough" ? "#3f8f2b" : "#63c043";
+      const bot = m === "green" ? "#5fbe3c" : m === "rough" ? "#2f7220" : "#4aa130";
       vgrad(g, S, S, top, bot);
-      // Mown stripes on the green: world-space vertical bands, alternating.
+      // Mown stripes on the green: world-space vertical bands, alternating and
+      // feathered so the band edge is never a hard line on the turf.
       if (m === "green") {
         for (let i = 0; i < 4; i++) {
-          g.fillStyle = i % 2 ? "rgba(255,255,255,0.075)" : "rgba(0,0,0,0.05)";
-          g.fillRect((i * S) / 4, 0, S / 4, S);
+          const x0 = (i * S) / 4;
+          const gr = g.createLinearGradient(x0, 0, x0 + S / 4, 0);
+          const a = i % 2 ? "rgba(255,255,255," : "rgba(0,0,0,";
+          gr.addColorStop(0, `${a}0)`);
+          gr.addColorStop(0.5, `${a}${i % 2 ? 0.07 : 0.045})`);
+          gr.addColorStop(1, `${a}0)`);
+          g.fillStyle = gr;
+          g.fillRect(x0, 0, S / 4, S);
         }
       }
       // Broad tonal patches so a big fairway isn't uniform.
@@ -553,18 +640,28 @@ function edgeCanvas(kind: EdgeKind, m: SurfaceMaterial, W: number, H: number, rn
 
   // Body below the rim: darkens downward, fades to transparent so it blends
   // into the slab texture instead of ending in a hard line.
+  // A tight, dark contact-occlusion band immediately under the rim is what
+  // separates a lit collision surface from the flat scenery behind it.
   const gr = g.createLinearGradient(0, split, 0, H);
-  gr.addColorStop(0, rgba(base, 0.0));
-  gr.addColorStop(0.12, rgba(0x000000, 0.16));
-  gr.addColorStop(0.45, rgba(0x000000, 0.30));
+  gr.addColorStop(0, rgba(0x000000, 0.0));
+  gr.addColorStop(0.05, rgba(0x04120a, 0.46));
+  gr.addColorStop(0.22, rgba(0x04120a, 0.34));
+  gr.addColorStop(0.55, rgba(0x000000, 0.20));
   gr.addColorStop(1, rgba(0x000000, 0.0));
   g.fillStyle = gr;
   g.fillRect(0, split, W, H - split);
 
-  // Hot rim.
-  const rimC = kind === "turf" ? 0xcaff8f : kind === "ice" ? 0xffffff : kind === "sand" ? 0xfff2cd : 0xfff0d2;
-  g.fillStyle = rgba(rimC, kind === "hard" ? 0.85 : 0.7);
-  g.fillRect(0, split - Math.max(1.5, H * 0.02), W, Math.max(2.5, H * 0.045));
+  // Hot rim — the play-surface signature. Nothing in the background wears it.
+  const rimC = kind === "turf" ? 0xe6ffb4 : kind === "ice" ? 0xffffff : kind === "sand" ? 0xfff6da : 0xfff4dc;
+  const rimH = Math.max(3.5, H * 0.062);
+  g.fillStyle = rgba(rimC, kind === "hard" ? 0.92 : 0.86);
+  g.fillRect(0, split - rimH * 0.45, W, rimH);
+  // A softer bloom above the hard line so the rim reads as sunlit, not inked.
+  const rg = g.createLinearGradient(0, split - rimH * 2.6, 0, split);
+  rg.addColorStop(0, rgba(rimC, 0));
+  rg.addColorStop(1, rgba(rimC, 0.30));
+  g.fillStyle = rg;
+  g.fillRect(0, split - rimH * 2.6, W, rimH * 2.6);
 
   if (kind === "turf") {
     // Blades above the rim, two tones for depth.
@@ -652,7 +749,12 @@ function ringTex(size: number): THREE.CanvasTexture | null {
   return t;
 }
 
-/** Golf ball: dimples plus a pair of alignment stripes so spin reads. */
+/**
+ * Golf ball albedo. High-key by contract: the ball has to be the brightest
+ * value in the frame in every state, so the dimples are the faintest possible
+ * grey and the alignment marks are tinted highlights rather than the dark red
+ * stripes that used to drag a 20 px ball down to mid-grey while aiming.
+ */
 function ballTex(size: number, rng: () => number): THREE.CanvasTexture | null {
   const p = pad(size, size * 0.5);
   if (!p) return null;
@@ -667,19 +769,65 @@ function ballTex(size: number, rng: () => number): THREE.CanvasTexture | null {
       const y = ((r + 0.5) / rows) * H;
       const rad = W / cols * 0.42;
       const gr = g.createRadialGradient(x, y - rad * 0.3, 0, x, y, rad);
-      gr.addColorStop(0, "rgba(255,255,255,0.9)");
-      gr.addColorStop(0.6, "rgba(190,196,206,0.55)");
-      gr.addColorStop(1, "rgba(120,128,140,0.0)");
+      gr.addColorStop(0, "rgba(255,255,255,1)");
+      gr.addColorStop(0.6, "rgba(236,240,246,0.55)");
+      gr.addColorStop(1, "rgba(214,220,230,0.0)");
       g.fillStyle = gr;
       g.beginPath(); g.arc(x, y, rad, 0, 6.2832); g.fill();
     }
   }
-  // Two stripes around the equator.
-  for (const yy of [H * 0.24, H * 0.76]) {
-    g.fillStyle = "rgba(226,60,84,0.9)";
-    g.fillRect(0, yy - H * 0.035, W, H * 0.07);
+  // Spin marks: warm, light, and narrow. Enough to read rotation, never enough
+  // to darken the disc.
+  for (const yy of [H * 0.26, H * 0.74]) {
+    const gr = g.createLinearGradient(0, yy - H * 0.05, 0, yy + H * 0.05);
+    gr.addColorStop(0, "rgba(255,168,150,0)");
+    gr.addColorStop(0.5, "rgba(255,142,124,0.5)");
+    gr.addColorStop(1, "rgba(255,168,150,0)");
+    g.fillStyle = gr;
+    g.fillRect(0, yy - H * 0.05, W, H * 0.1);
   }
   void rng;
+  const t = new THREE.CanvasTexture(p.cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** A filled chevron pointing +Y — the off-screen ball marker. */
+function chevronTex(size: number): THREE.CanvasTexture | null {
+  const p = pad(size, size);
+  if (!p) return null;
+  const { g } = p;
+  const s = size;
+  g.beginPath();
+  g.moveTo(s * 0.5, s * 0.12);
+  g.lineTo(s * 0.88, s * 0.7);
+  g.lineTo(s * 0.5, s * 0.55);
+  g.lineTo(s * 0.12, s * 0.7);
+  g.closePath();
+  g.fillStyle = "#0b1522";
+  g.fill();
+  g.strokeStyle = "#ffffff";
+  g.lineWidth = s * 0.075;
+  g.lineJoin = "round";
+  g.stroke();
+  const t = new THREE.CanvasTexture(p.cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** A soft annulus whose bright band sits well outside the ball silhouette. */
+function haloTex(size: number): THREE.CanvasTexture | null {
+  const p = pad(size, size);
+  if (!p) return null;
+  const r = size / 2;
+  const gr = p.g.createRadialGradient(r, r, 0, r, r, r);
+  gr.addColorStop(0.0, "rgba(255,255,255,0)");
+  gr.addColorStop(0.52, "rgba(255,255,255,0)");
+  gr.addColorStop(0.68, "rgba(255,255,255,0.85)");
+  gr.addColorStop(0.8, "rgba(190,230,255,0.35)");
+  gr.addColorStop(1.0, "rgba(190,230,255,0)");
+  p.g.fillStyle = gr;
+  p.g.fillRect(0, 0, size, size);
   const t = new THREE.CanvasTexture(p.cv);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -697,58 +845,353 @@ function ridgeY(x: number, W: number, harm: [number, number, number][]): number 
 }
 
 function fillRidge(
-  g: CanvasRenderingContext2D, W: number, H: number, topY: number,
-  harm: [number, number, number][], style: string | CanvasGradient, rim?: string,
+  g: CanvasRenderingContext2D, W: number, bottomY: number, topY: number,
+  harm: [number, number, number][], style: string | CanvasGradient,
 ): void {
   g.beginPath();
-  g.moveTo(0, H);
+  g.moveTo(0, bottomY);
   for (let x = 0; x <= W; x++) g.lineTo(x, topY + ridgeY(x, W, harm));
-  g.lineTo(W, H);
+  g.lineTo(W, bottomY);
   g.closePath();
   g.fillStyle = style;
   g.fill();
-  // A rim along the crest is what makes a flat silhouette read as a lit form.
-  if (!rim) return;
-  g.beginPath();
-  for (let x = 0; x <= W; x++) {
-    const y = topY + ridgeY(x, W, harm);
-    if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
-  }
-  g.strokeStyle = rim;
-  g.lineWidth = 2;
-  g.stroke();
 }
 
-/** Jagged mountain peaks along a baseline. */
-function peaks(g: CanvasRenderingContext2D, W: number, H: number, baseY: number, n: number, hMin: number, hMax: number, style: string, rng: () => number, snow?: string, rim?: string): void {
+/**
+ * One summit in a range. Slope exponents differ left/right so no silhouette is
+ * ever an isoceles triangle, and every summit spawns a shoulder so the profile
+ * always carries at least one ridge break.
+ */
+interface Peak { x: number; w: number; h: number; el: number; er: number }
+
+function makePeaks(W: number, n: number, hMin: number, hMax: number, rng: () => number): Peak[] {
+  const ps: Peak[] = [];
   for (let i = 0; i < n; i++) {
-    const x = ((i + 0.5) / n) * W + (rng() - 0.5) * (W / n) * 0.7;
+    const x = ((i + 0.5) / n) * W + (rng() - 0.5) * (W / n) * 0.85;
     const h = hMin + rng() * (hMax - hMin);
-    const w = h * (0.85 + rng() * 0.8);
-    wrapAt(x, baseY, w + 8, W, (px) => {
-      g.fillStyle = style;
+    const w = h * (1.0 + rng() * 1.6);
+    ps.push({ x, w, h, el: 1.0 + rng() * 0.8, er: 0.62 + rng() * 0.5 });
+    const shoulders = rng() < 0.7 ? 1 : 2;
+    for (let s = 0; s < shoulders; s++) {
+      const side = rng() < 0.5 ? -1 : 1;
+      ps.push({
+        x: x + side * w * (0.5 + rng() * 0.6),
+        w: w * (0.5 + rng() * 0.5),
+        h: h * (0.36 + rng() * 0.34),
+        el: 0.85 + rng() * 0.7,
+        er: 0.7 + rng() * 0.55,
+      });
+    }
+  }
+  return ps;
+}
+
+/** Range height above the baseline at x, wrapped so the artwork tiles. */
+function peakY(x: number, W: number, ps: Peak[]): number {
+  let y = 0;
+  for (const p of ps) {
+    for (let o = -1; o <= 1; o++) {
+      const dx = (x - (p.x + o * W)) / p.w;
+      if (dx <= -1 || dx >= 1) continue;
+      const t = dx < 0 ? Math.pow(-dx, p.el) : Math.pow(dx, p.er);
+      const h = p.h * (1 - t);
+      if (h > y) y = h;
+    }
+  }
+  return y;
+}
+
+/**
+ * A mountain range with a lit face and a shadow face. The key light rakes from
+ * the upper left, so any flank that rises to the right is catching it. No rim
+ * stroke: the crisp cream rim is reserved for collidable geometry.
+ */
+function drawRange(
+  g: CanvasRenderingContext2D, W: number, baseY: number, bottomY: number,
+  ps: Peak[], fillC: number, litC: number, snowC: number | null, snowAt: number,
+): void {
+  const y = new Float32Array(W + 1);
+  let peakTop = baseY;
+  for (let x = 0; x <= W; x++) {
+    y[x] = baseY - peakY(x, W, ps);
+    if (y[x] < peakTop) peakTop = y[x];
+  }
+
+  const silhouette = () => {
+    g.beginPath();
+    g.moveTo(0, bottomY);
+    for (let x = 0; x <= W; x++) g.lineTo(x, y[x]);
+    g.lineTo(W, bottomY);
+    g.closePath();
+  };
+
+  silhouette();
+  g.fillStyle = hex(fillC);
+  g.fill();
+
+  // Lit and shadow faces, as one soft horizontal gradient per summit clipped
+  // to the silhouette. Gradients rather than bars: any band with its own edge
+  // would put a hard line in the sky, and hard lines are what gave the old
+  // backdrop away as unblended quads.
+  g.save();
+  silhouette();
+  g.clip();
+  for (const p of ps) {
+    for (let o = -1; o <= 1; o++) {
+      const cx = p.x + o * W;
+      if (cx + p.w < 0 || cx - p.w > W) continue;
+      const gr = g.createLinearGradient(cx - p.w, 0, cx + p.w, 0);
+      gr.addColorStop(0, rgba(litC, 0));
+      gr.addColorStop(0.3, rgba(litC, 0.36));
+      gr.addColorStop(0.5, rgba(litC, 0));
+      gr.addColorStop(0.52, rgba(0x000000, 0));
+      gr.addColorStop(0.8, rgba(0x000000, 0.2));
+      gr.addColorStop(1, rgba(0x000000, 0));
+      g.fillStyle = gr;
+      g.fillRect(cx - p.w, baseY - p.h * 1.05, p.w * 2, p.h * 1.05);
+    }
+  }
+  // Aerial gradient inside the range: the feet of the mountains sit in haze.
+  const vg = g.createLinearGradient(0, peakTop, 0, bottomY);
+  vg.addColorStop(0, rgba(litC, 0.08));
+  vg.addColorStop(0.55, rgba(litC, 0));
+  vg.addColorStop(1, rgba(litC, 0.22));
+  g.fillStyle = vg;
+  g.fillRect(0, peakTop, W, bottomY - peakTop);
+
+  if (snowC !== null) {
+    // Snow above the snowline, as a filled band whose lower boundary follows
+    // the crest — no per-column rectangles, so no vertical striping.
+    const cap = (baseY - peakTop) * 0.2;
+    g.fillStyle = rgba(snowC, 0.62);
+    let x = 0;
+    while (x <= W) {
+      if (baseY - y[x] < snowAt) { x++; continue; }
+      const start = x;
+      while (x <= W && baseY - y[x] >= snowAt) x++;
+      const end = x - 1;
       g.beginPath();
-      g.moveTo(px - w, baseY);
-      g.lineTo(px - w * 0.22, baseY - h * 0.86);
-      g.lineTo(px, baseY - h);
-      g.lineTo(px + w * 0.3, baseY - h * 0.78);
-      g.lineTo(px + w, baseY);
+      for (let i = start; i <= end; i++) {
+        if (i === start) g.moveTo(i, y[i]); else g.lineTo(i, y[i]);
+      }
+      for (let i = end; i >= start; i--) {
+        g.lineTo(i, y[i] + Math.min(baseY - y[i] - snowAt, cap) + 1.5);
+      }
       g.closePath();
       g.fill();
-      if (rim) {
-        g.strokeStyle = rim;
-        g.lineWidth = 2;
-        g.lineJoin = "round";
+    }
+  }
+  g.restore();
+}
+
+/**
+ * Flat-topped mesas. Strata are generated from each block's own dimensions —
+ * band heights, colours and crack positions all derive from the mesa — so
+ * nothing ever repeats at a fixed pixel pitch the way a tiled bitmap does.
+ */
+function drawMesas(
+  g: CanvasRenderingContext2D, W: number, baseY: number, hRef: number,
+  n: number, fillC: number, litC: number, darkC: number, rng: () => number,
+): void {
+  for (let i = 0; i < n; i++) {
+    const x = ((i + 0.5) / n) * W + (rng() - 0.5) * (W / n) * 0.7;
+    const h = hRef * (0.4 + rng() * 1.0);
+    const w = h * (0.55 + rng() * 0.9);
+    const bands = 4 + Math.floor(rng() * 5);
+    const seeds: number[] = [];
+    for (let s = 0; s < bands + 6; s++) seeds.push(rng());
+    wrapAt(x, baseY, w + 8, W, (px) => {
+      const top = baseY - h;
+      // Body: a slight batter plus a talus skirt so it is rooted, never a
+      // rectangle floating on a flat cut.
+      g.beginPath();
+      g.moveTo(px - w * 1.22, baseY + h * 0.1);
+      g.lineTo(px - w * 0.9, baseY - h * 0.05);
+      g.lineTo(px - w * 0.82, top);
+      g.lineTo(px + w * 0.78, top);
+      g.lineTo(px + w * 0.92, baseY - h * 0.04);
+      g.lineTo(px + w * 1.26, baseY + h * 0.1);
+      g.closePath();
+      g.fillStyle = hex(fillC);
+      g.fill();
+      g.save();
+      g.clip();
+      // Strata: heights driven by the mesa's own h, never a fixed pitch.
+      let yy = top;
+      let k = 0;
+      while (yy < baseY + h * 0.1 && k < bands + 6) {
+        const bh = h * (0.06 + seeds[k % seeds.length] * 0.19);
+        const t = seeds[(k * 3 + 1) % seeds.length];
+        g.fillStyle = t < 0.42 ? rgba(litC, 0.13) : t < 0.8 ? rgba(darkC, 0.16) : rgba(darkC, 0.07);
+        g.fillRect(px - w * 1.3, yy, w * 2.6, bh);
+        // A thin parting line, offset by its own band so no two align.
+        g.fillStyle = rgba(darkC, 0.22);
+        g.fillRect(px - w * 1.3, yy + bh - 1, w * 2.6, 1.2);
+        yy += bh;
+        k++;
+      }
+      // Vertical fracture lines at irregular intervals.
+      for (let c = 0; c < 3; c++) {
+        const cx = px + (seeds[(c * 5 + 2) % seeds.length] - 0.5) * w * 1.5;
+        g.strokeStyle = rgba(darkC, 0.2);
+        g.lineWidth = 1 + seeds[(c + 3) % seeds.length];
+        g.beginPath();
+        g.moveTo(cx, top);
+        g.lineTo(cx + (seeds[(c + 4) % seeds.length] - 0.5) * w * 0.3, baseY);
         g.stroke();
       }
-      if (snow) {
-        g.fillStyle = snow;
+      // Lit west face and the cap lip.
+      const lg = g.createLinearGradient(px - w, 0, px + w, 0);
+      lg.addColorStop(0, rgba(litC, 0.3));
+      lg.addColorStop(0.45, rgba(litC, 0.04));
+      lg.addColorStop(1, rgba(darkC, 0.22));
+      g.fillStyle = lg;
+      g.fillRect(px - w * 1.3, top, w * 2.6, h * 1.2);
+      g.restore();
+      g.fillStyle = rgba(litC, 0.5);
+      g.fillRect(px - w * 0.82, top, w * 1.6, 2.5);
+    });
+  }
+}
+
+/** City skyline with lit windows. */
+function drawSkyline(
+  g: CanvasRenderingContext2D, W: number, baseY: number, bottomY: number, hRef: number,
+  n: number, fillC: number, winC: string, winP: number, rng: () => number,
+): void {
+  g.fillStyle = hex(fillC);
+  g.fillRect(0, baseY, W, bottomY - baseY);
+  for (let i = 0; i < n; i++) {
+    const w = (W / n) * (0.45 + rng() * 0.85);
+    const x = (i / n) * W + rng() * (W / n) * 0.4;
+    const h = hRef * (0.25 + rng() * 1.05);
+    wrapAt(x, baseY, w + 6, W, (px) => {
+      g.fillStyle = hex(fillC);
+      g.fillRect(px, baseY - h, w, h);
+      if (rng() < 0.3) g.fillRect(px + w * 0.45, baseY - h - hRef * 0.12, 2.5, hRef * 0.12);
+      if (winP <= 0) return;
+      const cols = Math.max(1, Math.floor(w / 9));
+      const rows = Math.max(1, Math.floor(h / 12));
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          if (rng() > winP) continue;
+          g.fillStyle = winC;
+          g.fillRect(px + 3 + c * 9, baseY - h + 5 + r * 12, 3.5, 5);
+        }
+      }
+    });
+  }
+}
+
+/**
+ * Open water. Band spacing compresses toward the horizon and every dash is
+ * jittered in offset, length and opacity, so the plate of identical 8×2 ticks
+ * is gone. A broad specular sheet sits under the sun, which is upper-left.
+ */
+function drawSea(
+  g: CanvasRenderingContext2D, W: number, seaY: number, botY: number,
+  topC: number, botC: number, foamC: number, rng: () => number,
+): void {
+  const depth = Math.max(1, botY - seaY);
+  const sg = g.createLinearGradient(0, seaY, 0, botY);
+  sg.addColorStop(0, hex(topC));
+  sg.addColorStop(0.35, hex(mixHex(topC, botC, 0.5)));
+  sg.addColorStop(1, hex(botC));
+  g.fillStyle = sg;
+  g.fillRect(0, seaY, W, depth);
+
+  // Specular sheet: a wide soft column under the sun, brightest at the horizon.
+  const glintX = W * 0.22;
+  const gg = g.createRadialGradient(glintX, seaY, 0, glintX, seaY, depth * 1.5);
+  gg.addColorStop(0, rgba(foamC, 0.3));
+  gg.addColorStop(0.4, rgba(foamC, 0.09));
+  gg.addColorStop(1, rgba(foamC, 0));
+  g.fillStyle = gg;
+  g.fillRect(0, seaY, W, depth);
+
+  // Horizon line: thin, bright, and the only hard edge water is allowed.
+  g.fillStyle = rgba(foamC, 0.34);
+  g.fillRect(0, seaY - 1, W, 1.6);
+
+  const rows = 26;
+  for (let r = 0; r < rows; r++) {
+    // Quadratic spacing: rows crowd together as they approach the horizon.
+    const f = Math.pow((r + 1) / rows, 1.9);
+    const y = seaY + f * depth;
+    const scale = 0.25 + f * 1.5;
+    const alpha = (0.05 + f * 0.22) * (0.55 + rng() * 0.6);
+    const count = Math.max(2, Math.round((W / 150) * (3 + f * 5)));
+    for (let i = 0; i < count; i++) {
+      const dx = ((i + rng()) / count) * W;
+      const len = (6 + rng() * 40) * scale;
+      const dy = (rng() - 0.5) * depth * 0.035;
+      const near = 1 - Math.abs(dx - glintX) / W;
+      g.fillStyle = rgba(foamC, Math.min(0.55, alpha * (0.7 + near * 0.9)));
+      g.fillRect(dx, y + dy, len, Math.max(1, 0.8 + f * 2.2));
+    }
+  }
+}
+
+/** Palms — leaning trunks with a fan of fronds, no two the same size. */
+function drawPalms(
+  g: CanvasRenderingContext2D, W: number, base: (x: number) => number,
+  n: number, col: number, hRef: number, rng: () => number,
+): void {
+  for (let i = 0; i < n; i++) {
+    const x = ((i + rng() * 0.9) / n) * W;
+    const baseY = base(x);
+    const s = 0.5 + rng() * 1.0;
+    const h = hRef * s;
+    const lean = (rng() - 0.5) * h * 0.55;
+    const a = 0.55 + rng() * 0.45;
+    wrapAt(x, baseY, h * 1.4, W, (px) => {
+      g.strokeStyle = rgba(col, a);
+      g.lineWidth = Math.max(1.4, h * 0.05);
+      g.lineCap = "round";
+      g.beginPath();
+      g.moveTo(px, baseY);
+      g.quadraticCurveTo(px + lean * 0.4, baseY - h * 0.6, px + lean, baseY - h);
+      g.stroke();
+      const tipX = px + lean;
+      const tipY = baseY - h;
+      const fronds = 5 + Math.floor(rng() * 3);
+      for (let f = 0; f < fronds; f++) {
+        const ang = Math.PI + ((f + rng() * 0.4) / (fronds - 1)) * Math.PI;
+        const L = h * (0.22 + rng() * 0.24);
+        g.lineWidth = Math.max(1.1, h * 0.032);
         g.beginPath();
-        g.moveTo(px - w * 0.3, baseY - h * 0.7);
-        g.lineTo(px, baseY - h);
-        g.lineTo(px + w * 0.32, baseY - h * 0.74);
-        g.lineTo(px + w * 0.12, baseY - h * 0.68);
-        g.lineTo(px - w * 0.1, baseY - h * 0.76);
+        g.moveTo(tipX, tipY);
+        g.quadraticCurveTo(
+          tipX + Math.cos(ang) * L * 0.6, tipY + Math.sin(ang) * L * 0.5 - L * 0.3,
+          tipX + Math.cos(ang) * L, tipY + Math.sin(ang) * L * 0.7 + L * 0.2,
+        );
+        g.stroke();
+      }
+    });
+  }
+}
+
+/** Conifers — varied heights, widths and lean along a baseline. */
+function drawConifers(
+  g: CanvasRenderingContext2D, W: number, base: (x: number) => number,
+  n: number, col: number, hRef: number, rng: () => number,
+): void {
+  for (let i = 0; i < n; i++) {
+    const x = ((i + rng() * 0.95) / n) * W;
+    const baseY = base(x);
+    const h = hRef * (0.45 + rng() * 1.15);
+    const w = h * (0.26 + rng() * 0.2);
+    const lean = (rng() - 0.5) * w * 0.5;
+    const a = 0.5 + rng() * 0.5;
+    wrapAt(x, baseY, w + 6, W, (px) => {
+      g.fillStyle = rgba(col, a);
+      const tiers = 3;
+      for (let t = 0; t < tiers; t++) {
+        const f = 1 - t / tiers;
+        g.beginPath();
+        g.moveTo(px + lean, baseY - h * 1.03);
+        g.lineTo(px - w * f, baseY - (h * t) / tiers * 0.85);
+        g.lineTo(px + w * f, baseY - (h * t) / tiers * 0.85);
         g.closePath();
         g.fill();
       }
@@ -756,77 +1199,22 @@ function peaks(g: CanvasRenderingContext2D, W: number, H: number, baseY: number,
   }
 }
 
-/** Flat-topped mesas with strata bands. */
-function mesas(g: CanvasRenderingContext2D, W: number, H: number, baseY: number, n: number, style: string, rng: () => number, rim?: string): void {
-  for (let i = 0; i < n; i++) {
-    const x = ((i + 0.5) / n) * W + (rng() - 0.5) * (W / n) * 0.6;
-    const h = H * (0.16 + rng() * 0.44);
-    const w = H * (0.1 + rng() * 0.2);
-    wrapAt(x, baseY, w + 8, W, (px) => {
-      g.fillStyle = style;
-      g.beginPath();
-      g.moveTo(px - w, baseY);
-      g.lineTo(px - w * 0.84, baseY - h);
-      g.lineTo(px + w * 0.8, baseY - h);
-      g.lineTo(px + w, baseY);
-      g.closePath();
-      g.fill();
-      g.save();
-      g.clip();
-      for (let s = 0; s < 6; s++) {
-        g.fillStyle = s % 2 ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.11)";
-        g.fillRect(px - w, baseY - h + (s / 6) * h, w * 2, h / 6);
-      }
-      g.restore();
-      if (rim) {
-        g.strokeStyle = rim;
-        g.lineWidth = 2;
-        g.beginPath();
-        g.moveTo(px - w * 0.84, baseY - h);
-        g.lineTo(px + w * 0.8, baseY - h);
-        g.stroke();
-      }
-    });
-  }
-}
-
-/** City skyline with lit windows. */
-function skyline(g: CanvasRenderingContext2D, W: number, H: number, baseY: number, n: number, style: string, win: string, rng: () => number): void {
-  for (let i = 0; i < n; i++) {
-    const w = W / n * (0.5 + rng() * 0.8);
-    const x = (i / n) * W + rng() * (W / n) * 0.4;
-    const h = H * (0.18 + rng() * 0.62);
-    wrapAt(x, baseY, w + 6, W, (px) => {
-      g.fillStyle = style;
-      g.fillRect(px, baseY - h, w, h);
-      // Antenna.
-      if (rng() < 0.3) g.fillRect(px + w * 0.45, baseY - h - H * 0.08, 2, H * 0.08);
-      const cols = Math.max(1, Math.floor(w / 7));
-      const rows = Math.max(1, Math.floor(h / 9));
-      for (let c = 0; c < cols; c++) {
-        for (let r = 0; r < rows; r++) {
-          if (rng() > 0.32) continue;
-          g.fillStyle = rng() < 0.16 ? "rgba(255,120,200,0.95)" : win;
-          g.fillRect(px + 2 + c * 7, baseY - h + 4 + r * 9, 3, 4);
-        }
-      }
-    });
-  }
-}
-
 /** Overlapping canopy blobs — jungle / broadleaf forest. */
-function canopy(g: CanvasRenderingContext2D, W: number, H: number, base: (x: number) => number, n: number, style: string, rng: () => number): void {
-  g.fillStyle = style;
+function drawCanopy(
+  g: CanvasRenderingContext2D, W: number, base: (x: number) => number,
+  n: number, col: number, rRef: number, rng: () => number,
+): void {
   for (let i = 0; i < n; i++) {
     const x = rng() * W;
     const baseY = base(x);
-    const r = H * (0.1 + rng() * 0.22);
-    const y = baseY - r * (0.2 + rng() * 0.5);
+    const r = rRef * (0.45 + rng() * 1.1);
+    const y = baseY - r * (0.25 + rng() * 0.55);
+    g.fillStyle = rgba(col, 0.55 + rng() * 0.45);
     wrapAt(x, y, r + 6, W, (px, py) => {
       g.beginPath();
       for (let k = 0; k < 7; k++) {
-        const a = (k / 7) * 6.2832;
-        g.arc(px + Math.cos(a) * r * 0.5, py + Math.sin(a) * r * 0.28, r * 0.55, 0, 6.2832);
+        const ang = (k / 7) * 6.2832;
+        g.arc(px + Math.cos(ang) * r * 0.5, py + Math.sin(ang) * r * 0.28, r * 0.55, 0, 6.2832);
       }
       g.fill();
       g.fillRect(px - r * 0.06, py, r * 0.12, baseY - py);
@@ -834,225 +1222,137 @@ function canopy(g: CanvasRenderingContext2D, W: number, H: number, base: (x: num
   }
 }
 
-/** Conifers / spikes along a baseline. */
-function spikes(g: CanvasRenderingContext2D, W: number, H: number, base: (x: number) => number, n: number, style: string, rng: () => number, tiers = 3, scale = 1): void {
-  g.fillStyle = style;
+/** Soft cloud banks with feathered alpha — never a hard edge. */
+function drawClouds(
+  g: CanvasRenderingContext2D, W: number, H: number, n: number,
+  col: number, rng: () => number,
+): void {
   for (let i = 0; i < n; i++) {
     const x = rng() * W;
-    const baseY = base(x);
-    const h = H * (0.12 + rng() * 0.28) * scale;
-    const w = h * 0.42;
-    wrapAt(x, baseY, w + 6, W, (px) => {
-      for (let t = 0; t < tiers; t++) {
-        const f = 1 - t / tiers;
+    const y = H * (0.08 + rng() * 0.55);
+    const r = H * (0.09 + rng() * 0.22);
+    const a = 0.18 + rng() * 0.3;
+    wrapAt(x, y, r * 4, W, (px, py) => {
+      for (let k = 0; k < 7; k++) {
+        const bx = px + (k - 3) * r * 0.62 + (rng() - 0.5) * r * 0.3;
+        const by = py + Math.sin(k * 1.7) * r * 0.26;
+        const br = r * (0.5 + (k % 3) * 0.22);
+        const gr = g.createRadialGradient(bx, by, 0, bx, by, br);
+        gr.addColorStop(0, rgba(col, a));
+        gr.addColorStop(0.55, rgba(col, a * 0.55));
+        gr.addColorStop(1, rgba(col, 0));
+        g.fillStyle = gr;
         g.beginPath();
-        g.moveTo(px, baseY - h - h * 0.05);
-        g.lineTo(px - w * f, baseY - h * (t / tiers) * 0.9);
-        g.lineTo(px + w * f, baseY - h * (t / tiers) * 0.9);
-        g.closePath();
+        g.arc(bx, by, br, 0, 6.2832);
         g.fill();
       }
     });
   }
 }
 
-/** Palms — a leaning trunk with a fan of fronds. */
-function palms(g: CanvasRenderingContext2D, W: number, H: number, base: (x: number) => number, n: number, style: string, rng: () => number): void {
-  g.fillStyle = style;
-  g.strokeStyle = style;
-  for (let i = 0; i < n; i++) {
-    const x = rng() * W;
-    const baseY = base(x);
-    const h = H * (0.09 + rng() * 0.08);
-    const lean = (rng() - 0.5) * h * 0.4;
-    wrapAt(x, baseY, h, W, (px) => {
-      g.lineWidth = Math.max(2, h * 0.045);
-      g.beginPath();
-      g.moveTo(px, baseY);
-      g.quadraticCurveTo(px + lean * 0.4, baseY - h * 0.6, px + lean, baseY - h);
-      g.stroke();
-      const tipX = px + lean, tipY = baseY - h;
-      for (let f = 0; f < 6; f++) {
-        const a = Math.PI + (f / 5) * Math.PI;
-        const L = h * (0.26 + rng() * 0.16);
-        g.lineWidth = Math.max(1.5, h * 0.03);
-        g.beginPath();
-        g.moveTo(tipX, tipY);
-        g.quadraticCurveTo(tipX + Math.cos(a) * L * 0.6, tipY + Math.sin(a) * L * 0.5 - L * 0.25, tipX + Math.cos(a) * L, tipY + Math.sin(a) * L * 0.7 + L * 0.15);
-        g.stroke();
-      }
-    });
-  }
-}
+/** Per-tier atmospheric contract, furthest first. */
+const TIER_HAZE = [0.6, 0.48, 0.36, 0.28];
+const TIER_DESAT = [0.52, 0.44, 0.34, 0.24];
+const TIER_LIFT = [0.07, 0.05, 0.03, 0.01];
+const TIER_BLUR = [1.9, 1.4, 0.85, 0.4];
 
-/** Soft cloud banks. */
-function clouds(g: CanvasRenderingContext2D, W: number, H: number, n: number, style: string, rng: () => number): void {
-  g.fillStyle = style;
-  for (let i = 0; i < n; i++) {
-    const x = rng() * W;
-    const y = H * (0.1 + rng() * 0.6);
-    const r = H * (0.08 + rng() * 0.2);
-    wrapAt(x, y, r * 3, W, (px, py) => {
-      g.beginPath();
-      for (let k = 0; k < 6; k++) {
-        g.arc(px + (k - 2.5) * r * 0.6, py + Math.sin(k * 1.7) * r * 0.22, r * (0.5 + (k % 3) * 0.2), 0, 6.2832);
-      }
-      g.fill();
-    });
-  }
-}
-
-/** One parallax layer's artwork. `tier` 0 = furthest. */
-function sceneryCanvas(theme: CourseTheme, tier: 0 | 1 | 2, W: number, H: number, rng: () => number): Pad | null {
+/**
+ * One parallax layer's artwork. `tier` 0 = furthest, 3 = nearest. Every tier
+ * goes through the same contract: hazed toward the sky, desaturated, softened,
+ * and stripped of the cream rim light that marks collidable ground.
+ */
+function sceneryCanvas(theme: CourseTheme, tier: 0 | 1 | 2 | 3, W: number, H: number, rng: () => number): Pad | null {
   const p = pad(W, H);
   if (!p) return null;
   const { g } = p;
   const T = THEMES[theme];
-  const col = tier === 0 ? T.far : tier === 1 ? T.mid : T.near;
-  const style = hex(col);
-  const baseY = H * 0.94;
-  /** Plant on a ridge rather than a flat line — nothing should float. */
-  const on = (topY: number, harm: [number, number, number][]) => (x: number) => topY + ridgeY(x, W, harm);
-  /** Crest rim in the key light's colour — the cheapest depth cue there is. */
-  const rim = rgba(T.sun, tier === 0 ? 0.09 : tier === 1 ? 0.15 : 0.22);
+  const sky = T.skyMid;
+  const amt = TIER_HAZE[tier];
+  const raw = tier === 0 ? T.far : tier === 1 ? T.mid : tier === 2 ? T.mid : T.near;
 
-  switch (theme) {
-    case "seaside": {
-      if (tier === 0) {
-        peaks(g, W, H, H * 0.58, 4, H * 0.14, H * 0.26, style, rng, undefined, rim);
-        fillRidge(g, W, H, H * 0.54, [[1, H * 0.09, 0.6], [2, H * 0.05, 2.1], [5, H * 0.02, 4]], style, rim);
-      } else if (tier === 1) {
-        // Open water with crest flecks, and a couple of offshore islands.
-        peaks(g, W, H, H * 0.8, 3, H * 0.07, H * 0.14, style, rng, undefined, rim);
-        const sea = g.createLinearGradient(0, H * 0.8, 0, H);
-        sea.addColorStop(0, rgba(col, 1));
-        sea.addColorStop(1, rgba(col, 0.7));
-        g.fillStyle = sea;
-        g.fillRect(0, H * 0.8, W, H * 0.2);
-        g.fillStyle = rgba(0xffffff, 0.22);
-        g.fillRect(0, H * 0.8, W, 1.5);
-        for (let i = 0; i < 90; i++) {
-          g.fillStyle = rgba(0xffffff, 0.05 + rng() * 0.13);
-          g.fillRect(rng() * W, H * (0.82 + rng() * 0.17), 4 + rng() * 18, 1.3);
-        }
-      } else {
-        const harm: [number, number, number][] = [[1, H * 0.08, 1.9], [2, H * 0.05, 4.4], [4, H * 0.02, 0.3]];
-        fillRidge(g, W, H, H * 0.66, harm, style, rim);
-        palms(g, W, H, on(H * 0.66, harm), 8, style, rng);
-        spikes(g, W, H, on(H * 0.66, harm), 34, rgba(col, 0.85), rng, 1, 0.18);
-      }
-      break;
+  const body = haze(raw, sky, amt, TIER_DESAT[tier], TIER_LIFT[tier]);
+  const lit = haze(T.sun, sky, amt * 0.55, TIER_DESAT[tier] * 0.7, 0.06);
+  const dark = haze(raw, 0x000000, 0.22 * (1 - amt), 0, -0.04);
+  const deep = haze(raw, sky, amt * 0.62, TIER_DESAT[tier], -0.05);
+  const px = W / 1024;
+
+  // Baselines, as canvas fractions. Fixed per tier so the world anchoring in
+  // buildScenery can guarantee no far layer's ground plane ever falls below
+  // the water plane in front of it.
+  const BASE = [0.76, 0.72, 0.42, 0.42][tier];
+  const baseY = H * BASE;
+  const bottomY = H;
+
+  if (tier === 0 || tier === 1) {
+    const n = tier === 0 ? 9 : 13;
+    const hi = tier === 0 ? H * 0.38 : H * 0.3;
+    const lo = tier === 0 ? H * 0.12 : H * 0.08;
+    if (T.relief === "mesa") {
+      g.fillStyle = hex(body);
+      g.fillRect(0, baseY, W, bottomY - baseY);
+      drawMesas(g, W, baseY, hi * 0.8, tier === 0 ? 5 : 8, body, lit, dark, rng);
+    } else if (T.relief === "city") {
+      drawSkyline(g, W, baseY, bottomY, hi, tier === 0 ? 24 : 15, body,
+        tier === 0 ? "rgba(150,230,255,0.5)" : "rgba(255,205,140,0.62)", tier === 0 ? 0.14 : 0.24, rng);
+    } else if (T.relief === "cloud") {
+      drawClouds(g, W, H, tier === 0 ? 16 : 11, body, rng);
+      g.fillStyle = rgba(body, 0.5);
+      g.fillRect(0, baseY + H * 0.2, W, bottomY);
+    } else {
+      drawRange(g, W, baseY, bottomY, makePeaks(W, n, lo, hi, rng), body, lit,
+        T.snow ? haze(0xffffff, sky, amt * 0.5, 0, 0) : null, hi * 0.66);
     }
-
-    case "jungle": {
-      if (tier === 0) {
-        peaks(g, W, H, H * 0.5, 5, H * 0.18, H * 0.3, style, rng, undefined, rim);
-        fillRidge(g, W, H, H * 0.44, [[1, H * 0.11, 1.4], [2, H * 0.06, 3.3]], style, rim);
-      } else if (tier === 1) {
-        const harm: [number, number, number][] = [[1, H * 0.07, 2.6], [3, H * 0.04, 0.4]];
-        fillRidge(g, W, H, H * 0.74, harm, style, rim);
-        canopy(g, W, H, on(H * 0.74, harm), 20, style, rng);
-      } else {
-        const harm: [number, number, number][] = [[1, H * 0.06, 0.9], [2, H * 0.04, 3.7]];
-        fillRidge(g, W, H, H * 0.86, harm, style, rim);
-        canopy(g, W, H, on(H * 0.86, harm), 22, style, rng);
-        palms(g, W, H, on(H * 0.86, harm), 8, style, rng);
-      }
-      break;
+    if (tier === 1 && T.veg === "canopy") {
+      drawCanopy(g, W, () => baseY + H * 0.02, 22, deep, H * 0.1, rng);
     }
-
-    case "canyon": {
-      if (tier === 0) {
-        mesas(g, W, H, H * 0.6, 5, style, rng, rim);
-        fillRidge(g, W, H, H * 0.56, [[1, H * 0.07, 2.2], [3, H * 0.04, 0.8]], style, rim);
-      } else if (tier === 1) {
-        mesas(g, W, H, H * 0.82, 7, style, rng, rim);
-      } else {
-        const harm: [number, number, number][] = [[1, H * 0.1, 4.1], [2, H * 0.05, 1.7]];
-        fillRidge(g, W, H, H * 0.7, harm, style, rim);
-        spikes(g, W, H, on(H * 0.7, harm), 16, style, rng, 1, 0.3);
-      }
-      break;
+  } else if (tier === 2) {
+    if (T.sea) {
+      drawSea(g, W, baseY, bottomY, body, deep, haze(0xffffff, sky, amt * 0.4, 0, 0), rng);
+    } else {
+      const harm: [number, number, number][] = [[1, H * 0.05, 2.6], [3, H * 0.028, 0.4], [7, H * 0.012, 4.1]];
+      const line = (x: number) => baseY + ridgeY(x, W, harm);
+      const gr = g.createLinearGradient(0, baseY - H * 0.1, 0, bottomY);
+      gr.addColorStop(0, hex(body));
+      gr.addColorStop(1, hex(deep));
+      fillRidge(g, W, bottomY, baseY, harm, gr);
+      if (T.veg === "conifer") drawConifers(g, W, line, 30, dark, H * 0.14, rng);
+      else if (T.veg === "canopy") drawCanopy(g, W, line, 26, dark, H * 0.11, rng);
     }
-
-    case "neon":
-      if (tier === 0) {
-        skyline(g, W, H, H * 0.72, 22, style, "rgba(120,240,255,0.85)", rng);
-      } else if (tier === 1) {
-        skyline(g, W, H, H * 0.88, 14, style, "rgba(255,200,120,0.9)", rng);
-      } else {
-        skyline(g, W, H, baseY, 9, style, "rgba(90,255,220,0.9)", rng);
-        // Ground haze bar so the near layer sits on something.
-        g.fillStyle = rgba(col, 0.9);
-        g.fillRect(0, baseY, W, H - baseY);
-      }
-      break;
-
-
-    case "sky":
-      if (tier === 0) clouds(g, W, H, 14, rgba(col, 0.55), rng);
-      else if (tier === 1) {
-        clouds(g, W, H, 10, rgba(col, 0.75), rng);
-        // Floating islands: a chunk of rock with a grass cap.
-        for (let i = 0; i < 5; i++) {
-          const x = rng() * W, y = H * (0.35 + rng() * 0.4), w = H * (0.12 + rng() * 0.14);
-          wrapAt(x, y, w * 2, W, (px, py) => {
-            g.fillStyle = style;
-            g.beginPath();
-            g.moveTo(px - w, py); g.lineTo(px + w, py);
-            g.lineTo(px + w * 0.2, py + w * 1.5); g.closePath(); g.fill();
-            g.fillStyle = "rgba(120,210,120,0.85)";
-            g.fillRect(px - w, py - w * 0.18, w * 2, w * 0.24);
-          });
-        }
-      } else clouds(g, W, H, 8, rgba(col, 0.9), rng);
-      break;
-
-    case "volcano": {
-      if (tier === 0) {
-        peaks(g, W, H, H * 0.6, 3, H * 0.22, H * 0.4, style, rng, undefined, rim);
-        fillRidge(g, W, H, H * 0.56, [[1, H * 0.08, 0.2], [2, H * 0.05, 2.6]], style, rim);
-      } else if (tier === 1) {
-        peaks(g, W, H, H * 0.84, 6, H * 0.18, H * 0.34, style, rng, undefined, rim);
-        // Glowing fissures cracking the ridge.
-        for (let i = 0; i < 20; i++) {
-          g.fillStyle = rgba(T.accent, 0.45 + rng() * 0.45);
-          g.fillRect(rng() * W, H * (0.7 + rng() * 0.22), 2 + rng() * 6, 1.5);
-        }
-      } else {
-        const harm: [number, number, number][] = [[1, H * 0.09, 3.4], [3, H * 0.05, 1.1]];
-        fillRidge(g, W, H, H * 0.72, harm, style, rim);
-        spikes(g, W, H, on(H * 0.72, harm), 20, style, rng, 1, 0.3);
-      }
-      break;
-    }
-
-    case "glacier": {
-      if (tier === 0) {
-        peaks(g, W, H, H * 0.66, 5, H * 0.24, H * 0.44, style, rng, "rgba(255,255,255,0.7)", rim);
-      } else if (tier === 1) {
-        const harm: [number, number, number][] = [[1, H * 0.07, 1.1], [2, H * 0.05, 3.9]];
-        fillRidge(g, W, H, H * 0.7, harm, style, rim);
-        spikes(g, W, H, on(H * 0.7, harm), 22, style, rng, 1, 0.35);
-      } else {
-        const harm: [number, number, number][] = [[1, H * 0.1, 2.4], [4, H * 0.03, 0.9]];
-        fillRidge(g, W, H, H * 0.74, harm, style, rim);
-        spikes(g, W, H, on(H * 0.74, harm), 14, rgba(col, 0.9), rng, 1, 0.3);
-      }
-      break;
+  } else {
+    // Near bank. Deliberately a different grammar from the play surface: a
+    // soft, low, hazed shoulder with no rim light and no grass texture.
+    const harm: [number, number, number][] = [[1, H * 0.055, 1.9], [2, H * 0.03, 4.4], [5, H * 0.012, 0.3]];
+    const line = (x: number) => baseY + ridgeY(x, W, harm);
+    const gr = g.createLinearGradient(0, baseY - H * 0.08, 0, bottomY);
+    gr.addColorStop(0, hex(body));
+    gr.addColorStop(0.55, hex(haze(raw, sky, amt + 0.12, TIER_DESAT[tier], 0)));
+    gr.addColorStop(1, hex(haze(raw, sky, Math.min(0.86, amt + 0.3), 0.7, 0.02)));
+    fillRidge(g, W, bottomY, baseY, harm, gr);
+    if (T.veg === "palm") {
+      drawPalms(g, W, line, 9, dark, H * 0.15, rng);
+      drawConifers(g, W, line, 26, dark, H * 0.06, rng);
+    } else if (T.veg === "conifer") {
+      drawConifers(g, W, line, 22, dark, H * 0.14, rng);
+    } else if (T.veg === "canopy") {
+      drawCanopy(g, W, line, 20, dark, H * 0.1, rng);
     }
   }
 
-  // Aerial haze: the further the layer, the more it washes into the fog colour.
-  const hazeA = tier === 0 ? 0.4 : tier === 1 ? 0.22 : 0.08;
-  const hg = g.createLinearGradient(0, H * 0.2, 0, H);
-  hg.addColorStop(0, rgba(T.fog, hazeA * 0.4));
-  hg.addColorStop(1, rgba(T.fog, hazeA));
+  // Aerial perspective inside the layer: everything sinks toward the sky
+  // colour as it descends, which is what stops a big near mass from reading
+  // as a solid platform you could land on.
+  const hg = g.createLinearGradient(0, 0, 0, H);
+  hg.addColorStop(0, rgba(sky, 0.03));
+  hg.addColorStop(0.55, rgba(sky, 0.07 + tier * 0.02));
+  hg.addColorStop(1, rgba(sky, 0.2 + tier * 0.04));
   g.globalCompositeOperation = "source-atop";
   g.fillStyle = hg;
   g.fillRect(0, 0, W, H);
   g.globalCompositeOperation = "source-over";
-  return p;
+
+  // Depth-of-field: the further the tier, the softer. Also the cheapest way to
+  // guarantee no background silhouette ever presents a hard straight edge.
+  return blurTiling(p, TIER_BLUR[tier] * px, hex(haze(raw, sky, Math.min(0.9, amt + 0.3), 0.7, 0.02)));
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,15 +1392,22 @@ const SKY_FRAG = /* glsl */ `
       float tw = 0.55 + 0.45 * sin(uTime * 2.2 + r * 44.0);
       c += vec3(0.72, 0.82, 1.0) * step(0.981, r) * tw * smoothstep(0.18, 0.85, t);
     }
-    // Cloud banks: three octaves of value noise in world space, drifting.
+    // Cloud banks: five octaves of value noise in world space, drifting. The
+    // alpha ramp is deliberately wide — a narrow smoothstep on low-frequency
+    // noise magnified across a phone screen shows up as a hard-edged smear.
     if (uClouds > 0.01) {
-      vec2 cp = w * vec2(0.022, 0.055) + vec2(uTime * 0.008, 0.0);
-      float n = vnoise(cp) * 0.58 + vnoise(cp * 2.3) * 0.29 + vnoise(cp * 5.3) * 0.13;
-      float band = smoothstep(0.02, 0.22, t) * (1.0 - smoothstep(0.55, 0.95, t));
-      c = mix(c, uCloudCol, smoothstep(0.42, 0.76, n) * uClouds * band);
+      vec2 cp = w * vec2(0.016, 0.042) + vec2(uTime * 0.008, 0.0);
+      float n = vnoise(cp) * 0.46 + vnoise(cp * 2.1) * 0.26
+              + vnoise(cp * 4.3) * 0.16 + vnoise(cp * 9.1) * 0.08
+              + vnoise(cp * 17.0) * 0.04;
+      float band = smoothstep(0.04, 0.34, t) * (1.0 - smoothstep(0.5, 0.98, t));
+      float a = smoothstep(0.34, 0.86, n);
+      c = mix(c, uCloudCol, a * a * uClouds * band);
     }
+    // Aerial haze pooling on the horizon — every distant layer sinks into it.
+    c = mix(c, uBot * 0.32 + uMid * 0.68, exp(-max(0.0, w.y - uHorizon + 6.0) / 22.0) * 0.2);
     float d = length(w - uSun);
-    c += uSunCol * (exp(-d / (uSunSize * 9.0)) * 0.45 + smoothstep(uSunSize, uSunSize * 0.7, d) * 0.85);
+    c += uSunCol * (exp(-d / (uSunSize * 11.0)) * 0.34 + smoothstep(uSunSize, uSunSize * 0.7, d) * 0.85);
     c += (h21(gl_FragCoord.xy) - 0.5) * 0.007;
     gl_FragColor = vec4(c, 1.0);
   }
@@ -1210,7 +1517,12 @@ const AIM_FRAG = /* glsl */ `
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
-/** Concatenate position/normal/uv/color geometries into one indexed buffer. */
+/**
+ * Concatenate position/normal/uv/color geometries into one indexed buffer.
+ * Colours are RGBA: the alpha channel is what lets an overlay dressing (a mown
+ * green, a bunker) feather out at its ends instead of ending in the hard
+ * axis-aligned seam that reads as an unclipped quad.
+ */
 function mergePNU(list: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
   let nv = 0;
   let ni = 0;
@@ -1222,7 +1534,7 @@ function mergePNU(list: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
   if (!nv) return null;
   const pos = new Float32Array(nv * 3);
   const nor = new Float32Array(nv * 3);
-  const col = new Float32Array(nv * 3).fill(1);
+  const col = new Float32Array(nv * 4).fill(1);
   const uv = new Float32Array(nv * 2);
   const idx = new Uint32Array(ni);
   let vo = 0;
@@ -1233,7 +1545,17 @@ function mergePNU(list: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
     const na = g.attributes.normal;
     if (na) nor.set(na.array as ArrayLike<number>, vo * 3);
     const ca = g.attributes.color;
-    if (ca) col.set(ca.array as ArrayLike<number>, vo * 3);
+    if (ca) {
+      const src = ca.array as ArrayLike<number>;
+      const n = ca.itemSize;
+      for (let i = 0; i < c; i++) {
+        const o = (vo + i) * 4;
+        col[o] = src[i * n];
+        col[o + 1] = src[i * n + 1];
+        col[o + 2] = src[i * n + 2];
+        col[o + 3] = n > 3 ? src[i * n + 3] : 1;
+      }
+    }
     const ua = g.attributes.uv;
     if (ua) uv.set(ua.array as ArrayLike<number>, vo * 2);
     if (g.index) {
@@ -1247,7 +1569,7 @@ function mergePNU(list: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
   const out = new THREE.BufferGeometry();
   out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
-  out.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  out.setAttribute("color", new THREE.BufferAttribute(col, 4));
   out.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   out.setIndex(new THREE.BufferAttribute(idx, 1));
   return out;
@@ -1261,6 +1583,27 @@ const CURTAIN_ROWS = [0, 0.3, 0.85, 1.9, 3.6, 6.4, 11, 19];
 
 /** Materials that are a thin dressing on top of other ground, not a mass. */
 const OVERLAY_DEPTH: Partial<Record<SurfaceMaterial, number>> = { green: 2.4, sand: 3.0 };
+
+/**
+ * Painting order for butt-jointed ground bands. Where two bands meet, the
+ * higher number is drawn over the lower one with a feathered alpha ramp and
+ * the lower one is extended a couple of metres underneath, so a change of
+ * material never shows up as a razor-straight vertical edge in the turf.
+ */
+const PAINT: Partial<Record<SurfaceMaterial, number>> = {
+  rough: 0, fairway: 1, wood: 1, stone: 1, metal: 2, ice: 2, rubber: 2, sand: 3, green: 4,
+};
+const paintOf = (m: SurfaceMaterial): number => PAINT[m] ?? 1;
+
+/** Alpha ramp bounds: [riseFrom, riseTo, fallFrom, fallTo] in world X. */
+type Ramp = readonly [number, number, number, number];
+
+function rampAlpha(f: Ramp | null, x: number): number {
+  if (!f) return 1;
+  const a = Number.isFinite(f[0]) ? THREE.MathUtils.smoothstep(x, f[0], f[1]) : 1;
+  const b = Number.isFinite(f[2]) ? 1 - THREE.MathUtils.smoothstep(x, f[2], f[3]) : 1;
+  return Math.min(a, b);
+}
 
 /** Warm soil the underside of a slab leans toward. */
 const EARTH = new THREE.Color(0x241d18);
@@ -1349,9 +1692,10 @@ function topRuns(s: Surface): EdgeVert[][] {
 /** Ribbon strip along a run: `up` above the surface, `down` below it. */
 function ribbonInto(
   run: EdgeVert[], up: number, down: number, tile: number, z: number,
-  pos: number[], uvs: number[],
+  pos: number[], uvs: number[], cols: number[], fade: Ramp | null,
 ): void {
   if (run.length < 2) return;
+  const alphaAt = (x: number) => rampAlpha(fade, x);
   let u = 0;
   const tx: number[] = [];
   const ty: number[] = [];
@@ -1368,11 +1712,15 @@ function ribbonInto(
   }
   for (let i = 0; i < run.length - 1; i++) {
     const j = i + 1;
+    const ai = alphaAt(run[i].x);
+    const aj = alphaAt(run[j].x);
     // two triangles: (b_i, b_j, t_j) and (b_i, t_j, t_i)
     pos.push(bx[i], by[i], z, bx[j], by[j], z, tx[j], ty[j], z);
     uvs.push(us[i], 0, us[j], 0, us[j], 1);
+    cols.push(1, 1, 1, ai, 1, 1, 1, aj, 1, 1, 1, aj);
     pos.push(bx[i], by[i], z, tx[j], ty[j], z, tx[i], ty[i], z);
     uvs.push(us[i], 0, us[j], 1, us[i], 1);
+    cols.push(1, 1, 1, ai, 1, 1, 1, aj, 1, 1, 1, ai);
   }
 }
 
@@ -1387,9 +1735,9 @@ const AIM_DOTS = 30;
 const createRender: SystemFactory = (ctx: GolfCtx) => {
   const q: GolfQuality = ctx.quality;
   const TEX = q === "low" ? 128 : 256;
-  const SCEN_W = q === "low" ? 512 : 1024;
-  const SCEN_H = q === "low" ? 160 : 256;
-  const LAYERS = q === "low" ? 2 : 3;
+  /** Canvas pixels per world metre of scenery artwork. */
+  const SCEN_PX = q === "low" ? 5 : q === "medium" ? 9 : 13;
+  const LAYERS = q === "low" ? 3 : 4;
   const useNormals = q !== "low";
 
   const root = new THREE.Group();
@@ -1448,8 +1796,8 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   const matCache = new Map<string, MatSet>();
   const ownedTex: THREE.Texture[] = [];
 
-  function surfaceMaterial(m: SurfaceMaterial, theme: CourseTheme): MatSet {
-    const k = `${m}|${theme}`;
+  function surfaceMaterial(m: SurfaceMaterial, theme: CourseTheme, overlay = false): MatSet {
+    const k = `${m}|${theme}|${overlay ? "o" : "s"}`;
     const hit = matCache.get(k);
     if (hit) return hit;
 
@@ -1459,6 +1807,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     const [rough, metal, nstr] = PBR[m] ?? [0.9, 0, 0.8];
     const mat = new THREE.MeshStandardMaterial({
       color: base, roughness: rough, metalness: metal, vertexColors: true,
+      transparent: overlay, depthWrite: !overlay,
     });
 
     try {
@@ -1500,6 +1849,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
           ownedTex.push(et);
           edge = new THREE.MeshBasicMaterial({
             map: et, transparent: true, depthWrite: false, toneMapped: true,
+            vertexColors: true,
             color: new THREE.Color(0xffffff).lerp(base, 0.25),
           });
         }
@@ -1528,38 +1878,53 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     layers = [];
   }
 
+  /**
+   * Four tiers with real scroll separation. `kx`/`ky` are how much of the
+   * camera's motion the layer *keeps*, so apparent world speed is 1-kx:
+   * 0.06 / 0.20 / 0.42 / 0.72. `top` is the world Y of the artwork band's top
+   * edge, relative to the hole's horizon.
+   *
+   * The vertical anchoring is deliberate, not decorative: the sea plane in
+   * tier 2 sits at its canvas fraction 0.42, and tiers 0-2 share a `ky`, so a
+   * far mountain's baseline can never drift below the water plane in front of
+   * it however the camera moves.
+   */
+  const TIERS: Array<{ tier: 0 | 1 | 2 | 3; z: number; kx: number; ky: number; h: number; top: number; tileW: number }> = [
+    { tier: 0, z: LAYER.farScenery, kx: 0.94, ky: 0.9, h: 26, top: 25, tileW: 130 },
+    { tier: 1, z: (LAYER.farScenery + LAYER.midScenery) * 0.5, kx: 0.8, ky: 0.9, h: 20, top: 18.4, tileW: 92 },
+    { tier: 2, z: LAYER.midScenery, kx: 0.58, ky: 0.9, h: 16, top: 10.2, tileW: 68 },
+    { tier: 3, z: LAYER.backdrop, kx: 0.28, ky: 0.72, h: 13, top: 7, tileW: 44 },
+  ];
+
   function buildScenery(theme: CourseTheme, horizon: number): void {
     clearScenery();
-    const specs: Array<{ tier: 0 | 1 | 2; z: number; kx: number; ky: number; h: number; tileW: number; dy: number }> = [
-      // `h` is the world height of the *artwork* band, which is anchored with
-      // its bottom just under the play line: everything drawn in the canvas
-      // therefore stands above the horizon, and the skirt covers what's below.
-      { tier: 0 as const, z: LAYER.farScenery, kx: 0.88, ky: 0.86, h: 34, tileW: 118, dy: -8 },
-      { tier: 1 as const, z: LAYER.midScenery, kx: 0.68, ky: 0.62, h: 23, tileW: 80, dy: -6 },
-      { tier: 2 as const, z: LAYER.backdrop, kx: 0.42, ky: 0.34, h: 15, tileW: 58, dy: -5 },
-    ].slice(3 - LAYERS);
+    const specs = TIERS.slice(4 - LAYERS);
 
     for (const s of specs) {
       let tex: THREE.CanvasTexture | null = null;
       try {
-        const p = sceneryCanvas(theme, s.tier, SCEN_W, SCEN_H, rng);
+        const cw = Math.min(2048, Math.round(s.tileW * SCEN_PX));
+        const ch = Math.max(64, Math.round(cw * (s.h / s.tileW)));
+        const p = sceneryCanvas(theme, s.tier, cw, ch, rng);
         if (p) {
           tex = new THREE.CanvasTexture(p.cv);
           tex.wrapS = THREE.RepeatWrapping;
           tex.wrapT = THREE.ClampToEdgeWrapping;
           tex.colorSpace = THREE.SRGBColorSpace;
+          tex.minFilter = THREE.LinearFilter;
+          tex.generateMipmaps = false;
         }
       } catch (err) {
         console.warn("[golf/render] scenery failed", theme, s.tier, err);
       }
       if (!tex) continue;
-      const W = 260;
+      const W = 420;
       // The quad hangs well below the artwork; ClampToEdge repeats the canvas's
       // bottom row down the skirt, so a layer's lower edge can never show up as
       // a straight line across the sky.
-      const SKIRT = 2.4;
+      const SKIRT = 6;
       const H2 = s.h * SKIRT;
-      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: true });
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
       const mesh = new THREE.Mesh(sceneryGeo, mat);
       mesh.scale.set(W, H2, 1);
       mesh.position.z = s.z;
@@ -1568,8 +1933,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       tex.repeat.set(W / s.tileW, SKIRT);
       tex.offset.y = 1 - SKIRT;
       root.add(mesh);
-      const top = horizon + s.dy + s.h;
-      layers.push({ mesh, kx: s.kx, ky: s.ky, tileW: s.tileW, anchor: top - H2 * 0.5 });
+      layers.push({ mesh, kx: s.kx, ky: s.ky, tileW: s.tileW, anchor: horizon + s.top - H2 * 0.5 });
     }
   }
 
@@ -1606,7 +1970,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
    * corners, so a baked depth gradient interpolates into mush. Explicit rows
    * give an exact, controllable falloff for a third of the vertices.
    */
-  function curtainGeo(s: Surface, floorY: number, capOK: boolean): THREE.BufferGeometry | null {
+  function curtainGeo(s: Surface, floorY: number, capOK: boolean, fade: Ramp | null): THREE.BufferGeometry | null {
     const P = s.points;
     const n = P.length;
     if (n < 2) return null;
@@ -1620,7 +1984,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     const pos = new Float32Array(vc * 3);
     const nor = new Float32Array(vc * 3);
     const uv = new Float32Array(vc * 2);
-    const col = new Float32Array(vc * 3);
+    const col = new Float32Array(vc * 4);
     const z = EXTRUDE * 0.5;
     const c = new THREE.Color();
 
@@ -1631,7 +1995,9 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       const droop = r >= R - 2 ? -0.35 : 0;
       const shade = Number.isFinite(d) ? d : 60;
       const k = THREE.MathUtils.smoothstep(shade, 0.4, 9);
-      c.setRGB(1, 1, 1).lerp(deepShade, k * 0.94);
+      // Clamped well short of black: the mass has to stay a readable mid value
+      // so the lower half of a tall slab still carries material information.
+      c.setRGB(1, 1, 1).lerp(deepShade, k * 0.6);
       for (let i = 0; i < n; i++) {
         const a = P[Math.max(0, i - 1)];
         const b = P[Math.min(n - 1, i + 1)];
@@ -1644,10 +2010,11 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
         const iv = 1 / Math.hypot(vx, vy, 1);
         const o = r * n + i;
         const y = Number.isFinite(d) ? P[i].y - d : floorY;
+        const alpha = rampAlpha(fade, P[i].x);
         pos[o * 3] = P[i].x; pos[o * 3 + 1] = y; pos[o * 3 + 2] = z;
         nor[o * 3] = vx * iv; nor[o * 3 + 1] = vy * iv; nor[o * 3 + 2] = iv;
         uv[o * 2] = P[i].x; uv[o * 2 + 1] = y;
-        col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b;
+        col[o * 4] = c.r; col[o * 4 + 1] = c.g; col[o * 4 + 2] = c.b; col[o * 4 + 3] = alpha;
       }
     }
 
@@ -1667,15 +2034,15 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
     geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 4));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     return geo;
   }
 
   /** Build the geometry for one surface, in world coordinates. */
-  function slabGeo(s: Surface, floorY: number, capOK: boolean): THREE.BufferGeometry | null {
+  function slabGeo(s: Surface, floorY: number, capOK: boolean, fade: Ramp | null): THREE.BufferGeometry | null {
     if (s.points.length < 2) return null;
-    if (!s.closed) return curtainGeo(s, floorY, capOK);
+    if (!s.closed) return curtainGeo(s, floorY, capOK, fade);
     const shape = new THREE.Shape();
     shape.moveTo(s.points[0].x, s.points[0].y);
     for (let i = 1; i < s.points.length; i++) shape.lineTo(s.points[i].x, s.points[i].y);
@@ -1695,17 +2062,18 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     // reading as a wall of tiled texture, and it costs nothing at runtime.
     const topAt = makeTopY(s);
     const pa = geo.attributes.position as THREE.BufferAttribute;
-    const cols = new Float32Array(pa.count * 3);
+    const cols = new Float32Array(pa.count * 4);
     const c = new THREE.Color();
     for (let i = 0; i < pa.count; i++) {
       // Blocks are objects, not earth: shade them, but never so far that the
       // material stops reading.
       const d = topAt(pa.getX(i)) - pa.getY(i);
       const k = THREE.MathUtils.smoothstep(d, 0.3, 12);
-      c.setRGB(1, 1, 1).lerp(deepShade, k * 0.74);
-      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+      c.setRGB(1, 1, 1).lerp(deepShade, k * 0.52);
+      const alpha = rampAlpha(fade, pa.getX(i));
+      cols[i * 4] = c.r; cols[i * 4 + 1] = c.g; cols[i * 4 + 2] = c.b; cols[i * 4 + 3] = alpha;
     }
-    geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(cols, 4));
     return geo;
   }
 
@@ -1801,7 +2169,9 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     skyMat.uniforms.uSunSize.value = T.sunSize;
     skyMat.uniforms.uStars.value = T.stars ? 1 : 0;
     skyMat.uniforms.uClouds.value = T.clouds;
-    skyMat.uniforms.uCloudCol.value.setHex(T.cloudCol);
+    // Pulled toward the sky it sits in: a fully saturated warm cloud colour on
+    // a cool sky reads as a smudge on the lens, not as weather.
+    skyMat.uniforms.uCloudCol.value.setHex(T.cloudCol).lerp(new THREE.Color(T.skyMid), 0.34);
     skyMat.uniforms.uHorizon.value = horizonY;
     key.color.setHex(T.key);
     key.intensity = T.keyI;
@@ -1811,8 +2181,9 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     rim.color.setHex(T.accent);
     fog.color.setHex(T.fog);
     // Dark enough that the mass reads as ground rather than more play surface,
-    // light enough that the normal-mapped detail is still faintly there.
-    deepShade.setHex(T.fog).multiplyScalar(0.18).lerp(EARTH, 0.2);
+    // light enough that the material still reads all the way down the slab —
+    // a terrain face that bottoms out at black carries no information at all.
+    deepShade.setHex(T.fog).multiplyScalar(0.5).lerp(EARTH, 0.45);
     ctx.renderer.setClearColor(T.fog, 1);
 
     buildScenery(theme, horizonY);
@@ -1820,9 +2191,11 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     const g = new THREE.Group();
     const floorY = hole.bounds.min.y - SLAB_DEPTH;
 
-    // Bucket by material so each one is a single merged draw call.
-    const slabs = new Map<SurfaceMaterial, THREE.BufferGeometry[]>();
-    const fringe = new Map<SurfaceMaterial, { pos: number[]; uv: number[] }>();
+    // Bucket by material so each one is a single merged draw call. Overlay
+    // dressings get their own bucket because they need the transparent
+    // material variant that carries the end-fade alpha.
+    const slabs = new Map<string, { m: SurfaceMaterial; overlay: boolean; list: THREE.BufferGeometry[] }>();
+    const fringe = new Map<string, { m: SurfaceMaterial; overlay: boolean; pos: number[]; uv: number[]; col: number[] }>();
 
     // A green or bunker is only a thin dressing if real ground runs under it.
     // Authored as a standalone strip it has to be a full slab, or the hole
@@ -1842,44 +2215,116 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       return bases.some(([p, q]) => p <= a + 0.5 && q >= b - 0.5);
     };
 
+    // Butt-jointed ground bands. Every joint between two materials becomes a
+    // cross-fade: the lower-painting band grows a couple of metres under its
+    // neighbour, and the higher-painting one is drawn over it with a feathered
+    // alpha. That is what turns "lighter rectangle pasted on the hillside"
+    // into a mown green that actually sits in the turf.
+    interface Band { s: Surface; pts: Vec2[]; lo: number; hi: number }
+    const bands: Band[] = [];
     for (const s of hole.surfaces) {
-      if (s.material === "water" || s.material === "lava") {
-        const lm = liquidMesh(s, floorY);
+      if (s.closed || s.points.length < 2) continue;
+      if (s.material === "water" || s.material === "lava") continue;
+      const P = s.points;
+      const pts = P[P.length - 1].x >= P[0].x ? P.slice() : P.slice().reverse();
+      bands.push({ s, pts, lo: pts[0].x, hi: pts[pts.length - 1].x });
+    }
+    /** `count` metres of a neighbour's profile, walking away from the joint. */
+    const walk = (pts: Vec2[], fromStart: boolean, dist: number): Vec2[] => {
+      const out: Vec2[] = [];
+      if (fromStart) {
+        const x0 = pts[0].x;
+        for (let i = 1; i < pts.length; i++) {
+          out.push(pts[i]);
+          if (pts[i].x - x0 >= dist) break;
+        }
+      } else {
+        const x0 = pts[pts.length - 1].x;
+        for (let i = pts.length - 2; i >= 0; i--) {
+          out.unshift(pts[i]);
+          if (x0 - pts[i].x >= dist) break;
+        }
+      }
+      return out;
+    };
+    const JOINT = 1.2;
+    const shaped = new Map<Surface, { pts: Vec2[]; ramp: Ramp | null }>();
+    for (const b of bands) {
+      let pts = b.pts;
+      let r0 = -Infinity, r1 = -Infinity, r2 = Infinity, r3 = Infinity;
+      const mine = paintOf(b.s.material);
+      for (const o of bands) {
+        if (o === b || o.s.material === b.s.material) continue;
+        const theirs = paintOf(o.s.material);
+        if (theirs === mine) continue;
+        if (Math.abs(o.lo - b.hi) < JOINT) {
+          if (theirs > mine) pts = pts.concat(walk(o.pts, true, OVERLAY_FADE));
+          else { r2 = b.hi - OVERLAY_FADE; r3 = b.hi; }
+        }
+        if (Math.abs(o.hi - b.lo) < JOINT) {
+          if (theirs > mine) pts = walk(o.pts, false, OVERLAY_FADE).concat(pts);
+          else { r0 = b.lo; r1 = b.lo + OVERLAY_FADE; }
+        }
+      }
+      const ramp: Ramp | null = Number.isFinite(r0) || Number.isFinite(r2)
+        ? [r0, r1, r2, r3] as const : null;
+      shaped.set(b.s, { pts, ramp });
+    }
+
+    for (const s0 of hole.surfaces) {
+      if (s0.material === "water" || s0.material === "lava") {
+        const lm = liquidMesh(s0, floorY);
         if (lm) g.add(lm);
         continue;
       }
-      const geo = slabGeo(s, floorY, supported(s));
+      const shape = shaped.get(s0);
+      const s: Surface = shape ? { ...s0, points: shape.pts } : s0;
+      const fade = shape?.ramp ?? null;
+      const sup = supported(s0);
+      // A faded band has to sit in the transparent pass so its ramp composites
+      // over the neighbour that was extended underneath it.
+      const overlay = fade !== null;
+      const key = `${s.material}|${overlay ? "o" : "s"}`;
+      const geo = slabGeo(s, floorY, sup, fade);
       if (geo) {
-        let list = slabs.get(s.material);
-        if (!list) slabs.set(s.material, (list = []));
-        list.push(geo);
+        let b = slabs.get(key);
+        if (!b) slabs.set(key, (b = { m: s.material, overlay, list: [] }));
+        b.list.push(geo);
       }
       const kind = EDGE_KIND[s.material];
       if (kind === "none") continue;
       const [up, down] = EDGE_EXTENT[kind];
-      let f = fringe.get(s.material);
-      if (!f) fringe.set(s.material, (f = { pos: [], uv: [] }));
+      let f = fringe.get(key);
+      if (!f) fringe.set(key, (f = { m: s.material, overlay, pos: [], uv: [], col: [] }));
       const z = EXTRUDE * 0.5 + 0.08;
-      for (const run of topRuns(s)) ribbonInto(run, up, down, 3.2, z, f.pos, f.uv);
+      for (const run of topRuns(s)) ribbonInto(run, up, down, 3.2, z, f.pos, f.uv, f.col, fade);
     }
 
-    for (const [m, list] of slabs) {
-      const merged = mergePNU(list);
+    for (const b of slabs.values()) {
+      const merged = mergePNU(b.list);
       if (!merged) continue;
-      const set = surfaceMaterial(m, theme);
+      const set = surfaceMaterial(b.m, theme, b.overlay);
       const mesh = new THREE.Mesh(merged, set.mat);
-      mesh.position.z = LAYER.course + (Z_BIAS[m] ?? 0);
+      // Faded bands must clear every opaque band, whatever their material's
+      // own bias, or the depth test eats the cross-fade.
+      mesh.position.z = b.overlay
+        ? LAYER.course + 0.4 + paintOf(b.m) * 0.02
+        : LAYER.course + (Z_BIAS[b.m] ?? 0);
+      if (b.overlay) mesh.renderOrder = 1;
       g.add(mesh);
     }
 
-    for (const [m, f] of fringe) {
-      const set = surfaceMaterial(m, theme);
+    for (const f of fringe.values()) {
+      const set = surfaceMaterial(f.m, theme, f.overlay);
       if (!set.edge || !f.pos.length) continue;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(f.pos), 3));
       geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(f.uv), 2));
+      geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(f.col), 4));
       const mesh = new THREE.Mesh(geo, set.edge);
-      mesh.position.z = LAYER.course + (Z_BIAS[m] ?? 0);
+      mesh.position.z = (f.overlay
+        ? LAYER.course + 0.4 + paintOf(f.m) * 0.02
+        : LAYER.course + (Z_BIAS[f.m] ?? 0)) + 0.05;
       mesh.renderOrder = 3;
       g.add(mesh);
     }
@@ -1897,19 +2342,24 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   const ballTexture = ballTex(256, rng);
   if (ballTexture) ownedTex.push(ballTexture);
   const outlineGeo = new THREE.SphereGeometry(1, 14, 10);
-  const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0a1322, side: THREE.BackSide, fog: false });
+  const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0c1826, side: THREE.BackSide, fog: false });
   const glowTex = radialTex(128, "rgba(255,255,255,0.55)", "rgba(255,255,255,0)");
   if (glowTex) ownedTex.push(glowTex);
   const shadowTex = radialTex(128, "rgba(0,0,0,0.85)", "rgba(0,0,0,0)");
   if (shadowTex) ownedTex.push(shadowTex);
   const ringTexture = ringTex(128);
   if (ringTexture) ownedTex.push(ringTexture);
+  const haloTexture = haloTex(128);
+  if (haloTexture) ownedTex.push(haloTexture);
+  const chevronTexture = chevronTex(64);
+  if (chevronTexture) ownedTex.push(chevronTexture);
   const quad = new THREE.PlaneGeometry(1, 1);
 
   interface BallVis {
     mesh: THREE.Mesh;
     outline: THREE.Mesh;
     glow: THREE.Mesh;
+    halo: THREE.Mesh;
     shadow: THREE.Mesh;
     trail: THREE.Mesh;
     trailPos: Float32Array;
@@ -1924,10 +2374,13 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   }
 
   function makeBallVis(): BallVis {
+    // High-key by contract. The emissive floor is what guarantees the ball is
+    // the brightest value in frame even sitting in the terrain's own shadow,
+    // which is exactly the moment — addressing the ball — the player needs it.
     const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, roughness: 0.36, metalness: 0.02,
+      color: 0xffffff, roughness: 0.5, metalness: 0.0,
       map: ballTexture ?? undefined,
-      emissive: new THREE.Color(0x1a1a1a),
+      emissive: new THREE.Color(0x666666),
     });
     const mesh = new THREE.Mesh(ballGeo, mat);
     mesh.position.z = LAYER.ball;
@@ -1938,6 +2391,14 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       blending: THREE.AdditiveBlending, opacity: 0.5, fog: false,
     }));
     glow.position.z = LAYER.ball - 0.6;
+    // Drawn above everything, but as an annulus that starts outside the ball
+    // silhouette — it can never darken or overlap the ball itself.
+    const halo = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({
+      map: haloTexture ?? undefined, transparent: true, depthWrite: false,
+      depthTest: false, blending: THREE.AdditiveBlending, opacity: 0.5, fog: false,
+    }));
+    halo.position.z = LAYER.fx;
+    halo.renderOrder = 40;
     const shadow = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({
       map: shadowTex ?? undefined, transparent: true, depthWrite: false,
       color: 0x0a1320, opacity: 0.5, fog: false,
@@ -1958,12 +2419,23 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     trail.frustumCulled = false;
     trail.position.z = LAYER.ball - 0.3;
 
-    root.add(mesh, outline, glow, shadow, trail);
-    return { mesh, outline, glow, shadow, trail, trailPos, trailCol, fade: 0 };
+    root.add(mesh, outline, glow, halo, shadow, trail);
+    return { mesh, outline, glow, halo, shadow, trail, trailPos, trailCol, fade: 0 };
   }
 
   const balls: BallVis[] = [];
   for (let i = 0; i < MAX_BALLS; i++) balls.push(makeBallVis());
+
+  // Safety net: if the ball ever leaves the frame, a chevron on the edge of
+  // the viewport says which way it went.
+  const chevron = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({
+    map: chevronTexture ?? undefined, transparent: true, depthWrite: false,
+    depthTest: false, fog: false, opacity: 0.95,
+  }));
+  chevron.position.z = LAYER.fx;
+  chevron.renderOrder = 41;
+  chevron.visible = false;
+  root.add(chevron);
 
   // --- Cup + flag ---------------------------------------------------------
   const cupGroup = new THREE.Group();
@@ -2075,13 +2547,14 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
 
   // --- Per-frame ----------------------------------------------------------
   const tmpColor = new THREE.Color();
+  const WHITE = new THREE.Color(0xffffff);
   const drawSize = new THREE.Vector2();
 
   /** Update one ball's visual set from its physics state. */
   function dressBall(vis: BallVis, b: BallState | undefined, dt: number, pxPerM: number): void {
     if (!b) {
       vis.mesh.visible = vis.outline.visible = vis.glow.visible = false;
-      vis.shadow.visible = vis.trail.visible = false;
+      vis.halo.visible = vis.shadow.visible = vis.trail.visible = false;
       vis.fade = 0;
       return;
     }
@@ -2089,23 +2562,39 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     // Never let the ball shrink below a readable size on screen. The camera
     // pulls back to 0.5× on long holes, which would otherwise leave an 8 px
     // dot — the one thing the player must never lose track of.
-    const r = Math.min(b.radius * 1.8, Math.max(b.radius, 9 / Math.max(1, pxPerM)));
+    const px = Math.max(1, pxPerM);
+    const r = Math.min(b.radius * 2.2, Math.max(b.radius, 13 / px));
     vis.mesh.visible = vis.outline.visible = vis.glow.visible = true;
     vis.mesh.position.set(b.pos.x, b.pos.y, LAYER.ball);
     vis.mesh.scale.setScalar(r);
     vis.mesh.rotation.z -= b.spin * dt;
     const mm = vis.mesh.material as THREE.MeshStandardMaterial;
     mm.color.setHex(tint);
-    mm.emissive.setHex(tint).multiplyScalar(0.14);
+    // Lift a coloured ball back toward white so no ball type is ever a dark
+    // object on a light backdrop.
+    mm.color.lerp(WHITE, 0.45);
+    mm.emissive.setHex(tint).lerp(WHITE, 0.5).multiplyScalar(0.52);
 
-    // Outline shell sized in device pixels so the rim is always ~2.5 px.
+    // Outline shell sized in device pixels: a crisp ~1.8 px contact rim, not
+    // the fat dark donut that used to swallow the ball at rest.
     vis.outline.position.copy(vis.mesh.position);
-    vis.outline.scale.setScalar(r + 2.5 / Math.max(1, pxPerM));
+    vis.outline.scale.setScalar(r + 1.4 / px);
 
     vis.glow.position.set(b.pos.x, b.pos.y, LAYER.ball - 0.6);
     vis.glow.scale.setScalar(r * 5);
-    (vis.glow.material as THREE.MeshBasicMaterial).color.setHex(tint);
-    (vis.glow.material as THREE.MeshBasicMaterial).opacity = 0.2;
+    (vis.glow.material as THREE.MeshBasicMaterial).color.setHex(tint).lerp(WHITE, 0.5);
+    (vis.glow.material as THREE.MeshBasicMaterial).opacity = b.resting ? 0.34 : 0.2;
+
+    // Addressable-ball ring: sits outside the silhouette, pulses gently, and
+    // is drawn over every other layer so the golfer, a club, a pickup glow or
+    // a power-up skin can never hide the one object that matters.
+    const hm = vis.halo.material as THREE.MeshBasicMaterial;
+    vis.halo.visible = true;
+    vis.halo.position.set(b.pos.x, b.pos.y, LAYER.fx);
+    const grow = b.resting ? 1 + Math.sin(ctx.elapsed * 3.1) * 0.05 : 1;
+    vis.halo.scale.setScalar(r * 6.2 * grow);
+    hm.color.setHex(tint).lerp(WHITE, 0.35);
+    hm.opacity = b.resting ? 0.5 : 0.22;
 
     // Contact shadow: probe for the nearest surface below and tighten as the
     // ball approaches it. This is the main height cue in a flat side view.
@@ -2117,8 +2606,8 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       vis.shadow.visible = true;
       vis.shadow.position.set(hit.point.x + hit.normal.x * 0.05, hit.point.y + hit.normal.y * 0.05, LAYER.props + 0.7);
       vis.shadow.rotation.z = Math.atan2(hit.normal.y, hit.normal.x) - Math.PI / 2;
-      vis.shadow.scale.set(r * (6.4 + t * 7), r * (3.2 + t * 3.5), 1);
-      (vis.shadow.material as THREE.MeshBasicMaterial).opacity = 0.62 * (1 - t) + 0.06;
+      vis.shadow.scale.set(r * (5.0 + t * 8), r * (2.4 + t * 4), 1);
+      (vis.shadow.material as THREE.MeshBasicMaterial).opacity = 0.72 * (1 - t) + 0.05;
     } else {
       vis.shadow.visible = false;
     }
@@ -2183,7 +2672,10 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       // so a 260 m quad covers any zoom without a single extra draw call.
       for (const l of layers) {
         l.mesh.position.x = cam.position.x;
-        l.mesh.position.y = l.anchor + cam.position.y * l.ky;
+        // Anchored on the hole's horizon, not on world zero: at the resting
+        // camera height each tier sits exactly where it was authored, and only
+        // deviation from that height produces vertical parallax.
+        l.mesh.position.y = l.anchor + (cam.position.y - horizonY) * l.ky;
         const map = (l.mesh.material as THREE.MeshBasicMaterial).map;
         if (map) map.offset.x = (cam.position.x * l.kx) / l.tileW;
       }
@@ -2219,6 +2711,27 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       if (!phys) return;
       const live = phys.balls.filter((b) => b.active);
       for (let i = 0; i < balls.length; i++) dressBall(balls[i], live[i], dt, pxPerM);
+
+      // Off-screen ball chevron. Clamped to the viewport edge and rotated to
+      // point at the ball, so the player is never hunting a frame for it.
+      const lead = live[0];
+      if (lead) {
+        const mx = halfW - 2.2;
+        const my = halfH - 2.2;
+        const dx = lead.pos.x - cam.position.x;
+        const dy = lead.pos.y - cam.position.y;
+        const off = Math.abs(dx) > mx || Math.abs(dy) > my;
+        chevron.visible = off;
+        if (off) {
+          const cx = Math.max(-mx, Math.min(mx, dx));
+          const cy = Math.max(-my, Math.min(my, dy));
+          chevron.position.set(cam.position.x + cx, cam.position.y + cy, LAYER.fx);
+          chevron.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+          chevron.scale.setScalar(Math.max(1.1, 34 / Math.max(1, pxPerM)));
+        }
+      } else {
+        chevron.visible = false;
+      }
 
       // Aim preview: integrate the real launch under gravity, and sweep each
       // step so the first impact is marked. Both are what the shot will do.
@@ -2299,10 +2812,12 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       for (const b of balls) {
         (b.mesh.material as THREE.Material).dispose();
         (b.glow.material as THREE.Material).dispose();
+        (b.halo.material as THREE.Material).dispose();
         (b.shadow.material as THREE.Material).dispose();
         (b.trail.material as THREE.Material).dispose();
         b.trail.geometry.dispose();
       }
+      (chevron.material as THREE.Material).dispose();
       cupGroup.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.geometry && m.geometry !== quad && m.geometry !== flagGeo) m.geometry.dispose();

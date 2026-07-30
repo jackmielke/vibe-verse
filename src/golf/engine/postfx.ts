@@ -28,6 +28,21 @@
  *
  * Tiering: 'low' is grade + FXAA only. 'medium' adds glow, aberration, grain
  * and the impact wobble. 'high' widens the glow and swaps FXAA for SMAA.
+ *
+ * ── Grade contract (do not regress these; a director panel caught all four) ──
+ *  1. This is a *sunny* game. Exposure sits high enough that the sky reaches
+ *     the top of the range and the fairway lands near mid-tone — never a
+ *     dusk-blue wash with the grass crushed into the toe.
+ *  2. The vignette is weighted to the TOP of the frame. The bottom third is
+ *     the play area: the ball, its shadow and the lie live there and must stay
+ *     legible, so the vignette is scaled to almost nothing below y≈0.2.
+ *  3. Split tone carries the light direction the geometry cannot: warm gain +
+ *     warm highlight tint against a cool shadow lift. That two-tone is what
+ *     separates the four parallax tiers into distance instead of flat bands.
+ *  4. Bloom is for emissives only. The threshold is above anything the sky
+ *     gradient or a lit cloud can reach, and the bright pass fades to black
+ *     inside the buffer border so the clamp-to-edge blur can never replicate a
+ *     bright row into a band along the edge of frame.
  */
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -55,6 +70,18 @@ interface Grade {
   hi: [number, number, number];
   contrast: number;
   saturation: number;
+  /**
+   * Midtone S-curve amount. Applied with the toe masked off, so it widens the
+   * separation between the background tiers (which all live in the mids) and
+   * opens the upper mids in the sky, without re-crushing the shadows.
+   */
+  scurve: number;
+  /**
+   * Hue-targeted lift on green-dominant pixels. The fairway is the subject of
+   * this game and has to be the brightest, warmest surface on screen; this is
+   * what guarantees it regardless of how the lighting lands.
+   */
+  green: number;
   vignette: number;
   aberration: number;
   grain: number;
@@ -64,51 +91,61 @@ interface Grade {
 }
 
 const GRADES: Record<CourseTheme, Grade> = {
-  // Warm golden hour over water; cool sea-blue shadows so sand still reads.
+  // Sunny tropical par 3. Warm key, cool sea-bounce shadow, fairway hottest.
   seaside: {
-    exposure: 1.03, gain: [1.09, 1.005, 0.90], lift: [0.000, 0.014, 0.046], hi: [1.10, 1.00, 0.85],
-    contrast: 1.09, saturation: 1.10, vignette: 0.36, aberration: 0.0016, grain: 0.013,
-    bloom: 0.55, threshold: 1.55,
+    exposure: 1.40, gain: [1.10, 1.015, 0.895], lift: [0.010, 0.026, 0.044], hi: [1.13, 1.05, 0.87],
+    contrast: 1.05, saturation: 1.15, scurve: 0.34, green: 0.95,
+    vignette: 0.20, aberration: 0.0014, grain: 0.011,
+    bloom: 0.42, threshold: 2.85,
   },
-  // Humid and deep — heavy shadows, sunlight punching through the canopy.
+  // Humid and deep — sunlight punching through the canopy, shade stays green.
   jungle: {
-    exposure: 0.99, gain: [0.96, 1.045, 0.93], lift: [0.008, 0.026, 0.024], hi: [1.10, 1.03, 0.80],
-    contrast: 1.13, saturation: 1.08, vignette: 0.40, aberration: 0.0016, grain: 0.014,
-    bloom: 0.45, threshold: 1.70,
+    exposure: 1.33, gain: [1.00, 1.05, 0.915], lift: [0.010, 0.028, 0.030], hi: [1.13, 1.06, 0.83],
+    contrast: 1.07, saturation: 1.12, scurve: 0.36, green: 0.90,
+    vignette: 0.22, aberration: 0.0014, grain: 0.012,
+    bloom: 0.36, threshold: 2.95,
   },
   // Baked red rock: amber highlights, violet shade.
   canyon: {
-    exposure: 1.05, gain: [1.13, 0.99, 0.87], lift: [0.030, 0.006, 0.040], hi: [1.14, 0.97, 0.78],
-    contrast: 1.11, saturation: 1.10, vignette: 0.38, aberration: 0.0020, grain: 0.015,
-    bloom: 0.55, threshold: 1.60,
+    exposure: 1.40, gain: [1.14, 1.00, 0.875], lift: [0.030, 0.010, 0.040], hi: [1.17, 1.00, 0.79],
+    contrast: 1.06, saturation: 1.12, scurve: 0.34, green: 0.45,
+    vignette: 0.22, aberration: 0.0018, grain: 0.013,
+    bloom: 0.42, threshold: 2.80,
   },
   // Magenta-and-cyan. The one place the grade is allowed to shout.
   neon: {
-    exposure: 0.95, gain: [1.04, 0.93, 1.12], lift: [0.000, 0.030, 0.062], hi: [1.16, 0.86, 1.16],
-    contrast: 1.16, saturation: 1.22, vignette: 0.46, aberration: 0.0034, grain: 0.020,
-    bloom: 1.10, threshold: 1.05,
+    exposure: 1.20, gain: [1.05, 0.94, 1.12], lift: [0.004, 0.030, 0.062], hi: [1.16, 0.88, 1.16],
+    contrast: 1.10, saturation: 1.24, scurve: 0.30, green: 0.40,
+    vignette: 0.30, aberration: 0.0030, grain: 0.018,
+    bloom: 0.95, threshold: 1.95,
   },
   // Thin air: lifted blacks, low contrast, almost no vignette.
   sky: {
-    exposure: 1.07, gain: [0.985, 1.00, 1.07], lift: [0.022, 0.032, 0.048], hi: [1.03, 1.03, 1.06],
-    contrast: 0.97, saturation: 1.02, vignette: 0.24, aberration: 0.0012, grain: 0.011,
-    bloom: 0.70, threshold: 1.45,
+    exposure: 1.42, gain: [0.99, 1.005, 1.055], lift: [0.020, 0.030, 0.044], hi: [1.07, 1.05, 1.04],
+    contrast: 0.99, saturation: 1.06, scurve: 0.26, green: 0.70,
+    vignette: 0.14, aberration: 0.0010, grain: 0.010,
+    bloom: 0.55, threshold: 2.60,
   },
   // Hot orange against blue-black; the strongest glow in the set.
   volcano: {
-    exposure: 0.97, gain: [1.15, 0.95, 0.82], lift: [0.014, 0.002, 0.042], hi: [1.22, 0.90, 0.66],
-    contrast: 1.16, saturation: 1.12, vignette: 0.48, aberration: 0.0028, grain: 0.018,
-    bloom: 1.00, threshold: 1.15,
+    exposure: 1.24, gain: [1.16, 0.96, 0.84], lift: [0.016, 0.004, 0.042], hi: [1.22, 0.93, 0.70],
+    contrast: 1.10, saturation: 1.14, scurve: 0.34, green: 0.35,
+    vignette: 0.28, aberration: 0.0026, grain: 0.016,
+    bloom: 0.85, threshold: 2.05,
   },
   // Teal ice, crisp and slightly desaturated so the flag stays the only red.
   glacier: {
-    exposure: 1.04, gain: [0.93, 1.005, 1.12], lift: [0.000, 0.020, 0.048], hi: [0.93, 1.02, 1.12],
-    contrast: 1.10, saturation: 0.97, vignette: 0.34, aberration: 0.0018, grain: 0.012,
-    bloom: 0.75, threshold: 1.40,
+    exposure: 1.40, gain: [0.96, 1.01, 1.10], lift: [0.004, 0.020, 0.046], hi: [1.02, 1.04, 1.10],
+    contrast: 1.05, saturation: 1.02, scurve: 0.30, green: 0.50,
+    vignette: 0.18, aberration: 0.0016, grain: 0.011,
+    bloom: 0.60, threshold: 2.55,
   },
 };
 
-const SCALARS = ["exposure", "contrast", "saturation", "vignette", "aberration", "grain", "bloom", "threshold"] as const;
+const SCALARS = [
+  "exposure", "contrast", "saturation", "scurve", "green",
+  "vignette", "aberration", "grain", "bloom", "threshold",
+] as const;
 const VECTORS = ["gain", "lift", "hi"] as const;
 
 function cloneGrade(g: Grade): Grade {
@@ -136,15 +173,28 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-/** Soft-kneed bright pass. Nothing under `uThreshold` linear ever glows. */
+/**
+ * Soft-kneed bright pass. Nothing under `uThreshold` linear ever glows, and the
+ * threshold is set above what the sky gradient, the horizon warm band or a lit
+ * cloud can reach — only genuine emissives (powerups, the ball, lava, neon)
+ * survive it.
+ *
+ * `uEdge` fades the bright pass to black inside the buffer border. The blur
+ * below samples with clamp-to-edge, so without this a bright pixel touching the
+ * frame edge gets its row/column replicated outward and lands as a flat band
+ * hugging the top or side of the screen — which is exactly what a downsampled
+ * pass "bleeding past the screen edge" looks like.
+ */
 const BRIGHT_FRAG = /* glsl */ `
 uniform sampler2D tDiffuse;
-uniform float uThreshold, uKnee;
+uniform float uThreshold, uKnee, uEdge;
 varying vec2 vUv;
 void main() {
   vec3 c = max(texture2D(tDiffuse, vUv).rgb, vec3(0.0));
   float peak = max(c.r, max(c.g, c.b));
-  gl_FragColor = vec4(c * smoothstep(uThreshold, uThreshold + uKnee, peak), 1.0);
+  vec2 e = min(vUv, 1.0 - vUv);
+  float edge = smoothstep(0.0, uEdge, min(e.x, e.y));
+  gl_FragColor = vec4(c * smoothstep(uThreshold, uThreshold + uKnee, peak) * edge, 1.0);
 }`;
 
 /** Separable 9-tap gaussian collapsed to 5 linear-filtered samples. */
@@ -165,7 +215,8 @@ const GRADE_FRAG = /* glsl */ `
 uniform sampler2D tDiffuse;
 uniform sampler2D tBloom;
 uniform vec3 uGain, uLift, uHi;
-uniform float uExposure, uContrast, uSaturation, uVignette, uAberration, uGrain, uBloom;
+uniform float uExposure, uContrast, uSaturation, uSCurve, uGreen;
+uniform float uVignette, uAberration, uGrain, uBloom;
 uniform float uTime, uShock, uAspect;
 uniform vec2 uShockAt;
 varying vec2 vUv;
@@ -240,15 +291,36 @@ void main() {
   col = max(col, vec3(0.0)) * (uExposure / 0.6) * uGain;
   col = toSRGB(acesFilmic(col));
 
-  // --- display stage: split tone, contrast, saturation ----------------------
+  // --- display stage --------------------------------------------------------
   float l = dot(col, LUMA);
-  col += uLift * (1.0 - smoothstep(0.0, 0.55, l));
-  col = mix(col, col * uHi, smoothstep(0.42, 1.0, l));
+
+  // Cool shadow lift against a warm highlight tint: the split-tone half of the
+  // key/bounce read. It also pulls the deepest grass off the floor so the
+  // bottom of frame keeps its texture instead of going to black.
+  col += uLift * (1.0 - smoothstep(0.0, 0.62, l));
+  col = mix(col, col * uHi, smoothstep(0.40, 1.0, l));
+
+  // Fairway pop. Green-dominant pixels get brighter and swing yellow-green, so
+  // the play surface is unambiguously the hottest, warmest thing on screen.
+  col = clamp(col, 0.0, 1.0);
+  float gw = clamp((col.g - max(col.r, col.b)) * 3.2, 0.0, 1.0);
+  col = mix(col, col * vec3(1.20, 1.30, 0.84) + vec3(0.014, 0.042, 0.0), gw * uGreen);
+  col = clamp(col, 0.0, 1.0);
+
+  // Midtone S. Weighted off the toe so it widens the gap between the parallax
+  // tiers and opens the upper sky without dragging the shadows down with it.
+  vec3 s = col * col * (3.0 - 2.0 * col);
+  col = mix(col, s, uSCurve * smoothstep(0.10, 0.38, dot(col, LUMA)));
+
   col = (col - 0.5) * uContrast + 0.5;
   l = dot(col, LUMA);
   col = mix(vec3(l), col, uSaturation);
 
-  col *= 1.0 - uVignette * smoothstep(0.40, 1.02, r);
+  // Vignette, biased hard to the top of frame. vUv.y is 0 at the bottom of the
+  // screen, which is the play area — the ball, its lie and the contact shadow
+  // live there, so the falloff is scaled to ~8% before it can touch them.
+  float top = mix(0.08, 1.0, smoothstep(0.18, 0.86, vUv.y));
+  col *= 1.0 - uVignette * smoothstep(0.44, 1.06, r) * top;
 
 #ifdef GRAIN
   // Also breaks up banding in the big sky gradient, which is most of the frame.
@@ -264,6 +336,9 @@ void main() {
 
 /** Quarter-resolution downsample factor for the glow chain. */
 const GLOW_DIV = 4;
+
+/** Border, in ¼-res uv, over which the bright pass fades to black. */
+const GLOW_EDGE = 0.035;
 
 /**
  * Threshold + separable blur into a private half-float target. `needsSwap` is
@@ -291,6 +366,11 @@ class GlowPass extends Pass {
       stencilBuffer: false,
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
+      // Explicit: the blur taps past the border and the grade samples the
+      // result full-screen. Clamped + the bright pass's edge fade means the
+      // border is guaranteed black rather than a replicated bright row.
+      wrapS: THREE.ClampToEdgeWrapping,
+      wrapT: THREE.ClampToEdgeWrapping,
     };
     const w = Math.max(1, Math.floor(width / GLOW_DIV));
     const h = Math.max(1, Math.floor(height / GLOW_DIV));
@@ -299,7 +379,12 @@ class GlowPass extends Pass {
     this.texture = this.rtA.texture;
 
     this.bright = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: null }, uThreshold: { value: 1.5 }, uKnee: { value: 0.5 } },
+      uniforms: {
+        tDiffuse: { value: null },
+        uThreshold: { value: 2.5 },
+        uKnee: { value: 0.9 },
+        uEdge: { value: GLOW_EDGE },
+      },
       vertexShader: FS_VERT,
       fragmentShader: BRIGHT_FRAG,
       depthTest: false,
@@ -317,7 +402,7 @@ class GlowPass extends Pass {
 
   set threshold(v: number) {
     this.bright.uniforms.uThreshold.value = v;
-    this.bright.uniforms.uKnee.value = Math.max(0.15, v * 0.35);
+    this.bright.uniforms.uKnee.value = Math.max(0.25, v * 0.35);
   }
 
   setSize(width: number, height: number): void {
@@ -418,10 +503,12 @@ const createPostFx: SystemFactory = async (ctx) => {
         uExposure: { value: 1 },
         uContrast: { value: 1 },
         uSaturation: { value: 1 },
-        uVignette: { value: 0.34 },
-        uAberration: { value: 0.0016 },
-        uGrain: { value: 0.013 },
-        uBloom: { value: 0.55 },
+        uSCurve: { value: 0.32 },
+        uGreen: { value: 0.9 },
+        uVignette: { value: 0.20 },
+        uAberration: { value: 0.0014 },
+        uGrain: { value: 0.011 },
+        uBloom: { value: 0.42 },
         uTime: { value: 0 },
         uShock: { value: 0 },
         uAspect: { value: Math.max(0.01, size.x / Math.max(1, size.y)) },
@@ -524,6 +611,8 @@ const createPostFx: SystemFactory = async (ctx) => {
       U.uExposure.value = cur.exposure * ctx.renderer.toneMappingExposure;
       U.uContrast.value = cur.contrast;
       U.uSaturation.value = cur.saturation;
+      U.uSCurve.value = cur.scurve;
+      U.uGreen.value = cur.green;
       U.uVignette.value = cur.vignette;
       U.uAberration.value = cur.aberration;
       U.uGrain.value = cur.grain;

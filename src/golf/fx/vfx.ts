@@ -346,6 +346,9 @@ interface Pool {
   col: Float32Array;
   par: Float32Array;
   dirty: boolean;
+  /** First slot written this frame, and how many — for partial GPU uploads. */
+  first: number;
+  wrote: number;
 }
 
 interface QuadPool {
@@ -396,94 +399,94 @@ interface Recipe {
 
 const RECIPES: Partial<Record<SurfaceMaterial, Recipe>> = {
   fairway: {
-    n: 12,
-    chip: { tile: T_BLADE, col: 0x63c26a, col2: 0x2f7a45, size: 0.3, grav: 1, spin: 9 },
-    haze: { tile: T_DUST, col: 0x9ec98a, size: 0.9, n: 3 },
+    n: 18,
+    chip: { tile: T_BLADE, col: 0x86e88a, col2: 0x47a862, size: 0.9, grav: 1, spin: 9 },
+    haze: { tile: T_DUST, col: 0xbfe3a8, size: 1.7, n: 3 },
+    glint: null,
+    speed: 0.55,
+    cone: 1.0,
+    ringCol: 0xa6f0a0,
+    ringAlpha: 0.34,
+  },
+  green: {
+    n: 14,
+    chip: { tile: T_BLADE, col: 0x96f59c, col2: 0x4fb478, size: 0.74, grav: 1, spin: 8 },
+    haze: { tile: T_DUST, col: 0xc4eeb0, size: 1.35, n: 2 },
     glint: null,
     speed: 0.42,
     cone: 1.0,
-    ringCol: 0x8fe08a,
-    ringAlpha: 0.22,
-  },
-  green: {
-    n: 9,
-    chip: { tile: T_BLADE, col: 0x74d97c, col2: 0x35895a, size: 0.24, grav: 1, spin: 8 },
-    haze: { tile: T_DUST, col: 0xa8dc98, size: 0.7, n: 2 },
-    glint: null,
-    speed: 0.34,
-    cone: 1.0,
-    ringCol: 0x9df0a0,
-    ringAlpha: 0.18,
-  },
-  rough: {
-    n: 15,
-    chip: { tile: T_BLADE, col: 0x4d9a52, col2: 0x24603a, size: 0.36, grav: 1, spin: 11 },
-    haze: { tile: T_DUST, col: 0x86ad7a, size: 1.0, n: 4 },
-    glint: null,
-    speed: 0.38,
-    cone: 1.15,
-    ringCol: 0x7ac47f,
-    ringAlpha: 0.18,
-  },
-  sand: {
-    n: 26,
-    chip: { tile: T_GRAIN, col: 0xf0d9a2, col2: 0xc9a86a, size: 0.16, grav: 1, spin: 0 },
-    haze: { tile: T_SMOKE, col: 0xe8d3a6, size: 1.5, n: 6 },
-    glint: null,
-    speed: 0.34,
-    cone: 1.25,
-    ringCol: 0xf3dcae,
-    ringAlpha: 0.28,
-  },
-  stone: {
-    n: 13,
-    chip: { tile: T_CHIP, col: 0xa9b2bd, col2: 0x5d6875, size: 0.2, grav: 1, spin: 13 },
-    haze: { tile: T_SMOKE, col: 0xb9c3ce, size: 1.2, n: 4 },
-    glint: { tile: T_STAR, col: 0xfff0cf, size: 0.5, n: 2 },
-    speed: 0.5,
-    cone: 1.0,
-    ringCol: 0xd7e0ea,
-    ringAlpha: 0.3,
-  },
-  wood: {
-    n: 12,
-    chip: { tile: T_CHIP, col: 0xc08a4e, col2: 0x7a4f28, size: 0.22, grav: 1, spin: 12 },
-    haze: { tile: T_DUST, col: 0xd9b98a, size: 1.0, n: 3 },
-    glint: null,
-    speed: 0.44,
-    cone: 1.05,
-    ringCol: 0xe0b483,
-    ringAlpha: 0.24,
-  },
-  metal: {
-    n: 20,
-    chip: { tile: T_SPARK, col: 0xffb454, col2: 0xff6a2b, size: 0.44, grav: 0.85, spin: 0 },
-    haze: null,
-    glint: { tile: T_STAR, col: 0xfff4d6, size: 0.85, n: 3 },
-    speed: 1.0,
-    cone: 1.35,
-    ringCol: 0xffd08a,
-    ringAlpha: 0.5,
-  },
-  ice: {
-    n: 16,
-    chip: { tile: T_CRYSTAL, col: 0xbdefff, col2: 0x67c8f0, size: 0.26, grav: 1, spin: 10 },
-    haze: { tile: T_DUST, col: 0xdff4ff, size: 1.0, n: 4 },
-    glint: { tile: T_STAR, col: 0xe8fbff, size: 0.6, n: 3 },
-    speed: 0.62,
-    cone: 1.15,
-    ringCol: 0xa8e8ff,
+    ringCol: 0xb4f7b6,
     ringAlpha: 0.34,
   },
+  rough: {
+    n: 17,
+    chip: { tile: T_BLADE, col: 0x5fb463, col2: 0x2f7548, size: 0.86, grav: 1, spin: 11 },
+    haze: { tile: T_DUST, col: 0xa2c894, size: 1.9, n: 4 },
+    glint: null,
+    speed: 0.46,
+    cone: 1.15,
+    ringCol: 0x92d897,
+    ringAlpha: 0.34,
+  },
+  sand: {
+    n: 30,
+    chip: { tile: T_GRAIN, col: 0xffeec4, col2: 0xe0c184, size: 0.44, grav: 1, spin: 0 },
+    haze: { tile: T_SMOKE, col: 0xf2e2bc, size: 2.6, n: 7 },
+    glint: null,
+    speed: 0.46,
+    cone: 1.3,
+    ringCol: 0xffe9bc,
+    ringAlpha: 0.45,
+  },
+  stone: {
+    n: 14,
+    chip: { tile: T_CHIP, col: 0xd2dae4, col2: 0x808c9c, size: 0.6, grav: 1, spin: 13 },
+    haze: { tile: T_SMOKE, col: 0xcdd6e0, size: 2.2, n: 5 },
+    glint: { tile: T_STAR, col: 0xfff0cf, size: 1.1, n: 2 },
+    speed: 0.6,
+    cone: 1.0,
+    ringCol: 0xe4ecf5,
+    ringAlpha: 0.5,
+  },
+  wood: {
+    n: 13,
+    chip: { tile: T_CHIP, col: 0xe2a968, col2: 0x9a6a3c, size: 0.64, grav: 1, spin: 12 },
+    haze: { tile: T_DUST, col: 0xe8cfa8, size: 1.8, n: 3 },
+    glint: null,
+    speed: 0.54,
+    cone: 1.05,
+    ringCol: 0xf0c795,
+    ringAlpha: 0.42,
+  },
+  metal: {
+    n: 22,
+    chip: { tile: T_SPARK, col: 0xffc36a, col2: 0xff7a34, size: 1.05, grav: 0.85, spin: 0 },
+    haze: null,
+    glint: { tile: T_STAR, col: 0xfff4d6, size: 1.7, n: 3 },
+    speed: 1.15,
+    cone: 1.35,
+    ringCol: 0xffd89c,
+    ringAlpha: 0.75,
+  },
+  ice: {
+    n: 17,
+    chip: { tile: T_CRYSTAL, col: 0xe2faff, col2: 0x92e0fa, size: 0.72, grav: 1, spin: 10 },
+    haze: { tile: T_DUST, col: 0xeafaff, size: 1.9, n: 4 },
+    glint: { tile: T_STAR, col: 0xe8fbff, size: 1.25, n: 3 },
+    speed: 0.74,
+    cone: 1.15,
+    ringCol: 0xbdeeff,
+    ringAlpha: 0.55,
+  },
   rubber: {
-    n: 8,
-    chip: { tile: T_DUST, col: 0x7a8fa8, col2: 0x3d4e63, size: 0.42, grav: 0.5, spin: 4 },
+    n: 9,
+    chip: { tile: T_DUST, col: 0x93a8c0, col2: 0x51637a, size: 0.9, grav: 0.5, spin: 4 },
     haze: null,
     glint: null,
-    speed: 0.3,
+    speed: 0.4,
     cone: 1.4,
-    ringCol: 0x64e2c4,
-    ringAlpha: 0.55,
+    ringCol: 0x7cf0d4,
+    ringAlpha: 0.85,
   },
 };
 
@@ -564,7 +567,7 @@ const createVfx: SystemFactory = (ctx) => {
     points.renderOrder = order;
     points.position.set(0, 0, 0);
     group.add(points);
-    return { points, geo, mat, cap, head: 0, pos, vel, tim, dyn, siz, col, par, dirty: false };
+    return { points, geo, mat, cap, head: 0, pos, vel, tim, dyn, siz, col, par, dirty: false, first: -1, wrote: 0 };
   }
 
   const poolAlpha = makePool(B.alpha, THREE.NormalBlending, 17);
@@ -632,6 +635,8 @@ const createVfx: SystemFactory = (ctx) => {
     spawnedThisFrame++;
     const i = pool.head;
     pool.head = (i + 1) % pool.cap;
+    if (pool.first < 0) pool.first = i;
+    pool.wrote++;
 
     const i3 = i * 3;
     const i2 = i * 2;
@@ -659,17 +664,26 @@ const createVfx: SystemFactory = (ctx) => {
     pool.dirty = true;
   }
 
+  const POOL_ATTRS = ["position", "aVel", "aTime", "aDyn", "aSize", "aColor", "aParams"];
+
+  /**
+   * Upload only the slots written this frame. Pushes walk the ring buffer in
+   * order, so the dirty region is one contiguous run unless it wrapped — at
+   * ~19 floats a particle, this is the difference between a few hundred bytes
+   * and a quarter-megabyte per frame while a trail is running.
+   */
   function flush(pool: Pool): void {
     if (!pool.dirty) return;
     pool.dirty = false;
-    const a = pool.geo.attributes;
-    (a.position as THREE.BufferAttribute).needsUpdate = true;
-    (a.aVel as THREE.BufferAttribute).needsUpdate = true;
-    (a.aTime as THREE.BufferAttribute).needsUpdate = true;
-    (a.aDyn as THREE.BufferAttribute).needsUpdate = true;
-    (a.aSize as THREE.BufferAttribute).needsUpdate = true;
-    (a.aColor as THREE.BufferAttribute).needsUpdate = true;
-    (a.aParams as THREE.BufferAttribute).needsUpdate = true;
+    const contiguous = pool.first >= 0 && pool.first + pool.wrote <= pool.cap;
+    for (const name of POOL_ATTRS) {
+      const attr = pool.geo.attributes[name] as THREE.BufferAttribute;
+      attr.clearUpdateRanges();
+      if (contiguous) attr.addUpdateRange(pool.first * attr.itemSize, pool.wrote * attr.itemSize);
+      attr.needsUpdate = true;
+    }
+    pool.first = -1;
+    pool.wrote = 0;
   }
 
   /** Push a quad-pool effect (ring or flash). `aspect` squashes it vertically. */
@@ -816,13 +830,13 @@ const createVfx: SystemFactory = (ctx) => {
         LAYER.fx,
         Math.cos(a) * sp,
         Math.sin(a) * sp,
-        (isSpark ? 0.26 : 0.5) + rng() * (isSpark ? 0.3 : 0.55),
+        (isSpark ? 0.26 : 0.62) + rng() * (isSpark ? 0.3 : 0.6),
         sz,
         isSpark ? sz * 0.35 : sz * 0.8,
         hex,
         isSpark ? 1 : 0.95,
         c.tile,
-        isSpark ? 2.6 : 1.5 + rng(),
+        isSpark ? 2.6 : 1.1 + rng() * 0.8,
         c.grav,
         (rng() - 0.5) * 2 * c.spin,
         isSpark ? 1 : 0,
@@ -842,11 +856,11 @@ const createVfx: SystemFactory = (ctx) => {
           LAYER.fx - 0.5,
           Math.cos(a) * sp + (wind ? wind.x * 0.25 : 0),
           Math.sin(a) * sp + 0.5,
-          0.55 + rng() * 0.75,
-          R.haze.size * (0.5 + rng() * 0.5) * (0.6 + 0.6 * k),
-          R.haze.size * (1.7 + rng()),
+          0.65 + rng() * 0.85,
+          R.haze.size * (0.55 + rng() * 0.5) * (0.6 + 0.6 * k),
+          R.haze.size * (2.0 + rng()),
           R.haze.col,
-          0.16 + 0.24 * k,
+          0.2 + 0.3 * k,
           R.haze.tile,
           2.4,
           -0.06,
@@ -888,10 +902,10 @@ const createVfx: SystemFactory = (ctx) => {
         px,
         py,
         LAYER.fx,
-        0.25 + k,
-        (0.9 + k * 2.6) * (material === "rubber" ? 1.5 : 1),
+        0.18 + k * 0.3,
+        (0.65 + k * 1.5) * (material === "rubber" ? 1.7 : 1),
         0.42,
-        0.22 + k * 0.22,
+        0.24 + k * 0.22,
         R.ringCol,
         R.ringAlpha * (0.35 + 0.65 * k),
         base - Math.PI / 2,
@@ -899,30 +913,72 @@ const createVfx: SystemFactory = (ctx) => {
       );
     }
     if (material === "metal" && k > 0.3) {
-      pushQuad(flashes, px, py, LAYER.fx, 0.4, 1.6 + k * 2, 1, 0.16, 0xffd9a0, 0.75 * k, 0, 0);
+      pushQuad(flashes, px, py, LAYER.fx, 0.4, 1.2 + k * 1.6, 1, 0.18, 0xffd9a0, 0.9 * k, 0, 0);
     }
     if (k2 > 0.16) screenShake(Math.min(0.55, k2 * 0.7));
   }
 
+  /**
+   * Find the lethal pool containing (or just under) a point and return its
+   * water line. Scanning the hole's own surfaces is exact where a nearest-
+   * surface probe is not: on a shoreline the bank is usually the closer edge,
+   * which would otherwise make a real drowning render as a dry puff.
+   */
+  const lethalPool = { y: 0, material: "water" as SurfaceMaterial };
+  function lethalPoolAt(x: number, y: number): boolean {
+    const hole = ctx.services.course?.current;
+    if (!hole) return false;
+    for (const s of hole.surfaces) {
+      if (s.material !== "water" && s.material !== "lava") continue;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const p of s.points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      if (x < minX - 0.6 || x > maxX + 0.6 || y < minY - 2.5 || y > maxY + 1.6) continue;
+      lethalPool.y = maxY;
+      lethalPool.material = s.material;
+      // Refine the surface line to the segment actually under this x.
+      for (let i = 0; i < s.points.length - 1; i++) {
+        const a = s.points[i];
+        const b = s.points[i + 1];
+        if (x < Math.min(a.x, b.x) - 0.01 || x > Math.max(a.x, b.x) + 0.01) continue;
+        const t = Math.abs(b.x - a.x) < 1e-5 ? 0 : (x - a.x) / (b.x - a.x);
+        lethalPool.y = a.y + (b.y - a.y) * t;
+        break;
+      }
+      return true;
+    }
+    return false;
+  }
+
   /** Water crown + ripples, or lava embers + heat + smoke. */
   function splash(at: Vec2, material: SurfaceMaterial): void {
-    const found = surfaceNormal(at.x, at.y, 1.8);
-    const hit = ctx.services.physics?.probe({ x: at.x, y: at.y }, 1.8) ?? null;
-    const sx = hit ? hit.point.x : at.x;
-    const sy = hit ? hit.point.y : at.y;
-    const lethal = hit ? hit.material === "water" || hit.material === "lava" : false;
-    const kind: SurfaceMaterial = lethal && hit ? hit.material : material;
+    splashAt(at.x, at.y, material);
+  }
+
+  function splashAt(x: number, y: number, material: SurfaceMaterial): void {
+    const at = { x, y };
+    const lethal = lethalPoolAt(at.x, at.y);
+    const sx = at.x;
+    const sy = lethal ? lethalPool.y : at.y;
+    const kind: SurfaceMaterial = lethal ? lethalPool.material : material;
 
     // No hazard under the point: this is a drop or a reset marker, not a
     // splash. A crown of water in the middle of a fairway reads as a bug.
-    if (!lethal || !found) {
+    if (!lethal) {
       const n = scaled(8);
       for (let i = 0; i < n; i++) {
         const a = rng() * Math.PI * 2;
         push(
           poolAlpha, at.x, at.y, LAYER.fx,
           Math.cos(a) * 2.4 * rng(), Math.sin(a) * 2.4 * rng() + 1.2,
-          0.5 + rng() * 0.4, 0.5 + rng() * 0.4, 1.5, 0xc3cfe0, 0.3, T_DUST, 2.6, -0.05, 0, 0,
+          0.5 + rng() * 0.4, 0.85 + rng() * 0.5, 2.4, 0xd3dfef, 0.34, T_DUST, 2.6, -0.05, 0, 0,
         );
       }
       pushQuad(rings, at.x, at.y, LAYER.fx, 0.4, 2.2, 0.5, 0.4, 0x9fb4cc, 0.3, 0, 0);
@@ -931,16 +987,17 @@ const createVfx: SystemFactory = (ctx) => {
 
     if (kind === "lava") {
       // Heat flash first — the eye reads the bloom before the debris.
-      pushQuad(flashes, sx, sy + 0.4, LAYER.fx, 0.8, 5.5, 0.8, 0.42, 0xff8a3c, 0.9, 0, 0);
-      pushQuad(rings, sx, sy, LAYER.fx, 0.5, 4.2, 0.34, 0.55, 0xffb347, 0.75, 0, 0);
-      const n = scaled(26);
+      pushQuad(flashes, sx, sy + 0.8, LAYER.fx, 1.0, 7.5, 0.85, 0.6, 0xff8a3c, 1, 0, 0);
+      pushQuad(flashes, sx, sy + 0.4, LAYER.fx, 0.6, 3.2, 1, 0.3, 0xfff0c0, 0.9, 0, 0);
+      pushQuad(rings, sx, sy, LAYER.fx, 0.5, 5.0, 0.32, 0.8, 0xffb347, 0.85, 0, 0);
+      const n = scaled(32);
       for (let i = 0; i < n; i++) {
         const a = -Math.PI / 2 + (rng() - 0.5) * 2.0 + Math.PI; // upward fan
         const sp = 4 + rng() * 11;
         push(
           poolAdd, sx + (rng() - 0.5) * 0.9, sy + 0.15, LAYER.fx,
           Math.cos(a) * sp * 0.55, Math.abs(Math.sin(a)) * sp,
-          0.7 + rng() * 0.9, 0.24 + rng() * 0.3, 0.05,
+          0.7 + rng() * 0.9, 0.5 + rng() * 0.5, 0.08,
           rng() < 0.4 ? 0xfff0b0 : rng() < 0.6 ? 0xff9a3a : 0xff5a22,
           1, T_EMBER, 0.9, 1, 0, 0,
         );
@@ -952,7 +1009,7 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAdd, sx + (rng() - 0.5) * 0.6, sy + 0.2, LAYER.fx,
           Math.cos(a) * sp * 0.6, Math.abs(Math.sin(a)) * sp,
-          0.9, 0.42, 0.16, 0xff7a2e, 0.95, T_DROP, 0.6, 1, 0, 1,
+          0.9, 0.85, 0.3, 0xff7a2e, 0.95, T_DROP, 0.6, 1, 0, 1,
         );
       }
       const smoke = scaled(9);
@@ -960,7 +1017,7 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAlpha, sx + (rng() - 0.5) * 1.6, sy + 0.5 + rng(), LAYER.fx - 0.5,
           (rng() - 0.5) * 1.6, 1.4 + rng() * 2.4,
-          1.4 + rng() * 1.4, 0.9 + rng() * 0.7, 3.6 + rng() * 2,
+          1.5 + rng() * 1.4, 1.4 + rng() * 0.9, 5.0 + rng() * 2.5,
           rng() < 0.5 ? 0x3a2a2a : 0x1c1618, 0.42, T_SMOKE, 1.1, -0.1, (rng() - 0.5) * 1.2, 0,
         );
       }
@@ -976,8 +1033,8 @@ const createVfx: SystemFactory = (ctx) => {
       push(
         poolAlpha, sx + t * 0.55, sy + 0.1, LAYER.fx,
         lean * 5.2, 7.5 + (1 - Math.abs(t)) * 5.5,
-        0.42 + rng() * 0.18, 0.55 + (1 - Math.abs(t)) * 0.55, 0.18,
-        0xdff3ff, 0.72, T_DROP, 0.9, 1, 0, 1,
+        0.5 + rng() * 0.22, 1.0 + (1 - Math.abs(t)) * 0.9, 0.3,
+        0xeaf8ff, 0.85, T_DROP, 0.9, 1, 0, 1,
       );
     }
     const spray = scaled(20);
@@ -988,8 +1045,8 @@ const createVfx: SystemFactory = (ctx) => {
         rng() < 0.35 ? poolAdd : poolAlpha,
         sx + (rng() - 0.5) * 1.1, sy + 0.1, LAYER.fx,
         Math.cos(a) * sp, Math.sin(a) * sp,
-        0.55 + rng() * 0.6, 0.14 + rng() * 0.16, 0.06,
-        rng() < 0.3 ? 0xffffff : 0x9fe6ff, 0.85, T_DROP, 0.7, 1, 0, 1,
+        0.6 + rng() * 0.6, 0.32 + rng() * 0.3, 0.1,
+        rng() < 0.3 ? 0xffffff : 0xb2ecff, 0.9, T_DROP, 0.7, 1, 0, 1,
       );
     }
     const foam = scaled(8);
@@ -997,15 +1054,31 @@ const createVfx: SystemFactory = (ctx) => {
       push(
         poolAlpha, sx + (rng() - 0.5) * 2.2, sy + 0.15 + rng() * 0.3, LAYER.fx,
         (rng() - 0.5) * 2.6, 0.6 + rng() * 1.4,
-        0.7 + rng() * 0.5, 0.35 + rng() * 0.4, 1.1,
-        0xe8f8ff, 0.4, T_DUST, 2.2, 0.12, 0, 0,
+        0.8 + rng() * 0.5, 0.7 + rng() * 0.6, 2.0,
+        0xeefbff, 0.5, T_DUST, 2.2, 0.12, 0, 0,
       );
     }
     // Ripples: squashed rings so they lie on the water rather than facing us.
-    pushQuad(rings, sx, sy, LAYER.fx, 0.5, 4.6, 0.22, 0.75, 0xa5f0ff, 0.55, 0, 0);
-    pushQuad(rings, sx, sy, LAYER.fx, 0.3, 7.0, 0.2, 1.15, 0x6fd8f5, 0.32, 0, 0);
-    pushQuad(flashes, sx, sy + 0.3, LAYER.fx, 0.6, 2.6, 0.7, 0.22, 0xdff6ff, 0.5, 0, 0);
+    pushQuad(rings, sx, sy, LAYER.fx, 0.5, 4.6, 0.22, 0.9, 0xa5f0ff, 0.7, 0, 0);
+    pushQuad(rings, sx, sy, LAYER.fx, 0.3, 7.4, 0.2, 1.35, 0x6fd8f5, 0.4, 0, 0);
+    pushQuad(flashes, sx, sy + 0.5, LAYER.fx, 0.7, 3.4, 0.75, 0.34, 0xdff6ff, 0.7, 0, 0);
     screenShake(0.28);
+  }
+
+  /** Sticky-ball landing: a squash ring on the surface plus a few goo beads. */
+  function stickAt(x: number, y: number): void {
+    surfaceNormal(x, y, 0.8);
+    const base = Math.atan2(nrm.y, nrm.x);
+    pushQuad(rings, x, y, LAYER.fx, 0.2, 1.5, 0.4, 0.4, BALL_TYPES.sticky.tint, 0.7, base - Math.PI / 2, 0);
+    const n = scaled(7);
+    for (let i = 0; i < n; i++) {
+      const a = base + (rng() - 0.5) * 2.4;
+      push(
+        poolAlpha, x, y, LAYER.fx,
+        Math.cos(a) * 3 * rng(), Math.sin(a) * 3 * rng(),
+        0.5, 0.34 + rng() * 0.2, 0.08, BALL_TYPES.sticky.tint, 0.9, T_DROP, 1.6, 1, 0, 1,
+      );
+    }
   }
 
   // --- Public service ------------------------------------------------------
@@ -1033,41 +1106,43 @@ const createVfx: SystemFactory = (ctx) => {
     for (let i = 0; i < n; i++) {
       const a = base + (rng() - 0.5) * 2 * half;
       const sp = speed * (0.3 + rng() * 0.9);
-      const spark = rng() < 0.55;
+      // Additive throughout: a generic burst is light, not debris, so it
+      // never muddies into a brown smear over a bright sky.
+      const spark = rng() < 0.6;
       push(
-        spark ? poolAdd : poolAlpha,
+        poolAdd,
         at.x + (rng() - 0.5) * 0.2,
         at.y + (rng() - 0.5) * 0.2,
         LAYER.fx,
         Math.cos(a) * sp,
         Math.sin(a) * sp,
         life * (0.6 + rng() * 0.7),
-        spark ? 0.34 + rng() * 0.22 : 0.28 + rng() * 0.3,
-        spark ? 0.08 : 0.5,
+        spark ? 0.75 + rng() * 0.5 : 0.6 + rng() * 0.5,
+        spark ? 0.12 : 0.1,
         color,
-        spark ? 1 : 0.5,
-        spark ? T_SPARK : T_DUST,
-        spark ? 2.2 : 2.6,
-        spark ? 0.5 : 0.12,
-        (rng() - 0.5) * 6,
+        spark ? 1 : 0.8,
+        spark ? T_SPARK : T_SOFT,
+        spark ? 2.2 : 2.8,
+        spark ? 0.5 : 0.1,
+        0,
         spark ? 1 : 0,
       );
     }
-    pushQuad(flashes, at.x, at.y, LAYER.fx, 0.3, 0.9 + n * 0.05, 1, 0.18, color, 0.4, 0, 0);
+    pushQuad(flashes, at.x, at.y, LAYER.fx, 0.4, 1.6 + n * 0.07, 1, 0.2, color, 0.55, 0, 0);
   }
 
   function ring(at: Vec2, radius: number, color = 0x9beddf): void {
     const r = Math.max(0.2, radius);
-    pushQuad(rings, at.x, at.y, LAYER.fx, r * 0.22, r * 1.35, 1, 0.34 + r * 0.05, color, 0.75, 0, 0);
-    pushQuad(flashes, at.x, at.y, LAYER.fx, r * 0.2, r * 0.75, 1, 0.2, color, 0.3, 0, 0);
+    pushQuad(rings, at.x, at.y, LAYER.fx, r * 0.22, r * 1.35, 1, 0.34 + r * 0.05, color, 0.95, 0, 0);
+    pushQuad(flashes, at.x, at.y, LAYER.fx, r * 0.2, r * 0.8, 1, 0.22, color, 0.45, 0, 0);
   }
 
   function trailPuff(at: Vec2, color = 0xbfc9d8): void {
     push(
       poolAlpha, at.x, at.y, LAYER.ball - 0.5,
       (rng() - 0.5) * 1.1, 0.5 + rng() * 0.9,
-      0.42 + rng() * 0.3, 0.2 + rng() * 0.16, 0.75 + rng() * 0.4,
-      color, 0.3, T_DUST, 2.8, -0.05, (rng() - 0.5) * 1.5, 0,
+      0.42 + rng() * 0.3, 0.38 + rng() * 0.24, 1.3 + rng() * 0.6,
+      color, 0.34, T_DUST, 2.8, -0.05, (rng() - 0.5) * 1.5, 0,
     );
   }
 
@@ -1079,7 +1154,7 @@ const createVfx: SystemFactory = (ctx) => {
   /** Per-ball emission accumulators; the ball list never exceeds a handful. */
   const trailAcc = new Float32Array(8);
 
-  function emitTrail(i: number, type: BallType, x: number, y: number, vx: number, vy: number, speed: number): void {
+  function emitTrail(type: BallType, x: number, y: number, vx: number, vy: number, speed: number): void {
     const tint = BALL_TYPES[type]?.tint ?? 0xffffff;
     const dirx = vx / speed;
     const diry = vy / speed;
@@ -1090,7 +1165,7 @@ const createVfx: SystemFactory = (ctx) => {
           push(
             poolAdd, x - dirx * 0.2, y - diry * 0.2, LAYER.ball - 0.5,
             -dirx * 3 + (rng() - 0.5) * 2.4, -diry * 3 + (rng() - 0.5) * 2.4 + 1.2,
-            0.24 + rng() * 0.2, 0.4 + rng() * 0.25, 0.06,
+            0.3 + rng() * 0.24, 1.05 + rng() * 0.5, 0.12,
             rng() < 0.35 ? 0xfff2c0 : rng() < 0.6 ? 0xff9a3a : 0xfb5a3c,
             1, T_EMBER, 3.2, -0.25, 0, 0,
           );
@@ -1098,7 +1173,7 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAlpha, x - dirx * 0.5, y - diry * 0.5, LAYER.ball - 0.6,
           -dirx * 1.2 + (rng() - 0.5), -diry * 1.2 + 0.9,
-          0.6 + rng() * 0.4, 0.35, 1.5, 0x2a2028, 0.24, T_SMOKE, 2, -0.08, (rng() - 0.5) * 2, 0,
+          0.6 + rng() * 0.4, 0.6, 2.4, 0x2a2028, 0.16, T_SMOKE, 2, -0.08, (rng() - 0.5) * 2, 0,
         );
         break;
       }
@@ -1106,14 +1181,14 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAdd, x + (rng() - 0.5) * 0.4, y + (rng() - 0.5) * 0.4, LAYER.ball - 0.5,
           -dirx * 1.5 + (rng() - 0.5) * 2, -diry * 1.5 + (rng() - 0.5) * 2,
-          0.55 + rng() * 0.4, 0.2 + rng() * 0.16, 0.04,
+          0.55 + rng() * 0.4, 0.42 + rng() * 0.28, 0.06,
           rng() < 0.4 ? 0xffffff : tint, 0.95, T_CRYSTAL, 1.8, 0.25, (rng() - 0.5) * 8, 0,
         );
         if (rng() < 0.4) {
           push(
             poolAlpha, x, y, LAYER.ball - 0.6,
             (rng() - 0.5) * 1.2, -0.4 - rng(),
-            0.7, 0.3, 0.9, 0xdff4ff, 0.2, T_DUST, 2.4, 0.15, 0, 0,
+            0.7, 0.55, 1.5, 0xdff4ff, 0.24, T_DUST, 2.4, 0.15, 0, 0,
           );
         }
         break;
@@ -1123,13 +1198,13 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAlpha, x - dirx * 0.3, y - diry * 0.3, LAYER.ball - 0.5,
           -dirx * 1.6 + (rng() - 0.5) * 0.8, -diry * 1.6 + 0.9 + rng() * 0.6,
-          0.85 + rng() * 0.5, 0.4 + rng() * 0.25, 1.3,
-          tint, 0.26, T_SMOKE, 1.6, -0.03, (rng() - 0.5) * 1.4, 0,
+          0.85 + rng() * 0.5, 0.75 + rng() * 0.4, 2.1,
+          tint, 0.3, T_SMOKE, 1.6, -0.03, (rng() - 0.5) * 1.4, 0,
         );
         push(
           poolAdd, x, y, LAYER.ball - 0.5,
           (rng() - 0.5) * 1.4, 0.6 + rng(),
-          0.6, 0.22, 0.05, 0xd8ddff, 0.5, T_SOFT, 2, -0.05, 0, 0,
+          0.6, 0.5, 0.08, 0xd8ddff, 0.55, T_SOFT, 2, -0.05, 0, 0,
         );
         break;
       }
@@ -1138,7 +1213,7 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAdd, x + (rng() - 0.5) * 0.5, y + (rng() - 0.5) * 0.5, LAYER.ball - 0.5,
           (rng() - 0.5) * 2.2, (rng() - 0.5) * 2.2,
-          0.35 + rng() * 0.25, 0.32 + rng() * 0.2, 0.04, tint, 0.9, T_STAR, 3, 0.1, 0, 0,
+          0.35 + rng() * 0.25, 0.7 + rng() * 0.4, 0.06, tint, 0.95, T_STAR, 3, 0.1, 0, 0,
         );
         break;
       }
@@ -1146,7 +1221,7 @@ const createVfx: SystemFactory = (ctx) => {
         push(
           poolAlpha, x - dirx * 0.3, y - diry * 0.3, LAYER.ball - 0.5,
           -dirx * 1.4, -diry * 1.4 + 0.4,
-          0.5, 0.3, 0.85, 0x8b98ac, 0.22, T_DUST, 2.6, 0.05, 0, 0,
+          0.55, 0.55, 1.5, 0x8b98ac, 0.26, T_DUST, 2.6, 0.05, 0, 0,
         );
         break;
       }
@@ -1157,14 +1232,13 @@ const createVfx: SystemFactory = (ctx) => {
           push(
             poolAdd, x - dirx * 0.25, y - diry * 0.25, LAYER.ball - 0.5,
             -dirx * 2, -diry * 2,
-            0.16 + rng() * 0.1, 0.55, 0.12, 0xfff4d8,
+            0.18 + rng() * 0.1, 1.1, 0.2, 0xfff4d8,
             Math.min(0.55, (speed - 26) / 40), T_SPARK, 3.4, 0, 0, 1,
           );
         }
         break;
       }
     }
-    trailAcc[i] = 0;
   }
 
   // --- Hole-out celebration ------------------------------------------------
@@ -1204,8 +1278,8 @@ const createVfx: SystemFactory = (ctx) => {
         Math.cos(a) * sp,
         Math.sin(a) * sp,
         1.5 + rng() * 1.4,
-        0.24 + rng() * 0.16,
-        0.22 + rng() * 0.14,
+        0.44 + rng() * 0.26,
+        0.4 + rng() * 0.24,
         CONFETTI_COLS[(rng() * CONFETTI_COLS.length) | 0],
         0.95,
         T_CONFETTI,
@@ -1245,8 +1319,8 @@ const createVfx: SystemFactory = (ctx) => {
             (rng() - 0.5) * 1.6,
             1.6 + rng() * 2.4,
             1.1 + rng() * 0.8,
-            0.3 + rng() * 0.25,
-            0.05,
+            0.65 + rng() * 0.5,
+            0.08,
             rng() < 0.5 ? 0xfbbf24 : 0x7ff0d8,
             0.9,
             T_STAR,
@@ -1279,8 +1353,42 @@ const createVfx: SystemFactory = (ctx) => {
 
   const offs: Array<() => void> = [];
 
-  /** Bounces arrive per physics substep; cap them so a corner can't flood. */
+  /**
+   * Contact events are emitted from *inside* the physics contact loop, which
+   * walks module-level scratch buffers that `physics.probe()` also writes. So
+   * nothing here touches physics during a handler: contacts are queued and
+   * drained in `update`, which runs after the solver has finished the frame.
+   * (Physics boots before this system, so the queue still resolves same-frame.)
+   */
+  const QUEUE_MAX = 10;
+  const qKind = new Uint8Array(QUEUE_MAX); // 0 impact, 1 splash, 2 stick
+  const qX = new Float32Array(QUEUE_MAX);
+  const qY = new Float32Array(QUEUE_MAX);
+  const qSpeed = new Float32Array(QUEUE_MAX);
+  const qMaterial: SurfaceMaterial[] = [];
+  for (let i = 0; i < QUEUE_MAX; i++) qMaterial.push("fairway");
+  let qN = 0;
   let bouncesThisFrame = 0;
+
+  function enqueue(kind: number, x: number, y: number, material: SurfaceMaterial, speed: number): void {
+    if (qN >= QUEUE_MAX) return;
+    qKind[qN] = kind;
+    qX[qN] = x;
+    qY[qN] = y;
+    qSpeed[qN] = speed;
+    qMaterial[qN] = material;
+    qN++;
+  }
+
+  function drainContacts(): void {
+    for (let i = 0; i < qN; i++) {
+      const k = qKind[i];
+      if (k === 0) impact(qX[i], qY[i], qMaterial[i], qSpeed[i]);
+      else if (k === 1) splashAt(qX[i], qY[i], qMaterial[i]);
+      else stickAt(qX[i], qY[i]);
+    }
+    qN = 0;
+  }
 
   offs.push(
     ctx.on(
@@ -1290,7 +1398,7 @@ const createVfx: SystemFactory = (ctx) => {
         const speed = p.speed ?? 0;
         if (speed < 1.1) return;
         bouncesThisFrame++;
-        impact(p.at.x, p.at.y, p.material ?? "fairway", speed);
+        enqueue(0, p.at.x, p.at.y, p.material ?? "fairway", speed);
       }),
     ),
   );
@@ -1300,7 +1408,7 @@ const createVfx: SystemFactory = (ctx) => {
       "golf:hazard",
       safe<{ at?: Vec2; material?: SurfaceMaterial }>((p) => {
         if (!p?.at) return;
-        splash(p.at, p.material ?? "water");
+        enqueue(1, p.at.x, p.at.y, p.material ?? "water", 0);
       }),
     ),
   );
@@ -1329,8 +1437,8 @@ const createVfx: SystemFactory = (ctx) => {
           push(
             poolAlpha, x + nrm.x * 0.1, y + nrm.y * 0.1, LAYER.fx,
             Math.cos(a) * s, Math.sin(a) * s + 1.5,
-            0.45 + rng() * 0.4, 0.2 + rng() * 0.18, 0.16,
-            rng() < 0.5 ? 0x63c26a : 0x2f7a45, 0.9, T_BLADE, 1.8, 1, (rng() - 0.5) * 12, 0,
+            0.45 + rng() * 0.4, 0.5 + rng() * 0.35, 0.4,
+            rng() < 0.5 ? 0x76d97a : 0x3d9457, 0.95, T_BLADE, 1.8, 1, (rng() - 0.5) * 12, 0,
           );
         }
         // Launch flare in the ball's own colour.
@@ -1341,7 +1449,7 @@ const createVfx: SystemFactory = (ctx) => {
           push(
             poolAdd, x, y, LAYER.fx,
             Math.cos(a) * s, Math.sin(a) * s,
-            0.2 + rng() * 0.24, 0.3 + power * 0.35, 0.05,
+            0.24 + rng() * 0.26, 0.7 + power * 0.8, 0.08,
             tint === 0xffffff ? 0xfff0c8 : tint, 1, T_SPARK, 3.2, 0.2, 0, 1,
           );
         }
@@ -1350,7 +1458,7 @@ const createVfx: SystemFactory = (ctx) => {
           push(
             poolAdd, x + dx * (0.4 + i * 0.5), y + dy * (0.4 + i * 0.5), LAYER.fx,
             dx * sp * 0.42, dy * sp * 0.42,
-            0.2 + i * 0.06, 1.6 + power * 2.6, 0.4,
+            0.22 + i * 0.07, 2.4 + power * 3.6, 0.5,
             tint === 0xffffff ? 0xfff6dd : tint, 0.55 - i * 0.18, T_SPARK, 2.4, 0, 0, 1,
           );
         }
@@ -1379,18 +1487,7 @@ const createVfx: SystemFactory = (ctx) => {
       "golf:stick",
       safe<{ at?: Vec2 }>((p) => {
         if (!p?.at) return;
-        surfaceNormal(p.at.x, p.at.y, 0.8);
-        const base = Math.atan2(nrm.y, nrm.x);
-        pushQuad(rings, p.at.x, p.at.y, LAYER.fx, 0.2, 1.5, 0.4, 0.4, BALL_TYPES.sticky.tint, 0.7, base - Math.PI / 2, 0);
-        const n = scaled(7);
-        for (let i = 0; i < n; i++) {
-          const a = base + (rng() - 0.5) * 2.4;
-          push(
-            poolAlpha, p.at.x, p.at.y, LAYER.fx,
-            Math.cos(a) * 3 * rng(), Math.sin(a) * 3 * rng(),
-            0.5, 0.16 + rng() * 0.12, 0.05, BALL_TYPES.sticky.tint, 0.9, T_DROP, 1.6, 1, 0, 1,
-          );
-        }
+        enqueue(2, p.at.x, p.at.y, "rubber", 0);
       }),
     ),
   );
@@ -1407,7 +1504,7 @@ const createVfx: SystemFactory = (ctx) => {
           push(
             poolAlpha, ball.pos.x, ball.pos.y, LAYER.fx,
             Math.cos(a) * 2.4 * rng(), Math.sin(a) * 2.4 * rng() + 1,
-            0.6 + rng() * 0.4, 0.35 + rng() * 0.3, 1.2, 0xb6c2d4, 0.3, T_DUST, 2.4, 0.1, 0, 0,
+            0.6 + rng() * 0.4, 0.65 + rng() * 0.4, 2.0, 0xb6c2d4, 0.34, T_DUST, 2.4, 0.1, 0, 0,
           );
         }
         pushQuad(rings, ball.pos.x, ball.pos.y, LAYER.fx, 0.3, 2.2, 0.6, 0.45, 0xf87171, 0.45, 0, 0);
@@ -1440,8 +1537,9 @@ const createVfx: SystemFactory = (ctx) => {
     },
 
     update(dt) {
-      spawnedThisFrame = 0;
-      bouncesThisFrame = 0;
+      // Contacts the solver queued this frame, replayed now that it is safe to
+      // query physics again.
+      drainContacts();
 
       // Themed trails, sampled off the live balls rather than the trail ring
       // buffer so emission stays tied to real speed.
@@ -1459,11 +1557,20 @@ const createVfx: SystemFactory = (ctx) => {
             trailAcc[i] = 0;
             continue;
           }
-          trailAcc[i] += dt;
           // Faster ball, denser trail — clamped so a 60 m/s drive can't spam.
-          if (trailAcc[i] >= step * Math.max(0.45, 1 - speed / 90)) {
-            emitTrail(i, b.type, b.pos.x, b.pos.y, b.vel.x, b.vel.y, speed);
+          const interval = step * Math.max(0.45, 1 - speed / 90);
+          trailAcc[i] += dt;
+          // Emit along the path travelled this frame rather than once at the
+          // head, so a fast ball on a slow device still leaves a ribbon
+          // instead of a dotted line.
+          let emitted = 0;
+          while (trailAcc[i] >= interval && emitted < 3) {
+            trailAcc[i] -= interval;
+            const back = trailAcc[i];
+            emitTrail(b.type, b.pos.x - b.vel.x * back, b.pos.y - b.vel.y * back, b.vel.x, b.vel.y, speed);
+            emitted++;
           }
+          if (emitted >= 3) trailAcc[i] = 0;
         }
         for (let i = balls.length; i < trailAcc.length; i++) trailAcc[i] = 0;
       }
@@ -1511,6 +1618,10 @@ const createVfx: SystemFactory = (ctx) => {
         engine.target.x += (Math.sin(shakeT * 61.3) + Math.sin(shakeT * 37.7) * 0.7) * amp;
         engine.target.y += (Math.sin(shakeT * 53.1 + 1.7) + Math.sin(shakeT * 29.3 + 0.4) * 0.7) * amp * 0.75;
       }
+
+      // End of frame: hand the next one a fresh spawn allowance.
+      spawnedThisFrame = 0;
+      bouncesThisFrame = 0;
     },
 
     dispose() {
