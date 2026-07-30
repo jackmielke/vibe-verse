@@ -82,6 +82,7 @@ interface World {
 }
 
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
+import golfArt from "@/assets/worlds/golf.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
@@ -96,6 +97,8 @@ const OFFICIAL_WORLDS: World[] = [
     blurb: "Pick a character + world (Sunset Cove, Sky Island, Edge Esmeralda) and explore." },
   { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
     blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
+  { to: "/golf", name: "Vibe Golf", art: golfArt, color: "#34d399",
+    blurb: "Physics golf across 63 holes — portals, jetpacks and a bag of very silly balls." },
   { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",
     blurb: "A tiny landable moon near the island — touch down and plant your flag." },
   { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",

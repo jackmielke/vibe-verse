@@ -1,23 +1,32 @@
 /**
  * Vibe Golf — HUD and UI shell.
  *
- * Phone-first (430×932 is the design target). The HUD has to answer four
- * questions without the player ever hunting for them:
+ * Phone-first (430×932 is the design target), and the governing rule is
+ * **the playfield outranks the chrome**. Everything here is budgeted:
  *
- *   1. How do I hit the ball?  → a *persistent* shot console in the thumb
- *      arc: aim slider, power slider, SWING. Always on screen while the ball
- *      is at rest, so a first-time player is never staring at an empty frame.
- *      The canvas slingshot drag still works and simply drives the same
- *      numbers — the console mirrors it live rather than competing with it.
- *   2. Where will it go?       → a world-space overlay: an aim arc anchored to
- *      the ball plus a swept trajectory preview run through the real physics
- *      (`physics.sweep`), drawn as white dots inside a dark outline so it
- *      stays legible over both grass and sky.
- *   3. Where is the cup?       → a ghost flag when the cup is on screen, and
- *      an edge-pinned arrow with a live distance when it isn't.
- *   4. How am I doing?         → scorecard top-left, a full-width hole map
- *      across the top (surface-coloured, hazards and chasms called out), and
- *      pin/elevation/wind chips filling what used to be dead sky.
+ *   Top strip   ≈  56 px (one card: hole + score on line one, PIN / ELEV /
+ *                  WIND merged onto line two — no separate chip band).
+ *   Hole map    ≈  52 px, *collapsed by default*, opened by the MAP button
+ *                  that sits next to it, docked as a content-width chip
+ *                  rather than a full-bleed developer strip.
+ *   Shot console ≈ 180 px (≈19% of a 932 px phone): POWER and AIM are each a
+ *                  single 44 px row — label left, track between, value right —
+ *                  and the cluster is capped at 560 px and centred so it never
+ *                  becomes a 1500 px scrub bar on a desktop viewport. The
+ *                  panel is full-bleed to the true viewport bottom, so no live
+ *                  world leaks beneath it.
+ *
+ * Touch: both tracks are 44 px tall and tap-to-set anywhere along their
+ * length, with a 28 px round knob so they read as grabbable. Nothing the
+ * player must hit is smaller than 44 px.
+ *
+ * The canvas slingshot drag still works and drives the same numbers; while a
+ * drag is live the console goes pointer-transparent so a drag that runs down
+ * into the panel is never swallowed by it.
+ *
+ * One pin marker at a time: the world overlay draws an edge indicator *only*
+ * when the cup is off screen (inset well clear of the viewport edge so it can
+ * never be clipped), and stays silent when the real pin is visible.
  *
  * Perf contract: `golf:aim` and `golf:jetpackState` fire at frame rate, so
  * nothing they carry ever reaches `setState`. They land in refs; one shared
@@ -47,10 +56,10 @@ import { BALL_TYPES, type BallType, type Hole, type SurfaceMaterial } from "../t
 /** Bag order — matches the 1..8 keyboard order in `powerups.ts`. */
 const ORDER: BallType[] = ["standard", "sticky", "ice", "nitro", "super", "multi", "ghost", "heavy"];
 
-/** Backing resolution of the minimap. Drawn once, displayed at any CSS size. */
-const MINI_W = 880;
-const MINI_H = 200;
-/** Minimap dynamic layer refresh, ms. 20 Hz is plenty for a 92 px strip. */
+/** Backing resolution of the minimap chip. Aspect matches its CSS box. */
+const MINI_W = 600;
+const MINI_H = 126;
+/** Minimap dynamic layer refresh, ms. 20 Hz is plenty for a 52 px chip. */
 const MINI_HZ_MS = 50;
 /** Live numeric readouts refresh, ms. Text writes are the expensive bit. */
 const TEXT_HZ_MS = 90;
@@ -61,9 +70,13 @@ const TRAJ_HZ_MS = 70;
 const ANG_MIN = -0.35;
 const ANG_MAX = 2.09;
 
-/** How much room the top strip and the shot console own, CSS px. */
-const TOP_CHROME = 212;
-const BOTTOM_CHROME = 300;
+/** Chrome budget, CSS px — used to decide where the cup indicator may sit. */
+const TOP_CHROME = 66;
+const MAP_CHROME = 60;
+const BOTTOM_CHROME = 196;
+
+/** Horizontal inset of a slider knob's travel, CSS px. Half the knob + 1. */
+const KNOB_PAD = 15;
 
 /** Hole profile colours. Hazards are deliberately the loudest things on it. */
 const MAT_COLOR: Record<SurfaceMaterial, string> = {
@@ -207,7 +220,8 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
   const [card, setCard] = useState<CardRow[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [mapBig, setMapBig] = useState(false);
-  const [mapOpen, setMapOpen] = useState(true);
+  /** Collapsed by default: the map is a reference, not a permanent band. */
+  const [mapOpen, setMapOpen] = useState(false);
 
   // --- per-frame state (refs — never setState from these) ------------------
   /** The single source of truth for the next shot. Drag and sliders both write here. */
@@ -217,6 +231,7 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
   const jetDirty = useRef(true);
 
   const overlayCv = useRef<HTMLCanvasElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const powFill = useRef<HTMLDivElement | null>(null);
   const powKnob = useRef<HTMLDivElement | null>(null);
   const powTxt = useRef<HTMLSpanElement | null>(null);
@@ -239,6 +254,8 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
   const textAt = useRef(0);
   const trajAt = useRef(0);
   const traj = useRef<{ pts: Pt[]; hit: Pt | null }>({ pts: [], hit: null });
+  /** Live top-chrome height, so the overlay can read it without a rAF restart. */
+  const chromeTop = useRef(TOP_CHROME);
   /** Cleared on hole load so the first frame re-aims at the new cup. */
   const autoAimed = useRef(false);
 
@@ -306,6 +323,11 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
 
   // -------------------------------------------------------------------------
   // Minimap: bake the hole profile once into an offscreen canvas.
+  //
+  // Styled to the game's own material palette with a rim light along every
+  // ground edge, so the chip reads as a slice of the world rather than a
+  // debug overlay. The horizontal slack is tight, so the content fills the
+  // chip instead of floating in dead margins.
   // -------------------------------------------------------------------------
   const bakeMini = useCallback((h: Hole | null) => {
     holeRef.current = h;
@@ -322,6 +344,14 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
     c.clearRect(0, 0, MINI_W, MINI_H);
     if (!h) { miniXf.current = null; return; }
 
+    // Sky: the same deep teal→navy the world sits in, so the chip has depth.
+    const sky = c.createLinearGradient(0, 0, 0, MINI_H);
+    sky.addColorStop(0, "rgba(28,74,102,0.85)");
+    sky.addColorStop(0.6, "rgba(12,42,62,0.85)");
+    sky.addColorStop(1, "rgba(5,20,30,0.9)");
+    c.fillStyle = sky;
+    c.fillRect(0, 0, MINI_W, MINI_H);
+
     // Vertical extent from the geometry, not `bounds` — bounds carry a 34 m
     // camera ceiling that would squash the profile into a hairline.
     let x0 = Math.min(h.tee.x, h.cup.x);
@@ -336,15 +366,15 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
         if (q.y > y1) y1 = q.y;
       }
     }
-    // Horizontal slack big enough that the *camera window* — which extends a
-    // half-view beyond wherever the ball is — can never clip the widget edge.
-    const slack = BASE_VIEW_HEIGHT * 0.62;
-    x0 -= slack; x1 += slack; y0 -= 2.5; y1 += 4.5;
+    // Just enough slack to breathe. The camera window is clamped into the
+    // widget separately, so it no longer has to be paid for in dead space.
+    const slack = BASE_VIEW_HEIGHT * 0.12;
+    x0 -= slack; x1 += slack; y0 -= 2; y1 += 3.5;
     if (x1 - x0 < 1) x1 = x0 + 1;
     if (y1 - y0 < 1) y1 = y0 + 1;
 
-    const padX = 10;
-    const padY = 26;
+    const padX = 8;
+    const padY = 20;
     const sx = (MINI_W - padX * 2) / (x1 - x0);
     const sy = (MINI_H - padY * 2) / (y1 - y0);
     miniXf.current = { x0, y0, sx, sy, padX, padY };
@@ -352,9 +382,8 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
     const py = (y: number) => MINI_H - padY - (y - y0) * sy;
 
     // Two passes: solid mass first (so the profile reads as *ground*, not a
-    // squiggle), then the surface line on top. The body is tinted by material
-    // so fairway / rough / green / sand / hazard are told apart at a glance
-    // instead of being three identical grey slabs.
+    // squiggle), then a rim-lit surface line on top — the same read as the
+    // lit grass edge in world.
     c.lineJoin = "round";
     c.lineCap = "round";
     for (const s of h.surfaces) {
@@ -366,7 +395,7 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       c.lineTo(px(s.points[s.points.length - 1].x), MINI_H);
       c.lineTo(px(s.points[0].x), MINI_H);
       c.closePath();
-      c.fillStyle = haz ? shade(MAT_COLOR[s.material], 1, 0.5) : shade(MAT_COLOR[s.material], 0.44, 0.95);
+      c.fillStyle = haz ? shade(MAT_COLOR[s.material], 0.9, 0.5) : shade(MAT_COLOR[s.material], 0.5, 0.95);
       c.fill();
     }
     for (const s of h.surfaces) {
@@ -377,12 +406,15 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       for (let i = 1; i < s.points.length; i++) c.lineTo(px(s.points[i].x), py(s.points[i].y));
       if (s.closed) {
         c.closePath();
-        c.fillStyle = MAT_COLOR[s.material] + (haz ? "cc" : "88");
+        c.fillStyle = shade(MAT_COLOR[s.material], 0.8, haz ? 0.8 : 0.55);
         c.fill();
       }
-      c.strokeStyle = MAT_COLOR[s.material];
-      c.lineWidth = haz ? 14 : 9;
-      c.globalAlpha = 1;
+      // Body line, then a thin brighter rim on top of it.
+      c.strokeStyle = shade(MAT_COLOR[s.material], 0.85, 1);
+      c.lineWidth = haz ? 7 : 5;
+      c.stroke();
+      c.strokeStyle = shade(MAT_COLOR[s.material], 1.5, 0.95);
+      c.lineWidth = 2;
       c.stroke();
     }
 
@@ -406,71 +438,74 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
     for (let i = 0; i < merged.length - 1; i++) {
       const g0 = px(merged[i][1]);
       const g1 = px(merged[i + 1][0]);
-      if (g1 - g0 < 6) continue;
+      if (g1 - g0 < 5) continue;
       c.save();
       c.beginPath();
       c.rect(g0, 0, g1 - g0, MINI_H);
       c.clip();
-      c.fillStyle = "rgba(251,113,133,0.14)";
+      c.fillStyle = "rgba(251,113,133,0.1)";
       c.fillRect(g0, 0, g1 - g0, MINI_H);
-      c.strokeStyle = "rgba(251,113,133,0.55)";
-      c.lineWidth = 3;
-      for (let d = -MINI_H; d < g1 - g0 + MINI_H; d += 18) {
+      c.strokeStyle = "rgba(251,113,133,0.4)";
+      c.lineWidth = 2;
+      for (let d = -MINI_H; d < g1 - g0 + MINI_H; d += 14) {
         c.beginPath();
         c.moveTo(g0 + d, MINI_H);
         c.lineTo(g0 + d + MINI_H, 0);
         c.stroke();
       }
       c.restore();
-      c.strokeStyle = "rgba(251,113,133,0.85)";
-      c.lineWidth = 3;
-      c.setLineDash([9, 7]);
-      c.beginPath();
-      c.moveTo(g0, 0); c.lineTo(g0, MINI_H);
-      c.moveTo(g1, 0); c.lineTo(g1, MINI_H);
-      c.stroke();
-      c.setLineDash([]);
     }
 
-    // Tee: a teal peg. Cup: a saturated flag on a real pole — the thing you're
-    // aiming at, so it is the loudest mark on the map.
+    // Tee: a small teal peg. Cup: the pin silhouette itself — pole, pennant
+    // and the cup mouth — the same shape the player sees in world.
     const tx = px(h.tee.x);
     const ty = py(h.tee.y);
     c.fillStyle = "#5eead4";
     c.beginPath();
-    c.arc(tx, ty - 7, 9, 0, Math.PI * 2);
+    c.arc(tx, ty - 5, 5, 0, Math.PI * 2);
     c.fill();
-    c.strokeStyle = "rgba(3,12,18,0.9)";
-    c.lineWidth = 3;
+    c.strokeStyle = "rgba(3,12,18,0.85)";
+    c.lineWidth = 2;
     c.stroke();
 
     const cx = px(h.cup.x);
     const cy = py(h.cup.y);
-    c.strokeStyle = "rgba(3,12,18,0.85)";
-    c.lineWidth = 11;
+    // Cup mouth: a small dark ellipse seated on the ground line.
+    c.fillStyle = "rgba(3,12,18,0.75)";
     c.beginPath();
-    c.moveTo(cx, cy + 3);
-    c.lineTo(cx, cy - 56);
-    c.stroke();
-    c.strokeStyle = "#f8fafc";
+    c.ellipse(cx, cy + 1, 5, 2.2, 0, 0, Math.PI * 2);
+    c.fill();
+    // Pole.
+    c.strokeStyle = "rgba(3,12,18,0.8)";
     c.lineWidth = 5;
     c.beginPath();
-    c.moveTo(cx, cy + 3);
-    c.lineTo(cx, cy - 56);
+    c.moveTo(cx, cy);
+    c.lineTo(cx, cy - 34);
     c.stroke();
-    c.fillStyle = "#f43f5e";
-    c.strokeStyle = "rgba(3,12,18,0.85)";
-    c.lineWidth = 4;
-    c.shadowColor = "#f43f5e";
-    c.shadowBlur = 18;
+    c.strokeStyle = "#f8fafc";
+    c.lineWidth = 2.2;
     c.beginPath();
-    c.moveTo(cx + 2, cy - 56);
-    c.lineTo(cx + 40, cy - 44);
-    c.lineTo(cx + 2, cy - 32);
+    c.moveTo(cx, cy);
+    c.lineTo(cx, cy - 34);
+    c.stroke();
+    // Pennant: a tapered, slightly furled triangle rather than a rectangle.
+    c.fillStyle = "#f43f5e";
+    c.strokeStyle = "rgba(3,12,18,0.8)";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(cx + 1, cy - 34);
+    c.quadraticCurveTo(cx + 13, cy - 32, cx + 20, cy - 27);
+    c.quadraticCurveTo(cx + 11, cy - 25, cx + 1, cy - 21);
     c.closePath();
     c.fill();
-    c.shadowBlur = 0;
     c.stroke();
+    c.fillStyle = "rgba(255,255,255,0.35)";
+    c.beginPath();
+    c.moveTo(cx + 1, cy - 34);
+    c.lineTo(cx + 12, cy - 31.5);
+    c.lineTo(cx + 1, cy - 29);
+    c.closePath();
+    c.fill();
   }, []);
 
   // -------------------------------------------------------------------------
@@ -650,8 +685,10 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       const cv = overlayCv.current;
       if (!cv) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+      // Measure the element, not the window: the overlay must agree with its
+      // own CSS box or every world-space mark drifts toward the edges.
+      const w = cv.clientWidth || window.innerWidth;
+      const h = cv.clientHeight || window.innerHeight;
       if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
         cv.width = Math.round(w * dpr);
         cv.height = Math.round(h * dpr);
@@ -659,12 +696,6 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
     };
     sizeOverlay();
     window.addEventListener("resize", sizeOverlay);
-
-    const mc = miniCv.current;
-    if (mc) {
-      mc.width = MINI_W;
-      mc.height = MINI_H;
-    }
 
     /** World metres → CSS pixels in the canvas viewport. */
     const w2s = (wx: number, wy: number, w: number, h: number): Pt => {
@@ -751,6 +782,20 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       if (swingTxt.current) swingTxt.current.textContent = can ? "Swing" : "In play";
     };
 
+    /**
+     * While a slingshot drag is live the console must not exist as far as the
+     * pointer is concerned: the natural gesture is back-and-down, straight
+     * into the panel, and it must not be swallowed halfway through.
+     */
+    let lastDrag: boolean | null = null;
+    const syncDrag = () => {
+      const d = shot.current.dragging;
+      if (d === lastDrag) return;
+      lastDrag = d;
+      const p = panelRef.current;
+      if (p) p.dataset.drag = d ? "1" : "0";
+    };
+
     /** A dotted polyline that survives being drawn over grass *and* sky. */
     const dottedPath = (c: CanvasRenderingContext2D, pts: Pt[], col: string, w: number, h: number) => {
       if (pts.length < 2) return;
@@ -788,62 +833,40 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       const s = shot.current;
       const atRest = canNow() && !holed && !done;
 
-      // --- cup awareness: ghost flag on screen, edge arrow off screen -------
+      // --- cup awareness ----------------------------------------------------
+      // Exactly one pin mark on screen at a time. When the real pin is in
+      // frame the HUD stays out of the way entirely — the distance already
+      // lives in the PIN readout at the top. Only when the cup is off screen
+      // does an edge chip appear, inset by its own radius plus a clear margin
+      // so it can never be sliced by the viewport edge.
       if (hh && ball) {
         const cup = w2s(hh.cup.x, hh.cup.y, w, h);
         const dist = Math.hypot(hh.cup.x - ball.pos.x, hh.cup.y - ball.pos.y);
-        const m = 40;
-        const top = TOP_CHROME;
-        const bot = h - BOTTOM_CHROME;
-        const off = cup.x < m || cup.x > w - m || cup.y < top || cup.y > bot;
-        if (!off) {
-          // Translucent ghost of the pin so the cup reads even at distance.
-          c.save();
-          c.globalAlpha = 0.72;
-          c.strokeStyle = "rgba(2,10,16,0.55)";
-          c.lineWidth = 7;
-          c.beginPath();
-          c.moveTo(cup.x, cup.y);
-          c.lineTo(cup.x, cup.y - 54);
-          c.stroke();
-          c.strokeStyle = "#fff7ed";
-          c.lineWidth = 2.5;
-          c.stroke();
-          c.fillStyle = "#f43f5e";
-          c.beginPath();
-          c.moveTo(cup.x, cup.y - 54);
-          c.lineTo(cup.x + 26, cup.y - 45);
-          c.lineTo(cup.x, cup.y - 36);
-          c.closePath();
-          c.fill();
-          c.restore();
-          c.font = "700 12px ui-monospace, SFMono-Regular, Menlo, monospace";
-          c.textAlign = "center";
-          c.lineWidth = 4;
-          c.strokeStyle = "rgba(2,10,16,0.8)";
-          c.strokeText(`${Math.round(dist)} m`, cup.x, cup.y - 62);
-          c.fillStyle = "#fde68a";
-          c.fillText(`${Math.round(dist)} m`, cup.x, cup.y - 62);
-        } else {
-          const ex = clamp(cup.x, m, w - m);
-          const ey = clamp(cup.y, top, bot);
+        const R = 20;
+        const mX = R + 22;
+        const topY = chromeTop.current + R + 12;
+        const botY = h - BOTTOM_CHROME - R - 12;
+        const off = cup.x < mX || cup.x > w - mX || cup.y < topY || cup.y > Math.max(topY + 1, botY);
+        if (off) {
+          const ex = clamp(cup.x, mX, w - mX);
+          const ey = clamp(cup.y, topY, Math.max(topY + 1, botY));
           const ang = Math.atan2(cup.y - h / 2, cup.x - w / 2);
           c.save();
           c.translate(ex, ey);
           c.fillStyle = "rgba(4,18,27,0.9)";
-          c.strokeStyle = "rgba(244,63,94,0.9)";
+          c.strokeStyle = "rgba(244,63,94,0.85)";
           c.lineWidth = 2;
           c.beginPath();
-          c.arc(0, 0, 25, 0, Math.PI * 2);
+          c.arc(0, 0, R, 0, Math.PI * 2);
           c.fill();
           c.stroke();
           c.save();
           c.rotate(ang);
           c.fillStyle = "#f43f5e";
           c.beginPath();
-          c.moveTo(24, 0);
-          c.lineTo(9, -10);
-          c.lineTo(9, 10);
+          c.moveTo(R - 2, 0);
+          c.lineTo(R - 12, -8);
+          c.lineTo(R - 12, 8);
           c.closePath();
           c.fill();
           c.restore();
@@ -851,10 +874,10 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
           c.font = "800 12px ui-monospace, SFMono-Regular, Menlo, monospace";
           c.textAlign = "center";
           c.textBaseline = "middle";
-          c.fillText(`${Math.round(dist)}`, -2, -1);
-          c.fillStyle = "rgba(255,255,255,0.55)";
-          c.font = "700 8px ui-monospace, SFMono-Regular, Menlo, monospace";
-          c.fillText("PIN m", -2, 11);
+          c.fillText(`${Math.round(dist)}`, -2, -2);
+          c.fillStyle = "rgba(255,255,255,0.5)";
+          c.font = "700 7px ui-monospace, SFMono-Regular, Menlo, monospace";
+          c.fillText("PIN m", -2, 9);
           c.restore();
           c.textBaseline = "alphabetic";
         }
@@ -938,18 +961,22 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
         c.fill();
       }
 
-      // Power/angle read out right at the ball, so the value is legible even
-      // while the thumb is parked over the console.
-      c.font = "800 15px ui-monospace, SFMono-Regular, Menlo, monospace";
-      c.textAlign = "left";
-      const label = `${Math.round(s.power * 100)}%  ${degOf(s.angle)}°`;
-      const lx = b.x + 20;
-      const ly = b.y - 24;
-      c.lineWidth = 5;
-      c.strokeStyle = "rgba(2,10,16,0.82)";
-      c.strokeText(label, lx, ly);
-      c.fillStyle = col;
-      c.fillText(label, lx, ly);
+      // Power/angle at the ball *only while dragging* — that is the one moment
+      // the thumb is off the console and the numbers there are unreadable.
+      // The rest of the time the console owns the readout, so the frame keeps
+      // a single copy of every number.
+      if (s.dragging) {
+        c.font = "800 15px ui-monospace, SFMono-Regular, Menlo, monospace";
+        c.textAlign = "left";
+        const label = `${Math.round(s.power * 100)}%  ${degOf(s.angle)}°`;
+        const lx = b.x + 20;
+        const ly = b.y - 24;
+        c.lineWidth = 5;
+        c.strokeStyle = "rgba(2,10,16,0.82)";
+        c.strokeText(label, lx, ly);
+        c.fillStyle = col;
+        c.fillText(label, lx, ly);
+      }
     };
 
     const drawMini = () => {
@@ -960,8 +987,8 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       const c = cv.getContext("2d");
       if (!c) return;
 
-      const px = (x: number) => clamp(xf.padX + (x - xf.x0) * xf.sx, 6, MINI_W - 6);
-      const py = (y: number) => clamp(MINI_H - xf.padY - (y - xf.y0) * xf.sy, 10, MINI_H - 10);
+      const px = (x: number) => clamp(xf.padX + (x - xf.x0) * xf.sx, 5, MINI_W - 5);
+      const py = (y: number) => clamp(MINI_H - xf.padY - (y - xf.y0) * xf.sy, 8, MINI_H - 8);
 
       const ball = liveBall();
       const bx = ball ? ball.pos.x : NaN;
@@ -985,59 +1012,63 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       const halfW = (BASE_VIEW_HEIGHT / 2 / zoom) * aspect;
       const wx0 = clamp(xf.padX + (camX - halfW - xf.x0) * xf.sx, 2, MINI_W - 8);
       const wx1 = clamp(xf.padX + (camX + halfW - xf.x0) * xf.sx, wx0 + 6, MINI_W - 2);
-      c.fillStyle = "rgba(255,255,255,0.05)";
+      c.fillStyle = "rgba(255,255,255,0.06)";
       c.fillRect(wx0, 0, wx1 - wx0, MINI_H);
-      c.strokeStyle = "rgba(253,230,138,0.8)";
-      c.lineWidth = 3;
-      c.setLineDash([10, 8]);
-      c.strokeRect(wx0 + 1.5, 2, wx1 - wx0 - 3, MINI_H - 4);
-      c.setLineDash([]);
+      c.strokeStyle = "rgba(253,230,138,0.55)";
+      c.lineWidth = 2;
+      c.strokeRect(wx0 + 1, 1, wx1 - wx0 - 2, MINI_H - 2);
 
       // Golfer, while he's out scouting.
       const j = jetRef.current;
       if (j.active) {
         c.fillStyle = "rgba(251,191,36,0.95)";
         c.beginPath();
-        c.arc(px(j.x), py(j.y), 10, 0, Math.PI * 2);
+        c.arc(px(j.x), py(j.y), 6, 0, Math.PI * 2);
         c.fill();
       }
 
       if (ball) {
         // A white dot in a dark halo, ringed in the ball's own tint. Reads on
-        // grass, on water and on the dark card alike.
+        // grass, on water and on the dark chip alike.
         const tint = BALL_TYPES[ball.type]?.tint ?? 0xffffff;
         const col = hex(tint);
         const dx = px(bx);
         const dy = py(by);
         c.fillStyle = "rgba(2,10,16,0.9)";
         c.beginPath();
-        c.arc(dx, dy, 22, 0, Math.PI * 2);
+        c.arc(dx, dy, 11, 0, Math.PI * 2);
         c.fill();
         c.strokeStyle = col;
-        c.lineWidth = 5;
+        c.lineWidth = 3;
         c.beginPath();
-        c.arc(dx, dy, 18, 0, Math.PI * 2);
+        c.arc(dx, dy, 8.5, 0, Math.PI * 2);
         c.stroke();
         c.fillStyle = "#ffffff";
         c.shadowColor = "rgba(255,255,255,0.9)";
-        c.shadowBlur = 16;
+        c.shadowBlur = 10;
         c.beginPath();
-        c.arc(dx, dy, 13, 0, Math.PI * 2);
+        c.arc(dx, dy, 6, 0, Math.PI * 2);
         c.fill();
         c.shadowBlur = 0;
       }
     };
 
     const drawText = () => {
-      const rules = engine.ctx?.services?.rules;
       const ball = liveBall();
       const hh = holeRef.current;
       const s = shot.current;
 
-      if (powFill.current) powFill.current.style.width = `${(clamp(s.power, 0, 1) * 100).toFixed(1)}%`;
-      if (powFill.current) powFill.current.style.background = powerColor(s.power);
-      if (powKnob.current) powKnob.current.style.left = `${(clamp(s.power, 0, 1) * 100).toFixed(1)}%`;
-      if (powTxt.current) powTxt.current.textContent = `${Math.round(clamp(s.power, 0, 1) * 100)}%`;
+      const pf = clamp(s.power, 0, 1);
+      const col = powerColor(pf);
+      if (powFill.current) {
+        powFill.current.style.width = `${(pf * 100).toFixed(1)}%`;
+        powFill.current.style.background = col;
+      }
+      if (powKnob.current) {
+        powKnob.current.style.left = `${(pf * 100).toFixed(1)}%`;
+        powKnob.current.style.borderColor = col;
+      }
+      if (powTxt.current) powTxt.current.textContent = `${Math.round(pf * 100)}%`;
 
       const af = clamp((s.angle - ANG_MIN) / (ANG_MAX - ANG_MIN), 0, 1);
       if (angFill.current) angFill.current.style.width = `${(af * 100).toFixed(1)}%`;
@@ -1057,7 +1088,7 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       if (windTxt.current) {
         const ws = wind ? Math.hypot(wind.x, wind.y) : 0;
         windTxt.current.textContent =
-          ws < 0.15 ? "Calm" : `${wind.x >= 0 ? "→" : "←"} ${ws.toFixed(1)}`;
+          ws < 0.15 ? "calm" : `${wind.x >= 0 ? "→" : "←"} ${ws.toFixed(1)}`;
       }
     };
 
@@ -1074,6 +1105,7 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
 
       drawOverlay();
       syncSwing();
+      syncDrag();
 
       if (jetDirty.current) {
         jetDirty.current = false;
@@ -1104,10 +1136,17 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
     };
   }, [engine, liveBall, autoAim, holed, done]);
 
-  // Re-blit when the map is expanded so nothing is stale behind the overlay.
+  // The map chip mounts and unmounts with `mapOpen`, so its backing store has
+  // to be (re)sized here — and the overlay needs the new chrome height.
   useEffect(() => {
+    const mc = miniCv.current;
+    if (mc) {
+      mc.width = MINI_W;
+      mc.height = MINI_H;
+    }
     miniLast.current = { bx: 1e9, by: 1e9, cx: 1e9 };
-  }, [mapBig, mapOpen]);
+    chromeTop.current = TOP_CHROME + (mapOpen ? MAP_CHROME : 0);
+  }, [mapOpen, mapBig]);
 
   // -------------------------------------------------------------------------
   // Actions
@@ -1143,10 +1182,16 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
     shotDirty.current = true;
   }, [engine]);
 
-  /** Shared slider drag: both tracks are plain divs with pointer capture. */
+  /**
+   * Shared slider drag. The whole 44 px track is the hit area and a tap
+   * anywhere along it sets the value, so the knob never has to be caught.
+   * The mapped range is inset by half a knob at each end so the knob's centre
+   * always lands under the finger.
+   */
   const trackFrac = (el: HTMLElement, clientX: number) => {
     const r = el.getBoundingClientRect();
-    return clamp((clientX - r.left) / Math.max(1, r.width), 0, 1);
+    const usable = Math.max(1, r.width - KNOB_PAD * 2);
+    return clamp((clientX - r.left - KNOB_PAD) / usable, 0, 1);
   };
   const setPower = useCallback((f: number) => {
     shot.current.power = clamp(f, 0, 1);
@@ -1172,6 +1217,7 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
 
   const cur = BALL_TYPES[ballType] ?? BALL_TYPES.standard;
   const holeLabel = hole ? `${hole.index + 1}${hole.count ? `/${hole.count}` : ""}` : "—";
+  const cardTop = `calc(env(safe-area-inset-top, 0px) + ${mapOpen ? 132 : 74}px)`;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 select-none font-sans text-white">
@@ -1195,6 +1241,11 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
         .gh-shine { background-size: 200% 100%; animation: gh-shine 2.4s linear infinite }
         .gh-breathe { animation: gh-breathe 2.6s ease-out infinite }
         .gh-scroll::-webkit-scrollbar { display: none }
+        /* A slingshot drag out of the ball owns the whole screen while it is
+           live — the console cannot intercept the second half of the gesture. */
+        .gh-panel { transition: opacity .16s ease-out }
+        .gh-panel[data-drag="1"] { opacity: .38 }
+        .gh-panel[data-drag="1"], .gh-panel[data-drag="1"] * { pointer-events: none !important }
       `}</style>
 
       {/* World-space overlay: aim arc, trajectory, cup indicator. Never eats
@@ -1205,32 +1256,45 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       />
 
       {/* ------------------------------------------------------------------ */}
-      {/* Top strip — scorecard, full-width hole map, live route chips        */}
+      {/* Top strip — one card: hole + score, then pin / elev / wind          */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className="absolute inset-x-0 top-0 px-3"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
+        className="absolute inset-x-0 top-0 px-2.5"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="gh-slide pointer-events-none rounded-2xl border border-white/10 bg-[#04121b]/80 px-3 py-2 shadow-lg shadow-black/40 backdrop-blur-md">
+        <div className="flex items-start gap-2">
+          <div className="gh-slide pointer-events-none min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#04121b]/80 px-2.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-md">
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[12px] font-black uppercase tracking-[0.14em] text-emerald-300">
+              <span className="shrink-0 font-mono text-[11px] font-black uppercase tracking-[0.12em] text-emerald-300">
                 {holeLabel}
               </span>
-              <span className="max-w-[46vw] truncate text-[15px] font-black leading-none text-white">
+              <span className="min-w-0 flex-1 truncate text-[14px] font-black leading-tight text-white">
                 {hole?.name ?? "Loading"}
               </span>
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em]">
-              <span className="rounded-md bg-white/10 px-1.5 py-[3px] text-white/80">Par {hole?.par ?? "-"}</span>
-              <span className="rounded-md bg-white/10 px-1.5 py-[3px] text-white/80">
-                <span className="font-bold text-white">{strokes}</span> shot{strokes === 1 ? "" : "s"}
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.1em] text-white/40">
+                Par <span className="font-black text-white/85">{hole?.par ?? "-"}</span>
+                <span className="px-1 text-white/20">·</span>
+                <span className="font-black text-white">{strokes}</span>
+                <span className="pl-0.5">sh</span>
               </span>
               {card.length > 0 && (
-                <span className={`rounded-md bg-white/10 px-1.5 py-[3px] font-black ${relTone(played.rel)}`}>
+                <span className={`shrink-0 font-mono text-[11px] font-black ${relTone(played.rel)}`}>
                   {relToPar(played.rel)}
                 </span>
               )}
+            </div>
+            {/* Route readouts live on the card's own second line — they used to
+                cost a separate 35 px band across the frame. */}
+            <div className="mt-[3px] flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.1em]">
+              <span className="text-white/35">
+                Pin <span ref={pinTxt} className="font-black text-amber-200">— m</span>
+              </span>
+              <span className="text-white/35">
+                Elev <span ref={elevTxt} className="font-black text-sky-200">— m</span>
+              </span>
+              <span className="truncate text-white/35">
+                Wind <span ref={windTxt} className="font-black text-emerald-200">calm</span>
+              </span>
             </div>
           </div>
 
@@ -1238,40 +1302,32 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
             type="button"
             onClick={() => setMapOpen((v) => !v)}
             aria-label={mapOpen ? "Hide hole map" : "Show hole map"}
-            className="pointer-events-auto mt-0.5 shrink-0 rounded-xl border border-white/10 bg-[#04121b]/80 px-2.5 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-white/70 shadow-lg shadow-black/40 backdrop-blur-md active:scale-95"
+            className={`pointer-events-auto flex h-[46px] w-[52px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border shadow-lg shadow-black/40 backdrop-blur-md transition active:scale-95 ${
+              mapOpen
+                ? "border-emerald-300/50 bg-emerald-300/15 text-emerald-200"
+                : "border-white/10 bg-[#04121b]/80 text-white/70"
+            }`}
           >
-            Map {mapOpen ? "▴" : "▾"}
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7.5 9 5l6 2.5L21 5v11.5L15 19l-6-2.5L3 19Z" />
+              <path d="M9 5v11.5M15 7.5V19" />
+            </svg>
+            <span className="font-mono text-[8.5px] font-bold uppercase tracking-[0.12em]">Map</span>
           </button>
         </div>
 
-        {/* Full-width hole map: the only whole-hole view, so it gets real
-            estate instead of a 175 px pip in the corner. */}
+        {/* Hole map — a content-width chip, opened on demand, styled in the
+            game's own materials rather than as a debug strip. */}
         {mapOpen && (
           <button
             type="button"
             onClick={() => setMapBig(true)}
             aria-label="Expand hole overview"
-            className="gh-slide pointer-events-auto mt-2 block w-full overflow-hidden rounded-2xl border border-white/10 bg-[#04121b]/80 shadow-lg shadow-black/40 backdrop-blur-md active:scale-[0.99]"
+            className="gh-slide pointer-events-auto mt-1.5 ml-auto block w-[min(64vw,250px)] overflow-hidden rounded-2xl border border-white/10 bg-[#04121b]/70 shadow-lg shadow-black/40 backdrop-blur-md active:scale-[0.98]"
           >
-            <canvas ref={miniCv} className="block h-[92px] w-full" />
+            <canvas ref={miniCv} className="block h-[52px] w-full" />
           </button>
         )}
-
-        {/* Route chips — the sky used to be 60% of the frame carrying nothing. */}
-        <div className="mt-2 flex items-center justify-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em]">
-          <span className="rounded-full border border-white/10 bg-[#04121b]/70 px-2.5 py-1 backdrop-blur-md">
-            <span className="text-white/40">Pin </span>
-            <span ref={pinTxt} className="font-black text-amber-200">— m</span>
-          </span>
-          <span className="rounded-full border border-white/10 bg-[#04121b]/70 px-2.5 py-1 backdrop-blur-md">
-            <span className="text-white/40">Elev </span>
-            <span ref={elevTxt} className="font-black text-sky-200">— m</span>
-          </span>
-          <span className="rounded-full border border-white/10 bg-[#04121b]/70 px-2.5 py-1 backdrop-blur-md">
-            <span className="text-white/40">Wind </span>
-            <span ref={windTxt} className="font-black text-emerald-200">Calm</span>
-          </span>
-        </div>
       </div>
 
       {/* Expanded hole overview */}
@@ -1308,22 +1364,22 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       {intro && !holed && !done && (
         <div
           className="pointer-events-auto absolute inset-x-0 flex justify-center px-6"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 226px)" }}
+          style={{ top: cardTop }}
           onClick={() => setIntro(null)}
         >
-          <div className="gh-pop max-w-sm rounded-2xl border border-emerald-300/20 bg-gradient-to-b from-[#0a2a3c]/95 to-[#061722]/95 px-5 py-4 text-center shadow-2xl shadow-black/60 backdrop-blur-md">
+          <div className="gh-pop max-w-sm rounded-2xl border border-emerald-300/20 bg-gradient-to-b from-[#0a2a3c]/95 to-[#061722]/95 px-5 py-3.5 text-center shadow-2xl shadow-black/60 backdrop-blur-md">
             <div className="font-mono text-[10px] uppercase tracking-[0.36em] text-emerald-300/75">
               Hole {intro.index + 1}
               {intro.courseName ? ` · ${intro.courseName}` : ""}
             </div>
-            <div className="mt-1.5 text-2xl font-black leading-tight tracking-tight text-white">
+            <div className="mt-1 text-xl font-black leading-tight tracking-tight text-white">
               {intro.name}
             </div>
-            <div className="mt-1 font-mono text-[12px] uppercase tracking-[0.18em] text-amber-200/80">
+            <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-200/80">
               Par {intro.par}
             </div>
             {intro.hint && (
-              <p className="mt-2.5 text-[13px] leading-relaxed text-emerald-50/70">{intro.hint}</p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-emerald-50/70">{intro.hint}</p>
             )}
           </div>
         </div>
@@ -1334,7 +1390,7 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       {/* ------------------------------------------------------------------ */}
       <div
         className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-1.5 px-6"
-        style={{ top: "calc(env(safe-area-inset-top, 0px) + 228px)" }}
+        style={{ top: cardTop }}
       >
         {toasts.map((t) => (
           <div
@@ -1354,152 +1410,174 @@ export default function GolfHUD({ engine }: { engine: GolfEngine }) {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Shot console — the primary affordance, in the thumb arc             */}
+      {/* Shot console — thumb arc, ~19% of a 932 px phone, anchored to the   */}
+      {/* true viewport bottom so no live world leaks beneath it.             */}
       {/* ------------------------------------------------------------------ */}
-      <div
-        className="absolute inset-x-0 bottom-0 px-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
-      >
-        <div className="gh-rise pointer-events-none rounded-[26px] border border-white/10 bg-[#04121b]/80 p-3 shadow-2xl shadow-black/50 backdrop-blur-md">
-          {/* Power */}
-          <div className="mb-1 flex items-baseline justify-between px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-white/40">
-            <span>Power</span>
-            <span ref={powTxt} className="text-[15px] font-black tracking-normal text-white">60%</span>
-          </div>
-          <div
-            className="pointer-events-auto relative h-[46px] w-full touch-none overflow-hidden rounded-2xl border border-white/10 bg-black/40"
-            {...trackProps(setPower)}
-          >
-            <div
-              ref={powFill}
-              className="absolute inset-y-0 left-0 rounded-2xl opacity-80"
-              style={{ width: "60%", background: "#fbbf24" }}
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-3">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <span key={i} className="h-3 w-[2px] rounded bg-white/25" />
-              ))}
+      <div ref={panelRef} data-drag="0" className="gh-panel absolute inset-x-0 bottom-0">
+        {/* A short fade so the world dissolves into the console instead of
+            ending on a hard floating card edge. */}
+        <div className="pointer-events-none h-5 w-full bg-gradient-to-t from-[#04121b]/85 to-transparent" />
+        <div
+          className="gh-rise border-t border-white/10 bg-[#04121b]/88 px-3 pt-1.5 shadow-[0_-12px_36px_rgba(0,0,0,0.45)] backdrop-blur-md"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 10px)" }}
+        >
+          <div className="mx-auto w-full max-w-[560px]">
+            {/* The hint sits above the controls, where it is readable — not
+                hairline text pinned to the bottom edge of the screen. */}
+            <div className="text-center font-mono text-[9.5px] uppercase tracking-[0.16em] text-white/55">
+              Drag back from the ball, or set power &amp; aim
             </div>
-            <div
-              ref={powKnob}
-              className="pointer-events-none absolute top-1/2 h-[38px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_rgba(0,0,0,.6)]"
-              style={{ left: "60%" }}
-            />
-          </div>
 
-          {/* Angle */}
-          <div className="mb-1 mt-2 flex items-baseline justify-between px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-white/40">
-            <span>Aim</span>
-            <span ref={angTxt} className="text-[15px] font-black tracking-normal text-white">36°</span>
-          </div>
-          <div
-            className="pointer-events-auto relative h-[44px] w-full touch-none overflow-hidden rounded-2xl border border-white/10 bg-black/40"
-            {...trackProps(setAngle)}
-          >
-            <div
-              ref={angFill}
-              className="absolute inset-y-0 left-0 rounded-2xl bg-gradient-to-r from-sky-400/40 to-emerald-300/60"
-              style={{ width: "40%" }}
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-2 font-mono text-[9px] font-bold text-white/30">
-              <span>-20°</span><span>30°</span><span>60°</span><span>90°</span><span>120°</span>
-            </div>
-            <div
-              ref={angKnob}
-              className="pointer-events-none absolute top-1/2 h-[36px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_rgba(0,0,0,.6)]"
-              style={{ left: "40%" }}
-            />
-          </div>
-
-          {/* Bag · Swing · Jetpack */}
-          <div className="mt-2.5 flex items-stretch gap-2.5">
-            <button
-              type="button"
-              onClick={() => setBagOpen((v) => !v)}
-              aria-label="Ball bag"
-              className="pointer-events-auto relative flex h-[60px] w-[60px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-white/10 bg-white/[0.06] transition active:scale-95"
-            >
-              <span
-                className="h-[22px] w-[22px] rounded-full"
-                style={{
-                  background: `radial-gradient(circle at 32% 30%, #fff, ${hex(cur.tint)} 62%, rgba(0,0,0,.55))`,
-                  boxShadow: `0 0 14px ${hex(cur.tint)}aa`,
-                }}
-              />
-              <span className="max-w-[54px] truncate font-mono text-[9px] font-bold uppercase leading-none tracking-[0.06em] text-white/70">
-                {cur.name}
+            {/* Power — one row: label, track, value. */}
+            <div className="mt-1 flex items-center gap-2">
+              <span className="w-[38px] shrink-0 font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-white/45">
+                Power
               </span>
-              {ballType !== "standard" && (
-                <span className="absolute -right-1 -top-1 rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[9px] font-black leading-none text-slate-900">
-                  {counts[ballType] ?? 0}
-                </span>
-              )}
-            </button>
-
-            <button
-              ref={swingBtn}
-              type="button"
-              onClick={swing}
-              aria-label="Swing"
-              className="gh-breathe pointer-events-auto flex h-[60px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-300 to-teal-300 text-slate-900 transition active:scale-95"
-            >
-              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 20c4-1 7-3.5 9-7.5" />
-                <path d="M13 12.5 19 3" />
-                <circle cx="6.5" cy="18.5" r="1.6" fill="currentColor" />
-              </svg>
-              <span ref={swingTxt} className="text-[15px] font-black uppercase tracking-[0.18em]">
-                Swing
-              </span>
-            </button>
-
-            <div className="pointer-events-none relative flex w-[60px] shrink-0 flex-col items-center justify-center">
-              <button
-                type="button"
-                onClick={toggleJet}
-                onPointerDown={(e) => {
-                  if (!flying) return;
-                  e.preventDefault();
-                  thrust(true);
-                }}
-                onPointerUp={() => flying && thrust(false)}
-                onPointerCancel={() => flying && thrust(false)}
-                onPointerLeave={() => flying && thrust(false)}
-                aria-label={flying ? "Thrust" : "Jetpack"}
-                className={`pointer-events-auto flex h-[60px] w-[60px] flex-col items-center justify-center gap-0.5 rounded-2xl border transition active:scale-95 ${
-                  flying
-                    ? "border-amber-300/60 bg-amber-400/25 text-amber-200"
-                    : "border-white/10 bg-white/[0.06] text-white/75"
-                }`}
+              <div
+                className="pointer-events-auto relative h-[44px] min-w-0 flex-1 touch-none rounded-xl border border-white/10 bg-black/40"
+                {...trackProps(setPower)}
               >
-                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3c2.2 2.3 3.2 5 3.2 8.2V16H8.8v-4.8C8.8 8 9.8 5.3 12 3Z" />
-                  <path d="M8.8 16 7 19M15.2 16 17 19" />
-                  <path d="M12 18.5v2.5" />
-                </svg>
-                <span className="font-mono text-[9px] font-bold uppercase leading-none tracking-[0.08em]">
-                  {flying ? "Hold" : "Fly"}
-                </span>
-              </button>
-              {flying && (
-                <div className="gh-slide absolute -top-3 flex w-[56px] flex-col items-center">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/70 ring-1 ring-white/10">
+                <div className="absolute inset-y-0" style={{ left: KNOB_PAD, right: KNOB_PAD }}>
+                  <div className="absolute top-1/2 h-[9px] w-full -translate-y-1/2 overflow-hidden rounded-full bg-white/10">
+                    <div ref={powFill} className="h-full rounded-full" style={{ width: "60%", background: "#fbbf24" }} />
+                  </div>
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-between">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <span key={i} className="h-[13px] w-[2px] rounded bg-white/20" />
+                    ))}
+                  </div>
+                  <div
+                    ref={powKnob}
+                    className="pointer-events-none absolute top-1/2 h-[28px] w-[28px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] bg-white shadow-[0_2px_8px_rgba(0,0,0,.6)]"
+                    style={{ left: "60%", borderColor: "#fbbf24" }}
+                  />
+                </div>
+              </div>
+              <span ref={powTxt} className="w-[42px] shrink-0 text-right font-mono text-[15px] font-black tabular-nums text-white">
+                60%
+              </span>
+            </div>
+
+            {/* Aim — same row shape, so the pair reads as one control block. */}
+            <div className="mt-1.5 flex items-center gap-2">
+              <span className="w-[38px] shrink-0 font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-white/45">
+                Aim
+              </span>
+              <div
+                className="pointer-events-auto relative h-[44px] min-w-0 flex-1 touch-none rounded-xl border border-white/10 bg-black/40"
+                {...trackProps(setAngle)}
+              >
+                <div className="absolute inset-y-0" style={{ left: KNOB_PAD, right: KNOB_PAD }}>
+                  <div className="absolute top-1/2 h-[9px] w-full -translate-y-1/2 overflow-hidden rounded-full bg-white/10">
                     <div
-                      ref={fuelBar}
-                      className="h-full w-full origin-left rounded-full"
-                      style={{ background: "#2dd4bf", transform: "scaleX(1)" }}
+                      ref={angFill}
+                      className="h-full rounded-full bg-gradient-to-r from-sky-400/60 to-emerald-300/80"
+                      style={{ width: "40%" }}
                     />
                   </div>
-                  <span className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.14em] text-white/50">
-                    {dryTank ? "refuel" : "fuel"}
-                  </span>
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-between">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <span key={i} className="h-[13px] w-[2px] rounded bg-white/20" />
+                    ))}
+                  </div>
+                  <div
+                    ref={angKnob}
+                    className="pointer-events-none absolute top-1/2 h-[28px] w-[28px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-emerald-200 bg-white shadow-[0_2px_8px_rgba(0,0,0,.6)]"
+                    style={{ left: "40%" }}
+                  />
                 </div>
-              )}
+              </div>
+              <span ref={angTxt} className="w-[42px] shrink-0 text-right font-mono text-[15px] font-black tabular-nums text-white">
+                36°
+              </span>
             </div>
-          </div>
 
-          <div className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-white/40">
-            Set power &amp; aim, or drag back from the ball
+            {/* Bag · Swing · Jetpack */}
+            <div className="mt-1.5 flex items-stretch gap-2">
+              <button
+                type="button"
+                onClick={() => setBagOpen((v) => !v)}
+                aria-label="Ball bag"
+                className="pointer-events-auto relative flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border border-white/10 bg-white/[0.06] transition active:scale-95"
+              >
+                <span
+                  className="h-[20px] w-[20px] rounded-full"
+                  style={{
+                    background: `radial-gradient(circle at 32% 30%, #fff, ${hex(cur.tint)} 62%, rgba(0,0,0,.55))`,
+                    boxShadow: `0 0 12px ${hex(cur.tint)}aa`,
+                  }}
+                />
+                <span className="max-w-[48px] truncate font-mono text-[8px] font-bold uppercase leading-none tracking-[0.06em] text-white/65">
+                  {cur.name}
+                </span>
+                {ballType !== "standard" && (
+                  <span className="absolute -right-1 -top-1 rounded-full bg-amber-300 px-1.5 py-0.5 font-mono text-[9px] font-black leading-none text-slate-900">
+                    {counts[ballType] ?? 0}
+                  </span>
+                )}
+              </button>
+
+              <button
+                ref={swingBtn}
+                type="button"
+                onClick={swing}
+                aria-label="Swing"
+                className="gh-breathe pointer-events-auto flex h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-300 to-teal-300 text-slate-900 transition active:scale-95"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 20c4-1 7-3.5 9-7.5" />
+                  <path d="M13 12.5 19 3" />
+                  <circle cx="6.5" cy="18.5" r="1.6" fill="currentColor" />
+                </svg>
+                <span ref={swingTxt} className="text-[15px] font-black uppercase tracking-[0.18em]">
+                  Swing
+                </span>
+              </button>
+
+              <div className="pointer-events-none relative flex w-[52px] shrink-0 flex-col items-center justify-center">
+                <button
+                  type="button"
+                  onClick={toggleJet}
+                  onPointerDown={(e) => {
+                    if (!flying) return;
+                    e.preventDefault();
+                    thrust(true);
+                  }}
+                  onPointerUp={() => flying && thrust(false)}
+                  onPointerCancel={() => flying && thrust(false)}
+                  onPointerLeave={() => flying && thrust(false)}
+                  aria-label={flying ? "Thrust" : "Jetpack"}
+                  className={`pointer-events-auto flex h-[52px] w-[52px] flex-col items-center justify-center gap-0.5 rounded-2xl border transition active:scale-95 ${
+                    flying
+                      ? "border-amber-300/60 bg-amber-400/25 text-amber-200"
+                      : "border-white/10 bg-white/[0.06] text-white/75"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3c2.2 2.3 3.2 5 3.2 8.2V16H8.8v-4.8C8.8 8 9.8 5.3 12 3Z" />
+                    <path d="M8.8 16 7 19M15.2 16 17 19" />
+                    <path d="M12 18.5v2.5" />
+                  </svg>
+                  <span className="font-mono text-[8px] font-bold uppercase leading-none tracking-[0.08em]">
+                    {flying ? "Hold" : "Fly"}
+                  </span>
+                </button>
+                {flying && (
+                  <div className="gh-slide absolute -top-2.5 flex w-[48px] flex-col items-center">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/70 ring-1 ring-white/10">
+                      <div
+                        ref={fuelBar}
+                        className="h-full w-full origin-left rounded-full"
+                        style={{ background: "#2dd4bf", transform: "scaleX(1)" }}
+                      />
+                    </div>
+                    <span className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.14em] text-white/50">
+                      {dryTank ? "refuel" : "fuel"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1701,7 +1779,7 @@ function Legend({ color, label }: { color: string; label: string }) {
  * The expanded hole overview reuses the minimap's *backing store* rather than
  * a second render pass: one `drawImage` per frame of the already-drawn canvas
  * into a bigger CSS box. Cheaper than baking a second static layer, and it can
- * never disagree with the strip at the top of the frame.
+ * never disagree with the chip at the top of the frame.
  */
 function MiniMirror({ source }: { source: MutableRefObject<HTMLCanvasElement | null> }) {
   const ref = useRef<HTMLCanvasElement | null>(null);

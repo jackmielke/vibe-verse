@@ -35,6 +35,7 @@ interface WorldCard {
 }
 
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
+import golfArt from "@/assets/worlds/golf.jpg";
 
 const WORLDS: WorldCard[] = [
   {
@@ -43,6 +44,13 @@ const WORLDS: WorldCard[] = [
     name: "EDM Town",
     art: edmTownArt,
     blurb: "Low-poly neon festival town — lasers, a dancing crowd, photo mode, and a guestbook.",
+  },
+  {
+    to: "/golf",
+    emoji: "⛳",
+    name: "Vibe Golf",
+    art: golfArt,
+    blurb: "Physics golf across 63 holes — portals, jetpacks, and a bag of very silly balls.",
   },
   {
     to: "/space",

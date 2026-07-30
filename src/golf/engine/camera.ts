@@ -9,27 +9,50 @@
  * picks the shot corridor it wants visible and solves back for the zoom the
  * engine needs (`zoom = BASE_VIEW_HEIGHT · aspect / width`).
  *
- * Vertical framing is driven by the hole's own silhouette, not a constant. A
- * 1 m heightfield is sampled from the surfaces once per hole; every frame the
- * camera reads the highest ground across the visible span and places the
- * horizon so the play surface keeps ~45 % of the frame and the sky is capped
- * at ~2/3 — sky is the cheapest thing on screen and is the first thing
- * sacrificed. The frame bottom is held above the world floor so we never stare
- * through the underside of the terrain.
+ * ## The safe rect
  *
- * Horizontal clamping uses the *geometry* span (the extreme surface points),
- * not `hole.bounds`, which is padded 6 m past the last polygon — clamping to
- * the padded bounds is what used to park a column of empty world at the screen
- * edge. Both axes handle the degenerate "view is bigger than the hole" case by
- * centring instead of falling through a crossed clamp.
+ * The canvas is full-bleed but the *playfield* is not: a scorecard, hole map
+ * and route chips own the top of the screen and a 280-ish px shot console owns
+ * the bottom. Framing against the canvas therefore framed against a rectangle
+ * the player cannot see — the ball landed dead-centre of the viewport, which is
+ * the middle of the control panel, and the terrain was a 100 px letterbox
+ * between two slabs of chrome.
+ *
+ * So the camera measures the chrome instead of guessing at it: once every
+ * `INSET_MS` it walks the overlay DOM, collects every painted element welded to
+ * the top or bottom edge, and grows a contiguous band from each edge. That
+ * gives a **play safe-rect** — the band of screen that actually shows world —
+ * and *every* framing decision here is expressed as a fraction of that band,
+ * not of the viewport. The ball is anchored inside the band, the fit tests
+ * measure the band, and the survey pan fits the hole to the band. The measure
+ * falls back to sane fractions if the HUD hasn't mounted, is clamped so chrome
+ * can never eat more than `1 - MIN_BAND` of the screen, and is smoothed so
+ * toggling the hole map re-frames rather than snaps.
+ *
+ * ## Vertical framing
+ *
+ * A 1 m heightfield is sampled from the surfaces once per hole; every frame the
+ * camera reads the highest ground across the visible span and places the
+ * horizon so the skyline sits near the top of the safe rect — sky is the
+ * cheapest thing on screen and is the first thing sacrificed. The frame bottom
+ * is held above the terrain slab's floor, and that same floor caps how far we
+ * may ever zoom out: a view taller than the world has solid ground for is how
+ * a hole ends up as a 60 px ribbon of terrain floating in sky.
+ *
+ * ## Fitting, not guessing
+ *
+ * At address the corridor is fitted to the ball→pin span (padded), so on any
+ * frame wide enough to hold the hole the flag is on screen instead of behind an
+ * edge badge; it clamps only when the hole is genuinely longer than one screen,
+ * and then biases forward so the visible half is the half you are playing into.
+ * While a slingshot drag is live the predicted arc is integrated with the real
+ * shot constants and the whole polyline is fitted inside the safe rect, so the
+ * shot you are about to commit to can never run off the top or the side.
  *
  * Finally there's a survey mode: a scripted pan that frames the hole end to
- * end and holds on the flag, so the player has actually seen the target before
- * being asked to plan a climb to it. It runs once when a hole loads, on
- * `golf:survey`, on Q/Tab, and whenever something outside this module pushes
- * `engine.zoom` down (a debug tool, a capture harness) — a request to see more
- * of the hole is answered with a real overview instead of a nudge that the
- * follow logic silently undoes on the next frame.
+ * end and holds on the flag. It runs once when a hole loads, on `golf:survey`,
+ * on Q/Tab, and whenever something outside this module pushes `engine.zoom`
+ * down (a debug tool, a capture harness).
  */
 import type { Hole, System, SystemFactory } from "../types";
 import type { GolfEngine } from "./core";
@@ -42,26 +65,52 @@ export interface GolfCameraSystem extends System {
 // --- Framing tuning ---------------------------------------------------------
 
 /** Shot corridor visible at rest, in metres: portrait → landscape. */
-const REST_WIDTH_TALL = 28;
-const REST_WIDTH_WIDE = 60;
+const REST_WIDTH_TALL = 27;
+const REST_WIDTH_WIDE = 56;
 /** How much wider the corridor gets at full flight speed. */
 const FLIGHT_WIDEN = 0.55;
 /** Manual pinch range, as a multiplier on the corridor width. */
 const USER_ZOOM_MIN = 0.5;
 const USER_ZOOM_MAX = 2.2;
-/** Where the ball sits, measured up from the bottom of the frame. */
-const ANCHOR_REST = 0.42;
-const ANCHOR_FLIGHT = 0.46;
-/** The ground silhouette never gets less than this share of the frame… */
-const GROUND_MIN = 0.34;
-/** …and the anchor is never pushed outside this band. */
-const ANCHOR_LOW = 0.11;
-const ANCHOR_HIGH = 0.86;
-/** Metres of solid world under `bounds.min` we may reveal before it reads bad. */
-const FLOOR_SLACK = 18;
-/** Survey width as a multiple of the rest corridor (portrait / landscape). */
-const SURVEY_SCALE_TALL = 1.35;
-const SURVEY_SCALE_WIDE = 2.6;
+/** Where the focus sits inside the *safe rect*, measured up from its bottom. */
+const ANCHOR_REST = 0.56;
+const ANCHOR_FLIGHT = 0.52;
+const ANCHOR_SURVEY = 0.5;
+/** The focus is never pushed outside this slice of the safe rect. */
+const BAND_KEEP_HIGH = 0.94;
+const BAND_KEEP_LOW = 0.08;
+/** Sky is never more (or less) than this share of the whole frame. */
+const SKY_MAX = 0.45;
+const SKY_MIN = 0.04;
+/**
+ * Metres of terrain slab under `bounds.min` we may show. `render.ts` extrudes
+ * the ground 90 m below the hole floor; stay inside that and the frame bottom
+ * is always solid world instead of a window into the backdrop.
+ */
+const SLAB_USABLE = 76;
+/** Share of the frame / safe rect a fitted subject is allowed to fill. */
+const SIDE_FILL = 0.86;
+const BAND_FILL = 0.82;
+/** Address fit ceiling as a multiple of the rest corridor (portrait → wide). */
+const ADDRESS_SCALE_TALL = 1.55;
+const ADDRESS_SCALE_WIDE = 3.4;
+/** Survey width ceiling, same units. */
+const SURVEY_SCALE_TALL = 2.3;
+const SURVEY_SCALE_WIDE = 4.2;
+/** When the pin will not fit, push this far past the ball toward it. */
+const FORWARD_BIAS = 0.24;
+
+// --- Safe rect tuning -------------------------------------------------------
+
+/** Used until the HUD has mounted and can be measured. */
+const DEFAULT_TOP_FRAC = 0.22;
+const DEFAULT_BOTTOM_FRAC = 0.3;
+/** Hard ceilings on measured chrome, and the floor on what's left for play. */
+const TOP_LIMIT = 0.3;
+const BOTTOM_LIMIT = 0.38;
+const MIN_BAND = 0.3;
+/** How often the chrome is re-measured, ms. */
+const INSET_MS = 260;
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 const smoothstep = (t: number): number => {
@@ -139,6 +188,107 @@ function topOver(f: Field, a: number, b: number): number {
   return Number.isFinite(best) ? best : NaN;
 }
 
+// --- HUD chrome measurement -------------------------------------------------
+
+interface Insets {
+  top: number;
+  bottom: number;
+}
+
+/** Alpha of a computed `background-color`, in every syntax CSS may hand back. */
+function bgAlpha(color: string): number {
+  if (!color || color === "transparent" || color === "none") return 0;
+  const open = color.indexOf("(");
+  if (open < 0) return color.charAt(0) === "#" ? 1 : 0;
+  const body = color.slice(open + 1, color.length - 1);
+  const parts = body.split(/[\s,/]+/).filter((s) => s.length > 0);
+  if (parts.length < 4) return 1;
+  const raw = parts[3] ?? "1";
+  const v = parseFloat(raw);
+  if (!Number.isFinite(v)) return 1;
+  return raw.indexOf("%") >= 0 ? v / 100 : v;
+}
+
+/**
+ * Walk the overlay DOM and report how much opaque chrome is welded to the top
+ * and bottom edges of the viewport.
+ *
+ * Deliberately structural rather than selector-driven: the HUD is owned by
+ * another module and its class names are not an interface. Anything painted,
+ * not full-screen, and touching an edge (allowing a small gap, so a panel with
+ * a margin still counts) grows that edge's band. Full-screen elements are
+ * containers — descend into them; painted elements are leaves — whatever they
+ * contain is already hidden.
+ */
+function measureChrome(vw: number, vh: number): Insets | null {
+  if (typeof document === "undefined" || typeof getComputedStyle !== "function") return null;
+  const body = document.body;
+  if (!body) return null;
+
+  const bands: Array<{ top: number; bottom: number }> = [];
+  const queue: Array<{ el: Element; depth: number }> = [{ el: body, depth: 0 }];
+  let budget = 280;
+
+  while (queue.length > 0 && budget > 0) {
+    const node = queue.shift();
+    if (!node) break;
+    const kids = node.el.children;
+    for (let i = 0; i < kids.length && budget > 0; i++) {
+      const el = kids[i] as HTMLElement;
+      budget--;
+      const tag = el.tagName;
+      if (tag === "SCRIPT" || tag === "STYLE" || tag === "CANVAS" || tag === "svg") continue;
+      let r: DOMRect;
+      try {
+        r = el.getBoundingClientRect();
+      } catch {
+        continue;
+      }
+      if (r.width < 24 || r.height < 6 || r.bottom <= 0 || r.top >= vh) continue;
+
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+      const op = parseFloat(cs.opacity);
+      if (Number.isFinite(op) && op < 0.3) continue;
+
+      const painted =
+        bgAlpha(cs.backgroundColor) >= 0.2 ||
+        (cs.backgroundImage !== "none" && cs.backgroundImage !== "");
+      const container = r.width >= vw * 0.9 && r.height >= vh * 0.7;
+
+      if (painted && !container) {
+        bands.push({ top: r.top, bottom: r.bottom });
+        continue;
+      }
+      if (node.depth < 8) queue.push({ el, depth: node.depth + 1 });
+    }
+  }
+  if (bands.length === 0) return null;
+
+  // Grow one contiguous band down from y=0 and one up from y=vh. A stack of
+  // separate cards (scorecard, hole map, route chips) reads as one inset;
+  // something floating in the middle of the playfield does not.
+  const GAP = 18;
+  let top = 0;
+  let bottom = 0;
+  for (let pass = 0; pass < 5; pass++) {
+    let grew = false;
+    for (const b of bands) {
+      if (b.top <= top + GAP && b.bottom > top) {
+        top = b.bottom;
+        grew = true;
+      }
+      const up = vh - b.top;
+      if (b.bottom >= vh - bottom - GAP && up > bottom) {
+        bottom = up;
+        grew = true;
+      }
+    }
+    if (!grew) break;
+  }
+  return { top, bottom };
+}
+
 // --- Survey -----------------------------------------------------------------
 
 interface Survey {
@@ -154,6 +304,20 @@ interface Survey {
   framed: boolean;
 }
 
+/** Live slingshot state, published by `aim.ts` for the whole drag. */
+interface AimState {
+  from: { x: number; y: number };
+  dir: { x: number; y: number };
+  power: number;
+}
+
+interface Box {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
 const createCamera: SystemFactory = (ctx) => {
   let engine: GolfEngine | null = null;
   let zoom = 1;
@@ -167,6 +331,10 @@ const createCamera: SystemFactory = (ctx) => {
   let field: Field | null = null;
   let holeRef: Hole | null = null;
   let survey: Survey | null = null;
+  /** Smoothed HUD chrome, in CSS px, and when it was last measured. */
+  let insetTop = -1;
+  let insetBottom = -1;
+  let insetAt = 0;
   /**
    * The engine clamps `dt` to 1/20 s, so on a machine dropping frames the sim
    * clock crawls behind the wall clock. Framing is presentation, not
@@ -182,6 +350,21 @@ const createCamera: SystemFactory = (ctx) => {
   let override: { x: number; y: number } | null = null;
   const offTarget = ctx.on("golf:cameraTarget", (p) => {
     override = p && typeof p === "object" ? (p as { x: number; y: number }) : null;
+  });
+
+  let aim: AimState | null = null;
+  let arc: Box | null = null;
+  let arcAt = 0;
+  const offAim = ctx.on("golf:aim", (p) => {
+    const d = p as
+      | { aiming?: boolean; power?: number; from?: { x: number; y: number }; dir?: { x: number; y: number } }
+      | null;
+    if (!d || !d.aiming || !d.from || !d.dir) {
+      aim = null;
+      arc = null;
+      return;
+    }
+    aim = { from: { x: d.from.x, y: d.from.y }, dir: { x: d.dir.x, y: d.dir.y }, power: d.power ?? 0 };
   });
 
   /** Frame the whole hole: pan from `from` to `to` and hold there. */
@@ -200,6 +383,42 @@ const createCamera: SystemFactory = (ctx) => {
     startSurvey(ball ? ball.pos.x : hole.tee.x, hole.cup.x, Infinity);
   });
 
+  /**
+   * Integrate the candidate shot with the real launch constants and return the
+   * box the preview polyline will occupy. Terminates on the skyline rather than
+   * asking physics for a swept query — this runs while the player is dragging
+   * and only needs to know how much room the arc wants.
+   */
+  function predictArc(a: AimState, gy: number, floorY: number): Box {
+    const speed = 6 + clamp(a.power, 0, 1) * 46;
+    let px = a.from.x;
+    let py = a.from.y;
+    let vx = a.dir.x * speed;
+    let vy = a.dir.y * speed;
+    const box: Box = { x0: px, x1: px, y0: py, y1: py };
+    const step = 1 / 30;
+    for (let i = 0; i < 90; i++) {
+      vy += gy * step;
+      const sp = Math.hypot(vx, vy);
+      const air = Math.exp(-0.055 * step * Math.max(1, sp * 0.06));
+      vx *= air;
+      vy *= air;
+      px += vx * step;
+      py += vy * step;
+      if (!Number.isFinite(px) || !Number.isFinite(py)) break;
+      if (px < box.x0) box.x0 = px;
+      if (px > box.x1) box.x1 = px;
+      if (py < box.y0) box.y0 = py;
+      if (py > box.y1) box.y1 = py;
+      if (py < floorY) break;
+      if (i > 2 && field) {
+        const g = topOver(field, px - 0.5, px + 0.5);
+        if (Number.isFinite(g) && py <= g) break;
+      }
+    }
+    return box;
+  }
+
   const sys: GolfCameraSystem = {
     name: "camera",
     attachEngine(e) {
@@ -210,6 +429,7 @@ const createCamera: SystemFactory = (ctx) => {
     dispose() {
       offTarget();
       offSurvey();
+      offAim();
     },
     update(simDt) {
       if (!engine) return;
@@ -257,7 +477,7 @@ const createCamera: SystemFactory = (ctx) => {
       }
       // The player took a shot, or something else grabbed the camera. A ball
       // still settling onto its tee is not a shot — only real speed cuts away.
-      if (survey && (override || (ball && Math.hypot(ball.vel.x, ball.vel.y) > 8))) survey = null;
+      if (survey && (override || aim || (ball && Math.hypot(ball.vel.x, ball.vel.y) > 8))) survey = null;
       if (survey) {
         survey.t += raw;
         if (survey.t > survey.life) survey = null;
@@ -265,27 +485,146 @@ const createCamera: SystemFactory = (ctx) => {
 
       userZoom = clamp(userZoom + ctx.input.zoomDelta, USER_ZOOM_MIN, USER_ZOOM_MAX);
 
-      // --- Corridor → zoom -------------------------------------------------
+      // --- The safe rect ---------------------------------------------------
       const vw = Math.max(1, window.innerWidth);
       const vh = Math.max(1, window.innerHeight);
       const aspect = vw / vh;
+
+      if (insetTop < 0) {
+        insetTop = vh * DEFAULT_TOP_FRAC;
+        insetBottom = vh * DEFAULT_BOTTOM_FRAC;
+      }
+      if (now - insetAt > INSET_MS) {
+        insetAt = now;
+        let m: Insets | null = null;
+        try {
+          m = measureChrome(vw, vh);
+        } catch {
+          m = null;
+        }
+        // A measure that finds no top chrome at all is a HUD that hasn't
+        // mounted yet, not a full-bleed playfield — keep the defaults.
+        const wantTop = m && m.top > vh * 0.04 ? m.top : vh * DEFAULT_TOP_FRAC;
+        const wantBottom = m && m.bottom > vh * 0.06 ? m.bottom : vh * DEFAULT_BOTTOM_FRAC;
+        const ease = 1 - Math.exp(-((INSET_MS / 1000) * 4));
+        insetTop += (clamp(wantTop, 0, vh * TOP_LIMIT) - insetTop) * ease;
+        insetBottom += (clamp(wantBottom, 0, vh * BOTTOM_LIMIT) - insetBottom) * ease;
+      }
+      let topF = clamp(insetTop / vh, 0, TOP_LIMIT);
+      let botF = clamp(insetBottom / vh, 0, BOTTOM_LIMIT);
+      if (1 - topF - botF < MIN_BAND) {
+        // Chrome is claiming more than the playfield can spare — shrink both
+        // insets proportionally rather than let the band collapse.
+        const k = (1 - MIN_BAND) / Math.max(1e-3, topF + botF);
+        topF *= k;
+        botF *= k;
+      }
+      const bandF = Math.max(MIN_BAND, 1 - topF - botF);
+      const bandMidF = topF + bandF * 0.5;
+
       // Tall phone frames get a tight corridor, wide ones a generous one:
       // width and height are locked together by the aspect, so a 60 m corridor
       // on a 0.46 frame would mean 130 m of mostly-empty vertical.
       const wide = smoothstep((aspect - 0.55) / 0.9);
       const restW = REST_WIDTH_TALL + (REST_WIDTH_WIDE - REST_WIDTH_TALL) * wide;
+      const mix = (a: number, b: number): number => a + (b - a) * wide;
 
+      // --- Choose the subject ----------------------------------------------
       const speed = ball && !ball.resting ? Math.hypot(ball.vel.x, ball.vel.y) : 0;
-      let wantW = (restW * (1 + Math.min(FLIGHT_WIDEN, speed / 100))) / userZoom;
-      if (survey) {
-        const fitW =
-          (Math.max(hole.cup.x, hole.tee.x, field ? field.x1 : hole.bounds.max.x) -
-            Math.min(hole.cup.x, hole.tee.x, field ? field.x0 : hole.bounds.min.x)) *
-          1.1;
-        const cap = restW * (SURVEY_SCALE_TALL + (SURVEY_SCALE_WIDE - SURVEY_SCALE_TALL) * wide);
-        wantW = Math.min(fitW, cap);
+      const flying = !!ball && !ball.resting && !survey && !override;
+      const aiming = !!aim && !!ball && !survey && !override;
+
+      if (aiming && aim && (now - arcAt > 90 || !arc)) {
+        arcAt = now;
+        const floorY = (field ? Math.min(field.loY, hole.bounds.min.y) : hole.bounds.min.y) - SLAB_USABLE;
+        try {
+          arc = predictArc(aim, phys.gravity?.y ?? -22, floorY);
+        } catch {
+          arc = null;
+        }
       }
-      const wantZoom = clamp((BASE_VIEW_HEIGHT * aspect) / Math.max(4, wantW), 0.04, 6);
+      if (!aiming) arc = null;
+
+      /** Subject the frame is built around, and how tall it needs the band. */
+      let wantW = restW / userZoom;
+      let needH = 0;
+      let anchor = ANCHOR_REST;
+      let focusX = ball ? ball.pos.x : hole.tee.x;
+      let focusY = ball ? ball.pos.y : hole.tee.y;
+      let leanX = focusX;
+
+      if (survey) {
+        const p = smoothstep((survey.t - survey.delay) / survey.travel);
+        const panX = survey.from + (survey.to - survey.from) * p;
+        const hx0 = Math.min(hole.cup.x, hole.tee.x, field ? field.x0 : hole.bounds.min.x);
+        const hx1 = Math.max(hole.cup.x, hole.tee.x, field ? field.x1 : hole.bounds.max.x);
+        const cap = restW * mix(SURVEY_SCALE_TALL, SURVEY_SCALE_WIDE);
+        wantW = Math.min((hx1 - hx0) / SIDE_FILL, cap);
+        const g = field ? topOver(field, panX - 3, panX + 3) : NaN;
+        focusX = panX;
+        focusY = Number.isFinite(g) ? g : (hole.tee.y + hole.cup.y) * 0.5;
+        leanX = panX;
+        anchor = ANCHOR_SURVEY;
+      } else if (override) {
+        // Someone else owns the framing (the jetpack, a cutscene).
+        focusX = override.x;
+        focusY = override.y;
+        leanX = override.x;
+        anchor = 0.5;
+      } else if (aiming && arc && ball) {
+        // The whole predicted shot has to live inside the safe rect: fit the
+        // arc box, centre it in the band, and let the ball fall where it may.
+        const bx0 = Math.min(arc.x0, ball.pos.x);
+        const bx1 = Math.max(arc.x1, ball.pos.x);
+        const by0 = Math.min(arc.y0, ball.pos.y);
+        const by1 = Math.max(arc.y1, ball.pos.y);
+        wantW = Math.max(restW * 0.75, (bx1 - bx0 + 4) / SIDE_FILL) / userZoom;
+        needH = by1 - by0 + 3;
+        focusX = (bx0 + bx1) * 0.5;
+        focusY = (by0 + by1) * 0.5;
+        leanX = focusX;
+        anchor = 0.5;
+      } else if (flying && ball) {
+        // Lead the ball so you can see where it's going, not where it was.
+        wantW = (restW * (1 + Math.min(FLIGHT_WIDEN, speed / 100))) / userZoom;
+        focusX = ball.pos.x;
+        focusY = ball.pos.y;
+        leanX = ball.pos.x + ball.vel.x * 0.32;
+        anchor = ANCHOR_FLIGHT;
+      } else if (ball) {
+        // At address: fit the ball→pin corridor instead of a fixed zoom, so on
+        // any frame that can hold the hole the flag is on screen.
+        const span = Math.abs(hole.cup.x - ball.pos.x);
+        const cap = restW * mix(ADDRESS_SCALE_TALL, ADDRESS_SCALE_WIDE);
+        wantW = clamp(Math.max(restW, Math.min((span + 9) / SIDE_FILL, cap)), 4, 4000) / userZoom;
+        const fits = span + 9 <= wantW * SIDE_FILL;
+        focusX = ball.pos.x;
+        focusY = ball.pos.y;
+        if (fits) {
+          needH = Math.abs(hole.cup.y - ball.pos.y) + 3;
+          leanX = (ball.pos.x + hole.cup.x) * 0.5;
+        } else {
+          // Hole is longer than one screen: spend the frame on the half being
+          // played into rather than centring the ball in it.
+          leanX = ball.pos.x + Math.sign(hole.cup.x - ball.pos.x) * wantW * FORWARD_BIAS;
+        }
+      } else {
+        focusX = hole.cup.x;
+        focusY = hole.cup.y;
+        leanX = hole.cup.x;
+      }
+
+      // --- Corridor → zoom, then cap it against the world we actually have --
+      const anchorF = topF + bandF * (1 - anchor);
+      let wantH = Math.max(wantW / Math.max(0.05, aspect), needH / Math.max(0.08, bandF * BAND_FILL));
+      const skylineNow = Number.isFinite(groundY) ? groundY : focusY;
+      const floorY = (field ? Math.min(field.loY, hole.bounds.min.y) : hole.bounds.min.y) - SLAB_USABLE;
+      // Everything under the subject line has to be solid terrain, or the hole
+      // becomes a ribbon floating in backdrop. That, not the hole length, is
+      // what limits how far we may pull back.
+      const under = Math.max(8, skylineNow - floorY);
+      wantH = Math.min(wantH, under / Math.max(0.2, 1 - anchorF + 0.02));
+      const wantZoom = clamp(BASE_VIEW_HEIGHT / Math.max(4, wantH), 0.04, 6);
 
       if (survey && !survey.framed) {
         // Take the whole framing on the first frame: easing a pull-back that a
@@ -293,7 +632,7 @@ const createCamera: SystemFactory = (ctx) => {
         survey.framed = true;
         zoom = wantZoom;
       } else {
-        zoom += (wantZoom - zoom) * (1 - Math.exp(-dt * (survey ? 4.6 : 3.4)));
+        zoom += (wantZoom - zoom) * (1 - Math.exp(-dt * (survey ? 4.6 : aiming ? 5.5 : 3.4)));
       }
       if (!Number.isFinite(zoom) || zoom <= 0) zoom = wantZoom;
 
@@ -302,50 +641,16 @@ const createCamera: SystemFactory = (ctx) => {
       const viewH = halfH * 2;
       const viewW = halfW * 2;
 
-      // --- Where we want to be ---------------------------------------------
-      let wantX: number;
-      let wantY: number;
-      let anchorFrac = ANCHOR_REST;
+      // --- Follow ------------------------------------------------------------
+      const wantX = leanX;
+      const wantY = focusY;
+      const k = 1 - Math.exp(-dt * (survey ? 6 : aiming ? 8 : 5.2));
+      tx += (wantX - tx) * k;
+      ty += (wantY - ty) * k;
+      // The subject leads the spring but never leaves with it.
+      tx = clamp(tx, focusX - viewW * 0.3, focusX + viewW * 0.3);
 
-      if (survey) {
-        const p = smoothstep((survey.t - survey.delay) / survey.travel);
-        wantX = survey.from + (survey.to - survey.from) * p;
-        const g = field ? topOver(field, wantX - 3, wantX + 3) : NaN;
-        wantY = Number.isFinite(g) ? g : (hole.tee.y + hole.cup.y) * 0.5;
-        anchorFrac = 0.38;
-        // A survey is a cut, not a chase: don't drag the follow spring along.
-        const sk = 1 - Math.exp(-dt * 6);
-        tx += (wantX - tx) * sk;
-        ty += (wantY - ty) * sk;
-      } else if (override) {
-        // Someone else owns the framing (the jetpack, a cutscene).
-        wantX = override.x;
-        wantY = override.y;
-        anchorFrac = 0.5;
-      } else if (ball && !ball.resting) {
-        // Lead the ball so you can see where it's going, not where it was.
-        wantX = ball.pos.x + clamp(ball.vel.x * 0.32, -viewW * 0.22, viewW * 0.22);
-        wantY = ball.pos.y + clamp(ball.vel.y * 0.18, -viewH * 0.12, viewH * 0.12);
-        anchorFrac = ANCHOR_FLIGHT;
-      } else if (ball) {
-        // At rest: lean toward the cup, but only as far as the frame allows —
-        // a raw blend with a cup 80 m away shoves the ball off the screen.
-        wantX = ball.pos.x + clamp(hole.cup.x - ball.pos.x, -viewW * 0.2, viewW * 0.2);
-        wantY = ball.pos.y;
-      } else {
-        wantX = hole.cup.x;
-        wantY = hole.cup.y;
-      }
-
-      if (!survey) {
-        // Critically-damped-ish follow: fast enough to keep up, smooth enough
-        // not to jitter on bounces.
-        const k = 1 - Math.exp(-dt * 5.2);
-        tx += (wantX - tx) * k;
-        ty += (wantY - ty) * k;
-      }
-
-      // --- Horizontal: clamp to the geometry, not the padded bounds --------
+      // --- Horizontal: clamp to the geometry, not the padded bounds ---------
       const gx0 = field ? field.x0 : hole.bounds.min.x;
       const gx1 = field ? field.x1 : hole.bounds.max.x;
       let cx: number;
@@ -357,21 +662,25 @@ const createCamera: SystemFactory = (ctx) => {
         cx = clamp(tx, gx0 + halfW, gx1 - halfW);
       }
 
-      // --- Vertical: framed off the ground silhouette ----------------------
+      // --- Vertical: everything measured against the safe rect --------------
       const sample = field ? topOver(field, cx - halfW, cx + halfW) : NaN;
       const target = Number.isFinite(sample) ? sample : ty;
       if (!Number.isFinite(groundY)) groundY = target;
       groundY += (target - groundY) * (1 - Math.exp(-dt * 3));
 
-      let cy = ty + (0.5 - anchorFrac) * viewH;
-      // Cap the sky: the skyline keeps at least GROUND_MIN of the frame.
-      cy = Math.min(cy, groundY + (0.5 - GROUND_MIN) * viewH);
-      // Don't drop below the world — under the terrain there is nothing to see.
-      const floorY = Math.min(hole.bounds.min.y, field ? field.loY : hole.bounds.min.y) - FLOOR_SLACK;
+      /** Camera y that lands `worldY` at screen fraction `f` (0 = top). */
+      const centreFor = (worldY: number, f: number): number => worldY + (f - 0.5) * viewH;
+
+      let cy = centreFor(ty, anchorF);
+      // Keep the skyline high in the frame: sky is capped hard, but we also
+      // never bury it above the top edge and stare at a wall of slab.
+      cy = Math.min(cy, centreFor(groundY, SKY_MAX));
+      cy = Math.max(cy, centreFor(groundY, SKY_MIN));
+      // Don't drop below the modelled terrain slab.
       cy = Math.max(cy, floorY + halfH);
-      // …but the ball beats the scenery in both directions.
-      cy = Math.min(cy, ty + (0.5 - ANCHOR_LOW) * viewH);
-      cy = Math.max(cy, ty - (ANCHOR_HIGH - 0.5) * viewH);
+      // …but the subject beats the scenery: it stays inside the play band.
+      cy = Math.min(cy, centreFor(focusY, topF + bandF * (1 - BAND_KEEP_LOW)));
+      cy = Math.max(cy, centreFor(focusY, topF + bandF * (1 - BAND_KEEP_HIGH)));
 
       if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
 
