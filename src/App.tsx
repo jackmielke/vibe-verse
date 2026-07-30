@@ -35,6 +35,7 @@ import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
 import SanPalmas from "./pages/SanPalmas.tsx";
+import VibeGolf from "./pages/VibeGolf.tsx";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,8 @@ const AppChrome = () => {
   // San Palmas is a fullscreen pointer-locked FPS — the nav would sit on top
   // of the crosshair.
   if (pathname === "/san-palmas" || pathname === "/fps") return null;
+  // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
+  if (pathname === "/golf") return null;
   return (
     <>
       <GlobalNav />
@@ -132,6 +135,8 @@ const App = () => (
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
           <Route path="/san-palmas" element={<SanPalmas />} />
           <Route path="/fps" element={<SanPalmas />} />
+          {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
+          <Route path="/golf" element={<VibeGolf />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
