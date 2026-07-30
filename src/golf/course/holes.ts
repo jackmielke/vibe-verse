@@ -1,9 +1,19 @@
 /**
  * Vibe Golf — the courses.
  *
- * Seven nine-hole courses, one per theme, escalating from "learn the swing"
- * to "everything at once". Every hole is built around a single idea and named
- * after it; the name on the loading card should tell you what the hole wants.
+ * Seven eighteen-hole courses, one per theme, escalating from "learn the
+ * swing" to "everything at once". Every hole is built around a single idea and
+ * named after it; the name on the loading card should tell you what the hole
+ * wants.
+ *
+ * Each course is a front nine and a back nine. The front nine introduces the
+ * theme's vocabulary one idea at a time; the back nine assumes you know it and
+ * combines two or three ideas per hole, with longer carries, tighter landing
+ * zones and real weather. **Every index 0-17 resolves to a real hole on every
+ * course** — the hole selector treats a missing index as "do nothing", so a
+ * short course silently leaves you standing on whatever hole you were already
+ * on. A capture of "hole 13" that is really hole 1 is worse than a crash,
+ * because it looks like a pass. Never shorten a course below eighteen.
  *
  * Three rules govern everything below.
  *
@@ -702,6 +712,203 @@ const SUNSET_LINKS: HoleSpec[] = [
       bumper(86, 14, 1.3),
     ],
   },
+
+  // --- back nine -----------------------------------------------------------
+  // The sea takes over: bigger carries, a standing onshore breeze, and greens
+  // that sit on rock with nothing behind them but water.
+  {
+    // The seaward face of the dune is sand, not grass. That is not decoration:
+    // a 17° grass face is steeper than fairway can hold, so a ball landing on
+    // it would run to the bottom every time. Sand holds to 49°.
+    name: "Dune Ridge",
+    par: 4,
+    hint: "A blind approach over the dune. Land on the crest and let it feed down.",
+    tee: [6, 10],
+    cup: [86, 11],
+    parts: [
+      terrain(
+        ["fairway", [-10, 10], [10, 10], [22, 10]],
+        ["rough", [22, 10], [33, 13.4], [44, 16.5]],
+        ["sand", [44, 16.5], [52, 13], [60, 11]],
+        ["fairway", [60, 11], [68, 11], [74, 11]],
+        ["green", [74, 11], [86, 11], [98, 11]],
+      ),
+      backstop(98, 11, 7),
+    ],
+  },
+  {
+    name: "Tide Pools",
+    par: 4,
+    hint: "Two channels and a twelve-metre island between them. Weight the first one.",
+    tee: [6, 10],
+    cup: [92, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [16, 10], [26, 10]]),
+      wall(24, 4, 10, 2),
+      pool(26, 40, 6, "water", 5),
+      wall(40, 4, 10, 2),
+      terrain(["fairway", [42, 10], [48, 10], [54, 10]]),
+      wall(54, 4, 10, 2),
+      pool(56, 72, 6, "water", 5),
+      wall(72, 4, 10, 2),
+      terrain(
+        ["fairway", [74, 10], [82, 10]],
+        ["green", [82, 10], [92, 10], [104, 10]],
+      ),
+      backstop(104, 10, 7),
+    ],
+  },
+  {
+    name: "Crosswind Point",
+    par: 3,
+    hint: "The onshore breeze runs the whole bay. Flatter and harder than it looks.",
+    tee: [6, 10],
+    cup: [90, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [18, 10], [30, 10]]),
+      wall(30, 3, 10, 2),
+      pool(32, 72, 4.5),
+      wall(72, 3, 10, 2),
+      terrain(
+        ["fairway", [74, 10], [80, 10]],
+        ["green", [80, 10], [90, 10], [100, 10]],
+      ),
+      backstop(100, 10, 7),
+      windZone(32, 74, 8, 40, 180, 12),
+    ],
+  },
+  {
+    // Two carries, not one. The tee sits high enough to reach the sandbar in a
+    // single ¾ swing; nothing gets you the whole way in one, and the breeze is
+    // there to punish anyone who tries.
+    name: "Sandbar Crossing",
+    par: 4,
+    hint: "Two carries with a sandbar between. Nobody reaches this green off the tee.",
+    tee: [6, 16],
+    cup: [118, 12],
+    parts: [
+      mesa(-8, 26, 16, "fairway", -2),
+      pool(26, 60, 4, "water", 6),
+      mesa(60, 76, 7, "sand", -2),
+      pool(76, 100, 4, "water", 6),
+      mesa(100, 140, 12, "green", -2),
+      backstop(140, 12, 8),
+      windZone(26, 100, 6, 40, 180, 9),
+    ],
+    floor: -4,
+  },
+  {
+    name: "Buoy Field",
+    par: 4,
+    hint: "Four buoys across the bay. A low ball can ride them; a high one is on its own.",
+    tee: [6, 10],
+    cup: [106, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [16, 10], [28, 10]]),
+      wall(28, 2, 10, 2),
+      pool(30, 86, 4),
+      wall(86, 2, 10, 2),
+      terrain(
+        ["fairway", [88, 10], [96, 10]],
+        ["green", [96, 10], [106, 10], [116, 10]],
+      ),
+      backstop(116, 10, 7),
+      bumper(40, 13, 1.5),
+      bumper(52, 19, 1.5),
+      bumper(64, 12, 1.3),
+      bumper(76, 17, 1.4),
+    ],
+  },
+  {
+    // Both windows are threadable and both towers are low enough to lob — the
+    // hole is a choice between two hard shots, not one impossible one.
+    name: "Twin Lights",
+    par: 4,
+    hint: "Two windows in a row, the second one lower. Or go over the pair of them.",
+    tee: [6, 10],
+    cup: [104, 10],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [20, 10], [36, 10], [54, 9.6], [70, 9.6]],
+        ["sand", [70, 9.6], [78, 9.2], [86, 9.6]],
+        ["fairway", [86, 9.6], [94, 10]],
+        ["green", [94, 10], [104, 10], [116, 10]],
+      ),
+      keyhole(40, 10, 14, 18, 26),
+      keyhole(66, 9.6, 12, 16, 24),
+      backstop(116, 10, 7),
+    ],
+  },
+  {
+    name: "Storm Break",
+    par: 4,
+    hint: "Into the wind, over the water, off the seawall. The wall is the safe miss.",
+    tee: [6, 10],
+    cup: [104, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [20, 10], [34, 10]]),
+      wall(34, 2, 10, 2),
+      pool(36, 74, 4),
+      wall(74, 2, 10, 2),
+      terrain(
+        ["fairway", [76, 10], [84, 10]],
+        ["sand", [84, 10], [90, 9.6], [96, 10]],
+        ["green", [96, 10], [104, 10], [110, 10]],
+      ),
+      wall(111, 10, 30, 3, "rubber"),
+      windZone(36, 76, 6, 34, 180, 10),
+    ],
+  },
+  {
+    name: "The Spit",
+    par: 5,
+    hint: "Sand, then forty metres of channel, then a climb to a green on the rock.",
+    tee: [6, 10],
+    cup: [152, 20],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [22, 10], [36, 9.4]],
+        ["sand", [36, 9.4], [46, 9], [56, 9.4]],
+        ["fairway", [56, 9.4], [66, 10], [76, 10]],
+      ),
+      wall(76, 4, 10, 2),
+      pool(78, 116, 5),
+      wall(116, 4, 10, 2),
+      terrain(
+        ["fairway", [118, 10], [126, 10.6]],
+        ["rough", [126, 10.6], [134, 13]],
+      ),
+      mesa(134, 172, 20, "green", -6),
+      backstop(172, 20, 8),
+      bumper(96, 15, 1.3),
+    ],
+  },
+  {
+    name: "Sunset Finish",
+    par: 5,
+    hint: "Dune, bay, buoys, island green. Everything Sunset Links has, in order.",
+    tee: [6, 10],
+    cup: [140, 11],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [18, 10], [28, 10]],
+        ["rough", [28, 10], [38, 13], [48, 15.5]],
+        ["sand", [48, 15.5], [56, 12], [64, 10.6]],
+        ["fairway", [64, 10.6], [70, 10.6], [76, 10.6]],
+      ),
+      wall(76, 4, 10.6, 2),
+      pool(78, 116, 5),
+      wall(116, 4, 11, 2),
+      bumper(90, 15, 1.4),
+      bumper(104, 20, 1.4),
+      terrain(
+        ["fairway", [118, 11], [128, 11]],
+        ["green", [128, 11], [140, 11], [152, 11]],
+      ),
+      backstop(152, 11, 8),
+      windZone(78, 118, 8, 42, 180, 9),
+    ],
+  },
 ];
 
 // ===========================================================================
@@ -865,6 +1072,177 @@ const EMERALD_HOLLOW: HoleSpec[] = [
       basin(94, 114, -2),
       mesa(114, 154, 22, "green", -2),
       backstop(154, 22, 8),
+    ],
+  },
+
+  // --- back nine -----------------------------------------------------------
+  // The jungle closes in: lower canopies, belts that fight you, gates that
+  // have to be smashed or lobbed, and a gorge with a vine lift in it.
+  {
+    name: "Low Canopy",
+    par: 3,
+    hint: "Five metres of headroom for sixty metres. There is no high route here.",
+    tee: [6, 10],
+    cup: [94, 10],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [24, 10], [48, 9.6], [72, 10], [84, 10]],
+        ["green", [84, 10], [94, 10], [104, 10]],
+      ),
+      roof(26, 80, 15, 6, "wood"),
+      backstop(104, 10, 6),
+    ],
+  },
+  {
+    // Two logs turning opposite ways with a four-metre gap between them. The
+    // gap is the hole: land short and the first belt walks you back into it.
+    name: "Twin Logs",
+    par: 4,
+    hint: "The near log turns against you, the far one with you. Mind the gap between.",
+    tee: [6, 10],
+    cup: [100, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [16, 10], [28, 10]]),
+      wall(28, -4, 10, 2),
+      belt(30, 52, 10, -8, "wood"),
+      basin(30, 80, -4),
+      belt(56, 80, 10, 8, "wood"),
+      wall(80, -4, 10, 2),
+      terrain(
+        ["fairway", [82, 10], [90, 10]],
+        ["green", [90, 10], [100, 10], [110, 10]],
+      ),
+      backstop(110, 10, 6),
+    ],
+  },
+  {
+    // Both gates cap out well under the peak of a full swing, so the lob is a
+    // real route even if nothing ever dissolves the rotten timber.
+    name: "Rot Gate",
+    par: 4,
+    hint: "Two rotten panels with stone caps. Smash through, or loft the lot.",
+    tee: [6, 10],
+    cup: [88, 10],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [20, 10], [36, 10], [56, 9.6], [76, 10]],
+        ["green", [76, 10], [88, 10], [98, 10]],
+      ),
+      backstop(98, 10, 6),
+      breakable(34, 38, 10, 18),
+      feet(34, 38, 10, "wood"),
+      block(34, 18, 4, 4, "stone"),
+      breakable(58, 62, 10, 16),
+      feet(58, 62, 10, "wood"),
+      block(58, 16, 4, 4, "stone"),
+    ],
+  },
+  {
+    // A seventy-metre carry from a high tee to a higher green, with a vine
+    // lift as the patient route out of the gorge for anyone who comes up short.
+    name: "Emerald Chasm",
+    par: 4,
+    hint: "Carry the gorge or take the vine up. The floor is survivable, barely.",
+    tee: [6, 18],
+    cup: [100, 24],
+    parts: [
+      mesa(-8, 30, 18, "fairway", -8),
+      wall(30, -8, 18, 2),
+      basin(32, 74, -8),
+      lift("hollow", 44, 58, 4, [[51, 4], [51, 17]], 3.4, "wood"),
+      bumper(66, 2, 1.4),
+      wall(74, -8, 24, 2),
+      mesa(76, 118, 24, "green", -8),
+      backstop(118, 24, 8),
+    ],
+    floor: -14,
+  },
+  {
+    name: "Boost Ladder",
+    par: 4,
+    hint: "Each pad throws you exactly one tier. Land on the pad, not past it.",
+    tee: [6, 10],
+    cup: [104, 32],
+    parts: [
+      terrain(["fairway", [-8, 10], [22, 10], [38, 10]]),
+      mesa(42, 58, 16, "fairway", -4),
+      boost(50, 16, 64, 24),
+      mesa(64, 78, 24, "rough", -4),
+      boost(72, 24, 58, 22),
+      mesa(84, 124, 32, "green", -4),
+      backstop(124, 32, 8),
+    ],
+  },
+  {
+    name: "Under the Roots",
+    par: 4,
+    hint: "Four metres of daylight at the mouth, then a log turning against you.",
+    tee: [6, 10],
+    cup: [92, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [22, 10], [38, 9.6], [46, 10]]),
+      wall(46, 10, 13, 2, "stone"),
+      mesa(46, 110, 28, "rough", 17),
+      belt(48, 74, 10, -8, "wood"),
+      terrain(
+        ["fairway", [74, 10], [82, 10]],
+        ["green", [82, 10], [92, 10], [102, 10]],
+      ),
+      backstop(102, 10, 5, "stone"),
+    ],
+  },
+  {
+    name: "Skylight",
+    par: 4,
+    hint: "Roll the throat and stay low, or drop through the gap in the roof.",
+    tee: [6, 24],
+    cup: [90, 9.6],
+    parts: [
+      mesa(-8, 24, 24, "fairway", -6),
+      terrain(
+        ["rough", [24, 24], [32, 18], [40, 12], [48, 9.6]],
+        ["fairway", [48, 9.6], [62, 9.6], [76, 9.6]],
+        ["green", [76, 9.6], [90, 9.6], [104, 9.6]],
+      ),
+      roof(38, 72, 15, 10, "stone"),
+      roof(82, 116, 15, 10, "stone"),
+      backstop(104, 9.6, 8, "stone"),
+      bumper(60, 12.5, 1.2),
+    ],
+  },
+  {
+    name: "Rope Bridge",
+    par: 5,
+    hint: "A log, then a plank, then open air. Every stage is a separate decision.",
+    tee: [6, 10],
+    cup: [120, 20],
+    parts: [
+      terrain(["fairway", [-8, 10], [18, 10], [30, 10]]),
+      wall(30, -8, 10, 2),
+      basin(32, 78, -8),
+      belt(32, 56, 10, -7, "wood"),
+      breakable(60, 70, 9, 10.4, "wood"),
+      wall(78, -8, 10, 2),
+      terrain(["fairway", [80, 10], [88, 10], [96, 10]]),
+      mesa(100, 140, 20, "green", -8),
+      backstop(140, 20, 8),
+    ],
+  },
+  {
+    name: "Emerald Crown",
+    par: 5,
+    hint: "Canopy, log, pit, vines. Everything the hollow has, with no rests.",
+    tee: [6, 10],
+    cup: [116, 26],
+    parts: [
+      terrain(["fairway", [-8, 10], [20, 10], [34, 10]]),
+      roof(22, 46, 16, 5, "wood"),
+      belt(34, 62, 10, 9, "wood"),
+      basin(62, 90, 0),
+      bumper(74, 12, 1.5),
+      bumper(86, 18, 1.5),
+      mesa(92, 136, 26, "green", 0),
+      backstop(136, 26, 8),
     ],
   },
 ];
@@ -1033,6 +1411,174 @@ const RED_MESA: HoleSpec[] = [
       backstop(166, 28, 8, "stone"),
     ],
     floor: -24,
+  },
+
+  // --- back nine -----------------------------------------------------------
+  // Deeper gulches, a standing headwind through most of them, and the cannon
+  // stops being a novelty and starts being the only sane line.
+  {
+    name: "Canyon Rim",
+    par: 4,
+    hint: "Fifty metres of gulch with the wind coming back out of it. Stay low.",
+    tee: [6, 10],
+    cup: [110, 10],
+    parts: [
+      terrain(["fairway", [-8, 10], [22, 10], [36, 10]]),
+      wall(36, -16, 10, 2),
+      basin(38, 86, -16),
+      windZone(38, 86, 8, 44, 180, 11),
+      wall(86, -16, 10, 2),
+      terrain(
+        ["fairway", [88, 10], [98, 10]],
+        ["green", [98, 10], [110, 10], [122, 10]],
+      ),
+      backstop(122, 10, 7, "stone"),
+    ],
+    floor: -24,
+  },
+  {
+    name: "Hoodoo Gate",
+    par: 3,
+    hint: "A four-metre slot between two spires, or a very steep one over the top.",
+    tee: [6, 10],
+    cup: [84, 10],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [22, 10], [40, 9.6], [58, 10], [72, 10]],
+        ["green", [72, 10], [84, 10], [96, 10]],
+      ),
+      wall(34, 10, 20, 2.5),
+      keyhole(46, 10, 15, 19, 26),
+      backstop(96, 10, 7, "stone"),
+    ],
+  },
+  {
+    name: "Red Cannon",
+    par: 4,
+    hint: "Roll it into the barrel. Fifty metres of gulch says do not try it yourself.",
+    tee: [6, 10],
+    cup: [116, 14],
+    parts: [
+      terrain(["fairway", [-8, 10], [20, 10], [36, 10]]),
+      cannon(30, 11.2, 56, 44),
+      wall(36, -18, 10, 2),
+      basin(38, 92, -18),
+      wall(92, -18, 14, 2),
+      mesa(94, 136, 14, "green", -18),
+      backstop(136, 14, 8, "stone"),
+    ],
+    floor: -26,
+  },
+  {
+    // The sand island in the gulch is the whole hole. Nobody carries seventy
+    // metres uphill into a ten-power headwind, and pretending otherwise is how
+    // you end up on the floor of the canyon playing your fourth.
+    name: "Anvil Rock",
+    par: 4,
+    hint: "Drop onto the sand island first. The green is not reachable off this tee.",
+    tee: [6, 20],
+    cup: [106, 26],
+    parts: [
+      mesa(-8, 26, 20, "fairway", -10),
+      wall(26, -10, 20, 2),
+      basin(28, 80, -10),
+      mesa(46, 62, 4, "sand", -10),
+      windZone(28, 84, -6, 34, 180, 10),
+      wall(80, -10, 26, 2),
+      mesa(82, 126, 26, "green", -10),
+      backstop(126, 26, 8, "stone"),
+    ],
+    floor: -18,
+  },
+  {
+    name: "Rimrock Overhang",
+    par: 4,
+    hint: "Seven metres of headroom under the slab, then a bank up to the shelf.",
+    tee: [6, 10],
+    cup: [96, 14],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [24, 10], [42, 10], [58, 10]],
+        ["rough", [58, 10], [66, 12], [74, 14]],
+        ["fairway", [74, 14], [84, 14]],
+        ["green", [84, 14], [96, 14], [108, 14]],
+      ),
+      roof(44, 52, 17, 16, "stone"),
+      backstop(108, 14, 7, "stone"),
+    ],
+  },
+  {
+    name: "Sandstone Steps",
+    par: 4,
+    hint: "Four terraces, six metres of climb each, river in every gap.",
+    tee: [6, 8],
+    cup: [116, 32],
+    parts: [
+      terrain(["fairway", [-8, 8], [16, 8], [24, 8]]),
+      pool(24, 30, 1.5, "water", 5),
+      mesa(30, 46, 14, "rough", -4),
+      pool(46, 52, 1.5, "water", 5),
+      mesa(52, 68, 20, "rough", -4),
+      pool(68, 74, 1.5, "water", 5),
+      mesa(74, 90, 26, "rough", -4),
+      pool(90, 96, 1.5, "water", 5),
+      mesa(96, 136, 32, "green", -4),
+      backstop(136, 32, 8, "stone"),
+    ],
+    floor: -8,
+  },
+  {
+    name: "Devil's Vent",
+    par: 3,
+    hint: "The vent lifts you the whole rim. Straight up and let the air carry it.",
+    tee: [6, 10],
+    cup: [72, 36],
+    parts: [
+      terrain(["fairway", [-8, 10], [20, 10], [34, 10]]),
+      pool(34, 44, 2, "water", 5),
+      fan(39, 8, 8, 32, 90, 38),
+      wall(44, 2, 12, 2),
+      mesa(46, 96, 36, "green", 2),
+      backstop(96, 36, 8, "stone"),
+    ],
+  },
+  {
+    name: "Rattlesnake",
+    par: 5,
+    hint: "Headwind gulch, sand island, then a cannon off the middle shelf.",
+    tee: [6, 10],
+    cup: [148, 28],
+    parts: [
+      terrain(["fairway", [-8, 10], [20, 10], [34, 10]]),
+      wall(34, -12, 10, 2),
+      basin(36, 78, -12),
+      mesa(52, 66, 2, "sand", -12),
+      windZone(36, 80, 6, 40, 180, 10),
+      wall(78, -12, 16, 2),
+      mesa(80, 104, 16, "fairway", -12),
+      cannon(96, 17.2, 50, 40),
+      mesa(126, 168, 28, "green", -12),
+      backstop(168, 28, 8, "stone"),
+    ],
+    floor: -20,
+  },
+  {
+    name: "Mesa Crown",
+    par: 5,
+    hint: "Cannon, pad, headwind, sand shelf, summit. Red Mesa's whole hand.",
+    tee: [6, 10],
+    cup: [158, 30],
+    parts: [
+      terrain(["fairway", [-8, 10], [22, 10], [38, 10]]),
+      cannon(32, 11.2, 58, 38),
+      mesa(70, 88, 12, "rough", -20),
+      boost(80, 12, 40, 22),
+      mesa(112, 128, 18, "sand", -20),
+      windZone(88, 130, 8, 46, 180, 10),
+      mesa(136, 180, 30, "green", -20),
+      backstop(180, 30, 8, "stone"),
+    ],
+    floor: -28,
   },
 ];
 
@@ -1209,6 +1755,184 @@ const NEON_CIRCUIT: HoleSpec[] = [
       portals("cf", [46.4, 14, 180], [68, 14, 0], 2.2),
     ],
   },
+
+  // --- back nine -----------------------------------------------------------
+  // Rings in series, ceilings low enough to matter, and a tower drop. Every
+  // ring wall has unbroken deck under it, so a short ball stops against the
+  // panel instead of falling into a hole that was never drawn.
+  {
+    name: "Double Warp",
+    par: 4,
+    hint: "Two rings, back to back. The second one is lower than the first.",
+    tee: [6, 10],
+    cup: [104, 10],
+    parts: [
+      terrain(
+        ["fairway", [-8, 10], [20, 10], [34, 10], [52, 10], [76, 10], [92, 10]],
+        ["green", [92, 10], [104, 10], [116, 10]],
+      ),
+      wall(38, 10, 40, 4, "metal"),
+      wall(70, 10, 36, 4, "metal"),
+      portals("dw1", [36.4, 15, 180], [58, 14, 0], 2.4),
+      portals("dw2", [68.4, 14, 180], [86, 13, 0], 2.2),
+      backstop(116, 10, 8, "metal"),
+    ],
+  },
+  {
+    name: "Rubber Room",
+    par: 3,
+    hint: "Five metres of ceiling and a wall at the end. Everything in here comes back.",
+    tee: [6, 10],
+    cup: [98, 10],
+    parts: [
+      terrain(
+        ["metal", [-8, 10], [30, 10], [60, 10], [88, 10]],
+        ["green", [88, 10], [98, 10], [108, 10]],
+      ),
+      roof(24, 86, 15, 4, "rubber", "stone"),
+      wall(109, 10, 30, 3, "rubber"),
+    ],
+  },
+  {
+    name: "Bumper Alley",
+    par: 4,
+    hint: "Six metres of ceiling with three bumpers under it. The pad sets the line.",
+    tee: [6, 10],
+    cup: [94, 10],
+    parts: [
+      terrain(
+        ["metal", [-8, 10], [24, 10], [52, 10], [80, 10]],
+        ["green", [80, 10], [94, 10], [106, 10]],
+      ),
+      roof(20, 78, 16, 4, "metal", "stone"),
+      boost(28, 10, 0, 18),
+      bumper(34, 12.6, 1.4),
+      bumper(48, 13.5, 1.4),
+      bumper(62, 12.4, 1.4),
+      backstop(106, 10, 8, "metal"),
+    ],
+  },
+  {
+    // Two honest routes: fifty metres of open carry across the reservoir at
+    // full power, or a lofted ball into the high ring that spits you out over
+    // the green. The bumpers punish anyone splitting the difference.
+    name: "Overdrive",
+    par: 4,
+    hint: "Carry the whole reservoir, or loft it into the ring above the tee shelf.",
+    tee: [6, 16],
+    cup: [100, 16],
+    parts: [
+      mesa(-8, 26, 16, "metal", -6),
+      pool(26, 74, 2, "water", 6),
+      bumper(40, 20, 1.5),
+      bumper(56, 26, 1.5),
+      wall(74, 2, 16, 2, "rubber"),
+      terrain(
+        ["metal", [76, 16], [88, 16]],
+        ["green", [88, 16], [100, 16], [112, 16]],
+      ),
+      backstop(112, 16, 8, "metal"),
+      portals("od", [24.4, 22, 180], [92, 26, 0], 2.0),
+    ],
+    floor: -4,
+  },
+  {
+    name: "Ceiling Runner",
+    par: 4,
+    hint: "The belt shoves you back and the rubber roof will not let you climb out.",
+    tee: [6, 10],
+    cup: [102, 10],
+    parts: [
+      terrain(["metal", [-8, 10], [20, 10], [32, 10]]),
+      belt(32, 64, 10, -9),
+      roof(24, 70, 16, 4, "rubber", "stone"),
+      terrain(
+        ["metal", [64, 10], [78, 10], [90, 10]],
+        ["green", [90, 10], [102, 10], [114, 10]],
+      ),
+      backstop(114, 10, 8, "metal"),
+    ],
+  },
+  {
+    name: "Neon Drop",
+    par: 4,
+    hint: "Three rooftops down. Rubber facades will hand back anything you overhit.",
+    tee: [6, 44],
+    cup: [86, 12],
+    parts: [
+      mesa(-8, 20, 44, "metal", -8),
+      wall(20, 24, 43.4, 2, "rubber"),
+      mesa(28, 42, 34, "metal", -8),
+      wall(42, 16, 33.4, 2, "rubber"),
+      mesa(50, 64, 22, "metal", -8),
+      wall(64, 14, 21.4, 2, "rubber"),
+      terrain(
+        ["metal", [70, 12], [76, 12]],
+        ["green", [76, 12], [86, 12], [98, 12]],
+      ),
+      backstop(98, 12, 8, "metal"),
+    ],
+  },
+  {
+    name: "Pulse Gate",
+    par: 4,
+    hint: "Fight the belt to the ring mouth. Arrive with pace or you never get in.",
+    tee: [6, 10],
+    cup: [98, 10],
+    parts: [
+      terrain(["metal", [-8, 10], [18, 10], [30, 10]]),
+      belt(30, 54, 10, -10),
+      terrain(
+        ["metal", [54, 10], [70, 10], [86, 10]],
+        ["green", [86, 10], [98, 10], [110, 10]],
+      ),
+      wall(56, 10, 34, 3, "metal"),
+      portals("pg", [54.4, 15, 180], [72, 15, 20], 2.2),
+      bumper(78, 19, 1.4),
+      backstop(110, 10, 8, "metal"),
+    ],
+  },
+  {
+    name: "Night Shift",
+    par: 5,
+    hint: "Lift across the sump, ring through the panel, then a shelf in the dark.",
+    tee: [6, 10],
+    cup: [132, 16],
+    parts: [
+      terrain(["metal", [-8, 10], [22, 10], [36, 10]]),
+      wall(36, 3, 10, 2, "rubber"),
+      pool(38, 72, 3),
+      lift("nshift", 48, 60, 16, [[54, 16], [54, 28]], 3.4),
+      wall(72, 3, 10, 2, "rubber"),
+      terrain(["metal", [74, 10], [88, 10], [100, 10]]),
+      wall(90, 10, 34, 3, "metal"),
+      portals("ns", [88.4, 15, 180], [110, 22, 0], 2.2),
+      mesa(112, 152, 16, "green", -4),
+      backstop(152, 16, 8, "metal"),
+    ],
+  },
+  {
+    name: "Neon Crown",
+    par: 5,
+    hint: "Pad, ring, reservoir, bumper field. The whole city in one hole.",
+    tee: [6, 10],
+    cup: [164, 20],
+    parts: [
+      terrain(["metal", [-8, 10], [24, 10], [50, 10]]),
+      roof(16, 42, 15, 4, "rubber", "stone"),
+      boost(30, 10, 0, 20),
+      wall(46, 10, 42, 3, "metal"),
+      portals("nc", [44.4, 15, 180], [66, 15, 0], 2.4),
+      terrain(["metal", [50, 10], [70, 10], [96, 10]]),
+      boost(88, 10, 0, 20),
+      wall(96, 3, 10, 2, "rubber"),
+      pool(98, 140, 3),
+      bumper(110, 17, 1.5),
+      bumper(124, 24, 1.5),
+      mesa(140, 184, 20, "green", -4),
+      backstop(184, 20, 8, "metal"),
+    ],
+  },
 ];
 
 // ===========================================================================
@@ -1359,6 +2083,166 @@ const CLOUDBREAK: HoleSpec[] = [
     ],
     floor: -18,
   },
+
+  // --- back nine -----------------------------------------------------------
+  // Smaller islands, harder weather. Every hole up here is a carry, so the
+  // back nine is about carrying accurately with the air pushing back.
+  {
+    name: "Narrow Ledges",
+    par: 4,
+    hint: "Four eight-metre ledges climbing away from you. Distance control, nothing else.",
+    tee: [6, 10],
+    cup: [112, 10],
+    parts: [
+      mesa(-8, 20, 10, "fairway", 3),
+      plat(30, 38, 14, "rough", 3),
+      plat(46, 54, 18, "fairway", 3),
+      plat(62, 70, 22, "rough", 3),
+      plat(78, 88, 16, "fairway", 3),
+      mesa(96, 132, 10, "green", 3),
+      backstop(132, 10, 8),
+    ],
+    floor: -20,
+  },
+  {
+    name: "Crosswind Carry",
+    par: 4,
+    hint: "Sixty metres of gale between you and the green. The rock halfway is free.",
+    tee: [6, 10],
+    cup: [104, 10],
+    parts: [
+      mesa(-8, 24, 10, "fairway", 3),
+      windZone(24, 96, 4, 48, 180, 15),
+      plat(50, 60, 14, "rough", 3),
+      mesa(84, 124, 10, "green", 3),
+      backstop(124, 10, 8),
+    ],
+    floor: -20,
+  },
+  {
+    name: "Thermal Stack",
+    par: 4,
+    hint: "Three thermals, three shelves. Enter each one low and let it do the lifting.",
+    tee: [6, 10],
+    cup: [94, 40],
+    parts: [
+      mesa(-8, 20, 10, "fairway", 3),
+      fan(26, 12, 5, 20, 90, 28),
+      plat(32, 42, 18, "fairway", 3),
+      fan(48, 20, 5, 20, 90, 26),
+      plat(54, 64, 30, "rough", 3),
+      fan(70, 32, 5, 20, 90, 24),
+      mesa(76, 112, 40, "green", 30),
+      backstop(112, 40, 8),
+    ],
+    floor: -14,
+  },
+  {
+    // A gale the whole way and a cannon parked on the only island that matters.
+    // Landing on that island is the shot; everything after it is bookkeeping.
+    name: "The Gauntlet",
+    par: 4,
+    hint: "Land the low island, roll into the barrel, and let it fight the wind for you.",
+    tee: [6, 10],
+    cup: [108, 16],
+    parts: [
+      mesa(-8, 22, 10, "fairway", 3),
+      windZone(22, 90, 4, 50, 180, 14),
+      plat(38, 52, 12, "rough", 3),
+      cannon(46, 13.2, 42, 40),
+      plat(66, 76, 20, "fairway", 3),
+      mesa(88, 128, 16, "green", 3),
+      backstop(128, 16, 8),
+    ],
+    floor: -18,
+  },
+  {
+    name: "Cloud Cannon",
+    par: 4,
+    hint: "Two barrels, two flights. Miss the second island and it is a very long fall.",
+    tee: [6, 10],
+    cup: [140, 12],
+    parts: [
+      mesa(-8, 20, 10, "fairway", 3),
+      mesa(32, 46, 10, "fairway", 3),
+      cannon(40, 11.2, 48, 40),
+      mesa(80, 94, 14, "fairway", 3),
+      cannon(88, 15.2, 38, 38),
+      mesa(122, 160, 12, "green", 3),
+      backstop(160, 12, 8),
+    ],
+    floor: -20,
+  },
+  {
+    name: "Sky Ring",
+    par: 3,
+    hint: "Loft it into the ring. Nobody carries this one into a wind like that.",
+    tee: [6, 10],
+    cup: [102, 14],
+    parts: [
+      mesa(-8, 22, 10, "fairway", 3),
+      windZone(24, 80, 4, 44, 180, 12),
+      mesa(84, 120, 14, "green", 3),
+      backstop(120, 14, 8),
+      portals("skr", [24, 16, 180], [80, 20, 0], 2.2),
+    ],
+    floor: -18,
+  },
+  {
+    name: "Storm Ladder",
+    par: 4,
+    hint: "Thermal up, then three shelves through the front. The wind only pushes one way.",
+    tee: [6, 10],
+    cup: [100, 46],
+    parts: [
+      mesa(-8, 20, 10, "fairway", 3),
+      fan(26, 12, 5, 20, 90, 28),
+      plat(30, 40, 22, "fairway", 3),
+      windZone(40, 74, 18, 50, 180, 12),
+      plat(48, 58, 32, "rough", 3),
+      plat(64, 74, 40, "fairway", 3),
+      mesa(82, 120, 46, "green", 39),
+      backstop(120, 46, 8),
+    ],
+    floor: -14,
+  },
+  {
+    name: "Long Way Home",
+    par: 5,
+    hint: "The wind is behind you for once. Two islands, a barrel, and a big finish.",
+    tee: [6, 10],
+    cup: [152, 16],
+    parts: [
+      mesa(-8, 24, 10, "fairway", 3),
+      windZone(24, 120, 4, 48, 0, 9),
+      plat(52, 62, 8, "rough", 3),
+      plat(84, 96, 12, "fairway", 3),
+      cannon(90, 13.2, 40, 36),
+      mesa(130, 172, 16, "green", 3),
+      backstop(172, 16, 8),
+    ],
+    floor: -20,
+  },
+  {
+    name: "Cloudbreak Crown",
+    par: 5,
+    hint: "Thermal, gale, barrel, ring. Read the air twice before you swing once.",
+    tee: [6, 10],
+    cup: [144, 22],
+    parts: [
+      mesa(-8, 20, 10, "fairway", 3),
+      fan(26, 12, 5, 20, 90, 30),
+      plat(32, 44, 20, "fairway", 3),
+      windZone(44, 86, 6, 50, 180, 13),
+      plat(54, 64, 26, "rough", 3),
+      plat(74, 86, 18, "fairway", 3),
+      cannon(80, 19.2, 44, 38),
+      mesa(120, 164, 22, "green", 3),
+      backstop(164, 22, 8),
+      portals("cbc", [34, 34, 180], [118, 32, 0], 1.8),
+    ],
+    floor: -16,
+  },
 ];
 
 // ===========================================================================
@@ -1507,6 +2391,173 @@ const CINDER_RISE: HoleSpec[] = [
       mesa(116, 134, 32, "rough", 3),
       mesa(142, 180, 40, "green", 3),
       backstop(180, 40, 8, "stone"),
+    ],
+  },
+
+  // --- back nine -----------------------------------------------------------
+  // Wider lakes, longer bridges, and vents that will throw you a whole rim if
+  // you enter them straight. Every lava crossing still has a black rock in it.
+  {
+    name: "Cinder Steps",
+    par: 4,
+    hint: "Three black rocks across ninety metres of lake. Take them one at a time.",
+    tee: [6, 12],
+    cup: [144, 14],
+    parts: [
+      terrain(["fairway", [-8, 12], [20, 12], [30, 12]]),
+      pool(30, 124, 4, "lava"),
+      mesa(44, 58, 12, "rough", 4),
+      mesa(70, 84, 14, "rough", 4),
+      mesa(96, 110, 12, "rough", 4),
+      mesa(124, 164, 14, "green", 4),
+      backstop(164, 14, 8, "stone"),
+    ],
+  },
+  {
+    name: "Firewall",
+    par: 3,
+    hint: "Cross the moat, then a basalt gate on the far bank. Through it or over it.",
+    tee: [6, 12],
+    cup: [84, 12],
+    parts: [
+      terrain(["fairway", [-8, 12], [20, 12], [32, 12]]),
+      wall(30, 3, 12, 2),
+      pool(32, 60, 3, "lava"),
+      wall(60, 3, 12, 2),
+      terrain(
+        ["fairway", [62, 12], [72, 12]],
+        ["green", [72, 12], [84, 12], [96, 12]],
+      ),
+      backstop(96, 12, 7, "stone"),
+      breakable(64, 68, 12, 20, "stone"),
+      feet(64, 68, 12, "stone"),
+      block(64, 20, 4, 4, "stone"),
+    ],
+  },
+  {
+    name: "Ember Lift",
+    par: 4,
+    hint: "Two platforms over the lake. Parked or moving, both of them hold a ball.",
+    tee: [6, 12],
+    cup: [130, 28],
+    parts: [
+      terrain(["fairway", [-8, 12], [18, 12], [28, 12]]),
+      pool(28, 110, 4, "lava"),
+      lift("ember1", 44, 56, 14, [[50, 14], [50, 26]], 3.0),
+      lift("ember2", 74, 86, 20, [[80, 20], [80, 32]], 3.0),
+      mesa(110, 150, 28, "green", 4),
+      backstop(150, 28, 8, "stone"),
+    ],
+  },
+  {
+    // Eighty metres of open lava with one rock in it and a vent on the far
+    // shore. The cannon on the rock is the difference between a par and a
+    // swim, and it is deliberately the only thing that reaches from there.
+    name: "Crucible",
+    par: 4,
+    hint: "Rock, then barrel, then let the vent carry you up onto the rim.",
+    tee: [6, 20],
+    cup: [126, 26],
+    parts: [
+      mesa(-8, 24, 20, "fairway", 2),
+      pool(24, 104, 4, "lava"),
+      mesa(52, 70, 10, "rough", 2),
+      cannon(62, 11.2, 46, 42),
+      fan(88, 8, 7, 26, 90, 32),
+      mesa(104, 148, 26, "green", 2),
+      backstop(148, 26, 8, "stone"),
+    ],
+    floor: -8,
+  },
+  {
+    name: "Ash Bridge",
+    par: 4,
+    hint: "Three planks and a lift. The planks burn once, so do not plan a second visit.",
+    tee: [6, 12],
+    cup: [118, 22],
+    parts: [
+      terrain(["fairway", [-8, 12], [18, 12], [28, 12]]),
+      pool(28, 96, 4, "lava"),
+      breakable(32, 42, 10.6, 12),
+      breakable(48, 58, 10.6, 12),
+      breakable(64, 74, 10.6, 12),
+      lift("ash", 78, 90, 16, [[84, 16], [84, 26]], 3.0),
+      mesa(96, 138, 22, "green", 4),
+      backstop(138, 22, 8, "stone"),
+    ],
+  },
+  {
+    name: "Basalt Gate",
+    par: 4,
+    hint: "Two glass panels with basalt caps. Smash both, or fly the pair of them.",
+    tee: [6, 12],
+    cup: [90, 12],
+    parts: [
+      terrain(
+        ["fairway", [-8, 12], [20, 12], [36, 12], [58, 11.4], [78, 12]],
+        ["green", [78, 12], [90, 12], [102, 12]],
+      ),
+      backstop(102, 12, 7, "stone"),
+      breakable(34, 38, 12, 18, "stone"),
+      feet(34, 38, 12, "stone"),
+      block(34, 18, 4, 4, "stone"),
+      breakable(60, 64, 12, 16, "stone"),
+      feet(60, 64, 12, "stone"),
+      block(60, 16, 4, 4, "stone"),
+    ],
+  },
+  {
+    name: "The Throat",
+    par: 4,
+    hint: "Roll all the way down the inside wall, then let the vent take you back out.",
+    tee: [6, 28],
+    cup: [110, 26],
+    parts: [
+      mesa(-8, 24, 28, "rough", -4),
+      terrain(["rough", [24, 28], [32, 22], [42, 14], [52, 10], [62, 10]]),
+      pool(62, 86, 3, "lava"),
+      fan(74, 8, 8, 28, 90, 36),
+      mesa(86, 130, 26, "green", -4),
+      backstop(130, 26, 8, "stone"),
+    ],
+  },
+  {
+    name: "Magma Run",
+    par: 5,
+    hint: "Rock, pad, then a sand ramp onto the shelf. The lake is fifty metres wide.",
+    tee: [6, 12],
+    cup: [162, 30],
+    parts: [
+      terrain(["fairway", [-8, 12], [20, 12], [32, 12]]),
+      pool(32, 88, 4, "lava"),
+      mesa(50, 66, 12, "rough", 4),
+      boost(58, 12, 50, 24),
+      wall(88, 4, 12, 2),
+      terrain(
+        ["fairway", [90, 12], [100, 12]],
+        ["sand", [100, 12], [106, 16], [112, 20]],
+      ),
+      mesa(112, 134, 20, "rough", -2),
+      mesa(140, 182, 30, "green", -2),
+      backstop(182, 30, 8, "stone"),
+    ],
+  },
+  {
+    name: "Cinder Crown",
+    par: 5,
+    hint: "Barrel off the tee, pad off the rock, vent onto the summit. No rests.",
+    tee: [6, 12],
+    cup: [168, 34],
+    parts: [
+      terrain(["fairway", [-8, 12], [18, 12], [28, 12]]),
+      cannon(24, 13.2, 54, 44),
+      pool(28, 112, 4, "lava"),
+      mesa(60, 78, 14, "rough", 4),
+      boost(70, 14, 48, 22),
+      fan(96, 10, 7, 28, 90, 34),
+      mesa(112, 140, 24, "rough", 4),
+      mesa(146, 190, 34, "green", 4),
+      backstop(190, 34, 8, "stone"),
     ],
   },
 ];
@@ -1694,6 +2745,194 @@ const HOARFROST: HoleSpec[] = [
     ],
     floor: -14,
   },
+
+  // --- back nine -----------------------------------------------------------
+  // Same rule as the front nine, harder application: every sheet dead flat,
+  // every green wearing a snow collar, and the only climbs cut into snow — ice
+  // that tilts is ice the ball never gets off.
+  {
+    name: "Split Sheet",
+    par: 4,
+    hint: "A crevasse across the middle of the sheet. Stopping short is the whole skill.",
+    tee: [6, 10],
+    cup: [96, 10],
+    parts: [
+      terrain(["ice", [-8, 10], [20, 10], [34, 10]]),
+      pool(34, 50, 5),
+      terrain(
+        ["ice", [50, 10], [64, 10], [78, 10]],
+        ["rough", [78, 10], [86, 10]],
+        ["green", [86, 10], [96, 10], [106, 10]],
+      ),
+      backstop(106, 10, 8),
+    ],
+  },
+  {
+    name: "Snow Ramp",
+    par: 3,
+    hint: "Off the ice and up the snow. Snow is the only thing here with any grip.",
+    tee: [6, 10],
+    cup: [80, 18],
+    parts: [
+      terrain(
+        ["ice", [-8, 10], [18, 10], [30, 10]],
+        ["rough", [30, 10], [40, 13], [50, 16]],
+        ["rough", [50, 16], [60, 17], [70, 18]],
+        ["green", [70, 18], [80, 18], [92, 18]],
+      ),
+      backstop(92, 18, 7),
+    ],
+  },
+  {
+    name: "Frozen Falls",
+    par: 4,
+    hint: "Three ice steps down. Nothing on the way holds a ball for long.",
+    tee: [6, 30],
+    cup: [96, 6],
+    parts: [
+      mesa(-8, 22, 30, "ice", -6),
+      mesa(28, 42, 22, "ice", -6),
+      mesa(48, 62, 14, "ice", -6),
+      terrain(
+        ["ice", [68, 6], [78, 6]],
+        ["rough", [78, 6], [86, 6]],
+        ["green", [86, 6], [96, 6], [108, 6]],
+      ),
+      backstop(108, 6, 8),
+    ],
+    floor: -12,
+  },
+  {
+    // A thirty-six metre crevasse, then a wall the ring is the only way past,
+    // then bare ice into a snow collar. The exit ring is set back from the
+    // collar on purpose: you land on ice with pace and have to trust the snow.
+    name: "Glacier Gate",
+    par: 4,
+    hint: "Carry the crevasse, post it through the ring, then let the snow stop it.",
+    tee: [6, 10],
+    cup: [130, 10],
+    parts: [
+      terrain(["ice", [-8, 10], [20, 10], [32, 10]]),
+      pool(32, 68, 5),
+      terrain(
+        ["ice", [68, 10], [84, 10], [100, 10], [112, 10]],
+        ["rough", [112, 10], [120, 10]],
+        ["green", [120, 10], [130, 10], [142, 10]],
+      ),
+      wall(88, 10, 40, 3, "stone"),
+      portals("gg", [86.4, 16, 180], [104, 15, 0], 2.4),
+      backstop(142, 10, 8),
+      bumper(50, 16, 1.4),
+    ],
+    floor: -12,
+  },
+  {
+    name: "Snowdrift",
+    par: 4,
+    hint: "Drifts break the sheet into three. Each drift is a chance to stop.",
+    tee: [6, 10],
+    cup: [104, 11],
+    parts: [
+      terrain(
+        ["ice", [-8, 10], [18, 10], [30, 10]],
+        // Drift faces stay well inside snow's 20° ceiling even after the
+        // Catmull-Rom pass rounds them: a drift a ball cannot stop on is just
+        // a funnel back onto the ice it came from.
+        ["rough", [30, 10], [40, 12.2], [48, 10.6]],
+        ["ice", [48, 10.6], [56, 10.6], [62, 10.6]],
+        ["rough", [62, 10.6], [72, 12.6], [80, 11]],
+        ["ice", [80, 11], [88, 11]],
+        ["rough", [88, 11], [94, 11]],
+        ["green", [94, 11], [104, 11], [116, 11]],
+      ),
+      backstop(116, 11, 8),
+    ],
+  },
+  {
+    name: "Blue Chamber",
+    par: 4,
+    hint: "Four metres at the mouth, a meltpool inside, and snow to land on either side.",
+    tee: [6, 10],
+    cup: [88, 10],
+    parts: [
+      terrain(["ice", [-8, 10], [20, 10], [34, 10]]),
+      wall(34, 10, 13, 2, "stone"),
+      mesa(34, 104, 30, "rough", 17),
+      terrain(
+        ["rough", [36, 10], [48, 10]],
+        ["ice", [48, 10], [58, 10]],
+      ),
+      pool(58, 70, 5),
+      terrain(
+        ["rough", [70, 10], [78, 10]],
+        ["green", [78, 10], [88, 10], [100, 10]],
+      ),
+      backstop(100, 10, 6),
+    ],
+  },
+  {
+    name: "Icebreaker",
+    par: 4,
+    hint: "Three snow shelves up the face. The bumpers are there if you find them.",
+    tee: [6, 10],
+    cup: [100, 34],
+    parts: [
+      terrain(["ice", [-8, 10], [18, 10], [30, 10]]),
+      mesa(34, 50, 16, "rough", -4),
+      bumper(33, 13, 1.4),
+      mesa(56, 72, 26, "rough", -4),
+      bumper(55, 22, 1.4),
+      mesa(78, 120, 34, "green", -4),
+      backstop(120, 34, 8),
+    ],
+    floor: -10,
+  },
+  {
+    name: "White Out",
+    par: 5,
+    hint: "A gale across sixty metres of meltwater, with one floe to break it up.",
+    tee: [6, 10],
+    cup: [146, 10],
+    parts: [
+      terrain(["ice", [-8, 10], [20, 10], [32, 10]]),
+      pool(32, 96, 5),
+      plat(56, 70, 9, "ice", 3),
+      windZone(32, 100, 4, 44, 180, 13),
+      terrain(
+        ["ice", [96, 10], [112, 10], [128, 10]],
+        ["rough", [128, 10], [136, 10]],
+        ["green", [136, 10], [146, 10], [158, 10]],
+      ),
+      backstop(158, 10, 8),
+    ],
+    floor: -8,
+  },
+  {
+    // The barrel is aimed at the ring, not at the green: it lifts a rolling
+    // ball to mouth height with about six metres to spare. Everything past the
+    // ring is bare ice, so the snow collar in front of the pin is the brake.
+    name: "Winter Crown",
+    par: 5,
+    hint: "Water, then the barrel into the ring, then bare ice. Trust the snow collar.",
+    tee: [6, 10],
+    cup: [160, 10],
+    parts: [
+      terrain(["ice", [-8, 10], [16, 10], [28, 10]]),
+      pool(28, 58, 5),
+      mesa(58, 96, 10, "rough", 3),
+      cannon(72, 11.2, 32, 34),
+      wall(88, 10, 42, 3, "stone"),
+      portals("wc", [86.4, 16, 180], [116, 16, 0], 2.4),
+      windZone(96, 140, 6, 44, 180, 9),
+      terrain(
+        ["ice", [116, 10], [130, 10], [140, 10]],
+        ["rough", [140, 10], [150, 10]],
+        ["green", [150, 10], [160, 10], [172, 10]],
+      ),
+      backstop(172, 10, 8),
+    ],
+    floor: -14,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1705,7 +2944,7 @@ export const STARTER_COURSE: Course = makeCourse(
     id: "sunset-links",
     name: "Sunset Links",
     theme: "seaside",
-    blurb: "Nine gentle holes on the water. Learn the swing.",
+    blurb: "Eighteen holes on the water. The front nine teaches the swing.",
     unlockAt: 0,
   },
   SUNSET_LINKS,
@@ -1719,7 +2958,7 @@ export const COURSES: Course[] = [
       name: "Emerald Hollow",
       theme: "jungle",
       blurb: "Low canopies, rolling logs and a cave with a green in it.",
-      unlockAt: 6,
+      unlockAt: 12,
     },
     EMERALD_HOLLOW,
   ),
@@ -1729,7 +2968,7 @@ export const COURSES: Course[] = [
       name: "Red Mesa",
       theme: "canyon",
       blurb: "Big air over bigger holes in the ground. Bring the cannon.",
-      unlockAt: 15,
+      unlockAt: 30,
     },
     RED_MESA,
   ),
@@ -1739,7 +2978,7 @@ export const COURSES: Course[] = [
       name: "Neon Circuit",
       theme: "neon",
       blurb: "Portals, boost pads and rubber ceilings, all after dark.",
-      unlockAt: 26,
+      unlockAt: 52,
     },
     NEON_CIRCUIT,
   ),
@@ -1749,7 +2988,7 @@ export const COURSES: Course[] = [
       name: "Cloudbreak",
       theme: "sky",
       blurb: "Floating islands and honest wind. Every shot is a carry.",
-      unlockAt: 38,
+      unlockAt: 76,
     },
     CLOUDBREAK,
   ),
@@ -1759,7 +2998,7 @@ export const COURSES: Course[] = [
       name: "Cinder Rise",
       theme: "volcano",
       blurb: "Lava below, burning bridges across it, and a long climb out.",
-      unlockAt: 52,
+      unlockAt: 104,
     },
     CINDER_RISE,
   ),
@@ -1768,8 +3007,8 @@ export const COURSES: Course[] = [
       id: "hoarfrost",
       name: "Hoarfrost",
       theme: "glacier",
-      blurb: "Ice takes the brakes off. Nine holes about stopping.",
-      unlockAt: 68,
+      blurb: "Ice takes the brakes off. Eighteen holes about stopping.",
+      unlockAt: 136,
     },
     HOARFROST,
   ),

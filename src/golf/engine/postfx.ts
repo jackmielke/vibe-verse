@@ -6,9 +6,9 @@
  * must parse solid / hazard / ball in a single glance on a phone.
  *
  *   scene ──► RenderPass ──► GlowPass ──► GradePass ──► AA ──► screen
- *              (HDR linear)   (¼-res,      (bloom composite,
- *                              threshold-   ACES, theme grade,
- *                              gated)       vignette, edge CA, grain)
+ *              (HDR linear)   (¼-res,      (bloom composite, key light,
+ *                              threshold-   ACES, theme grade, aerial
+ *                              gated)       recovery, vignette, CA, grain)
  *
  * The composer's buffers are half-float and *linear* — three only applies
  * `renderer.toneMapping` / output colour space when it draws to the default
@@ -27,19 +27,43 @@
  * inside the grade pass.
  *
  * Tiering: 'low' is grade + FXAA only. 'medium' adds glow, aberration, grain
- * and the impact wobble. 'high' widens the glow and swaps FXAA for SMAA.
+ * and the impact wobble. 'high' widens the glow and swaps FXAA for SMAA. The
+ * key light and the aerial/chroma work below are unconditional — they are the
+ * look, not an effect, and they cost a handful of ALU with no extra samples.
  *
- * ── Grade contract (do not regress these; a director panel caught all four) ──
+ * ── Grade contract (do not regress these; a director panel caught all of them) ──
  *  1. This is a *sunny* game. Exposure sits high enough that the sky reaches
  *     the top of the range and the fairway lands near mid-tone — never a
  *     dusk-blue wash with the grass crushed into the toe.
  *  2. The vignette is weighted to the TOP of the frame. The bottom third is
  *     the play area: the ball, its shadow and the lie live there and must stay
  *     legible, so the vignette is scaled to almost nothing below y≈0.2.
- *  3. Split tone carries the light direction the geometry cannot: warm gain +
- *     warm highlight tint against a cool shadow lift. That two-tone is what
- *     separates the four parallax tiers into distance instead of flat bands.
- *  4. Bloom is for emissives only. The threshold is above anything the sky
+ *  3. ONE LIGHT, ONE FRAME. The panel's headline defect was a frame in two
+ *     unrelated palettes — a flat desaturated overcast sky stacked on a
+ *     near-primary sunlit fairway, with nothing above the horizon to justify
+ *     the warm key below it. The fix is `key` + `sun`: a directional white
+ *     balance anchored on the *same* screen-space sun the sky shader draws
+ *     (see SUN_UV below), warm toward the source and cool away from it,
+ *     applied in linear light across the entire frame — sky, mountains, sea
+ *     and turf alike. Plus a veiling glare pooled around that source so the
+ *     rim light on the grass has something visible to come from. Never grade
+ *     the ground and the sky with separate looks again.
+ *  4. Chroma is CEILED, not boosted. The fairway used to leave the grade at
+ *     99-100% saturation — a near-primary green that could not belong to the
+ *     same photograph as an 11%-saturation sky. `satCeil` is a filmic chroma
+ *     roll-off with a soft knee: everything under the knee is untouched (sky,
+ *     haze, sand, sea), everything over it compresses. That pulls the turf
+ *     ~15-20% without touching the backdrop, which closes the palette gap
+ *     from the saturated end instead of by washing the sky out further.
+ *  5. The upper fifth of frame is not allowed to be the mushiest part of the
+ *     image. `skyAmt` is a graduated density filter (bright, non-green content
+ *     only) that puts a real ramp from a warm horizon to a deeper, cooler
+ *     zenith, and `dehaze` restores chroma and contrast to aerial pixels the
+ *     distance haze washed toward white, so far mountains keep hue and edge.
+ *  6. Split tone carries what the geometry cannot: warm gain + warm highlight
+ *     tint against a cool shadow lift. That two-tone is what separates the
+ *     four parallax tiers into distance instead of flat bands.
+ *  7. Bloom is for emissives only. The threshold is above anything the sky
  *     gradient or a lit cloud can reach, and the bright pass fades to black
  *     inside the buffer border so the clamp-to-edge blur can never replicate a
  *     bright row into a band along the edge of frame.
@@ -53,21 +77,57 @@ import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
 import type { CourseTheme, Hole, System, SystemFactory } from "../types";
 
 // ---------------------------------------------------------------------------
-// Grade presets
+// Key light placement
 // ---------------------------------------------------------------------------
 
 /**
- * One filmic look. `gain` acts in linear light before the tonemapper (it is a
- * white balance); `lift` and `hi` act after it, in display space, so they tint
- * shadows and highlights without dragging the midtones around. That split is
- * what keeps a strong grade from eating the value separation between the play
- * surface and the backdrop.
+ * Screen-space uv of the sun disc, per theme.
+ *
+ * The sky shader parks the sun at infinity — `uSun` is rebuilt every frame as
+ * `cam.pos + half * clamp(theme.sunAt / k)` against a quad spanning
+ * `cam.pos ± half * 1.05` — so however the camera translates or zooms, the
+ * disc lands at a *fixed fraction of the frame*. Which means the grade can
+ * anchor its key on the same point with a constant, and the warm pool always
+ * sits on the visible source rather than drifting off it.
+ *
+ * These are that fraction, evaluated once: `(clamp(sunAt.x / 58, ±0.72) +
+ * 1.05) / 2.1` and `(clamp(sunAt.y / 46, -0.9, 0.86) + 1.05) / 2.1`, with
+ * vUv.y measured from the bottom of frame. Verified against a capture: the
+ * brightest pixel of the seaside sky sits at (0.237, 0.824) and the table says
+ * (0.237, 0.811) — inside the corona, which is all a glow this soft needs.
+ *
+ * If the renderer ever moves a sun, move it here too; being a few percent out
+ * is harmless, being on the wrong side of frame is not.
+ */
+const SUN_UV: Record<CourseTheme, [number, number]> = {
+  seaside: [0.237, 0.811],
+  jungle: [0.270, 0.852],
+  canyon: [0.221, 0.769],
+  neon: [0.204, 0.910],
+  sky: [0.254, 0.852],
+  volcano: [0.254, 0.748],
+  glacier: [0.254, 0.831],
+};
+
+// ---------------------------------------------------------------------------
+// Grade presets
+// ---------------------------------------------------------------------------
+
+type V2 = [number, number];
+type V3 = [number, number, number];
+
+/**
+ * One filmic look. `gain` and `key` act in linear light before the tonemapper
+ * (they are white balances); `lift` and `hi` act after it, in display space, so
+ * they tint shadows and highlights without dragging the midtones around. That
+ * split is what keeps a strong grade from eating the value separation between
+ * the play surface and the backdrop.
  */
 interface Grade {
   exposure: number;
-  gain: [number, number, number];
-  lift: [number, number, number];
-  hi: [number, number, number];
+  gain: V3;
+  lift: V3;
+  hi: V3;
   contrast: number;
   saturation: number;
   /**
@@ -78,10 +138,40 @@ interface Grade {
   scurve: number;
   /**
    * Hue-targeted lift on green-dominant pixels. The fairway is the subject of
-   * this game and has to be the brightest, warmest surface on screen; this is
-   * what guarantees it regardless of how the lighting lands.
+   * this game and has to be the brightest surface on screen; this guarantees
+   * it regardless of how the lighting lands. It lifts *value*, not chroma —
+   * the per-channel gammas in the shader are near-parallel with only a slight
+   * warm lean, because the version that opened green two stops ahead of blue
+   * is what drove the turf to a near-primary 99% saturation.
    */
   green: number;
+
+  // --- key light (contract 3) ------------------------------------------------
+  /** Screen uv of the sun, from SUN_UV. Drives the glare and the key ramp. */
+  sun: V2;
+  /**
+   * Linear white balance *at* the sun. Its mirror about white (2 - key) is
+   * applied at the far side of frame, so one vector gives both the warm key
+   * and the cool fill and they can never drift apart.
+   */
+  key: V3;
+  /** How much of that ramp to apply. 0 = flat, uniform grade. */
+  keyWarm: number;
+  /** Veiling glare pooled around the sun, added in linear light. */
+  sunGlow: number;
+
+  // --- atmosphere (contract 5) -----------------------------------------------
+  /** Multiplicative zenith density + hue. Below 1 darkens; blue-leaning cools. */
+  sky: V3;
+  /** Strength of that graduated filter. */
+  skyAmt: number;
+  /** Chroma + contrast restored to aerial pixels the distance haze washed out. */
+  dehaze: number;
+
+  // --- chroma ceiling (contract 4) -------------------------------------------
+  /** Saturation the roll-off asymptotes to. Knee sits at 65% of it. */
+  satCeil: number;
+
   vignette: number;
   aberration: number;
   grain: number;
@@ -91,52 +181,70 @@ interface Grade {
 }
 
 const GRADES: Record<CourseTheme, Grade> = {
-  // Sunny tropical par 3. Warm key, cool sea-bounce shadow, fairway hottest.
+  // Sunny tropical par 3. Warm key from the upper-left sun, cool sea-bounce
+  // fill, turf held just under the chroma ceiling so it reads sunlit rather
+  // than printed.
   seaside: {
-    exposure: 1.34, gain: [1.09, 1.015, 0.90], lift: [0.010, 0.026, 0.044], hi: [1.10, 1.035, 0.93],
-    contrast: 1.04, saturation: 1.18, scurve: 0.40, green: 0.85,
+    exposure: 1.33, gain: [1.07, 1.012, 0.915], lift: [0.010, 0.026, 0.046], hi: [1.10, 1.035, 0.925],
+    contrast: 1.05, saturation: 1.05, scurve: 0.38, green: 0.62,
+    sun: SUN_UV.seaside, key: [1.125, 1.020, 0.855], keyWarm: 0.50, sunGlow: 0.46,
+    sky: [0.862, 0.900, 0.958], skyAmt: 0.92, dehaze: 0.62, satCeil: 0.84,
     vignette: 0.20, aberration: 0.0014, grain: 0.011,
     bloom: 0.42, threshold: 2.85,
   },
   // Humid and deep — sunlight punching through the canopy, shade stays green.
   jungle: {
-    exposure: 1.30, gain: [1.00, 1.045, 0.92], lift: [0.010, 0.028, 0.030], hi: [1.11, 1.045, 0.88],
-    contrast: 1.06, saturation: 1.14, scurve: 0.40, green: 0.80,
+    exposure: 1.30, gain: [1.00, 1.035, 0.935], lift: [0.010, 0.028, 0.032], hi: [1.10, 1.045, 0.90],
+    contrast: 1.06, saturation: 1.03, scurve: 0.38, green: 0.58,
+    sun: SUN_UV.jungle, key: [1.115, 1.035, 0.850], keyWarm: 0.46, sunGlow: 0.42,
+    sky: [0.880, 0.915, 0.948], skyAmt: 0.78, dehaze: 0.56, satCeil: 0.86,
     vignette: 0.22, aberration: 0.0014, grain: 0.012,
     bloom: 0.36, threshold: 2.95,
   },
   // Baked red rock: amber highlights, violet shade.
   canyon: {
-    exposure: 1.36, gain: [1.13, 1.00, 0.885], lift: [0.030, 0.010, 0.040], hi: [1.15, 1.00, 0.84],
-    contrast: 1.06, saturation: 1.13, scurve: 0.38, green: 0.30,
+    exposure: 1.32, gain: [1.11, 1.00, 0.90], lift: [0.030, 0.010, 0.042], hi: [1.14, 1.00, 0.855],
+    contrast: 1.06, saturation: 1.04, scurve: 0.36, green: 0.25,
+    sun: SUN_UV.canyon, key: [1.150, 1.005, 0.845], keyWarm: 0.52, sunGlow: 0.62,
+    sky: [0.865, 0.895, 0.960], skyAmt: 0.80, dehaze: 0.52, satCeil: 0.86,
     vignette: 0.22, aberration: 0.0018, grain: 0.013,
     bloom: 0.42, threshold: 2.80,
   },
-  // Magenta-and-cyan. The one place the grade is allowed to shout.
+  // Magenta-and-cyan. The one place the grade is allowed to shout, so the
+  // ceiling sits high and the key is a cold moon instead of a sun.
   neon: {
-    exposure: 1.20, gain: [1.05, 0.94, 1.12], lift: [0.004, 0.030, 0.062], hi: [1.16, 0.88, 1.16],
-    contrast: 1.10, saturation: 1.24, scurve: 0.32, green: 0.30,
+    exposure: 1.20, gain: [1.04, 0.945, 1.11], lift: [0.004, 0.030, 0.062], hi: [1.15, 0.89, 1.15],
+    contrast: 1.10, saturation: 1.16, scurve: 0.32, green: 0.28,
+    sun: SUN_UV.neon, key: [0.860, 1.000, 1.140], keyWarm: 0.42, sunGlow: 0.50,
+    sky: [0.900, 0.905, 0.985], skyAmt: 0.55, dehaze: 0.34, satCeil: 1.00,
     vignette: 0.30, aberration: 0.0030, grain: 0.018,
     bloom: 0.95, threshold: 1.95,
   },
-  // Thin air: lifted blacks, low contrast, almost no vignette.
+  // Thin air: lifted blacks, low contrast, almost no vignette. The zenith
+  // density is the strongest in the set because there is more sky than course.
   sky: {
-    exposure: 1.38, gain: [0.99, 1.005, 1.05], lift: [0.020, 0.030, 0.044], hi: [1.06, 1.045, 1.05],
-    contrast: 0.99, saturation: 1.08, scurve: 0.30, green: 0.55,
+    exposure: 1.36, gain: [1.00, 1.008, 1.035], lift: [0.020, 0.030, 0.044], hi: [1.06, 1.045, 1.045],
+    contrast: 1.00, saturation: 1.00, scurve: 0.30, green: 0.42,
+    sun: SUN_UV.sky, key: [1.075, 1.020, 0.905], keyWarm: 0.44, sunGlow: 0.52,
+    sky: [0.855, 0.900, 0.975], skyAmt: 0.95, dehaze: 0.58, satCeil: 0.82,
     vignette: 0.14, aberration: 0.0010, grain: 0.010,
     bloom: 0.55, threshold: 2.60,
   },
   // Hot orange against blue-black; the strongest glow in the set.
   volcano: {
-    exposure: 1.24, gain: [1.16, 0.96, 0.84], lift: [0.016, 0.004, 0.042], hi: [1.22, 0.93, 0.70],
-    contrast: 1.10, saturation: 1.14, scurve: 0.36, green: 0.25,
+    exposure: 1.22, gain: [1.14, 0.965, 0.855], lift: [0.016, 0.004, 0.042], hi: [1.20, 0.935, 0.72],
+    contrast: 1.10, saturation: 1.06, scurve: 0.34, green: 0.22,
+    sun: SUN_UV.volcano, key: [1.175, 0.985, 0.815], keyWarm: 0.50, sunGlow: 0.66,
+    sky: [0.880, 0.895, 0.945], skyAmt: 0.62, dehaze: 0.38, satCeil: 0.94,
     vignette: 0.28, aberration: 0.0026, grain: 0.016,
     bloom: 0.85, threshold: 2.05,
   },
   // Teal ice, crisp and slightly desaturated so the flag stays the only red.
   glacier: {
-    exposure: 1.36, gain: [0.96, 1.01, 1.09], lift: [0.004, 0.020, 0.046], hi: [1.02, 1.04, 1.09],
-    contrast: 1.05, saturation: 1.04, scurve: 0.32, green: 0.35,
+    exposure: 1.34, gain: [0.975, 1.008, 1.065], lift: [0.004, 0.020, 0.046], hi: [1.03, 1.04, 1.075],
+    contrast: 1.05, saturation: 0.98, scurve: 0.32, green: 0.34,
+    sun: SUN_UV.glacier, key: [1.055, 1.015, 0.930], keyWarm: 0.40, sunGlow: 0.46,
+    sky: [0.860, 0.900, 0.970], skyAmt: 0.88, dehaze: 0.54, satCeil: 0.80,
     vignette: 0.18, aberration: 0.0016, grain: 0.011,
     bloom: 0.60, threshold: 2.55,
   },
@@ -144,21 +252,27 @@ const GRADES: Record<CourseTheme, Grade> = {
 
 const SCALARS = [
   "exposure", "contrast", "saturation", "scurve", "green",
+  "keyWarm", "sunGlow", "skyAmt", "dehaze", "satCeil",
   "vignette", "aberration", "grain", "bloom", "threshold",
 ] as const;
-const VECTORS = ["gain", "lift", "hi"] as const;
+/** Every array-valued field. Lerped component-wise, whatever the length. */
+const VECTORS = ["gain", "lift", "hi", "key", "sky", "sun"] as const;
 
 function cloneGrade(g: Grade): Grade {
-  return { ...g, gain: [...g.gain], lift: [...g.lift], hi: [...g.hi] };
+  return {
+    ...g,
+    gain: [...g.gain], lift: [...g.lift], hi: [...g.hi],
+    key: [...g.key], sky: [...g.sky], sun: [...g.sun],
+  };
 }
 
 /** In-place exponential approach of `cur` toward `to`. */
 function approachGrade(cur: Grade, to: Grade, k: number): void {
   for (const key of SCALARS) cur[key] += (to[key] - cur[key]) * k;
   for (const key of VECTORS) {
-    const a = cur[key];
-    const b = to[key];
-    for (let i = 0; i < 3; i++) a[i] += (b[i] - a[i]) * k;
+    const a = cur[key] as number[];
+    const b = to[key] as number[];
+    for (let i = 0; i < a.length; i++) a[i] += (b[i] - a[i]) * k;
   }
 }
 
@@ -214,11 +328,12 @@ void main() {
 const GRADE_FRAG = /* glsl */ `
 uniform sampler2D tDiffuse;
 uniform sampler2D tBloom;
-uniform vec3 uGain, uLift, uHi;
+uniform vec3 uGain, uLift, uHi, uKey, uSkyMul;
 uniform float uExposure, uContrast, uSaturation, uSCurve, uGreen;
+uniform float uKeyWarm, uSunGlow, uSkyAmt, uDehaze, uSatCeil;
 uniform float uVignette, uAberration, uGrain, uBloom;
 uniform float uTime, uShock, uAspect;
-uniform vec2 uShockAt, uOverscan;
+uniform vec2 uShockAt, uOverscan, uSunAt;
 varying vec2 vUv;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -294,8 +409,32 @@ void main() {
   col += texture2D(tBloom, uv).rgb * uBloom;
 #endif
 
-  // --- linear stage: exposure + white balance, then tonemap -----------------
+  // --- linear stage: exposure, key light, tonemap ---------------------------
   col = max(col, vec3(0.0)) * (uExposure / 0.6) * uGain;
+
+  // Distance from the sun, measured in screen-height units so the pool stays
+  // round on a 430x932 phone instead of stretching into a vertical smear.
+  vec2 sd = vUv - uSunAt;
+  sd.x *= uAspect;
+  float sr = length(sd);
+
+  // THE unifier (contract 3). A single directional white balance across the
+  // whole frame: uKey at the source, its mirror about white at the far side.
+  // Warm falls on the sky beside the sun, on the mountain flanks facing it and
+  // on the fairway lip below it; the cool fill lands opposite. That gradient is
+  // what makes the sky and the turf read as one exposure of one place, and it
+  // is applied before the tonemapper so ACES rolls it off like real light.
+  float away = smoothstep(0.10, 1.05, sr);
+  col *= mix(vec3(1.0), mix(uKey, vec3(2.0) - uKey, away), uKeyWarm);
+
+  // Veiling glare — the visible source the rim light was missing. Two lobes: a
+  // tight corona and a broad atmospheric wash. Gated on local brightness so it
+  // pools in the sky and over water and leaves the play surface alone; fogging
+  // the lie to sell a sunbeam is not a trade this game makes.
+  float lin = dot(col, LUMA);
+  float glare = exp(-sr * 2.6) * 0.62 + exp(-sr * 8.0) * 0.38;
+  col += uKey * (uSunGlow * glare * smoothstep(0.32, 0.95, lin));
+
   col = toSRGB(acesFilmic(col));
 
   // --- display stage --------------------------------------------------------
@@ -306,24 +445,56 @@ void main() {
   // bottom of frame keeps its texture instead of going to black.
   col += uLift * (1.0 - smoothstep(0.0, 0.62, l));
   col = mix(col, col * uHi, smoothstep(0.40, 1.0, l));
-
-  // Fairway pop. Saturated green-dominant pixels get brighter and swing
-  // yellow-green, so the play surface is unambiguously the hottest, warmest
-  // thing on screen. The saturation gate is load-bearing: hazy sky and lit
-  // cloud sit a few points green of neutral, and without it they catch this
-  // and the whole upper frame turns olive.
   col = clamp(col, 0.0, 1.0);
+
+  // --- content mask ---------------------------------------------------------
+  // Green dominance separates the play surface from everything else far more
+  // reliably than any screen-space guess at where the horizon is: turf sits
+  // 0.4+ above its own red and blue, while hazy sky, sea and sand are within a
+  // hundredth of neutral on that axis. gdom is 1 on grass, ~0 on backdrop.
   float mx = max(col.r, max(col.g, col.b));
   float mn = min(col.r, min(col.g, col.b));
   float sat = (mx - mn) / max(mx, 1e-4);
-  float gw = clamp((col.g - max(col.r, col.b)) * 3.2, 0.0, 1.0)
-           * smoothstep(0.26, 0.56, sat);
-  // A per-channel gamma, not a gain: it lifts a grass pixel sitting in shade
-  // far more than one in full sun, so the dark side of the fairway keeps its
-  // blade texture instead of collapsing into a black mass, while the lit side
-  // only warms. Red lifts alongside green, which swings the whole surface
-  // yellow-green rather than deeper into cold emerald.
-  col = mix(col, pow(max(col, vec3(1e-4)), vec3(0.80, 0.74, 0.96)), gw * uGreen);
+  float gdom = clamp((col.g - max(col.r, col.b)) * 4.0, 0.0, 1.0);
+  float lum = dot(col, LUMA);
+  float bright = smoothstep(0.26, 0.54, lum);
+
+  // Aerial = bright, non-green, up-frame. Two heights: the graduated filter
+  // wants only the top of the sky, the haze recovery wants the whole backdrop
+  // down to the ridge line. Both stop well above the ball, which is white,
+  // bright and low in frame and must not pick up either.
+  float aer = (1.0 - gdom) * bright;
+  float grad = aer * smoothstep(0.54, 0.96, vUv.y);
+  float far  = aer * smoothstep(0.42, 0.66, vUv.y);
+
+  // Graduated density (contract 5). Multiplicative and slightly blue-leaning,
+  // so the zenith deepens and cools while the horizon stays bright and warm —
+  // a real top-to-bottom ramp where there used to be one flat mush, and the
+  // gradient the sun's warmth is measured against.
+  col *= mix(vec3(1.0), uSkyMul, uSkyAmt * grad);
+
+  // Haze recovery. The distance fog washes far mountains toward white; this
+  // puts back the chroma it took (luma-preserving, so nothing moves in value)
+  // and expands contrast about the sky's own pivot so ridges keep an edge.
+  // The wash gate is a band: near-neutral cloud and the ball stay neutral,
+  // already-blue sky is left alone, and only the washed middle is recovered.
+  float wash = smoothstep(0.03, 0.16, sat) * (1.0 - smoothstep(0.34, 0.62, sat));
+  float rec = uDehaze * far * wash;
+  float dl = dot(col, LUMA);
+  col = mix(col, dl + (col - dl) * 1.55, rec);
+  col = mix(col, (col - 0.70) * 1.22 + 0.70, rec * 0.85);
+  col = clamp(col, 0.0, 1.0);
+
+  // Fairway value lift. The play surface has to be the brightest thing on
+  // screen, but the gammas below are near-parallel with only a slight warm
+  // lean: the old version opened green two stops ahead of blue, which is what
+  // printed the turf at a near-primary 99% saturation the sky could never
+  // answer. It lifts a grass pixel sitting in shade far more than one in full
+  // sun, so the dark side of the fairway keeps its blade texture. The
+  // saturation gate is load-bearing: hazy sky and lit cloud sit a few points
+  // green of neutral, and without it the whole upper frame turns olive.
+  float gw = gdom * smoothstep(0.26, 0.56, sat);
+  col = mix(col, pow(max(col, vec3(1e-4)), vec3(0.865, 0.845, 0.905)), gw * uGreen);
   col = clamp(col, 0.0, 1.0);
 
   // Midtone S. Weighted off the toe so it widens the gap between the parallax
@@ -336,6 +507,23 @@ void main() {
   col = (col - 0.5) * uContrast + 0.5;
   l = dot(col, LUMA);
   col = mix(vec3(l), col, uSaturation);
+  col = clamp(col, 0.0, 1.0);
+
+  // Chroma roll-off (contract 4). A filmic shoulder on saturation rather than
+  // a global desaturate: under the knee nothing moves, so the sky, the haze,
+  // the sand and the sea keep every point of the little chroma they have,
+  // while the turf — which arrives here pinned at 99% — compresses toward
+  // uSatCeil and lands ~15-20% down, in the same photograph as the backdrop.
+  // Mixing toward luma is exact-luma-preserving, so this costs no brightness.
+  mx = max(col.r, max(col.g, col.b));
+  mn = min(col.r, min(col.g, col.b));
+  sat = (mx - mn) / max(mx, 1e-4);
+  float knee = uSatCeil * 0.65;
+  float span = max(uSatCeil - knee, 1e-3);
+  float over = max(sat - knee, 0.0);
+  float rolled = knee + span * (1.0 - exp(-over / span));
+  float sf = mix(1.0, rolled / max(sat, 1e-4), step(knee, sat));
+  col = mix(vec3(dot(col, LUMA)), col, sf);
 
   // Vignette, biased hard to the top of frame. vUv.y is 0 at the bottom of the
   // screen, which is the play area — the ball, its lie and the contact shadow
@@ -531,11 +719,18 @@ const createPostFx: SystemFactory = async (ctx) => {
         uGain: { value: new THREE.Vector3(1, 1, 1) },
         uLift: { value: new THREE.Vector3(0, 0, 0) },
         uHi: { value: new THREE.Vector3(1, 1, 1) },
+        uKey: { value: new THREE.Vector3(1, 1, 1) },
+        uSkyMul: { value: new THREE.Vector3(1, 1, 1) },
         uExposure: { value: 1 },
         uContrast: { value: 1 },
         uSaturation: { value: 1 },
-        uSCurve: { value: 0.40 },
-        uGreen: { value: 0.85 },
+        uSCurve: { value: 0.38 },
+        uGreen: { value: 0.55 },
+        uKeyWarm: { value: 0 },
+        uSunGlow: { value: 0 },
+        uSkyAmt: { value: 0 },
+        uDehaze: { value: 0 },
+        uSatCeil: { value: 1 },
         uVignette: { value: 0.20 },
         uAberration: { value: 0.0014 },
         uGrain: { value: 0.011 },
@@ -544,6 +739,7 @@ const createPostFx: SystemFactory = async (ctx) => {
         uShock: { value: 0 },
         uAspect: { value: Math.max(0.01, size.x / Math.max(1, size.y)) },
         uShockAt: { value: new THREE.Vector2(0.5, 0.5) },
+        uSunAt: { value: new THREE.Vector2(seed.sun[0], seed.sun[1]) },
         uOverscan: { value: overscan(new THREE.Vector2(), size.x, size.y) },
       },
       vertexShader: FS_VERT,
@@ -633,11 +829,16 @@ const createPostFx: SystemFactory = async (ctx) => {
       const step = Math.min(Math.max(dt, 0), 1 / 20);
 
       // ~0.5 s to settle onto a new theme; slow enough to read as a dissolve.
+      // The sun uv rides the same lerp, so the key swings across frame as the
+      // grade dissolves instead of snapping to the new hole's light.
       approachGrade(cur, target, 1 - Math.exp(-step / 0.16));
 
       (U.uGain.value as THREE.Vector3).set(cur.gain[0], cur.gain[1], cur.gain[2]);
       (U.uLift.value as THREE.Vector3).set(cur.lift[0], cur.lift[1], cur.lift[2]);
       (U.uHi.value as THREE.Vector3).set(cur.hi[0], cur.hi[1], cur.hi[2]);
+      (U.uKey.value as THREE.Vector3).set(cur.key[0], cur.key[1], cur.key[2]);
+      (U.uSkyMul.value as THREE.Vector3).set(cur.sky[0], cur.sky[1], cur.sky[2]);
+      (U.uSunAt.value as THREE.Vector2).set(cur.sun[0], cur.sun[1]);
       // Tone mapping never ran on the buffer, so the renderer's exposure is
       // folded in here instead — anyone animating it still gets what they want.
       U.uExposure.value = cur.exposure * ctx.renderer.toneMappingExposure;
@@ -645,6 +846,11 @@ const createPostFx: SystemFactory = async (ctx) => {
       U.uSaturation.value = cur.saturation;
       U.uSCurve.value = cur.scurve;
       U.uGreen.value = cur.green;
+      U.uKeyWarm.value = cur.keyWarm;
+      U.uSunGlow.value = cur.sunGlow;
+      U.uSkyAmt.value = cur.skyAmt;
+      U.uDehaze.value = cur.dehaze;
+      U.uSatCeil.value = cur.satCeil;
       U.uVignette.value = cur.vignette;
       U.uAberration.value = cur.aberration;
       U.uGrain.value = cur.grain;

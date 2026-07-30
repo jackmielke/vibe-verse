@@ -30,14 +30,69 @@ interface WorldCard {
   to: string;
   emoji: string;
   name: string;
-  art: string;
+  /**
+   * In-game capture. Optional: a world whose capture only ever produces a
+   * broken frame gets a drawn panel instead, because misleading card art is
+   * worse than none.
+   */
+  art?: string;
   blurb: string;
+  /** Featured worlds sort to the top and get the wide treatment. */
+  featured?: boolean;
+  /** Short, honest statement of what the world is right now. */
+  status?: string;
+  /** Signal colour for a featured world's chrome. */
+  accent?: string;
 }
 
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
+import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
+import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
+import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
+import terminalArt from "@/assets/worlds/terminal.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/terminal",
+    emoji: "🛫",
+    name: "The Terminal",
+    art: terminalArt,
+    blurb: "The front door. Stand on a platform in the sky with every world floating around you, and pick one.",
+    featured: true,
+    status: "Playable — the lobby",
+    accent: "#38bdf8",
+  },
+  {
+    to: "/island-2",
+    emoji: "🏝️",
+    name: "Vibe Island II",
+    art: vibeIsland2Art,
+    blurb: "The floating archipelago, rebuilt — a carved lagoon that spills into the clouds, and islands you can fly underneath.",
+    featured: true,
+    status: "In progress — fly it now",
+    accent: "#ffb347",
+  },
+  {
+    to: "/san-palmas",
+    emoji: "🌴",
+    name: "San Palmas",
+    art: sanPalmasArt,
+    blurb: "Tropical San Francisco — the vibeverse's FPS. Guns, sun, and a very long draw distance.",
+    featured: true,
+    status: "Playable — move, look, shoot",
+    accent: "#ffb020",
+  },
+  {
+    to: "/sf",
+    emoji: "🌉",
+    name: "San Francisco",
+    art: sanFranciscoArt,
+    blurb: "FREE FALL — the real city, hill for hill, bridge for bridge. Fly it now; grapple and wingsuit soon.",
+    featured: true,
+    status: "Sandbox — fly the city",
+    accent: "#ff6a2b",
+  },
   {
     to: "/edm-town",
     emoji: "🪩",
@@ -155,9 +210,16 @@ const WORLDS: WorldCard[] = [
 export default function WorldPicker({
   open,
   onClose,
+  asPage = false,
 }: {
   open: boolean;
   onClose: () => void;
+  /**
+   * Render inline as a full page (for the /worlds route) instead of as a
+   * portalled overlay. Same component, same list — there is exactly one
+   * definition of "the worlds" in this codebase and this is it.
+   */
+  asPage?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -166,17 +228,25 @@ export default function WorldPicker({
   const here = (w: WorldCard) => w.to.split("?")[0] === location.pathname && !w.to.includes("?");
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return WORLDS;
-    return WORLDS.filter(
-      (w) => w.name.toLowerCase().includes(q) || w.blurb.toLowerCase().includes(q)
-    );
+    const list = q
+      ? WORLDS.filter(
+          (w) => w.name.toLowerCase().includes(q) || w.blurb.toLowerCase().includes(q),
+        )
+      : WORLDS;
+    // Featured worlds lead. Stable within each group so the rest keeps its
+    // hand-tuned order.
+    return [...list].sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
   }, [query]);
 
-  return createPortal(
+  const body = (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 bg-background/85 backdrop-blur-md overflow-y-auto"
+          className={
+            asPage
+              ? "min-h-[100dvh] w-full bg-background overflow-y-auto"
+              : "fixed inset-0 z-50 bg-background/85 backdrop-blur-md overflow-y-auto"
+          }
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.4 } }}
@@ -222,15 +292,55 @@ export default function WorldPicker({
                     navigate(w.to);
                     onClose();
                   }}
-                  className="group glass-panel rounded-2xl overflow-hidden text-left border border-border/40 hover:border-primary/60 transition-colors"
+                  className={`group glass-panel rounded-2xl overflow-hidden text-left border transition-colors ${
+                    w.featured
+                      ? "col-span-2 lg:col-span-3 border-transparent"
+                      : "border-border/40 hover:border-primary/60"
+                  }`}
+                  style={w.featured ? { boxShadow: `inset 0 0 0 1.5px ${w.accent}66` } : undefined}
                 >
-                  <div className="relative aspect-video overflow-hidden bg-black/40">
-                    <img
-                      src={w.art}
-                      alt={w.name}
-                      loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                  <div
+                    className={`relative overflow-hidden bg-black/40 ${
+                      w.featured ? "aspect-[16/7]" : "aspect-video"
+                    }`}
+                  >
+                    {w.art ? (
+                      <img
+                        src={w.art}
+                        alt={w.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div
+                        className="w-full h-full"
+                        style={{
+                          background:
+                            `radial-gradient(120% 90% at 18% 0%, ${w.accent ?? "#888"}44, transparent 62%),` +
+                            "linear-gradient(178deg, #11151d 0%, #080a0f 70%)",
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 160 60"
+                          preserveAspectRatio="none"
+                          className="absolute inset-x-0 bottom-0 h-1/2 w-full opacity-30"
+                          aria-hidden
+                        >
+                          <path
+                            d="M0 60V44h9V33h7v11h6V26h8v18h5V36h9v8h7V20h8v24h6V31h10v13h7V38h8v6h6V28h9v16h7v-9h8v9h6V33h9v11h7V41h8v19z"
+                            fill={w.accent ?? "#888"}
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    {w.status && (
+                      <span
+                        className="absolute bottom-2 left-2 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-black"
+                        style={{ background: w.accent ?? "#fff" }}
+                      >
+                        {w.status}
+                      </span>
+                    )}
                     {here(w) && (
                       <span className="absolute top-2 right-2 rounded-full bg-primary/80 text-primary-foreground text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5">
                         you're here
@@ -241,7 +351,16 @@ export default function WorldPicker({
                     <div className="font-heading font-semibold text-sm">
                       {w.emoji} {w.name}
                     </div>
-                    <div className="text-[11px] text-muted-foreground leading-snug mt-0.5 hidden sm:block">
+                    {/* Featured worlds always explain themselves. Hiding the
+                        blurb on small screens meant a card could say only "The
+                        Terminal" on a phone — a name is not an explanation, and
+                        the whole job of this screen is telling you what is
+                        behind each door. */}
+                    <div
+                      className={`text-[11px] text-muted-foreground leading-snug mt-0.5 ${
+                        w.featured ? "block" : "hidden sm:block"
+                      }`}
+                    >
                       {w.blurb}
                     </div>
                   </div>
@@ -256,12 +375,15 @@ export default function WorldPicker({
               onClick={onClose}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              ✕ close
+              {asPage ? "← back to the hub" : "✕ close"}
             </motion.button>
           </div>
         </motion.div>
       )}
-    </AnimatePresence>,
-    document.body
+    </AnimatePresence>
   );
+
+  // As a page it is ordinary document flow; as the gateway it is portalled to
+  // <body> so it floats above whatever world is already running.
+  return asPage ? body : createPortal(body, document.body);
 }

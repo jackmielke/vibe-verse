@@ -75,7 +75,15 @@ const USER_ZOOM_MAX = 2.2;
 /** Where the focus sits inside the *safe rect*, measured up from its bottom. */
 const ANCHOR_REST = 0.56;
 const ANCHOR_FLIGHT = 0.52;
-const ANCHOR_SURVEY = 0.5;
+/**
+ * The survey sits the hole low in the frame on purpose: in portrait the ortho
+ * aspect turns every extra metre of hole into two and a bit metres of vertical,
+ * and the only budget that buys width is the terrain slab under the skyline.
+ * Spending it downward is what lets a phone hold a whole par 3 at once.
+ */
+const ANCHOR_SURVEY_TALL = 0.26;
+/** A landscape frame has slack to spare, so it centres the hole instead. */
+const ANCHOR_SURVEY_WIDE = 0.45;
 /** The focus is never pushed outside this slice of the safe rect. */
 const BAND_KEEP_HIGH = 0.94;
 const BAND_KEEP_LOW = 0.08;
@@ -92,11 +100,14 @@ const SLAB_USABLE = 76;
 const SIDE_FILL = 0.86;
 const BAND_FILL = 0.82;
 /** Address fit ceiling as a multiple of the rest corridor (portrait → wide). */
-const ADDRESS_SCALE_TALL = 1.55;
+const ADDRESS_SCALE_TALL = 1.85;
 const ADDRESS_SCALE_WIDE = 3.4;
-/** Survey width ceiling, same units. */
-const SURVEY_SCALE_TALL = 2.3;
-const SURVEY_SCALE_WIDE = 4.2;
+/** Corridor when the pin is out of reach of any sane zoom, same units. */
+const CRUISE_SCALE_TALL = 1.15;
+const CRUISE_SCALE_WIDE = 1.6;
+/** Survey width ceiling, same units — normally the terrain slab binds first. */
+const SURVEY_SCALE_TALL = 4.5;
+const SURVEY_SCALE_WIDE = 5;
 /** When the pin will not fit, push this far past the ball toward it. */
 const FORWARD_BIAS = 0.24;
 
@@ -227,7 +238,7 @@ function measureChrome(vw: number, vh: number): Insets | null {
 
   const bands: Array<{ top: number; bottom: number }> = [];
   const queue: Array<{ el: Element; depth: number }> = [{ el: body, depth: 0 }];
-  let budget = 280;
+  let budget = 420;
 
   while (queue.length > 0 && budget > 0) {
     const node = queue.shift();
@@ -238,29 +249,34 @@ function measureChrome(vw: number, vh: number): Insets | null {
       budget--;
       const tag = el.tagName;
       if (tag === "SCRIPT" || tag === "STYLE" || tag === "CANVAS" || tag === "svg") continue;
-      let r: DOMRect;
+      let r: DOMRect | null = null;
       try {
         r = el.getBoundingClientRect();
       } catch {
-        continue;
+        r = null;
       }
-      if (r.width < 24 || r.height < 6 || r.bottom <= 0 || r.top >= vh) continue;
-
-      const cs = getComputedStyle(el);
-      if (cs.visibility === "hidden" || cs.display === "none") continue;
-      const op = parseFloat(cs.opacity);
-      if (Number.isFinite(op) && op < 0.3) continue;
-
-      const painted =
-        bgAlpha(cs.backgroundColor) >= 0.2 ||
-        (cs.backgroundImage !== "none" && cs.backgroundImage !== "");
-      const container = r.width >= vw * 0.9 && r.height >= vh * 0.7;
-
-      if (painted && !container) {
-        bands.push({ top: r.top, bottom: r.bottom });
-        continue;
+      // A wrapper holding nothing but fixed-position children measures zero
+      // high — reject it as *chrome*, never as a branch to walk, or the whole
+      // HUD disappears behind a collapsed React root.
+      const solid = !!r && r.width >= 24 && r.height >= 6 && r.bottom > 0 && r.top < vh;
+      if (solid && r) {
+        const cs = getComputedStyle(el);
+        if (cs.display === "none") continue;
+        const op = parseFloat(cs.opacity);
+        const shown = cs.visibility !== "hidden" && !(Number.isFinite(op) && op < 0.3);
+        const painted =
+          bgAlpha(cs.backgroundColor) >= 0.2 ||
+          (cs.backgroundImage !== "none" && cs.backgroundImage !== "");
+        const container = r.width >= vw * 0.9 && r.height >= vh * 0.7;
+        if (shown && painted && !container) {
+          // Painted, edge-hugging, not full-bleed: this is chrome. Whatever it
+          // contains is already hidden, so stop here.
+          bands.push({ top: r.top, bottom: r.bottom });
+          continue;
+        }
+        if (!shown) continue;
       }
-      if (node.depth < 8) queue.push({ el, depth: node.depth + 1 });
+      if (node.depth < 9 && el.children.length > 0) queue.push({ el, depth: node.depth + 1 });
     }
   }
   if (bands.length === 0) return null;
@@ -465,7 +481,12 @@ const createCamera: SystemFactory = (ctx) => {
       // more (or less) of the hole; a bare zoom nudge would be overwritten
       // below, so honour it as an explicit overview instead.
       if (lastZoomOut >= 0 && Math.abs(engine.zoom - lastZoomOut) > 1e-6) {
-        if (engine.zoom < lastZoomOut * 0.95) {
+        // The framing here is fitted, not fixed, so an outside writer has no
+        // idea what our current zoom means — the *act* of writing is the
+        // request, and the only framing we can offer on demand is the overview.
+        // Only an unmistakable close-up (far tighter than we chose) is read the
+        // other way, as "stop showing me the hole".
+        if (engine.zoom < lastZoomOut * 1.5) {
           startSurvey(ball ? ball.pos.x : hole.tee.x, hole.cup.x, Infinity);
         } else {
           survey = null;
@@ -530,9 +551,12 @@ const createCamera: SystemFactory = (ctx) => {
       const mix = (a: number, b: number): number => a + (b - a) * wide;
 
       // --- Choose the subject ----------------------------------------------
-      const speed = ball && !ball.resting ? Math.hypot(ball.vel.x, ball.vel.y) : 0;
-      const flying = !!ball && !ball.resting && !survey && !override;
-      const aiming = !!aim && !!ball && !survey && !override;
+      // A teed ball is never flagged `resting` — it is still micro-settling on
+      // the turf — so "in play" is a speed question, not a flag question.
+      const speed = ball ? Math.hypot(ball.vel.x, ball.vel.y) : 0;
+      const moving = !!ball && !ball.resting && speed > 1.2;
+      const flying = moving && !survey && !override;
+      const aiming = !!aim && !!ball && !moving && !survey && !override;
 
       if (aiming && aim && (now - arcAt > 90 || !arc)) {
         arcAt = now;
@@ -554,17 +578,23 @@ const createCamera: SystemFactory = (ctx) => {
       let leanX = focusX;
 
       if (survey) {
+        // The survey exists to show the hole, so it fits the hole: end to end,
+        // inside the safe rect, with margin. It only falls back to panning when
+        // the terrain slab genuinely cannot back a frame that wide.
         const p = smoothstep((survey.t - survey.delay) / survey.travel);
         const panX = survey.from + (survey.to - survey.from) * p;
         const hx0 = Math.min(hole.cup.x, hole.tee.x, field ? field.x0 : hole.bounds.min.x);
         const hx1 = Math.max(hole.cup.x, hole.tee.x, field ? field.x1 : hole.bounds.max.x);
         const cap = restW * mix(SURVEY_SCALE_TALL, SURVEY_SCALE_WIDE);
-        wantW = Math.min((hx1 - hx0) / SIDE_FILL, cap);
-        const g = field ? topOver(field, panX - 3, panX + 3) : NaN;
-        focusX = panX;
+        const need = (hx1 - hx0) / SIDE_FILL;
+        wantW = Math.min(need, cap);
+        const whole = wantW >= need - 1e-3;
+        focusX = whole ? (hx0 + hx1) * 0.5 : panX;
+        const g = field ? topOver(field, focusX - (whole ? (hx1 - hx0) * 0.5 : 3), focusX + (whole ? (hx1 - hx0) * 0.5 : 3)) : NaN;
         focusY = Number.isFinite(g) ? g : (hole.tee.y + hole.cup.y) * 0.5;
-        leanX = panX;
-        anchor = ANCHOR_SURVEY;
+        needH = Math.abs(hole.cup.y - hole.tee.y) + 4;
+        leanX = focusX;
+        anchor = mix(ANCHOR_SURVEY_TALL, ANCHOR_SURVEY_WIDE);
       } else if (override) {
         // Someone else owns the framing (the jetpack, a cutscene).
         focusX = override.x;
@@ -595,9 +625,13 @@ const createCamera: SystemFactory = (ctx) => {
         // At address: fit the ball→pin corridor instead of a fixed zoom, so on
         // any frame that can hold the hole the flag is on screen.
         const span = Math.abs(hole.cup.x - ball.pos.x);
+        const need = (span + 9) / SIDE_FILL;
         const cap = restW * mix(ADDRESS_SCALE_TALL, ADDRESS_SCALE_WIDE);
-        wantW = clamp(Math.max(restW, Math.min((span + 9) / SIDE_FILL, cap)), 4, 4000) / userZoom;
-        const fits = span + 9 <= wantW * SIDE_FILL;
+        const fits = need <= cap;
+        // Widening only pays for itself if it actually buys the flag. When the
+        // pin is beyond any sane zoom, spend the pixels on a readable corridor
+        // and let the HUD's edge pointer carry the distance instead.
+        wantW = clamp(fits ? Math.max(restW, need) : restW * mix(CRUISE_SCALE_TALL, CRUISE_SCALE_WIDE), 4, 4000) / userZoom;
         focusX = ball.pos.x;
         focusY = ball.pos.y;
         if (fits) {
@@ -673,8 +707,11 @@ const createCamera: SystemFactory = (ctx) => {
 
       let cy = centreFor(ty, anchorF);
       // Keep the skyline high in the frame: sky is capped hard, but we also
-      // never bury it above the top edge and stare at a wall of slab.
-      cy = Math.min(cy, centreFor(groundY, SKY_MAX));
+      // never bury it above the top edge and stare at a wall of slab. A survey
+      // is the one frame allowed real sky — it is showing you a whole hole, and
+      // squeezing that into the bottom third is the point of the cap, not a
+      // violation of it.
+      cy = Math.min(cy, centreFor(groundY, survey ? 0.74 : SKY_MAX));
       cy = Math.max(cy, centreFor(groundY, SKY_MIN));
       // Don't drop below the modelled terrain slab.
       cy = Math.max(cy, floorY + halfH);

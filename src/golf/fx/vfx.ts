@@ -20,8 +20,11 @@
  * falloff, painted into `DataTexture`s at boot. No canvas, no DOM, no network.
  *
  * Consumes `golf:bounce`, `golf:hazard`, `golf:shot`, `golf:holed`,
- * `golf:stick`, `golf:penalty`, `golf:ready`. Emits `golf:shake` (0..1) and
- * also nudges the camera itself, so shake survives a missing post stack.
+ * `golf:hole`, `golf:stick`, `golf:penalty`, `golf:ready`. Emits
+ * `golf:shake` (0..1) and — on a hole-out — `golf:celebrate`, which carries
+ * how long the world wants the frame before any UI dims it. It also nudges
+ * the camera itself, so shake and the hole-out punch survive a missing post
+ * stack.
  */
 import * as THREE from "three";
 import type {
@@ -608,6 +611,13 @@ const createVfx: SystemFactory = (ctx) => {
 
   const tmpCol = new THREE.Color();
   let spawnedThisFrame = 0;
+  /**
+   * Per-frame spawn allowance. Normally the quality budget; the hole-out
+   * celebration temporarily lifts it, because its beats are scheduled ~20 ms
+   * apart and on a slow frame they all land together — with the ordinary cap
+   * the burst would silently lose most of itself exactly when it matters.
+   */
+  let frameBudget = B.perFrame;
 
   /**
    * Write one particle into a pool's ring buffer. Positional args on purpose:
@@ -631,7 +641,7 @@ const createVfx: SystemFactory = (ctx) => {
     spin: number,
     align: number,
   ): void {
-    if (pool.cap === 0 || spawnedThisFrame >= B.perFrame) return;
+    if (pool.cap === 0 || spawnedThisFrame >= frameBudget) return;
     spawnedThisFrame++;
     const i = pool.head;
     pool.head = (i + 1) % pool.cap;
@@ -1243,54 +1253,228 @@ const createVfx: SystemFactory = (ctx) => {
 
   // --- Hole-out celebration ------------------------------------------------
 
-  const CONFETTI_COLS = [0xfbbf24, 0x34d399, 0x60a5fa, 0xf472b6, 0xfff1c9, 0x2dd4bf];
+  /**
+   * The peak moment of a hole has to land in the *world*, not in a dialog.
+   * The beat order is: the ball thumps into the cup → a radial spark ring
+   * blows out of it → a rim flash runs across the green → a light column
+   * climbs the pin and kicks the flag → three confetti waves tinted to the
+   * score fall slowly for the next few seconds. A short camera punch-in on the
+   * cup rides the whole thing.
+   *
+   * `CELEB_HOLD` is how long the world gets the frame to itself. It is
+   * published on `golf:celebrate` so the HUD can hold its backdrop blur for
+   * that long instead of wiping the celebration on frame one.
+   */
+  const CELEB_HOLD = 0.62;
+  const CELEB_END = 4.6;
+
+  /** Score-derived look. Better score → hotter palette and a bigger burst. */
+  interface Tier {
+    /** Confetti + debris colours. */
+    cols: number[];
+    /** Additive core colour for the spark ring and the flashes. */
+    hot: number;
+    /** Colour of the rim flash running out over the green. */
+    rim: number;
+    power: number;
+  }
+
+  const TIER_EAGLE: Tier = {
+    cols: [0xfde68a, 0xfbbf24, 0xf59e0b, 0xfff7d6, 0xffd166, 0xc4b5fd],
+    hot: 0xfff4cc,
+    rim: 0xffc75a,
+    power: 1.5,
+  };
+  const TIER_BIRDIE: Tier = {
+    cols: [0x34d399, 0x6ee7b7, 0xfbbf24, 0xfff1c9, 0x2dd4bf, 0xa7f3d0],
+    hot: 0xdefff2,
+    rim: 0x5ce8b6,
+    power: 1.22,
+  };
+  const TIER_PAR: Tier = {
+    cols: [0xfff1c9, 0xfbbf24, 0x60a5fa, 0x34d399, 0xf472b6, 0xe2e8f0],
+    hot: 0xfff0c0,
+    rim: 0x9beddf,
+    power: 1.0,
+  };
+  const TIER_OVER: Tier = {
+    cols: [0xcbd5e1, 0x93c5fd, 0xa7f3d0, 0xe2e8f0, 0xfde68a],
+    hot: 0xdbeafe,
+    rim: 0x8fd6ea,
+    power: 0.78,
+  };
+
+  function tierFor(rel: number): Tier {
+    if (rel <= -2) return TIER_EAGLE;
+    if (rel === -1) return TIER_BIRDIE;
+    if (rel <= 0) return TIER_PAR;
+    return TIER_OVER;
+  }
 
   interface Step {
     at: number;
     kind: number;
   }
-  /** 0 = confetti wave, 1 = ring, 2 = flash + shake, 3 = rising sparkles. */
+  /**
+   * 0 = ball-drop thump, 1 = cup burst, 2 = rim flash on the green,
+   * 3 = pin column + flag kick, 4 = confetti wave, 5 = rings, 6 = sparkles.
+   */
   const CELEBRATION: Step[] = [
-    { at: 0.0, kind: 2 },
     { at: 0.0, kind: 0 },
     { at: 0.02, kind: 1 },
-    { at: 0.16, kind: 0 },
-    { at: 0.2, kind: 1 },
-    { at: 0.42, kind: 3 },
-    { at: 0.48, kind: 0 },
-    { at: 0.7, kind: 1 },
-    { at: 1.0, kind: 3 },
+    { at: 0.04, kind: 2 },
+    { at: 0.06, kind: 4 },
+    { at: 0.1, kind: 3 },
+    { at: 0.26, kind: 4 },
+    { at: 0.32, kind: 5 },
+    { at: 0.54, kind: 4 },
+    { at: 0.66, kind: 6 },
+    { at: 0.98, kind: 5 },
+    { at: 1.15, kind: 4 },
+    { at: 1.7, kind: 6 },
+    { at: 2.15, kind: 4 },
   ];
+
+  let tier: Tier = TIER_PAR;
   let celebT = -1;
   let celebStep = 0;
+  let drizzle = 0;
   const celebAt = { x: 0, y: 0 };
 
+  const pick = (cols: number[]): number => cols[(rng() * cols.length) | 0];
+
+  /**
+   * Half the visible width in metres. Celebration rings are sized in this
+   * rather than in absolute metres: the camera fits the hole, so a fixed 11 m
+   * shockwave is a tasteful ripple on a long par 4 and a screen-spanning yellow
+   * band on a short one. Clamped so a survey zoom can't inflate it either.
+   */
+  function halfView(): number {
+    const cam = ctx.camera;
+    return Math.max(4, Math.min(22, (cam.right - cam.left) * 0.5));
+  }
+
+  /**
+   * Confetti. Pieces are deliberately large and long-lived: the score card
+   * puts a dimmed, blurred pane over the world a beat later, and only big
+   * saturated shapes still read through that.
+   */
   function confettiWave(x: number, y: number, power: number): void {
-    const n = scaled(22 * power);
+    const n = scaled(26 * power * tier.power);
     for (let i = 0; i < n; i++) {
-      const a = Math.PI / 2 + (rng() - 0.5) * 2.1;
-      const sp = (5 + rng() * 12) * power;
+      const a = Math.PI / 2 + (rng() - 0.5) * 2.3;
+      const sp = (7 + rng() * 16) * power * (0.85 + tier.power * 0.25);
       push(
         poolAlpha,
-        x + (rng() - 0.5) * 0.6,
-        y + 0.25,
+        x + (rng() - 0.5) * 0.8,
+        y + 0.3,
         LAYER.fx,
         Math.cos(a) * sp,
         Math.sin(a) * sp,
-        1.5 + rng() * 1.4,
-        0.44 + rng() * 0.26,
-        0.4 + rng() * 0.24,
-        CONFETTI_COLS[(rng() * CONFETTI_COLS.length) | 0],
-        0.95,
+        2.4 + rng() * 2.0,
+        0.78 + rng() * 0.58,
+        0.7 + rng() * 0.5,
+        pick(tier.cols),
+        1,
         T_CONFETTI,
-        // Low drag + a long life is what gives the fall its slow, floaty,
-        // slow-motion read without touching the simulation clock.
-        1.1 + rng() * 0.8,
-        0.42,
-        (rng() - 0.5) * 16,
+        // Low drag against a light gravity scale is what gives the fall its
+        // slow, floaty read without touching the simulation clock.
+        1.0 + rng() * 0.7,
+        0.32,
+        (rng() - 0.5) * 18,
         0,
       );
     }
+  }
+
+  /** The ball landing in the cup: turf out of the lip, dust, a tight ring. */
+  function dropThump(x: number, y: number): void {
+    const n = scaled(16);
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI * 0.14 + rng() * Math.PI * 0.72;
+      const sp = 2.4 + rng() * 6.5;
+      push(
+        poolAlpha, x + (rng() - 0.5) * 0.5, y + 0.12, LAYER.fx,
+        Math.cos(a) * sp, Math.sin(a) * sp,
+        0.55 + rng() * 0.5, 0.5 + rng() * 0.4, 0.34,
+        rng() < 0.5 ? 0x8fe89a : 0x3f9c62, 0.95, T_BLADE, 1.6, 1, (rng() - 0.5) * 14, 0,
+      );
+    }
+    const d = scaled(7);
+    for (let i = 0; i < d; i++) {
+      push(
+        poolAlpha, x + (rng() - 0.5) * 1.0, y + 0.2, LAYER.fx - 0.5,
+        (rng() - 0.5) * 2.2, 0.9 + rng() * 1.8,
+        0.8 + rng() * 0.6, 0.9 + rng() * 0.5, 2.6,
+        0xdff0d8, 0.3, T_DUST, 2.4, -0.05, (rng() - 0.5) * 1.4, 0,
+      );
+    }
+    pushQuad(rings, x, y + 0.05, LAYER.fx, 0.25, 2.4, 0.34, 0.34, 0xf3fff4, 0.85, 0, 0);
+    screenShake(0.26);
+  }
+
+  /** The burst itself: a full radial ring of sparks plus concentric shocks. */
+  function cupBurst(x: number, y: number): void {
+    const n = scaled(46 * tier.power);
+    for (let i = 0; i < n; i++) {
+      // Evenly spaced with a little jitter, so it reads as a *ring* rather
+      // than a random cloud even when the count is cut on a low-end phone.
+      const a = (i / n) * Math.PI * 2 + (rng() - 0.5) * 0.5;
+      const sp = (10 + rng() * 20) * (0.75 + tier.power * 0.35);
+      push(
+        poolAdd, x + Math.cos(a) * 0.2, y + 0.25 + Math.sin(a) * 0.2, LAYER.fx,
+        Math.cos(a) * sp, Math.sin(a) * sp * 0.85 + 1.6,
+        0.3 + rng() * 0.34, 1.5 + rng() * 1.6, 0.16,
+        rng() < 0.45 ? tier.hot : pick(tier.cols), 1, T_SPARK, 3.0, 0.35, 0, 1,
+      );
+    }
+    const g = scaled(12 * tier.power);
+    for (let i = 0; i < g; i++) {
+      const a = rng() * Math.PI * 2;
+      push(
+        poolAdd, x, y + 0.3, LAYER.fx,
+        Math.cos(a) * 6 * rng(), Math.abs(Math.sin(a)) * 7 * rng() + 1,
+        0.3 + rng() * 0.3, 1.5 + rng() * 1.1, 0.1,
+        tier.hot, 1, T_STAR, 2.6, 0.2, 0, 0,
+      );
+    }
+    const hv = halfView();
+    pushQuad(flashes, x, y + 0.5, LAYER.fx, 0.7, hv * 0.42, 1, 0.34, tier.hot, 1, 0, 0);
+    // Radii are view-relative and deliberately *not* scaled by the tier: an
+    // albatross gets more sparks and more confetti, not a ring wider than the
+    // phone. Anything past ~half the visible width stops reading as a
+    // shockwave and starts reading as a lens artefact.
+    pushQuad(rings, x, y + 0.35, LAYER.fx, 0.3, hv * 0.28, 1, 0.44, tier.hot, 1, 0, 0);
+    pushQuad(rings, x, y + 0.35, LAYER.fx, 0.3, hv * 0.46, 1, 0.7, tier.rim, 0.6, 0, 0);
+    // A slow, soft afterglow under the confetti. It is the one part of the
+    // celebration that is pure low frequency, so it is also the part that
+    // survives being seen through a dimmed, blurred pane a beat later.
+    pushQuad(flashes, x, y + 1.4, LAYER.fx - 1, hv * 0.16, hv * 0.72, 0.85, 2.2, tier.hot, 0.55, 0, 0);
+    screenShake(0.52);
+  }
+
+  /** A flattened shock running out over the green, so the ground reacts too. */
+  function rimFlash(x: number, y: number): void {
+    const hv = halfView();
+    pushQuad(rings, x, y + 0.06, LAYER.fx - 1, 1.0, hv * 0.5, 0.26, 0.7, tier.rim, 0.85, 0, 0);
+    pushQuad(rings, x, y + 0.06, LAYER.fx - 1, 0.8, hv * 0.85, 0.2, 1.15, tier.rim, 0.32, 0, 0);
+    pushQuad(flashes, x, y + 0.35, LAYER.fx - 1, 1.5, hv * 0.5, 0.42, 0.5, tier.hot, 0.6, 0, 0);
+  }
+
+  /** Light climbing the pin, a halo at the finial, and a kick to the cloth. */
+  function pinColumn(x: number, y: number): void {
+    pushQuad(flashes, x, y + 2.6, LAYER.fx - 1, 0.6, 3.0, 2.6, 0.55, tier.hot, 0.8, 0, 0);
+    const n = scaled(14);
+    for (let i = 0; i < n; i++) {
+      push(
+        poolAdd, x + (rng() - 0.5) * 0.5, y + 0.2 + rng() * 0.6, LAYER.fx,
+        (rng() - 0.5) * 1.6, 7 + rng() * 9,
+        0.5 + rng() * 0.35, 0.8 + rng() * 0.7, 0.1,
+        rng() < 0.5 ? tier.hot : tier.rim, 1, T_STAR, 1.1, 0.12, 0, 0,
+      );
+    }
+    pushQuad(rings, x, y + 4.4, LAYER.fx, 0.2, 2.8, 1, 0.5, tier.rim, 0.85, 0, 0);
+    flagKick(1);
   }
 
   function celebrationStep(kind: number): void {
@@ -1298,41 +1482,125 @@ const createVfx: SystemFactory = (ctx) => {
     const y = celebAt.y;
     switch (kind) {
       case 0:
-        confettiWave(x, y, 0.7 + rng() * 0.5);
+        dropThump(x, y);
         break;
       case 1:
-        pushQuad(rings, x, y + 0.2, LAYER.fx, 0.4, 5 + rng() * 4, 1, 0.75, 0xfbbf24, 0.7, 0, 0);
-        pushQuad(rings, x, y + 0.2, LAYER.fx, 0.3, 8 + rng() * 3, 0.9, 1.2, 0x34d399, 0.4, 0, 0);
+        cupBurst(x, y);
         break;
       case 2:
-        pushQuad(flashes, x, y + 0.4, LAYER.fx, 0.8, 6.5, 1, 0.4, 0xfff0c0, 0.85, 0, 0);
-        screenShake(0.34);
+        rimFlash(x, y);
         break;
+      case 3:
+        pinColumn(x, y);
+        break;
+      case 4:
+        confettiWave(x, y, 0.75 + rng() * 0.5);
+        break;
+      case 5: {
+        const hv = halfView();
+        pushQuad(rings, x, y + 0.4, LAYER.fx, 0.5, hv * (0.26 + rng() * 0.1), 1, 0.7, pick(tier.cols), 0.6, 0, 0);
+        pushQuad(rings, x, y + 0.4, LAYER.fx, 0.4, hv * (0.44 + rng() * 0.12), 0.85, 1.1, tier.rim, 0.3, 0, 0);
+        break;
+      }
       default: {
-        const n = scaled(12);
+        const n = scaled(16 * tier.power);
+        const w = halfView() * 0.75;
         for (let i = 0; i < n; i++) {
           push(
-            poolAdd,
-            x + (rng() - 0.5) * 4,
-            y + rng() * 1.5,
-            LAYER.fx,
-            (rng() - 0.5) * 1.6,
-            1.6 + rng() * 2.4,
-            1.1 + rng() * 0.8,
-            0.65 + rng() * 0.5,
-            0.08,
-            rng() < 0.5 ? 0xfbbf24 : 0x7ff0d8,
-            0.9,
-            T_STAR,
-            1.4,
-            -0.08,
-            0,
-            0,
+            poolAdd, x + (rng() - 0.5) * w, y + rng() * 3.5, LAYER.fx,
+            (rng() - 0.5) * 1.6, 1.6 + rng() * 2.6,
+            1.2 + rng() * 0.9, 0.8 + rng() * 0.6, 0.08,
+            pick(tier.cols), 0.95, T_STAR, 1.4, -0.08, 0, 0,
           );
         }
         break;
       }
     }
+  }
+
+  // --- Flag reaction -------------------------------------------------------
+
+  /**
+   * The pin belongs to the renderer, so this is a *lookup*, not a dependency:
+   * find the flag cloth once per hole by its shape — a segmented plane hanging
+   * a few metres above the cup — and, if it is there, swing it about the pole.
+   * The renderer rewrites the cloth's vertices every frame but never its
+   * transform, so a rotation is ours to keep. If the pin ever changes shape
+   * this quietly finds nothing and the rest of the celebration is unaffected.
+   */
+  let flagRef: THREE.Object3D | null = null;
+  let flagLooked = false;
+  let flagAng = 0;
+  let flagVel = 0;
+  const flagTmp = new THREE.Vector3();
+
+  function findFlag(): THREE.Object3D | null {
+    if (flagLooked) return flagRef;
+    const cup = ctx.services.course?.current?.cup;
+    if (!cup) return null;
+    flagLooked = true;
+    try {
+      ctx.scene.traverse((o) => {
+        if (flagRef) return;
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const p = (m.geometry as { parameters?: Record<string, number> } | undefined)?.parameters;
+        if (!p || (p.widthSegments ?? 0) < 4 || (p.heightSegments ?? 0) !== 1) return;
+        m.getWorldPosition(flagTmp);
+        const up = flagTmp.y - cup.y;
+        if (Math.abs(flagTmp.x - cup.x) > 3 || up < 2 || up > 8) return;
+        flagRef = m;
+      });
+    } catch {
+      flagRef = null;
+    }
+    return flagRef;
+  }
+
+  function flagKick(amount: number): void {
+    if (!findFlag()) return;
+    flagVel -= amount * 3.5;
+  }
+
+  /** Damped spring back to rest; a couple of visible swings, then still. */
+  function stepFlag(dt: number): void {
+    if (!flagRef || (flagAng === 0 && flagVel === 0)) return;
+    flagVel += (-flagAng * 120 - flagVel * 6) * dt;
+    flagAng += flagVel * dt;
+    if (Math.abs(flagAng) < 0.002 && Math.abs(flagVel) < 0.02) {
+      flagAng = 0;
+      flagVel = 0;
+    }
+    flagRef.rotation.z = Math.max(-0.5, Math.min(0.5, flagAng));
+  }
+
+  // --- Camera punch --------------------------------------------------------
+
+  /**
+   * A short push toward the cup. `engine.zoom` is written in `lateUpdate`
+   * (after the camera system has had its say, before `applyCamera` reads it)
+   * and put back in `update` before the camera next looks — the camera treats
+   * any outside zoom write as a survey request, so it must never see ours.
+   * vfx boots before the camera, so the restore always wins the race.
+   */
+  let punchBase = -1;
+
+  const smooth = (x: number): number => {
+    const t = sat(x);
+    return t * t * (3 - 2 * t);
+  };
+
+  function punchAmount(t: number): number {
+    if (t < 0) return 0;
+    if (t < 0.16) return smooth(t / 0.16);
+    if (t < 0.55) return 1;
+    if (t < 1.7) return 1 - smooth((t - 0.55) / 1.15);
+    return 0;
+  }
+
+  function releasePunch(): void {
+    if (engine && punchBase > 0) engine.zoom = punchBase;
+    punchBase = -1;
   }
 
   // --- Events --------------------------------------------------------------
@@ -1472,12 +1740,41 @@ const createVfx: SystemFactory = (ctx) => {
   offs.push(
     ctx.on(
       "golf:holed",
-      safe(() => {
-        const cup = ctx.services.course?.current?.cup;
-        celebAt.x = cup?.x ?? 0;
-        celebAt.y = cup?.y ?? 0;
+      safe<{ strokes?: number; par?: number }>((p) => {
+        const hole = ctx.services.course?.current;
+        const ball = ctx.services.physics?.balls[0];
+        celebAt.x = hole?.cup.x ?? ball?.pos.x ?? engine?.target.x ?? 0;
+        celebAt.y = hole?.cup.y ?? ball?.pos.y ?? engine?.target.y ?? 0;
+        const par = p?.par ?? hole?.par ?? 3;
+        tier = tierFor((p?.strokes ?? par) - par);
         celebT = 0;
         celebStep = 0;
+        drizzle = 0;
+        // Tell anyone dressing the screen that the world is mid-celebration,
+        // so the score card can hold its backdrop blur instead of wiping the
+        // best half-second of the hole. Nobody has to listen.
+        ctx.emit("golf:celebrate", {
+          at: { x: celebAt.x, y: celebAt.y },
+          hold: CELEB_HOLD,
+          duration: CELEB_END,
+          tint: tier.rim,
+        });
+      }),
+    ),
+  );
+
+  // A new hole cancels anything still in flight and re-arms the pin lookup.
+  offs.push(
+    ctx.on(
+      "golf:hole",
+      safe(() => {
+        celebT = -1;
+        releasePunch();
+        if (flagRef) flagRef.rotation.z = 0;
+        flagRef = null;
+        flagLooked = false;
+        flagAng = 0;
+        flagVel = 0;
       }),
     ),
   );
@@ -1537,6 +1834,11 @@ const createVfx: SystemFactory = (ctx) => {
     },
 
     update(dt) {
+      // Hand the camera system back the zoom it wrote before it reads it again
+      // (see `releasePunch`), then re-derive this frame's spawn allowance.
+      releasePunch();
+      frameBudget = celebT >= 0 && celebT < 1.4 ? B.perFrame * 4 : B.perFrame;
+
       // Contacts the solver queued this frame, replayed now that it is safe to
       // query physics again.
       drainContacts();
@@ -1582,10 +1884,19 @@ const createVfx: SystemFactory = (ctx) => {
           celebrationStep(CELEBRATION[celebStep].kind);
           celebStep++;
         }
-        // A light drizzle between the scripted beats keeps the air busy.
-        if (celebT < 1.6 && rng() < 0.35) confettiWave(celebAt.x, celebAt.y, 0.28);
-        if (celebT > 3.2) celebT = -1;
+        // A light drizzle between the scripted beats keeps the air busy. It is
+        // metered in seconds, not frames, so 6 fps and 120 fps see the same
+        // amount of confetti.
+        if (celebT < 2.8) {
+          drizzle += dt;
+          while (drizzle >= 0.16) {
+            drizzle -= 0.16;
+            confettiWave(celebAt.x + (rng() - 0.5) * halfView() * 0.6, celebAt.y + 1.2, 0.3);
+          }
+        }
+        if (celebT > CELEB_END) celebT = -1;
       }
+      stepFlag(dt);
 
       shake *= Math.exp(-dt * 5.6);
       if (shake < 0.004) shake = 0;
@@ -1610,6 +1921,23 @@ const createVfx: SystemFactory = (ctx) => {
       stepQuads(rings, dt);
       stepQuads(flashes, dt);
 
+      // Camera punch-in on the cup. Same trick as the shake: the camera system
+      // rewrites `target` and `zoom` every `update`, so writing here is a pure
+      // offset that can never accumulate.
+      if (engine && celebT >= 0) {
+        const e = punchAmount(celebT);
+        if (e > 0.001) {
+          punchBase = engine.zoom;
+          engine.zoom = punchBase * (1 + 0.14 * e);
+          // Clamped so a cup the camera has not caught up to yet can't yank
+          // the frame across the hole.
+          const dx = Math.max(-6, Math.min(6, celebAt.x - engine.target.x));
+          const dy = Math.max(-5, Math.min(5, celebAt.y + 1.6 - engine.target.y));
+          engine.target.x += dx * 0.5 * e;
+          engine.target.y += dy * 0.5 * e;
+        }
+      }
+
       // Apply our own shake. The camera system writes `engine.target` during
       // `update`, so adding here is never cumulative — and it means shake
       // still works when nothing consumes `golf:shake`.
@@ -1627,6 +1955,9 @@ const createVfx: SystemFactory = (ctx) => {
     dispose() {
       for (const off of offs) off();
       offs.length = 0;
+      releasePunch();
+      if (flagRef) flagRef.rotation.z = 0;
+      flagRef = null;
       ctx.scene.remove(group);
       for (const p of [poolAlpha, poolAdd]) {
         p.geo.dispose();

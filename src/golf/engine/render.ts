@@ -131,7 +131,7 @@ interface ThemeSpec {
 
 const THEMES: Record<CourseTheme, ThemeSpec> = {
   seaside: {
-    skyTop: 0x123f78, skyMid: 0x4691bf, skyBot: 0xffc98f, sun: 0xffd9a6,
+    skyTop: 0x1f6bb0, skyMid: 0x74bcdd, skyBot: 0xffd7a4, sun: 0xffe6bd,
     sunAt: [-32, 30], sunSize: 2.6, key: 0xffe3bc, keyI: 2.5,
     hemiSky: 0x9fd0ff, hemiGround: 0x24402c, hemiI: 1.1, fog: 0x64a2c4,
     far: 0x3f83ae, mid: 0x2f6d97, near: 0x235a83, accent: 0xffb44d,
@@ -762,29 +762,38 @@ function ballTex(size: number, rng: () => number): THREE.CanvasTexture | null {
   const W = size, H = size * 0.5;
   g.fillStyle = "#ffffff";
   g.fillRect(0, 0, W, H);
-  const cols = 26, rows = 13;
+  // Dimples with a real lit lip and a shadowed floor. They have to be legible
+  // at a 20 px ball — a uniform cream disc has no material and no spin read —
+  // while still averaging out to near-white so the ball stays the high value
+  // in frame.
+  const cols = 22, rows = 11;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = ((c + (r % 2) * 0.5) / cols) * W;
       const y = ((r + 0.5) / rows) * H;
-      const rad = W / cols * 0.42;
-      const gr = g.createRadialGradient(x, y - rad * 0.3, 0, x, y, rad);
-      gr.addColorStop(0, "rgba(255,255,255,1)");
-      gr.addColorStop(0.6, "rgba(236,240,246,0.55)");
-      gr.addColorStop(1, "rgba(214,220,230,0.0)");
+      const rad = (W / cols) * 0.46;
+      const gr = g.createRadialGradient(x + rad * 0.3, y + rad * 0.34, 0, x, y, rad);
+      gr.addColorStop(0, "rgba(255,255,255,0.95)");
+      gr.addColorStop(0.42, "rgba(216,226,238,0.42)");
+      gr.addColorStop(0.86, "rgba(178,192,212,0.34)");
+      gr.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = gr;
       g.beginPath(); g.arc(x, y, rad, 0, 6.2832); g.fill();
     }
   }
-  // Spin marks: warm, light, and narrow. Enough to read rotation, never enough
-  // to darken the disc.
-  for (const yy of [H * 0.26, H * 0.74]) {
-    const gr = g.createLinearGradient(0, yy - H * 0.05, 0, yy + H * 0.05);
-    gr.addColorStop(0, "rgba(255,168,150,0)");
-    gr.addColorStop(0.5, "rgba(255,142,124,0.5)");
-    gr.addColorStop(1, "rgba(255,168,150,0)");
-    g.fillStyle = gr;
-    g.fillRect(0, yy - H * 0.05, W, H * 0.1);
+  // Alignment marks: one bold stripe plus a pair of tick marks. This is the
+  // feature that makes rotation legible — a symmetric ball spinning at
+  // 40 rad/s is indistinguishable from a still one.
+  const gr = g.createLinearGradient(0, H * 0.44, 0, H * 0.56);
+  gr.addColorStop(0, "rgba(255,110,96,0)");
+  gr.addColorStop(0.5, "rgba(240,70,70,0.85)");
+  gr.addColorStop(1, "rgba(255,110,96,0)");
+  g.fillStyle = gr;
+  g.fillRect(0, H * 0.44, W, H * 0.12);
+  for (let i = 0; i < 4; i++) {
+    g.fillStyle = "rgba(30,52,80,0.5)";
+    g.fillRect((i / 4) * W + W * 0.02, H * 0.2, W * 0.03, H * 0.09);
+    g.fillRect((i / 4) * W + W * 0.02, H * 0.71, W * 0.03, H * 0.09);
   }
   void rng;
   const t = new THREE.CanvasTexture(p.cv);
@@ -1084,114 +1093,141 @@ function drawSkyline(
 }
 
 /**
- * Open water. Band spacing compresses toward the horizon and every dash is
- * jittered in offset, length and opacity, so the plate of identical 8×2 ticks
- * is gone. A broad specular sheet sits under the sun, which is upper-left.
+ * Non-uniform x placement for a tiling band: instances are pushed into loose
+ * clumps with real gaps between them, and the sequence wraps. Evenly-spaced
+ * instances are the single loudest tell that a scenery band is one sprite
+ * repeated, and it is the tell the critics called out on the palm strip.
  */
-function drawSea(
-  g: CanvasRenderingContext2D, W: number, seaY: number, botY: number,
-  topC: number, botC: number, foamC: number, rng: () => number,
-): void {
-  const depth = Math.max(1, botY - seaY);
-  const sg = g.createLinearGradient(0, seaY, 0, botY);
-  sg.addColorStop(0, hex(topC));
-  sg.addColorStop(0.35, hex(mixHex(topC, botC, 0.5)));
-  sg.addColorStop(1, hex(botC));
-  g.fillStyle = sg;
-  g.fillRect(0, seaY, W, depth);
-
-  // Specular sheet: a wide soft column under the sun, brightest at the horizon.
-  const glintX = W * 0.22;
-  const gg = g.createRadialGradient(glintX, seaY, 0, glintX, seaY, depth * 1.5);
-  gg.addColorStop(0, rgba(foamC, 0.3));
-  gg.addColorStop(0.4, rgba(foamC, 0.09));
-  gg.addColorStop(1, rgba(foamC, 0));
-  g.fillStyle = gg;
-  g.fillRect(0, seaY, W, depth);
-
-  // Horizon line: thin, bright, and the only hard edge water is allowed.
-  g.fillStyle = rgba(foamC, 0.34);
-  g.fillRect(0, seaY - 1, W, 1.6);
-
-  const rows = 26;
-  for (let r = 0; r < rows; r++) {
-    // Quadratic spacing: rows crowd together as they approach the horizon.
-    const f = Math.pow((r + 1) / rows, 1.9);
-    const y = seaY + f * depth;
-    const scale = 0.25 + f * 1.5;
-    const alpha = (0.05 + f * 0.22) * (0.55 + rng() * 0.6);
-    const count = Math.max(2, Math.round((W / 150) * (3 + f * 5)));
-    for (let i = 0; i < count; i++) {
-      const dx = ((i + rng()) / count) * W;
-      const len = (6 + rng() * 40) * scale;
-      const dy = (rng() - 0.5) * depth * 0.035;
-      const near = 1 - Math.abs(dx - glintX) / W;
-      g.fillStyle = rgba(foamC, Math.min(0.55, alpha * (0.7 + near * 0.9)));
-      g.fillRect(dx, y + dy, len, Math.max(1, 0.8 + f * 2.2));
-    }
+function scatterX(n: number, W: number, rng: () => number): number[] {
+  const xs: number[] = [];
+  // Walk the width with a randomised stride, then jitter each step. The final
+  // rescale keeps the run exactly W wide so it still tiles.
+  const gaps: number[] = [];
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    // A third of the gaps are deliberately wide: clumps need clearings.
+    const g = rng() < 0.3 ? 1.5 + rng() * 2.2 : 0.25 + rng() * 0.8;
+    gaps.push(g);
+    total += g;
   }
+  let acc = rng() * gaps[0];
+  for (let i = 0; i < n; i++) {
+    xs.push((acc / total) * W);
+    acc += gaps[i];
+  }
+  return xs;
 }
 
-/** Palms — leaning trunks with a fan of fronds, no two the same size. */
+/**
+ * Palms. Three silhouette variants (tall arching, short stout, twin-trunk
+ * clump), each mirrored at random and scaled ±35%, so no two instances in a
+ * band share an outline.
+ */
 function drawPalms(
   g: CanvasRenderingContext2D, W: number, base: (x: number) => number,
   n: number, col: number, hRef: number, rng: () => number,
 ): void {
+  const xs = scatterX(n, W, rng);
   for (let i = 0; i < n; i++) {
-    const x = ((i + rng() * 0.9) / n) * W;
-    const baseY = base(x);
-    const s = 0.5 + rng() * 1.0;
+    const x = xs[i];
+    const baseY = base(x) + (rng() - 0.5) * hRef * 0.1;
+    const variant = Math.floor(rng() * 3);
+    const flip = rng() < 0.5 ? -1 : 1;
+    // Variant sets the proportions; the ±35% scale sits on top of it.
+    const s = (variant === 0 ? 1.15 : variant === 1 ? 0.62 : 0.9) * (0.65 + rng() * 0.7);
     const h = hRef * s;
-    const lean = (rng() - 0.5) * h * 0.55;
-    const a = 0.55 + rng() * 0.45;
-    wrapAt(x, baseY, h * 1.4, W, (px) => {
-      g.strokeStyle = rgba(col, a);
-      g.lineWidth = Math.max(1.4, h * 0.05);
-      g.lineCap = "round";
-      g.beginPath();
-      g.moveTo(px, baseY);
-      g.quadraticCurveTo(px + lean * 0.4, baseY - h * 0.6, px + lean, baseY - h);
-      g.stroke();
-      const tipX = px + lean;
-      const tipY = baseY - h;
-      const fronds = 5 + Math.floor(rng() * 3);
-      for (let f = 0; f < fronds; f++) {
-        const ang = Math.PI + ((f + rng() * 0.4) / (fronds - 1)) * Math.PI;
-        const L = h * (0.22 + rng() * 0.24);
-        g.lineWidth = Math.max(1.1, h * 0.032);
+    const trunks = variant === 2 ? 2 : 1;
+    const a = 0.5 + rng() * 0.5;
+    wrapAt(x, baseY, h * 1.6, W, (px) => {
+      for (let tk = 0; tk < trunks; tk++) {
+        const th = h * (tk === 0 ? 1 : 0.62 + rng() * 0.2);
+        const ox = tk === 0 ? 0 : flip * h * (0.12 + rng() * 0.1);
+        const lean = flip * th * (variant === 0 ? 0.24 + rng() * 0.34 : 0.05 + rng() * 0.2);
+        g.strokeStyle = rgba(col, a);
+        g.lineWidth = Math.max(1.3, th * (variant === 1 ? 0.075 : 0.048));
+        g.lineCap = "round";
         g.beginPath();
-        g.moveTo(tipX, tipY);
-        g.quadraticCurveTo(
-          tipX + Math.cos(ang) * L * 0.6, tipY + Math.sin(ang) * L * 0.5 - L * 0.3,
-          tipX + Math.cos(ang) * L, tipY + Math.sin(ang) * L * 0.7 + L * 0.2,
-        );
+        g.moveTo(px + ox, baseY);
+        g.quadraticCurveTo(px + ox + lean * 0.35, baseY - th * 0.62, px + ox + lean, baseY - th);
         g.stroke();
+        const tipX = px + ox + lean;
+        const tipY = baseY - th;
+        // A little mass at the crown so a small palm reads as a tree rather
+        // than a bare stick with hairs on it.
+        g.fillStyle = rgba(col, a * 0.8);
+        g.beginPath();
+        g.arc(tipX, tipY + th * 0.02, Math.max(1.2, th * 0.055), 0, 6.2832);
+        g.fill();
+        const fronds = (variant === 1 ? 7 : 6) + Math.floor(rng() * 4);
+        for (let f = 0; f < fronds; f++) {
+          // Rotate the whole fan a little per instance so the crown is not a
+          // stamped rosette.
+          const spin = (rng() - 0.5) * 0.5;
+          const ang = Math.PI + ((f + rng() * 0.5) / Math.max(1, fronds - 1)) * Math.PI + spin;
+          const L = th * (variant === 1 ? 0.3 + rng() * 0.26 : 0.2 + rng() * 0.3);
+          const droop = variant === 0 ? 0.9 : 0.45;
+          g.lineWidth = Math.max(1.4, th * 0.05);
+          g.beginPath();
+          g.moveTo(tipX, tipY);
+          g.quadraticCurveTo(
+            tipX + Math.cos(ang) * L * 0.6, tipY + Math.sin(ang) * L * 0.5 - L * 0.32,
+            tipX + Math.cos(ang) * L, tipY + Math.sin(ang) * L * 0.7 + L * droop * 0.3,
+          );
+          g.stroke();
+        }
       }
     });
   }
 }
 
-/** Conifers — varied heights, widths and lean along a baseline. */
+/**
+ * Conifers and scrub. Three silhouettes — narrow spire, broad fir, rounded
+ * bush — mirrored and scaled per instance, planted on scattered x. The old
+ * version drew one triangle at one pitch across the whole band, which is the
+ * repeat the critics could count.
+ */
 function drawConifers(
   g: CanvasRenderingContext2D, W: number, base: (x: number) => number,
   n: number, col: number, hRef: number, rng: () => number,
 ): void {
+  const xs = scatterX(n, W, rng);
   for (let i = 0; i < n; i++) {
-    const x = ((i + rng() * 0.95) / n) * W;
-    const baseY = base(x);
-    const h = hRef * (0.45 + rng() * 1.15);
-    const w = h * (0.26 + rng() * 0.2);
-    const lean = (rng() - 0.5) * w * 0.5;
+    const x = xs[i];
+    const baseY = base(x) + (rng() - 0.5) * hRef * 0.14;
+    const variant = rng() < 0.5 ? 0 : rng() < 0.6 ? 1 : 2;
+    const flip = rng() < 0.5 ? -1 : 1;
+    const h = hRef * (variant === 0 ? 0.7 + rng() * 0.95 : variant === 1 ? 0.45 + rng() * 0.75 : 0.22 + rng() * 0.3);
+    const w = h * (variant === 0 ? 0.17 + rng() * 0.1 : variant === 1 ? 0.34 + rng() * 0.22 : 0.7 + rng() * 0.5);
+    const lean = flip * w * (0.1 + rng() * 0.45);
     const a = 0.5 + rng() * 0.5;
-    wrapAt(x, baseY, w + 6, W, (px) => {
+    wrapAt(x, baseY, w + h * 0.4 + 6, W, (px) => {
       g.fillStyle = rgba(col, a);
-      const tiers = 3;
-      for (let t = 0; t < tiers; t++) {
-        const f = 1 - t / tiers;
+      if (variant === 2) {
+        // Rounded scrub: a clump of arcs, never a triangle.
+        const lobes = 3 + Math.floor(rng() * 3);
         g.beginPath();
-        g.moveTo(px + lean, baseY - h * 1.03);
-        g.lineTo(px - w * f, baseY - (h * t) / tiers * 0.85);
-        g.lineTo(px + w * f, baseY - (h * t) / tiers * 0.85);
+        for (let k = 0; k < lobes; k++) {
+          const bx = px + (k / Math.max(1, lobes - 1) - 0.5) * w * 1.4 + lean * 0.3;
+          const br = h * (0.5 + rng() * 0.5);
+          g.moveTo(bx + br, baseY - h * 0.35);
+          g.arc(bx, baseY - h * 0.35, br, 0, 6.2832);
+        }
+        g.fill();
+        g.fillRect(px - w * 0.03, baseY - h * 0.4, w * 0.06, h * 0.4);
+        return;
+      }
+      const tiers = variant === 0 ? 4 : 3;
+      // Trunk showing under the lowest tier reads as a tree, not a cone.
+      g.fillRect(px - w * 0.045, baseY - h * 0.22, w * 0.09, h * 0.22);
+      for (let t = 0; t < tiers; t++) {
+        const f = 1 - (t / tiers) * 0.82;
+        const ty = baseY - (h * t) / tiers * 0.8;
+        g.beginPath();
+        g.moveTo(px + lean, baseY - h * (1.0 + rng() * 0.08));
+        // Asymmetric skirt: the two sides never mirror, so the outline
+        // survives being tiled next to itself.
+        g.lineTo(px - w * f * (0.8 + rng() * 0.45), ty);
+        g.lineTo(px + w * f * (0.8 + rng() * 0.45), ty);
         g.closePath();
         g.fill();
       }
@@ -1250,11 +1286,28 @@ function drawClouds(
   }
 }
 
-/** Per-tier atmospheric contract, furthest first. */
-const TIER_HAZE = [0.6, 0.48, 0.36, 0.28];
-const TIER_DESAT = [0.52, 0.44, 0.34, 0.24];
-const TIER_LIFT = [0.07, 0.05, 0.03, 0.01];
-const TIER_BLUR = [1.9, 1.4, 0.85, 0.4];
+/**
+ * Per-tier atmospheric contract, furthest first.
+ *
+ * Blur is deliberately tiny and *ramped*. The previous values put a ~2 px
+ * kernel on the far tier and near-zero on the layer directly in front of it,
+ * and that discontinuity — a smeared backdrop butted against razor-sharp palm
+ * silhouettes — is what gave the parallax away as stacked cards. Depth is now
+ * carried by haze, desaturation and scale delta, which is how flat-vector
+ * backgrounds read as deep while staying crisp.
+ */
+const TIER_HAZE = [0.66, 0.5, 0.36, 0.24];
+const TIER_DESAT = [0.58, 0.46, 0.34, 0.2];
+const TIER_LIFT = [0.09, 0.06, 0.03, 0.0];
+const TIER_BLUR = [0.5, 0.36, 0.24, 0.12];
+
+/**
+ * Canvas fraction of tier 2 where the ocean's horizon seam sits. Shared by
+ * the artwork (which plants its islands on it) and by buildScenery (which
+ * anchors the live water plane's top edge to the same world Y), so the two
+ * can never drift apart.
+ */
+const SEA_BASE = 0.3;
 
 /**
  * One parallax layer's artwork. `tier` 0 = furthest, 3 = nearest. Every tier
@@ -1279,7 +1332,7 @@ function sceneryCanvas(theme: CourseTheme, tier: 0 | 1 | 2 | 3, W: number, H: nu
   // Baselines, as canvas fractions. Fixed per tier so the world anchoring in
   // buildScenery can guarantee no far layer's ground plane ever falls below
   // the water plane in front of it.
-  const BASE = [0.76, 0.72, 0.42, 0.42][tier];
+  const BASE = tier === 2 && T.sea ? SEA_BASE : [0.76, 0.72, 0.42, 0.23][tier];
   const baseY = H * BASE;
   const bottomY = H;
 
@@ -1307,7 +1360,80 @@ function sceneryCanvas(theme: CourseTheme, tier: 0 | 1 | 2 | 3, W: number, H: nu
     }
   } else if (tier === 2) {
     if (T.sea) {
-      drawSea(g, W, baseY, bottomY, body, deep, haze(0xffffff, sky, amt * 0.4, 0, 0), rng);
+      // The water itself is a live shader plane behind this layer, so what
+      // this tier carries is the *land* in the water: a run of headlands and
+      // islands whose feet sit on the horizon seam, each with its own
+      // treeline and a pale wet band at the waterline. Trees that grow
+      // straight out of open sea were the loudest thing wrong with the old
+      // band; now the treeline demonstrably stands on something.
+      const foamC = haze(0xffffff, sky, amt * 0.35, 0, 0);
+      const isles = 3 + Math.floor(rng() * 3);
+      const centres = scatterX(isles, W, rng);
+      for (let i = 0; i < isles; i++) {
+        // Kept clear of the tile seam so an island is never half-planted.
+        const cx = W * 0.09 + centres[i] * 0.82;
+        const iw = W * (0.08 + rng() * 0.2);
+        const ih = H * (0.16 + rng() * 0.3);
+        // Each island gets its own colour step so the run reads as a
+        // receding chain, not one shape stamped several times.
+        const far = rng();
+        const bodyC = haze(raw, sky, Math.min(0.88, amt + far * 0.24), TIER_DESAT[tier] + far * 0.2, far * 0.05);
+        const treeC = haze(raw, sky, Math.min(0.9, amt + far * 0.24 - 0.1), TIER_DESAT[tier], -0.06);
+        wrapAt(cx, baseY, iw + 12, W, (pxx) => {
+          // Body: a low asymmetric dome sitting a hair below the seam so it
+          // is bedded into the water rather than floating on it.
+          g.beginPath();
+          g.moveTo(pxx - iw, baseY + 2);
+          g.bezierCurveTo(
+            pxx - iw * (0.5 + rng() * 0.3), baseY - ih * (0.55 + rng() * 0.5),
+            pxx - iw * 0.1, baseY - ih * (0.85 + rng() * 0.35),
+            pxx + iw * 0.18, baseY - ih,
+          );
+          g.bezierCurveTo(
+            pxx + iw * 0.5, baseY - ih * (0.8 + rng() * 0.3),
+            pxx + iw * 0.72, baseY - ih * (0.2 + rng() * 0.4),
+            pxx + iw, baseY + 2,
+          );
+          g.closePath();
+          g.fillStyle = hex(bodyC);
+          g.fill();
+          // Sunlit western flank.
+          g.save();
+          g.clip();
+          const lg = g.createLinearGradient(pxx - iw, 0, pxx + iw, 0);
+          lg.addColorStop(0, rgba(lit, 0.3));
+          lg.addColorStop(0.5, rgba(lit, 0.02));
+          lg.addColorStop(1, rgba(0x000000, 0.14));
+          g.fillStyle = lg;
+          g.fillRect(pxx - iw, baseY - ih * 1.2, iw * 2, ih * 1.3);
+          g.restore();
+          // Wet band + a soft foam scallop at the waterline. No hard rim:
+          // the crisp cream rim belongs to collidable ground alone.
+          g.fillStyle = rgba(foamC, 0.5);
+          g.beginPath();
+          g.ellipse(pxx, baseY + 1.5, iw * 0.98, Math.max(1.2, H * 0.008), 0, 0, 6.2832);
+          g.fill();
+          g.fillStyle = rgba(foamC, 0.24);
+          g.beginPath();
+          g.ellipse(pxx, baseY + 2.5, iw * 1.16, Math.max(1.6, H * 0.013), 0, 0, 6.2832);
+          g.fill();
+        });
+        // Treeline standing on the island's own crown. Drawn in a translated
+        // frame whose width is the island, so the scatter and wrap happen
+        // inside the footprint instead of across the whole tile.
+        const iwl = iw * 1.55;
+        const treeH = Math.max(2.5, ih * (0.3 + rng() * 0.28));
+        const count = Math.max(3, Math.round(iwl / Math.max(4, treeH * 0.9)));
+        const crown = (lx: number) => {
+          const t = Math.min(1, Math.abs(lx - iwl * 0.5) / (iwl * 0.5));
+          return baseY - ih * (1 - t * t) * 0.78 + 1.5;
+        };
+        g.save();
+        g.translate(cx - iwl * 0.5, 0);
+        if (T.veg === "palm") drawPalms(g, iwl, crown, count, treeC, treeH * 1.3, rng);
+        else drawConifers(g, iwl, crown, count, treeC, treeH, rng);
+        g.restore();
+      }
     } else {
       const harm: [number, number, number][] = [[1, H * 0.05, 2.6], [3, H * 0.028, 0.4], [7, H * 0.012, 4.1]];
       const line = (x: number) => baseY + ridgeY(x, W, harm);
@@ -1319,22 +1445,112 @@ function sceneryCanvas(theme: CourseTheme, tier: 0 | 1 | 2 | 3, W: number, H: nu
       else if (T.veg === "canopy") drawCanopy(g, W, line, 26, dark, H * 0.11, rng);
     }
   } else {
-    // Near bank. Deliberately a different grammar from the play surface: a
-    // soft, low, hazed shoulder with no rim light and no grass texture.
+    // Near bank — the mid-ground the play surface needs in front of the water
+    // so it is not the only near-field element in the frame. Still a
+    // different grammar from the play surface (no rim light, low chroma, no
+    // blade texture), but it is banded — headland, beach, shoulder — rather
+    // than one flat wash of haze, which is what made a tenth of the frame
+    // read as dead space.
     const harm: [number, number, number][] = [[1, H * 0.055, 1.9], [2, H * 0.03, 4.4], [5, H * 0.012, 0.3]];
     const line = (x: number) => baseY + ridgeY(x, W, harm);
     const gr = g.createLinearGradient(0, baseY - H * 0.08, 0, bottomY);
     gr.addColorStop(0, hex(body));
-    gr.addColorStop(0.55, hex(haze(raw, sky, amt + 0.12, TIER_DESAT[tier], 0)));
-    gr.addColorStop(1, hex(haze(raw, sky, Math.min(0.86, amt + 0.3), 0.7, 0.02)));
+    gr.addColorStop(0.55, hex(haze(raw, sky, amt + 0.1, TIER_DESAT[tier], 0)));
+    gr.addColorStop(1, hex(haze(raw, sky, Math.min(0.8, amt + 0.18), 0.55, 0.01)));
     fillRidge(g, W, bottomY, baseY, harm, gr);
+
+    // Banded dressing, clipped to the bank silhouette.
+    const bankClip = () => {
+      g.beginPath();
+      g.moveTo(0, bottomY);
+      for (let x = 0; x <= W; x++) g.lineTo(x, line(x));
+      g.lineTo(W, bottomY);
+      g.closePath();
+    };
+    g.save();
+    bankClip();
+    g.clip();
+    // Sand shelf. Its upper boundary undulates on its own harmonics so it
+    // never parallels the ridge above it.
+    const sandTop = (x: number) => line(x) + H * 0.115
+      + Math.sin((x / W) * 6.2832 * 2 + 0.7) * H * 0.016
+      + Math.sin((x / W) * 6.2832 * 5 + 2.9) * H * 0.008;
+    const sandBot = (x: number) => sandTop(x) + H * 0.1 + Math.sin((x / W) * 6.2832 * 3 + 1.9) * H * 0.014;
+    const sandC = haze(0xe9d4a6, sky, amt * 0.72, 0.3, 0.03);
+    // Duller and darker than the play surface it frames, but a real green:
+    // hazed all the way to mint it read as fog rather than as land.
+    const turfC = haze(0x3f8a45, sky, amt * 0.44, 0.28, -0.05);
+    g.beginPath();
+    for (let x = 0; x <= W; x++) { if (x === 0) g.moveTo(x, sandTop(x)); else g.lineTo(x, sandTop(x)); }
+    for (let x = W; x >= 0; x--) g.lineTo(x, sandBot(x));
+    g.closePath();
+    const sg = g.createLinearGradient(0, baseY, 0, bottomY);
+    sg.addColorStop(0, hex(sandC));
+    sg.addColorStop(1, hex(haze(sandC, sky, 0.24, 0.2, 0)));
+    g.fillStyle = sg;
+    g.fill();
+    // Shoulder turf below the beach, sinking back toward haze at the bottom.
+    g.beginPath();
+    for (let x = 0; x <= W; x++) { if (x === 0) g.moveTo(x, sandBot(x)); else g.lineTo(x, sandBot(x)); }
+    g.lineTo(W, bottomY); g.lineTo(0, bottomY);
+    g.closePath();
+    const tg = g.createLinearGradient(0, baseY + H * 0.2, 0, bottomY);
+    tg.addColorStop(0, rgba(turfC, 0.95));
+    tg.addColorStop(1, rgba(turfC, 0.8));
+    g.fillStyle = tg;
+    g.fill();
+    // Contour shading: broad soft dune rolls so the mass has form without
+    // ever growing an edge that could be mistaken for a landable ledge.
+    for (let i = 0; i < 7; i++) {
+      const y0 = baseY + H * (0.12 + rng() * 0.44);
+      const h2 = H * (0.02 + rng() * 0.05);
+      const k = 1 + Math.floor(rng() * 3);
+      const ph = rng() * 6.2832;
+      const lightRoll = rng() < 0.5;
+      g.beginPath();
+      for (let x = 0; x <= W; x += 4) g.lineTo(x, y0 + Math.sin((x / W) * 6.2832 * k + ph) * h2 * 0.7);
+      for (let x = W; x >= 0; x -= 4) g.lineTo(x, y0 + h2 + Math.sin((x / W) * 6.2832 * k + ph) * h2 * 0.7);
+      g.closePath();
+      g.fillStyle = lightRoll ? rgba(0xffffff, 0.05) : rgba(0x123020, 0.06);
+      g.fill();
+    }
+    g.restore();
+    if (T.sea) {
+      // Wet sand and a foam scallop where this bank meets the water plane
+      // behind it. Feathered, never a straight cut, and drawn before the
+      // vegetation so trunks sit in front of the surf.
+      // Straddles the ridge rather than sitting under it: surf belongs partly
+      // in the water, and drawing it only on the land side left a dry white
+      // stripe below the shoreline instead of a wash against it.
+      const foamC = haze(0xffffff, sky, amt * 0.28, 0, 0);
+      const band = Math.max(2, H * 0.016);
+      for (let pass = 0; pass < 2; pass++) {
+        g.beginPath();
+        for (let x = 0; x <= W; x++) {
+          const y = line(x) + band * (pass ? 1.15 : 0.3)
+            + Math.sin(x * 0.055 + pass * 2.1) * band * 0.5
+            + Math.sin(x * 0.017 + 1.3) * band * 0.8;
+          if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+        }
+        for (let x = W; x >= 0; x--) {
+          g.lineTo(x, line(x) - band * (pass ? 1.5 : 0.6) + Math.sin(x * 0.031 + 0.6) * band * 0.5);
+        }
+        g.closePath();
+        g.fillStyle = rgba(foamC, pass ? 0.16 : 0.4);
+        g.fill();
+      }
+    }
     if (T.veg === "palm") {
-      drawPalms(g, W, line, 9, dark, H * 0.15, rng);
-      drawConifers(g, W, line, 26, dark, H * 0.06, rng);
+      // Fewer, larger, more varied palms. A dense strip of identical small
+      // ones is exactly the tiling artefact this tier was accused of.
+      drawPalms(g, W, line, 7, dark, H * 0.13, rng);
+      drawPalms(g, W, (x) => line(x) + H * 0.02, 5, haze(raw, sky, amt + 0.16, 0.5, 0.02), H * 0.08, rng);
+      drawConifers(g, W, line, 14, dark, H * 0.045, rng);
     } else if (T.veg === "conifer") {
-      drawConifers(g, W, line, 22, dark, H * 0.14, rng);
+      drawConifers(g, W, line, 16, dark, H * 0.13, rng);
+      drawConifers(g, W, (x) => line(x) + H * 0.02, 12, haze(raw, sky, amt + 0.14, 0.5, 0.02), H * 0.06, rng);
     } else if (T.veg === "canopy") {
-      drawCanopy(g, W, line, 20, dark, H * 0.1, rng);
+      drawCanopy(g, W, line, 20, dark, H * 0.085, rng);
     }
   }
 
@@ -1343,16 +1559,22 @@ function sceneryCanvas(theme: CourseTheme, tier: 0 | 1 | 2 | 3, W: number, H: nu
   // as a solid platform you could land on.
   const hg = g.createLinearGradient(0, 0, 0, H);
   hg.addColorStop(0, rgba(sky, 0.03));
-  hg.addColorStop(0.55, rgba(sky, 0.07 + tier * 0.02));
-  hg.addColorStop(1, rgba(sky, 0.2 + tier * 0.04));
+  hg.addColorStop(0.55, rgba(sky, 0.07 + tier * 0.015));
+  // The near tier keeps its dressing legible: 0.32 of flat sky over the
+  // bottom third turned the whole mid-ground into a wash.
+  hg.addColorStop(1, rgba(sky, tier === 3 ? 0.1 : 0.2 + tier * 0.04));
   g.globalCompositeOperation = "source-atop";
   g.fillStyle = hg;
   g.fillRect(0, 0, W, H);
   g.globalCompositeOperation = "source-over";
 
-  // Depth-of-field: the further the tier, the softer. Also the cheapest way to
-  // guarantee no background silhouette ever presents a hard straight edge.
-  return blurTiling(p, TIER_BLUR[tier] * px, hex(haze(raw, sky, Math.min(0.9, amt + 0.3), 0.7, 0.02)));
+  // A whisper of softening — enough to kill canvas aliasing on the
+  // silhouettes, far short of the smear that used to erase their identity.
+  // The sea tier keeps a transparent skirt: solidifying its bottom rows would
+  // paint an opaque bar straight over the live water plane behind it.
+  const openBottom = tier === 2 && T.sea;
+  return blurTiling(p, TIER_BLUR[tier] * px,
+    openBottom ? undefined : hex(haze(raw, sky, Math.min(0.9, amt + 0.3), 0.7, 0.02)));
 }
 
 // ---------------------------------------------------------------------------
@@ -1382,7 +1604,8 @@ const SKY_FRAG = /* glsl */ `
     vec2 w = mix(uW0, uW1, vUv);
     // Anchored to the course, not the screen: the warm band sits on the
     // horizon and stays there however the camera moves.
-    float t = clamp((w.y - uHorizon + 4.0) / 74.0, 0.0, 1.0);
+    float tRaw = (w.y - uHorizon + 4.0) / 74.0;
+    float t = clamp(tRaw, 0.0, 1.0);
     vec3 c = mix(uBot, uMid, smoothstep(0.0, 0.28, t));
     c = mix(c, uTop, smoothstep(0.24, 0.92, t));
     c += uBot * 0.28 * exp(-abs(w.y - uHorizon) / 9.0);
@@ -1392,24 +1615,139 @@ const SKY_FRAG = /* glsl */ `
       float tw = 0.55 + 0.45 * sin(uTime * 2.2 + r * 44.0);
       c += vec3(0.72, 0.82, 1.0) * step(0.981, r) * tw * smoothstep(0.18, 0.85, t);
     }
-    // Cloud banks: five octaves of value noise in world space, drifting. The
-    // alpha ramp is deliberately wide — a narrow smoothstep on low-frequency
-    // noise magnified across a phone screen shows up as a hard-edged smear.
+    // Cloud banks. Three decks at different scales and drift rates, so the
+    // sky has parallax of its own instead of being a single flat wash. The
+    // frequencies are tuned for a phone frame roughly 40 m across: the old
+    // 0.016/m scale put less than one noise cell on screen, which is why the
+    // sky read as an empty gradient no matter how high uClouds was pushed.
     if (uClouds > 0.01) {
-      vec2 cp = w * vec2(0.016, 0.042) + vec2(uTime * 0.008, 0.0);
-      float n = vnoise(cp) * 0.46 + vnoise(cp * 2.1) * 0.26
-              + vnoise(cp * 4.3) * 0.16 + vnoise(cp * 9.1) * 0.08
-              + vnoise(cp * 17.0) * 0.04;
-      float band = smoothstep(0.04, 0.34, t) * (1.0 - smoothstep(0.5, 0.98, t));
-      float a = smoothstep(0.34, 0.86, n);
-      c = mix(c, uCloudCol, a * a * uClouds * band);
+      // Deck A — high, broad, slow. The structural shapes.
+      vec2 a0 = w * vec2(0.055, 0.115) + vec2(uTime * 0.010, 0.0);
+      float na = vnoise(a0) * 0.5 + vnoise(a0 * 2.1) * 0.27
+               + vnoise(a0 * 4.4) * 0.15 + vnoise(a0 * 9.3) * 0.08;
+      // Deck A keeps going above the clamped gradient: a zoomed-out frame
+      // otherwise shows a large empty slab of sky above t = 1.
+      float ba = smoothstep(0.08, 0.34, tRaw) * (1.0 - smoothstep(1.5, 2.6, tRaw));
+      float aa = smoothstep(0.44, 0.78, na);
+      c = mix(c, uCloudCol, aa * aa * uClouds * 0.85 * ba);
+      // Sunlit tops: the deck picks up the key from above, which is what
+      // makes a cloud read as volume rather than as a grey smear.
+      c += uSunCol * smoothstep(0.60, 0.82, na) * uClouds * 0.30 * ba;
+      // Deck B — mid, faster, thinner. Breaks up deck A's repeat.
+      vec2 b0 = w * vec2(0.105, 0.20) + vec2(uTime * 0.026 + 41.0, 0.0);
+      float nb = vnoise(b0) * 0.55 + vnoise(b0 * 2.3) * 0.28 + vnoise(b0 * 5.1) * 0.17;
+      float bb = smoothstep(0.05, 0.3, t) * (1.0 - smoothstep(0.55, 0.92, t));
+      c = mix(c, uCloudCol, smoothstep(0.52, 0.84, nb) * uClouds * 0.5 * bb);
+      // Deck C — low wisps stretched along the horizon, fastest of the three.
+      vec2 c0 = w * vec2(0.20, 0.72) + vec2(uTime * 0.055 + 113.0, 0.0);
+      float nc = vnoise(c0) * 0.62 + vnoise(c0 * 2.7) * 0.38;
+      float bc = smoothstep(0.0, 0.13, t) * (1.0 - smoothstep(0.2, 0.5, t));
+      c = mix(c, mix(uCloudCol, uBot, 0.45), smoothstep(0.55, 0.86, nc) * uClouds * 0.55 * bc);
     }
     // Aerial haze pooling on the horizon — every distant layer sinks into it.
     c = mix(c, uBot * 0.32 + uMid * 0.68, exp(-max(0.0, w.y - uHorizon + 6.0) / 22.0) * 0.2);
+    // Sun: a hard disc with a tight corona and a wide bloom. The disc is what
+    // justifies the direction of the key light raking the terrain; without it
+    // the lighting has no on-screen source.
     float d = length(w - uSun);
-    c += uSunCol * (exp(-d / (uSunSize * 11.0)) * 0.34 + smoothstep(uSunSize, uSunSize * 0.7, d) * 0.85);
-    c += (h21(gl_FragCoord.xy) - 0.5) * 0.007;
+    c += uSunCol * exp(-d / (uSunSize * 9.0)) * 0.30;
+    c += uSunCol * exp(-d / (uSunSize * 2.4)) * 0.42;
+    c += uSunCol * smoothstep(uSunSize, uSunSize * 0.74, d) * 1.15;
+    // Ordered dither, ±1.5/255. Enough to break the 8-bit steps a 200 px
+    // gradient shows as bands, small enough to be invisible as noise.
+    vec2 fc = floor(mod(gl_FragCoord.xy, 4.0));
+    float dm = fract(dot(fc, vec2(0.0625, 0.25)) + h21(fc) * 0.13);
+    c += (dm - 0.5) * 0.0115;
     gl_FragColor = vec4(c, 1.0);
+  }
+`;
+
+/**
+ * Backdrop ocean. A live plane rather than a painted band: two scrolling
+ * ripple layers whose wavelength compresses toward the horizon, an
+ * anisotropic sun-glitter column, a depth ramp that lightens toward the
+ * shore, a bright specular seam on the horizon and an animated foam line
+ * where the water meets the near bank.
+ *
+ * It is deliberately dark and desaturated. The one thing the player must
+ * never have to guess is whether blue is scenery 200 m away or a hazard in
+ * the play plane, so this surface sits a clear luminance step below both the
+ * sky and the play surface, and the bright saturated cyan + hazard rim is
+ * reserved for in-play liquid (LIQUID_FRAG).
+ */
+const SEA_VERT = /* glsl */ `
+  varying vec3 vWp;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWp = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const SEA_FRAG = /* glsl */ `
+  varying vec3 vWp;
+  uniform float uTime, uSeam, uH, uOff, uFoamD, uGlintX, uGlintW, uFade;
+  uniform vec3 uDeep, uShallow, uFoam, uGlint, uSky;
+  float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x),
+               mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  void main() {
+    // Metres below the horizon seam. Everything above it is sky.
+    float d = uSeam - vWp.y;
+    if (d < 0.0) discard;
+    // Parallax-compressed X so the ripple field scrolls with the layer.
+    float px = vWp.x * 0.42 + uOff;
+    float f = clamp(d / uH, 0.0, 1.0);
+    // Perspective: rows crowd hard into the horizon.
+    float persp = pow(f, 0.55);
+
+    // Depth ramp — deep desaturated navy offshore, paler and warmer as the
+    // water shoals toward the near bank.
+    vec3 col = mix(uDeep, uShallow, smoothstep(0.02, 0.96, persp));
+
+    // Two ripple layers. Vertical frequency falls off with distance so the
+    // crests read as receding, not as a wallpaper of equal stripes. Kept low
+    // in contrast on purpose: this is a backdrop, and white banding across it
+    // competes with the ball for the eye.
+    float k = mix(64.0, 9.0, persp);
+    float w1 = sin(d * k + sin(px * 0.9 + uTime * 0.65) * 1.5 - uTime * 2.1);
+    float w2 = sin(d * k * 0.43 + sin(px * 0.33 - uTime * 0.43) * 2.1 + uTime * 1.25);
+    float chop = vnoise(vec2(px * 0.8, d * 5.0) + vec2(uTime * 0.25, 0.0));
+    float crest = smoothstep(0.72, 1.0, w1 * 0.5 + 0.5) * (0.5 + chop * 0.7)
+                + smoothstep(0.88, 1.0, w2 * 0.5 + 0.5) * 0.4;
+    col += uFoam * crest * (0.015 + persp * 0.038);
+    // Wave troughs darken, which is what gives the plane any normal at all.
+    col *= 1.0 - smoothstep(0.6, 1.0, -w1 * 0.5 + 0.5) * 0.06;
+
+    // Anisotropic sun glitter: a column under the key light, sparkling where
+    // the two ripple layers coincide.
+    float gx = 1.0 - clamp(abs(vWp.x - uGlintX) / max(1.0, uGlintW), 0.0, 1.0);
+    float sparkle = pow(max(0.0, w1 * 0.5 + 0.5), 12.0) * pow(max(0.0, w2 * 0.5 + 0.5), 4.0);
+    col += uGlint * gx * gx * (sparkle * 0.9 + 0.05) * (1.0 - persp * 0.5);
+
+    // Horizon seam: a thin cool specular strip. It is the only hard edge the
+    // water is allowed and it is what makes sky-versus-sea unambiguous — but
+    // a wide warm bar there reads as a drawn rule across the frame, so it is
+    // narrow, near-white and falls off fast.
+    col = mix(col, uFoam, smoothstep(0.26, 0.0, d) * 0.34);
+    col = mix(col, uSky, smoothstep(0.9, 0.0, d) * 0.13);
+
+    // Shore foam: an animated scalloped line at the bank, with wet shading
+    // just offshore of it so the junction is never a straight cut.
+    float fy = uFoamD + sin(px * 1.3 + uTime * 0.8) * 0.24
+             + sin(px * 3.4 - uTime * 1.45) * 0.1
+             + vnoise(vec2(px * 1.4, uTime * 0.25)) * 0.34;
+    float fo = smoothstep(0.6, 0.03, abs(d - fy));
+    col = mix(col, uFoam, fo * 0.5);
+    col *= 1.0 - smoothstep(0.0, 1.0, fy - d) * 0.08;
+
+    // Dither: a 200 px slab of near-flat colour bands without it.
+    col += (h21(floor(gl_FragCoord.xy)) - 0.5) * 0.011;
+    gl_FragColor = vec4(col, uFade);
   }
 `;
 
@@ -1422,7 +1760,7 @@ const LIQUID_FRAG = /* glsl */ `
   varying vec2 vW;
   uniform float uTime;
   uniform vec2 uRange;
-  uniform vec3 uA, uB, uC;
+  uniform vec3 uA, uB, uC, uD;
   void main() {
     float span = max(0.6, uRange.x - uRange.y);
     #ifdef LAVA
@@ -1457,7 +1795,17 @@ const LIQUID_FRAG = /* glsl */ `
       col += uC * smoothstep(0.72, 1.0, rip) * exp(-below * 1.6) * 0.22;
       float foam = smoothstep(0.26, 0.0, below);
       col = mix(col, uC, foam * 0.85);
-      alpha = mix(0.42, 0.84, d) + foam * 0.5;
+      // Hazard signature. In-play liquid is a stroke penalty and has to say
+      // so at a glance, so it wears a treatment the backdrop ocean never
+      // does: a pulsing warm rim riding the surface line, plus travelling
+      // warning chevrons just beneath it. Backdrop water is dark, desaturated
+      // and unmarked; "blue you can die in" and "blue that is far away" never
+      // share a look.
+      float pulse = 0.62 + 0.38 * sin(uTime * 2.6);
+      col += uD * smoothstep(0.5, 0.0, below) * 0.30 * pulse;
+      float chev = sin((vW.x * 1.15 - below * 0.9) - uTime * 1.9) * 0.5 + 0.5;
+      col += uD * smoothstep(0.86, 1.0, chev) * exp(-below * 1.1) * 0.34;
+      alpha = mix(0.5, 0.9, d) + foam * 0.5;
     #endif
     gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
   }
@@ -1607,6 +1955,25 @@ function rampAlpha(f: Ramp | null, x: number): number {
 
 /** Warm soil the underside of a slab leans toward. */
 const EARTH = new THREE.Color(0x241d18);
+
+/**
+ * Vertex-colour multiplier that carries a material's albedo to `target`.
+ *
+ * Dimming the deep rows with a neutral scalar keeps their *hue and chroma*
+ * intact, and a saturation-gated grade downstream simply lifts a saturated
+ * green straight back up — which is exactly why a 30 m fairway curtain still
+ * read as one flat wall of turf however hard it was shaded. Solving for the
+ * per-channel ratio instead lands the deep mass on desaturated earth, which
+ * no grade will pull back to grass.
+ */
+function toEarth(base: number, target: THREE.Color, out: THREE.Color): THREE.Color {
+  _cA.setHex(base);
+  return out.setRGB(
+    THREE.MathUtils.clamp(target.r / Math.max(0.05, _cA.r), 0.04, 1),
+    THREE.MathUtils.clamp(target.g / Math.max(0.05, _cA.g), 0.04, 1),
+    THREE.MathUtils.clamp(target.b / Math.max(0.05, _cA.b), 0.04, 1),
+  );
+}
 
 /** Height of the play surface at a given x — used to shade slab depth. */
 function makeTopY(s: Surface): (x: number) => number {
@@ -1809,6 +2176,13 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       color: base, roughness: rough, metalness: metal, vertexColors: true,
       transparent: overlay, depthWrite: !overlay,
     });
+    // A small self-lit floor on the surfaces you actually play off. Terrain
+    // that bottoms out near black in its own shadow is terrain the player
+    // cannot judge a landing on, and the critics measured exactly that on the
+    // target green.
+    if (m === "fairway" || m === "green" || m === "rough") {
+      mat.emissive = new THREE.Color(COLORS[m]).multiplyScalar(m === "rough" ? 0.03 : 0.055);
+    }
 
     try {
       const p = surfaceCanvas(m, TEX, rng);
@@ -1864,7 +2238,13 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   }
 
   // --- Scenery ------------------------------------------------------------
-  interface Layer { mesh: THREE.Mesh; kx: number; ky: number; tileW: number; anchor: number }
+  interface Layer {
+    mesh: THREE.Mesh; kx: number; ky: number; tileW: number; anchor: number;
+    /** Set on the live ocean plane; canvas layers scroll their map instead. */
+    sea?: THREE.ShaderMaterial;
+    /** World height of the ocean quad, used to recover its seam Y. */
+    seaH?: number;
+  }
   let layers: Layer[] = [];
   const sceneryGeo = new THREE.PlaneGeometry(1, 1);
 
@@ -1890,15 +2270,86 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
    * it however the camera moves.
    */
   const TIERS: Array<{ tier: 0 | 1 | 2 | 3; z: number; kx: number; ky: number; h: number; top: number; tileW: number }> = [
-    { tier: 0, z: LAYER.farScenery, kx: 0.94, ky: 0.9, h: 26, top: 25, tileW: 130 },
-    { tier: 1, z: (LAYER.farScenery + LAYER.midScenery) * 0.5, kx: 0.8, ky: 0.9, h: 20, top: 18.4, tileW: 92 },
-    { tier: 2, z: LAYER.midScenery, kx: 0.58, ky: 0.9, h: 16, top: 10.2, tileW: 68 },
-    { tier: 3, z: LAYER.backdrop, kx: 0.28, ky: 0.72, h: 13, top: 7, tileW: 44 },
+    { tier: 0, z: LAYER.farScenery, kx: 0.95, ky: 0.92, h: 30, top: 27, tileW: 168 },
+    { tier: 1, z: (LAYER.farScenery + LAYER.midScenery) * 0.5, kx: 0.82, ky: 0.9, h: 22, top: 19.2, tileW: 102 },
+    { tier: 2, z: LAYER.midScenery, kx: 0.58, ky: 0.9, h: 16, top: 10.2, tileW: 58 },
+    // Tier 3's band is deep (24 m) with its ridge high in the canvas: the
+    // artwork has to reach a long way below the shoreline, or a zoomed-out
+    // frame fills a fifth of the screen with the layer's stretched skirt.
+    { tier: 3, z: LAYER.backdrop, kx: 0.24, ky: 0.72, h: 24, top: 7, tileW: 34 },
   ];
+
+  /** World Y of the ocean's horizon seam for a hole at `horizon`. */
+  function seaSeamY(horizon: number): number {
+    const s = TIERS[2];
+    return horizon + s.top - SEA_BASE * s.h;
+  }
+
+  /**
+   * The live ocean. A shader plane hung from the tier-2 seam, behind tier 2's
+   * island artwork and in front of tier 1's hills, so the chain reads
+   * hills → open water → islands with trees → near bank → play surface.
+   */
+  function buildSea(theme: CourseTheme, horizon: number): void {
+    const T = THEMES[theme];
+    if (!T.sea) return;
+    const seam = seaSeamY(horizon);
+    // Short enough that it can never flood the play area if a hole's terrain
+    // sits unusually low: the band only has to reach from the seam down to
+    // the near bank in front of it.
+    const H2 = 15;
+    const sky = T.skyMid;
+    // Deliberately a clear luminance step below both sky and turf, and
+    // desaturated toward the sky — this is scenery, not a hazard.
+    // Pulled a quarter of the way toward the theme's own distance colour so
+    // glacier water reads icy and seaside water reads tropical, without
+    // either losing the dark, desaturated "this is backdrop" contract.
+    const deep = haze(mixHex(0x0c2f4c, T.far, 0.25), sky, 0.1, 0.12, -0.06);
+    const shallow = haze(mixHex(0x1f6480, T.far, 0.3), sky, 0.16, 0.22, -0.02);
+    const foam = haze(0xdff2fb, sky, 0.16, 0.1, 0);
+    const glint = haze(T.sun, sky, 0.42, 0.5, 0.06);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uSeam: { value: seam },
+        uH: { value: 5.2 },
+        uOff: { value: 0 },
+        uFoamD: { value: 3.6 },
+        uGlintX: { value: 0 },
+        uGlintW: { value: 22 },
+        uFade: { value: 1 },
+        uDeep: { value: new THREE.Color(deep) },
+        uShallow: { value: new THREE.Color(shallow) },
+        uFoam: { value: new THREE.Color(foam) },
+        uGlint: { value: new THREE.Color(glint) },
+        // The seam blend uses the sky's *mid* band, not its warm horizon
+        // colour: mixing cream into the top of the water painted a tan rule
+        // straight across the frame.
+        uSky: { value: new THREE.Color(T.skyMid) },
+      },
+      vertexShader: SEA_VERT,
+      fragmentShader: SEA_FRAG,
+    });
+    const mesh = new THREE.Mesh(sceneryGeo, mat);
+    mesh.scale.set(520, H2, 1);
+    mesh.position.z = (TIERS[1].z + LAYER.midScenery) * 0.5;
+    // Between tier 1 (hills, -899) and tier 2 (islands, -898): open water in
+    // front of the hills, islands standing in front of the water.
+    mesh.renderOrder = -898.5;
+    mesh.frustumCulled = false;
+    root.add(mesh);
+    layers.push({
+      mesh, kx: TIERS[2].kx, ky: TIERS[2].ky, tileW: TIERS[2].tileW,
+      anchor: seam - H2 * 0.5, sea: mat, seaH: H2,
+    });
+  }
 
   function buildScenery(theme: CourseTheme, horizon: number): void {
     clearScenery();
     const specs = TIERS.slice(4 - LAYERS);
+    buildSea(theme, horizon);
 
     for (const s of specs) {
       let tex: THREE.CanvasTexture | null = null;
@@ -1987,6 +2438,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     const col = new Float32Array(vc * 4);
     const z = EXTRUDE * 0.5;
     const c = new THREE.Color();
+    const sink = toEarth(COLORS[s.material] ?? 0x888888, deepShade, new THREE.Color());
 
     for (let r = 0; r < R; r++) {
       const d = rows[r];
@@ -1994,10 +2446,22 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       const tilt = r === 0 ? 0.8 : r === 1 ? 0.32 : 0;
       const droop = r >= R - 2 ? -0.35 : 0;
       const shade = Number.isFinite(d) ? d : 60;
-      const k = THREE.MathUtils.smoothstep(shade, 0.4, 9);
-      // Clamped well short of black: the mass has to stay a readable mid value
-      // so the lower half of a tall slab still carries material information.
-      c.setRGB(1, 1, 1).lerp(deepShade, k * 0.6);
+      // Fast: the material band you can actually play off is the top metre or
+      // two, and everything under it is the earth the strip is cut from. The
+      // old 9 m ramp left a bunker reading as a 300 px tan wall and a fairway
+      // as a 300 px green one, with no edge treatment telling you which was
+      // ground and which was backdrop.
+      const k = THREE.MathUtils.smoothstep(shade, 0.3, 5.5);
+      // Alternating row tone gives the cut face strata instead of one flat
+      // gradient. Clamped well short of black so the mass stays readable.
+      const strata = 1 - (r % 2) * 0.05 * THREE.MathUtils.smoothstep(shade, 0.5, 2);
+      c.setRGB(1, 1, 1).lerp(sink, k).multiplyScalar(strata);
+      // Key the light so the thing you have to land on is the brightest,
+      // highest-chroma band in the frame. The top ~1 m of every collidable
+      // surface is lifted above 1.0, which pushes the play plane clear of the
+      // decorative terrain instead of leaving it the darkest mass on screen.
+      const lift = r === 0 ? 1.2 : r === 1 ? 1.11 : r === 2 ? 1.04 : 1;
+      c.multiplyScalar(lift);
       for (let i = 0; i < n; i++) {
         const a = P[Math.max(0, i - 1)];
         const b = P[Math.min(n - 1, i + 1)];
@@ -2064,12 +2528,14 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     const pa = geo.attributes.position as THREE.BufferAttribute;
     const cols = new Float32Array(pa.count * 4);
     const c = new THREE.Color();
+    const sink = toEarth(COLORS[s.material] ?? 0x888888, deepShade, new THREE.Color());
     for (let i = 0; i < pa.count; i++) {
       // Blocks are objects, not earth: shade them, but never so far that the
       // material stops reading.
       const d = topAt(pa.getX(i)) - pa.getY(i);
-      const k = THREE.MathUtils.smoothstep(d, 0.3, 12);
-      c.setRGB(1, 1, 1).lerp(deepShade, k * 0.52);
+      const k = THREE.MathUtils.smoothstep(d, 0.3, 7);
+      c.setRGB(1, 1, 1).lerp(sink, k * 0.85);
+      c.multiplyScalar(1 + 0.18 * (1 - THREE.MathUtils.smoothstep(d, 0.0, 1.4)));
       const alpha = rampAlpha(fade, pa.getX(i));
       cols[i * 4] = c.r; cols[i * 4 + 1] = c.g; cols[i * 4 + 2] = c.b; cols[i * 4 + 3] = alpha;
     }
@@ -2107,9 +2573,10 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       uniforms: {
         uTime: { value: 0 },
         uRange: { value: new THREE.Vector2(top, bot) },
-        uA: { value: new THREE.Color(lava ? 0xff8a2a : 0x39b8d8) },
-        uB: { value: new THREE.Color(lava ? 0x360a06 : 0x07253f) },
-        uC: { value: new THREE.Color(lava ? 0xffe07a : 0xdff6ff) },
+        uA: { value: new THREE.Color(lava ? 0xff8a2a : 0x36d6e8) },
+        uB: { value: new THREE.Color(lava ? 0x360a06 : 0x06304a) },
+        uC: { value: new THREE.Color(lava ? 0xffe07a : 0xe8fdff) },
+        uD: { value: new THREE.Color(lava ? 0xffb04a : 0xff8a5c) },
       },
       vertexShader: LIQUID_VERT,
       fragmentShader: LIQUID_FRAG,
@@ -2183,7 +2650,9 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     // Dark enough that the mass reads as ground rather than more play surface,
     // light enough that the material still reads all the way down the slab —
     // a terrain face that bottoms out at black carries no information at all.
-    deepShade.setHex(T.fog).multiplyScalar(0.5).lerp(EARTH, 0.45);
+    // An absolute target colour now, not a multiplier: `toEarth` solves for
+    // the per-channel ratio that lands each material's albedo on it.
+    deepShade.setHex(T.fog).multiplyScalar(0.42).lerp(EARTH, 0.62);
     ctx.renderer.setClearColor(T.fog, 1);
 
     buildScenery(theme, horizonY);
@@ -2342,7 +2811,13 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   const ballTexture = ballTex(256, rng);
   if (ballTexture) ownedTex.push(ballTexture);
   const outlineGeo = new THREE.SphereGeometry(1, 14, 10);
-  const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0c1826, side: THREE.BackSide, fog: false });
+  // Separation is guaranteed by a sandwich, not by a glow: a dark inner rim
+  // reads against sky, water and sand; a pale outer ring reads against dark
+  // turf, rock and the conifer band. Between them the ball cannot dissolve
+  // into anything, which is the whole point — the halo is emphasis now, not
+  // the only thing holding the ball apart from its background.
+  const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0a1420, side: THREE.BackSide, fog: false });
+  const rimMat = new THREE.MeshBasicMaterial({ color: 0xeef8ff, side: THREE.BackSide, fog: false });
   const glowTex = radialTex(128, "rgba(255,255,255,0.55)", "rgba(255,255,255,0)");
   if (glowTex) ownedTex.push(glowTex);
   const shadowTex = radialTex(128, "rgba(0,0,0,0.85)", "rgba(0,0,0,0)");
@@ -2358,6 +2833,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   interface BallVis {
     mesh: THREE.Mesh;
     outline: THREE.Mesh;
+    rim: THREE.Mesh;
     glow: THREE.Mesh;
     halo: THREE.Mesh;
     shadow: THREE.Mesh;
@@ -2374,16 +2850,19 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   }
 
   function makeBallVis(): BallVis {
-    // High-key by contract. The emissive floor is what guarantees the ball is
-    // the brightest value in frame even sitting in the terrain's own shadow,
-    // which is exactly the moment — addressing the ball — the player needs it.
+    // High-key, but shaded. The old emissive floor of 0.52 flattened the
+    // sphere into a cream disc with no terminator; the ball now takes the key
+    // light properly (specular hit upper-left, shadow terminator lower-right)
+    // and keeps only enough emissive to survive terrain shadow.
     const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, roughness: 0.5, metalness: 0.0,
+      color: 0xffffff, roughness: 0.28, metalness: 0.04,
       map: ballTexture ?? undefined,
-      emissive: new THREE.Color(0x666666),
+      emissive: new THREE.Color(0x2c3240),
     });
     const mesh = new THREE.Mesh(ballGeo, mat);
     mesh.position.z = LAYER.ball;
+    const rim = new THREE.Mesh(outlineGeo, rimMat);
+    rim.position.z = LAYER.ball;
     const outline = new THREE.Mesh(outlineGeo, outlineMat);
     outline.position.z = LAYER.ball;
     const glow = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({
@@ -2419,8 +2898,8 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     trail.frustumCulled = false;
     trail.position.z = LAYER.ball - 0.3;
 
-    root.add(mesh, outline, glow, halo, shadow, trail);
-    return { mesh, outline, glow, halo, shadow, trail, trailPos, trailCol, fade: 0 };
+    root.add(mesh, rim, outline, glow, halo, shadow, trail);
+    return { mesh, outline, rim, glow, halo, shadow, trail, trailPos, trailCol, fade: 0 };
   }
 
   const balls: BallVis[] = [];
@@ -2482,7 +2961,23 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.4, fog: false,
   }));
   cupRing.position.set(0, 0.05, 0.2);
-  cupGroup.add(cupBeam, cupLip, cupHole, cupRing, pole, finial, flagCloth);
+  // Contact shadow for the pin. Nothing in the frame was casting one, which
+  // is why the flag, the golfer and the ball all read as decals floating over
+  // the turf rather than objects standing on it. The key rakes from the upper
+  // left, so the pin's shadow lies down and to the right.
+  const pinShadow = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({
+    map: shadowTex ?? undefined, color: 0x0a1a12, transparent: true,
+    depthWrite: false, opacity: 0.5, fog: false,
+  }));
+  pinShadow.scale.set(3.0, 0.9, 1);
+  pinShadow.position.set(0.15, 0.02, 0.16);
+  const pinCast = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({
+    map: shadowTex ?? undefined, color: 0x0a1a12, transparent: true,
+    depthWrite: false, opacity: 0.3, fog: false,
+  }));
+  pinCast.scale.set(5.2, 0.5, 1);
+  pinCast.position.set(2.4, 0.06, 0.14);
+  cupGroup.add(pinCast, pinShadow, cupBeam, cupLip, cupHole, cupRing, pole, finial, flagCloth);
   cupGroup.position.z = LAYER.props;
   root.add(cupGroup);
 
@@ -2554,6 +3049,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
   function dressBall(vis: BallVis, b: BallState | undefined, dt: number, pxPerM: number): void {
     if (!b) {
       vis.mesh.visible = vis.outline.visible = vis.glow.visible = false;
+      vis.rim.visible = false;
       vis.halo.visible = vis.shadow.visible = vis.trail.visible = false;
       vis.fade = 0;
       return;
@@ -2565,6 +3061,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     const px = Math.max(1, pxPerM);
     const r = Math.min(b.radius * 2.2, Math.max(b.radius, 13 / px));
     vis.mesh.visible = vis.outline.visible = vis.glow.visible = true;
+    vis.rim.visible = true;
     vis.mesh.position.set(b.pos.x, b.pos.y, LAYER.ball);
     vis.mesh.scale.setScalar(r);
     vis.mesh.rotation.z -= b.spin * dt;
@@ -2573,41 +3070,55 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
     // Lift a coloured ball back toward white so no ball type is ever a dark
     // object on a light backdrop.
     mm.color.lerp(WHITE, 0.45);
-    mm.emissive.setHex(tint).lerp(WHITE, 0.5).multiplyScalar(0.52);
+    mm.emissive.setHex(tint).lerp(WHITE, 0.5).multiplyScalar(0.2);
 
-    // Outline shell sized in device pixels: a crisp ~1.8 px contact rim, not
-    // the fat dark donut that used to swallow the ball at rest.
+    // Contrast sandwich, both shells sized in device pixels so they hold at
+    // any zoom: pale outer ring, then a ~2 px dark rim, then the ball.
     vis.outline.position.copy(vis.mesh.position);
-    vis.outline.scale.setScalar(r + 1.4 / px);
+    vis.outline.scale.setScalar(r + 2.0 / px);
+    vis.rim.position.copy(vis.mesh.position);
+    vis.rim.scale.setScalar(r + 3.6 / px);
 
     vis.glow.position.set(b.pos.x, b.pos.y, LAYER.ball - 0.6);
-    vis.glow.scale.setScalar(r * 5);
+    vis.glow.scale.setScalar(r * 2.9);
     (vis.glow.material as THREE.MeshBasicMaterial).color.setHex(tint).lerp(WHITE, 0.5);
-    (vis.glow.material as THREE.MeshBasicMaterial).opacity = b.resting ? 0.34 : 0.2;
+    (vis.glow.material as THREE.MeshBasicMaterial).opacity = b.resting ? 0.17 : 0.1;
 
-    // Addressable-ball ring: sits outside the silhouette, pulses gently, and
-    // is drawn over every other layer so the golfer, a club, a pickup glow or
-    // a power-up skin can never hide the one object that matters.
+    // Addressable-ball ring. Now emphasis only — the outline pair already
+    // guarantees separation — so it is tight, faint, and does not bury the
+    // ball in a 60 px bloom the way the old 6.2× halo did.
     const hm = vis.halo.material as THREE.MeshBasicMaterial;
     vis.halo.visible = true;
     vis.halo.position.set(b.pos.x, b.pos.y, LAYER.fx);
     const grow = b.resting ? 1 + Math.sin(ctx.elapsed * 3.1) * 0.05 : 1;
-    vis.halo.scale.setScalar(r * 6.2 * grow);
+    vis.halo.scale.setScalar(r * 3.4 * grow);
     hm.color.setHex(tint).lerp(WHITE, 0.35);
-    hm.opacity = b.resting ? 0.5 : 0.22;
+    hm.opacity = b.resting ? 0.3 : 0.1;
 
-    // Contact shadow: probe for the nearest surface below and tighten as the
-    // ball approaches it. This is the main height cue in a flat side view.
+    // Ground shadow. Cast straight down rather than at the nearest surface
+    // point, because the read the player needs is "how far above the terrain
+    // am I", and that is only true directly beneath the ball. It scales and
+    // softens with height, which is the single strongest altitude cue in a
+    // side-on physics game — and it is what tells a rolling ball from one
+    // hovering a metre over the slope.
+    // A long downward sweep would be the obvious query, but the broadphase
+    // marches it in eight fixed samples, so over 40 m it steps clean past the
+    // ground profile and returns nothing. Probing for the nearest surface and
+    // projecting it along its own slope to the ball's x is both cheaper and
+    // exact enough to put the blob directly beneath the ball.
     const phys = ctx.services.physics;
-    const hit = phys?.probe({ x: b.pos.x, y: b.pos.y }, 7.5) ?? null;
-    if (hit && hit.normal.y > 0.15) {
-      const h = Math.max(0, Math.hypot(b.pos.x - hit.point.x, b.pos.y - hit.point.y) - r);
-      const t = Math.min(1, h / 6);
+    const hit = phys?.probe({ x: b.pos.x, y: b.pos.y }, 46) ?? null;
+    if (hit && hit.normal.y > 0.12) {
+      const slope = -hit.normal.x / Math.max(0.2, hit.normal.y);
+      const gy = hit.point.y + slope * (b.pos.x - hit.point.x);
+      const h = Math.max(0, b.pos.y - gy - r);
+      const t = Math.min(1, h / 22);
       vis.shadow.visible = true;
-      vis.shadow.position.set(hit.point.x + hit.normal.x * 0.05, hit.point.y + hit.normal.y * 0.05, LAYER.props + 0.7);
+      vis.shadow.position.set(b.pos.x, gy + hit.normal.y * 0.05, LAYER.props + 0.7);
       vis.shadow.rotation.z = Math.atan2(hit.normal.y, hit.normal.x) - Math.PI / 2;
-      vis.shadow.scale.set(r * (5.0 + t * 8), r * (2.4 + t * 4), 1);
-      (vis.shadow.material as THREE.MeshBasicMaterial).opacity = 0.72 * (1 - t) + 0.05;
+      // A tight, dark ellipse on contact opening into a wide soft one high up.
+      vis.shadow.scale.set(r * (3.0 + t * 8.5), r * (1.4 + t * 3.8), 1);
+      (vis.shadow.material as THREE.MeshBasicMaterial).opacity = 0.88 * (1 - t * 0.62);
     } else {
       vis.shadow.visible = false;
     }
@@ -2662,10 +3173,19 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       sky.position.set(cam.position.x, cam.position.y, LAYER.sky);
       skyMat.uniforms.uW0.value.set(cam.position.x - halfW * 1.05, cam.position.y - halfH * 1.05);
       skyMat.uniforms.uW1.value.set(cam.position.x + halfW * 1.05, cam.position.y + halfH * 1.05);
+      // The sun is at infinity, so its screen position is fixed however the
+      // camera translates: parking it at a world offset meant it drifted off
+      // frame and the sky lost the one shape that explains where the key
+      // light is coming from. Placed upper-left, matching the key.
+      const sunFx = THREE.MathUtils.clamp(T.sunAt[0] / 58, -0.72, 0.72);
+      const sunFy = THREE.MathUtils.clamp(T.sunAt[1] / 46, -0.9, 0.86);
       skyMat.uniforms.uSun.value.set(
-        cam.position.x * 0.92 + T.sunAt[0],
-        cam.position.y * 0.9 + horizonY + T.sunAt[1],
+        cam.position.x + halfW * sunFx,
+        Math.max(horizonY + halfH * 0.16, cam.position.y + halfH * sunFy),
       );
+      // Angular size, so the disc stays the same fraction of the frame at
+      // every zoom instead of vanishing when the camera pulls back.
+      skyMat.uniforms.uSunSize.value = Math.max(0.4, halfH * 0.032 * (T.sunSize / 2.4));
       skyMat.uniforms.uTime.value = t;
 
       // Parallax: each layer sits on the camera and scrolls its own texture,
@@ -2676,6 +3196,17 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
         // camera height each tier sits exactly where it was authored, and only
         // deviation from that height produces vertical parallax.
         l.mesh.position.y = l.anchor + (cam.position.y - horizonY) * l.ky;
+        if (l.sea) {
+          const u = l.sea.uniforms;
+          u.uTime.value = t;
+          u.uSeam.value = l.mesh.position.y + (l.seaH ?? 0) * 0.5;
+          // Ripples lag the camera by the tier's parallax factor, the same
+          // way a canvas layer lags by scrolling its map.
+          u.uOff.value = -cam.position.x * l.kx * 0.42;
+          u.uGlintX.value = skyMat.uniforms.uSun.value.x;
+          u.uGlintW.value = Math.max(6, halfW * 0.85);
+          continue;
+        }
         const map = (l.mesh.material as THREE.MeshBasicMaterial).map;
         if (map) map.offset.x = (cam.position.x * l.kx) / l.tileW;
       }
@@ -2798,6 +3329,7 @@ const createRender: SystemFactory = (ctx: GolfCtx) => {
       ballGeo.dispose();
       outlineGeo.dispose();
       outlineMat.dispose();
+      rimMat.dispose();
       flagGeo.dispose();
       aimGeo.dispose();
       aimMat.dispose();

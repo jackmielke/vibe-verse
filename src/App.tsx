@@ -34,20 +34,36 @@ import Globetrotter from "./pages/Globetrotter.tsx";
 import CharacterSelect from "./pages/CharacterSelect.tsx";
 import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
+import SanFrancisco from "./pages/SanFrancisco.tsx";
 import SanPalmas from "./pages/SanPalmas.tsx";
 import VibeGolf from "./pages/VibeGolf.tsx";
+import Worlds from "./pages/Worlds.tsx";
+import VibeIsland2 from "./pages/VibeIsland2.tsx";
+import Terminal from "./pages/Terminal.tsx";
 
 const queryClient = new QueryClient();
 
-/** App chrome (nav + radio) — hidden on /live so the broadcast is clean. */
+/** App chrome (nav + radio) — hidden anywhere that owns the whole viewport and
+    the pointer: the clean /live broadcast, and both fullscreen shooters, where
+    the nav would sit on top of the crosshair. */
+const CHROMELESS = new Set([
+  "/live",
+  "/sf",
+  "/san-francisco",
+  "/free-fall",
+  "/san-palmas",
+  "/fps",
+  "/worlds",
+  "/island-2",
+  "/vibe-island-2",
+  "/terminal",
+  // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
+  "/golf",
+]);
+
 const AppChrome = () => {
   const { pathname } = useLocation();
-  if (pathname === "/live") return null;
-  // San Palmas is a fullscreen pointer-locked FPS — the nav would sit on top
-  // of the crosshair.
-  if (pathname === "/san-palmas" || pathname === "/fps") return null;
-  // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
-  if (pathname === "/golf") return null;
+  if (CHROMELESS.has(pathname)) return null;
   return (
     <>
       <GlobalNav />
@@ -132,6 +148,17 @@ const App = () => (
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
           <Route path="/times" element={<VibeTimes />} />
+          {/* WORLDS — the shooter picker. Choose a city, then drop in. */}
+          <Route path="/worlds" element={<Worlds />} />
+          {/* San Francisco: Free Fall — open-world shooter, real SF geometry. */}
+          <Route path="/sf" element={<SanFrancisco />} />
+          <Route path="/san-francisco" element={<SanFrancisco />} />
+          <Route path="/free-fall" element={<SanFrancisco />} />
+          {/* THE TERMINAL — the front door. Stand in the sky, pick a world. */}
+          <Route path="/terminal" element={<Terminal />} />
+          {/* Vibe Island II — the floating archipelago, rebuilt. */}
+          <Route path="/island-2" element={<VibeIsland2 />} />
+          <Route path="/vibe-island-2" element={<VibeIsland2 />} />
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
           <Route path="/san-palmas" element={<SanPalmas />} />
           <Route path="/fps" element={<SanPalmas />} />
