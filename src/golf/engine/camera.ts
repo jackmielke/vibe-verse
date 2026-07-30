@@ -20,12 +20,24 @@ const createCamera: SystemFactory = (ctx) => {
   let ty = 0;
   let userZoom = 1;
 
+  /**
+   * An override target, published by the jetpack system while the player is
+   * flying the golfer around. Cleared by emitting null.
+   */
+  let override: { x: number; y: number } | null = null;
+  const offTarget = ctx.on("golf:cameraTarget", (p) => {
+    override = p && typeof p === "object" ? (p as { x: number; y: number }) : null;
+  });
+
   const sys: GolfCameraSystem = {
     name: "camera",
     attachEngine(e) {
       engine = e;
       tx = e.target.x;
       ty = e.target.y;
+    },
+    dispose() {
+      offTarget();
     },
     update(dt) {
       if (!engine) return;
@@ -40,7 +52,11 @@ const createCamera: SystemFactory = (ctx) => {
       let wantY: number;
       let wantZoom = userZoom;
 
-      if (ball && !ball.resting) {
+      if (override) {
+        // Someone else owns the framing (the jetpack, a cutscene).
+        wantX = override.x;
+        wantY = override.y;
+      } else if (ball && !ball.resting) {
         // Lead the ball so you can see where it's going, not where it was.
         wantX = ball.pos.x + ball.vel.x * 0.32;
         wantY = ball.pos.y + ball.vel.y * 0.22;
