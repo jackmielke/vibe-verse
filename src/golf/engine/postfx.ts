@@ -93,50 +93,50 @@ interface Grade {
 const GRADES: Record<CourseTheme, Grade> = {
   // Sunny tropical par 3. Warm key, cool sea-bounce shadow, fairway hottest.
   seaside: {
-    exposure: 1.40, gain: [1.10, 1.015, 0.895], lift: [0.010, 0.026, 0.044], hi: [1.13, 1.05, 0.87],
-    contrast: 1.05, saturation: 1.15, scurve: 0.34, green: 0.95,
+    exposure: 1.34, gain: [1.09, 1.015, 0.90], lift: [0.010, 0.026, 0.044], hi: [1.10, 1.035, 0.93],
+    contrast: 1.05, saturation: 1.18, scurve: 0.40, green: 0.60,
     vignette: 0.20, aberration: 0.0014, grain: 0.011,
     bloom: 0.42, threshold: 2.85,
   },
   // Humid and deep — sunlight punching through the canopy, shade stays green.
   jungle: {
-    exposure: 1.33, gain: [1.00, 1.05, 0.915], lift: [0.010, 0.028, 0.030], hi: [1.13, 1.06, 0.83],
-    contrast: 1.07, saturation: 1.12, scurve: 0.36, green: 0.90,
+    exposure: 1.30, gain: [1.00, 1.045, 0.92], lift: [0.010, 0.028, 0.030], hi: [1.11, 1.045, 0.88],
+    contrast: 1.07, saturation: 1.14, scurve: 0.40, green: 0.58,
     vignette: 0.22, aberration: 0.0014, grain: 0.012,
     bloom: 0.36, threshold: 2.95,
   },
   // Baked red rock: amber highlights, violet shade.
   canyon: {
-    exposure: 1.40, gain: [1.14, 1.00, 0.875], lift: [0.030, 0.010, 0.040], hi: [1.17, 1.00, 0.79],
-    contrast: 1.06, saturation: 1.12, scurve: 0.34, green: 0.45,
+    exposure: 1.36, gain: [1.13, 1.00, 0.885], lift: [0.030, 0.010, 0.040], hi: [1.15, 1.00, 0.84],
+    contrast: 1.06, saturation: 1.13, scurve: 0.38, green: 0.35,
     vignette: 0.22, aberration: 0.0018, grain: 0.013,
     bloom: 0.42, threshold: 2.80,
   },
   // Magenta-and-cyan. The one place the grade is allowed to shout.
   neon: {
     exposure: 1.20, gain: [1.05, 0.94, 1.12], lift: [0.004, 0.030, 0.062], hi: [1.16, 0.88, 1.16],
-    contrast: 1.10, saturation: 1.24, scurve: 0.30, green: 0.40,
+    contrast: 1.10, saturation: 1.24, scurve: 0.32, green: 0.30,
     vignette: 0.30, aberration: 0.0030, grain: 0.018,
     bloom: 0.95, threshold: 1.95,
   },
   // Thin air: lifted blacks, low contrast, almost no vignette.
   sky: {
-    exposure: 1.42, gain: [0.99, 1.005, 1.055], lift: [0.020, 0.030, 0.044], hi: [1.07, 1.05, 1.04],
-    contrast: 0.99, saturation: 1.06, scurve: 0.26, green: 0.70,
+    exposure: 1.38, gain: [0.99, 1.005, 1.05], lift: [0.020, 0.030, 0.044], hi: [1.06, 1.045, 1.05],
+    contrast: 0.99, saturation: 1.08, scurve: 0.30, green: 0.45,
     vignette: 0.14, aberration: 0.0010, grain: 0.010,
     bloom: 0.55, threshold: 2.60,
   },
   // Hot orange against blue-black; the strongest glow in the set.
   volcano: {
     exposure: 1.24, gain: [1.16, 0.96, 0.84], lift: [0.016, 0.004, 0.042], hi: [1.22, 0.93, 0.70],
-    contrast: 1.10, saturation: 1.14, scurve: 0.34, green: 0.35,
+    contrast: 1.10, saturation: 1.14, scurve: 0.36, green: 0.25,
     vignette: 0.28, aberration: 0.0026, grain: 0.016,
     bloom: 0.85, threshold: 2.05,
   },
   // Teal ice, crisp and slightly desaturated so the flag stays the only red.
   glacier: {
-    exposure: 1.40, gain: [0.96, 1.01, 1.10], lift: [0.004, 0.020, 0.046], hi: [1.02, 1.04, 1.10],
-    contrast: 1.05, saturation: 1.02, scurve: 0.30, green: 0.50,
+    exposure: 1.36, gain: [0.96, 1.01, 1.09], lift: [0.004, 0.020, 0.046], hi: [1.02, 1.04, 1.09],
+    contrast: 1.05, saturation: 1.04, scurve: 0.32, green: 0.35,
     vignette: 0.18, aberration: 0.0016, grain: 0.011,
     bloom: 0.60, threshold: 2.55,
   },
@@ -300,17 +300,26 @@ void main() {
   col += uLift * (1.0 - smoothstep(0.0, 0.62, l));
   col = mix(col, col * uHi, smoothstep(0.40, 1.0, l));
 
-  // Fairway pop. Green-dominant pixels get brighter and swing yellow-green, so
-  // the play surface is unambiguously the hottest, warmest thing on screen.
+  // Fairway pop. Saturated green-dominant pixels get brighter and swing
+  // yellow-green, so the play surface is unambiguously the hottest, warmest
+  // thing on screen. The saturation gate is load-bearing: hazy sky and lit
+  // cloud sit a few points green of neutral, and without it they catch this
+  // and the whole upper frame turns olive.
   col = clamp(col, 0.0, 1.0);
-  float gw = clamp((col.g - max(col.r, col.b)) * 3.2, 0.0, 1.0);
-  col = mix(col, col * vec3(1.20, 1.30, 0.84) + vec3(0.014, 0.042, 0.0), gw * uGreen);
+  float mx = max(col.r, max(col.g, col.b));
+  float mn = min(col.r, min(col.g, col.b));
+  float sat = (mx - mn) / max(mx, 1e-4);
+  float gw = clamp((col.g - max(col.r, col.b)) * 3.2, 0.0, 1.0)
+           * smoothstep(0.26, 0.56, sat);
+  col = mix(col, col * vec3(1.22, 1.16, 0.88) + vec3(0.020, 0.028, 0.0), gw * uGreen);
   col = clamp(col, 0.0, 1.0);
 
   // Midtone S. Weighted off the toe so it widens the gap between the parallax
-  // tiers and opens the upper sky without dragging the shadows down with it.
+  // tiers, and released again near white so the sky keeps its highlight range
+  // instead of flattening into one blown mass.
+  float sl = dot(col, LUMA);
   vec3 s = col * col * (3.0 - 2.0 * col);
-  col = mix(col, s, uSCurve * smoothstep(0.10, 0.38, dot(col, LUMA)));
+  col = mix(col, s, uSCurve * smoothstep(0.10, 0.38, sl) * (1.0 - smoothstep(0.70, 0.97, sl)));
 
   col = (col - 0.5) * uContrast + 0.5;
   l = dot(col, LUMA);
@@ -503,8 +512,8 @@ const createPostFx: SystemFactory = async (ctx) => {
         uExposure: { value: 1 },
         uContrast: { value: 1 },
         uSaturation: { value: 1 },
-        uSCurve: { value: 0.32 },
-        uGreen: { value: 0.9 },
+        uSCurve: { value: 0.40 },
+        uGreen: { value: 0.6 },
         uVignette: { value: 0.20 },
         uAberration: { value: 0.0014 },
         uGrain: { value: 0.011 },
