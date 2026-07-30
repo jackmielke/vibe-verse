@@ -135,6 +135,55 @@ function fbmT(u: number, v: number, period: number, octaves: number, seed: numbe
   return sum / norm;
 }
 
+/** Value noise on a lattice that wraps at different periods in x and y. */
+function vnoiseA(x: number, y: number, px: number, py: number, seed: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const fx = x - xi, fy = y - yi;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fy * fy * (3 - 2 * fy);
+  const x0 = ((xi % px) + px) % px, y0 = ((yi % py) + py) % py;
+  const x1 = (x0 + 1) % px, y1 = (y0 + 1) % py;
+  const a = hash2(x0, y0, seed), b = hash2(x1, y0, seed);
+  const c = hash2(x0, y1, seed), d = hash2(x1, y1, seed);
+  const top = a + (b - a) * u;
+  return top + (c + (d - c) * u - top) * v;
+}
+
+/**
+ * Anisotropic fBm. Weathering is *directional* — rain runs down, salt blooms
+ * out of horizontal joints — and an isotropic noise stretched by scaling one
+ * axis of an isotropic lattice produces a comb of evenly spaced vertical bars,
+ * which is exactly what plaster and concrete must not look like. Independent
+ * x/y periods give irregular streaks instead.
+ */
+function fbmA(u: number, v: number, px: number, py: number, octaves: number, seed: number): number {
+  let amp = 1, sum = 0, norm = 0, ax = px, ay = py;
+  for (let o = 0; o < octaves; o++) {
+    sum += vnoiseA(u * ax, v * ay, ax, ay, seed + o * 197) * amp;
+    norm += amp;
+    amp *= 0.5;
+    ax *= 2; ay *= 2;
+  }
+  return sum / norm;
+}
+
+/**
+ * Vertical weathering streaks.
+ *
+ * An anisotropic lattice alone still lands its features on an even comb — a
+ * 3 m concrete pier ends up looking like corrugated card. Warping the U domain
+ * with a low-frequency field first scatters them. The warp is safe for tiling
+ * because it wraps over U with period 1, so shifting U by a whole tile shifts
+ * the warped lattice by a whole number of cells.
+ */
+function streakT(u: number, v: number, across: number, seed: number): number {
+  const w = (fbmT(u, v, 3, 3, seed + 7717) - 0.5) * 0.6;
+  return (
+    fbmA(u + w, v, across, 2, 4, seed) * 0.66 +
+    fbmA(u - w * 0.5, v, Math.max(2, across >> 1), 3, 3, seed + 313) * 0.34
+  );
+}
+
 /** Tileable Worley F1, roughly 0..1. Aggregate, pitting, lichen, tile cells. */
 function worleyT(u: number, v: number, cells: number, seed: number): number {
   const x = u * cells, y = v * cells;
@@ -181,6 +230,14 @@ function ridgedT(u: number, v: number, period: number, octaves: number, seed: nu
 // between them and the loading screen has to keep painting through it.
 
 type TexelFn = (u: number, v: number, out: Float32Array) => void;
+
+/**
+ * Window bays (and storeys) per curtain-wall tile. Six rather than four: the
+ * lit-window lottery then has thirty-six outcomes before it repeats, which at
+ * 2.9 m bays puts the repeat at 17 m across and 23 m up — far enough apart that
+ * a 300 m tower does not read as a stamped sheet.
+ */
+const PANEL_TILE = 6;
 
 export interface MapSet {
   map: THREE.DataTexture;
@@ -353,31 +410,39 @@ const steelTexel: TexelFn = (u, v, out) => {
 
   const grain = fbmT(u, v, 26, 3, 3301);
   const fade = fbmT(u, v, 3, 4, 771);
-  // Vertical run-off streaks: the lattice stretched 4:1 in U.
-  const streak = fbmT(u * 5, v, 4, 4, 1187);
-  const rustBlob = smoothstep(0.56, 0.92, fbmT(u, v, 6, 4, 2213));
-  const rust = clamp01(rustBlob * (0.45 + 0.85 * seam) + smoothstep(0.62, 0.95, streak) * 0.55 * seam);
+  // Rain runs *down* a bridge tower, so the run-off lattice is 14 cells across
+  // and 2 tall — irregular vertical streaking, not a comb of even bars.
+  const streak = streakT(u, v, 14, 1187);
+  const rustBlob = smoothstep(0.44, 0.86, fbmT(u, v, 5, 4, 2213));
+  const rust = clamp01(
+    rustBlob * (0.50 + 0.90 * seam) + smoothstep(0.54, 0.90, streak) * 0.85 * (0.22 + seam),
+  );
+  // Every plate was painted on a different day by a different crew.
+  const plate = hash2(Math.floor(pu), Math.floor(pv), 5591) - 0.5;
 
   // Base coat: deep orange-vermilion, bleached where the sun has had at it.
-  let r = 0.60 + fade * 0.20 + grain * 0.05;
-  let g = 0.185 + fade * 0.085 + grain * 0.035;
-  let b = 0.095 + fade * 0.050 + grain * 0.030;
-  const bleach = smoothstep(0.58, 0.95, fade);
-  r += bleach * 0.12; g += bleach * 0.10; b += bleach * 0.09;
+  let r = 0.605 + fade * 0.20 + grain * 0.05 + plate * 0.11;
+  let g = 0.180 + fade * 0.085 + grain * 0.035 + plate * 0.045;
+  let b = 0.090 + fade * 0.050 + grain * 0.030 + plate * 0.030;
+  const bleach = smoothstep(0.52, 0.92, fade);
+  r += bleach * 0.15; g += bleach * 0.13; b += bleach * 0.12;
 
-  // Streaked grime, then rust eating the paint from the seams outward.
-  const grime = smoothstep(0.40, 0.86, streak) * 0.30;
-  r *= 1 - grime * 0.55; g *= 1 - grime * 0.45; b *= 1 - grime * 0.35;
-  r = lerp(r, 0.315, rust); g = lerp(g, 0.145, rust); b = lerp(b, 0.072, rust);
+  // Streaked grime, then rust eating the paint from the seams outward, with
+  // a pale primer coat showing through where the top coat has flaked.
+  const grime = smoothstep(0.34, 0.82, streak) * 0.45;
+  r *= 1 - grime * 0.42; g *= 1 - grime * 0.34; b *= 1 - grime * 0.26;
+  const flake = smoothstep(0.74, 0.94, fbmT(u, v, 13, 3, 6607)) * (1 - rust);
+  r = lerp(r, 0.50, flake * 0.5); g = lerp(g, 0.32, flake * 0.5); b = lerp(b, 0.24, flake * 0.5);
+  r = lerp(r, 0.335, rust); g = lerp(g, 0.150, rust); b = lerp(b, 0.070, rust);
 
   // Seam shadow, rivet highlight.
   const sh = seam * 0.30;
   out[0] = r * (1 - sh) + rivet * 0.10;
   out[1] = g * (1 - sh) + rivet * 0.06;
   out[2] = b * (1 - sh) + rivet * 0.04;
-  out[3] = lerp(0.44 - bleach * 0.06 + grain * 0.10, 0.94, rust);
-  out[4] = lerp(0.38, 0.06, rust);
-  out[5] = rivet * 0.9 - seam * 0.45 + grain * 0.10 - rustBlob * 0.12;
+  out[3] = lerp(0.42 - bleach * 0.06 + grain * 0.10 + grime * 0.10, 0.95, rust);
+  out[4] = lerp(0.40, 0.05, rust);
+  out[5] = rivet * 0.9 - seam * 0.45 + grain * 0.10 - rustBlob * 0.16 - flake * 0.20;
 };
 
 /**
@@ -387,35 +452,45 @@ const steelTexel: TexelFn = (u, v, out) => {
  */
 const concreteTexel: TexelFn = (u, v, out) => {
   const boardV = v * 6;                              // form-board lifts
-  const lift = smoothstep(0.045, 0.0, Math.min(fract(boardV), 1 - fract(boardV)));
+  const bf = Math.min(fract(boardV), 1 - fract(boardV));
+  const lift = smoothstep(0.045, 0.0, bf);
+  // Each board pour cured a slightly different colour — the single most
+  // recognisable thing about board-formed concrete.
+  const pour = hash2(0, Math.floor(boardV), 3121) - 0.5;
+  const pourWarm = hash2(1, Math.floor(boardV), 8837) - 0.5;
   const grain = fbmT(u, v, 24, 4, 4801);
-  const blotch = fbmT(u, v, 4, 4, 611);
-  const agg = worleyT(u, v, 26, 9911);
-  const pit = 1 - smoothstep(0.0, 0.20, agg);
-  const streak = fbmT(u * 4, v, 5, 4, 1553);
+  const blotch = fbmT(u, v, 3, 5, 611);
+  const agg = worleyT(u, v, 20, 9911);
+  const pit = 1 - smoothstep(0.0, 0.24, agg);
+  // One streak field, read at two thresholds: the general wash, and the rust
+  // bleed that only happens where the water actually runs. Halves the noise
+  // budget of the most expensive map in the module and is more truthful too.
+  const runoff = streakT(u, v, 12, 1553);
+  const stain = smoothstep(0.40, 0.86, runoff);
   const crack = Math.pow(ridgedT(u, v, 7, 4, 88), 9);
 
   // Warm pale grey, drifting toward bone in the sun and mould in the shade.
-  let r = 0.615 + blotch * 0.16 + grain * 0.07;
-  let g = 0.600 + blotch * 0.15 + grain * 0.07;
-  let b = 0.555 + blotch * 0.13 + grain * 0.06;
+  let r = 0.640 + blotch * 0.22 + grain * 0.08 + pour * 0.10 + pourWarm * 0.05;
+  let g = 0.612 + blotch * 0.20 + grain * 0.08 + pour * 0.095;
+  let b = 0.548 + blotch * 0.16 + grain * 0.07 + pour * 0.080 - pourWarm * 0.04;
 
-  const stain = smoothstep(0.46, 0.90, streak);
-  r *= 1 - stain * 0.34; g *= 1 - stain * 0.30; b *= 1 - stain * 0.22;
-  // Algae in the damp, warm rust bleed from the rebar.
-  const algae = smoothstep(0.66, 0.95, blotch) * (0.4 + 0.6 * stain);
-  r -= algae * 0.10; g -= algae * 0.02; b -= algae * 0.09;
-  const bleed = smoothstep(0.70, 0.97, fbmT(u * 3, v, 6, 3, 2909)) * 0.5;
-  r += bleed * 0.16; g += bleed * 0.07; b += bleed * 0.01;
+  r *= 1 - stain * 0.36; g *= 1 - stain * 0.32; b *= 1 - stain * 0.24;
+  // Algae in the damp, warm rust bleed from the rebar, salt bloom at the joints.
+  const algae = smoothstep(0.62, 0.94, blotch) * (0.35 + 0.65 * stain);
+  r -= algae * 0.13; g -= algae * 0.02; b -= algae * 0.11;
+  const bleed = smoothstep(0.74, 0.97, runoff) * 0.70;
+  r += bleed * 0.20; g += bleed * 0.08; b += bleed * 0.01;
+  const bloom = smoothstep(0.14, 0.02, bf) * smoothstep(0.35, 0.75, grain) * 0.35;
+  r += bloom * 0.16; g += bloom * 0.16; b += bloom * 0.15;
 
-  r -= crack * 0.30 + pit * 0.10 + lift * 0.10;
-  g -= crack * 0.29 + pit * 0.10 + lift * 0.10;
-  b -= crack * 0.26 + pit * 0.09 + lift * 0.09;
+  r -= crack * 0.32 + pit * 0.16 + lift * 0.12;
+  g -= crack * 0.31 + pit * 0.16 + lift * 0.12;
+  b -= crack * 0.28 + pit * 0.14 + lift * 0.11;
 
   out[0] = r; out[1] = g; out[2] = b;
-  out[3] = 0.88 + grain * 0.09 - pit * 0.05 + stain * 0.03;
+  out[3] = 0.88 + grain * 0.09 - pit * 0.06 + stain * 0.04;
   out[4] = 0.0;
-  out[5] = -lift * 0.5 - pit * 0.45 - crack * 0.7 + grain * 0.22;
+  out[5] = -lift * 0.5 - pit * 0.55 - crack * 0.7 + grain * 0.22 + bloom * 0.15;
 };
 
 /**
@@ -470,7 +545,7 @@ const roadTexel: TexelFn = (u, v, out) => {
  * a stamped grid. La Aguja and Mercado Ferry's upper floors both wear it.
  */
 const panelTexel: TexelFn = (u, v, out) => {
-  const bx = u * 4, by = v * 4;
+  const bx = u * PANEL_TILE, by = v * PANEL_TILE;
   const bu = fract(bx), bv = fract(by);
   const bay = Math.floor(bx), flr = Math.floor(by);
 
@@ -480,11 +555,14 @@ const panelTexel: TexelFn = (u, v, out) => {
     smoothstep(0.075, 0.110, bv) * smoothstep(0.720, 0.685, bv);
   // Mullion and transom inside the glass.
   const mull = clamp01(band(bu, 0.5, 0.010, 0.012) + band(bv, 0.40, 0.008, 0.010)) * win;
-  const fin = band(bu, 0.0, 0.055, 0.045) + band(bu, 1.0, 0.055, 0.045);
-  const sill = band(bv, 0.735, 0.020, 0.025);
+  const fin = band(bu, 0.0, 0.062, 0.040) + band(bu, 1.0, 0.062, 0.040);
+  // Shadow line down the outboard side of every fin — this is what makes a
+  // precast facade read as relief rather than as wallpaper.
+  const finShade = band(bu, 0.115, 0.030, 0.045) + band(bu, 0.885, 0.030, 0.045);
+  const sill = band(bv, 0.735, 0.022, 0.026);
 
   const speck = worleyT(u, v, 30, 1201);
-  const dirt = fbmT(u * 3, v, 6, 4, 5077);
+  const dirt = streakT(u, v, 10, 5077);
   const age = fbmT(u, v, 5, 3, 3313);
 
   // Panel: warm white quartz aggregate, greyed by rain tracks under the sills.
@@ -493,26 +571,34 @@ const panelTexel: TexelFn = (u, v, out) => {
   let pb = 0.775 + age * 0.070 + speck * 0.050;
   const track = smoothstep(0.52, 0.92, dirt) * 0.36;
   pr *= 1 - track * 0.20; pg *= 1 - track * 0.19; pb *= 1 - track * 0.16;
-  pr += fin * 0.055; pg += fin * 0.055; pb += fin * 0.055;
-  pr -= sill * 0.12; pg -= sill * 0.12; pb -= sill * 0.11;
+  pr += fin * 0.075 - finShade * 0.085;
+  pg += fin * 0.075 - finShade * 0.085;
+  pb += fin * 0.075 - finShade * 0.080;
+  pr -= sill * 0.13; pg -= sill * 0.13; pb -= sill * 0.12;
 
-  // Glass: deep teal, with a bright sky band across the top of every pane.
-  const skyBand = smoothstep(0.68, 0.30, bv);
-  let gr = 0.048 + skyBand * 0.135;
-  let gg = 0.082 + skyBand * 0.190;
-  let gb = 0.095 + skyBand * 0.235;
+  // Glass: deep teal, with a bright sky band across the top of every pane and
+  // a per-pane tint — blinds down, lights off, a different decade of glazing.
+  // Without it the tower is a stamped grid, which is the loudest amateur tell
+  // a skyscraper can have.
+  const pane = hash2(bay, flr, 2287);
+  const blind = hash2(bay, flr, 6421) < 0.28 ? smoothstep(0.10, 0.45, bv) : 0;
+  const skyBand = smoothstep(0.68, 0.30, bv) * (0.55 + 0.9 * pane);
+  let gr = 0.040 + skyBand * 0.150 + pane * 0.030;
+  let gg = 0.074 + skyBand * 0.205 + pane * 0.040;
+  let gb = 0.088 + skyBand * 0.250 + pane * 0.045;
+  gr = lerp(gr, 0.46, blind * 0.75); gg = lerp(gg, 0.43, blind * 0.75); gb = lerp(gb, 0.39, blind * 0.75);
   gr += mull * 0.36; gg += mull * 0.35; gb += mull * 0.33;
 
   out[0] = lerp(pr, gr, win);
   out[1] = lerp(pg, gg, win);
   out[2] = lerp(pb, gb, win);
-  out[3] = lerp(0.66 + speck * 0.16 + track * 0.08, lerp(0.075, 0.55, mull), win);
-  out[4] = lerp(0.02, lerp(0.82, 0.15, mull), win);
-  out[5] = -win * 0.55 + fin * 0.30 - sill * 0.25 + speck * 0.10 + mull * 0.20;
+  out[3] = lerp(0.66 + speck * 0.16 + track * 0.08, lerp(0.075 + blind * 0.55, 0.55, mull), win);
+  out[4] = lerp(0.02, lerp(0.82 * (1 - blind * 0.8), 0.15, mull), win);
+  out[5] = -win * 0.55 + fin * 0.34 - finShade * 0.10 - sill * 0.25 + speck * 0.10 + mull * 0.20;
 
   // Night: about two fifths of the offices are still burning, in three warmths.
   const lot = hash2(bay, flr, 8123);
-  const lit = lot < 0.42 ? 1 : 0;
+  const lit = lot < 0.42 && blind < 0.6 ? 1 : 0;
   const warmth = hash2(bay, flr, 4451);
   const e = lit * win * (1 - mull * 0.8) * (0.55 + 0.45 * warmth);
   out[6] = e * 1.00;
@@ -522,25 +608,35 @@ const panelTexel: TexelFn = (u, v, out) => {
 
 /** Troweled lime stucco, sun-baked and hairline-cracked. Tiles over 3 m. */
 const stuccoTexel: TexelFn = (u, v, out) => {
-  const trowel = fbmT(u, v, 8, 4, 6151) * 0.6 + fbmT(u, v, 22, 3, 1699) * 0.4;
-  const patch = fbmT(u, v, 3, 4, 2437);
-  const crack = Math.pow(ridgedT(u, v, 6, 5, 5233), 8);
-  const streak = smoothstep(0.50, 0.93, fbmT(u * 4, v, 6, 4, 3167));
-  const chip = 1 - smoothstep(0.0, 0.13, worleyT(u, v, 12, 8221));
+  const trowel = fbmT(u, v, 7, 4, 6151) * 0.62 + fbmT(u, v, 19, 3, 1699) * 0.38;
+  // Two scales of patching: whole re-rendered panels, and the sun bleaching
+  // whatever it has had longest.
+  const patch = fbmT(u, v, 2, 5, 2437);
+  const sun = smoothstep(0.40, 0.86, fbmT(u, v, 4, 4, 9109));
+  const crack = Math.pow(ridgedT(u, v, 5, 5, 5233), 7);
+  const streak = smoothstep(0.42, 0.88, streakT(u, v, 10, 3167));
+  // Chips are blown render, not pinpricks. The cell field is domain-warped and
+  // the threshold is noisy, so the patches come out ragged; a plain Worley mask
+  // here reads as grey polka dots, which is worse than no chips at all.
+  const wx = (fbmT(u, v, 5, 3, 111) - 0.5) * 0.14;
+  const wy = (fbmT(u, v, 5, 3, 227) - 0.5) * 0.14;
+  const chip = smoothstep(0.22 + fbmT(u, v, 24, 3, 3011) * 0.13, 0.03, worleyT(u + wx, v + wy, 6, 8221)) *
+    smoothstep(0.56, 0.80, fbmT(u, v, 5, 3, 4177)) * 0.7;
 
   // Warm ochre with coral undertones — the waterfront palette.
-  let r = 0.735 + patch * 0.150 + trowel * 0.080;
-  let g = 0.575 + patch * 0.125 + trowel * 0.075;
-  let b = 0.400 + patch * 0.100 + trowel * 0.070;
-  r *= 1 - streak * 0.16; g *= 1 - streak * 0.17; b *= 1 - streak * 0.14;
+  let r = 0.720 + patch * 0.190 + trowel * 0.090;
+  let g = 0.560 + patch * 0.155 + trowel * 0.085;
+  let b = 0.385 + patch * 0.120 + trowel * 0.075;
+  r += sun * 0.085; g += sun * 0.075; b += sun * 0.085;   // bleached, desaturated
+  r *= 1 - streak * 0.22; g *= 1 - streak * 0.23; b *= 1 - streak * 0.18;
   // Chipped render showing the grey scratch coat beneath.
-  r = lerp(r, 0.52, chip * 0.8); g = lerp(g, 0.49, chip * 0.8); b = lerp(b, 0.44, chip * 0.8);
-  r -= crack * 0.20; g -= crack * 0.18; b -= crack * 0.15;
+  r = lerp(r, 0.600, chip); g = lerp(g, 0.548, chip); b = lerp(b, 0.462, chip);
+  r -= crack * 0.26; g -= crack * 0.23; b -= crack * 0.19;
 
   out[0] = r; out[1] = g; out[2] = b;
-  out[3] = 0.86 + trowel * 0.10 - chip * 0.04;
+  out[3] = 0.86 + trowel * 0.10 - chip * 0.05 + streak * 0.04;
   out[4] = 0.0;
-  out[5] = trowel * 0.45 - crack * 0.8 - chip * 0.55;
+  out[5] = trowel * 0.45 - crack * 0.9 - chip * 0.7;
 };
 
 /** Barrel roof tiles. Eight courses across the tile, lapped every third row. */
@@ -578,14 +674,16 @@ const rockTexel: TexelFn = (u, v, out) => {
   const bed = hash2(0, ((step % 7) + 7) % 7, 6101);
   const joint = smoothstep(0.0, 0.08, frac) * smoothstep(1.0, 0.92, frac);
   const fracture = Math.pow(ridgedT(u, v, 5, 4, 733), 6);
-  const grit = fbmT(u, v, 32, 3, 12);
+  const grit = fbmT(u, v, 32, 3, 12) * 0.6 + worleyT(u, v, 30, 4409) * 0.4;
+  const spall = 1 - smoothstep(0.0, 0.30, worleyT(u, v, 9, 1777));
   const lichen = smoothstep(0.58, 0.92, fbmT(u, v, 9, 4, 5623));
-  const h = bed * 0.55 + joint * 0.32 + grit * 0.18 - fracture * 0.5;
+  const h = bed * 0.62 + joint * 0.32 + grit * 0.24 - fracture * 0.55 - spall * 0.30;
 
   // Warm ochre sandstone with iron in the beds, greened by salt-tolerant lichen.
-  let r = 0.315 + h * 0.42 + grit * 0.07;
-  let g = 0.278 + h * 0.37 + grit * 0.06;
-  let b = 0.225 + h * 0.29 + grit * 0.05;
+  let r = 0.300 + h * 0.52 + grit * 0.10;
+  let g = 0.264 + h * 0.45 + grit * 0.085;
+  let b = 0.212 + h * 0.35 + grit * 0.070;
+  r -= spall * 0.05; g -= spall * 0.05; b -= spall * 0.04;
   const iron = smoothstep(0.55, 0.95, fbmT(u, v * 3, 3, 4, 271));
   r += iron * 0.18; g += iron * 0.06; b -= iron * 0.02;
   r -= lichen * 0.06; g -= lichen * 0.00; b -= lichen * 0.07;
@@ -949,6 +1047,28 @@ interface NightMat {
   night: number;
 }
 
+/**
+ * Lowest and highest ground under a rectangular footprint. Anything that meets
+ * the ground over a wide span — a plaza, a quay, a terrace — has to know both:
+ * the high point sets the finished level, the low point says how far the
+ * foundation must reach before it stops being a slab hanging in the air.
+ */
+function groundRange(
+  ground: (x: number, z: number) => number,
+  ox: number, oz: number, hx: number, hz: number, n = 5,
+): { lo: number; hi: number } {
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i <= n; i++) {
+    for (let j = 0; j <= n; j++) {
+      const g = ground(ox + lerp(-hx, hx, i / n), oz + lerp(-hz, hz, j / n));
+      if (!isFinite(g)) continue;
+      if (g < lo) lo = g;
+      if (g > hi) hi = g;
+    }
+  }
+  return { lo: isFinite(lo) ? lo : 0, hi: isFinite(hi) ? hi : 0 };
+}
+
 interface Kit {
   ctx: WorldCtx;
   rng: () => number;
@@ -1079,9 +1199,12 @@ function buildBridge(kit: Kit, ox: number, oz: number): Built {
     if (gnd(z) > SEA_LEVEL + 2.5) { northShore = z; break; }
   }
   const anchorZ = northShore - 105;
+  // Run past the landfall until the deck is a clear metre *under* the ground,
+  // so the roadway disappears into the hillside instead of stopping dead in a
+  // 2 m lip that the player can see the underside of.
   let northEnd = anchorZ - 400;
-  for (let z = anchorZ - 40; z > anchorZ - 900; z -= 10) {
-    if (deckY(z) <= gnd(z) + 2.0) { northEnd = z; break; }
+  for (let z = anchorZ - 40; z > anchorZ - 950; z -= 8) {
+    if (deckY(z) <= gnd(z) - 1.2) { northEnd = z; break; }
   }
 
   const steelGeo: THREE.BufferGeometry[] = [];
@@ -1455,21 +1578,31 @@ function buildBridge(kit: Kit, ox: number, oz: number): Built {
   }
 
   // --- Tunnel portal, south --------------------------------------------------
+  // The Presidio headland ends in a near-vertical wall, so the roadway does not
+  // climb onto it — it drives straight into it. What the player sees is a
+  // deco-arched abutment rising out of the strait at the cliff foot with the
+  // deck disappearing through the arch, which is what the Golden Gate does at
+  // Fort Point. The mass below the springing has to reach the seabed, or the
+  // facade hangs fifty metres over open water.
   {
     const py = deckY(southEnd);
-    const pg = gnd(southEnd + 6);
+    const faceZ = southEnd - 4;
+    const springY = py - TRUSS_DEPTH - 2;
+    const seabed = Math.min(gnd(faceZ), SEA_LEVEL) - 8;
+
+    concGeo.push(boxAt(0, (seabed + springY) * 0.5, faceZ + 8, 46, springY - seabed, 16, 3.2));
     const face = archPanel(46, 40, 26.4, 20, 16, 10);
-    face.translate(0, py - TRUSS_DEPTH - 2, southEnd + 1);
-    concGeo.push(scaleUV(retile(face, 3.2), 1));
-    // Wing walls, battered into the cliff.
+    face.translate(0, springY, faceZ + 16);
+    concGeo.push(retile(face, 3.2));
+    // Wing walls, battered back into the cliff.
     for (const s of [-1, 1]) {
-      concGeo.push(boxAt(s * 27, py - 4, southEnd + 12, 10, 44, 26, 3.2));
+      concGeo.push(boxAt(s * 27, py - 6, faceZ + 24, 10, 52, 30, 3.2));
     }
-    // Abutment slab under the deck end.
-    concGeo.push(boxAt(0, py - TRUSS_DEPTH - 6, southEnd + 4, 34, 12, 18, 3.2));
+    // Cutwater at the foot, so the sea meets a shaped mass and not a slab end.
+    concGeo.push(boxAt(0, seabed + 6, faceZ - 3, 34, 12, 10, 3.2, Math.PI / 4));
     kit.collide(
-      new THREE.Vector3(ox - 32, Math.min(pg, py) - 30, oz + southEnd - 2),
-      new THREE.Vector3(ox + 32, py + 22, oz + southEnd + 24),
+      new THREE.Vector3(ox - 30, seabed, oz + faceZ),
+      new THREE.Vector3(ox + 30, py + 26, oz + faceZ + 34),
       "bridge-portal",
     );
   }
@@ -1520,14 +1653,14 @@ function buildBridge(kit: Kit, ox: number, oz: number): Built {
  * La Aguja — the pyramid tower
  * ------------------------------------------------------------------------ */
 //
-// The curtain-wall tile carries four window bays by four storeys, so a UV of
-// 1.0 is 11.6 m across and 15.6 m down. Get these wrong and the windows come
-// out at pot-hole scale, which is the single fastest way to make a 300 m tower
-// look like a toy.
+// The curtain-wall tile carries PANEL_TILE window bays by as many storeys, so a
+// UV of 1.0 is 17.4 m across and 23.4 m down. Get these wrong and the windows
+// come out at pot-hole scale, which is the single fastest way to make a 300 m
+// tower look like a toy.
 const BAY_W = 2.9;
 const STOREY = 3.9;
-const PANEL_U = 1 / (BAY_W * 4);
-const PANEL_V = 1 / (STOREY * 4);
+const PANEL_U = 1 / (BAY_W * PANEL_TILE);
+const PANEL_V = 1 / (STOREY * PANEL_TILE);
 
 function buildPyramid(kit: Kit, ox: number, oz: number): Built {
   const { mats, tier } = kit;
@@ -1535,22 +1668,23 @@ function buildPyramid(kit: Kit, ox: number, oz: number): Built {
   group.name = "palmas:la-aguja";
   group.position.set(ox, 0, oz);
 
-  // Seat on the highest ground under the footprint so no corner floats.
-  let base = -Infinity;
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    base = Math.max(base, kit.ground(ox + Math.cos(a) * 30, oz + Math.sin(a) * 30));
-  }
-  if (!isFinite(base)) base = 0;
+  // The plaza is 96 m across, and downtown is not a billiard table: take the
+  // high point for the finished level and the low point for the depth the slab
+  // has to reach before it stops being a slab hanging in the air.
+  const PLAZA = 48;
+  const gr = groundRange(kit.ground, ox, oz, PLAZA, PLAZA, 6);
 
   const panelGeo: THREE.BufferGeometry[] = [];
   const concGeo: THREE.BufferGeometry[] = [];
-  const plazaY = base + 0.4;
+  const plazaY = gr.hi + 0.4;
   const podiumTop = plazaY + 21;
   const APEX = plazaY + 252;
 
   // --- Plaza and podium -----------------------------------------------------
-  concGeo.push(boxAt(0, plazaY - 1.2, 0, 96, 2.4, 96, 3.2));
+  {
+    const bottom = gr.lo - 4;
+    concGeo.push(boxAt(0, (plazaY + bottom) * 0.5, 0, PLAZA * 2, plazaY - bottom, PLAZA * 2, 3.2));
+  }
   for (let s = 0; s < 3; s++) {
     concGeo.push(boxAt(0, plazaY - 0.2 - s * 0.34, 0, 74 + s * 3.2, 0.36, 74 + s * 3.2, 3.2));
   }
@@ -1596,7 +1730,12 @@ function buildPyramid(kit: Kit, ox: number, oz: number): Built {
       shaftStations.push({ y, s: lerp(27.0, 4.6, t) });
     }
   }
-  const shaft = sweepY(flutedRect(1, 1, 12, 0.026), shaftStations, {
+  // Subdivided but flat (rib depth 0): the faces are trapezoids, and a
+  // trapezoid drawn as two triangles interpolates its UVs differently on each
+  // side of the diagonal — a visible crease straight up 230 m of window grid.
+  // Eight segments a face kills it. The vertical rhythm comes from the texture's
+  // own precast fins, which stay a constant 2.9 m however the tower narrows.
+  const shaft = sweepY(flutedRect(1, 1, 4, 0), shaftStations, {
     uScale: PANEL_U, vScale: PANEL_V, capTop: true, scaleU: true,
   });
   panelGeo.push(shaft);
@@ -1624,7 +1763,7 @@ function buildPyramid(kit: Kit, ox: number, oz: number): Built {
         dx: s * (shaftHalfAt(y) + 2.2),
       });
     }
-    panelGeo.push(sweepY(rectSection(1, 1), wingStations, {
+    panelGeo.push(sweepY(flutedRect(1, 1, 3, 0), wingStations, {
       uScale: PANEL_U, vScale: PANEL_V, capTop: true, capBottom: true, scaleU: true,
     }));
 
@@ -1636,7 +1775,7 @@ function buildPyramid(kit: Kit, ox: number, oz: number): Built {
 
   // --- Spire ----------------------------------------------------------------
   const spire = sweepY(
-    rectSection(1, 1),
+    flutedRect(1, 1, 4, 0),
     [
       { y: APEX - 4, s: 4.6 },
       { y: APEX + 26, s: 2.2 },
@@ -1713,15 +1852,10 @@ function buildTorre(kit: Kit, ox: number, oz: number): Built {
   group.name = "palmas:torre-palma";
   group.position.set(ox, 0, oz);
 
-  // The hilltop is anything but flat: take the lowest ground under the terrace
-  // so the plinth beds in on the downhill side instead of hovering over it.
-  let lo = Infinity, hi = -Infinity;
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const g = kit.ground(ox + Math.cos(a) * 20, oz + Math.sin(a) * 20);
-    lo = Math.min(lo, g); hi = Math.max(hi, g);
-  }
-  if (!isFinite(lo)) { lo = 0; hi = 0; }
+  // Telegraph Hill is anything but flat: take the lowest ground under the full
+  // terrace so the plinth beds into the downhill side instead of hovering over
+  // it, and the highest for the finished level.
+  const { lo, hi } = groundRange(kit.ground, ox, oz, 26, 26, 6);
   const terraceY = hi + 0.6;
 
   const pale: THREE.BufferGeometry[] = [];
@@ -1921,26 +2055,35 @@ function buildIsla(kit: Kit, ox: number, oz: number): IslaBuilt {
     { y: 0.97, r: 0.76 },
     { y: 1.00, r: 0.70 },
   ];
+  const R0 = 88;
+  // Per-angle character, fixed once so the cliff has bays and headlands. The
+  // rim wall and every building on the plateau read this back — a rock that
+  // varies its radius by a third and a retaining wall drawn on a perfect
+  // circle is how you end up with a wall floating over open water.
+  const lobe: number[] = [];
+  const twist: number[] = [];
+  for (let i = 0; i < ANG; i++) {
+    const a = (i / ANG) * Math.PI * 2;
+    lobe.push(
+      1 +
+      0.16 * Math.sin(a * 3 + 0.7) +
+      0.10 * Math.sin(a * 5 - 1.9) +
+      0.055 * Math.sin(a * 9 + 2.4) +
+      (rng() - 0.5) * 0.05,
+    );
+    twist.push(0.06 * Math.sin(a * 4 + 1.1));
+  }
+  /** Radius of the plateau lip at a bearing, metres. */
+  const plateauR = (a: number) => {
+    const i = ((Math.round((a / (Math.PI * 2)) * ANG) % ANG) + ANG) % ANG;
+    return R0 * 0.70 * lobe[i] * (1 + twist[i] * 0.5);
+  };
+
   {
-    // Per-angle character, fixed once so the cliff has bays and headlands.
-    const lobe: number[] = [];
-    const twist: number[] = [];
-    for (let i = 0; i < ANG; i++) {
-      const a = (i / ANG) * Math.PI * 2;
-      lobe.push(
-        1 +
-        0.16 * Math.sin(a * 3 + 0.7) +
-        0.10 * Math.sin(a * 5 - 1.9) +
-        0.055 * Math.sin(a * 9 + 2.4) +
-        (rng() - 0.5) * 0.05,
-      );
-      twist.push(0.06 * Math.sin(a * 4 + 1.1));
-    }
     const seabed = Math.min(kit.ground(ox, oz + 96), kit.ground(ox, oz - 96), SEA_LEVEL - 6) - 6;
     const pos: number[] = [];
     const uv: number[] = [];
     const idx: number[] = [];
-    const R0 = 88;
     for (let j = 0; j < profile.length; j++) {
       const p = profile[j];
       const y = lerp(seabed, PLATEAU, clamp01(p.y));
@@ -2049,7 +2192,7 @@ function buildIsla(kit: Kit, ox: number, oz: number): IslaBuilt {
   // --- Lighthouse -----------------------------------------------------------
   let beam: THREE.Object3D | null = null;
   {
-    const lx = 40, lz = 28;
+    const lx = 31, lz = 21;
     const baseY = PLATEAU + 1.4;
     conc.push(boxAt(lx, baseY + 3.0, lz, 15, 6.0, 12, 3.2));   // keeper's quarters
     conc.push(sweepY(
@@ -2119,7 +2262,7 @@ function buildIsla(kit: Kit, ox: number, oz: number): IslaBuilt {
 
   // --- Water tower -----------------------------------------------------------
   {
-    const wx = -32, wz = -22;
+    const wx = -29, wz = -19;
     const footY = PLATEAU + 1.4;
     const tankY = footY + 17;
     const legs: THREE.Vector3[] = [];
@@ -2166,7 +2309,7 @@ function buildIsla(kit: Kit, ox: number, oz: number): IslaBuilt {
 
   // --- Guard tower, ruins, rim wall ------------------------------------------
   {
-    const gx = -12, gz = 34;
+    const gx = -10, gz = 30;
     const y = PLATEAU + 1.4;
     conc.push(sweepY(
       rectSection(1, 1),
@@ -2175,48 +2318,51 @@ function buildIsla(kit: Kit, ox: number, oz: number): IslaBuilt {
     ).translate(gx, 0, gz));
     conc.push(boxAt(gx, y + 15.4, gz, 8.2, 0.6, 8.2, 3.2));
     // Glazed cabin — tiled at the curtain-wall pitch so its panes are 2.9 m.
-    dark.push(boxAt(gx, y + 17.6, gz, 6.4, 3.8, 6.4, BAY_W * 4));
+    dark.push(boxAt(gx, y + 17.6, gz, 6.4, 3.8, 6.4, BAY_W * PANEL_TILE));
     conc.push(boxAt(gx, y + 19.9, gz, 8.6, 0.9, 8.6, 3.2));
   }
   if (tier.detail) {
     // Roofless warden's house — three walls and a gable, no roof.
-    const hx = 30, hz = -32, y = PLATEAU + 1.4;
+    const hx = 26, hz = -28, y = PLATEAU + 1.4;
     conc.push(boxAt(hx, y + 4, hz - 7, 20, 8, 0.7, 3.2));
     conc.push(boxAt(hx - 10, y + 4, hz, 0.7, 8, 14, 3.2));
     conc.push(boxAt(hx + 10, y + 3.2, hz, 0.7, 6.4, 14, 3.2));
     conc.push(boxAt(hx, y + 5.6, hz + 7, 20, 3.2, 0.7, 3.2));
   }
   {
-    // Rim retaining wall: follows the plateau edge, broken in places.
-    const n = 26;
+    // Rim retaining wall: rides the real plateau lip, broken in places where
+    // sixty tropical winters have taken a section into the sea.
+    const n = 30;
     for (let i = 0; i < n; i++) {
-      if (rng() < 0.18) continue;
+      if (rng() < 0.20) continue;
       const a = (i / n) * Math.PI * 2;
-      const r = 56;
+      const r = plateauR(a) - 3.5;
       conc.push(boxAt(
-        Math.cos(a) * r, PLATEAU + 2.4, Math.sin(a) * r,
-        r * (Math.PI * 2 / n) * 1.08, 2.6, 1.1, 3.2, -a + Math.PI / 2,
+        Math.cos(a) * r, PLATEAU + 2.2, Math.sin(a) * r,
+        r * (Math.PI * 2 / n) * 1.12, 2.4 + rng() * 0.5, 1.1, 3.2, -a + Math.PI / 2,
       ));
     }
   }
 
   // --- Jetty -----------------------------------------------------------------
   {
+    // The cliff meets the water somewhere near r = 60 on this bearing, so the
+    // deck starts well inside it and runs out over open water from there.
     const jz = 78;
     const deckYj = SEA_LEVEL + 3.4;
-    conc.push(boxAt(0, deckYj, jz + 12, 24, 0.9, 34, 3.2));
+    conc.push(boxAt(0, deckYj, jz, 24, 0.9, 52, 3.2));
     const piles: THREE.Matrix4[] = [];
     for (let i = -1; i <= 1; i++) {
       for (let k = 0; k < 5; k++) {
-        const p = new THREE.Vector3(i * 10, deckYj - 12, jz + 2 + k * 6.5);
+        const p = new THREE.Vector3(i * 10, deckYj - 12, jz - 12 + k * 8);
         const q2 = p.clone().setY(deckYj);
         piles.push(segmentMatrix(new THREE.Matrix4(), p, q2, 0.42));
       }
     }
     const pm = makeInstanced(new THREE.CylinderGeometry(1, 1, 1, 7, 1, true), mats.steelDark, piles);
     if (pm) group.add(pm);
-    conc.push(boxAt(-7, deckYj + 3.2, jz + 22, 9, 5.4, 8, 3.2));   // boat shed
-    steel.push(boxAt(-7, deckYj + 6.3, jz + 22, 10, 0.5, 9, 3.2));
+    conc.push(boxAt(-7, deckYj + 3.2, jz + 18, 9, 5.4, 8, 3.2));   // boat shed
+    steel.push(boxAt(-7, deckYj + 6.3, jz + 18, 10, 0.5, 9, 3.2));
   }
 
   kit.collide(
@@ -2258,14 +2404,8 @@ function buildFerry(kit: Kit, ox: number, oz: number): FerryBuilt {
 
   // The terminal fronts east onto the bay, so its long axis runs north-south.
   const LEN = 186, DEPTH = 34;
-  let baseY = -Infinity;
-  for (let i = -3; i <= 3; i++) {
-    for (const dx of [-DEPTH / 2, DEPTH / 2]) {
-      baseY = Math.max(baseY, kit.ground(ox + dx, oz + (i * LEN) / 6));
-    }
-  }
-  if (!isFinite(baseY)) baseY = 0;
-  const Y0 = baseY + 0.3;
+  const quay = groundRange(kit.ground, ox + 6, oz, (DEPTH + 44) * 0.5, (LEN + 30) * 0.5, 7);
+  const Y0 = quay.hi + 0.3;
 
   const stucco: THREE.BufferGeometry[] = [];
   const stone: THREE.BufferGeometry[] = [];
@@ -2288,7 +2428,12 @@ function buildFerry(kit: Kit, ox: number, oz: number): FerryBuilt {
   const ARCADE_TOP = ARCADE_Y + ARCADE_H;
 
   // --- Quay, stylobate and steps ---------------------------------------------
-  stone.push(boxAt(6, Y0 - 0.9, 0, DEPTH + 44, 1.8, LEN + 30, 3.2));
+  {
+    // The quay is 78 m by 216 m; it has to reach the low corner of that
+    // footprint or the whole terrace sits on a visible lip of daylight.
+    const bottom = quay.lo - 4;
+    stone.push(boxAt(6, (Y0 + bottom) * 0.5, 0, DEPTH + 44, Y0 - bottom, LEN + 30, 3.2));
+  }
   stone.push(boxAt(0, Y0 + 0.6, 0, DEPTH + 5, 1.2, LEN + 7, 3.2));
   for (let s = 0; s < 2; s++) {
     stone.push(boxAt(EAST + 20 + s * 1.6, Y0 - 0.35 - s * 0.34, 0, 2.2, 0.4, LEN + 22, 3.2));
@@ -2415,10 +2560,10 @@ function buildFerry(kit: Kit, ox: number, oz: number): FerryBuilt {
     stucco.push(sweepY(
       rectSection(1, 1),
       [
-        { y: Y0, s: TW + 1.6 },
-        { y: Y0 + 4, s: TW + 1.2 },
-        { y: Y0 + 26, s: TW },
-        { y: Y0 + 40, s: TW - 0.5 },
+        { y: Y0, s: TW + 1.6, dx: TX },
+        { y: Y0 + 4, s: TW + 1.2, dx: TX },
+        { y: Y0 + 26, s: TW, dx: TX },
+        { y: Y0 + 40, s: TW - 0.5, dx: TX },
       ],
       { uScale: 1 / 3, vScale: 1 / 3, scaleU: true },
     ));
@@ -2427,58 +2572,57 @@ function buildFerry(kit: Kit, ox: number, oz: number): FerryBuilt {
       const a = (i / 4) * Math.PI * 2;
       const p = archPanel(TW * 2 - 1.0, 12.2, 4.6, 6.6, 1.5, tier.detail ? 10 : 6);
       p.rotateY(a);
-      p.translate(Math.sin(a) * 0, Y0 + 40, 0);
-      // Push the panel out to the face along its own normal.
-      p.translate(-Math.sin(a) * (TW - 0.7), 0, -Math.cos(a) * (TW - 0.7));
-      stucco.push(scaleUV(retile(p, 3), 1));
+      // Push the panel out to the face along its own (rotated) normal.
+      p.translate(TX - Math.sin(a) * (TW - 0.7), Y0 + 40, -Math.cos(a) * (TW - 0.7));
+      stucco.push(retile(p, 3));
     }
-    darkGeo.push(boxAt(0, Y0 + 46, 0, TW * 1.3, 12, TW * 1.3, 3));
-    stone.push(boxAt(0, Y0 + 52.6, 0, TW * 2 + 2.4, 1.4, TW * 2 + 2.4, 3.2));
+    darkGeo.push(boxAt(TX, Y0 + 46, 0, TW * 1.3, 12, TW * 1.3, 3));
+    stone.push(boxAt(TX, Y0 + 52.6, 0, TW * 2 + 2.4, 1.4, TW * 2 + 2.4, 3.2));
 
     // Clock stage.
     stucco.push(sweepY(
       rectSection(1, 1),
-      [{ y: Y0 + 53.3, s: TW - 0.2 }, { y: TOP - 1.2, s: TW - 0.6 }],
+      [{ y: Y0 + 53.3, s: TW - 0.2, dx: TX }, { y: TOP - 1.2, s: TW - 0.6, dx: TX }],
       { uScale: 1 / 3, vScale: 1 / 3, scaleU: true },
     ));
-    stone.push(boxAt(0, TOP - 0.4, 0, TW * 2 + 3.0, 1.6, TW * 2 + 3.0, 3.2));
+    stone.push(boxAt(TX, TOP - 0.4, 0, TW * 2 + 3.0, 1.6, TW * 2 + 3.0, 3.2));
 
-    // Four clock faces, hands driven by the sky clock.
+    // Four clock faces, hands driven by the sky clock. The bezel and its
+    // twelve hour marks merge into one dial geometry shared by all four faces,
+    // so the whole clock costs sixteen draw calls instead of sixty-four.
     const faceGeo = new THREE.CircleGeometry(3.5, 28);
     const faceMat = makeMat(null, { color: 0xf3ece0, roughness: 0.55, metalness: 0 });
     faceMat.emissive = new THREE.Color(0xffe4b0);
     faceMat.emissiveIntensity = 0;
     kit.night.push({ mat: faceMat, day: 0, night: 0.85 });
-    const ringGeo = new THREE.TorusGeometry(3.75, 0.34, 6, 26);
+
+    const dialParts: THREE.BufferGeometry[] = [];
+    const bezel = new THREE.TorusGeometry(3.75, 0.34, 6, 26);
+    bezel.translate(0, 0, 0.05);
+    dialParts.push(retile(bezel, 2));
+    for (let h = 0; h < 12; h++) {
+      const ha = (h / 12) * Math.PI * 2;
+      const mark = new THREE.BoxGeometry(0.16, h % 3 === 0 ? 0.78 : 0.46, 0.06);
+      mark.rotateZ(-ha);
+      mark.translate(Math.sin(ha) * 3.0, Math.cos(ha) * 3.0, 0.12);
+      dialParts.push(retile(mark, 2));
+    }
+    const dialGeo = mergeAll(dialParts);
+
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2;
-      const nx = Math.sin(a), nz = Math.cos(a);
       const pivot = new THREE.Group();
-      pivot.position.set(nx * (TW - 0.45), Y0 + 57.6, nz * (TW - 0.45));
+      pivot.position.set(TX + Math.sin(a) * (TW - 0.45), Y0 + 57.6, Math.cos(a) * (TW - 0.45));
       pivot.rotation.y = a;
       const face = new THREE.Mesh(faceGeo, faceMat);
       face.position.z = 0.05;
       pivot.add(face);
-      const ring = new THREE.Mesh(ringGeo, mats.steelDark);
-      ring.position.z = 0.05;
-      pivot.add(ring);
-      // Twelve hour marks.
-      for (let h = 0; h < 12; h++) {
-        const mark = new THREE.Mesh(new THREE.BoxGeometry(0.16, h % 3 === 0 ? 0.75 : 0.45, 0.06), mats.steelDark);
-        const ha = (h / 12) * Math.PI * 2;
-        mark.position.set(Math.sin(ha) * 3.0, Math.cos(ha) * 3.0, 0.12);
-        mark.rotation.z = -ha;
-        pivot.add(mark);
-      }
-      const hour = new THREE.Group();
-      const hourArm = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.0, 0.09), mats.steelDark);
-      hourArm.position.y = 0.85;
-      hour.add(hourArm);
+      if (dialGeo) pivot.add(new THREE.Mesh(dialGeo, mats.steelDark));
+      const hour = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.0, 0.09), mats.steelDark);
+      hour.geometry.translate(0, 0.85, 0);
       hour.position.z = 0.16;
-      const minute = new THREE.Group();
-      const minArm = new THREE.Mesh(new THREE.BoxGeometry(0.17, 2.9, 0.08), mats.steelDark);
-      minArm.position.y = 1.30;
-      minute.add(minArm);
+      const minute = new THREE.Mesh(new THREE.BoxGeometry(0.17, 2.9, 0.08), mats.steelDark);
+      minute.geometry.translate(0, 1.30, 0);
       minute.position.z = 0.22;
       pivot.add(hour, minute);
       group.add(pivot);
@@ -2489,16 +2633,16 @@ function buildFerry(kit: Kit, ox: number, oz: number): FerryBuilt {
     stucco.push(sweepY(
       rectSection(1, 1),
       [
-        { y: TOP + 0.4, s: TW - 0.4 },
-        { y: TOP + 5.2, s: TW * 0.62 },
-        { y: TOP + 5.9, s: TW * 0.68 },
-        { y: TOP + 11.0, s: TW * 0.30 },
-        { y: TOP + 14.5, s: 0.7 },
+        { y: TOP + 0.4, s: TW - 0.4, dx: TX },
+        { y: TOP + 5.2, s: TW * 0.62, dx: TX },
+        { y: TOP + 5.9, s: TW * 0.68, dx: TX },
+        { y: TOP + 11.0, s: TW * 0.30, dx: TX },
+        { y: TOP + 14.5, s: 0.7, dx: TX },
       ],
       { uScale: 1 / 3, vScale: 1 / 3, capTop: true, scaleU: true },
     ));
     const mast = new THREE.CylinderGeometry(0.12, 0.30, 6.5, 8);
-    mast.translate(0, TOP + 17.5, 0);
+    mast.translate(TX, TOP + 17.5, 0);
     stone.push(retile(mast, 2));
   }
 
@@ -2542,8 +2686,8 @@ function buildFerry(kit: Kit, ox: number, oz: number): FerryBuilt {
     "mercado",
   );
   kit.collide(
-    new THREE.Vector3(ox - TW - 1.6, Y0, oz - TW - 1.6),
-    new THREE.Vector3(ox + TW + 1.6, TOP + 15, oz + TW + 1.6),
+    new THREE.Vector3(ox + TX - TW - 1.6, Y0, oz - TW - 1.6),
+    new THREE.Vector3(ox + TX + TW + 1.6, TOP + 15, oz + TW + 1.6),
     "mercado-tower",
   );
 
@@ -2587,7 +2731,10 @@ const createLandmarks: SystemFactory = async (ctx) => {
   await breathe();
   const concreteMaps = bakeMaps(T, aniso, { normal: N * 0.85 }, concreteTexel);
   await breathe();
-  const roadMaps = bakeMaps(T, aniso, { normal: N * 0.55, clampU: true }, roadTexel);
+  // The roadway map spans 24 m of carriageway in one tile, so a 150 mm lane
+  // line is under two texels at the shared resolution. It is the one surface
+  // the player walks on, so it gets double.
+  const roadMaps = bakeMaps(Math.min(384, T * 2), aniso, { normal: N * 0.55, clampU: true }, roadTexel);
   await breathe();
   const panelMaps = bakeMaps(T, aniso, { normal: N * 0.8, emissive: true }, panelTexel);
   await breathe();
