@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -41,6 +42,9 @@ import Worlds from "./pages/Worlds.tsx";
 import VibeIsland2 from "./pages/VibeIsland2.tsx";
 import Terminal from "./pages/Terminal.tsx";
 
+
+const Seafair = lazy(() => import("./pages/Seafair.tsx"));
+
 const queryClient = new QueryClient();
 
 /** App chrome (nav + radio) — hidden anywhere that owns the whole viewport and
@@ -57,6 +61,7 @@ const CHROMELESS = new Set([
   "/island-2",
   "/vibe-island-2",
   "/terminal",
+  "/seafair",
   // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
   "/golf",
 ]);
@@ -162,6 +167,16 @@ const App = () => (
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
           <Route path="/san-palmas" element={<SanPalmas />} />
           <Route path="/fps" element={<SanPalmas />} />
+          {/* SEAFAIR 2117 — future Seattle during Seafair. Hydros, Blue Angels,
+              and aliens holding the Space Needle. */}
+          <Route
+            path="/seafair"
+            element={
+              <Suspense fallback={<div className="fixed inset-0 bg-[#04080f]" />}>
+                <Seafair />
+              </Suspense>
+            }
+          />
           {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
           <Route path="/golf" element={<VibeGolf />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

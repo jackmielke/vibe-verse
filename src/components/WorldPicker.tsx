@@ -74,6 +74,18 @@ const WORLDS: WorldCard[] = [
     accent: "#ffb347",
   },
   {
+    to: "/seafair",
+    emoji: "🛩️",
+    name: "Seafair 2117",
+    // No capture yet — the world is still being art-directed, and their own
+    // rule applies: misleading card art is worse than none.
+    blurb:
+      "Future Seattle on Seafair weekend. Hydros on Lake Washington, Blue Angels overhead, and something alien holding the Space Needle.",
+    featured: true,
+    status: "In progress — playable, being art-directed",
+    accent: "#12a5f5",
+  },
+  {
     to: "/san-palmas",
     emoji: "🌴",
     name: "San Palmas",
