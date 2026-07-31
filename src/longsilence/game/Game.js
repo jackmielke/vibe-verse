@@ -4,6 +4,7 @@ import { Engine, detectQuality } from '../core/Engine.js';
 import { Input } from '../core/Input.js';
 import { bakeNebulaCube, makeStarField } from '../gfx/Sky.js';
 import { generateGalaxy, generateSystem, mulberry32 } from '../world/generate.js';
+import { VIBE_WORLDS } from '../world/vibeworlds.js';
 import { Planet } from '../world/Planet.js';
 import { Star } from '../world/Star.js';
 import { Dust } from '../world/Dust.js';
@@ -71,6 +72,13 @@ const SETTLE_TIME = 4.2;
    Long enough for the dust to settle and the name to land, short enough that
    nobody wonders whether it worked. */
 const HANDOFF_DELAY = 3.4;
+/* The hyperspace run, in milliseconds. The spool is short enough not to feel
+   like a wind-up and long enough for the tunnel's own ramp (dt*2.2, so ~450 ms
+   to most of the way) to actually arrive before the run starts. The run is the
+   number that decides whether the galaxy feels big; 1600 was the shortest that
+   still read as a journey rather than a transition. */
+const FOLD_SPOOL_MS = 900;
+const FOLD_RUN_MS = 1600;
 const SETTLE_HEIGHT = 240;
 // and the shortest the covering beat of a transition is allowed to be
 const ENTRY_BEAT = 0.5;
@@ -582,7 +590,12 @@ export class Game {
     }
 
     // ---- spawn the ship
-    const spawnTarget = sys.planets.find((p) => p.type === 'terran' || p.type === 'ocean')
+    /* In a world system you arrive looking at the world, always. It is why you
+       came: folding to Seafair and coming out beside an ice giant two orbits
+       further in would be technically a successful jump and a completely failed
+       arrival. Elsewhere the old rule stands — the most interesting body. */
+    const spawnTarget = sys.planets.find((p) => p.worldRoute)
+      || sys.planets.find((p) => p.type === 'terran' || p.type === 'ocean')
       || sys.planets.find((p) => p.type === 'gas')
       || sys.planets[Math.min(2, sys.planets.length - 1)];
     this._positionSystem(0);
@@ -847,6 +860,19 @@ export class Game {
       if (input.tapped('fold')) this.toggleView();
     }
 
+    /* ---- straight to a world.
+       The number keys are the hub's fast path: 1, 2, 3 plot and fly the whole
+       fold to San Francisco, Seafair or Vibe Island without opening anything.
+       Available from the helm *and* on foot in the cabin — this is the one
+       action that should never be more than one key away, and someone standing
+       at the chart table asking to go to Seafair means it just as much as
+       someone in the seat. */
+    if (!uiOpen && !this.transition && !this.landed) {
+      for (let i = 0; i < VIBE_WORLDS.length && i < 9; i++) {
+        if (input.tappedCode(`Digit${i + 1}`)) this.jumpToWorld(VIBE_WORLDS[i].key);
+      }
+    }
+
     // ------------------------------------------------------------ flight
     const flying = (this.mode === 'pilot' || this.mode === 'exterior') && !this.transition;
     if (!uiOpen && flying) {
@@ -870,8 +896,14 @@ export class Game {
     // space rather than moving through it, and because a whole system crossed
     // in two seconds is not a journey.
     const foldCeiling = THREE.MathUtils.clamp(near.surfaceDist * 1.15, 900, 240000);
-    if (ship.foldMode && near.surfaceDist < this.foldFloor(near)) this.toggleFold(false);
-    if (ship.foldMode && ship.foldCharge <= 0.001) this.toggleFold(false);
+    /* Both cut-outs are suspended while a hyperjump is in flight. The transit
+       is a scripted performance that already paid its charge up front, and it
+       usually starts from orbit — where the first of these would kill it on the
+       frame it began. hyperjump() is the only thing that ends a jump. */
+    if (!this._jumping) {
+      if (ship.foldMode && near.surfaceDist < this.foldFloor(near)) this.toggleFold(false);
+      if (ship.foldMode && ship.foldCharge <= 0.001) this.toggleFold(false);
+    }
 
     // ------------------------------------------------------------ autopilot
     const flightInput = (!uiOpen && flying)
@@ -2692,7 +2724,7 @@ export class Game {
     const t = this.bodies.slice().sort((a, b) =>
       a.absPos.distanceTo(this.ship.absPos) - b.absPos.distanceTo(this.ship.absPos))[0];
     return t ? `${t.name} fills the port. ${t.scanned ? 'Catalogued.' : 'Unsurveyed.'}`
-      : 'Only the deep field, and the long silence in it.';
+      : 'Only the deep field, and every band in it busy.';
   }
 
   /* -------------------------------------------------------- autopilot */
@@ -2933,6 +2965,9 @@ export class Game {
 
   toggleFold(force) {
     const ship = this.ship;
+    // A hyperjump owns the drive for the length of the transit. Without this,
+    // tapping J mid-tunnel drops the fold and the run finishes as a cut.
+    if (this._jumping) return;
     const want = force !== undefined ? force : !ship.foldMode;
     if (want === ship.foldMode) return;
     if (want) {
@@ -2956,19 +2991,111 @@ export class Game {
     }
   }
 
+  /**
+   * Go somewhere, at length, on purpose.
+   *
+   * This used to be a white flash and a cut: 420 ms of nothing and you were
+   * elsewhere. The game already owns one of the best-looking pieces of art in
+   * it — `gfx/FoldTunnel.js`, with its caustic core, its per-channel dispersion
+   * and its corkscrew — and it was only ever used for in-system cruising. An
+   * interstellar jump is the one moment that most deserves it.
+   *
+   * So the transit is a performance in three beats, and the whole point is that
+   * the middle one has nowhere to be:
+   *
+   *   spool   the drive winds up, the tunnel ramps in from the ship's own
+   *           velocity axis, the FOV opens (updateCamera keys off foldMode)
+   *   run     the streaks, held long enough to feel like distance
+   *   punch   the tunnel's own edge-triggered flash fires as the drive cuts,
+   *           the new system is already staged behind it, and the arrival
+   *           camera picks up the ship in orbit
+   *
+   * The system swap hides inside the flash on the far edge — the same trick
+   * the landing sequence uses with its cloud deck, and for the same reason.
+   */
   async hyperjump(id) {
-    if (id === this.currentSystemId) return;
+    if (id === this.currentSystemId || this._jumping) return;
+    const dest = this.galaxy[id];
+    this._jumping = true;
+    this._jumpDest = dest.name;
     this.starmap.close();
-    this.hud.setFlash(1);
-    this.audio.ping('jump');
-    await wait(420);
-    await this.loadSystem(id);
-    this.hud.setFlash(0.85);
-    this.ship.foldMode = false;
-    this.hud.setFold(false);
+    this.codex.close();
+    this.cancelAutopilot();
+
+    try {
+      // ---- spool
+      this.hud.log(`FOLD PLOTTED · ${dest.name.toUpperCase()}`, 'hi');
+      this.ship.foldMode = true;
+      this.ship.throttle = 1;
+      this.hud.setFold(true);
+      this.audio.ping('fold');
+      await wait(FOLD_SPOOL_MS);
+
+      // ---- the run. Nothing happens here, deliberately: this is the beat that
+      // makes the galaxy feel big, and cutting it short is what made the old
+      // jump feel like a loading screen.
+      await wait(FOLD_RUN_MS);
+
+      // ---- punch out
+      this.hud.setFlash(1);
+      this.audio.ping('jump');
+      await wait(140);
+      await this.loadSystem(id);
+      /* Cleared *after* the swap. `update` skips the drive's own disengage
+         rules while a jump is in flight — otherwise starting a jump from orbit
+         trips the "too deep in a mass" cut-out on the first frame — so this is
+         the only thing that ends the transit. `pose()` inside loadSystem also
+         clears it; both agreeing is the point. */
+      this.ship.foldMode = false;
+      this.hud.setFold(false);
+      this.hud.setFlash(0.85);
+      this.audio.ping('unfold');
+    } finally {
+      this._jumping = false;
+      this._jumpDest = null;
+    }
+
     // Arriving somewhere new is the one moment worth a camera move, every time.
     const arr = SEQUENCES.arrival(this);
     this.director.play('arrival:' + id, arr.shots, { title: arr.title, sub: arr.sub });
+  }
+
+  /**
+   * Take me to that world. The whole hub in one keystroke.
+   *
+   * Charge is still spent and still checked — the drive is a real thing with a
+   * real budget, and a free teleport would make the chart meaningless — but the
+   * route-finding, the star map and the aiming are all skipped. Pressing 2 goes
+   * to Seafair; that is the entire interface.
+   */
+  jumpToWorld(key) {
+    const sys = this.galaxy.find((s) => s.world && s.world.key === key);
+    if (!sys || this._jumping || this.transition || this.landed) return false;
+
+    if (sys.id === this.currentSystemId) {
+      // Already in the right sky: fly to it instead, which the autopilot does
+      // beautifully and which is the correct answer to "take me there".
+      const body = this.bodies.find((b) => b.spec && b.spec.worldRoute);
+      if (body) {
+        this.target = body;
+        this.cancelAutopilot(true);
+        this.autopilot = { body, phase: 'align' };
+        this.hud.log(`ALREADY IN SYSTEM · CLOSING ON ${body.name.toUpperCase()}`, 'ok');
+        this.audio.ping('ui');
+      }
+      return true;
+    }
+
+    const cur = this.galaxy[this.currentSystemId];
+    const cost = Math.min(1, Math.hypot(sys.x - cur.x, sys.y - cur.y) / 80);
+    if (this.ship.foldCharge < cost) {
+      this.hud.log(`FOLD CHARGE INSUFFICIENT · ${sys.name.toUpperCase()} NEEDS ${Math.round(cost * 100)}%`, 'hi');
+      this.audio.ping('deny');
+      return false;
+    }
+    this.ship.foldCharge = Math.max(0, this.ship.foldCharge - cost);
+    void this.hyperjump(sys.id);
+    return true;
   }
 
   /* --------------------------------------------------------------- post */

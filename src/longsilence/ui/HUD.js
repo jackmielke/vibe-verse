@@ -170,7 +170,7 @@ export class HUD {
           : [['E', 'step out'], ['L', 'lift off'], ['TAB', 'archive']];
       } else if (g.mode === 'walk') {
         keys = [['WASD', 'move'], ['MOUSE', 'look'], ['E', 'use'], ['SHIFT', 'run'],
-          ['V', 'outside view']];
+          ['V', 'outside view'], ['1-3', 'jump to world']];
       } else {
         /* V has always existed and has never been on this row, which is most of
            why the view "changed by itself" — the only other things that move it
@@ -184,6 +184,9 @@ export class HUD {
         // the key row, because that row is where a player looks to find out
         // what they can do next.
         if (canLand) keys.push(['L', g.target?.spec?.worldRoute ? 'enter world' : 'land']);
+        // The fast path, and it belongs on the row rather than in a manual
+        // nobody reads: three keys, three worlds, no chart.
+        keys.push(['1-3', 'jump to world']);
       }
       this.el.hints.innerHTML = keys.map(([k, v]) => `<span><kbd>${k}</kbd>${v}</span>`).join('');
       this._syncTouchLabels();
@@ -201,8 +204,14 @@ export class HUD {
     // ---- fold banner
     if (g.ship.foldMode) {
       const t = g.target;
-      this.el.foldSub.textContent = t
-        ? `${t.name.toUpperCase()}  ·  ${fmtDist(t.absPos.distanceTo(g.ship.absPos))}` : '';
+      /* Mid-hyperjump the target is a body in the system being left behind, and
+         quoting a range to it while the tunnel is up is nonsense. Name the
+         destination instead — it is the only thing the player cares about for
+         the two and a half seconds this is on screen. */
+      this.el.foldSub.textContent = g._jumpDest
+        ? `${g._jumpDest.toUpperCase()}  ·  INTERSTELLAR`
+        : t
+          ? `${t.name.toUpperCase()}  ·  ${fmtDist(t.absPos.distanceTo(g.ship.absPos))}` : '';
     }
 
     // ---- timers

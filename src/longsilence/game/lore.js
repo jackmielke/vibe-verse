@@ -207,6 +207,10 @@ export function introLines(pilot) {
       who: 'VIBEY',
       text: 'Scanner online. Anything ringed in white is a world you can land on — set down and you are in it.',
     },
+    {
+      who: 'VIBEY',
+      text: 'And if you would rather not fly it: press 1, 2 or 3 and I will fold us straight there.',
+    },
   ];
 }
 
