@@ -371,6 +371,8 @@ uniform vec3  uSkyCol;        // this world's own sky, for water reflection
 uniform float uHasAtmo;
 uniform vec3  uAmbient;
 uniform float uNight;         // city-light intensity
+uniform vec3  uLampWarm;      // the old cores' lamp colour
+uniform vec3  uLampCold;      // the newer districts' lamp colour
 uniform float uLavaGlow;
 uniform float uCloudShadow;
 uniform float uCloudAlt;      // deck altitude in planet radii
@@ -808,10 +810,13 @@ void main(){
          the ribbon as well as the cluster and therefore reaches every Voronoi
          wall on the planet. A hard line with warm light on one side of it and
          cold on the other is the loudest possible way to say "Voronoi". */
-      vec3 lampWarm = vec3(1.0, 0.62, 0.26);
-      vec3 lampCold = vec3(0.68, 0.83, 1.0);
+      /* Sodium and LED are the default because that is what Earth burns, but
+         they are a *property of the civilisation*, not of physics — so they
+         come in as uniforms now. A world lit by its clubs rather than by its
+         streetlights should be recognisable from a hundred thousand
+         kilometres, and the only channel that carries at that range is colour. */
       float lampF = fbm(dt*5.5 + uSeed*29.0, 2)*0.5 + 0.5;
-      vec3 lamp = mix(lampCold, lampWarm, smoothstep(0.36, 0.64, lampF));
+      vec3 lamp = mix(uLampCold, uLampWarm, smoothstep(0.36, 0.64, lampF));
       // The lights sit on the ground, so they dim toward the limb with
       // everything else rather than riding on top of the silhouette.
       col += lamp * lights * night * uNight * 1.7 * mix(0.35, 1.0, gNoV);

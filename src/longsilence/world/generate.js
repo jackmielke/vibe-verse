@@ -255,6 +255,13 @@ function makeVibeWorld(spec, rnd, world) {
   spec.garden = true;
   spec.ice = 0.35;
 
+  /* What this world burns after dark. Optional — without it the planet lights
+     itself with sodium and LED like everywhere else. */
+  if (w.lamp) {
+    spec.lampWarm = lin(w.lamp.warm);
+    spec.lampCold = lin(w.lamp.cold);
+  }
+
   if (w.clouds) {
     spec.clouds = {
       cover: w.clouds.cover, scale: w.clouds.scale,

@@ -162,6 +162,9 @@ export class Planet {
           uHasAtmo: { value: spec.atmo ? 1 : 0 },
           uAmbient: { value: new THREE.Color(0.018, 0.022, 0.035) },
           uNight: { value: spec.night },
+          // Defaults are the sodium/LED pair this shader used to hard-code.
+          uLampWarm: { value: spec.lampWarm || new THREE.Color(1.0, 0.62, 0.26) },
+          uLampCold: { value: spec.lampCold || new THREE.Color(0.68, 0.83, 1.0) },
           uLavaGlow: { value: spec.lavaGlow },
           uCloudShadow: { value: spec.clouds ? 0.88 : 0 },
           uCloudAlt: { value: spec.clouds ? spec.clouds.alt : 0.012 },

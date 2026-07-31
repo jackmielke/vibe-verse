@@ -113,6 +113,39 @@ export const VIBE_WORLDS = [
       clouds: { cover: 0.34, scale: 3.4, alt: 0.026, thick: 0.012, tint: 0xffeeda },
     },
   },
+  {
+    key: 'edm-town',
+    route: '/edm-town',
+    name: 'EDM TOWN',
+    designation: 'VV-004',
+    tagline: 'Lasers, a crowd, and a guestbook. The party has not stopped once.',
+    accent: 0xff2bd6,
+    // A red dwarf, and chosen for it: a dim star means a long, cold day side and
+    // very little to look at until the terminator comes round. Which is the joke.
+    star: 'M',
+    chart: { x: 8.0, y: 21.0 },
+    planet: {
+      kind: 'terran',
+      radius: 3300,
+      /* Muted to the point of drab in daylight — deep water, dark basalt, almost
+         no vegetation. Every bit of this world's budget is spent after dark. */
+      colors: {
+        c0: 0x0a0c14, c1: 0x2a2f42, c2: 0x4c4258, c3: 0x3e3a4a,
+        c4: 0x77708a, polar: 0xdfe4f2, water: 0x101a3a,
+      },
+      sea: 0.55,
+      veg: 0.18,
+      relief: 1.10,
+      craters: 0.10,
+      /* Twice what a city world burns, in magenta and cyan. The night side is
+         the brightest thing in the system that is not a star, and coming round
+         the terminator onto it is the entire reason this world is on the chart.
+         The lamp colours are the world's own — see uLampWarm in planetShaders. */
+      night: 3.2,
+      lamp: { warm: 0xff2bd6, cold: 0x2bf0ff },
+      clouds: { cover: 0.28, scale: 3.0, alt: 0.026, thick: 0.012, tint: 0xd8c8f0 },
+    },
+  },
 ];
 
 /** Look one up by the route it leads to, or by its key. */
