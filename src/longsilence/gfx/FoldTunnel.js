@@ -200,9 +200,19 @@ export class FoldTunnel {
   }
 
   /** @param fold 0..1 — how far into the transit the drive is. */
-  update(dt, camera, velocity, fold, time) {
+  /**
+   * @param {number} [rate] how fast `uFold` chases the commanded state. The
+   *   default is tuned for engaging the drive by hand, where a soft ramp reads
+   *   as the machine spooling up. A scripted transit passes a faster one: that
+   *   sequence has a fixed wall-clock length, and its look must not depend on
+   *   how many frames the machine happens to fit inside it. The game clamps dt
+   *   for physics stability, so below ~15 fps simulated time runs slower than
+   *   real time and a rate tuned at 60 would leave the tunnel a dim smear on a
+   *   machine having a bad second.
+   */
+  update(dt, camera, velocity, fold, time, rate = 2.2) {
     const u = this.mat.uniforms;
-    const k = Math.min(1, dt * 2.2);
+    const k = Math.min(1, dt * rate);
     u.uFold.value += (fold - u.uFold.value) * k;
     u.uT.value = time;
 

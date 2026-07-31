@@ -79,6 +79,10 @@ const HANDOFF_DELAY = 3.4;
    still read as a journey rather than a transition. */
 const FOLD_SPOOL_MS = 900;
 const FOLD_RUN_MS = 1600;
+/* Chase rate for `uFold` during a scripted jump. At this rate the tunnel is
+   99% of the way in by the end of the spool at anything down to 15 fps, where
+   the interactive 2.2 would still be at a sixth of the way. */
+const FOLD_JUMP_RAMP = 6;
 const SETTLE_HEIGHT = 240;
 // and the shortest the covering beat of a transition is allowed to be
 const ENTRY_BEAT = 0.5;
@@ -2161,7 +2165,11 @@ export class Game {
 
     // The tunnel is the thing you actually look at during a transit; the motes
     // above it only supply the near-field parallax it cannot have.
-    this.foldTunnel.update(dt, this.camera, ship.vel, ship.foldMode ? 1 : 0, this.time);
+    // Binary in, always — the tunnel's entry/exit flash triggers on the *edge*
+    // of the commanded state, so feeding it a ramp would fire the flash every
+    // frame. The transit ramps faster instead. See FoldTunnel.update.
+    this.foldTunnel.update(dt, this.camera, ship.vel, ship.foldMode ? 1 : 0, this.time,
+      this._jumping ? FOLD_JUMP_RAMP : undefined);
 
     /* ---- bounce ---------------------------------------------------------
        The fill is anti-key and lives in *world* space.
