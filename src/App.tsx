@@ -44,6 +44,10 @@ import Terminal from "./pages/Terminal.tsx";
 
 
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
+/* THE LONG SILENCE brings its own build of Three and ~2 MB of shaders. It is
+   lazy for the same reason Seafair is: nobody who never flies there should pay
+   for it in the hub's entry chunk. */
+const LongSilence = lazy(() => import("./pages/LongSilence.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -62,6 +66,8 @@ const CHROMELESS = new Set([
   "/vibe-island-2",
   "/terminal",
   "/seafair",
+  "/long-silence",
+  "/silence",
   // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
   "/golf",
 ]);
@@ -177,6 +183,20 @@ const App = () => (
               </Suspense>
             }
           />
+          {/* THE LONG SILENCE — a procedural galaxy flown from the cockpit of the
+              survey vessel PALE SEEKER. Nine hundred worlds went quiet; seven
+              instruments are still standing. Desktop and a real GPU. */}
+          {["/long-silence", "/silence"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <LongSilence />
+                </Suspense>
+              }
+            />
+          ))}
           {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
           <Route path="/golf" element={<VibeGolf />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
