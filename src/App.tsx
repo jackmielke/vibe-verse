@@ -44,6 +44,7 @@ import Terminal from "./pages/Terminal.tsx";
 
 
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
+const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -64,6 +65,8 @@ const CHROMELESS = new Set([
   "/seafair",
   // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
   "/golf",
+  // Vibe Kart owns the whole viewport, and the nav would sit on the HUD.
+  "/kart",
 ]);
 
 const AppChrome = () => {
@@ -179,6 +182,15 @@ const App = () => (
           />
           {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
           <Route path="/golf" element={<VibeGolf />} />
+          {/* Vibe Kart — arcade kart racing: drift, mini-turbos, shells. */}
+          <Route
+            path="/kart"
+            element={
+              <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
+                <VibeKart />
+              </Suspense>
+            }
+          />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
