@@ -51,6 +51,7 @@ import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
+import longSilenceArt from "@/assets/worlds/long-silence.jpg";
 
 const WORLDS: WorldCard[] = [
   {
@@ -72,6 +73,18 @@ const WORLDS: WorldCard[] = [
     featured: true,
     status: "In progress — fly it now",
     accent: "#ffb347",
+  },
+  {
+    to: "/long-silence",
+    emoji: "🛰️",
+    name: "The Long Silence",
+    // The game's own splash: a real frame out of the running build, not key art.
+    art: longSilenceArt,
+    blurb:
+      "Nine hundred worlds fell silent in four days, forty thousand years ago. Fly the survey vessel Pale Seeker through a procedural galaxy, scan what you find, and attune the seven Resonators.",
+    featured: true,
+    status: "Playable — desktop only, wants a real GPU",
+    accent: "#8fe4ff",
   },
   {
     to: "/seafair",
