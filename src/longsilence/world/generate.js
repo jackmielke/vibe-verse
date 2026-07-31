@@ -1,5 +1,6 @@
 import * as THREE from 'three-ls';
 import { PLANET_TYPES } from './planetBakeShader.js';
+import { VIBE_WORLDS } from './vibeworlds.js';
 
 /* ============================================================================
    Deterministic universe generation. Everything — star classes, orbits,
@@ -217,6 +218,52 @@ function makeGarden(spec, rnd) {
    */
   spec.relief = rng(rnd, 1.15, 1.45);
   spec.craters = rng(rnd, 0.05, 0.18);
+  return spec;
+}
+
+/* A vibeverse world.
+ *
+ * The same idea as makeGarden — take the dice away from the one planet that
+ * matters — but the whole way: this world leads somewhere real, so nothing
+ * about how it reads from orbit is left to chance. The palette, the sea level,
+ * the cloud deck and the night side are all authored in `vibeworlds.js` against
+ * the world they lead to.
+ *
+ * `worldRoute` is the flag every other system reads. The scanner labels it, the
+ * star map rings it, and the landing sequence hands off to it on touchdown.
+ */
+function makeVibeWorld(spec, rnd, world) {
+  const w = world.planet;
+  spec.name = world.name;
+  spec.worldRoute = world.route;
+  spec.worldKey = world.key;
+  spec.worldTagline = world.tagline;
+  spec.worldAccent = world.accent;
+
+  spec.colors = {};
+  for (const k of Object.keys(w.colors)) spec.colors[k] = lin(w.colors[k]);
+
+  spec.radius = w.radius;
+  spec.sea = w.sea;
+  spec.veg = w.veg;
+  spec.relief = w.relief;
+  spec.craters = w.craters;
+  spec.night = w.night;
+  spec.inhabited = true;
+  // `garden` is the flag the habitability field reads to put growth on the
+  // ground rather than gravel. Every one of these is somewhere people live.
+  spec.garden = true;
+  spec.ice = 0.35;
+
+  if (w.clouds) {
+    spec.clouds = {
+      cover: w.clouds.cover, scale: w.clouds.scale,
+      alt: w.clouds.alt, thick: w.clouds.thick, tint: lin(w.clouds.tint),
+    };
+  }
+  // Air, always: the arrival shot is a descent through a limb, and a world
+  // without an atmosphere has no limb to descend through.
+  spec.atmo = makeAtmosphere(w.kind === 'ocean' ? 'ocean' : 'terran', rnd, 1.0);
   return spec;
 }
 
@@ -571,9 +618,32 @@ export function generateSystem(stub) {
     if (first) makeGarden(first, rnd);
   }
 
+  /* ---- and if this system leads somewhere, that world goes in it.
+     The planet nearest the habitable zone is replaced outright rather than
+     dressed up: it has to be the right *kind* first — Seafair is a water world
+     and could easily have rolled iron — and only then the right colours. Its
+     orbit is inherited so the system's spacing is undisturbed. */
+  if (stub.world) {
+    let bi = 0, bd = Infinity;
+    planets.forEach((p, i) => {
+      const d = Math.abs(Math.log(p.orbitR / hz));
+      if (d < bd) { bd = d; bi = i; }
+    });
+    const old = planets[bi];
+    const np = makePlanet(rnd, stub.world.name, stub.world.planet.kind, old.orbitR, old.index);
+    np.orbitPhase = old.orbitPhase;
+    np.orbitSpeed = old.orbitSpeed;
+    np.orbitInc = old.orbitInc;
+    // One moon, kept: something to give the arrival shot a foreground.
+    np.moons = old.moons.slice(0, 1);
+    np.moons.forEach((m) => { m.parent = np; });
+    makeVibeWorld(np, rnd, stub.world);
+    planets[bi] = np;
+  }
+
   // The origin system always gets a living world — first impressions matter,
   // and the whole premise needs somewhere the Choir could actually have lived.
-  if (stub.forceHabitable && !planets.some((p) => p.type === 'terran')) {
+  if (stub.forceHabitable && !stub.world && !planets.some((p) => p.type === 'terran')) {
     let bi = 0, bd = Infinity;
     planets.forEach((p, i) => {
       const d = Math.abs(Math.log(p.orbitR / hz));
@@ -622,30 +692,55 @@ export function generateGalaxy(seed, count = 14) {
   const used = new Set();
 
   for (let i = 0; i < count; i++) {
-    let name;
-    do { name = starName(rnd); } while (used.has(name));
+    /* The first systems are the vibeverse worlds, in order, and they keep their
+       own names and their own places on the chart. Everything after them is
+       still rolled — an all-destination galaxy would be a menu, and the point
+       of flying is that there is something between the destinations. */
+    const world = VIBE_WORLDS[i] || null;
+
+    // Rolled even for a world system, and then thrown away — see the note on
+    // the draw sequence below. `starName` is three draws deep.
+    let rolledName;
+    do { rolledName = starName(rnd); } while (used.has(rolledName));
+    const name = world ? world.name : rolledName;
     used.add(name);
 
     // loose spiral-ish scatter in a 2D chart (light-years, purely for the map)
+    /* Every draw below happens for a world system too, even where its result is
+       then discarded. Each rnd() call in this file is a position in one
+       deterministic sequence, so skipping one would regenerate every body after
+       it — and the galaxy would quietly rearrange itself the day a fourth world
+       is added. Roll first, override second. */
     const ang = rnd() * Math.PI * 2;
     const rad = Math.pow(rnd(), 0.62) * 46 + 4;
-    const sc = pickStarClass(rnd);
+    const rolledClass = pickStarClass(rnd);
+    const seed = Math.floor(rnd() * 1e9);
+    const x = Math.cos(ang) * rad + rng(rnd, -6, 6);
+    const y = Math.sin(ang) * rad * 0.7 + rng(rnd, -6, 6);
+    const rolledDesignation =
+      `${['XN', 'HR', 'TY', 'KP', 'VD', 'ZC'][Math.floor(rnd() * 6)]}-${rngi(rnd, 1000, 9999)}`;
+    const nebula = Math.floor(rnd() * 6);
 
     systems.push({
       id: i,
       name,
-      seed: Math.floor(rnd() * 1e9),
-      starClass: sc,
-      x: Math.cos(ang) * rad + rng(rnd, -6, 6),
-      y: Math.sin(ang) * rad * 0.7 + rng(rnd, -6, 6),
+      seed,
+      starClass: world
+        ? (STAR_CLASSES.find((c) => c.cls === world.star) || rolledClass)
+        : rolledClass,
+      x: world ? world.chart.x : x,
+      y: world ? world.chart.y : y,
       visited: false,
-      designation: `${['XN', 'HR', 'TY', 'KP', 'VD', 'ZC'][Math.floor(rnd() * 6)]}-${rngi(rnd, 1000, 9999)}`,
-      nebula: Math.floor(rnd() * 6),
+      designation: world ? world.designation : rolledDesignation,
+      nebula,
+      /** Set only on the systems that lead somewhere. See vibeworlds.js. */
+      world,
     });
   }
 
-  // the origin system is always a quiet, legible one
-  systems[0].starClass = STAR_CLASSES[2];
+  // The origin system is always a quiet, legible one — and, now, always the
+  // first vibeverse world, so you start in orbit above somewhere you can go.
+  if (!systems[0].world) systems[0].starClass = STAR_CLASSES[2];
   systems[0].visited = true;
   systems[0].forceHabitable = true;
 

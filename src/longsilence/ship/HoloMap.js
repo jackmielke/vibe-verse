@@ -457,7 +457,13 @@ export class HoloMap {
       this.spin.add(n);
 
       const kc = kelvinColor((sys.starClass.temp[0] + sys.starClass.temp[1]) / 2);
-      const tint = new THREE.Color(kc.r, kc.g, kc.b);
+      /* A system that leads to a real world is drawn in that world's own colour
+         rather than its star's. The chart is the thing you choose a destination
+         from, and on a table of forty identical amber dots the three that are
+         doors have to be the three you can pick out without reading. */
+      const tint = sys.world
+        ? new THREE.Color(sys.world.accent)
+        : new THREE.Color(kc.r, kc.g, kc.b);
       const m = holoMat(0x000000, 0.35);
       m.uniforms.uColor.value.copy(tint);
       this.mats.push(m);
@@ -486,10 +492,16 @@ export class HoloMap {
       foot.position.y = -h;
       n.add(foot);
 
-      const label = labelPlane(
-        sys.visited ? sys.name.toUpperCase() : sys.designation,
-        sys.visited ? `${sys.starClass.cls}-CLASS` : 'UNCHARTED',
-        sys.visited ? '#dff4ff' : 'rgba(160,200,220,0.8)');
+      /* World systems are never "UNCHARTED". Everything else on this table is
+         a place you discover; these three are places you are being invited to,
+         and hiding their names behind a visit would make the hub's own map the
+         last thing to tell you the hub has anywhere to go. */
+      const label = sys.world
+        ? labelPlane(sys.name.toUpperCase(), 'VIBEVERSE WORLD', '#ffffff')
+        : labelPlane(
+          sys.visited ? sys.name.toUpperCase() : sys.designation,
+          sys.visited ? `${sys.starClass.cls}-CLASS` : 'UNCHARTED',
+          sys.visited ? '#dff4ff' : 'rgba(160,200,220,0.8)');
       label.position.set(0.072, 0.021, 0);
       n.add(label);
 
@@ -680,10 +692,13 @@ export class HoloMap {
       const w = c.w;
       c.text('STELLAR CARTOGRAPHY', 20, 28, { size: 12, color: DIM, track: 3 });
       c.line(20, 37, w - 20, 37, DIM, 1, 0.4);
-      c.text(s.visited ? s.name.toUpperCase() : 'UNCHARTED', 20, 74,
-        { size: 28, color: s.visited ? '#eafaff' : DIM, track: 0.6 });
-      c.text(`${s.designation}  ·  ${s.starClass.cls}-CLASS`, 20, 98,
-        { size: 13, color: AM, track: 1.6 });
+      // Same rule as the table: a destination names itself before you go.
+      c.text(s.world ? s.name.toUpperCase() : (s.visited ? s.name.toUpperCase() : 'UNCHARTED'),
+        20, 74, { size: 28, color: (s.world || s.visited) ? '#eafaff' : DIM, track: 0.6 });
+      c.text(s.world
+        ? `${s.designation}  ·  VIBEVERSE WORLD`
+        : `${s.designation}  ·  ${s.starClass.cls}-CLASS`,
+      20, 98, { size: 13, color: AM, track: 1.6 });
 
       const row = (label, val, y, col = '#dff4ff') => {
         c.text(label, 20, y, { size: 13, color: DIM, track: 2 });

@@ -1,73 +1,80 @@
 /* ============================================================================
-   Written content. The mystery only works if there is something to actually
-   find, so: seven Cantos (one per Resonator), a set of derelict logs, and
-   reference entries that unlock as you scan.
+   Written content.
+
+   The original game was about an absence: nine hundred worlds went quiet and
+   you flew out to find out why. This one is about the opposite. The band is
+   crowded, the worlds are lit, and the machinery you find out here is what
+   carries them to each other — seven Relays, still in tune, still passing
+   traffic. Attune all seven and the whole map opens.
+
+   The ids are unchanged (`canto1`…`canto7`, `log_seeker`) because the save
+   state, the archive index and the directive chain all key off them.
    ========================================================================== */
 
 export const CANTOS = [
   {
-    id: 'canto1', title: 'The First Canto', sub: 'RESONATOR I — ATTUNED',
+    id: 'canto1', title: 'The First Signal', sub: 'RELAY I — ATTUNED',
     body: [
       'We built the listening towers first, before the cities, before the ships.',
       'Not to speak. To hear.',
-      'For eleven thousand years we heard nothing, and called it loneliness. Then we learned to listen correctly, and heard everything, and called it something else.',
+      'For eleven thousand years we heard nothing, and called it loneliness. Then we learned to listen correctly, and heard everything, and had to invent a word for that instead.',
     ],
-    q: 'The sky is not empty. It is holding its breath.',
+    q: 'The sky is not empty. It never was. We were tuned wrong.',
   },
   {
-    id: 'canto2', title: 'The Second Canto', sub: 'RESONATOR II — ATTUNED',
+    id: 'canto2', title: 'The Second Signal', sub: 'RELAY II — ATTUNED',
     body: [
       'A signal is a shape pressed into noise. We had assumed the noise was the medium and the shape was the message.',
       'It is the other way around.',
-      'The stars are the punctuation. We had been reading the gaps.',
+      'The stars are the punctuation. Everything worth hearing was in the gaps, and we had been carefully reading around it.',
     ],
-    q: 'What speaks does not need a mouth. It needs only somewhere quiet.',
+    q: 'What speaks does not need a mouth. It needs only somewhere quiet, and a little patience.',
   },
   {
-    id: 'canto3', title: 'The Third Canto', sub: 'RESONATOR III — ATTUNED',
+    id: 'canto3', title: 'The Third Signal', sub: 'RELAY III — ATTUNED',
     body: [
       'The Assembly voted to answer. The vote was not close.',
-      'Nine hundred worlds tuned themselves to a single note and held it for a year, and at the end of that year the note came back changed, and we understood that we had been asked a question.',
-      'The record of the question survives. The record of our answer does not.',
+      'Nine hundred worlds tuned themselves to a single note and held it for a year, and at the end of that year the note came back changed, and we understood that we had been invited.',
+      'The record of the invitation survives. It is short. It is, roughly: come over.',
     ],
-    q: 'We were so proud to be heard that we forgot to ask who was listening.',
+    q: 'We spent so long proving we were not alone that we nearly missed being asked.',
   },
   {
-    id: 'canto4', title: 'The Fourth Canto', sub: 'RESONATOR IV — ATTUNED',
+    id: 'canto4', title: 'The Fourth Signal', sub: 'RELAY IV — ATTUNED',
     body: [
       'There was no war. Let that be recorded plainly, because those who come after will assume there was a war.',
       'There was a decision, and it was unanimous, and it took four days.',
-      'The lights were left on. The orbits were left tidy. The archives were left open.',
+      'The lights were left on and the orbits left tidy, the way you leave a house you intend to be visited in.',
     ],
-    q: 'A civilisation that leaves the door unlocked did not flee. It walked.',
+    q: 'A civilisation that leaves the door unlocked did not flee. It moved in next door.',
   },
   {
-    id: 'canto5', title: 'The Fifth Canto', sub: 'RESONATOR V — ATTUNED',
+    id: 'canto5', title: 'The Fifth Signal', sub: 'RELAY V — ATTUNED',
     body: [
-      'Attunement is not travel. Nothing moves. The Resonators do not open a path — they widen an aperture that was always there, the way an eye widens.',
+      'Attunement is not travel. Nothing moves. The Relays do not open a path — they widen an aperture that was always there, the way an eye widens.',
       'You do not go through. You are simply, afterwards, on the other side of having gone.',
-      'Those who returned could not describe it. Those who could describe it did not return.',
+      'Everyone who tries to describe it ends up describing the room they arrived in instead. This is not a failure of language. It is what arriving is like.',
     ],
     q: 'Distance was a habit of ours. We are trying to break it.',
   },
   {
-    id: 'canto6', title: 'The Sixth Canto', sub: 'RESONATOR VI — ATTUNED',
+    id: 'canto6', title: 'The Sixth Signal', sub: 'RELAY VI — ATTUNED',
     body: [
-      'Seven towers. Seven notes. We placed them apart so that no single accident, no single madness, no single grief could sound them all.',
-      'And then we sounded them all.',
-      'If you are reading this you have found six. Consider carefully whether you want the seventh. Consider that we left this warning, and that we ignored our own.',
+      'Seven towers. Seven notes. We placed them apart so that no single accident could sound them all by mistake.',
+      'And then we sounded them all on purpose, together, and the network came up, and it has been up ever since.',
+      'If you are reading this you have found six. The seventh is not a warning. It is a door handle, and we left it at the height of a hand.',
     ],
     q: 'Curiosity is the only thing that has ever cost us everything, and the only thing worth the price.',
   },
   {
-    id: 'canto7', title: 'The Seventh Canto', sub: 'RESONATOR VII — ATTUNED',
+    id: 'canto7', title: 'The Seventh Signal', sub: 'RELAY VII — ATTUNED',
     body: [
-      'The Aperture is open.',
-      'We are not gone. We are not dead. We are quiet, which is a thing you will understand in a moment, and never afterwards be able to explain.',
-      'Come in. Or do not. Both are answers, and we have learned to respect the second one.',
+      'The band is open.',
+      'We are not gone. We are not dead. We are next door, which is a thing you will understand in a moment and never afterwards be able to explain to anyone who has not heard it.',
+      'Come through. Or do not, and keep flying, and listen from out there — both are answers and we have learned to respect the second one.',
       'The towers will keep sounding either way. Someone should be listening.',
     ],
-    q: 'This is the long silence. It is not empty. It is full of everyone who came before you, waiting to see what you do.',
+    q: 'Every world on this chart is lit and somebody is home on all of them. Go and knock.',
   },
 ];
 
@@ -75,33 +82,33 @@ export const LOGS = [
   {
     id: 'log_orion', title: 'Salvage Tug ORION-9', sub: 'RECOVERED FLIGHT LOG',
     body: [
-      'Day 41. Third pass through the debris shell. Still nothing that reads as damage. Every hull here was opened from the inside, carefully, with tools.',
-      'Day 44. Kesh says the stations were depressurised on a schedule. Sector by sector. Like closing up a house.',
-      'Day 51. We found a nursery. Toys stacked. Lights on a timer that is still running after forty thousand years. I want to go home.',
+      'Day 41. Third pass through the shell. Still nothing that reads as damage. Every hull here was opened from the inside, carefully, with tools.',
+      'Day 44. Kesh says the stations were depressurised on a schedule. Sector by sector. Like closing up a house for the summer.',
+      'Day 51. We found a nursery. Toys stacked. Lights on a timer that is still running after forty millennia, which means somebody set it to run that long.',
     ],
   },
   {
     id: 'log_veyle', title: 'Survey Vessel VEYLE', sub: 'PARTIAL TRANSCRIPT',
     body: [
       '— it is not a language, it is an invitation, and the difference matters —',
-      '— tell the Institute the towers are not artefacts, they are instruments, and they are still in tune —',
-      '— if you are hearing this do not approach the seventh, I am asking you, I am —',
+      '— tell the hub the towers are not artefacts, they are instruments, and they are still in tune —',
+      '— going to the seventh now. If this is the last of me on the record, understand that I went happily —',
     ],
   },
   {
-    id: 'log_hollow', title: 'The Hollow Fleet', sub: 'ARCHIVE FRAGMENT',
+    id: 'log_hollow', title: 'The Long Band', sub: 'ARCHIVE FRAGMENT',
     body: [
-      'Eleven hundred vessels are recorded as entering the Silence in the last two centuries. Ninety-four returned.',
-      'Of those, every crew reported the same detail unprompted: that the stars appeared, briefly, to be arranged.',
+      'Eleven hundred vessels are recorded as flying this volume in the last two centuries. Every one of them came back with the same detail, unprompted: that the stars appeared, briefly, to be arranged.',
       'No two crews agreed on the arrangement.',
+      'Every crew agreed it was arranged for them.',
     ],
   },
   {
-    id: 'log_seeker', title: 'PALE SEEKER — Commission', sub: 'YOUR ORDERS',
+    id: 'log_seeker', title: 'VIBEY — Commission', sub: 'YOUR ORDERS',
     body: [
-      'You are the eleven hundred and first.',
-      'Chart what you can. Scan what you find. Attune what will let you.',
-      'The Institute does not expect you back. The Institute has never expected anyone back. Please prove the Institute wrong, or at least prove it interesting.',
+      'You are the eleven hundred and first, and the first with a decent ship.',
+      'Chart what you can. Scan what you find. Land on anything that is lit — the lit ones are worlds people are actually living in, and they are expecting you.',
+      'Nobody is timing this. Come back with something interesting.',
     ],
   },
 ];
@@ -109,7 +116,7 @@ export const LOGS = [
 export const TYPE_INFO = {
   terran: {
     label: 'Terrestrial · Class T',
-    text: 'Silicate world with liquid-water hydrosphere and an oxidising atmosphere. Rare, and rarely quiet — where the Choir settled, they settled here.',
+    text: 'Silicate world with liquid-water hydrosphere and an oxidising atmosphere. Rare, and rarely quiet — where anyone settles, they settle here.',
   },
   ocean: {
     label: 'Pelagic · Class O',
@@ -117,7 +124,7 @@ export const TYPE_INFO = {
   },
   desert: {
     label: 'Arid · Class D',
-    text: 'Hydrosphere lost to escape or subduction. Preserves surface structures better than any other world type, which is why the Institute keeps sending people here.',
+    text: 'Hydrosphere lost to escape or subduction. Preserves surface structures better than any other world type, which is why survey keeps sending people here.',
   },
   barren: {
     label: 'Barren · Class B',
@@ -141,13 +148,13 @@ export const TYPE_INFO = {
   },
   gas: {
     label: 'Gas Giant · Class G',
-    text: 'Hydrogen–helium envelope with no meaningful surface. Zonal banding driven by internal heat. The Choir used them as anchors, never as homes.',
+    text: 'Hydrogen–helium envelope with no meaningful surface. Zonal banding driven by internal heat. Good anchors, poor homes.',
   },
 };
 
 export const STAR_INFO = {
   M: 'Red dwarf. Parsimonious, patient, and likely to outlive every other object in this catalogue by a factor of a thousand.',
-  K: 'Orange dwarf. The quiet optimum — stable output, long main sequence, generous habitable zone.',
+  K: 'Orange dwarf. The quiet optimum — stable output, long main sequence, generous habitable zone. Golden hour, permanently.',
   G: 'Yellow main-sequence star. Unremarkable in every respect, which is precisely why life keeps turning up around them.',
   F: 'Yellow-white dwarf. Hot, bright, short-tempered; its habitable zone drifts outward faster than biospheres can follow.',
   A: 'White main-sequence star. Strong ultraviolet flux. Beautiful, sterilising.',
@@ -159,25 +166,49 @@ export const STAR_INFO = {
 
 export const ANOMALY_INFO = {
   resonator: {
-    label: 'RESONATOR',
-    text: 'A Choir instrument. Non-reflective across every band we can generate. It is not inert — it is waiting, and it can tell the difference between a rock and a visitor.',
+    label: 'RELAY',
+    text: 'One of the seven. Non-reflective across every band we can generate, and not remotely inert — it is carrying traffic right now, and it can tell the difference between a rock and a visitor.',
   },
   derelict: {
-    label: 'DERELICT STATION',
-    text: 'Choir orbital infrastructure. Undamaged, unpowered in the conventional sense, and still holding station to within a metre after forty millennia.',
+    label: 'QUIET STATION',
+    text: 'Orbital infrastructure, unpowered in any conventional sense, still holding station to within a metre after forty millennia. Somebody built it to be found in working order.',
   },
   wreck: {
     label: 'WRECKAGE',
-    text: 'Not Choir. Hull alloys and fabrication signatures consistent with the last two centuries of human expeditions into the Silence.',
+    text: 'Ours. Hull alloys and fabrication signatures consistent with the last two centuries of expeditions out this way. Not everyone who flies this volume is careful.',
   },
   beacon: {
     label: 'SIGNAL BEACON',
-    text: 'A relay. Broadcasts a bearing and nothing else. Every beacon points at something, and no beacon explains why.',
+    text: 'A repeater. Broadcasts a bearing and nothing else. Every beacon points at something, and no beacon explains why.',
   },
 };
 
-export const INTRO_LINES = [
-  { who: 'INSTITUTE RELAY', text: 'Fold complete. You are inside the Silence, Seeker.' },
-  { who: 'INSTITUTE RELAY', text: 'Forty thousand years ago nine hundred worlds went quiet in four days. Find out why.' },
-  { who: 'PALE SEEKER', text: 'Scanner online. Seven Resonators are out there. Bring back what they say.' },
-];
+/**
+ * The opening beats, addressed to whoever is actually flying.
+ *
+ * A function rather than a constant because the vibeverse knows the player's
+ * name — being greeted by it is most of the difference between a demo and a
+ * place you have been to before.
+ */
+export function introLines(pilot) {
+  const who = (pilot || '').trim();
+  return [
+    {
+      who: 'HUB',
+      text: who
+        ? `Fold complete. Welcome back to the band, ${who}.`
+        : 'Fold complete. Welcome to the band.',
+    },
+    {
+      who: 'HUB',
+      text: 'Three worlds are lit on this chart and every one of them has somebody home. Go and see them.',
+    },
+    {
+      who: 'VIBEY',
+      text: 'Scanner online. Anything ringed in white is a world you can land on — set down and you are in it.',
+    },
+  ];
+}
+
+/** Back-compat for anything that still wants the plain array. */
+export const INTRO_LINES = introLines('');

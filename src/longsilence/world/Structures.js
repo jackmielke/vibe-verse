@@ -7,7 +7,7 @@ import { buildStation } from './Station.js';
 /* ============================================================================
    Things the Choir left behind.
 
-   Resonators  — monoliths. The only objects in the game that are *not* natural,
+   Relays  — monoliths. The only objects in the game that are *not* natural,
                  and the only ones with a material language of their own.
    Derelicts   — a station that came apart, forty thousand years ago, and has
                  been spreading along its own orbit ever since.
@@ -756,7 +756,7 @@ function shardGeo(len, w, d) {
   ], true, true);
 }
 
-export function buildResonator(seed, env) {
+export function buildRelay(seed, env) {
   const rnd = mulberry32(seed);
   const g = new THREE.Group();
 
@@ -779,7 +779,7 @@ export function buildResonator(seed, env) {
     },
   });
 
-  /* A Resonator is architecture, not a prop. What reads is a *colonnade*:
+  /* A Relay is architecture, not a prop. What reads is a *colonnade*:
      blades standing in a ring five kilometres across around a suspended core.
      That silhouette is legible from a hundred kilometres, it has an inside and
      an outside so you can fly through it, and the repetition is what makes it
@@ -1777,7 +1777,7 @@ export function buildBeacon(seed) {
   /* The lamp.
 
      It used to be 0x60ffc0 — a saturated green that is *not* CHOIR_HUE, on the
-     one object in the game most likely to be seen next to a Resonator. That
+     one object in the game most likely to be seen next to a Relay. That
      brushes the only colour rule the palette has: pale gold-green means Choir
      and nothing else, so a second saturated green a few degrees off it does not
      read as "a different thing", it reads as the same thing rendered wrong. A
@@ -1804,8 +1804,8 @@ export function buildBeacon(seed) {
   g.add(lamp);
   g.traverse((o) => { o.frustumCulled = false; });
   /* No `userData.practical`. The frame loop snaps its single roaming light to
-     the *nearest* published source, and a beacon parked in front of a Resonator
-     would take it off the Resonator — which is the one object in the game that
+     the *nearest* published source, and a beacon parked in front of a Relay
+     would take it off the Relay — which is the one object in the game that
      has to be lighting its own surroundings. */
   g.userData = { kind: 'beacon', lamp, spin: new THREE.Vector3(0, 0.35, 0) };
   return g;

@@ -44,10 +44,10 @@ import Terminal from "./pages/Terminal.tsx";
 
 
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
-/* THE LONG SILENCE brings its own build of Three and ~2 MB of shaders. It is
-   lazy for the same reason Seafair is: nobody who never flies there should pay
-   for it in the hub's entry chunk. */
-const LongSilence = lazy(() => import("./pages/LongSilence.tsx"));
+/* THE VIBEVERSE brings its own build of Three and ~2 MB of shaders. It is lazy
+   for the same reason Seafair is: nobody who never flies there should pay for
+   it in the hub's entry chunk. */
+const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -66,8 +66,9 @@ const CHROMELESS = new Set([
   "/vibe-island-2",
   "/terminal",
   "/seafair",
+  "/vibeverse",
+  "/explorer",
   "/long-silence",
-  "/silence",
   // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
   "/golf",
 ]);
@@ -183,16 +184,18 @@ const App = () => (
               </Suspense>
             }
           />
-          {/* THE LONG SILENCE — a procedural galaxy flown from the cockpit of the
-              survey vessel PALE SEEKER. Nine hundred worlds went quiet; seven
-              instruments are still standing. Desktop and a real GPU. */}
-          {["/long-silence", "/silence"].map((path) => (
+          {/* THE VIBEVERSE — the hub seen from orbit. Fly the survey vessel VIBEY
+              through a procedural galaxy where three of the stars are real
+              destinations, and land on one to walk into it. /long-silence stays
+              wired up: it was the route before the remix and links exist.
+              Desktop and a real GPU. */}
+          {["/vibeverse", "/explorer", "/long-silence"].map((path) => (
             <Route
               key={path}
               path={path}
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <LongSilence />
+                  <VibeverseExplorer />
                 </Suspense>
               }
             />

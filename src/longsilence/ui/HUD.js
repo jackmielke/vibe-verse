@@ -180,14 +180,21 @@ export class HUD {
         keys = [['MOUSE', 'fly'], ['W/S', 'throttle'], ['F', 'scan'], ['G', 'autopilot'],
           ['J', 'fold'], ['RMB', 'look'], ['V', g.mode === 'exterior' ? 'cockpit' : 'chase cam'],
           ['E', 'stand']];
-        if (canLand) keys.push(['L', 'land']);
+        // Landing on a vibeverse world is not "land", it is the door. Say so on
+        // the key row, because that row is where a player looks to find out
+        // what they can do next.
+        if (canLand) keys.push(['L', g.target?.spec?.worldRoute ? 'enter world' : 'land']);
       }
       this.el.hints.innerHTML = keys.map(([k, v]) => `<span><kbd>${k}</kbd>${v}</span>`).join('');
       this._syncTouchLabels();
       // The row is small and at the bottom edge. Coming into range of a world
       // you can actually set down on is worth saying out loud, once.
       if (canLand && !wasLand && g.target) {
-        this.log(`LANDING AVAILABLE · ${g.target.name.toUpperCase()} · L`, 'ok');
+        this.log(
+          g.target.spec?.worldRoute
+            ? `${g.target.name.toUpperCase()} · LAND TO ENTER · L`
+            : `LANDING AVAILABLE · ${g.target.name.toUpperCase()} · L`,
+          g.target.spec?.worldRoute ? 'hi' : 'ok');
       }
     }
 
@@ -285,12 +292,17 @@ export class HUD {
       }
       m.el.style.display = '';
       m.el.style.transform = `translate(${sx}px, ${sy}px)`;
+      const isWorld = !!b.spec?.worldRoute;
       m.el.className = 'mk'
         + (b.kind === 'anomaly' ? ' anom' : '')
+        + (isWorld ? ' world' : '')
         + (b.scanned ? ' scanned' : '')
         + (b === g.target ? ' sel' : '');
       if (m._n !== b.name) { m.name.textContent = b.name; m._n = b.name; }
-      m.sub.textContent = fmtDist(dist);
+      /* A world that leads somewhere says so under its name instead of just its
+         range. Everything else out here is scenery; these three are doors, and
+         from a hundred thousand kilometres they look identical to scenery. */
+      m.sub.textContent = isWorld ? `${fmtDist(dist)} · VIBEVERSE WORLD` : fmtDist(dist);
     }
     for (const [id, m] of this.markerPool) if (!seen.has(id)) m.el.style.display = 'none';
   }

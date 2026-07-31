@@ -806,7 +806,7 @@ const CLASSES = {
   },
 
   /* ---------------------------------------------------------------- patrol
-     Institute cutter. Clean, cold, and the only civilian thing out here with
+     Hub cutter. Clean, cold, and the only civilian thing out here with
      hardpoints on it: a long slender fuselage, an offset sensor blister and
      wings that rake back hard. Everything about it is thinner than everything
      else in the fleet, which is how you know it is not carrying anything. */
@@ -1442,7 +1442,7 @@ const CRAFT_NAMES = {
   freighter: (r) => `${pick(r, HULL_NAMES)} · bulk`,
   courier: (r) => `${pick(r, HULL_NAMES)} · courier`,
   tug: (r) => `Yard tender ${1 + Math.floor(r() * 40)}`,
-  patrol: (r) => `INSTITUTE ${['ARGUS', 'VIGIL', 'KEEPER', 'WARDEN'][Math.floor(r() * 4)]}-${1 + Math.floor(r() * 9)}`,
+  patrol: (r) => `HUB ${['ARGUS', 'VIGIL', 'KEEPER', 'WARDEN'][Math.floor(r() * 4)]}-${1 + Math.floor(r() * 9)}`,
   drone: (r) => `Survey drone ${String.fromCharCode(65 + Math.floor(r() * 26))}${1 + Math.floor(r() * 9)}`,
   mote: () => 'UNRESOLVED CONTACT',
 };

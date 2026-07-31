@@ -13,7 +13,7 @@ import { AsteroidField } from '../world/Asteroids.js';
 import { Fleet } from '../world/Fleet.js';
 import { buildStation } from '../world/Station.js';
 import { Surface } from '../world/Surface.js';
-import { buildResonator, buildDerelict, buildWreck, buildBeacon } from '../world/Structures.js';
+import { buildRelay, buildDerelict, buildWreck, buildBeacon } from '../world/Structures.js';
 import { Ship } from '../ship/Ship.js';
 import { HULL_LIGHT } from '../gfx/greeble.js';
 import { buildInterior, INTERIOR_LAYER } from '../ship/Interior.js';
@@ -31,7 +31,7 @@ import { Director, SEQUENCES } from './Director.js';
 import { Encounters } from './encounters.js';
 
 const ORBIT_TIME = 1;            // orbit rates are already tuned in generate.js
-const RESONATOR_COUNT = 7;
+const RELAY_COUNT = 7;
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -67,6 +67,10 @@ const SURFACE_GEAR_HEIGHT = 14.6;
    this is the part of it the audience is actually watching, so it wants to be
    a descent you can read the rate of rather than a drop. */
 const SETTLE_TIME = 4.2;
+/* How long the touchdown gets to breathe before a world takes over the page.
+   Long enough for the dust to settle and the name to land, short enough that
+   nobody wonders whether it worked. */
+const HANDOFF_DELAY = 3.4;
 const SETTLE_HEIGHT = 240;
 // and the shortest the covering beat of a transition is allowed to be
 const ENTRY_BEAT = 0.5;
@@ -224,11 +228,11 @@ export class Game {
     this.galaxySeed = 20260725;
     this.galaxy = generateGalaxy(this.galaxySeed, 14);
 
-    // seven systems hold Resonators; the first is always reachable early
+    // seven systems hold Relays; the first is always reachable early
     const rr = mulberry32(this.galaxySeed ^ 0x9e37);
     const ids = this.galaxy.map((s) => s.id);
     for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
-    this.resonatorSystems = new Set([0, ...ids.filter((i) => i !== 0).slice(0, RESONATOR_COUNT - 1)]);
+    this.resonatorSystems = new Set([0, ...ids.filter((i) => i !== 0).slice(0, RELAY_COUNT - 1)]);
 
     await frame();
     P(0.18, 'painting the deep field');
@@ -251,7 +255,7 @@ export class Game {
     this.scene.add(this.starField);
 
     await frame();
-    P(0.58, 'assembling PALE SEEKER');
+    P(0.58, 'assembling VIBEY');
     this.ship = new Ship();
     this.scene.add(this.ship.object);
 
@@ -362,7 +366,7 @@ export class Game {
 
     /* The roaming practical.
        Emissive geometry in this renderer emits nothing — a station's floods and
-       a Resonator's vanes were bright rectangles that left the hull parked
+       a Relay's vanes were bright rectangles that left the hull parked
        beside them completely unlit, which reads as a decal rather than a light.
        A forward renderer charges for every light on every material, so there is
        exactly one of these and it snaps to whichever emissive set-piece is
@@ -623,9 +627,9 @@ export class Game {
 
       let obj, scale, name, kind = a.type;
       if (a.type === 'resonator') {
-        obj = buildResonator(stub.seed + idx, this.nebula.texture);
+        obj = buildRelay(stub.seed + idx, this.nebula.texture);
         scale = 1.0;
-        name = `RESONATOR ${romanize(this.resonatorIndexFor(stub.id))}`;
+        name = `RELAY ${romanize(this.resonatorIndexFor(stub.id))}`;
       } else if (a.type === 'derelict') {
         obj = buildDerelict(stub.seed + idx * 31, this.nebula.texture);
         scale = 2.6;
@@ -1224,6 +1228,35 @@ export class Game {
 
     const seq = SEQUENCES.touchdown(this, b);
     this.director.play('land:' + b.id, seq.shots, { title: seq.title, sub: seq.sub });
+
+    this._maybeHandOff(b);
+  }
+
+  /**
+   * Touchdown on a world that leads somewhere.
+   *
+   * The handoff waits, deliberately. The descent is the best thing in the game
+   * and cutting away at the instant the gear touches would throw it away — so
+   * the touchdown shot gets to play, the dust settles, the world announces
+   * itself, and *then* the route changes. `onEnterWorld` is supplied by the
+   * React page; without one (the capture tools, a headless run) this does
+   * nothing at all and you are simply landed, which is the correct fallback.
+   */
+  _maybeHandOff(b) {
+    const route = b.spec && b.spec.worldRoute;
+    if (!route || !this.onEnterWorld || this._handingOff) return;
+    this._handingOff = true;
+
+    this.hud.narrate(b.spec.worldTagline || '', b.name);
+    this.hud.log(`ARRIVING · ${b.name}`, 'hi');
+    this.audio.ping('arrive');
+
+    this._handOffTimer = setTimeout(() => {
+      // A player who lifted off again in the meantime has changed their mind,
+      // and changing their mind has to be allowed to work.
+      if (!this.landed || this._disposed) { this._handingOff = false; return; }
+      this.onEnterWorld(route, b.spec);
+    }, HANDOFF_DELAY * 1000);
   }
 
   /**
@@ -1431,6 +1464,8 @@ export class Game {
    *  @returns {Promise} resolved once the world is back. */
   liftOff(opts = {}) {
     if (!this.landed || this.transition) return Promise.resolve();
+    // Lifting off before the handoff fires is a change of mind, and it wins.
+    this._cancelHandOff();
     const b = this.landed.body;
     const up = this.landed.normal.clone();
     // Leaving the ground on foot would strand the player in a scene that is
@@ -1930,8 +1965,8 @@ export class Game {
     this.audio.ping('objective');
   }
 
-  /** Surveying enough of a system exposes the Resonator hiding in it. */
-  revealResonator() {
+  /** Surveying enough of a system exposes the Relay hiding in it. */
+  revealRelay() {
     this.resonatorRevealed = true;
     const r = this.anomalies.find((a) => a.anomalyType === 'resonator');
     if (r) { this.target = r; this.hud.log(`RESONANCE BEARING · ${r.name}`, 'hi'); }
@@ -2646,7 +2681,7 @@ export class Game {
       case 'resonance':
         this.chamberVisits++;
         if (this.cantos.length) { this.codex.show('canto:' + this.cantos[this.cantos.length - 1]); }
-        else this.hud.narrate('Seven sockets. All of them empty, all of them warm.', 'PALE SEEKER');
+        else this.hud.narrate('Seven sockets. All of them empty, all of them warm.', 'VIBEY');
         break;
       case 'port': this.hud.narrate(this.portLine(), 'OBSERVATION'); break;
       default: break;
@@ -2859,7 +2894,7 @@ export class Game {
         this.state.resonance = this.cantos.length;
         const seq = SEQUENCES.attune(this, b);
         this.director.play('attune:' + b.id, seq.shots, { title: seq.title, sub: seq.sub });
-        this.hud.narrate(CANTOS[idx].q, 'RESONATOR');
+        this.hud.narrate(CANTOS[idx].q, 'RELAY');
         this.hud.log(`ATTUNED · ${CANTOS[idx].title}`, 'hi');
         this.audio.ping('resonate');
         this.ship.maxSpeed *= 1.09;
@@ -2877,8 +2912,8 @@ export class Game {
   }
 
   onAperture() {
-    this.hud.narrate('The Aperture is open. It has always been open.', 'THE CHOIR');
-    this.hud.log('APERTURE RESONANCE ACHIEVED', 'hi');
+    this.hud.narrate('The band is open. It was always open. Welcome in.', 'THE CHOIR');
+    this.hud.log('FULL BAND · ALL SEVEN RELAYS ATTUNED', 'hi');
   }
 
   /* ------------------------------------------------------------ fold drive */
@@ -3107,7 +3142,7 @@ export class Game {
       el: THREE.MathUtils.degToRad(o.el ?? 16),
       fov: o.fov ?? 42,
     };
-    return this.inspectMode.ref ? this.inspectMode.ref.name : 'PALE SEEKER';
+    return this.inspectMode.ref ? this.inspectMode.ref.name : 'VIBEY';
   }
 
   /** Verification aid: toggle individual render layers on/off. */
@@ -3405,7 +3440,7 @@ export class Game {
      from its kind, so a station without the field is still not a box of bright
      rectangles that lights nothing.
 
-     Not `userData.glow`: the Resonator has used that name for a THREE.Color
+     Not `userData.glow`: the Relay has used that name for a THREE.Color
      since long before this existed.
 
      `intensity` in the contract is irradiance at `radius`; three's point light
@@ -3441,7 +3476,7 @@ export class Game {
     for (const b of this.anomalies) {
       if (b.glowSpec === undefined) {
         b.glowSpec = readPractical(b.obj)
-          // Resonators are the one anomaly bright enough to matter if the
+          // Relays are the one anomaly bright enough to matter if the
           // builder has not published a spec. The rest are dead and dark.
           || (b.anomalyType === 'resonator'
             // Lerped well toward white. A saturated hue at practical strength
@@ -3496,10 +3531,18 @@ export class Game {
    * leave, so the context, the score and every global listener have to go with
    * it. Safe to call twice; the route's cleanup does not know how far boot got.
    */
+  /** Stop a pending world handoff. Safe to call when there isn't one. */
+  _cancelHandOff() {
+    if (this._handOffTimer) clearTimeout(this._handOffTimer);
+    this._handOffTimer = null;
+    this._handingOff = false;
+  }
+
   dispose() {
     if (this._disposed) return;
     this._disposed = true;
     this.started = false;
+    this._cancelHandOff();
     try { this.audio?.dispose(); } catch (e) { console.warn('audio teardown', e); }
     try { this.input?.dispose(); } catch (e) { console.warn('input teardown', e); }
     // Drops every geometry, texture and render target the scene holds along

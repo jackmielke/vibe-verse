@@ -572,7 +572,7 @@ function drawDirective(g, game, ctx) {
     g.fill(208, h - 11, bw * p, 3, AM);
     g.fill(208 + bw * p, h - 11, bw * (1 - p), 3, 'rgba(255,196,138,0.18)');
   } else if (!warn) {
-    g.text('INSTITUTE RELAY', w - 26, h * 0.68, { size: 17, color: DIM, align: 'right', track: 2.6 });
+    g.text('HUB', w - 26, h * 0.68, { size: 17, color: DIM, align: 'right', track: 2.6 });
   }
 }
 
@@ -1016,9 +1016,9 @@ function drawRadarLabel(g, game, ctx) {
 
 function drawArchiveIdle(g, game, ctx) {
   const { w, h } = g;
-  g.header('INSTITUTE ARCHIVE', 22, 40, w - 44);
-  g.text('THE LONG SILENCE', 22, 108, { size: 34, color: VAL, track: 4 });
-  g.text('COMMISSION 1101 · PALE SEEKER', 22, 138, { size: 15, color: AM, track: 2.4 });
+  g.header('VIBEVERSE ARCHIVE', 22, 40, w - 44);
+  g.text('THE VIBEVERSE', 22, 108, { size: 34, color: VAL, track: 4 });
+  g.text('COMMISSION 1101 · VIBEY', 22, 138, { size: 15, color: AM, track: 2.4 });
 
   const rows = [
     ['SYSTEMS CHARTED', `${game.galaxy.filter((s) => s.visited).length} / ${game.galaxy.length}`],

@@ -648,7 +648,7 @@ export function decalSheet() {
   bar(8, 28, 644, 33, LIGHT);
   bar(8, 91, 644, 96, LIGHT);
   txt('PS-114', 26, 78, 44, LIGHT, 6);
-  txt('PALE SEEKER', 258, 76, 38, LIGHT, 11);
+  txt('VIBEY', 258, 76, 38, LIGHT, 11);
   // The two service lines are the smallest lettering on the ship. Set them at
   // a size that survives the mip chain rather than one that fits comfortably.
   txt('CREW 04', 26, 23, 17, LIGHT, 3);
@@ -656,7 +656,7 @@ export function decalSheet() {
 
   // --- dorsal wordmark ------------------------------------------------------
   cell('name', 8, 124, 700, 222);
-  txt('PALE SEEKER', 354, 190, 62, LIGHT, 22, 'center');
+  txt('VIBEY', 354, 190, 62, LIGHT, 22, 'center');
   bar(60, 202, 648, 209, LIGHT);
   bar(60, 132, 300, 138, OXIDE);
   bar(408, 132, 648, 138, OXIDE);
@@ -1938,7 +1938,7 @@ export function weld(list, mat, parent) {
      raising the segment count did nothing at all. Averaging across joints under
      the crease angle makes a gauged cylinder round while a chamfer or a corner
      still cuts. The player's hull already does this; everything the same kit
-     builds — stations, freighters, derelicts, the Resonator — gets it here. */
+     builds — stations, freighters, derelicts, the Relay — gets it here. */
   creaseNormals(g, 32);
   const m = new THREE.Mesh(g, mat);
   m.frustumCulled = false;

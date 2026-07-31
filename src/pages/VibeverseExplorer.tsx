@@ -1,24 +1,32 @@
 /**
- * THE LONG SILENCE — the vibeverse's deep-space world.
+ * THE VIBEVERSE — the front door, seen from orbit.
  *
- * The game is Anshu Chimala's (MIT, github.com/achimala/TheLongSilence), vendored
- * into `src/longsilence`. It was built as its own site: it owned the document,
- * the stylesheet and the frame loop, and it ran until the tab closed. Here it is
- * one world among many, so this page takes over the three jobs the standalone
- * `index.html` + `main.js` used to do —
+ * Fly the survey vessel VIBEY through a procedural galaxy in which three of the
+ * stars are real destinations: San Francisco, Seafair and Vibe Island II each
+ * have a system named after them and a planet art-directed to look like the
+ * world it leads to. Land on one and you are in it — the descent plays, the
+ * dust settles, and the route changes under you.
  *
- *   1. it *is* the document: the boot screen, the HUD and the panels are the
- *      same markup, rendered inside a `#ls-root` wrapper the stylesheet is
- *      scoped to (the engine still finds every node by id);
+ * The engine is Anshu Chimala's (MIT, github.com/achimala/TheLongSilence),
+ * vendored into `src/longsilence` and remixed; see the README there for what
+ * changed and why. It was built as its own site — it owned the document, the
+ * stylesheet and the frame loop, and it ran until the tab closed — so this page
+ * takes over the four jobs `index.html` + `main.js` used to do:
+ *
+ *   1. it *is* the document: the boot screen, HUD and archive are the same
+ *      markup inside a `#ls-root` wrapper the stylesheet is scoped to (the
+ *      engine still finds every node by id);
  *   2. it drives the frame loop, and stops it — a route can be left, and the
  *      renderer, the score and the input listeners go with it;
- *   3. it keeps a way back out, because a world you cannot leave is a trap.
+ *   3. it answers the engine when a landing wants to become a navigation;
+ *   4. it keeps a way back out, because a world you cannot leave is a trap.
  *
  * The engine and its copy of Three are pulled in only when someone actually
  * flies here, so the hub's entry bundle never carries them.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import "@/longsilence/ui/style.css";
 
 type Phase = "loading" | "ready" | "playing" | "gate" | "error";
@@ -29,7 +37,7 @@ type Phase = "loading" | "ready" | "playing" | "gate" | "error";
  * loop reach for is more useful than `any` and more honest than pretending to
  * have typed the whole thing.
  */
-interface LongSilenceGame {
+interface VibeverseGame {
   started: boolean;
   time: number;
   mode: string;
@@ -53,12 +61,14 @@ interface LongSilenceGame {
   update(dt: number): void;
   updateIdle?(dt: number): void;
   dispose(): void;
+  /** Set by this page. The engine calls it on touchdown on a world planet. */
+  onEnterWorld?: (route: string, spec: { name: string }) => void;
 }
 
 declare global {
   interface Window {
     /** Upstream's inspection handle — `tools/*.mjs` pose the game through it. */
-    __game?: LongSilenceGame;
+    __game?: VibeverseGame;
   }
 }
 
@@ -97,9 +107,18 @@ function readReturn(): { href: string; label: string; external: boolean } {
   return { href: "/", label: "BACK TO THE VIBEVERSE", external: false };
 }
 
-export default function LongSilence() {
+export default function VibeverseExplorer() {
+  const navigate = useNavigate();
+  const { displayName } = useVibeIdentity();
+  /* Read through a ref inside the engine callback: the game is constructed once
+     and must not be rebuilt because a name resolved a moment later. */
+  const nameRef = useRef(displayName);
+  nameRef.current = displayName;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const gameRef = useRef<LongSilenceGame | null>(null);
+  const gameRef = useRef<VibeverseGame | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("initialising");
@@ -138,7 +157,7 @@ export default function LongSilence() {
 
     let cancelled = false;
     let raf = 0;
-    let game: LongSilenceGame | null = null;
+    let game: VibeverseGame | null = null;
 
     void (async () => {
       // ~2 MB of engine, shaders and its own build of Three. It has no business
@@ -152,6 +171,11 @@ export default function LongSilence() {
           setProgress(p);
           if (text) setStatus(text);
         });
+        /* The whole point of the place. Landing on San Francisco, Seafair or
+           Vibe Island II is not a landing — it is a door — and this is the
+           engine's only way to say so. It fires after the touchdown shot has
+           played; see Game._maybeHandOff. */
+        game.onEnterWorld = (route) => navigateRef.current(route);
         // Kept for the capture and inspection harnesses in the upstream repo,
         // which pose the game through this handle.
         window.__game = game;
@@ -227,10 +251,11 @@ export default function LongSilence() {
       /* autoplay policy — the score starts at the first gesture instead */
     });
 
-    // The opening beats, on upstream's timings.
+    // The opening beats, on upstream's timings — addressed to whoever is flying.
     void (async () => {
-      const { INTRO_LINES } = await import("@/longsilence/game/lore.js");
-      (INTRO_LINES as { text: string; who?: string }[]).forEach((l, i) => {
+      const { introLines } = await import("@/longsilence/game/lore.js");
+      const lines = introLines(nameRef.current === "Guest" ? "" : nameRef.current);
+      (lines as { text: string; who?: string }[]).forEach((l, i) => {
         setTimeout(() => gameRef.current && game.hud.narrate(l.text, l.who), 1200 + i * 5200);
       });
     })();
@@ -267,9 +292,9 @@ export default function LongSilence() {
       <div id="ls-root">
         <div id="boot" className="gate">
           <div className="boot-inner">
-            <h1 className="boot-title">THE LONG SILENCE</h1>
+            <h1 className="boot-title">THE VIBEVERSE</h1>
             <div className="boot-sub">
-              DEEP SURVEY VESSEL &middot; <span className="accent">PALE SEEKER</span>
+              SURVEY VESSEL &middot; <span className="accent">VIBEY</span>
             </div>
             <p className="boot-gate">
               This one wants a real screen and a real GPU.
@@ -303,9 +328,9 @@ export default function LongSilence() {
                 />
               </svg>
             </div>
-            <h1 className="boot-title">THE LONG SILENCE</h1>
+            <h1 className="boot-title">THE VIBEVERSE</h1>
             <div className="boot-sub">
-              DEEP SURVEY VESSEL &middot; <span className="accent">PALE SEEKER</span>
+              SURVEY VESSEL &middot; <span className="accent">VIBEY</span>
             </div>
             <div className="boot-bar">
               <i style={{ right: `${Math.max(0, (1 - progress) * 100)}%` }} />

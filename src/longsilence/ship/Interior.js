@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three-ls/addons/utils/BufferGeometryUtils.js';
 import { makeInteriorMaterials, dressedVariant, withKitAo, emissive, emissiveWeld, bindGlass, INTERIOR_LAYER } from './interiorMaterials.js';
 
 /* ============================================================================
-   The habitable module of the Pale Seeker, built in metres.
+   The habitable module of the Vibey, built in metres.
 
         -Z nose                                              +Z tail
    ┌──────────────┬──────────────┬──────────────────────────┐

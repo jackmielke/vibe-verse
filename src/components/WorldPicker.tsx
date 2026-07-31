@@ -51,7 +51,7 @@ import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
-import longSilenceArt from "@/assets/worlds/long-silence.jpg";
+import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 
 const WORLDS: WorldCard[] = [
   {
@@ -75,13 +75,13 @@ const WORLDS: WorldCard[] = [
     accent: "#ffb347",
   },
   {
-    to: "/long-silence",
+    to: "/vibeverse",
     emoji: "🛰️",
-    name: "The Long Silence",
-    // The game's own splash: a real frame out of the running build, not key art.
-    art: longSilenceArt,
+    name: "The Vibeverse",
+    // A real frame out of the running build, not key art.
+    art: vibeverseArt,
     blurb:
-      "Nine hundred worlds fell silent in four days, forty thousand years ago. Fly the survey vessel Pale Seeker through a procedural galaxy, scan what you find, and attune the seven Resonators.",
+      "The whole place, seen from orbit. Fly the survey vessel Vibey between the stars — three of them are real worlds you can land on, and landing is how you walk in.",
     featured: true,
     status: "Playable — desktop only, wants a real GPU",
     accent: "#8fe4ff",

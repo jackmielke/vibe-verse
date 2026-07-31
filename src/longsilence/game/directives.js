@@ -31,8 +31,8 @@ export const CHAIN = [
     hint: 'The pilot seat is forward, through the corridor.',
     check: (g) => g.mode === 'pilot',
     onDone: (g) => {
-      g.hud.narrate('Drive is warm. Scanner is yours. Find me something, Seeker.',
-        'INSTITUTE RELAY');
+      g.hud.narrate('Drive is warm, scanner is yours. Go and see who is home.',
+        'HUB');
     },
   },
   {
@@ -43,7 +43,7 @@ export const CHAIN = [
     check: (g) => bodiesScannedHere(g) >= 1,
     onDone: (g) => {
       g.hud.narrate('Logged. Every body you catalogue narrows where the Choir went.',
-        'INSTITUTE RELAY');
+        'HUB');
       g.grantUpgrade('scanner');
     },
   },
@@ -56,15 +56,15 @@ export const CHAIN = [
     progress: (g) => bodiesScannedHere(g),
     check: (g) => bodiesScannedHere(g) >= 3,
     onDone: (g) => {
-      g.revealResonator();
-      g.hud.narrate('Triangulation holds. There is a Resonator in this system — bearing marked.',
-        'INSTITUTE RELAY');
+      g.revealRelay();
+      g.hud.narrate('Triangulation holds. There is a Relay in this system — bearing marked.',
+        'HUB');
       g.grantUpgrade('range');
     },
   },
   {
     id: 'resonator',
-    short: 'Reach the Resonator',
+    short: 'Reach the Relay',
     full: 'INVESTIGATE THE RESONANCE',
     hint: 'It is marked on the tactical plate. Scan it.',
     check: (g) => g.cantos.length >= 1,
@@ -78,7 +78,7 @@ export const CHAIN = [
     check: (g) => g.chamberVisits >= 1,
     onDone: (g) => {
       g.hud.narrate('One of seven. The chamber remembers the rest of the shape.',
-        'PALE SEEKER');
+        'VIBEY');
       g.grantUpgrade('thrust');
     },
   },
@@ -89,17 +89,37 @@ export const CHAIN = [
     hint: 'Use the navigation table in the habitat.',
     check: (g) => g.galaxy.filter((s) => s.visited).length >= 2,
     onDone: (g) => {
-      g.hud.narrate('Every system in the Silence holds part of the record. Keep going.',
-        'INSTITUTE RELAY');
+      g.hud.narrate('Every system out here is carrying somebody\u2019s traffic. Keep listening.',
+        'HUB');
     },
   },
 ];
+
+/**
+ * A world you can walk into, if this system has one.
+ *
+ * This outranks the whole survey chain. The place is a hub before it is a
+ * game: when there is a door in front of the player, the one line of objective
+ * text on the dashboard should be pointing at the door. The chain carries on
+ * completing underneath — the upgrades still pay out — it just stops being the
+ * thing the strip talks about until the door is behind them.
+ */
+function worldDirective(g) {
+  const world = g.bodies.find((b) => b.spec && b.spec.worldRoute);
+  if (!world) return null;
+  return {
+    id: 'world:' + world.id,
+    short: `Land on ${world.name}`,
+    full: 'ENTER THE WORLD',
+    hint: 'Fly in close and press L.',
+  };
+}
 
 /** After the scripted chain, directives are generated from the world state. */
 function proceduralDirective(g) {
   const res = g.anomalies.find((a) => a.anomalyType === 'resonator' && !a.scanned);
   if (res && g.resonatorRevealed) {
-    return { id: 'res:' + res.id, short: `Attune ${res.name}`, full: 'ATTUNE THE RESONATOR', hint: 'Scan it.' };
+    return { id: 'res:' + res.id, short: `Attune ${res.name}`, full: 'ATTUNE THE RELAY', hint: 'Scan it.' };
   }
   const unscanned = g.bodies.filter((b) => !b.scanned && b.kind !== 'anomaly').length;
   if (unscanned > 0 && bodiesScannedHere(g) < 3) {
@@ -107,7 +127,7 @@ function proceduralDirective(g) {
       id: 'survey:' + g.currentSystemId,
       short: `Survey this system`,
       full: 'CONTINUE THE SURVEY',
-      hint: 'Three bodies reveals any Resonator here.',
+      hint: 'Three bodies reveals any Relay here.',
       total: 3, done: bodiesScannedHere(g),
     };
   }
@@ -124,7 +144,7 @@ function proceduralDirective(g) {
       hint: 'Use the navigation table.',
     };
   }
-  return { id: 'done', short: 'Attune all seven Resonators', full: 'THE APERTURE', hint: '' };
+  return { id: 'done', short: 'Attune all seven Relays', full: 'OPEN THE BAND', hint: '' };
 }
 
 export class Directives {
@@ -147,8 +167,11 @@ export class Directives {
       step = CHAIN[this.index];
     }
 
-    const src = step || proceduralDirective(g);
-    const done = step
+    /* Not before the helm: standing in the corridor being told to land is
+       worse than useless. One step of chain first, then the door. */
+    const door = this.index >= 1 ? worldDirective(g) : null;
+    const src = door || step || proceduralDirective(g);
+    const done = (!door && step)
       ? (step.progress ? step.progress(g) : 0)
       : (src.done || 0);
 

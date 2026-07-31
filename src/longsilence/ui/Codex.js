@@ -96,23 +96,25 @@ export class Codex {
       const total = g.galaxy.length;
       const visited = g.galaxy.filter((s) => s.visited).length;
       return `
-        <h1 class="cx-title">THE LONG SILENCE</h1>
-        <div class="cx-sub">DEEP SURVEY VESSEL PALE SEEKER · COMMISSION 1101</div>
+        <h1 class="cx-title">THE VIBEVERSE</h1>
+        <div class="cx-sub">SURVEY VESSEL VIBEY · COMMISSION 1101</div>
         <div class="cx-stats">
           ${stat('SYSTEMS CHARTED', `${visited} / ${total}`)}
           ${stat('BODIES CATALOGUED', g.discoveries.size)}
-          ${stat('RESONANCE', `${g.state.resonance} / 7`)}
+          ${stat('RELAYS ATTUNED', `${g.state.resonance} / 7`)}
           ${stat('CURRENT SYSTEM', g.system.star.name)}
           ${stat('STAR', `${g.system.star.cls} · ${Math.round(g.system.star.temp)} K`)}
           ${stat('HULL', `${Math.round(g.ship.hull * 100)} %`)}
         </div>
         <div class="cx-text">
-          <p>Forty thousand years ago, nine hundred inhabited worlds fell silent inside a
-          volume of space eighty light-years across. No debris. No radiation signature.
-          No sign of violence at any scale we can measure.</p>
+          <p>Forty thousand years ago, nine hundred inhabited worlds inside a volume
+          eighty light-years across stopped broadcasting on every band we knew how to
+          listen to, and started broadcasting on one we did not.</p>
           <p>The Choir left their cities lit and their orbits tidy, and they left seven
-          instruments — the Resonators — standing in seven systems.</p>
-          <p class="q">Chart what you can. Scan what you find. Attune what will let you.</p>
+          instruments — the Relays — standing in seven systems, still carrying traffic.
+          Everything on this chart with a white ring around it is somewhere you can
+          land, and somewhere somebody is living right now.</p>
+          <p class="q">Chart what you can. Scan what you find. Go and knock on the lit ones.</p>
         </div>`;
     }
 
@@ -180,7 +182,11 @@ export class Codex {
         </div>
         <div class="cx-text">
           <p>${info.text}</p>
-          ${s.night ? '<p class="q">Photometry of the night hemisphere shows structured emission along the coastlines. Someone lived here. The lights are still on.</p>' : ''}
+          ${s.worldRoute
+    ? `<p class="q">${s.worldTagline} Set down anywhere on it and you are there.</p>`
+    : s.night
+      ? '<p class="q">Photometry of the night hemisphere shows structured emission along the coastlines. Someone lives here. The lights are on.</p>'
+      : ''}
         </div>`;
     }
 

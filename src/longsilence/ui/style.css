@@ -455,3 +455,15 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
   left:calc(16px + var(--safe-l));bottom:calc(16px + var(--safe-b))}
 #ls-root .ls-out-dock .ls-out{margin-top:0;background:rgba(2,6,12,.66);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* ------------------------------------------------- a world you can enter
+   Three of the bodies out there are doors into other vibeverse worlds. They
+   get their own signal colour so that a glance at the canopy tells you which
+   marks are scenery and which are destinations — the amber is already spoken
+   for by anomalies, so this is the hub's own cyan-white, brightened. */
+#ls-root .mk.world .mk-br{stroke:#bff2ff;stroke-width:1.7;
+  animation:worldPulse 2.6s ease-in-out infinite}
+@keyframes worldPulse{0%,100%{opacity:1}50%{opacity:.52}}
+#ls-root .mk.world .mk-dot{fill:#ffffff}
+#ls-root .mk.world .mk-lbl{color:#eaf9ff}
+#ls-root .mk.world .mk-lbl em{color:#8fe4ff;letter-spacing:.16em}
