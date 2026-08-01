@@ -86,7 +86,38 @@ export class VibeverseData {
     this.loaded = true;
   }
 
-  get pageId() { return PAGES[this.page % PAGES.length]; }
+  /**
+   * The pages worth showing right now.
+   *
+   * Found by testing offline: with the hub unreachable every query comes back
+   * empty but *successful*, so `loaded` went true and the terminal cycled six
+   * pages of "— no balances —". Nobody wants to page through five nothings to
+   * reach the one thing that works. A page has to have something on it to be in
+   * the rotation — and the passport always does, because it is local.
+   */
+  get pages() {
+    const t = this.treasury || {};
+    const has = {
+      gallery: this.photos.length > 0,
+      passport: (this.passport || []).length > 0,
+      profiles: this.profiles.length > 0,
+      coin: (t.holders || []).length > 0 || t.mine != null,
+      crew: this.crew.length > 0 || this.agents.length > 0,
+      band: this.messages.length > 0,
+    };
+    const live = PAGES.filter((id) => has[id]);
+    return live.length ? live : PAGES;
+  }
+
+  /** True when there is anything at all to show. Otherwise: the ship's readout. */
+  get hasContent() {
+    const t = this.treasury || {};
+    return this.photos.length > 0 || this.profiles.length > 0 || this.crew.length > 0
+      || this.agents.length > 0 || this.messages.length > 0
+      || (this.passport || []).length > 0 || (t.holders || []).length > 0;
+  }
+
+  get pageId() { const p = this.pages; return p[this.page % p.length]; }
   get title() { return PAGE_TITLE[this.pageId] || 'ARCHIVE'; }
 
   /** The person whose card is up. */
@@ -105,7 +136,8 @@ export class VibeverseData {
 
   /** Advance a page by hand. Also releases the automatic cycle for a while. */
   step(dir = 1) {
-    this.page = (this.page + dir + PAGES.length) % PAGES.length;
+    const n = this.pages.length;
+    this.page = (this.page + dir + n) % n;
     this._t = 0;
     this._scroll = 0;
     return this.pageId;

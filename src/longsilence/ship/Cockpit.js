@@ -1032,7 +1032,7 @@ function drawArchiveIdle(g, game, ctx) {
 
   g.header(`VIBEVERSE ARCHIVE · ${v ? v.title : 'RECORDS'}`, 22, 40, w - 44);
 
-  if (v && v.loaded) {
+  if (v && v.loaded && v.hasContent) {
     if (page === 'gallery') drawArchiveGallery(g, v, ctx);
     else if (page === 'passport') drawArchivePassport(g, v, ctx);
     else if (page === 'profiles') drawArchiveProfiles(g, v, ctx);
@@ -1045,14 +1045,15 @@ function drawArchiveIdle(g, game, ctx) {
 
   // Page pips, so it reads as one terminal with several pages rather than a
   // handful of unrelated screens that happen to share a bezel.
-  if (v && v.loaded) {
-    const n = 6, cx = w / 2 - (n - 1) * 9;
+  if (v && v.loaded && v.hasContent) {
+    // One pip per page actually in the rotation — see VibeverseData.pages.
+    const n = v.pages.length, cx = w / 2 - (n - 1) * 9;
     for (let i = 0; i < n; i++) {
       g.dot(cx + i * 18, h - 40, i === (v.page % n) ? 3.4 : 2.2,
         i === (v.page % n) ? CY : DIM, i === (v.page % n) ? 1 : 0.45);
     }
   }
-  g.text(v && v.loaded ? 'E  OPEN     ·     N  NEXT PAGE' : 'PRESS  E  TO OPEN',
+  g.text(v && v.loaded && v.hasContent ? 'E  OPEN     ·     N  NEXT PAGE' : 'PRESS  E  TO OPEN',
     w / 2, h - 18, { size: 13, color: AM, align: 'center', track: 3.2 });
 }
 
