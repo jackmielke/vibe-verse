@@ -74,8 +74,9 @@ interface VibeverseGame {
   vibe?: { adopt(data: unknown): void };
   /** Applies the cross-world passport bonus once the stamps are known. */
   applyPassportBonus?: () => void;
-  /** Everyone else flying right now. Refreshed by this page; see lib/vibeverseFleet. */
-  fleet?: unknown;
+  /** Everyone else flying right now. Refreshed by this page; see lib/vibeverseFleet.
+   *  NOT `fleet` — the engine already uses that name for the NPC traffic. */
+  travellers?: unknown;
   currentSystemId?: number;
   ship?: { absPos: { x: number; y: number; z: number }; speed: number; maxSpeed: number };
 }
@@ -305,7 +306,7 @@ export default function VibeverseExplorer() {
               const sh = g2.ship;
               if (sh) fleet.setPosition(sh.absPos.x, sh.absPos.y, sh.absPos.z,
                 sh.maxSpeed ? sh.speed / sh.maxSpeed : 0);
-              g2.fleet = fleet.snapshot();
+              g2.travellers = fleet.snapshot();
             } catch (e) {
               console.warn("fleet disabled after error", e);
               try { fleet.dispose(); } catch { /* going away regardless */ }

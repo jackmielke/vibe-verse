@@ -125,3 +125,35 @@ describe("archive terminal paging", () => {
     expect(v.bandRows(9)).toEqual([]);
   });
 });
+
+/**
+ * The engine's own field names are not free real estate.
+ *
+ * `this.fleet` is world/Fleet.js — the NPC traffic a system generates — and it
+ * is read every frame as `this.fleet.object.position`. A multiplayer field
+ * added under the same name was overwritten onto it once per frame, which took
+ * the whole world down with "RUNTIME ERROR — SEE CONSOLE" and cost an evening
+ * to find, because the symptom appears in the engine and the cause is in the
+ * page. This pins the names apart.
+ */
+describe("engine field names", () => {
+  it("keeps the human travellers off the NPC fleet's name", async () => {
+    const src = await import("node:fs").then((m) =>
+      m.readFileSync("src/longsilence/game/Game.js", "utf8"));
+    // The constructor must not claim `this.fleet`.
+    expect(src).toContain("this.travellers = {");
+    expect(src).not.toMatch(/this\.fleet = \{ travellers:/);
+    // And the engine's own uses must survive.
+    expect(src).toContain("this.fleet.object.position");
+  });
+
+  it("reads travellers, not fleet, in the panels that draw them", async () => {
+    const fs = await import("node:fs");
+    const cockpit = fs.readFileSync("src/longsilence/ship/Cockpit.js", "utf8");
+    const map = fs.readFileSync("src/longsilence/ship/HoloMap.js", "utf8");
+    expect(cockpit).toContain("game.travellers?.here");
+    expect(map).toContain("g.travellers?.bySystem");
+    expect(cockpit).not.toContain("game.fleet?.here");
+    expect(map).not.toContain("g.fleet?.bySystem");
+  });
+});

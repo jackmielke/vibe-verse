@@ -960,7 +960,7 @@ function drawContacts(g, game, ctx) {
   /* Other people first, always. A rock is a rock whenever you get to it; a
      traveller in your system is the only thing on this panel that will not be
      there later, and it is the one contact worth interrupting a survey for. */
-  const crew = (game.fleet?.here || []).slice(0, 3);
+  const crew = (game.travellers?.here || []).slice(0, 3);
   const list = game.bodies.slice()
     .sort((a, b) => a.absPos.distanceToSquared(ship.absPos) - b.absPos.distanceToSquared(ship.absPos))
     .slice(0, Math.max(3, 8 - crew.length));
@@ -987,7 +987,7 @@ function drawContacts(g, game, ctx) {
     y += 24;
   }
   g.line(16, h - 40, w - 16, h - 40, DIM, 1, 0.3);
-  const fleet = game.fleet || {};
+  const fleet = game.travellers || {};
   const out = (fleet.travellers || []).length;
   g.text(out
     ? `${out} TRAVELLER${out === 1 ? '' : 'S'} IN THE GALAXY`

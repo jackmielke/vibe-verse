@@ -181,11 +181,12 @@ export class Game {
        and always present, so every draw path can assume it exists; the React
        page fills it in when (and if) the fetch lands. See net/vibeverse.js. */
     this.vibe = new VibeverseData();
-    /* Everyone else out here. A plain snapshot the React page refreshes; the
-       engine never learns what a socket is, for the same reason it never learns
-       what Supabase is. Empty and offline until told otherwise, which is also
-       exactly what it stays if the network refuses. */
-    this.fleet = { travellers: [], here: [], bySystem: {}, online: false, events: [] };
+    /* Everyone else out here — the *people*, not the NPC traffic. `this.fleet`
+       was already taken by world/Fleet.js, which is the ships and stations this
+       system generates; assigning over it cost an evening. A plain snapshot the
+       React page refreshes; the engine never learns what a socket is, for the
+       same reason it never learns what Supabase is. */
+    this.travellers = { travellers: [], here: [], bySystem: {}, online: false, events: [] };
     // ?q=low|medium|high forces a tier, so the reduced-shader paths that only
     // phones would otherwise hit can be verified on a desktop.
     const forced = new URLSearchParams(location.search).get('q');

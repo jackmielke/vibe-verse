@@ -707,7 +707,7 @@ export class HoloMap {
       20, 98, { size: 13, color: AM, track: 1.6 });
       /* Who else is there. The chart is where somebody decides where to go, so
          it is the one place worth saying "there are people in that system". */
-      const crowd = g.fleet?.bySystem?.[s.id] || 0;
+      const crowd = g.travellers?.bySystem?.[s.id] || 0;
       if (crowd > 0) {
         c.text(`${crowd} TRAVELLER${crowd === 1 ? '' : 'S'} HERE`, 20, 118,
           { size: 12, color: '#8affc1', track: 2 });
