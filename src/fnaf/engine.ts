@@ -42,9 +42,20 @@ export interface FnafSnapshot {
 
 /** Seconds of real time per in-game hour. Six of these is a night. */
 const HOUR_SECONDS = 50;
-/** Base drain, plus this much again for every extra thing you leave running. */
-const DRAIN_BASE = 0.16;
-const DRAIN_PER_USAGE = 0.145;
+/**
+ * Percent of battery per second, per thing you are running.
+ *
+ * There is deliberately no idle drain. The original bleeds power just for
+ * having the lights on in the room, which means sitting perfectly still is
+ * still losing — Jack's call was that the meter should only move when you
+ * move it, and he's right that it makes the meter mean something: every
+ * percent gone is a decision you made.
+ *
+ * The rate is up from 0.145 to compensate. A night is six 50-second hours, so
+ * one door held shut the whole way is 90% of the battery and two is more than
+ * you have. Free idling only helps if you can bear to sit in the dark.
+ */
+const DRAIN_PER_USAGE = 0.3;
 
 export class FnafEngine {
   readonly audio = new FnafAudio();
@@ -423,10 +434,12 @@ export class FnafEngine {
       this.officeCam.position.x + fwd.x * 1.3,
       this.officeCam.position.z + fwd.z * 1.3,
       this.yaw,
+      // Dropped so the head lands at eye level. Standing him on the floor put
+      // his jaw above the lens and the lunge became a shot of his chin. This
+      // goes through teleport's own `y` so the walk update does not lerp it
+      // straight back to the floor on the next frame.
+      -0.3,
     );
-    // Dropped so the head lands at eye level. Standing him on the floor put
-    // his jaw above the lens and the lunge became a shot of his chin.
-    a.root.position.y = -0.3;
     a.root.scale.setScalar(1.15);
     this.shake = 1;
     this.emit();
@@ -505,7 +518,8 @@ export class FnafEngine {
 
   private tickPower(dt: number) {
     if (this.blackout) return;
-    const drain = DRAIN_BASE + DRAIN_PER_USAGE * (this.usage() - 1);
+    const drain = DRAIN_PER_USAGE * (this.usage() - 1);
+    if (drain <= 0) return;
     const before = Math.ceil(this.power);
     this.power -= drain * dt;
     if (Math.ceil(this.power) !== before) this.emit();
@@ -642,7 +656,12 @@ export class FnafEngine {
       this.officeCam.rotation.x += (Math.random() - 0.5) * 0.09 * this.shake;
       this.officeCam.rotation.y += (Math.random() - 0.5) * 0.09 * this.shake;
       this.officeCam.rotation.z = (Math.random() - 0.5) * 0.06 * this.shake;
+      // The lunge has to be *published*, not just rendered. Without this the
+      // HUD keeps the snapshot taken at the instant of death, `scare` stays 0,
+      // the death card is gated on it — and dying does visibly nothing.
+      const before = this.scare;
       this.scare = this.cast[this.killer].scare;
+      if (this.scare !== before) this.emit();
       return;
     }
 

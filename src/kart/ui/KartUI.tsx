@@ -279,6 +279,41 @@ export default function KartUI({ engine, ready, progress }: KartUIProps) {
 
         {ready && (screen === "race" || screen === "paused") ? <RaceHud /> : null}
 
+        {/* Pause, as a thing you can hit with a thumb. The menu itself has
+            always been here — it was bound to Escape and P and nothing else,
+            which on a phone is no binding at all. */}
+        {ready && screen === "race" ? (
+          <button
+            type="button"
+            data-kart-hud="pausebtn"
+            aria-label="Pause"
+            onClick={openPause}
+            style={{
+              position: "absolute",
+              top: "max(12px, env(safe-area-inset-top))",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 26,
+              width: 46,
+              height: 46,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              gap: 3,
+              pointerEvents: "auto",
+              border: "2px solid rgba(255,255,255,0.6)",
+              background: "linear-gradient(180deg,rgba(255,255,255,0.86),rgba(226,233,243,0.66))",
+              boxShadow: "0 6px 16px rgba(0,0,0,0.32)",
+              cursor: "pointer",
+            }}
+          >
+            <span style={{ display: "flex", gap: 4 }}>
+              <span style={{ width: 4, height: 16, borderRadius: 1, background: "rgba(12,18,30,0.82)" }} />
+              <span style={{ width: 4, height: 16, borderRadius: 1, background: "rgba(12,18,30,0.82)" }} />
+            </span>
+          </button>
+        ) : null}
+
         {ready && screen === "title" ? (
           <TitleScreen settings={settings} patch={patch} onStart={() => setScreen("select")} />
         ) : null}

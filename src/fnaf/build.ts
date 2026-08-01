@@ -337,7 +337,7 @@ export function buildWorld(): BuiltWorld {
   slot(world, "westCorner:bonnie", -3.05, -1.5, Math.PI / 2);
   slot(world, "eastCorner:chica", 3.05, -1.5, -Math.PI / 2);
   slot(world, "eastCorner:freddy", 3.45, -2.0, -Math.PI / 2.1);
-  slot(world, "cove:foxy", -14.2, -16.6, 0.6, 0.4);
+  slot(world, "cove:foxy", -14.1, -17.1, 0.15, 0.4);
   slot(world, "westHall:foxy", -4.95, -7.0, Math.PI);
 
   world.dispose = () => {
@@ -723,14 +723,16 @@ function buildDining(
 function buildCove(w: BuiltWorld, matBlack: THREE.Material) {
   const g = new THREE.Group();
   w.scene.add(g);
-  const riser = box(5, 0.4, 4, new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1 }), 0.5);
-  riser.position.set(-14, 0.2, -16.4);
+  // The stage sits at the back of the room so the camera has somewhere to
+  // stand. Everything in here is arranged around that one sightline.
+  const riser = box(5, 0.4, 3.4, new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1 }), 0.5);
+  riser.position.set(-14, 0.2, -17.2);
   g.add(riser);
 
   // The curtain: two halves that part as Foxy gets ready. That reveal is the
   // whole tell, so it is a real animated object rather than a texture swap.
   w.coveCurtain = new THREE.Group();
-  w.coveCurtain.position.set(-14, 0, -14.4);
+  w.coveCurtain.position.set(-14, 0, -15.35);
   g.add(w.coveCurtain);
   const curtainMat = new THREE.MeshStandardMaterial({ color: 0x5b2d8f, roughness: 1, side: THREE.DoubleSide });
   for (const dir of [-1, 1]) {
@@ -742,22 +744,45 @@ function buildCove(w: BuiltWorld, matBlack: THREE.Material) {
     half.position.set(dir * 1.3, 1.45, 0);
     half.userData.side = dir;
     w.coveCurtain.add(half);
-    // Gold stars stitched on, so the curtain reads as Pirate Cove's curtain.
+    // Gold stars stitched on. Parented to the fabric, not to the group: on the
+    // group they stayed hanging in mid-air in the gap while the curtain slid
+    // out from behind them.
     for (let i = 0; i < 5; i++) {
       const star = new THREE.Mesh(
         new THREE.CircleGeometry(0.16, 5),
         new THREE.MeshStandardMaterial({ color: 0xe8c15a, roughness: 1 }),
       );
-      star.position.set(dir * 1.3 + (Math.random() - 0.5) * 2, 0.7 + Math.random() * 2, 0.14);
+      star.position.set((Math.random() - 0.5) * 1.9, (Math.random() - 0.5) * 2.1, 0.14);
       star.rotation.z = Math.random() * 3;
-      w.coveCurtain.add(star);
+      half.add(star);
     }
   }
-  addPoster(g, "foxy", -11.15, 1.8, -17.6, -Math.PI / 2, 1.2);
-  const l = new THREE.PointLight(0x8f6bd0, 13, 9, 2);
-  l.position.set(-14, 2.6, -16.5);
+  // The out-of-order sign, free-standing in front of the curtain and turned
+  // to face the camera — on the side wall it was edge-on and unreadable.
+  {
+    const sign = new THREE.Group();
+    sign.position.set(-12.5, 0, -14.6);
+    sign.rotation.y = 0.8;
+    g.add(sign);
+    const board = addPoster(sign, "foxy", 0, 1.62, 0, 0, 1.3);
+    board.rotation.z = 0.03;
+    for (const lx of [-0.52, 0.52]) {
+      const leg = box(0.07, 1.0, 0.07, matBlack, 1);
+      leg.position.set(lx, 0.5, 0);
+      sign.add(leg);
+    }
+  }
+  // Two lamps: one on the front of the curtain so the cove reads as a place
+  // even when it is shut, one behind it so that what is standing back there
+  // is a silhouette rather than nothing the moment it opens.
+  const l = new THREE.PointLight(0x8f6bd0, 11, 8, 2);
+  l.position.set(-13.7, 2.5, -14.5);
   g.add(l);
   w.poweredLights.push(l);
+  const back = new THREE.PointLight(0x6f57b0, 7, 7, 2);
+  back.position.set(-14, 2.4, -17.6);
+  g.add(back);
+  w.poweredLights.push(back);
 }
 
 function buildBackstage(

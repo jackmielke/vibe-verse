@@ -113,7 +113,11 @@ export const ROOMS: Record<RoomId, Room> = {
     name: "Pirate Cove",
     bounds: { x0: -17, x1: -11, z0: -19, z1: -13 },
     height: ROOM_HEIGHT,
-    cam: { pos: [-11.6, 2.5, -13.6], look: [-14.6, 1.2, -17.4], fov: 66 },
+    // Mounted in the corner by the dining-room opening, looking across the
+    // room at the front of the curtain. The first version stood 0.8 m behind
+    // the curtain facing its back, so 1C was a black rectangle and the cove
+    // may as well not have existed.
+    cam: { pos: [-11.7, 2.55, -13.35], look: [-14.2, 1.35, -16.0], fov: 68 },
   },
   eastCorner: {
     id: "eastCorner",
