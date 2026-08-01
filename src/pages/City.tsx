@@ -212,6 +212,18 @@ interface BuildingBox {
   maxZ: number;
   base: number; // bottom of the solid column (>0 for floating worlds)
   height: number; // top of the solid column
+  /**
+   * Launch speed (m/s) when the player lands on this box's top. Only
+   * clouds set it — everything else is solid ground you can stand on.
+   *
+   * This used to be inferred from altitude ("anything landed on between
+   * y=140 and y=260 is a cloud"), which was wrong the moment a world
+   * moved into that band: the Moon (top y=175), Moon II (205) and Mars
+   * (240) all sat inside it, so every step on three entire worlds
+   * trampolined you back into the sky. Bounciness is a property of the
+   * surface, so it lives on the surface.
+   */
+  bouncy?: number;
 }
 
 // Deterministic rng — same pattern as Museum, so the city never
@@ -2767,6 +2779,7 @@ export default function City() {
               minZ: z - half, maxZ: z + half,
               base: y0 - size * 1.2,
               height: y0 + size * 0.35,
+              bouncy: 16, // gentle hop from puff to puff
             };
             boxes.push(box);
           }
@@ -3400,21 +3413,27 @@ export default function City() {
     // ---- Collision helpers --------------------------------------------
     // Only surfaces at or below refY can support you — so the floating
     // island doesn't "catch" a pilot flying far beneath it.
+    // Bounciness of whichever surface won the most recent
+    // supportHeightAt() call — 0 for solid ground. The landing code reads
+    // it immediately after querying support, so a single slot is enough
+    // and we avoid allocating a result object every frame.
+    let supportBounce = 0;
     const supportHeightAt = (x: number, z: number, refY: number): number => {
       // Track the tallest box top at or below refY that overlaps (x,z).
       let h = -Infinity;
+      supportBounce = 0;
       for (const b of boxes) {
         if (b.height <= refY &&
             x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
             z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
-          if (b.height > h) h = b.height;
+          if (b.height > h) { h = b.height; supportBounce = b.bouncy ?? 0; }
         }
       }
       // Powder Peak's snow is analytic ground, not a box — treat any
       // surface at/below (or a small step above) the player as support
       // so walking uphill works like stairs.
       const skiH = skiWorld.heightAt(x, z);
-      if (skiH !== null && skiH <= refY + 0.6 && skiH > h) h = skiH;
+      if (skiH !== null && skiH <= refY + 0.6 && skiH > h) { h = skiH; supportBounce = 0; }
       // The street plate (y=0) is real ground everywhere on the surface,
       // and it COMPETES with box tops rather than acting as a fallback —
       // otherwise any box with a sunken top (the Gremlin Mines floor at
@@ -3422,7 +3441,7 @@ export default function City() {
       // player sinks straight through downtown. Only below y=-50 (the
       // underworld's domain) does the implicit floor disappear, so mines
       // visitors aren't snapped 300m up to the surface.
-      if (refY >= -50 && h < 0) h = 0;
+      if (refY >= -50 && h < 0) { h = 0; supportBounce = 0; }
       if (h !== -Infinity) return h;
       return refY < -50 ? refY - 9999 : 0;
     };
@@ -4479,24 +4498,19 @@ export default function City() {
         wallJumpUsed = false;
         peakY = pos.y;
 
-        // Cloud Kingdom trampolines: landing on a cloud top bounces you
-        // right back up — higher when you carry speed into it.
-        if (
-          cloudKingdom.inZone(pos.x, pos.z) &&
-          support > ISLAND_TOP + 100
-        ) {
-          vel.y = 30 + Math.hypot(vel.x, vel.z) * 0.3;
+        // Clouds are trampolines: land on one and it throws you back up,
+        // higher when you carry speed into it. Everything else — the
+        // Moon, Mars, sky-island rooftops, the plaza — is solid ground
+        // you simply stand on. `supportBounce` came from the box that
+        // actually caught us, so a world can never become bouncy by
+        // drifting into some magic altitude band.
+        if (supportBounce > 0) {
+          const big = supportBounce >= 25; // Cloud Kingdom vs. ambient puff
+          vel.y = supportBounce + Math.hypot(vel.x, vel.z) * (big ? 0.3 : 0.15);
           onGround = false;
-          superBounceUntil = now + 2000;
+          superBounceUntil = now + (big ? 2000 : 1200);
           peakY = pos.y;
-          soundsRef.current?.chime(3);
-        } else if (support > 140 && support < 260) {
-          // Ambient drifting clouds: gentle trampoline hop between puffs.
-          vel.y = 16 + Math.hypot(vel.x, vel.z) * 0.15;
-          onGround = false;
-          superBounceUntil = now + 1200;
-          peakY = pos.y;
-          soundsRef.current?.chime?.(2);
+          soundsRef.current?.chime?.(big ? 3 : 2);
         }
       } else if (pos.y > support + 0.05) {
         onGround = false;

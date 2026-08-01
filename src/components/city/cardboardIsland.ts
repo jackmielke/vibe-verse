@@ -30,6 +30,12 @@ export interface WorldBox {
   maxZ: number;
   base: number;
   height: number;
+  /**
+   * Launch speed (m/s) when the player lands on this box's top. Leave it
+   * unset for solid ground — only clouds bounce. See City's BuildingBox
+   * for why this is a property of the box rather than of its altitude.
+   */
+  bouncy?: number;
 }
 
 export interface IslandWorld {

@@ -9,9 +9,10 @@
  * there via the springy launch trampoline on the island lawn (or a
  * jetpack, if you insist on doing it the boring way).
  *
- * The platforms are ordinary collision boxes; the BOUNCE lives in
- * City's landing code (cloud tops shove you skyward instead of
- * letting you settle).
+ * The platforms are ordinary collision boxes tagged `bouncy` — City's
+ * landing code reads that tag off whichever box caught the player and
+ * shoves them skyward instead of letting them settle. Nothing else in
+ * the world sets it, which is exactly why the Moon and Mars are walkable.
  */
 import * as THREE from "three";
 import type { WorldBox } from "@/components/city/cardboardIsland";
@@ -19,8 +20,6 @@ import type { WorldBox } from "@/components/city/cardboardIsland";
 export interface CloudKingdom {
   group: THREE.Group;
   update(dt: number, now: number): void;
-  /** XZ inside the kingdom's column. */
-  inZone(x: number, z: number): boolean;
   /** World position of the launch trampoline on the island lawn. */
   launchPad: THREE.Vector3;
   /** Squash the trampoline for a beat (visual feedback on launch). */
@@ -40,7 +39,6 @@ export function buildCloudKingdom(opts: {
 }): CloudKingdom {
   const { cx, cz, baseY, boxes } = opts;
   const group = new THREE.Group();
-  const ZONE_R = 60;
 
   const puffGeo = new THREE.IcosahedronGeometry(1, 1);
   const puffMat = new THREE.MeshLambertMaterial({ color: 0xfdfdff, flatShading: true });
@@ -67,6 +65,7 @@ export function buildCloudKingdom(opts: {
       minZ: z - half, maxZ: z + half,
       base: y - size * 0.6,
       height: y + size * 0.5,
+      bouncy: 30, // the kingdom's whole point — a big springy launch
     });
     return cloud;
   };
@@ -175,7 +174,6 @@ export function buildCloudKingdom(opts: {
   return {
     group,
     launchPad,
-    inZone: (x, z) => Math.hypot(x - cx, z - cz) <= ZONE_R,
     squashPad() {
       squashUntil = performance.now() + 400;
     },
