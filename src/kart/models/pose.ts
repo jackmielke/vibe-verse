@@ -542,6 +542,7 @@ function poseHands(rig: RacerRig, st: PoseState, pc: PoseContext): void {
 const _anchor = new THREE.Vector3();
 const _wind = new THREE.Vector3();
 const _delta = new THREE.Vector3();
+const _drape = new THREE.Vector3();
 
 /**
  * Verlet chain in world space, projected back into the racer's local frame for
@@ -585,6 +586,14 @@ function simulateScarf(rig: RacerRig, racer: RacerState, dt: number, pc: PoseCon
   _wind.y += 1.6 * sp + Math.sin(pc.elapsed * 6.3 + st.phase) * 3.4 * sp;
   _wind.x += Math.sin(pc.elapsed * 4.1 + st.phase * 2) * 3.0 * sp;
 
+  // A parked kart has no apparent wind, so gravity is the only force in the
+  // integrator — and a two-metre scarf anchored at the neck then hangs dead
+  // straight down through the driver's lap, the chassis floor and the road.
+  // Every kart on the starting grid wore a white plank. Drape it over the
+  // seat back instead, fading out as real wind takes over.
+  _drape.set(0, 0, 1).applyQuaternion(racer.quaternion).multiplyScalar(7.5 * (1 - sp));
+  _wind.add(_drape);
+
   // Gravity a little over half real: enough that the tail droops into a curve
   // rather than streaming out as a rigid pole, not so much that it drags.
   const g = -TUNING.gravity * 0.55;
@@ -600,6 +609,12 @@ function simulateScarf(rig: RacerRig, racer: RacerState, dt: number, pc: PoseCon
     p.y += g * dt * dt;
     p.addScaledVector(_wind, dt * dt * (0.6 + i / n));
   }
+  // Nothing in a Verlet chain knows the world is solid, so the cloth needs a
+  // floor. The kart's wheels rest a suspension length below its origin, which
+  // is the same ground estimate the contact-shadow blob uses and is right on
+  // every surface the kart can actually be standing on.
+  const floorY = racer.position.y - TUNING.suspensionRest + 0.06;
+
   // Two constraint passes: enough for a scarf, cheap enough for eight of them.
   for (let pass = 0; pass < 2; pass++) {
     points[0].copy(_anchor);
@@ -611,6 +626,11 @@ function simulateScarf(rig: RacerRig, racer: RacerState, dt: number, pc: PoseCon
       // The anchor end is immovable, so the whole correction goes downstream.
       points[i].addScaledVector(_delta, -corr * (i === 1 ? 1 : 0.62));
       if (i > 1) points[i - 1].addScaledVector(_delta, corr * 0.38);
+    }
+    // Re-applied every pass: a length constraint would happily push the tail
+    // back under the road again.
+    for (let i = 1; i <= n; i++) {
+      if (points[i].y < floorY) points[i].y = floorY;
     }
   }
 
