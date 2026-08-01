@@ -65,8 +65,13 @@ const COST = {
   door: 5,
   /** Striking a hall light. Switching it off is free. */
   light: 2,
-  /** Raising the monitor. Lowering it, and changing channel, are free. */
-  monitor: 2,
+  /**
+   * Raising the monitor. Lowering it, and changing channel, are free — so a
+   * check is one flat percent no matter how long you stay on it. Watching the
+   * halls is meant to be the thing you can always afford; the doors are where
+   * the budget goes.
+   */
+  monitor: 1,
 } as const;
 
 export class FnafEngine {

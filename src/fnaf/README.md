@@ -85,7 +85,7 @@ commit to something:
 | --- | --- |
 | dropping a door | 5% |
 | striking a hall light | 2% |
-| raising the monitor | 2% |
+| raising the monitor | 1%, however long you stay on it |
 | Foxy hitting a shut west door | 3% + 1% per previous charge |
 
 Opening a door, killing a light, dropping the monitor and changing channel are
@@ -95,8 +95,10 @@ drain by another name.
 This is a deliberate departure from the original, and it changes the question
 the game asks. FNAF bills you by the second, so the question is *can you afford
 to keep this shut*. Here the battery is roughly twenty door closes, or fifty
-light flicks, or fifty camera checks, or any mix of the three, and the question
-becomes *was that check worth five percent*. Both are good questions; this one
+light flicks, or a hundred camera checks, or any mix of the three, and the
+question becomes *was shutting that door worth five percent*. Cameras are
+deliberately the cheapest thing you can do: looking should never be the move
+you cannot afford. Both are good questions; this one
 was Jack's call, and it has the advantage that the meter never moves unless you
 moved it.
 
