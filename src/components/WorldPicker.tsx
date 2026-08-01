@@ -99,6 +99,17 @@ const WORLDS: WorldCard[] = [
     accent: "#12a5f5",
   },
   {
+    to: "/drop-zero",
+    emoji: "🪂",
+    name: "Drop Zero",
+    // Art lands once the world captures a frame worth putting on a card.
+    blurb:
+      "One island, one storm, one hundred rivals. Ride the bus, harvest anything that isn't nailed down, and build faster than they can shoot.",
+    featured: true,
+    status: "Playable — battle royale",
+    accent: "#818cf8",
+  },
+  {
     to: "/san-palmas",
     emoji: "🌴",
     name: "San Palmas",
