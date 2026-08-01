@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { CharacterOption } from "./characters";
+import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
 
 function findClip(clips: THREE.AnimationClip[], names: string[]): THREE.AnimationClip | null {
   for (const n of names) {
@@ -49,10 +50,27 @@ function PreviewModel({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const procRef = useRef<ProceduralPilot | null>(null);
   const [scene, setScene] = useState<THREE.Group | null>(null);
 
   useEffect(() => {
     let alive = true;
+    // An empty url means the character has no model file — it's built
+    // from primitives and animated in code. Build it and let it walk;
+    // a still pose would sell none of what makes it different.
+    if (!character.url) {
+      const p = buildProceduralPilot();
+      procRef.current = p;
+      const size = new THREE.Vector3();
+      new THREE.Box3().setFromObject(p.group).getSize(size);
+      setScene(p.group);
+      onFit(size);
+      return () => {
+        alive = false;
+        procRef.current?.dispose();
+        procRef.current = null;
+      };
+    }
     const loader = new GLTFLoader();
     loader.loadAsync(character.url).then((gltf) => {
       if (!alive) return;
@@ -100,8 +118,17 @@ function PreviewModel({
     };
   }, [character.url, character.scale, character.yOffset, onFit]);
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     if (mixerRef.current) mixerRef.current.update(Math.min(dt, 0.05));
+    procRef.current?.update(dt, {
+      // A slow weave rather than a straight jog, so the card shows the
+      // bank into turns and the scarf trailing it.
+      speed: 3.8,
+      grounded: true,
+      verticalVel: 0,
+      yawRate: Math.sin(state.clock.elapsedTime * 0.9) * 1.3,
+      thrusting: false,
+    });
     if (groupRef.current && spinning) {
       groupRef.current.rotation.y += dt * 0.6;
     }

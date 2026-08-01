@@ -99,6 +99,7 @@ import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
+import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import RpsDuelModal from "@/components/RpsDuelModal";
@@ -117,15 +118,30 @@ import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/comp
 import { registerPOI } from "@/world/worldIndex";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
+// Flux has no model file — it's assembled from primitives and animated
+// entirely from the pilot's own motion (see proceduralPilot.ts). It rides
+// at the front of the roster because it's the one character on the island
+// whose walk speeds up smoothly instead of cross-fading between clips.
+const FLUX_ID = "flux";
+
 // Universal playable character catalog. Keep City/Edge Island aligned
 // with /character-select, /profile, and the global active-character hook.
-const CHARACTERS = UNIVERSAL_CHARACTERS.map((c) => ({
-  name: c.id,
-  url: c.url,
-  label: c.label,
-  blurb: c.blurb,
-  accent: c.accent,
-}));
+const CHARACTERS = [
+  {
+    name: FLUX_ID,
+    url: "",
+    label: "Flux",
+    blurb: "Built from code, not a model file. Animated head to toe.",
+    accent: "#73ffb8",
+  },
+  ...UNIVERSAL_CHARACTERS.map((c) => ({
+    name: c.id,
+    url: c.url,
+    label: c.label,
+    blurb: c.blurb,
+    accent: c.accent,
+  })),
+];
 
 // Honor a character picked in the Lobby; fall back to the soldier.
 function initialCharacter(): string {
@@ -2953,6 +2969,9 @@ export default function City() {
     const loader = new GLTFLoader();
     let pilotModel: THREE.Object3D | null = null;
     let pilotGen = 0;
+    // Non-null only while Flux is equipped; the frame loop drives it
+    // instead of the animation mixer.
+    let procPilot: ProceduralPilot | null = null;
     const loadPilot = (url: string) => {
       const gen = ++pilotGen;
       if (pilotModel) {
@@ -2967,11 +2986,24 @@ export default function City() {
         });
         pilotModel = null;
       }
+      // Flux owns its own geometry, so it disposes itself rather than
+      // going through the traverse above.
+      procPilot?.dispose();
+      procPilot = null;
       mixer?.stopAllAction();
       mixer = null;
       actions.clear();
       activeAction = null;
       activeName = "";
+
+      // No URL means the procedural pilot — nothing to fetch, it's built
+      // on the spot.
+      if (!url) {
+        procPilot = buildProceduralPilot();
+        pilotModel = procPilot.group;
+        modelHolder.add(procPilot.group);
+        return;
+      }
 
       loader.load(url, (gltf) => {
         if (gen !== pilotGen) return; // superseded by a newer pick
@@ -3029,6 +3061,7 @@ export default function City() {
     // us the player is near; tears down when they walk away.
     let holoModel: THREE.Object3D | null = null;
     let holoMixer: THREE.AnimationMixer | null = null;
+    let holoProc: ProceduralPilot | null = null;
     let holoGen = 0;
     const disposeHolo = () => {
       if (!holoModel) return;
@@ -3044,6 +3077,7 @@ export default function City() {
       holoModel = null;
       holoMixer?.stopAllAction();
       holoMixer = null;
+      holoProc = null;
     };
     const holoLoader = new GLTFLoader();
     mountAvatarHoloRef.current = (charNameForHolo) => {
@@ -3052,6 +3086,17 @@ export default function City() {
       if (!charNameForHolo) return;
       const c = CHARACTERS.find((x) => x.name === charNameForHolo);
       if (!c) return;
+      // Flux has no file to fetch — build it, tint it, and let it jog on
+      // the pedestal so the preview shows the animation, which is the
+      // whole reason to pick it.
+      if (!c.url) {
+        const p = buildProceduralPilot("#7af0ff");
+        p.group.scale.setScalar(1.22);
+        holoProc = p;
+        holoModel = p.group;
+        island.avatarStage.add(p.group);
+        return;
+      }
       holoLoader.load(c.url, (gltf) => {
         if (gen !== holoGen) return; // superseded
         const model = gltf.scene;
@@ -3104,6 +3149,15 @@ export default function City() {
     const updateAvatarHolo = (dt: number) => {
       if (holoModel) holoModel.rotation.y += dt * 0.6;
       holoMixer?.update(dt);
+      // Jog on the spot, with a lazy weave so the bank and the scarf both
+      // show up in the preview.
+      holoProc?.update(dt, {
+        speed: 4.4,
+        grounded: true,
+        verticalVel: 0,
+        yawRate: Math.sin(performance.now() * 0.0011) * 1.5,
+        thrusting: false,
+      });
     };
 
 
@@ -4520,6 +4574,7 @@ export default function City() {
 
       // Face the direction of travel; tilt forward while flying fast.
       const hSpeed = Math.hypot(vel.x, vel.z);
+      const prevModelYaw = modelYaw;
       if (hSpeed > 0.6) {
         const target = Math.atan2(vel.x, vel.z);
         let d = target - modelYaw;
@@ -4528,6 +4583,10 @@ export default function City() {
         modelYaw += d * Math.min(1, dt * 10);
         modelHolder.rotation.y = modelYaw;
       }
+      // Signed turn rate, wrapped — Flux banks into corners with it.
+      let yawDelta = modelYaw - prevModelYaw;
+      while (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
+      while (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
       // Keep the character upright in the air — the previous forward
       // lean read as a sideways tilt whenever the model's yaw didn't
       // match the camera (e.g. strafing or curved jetpack arcs).
@@ -4544,6 +4603,15 @@ export default function City() {
         else playClip([/^idle$/i, /idle/i], true);
       }
       mixer?.update(dt);
+      // Flux has no clips to pick between — it reads the same motion the
+      // camera does and solves every joint from it.
+      procPilot?.update(dt, {
+        speed: hSpeed,
+        grounded: onGround,
+        verticalVel: vel.y,
+        yawRate: yawDelta / Math.max(dt, 1e-4),
+        thrusting,
+      });
 
       // Jetpack VFX.
       // In first-person VR the nozzles are inches from the headset, so
@@ -5282,6 +5350,8 @@ export default function City() {
       loadPilotRef.current = null;
       mountAvatarHoloRef.current = null;
       disposeHolo();
+      procPilot?.dispose();
+      procPilot = null;
       setPlayerScaleRef.current = null;
       travelRef.current = null;
       resetRunRef.current = null;
