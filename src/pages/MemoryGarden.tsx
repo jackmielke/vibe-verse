@@ -210,6 +210,7 @@ import treeUrl from "@/assets/glb/nature/Tree3.glb";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
 import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
 import { useNavigate } from "react-router-dom";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 interface Memory {
   id: string;
@@ -448,6 +449,9 @@ function makeTextCanvasTexture({
 }
 
 export default function MemoryGarden() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/garden", "Memory Garden");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);

@@ -28,6 +28,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { loadVibeverse } from "@/lib/loadVibeverse";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { stampPassport, passportRows, passportProgress } from "@/lib/passport";
 import "@/longsilence/ui/style.css";
 
 type Phase = "loading" | "ready" | "playing" | "gate" | "error";
@@ -111,12 +113,17 @@ function readReturn(): { href: string; label: string; external: boolean } {
 }
 
 export default function VibeverseExplorer() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/vibeverse", "The Vibeverse");
   const navigate = useNavigate();
-  const { displayName } = useVibeIdentity();
+  const { displayName, profile } = useVibeIdentity();
   /* Read through a ref inside the engine callback: the game is constructed once
      and must not be rebuilt because a name resolved a moment later. */
   const nameRef = useRef(displayName);
   nameRef.current = displayName;
+  // Only used to mark which row of the treasury is yours.
+  const viewerRef = useRef<string | null>(profile?.id ?? null);
+  viewerRef.current = profile?.id ?? null;
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
 
@@ -178,7 +185,14 @@ export default function VibeverseExplorer() {
            Vibe Island II is not a landing — it is a door — and this is the
            engine's only way to say so. It fires after the touchdown shot has
            played; see Game._maybeHandOff. */
-        game.onEnterWorld = (route) => navigateRef.current(route);
+        game.onEnterWorld = (route, spec) => {
+          /* Landing *is* an arrival, so it stamps before the route changes.
+             The destination world stamps itself on mount too — this one is for
+             the case where it never gets that far, and so that the ship's own
+             passport page can show the trip the moment you lift off again. */
+          stampPassport(route, spec?.name || route);
+          navigateRef.current(route);
+        };
         // Kept for the capture and inspection harnesses in the upstream repo,
         // which pose the game through this handle.
         window.__game = game;
@@ -190,8 +204,12 @@ export default function VibeverseExplorer() {
            terminal falls back to its own readout. Errors are swallowed inside
            loadVibeverse — see the note there about one failing table not being
            allowed to cost the others. */
-        void loadVibeverse()
-          .then((data) => { if (!cancelled) game?.vibe?.adopt(data); })
+        void loadVibeverse(viewerRef.current)
+          .then((data) => {
+            if (cancelled) return;
+            // The passport is local and instant; it rides along with the rest.
+            game?.vibe?.adopt({ ...data, passport: passportRows(), progress: passportProgress() });
+          })
           .catch((e) => console.warn('vibeverse records unavailable', e));
       } catch (e) {
         console.error(e);

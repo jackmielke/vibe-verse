@@ -10,8 +10,12 @@ import { Link } from "react-router-dom";
 import { bootGolf } from "@/golf/boot";
 import { detectGolfQuality, type GolfEngine } from "@/golf/engine/core";
 import GolfHUD from "@/golf/ui/GolfHUD";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 export default function VibeGolf() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/golf", "Vibe Golf");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GolfEngine | null>(null);
   const [engine, setEngine] = useState<GolfEngine | null>(null);

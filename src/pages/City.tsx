@@ -115,6 +115,7 @@ import {
 } from "@/components/city/islandSpawns";
 import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
 import { registerPOI } from "@/world/worldIndex";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 // Universal playable character catalog. Keep City/Edge Island aligned
 // with /character-select, /profile, and the global active-character hook.
@@ -499,6 +500,9 @@ function shortClipName(raw: string) {
 }
 
 export default function City() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/city", "Vibe City");
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // ?fresh=1 means the visitor was just auto-rolled into Edge Island
   // from the hub — skip the entry overlay and show a floating chip so

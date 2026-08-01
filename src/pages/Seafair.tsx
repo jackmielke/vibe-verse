@@ -20,10 +20,14 @@ import { readEntry } from "@/seafair/net/Vibeverse";
 import type { GameWorld } from "@/seafair/GameWorld";
 import HUD from "@/seafair/ui/HUD";
 import MobileControls from "@/seafair/ui/MobileControls";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 type Screen = "menu" | "select" | "loading" | "playing" | "paused" | "dead";
 
 export default function Seafair() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/seafair", "Seafair 2117");
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<GameWorld | null>(null);
   const [screen, setScreen] = useState<Screen>("menu");

@@ -1034,16 +1034,19 @@ function drawArchiveIdle(g, game, ctx) {
 
   if (v && v.loaded) {
     if (page === 'gallery') drawArchiveGallery(g, v, ctx);
+    else if (page === 'passport') drawArchivePassport(g, v, ctx);
+    else if (page === 'profiles') drawArchiveProfiles(g, v, ctx);
+    else if (page === 'coin') drawArchiveTreasury(g, v, ctx);
     else if (page === 'crew') drawArchiveCrew(g, v, ctx);
     else drawArchiveBand(g, v, ctx);
   } else {
     drawArchiveStats(g, game, v);
   }
 
-  // Page pips, so it reads as one terminal with three pages rather than three
-  // unrelated screens that happen to share a bezel.
+  // Page pips, so it reads as one terminal with several pages rather than a
+  // handful of unrelated screens that happen to share a bezel.
   if (v && v.loaded) {
-    const n = 3, cx = w / 2 - (n - 1) * 9;
+    const n = 6, cx = w / 2 - (n - 1) * 9;
     for (let i = 0; i < n; i++) {
       g.dot(cx + i * 18, h - 40, i === (v.page % n) ? 3.4 : 2.2,
         i === (v.page % n) ? CY : DIM, i === (v.page % n) ? 1 : 0.45);
@@ -1132,6 +1135,182 @@ function drawArchiveGallery(g, v, ctx) {
   g.rect(F.x, F.y, F.w, F.h, DIM, 1, 0.4);
   g.text(`${v.photos.length ? (v.photoIdx % v.photos.length) + 1 : 0} / ${v.photos.length}`,
     w - 22, F.y - 10, { size: 12, color: DIM, align: 'right', track: 2 });
+}
+
+/**
+ * The passport: everywhere in the vibeverse you have actually been.
+ *
+ * This is the only page on the terminal that is about *you* rather than about
+ * the hub, and the only one whose data no server has ever seen — every world in
+ * the repo writes a stamp to localStorage on arrival, and this reads all of
+ * them. Walking into EDM Town from the hub lights a row up here, which is the
+ * first time anything in this project has known that two worlds are the same
+ * place.
+ */
+function drawArchivePassport(g, v, ctx) {
+  const { w, h } = g;
+  const rows = v.passport || [];
+  const pr = v.progress || { visited: 0, total: 0, trips: 0 };
+
+  g.text(`${pr.visited} / ${pr.total}`, 26, 122, { size: 40, color: HI, track: 1 });
+  g.text('WORLDS VISITED', 26 + String(`${pr.visited} / ${pr.total}`).length * 24 + 14, 122,
+    { size: 12, color: DIM, track: 3 });
+  g.text(`${pr.trips} ARRIVALS LOGGED`, 26, 146, { size: 12, color: CY, track: 2 });
+
+  // Completion bar. Deliberately the widest element on the panel: it is the
+  // only progress in the whole vibeverse that spans more than one world.
+  const bw = w - 52;
+  g.fill(26, 158, bw, 4, '#12313f', 1);
+  if (pr.total) g.fill(26, 158, Math.round(bw * (pr.visited / pr.total)), 4, '#8fe4ff', 0.95);
+
+  let y = 196;
+  const colW = (w - 64) / 2;
+  rows.slice(0, 10).forEach((r, i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const x = 26 + col * (colW + 12);
+    const yy = y + row * 30;
+    if (r.visited) {
+      /* A stamped row breathes; an unvisited one is flat. The pulse is offset
+         per row so the column does not blink in unison like a fault light. */
+      const pulse = 0.6 + 0.4 * Math.sin(ctx.time * 1.6 + i * 0.9);
+      g.dot(x + 5, yy - 5, 3.2, '#8fe4ff', pulse);
+      g.text(r.name, x + 18, yy, { size: 13.5, color: VAL });
+      g.text(r.count > 1 ? `×${r.count}` : '✓', x + colW - 10, yy,
+        { size: 12, color: AM, align: 'right' });
+    } else {
+      g.dot(x + 5, yy - 5, 2.4, DIM, 0.3);
+      g.text(r.name, x + 18, yy, { size: 13.5, color: DIM, alpha: 0.55 });
+      g.text('—', x + colW - 10, yy, { size: 12, color: DIM, align: 'right', alpha: 0.5 });
+    }
+  });
+
+  const done = pr.total && pr.visited >= pr.total;
+  g.text(done ? 'THE WHOLE BAND. EVERY WORLD STAMPED.' : 'LAND ON A WORLD TO STAMP IT',
+    w / 2, h - 58, { size: 12, color: done ? AM : DIM, align: 'center', track: 3 });
+}
+
+/**
+ * One person, at some length. Ten thousand people are registered here and the
+ * hub has never had a way to just *meet* one, so the terminal deals them out a
+ * card at a time: face, name, what they wrote about themselves.
+ */
+function drawArchiveProfiles(g, v, ctx) {
+  const { w, h } = g;
+  const c = g.c;
+  const p = v.profile;
+  if (!p) {
+    g.text('NO PROFILES ON FILE', w / 2, h / 2, { size: 16, color: DIM, align: 'center', track: 3 });
+    return;
+  }
+
+  const A = 132;                        // avatar plate, square
+  const ax = 26, ay = 74;
+  g.fill(ax, ay, A, A, '#061019', 1);
+  if (p.img && p.img.width) {
+    const sq = Math.min(p.img.width, p.img.height);
+    c.save();
+    c.globalAlpha = Math.max(0.15, v.fade);
+    c.beginPath(); c.rect(ax, ay, A, A); c.clip();
+    try {
+      c.drawImage(p.img, (p.img.width - sq) / 2, (p.img.height - sq) / 2, sq, sq, ax, ay, A, A);
+    } catch { /* one blank plate beats a dead panel */ }
+    c.restore();
+  } else {
+    /* Most avatar CDNs refuse cross-origin reads, so a majority of these will
+       be initials rather than faces. Designed for, not apologised for. */
+    const initials = p.name.split(/\s+/).slice(0, 2).map((t) => t[0] || '').join('').toUpperCase();
+    g.text(initials || '·', ax + A / 2, ay + A / 2 + 14,
+      { size: 46, color: VAL, align: 'center', track: 2 });
+  }
+  g.rect(ax, ay, A, A, DIM, 1, 0.45);
+
+  const tx = ax + A + 22;
+  g.text(p.name.toUpperCase(), tx, ay + 26, { size: 22, color: HI, track: 1.4 });
+  if (p.resident) {
+    g.text('VIBE RESIDENT', tx, ay + 46, { size: 11, color: AM, track: 3 });
+  } else if (p.headline) {
+    g.text(p.headline, tx, ay + 46, { size: 12, color: AM, track: 1.2 });
+  }
+
+  // The bio, wrapped by hand — ScreenGfx draws single lines only.
+  const maxW = w - tx - 26;
+  let y = ay + 74;
+  for (const line of wrapText(c, p.bio, maxW, 13).slice(0, 6)) {
+    g.text(line, tx, y, { size: 13, color: VAL });
+    y += 19;
+  }
+  if (p.interests) {
+    y = Math.max(y + 6, ay + A + 8);
+    for (const line of wrapText(c, p.interests, w - 52, 12).slice(0, 2)) {
+      g.text(line, 26, y, { size: 12, color: CY });
+      y += 17;
+    }
+  }
+  g.text(`${(v.profileIdx % v.profiles.length) + 1} / ${v.profiles.length}`,
+    w - 22, 64, { size: 12, color: DIM, align: 'right', track: 2 });
+}
+
+/**
+ * VIBE, and who holds it.
+ *
+ * The number that matters is yours, so it is the only thing on the panel drawn
+ * large. Signed out there is no "yours" to show and the panel says so rather
+ * than printing a zero, which would be a different and wrong claim.
+ */
+function drawArchiveTreasury(g, v, ctx) {
+  const { w, h } = g;
+  const t = v.treasury || { holders: [], ledger: [] };
+
+  g.text('YOUR BALANCE', 26, 92, { size: 12, color: DIM, track: 3 });
+  if (t.mine == null) {
+    g.text('— SIGNED OUT —', 26, 132, { size: 26, color: DIM, track: 2 });
+  } else {
+    g.text(String(t.mine), 26, 138, { size: 46, color: HI, track: 1 });
+    g.text('VIBE', 26 + String(t.mine).length * 28 + 12, 138, { size: 16, color: AM, track: 3 });
+  }
+  g.text(`CIRCULATING  ${t.supply}`, 26, 164, { size: 12, color: CY, track: 2 });
+  g.line(26, 178, w - 26, 178, DIM, 1, 0.3);
+
+  const colW = (w - 64) / 2;
+  g.text('TOP HOLDERS', 26, 202, { size: 12, color: DIM, track: 3 });
+  let y = 226;
+  for (const hd of (t.holders || []).slice(0, 7)) {
+    const bar = Math.max(2, Math.round((hd.balance / Math.max(1, t.holders[0].balance)) * (colW - 70)));
+    g.fill(26, y - 9, bar, 11, hd.mine ? '#ffc48a' : '#1d4356', hd.mine ? 0.9 : 0.75);
+    g.text(hd.name, 30, y, { size: 12, color: hd.mine ? HI : VAL });
+    g.text(String(hd.balance), 26 + colW - 12, y, { size: 12, color: hd.mine ? AM : CY, align: 'right' });
+    y += 22;
+  }
+  if (!(t.holders || []).length) g.text('— no balances —', 26, y, { size: 12, color: DIM });
+
+  const lx = 26 + colW + 12;
+  g.text('LEDGER', lx, 202, { size: 12, color: DIM, track: 3 });
+  y = 226;
+  for (const l of (t.ledger || []).slice(0, 7)) {
+    g.text(`${l.from} → ${l.to}`, lx, y, { size: 11.5, color: VAL });
+    g.text(`+${l.amount}`, w - 26, y, { size: 12, color: AM, align: 'right' });
+    if (l.reason) g.text(l.reason, lx, y + 13, { size: 10.5, color: DIM });
+    y += 30;
+  }
+  if (!(t.ledger || []).length) g.text('— no movement —', lx, y, { size: 12, color: DIM });
+}
+
+/** Wrap a string to a pixel width using the context's current font metrics. */
+function wrapText(c, str, maxW, size) {
+  if (!str) return [];
+  c.save();
+  c.font = `${size}px ui-monospace, "SF Mono", Menlo, monospace`;
+  const words = String(str).split(' ');
+  const lines = [];
+  let cur = '';
+  for (const word of words) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (c.measureText(next).width > maxW && cur) { lines.push(cur); cur = word; }
+    else cur = next;
+  }
+  if (cur) lines.push(cur);
+  c.restore();
+  return lines;
 }
 
 /** Everyone who lives here: the people, then the agents in the lobby. */

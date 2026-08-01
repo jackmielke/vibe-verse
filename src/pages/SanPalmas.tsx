@@ -11,8 +11,12 @@ import { boot } from "@/palmas/boot";
 import type { Engine } from "@/palmas/engine/core";
 import { detectQuality } from "@/palmas/engine/core";
 import HUD from "@/palmas/ui/HUD";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 export default function SanPalmas() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/san-palmas", "San Palmas");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
   const [engine, setEngine] = useState<Engine | null>(null);

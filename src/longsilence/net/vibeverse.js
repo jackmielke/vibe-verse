@@ -21,16 +21,19 @@
    ========================================================================== */
 
 /** The pages the terminal cycles through, in order. */
-export const PAGES = ['gallery', 'crew', 'band'];
+export const PAGES = ['gallery', 'passport', 'profiles', 'coin', 'crew', 'band'];
 
 const PAGE_TITLE = {
   gallery: 'THE GALLERY',
+  passport: 'YOUR PASSPORT',
+  profiles: 'WHO LIVES HERE',
+  coin: 'THE TREASURY',
   crew: 'THE MANIFEST',
   band: 'THE BAND',
 };
 
 /** Seconds a page holds before the terminal moves on by itself. */
-const DWELL = { gallery: 7.0, crew: 11.0, band: 11.0 };
+const DWELL = { gallery: 7.0, passport: 10.0, profiles: 9.0, coin: 11.0, crew: 11.0, band: 11.0 };
 
 export class VibeverseData {
   constructor() {
@@ -42,6 +45,14 @@ export class VibeverseData {
     this.agents = [];
     /** @type {{speaker:string,body:string,kind:string,when:string}[]} */
     this.messages = [];
+    /** @type {{name:string,headline:string,bio:string,interests:string,resident:boolean,img:HTMLImageElement|null}[]} */
+    this.profiles = [];
+    this.treasury = { mine: null, supply: 0, holders: [], ledger: [] };
+    /** @type {{route:string,name:string,count:number,visited:boolean,last:number}[]} */
+    this.passport = [];
+    this.progress = { visited: 0, total: 0, trips: 0 };
+    this.profileIdx = 0;
+    this._profT = 0;
     this.counts = {};
 
     this.loaded = false;
@@ -67,12 +78,22 @@ export class VibeverseData {
     this.crew = Array.isArray(data.crew) ? data.crew : [];
     this.agents = Array.isArray(data.agents) ? data.agents : [];
     this.messages = Array.isArray(data.messages) ? data.messages : [];
+    this.profiles = Array.isArray(data.profiles) ? data.profiles : [];
+    if (data.treasury) this.treasury = data.treasury;
+    if (Array.isArray(data.passport)) this.passport = data.passport;
+    if (data.progress) this.progress = data.progress;
     this.counts = data.counts || {};
     this.loaded = true;
   }
 
   get pageId() { return PAGES[this.page % PAGES.length]; }
   get title() { return PAGE_TITLE[this.pageId] || 'ARCHIVE'; }
+
+  /** The person whose card is up. */
+  get profile() {
+    if (!this.profiles.length) return null;
+    return this.profiles[this.profileIdx % this.profiles.length];
+  }
 
   /** The photograph currently on the glass, and the one fading out under it. */
   get photo() { return this.photos[this.photoIdx % Math.max(1, this.photos.length)] || null; }
@@ -112,6 +133,17 @@ export class VibeverseData {
     // Photographs cycle on their own, but only while somebody is watching —
     // a gallery advancing to an empty room is just texture uploads.
     if (this.pageId === 'gallery' && watched && this._photoT > 4.6) this.nextPhoto();
+
+    // Profiles turn over on their own too, a little slower — there is more to
+    // read on a card than there is to look at in a photograph.
+    if (this.pageId === 'profiles' && watched) {
+      this._profT += dt;
+      if (this._profT > 6.2 && this.profiles.length > 1) {
+        this._profT = 0;
+        this.profileIdx = (this.profileIdx + 1) % this.profiles.length;
+        this.fade = 0;
+      }
+    }
 
     if (!watched || this.held) return;
     if (this._t > (DWELL[this.pageId] || 8)) { this._t = 0; this.step(1); }

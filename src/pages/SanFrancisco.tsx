@@ -6,6 +6,7 @@
  */
 import { Suspense, lazy, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 const SanFranciscoGame = lazy(() => import("@/sf/SanFranciscoGame"));
 
@@ -80,6 +81,9 @@ function Overlay() {
 }
 
 export default function SanFrancisco() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/sf", "San Francisco");
+
   const [params] = useSearchParams();
   const spawn = params.get("spawn") ?? "coit";
   const capturing = params.has("shot");

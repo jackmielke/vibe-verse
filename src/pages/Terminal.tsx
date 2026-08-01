@@ -2,6 +2,7 @@
  * /terminal — THE TERMINAL, the Vibeverse's front door.
  */
 import { Suspense, lazy } from "react";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 const TerminalScene = lazy(() => import("@/terminal/TerminalScene"));
 
@@ -21,6 +22,9 @@ function Loader() {
 }
 
 export default function Terminal() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/terminal", "The Terminal");
+
   return (
     <Suspense fallback={<Loader />}>
       <TerminalScene />
