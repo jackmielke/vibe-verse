@@ -99,7 +99,10 @@ export class GameWorld {
     this.sky = createSky(scene, profile);
 
     bus.emit("loading:progress", { phase: "Filling the lake", progress: 0.4 });
-    this.water = createWater(scene, profile, 0);
+    // Hand the water the real terrain sampler so its bathymetry — and so the
+    // shallow-water colour and the shoreline blend — match the ground actually
+    // under the lake, rather than the module's own rough fallback.
+    this.water = createWater(scene, profile, 0, (x, z) => this.terrain.height(x, z));
     this.water.material.uniforms.uSunDirection.value.copy(this.sky.sunDirection);
     this.disposers.push(() => this.water.dispose());
 

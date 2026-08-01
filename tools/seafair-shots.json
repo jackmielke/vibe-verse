@@ -1,0 +1,85 @@
+{
+  "lakeview": {
+    "pos": [0, 6, 40],
+    "yaw": 3.14159,
+    "pitch": -0.05,
+    "fov": 78,
+    "noclip": true,
+    "note": "Standing on the Stan Sayres pit apron looking north-west across Lake Washington. The establishing shot: race course, log boom, downtown skyline, Space Needle."
+  },
+  "racecourse": {
+    "pos": [40, 9, -140],
+    "yaw": 4.3,
+    "pitch": -0.06,
+    "fov": 72,
+    "noclip": true,
+    "note": "Over the water looking down the hydroplane race course. Judges hydroplanes, roostertails, wakes, course buoys."
+  },
+  "logboom": {
+    "pos": [-190, 5, -90],
+    "yaw": 1.9,
+    "pitch": -0.08,
+    "fov": 74,
+    "noclip": true,
+    "note": "Alongside the log boom. Judges the raft of spectator boats, the logs themselves, people, and how boats sit in the swell."
+  },
+  "blueangels": {
+    "pos": [0, 14, 20],
+    "yaw": 3.0,
+    "pitch": 0.42,
+    "fov": 66,
+    "noclip": true,
+    "note": "Looking up as the Blue Angels come over. Judges the aircraft, the diamond formation, smoke trails and vapour."
+  },
+  "pits": {
+    "pos": [30, 5, 90],
+    "yaw": 1.2,
+    "pitch": -0.04,
+    "fov": 76,
+    "noclip": true,
+    "note": "Inside the Stan Sayres pits. Judges tents, cranes, trailers, crowd, banners — the Seafair festival dressing."
+  },
+  "needle": {
+    "pos": [-700, 60, 1200],
+    "yaw": 2.55,
+    "pitch": 0.16,
+    "fov": 55,
+    "noclip": true,
+    "note": "Hero shot of the Space Needle and the alien structure grafted onto it."
+  },
+  "waterline": {
+    "pos": [30, 1.4, -20],
+    "yaw": 3.6,
+    "pitch": -0.12,
+    "fov": 82,
+    "noclip": true,
+    "note": "Eye-level at the waterline. Judges water shading, wave silhouette, foam, sun glitter."
+  },
+  "skyline": {
+    "pos": [200, 30, 400],
+    "yaw": 4.1,
+    "pitch": 0.05,
+    "fov": 66,
+    "noclip": true,
+    "note": "Looking back at the bluff and the city plateau. Judges terrain, vegetation, city massing."
+  },
+  "sunward": {
+    "pos": [0, 8, 0],
+    "yaw": 1.05,
+    "pitch": 0.12,
+    "fov": 78,
+    "noclip": true,
+    "note": "Into the sun over the water. Judges sky scattering, bloom, sun glitter, lens response."
+  },
+  "mobile": {
+    "pos": [0, 6, 40],
+    "yaw": 3.14159,
+    "pitch": -0.05,
+    "fov": 78,
+    "width": 844,
+    "height": 390,
+    "quality": "low",
+    "noclip": true,
+    "note": "Phone landscape at low quality. Must still read as a beautiful game."
+  }
+}
