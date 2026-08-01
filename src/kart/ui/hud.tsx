@@ -24,8 +24,27 @@ import type { ItemKind } from "../types";
 import { ItemArt, ROULETTE, CoinGlyph, UTurnGlyph } from "./icons";
 import { Speedometer, PlaceBadge, MinimapPanel } from "./gauges";
 import { useKartEvent, useKartFrame, useRuntime, useSample, shallowEq } from "./runtime";
-import { clamp01, formatTime, TIER_COLOR } from "./util";
+import { clamp01, formatTime, NO_TIME, TIER_COLOR } from "./util";
 import { playerOf, type ItemsView, type PhysicsView, type RaceView } from "./views";
+
+/**
+ * Speed streaks: 44 thin wedges radiating from the centre, built once. Lengths
+ * and opacities are jittered off a fixed hash so the burst does not read as a
+ * clock face, and the whole thing is one static SVG the compositor can spin.
+ */
+const STREAKS = Array.from({ length: 44 }, (_, i) => {
+  const a = (i / 44) * Math.PI * 2;
+  const jitter = ((Math.sin(i * 12.9898) * 43758.5453) % 1 + 1) % 1;
+  const inner = 30 + jitter * 8;
+  const outer = 62 + jitter * 26;
+  const half = 0.0055 + jitter * 0.006;
+  const p = (r: number, t: number) => `${(Math.cos(t) * r).toFixed(2)} ${(Math.sin(t) * r).toFixed(2)}`;
+  return {
+    key: i,
+    d: `M${p(inner, a - half)} L${p(outer, a - half * 2.2)} L${p(outer, a + half * 2.2)} L${p(inner, a + half)} Z`,
+    opacity: 0.25 + jitter * 0.55,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Item slot
@@ -144,7 +163,7 @@ function TimerCard() {
       for (const s of splits) done += s;
       if (lap.current) lap.current.textContent = formatTime(Math.max(0, t - done));
       const b = race?.bestLapOf?.(racer.id) ?? (splits.length ? Math.min(...splits) : 0);
-      if (best.current) best.current.textContent = b > 0 ? formatTime(b) : "--:--.---";
+      if (best.current) best.current.textContent = b > 0 ? formatTime(b) : NO_TIME;
     }
   });
 
@@ -165,7 +184,7 @@ function TimerCard() {
       <div className="vk-times-row">
         <span className="vk-times-key">Best</span>
         <span className="vk-times-val vk-times-val--best vk-num" ref={best}>
-          --:--.---
+          {NO_TIME}
         </span>
       </div>
     </div>
@@ -405,7 +424,15 @@ function FeedbackLayer() {
 
   return (
     <>
-      <div className="vk-streaks" ref={streaks} />
+      <div className="vk-streaks" ref={streaks}>
+        <svg viewBox="-50 -50 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <g fill="#ffffff">
+            {STREAKS.map((s) => (
+              <path key={s.key} d={s.d} opacity={s.opacity} />
+            ))}
+          </g>
+        </svg>
+      </div>
       <BoostFlare />
       <div className="vk-edge vk-edge--drift" ref={drift} />
       <div className="vk-edge vk-edge--boost" ref={boost} />

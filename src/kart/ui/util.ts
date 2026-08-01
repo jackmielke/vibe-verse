@@ -5,9 +5,16 @@
  * be called from a render, from a frame callback, or from a test.
  */
 
-/** `1:04.382`, the split format every racing game has used since the arcades. */
+/** Shown where a time exists but has not been set yet — an unbeaten best lap. */
+export const NO_TIME = "--:--.---";
+
+/**
+ * `1:04.382`, the split format every racing game has used since the arcades.
+ * Zero is a *time*, not a blank: a clock on the grid reads 0:00.000. Only a
+ * negative or non-finite value — i.e. genuinely unset — gets the dashes.
+ */
 export function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "--:--.---";
+  if (!Number.isFinite(seconds) || seconds < 0) return NO_TIME;
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds - m * 60);
   const ms = Math.floor((seconds - m * 60 - s) * 1000);

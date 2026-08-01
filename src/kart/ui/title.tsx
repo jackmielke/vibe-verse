@@ -69,6 +69,10 @@ export function TitleScreen({ settings, patch, onStart }: TitleProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Escape" || e.key === "Tab") return;
+      // Reload, devtools, media keys: the browser's, not the game's.
+      if (/^F\d/.test(e.key) || e.key === "ContextMenu" || e.key.startsWith("Audio") || e.key.startsWith("Media")) {
+        return;
+      }
       e.preventDefault();
       onStart();
     };

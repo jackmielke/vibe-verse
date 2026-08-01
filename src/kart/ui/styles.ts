@@ -348,7 +348,10 @@ export const UI_CSS = String.raw`
 .vk-wrong svg { width: 3.4vmin; height: 3.4vmin; }
 
 /* The screen-edge glow that carries drift charge, boost and damage. */
-.vk-edge { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.12s linear; }
+.vk-edge {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  transition: opacity 0.12s linear; will-change: opacity;
+}
 .vk-edge--drift { box-shadow: inset 0 0 14vmin rgba(58, 217, 255, 0.55); }
 .vk-edge--boost { box-shadow: inset 0 0 18vmin rgba(255, 190, 60, 0.6); }
 .vk-edge--hit { box-shadow: inset 0 0 16vmin rgba(255, 68, 54, 0.7); }
@@ -357,15 +360,16 @@ export const UI_CSS = String.raw`
   background: linear-gradient(120deg, rgba(255, 90, 140, 0.12), rgba(120, 220, 255, 0.12), rgba(255, 230, 90, 0.12));
 }
 
-/* Speed streaks that grow with the boost, drawn as two conic wisps. */
+/* Speed streaks that grow with the boost.
+   Drawn as a fixed SVG starburst rather than a rotating conic gradient with a
+   mask: a conic gradient is re-rasterised on every transform, and on a software
+   rasteriser that is the single most expensive thing this HUD could do. Flat
+   polygons plus will-change keep the spin on the compositor. */
 .vk-streaks {
-  position: absolute; inset: -10%; opacity: 0; pointer-events: none;
-  background:
-    repeating-conic-gradient(from 0deg at 50% 50%,
-      rgba(255, 255, 255, 0) 0deg, rgba(255, 255, 255, 0.5) 0.6deg, rgba(255, 255, 255, 0) 2.4deg);
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 34%, #000 78%);
-  mask-image: radial-gradient(circle at 50% 50%, transparent 34%, #000 78%);
+  position: absolute; inset: -14%; opacity: 0; pointer-events: none;
+  will-change: transform, opacity;
 }
+.vk-streaks svg { width: 100%; height: 100%; display: block; }
 
 /* The boost flare: a one-shot bloom up from under the kart. */
 .vk-flare {
@@ -425,13 +429,10 @@ export const UI_CSS = String.raw`
   background:
     radial-gradient(ellipse at 50% 30%, rgba(10, 22, 44, 0.35), rgba(4, 8, 16, 0.86) 78%),
     linear-gradient(180deg, rgba(4, 8, 16, 0.55), rgba(4, 8, 16, 0.8));
-  backdrop-filter: blur(0.7vmin) saturate(1.15);
-  -webkit-backdrop-filter: blur(0.7vmin) saturate(1.15);
   animation: vk-fade-in 0.3s ease both;
 }
 .vk-scrim--light {
   background: linear-gradient(180deg, rgba(4, 10, 22, 0.12) 0%, rgba(4, 10, 22, 0.5) 62%, rgba(4, 10, 22, 0.82) 100%);
-  backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 
 .vk-sheet {
