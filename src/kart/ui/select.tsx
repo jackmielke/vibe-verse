@@ -43,6 +43,17 @@ interface SelectProps {
   onBack(): void;
 }
 
+/**
+ * A phone has no arrow keys and no Enter. Reading the pointer rather than the
+ * user-agent means a laptop with a touchscreen gets whichever one it last
+ * actually used — but for the case that matters, a thumb on a phone, this is
+ * the difference between an instruction and a dead end.
+ */
+const COARSE_POINTER =
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(pointer: coarse)").matches
+    : false;
+
 export function SelectScreen({ onConfirm, onBack }: SelectProps) {
   const rt = useRuntime();
   const models = rt.ctx.services.models as ModelsView | undefined;
@@ -134,7 +145,7 @@ export function SelectScreen({ onConfirm, onBack }: SelectProps) {
         <div style={{ textAlign: "center" }}>
           <div className="vk-title-head vk-ink-edge">Choose your racer</div>
           <div className="vk-sub" style={{ marginTop: "0.6vmin" }}>
-            ← → to browse · Enter to race
+            {COARSE_POINTER ? "Tap a racer · tap again to race" : "← → to browse · Enter to race"}
           </div>
         </div>
 

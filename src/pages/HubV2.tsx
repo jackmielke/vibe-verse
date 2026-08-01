@@ -87,6 +87,9 @@ import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
+import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
+import fnafArt from "@/assets/worlds/fnaf.jpg";
+import kartArt from "@/assets/worlds/kart.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
@@ -105,6 +108,12 @@ const OFFICIAL_WORLDS: World[] = [
     blurb: "The front door — every world floating around you. Pick one and go." },
   { to: "/island-2", name: "Vibe Island II", art: vibeIsland2Art, color: "#ffb347",
     blurb: "The floating archipelago, rebuilt — lagoon, keels, cloud sea." },
+  { to: "/kart", name: "Vibe Kart", art: kartArt, color: "#fbbf24",
+    blurb: "Arcade kart racing — drift for mini-turbos, sling shells, take the hairpin." },
+  { to: "/fnaf", name: "Five Nights at Vibey's", art: fnafArt, color: "#dc2626",
+    blurb: "Midnight to six. Two doors, two lights, eleven cameras and one battery." },
+  { to: "/vibeverse", name: "The Vibeverse", art: vibeverseArt, color: "#8fe4ff",
+    blurb: "The whole place from orbit — fly between the stars and land on a real world." },
   { to: "/san-palmas", name: "San Palmas", art: sanPalmasArt, color: "#ffb020",
     blurb: "Tropical San Francisco — the vibeverse's FPS. Guns, sun, long draw distance." },
   { to: "/sf", name: "San Francisco", art: sanFranciscoArt, color: "#ff6a2b",
