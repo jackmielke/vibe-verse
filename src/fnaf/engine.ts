@@ -168,6 +168,15 @@ export class FnafEngine {
       foxy: makeAnimatronic("foxy"),
     };
     for (const a of Object.values(this.cast)) this.world.scene.add(a.root);
+    // Park them where a night starts, at construction rather than at
+    // `startNight`. A fresh Animatronic sits at the world origin, which is the
+    // middle of the office a metre from the desk — so until somebody picked a
+    // night, the title screen was rendering all four of them piled up in the
+    // player's face behind the menu.
+    this.park("freddy", "stage");
+    this.park("bonnie", "stage");
+    this.park("chica", "stage");
+    this.park("foxy", "cove");
 
     this.bindInput();
     this.resize();
