@@ -1393,13 +1393,6 @@ export class Game {
       here = _v.set(this.player.pos.x, this.player.groundY || 0, this.player.pos.z);
     }
     B.update(dt, here);
-    /* Your own arms and rifle, from the player's eye rather than the camera's —
-       the camera is assigned from these a dozen lines further down, so reading
-       it here would hang the weapon a frame behind your head. Only while
-       actually standing on the planet: not in the cabin, and not over the
-       touchdown sequence. */
-    B.aim(this.player.eye, this.player.quat,
-      onFoot && !this.director.active && !this.transition);
 
     if (onFoot && !uiOpen && !this.transition) {
       /* Semi-automatic, and rate-limited here rather than in the weapon: the
@@ -1415,7 +1408,6 @@ export class Game {
         this._fireCool = 0.22;
         _v2.set(0, 0, -1).applyQuaternion(this.player.quat).normalize();
         const hit = B.playerShoot(this.player.eye, _v2);
-        B.kick();
         this.audio.ping('shot');
         if (hit) this.audio.ping('hitmark');
         /* The recoil the player actually feels. There is no third-person body to

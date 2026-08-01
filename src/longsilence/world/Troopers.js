@@ -199,67 +199,6 @@ function releaseKit() {
   _kit = null;
 }
 
-/**
- * Your own kit, seen from inside it.
- *
- * The trooper model has a green faction and until now nothing ever wore it: in
- * first person there is no body, so the only green on screen was the reticle.
- * "Give yourself a green helmet" cannot be answered literally — nobody has ever
- * seen their own helmet — so it is answered the way every first-person game
- * answers it, with the parts of yourself you *can* see. Green sleeves, green
- * gloves on a rifle, and a green chest plate when you look down.
- *
- * Laid out directly in camera space rather than reusing the trooper's arm
- * hierarchy. That hierarchy exists so one bone rotation can swing a rifle from
- * the low ready to the shoulder; a viewmodel never does that — it is welded to
- * the view — and inheriting the bones would mean fighting RIFLE_BASE for no
- * benefit. Here -Z is simply forward.
- *
- * The near plane sets every number in here. GROUND_NEAR is 0.5 m, and geometry
- * inside it is not "very close to the camera", it is gone — so the *nearest
- * face of every bounding box* has to clear 0.55 m, not the centres. That is
- * also why there is no chest plate: your own chest is at zero, and no amount of
- * arranging puts it in front of a half-metre near plane. Forearms and a weapon
- * is what a first-person camera can honestly show, which is why it is what
- * every game that has ever tried this shows.
- */
-export function buildViewModel() {
-  const { geo, mat } = kit();
-  const g = new THREE.Group();
-
-  /* `geo.rifle` is 0.92 long and pre-translated by -0.32 of that, so it spans
-     local z from +0.166 to -0.754. At -0.88 its butt sits 0.71 m out and the
-     muzzle 1.63 m out — well clear, and about where a shouldered weapon looks. */
-  const rifle = new THREE.Mesh(geo.rifle, mat.steel);
-  rifle.position.set(0.12, -0.15, -0.88);
-  const scope = new THREE.Mesh(geo.scope, mat.dark);
-  scope.position.set(0, 0.08, 0.02);
-  rifle.add(scope);
-  const flash = new THREE.Mesh(geo.muzzle, mat.muzzle.clone());
-  flash.material._perTrooper = true;
-  flash.position.set(0, 0.01, -H.rifle * 0.78);
-  rifle.add(flash);
-
-  /* Forearms and gloves, in your own green. `geo.arm` hangs 0.58 m down -Y from
-     its joint, so about +75 degrees on X lays it along -Z, pointing where you
-     are looking. The elbows are further from the eye than an elbow really is;
-     they have to be. */
-  const armR = new THREE.Mesh(geo.arm, mat.playerArmour);
-  armR.position.set(0.20, -0.24, -0.70);
-  armR.rotation.set(Math.PI * 0.42, 0, -0.10);
-  const armL = new THREE.Mesh(geo.arm, mat.playerArmour);
-  armL.position.set(-0.07, -0.26, -0.74);
-  armL.rotation.set(Math.PI * 0.40, 0, 0.34);
-
-  g.add(rifle, armL, armR);
-  /* No shadows from any of it. A rifle 60 cm from the eye is a metre-wide
-     shadow across the whole near field, and it belongs to a body that is not
-     there. */
-  g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
-  g.userData.parts = { rifle, flash, armL, armR };
-  return g;
-}
-
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 
@@ -468,16 +407,6 @@ export class Battle {
     kit(); _kitRefs++;
     this._live = true;
 
-    /* Your own arms and rifle, welded to the view. Parented to the battle's
-       group so it appears with the fight and goes with it — there is no reason
-       to be holding a rifle on a world nobody is contesting. Hidden until the
-       first `aim()`, so it never flashes at the origin on the frame it is
-       built. */
-    this.view = buildViewModel();
-    this.view.visible = false;
-    this.group.add(this.view);
-    this._kick = 0;
-
     this.tracers = new Tracers();
     this.group.add(this.tracers.object);
 
@@ -598,40 +527,6 @@ export class Battle {
     else if (!allies) { this.over = 'lost'; this._events.push('THE LINE IS BROKEN'); }
   }
 
-  /**
-   * Put the viewmodel where the eye is.
-   *
-   * Called with the *player's* eye and orientation rather than the camera's,
-   * because on the ground the camera is assigned from those a few lines later
-   * and reading it here would hang the rifle one frame behind your head — which
-   * is exactly the lag people describe as "floaty" without being able to say
-   * why.
-   *
-   * `shown` is false whenever the player is not standing on the planet: in the
-   * cabin, in a cutscene, or watching the crane shot after touchdown. A rifle
-   * across the middle of a landing sequence is not a viewmodel, it is a bug.
-   */
-  aim(eye, quat, shown) {
-    const v = this.view;
-    if (!v) return;
-    v.visible = !!shown;
-    if (!shown) return;
-    v.position.copy(eye);
-    v.quaternion.copy(quat);
-    /* Recoil. The weapon comes back towards the shoulder and the muzzle lifts;
-       the *view* kick is separate and lives in Game (see `player.look`), so this
-       is only the gun moving inside the frame. */
-    this._kick = Math.max(0, this._kick - 0.06);
-    const p = v.userData.parts;
-    p.rifle.position.z = -0.62 + this._kick * 0.09;
-    p.rifle.rotation.x = this._kick * 0.22;
-    p.flash.material.opacity = Math.max(0, this._kick * 1.5 - 0.4);
-    p.flash.rotation.z += 0.7;
-  }
-
-  /** The player pulled the trigger: kick the gun in the frame. */
-  kick() { this._kick = 1; }
-
   /** Drain anything worth putting in the ship's log. */
   drainEvents() { const e = this._events; this._events = []; return e; }
 
@@ -680,13 +575,6 @@ export class Battle {
     this.scene.remove(this.group);
     for (const t of this.troopers) {
       t.object.traverse((o) => { if (o.isMesh && o.material && o.material._perTrooper) o.material.dispose(); });
-    }
-    // The viewmodel's muzzle flash is a clone too — same rule as a trooper's.
-    if (this.view) {
-      this.view.traverse((o) => {
-        if (o.isMesh && o.material && o.material._perTrooper) o.material.dispose();
-      });
-      this.view = null;
     }
     this.troopers.length = 0;
     this.tracers.dispose();
