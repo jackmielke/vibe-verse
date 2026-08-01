@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { ArrowLeft, ChevronLeft, ChevronRight, Dice5, LayoutGrid } from "lucide-react";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
 import VibeAccountCard from "@/components/VibeAccountCard";
@@ -10,112 +10,12 @@ import { enableVR } from "@/lib/webxr";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { generateCharacterName } from "@/lib/character-naming";
+import { CHARACTERS } from "@/lib/characters";
 
-// Two characters live outside the Quaternius pack folder.
-import alienUrl from "@/assets/glb/alien.glb";
-import vibeyUrl from "@/assets/glb/robot-expressive.glb";
-
-// Every Quaternius character — Vite resolves each .glb as an asset URL
-// at build time so we don't have to maintain a hand-edited list.
-const QUATERNIUS_URLS = import.meta.glob(
-  "@/assets/glb/characters/*.glb",
-  { eager: true, query: "?url", import: "default" },
-) as Record<string, string>;
-
-// Per-character emoji + accent palette. Anything not listed falls back
-// to a neutral default — the goal is just enough recognizable variety
-// in the grid that you can tell them apart.
-const CHAR_OVERRIDES: Record<string, { emoji?: string; accent?: string; blurb?: string }> = {
-  Wizard: { emoji: "🧙", accent: "#a78bfa", blurb: "Casts vibes." },
-  Witch: { emoji: "🧙‍♀️", accent: "#b392ff", blurb: "Pointy-hat energy." },
-  Knight_Male: { emoji: "🛡", accent: "#6aa8ff", blurb: "Square-jawed and shiny." },
-  Knight_Golden_Male: { emoji: "🥇", accent: "#ffd166", blurb: "Polished to a mirror." },
-  Knight_Golden_Female: { emoji: "🥇", accent: "#ffd166", blurb: "Polished to a mirror." },
-  Ninja_Male: { emoji: "🥷", accent: "#ff7e8a" },
-  Ninja_Female: { emoji: "🥷", accent: "#ff7e8a" },
-  Ninja_Sand: { emoji: "🥷", accent: "#e6c890" },
-  Ninja_Sand_Female: { emoji: "🥷", accent: "#e6c890" },
-  Chef_Male: { emoji: "🥘", accent: "#ffd166" },
-  Chef_Female: { emoji: "🥘", accent: "#ffd166" },
-  Cowboy_Male: { emoji: "🤠", accent: "#ff9f7a" },
-  Cowboy_Female: { emoji: "🤠", accent: "#ff9f7a" },
-  Goblin_Male: { emoji: "👺", accent: "#8ad48a" },
-  Goblin_Female: { emoji: "👺", accent: "#8ad48a" },
-  Casual_Male: { emoji: "🧍", accent: "#eaeaf0" },
-  Casual_Female: { emoji: "🧍‍♀️", accent: "#eaeaf0" },
-  Casual_Bald: { emoji: "🧑‍🦲", accent: "#eaeaf0" },
-  Casual2_Male: { emoji: "🧍", accent: "#eaeaf0" },
-  Casual2_Female: { emoji: "🧍‍♀️", accent: "#eaeaf0" },
-  Casual3_Male: { emoji: "🧍", accent: "#eaeaf0" },
-  Casual3_Female: { emoji: "🧍‍♀️", accent: "#eaeaf0" },
-  Cow: { emoji: "🐄", accent: "#ffffff", blurb: "It's a cow. From space, somehow." },
-  Pug: { emoji: "🐶", accent: "#ffd9b3", blurb: "Pug, just hanging out." },
-  Elf: { emoji: "🧝", accent: "#a5d8ff" },
-  Doctor_Female_Old: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
-  Doctor_Female_Young: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
-  Doctor_Male_Old: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
-  Doctor_Male_Young: { emoji: "🧑‍⚕️", accent: "#a5d8ff" },
-  Pirate_Male: { emoji: "🏴‍☠️", accent: "#ff7e8a" },
-  Pirate_Female: { emoji: "🏴‍☠️", accent: "#ff7e8a" },
-  Viking_Male: { emoji: "⚒", accent: "#c9a86a" },
-  Viking_Female: { emoji: "⚒", accent: "#c9a86a" },
-  Soldier_Male: { emoji: "🪖", accent: "#8ad48a" },
-  Soldier_Female: { emoji: "🪖", accent: "#8ad48a" },
-  BlueSoldier_Male: { emoji: "🪖", accent: "#6aa8ff" },
-  BlueSoldier_Female: { emoji: "🪖", accent: "#6aa8ff" },
-  Worker_Male: { emoji: "👷", accent: "#ffd166" },
-  Worker_Female: { emoji: "👷", accent: "#ffd166" },
-  Suit_Male: { emoji: "🕴", accent: "#9aa3b5" },
-  Suit_Female: { emoji: "💼", accent: "#9aa3b5" },
-  Kimono_Male: { emoji: "🎎", accent: "#ff7e8a" },
-  Kimono_Female: { emoji: "🎎", accent: "#ff7e8a" },
-  OldClassy_Male: { emoji: "🎩", accent: "#c9a86a" },
-  OldClassy_Female: { emoji: "🎩", accent: "#c9a86a" },
-  Zombie_Male: { emoji: "🧟", accent: "#8ad48a" },
-  Zombie_Female: { emoji: "🧟‍♀️", accent: "#8ad48a" },
-  Pirate_Anne: { emoji: "🏴‍☠️", accent: "#ff7e8a", blurb: "Anne, captain of the Esmeralda fleet." },
-  Pirate_Captain_Barbarossa: { emoji: "🏴‍☠️", accent: "#c9a86a", blurb: "Barbarossa. Big beard, bigger plans." },
-  Pirate_Henry: { emoji: "🏴‍☠️", accent: "#6aa8ff", blurb: "Henry. First mate." },
-  Pirate_Mako: { emoji: "🦈", accent: "#a5d8ff", blurb: "Mako. Half pirate, half shark." },
-  Pirate_Shark: { emoji: "🦈", accent: "#a5d8ff", blurb: "Just a shark." },
-  Pirate_Sharky: { emoji: "🦈", accent: "#a5d8ff", blurb: "Sharky. Smaller, friendlier." },
-  Pirate_Skeleton: { emoji: "💀", accent: "#eaeaf0", blurb: "Cursed crew member." },
-  Pirate_Skeleton_Headless: { emoji: "🦴", accent: "#eaeaf0", blurb: "Lost his head, kept the vibe." },
-  Pirate_Tentacle: { emoji: "🐙", accent: "#b392ff", blurb: "Kraken correspondent." },
-};
-
-type CharSpec = {
-  id: string;
-  url: string;
-  label: string;
-  emoji: string;
-  blurb: string;
-  accent: string;
-};
-
-function prettyName(filename: string) {
-  return filename.replace(/_/g, " ");
-}
-
-const CHARACTERS: CharSpec[] = [
-  { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
-  { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
-  ...Object.entries(QUATERNIUS_URLS)
-    .map(([path, url]) => {
-      const filename = (path.split("/").pop() ?? "").replace(/\.glb$/, "");
-      const o = CHAR_OVERRIDES[filename] ?? {};
-      return {
-        id: filename,
-        url,
-        label: prettyName(filename),
-        emoji: o.emoji ?? "👤",
-        blurb: o.blurb ?? "Quaternius character.",
-        accent: o.accent ?? "#eaeaf0",
-      };
-    })
-    .sort((a, b) => a.label.localeCompare(b.label)),
-];
-
+// The playable roster lives in one place — src/lib/characters.ts — so
+// /lobby, /profile, /character-select and the worlds can never drift
+// apart. This file used to carry its own byte-identical copy of the
+// table, which is exactly how Flux ended up missing from the lobby.
 type VehicleSpec = {
   id: string;
   label: string;
@@ -235,6 +135,7 @@ export default function Lobby() {
     scene.add(turntable);
 
     let mixer: THREE.AnimationMixer | null = null;
+    let rig: CharacterRig | null = null;
     const actionByShortName = new Map<string, THREE.AnimationAction>();
     let activeAction: THREE.AnimationAction | null = null;
     let lastTime = performance.now();
@@ -304,6 +205,8 @@ export default function Lobby() {
           }
         });
       }
+      rig?.dispose();
+      rig = null;
       mixer = null;
       activeAction = null;
       actionByShortName.clear();
@@ -312,27 +215,20 @@ export default function Lobby() {
 
       (ring.material as THREE.MeshBasicMaterial).color.set(spec.accent);
 
-      const loader = new GLTFLoader();
-      loader.load(spec.url, (gltf) => {
-        if (myGen !== loadGen) return;
-        const model = gltf.scene;
-        model.position.set(0, 0, 0);
-        model.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
-        const fit = 2.2 / maxDim;
-        model.scale.setScalar(fit);
-        model.updateMatrixWorld(true);
-        const scaled = new THREE.Box3().setFromObject(model);
-        const scaledSize = new THREE.Vector3();
-        scaled.getSize(scaledSize);
-        // Center horizontally on the turntable so the character isn't
-        // hanging off to one side (some GLBs have off-origin pivots).
-        model.position.x = -(scaled.min.x + scaledSize.x / 2);
-        model.position.z = -(scaled.min.z + scaledSize.z / 2);
-        model.position.y = 0.05 - scaled.min.y;
+      // fitBy "max" keeps short wide characters (the cow, the pug) from
+      // blowing up trying to reach a target height. Characters with no
+      // model file are built in code rather than fetched — they arrive
+      // with no clips, so the emote list below is simply empty for them
+      // and the rig animates itself.
+      void loadCharacterRig(spec, {
+        height: 2.2, fitBy: "max", castShadow: false,
+      }).then((r) => {
+        if (myGen !== loadGen) return r.dispose();
+        rig = r;
+        mixer = r.mixer;
+        const model = r.object;
+        const scaledSize = r.size;
+        model.position.y += 0.05;
         // Re-aim the camera at the model's vertical center so short
         // characters (cow, pug) frame as well as tall ones (alien).
         lookAtY = 0.05 + scaledSize.y / 2;
@@ -340,28 +236,13 @@ export default function Lobby() {
         const dist = 3.5 + Math.max(0, scaledSize.y - 1.6) * 1.4;
         camera.position.set(0, lookAtY + 0.35, Math.max(4.5, dist));
         camera.lookAt(0, lookAtY, 0);
-        model.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const apply = (mat: THREE.Material) => {
-            const std = mat as THREE.MeshStandardMaterial;
-            if (std && "metalness" in std) {
-              std.metalness = Math.min(std.metalness, 0.3);
-              std.roughness = Math.max(std.roughness, 0.45);
-              std.envMapIntensity = 1.0;
-              std.needsUpdate = true;
-            }
-          };
-          const mat = mesh.material;
-          if (Array.isArray(mat)) mat.forEach(apply);
-          else if (mat) apply(mat);
-        });
         turntable.add(model);
 
-        if (gltf.animations.length) {
-          mixer = new THREE.AnimationMixer(model);
+        // The emote browser drives clips by hand, so it takes over the
+        // mixer the rig set up rather than using setLocomotion().
+        if (mixer && r.clips.length) {
           const shortNames: string[] = [];
-          for (const clip of gltf.animations) {
+          for (const clip of r.clips) {
             const short = shortClipName(clip.name);
             shortNames.push(short);
             actionByShortName.set(short, mixer.clipAction(clip));
@@ -370,6 +251,11 @@ export default function Lobby() {
           const startName =
             shortNames.find((n) => /idle/i.test(n)) ?? shortNames[0];
           if (startName) playClip(startName);
+        } else {
+          // No clips: either a rigless GLB or a character that animates
+          // itself. Give the latter a gentle walk so the turntable isn't
+          // showing a statue.
+          r.setLocomotion(r.animated ? 0.55 : 0);
         }
       });
     }
@@ -395,7 +281,7 @@ export default function Lobby() {
       turntable.rotation.y += delta * 0.6;
       const ringMat = ring.material as THREE.MeshBasicMaterial;
       ringMat.opacity = 0.6 + Math.sin(now * 0.002) * 0.25;
-      if (mixer) mixer.update(delta);
+      rig?.update(delta);
       renderer.render(scene, camera);
     };
     renderer.setAnimationLoop(tick);

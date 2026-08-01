@@ -118,30 +118,17 @@ import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/comp
 import { registerPOI } from "@/world/worldIndex";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
-// Flux has no model file — it's assembled from primitives and animated
-// entirely from the pilot's own motion (see proceduralPilot.ts). It rides
-// at the front of the roster because it's the one character on the island
-// whose walk speeds up smoothly instead of cross-fading between clips.
-const FLUX_ID = "flux";
-
 // Universal playable character catalog. Keep City/Edge Island aligned
 // with /character-select, /profile, and the global active-character hook.
-const CHARACTERS = [
-  {
-    name: FLUX_ID,
-    url: "",
-    label: "Flux",
-    blurb: "Built from code, not a model file. Animated head to toe.",
-    accent: "#73ffb8",
-  },
-  ...UNIVERSAL_CHARACTERS.map((c) => ({
-    name: c.id,
-    url: c.url,
-    label: c.label,
-    blurb: c.blurb,
-    accent: c.accent,
-  })),
-];
+// Entries with an empty `url` (Flux) have no model file and are built in
+// code — every load path here handles that case.
+const CHARACTERS = UNIVERSAL_CHARACTERS.map((c) => ({
+  name: c.id,
+  url: c.url,
+  label: c.label,
+  blurb: c.blurb,
+  accent: c.accent,
+}));
 
 // Honor a character picked in the Lobby; fall back to the soldier.
 function initialCharacter(): string {
