@@ -62,6 +62,20 @@ export default function FnafHUD({
   const bars = Math.min(5, state.usage);
   const low = state.power <= 20;
 
+  // Power is only ever spent at the moment you press something, so the press
+  // has to show its price — otherwise the meter drops for no visible reason.
+  const [charge, setCharge] = useState<{ amount: number; label: string } | null>(null);
+  const spendAt = state.lastSpend?.at ?? null;
+  useEffect(() => {
+    if (!state.lastSpend) {
+      setCharge(null);
+      return;
+    }
+    setCharge({ amount: state.lastSpend.amount, label: state.lastSpend.label });
+    const id = window.setTimeout(() => setCharge(null), 1100);
+    return () => window.clearTimeout(id);
+  }, [spendAt, state.lastSpend]);
+
   const doorBtn = (side: Side) => (
     <button
       onClick={() => engine.toggleDoor(side)}
@@ -214,7 +228,7 @@ export default function FnafHUD({
             POWER LEFT: <span className="font-bold">{Math.ceil(state.power)}%</span>
           </div>
           <div className="mt-1.5 flex items-center gap-1.5">
-            <span className="mr-1 text-[10px] tracking-[0.2em] text-white/40">USAGE</span>
+            <span className="mr-1 text-[10px] tracking-[0.2em] text-white/40">IN USE</span>
             {[1, 2, 3, 4, 5].map((i) => (
               <span
                 key={i}
@@ -232,9 +246,18 @@ export default function FnafHUD({
           </div>
           <div className="mt-2 h-1 w-40 overflow-hidden rounded-full bg-white/10">
             <div
-              className={`h-full transition-[width] duration-500 ${low ? "bg-red-500" : "bg-emerald-400"}`}
+              className={`h-full transition-[width] duration-300 ${low ? "bg-red-500" : "bg-emerald-400"}`}
               style={{ width: `${state.power}%` }}
             />
+          </div>
+          {/* Power now only ever moves on a press, so the press has to name its
+              own price — otherwise the meter drops for no visible reason. */}
+          <div className="mt-1.5 h-3">
+            {charge ? (
+              <span className="text-[10px] font-bold tracking-[0.2em] text-red-400">
+                −{charge.amount}% {charge.label.toUpperCase()}
+              </span>
+            ) : null}
           </div>
         </div>
 

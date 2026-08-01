@@ -75,15 +75,40 @@ different, worse game.
 centreline, so anything tighter means you can never put a door in the middle of
 the screen, and checking a door is the thing you do most.
 
-## Power
+## Power is a budget of moves, not a clock
 
-`usage = 1 + closed doors + lit lights + monitor up`, and drain is
-`0.16 + 0.145 × (usage − 1)` percent per second. A night is six 50-second
-hours, so 300 seconds: idle on one bar you finish around 50%, and sitting on
-four bars runs you dry with two hours to go. At 0% the doors open themselves,
-the building goes dark, and Freddy plays you the Toreador March — Bizet, public
-domain, and always the joke: the most cheerful possible thing to hear in the
-dark.
+**Nothing drains over time.** Not while you idle, and not while a door is held
+shut or the monitor is held up. Power is charged once, at the instant you
+commit to something:
+
+| action | cost |
+| --- | --- |
+| dropping a door | 5% |
+| striking a hall light | 2% |
+| raising the monitor | 2% |
+| Foxy hitting a shut west door | 3% + 1% per previous charge |
+
+Opening a door, killing a light, dropping the monitor and changing channel are
+all free — nothing should punish you for undoing a decision, because that is a
+drain by another name.
+
+This is a deliberate departure from the original, and it changes the question
+the game asks. FNAF bills you by the second, so the question is *can you afford
+to keep this shut*. Here the battery is roughly twenty door closes, or fifty
+light flicks, or fifty camera checks, or any mix of the three, and the question
+becomes *was that check worth five percent*. Both are good questions; this one
+was Jack's call, and it has the advantage that the meter never moves unless you
+moved it.
+
+The cost of the trade is worth stating plainly, because it is the first thing a
+player will find: **you can shut both doors at 12 AM for 10% and survive the
+night doing nothing.** If that ever needs closing, the honest fix is a
+per-second cost on a *held* door and nothing else — that is the one place the
+original's model earns its keep — not a general idle drain.
+
+At 0% the doors open themselves, the building goes dark, and Freddy plays you
+the Toreador March — Bizet, public domain, and always the joke: the most
+cheerful possible thing to hear in the dark.
 
 ## Teardown
 

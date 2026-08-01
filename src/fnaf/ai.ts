@@ -265,8 +265,9 @@ export class Director {
       a.room = "cove";
       a.timer = INTERVAL.foxy * 3;
       this.hooks.moveTo("foxy", "cove");
-      // Every trip costs more than the last: he leans on the door harder.
-      this.hooks.onFoxyBlocked(4 + this.foxyRuns * 2);
+      // Every trip costs a little more than the last: he leans harder. Kept
+      // small — the battery is a budget of presses now, not a clock.
+      this.hooks.onFoxyBlocked(3 + this.foxyRuns);
     } else {
       this.over = true;
       this.hooks.onKill("foxy");

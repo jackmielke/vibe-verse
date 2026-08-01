@@ -38,24 +38,36 @@ export interface FnafSnapshot {
   occupancy: Partial<Record<RoomId, AnimKind[]>>;
   /** Ramps 0 → 1 during the lunge; the HUD uses it to flood the screen. */
   scare: number;
+  /** The most recent charge, so the HUD can show what the last press cost. */
+  lastSpend: { amount: number; label: string; at: number } | null;
 }
 
 /** Seconds of real time per in-game hour. Six of these is a night. */
 const HOUR_SECONDS = 50;
 /**
- * Percent of battery per second, per thing you are running.
+ * What each action costs, in percent, charged once at the moment you take it.
  *
- * There is deliberately no idle drain. The original bleeds power just for
- * having the lights on in the room, which means sitting perfectly still is
- * still losing — Jack's call was that the meter should only move when you
- * move it, and he's right that it makes the meter mean something: every
- * percent gone is a decision you made.
+ * Nothing drains over time — not while you idle, and not while a door is held
+ * shut or the monitor is held up. Jack's rule, twice stated: the only time you
+ * lose power is when you *do* something. So the battery is a budget of moves
+ * rather than a clock, and the question the game asks changes from "can you
+ * afford to keep this shut" to "was that check worth five percent".
  *
- * The rate is up from 0.145 to compensate. A night is six 50-second hours, so
- * one door held shut the whole way is 90% of the battery and two is more than
- * you have. Free idling only helps if you can bear to sit in the dark.
+ * Only the *committing* half of each pair costs. Opening a door, killing a
+ * light and dropping the monitor are all free, so nothing here punishes you
+ * for undoing a decision — that would be a drain by another name.
+ *
+ * Rough budget at these numbers: twenty door closes, or fifty light flicks, or
+ * fifty camera checks, or any mix. A busy night spends most of it.
  */
-const DRAIN_PER_USAGE = 0.3;
+const COST = {
+  /** Dropping a door. Raising it again is free. */
+  door: 5,
+  /** Striking a hall light. Switching it off is free. */
+  light: 2,
+  /** Raising the monitor. Lowering it, and changing channel, are free. */
+  monitor: 2,
+} as const;
 
 export class FnafEngine {
   readonly audio = new FnafAudio();
@@ -89,6 +101,7 @@ export class FnafEngine {
   private blackout = false;
   private blackoutTimer = 0;
   private scare = 0;
+  private lastSpend: FnafSnapshot["lastSpend"] = null;
   private toast: string | null = null;
   private toastTimer = 0;
 
@@ -182,6 +195,7 @@ export class FnafEngine {
       toast: this.toast,
       occupancy,
       scare: this.scare,
+      lastSpend: this.lastSpend,
     };
   }
 
@@ -211,6 +225,7 @@ export class FnafEngine {
     this.blackout = false;
     this.blackoutTimer = 0;
     this.scare = 0;
+    this.lastSpend = null;
     this.foxyRunning = false;
     this.yaw = this.yawTarget = 0;
 
@@ -243,8 +258,10 @@ export class FnafEngine {
       onKill: (kind) => this.kill(kind),
       onFoxyRun: () => this.startFoxyRun(),
       onFoxyBlocked: (penalty) => {
-        this.power = Math.max(0, this.power - penalty);
+        // The one charge you do not press a button for — but it is the door
+        // you chose to shut, doing the job you shut it for.
         this.audio.doorBang();
+        this.spend(penalty, "Impact");
         this.say(`The west door held. It cost you ${penalty}% of the battery.`, 3.2);
       },
       isWalking: (kind) => this.cast[kind].moving(),
@@ -306,8 +323,12 @@ export class FnafEngine {
       return;
     }
     this.doorsClosed[side] = !this.doorsClosed[side];
-    if (this.doorsClosed[side]) this.audio.doorClose();
-    else this.audio.doorOpen();
+    if (this.doorsClosed[side]) {
+      this.audio.doorClose();
+      this.spend(COST.door, "Door");
+    } else {
+      this.audio.doorOpen();
+    }
     this.emit();
   }
 
@@ -322,6 +343,7 @@ export class FnafEngine {
     if (this.lightsOn[side]) {
       this.lightsOn[side === "left" ? "right" : "left"] = false;
       this.audio.lightOn();
+      this.spend(COST.light, "Light");
     } else {
       this.audio.lightOff();
     }
@@ -337,6 +359,7 @@ export class FnafEngine {
       this.audio.camUp();
       this.audio.startCamStatic();
       if (this.camera === "kitchen") this.audio.startKitchenAudio();
+      this.spend(COST.monitor, "Cameras");
     } else {
       this.audio.camDown();
       this.audio.stopLoop("camstatic");
@@ -490,7 +513,6 @@ export class FnafEngine {
 
     if (this.phase === "playing") {
       this.tickClock(dt);
-      this.tickPower(dt);
       if (!this.blackout) this.director.update(dt, this.monitorUp);
       else this.tickBlackout(dt);
     }
@@ -516,17 +538,21 @@ export class FnafEngine {
     }
   }
 
-  private tickPower(dt: number) {
-    if (this.blackout) return;
-    const drain = DRAIN_PER_USAGE * (this.usage() - 1);
-    if (drain <= 0) return;
-    const before = Math.ceil(this.power);
-    this.power -= drain * dt;
-    if (Math.ceil(this.power) !== before) this.emit();
+  /**
+   * Charge for an action. The only thing in the game that moves the battery —
+   * there is no per-frame drain at all, which is why `tickPower` is gone.
+   */
+  private spend(amount: number, label: string) {
+    if (this.blackout || this.phase !== "playing") return;
+    this.power -= amount;
+    this.lastSpend = { amount, label, at: this.clock.elapsedTime };
     if (this.power <= 0) {
       this.power = 0;
+      this.emit();
       this.enterBlackout();
+      return;
     }
+    this.emit();
   }
 
   private enterBlackout() {
