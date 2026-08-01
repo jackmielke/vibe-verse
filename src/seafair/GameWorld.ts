@@ -120,7 +120,10 @@ export class GameWorld {
     this.player.setWorld(this.terrain, (x, z) => this.water.sampleHeight(x, z));
     this.player.colliders = this.colliders;
     this.player.position.set(0, this.terrain.height(0, 55) + 1, 55);
-    this.player.yaw = Math.PI; // face out over the lake, Needle to the north-west
+    // forward is (-sin(yaw), 0, -cos(yaw)), so yaw 0 looks down -Z — out over
+    // the lake and the race course, with downtown and the Needle off to the
+    // right. Facing inland at spawn wastes the only view that sells the world.
+    this.player.yaw = 0;
     this.player.emitVitals();
     this.player.onFootstep = (surface) => {
       this.sound.play(surface === "water" ? "impact-water" : "impact-dirt", undefined, 0.28, 1);
