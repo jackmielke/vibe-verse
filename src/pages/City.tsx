@@ -60,6 +60,7 @@ import {
   MAX_FALL,
   PLAYER_RADIUS,
 } from "@/lib/worldPhysics";
+import { CollisionWorld } from "@/city/player/collision";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -3452,53 +3453,29 @@ export default function City() {
     canvas.addEventListener("gesturechange", onGestureChange);
 
     // ---- Collision helpers --------------------------------------------
-    // Only surfaces at or below refY can support you — so the floating
-    // island doesn't "catch" a pilot flying far beneath it.
+    // The queries themselves live in src/city/player/collision.ts, where
+    // they can be tested without standing up a WebGL context — see
+    // collision.test.ts, which walks a surface up through every altitude
+    // this world uses and asserts it stays walkable. `boxes` is passed by
+    // reference because worlds push into it as they load and the drifting
+    // clouds mutate theirs in place every frame.
+    const collision = new CollisionWorld(boxes, {
+      radius: PLAYER_RADIUS,
+      // Powder Peak's snow is computed, not boxed.
+      analyticHeightAt: (x, z) => skiWorld.heightAt(x, z),
+    });
+
     // Bounciness of whichever surface won the most recent
-    // supportHeightAt() call — 0 for solid ground. The landing code reads
-    // it immediately after querying support, so a single slot is enough
-    // and we avoid allocating a result object every frame.
+    // supportHeightAt() call — 0 for ordinary ground. The landing code
+    // reads it immediately after querying support.
     let supportBounce = 0;
     const supportHeightAt = (x: number, z: number, refY: number): number => {
-      // Track the tallest box top at or below refY that overlaps (x,z).
-      let h = -Infinity;
-      supportBounce = 0;
-      for (const b of boxes) {
-        if (b.height <= refY &&
-            x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
-            z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
-          if (b.height > h) { h = b.height; supportBounce = b.bouncy ?? 0; }
-        }
-      }
-      // Powder Peak's snow is analytic ground, not a box — treat any
-      // surface at/below (or a small step above) the player as support
-      // so walking uphill works like stairs.
-      const skiH = skiWorld.heightAt(x, z);
-      if (skiH !== null && skiH <= refY + 0.6 && skiH > h) { h = skiH; supportBounce = 0; }
-      // The street plate (y=0) is real ground everywhere on the surface,
-      // and it COMPETES with box tops rather than acting as a fallback —
-      // otherwise any box with a sunken top (the Gremlin Mines floor at
-      // y=-300 once sat directly under the plaza) silently wins and the
-      // player sinks straight through downtown. Only below y=-50 (the
-      // underworld's domain) does the implicit floor disappear, so mines
-      // visitors aren't snapped 300m up to the surface.
-      if (refY >= -50 && h < 0) { h = 0; supportBounce = 0; }
-      if (h !== -Infinity) return h;
-      return refY < -50 ? refY - 9999 : 0;
+      const s = collision.supportAt(x, z, refY);
+      supportBounce = s.bouncy;
+      return s.height;
     };
-
-
-    // Blocked when the body (feet y .. head y+1.7) overlaps a column.
-    const blockedAt = (x: number, z: number, y: number): boolean => {
-      for (const b of boxes) {
-        if (y < b.height - 0.4 && y + 1.7 > b.base &&
-            x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
-            z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
-          return true;
-        }
-      }
-      return false;
-    };
+    const blockedAt = (x: number, z: number, y: number): boolean =>
+      collision.isBlocked(x, z, y);
 
     // ---- Simulation state ---------------------------------------------
     const vel = new THREE.Vector3();
@@ -4484,14 +4461,10 @@ export default function City() {
 
       // Head bonk: rising into the underside of a floating world.
       if (vel.y > 0) {
-        for (const b of boxes) {
-          if (prevY + 1.8 <= b.base && pos.y + 1.8 > b.base &&
-              pos.x >= b.minX - PLAYER_RADIUS && pos.x <= b.maxX + PLAYER_RADIUS &&
-              pos.z >= b.minZ - PLAYER_RADIUS && pos.z <= b.maxZ + PLAYER_RADIUS) {
-            pos.y = b.base - 1.8;
-            vel.y = 0;
-            break;
-          }
+        const ceiling = collision.ceilingAt(pos.x, pos.z, prevY, pos.y);
+        if (ceiling !== null) {
+          pos.y = ceiling;
+          vel.y = 0;
         }
       }
 
