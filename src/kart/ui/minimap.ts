@@ -126,13 +126,18 @@ function bakeTrack(track: TrackService, count: number): Bake {
   const zs = new Float64Array(count);
   let halfWidth = 5;
 
+  let widthSum = 0;
   const frame = track.frameAt(0);
   for (let i = 0; i < count; i++) {
     const f = track.frameAt(i / count, frame);
     xs[i] = f.position.x;
     zs[i] = f.position.z;
     halfWidth = Math.max(halfWidth, f.halfWidth);
+    widthSum += f.halfWidth;
   }
+  // The widest point pads the fit so nothing clips; the *average* sets the
+  // drawn ribbon, so one 20 m start-line apron cannot make the whole map fat.
+  const meanHalf = widthSum / count;
 
   // Centre on the bounding box of the centreline rather than the mean of the
   // samples: an uneven sample density (long straight, tight hairpin) drags a
@@ -223,7 +228,7 @@ function bakeTrack(track: TrackService, count: number): Bake {
     scale,
     path,
     points,
-    roadWidth: halfWidth * 2 * scale,
+    roadWidth: meanHalf * 2 * scale,
     startLine: {
       x1: sx - (rx / len) * hw,
       y1: sy - (ry / len) * hw,

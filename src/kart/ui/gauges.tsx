@@ -108,12 +108,6 @@ export function Speedometer() {
   return (
     <div className="vk-speedo">
       <svg viewBox="0 0 100 72" aria-hidden="true">
-        <defs>
-          <filter id="vk-sp-glow" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="2.2" />
-          </filter>
-        </defs>
-
         {/* Dial face: a dark slab so the arc reads over any sky. */}
         <path
           d={DIAL}
@@ -143,9 +137,9 @@ export function Speedometer() {
           d={DIAL}
           fill="none"
           stroke="#ffcc22"
-          strokeWidth={11}
+          strokeWidth={13}
           strokeLinecap="round"
-          filter="url(#vk-sp-glow)"
+          strokeOpacity={0.32}
           style={{ strokeDasharray: ARC_LEN, strokeDashoffset: ARC_LEN, opacity: 0.3 }}
         />
         <path
@@ -355,13 +349,8 @@ export function MinimapPanel() {
   return (
     <div className="vk-map">
       <svg viewBox="0 0 1 1" aria-label="Course map">
-        <defs>
-          <filter id="vk-map-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="0.012" stdDeviation="0.012" floodColor="#020609" floodOpacity="0.9" />
-          </filter>
-        </defs>
         {minimap?.path ? (
-          <g filter="url(#vk-map-shadow)">
+          <g>
             <path
               d={minimap.path}
               fill="none"
