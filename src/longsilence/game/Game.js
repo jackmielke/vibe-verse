@@ -5,6 +5,7 @@ import { Input } from '../core/Input.js';
 import { bakeNebulaCube, makeStarField } from '../gfx/Sky.js';
 import { generateGalaxy, generateSystem, mulberry32 } from '../world/generate.js';
 import { VIBE_WORLDS } from '../world/vibeworlds.js';
+import { VibeverseData } from '../net/vibeverse.js';
 import { Planet } from '../world/Planet.js';
 import { Star } from '../world/Star.js';
 import { Dust } from '../world/Dust.js';
@@ -176,6 +177,10 @@ void main(){
 
 export class Game {
   constructor(canvas, onProgress) {
+    /* The hub's own records, shown on the archive terminal. Constructed empty
+       and always present, so every draw path can assume it exists; the React
+       page fills it in when (and if) the fetch lands. See net/vibeverse.js. */
+    this.vibe = new VibeverseData();
     // ?q=low|medium|high forces a tier, so the reduced-shader paths that only
     // phones would otherwise hit can be verified on a desktop.
     const forced = new URLSearchParams(location.search).get('q');
@@ -858,6 +863,22 @@ export class Game {
 
     // On foot the action buttons are relabelled (MAP / ARC / VIEW), so the
     // touch actions behind them have to be remapped to match what they say.
+    /* The archive terminal runs whenever the ship does, but only *advances*
+       while the player is stood in front of it — a gallery cycling to an empty
+       room is texture uploads nobody sees. Tab pages it by hand from there. */
+    {
+      const atTerminal = this.mode === 'walk' && this.player?.station?.id === 'archive';
+      this.vibe.update(dt, atTerminal);
+      // N, not Tab: Tab is consumed by the codex toggle forty lines above this
+      // — tappedCode() eats the press — so a Tab binding here would be dead
+      // code that silently opened the archive panel instead.
+      if (atTerminal && !uiOpen && input.tappedCode('KeyN')) {
+        this.vibe.step(1);
+        this.audio.ping('ui');
+        this.hud.log(`ARCHIVE · ${this.vibe.title}`, 'ok');
+      }
+    }
+
     if (this.mode === 'walk' && !uiOpen) {
       if (input.tapped('scan')) { this.starmap.toggle(); this.audio.ping('ui'); }
       if (input.tapped('auto')) { this.codex.toggle(); this.audio.ping('ui'); }

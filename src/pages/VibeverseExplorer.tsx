@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
+import { loadVibeverse } from "@/lib/loadVibeverse";
 import "@/longsilence/ui/style.css";
 
 type Phase = "loading" | "ready" | "playing" | "gate" | "error";
@@ -63,6 +64,8 @@ interface VibeverseGame {
   dispose(): void;
   /** Set by this page. The engine calls it on touchdown on a world planet. */
   onEnterWorld?: (route: string, spec: { name: string }) => void;
+  /** The hub's own records, shown on the archive terminal in the cabin. */
+  vibe?: { adopt(data: unknown): void };
 }
 
 declare global {
@@ -180,6 +183,16 @@ export default function VibeverseExplorer() {
         // which pose the game through this handle.
         window.__game = game;
         await game.boot();
+
+        /* The hub's records, for the archive terminal on the port wall. Fired
+           after boot and never awaited: the ship must be flyable whether or not
+           the database answers, so this arrives late or not at all and the
+           terminal falls back to its own readout. Errors are swallowed inside
+           loadVibeverse — see the note there about one failing table not being
+           allowed to cost the others. */
+        void loadVibeverse()
+          .then((data) => { if (!cancelled) game?.vibe?.adopt(data); })
+          .catch((e) => console.warn('vibeverse records unavailable', e));
       } catch (e) {
         console.error(e);
         if (!cancelled) {

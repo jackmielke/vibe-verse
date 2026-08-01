@@ -1014,9 +1014,48 @@ function drawRadarLabel(g, game, ctx) {
   g.text(`RANGE ${fmtDist(ctx.radarRange)}`, w / 2, 62, { size: 15, color: CY, align: 'center', track: 2 });
 }
 
+/* ===================================================== the archive terminal
+
+   The port-wall display, and the only one carrying anything from outside the
+   simulation. It cycles three pages of the vibeverse's own records — the
+   photographs, the people, the traffic on the lobby band — and it is the
+   reason to get out of the seat and walk aft.
+
+   Every page below assumes its data may be absent, because it very often is:
+   the world is a route that can be opened offline or signed out. `vibe` is
+   never null (Game always constructs one) but every array on it can be empty,
+   and each page says so in its own words rather than rendering a blank. */
 function drawArchiveIdle(g, game, ctx) {
   const { w, h } = g;
-  g.header('VIBEVERSE ARCHIVE', 22, 40, w - 44);
+  const v = game.vibe;
+  const page = v ? v.pageId : 'stats';
+
+  g.header(`VIBEVERSE ARCHIVE · ${v ? v.title : 'RECORDS'}`, 22, 40, w - 44);
+
+  if (v && v.loaded) {
+    if (page === 'gallery') drawArchiveGallery(g, v, ctx);
+    else if (page === 'crew') drawArchiveCrew(g, v, ctx);
+    else drawArchiveBand(g, v, ctx);
+  } else {
+    drawArchiveStats(g, game, v);
+  }
+
+  // Page pips, so it reads as one terminal with three pages rather than three
+  // unrelated screens that happen to share a bezel.
+  if (v && v.loaded) {
+    const n = 3, cx = w / 2 - (n - 1) * 9;
+    for (let i = 0; i < n; i++) {
+      g.dot(cx + i * 18, h - 40, i === (v.page % n) ? 3.4 : 2.2,
+        i === (v.page % n) ? CY : DIM, i === (v.page % n) ? 1 : 0.45);
+    }
+  }
+  g.text(v && v.loaded ? 'E  OPEN     ·     N  NEXT PAGE' : 'PRESS  E  TO OPEN',
+    w / 2, h - 18, { size: 13, color: AM, align: 'center', track: 3.2 });
+}
+
+/** The original readout. Still the fallback when the hub cannot be reached. */
+function drawArchiveStats(g, game, v) {
+  const { w } = g;
   g.text('THE VIBEVERSE', 22, 108, { size: 34, color: VAL, track: 4 });
   g.text('COMMISSION 1101 · VIBEY', 22, 138, { size: 15, color: AM, track: 2.4 });
 
@@ -1024,14 +1063,129 @@ function drawArchiveIdle(g, game, ctx) {
     ['SYSTEMS CHARTED', `${game.galaxy.filter((s) => s.visited).length} / ${game.galaxy.length}`],
     ['BODIES CATALOGUED', String(game.discoveries.size)],
     ['RECORDS RECOVERED', String(game.logsFound.size)],
-    ['CANTOS ATTUNED', `${game.state.resonance} / 7`],
+    ['RELAYS ATTUNED', `${game.state.resonance} / 7`],
   ];
   let y = 196;
-  for (const [k, v] of rows) {
+  for (const [k, val] of rows) {
     g.text(k, 22, y, { size: 15, color: DIM, track: 2 });
-    g.text(v, w - 22, y, { size: 17, color: CY, align: 'right' });
+    g.text(val, w - 22, y, { size: 17, color: CY, align: 'right' });
     g.line(22, y + 10, w - 22, y + 10, DIM, 1, 0.25);
     y += 42;
   }
-  g.text('PRESS  E  TO OPEN', w / 2, h - 26, { size: 15, color: AM, align: 'center', track: 4 });
+  if (v && v.error) {
+    g.text(`LINK: ${v.error.toUpperCase()}`, 22, y + 6, { size: 13, color: AM, track: 2 });
+  }
+}
+
+/**
+ * The photographs, one at a time, crossfading.
+ *
+ * A photograph that failed to load leaves `img` null — see loadVibeverse for
+ * why that is the *designed* failure rather than a tainted canvas — so the
+ * frame falls back to a caption card and the page carries on cycling.
+ */
+function drawArchiveGallery(g, v, ctx) {
+  const { w, h } = g;
+  const c = g.c;
+  const F = { x: 22, y: 62, w: w - 44, h: h - 152 };
+
+  g.fill(F.x, F.y, F.w, F.h, '#04090f', 1);
+
+  const paint = (p, alpha) => {
+    if (!p || !p.img || !p.img.width) return false;
+    // Cover the frame without distorting: crop the long axis.
+    const ir = p.img.width / p.img.height, fr = F.w / F.h;
+    let sw = p.img.width, sh = p.img.height, sx = 0, sy = 0;
+    if (ir > fr) { sw = p.img.height * fr; sx = (p.img.width - sw) / 2; }
+    else { sh = p.img.width / fr; sy = (p.img.height - sh) / 2; }
+    c.save();
+    c.globalAlpha = alpha;
+    c.beginPath();
+    c.rect(F.x, F.y, F.w, F.h);
+    c.clip();
+    try {
+      c.drawImage(p.img, sx, sy, sw, sh, F.x, F.y, F.w, F.h);
+    } catch {
+      /* An image that cannot be drawn is one frame of nothing, not a crash. */
+    }
+    c.restore();
+    return true;
+  };
+
+  const cur = v.photo;
+  const shown = paint(v.prevPhoto, 1 - v.fade) | paint(cur, v.fade);
+
+  if (!shown) {
+    g.text(v.photos.length ? 'IMAGE UNAVAILABLE' : 'NO PHOTOGRAPHS ON FILE',
+      w / 2, F.y + F.h / 2, { size: 16, color: DIM, align: 'center', track: 3 });
+  }
+
+  // Caption plate, over the bottom of the image so the text always has ground.
+  if (cur) {
+    const ch = 54;
+    g.fill(F.x, F.y + F.h - ch, F.w, ch, '#04090f', 0.78);
+    g.text(cur.title.toUpperCase(), F.x + 14, F.y + F.h - ch + 24,
+      { size: 17, color: HI, track: 1.6 });
+    const sub = [cur.residency, cur.caption].filter(Boolean).join('  ·  ');
+    if (sub) g.text(sub, F.x + 14, F.y + F.h - ch + 44, { size: 12, color: VAL });
+  }
+  g.rect(F.x, F.y, F.w, F.h, DIM, 1, 0.4);
+  g.text(`${v.photos.length ? (v.photoIdx % v.photos.length) + 1 : 0} / ${v.photos.length}`,
+    w - 22, F.y - 10, { size: 12, color: DIM, align: 'right', track: 2 });
+}
+
+/** Everyone who lives here: the people, then the agents in the lobby. */
+function drawArchiveCrew(g, v, ctx) {
+  const { w, h } = g;
+  const half = (w - 56) / 2;
+
+  g.text('RESIDENTS', 22, 84, { size: 13, color: DIM, track: 3 });
+  let y = 112;
+  for (const p of v.crew.slice(0, 9)) {
+    g.text(p.name, 22, y, { size: 16, color: p.resident ? HI : VAL });
+    if (p.detail) g.text(p.detail, 22, y + 16, { size: 11, color: DIM });
+    y += p.detail ? 38 : 28;
+  }
+  if (!v.crew.length) g.text('— no roster —', 22, y, { size: 13, color: DIM });
+
+  const cx = 22 + half + 12;
+  g.text('ON THE BAND', cx, 84, { size: 13, color: DIM, track: 3 });
+  y = 112;
+  for (const a of v.agents.slice(0, 9)) {
+    /* The status light breathes, and each agent carries its own colour out of
+       the database — the same colour it wears in the lobby, so somebody who
+       knows that room recognises the row without reading it. */
+    const pulse = 0.55 + 0.45 * Math.sin(ctx.time * 2.2 + a.name.length);
+    g.dot(cx + 5, y - 5, 3.2, a.color, a.status === 'idle' ? 0.35 : pulse);
+    g.text(a.name, cx + 18, y, { size: 15, color: VAL });
+    g.text(a.seen ? `${a.status} · ${a.seen}` : a.status,
+      w - 22, y, { size: 11, color: DIM, align: 'right' });
+    y += 30;
+  }
+  if (!v.agents.length) g.text('— band quiet —', cx, y, { size: 13, color: DIM });
+
+  g.line(22 + half + 2, 74, 22 + half + 2, h - 56, DIM, 1, 0.22);
+  g.text(`${v.crew.length} RESIDENTS   ·   ${v.agents.length} AGENTS`,
+    22, h - 56, { size: 12, color: AM, track: 2 });
+}
+
+/** The lobby band: real traffic, scrolling. */
+function drawArchiveBand(g, v, ctx) {
+  const { w, h } = g;
+  const rows = v.bandRows(9);
+  let y = 96;
+  for (const m of rows) {
+    const own = m.kind === 'event';
+    g.text(own ? '·' : '>', 22, y, { size: 13, color: own ? DIM : AM });
+    g.text(m.speaker.toUpperCase(), 40, y, { size: 13, color: own ? DIM : CY, track: 1.4 });
+    if (m.when) g.text(m.when, w - 22, y, { size: 11, color: DIM, align: 'right' });
+    g.text(m.body, 40, y + 17, { size: 13, color: own ? DIM : VAL });
+    y += 42;
+  }
+  if (!rows.length) {
+    g.text('NO TRAFFIC ON THE BAND', w / 2, h / 2,
+      { size: 16, color: DIM, align: 'center', track: 3 });
+  }
+  const total = v.counts.messages || 0;
+  g.text(`LOBBY · LAST ${total} TRANSMISSIONS`, 22, h - 56, { size: 12, color: AM, track: 2 });
 }
