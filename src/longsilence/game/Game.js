@@ -176,16 +176,27 @@ void main(){
 `;
 
 export class Game {
-  constructor(canvas, onProgress) {
+  constructor(canvas, onProgress, opts = {}) {
     /* The hub's own records, shown on the archive terminal. Constructed empty
        and always present, so every draw path can assume it exists; the React
        page fills it in when (and if) the fetch lands. See net/vibeverse.js. */
     this.vibe = new VibeverseData();
+    /* Everyone else out here. A plain snapshot the React page refreshes; the
+       engine never learns what a socket is, for the same reason it never learns
+       what Supabase is. Empty and offline until told otherwise, which is also
+       exactly what it stays if the network refuses. */
+    this.fleet = { travellers: [], here: [], bySystem: {}, online: false, events: [] };
     // ?q=low|medium|high forces a tier, so the reduced-shader paths that only
     // phones would otherwise hit can be verified on a desktop.
     const forced = new URLSearchParams(location.search).get('q');
-    this.quality = ['low', 'medium', 'high'].includes(forced) ? forced : detectQuality();
-    this.engine = new Engine(canvas, this.quality);
+    /* A phone that has opted past the door gets the low tier whatever the
+       detector thinks. `detectQuality` reads cores and memory, and a modern
+       handset reports numbers that would put it on 'medium' — which is a
+       desktop budget on a device with a tenth of the bandwidth. */
+    this.mobile = !!opts.mobile;
+    this.quality = ['low', 'medium', 'high'].includes(forced) ? forced
+      : this.mobile ? 'low' : detectQuality();
+    this.engine = new Engine(canvas, this.quality, { mobile: this.mobile });
     this.input = new Input(canvas);
     this.onProgress = onProgress || (() => { });
 

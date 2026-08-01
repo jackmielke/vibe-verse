@@ -957,10 +957,25 @@ function drawContacts(g, game, ctx) {
   const { w, h } = g;
   g.header('CONTACTS', 16, 28, w - 32);
   const ship = game.ship;
+  /* Other people first, always. A rock is a rock whenever you get to it; a
+     traveller in your system is the only thing on this panel that will not be
+     there later, and it is the one contact worth interrupting a survey for. */
+  const crew = (game.fleet?.here || []).slice(0, 3);
   const list = game.bodies.slice()
     .sort((a, b) => a.absPos.distanceToSquared(ship.absPos) - b.absPos.distanceToSquared(ship.absPos))
-    .slice(0, 8);
+    .slice(0, Math.max(3, 8 - crew.length));
   let y = 60;
+  for (const t of crew) {
+    // Their own colour, the same one they wear everywhere else in the hub.
+    g.dot(20, y - 4, 3.4, t.color, 0.6 + 0.4 * Math.sin(ctx.time * 2.4 + t.name.length));
+    g.text(t.name.slice(0, 15).toUpperCase(), 34, y, { size: 13, color: '#eafaff', track: 0.5 });
+    const d = (t.x != null && ship.absPos)
+      ? fmtDist(Math.hypot(t.x - ship.absPos.x, (t.y || 0) - ship.absPos.y, (t.z || 0) - ship.absPos.z))
+      : 'IN SYSTEM';
+    g.text(d, w - 16, y, { size: 12, color: '#8affc1', align: 'right' });
+    y += 24;
+  }
+  if (crew.length) { g.line(16, y - 16, w - 16, y - 16, DIM, 1, 0.25); y += 4; }
   for (const b of list) {
     const d = b.absPos.distanceTo(ship.absPos) - (b.radius || 0);
     const sel = b === game.target;
@@ -972,8 +987,12 @@ function drawContacts(g, game, ctx) {
     y += 24;
   }
   g.line(16, h - 40, w - 16, h - 40, DIM, 1, 0.3);
-  g.text(`${game.anomalies.filter((a) => !a.scanned).length} UNRESOLVED SIGNALS`, 16, h - 18,
-    { size: 12, color: AM, track: 1.6 });
+  const fleet = game.fleet || {};
+  const out = (fleet.travellers || []).length;
+  g.text(out
+    ? `${out} TRAVELLER${out === 1 ? '' : 'S'} IN THE GALAXY`
+    : `${game.anomalies.filter((a) => !a.scanned).length} UNRESOLVED SIGNALS`,
+  16, h - 18, { size: 12, color: out ? '#8affc1' : AM, track: 1.6 });
 }
 
 /**

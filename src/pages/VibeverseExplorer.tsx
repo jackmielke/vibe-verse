@@ -30,9 +30,13 @@ import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { loadVibeverse } from "@/lib/loadVibeverse";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { stampPassport, passportRows, passportProgress } from "@/lib/passport";
+import { joinFleet, type Fleet } from "@/lib/vibeverseFleet";
 import "@/longsilence/ui/style.css";
 
 type Phase = "loading" | "ready" | "playing" | "gate" | "error";
+
+/** Set once someone has chosen to fly it on a handset anyway. */
+const MOBILE_OPT_IN = "vibe.explorer.mobileOptIn";
 
 /**
  * The slice of the engine this page actually touches. `Game` is plain JS with
@@ -70,6 +74,10 @@ interface VibeverseGame {
   vibe?: { adopt(data: unknown): void };
   /** Applies the cross-world passport bonus once the stamps are known. */
   applyPassportBonus?: () => void;
+  /** Everyone else flying right now. Refreshed by this page; see lib/vibeverseFleet. */
+  fleet?: unknown;
+  currentSystemId?: number;
+  ship?: { absPos: { x: number; y: number; z: number }; speed: number; maxSpeed: number };
 }
 
 declare global {
@@ -80,11 +88,13 @@ declare global {
 }
 
 /**
- * Phones are turned away at the door, as upstream does.
+ * Is this a handset?
  *
- * This is not a quality tier that can be dialled down: the raymarched
- * atmospheres, the cloud decks and the twenty-pass post chain are the game, and
- * a handset cannot afford them. A short honest message beats a slideshow.
+ * Used to pick the render profile and to decide whether to show the warning
+ * first — not, any more, to refuse. Upstream turned phones away here and the
+ * reasoning held at the time; what changed is that the low tier, the dynamic
+ * resolution controller and the touch UI all exist and were simply unreachable
+ * behind this check.
  */
 function isHandset() {
   const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
@@ -143,6 +153,15 @@ export default function VibeverseExplorer() {
   // does). During flight it would sit on the canopy, one mis-click from ending
   // the trip.
   const [locked, setLocked] = useState(false);
+  /* Phones are warned, not refused. Upstream turned handsets away at the door
+     and the reasoning was sound — the raymarched atmospheres and the twenty-pass
+     post chain are the game, and they are exactly what a phone cannot afford.
+     But the engine ships a full low tier, dynamic resolution and a complete
+     touch UI, all of which were built and then never reachable. So: say plainly
+     what it costs, and let people decide. The choice is remembered. */
+  const [mobileOK, setMobileOK] = useState(() => {
+    try { return localStorage.getItem(MOBILE_OPT_IN) === "1"; } catch { return false; }
+  });
 
   useEffect(() => {
     document.body.classList.add("ls-playing");
@@ -157,7 +176,7 @@ export default function VibeverseExplorer() {
 
   // ------------------------------------------------------------------ boot
   useEffect(() => {
-    if (isHandset()) {
+    if (isHandset() && !mobileOK) {
       setPhase("gate");
       return;
     }
@@ -170,6 +189,7 @@ export default function VibeverseExplorer() {
     let cancelled = false;
     let raf = 0;
     let game: VibeverseGame | null = null;
+    let fleet: Fleet | null = null;
 
     void (async () => {
       // ~2 MB of engine, shaders and its own build of Three. It has no business
@@ -182,7 +202,7 @@ export default function VibeverseExplorer() {
           if (cancelled) return;
           setProgress(p);
           if (text) setStatus(text);
-        });
+        }, { mobile: isHandset() });
         /* The whole point of the place. Landing on San Francisco, Seafair or
            Vibe Island II is not a landing — it is a door — and this is the
            engine's only way to say so. It fires after the touchdown shot has
@@ -206,6 +226,18 @@ export default function VibeverseExplorer() {
            terminal falls back to its own readout. Errors are swallowed inside
            loadVibeverse — see the note there about one failing table not being
            allowed to cost the others. */
+        /* The fleet. Joined after boot so a refused socket cannot delay the
+           world starting, and read into the engine once a frame — `snapshot()`
+           is a plain read of reduced state, not a query. */
+        try {
+          fleet = joinFleet({
+            name: nameRef.current === "Guest" ? "Traveller" : nameRef.current,
+            onEvent: (text) => game?.hud?.log?.(`FLEET · ${text.toUpperCase()}`, "ok"),
+          });
+        } catch (e) {
+          console.warn("fleet unavailable", e);
+        }
+
         void loadVibeverse(viewerRef.current)
           .then((data) => {
             if (cancelled) return;
@@ -254,6 +286,18 @@ export default function VibeverseExplorer() {
             game.interiorCam,
           );
           game.engine.adapt(dt);
+
+          /* Tell the fleet where we are, and take back where everyone else is.
+             Both are cheap: setPosition only stores, and the send is on its own
+             four-times-a-second timer inside the fleet. */
+          if (fleet) {
+            const g2 = game as VibeverseGame;
+            fleet.setSystem(g2.currentSystemId ?? -1, g2.system?.star?.name ?? "");
+            const sh = g2.ship;
+            if (sh) fleet.setPosition(sh.absPos.x, sh.absPos.y, sh.absPos.z,
+              sh.maxSpeed ? sh.speed / sh.maxSpeed : 0);
+            g2.fleet = fleet.snapshot();
+          }
         } catch (e) {
           console.error(e);
           cancelAnimationFrame(raf);
@@ -267,12 +311,16 @@ export default function VibeverseExplorer() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      // The channel must go with the route: a presence entry that outlives the
+      // world leaves a ghost in everyone else's sky that never moves again.
+      fleet?.dispose();
+      fleet = null;
       const g = gameRef.current || game;
       gameRef.current = null;
       if (window.__game === g) delete window.__game;
       g?.dispose?.();
     };
-  }, []);
+  }, [mobileOK]);
 
   // ------------------------------------------------------------------ wake
   const wake = useCallback(() => {
@@ -336,10 +384,23 @@ export default function VibeverseExplorer() {
               SURVEY VESSEL &middot; <span className="accent">VIBEY</span>
             </div>
             <p className="boot-gate">
-              This one wants a real screen and a real GPU.
+              This world was built for a real screen and a real GPU — raymarched
+              atmospheres, volumetric cloud decks, a twenty-pass post chain.
               <br />
-              Open it on a desktop or laptop.
+              <br />
+              A phone can fly it, at reduced quality and with touch controls.
+              It will run warm.
             </p>
+            <button
+              className="boot-start"
+              onClick={() => {
+                try { localStorage.setItem(MOBILE_OPT_IN, "1"); } catch { /* private mode */ }
+                setMobileOK(true);
+                setPhase("loading");
+              }}
+            >
+              FLY IT ANYWAY
+            </button>
             <div className="boot-legal">requires WebGL2 &middot; headphones recommended</div>
             {wayOut}
           </div>

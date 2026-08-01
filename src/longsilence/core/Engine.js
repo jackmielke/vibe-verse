@@ -32,9 +32,20 @@ export function detectQuality() {
 }
 
 export class Engine {
-  constructor(canvas, quality) {
+  /**
+   * @param {object} [opts]
+   * @param {boolean} [opts.mobile] drop the two passes a phone cannot afford.
+   *   MSAA on an RGBA16F target is pure bandwidth, and bandwidth is exactly what
+   *   a tile-based mobile GPU has least of; ground AO is a half-resolution
+   *   depth-aware blur that costs more than it shows on a five-inch screen.
+   *   The log-depth buffer stays on either way — without it planets z-fight
+   *   against their own atmospheres, which is not a quality setting, it is a
+   *   broken image.
+   */
+  constructor(canvas, quality, opts = {}) {
     this.canvas = canvas;
     this.quality = quality;
+    this.mobile = !!opts.mobile;
 
     /* Diagnostic switches. Some of these make the image wrong on purpose —
        they exist so a browser that cannot be profiled from here can still be
@@ -57,9 +68,9 @@ export class Engine {
     const flags = new URLSearchParams(location.search);
     this.flags = {
       logDepth: flags.get('logdepth') !== '0',
-      msaa: flags.get('msaa') !== '0',
+      msaa: flags.get('msaa') !== '0' && !this.mobile,
       post: flags.get('post') !== '0',
-      ao: flags.get('ao') !== '0',
+      ao: flags.get('ao') !== '0' && !this.mobile,
     };
 
     this.renderer = new THREE.WebGLRenderer({
