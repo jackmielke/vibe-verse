@@ -618,8 +618,15 @@ export class Game {
     /* In a world system you arrive looking at the world, always. It is why you
        came: folding to Seafair and coming out beside an ice giant two orbits
        further in would be technically a successful jump and a completely failed
-       arrival. Elsewhere the old rule stands — the most interesting body. */
-    const spawnTarget = sys.planets.find((p) => p.worldRoute)
+       arrival. Elsewhere the old rule stands — the most interesting body.
+
+       By `worldKey`, not `worldRoute`. Redline has no route — landing on it is
+       the destination rather than a door — so under the old test it was not a
+       world for this purpose, and folding to the one planet in the galaxy you
+       came to *fight* over dropped you next to a gas giant instead. Found by
+       driving the landing in a browser; the harness reported `landed=false`
+       from four radii out. */
+    const spawnTarget = sys.planets.find((p) => p.worldKey)
       || sys.planets.find((p) => p.type === 'terran' || p.type === 'ocean')
       || sys.planets.find((p) => p.type === 'gas')
       || sys.planets[Math.min(2, sys.planets.length - 1)];
