@@ -8,8 +8,12 @@ import { useEffect, useRef, useState } from "react";
 import { bootKart } from "@/kart/boot";
 import { detectKartQuality, isShotMode, type KartEngine } from "@/kart/engine/core";
 import KartUI from "@/kart/ui/KartUI";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 export default function VibeKart() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/kart", "Vibe Kart");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<KartEngine | null>(null);
   const [engine, setEngine] = useState<KartEngine | null>(null);

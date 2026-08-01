@@ -1,66 +1,112 @@
-# Edge Esmeralda
+# VibeVerse
 
-An interactive version of Edge Esmeralda overlaid on top of a real map. See what's happening nearby in the village, walk around as your community agent, fly a chopper or VTOL over the rooftops, and spawn animated 3D worlds — a floating island, a Death Star, a tiny animated Chinatown — into the sky and streets of Healdsburg.
+A hub of worlds you can walk, fly, drive and shoot your way through, all in one
+browser tab. No install, no account, no launcher — open a link and you are in a
+world a few seconds later. Live at [myvibeverse.com](https://myvibeverse.com).
 
-The whole thing is a small experiment in engaging with the digital world in a novel, immersive way. Fully vibe-coded — more improvements to come.
+Everything here is fully vibe-coded, and it started as one thing: an
+interactive version of **Edge Esmeralda** overlaid on the real Healdsburg map.
+That world is still here — it is `/welcome` — but it is now one destination out
+of thirty.
 
-## What's in here
+## Where to start reading
 
-- **Live village map** — Mapbox 3D buildings + custom Three.js landmarks (Plaza, Meditation Temple, Observatory) anchored to real Healdsburg coordinates
-- **Vibey** — your community agent, hovering above the plaza. Tap to chat
-- **Unit-7** — autonomous resident bot wandering the streets. Click his beacon to talk; he waves, dances, jumps, gives a thumbs up
-- **Sky Patrol** — pilotable chopper + Nimbus VTOL that you can take controls of with the keyboard
-- **Spawnables** — heavy GLB worlds that load on demand:
-  - 🏝️ **Edge Island** — a lush floating world hovering 700m above the village
-  - ⭐ **Death Star** — moon-sized space station spinning east of town
-  - 🏮 **Tokyo Block** — a keyframe-animated micro-city a few blocks east of the plaza
-- **Events + Community panels** — what's happening today, where, and who's there
-- **Toggleable views** — Standard 3D dusk style and a Google-Earth–style satellite view, both with extruded 3D buildings
-- **Vibey 2.0 outer-space playground** at `/space` — Vibey on a floating asteroid platform with the Vibey Show monologue, live community photos, member cards orbiting overhead, real Edge memories floating as knowledge orbs, and the alien on a saucer
-- **Lobby** at `/lobby` — Mario-Kart-style character + vehicle picker. ~60 characters drawn from Quaternius asset packs; click a character to see it on a 3D turntable and play any of its baked animations
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — what is in this repo, how the
+  pieces fit, and the numbers. Start here.
+- **[CLAUDE.md](./CLAUDE.md)** — the working rules: push straight to `main`,
+  verify before pushing, and the contract every new world follows.
+- **[WORLDBUILDING.md](./WORLDBUILDING.md)** — everything learned building the
+  map-based village world, distilled. Written in the Edge Esmeralda era and
+  still the best guide to the Mapbox + Three.js half of the codebase.
+- **[src/longsilence/README.md](./src/longsilence/README.md)** — how to vendor
+  somebody else's standalone game and turn it into a route.
+
+## The front doors
+
+| Route | What it is |
+|---|---|
+| `/` | The 3D hub — Vibey on an asteroid, worlds orbiting as spheres |
+| `/game` | Every world and game as a flat, fast, searchable index |
+| `/terminal` | The same idea in 3D: stand in the sky and pick a world |
+| `/welcome` | The original — the real Healdsburg map |
+
+Every destination lives in exactly one place: `src/worlds/registry.ts`. Add a
+world there and it appears in the nav, the picker, `/game`, the hub and the
+passport at the same moment.
+
+## What is in here
+
+Ten game engines, each in its own directory under `src/`, sharing almost
+nothing but the router:
+
+- **San Francisco: Free Fall** (`/sf`) — the real city, hill for hill
+- **San Palmas** (`/san-palmas`) — tropical SF, and the vibeverse's FPS
+- **The Vibeverse** (`/vibeverse`) — fly a survey ship through a procedural
+  galaxy where some of the stars are worlds you can land on
+- **Vibe Kart** (`/kart`) — drift, mini-turbos, shells
+- **Vibe Golf** (`/golf`) — 63 holes of physics golf with portals and jetpacks
+- **Seafair 2117** (`/seafair`) — future Seattle, hydros and Blue Angels
+- **Vibe Island II** (`/island-2`) — the floating archipelago, rebuilt
+- **Vibe City** (`/city`) — jetpack a neon district, multiplayer, NPCs
+- **The Terminal** (`/terminal`) — the 3D lobby
+- **Genesis Bloom** (`/evolve`) — play a creature, eat, mutate, survive
+
+…plus the village map, the memory garden, the fractal museum, EDM Town,
+Globetrotter, Fruit Ninja, Vibe GO and the rest. `/game` lists all of them.
+
+## The original village map
+
+The Edge Esmeralda world at `/welcome` is still fully wired:
+
+- **Live village map** — Mapbox 3D buildings + custom Three.js landmarks
+  anchored to real Healdsburg coordinates
+- **Vibey** — the community agent hovering above the plaza. Tap to chat
+- **Unit-7** — an autonomous resident bot wandering the streets
+- **Sky Patrol** — a pilotable chopper and Nimbus VTOL
+- **Spawnables** — heavy GLB worlds that load on demand: a floating island, a
+  Death Star, a keyframe-animated micro-city
+- **Events + Community panels**, and both a dusk 3D style and a satellite view
 
 ## Project layout
 
 ```
 src/
-  pages/
-    Index.tsx                 ← village map
-    Unit7Playground.tsx       ← /space playground (Vibey 2.0 + alien saucer)
-    Lobby.tsx                 ← /lobby (character + vehicle picker)
-  components/
-    MapView.tsx               ← Mapbox + 3D character/structure layers
-    HelicopterControl.tsx     ← Cast / Vehicles / Spawn / Places menu
-    map/
-      VenueBeaconLayer.ts     ← always-on light-pillar marker
-      RingPulseLayer.ts       ← ground-ring landmark variant
-      OrbBobLayer.ts          ← hovering orb landmark variant
-      NaturePackLayer.ts      ← scatter trees/bushes/rocks for parks
-      VibeyLayer.ts / Unit7Layer.ts / VibePoliceLayer.ts / NimbusVtolLayer.ts
-      AlienLayer.ts           ← alien character on the village map
-      SpawnableLayer.ts       ← generic GLB world loader (Draco-aware)
-      PlazaLayer.ts           ← spawnable plaza pavilion + fountain
-  assets/glb/
-    robot-expressive.glb      ← Vibey 2.0 in /space
-    vibey.glb                 ← Vibey on the village map
-    alien.glb / alien-helmet.glb (Quaternius Alien Animated)
-    rocky.glb (Meshy Gilded Golem)
-    iridescent-arc.glb / floating-astronaut.glb / floating-island.glb / pixel-touch.glb (Meshy props for /space)
-    nimbus-vtol.glb           ← village map jet
-    characters/               ← every Quaternius character pack drop. Lobby auto-picks via import.meta.glob
-    nature/                   ← Quaternius Simple Nature Pack (trees + bushes + grass + rocks)
-    kits/
-      pirate/                 ← Quaternius Pirate Kit (Nov 2023)
-        environment/  ← cliffs / docks / houses / palm trees / rocks / sawmill / skulls
-        props/        ← anchor / barrel / bomb / chest / coins / fish / cannon / etc.
-        ships/        ← Large + Small
-        weapons/      ← cutlass / dagger / pistol / rifle / swords / etc.
-        ui/           ← chicken-leg / gems / gold / paper / etc.
+  App.tsx                     ← the router. 53 paths, ~30 destinations
+  worlds/
+    registry.ts               ← THE list of worlds. Everything else is a view of it
+    art.ts                    ← card art, keyed by world key
+  pages/                      ← one thin page per route; the engine lives elsewhere
+  components/                 ← app shell (GlobalNav, WorldPicker, VibeRadio),
+                                Vibe City's guts, and 49 shadcn/ui primitives
+
+  sf/                         ← San Francisco: Free Fall   (110k lines)
+  kart/                       ← Vibe Kart                   (51k)
+  longsilence/                ← The Vibeverse — vendored fork, has its own README
+  palmas/                     ← San Palmas                  (25k)
+  golf/                       ← Vibe Golf                   (23k)
+  seafair/                    ← Seafair 2117
+  island2/                    ← Vibe Island II
+  terminal/                   ← The Terminal (the 3D lobby)
+  island/                     ← Island Explorer (react-three-fiber)
+  game/                       ← Genesis Bloom (react-three-fiber)
+
+  lib/                        ← the genuinely shared code: passport, characters,
+                                economy, wallet, sounds. Deliberately small
+  hooks/                      ← identity, active character, world stamps
+  integrations/supabase/      ← generated client + types
+  assets/glb/                 ← characters, kits, props (see below)
+  assets/worlds/              ← world card art, captured from the running worlds
+  test/                       ← cross-world tests: registry, passport, chart
+
+scripts/
+  route-shot.mjs              ← screenshot any route → world card art
+  make-app-icon.mjs           ← regenerate every PWA / apple-touch icon
+  sf-shot.mjs, kart-shot.mjs  ← per-world capture harnesses with posed cameras
+
+supabase/functions/           ← 16 edge functions (Vibey chat, the nightly
+                                newspaper, the economy, agent replies, …)
 docs/
-  skills/quaternius-pack.md   ← step-by-step playbook for adding a new Quaternius asset kit
-supabase/functions/
-  unit7-chat/                 ← Vibey chat (OpenRouter → Claude Haiku)
-  vibey-monologue/            ← Vibey Show beat generator
-  community-stats/            ← profiles / agent / memories for the playground
+  skills/quaternius-pack.md   ← playbook for adding a new Quaternius asset kit
 ```
 
 ### Adding a new Quaternius / Meshy asset pack
@@ -81,11 +127,18 @@ Vite · React · TypeScript · Tailwind · shadcn/ui · Mapbox GL JS · Three.js
 ## Running it locally
 
 ```bash
-bun install
+bun install          # npm needs --legacy-peer-deps; bun.lock is the real lockfile
 bun dev
 ```
 
-Open <http://localhost:5173>. The Mapbox token is wired through `.env`.
+Open <http://localhost:8080>. The Mapbox token is wired through `.env`.
+
+```bash
+npm run build        # must pass before anything is pushed — main is always live
+npm test             # 253 tests, ~14s
+node scripts/make-app-icon.mjs                       # regenerate the PWA icons
+node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg   # world card art
+```
 
 ### Heavy GLB assets (Spawnables)
 

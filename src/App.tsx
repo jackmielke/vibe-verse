@@ -41,6 +41,8 @@ import VibeGolf from "./pages/VibeGolf.tsx";
 import Worlds from "./pages/Worlds.tsx";
 import VibeIsland2 from "./pages/VibeIsland2.tsx";
 import Terminal from "./pages/Terminal.tsx";
+import Game from "./pages/Game.tsx";
+import { CHROMELESS_ROUTES } from "./worlds/registry.ts";
 
 
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
@@ -54,28 +56,11 @@ const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
 const queryClient = new QueryClient();
 
 /** App chrome (nav + radio) — hidden anywhere that owns the whole viewport and
-    the pointer: the clean /live broadcast, and both fullscreen shooters, where
-    the nav would sit on top of the crosshair. */
-const CHROMELESS = new Set([
-  "/live",
-  "/sf",
-  "/san-francisco",
-  "/free-fall",
-  "/san-palmas",
-  "/fps",
-  "/worlds",
-  "/island-2",
-  "/vibe-island-2",
-  "/terminal",
-  "/seafair",
-  "/vibeverse",
-  "/explorer",
-  "/long-silence",
-  // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
-  "/golf",
-  // Vibe Kart owns the whole viewport, and the nav would sit on the HUD.
-  "/kart",
-]);
+    the pointer, where the nav would sit on top of a crosshair or eat a drag.
+    Derived from the registry (`chromeless: true`, aliases included) so a world
+    cannot ship fullscreen in one URL and chromed in another, plus the two
+    surfaces that are not worlds: the clean /live broadcast and the picker. */
+const CHROMELESS = new Set([...CHROMELESS_ROUTES, "/live", "/worlds"]);
 
 const AppChrome = () => {
   const { pathname } = useLocation();
@@ -139,6 +124,10 @@ const App = () => (
           <Route path="/hub" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
           <Route path="/hub-old" element={<Hub />} />
+          {/* /game — every world and game on one flat, fast, linkable page.
+              The 3D hub at "/" is the front door; this is the index. */}
+          <Route path="/game" element={<Game />} />
+          <Route path="/games" element={<Navigate to="/game" replace />} />
           {/* Community-submitted worlds. */}
           <Route path="/submit-world" element={<SubmitWorld />} />
           {/* Guided form that generates a paste-ready prompt for any AI editor. */}

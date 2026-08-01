@@ -13,41 +13,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import WorldPicker from "@/components/WorldPicker";
 import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
+import { WORLDS, type WorldEntry } from "@/worlds/registry";
 
-interface Destination {
-  to: string;
-  emoji: string;
-  label: string;
-  matchPaths?: string[];
-}
+/**
+ * Every hoppable destination, and the order of the chip row, both come from
+ * `src/worlds/registry.ts`. The nav used to keep its own list, which is how it
+ * ended up offering Vibe Star but not Vibe Golf or Vibe Kart.
+ */
+type Destination = WorldEntry;
 
-// Every hoppable world. Order = stable header order.
-const ALL_WORLDS: Destination[] = [
-  { to: "/character-select", emoji: "🧍", label: "Characters", matchPaths: ["/characters", "/profile", "/lobby"] },
-  { to: "/city?spawn=island", emoji: "🏝️", label: "Island" },
-  { to: "/city?spawn=ski", emoji: "⛷️", label: "Ski" },
-  { to: "/world", emoji: "🛋️", label: "VIBE World", matchPaths: ["/agent-lobby"] },
-  { to: "/city", emoji: "🏙️", label: "City" },
-  { to: "/space", emoji: "🌌", label: "Space", matchPaths: ["/unit7"] },
-  { to: "/edm-town", emoji: "🪩", label: "EDM Town" },
-  { to: "/sf", emoji: "🌉", label: "San Francisco", matchPaths: ["/san-francisco", "/free-fall"] },
-  { to: "/san-palmas", emoji: "🌴", label: "San Palmas", matchPaths: ["/fps"] },
-  { to: "/seafair", emoji: "🛩️", label: "Seafair 2117" },
-  { to: "/vibeverse", emoji: "🛰️", label: "The Vibeverse", matchPaths: ["/explorer", "/long-silence"] },
-  { to: "/terminal", emoji: "🛫", label: "The Terminal" },
-  { to: "/island-2", emoji: "🏝️", label: "Vibe Island II", matchPaths: ["/vibe-island-2"] },
-  { to: "/evolve", emoji: "🧬", label: "Evolve", matchPaths: ["/bestiary"] },
-  { to: "/garden", emoji: "🌱", label: "Garden", matchPaths: ["/gallery"] },
-  { to: "/go", emoji: "🧭", label: "Vibe GO" },
-  { to: "/city?spawn=vibestar", emoji: "⭐", label: "Vibe Star" },
-  { to: "/city?spawn=moon", emoji: "🌙", label: "Moon" },
-  { to: "/hub", emoji: "🪐", label: "Hub" },
-  { to: "/lobby", emoji: "🏎️", label: "Lobby" },
-  { to: "/museum", emoji: "🖼️", label: "Museum" },
-  { to: "/ninja", emoji: "🍉", label: "Fruit Ninja" },
-  { to: "/coin", emoji: "🪙", label: "VIBE" },
-  { to: "/about", emoji: "✨", label: "About" },
-];
+const ALL_WORLDS: Destination[] = WORLDS.filter((w) => w.nav);
 
 const VISIBLE = 5;
 
@@ -78,14 +53,14 @@ export default function GlobalNav() {
   }, []);
 
   const overflow = useMemo<Destination[]>(
-    () => ALL_WORLDS.filter((w) => !visible.some((v) => v.to === w.to)),
+    () => ALL_WORLDS.filter((w) => !visible.some((v) => v.key === w.key)),
     [visible]
   );
 
   const isActive = (d: Destination) => {
-    const [path, query] = d.to.split("?");
+    const [path, query] = d.route.split("?");
     const pathHit =
-      location.pathname === path || !!d.matchPaths?.includes(location.pathname);
+      location.pathname === path || Boolean(d.aliases?.includes(location.pathname));
     if (!pathHit) return false;
     if (path === "/city") {
       const spawnOf = (s: string | undefined) =>
@@ -124,11 +99,14 @@ export default function GlobalNav() {
             WebkitBackdropFilter: "blur(10px)",
           }}
         >
+          {/* Points at /game, not at "/". The hub is beautiful and slow; this
+              chip is the one people press when they want to *see what's here*,
+              and that deserves the flat index that loads in a frame. */}
           <Link
-            to="/"
-            className={chipClass(location.pathname === "/")}
-            title="World selector"
-            aria-current={location.pathname === "/" ? "page" : undefined}
+            to="/game"
+            className={chipClass(location.pathname === "/game")}
+            title="Every world and game, on one page"
+            aria-current={location.pathname === "/game" ? "page" : undefined}
           >
             <span className="text-sm leading-none">🌐</span>
             <span className={labelClass}>Worlds</span>
@@ -152,14 +130,14 @@ export default function GlobalNav() {
               const active = isActive(d);
               return (
                 <Link
-                  key={d.to}
-                  to={d.to}
+                  key={d.key}
+                  to={d.route}
                   className={chipClass(active)}
-                  title={d.label}
+                  title={d.blurb}
                   aria-current={active ? "page" : undefined}
                 >
                   <span className="text-sm leading-none">{d.emoji}</span>
-                  <span className={labelClass}>{d.label}</span>
+                  <span className={labelClass}>{d.name}</span>
                   {active && (
                     <span
                       className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
@@ -189,8 +167,8 @@ export default function GlobalNav() {
                 const active = isActive(d);
                 return (
                   <Link
-                    key={d.to}
-                    to={d.to}
+                    key={d.key}
+                    to={d.route}
                     className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-colors ${
                       active
                         ? "bg-primary/25 text-primary"
@@ -199,7 +177,7 @@ export default function GlobalNav() {
                   >
                     <span>{d.emoji}</span>
                     <span className="font-heading font-semibold tracking-wider uppercase text-[10.5px]">
-                      {d.label}
+                      {d.name}
                     </span>
                   </Link>
                 );

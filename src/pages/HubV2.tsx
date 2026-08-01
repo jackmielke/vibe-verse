@@ -59,17 +59,7 @@ const CHAR_PICKS: CharSpec[] = [
   { id: "Pug", label: "Pug", emoji: "🐶", url: quatUrl("Pug") ?? unit7ModelUrl },
 ].filter((c) => c.url);
 
-import cityArt from "@/assets/worlds/city.jpg";
-import islandArt from "@/assets/worlds/island.jpg";
-import spaceArt from "@/assets/worlds/space.jpg";
 import lobbyArt from "@/assets/worlds/lobby.png";
-import gardenArt from "@/assets/worlds/garden.jpg";
-import museumArt from "@/assets/worlds/museum.jpg";
-import evolveArt from "@/assets/worlds/evolve.jpg";
-import ninjaArt from "@/assets/worlds/ninja.jpg";
-import vibeArt from "@/assets/worlds/vibe.jpg";
-import aboutArt from "@/assets/worlds/about.jpg";
-import villageArt from "@/assets/edge-app-icon-bg.png";
 
 interface World {
   to: string;
@@ -81,59 +71,36 @@ interface World {
   model?: "floating-island";
 }
 
-import edmTownArt from "@/assets/worlds/edm-town.jpg";
-import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
-import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
-import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
-import terminalArt from "@/assets/worlds/terminal.jpg";
-import golfArt from "@/assets/worlds/golf.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
 import CityEntryScreen from "@/components/city/CityEntryScreen";
+import { WORLDS, featuredFirst } from "@/worlds/registry";
+import { artFor } from "@/worlds/art";
 
-const OFFICIAL_WORLDS: World[] = [
-  // Edge Island leads the carousel — first-time visitors land on the
-  // floating papercraft island as the focused world.
-  { to: "/city?spawn=island", name: "Vibe Island", art: islandArt, color: "#fde68a",
-    blurb: "A handcrafted papercraft realm floating in the sky.", model: "floating-island" },
-  { to: "/island-explorer", name: "Island Explorer", art: islandArt, color: "#fbbf24",
-    blurb: "Pick a character + world (Sunset Cove, Sky Island, Edge Esmeralda) and explore." },
-  { to: "/edm-town", name: "EDM Town", art: edmTownArt, color: "#ff2bd6",
-    blurb: "Low-poly neon festival town — dance, photo mode, sign the guestbook." },
-  { to: "/terminal", name: "The Terminal", art: terminalArt, color: "#38bdf8",
-    blurb: "The front door — every world floating around you. Pick one and go." },
-  { to: "/island-2", name: "Vibe Island II", art: vibeIsland2Art, color: "#ffb347",
-    blurb: "The floating archipelago, rebuilt — lagoon, keels, cloud sea." },
-  { to: "/san-palmas", name: "San Palmas", art: sanPalmasArt, color: "#ffb020",
-    blurb: "Tropical San Francisco — the vibeverse's FPS. Guns, sun, long draw distance." },
-  { to: "/sf", name: "San Francisco", art: sanFranciscoArt, color: "#ff6a2b",
-    blurb: "FREE FALL — the real city, hill for hill. Fly it now; grapple and wingsuit soon." },
-  { to: "/golf", name: "Vibe Golf", art: golfArt, color: "#34d399",
-    blurb: "Physics golf across 63 holes — portals, jetpacks and a bag of very silly balls." },
-  { to: "/city?spawn=moon", name: "The Moon", art: islandArt, color: "#cfd5e0",
-    blurb: "A tiny landable moon near the island — touch down and plant your flag." },
-  { to: "/space", name: "Space Outpost", art: spaceArt, color: "#7dd3fc",
-    blurb: "Vibey 2.0's late-night show on a floating asteroid." },
-  { to: "/city", name: "Vibe City", art: cityArt, color: "#f0abfc",
-    blurb: "Jetpack a neon district — multiplayer + NPCs." },
-  { to: "/evolve", name: "Genesis Bloom", art: evolveArt, color: "#a3e635",
-    blurb: "Play a creature, eat, mutate, survive the apex." },
-  { to: "/garden", name: "Memory Garden", art: gardenArt, color: "#86efac",
-    blurb: "Vibey's memory garden and the outdoor art fair." },
-  { to: "/museum", name: "Fractal Museum", art: museumArt, color: "#fbcfe8",
-    blurb: "A walkable, Seuss-flavored gallery of famous fractals." },
-  { to: "/lobby", name: "Lobby", art: lobbyArt, color: "#fca5a5",
-    blurb: "Pick your character and vehicle, Mario-Kart style." },
-  { to: "/ninja", name: "Fruit Ninja", art: ninjaArt, color: "#fda4af",
-    blurb: "Slice fruit in VR (or mouse) — chase the high score." },
-  { to: "/coin", name: "VIBE Hub", art: vibeArt, color: "#fcd34d",
-    blurb: "$VIBE — community currency, holders, and market." },
-  { to: "/", name: "Healdsburg Village", art: villageArt, color: "#5eead4",
-    blurb: "The real-world map — Vibey, choppers, spawnables." },
-  { to: "/about", name: "About", art: aboutArt, color: "#c4b5fd",
-    blurb: "What this is and how it's stitched together." },
-];
+/**
+ * The carousel's worlds, derived from `src/worlds/registry.ts`.
+ *
+ * The hub kept its own copy of the list until this line replaced it, and the
+ * copy had drifted badly: Seafair and The Vibeverse were missing entirely, Vibe
+ * Kart had never been added, and the "Healdsburg Village" card pointed at "/",
+ * which stopped being the village the day the hub took that route — clicking it
+ * reloaded the page you were already on.
+ *
+ * Only worlds with real card art make the carousel, because every world here is
+ * a *textured sphere* and there is nothing to map onto a world that has never
+ * been photographed. Those worlds still appear on /game with a drawn panel.
+ */
+const OFFICIAL_WORLDS: World[] = featuredFirst(WORLDS)
+  .filter((w) => artFor(w.key))
+  .map((w) => ({
+    to: w.route,
+    name: w.name,
+    blurb: w.blurb,
+    art: artFor(w.key)!,
+    color: w.accent,
+    model: w.model,
+  }));
 
 // Fallback preview when a community submission has no preview_url.
 const COMMUNITY_FALLBACK_ART = lobbyArt;

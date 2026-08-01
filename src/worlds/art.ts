@@ -1,0 +1,64 @@
+/**
+ * Card art, keyed by world key.
+ *
+ * Split out of `registry.ts` on purpose: the registry is imported by the
+ * passport and by the vendored ship, and neither of those should pull a
+ * megabyte of JPEGs into its chunk just to know a world's name.
+ *
+ * Every image in here is a real capture from the running world. A world whose
+ * capture only ever produces a broken frame gets *no* entry, and the surfaces
+ * fall back to a drawn panel — misleading card art is worse than none. Recapture
+ * with `node scripts/route-shot.mjs <route> src/assets/worlds/<key>.jpg` when a
+ * world changes enough that its card starts lying.
+ */
+import aboutArt from "@/assets/worlds/about.jpg";
+import cityArt from "@/assets/worlds/city.jpg";
+import edmTownArt from "@/assets/worlds/edm-town.jpg";
+import evolveArt from "@/assets/worlds/evolve.jpg";
+import gardenArt from "@/assets/worlds/garden.jpg";
+import golfArt from "@/assets/worlds/golf.jpg";
+import islandArt from "@/assets/worlds/island.jpg";
+import lobbyArt from "@/assets/worlds/lobby.png";
+import museumArt from "@/assets/worlds/museum.jpg";
+import ninjaArt from "@/assets/worlds/ninja.jpg";
+import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
+import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
+import skiArt from "@/assets/worlds/ski.jpg";
+import spaceArt from "@/assets/worlds/space.jpg";
+import terminalArt from "@/assets/worlds/terminal.jpg";
+import vibeArt from "@/assets/worlds/vibe.jpg";
+import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
+import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
+import villageArt from "@/assets/edge-app-icon-bg.png";
+
+export const WORLD_ART: Record<string, string> = {
+  about: aboutArt,
+  city: cityArt,
+  "edm-town": edmTownArt,
+  evolve: evolveArt,
+  garden: gardenArt,
+  golf: golfArt,
+  island: islandArt,
+  "island-explorer": islandArt,
+  lobby: lobbyArt,
+  moon: islandArt,
+  museum: museumArt,
+  ninja: ninjaArt,
+  sf: sanFranciscoArt,
+  "san-palmas": sanPalmasArt,
+  ski: skiArt,
+  space: spaceArt,
+  terminal: terminalArt,
+  coin: vibeArt,
+  "island-2": vibeIsland2Art,
+  vibeverse: vibeverseArt,
+  village: villageArt,
+  // Deliberately absent, and each for the same reason — no honest capture yet:
+  //   seafair  · still being art-directed
+  //   kart     · a screenshot of a half-built racetrack promises the wrong thing
+  //   globetrotter, go, agent-lobby, times, companions, world-builder,
+  //   submit-world, characters, vibestar
+};
+
+/** Card art for a world, or undefined when there is no honest capture. */
+export const artFor = (key: string): string | undefined => WORLD_ART[key];

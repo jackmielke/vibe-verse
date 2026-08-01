@@ -21,13 +21,18 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
 - A thin page in `src/pages/`, lazy-loaded from `src/App.tsx`, that owns the
   menus and mounts a container the engine renders into. Everything that moves
   lives in its own directory under `src/`.
-- Its route added to `CHROMELESS` in `src/App.tsx` if it owns the whole
-  viewport — the global nav sits on top of a crosshair otherwise.
-- An entry in `src/components/GlobalNav.tsx` and a card in
-  `src/components/WorldPicker.tsx`.
-- Card art that is a real capture from the running world. A world whose capture
-  only ever produces a broken frame ships without art: misleading card art is
-  worse than none.
+- **One entry in `src/worlds/registry.ts`.** That is the whole list — the nav,
+  the picker, `/game`, the hub carousel and the passport are all views of it, so
+  a world added there shows up in all of them at once. Do not start a seventh
+  list; six was already too many, and they disagreed.
+  - `chromeless: true` if it owns the whole viewport — the global nav sits on
+    top of a crosshair otherwise. Aliases are covered automatically.
+  - `passport: true` **and** a `useWorldStamp` call in the page, together. A
+    test fails if only one of the two is there.
+- Card art that is a real capture from the running world
+  (`node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg`, then a
+  line in `src/worlds/art.ts`). A world whose capture only ever produces a
+  broken frame ships without art: misleading card art is worse than none.
 - A way back to the hub from inside the world, shown when the player is not
   mid-action.
 - Teardown on unmount — dispose the renderer, close audio contexts, remove

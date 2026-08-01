@@ -1,246 +1,23 @@
 /**
  * WorldPicker — the "choose your world" gateway.
  *
- * Shows automatically once per session after the splash, and any time
- * from the 🌐 Worlds chip in GlobalNav. Lists EVERY world as a preview
- * card (real in-game screenshots from src/assets/worlds/), ordered
- * favorites-first. Clicking a card routes straight there — including
- * the Cardboard Island card, which spawns you on the island lawn.
+ * Shows automatically once per session after the splash, and any time from the
+ * 🌐 Worlds chip in GlobalNav. Lists EVERY world as a preview card, ordered
+ * featured-first. Clicking a card routes straight there — including the Vibe
+ * Island card, which spawns you on the island lawn.
  *
- * Re-capture a card's art when its world changes enough to feel stale.
+ * The list itself is `src/worlds/registry.ts`. This component used to keep its
+ * own copy, as did the nav, the hub and the Terminal, and the four of them
+ * disagreed about which worlds exist. Now there is one list and four views of
+ * it. Card art is keyed off the world's `key` in `src/worlds/art.ts` — recapture
+ * it when a world changes enough that its card starts lying.
  */
 import { createPortal } from "react-dom";
 import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
-import villageArt from "@/assets/edge-app-icon-bg.png";
-import cityArt from "@/assets/worlds/city.jpg";
-import islandArt from "@/assets/worlds/island.jpg";
-import skiArt from "@/assets/worlds/ski.jpg";
-import spaceArt from "@/assets/worlds/space.jpg";
-import lobbyArt from "@/assets/worlds/lobby.png";
-import gardenArt from "@/assets/worlds/garden.jpg";
-import museumArt from "@/assets/worlds/museum.jpg";
-import evolveArt from "@/assets/worlds/evolve.jpg";
-import ninjaArt from "@/assets/worlds/ninja.jpg";
-import vibeArt from "@/assets/worlds/vibe.jpg";
-import aboutArt from "@/assets/worlds/about.jpg";
-
-interface WorldCard {
-  to: string;
-  emoji: string;
-  name: string;
-  /**
-   * In-game capture. Optional: a world whose capture only ever produces a
-   * broken frame gets a drawn panel instead, because misleading card art is
-   * worse than none.
-   */
-  art?: string;
-  blurb: string;
-  /** Featured worlds sort to the top and get the wide treatment. */
-  featured?: boolean;
-  /** Short, honest statement of what the world is right now. */
-  status?: string;
-  /** Signal colour for a featured world's chrome. */
-  accent?: string;
-}
-
-import edmTownArt from "@/assets/worlds/edm-town.jpg";
-import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
-import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
-import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
-import terminalArt from "@/assets/worlds/terminal.jpg";
-import golfArt from "@/assets/worlds/golf.jpg";
-import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
-
-const WORLDS: WorldCard[] = [
-  {
-    to: "/terminal",
-    emoji: "🛫",
-    name: "The Terminal",
-    art: terminalArt,
-    blurb: "The front door. Stand on a platform in the sky with every world floating around you, and pick one.",
-    featured: true,
-    status: "Playable — the lobby",
-    accent: "#38bdf8",
-  },
-  {
-    to: "/island-2",
-    emoji: "🏝️",
-    name: "Vibe Island II",
-    art: vibeIsland2Art,
-    blurb: "The floating archipelago, rebuilt — a carved lagoon that spills into the clouds, and islands you can fly underneath.",
-    featured: true,
-    status: "In progress — fly it now",
-    accent: "#ffb347",
-  },
-  {
-    to: "/vibeverse",
-    emoji: "🛰️",
-    name: "The Vibeverse",
-    // A real frame out of the running build, not key art.
-    art: vibeverseArt,
-    blurb:
-      "The whole place, seen from orbit. Fly the survey vessel Vibey between the stars — three of them are real worlds you can land on, and landing is how you walk in.",
-    featured: true,
-    status: "Playable — desktop only, wants a real GPU",
-    accent: "#8fe4ff",
-  },
-  {
-    to: "/seafair",
-    emoji: "🛩️",
-    name: "Seafair 2117",
-    // No capture yet — the world is still being art-directed, and their own
-    // rule applies: misleading card art is worse than none.
-    blurb:
-      "Future Seattle on Seafair weekend. Hydros on Lake Washington, Blue Angels overhead, and something alien holding the Space Needle.",
-    featured: true,
-    status: "In progress — playable, being art-directed",
-    accent: "#12a5f5",
-  },
-  {
-    to: "/san-palmas",
-    emoji: "🌴",
-    name: "San Palmas",
-    art: sanPalmasArt,
-    blurb: "Tropical San Francisco — the vibeverse's FPS. Guns, sun, and a very long draw distance.",
-    featured: true,
-    status: "Playable — move, look, shoot",
-    accent: "#ffb020",
-  },
-  {
-    to: "/sf",
-    emoji: "🌉",
-    name: "San Francisco",
-    art: sanFranciscoArt,
-    blurb: "FREE FALL — the real city, hill for hill, bridge for bridge. Fly it now; grapple and wingsuit soon.",
-    featured: true,
-    status: "Sandbox — fly the city",
-    accent: "#ff6a2b",
-  },
-  {
-    to: "/edm-town",
-    emoji: "🪩",
-    name: "EDM Town",
-    art: edmTownArt,
-    blurb: "Low-poly neon festival town — lasers, a dancing crowd, photo mode, and a guestbook.",
-  },
-  {
-    to: "/kart",
-    emoji: "🏁",
-    name: "Vibe Kart",
-    // Art lands once the course can be photographed — a drawn panel beats a
-    // screenshot of a half-built racetrack.
-    blurb: "Arcade kart racing — drift for mini-turbos, sling shells, and take the hairpin shortcut.",
-    status: "New — one circuit, eight racers",
-    accent: "#ffcc22",
-  },
-  {
-    to: "/golf",
-    emoji: "⛳",
-    name: "Vibe Golf",
-    art: golfArt,
-    blurb: "Physics golf across 63 holes — portals, jetpacks, and a bag of very silly balls.",
-  },
-  {
-    to: "/space",
-    emoji: "🌌",
-    name: "Space",
-    art: spaceArt,
-    blurb: "Vibey 2.0's late-night show on a floating asteroid, with the alien next door.",
-  },
-  {
-    to: "/evolve",
-    emoji: "🧬",
-    name: "Evolve",
-    art: evolveArt,
-    blurb: "The Genesis Bloom sim — play a creature, eat, mutate, survive the apex.",
-  },
-  {
-    to: "/garden",
-    emoji: "🌱",
-    name: "Garden",
-    art: gardenArt,
-    blurb: "Vibey's memory garden — walk among planted memories and the art fair.",
-  },
-  {
-    to: "/city",
-    emoji: "🏙️",
-    name: "Vibe City",
-    art: cityArt,
-    blurb: "Jetpack a neon district — multiplayer, NPCs, star runs, talk to Vibey.",
-  },
-  {
-    to: "/city?spawn=island",
-    emoji: "🏝️",
-    name: "Vibe Island",
-    art: islandArt,
-    blurb: "A magically weird world in the sky — Jerry, the SnackFe cafe, the zipline, the rideable zeppelin. Lands you right on it.",
-  },
-  {
-    to: "/city?spawn=ski",
-    emoji: "⛷️",
-    name: "Powder Peak",
-    art: skiArt,
-    blurb: "The ski world — carve real slopes, ride the gondola, warm up at the Vibe Lodge.",
-  },
-  {
-    to: "/city?spawn=moon",
-    emoji: "🌙",
-    name: "The Moon",
-    art: islandArt,
-    blurb: "A tiny landable moon near Vibe Island — touch down on the glowing pad and plant your flag.",
-  },
-  {
-    to: "/",
-    emoji: "🗺️",
-    name: "Village",
-    art: villageArt,
-    blurb: "The real Healdsburg map — Vibey, Unit-7, choppers, and spawnable worlds.",
-  },
-  {
-    to: "/lobby",
-    emoji: "🏎️",
-    name: "Lobby",
-    art: lobbyArt,
-    blurb: "Pick your character and vehicle, Mario-Kart style. ~60 to choose from.",
-  },
-  {
-    to: "/museum",
-    emoji: "🖼️",
-    name: "Museum",
-    art: museumArt,
-    blurb: "A walkable, Seuss-flavored gallery of famous fractals.",
-  },
-  {
-    to: "/ninja",
-    emoji: "🍉",
-    name: "Fruit Ninja",
-    art: ninjaArt,
-    blurb: "Slice fruit in VR (or with the mouse) and chase the high score.",
-  },
-  {
-    to: "/coin",
-    emoji: "🪙",
-    name: "VIBE",
-    art: vibeArt,
-    blurb: "$VIBE — the community currency hub, holders, and market.",
-  },
-  {
-    to: "/about",
-    emoji: "✨",
-    name: "About",
-    art: aboutArt,
-    blurb: "What this is and how it's stitched together, told on a floating asteroid.",
-  },
-  {
-    to: "/companions",
-    emoji: "🧪",
-    name: "Agent Lab",
-    art: evolveArt,
-    blurb: "Experimental — hatch your own companion: name it, give it a personality, pick a look.",
-  },
-];
+import { WORLDS, featuredFirst, type WorldEntry } from "@/worlds/registry";
+import { artFor } from "@/worlds/art";
 
 export default function WorldPicker({
   open,
@@ -251,8 +28,7 @@ export default function WorldPicker({
   onClose: () => void;
   /**
    * Render inline as a full page (for the /worlds route) instead of as a
-   * portalled overlay. Same component, same list — there is exactly one
-   * definition of "the worlds" in this codebase and this is it.
+   * portalled overlay. Same component, same list.
    */
   asPage?: boolean;
 }) {
@@ -260,7 +36,8 @@ export default function WorldPicker({
   const location = useLocation();
   const [query, setQuery] = useState("");
   useEffect(() => { if (!open) setQuery(""); }, [open]);
-  const here = (w: WorldCard) => w.to.split("?")[0] === location.pathname && !w.to.includes("?");
+  const here = (w: WorldEntry) =>
+    w.route.split("?")[0] === location.pathname && !w.route.includes("?");
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q
@@ -270,7 +47,7 @@ export default function WorldPicker({
       : WORLDS;
     // Featured worlds lead. Stable within each group so the rest keeps its
     // hand-tuned order.
-    return [...list].sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+    return featuredFirst(list);
   }, [query]);
 
   const body = (
@@ -296,7 +73,7 @@ export default function WorldPicker({
                 Choose your world
               </h1>
               <p className="text-xs text-muted-foreground tracking-[0.18em] uppercase">
-                Edge Esmeralda · a floating world, in session
+                {WORLDS.length} doors · one browser tab
               </p>
             </motion.div>
 
@@ -319,12 +96,12 @@ export default function WorldPicker({
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full">
               {filtered.map((w, i) => (
                 <motion.button
-                  key={w.to}
+                  key={w.key}
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.05 * i, duration: 0.35 }}
                   onClick={() => {
-                    navigate(w.to);
+                    navigate(w.route);
                     onClose();
                   }}
                   className={`group glass-panel rounded-2xl overflow-hidden text-left border transition-colors ${
@@ -339,9 +116,9 @@ export default function WorldPicker({
                       w.featured ? "aspect-[16/7]" : "aspect-video"
                     }`}
                   >
-                    {w.art ? (
+                    {artFor(w.key) ? (
                       <img
-                        src={w.art}
+                        src={artFor(w.key)}
                         alt={w.name}
                         loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -351,7 +128,7 @@ export default function WorldPicker({
                         className="w-full h-full"
                         style={{
                           background:
-                            `radial-gradient(120% 90% at 18% 0%, ${w.accent ?? "#888"}44, transparent 62%),` +
+                            `radial-gradient(120% 90% at 18% 0%, ${w.accent}44, transparent 62%),` +
                             "linear-gradient(178deg, #11151d 0%, #080a0f 70%)",
                         }}
                       >
@@ -363,7 +140,7 @@ export default function WorldPicker({
                         >
                           <path
                             d="M0 60V44h9V33h7v11h6V26h8v18h5V36h9v8h7V20h8v24h6V31h10v13h7V38h8v6h6V28h9v16h7v-9h8v9h6V33h9v11h7V41h8v19z"
-                            fill={w.accent ?? "#888"}
+                            fill={w.accent}
                           />
                         </svg>
                       </div>
@@ -371,7 +148,7 @@ export default function WorldPicker({
                     {w.status && (
                       <span
                         className="absolute bottom-2 left-2 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-black"
-                        style={{ background: w.accent ?? "#fff" }}
+                        style={{ background: w.accent }}
                       >
                         {w.status}
                       </span>

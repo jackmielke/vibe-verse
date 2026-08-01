@@ -1,31 +1,47 @@
 {
-  "name": "Edge Esmeralda",
-  "short_name": "Edge Esmeralda",
-  "description": "Edge Esmeralda — a pop-up village social map and event feed.",
-  "start_url": ".",
-  "scope": ".",
+  "id": "/",
+  "name": "VibeVerse",
+  "short_name": "VibeVerse",
+  "description": "A hub of worlds you can walk, fly, drive and shoot your way through — all in one browser tab.",
+  "start_url": "/game?src=pwa",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#0a1426",
   "theme_color": "#0a1426",
+  "categories": ["games", "entertainment"],
   "icons": [
     {
-      "src": "app-icon-192.png",
+      "src": "/app-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "app-icon-512.png",
+      "src": "/app-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "app-icon-maskable.png",
+      "src": "/app-icon-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "The Terminal",
+      "short_name": "Terminal",
+      "description": "Stand in the sky and pick a world",
+      "url": "/terminal"
+    },
+    {
+      "name": "All worlds",
+      "short_name": "Worlds",
+      "description": "Every world and game on one page",
+      "url": "/game"
     }
   ]
 }
