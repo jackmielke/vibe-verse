@@ -61,6 +61,9 @@ export default function FnafHUD({
   const playing = state.phase === "playing";
   const bars = Math.min(5, state.usage);
   const low = state.power <= 20;
+  // The monitor takes six seconds to come back after you drop it. Looking is
+  // free; looking *again straight away* is what costs you.
+  const cooling = !state.monitorUp && state.camCooldown > 0;
 
   // Power is only ever spent at the moment you press something, so the press
   // has to show its price — otherwise the meter drops for no visible reason.
@@ -268,12 +271,36 @@ export default function FnafHUD({
       {playing && !state.blackout && (
         <button
           onClick={() => engine.toggleMonitor()}
-          className="pointer-events-auto absolute bottom-0 left-1/2 w-[min(70vw,520px)] -translate-x-1/2 rounded-t-xl border border-b-0 border-white/15 bg-black/75 px-6 pb-3 pt-2 text-center backdrop-blur transition hover:bg-black/90"
+          disabled={cooling}
+          className={`pointer-events-auto absolute bottom-0 left-1/2 w-[min(70vw,520px)] -translate-x-1/2 overflow-hidden rounded-t-xl border border-b-0 px-6 pb-3 pt-2 text-center backdrop-blur transition ${
+            cooling
+              ? "cursor-not-allowed border-white/10 bg-black/85"
+              : "border-white/15 bg-black/75 hover:bg-black/90"
+          }`}
         >
-          <div className="mx-auto mb-1.5 h-1 w-16 rounded-full bg-white/30" />
-          <div className="text-[11px] font-bold tracking-[0.4em] text-white/70">
-            {state.monitorUp ? "CLOSE MONITOR" : "CAMERAS"}
-          </div>
+          {/* The cooldown drains left to right across the tab itself, so the
+              wait is a thing you watch rather than a number you read. */}
+          {cooling && (
+            <span
+              className="absolute inset-0 origin-left bg-white/[0.07]"
+              style={{ transform: `scaleX(${state.camCooldown / 6})` }}
+              aria-hidden
+            />
+          )}
+          <span className="relative block">
+            <span className="mx-auto mb-1.5 block h-1 w-16 rounded-full bg-white/30" />
+            <span
+              className={`block text-[11px] font-bold tracking-[0.4em] ${
+                cooling ? "text-white/35" : "text-white/70"
+              }`}
+            >
+              {state.monitorUp
+                ? "CLOSE MONITOR"
+                : cooling
+                  ? `REBOOTING ${Math.ceil(state.camCooldown)}s`
+                  : "CAMERAS"}
+            </span>
+          </span>
         </button>
       )}
 

@@ -85,17 +85,25 @@ commit to something:
 | --- | --- |
 | dropping a door | 5% |
 | striking a hall light | 2% |
-| checking the cameras | free, for as long as you like |
+| checking the cameras | free, but a 6-second cooldown after you drop the monitor |
 | Foxy hitting a shut west door | 3% + 1% per previous charge |
 
 Opening a door and killing a light are free too — nothing should punish you for
 undoing a decision, because that is a drain by another name.
 
-**The cameras are free outright.** Watching is how you find out where everything
-is, and a price on watching teaches players to sit blind in the dark and hope,
-which is a worse night than the one where you can see exactly what is coming and
-cannot afford the door. The doors are the decision; looking is always
-affordable.
+**The cameras are free outright** — but they are rate-limited. Watching is how
+you find out where everything is, and a price on watching teaches players to sit
+blind in the dark and hope, which is a worse night than the one where you can
+see exactly what is coming and cannot afford the door. So looking costs nothing
+and you may stay on a feed as long as you like; what the game takes instead is
+*six seconds before you can look again*, counted from the moment you drop the
+monitor.
+
+That is a better sentence than a price. A cost says "you may look forty more
+times tonight"; the cooldown says "you cannot look for the next six seconds",
+which lands in the moment you actually feel it — right after you have swept the
+halls and something moves. It also gives Foxy real teeth, since he advances
+while nobody is watching the cove and you can no longer watch it on demand.
 
 This is a deliberate departure from the original, and it changes the question
 the game asks. FNAF bills you by the second, so the question is *can you afford

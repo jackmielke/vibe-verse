@@ -40,10 +40,24 @@ export interface FnafSnapshot {
   scare: number;
   /** The most recent charge, so the HUD can show what the last press cost. */
   lastSpend: { amount: number; label: string; at: number } | null;
+  /** Seconds until the cameras come back; 0 when they are ready. */
+  camCooldown: number;
 }
 
 /** Seconds of real time per in-game hour. Six of these is a night. */
 const HOUR_SECONDS = 50;
+
+/**
+ * How long the monitor takes to come back after you drop it.
+ *
+ * This is what limits camera use now that looking is free. A cost said "you
+ * may look forty more times tonight"; a cooldown says "you cannot look for the
+ * next six seconds", which is the better sentence — it puts the pressure in
+ * the moment you actually feel it, right after you have checked the halls and
+ * something moves. It also gives Foxy real teeth, since he advances while you
+ * are not watching the cove and you can no longer watch it on demand.
+ */
+const CAMERA_COOLDOWN = 6;
 /**
  * What each action costs, in percent, charged once at the moment you take it.
  *
@@ -110,6 +124,8 @@ export class FnafEngine {
   private blackout = false;
   private blackoutTimer = 0;
   private scare = 0;
+  /** Seconds until the monitor will come up again. */
+  private camCooldown = 0;
   private lastSpend: FnafSnapshot["lastSpend"] = null;
   private toast: string | null = null;
   private toastTimer = 0;
@@ -214,6 +230,7 @@ export class FnafEngine {
       occupancy,
       scare: this.scare,
       lastSpend: this.lastSpend,
+      camCooldown: Math.max(0, this.camCooldown),
     };
   }
 
@@ -243,6 +260,8 @@ export class FnafEngine {
     this.blackout = false;
     this.blackoutTimer = 0;
     this.scare = 0;
+    // Ready at 12 AM: the first check of the night should never be blocked.
+    this.camCooldown = 0;
     this.lastSpend = null;
     this.foxyRunning = false;
     this.yaw = this.yawTarget = 0;
@@ -370,6 +389,11 @@ export class FnafEngine {
 
   toggleMonitor() {
     if (this.phase !== "playing" || this.blackout) return;
+    if (!this.monitorUp && this.camCooldown > 0) {
+      this.audio.click();
+      this.say(`Monitor rebooting — ${Math.ceil(this.camCooldown)}s`, 1.4);
+      return;
+    }
     this.monitorUp = !this.monitorUp;
     if (this.monitorUp) {
       this.lightsOn = { left: false, right: false };
@@ -381,6 +405,9 @@ export class FnafEngine {
       this.audio.camDown();
       this.audio.stopLoop("camstatic");
       this.audio.stopLoop("kitchen");
+      // The clock starts when you drop it, not when you raise it: holding the
+      // monitor up is still free and still as long as you like.
+      this.camCooldown = CAMERA_COOLDOWN;
     }
     this.emit();
   }
@@ -530,6 +557,13 @@ export class FnafEngine {
         this.toast = null;
         this.emit();
       }
+    }
+
+    if (this.camCooldown > 0 && this.phase === "playing") {
+      const before = Math.ceil(this.camCooldown);
+      this.camCooldown = Math.max(0, this.camCooldown - dt);
+      // Emit on each whole second so the HUD can count down honestly.
+      if (Math.ceil(this.camCooldown) !== before) this.emit();
     }
 
     if (this.phase === "playing") {
