@@ -1,58 +1,111 @@
-# VibeVerse
+# The VibeVerse
 
-A hub of worlds you can walk, fly, drive and shoot your way through, all in one
-browser tab. No install, no account, no launcher — open a link and you are in a
-world a few seconds later. Live at [myvibeverse.com](https://myvibeverse.com).
+**A massive collection of AI-coded games by Jack Mielke and friends.**
 
-Everything here is fully vibe-coded, and it started as one thing: an
-interactive version of **Edge Esmeralda** overlaid on the real Healdsburg map.
-That world is still here — it is `/welcome` — but it is now one destination out
-of thirty.
+Thirty-odd worlds and games, every one of them vibe-coded, all served from one
+website. No install, no account, no launcher, no store page — open a link and
+you are inside a world a few seconds later. Live at
+[myvibeverse.com](https://myvibeverse.com).
 
-## Where to start reading
+It is a real collection: a 110,000-line open-world game set in the actual
+geometry of San Francisco, an arcade kart racer, a tropical FPS, 63 holes of
+physics golf, a procedural galaxy you fly a survey ship through, an evolution
+sim, a geoguessing game, and a floating village built on top of the real
+Healdsburg map, which is where the whole thing started.
 
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — what is in this repo, how the
-  pieces fit, and the numbers. Start here.
-- **[CLAUDE.md](./CLAUDE.md)** — the working rules: push straight to `main`,
+Nobody planned this as a portfolio. Each world was its own spontaneous weekend
+project, built fast because the tools got fast, and they ended up in one repo
+because a hub of thirty games is more fun than thirty abandoned tabs.
+
+**Start at [/game](https://myvibeverse.com/game)** — every world and game on
+one page.
+
+## The collection
+
+Everything below is playable in a browser right now. `/game` is the same list,
+with screenshots.
+
+### Games
+
+| | Game | Where | What it is |
+|---|---|---|---|
+| 🌉 | **San Francisco: Free Fall** | `/sf` | The real city, hill for hill, bridge for bridge. Fly it now; grapple and wingsuit soon. |
+| 🌴 | **San Palmas** | `/san-palmas` | Tropical San Francisco — guns, sun, and a very long draw distance. |
+| 🛰️ | **The Vibeverse** | `/vibeverse` | Fly a survey ship through a procedural galaxy. Some stars are worlds you can land on; one of them shoots back. |
+| 🏁 | **Vibe Kart** | `/kart` | Drift for mini-turbos, sling shells, take the hairpin shortcut. |
+| ⛳ | **Vibe Golf** | `/golf` | 63 holes of physics golf, with portals, jetpacks and very silly balls. |
+| 🧬 | **Genesis Bloom** | `/evolve` | Play a creature. Eat, mutate, survive the apex. |
+| 🌍 | **Globetrotter** | `/globetrotter` | Dropped somewhere on the real Earth. Work out where you are. |
+| 📍 | **Vibe GO** | `/go` | Pokémon-GO-shaped catching in the real world. Phone first. |
+| 🍉 | **Fruit Ninja** | `/ninja` | Slice fruit in VR, or with a mouse. Chase the score. |
+
+### Worlds
+
+| | World | Where | What it is |
+|---|---|---|---|
+| 🛫 | **The Terminal** | `/terminal` | The front door. Stand in the sky with every world floating around you and pick one. |
+| 🏝️ | **Vibe Island II** | `/island-2` | A floating archipelago — a carved lagoon spilling into the clouds, islands you can fly underneath. |
+| 🛩️ | **Seafair 2117** | `/seafair` | Future Seattle on Seafair weekend. Hydros, Blue Angels, and something alien holding the Space Needle. |
+| 🏙️ | **Vibe City** | `/city` | Jetpack a neon district. Multiplayer, NPCs, star runs, and Vibey to talk to. |
+| 🏝️ | **Vibe Island** | `/city?spawn=island` | The magically weird world in the sky — Jerry, the SnackFe cafe, the zipline, the rideable zeppelin. |
+| ⛷️ | **Powder Peak** | `/city?spawn=ski` | Carve real slopes, ride the gondola, warm up at the Vibe Lodge. |
+| 🌙 | **The Moon** | `/city?spawn=moon` | A tiny landable moon. Touch down on the pad and plant a flag. |
+| 🧭 | **Island Explorer** | `/island-explorer` | Pick a character and a world, then walk, run and jump around it. |
+| 🗺️ | **Healdsburg Village** | `/welcome` | Where this started — the real Healdsburg map with Vibey, Unit-7, choppers and spawnable worlds over real streets. |
+
+### Places to be
+
+| | Place | Where | What it is |
+|---|---|---|---|
+| 🪩 | **EDM Town** | `/edm-town` | Low-poly neon festival town — lasers, a dancing crowd, photo mode, a guestbook. |
+| 🌌 | **Space Outpost** | `/space` | Vibey 2.0's late-night show on a floating asteroid, with the alien next door. |
+| 🌱 | **Memory Garden** | `/garden` | Walk among planted memories and the outdoor art fair. |
+| 🖼️ | **Fractal Museum** | `/museum` | A walkable, Seuss-flavoured gallery of famous fractals. |
+| 🛋️ | **VIBE World** | `/world` | An always-on room that AI agents join over HTTP and live in. Drop in and see who is home. |
+
+### And the rest of the app
+
+`/game` (the index) · `/` (the 3D hub) · `/lobby` (~60 characters and vehicles) ·
+`/character-select` · `/times` (a newspaper written nightly by the loop) ·
+`/coin` ($VIBE) · `/companions` (hatch an agent) · `/world-builder` ·
+`/submit-world` · `/about`
+
+## The "and friends" part
+
+- **[Anshu Chimala](https://github.com/achimala/TheLongSilence)** wrote THE LONG
+  SILENCE, the procedural space game that became `/vibeverse`. It is vendored
+  under MIT in `src/longsilence/`, licence and all, and that directory's README
+  documents exactly what was changed and why.
+- **Anyone can add a world.** `/submit-world` puts it in front of the hub, and
+  approved submissions appear on the landing page next to the official ones.
+  `/world-builder` will even write the prompt for you.
+- **The characters** come from [Quaternius](https://quaternius.com/) packs
+  (CC0), with props from [Meshy](https://www.meshy.ai/) — see the asset notes
+  further down.
+- **The code** is written with Claude Code, Cursor and Lovable, and reviewed by
+  a human who has to look at every frame before it ships. `main` deploys, so
+  every world in that list is live the moment it lands.
+
+## How it is built
+
+One Vite + React SPA, 53 routes, ~343,000 lines. Each world is a nearly
+self-contained engine in its own directory under `src/`; under 1% of the code
+is shared between them. Every destination is declared once in
+`src/worlds/registry.ts`, and the nav, the picker, `/game`, the 3D hub and the
+passport are all views of that one list.
+
+**[ARCHITECTURE.md](./ARCHITECTURE.md)** is the full map: what is in here, how
+the ten engines fit together, the numbers, and the honest debt.
+
+Also worth reading:
+
+- **[CLAUDE.md](./CLAUDE.md)** — the working rules. Push straight to `main`,
   verify before pushing, and the contract every new world follows.
 - **[WORLDBUILDING.md](./WORLDBUILDING.md)** — everything learned building the
-  map-based village world, distilled. Written in the Edge Esmeralda era and
-  still the best guide to the Mapbox + Three.js half of the codebase.
+  map-based village world, distilled. Still the best guide to the Mapbox +
+  Three.js half of the codebase.
 - **[src/longsilence/README.md](./src/longsilence/README.md)** — how to vendor
   somebody else's standalone game and turn it into a route.
-
-## The front doors
-
-| Route | What it is |
-|---|---|
-| `/` | The 3D hub — Vibey on an asteroid, worlds orbiting as spheres |
-| `/game` | Every world and game as a flat, fast, searchable index |
-| `/terminal` | The same idea in 3D: stand in the sky and pick a world |
-| `/welcome` | The original — the real Healdsburg map |
-
-Every destination lives in exactly one place: `src/worlds/registry.ts`. Add a
-world there and it appears in the nav, the picker, `/game`, the hub and the
-passport at the same moment.
-
-## What is in here
-
-Ten game engines, each in its own directory under `src/`, sharing almost
-nothing but the router:
-
-- **San Francisco: Free Fall** (`/sf`) — the real city, hill for hill
-- **San Palmas** (`/san-palmas`) — tropical SF, and the vibeverse's FPS
-- **The Vibeverse** (`/vibeverse`) — fly a survey ship through a procedural
-  galaxy where some of the stars are worlds you can land on
-- **Vibe Kart** (`/kart`) — drift, mini-turbos, shells
-- **Vibe Golf** (`/golf`) — 63 holes of physics golf with portals and jetpacks
-- **Seafair 2117** (`/seafair`) — future Seattle, hydros and Blue Angels
-- **Vibe Island II** (`/island-2`) — the floating archipelago, rebuilt
-- **Vibe City** (`/city`) — jetpack a neon district, multiplayer, NPCs
-- **The Terminal** (`/terminal`) — the 3D lobby
-- **Genesis Bloom** (`/evolve`) — play a creature, eat, mutate, survive
-
-…plus the village map, the memory garden, the fractal museum, EDM Town,
-Globetrotter, Fruit Ninja, Vibe GO and the rest. `/game` lists all of them.
 
 ## The original village map
 
@@ -152,13 +205,13 @@ Tokyo is small enough to fetch on demand; the bigger Meshy assets are personal e
 
 ## Notes
 
-- Built on top of Lovable.dev / Cursor / Claude Code as iterative scaffolds, then customized heavily.
+- Every line here is AI-written and human-directed — Lovable.dev, Cursor and Claude Code as the scaffolds, with the taste, the art direction and the "no, do it again" supplied by a person.
 - A single `SpawnableLayer` is the generic Three.js → Mapbox bridge; adding a new world is one entry in the `spawnables` list in `MapView.tsx`.
 - Everything is anchored to real Healdsburg lng/lat, so Vibey, the helicopter, and the floating island all share the same coordinate system as the live map underneath.
 
 ## Tools, references, and inspiration
 
-This project is a personal repository for figuring out how to build immersive, beautiful worlds on the web. Below is the toolkit and reading list I keep coming back to.
+This is also a personal repository for figuring out how to build immersive, beautiful worlds on the web. Below is the toolkit and reading list I keep coming back to.
 
 ### How the layers fit together
 

@@ -12,6 +12,7 @@ import * as THREE from "three";
 import Scene from "./world/Scene";
 import Lobby from "./ui/Lobby";
 import { GATES, LOBBY_CAMERA, SPAWN, gatePosition } from "./geo/terminalGeo";
+import { MOBILE, SHOT_MODE } from "./device";
 
 /** Ease the camera toward the focused gate so the lobby feels like it looks. */
 function useFocusCamera(focusedIndex: number) {
@@ -61,8 +62,19 @@ export default function TerminalScene() {
     <div className="fixed inset-0 bg-[#5fa8e8]">
       <Canvas
         shadows
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance", preserveDrawingBuffer: true }}
+        /* A phone renders this at 3x by default, which is three times the
+           pixels for a screen nobody is inspecting closely. Cap it — the lobby
+           promises to load in about a second on a phone, and a 1200p render of
+           a flat-shaded scene is how that promise gets broken. */
+        dpr={[1, MOBILE ? 1.5 : 2]}
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+          /* Only the screenshot harness needs the buffer kept around; for
+             everyone else it costs bandwidth on every single frame. */
+          preserveDrawingBuffer: SHOT_MODE,
+        }}
         camera={{
           fov: LOBBY_CAMERA.fov,
           near: 0.1,
@@ -97,13 +109,26 @@ function CameraRig({ focusTarget }: { focusTarget: THREE.Vector3 }) {
   const look = useRef(new THREE.Vector3(0, LOBBY_CAMERA.lookHeight, -18));
   const desired = useRef(new THREE.Vector3());
 
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, size }, delta) => {
     const k = 1 - Math.exp(-2.6 * Math.min(delta, 0.05));
+    const aspect = size.width / Math.max(size.height, 1);
+
+    /* Portrait needs a wider lens and a smaller turn.
+       The frame was composed at 16:9. On a phone held upright the same 46°
+       lens crops the island to a green wall, and the same one-third turn swings
+       the character — the thing that makes this a place rather than a menu —
+       into the corner of the screen. Both scale with how tall the viewport is. */
+    const portrait = Math.max(0, Math.min(1, (1.2 - aspect) / 0.75));
+    const fov = LOBBY_CAMERA.fov + portrait * 20;
+    if (Math.abs((camera as THREE.PerspectiveCamera).fov - fov) > 0.01) {
+      (camera as THREE.PerspectiveCamera).fov = fov;
+      camera.updateProjectionMatrix();
+    }
 
     // Aim a third of the way toward the focused island: enough to feel like
     // the world is turning to face it, not so much that the platform swings
     // out of frame.
-    desired.current.copy(focusTarget).multiplyScalar(0.33);
+    desired.current.copy(focusTarget).multiplyScalar(0.33 * (1 - portrait * 0.6));
     desired.current.y = LOBBY_CAMERA.lookHeight + focusTarget.y * 0.12;
     look.current.lerp(desired.current, k);
 

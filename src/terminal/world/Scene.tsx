@@ -21,6 +21,7 @@ import {
   type GateDef,
 } from "../geo/terminalGeo";
 import { valueNoise2 } from "@/shared/proc/rng";
+import { MOBILE } from "../device";
 import Character from "./Character";
 
 /* ------------------------------------------------------------------ *
@@ -271,7 +272,13 @@ void main() {
     // frame and its clouds are big, bright and confident, not a faint texture.
     // Wide, bright, hard-edged. These are the big fluffy cumulus of a
     // children's-book sky, not atmospheric haze.
-    float band = smoothstep(0.40, 0.455, c) * 0.70 + smoothstep(0.455, 0.58, c) * 0.30;
+    //
+    // The threshold matters more than it looks. fbm averages about 0.5, so a
+    // cut at 0.40 painted roughly everything above the horizon white — the sky
+    // this file describes as "a deep, confident blue" was rendering as a blank
+    // page, and every piece of white UI on top of it disappeared. Cutting above
+    // the mean is what leaves blue between the clouds.
+    float band = smoothstep(0.52, 0.575, c) * 0.70 + smoothstep(0.575, 0.70, c) * 0.30;
     float horizonFade = smoothstep(-0.04, 0.13, d.y);
     // Fade the deck out toward the zenith. The projection d.xz/d.y collapses
     // to a point directly overhead, so the noise there is a single constant
@@ -393,8 +400,11 @@ export default function Scene({ focusedKey }: SceneProps) {
         intensity={2.5}
         color="#fff4dc"
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        /* Half-resolution shadows on a phone. At this scale — flat colour, hard
+           facets, no texture detail — nobody can tell, and the map is one of
+           the few genuinely expensive things in a scene this small. */
+        shadow-mapSize-width={MOBILE ? 1024 : 2048}
+        shadow-mapSize-height={MOBILE ? 1024 : 2048}
         shadow-camera-left={-60}
         shadow-camera-right={60}
         shadow-camera-top={60}

@@ -5,47 +5,30 @@
  * palettes of the same screen; this is that screen, using the Vibeverse's own
  * colours rather than any one of the four moods.
  *
- * Two rules drive the implementation:
+ * Three rules drive the implementation:
  *
  * 1. **The 3D scene is the background, and it must stay legible.** Everything
  *    here sits on a scrim or a blur, because white text over a bright blue sky
- *    is unreadable and this screen is bright by design.
- * 2. **Nothing in here re-renders per frame.** The focused index changes on
+ *    is unreadable and this screen is bright by design. The first version of
+ *    this file declared that rule and then put the headline in plain white over
+ *    the clouds, where it could not be read at all.
+ * 2. **The layout is a flex column, never a stack of absolutely-positioned
+ *    pieces.** Those pieces were pinned with `top: clamp(...)` and
+ *    `bottom: ...`, which happens to work at 16:9 and collides everywhere else:
+ *    on a phone in landscape the Enter button sat directly on top of the card
+ *    it was supposed to be about. A column cannot overlap itself.
+ * 3. **Nothing in here re-renders per frame.** The focused index changes on
  *    input, not on a timer, so React only does work when the player does
  *    something. The scene behind it owns the frame budget.
+ *
+ * And one rule that is not about looks: **this route is chromeless**, so the
+ * global nav is not there to get you out. The way back has to live in here or
+ * a phone visitor is simply stuck.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { GATES } from "../geo/terminalGeo";
-import island2Art from "@/assets/worlds/vibe-island-2.jpg";
-import sfArt from "@/assets/worlds/san-francisco.jpg";
-import palmasArt from "@/assets/worlds/san-palmas.jpg";
-import cityArt from "@/assets/worlds/city.jpg";
-import edmArt from "@/assets/worlds/edm-town.jpg";
-import skiArt from "@/assets/worlds/ski.jpg";
-import gardenArt from "@/assets/worlds/garden.jpg";
-import spaceArt from "@/assets/worlds/space.jpg";
-import museumArt from "@/assets/worlds/museum.jpg";
-import evolveArt from "@/assets/worlds/evolve.jpg";
-
-/**
- * Real captures for the cards. These already existed in the repo for the
- * worlds gateway — an earlier pass shipped gradient placeholders instead,
- * which is worse in every way: a card is a promise about what is behind it,
- * and a coloured rectangle promises nothing.
- */
-const GATE_ART: Record<string, string> = {
-  "island-2": island2Art,
-  sf: sfArt,
-  "san-palmas": palmasArt,
-  city: cityArt,
-  "edm-town": edmArt,
-  ski: skiArt,
-  garden: gardenArt,
-  space: spaceArt,
-  museum: museumArt,
-  evolve: evolveArt,
-};
+import { artFor } from "@/worlds/art";
 
 export interface LobbyProps {
   focusedIndex: number;
@@ -54,13 +37,52 @@ export interface LobbyProps {
   online: number | null;
 }
 
-/** Cards visible either side of the focused one. */
-const WING = 2;
+/** Real destinations only. A button that does nothing is worse than no button. */
+const LINKS: { label: string; to: string }[] = [
+  { label: "Worlds", to: "/game" },
+  { label: "People", to: "/world" },
+  { label: "News", to: "/times" },
+  { label: "Create", to: "/world-builder" },
+];
+
+/**
+ * How many cards sit either side of the focused one.
+ *
+ * Two only fits on a wide screen. At 360 px the five-card strip plus its two
+ * arrows overflowed the viewport in both directions, so the outer cards were
+ * clipped mid-word and the arrows were pushed off-screen entirely — on the one
+ * device where the arrows are the easiest way to browse.
+ */
+const wingFor = (width: number) => (width < 560 ? 1 : 2);
+
+/** Viewport size, sampled on resize rather than read during render. */
+function useViewport() {
+  const [size, setSize] = useState(() => ({
+    w: typeof window === "undefined" ? 1280 : window.innerWidth,
+    h: typeof window === "undefined" ? 720 : window.innerHeight,
+  }));
+  useEffect(() => {
+    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+  return size;
+}
 
 export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
   const navigate = useNavigate();
   const [entering, setEntering] = useState(false);
-  const touchStart = useRef<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const { w, h } = useViewport();
+
+  const narrow = w < 560;
+  /** A phone in landscape. There is no room for a headline; the cards win. */
+  const short = h < 520;
+  const wing = wingFor(w);
 
   const focused = GATES[focusedIndex];
 
@@ -84,6 +106,7 @@ export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "ArrowLeft" || e.code === "KeyA") move(-1);
       else if (e.code === "ArrowRight" || e.code === "KeyD") move(1);
+      else if (e.code === "Escape") navigate("/game");
       else if (e.code === "Enter" || e.code === "Space") {
         e.preventDefault();
         enter();
@@ -91,123 +114,197 @@ export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [move, enter]);
+  }, [move, enter, navigate]);
 
-  // Swipe on the card strip. Deliberately scoped to the strip rather than the
-  // whole screen so it never fights the 3D scene for the gesture.
+  /* Swipe on the card strip. Scoped to the strip rather than the whole screen
+     so it never fights the 3D scene for the gesture, and ignored when the
+     gesture is mostly vertical — a downward flick on a phone is somebody
+     trying to scroll, not trying to change worlds. */
   const onTouchStart = (e: React.TouchEvent) => {
-    touchStart.current = e.touches[0].clientX;
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchStart.current === null) return;
-    const dx = e.changedTouches[0].clientX - touchStart.current;
-    if (Math.abs(dx) > 42) move(dx < 0 ? 1 : -1);
+    const start = touchStart.current;
     touchStart.current = null;
+    if (!start) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy)) move(dx < 0 ? 1 : -1);
   };
 
   const visible = useMemo(() => {
     const out: { gate: (typeof GATES)[number]; offset: number; index: number }[] = [];
-    for (let o = -WING; o <= WING; o++) {
+    for (let o = -wing; o <= wing; o++) {
       const n = GATES.length;
       const i = ((focusedIndex + o) % n + n) % n;
       out.push({ gate: GATES[i], offset: o, index: i });
     }
     return out;
-  }, [focusedIndex]);
+  }, [focusedIndex, wing]);
+
+  /* How tall the strip actually got, measured rather than guessed. The cards
+     have to fit two budgets at once — the height flex handed them, and the
+     width left over after the arrows — and only one of those is knowable from
+     the viewport alone. */
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [stripH, setStripH] = useState(0);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => setStripH(entry.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /** Relative size of a card by how far it sits from the focused one. */
+  const scaleAt = (dist: number) => [1, 0.74, 0.58][dist] ?? 0.5;
+
+  /**
+   * The focused card's size, in pixels.
+   *
+   * Height first: whatever room the flex row was given, minus nothing. Then
+   * capped by width — but only loosely on a phone, because the neighbours are
+   * *meant* to run off both edges there. Fitting the whole strip inside 390 px
+   * is what made the cards postage stamps; letting them peek out of a clipped
+   * row is both the normal mobile carousel idiom and three times the size.
+   */
+  const card = useMemo(() => {
+    const fromHeight = (stripH || h * 0.34) * 0.75; // cards are 3:4
+    const fromWidth = narrow ? w * 0.6 : (w - 2 * 56) / (1 + 2 * scaleAt(1) + 2 * scaleAt(2));
+    const width = Math.max(84, Math.min(fromHeight, fromWidth, 232));
+    return { width, height: width * (4 / 3) };
+  }, [w, h, narrow, stripH]);
 
   const accent = `#${focused.accent.toString(16).padStart(6, "0")}`;
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-10 select-none"
+      className="pointer-events-none fixed inset-0 z-10 flex select-none flex-col"
       style={{
         paddingTop: "max(env(safe-area-inset-top), 10px)",
         paddingBottom: "max(env(safe-area-inset-bottom), 10px)",
       }}
     >
-      {/* Top bar */}
-      <div className="pointer-events-auto flex items-center justify-between px-4 sm:px-7">
-        <div className="flex items-center gap-2">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/15 text-sm backdrop-blur-md ring-1 ring-white/25">
-            🌐
-          </div>
-          <span className="hidden text-[11px] font-bold uppercase tracking-[0.34em] text-white drop-shadow-lg sm:block">
-            Vibeverse
-          </span>
-        </div>
+      {/* Scrims. The sky here is mostly bright cumulus, and white text on white
+          cloud is not a style choice, it is an unreadable screen. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-40"
+        style={{ background: "linear-gradient(180deg, rgba(3,26,54,.55) 0%, rgba(3,26,54,0) 100%)" }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-44"
+        style={{ background: "linear-gradient(0deg, rgba(3,26,54,.58) 0%, rgba(3,26,54,0) 100%)" }}
+        aria-hidden
+      />
 
-        <nav className="hidden items-center gap-1 rounded-full bg-black/25 px-1.5 py-1 backdrop-blur-md ring-1 ring-white/20 sm:flex">
-          {["Worlds", "People", "Events", "Create"].map((t, i) => (
-            <button
-              key={t}
+      {/* Top bar */}
+      <div className="pointer-events-auto relative flex shrink-0 items-center justify-between gap-2 px-3 sm:px-7">
+        {/* The way out. On a chromeless route this is the only one, so it is a
+            real link with a real label rather than a decorative badge. */}
+        <Link
+          to="/game"
+          className="flex items-center gap-2 rounded-full bg-black/30 py-1.5 pl-2 pr-3 backdrop-blur-md ring-1 ring-white/25 transition hover:bg-black/45"
+        >
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15 text-sm">🌐</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white">
+            All worlds
+          </span>
+        </Link>
+
+        <nav className="hidden items-center gap-1 rounded-full bg-black/30 px-1.5 py-1 backdrop-blur-md ring-1 ring-white/20 lg:flex">
+          {LINKS.map((l, i) => (
+            <Link
+              key={l.label}
+              to={l.to}
               className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition ${
-                i === 0 ? "bg-white text-slate-900" : "text-white/80 hover:text-white"
+                i === 0 ? "bg-white text-slate-900" : "text-white/85 hover:text-white"
               }`}
             >
-              {t}
-            </button>
+              {l.label}
+            </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full bg-black/25 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-md ring-1 ring-white/20">
+        {/* Only when there is a number. "— Online" told nobody anything. */}
+        {online !== null && (
+          <span className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-md ring-1 ring-white/20">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            {online === null ? "—" : online} Online
+            {online} online
           </span>
+        )}
+      </div>
+
+      {/* Title. Dropped entirely on a phone in landscape, where the honest
+          answer is that there is no room for it and the cards matter more. */}
+      {!short && (
+        <div className="relative mt-3 shrink-0 px-4 text-center sm:mt-6">
+          <h1
+            className="mx-auto max-w-[18ch] text-[clamp(1.25rem,3.6vw,2.4rem)] font-black leading-tight tracking-tight text-white sm:max-w-none"
+            style={{ textShadow: "0 2px 18px rgba(2,20,44,.85)" }}
+          >
+            What kind of adventure do you want today?
+          </h1>
+          <p
+            className="mt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85 sm:text-[12px]"
+            style={{ textShadow: "0 2px 12px rgba(2,20,44,.9)" }}
+          >
+            Every builder grows the universe
+          </p>
         </div>
-      </div>
+      )}
 
-      {/* Title */}
-      <div className="mt-4 text-center sm:mt-7">
-        <h1
-          className="text-[clamp(1.5rem,4.6vw,2.6rem)] font-black tracking-tight text-white"
-          style={{ textShadow: "0 3px 24px rgba(0,40,90,.55)" }}
-        >
-          What kind of adventure do you want today?
-        </h1>
-        <p className="mt-1 text-[12px] font-medium text-white/80 drop-shadow sm:text-[13px]">
-          Every builder grows the universe.
-        </p>
-      </div>
-
-      {/* Carousel */}
+      {/* Carousel. Takes whatever vertical room is left and sizes the cards off
+          its own height, so the strip shrinks in landscape instead of growing
+          down through the button below it. */}
       <div
-        className="pointer-events-auto absolute inset-x-0 flex items-center justify-center gap-2 px-3 sm:gap-3"
-        style={{ top: "clamp(160px, 26vh, 260px)" }}
+        ref={stripRef}
+        className="pointer-events-auto relative flex min-h-0 flex-1 items-center justify-center overflow-hidden"
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
+        style={{ touchAction: "pan-y" }}
       >
+        {/* The arrows float over the strip rather than sitting beside it. As
+            flex siblings they ate 96 px of a 390 px screen, which is a quarter
+            of the phone spent on two chevrons. */}
         <button
           onClick={() => move(-1)}
           aria-label="Previous world"
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/30 text-white backdrop-blur-md ring-1 ring-white/25 transition active:scale-90 hover:bg-black/45"
+          className="absolute left-2 top-1/2 z-20 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-md ring-1 ring-white/25 transition hover:bg-black/55 active:scale-90 sm:left-4"
         >
           ‹
         </button>
 
-        <div className="flex items-end justify-center gap-2 sm:gap-3">
+        <div className="flex items-center justify-center gap-2 sm:gap-3">
           {visible.map(({ gate, offset, index }) => {
             const isFocus = offset === 0;
             const dist = Math.abs(offset);
+            const art = artFor(gate.key);
+            const s = scaleAt(dist);
             return (
               <button
                 key={gate.key}
                 onClick={() => (isFocus ? enter() : onFocus(index))}
+                aria-label={isFocus ? `Enter ${gate.name}` : `Focus ${gate.name}`}
                 className="relative shrink-0 overflow-hidden rounded-2xl text-left transition-all duration-300 ease-out"
                 style={{
-                  width: isFocus ? "clamp(150px, 30vw, 232px)" : `clamp(64px, ${17 - dist * 3}vw, ${132 - dist * 26}px)`,
-                  opacity: isFocus ? 1 : 0.62 - dist * 0.16,
-                  transform: `translateY(${isFocus ? -10 : dist * 7}px)`,
+                  /* Explicit pixels, both axes. Sizing off `height: 100%` and
+                     an aspect ratio looks equivalent until flex shrinks the
+                     width to make the row fit and the ratio quietly loses —
+                     which turned every card into a tall sliver on a phone. */
+                  width: card.width * s,
+                  height: card.height * s,
+                  opacity: isFocus ? 1 : 0.66 - dist * 0.14,
                   boxShadow: isFocus
                     ? `0 0 0 2.5px ${accent}, 0 18px 46px rgba(0,30,70,.45)`
                     : "0 8px 22px rgba(0,30,70,.3)",
                 }}
               >
-                <div className="relative aspect-[3/4] w-full overflow-hidden bg-slate-900">
-                  {GATE_ART[gate.key] ? (
+                <div className="relative h-full w-full overflow-hidden bg-slate-900">
+                  {art ? (
                     <img
-                      src={GATE_ART[gate.key]}
-                      alt={gate.name}
+                      src={art}
+                      alt=""
                       loading="lazy"
                       decoding="async"
                       className="h-full w-full object-cover"
@@ -226,18 +323,23 @@ export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
                       set rather than ten unrelated photographs. */}
                   <div
                     className="absolute inset-0 mix-blend-soft-light"
-                    style={{ background: `#${gate.accent.toString(16).padStart(6, "0")}`, opacity: isFocus ? 0.24 : 0.42 }}
+                    style={{
+                      background: `#${gate.accent.toString(16).padStart(6, "0")}`,
+                      opacity: isFocus ? 0.24 : 0.42,
+                    }}
                   />
-                </div>
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2.5">
-                  <div className={`font-bold text-white ${isFocus ? "text-[13px]" : "text-[10px]"}`}>
-                    {gate.name}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2 sm:p-2.5">
+                    <div className={`font-bold text-white ${isFocus ? "text-[13px]" : "text-[10px]"}`}>
+                      {gate.name}
+                    </div>
+                    {/* The blurb only on the focused card, and only when the
+                        card is tall enough to hold it without clipping. */}
+                    {isFocus && !short && (
+                      <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-white/80">
+                        {gate.blurb}
+                      </p>
+                    )}
                   </div>
-                  {isFocus && (
-                    <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-white/75">
-                      {gate.blurb}
-                    </p>
-                  )}
                 </div>
               </button>
             );
@@ -247,43 +349,35 @@ export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
         <button
           onClick={() => move(1)}
           aria-label="Next world"
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/30 text-white backdrop-blur-md ring-1 ring-white/25 transition active:scale-90 hover:bg-black/45"
+          className="absolute right-2 top-1/2 z-20 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-md ring-1 ring-white/25 transition hover:bg-black/55 active:scale-90 sm:right-4"
         >
           ›
         </button>
       </div>
 
       {/* Enter */}
-      <div
-        className="pointer-events-auto absolute inset-x-0 flex flex-col items-center gap-2"
-        style={{ bottom: "max(env(safe-area-inset-bottom), 22px)" }}
-      >
+      <div className="pointer-events-auto relative mt-2 flex shrink-0 flex-col items-center gap-1.5 px-4">
         <button
           onClick={enter}
-          className="min-h-[52px] rounded-2xl px-10 text-[15px] font-black uppercase tracking-wide text-slate-900 shadow-xl transition active:scale-95"
+          className="min-h-[52px] w-full max-w-sm rounded-2xl px-8 text-[15px] font-black uppercase tracking-wide text-slate-900 shadow-xl transition active:scale-95"
           style={{ background: accent, WebkitTapHighlightColor: "transparent" }}
         >
           Enter {focused.name}
         </button>
-        <p className="text-[10.5px] font-medium tracking-wide text-white/70 drop-shadow">
-          Swipe or use A / D to explore
-        </p>
-      </div>
-
-      {/* Customize + Emotes */}
-      <div className="pointer-events-auto absolute bottom-5 left-4 hidden gap-2 sm:flex">
-        {[
-          ["🧍", "Customize"],
-          ["✨", "Emotes"],
-        ].map(([icon, label]) => (
-          <button
-            key={label}
-            className="flex min-h-[44px] items-center gap-2 rounded-xl bg-black/30 px-3 text-[11px] font-semibold text-white/90 backdrop-blur-md ring-1 ring-white/20 transition hover:bg-black/45"
+        <div className="flex items-center gap-3">
+          <p
+            className="text-[10.5px] font-medium tracking-wide text-white/85"
+            style={{ textShadow: "0 1px 8px rgba(2,20,44,.9)" }}
           >
-            <span>{icon}</span>
-            {label}
-          </button>
-        ))}
+            {narrow ? "Swipe to explore" : "Swipe or use A / D to explore · Esc to leave"}
+          </p>
+          <Link
+            to="/character-select"
+            className="rounded-full bg-black/30 px-3 py-1 text-[10.5px] font-semibold text-white/90 backdrop-blur-md ring-1 ring-white/20 transition hover:bg-black/45"
+          >
+            🧍 Customize
+          </Link>
+        </div>
       </div>
 
       {/* Travel wipe */}

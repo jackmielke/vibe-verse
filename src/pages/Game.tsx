@@ -169,6 +169,9 @@ export default function Game() {
           <h1 className="mt-2 font-heading text-4xl font-black tracking-tight sm:text-6xl">
             <span className="text-gradient-mint">VIBEVERSE</span>
           </h1>
+          <p className="mt-2 font-heading text-sm font-semibold text-foreground/85 sm:text-base">
+            A massive collection of AI-coded games by Jack Mielke and friends.
+          </p>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
             {counts.playable} worlds and games, all in one browser tab. No install, no
             account, no launcher — pick a card and you are in it in a few seconds.
