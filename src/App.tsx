@@ -48,6 +48,10 @@ const Seafair = lazy(() => import("./pages/Seafair.tsx"));
    for the same reason Seafair is: nobody who never flies there should pay for
    it in the hub's entry chunk. */
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
+/* DROP ZERO is the biggest world in the building — a full battle royale with
+   its own terrain, build system and bots. Lazy for the same reason: nobody
+   who never drops in should pay for it in the hub's entry chunk. */
+const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -69,6 +73,9 @@ const CHROMELESS = new Set([
   "/vibeverse",
   "/explorer",
   "/long-silence",
+  "/drop-zero",
+  "/royale",
+  "/br",
   // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
   "/golf",
 ]);
@@ -196,6 +203,19 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <VibeverseExplorer />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* DROP ZERO — battle royale. Bus, island, storm, and the build loop.
+              /royale and /br are aliases; the world calls itself Drop Zero. */}
+          {["/drop-zero", "/royale", "/br"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#05060f]" />}>
+                  <DropZero />
                 </Suspense>
               }
             />
