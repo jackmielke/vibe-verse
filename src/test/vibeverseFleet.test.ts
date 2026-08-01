@@ -186,6 +186,32 @@ describe("fleet", () => {
     f.dispose();
   });
 
+  /* Socket callbacks run on the realtime client's own stack, so a throw inside
+     one lands where nothing is catching it. And the per-frame read sits inside
+     the engine's frame loop, whose own catch turns any exception into RUNTIME
+     ERROR across the whole world — one malformed presence payload from a
+     stranger must not be able to do that. */
+  it("swallows a throw from a presence payload", () => {
+    const f = joinFleet({
+      name: "Jack",
+      onEvent: () => { throw new Error("a listener blew up"); },
+    });
+    presence = { a: [{ name: "Deca", color: "#8fe4ff", systemId: 1 }] };
+    expect(() => sync()).not.toThrow();
+    // The world carries on, and is still readable.
+    expect(() => f.snapshot()).not.toThrow();
+    f.dispose();
+  });
+
+  it("swallows a throw from a nav broadcast", () => {
+    const f = joinFleet({ name: "Jack" });
+    presence = { a: [{ name: "Deca", color: "#8fe4ff", systemId: 1 }] };
+    sync();
+    expect(() => nav(null as unknown as Record<string, unknown>)).not.toThrow();
+    expect(() => nav({ id: "a", x: {} as unknown as number })).not.toThrow();
+    f.dispose();
+  });
+
   it("lets go of the channel on dispose", () => {
     vi.useFakeTimers();
     const f = joinFleet({ name: "Jack" });

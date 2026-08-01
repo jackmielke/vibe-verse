@@ -105,6 +105,7 @@ export function joinFleet(opts: {
 
     channel
       .on("presence", { event: "sync" }, () => {
+       try {
         const state = channel!.presenceState() as Record<string, Array<Record<string, unknown>>>;
         const seenNow = new Set<string>();
         for (const [key, metas] of Object.entries(state)) {
@@ -132,8 +133,14 @@ export function joinFleet(opts: {
             if (gone) note(`${gone.name} has folded out`);
           }
         }
+       } catch (e) {
+        /* Socket callbacks are invoked from the realtime client's own stack;
+           a throw here propagates somewhere nobody is catching it. */
+        console.warn("fleet presence sync failed", e);
+       }
       })
       .on("broadcast", { event: "nav" }, ({ payload }) => {
+       try {
         const p = payload as Record<string, unknown>;
         const key = String(p.id ?? "");
         const t = others.get(key);
@@ -144,13 +151,16 @@ export function joinFleet(opts: {
         t.speed = Math.max(0, Math.min(1, Number(p.speed) || 0));
         t.systemId = Number(p.systemId ?? t.systemId);
         t.seen = Date.now();
+       } catch (e) { console.warn("fleet nav dropped", e); }
       })
       .subscribe((status) => {
-        online = status === "SUBSCRIBED";
-        if (online) {
-          void channel!.track({ ...me });
-          note("fleet link established");
-        }
+        try {
+          online = status === "SUBSCRIBED";
+          if (online) {
+            void channel!.track({ ...me });
+            note("fleet link established");
+          }
+        } catch (e) { console.warn("fleet subscribe failed", e); online = false; }
       });
 
     /* Position goes out on a timer rather than per frame. At sixty frames a
@@ -158,12 +168,14 @@ export function joinFleet(opts: {
        rude to the socket and pointless — nothing in the galaxy moves fast
        enough at this scale for four updates a second to look stepped. */
     posTimer = setInterval(() => {
+      try {
       if (!online || !channel || me.systemId < 0) return;
       void channel.send({
         type: "broadcast",
         event: "nav",
         payload: { id: channel.params?.config?.presence?.key, systemId: me.systemId, ...pos },
       });
+      } catch (e) { console.warn("fleet position send failed", e); }
     }, 1000 / POS_HZ);
   } catch (e) {
     // Offline, blocked, or no realtime on this project. Fly alone.

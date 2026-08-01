@@ -290,13 +290,27 @@ export default function VibeverseExplorer() {
           /* Tell the fleet where we are, and take back where everyone else is.
              Both are cheap: setPosition only stores, and the send is on its own
              four-times-a-second timer inside the fleet. */
+          /* Ring-fenced, and this is not defensive habit — it is the whole
+             difference between an optional feature and a liability. Everything
+             in here is fed by a socket carrying other people's data, it runs
+             inside the frame loop, and the loop's own catch turns any throw
+             into RUNTIME ERROR across the entire world. So the fleet gets one
+             chance: if it throws, it is switched off for the session and the
+             galaxy carries on without it. Nobody loses a flight because
+             somebody else's presence payload was malformed. */
           if (fleet) {
-            const g2 = game as VibeverseGame;
-            fleet.setSystem(g2.currentSystemId ?? -1, g2.system?.star?.name ?? "");
-            const sh = g2.ship;
-            if (sh) fleet.setPosition(sh.absPos.x, sh.absPos.y, sh.absPos.z,
-              sh.maxSpeed ? sh.speed / sh.maxSpeed : 0);
-            g2.fleet = fleet.snapshot();
+            try {
+              const g2 = game as VibeverseGame;
+              fleet.setSystem(g2.currentSystemId ?? -1, g2.system?.star?.name ?? "");
+              const sh = g2.ship;
+              if (sh) fleet.setPosition(sh.absPos.x, sh.absPos.y, sh.absPos.z,
+                sh.maxSpeed ? sh.speed / sh.maxSpeed : 0);
+              g2.fleet = fleet.snapshot();
+            } catch (e) {
+              console.warn("fleet disabled after error", e);
+              try { fleet.dispose(); } catch { /* going away regardless */ }
+              fleet = null;
+            }
           }
         } catch (e) {
           console.error(e);
