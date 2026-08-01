@@ -184,11 +184,22 @@ export function CharacterPreview({
       dpr={[1, 1.5]}
       camera={{ position: [0, 1.4, 3], fov, near: 0.1, far: 50 }}
       gl={{ antialias: true, alpha: true }}
+      // `flat` = NoToneMapping. R3F defaults to ACES filmic, which
+      // crushes these midtones badly: every character in the picker was
+      // rendering as a black silhouette, and the worlds themselves don't
+      // tone-map either, so the card didn't match what you got in-game.
+      flat
     >
       <CameraRig targetY={targetY} distance={distance} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[2, 4, 3]} intensity={1.2} color="#ffe6b8" />
-      <directionalLight position={[-3, 2, -2]} intensity={0.6} color="#a0c8ff" />
+      {/* Intensities are for three's post-r155 physical lighting units,
+          where the old hand-tuned values land about a stop and a half
+          under. Key warm, fill cool, rim behind to lift the edge off a
+          dark card background. */}
+      <ambientLight intensity={1.5} />
+      <hemisphereLight args={["#dff0ff", "#4a4a55", 1.2]} />
+      <directionalLight position={[2, 4, 3]} intensity={2.6} color="#ffe6b8" />
+      <directionalLight position={[-3, 2, -2]} intensity={1.4} color="#a0c8ff" />
+      <directionalLight position={[0, 2.5, -4]} intensity={1.6} color="#ffffff" />
       <Suspense fallback={null}>
         <PreviewModel character={character} spinning={spinning} onFit={onFit} />
       </Suspense>
