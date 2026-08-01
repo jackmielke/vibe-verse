@@ -126,6 +126,16 @@ const WORLDS: WorldCard[] = [
     blurb: "Low-poly neon festival town — lasers, a dancing crowd, photo mode, and a guestbook.",
   },
   {
+    to: "/kart",
+    emoji: "🏁",
+    name: "Vibe Kart",
+    // Art lands once the course can be photographed — a drawn panel beats a
+    // screenshot of a half-built racetrack.
+    blurb: "Arcade kart racing — drift for mini-turbos, sling shells, and take the hairpin shortcut.",
+    status: "New — one circuit, eight racers",
+    accent: "#ffcc22",
+  },
+  {
     to: "/golf",
     emoji: "⛳",
     name: "Vibe Golf",
