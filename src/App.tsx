@@ -50,6 +50,10 @@ const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 /* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
+/* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
+   at boot. Lazy for the same reason: nobody who never works a night shift
+   should carry the pizzeria around in the hub's entry chunk. */
+const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -71,6 +75,9 @@ const CHROMELESS = new Set([
   "/vibeverse",
   "/explorer",
   "/long-silence",
+  // Five Nights owns the pointer — the nav would sit on the west door button.
+  "/fnaf",
+  "/five-nights",
   // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
   "/golf",
   // Vibe Kart owns the whole viewport, and the nav would sit on the HUD.
@@ -200,6 +207,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <VibeverseExplorer />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* FIVE NIGHTS AT VIBEY'S — midnight to 6 AM, two doors, one battery.
+              Four animatronics walk a real twelve-room building; the security
+              cameras are cameras standing in it. */}
+          {["/fnaf", "/five-nights"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <FiveNights />
                 </Suspense>
               }
             />

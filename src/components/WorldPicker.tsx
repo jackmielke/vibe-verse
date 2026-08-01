@@ -52,6 +52,7 @@ import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
 import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
+import fnafArt from "@/assets/worlds/fnaf.jpg";
 
 const WORLDS: WorldCard[] = [
   {
@@ -85,6 +86,19 @@ const WORLDS: WorldCard[] = [
     featured: true,
     status: "Playable — desktop only, wants a real GPU",
     accent: "#8fe4ff",
+  },
+  {
+    to: "/fnaf",
+    emoji: "🐻",
+    name: "Five Nights at Vibey's",
+    // A real frame: Bonnie in the west doorway with the hall light burning
+    // battery to show him to you. That is the game in one picture.
+    art: fnafArt,
+    blurb:
+      "Midnight to six in a pizzeria that does not want you there. Two doors, two lights, eleven cameras, one battery — and four animatronics walking the building on their own.",
+    featured: true,
+    status: "Playable — five nights, and a sixth if you earn it",
+    accent: "#dc2626",
   },
   {
     to: "/seafair",
