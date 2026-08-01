@@ -298,6 +298,12 @@ export class HUD {
     });
     const thr = document.getElementById('touchThr');
     if (thr) thr.style.display = (walk || ground) ? 'none' : '';
+    /* The right stick is gone from everything except flight, where it is still
+       roll and throttle trim. Looking around is a swipe now — see
+       Input._initSwipeLook — so on foot the stick did nothing but sit in the
+       corner of a phone screen implying it did. */
+    const sr = document.getElementById('stickR');
+    if (sr) sr.style.display = (walk || ground) ? 'none' : '';
   }
 
   _updateMarkers(active) {

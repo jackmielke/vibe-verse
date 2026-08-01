@@ -815,14 +815,16 @@ export class Game {
     if (!uiOpen) {
       const md = input.consumeMouse();
       const onFoot = this.mode === 'walk' || (this.landed && this.landed.onFoot);
-      if (onFoot || freeLook) {
+      /* `input.touch` joins the look branch, and it has to.
+         On a phone the pointer delta is a swipe (see Input._initSwipeLook) and
+         the *stick* is the left thumb, which is fed straight into `state` — so
+         `feedStick` would be writing into `this.stick`, which update() zeroes
+         every frame while touch is live. The swipe would do nothing at all.
+         A swipe turns your head; the left stick flies the ship. */
+      if (onFoot || freeLook || input.touch) {
         this.player.look(md.x, md.y, input.lookSens);
       } else {
         input.feedStick(md.x, md.y);
-      }
-      if (input.touch) {
-        if (onFoot) this.player.look(input.touchR.x * 10, input.touchR.y * 10, 1);
-        else if (freeLook) this.player.look(input.touchR.x * 8, input.touchR.y * 8, 1);
       }
     }
     this.player.autoHead = this.mode === 'pilot' ? ship.angVel : null;

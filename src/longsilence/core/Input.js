@@ -35,6 +35,8 @@ export class Input {
     this.invertY = false;
     this.uiOpen = false;
     this.lookSens = 1;
+    /** Screen pixels of swipe per pixel of look. See _initSwipeLook. */
+    this.touchLookSens = 1.6;
     // raw pointer deltas, consumed once per frame by the first-person camera
     this._mdx = 0; this._mdy = 0;
 
@@ -143,6 +145,7 @@ export class Input {
 
     setup(document.getElementById('stickL'), this.touchL);
     setup(document.getElementById('stickR'), this.touchR);
+    this._initSwipeLook();
 
     document.querySelectorAll('#touchBtns .tb, #touchThr .tt').forEach((b) => {
       const act = b.dataset.act;
@@ -165,6 +168,69 @@ export class Input {
     window.addEventListener('touchstart', () => { this.touch = true; }, { once: true, passive: true });
   }
 
+  /**
+   * Swipe anywhere to look.
+   *
+   * The right stick used to be the camera, and a stick is the wrong instrument
+   * for it: a stick is a *rate* — hold it over and the view keeps turning — so
+   * aiming at something meant pushing, guessing when to let go, and correcting.
+   * A swipe is a *displacement*. Drag your thumb an inch and the world turns an
+   * inch. It is what every phone game that involves looking at something
+   * settled on, and it is the difference between aiming and steering.
+   *
+   * Bound to the canvas rather than to the window, which is the whole trick.
+   * `#hud` is `pointer-events:none` and the controls inside `#touchUI` are
+   * `auto`, so a touch that starts on the left stick or a button targets that
+   * control and never reaches here — while a touch anywhere else falls through
+   * to the canvas underneath. Touch events also stay with the element they
+   * started on, so a thumb that begins on open sky and wanders across the
+   * stick keeps turning the camera instead of hijacking the walk.
+   *
+   * The deltas go into the same `_mdx/_mdy` the mouse writes to. Downstream
+   * there is then exactly one look path for both, which is the only reason
+   * this is twenty lines instead of a second one to keep in step.
+   */
+  _initSwipeLook() {
+    const dom = this.dom;
+    if (!dom || !dom.addEventListener) return;
+    let id = null;
+    let lx = 0, ly = 0;
+
+    this._onSwipeStart = (e) => {
+      if (this.uiOpen || id !== null) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      this.touch = true;
+      id = t.identifier;
+      lx = t.clientX; ly = t.clientY;
+      /* Not prevented. A touch on the canvas is also how the pointer-lock
+         click and the archive's own taps arrive, and swallowing the start
+         would break both — only the *move* is ours. */
+    };
+    this._onSwipeMove = (e) => {
+      if (id === null) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier !== id) continue;
+        /* A little quicker than the mouse. A thumb has about a third of the
+           travel a mouse does before it runs out of screen, and 1.6 puts a
+           comfortable swipe at roughly a ninety-degree turn. */
+        this._mdx += (t.clientX - lx) * this.touchLookSens;
+        this._mdy += (t.clientY - ly) * this.touchLookSens * (this.invertY ? -1 : 1);
+        lx = t.clientX; ly = t.clientY;
+        // Now it is ours: stop the page rubber-banding under the ship.
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+    this._onSwipeEnd = (e) => {
+      for (const t of e.changedTouches) if (t.identifier === id) id = null;
+    };
+
+    dom.addEventListener('touchstart', this._onSwipeStart, { passive: true });
+    dom.addEventListener('touchmove', this._onSwipeMove, { passive: false });
+    dom.addEventListener('touchend', this._onSwipeEnd, { passive: true });
+    dom.addEventListener('touchcancel', this._onSwipeEnd, { passive: true });
+  }
+
   /* One-shot presses stay queued until something consumes them. Clearing the
      queue at the end of update() dropped any tap that landed between the input
      poll and the game's own check — which is most of them. */
@@ -177,6 +243,18 @@ export class Input {
     window.removeEventListener('mouseup', this._onMouseUp);
     document.removeEventListener('pointerlockchange', this._onLockChange);
     document.removeEventListener('mousemove', this._onMouseMove);
+    /* The canvas ones too, even though the canvas normally dies with the route.
+       React can hand the same node to a second Game — a StrictMode double mount
+       does exactly that — and two live swipe handlers on one canvas is a camera
+       that turns twice as far as your thumb, which reads as a broken game
+       rather than as a leak. */
+    const dom = this.dom;
+    if (dom && dom.removeEventListener) {
+      dom.removeEventListener('touchstart', this._onSwipeStart);
+      dom.removeEventListener('touchmove', this._onSwipeMove);
+      dom.removeEventListener('touchend', this._onSwipeEnd);
+      dom.removeEventListener('touchcancel', this._onSwipeEnd);
+    }
     if (document.pointerLockElement) document.exitPointerLock?.();
   }
 
