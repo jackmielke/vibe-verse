@@ -302,7 +302,13 @@ export type MiniTurboTier = 0 | 1 | 2 | 3; // none, blue, orange, purple
 export type BoostSource = "miniTurbo" | "pad" | "mushroom" | "start" | "trick" | "slipstream" | "bullet";
 
 export interface RacerState {
-  /** Stable id; 0 is always the human player. */
+  /**
+   * Stable id, unique for the life of the race and preserved across respawns
+   * and kart swaps. It is **not** a seat number: physics grids the human
+   * mid-pack (id 3 on an 8-kart field) so there are rivals to chase and rivals
+   * to worry about. Identify the human with `isPlayer` or `physics.player`,
+   * never by comparing the id to 0.
+   */
   id: number;
   name: string;
   /** Character/kart preset id — the model system keys off this. */

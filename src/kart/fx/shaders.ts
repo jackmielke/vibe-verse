@@ -181,6 +181,13 @@ void main() {
   vAlpha = mix(aColor0.a, aColor1.a, u)
          * smoothstep(0.0, 0.045, u)
          * (1.0 - smoothstep(0.58, 1.0, u));
+  // There is already a soft fade against scene geometry; this is the same idea
+  // against the near plane. A tyre-smoke puff grows to two and a half metres
+  // and the chase camera drives straight through the plume, so without this a
+  // single sprite lands on the lens as an opaque white ball. Deliberately
+  // tight: the player's own drift sparks sit three or four metres back and
+  // must not be touched.
+  vAlpha *= smoothstep(0.3, 1.8, vViewDepth);
   vFog = fogVisibility(vViewDepth);
 }
 `;
@@ -354,6 +361,12 @@ void main() {
   // Bright the instant it appears, gone by the time it is wide — the opposite
   // envelope to a particle, and the reason a shockwave reads as a *snap*.
   vAlpha = aColor.a * (1.0 - smoothstep(0.0, 1.0, u)) * smoothstep(0.0, 0.05, u);
+  // A blast ring expands to seven metres. When the detonation is next to the
+  // chase camera the ring sweeps straight through the lens and floods the
+  // whole frame with a flat white dome. Fade any part of the ring that gets
+  // within arm's reach of the eye: the far side of the same ring is
+  // untouched, so the shockwave still reads at normal viewing distance.
+  vAlpha *= smoothstep(0.35, 2.2, length(mv.xyz));
   vFog = fogVisibility(-mv.z);
 }
 `;
