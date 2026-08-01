@@ -65,14 +65,18 @@ const COST = {
   door: 5,
   /** Striking a hall light. Switching it off is free. */
   light: 2,
-  /**
-   * Raising the monitor. Lowering it, and changing channel, are free — so a
-   * check is one flat percent no matter how long you stay on it. Watching the
-   * halls is meant to be the thing you can always afford; the doors are where
-   * the budget goes.
-   */
-  monitor: 1,
 } as const;
+
+/**
+ * The cameras are free. Not cheap — free, and there is deliberately no
+ * `monitor` entry above to be tempted back up later.
+ *
+ * It is the right call for what this game is about. Watching is how you learn
+ * where everything is, and a price on watching teaches players to sit blind in
+ * the dark and hope, which is a worse night than the one where you know
+ * exactly what is coming and cannot afford the door. Charge for the doors,
+ * which are the actual decision. Looking is always affordable.
+ */
 
 export class FnafEngine {
   readonly audio = new FnafAudio();
@@ -364,7 +368,6 @@ export class FnafEngine {
       this.audio.camUp();
       this.audio.startCamStatic();
       if (this.camera === "kitchen") this.audio.startKitchenAudio();
-      this.spend(COST.monitor, "Cameras");
     } else {
       this.audio.camDown();
       this.audio.stopLoop("camstatic");
@@ -487,14 +490,18 @@ export class FnafEngine {
     this.emit();
   }
 
+  /**
+   * What is currently switched on, for the HUD's bar readout. The monitor is
+   * not counted: it costs nothing, and listing a free thing in a readout the
+   * player reads as a bill is just lying to them slowly.
+   */
   private usage() {
     return (
       1 +
       (this.doorsClosed.left ? 1 : 0) +
       (this.doorsClosed.right ? 1 : 0) +
       (this.lightsOn.left ? 1 : 0) +
-      (this.lightsOn.right ? 1 : 0) +
-      (this.monitorUp ? 1 : 0)
+      (this.lightsOn.right ? 1 : 0)
     );
   }
 
