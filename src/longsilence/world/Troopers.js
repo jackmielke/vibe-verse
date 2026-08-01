@@ -209,7 +209,19 @@ export class Trooper {
     this.pos = new THREE.Vector3(x, groundY(x, z), z);
     this.object.position.copy(this.pos);
     this.yaw = 0;
-    this.hp = faction === FACTION.ENEMY ? 3 : 4;
+    /* Both 7, up from 3 and 4, and deliberately equal.
+
+       Together with the halved hit chance in `fire` this takes a nine-a-side
+       engagement from a median of twenty-three seconds to ninety — long enough
+       that a player who lands, looks around and walks towards the noise arrives
+       at a firefight rather than at a field of bodies.
+
+       Equal because of what the alternative measured. At 8 against 6 the allies
+       held 97 times out of 100 on their own: you could stand on the ramp doing
+       nothing and still be told the site was yours, which makes the rifle set
+       dressing — the thing you were handed the world to use. At 7 apiece it is
+       55%, and a player who actually shoots is the one who decides it. */
+    this.hp = 7;
     this.alive = true;
     this.phase = Math.random() * Math.PI * 2;
     this.cool = 0.4 + Math.random() * 1.6;
@@ -409,17 +421,27 @@ export class Battle {
 
        All of it is past the ship's nose, down -Z, and the numbers come from the
        hull: it is 84 m long, so its nose is at z = -42 and anything nearer than
-       about -55 spawns a soldier inside the landing gear. The allied line sits
-       at -95 and the hostile one at -165; seventy metres apart, which at a 45 m
-       engagement range is about four seconds of walking before the first round
-       goes downrange. Land, step out, and it has already started. */
+       about -55 spawns a soldier inside the landing gear. You step out at -62.
+
+       These were -95 and -165, and driving the landing in a browser is what
+       showed that to be wrong. The two lines met around -130 — a hundred and
+       ten metres from the ramp, a thirty-five second jog at 3.1 m/s — and the
+       whole engagement resolved in a median of twenty-three seconds. You landed
+       on a contested world, set off towards the fight, and it was over before
+       you got there. The one thing an invasion cannot be is somebody else's.
+
+       So the front comes to you: -80 and -128. Forty-eight metres apart, which
+       is inside the 45 m engagement range almost immediately — land, step out,
+       and it has already started, thirty metres in front of you. It is also the
+       range at which red armour still reads as red, which is the other thing
+       the browser showed. */
     /* `??`, not `||`. Every one of these has a legitimate zero — `count: 0` is
        how a test asks for an empty field to place its own troopers on, and it
        used to quietly get nine. */
     const count = opts.count ?? 9;
     const spread = opts.spread ?? 76;
-    const allyZ = opts.allyZ ?? -95;
-    const enemyZ = opts.enemyZ ?? -165;
+    const allyZ = opts.allyZ ?? -80;
+    const enemyZ = opts.enemyZ ?? -128;
     for (let i = 0; i < count; i++) {
       const t = (i / Math.max(1, count - 1) - 0.5) * spread;
       this.spawn(FACTION.ALLY, t + (Math.random() - 0.5) * 7, allyZ + Math.random() * 12);
@@ -450,9 +472,11 @@ export class Battle {
     shooter.chest(_v);
     target.chest(_v2);
     this.tracers.add(_v, _v2, shooter.faction === FACTION.ENEMY ? 0xff6a4a : 0x6ab5ff);
-    // Deliberately poor marksmanship: a firefight that resolves in four seconds
-    // is not a firefight, it is an execution.
-    if (Math.random() < 0.28 && target.hit(1)) {
+    /* Deliberately poor marksmanship: a firefight that resolves in four seconds
+       is not a firefight, it is an execution. 0.28 was still an execution — it
+       just took twenty-three seconds, which is less time than it takes to walk
+       to the front. See the note on where the lines stand. */
+    if (Math.random() < 0.14 && target.hit(1)) {
       if (target.faction === FACTION.ENEMY) { this.kills++; this._events.push(`HOSTILE DOWN · ${this.kills}`); }
       else { this.losses++; this._events.push('ALLY DOWN'); }
     }

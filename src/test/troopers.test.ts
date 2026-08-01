@@ -87,11 +87,14 @@ describe("trooper livery", () => {
     const b = new Battle(new THREE.Scene(), flat, { count: 0 });
     const shooter = b.spawn(FACTION.ALLY, 0, 0);
     const target = b.spawn(FACTION.ENEMY, 0, -20);   // dead ahead, inside range
-    /* Unkillable, and that is the point. Hits are rolled, so over four seconds
-       of frames the shooter usually drops him — and with nothing left to shoot
-       at the aim blend decays and the rifle comes down, which is correct
-       behaviour and a test that fails at random. */
+    /* Both unkillable, and that is the point. Hits are rolled, so over four
+       seconds of frames these two usually shoot each other — and a trooper with
+       nothing left to aim at lowers the rifle, while a dead one is posed by the
+       death branch instead. Both are correct behaviour and both make this fail
+       at random. Making only the *target* immortal is not enough, which is a
+       thing this test found out the hard way when the hp numbers changed. */
     target.hp = Number.MAX_SAFE_INTEGER;
+    shooter.hp = Number.MAX_SAFE_INTEGER;
 
     // Enough frames for the aim blend (dt * 6 per frame) to reach 1.
     for (let i = 0; i < 240; i++) b.update(1 / 60, null);
@@ -126,10 +129,16 @@ describe("the player's shot", () => {
     const e = b.spawn(FACTION.ENEMY, 0, -60);
     const origin = new THREE.Vector3(0, 1.25, 0);
     const dir = new THREE.Vector3(0, 0, -1);
-    // hp is 3 and a player round is worth 2, so the second one drops him.
-    expect(b.playerShoot(origin, dir)).toBe(false);
-    expect(b.playerShoot(origin, dir)).toBe(true);
+    /* Fire until he goes down rather than counting rounds. The exact number is
+       hp divided by the player's damage, and both of those are balance knobs
+       that have already moved once — a test that pins them fails on every tune
+       while telling you nothing about whether shooting works. What it must not
+       do is take forever, so the loop is bounded. */
+    let rounds = 0;
+    while (e.alive && rounds < 20) { b.playerShoot(origin, dir); rounds++; }
     expect(e.alive).toBe(false);
+    expect(rounds).toBeGreaterThan(1);          // not a one-shot kill
+    expect(rounds).toBeLessThan(20);            // and it does terminate
     expect(b.counts().kills).toBe(1);
   });
 
@@ -161,10 +170,12 @@ describe("the player's shot", () => {
     const far = b.spawn(FACTION.ENEMY, 0, -90);
     const origin = new THREE.Vector3(0, 1.25, 0);
     const dir = new THREE.Vector3(0, 0, -1);
-    b.playerShoot(origin, dir);
-    b.playerShoot(origin, dir);
+    let rounds = 0;
+    while (near.alive && rounds < 20) { b.playerShoot(origin, dir); rounds++; }
     expect(near.alive).toBe(false);
+    // Every round went into the near one; the far one was never touched.
     expect(far.alive).toBe(true);
+    expect(far.hp).toBe(7);
   });
 
   it("does not reach past its range", () => {
@@ -230,6 +241,58 @@ describe("the engagement", () => {
     expect(() => b.tracers.update(1 / 60)).not.toThrow();
     const range = b.tracers.geo.drawRange;
     expect(range.count).toBeLessThanOrEqual(b.tracers.max * 2);
+  });
+
+  /**
+   * The two numbers a browser had to tell me, pinned as properties rather than
+   * as constants — the constants will move again, what must not move is what
+   * they are for.
+   *
+   * Statistical, so the thresholds are loose: 60 fights, and every bound is
+   * far from the measured value (median ~90 s, allies ~55%). This should fail
+   * when somebody makes the fight four times faster, not when the dice land
+   * badly. It runs a couple of thousand simulated seconds; that is about a
+   * second of real time and worth it for the only two knobs in this feature
+   * that unit tests could never have found.
+   */
+  it("lasts long enough to walk into, and is not decided before you arrive", () => {
+    const times: number[] = [];
+    let held = 0;
+    for (let n = 0; n < 60; n++) {
+      const b = new Battle(scene(), flat, {});
+      let t = 0;
+      while (!b.over && t < 400) { b.update(1 / 30, null); t += 1 / 30; }
+      if (b.over === "won") held++;
+      times.push(t);
+      b.dispose();
+    }
+    times.sort((a, z) => a - z);
+    const median = times[times.length >> 1];
+    /* You step out at z = -62 and walk at 3.1 m/s. The front is about 45 m
+       away, so fifteen seconds to reach it and some time to be useful once you
+       are there. Thirty is the floor; below it the invasion is a cutscene. */
+    expect(median).toBeGreaterThan(30);
+    // ...and not a stalemate you have to stand and watch.
+    expect(median).toBeLessThan(240);
+    /* Neither side may be a foregone conclusion. At 8 v 6 hp the allies held 97
+       times in 100 on their own, which made the player's rifle set dressing —
+       the thing they were handed the world to use. */
+    expect(held).toBeGreaterThan(60 * 0.2);
+    expect(held).toBeLessThan(60 * 0.85);
+  });
+
+  it("starts the fight in front of where the ramp puts you", () => {
+    /* `disembark` sets you down at z = -62 on a contested world. The lines used
+       to meet 110 m past that — a thirty-five second jog — and the engagement
+       was over before you arrived. Both lines have to be somewhere you can see
+       and shoot from the moment you step out. */
+    const b = new Battle(scene(), flat, {});
+    const PLAYER_Z = -62;
+    for (const t of b.troopers) {
+      const range = Math.abs(t.pos.z - PLAYER_Z);
+      expect(range, `${t.faction} at z=${t.pos.z.toFixed(0)}`).toBeLessThan(95);
+    }
+    b.dispose();
   });
 
   it("can be disposed twice", () => {
