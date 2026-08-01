@@ -496,8 +496,14 @@ export class HoloMap {
          a place you discover; these three are places you are being invited to,
          and hiding their names behind a visit would make the hub's own map the
          last thing to tell you the hub has anywhere to go. */
+      /* A world you have actually walked in says so on the chart. Read here
+         rather than per frame: the passport only changes when a route changes,
+         and the map is rebuilt on entering a system anyway. */
+      const stamped = sys.world && this.game.vibe
+        && (this.game.vibe.passport || []).some((r) => r.route === sys.world.route && r.visited);
       const label = sys.world
-        ? labelPlane(sys.name.toUpperCase(), 'VIBEVERSE WORLD', '#ffffff')
+        ? labelPlane(sys.name.toUpperCase(),
+          stamped ? 'VISITED · STAMPED' : 'VIBEVERSE WORLD', '#ffffff')
         : labelPlane(
           sys.visited ? sys.name.toUpperCase() : sys.designation,
           sys.visited ? `${sys.starClass.cls}-CLASS` : 'UNCHARTED',

@@ -214,5 +214,27 @@ export function introLines(pilot) {
   ];
 }
 
+/**
+ * A line about where you have already been, or nothing at all.
+ *
+ * Returns null for a first-time visitor rather than an encouraging noise —
+ * "zero worlds stamped" is a worse greeting than silence, and the passport page
+ * already explains itself to anyone who walks up to it.
+ */
+export function passportLine(progress) {
+  if (!progress || !progress.visited) return null;
+  const { visited, total, trips } = progress;
+  if (visited >= total) {
+    return { who: 'VIBEY', text: `Every world on the chart is stamped. ${trips} arrivals. Nobody else has done that.` };
+  }
+  if (visited === 1) {
+    return { who: 'VIBEY', text: 'One world stamped in your passport. The archive aft keeps the record.' };
+  }
+  return {
+    who: 'VIBEY',
+    text: `${visited} of ${total} worlds stamped, ${trips} arrivals logged. The archive aft has the list.`,
+  };
+}
+
 /** Back-compat for anything that still wants the plain array. */
 export const INTRO_LINES = introLines('');

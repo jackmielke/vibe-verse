@@ -68,6 +68,8 @@ interface VibeverseGame {
   onEnterWorld?: (route: string, spec: { name: string }) => void;
   /** The hub's own records, shown on the archive terminal in the cabin. */
   vibe?: { adopt(data: unknown): void };
+  /** Applies the cross-world passport bonus once the stamps are known. */
+  applyPassportBonus?: () => void;
 }
 
 declare global {
@@ -209,6 +211,8 @@ export default function VibeverseExplorer() {
             if (cancelled) return;
             // The passport is local and instant; it rides along with the rest.
             game?.vibe?.adopt({ ...data, passport: passportRows(), progress: passportProgress() });
+            // Worlds you have played elsewhere tune this ship. See Game.applyPassportBonus.
+            game?.applyPassportBonus?.();
           })
           .catch((e) => console.warn('vibeverse records unavailable', e));
       } catch (e) {
@@ -284,8 +288,12 @@ export default function VibeverseExplorer() {
 
     // The opening beats, on upstream's timings — addressed to whoever is flying.
     void (async () => {
-      const { introLines } = await import("@/longsilence/game/lore.js");
+      const { introLines, passportLine } = await import("@/longsilence/game/lore.js");
       const lines = introLines(nameRef.current === "Guest" ? "" : nameRef.current);
+      // Somebody who has been elsewhere in the vibeverse gets told so on the
+      // way in. A first-timer gets nothing, which beats "zero worlds stamped".
+      const seen = passportLine(passportProgress());
+      if (seen) lines.push(seen);
       (lines as { text: string; who?: string }[]).forEach((l, i) => {
         setTimeout(() => gameRef.current && game.hud.narrate(l.text, l.who), 1200 + i * 5200);
       });

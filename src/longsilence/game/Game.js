@@ -3687,6 +3687,41 @@ export class Game {
    * leave, so the context, the score and every global listener have to go with
    * it. Safe to call twice; the route's cleanup does not know how far boot got.
    */
+  /**
+   * What the rest of the vibeverse is worth to this ship.
+   *
+   * The thing the hub has never been able to do is let one world matter inside
+   * another. It can now: every world you have walked in — the golf course, EDM
+   * Town, a lap of San Palmas — is a stamp in the passport, and each stamp
+   * tunes VIBEY a little further. Play something else, come back, fly better.
+   *
+   * Deliberately small per world and capped. It should read as the vibeverse
+   * being worth something rather than as a grind gate, and a first-time visitor
+   * who has been nowhere must still get a ship that flies properly.
+   */
+  applyPassportBonus() {
+    const pr = this.vibe && this.vibe.progress;
+    if (!pr || !pr.visited || this._passportBonus) return;
+    this._passportBonus = true;
+
+    const n = Math.min(pr.visited, 10);
+    const thrust = 1 + n * 0.035;      // up to +35%
+    const range = 1 + n * 0.055;       // up to +55%
+    this.ship.maxSpeed *= thrust;
+    this.scanRangeMul *= range;
+    // The fold reaches further too, which is the one a player actually feels:
+    // it is what decides whether the far side of the chart is a trip or not.
+    this.ship.foldRegen *= 1 + n * 0.04;
+
+    this.hud.log(
+      `PASSPORT · ${pr.visited} WORLD${pr.visited === 1 ? '' : 'S'} STAMPED · ` +
+      `+${Math.round((thrust - 1) * 100)}% THRUST · +${Math.round((range - 1) * 100)}% SENSORS`,
+      'hi');
+    if (pr.visited >= pr.total && pr.total) {
+      this.hud.narrate('Every world on the chart, stamped. The drive has never run this clean.', 'VIBEY');
+    }
+  }
+
   /** Stop a pending world handoff. Safe to call when there isn't one. */
   _cancelHandOff() {
     if (this._handOffTimer) clearTimeout(this._handOffTimer);
