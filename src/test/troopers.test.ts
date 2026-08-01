@@ -14,7 +14,7 @@
  *     scoreboard counting forever.
  */
 import { describe, it, expect } from "vitest";
-import { Battle, Trooper, FACTION } from "@/longsilence/world/Troopers.js";
+import { Battle, Trooper, FACTION, buildViewModel } from "@/longsilence/world/Troopers.js";
 import * as THREE from "three-ls";
 
 /** Flat ground: every hit test below is then pure geometry. */
@@ -118,6 +118,95 @@ describe("trooper livery", () => {
     const t = new Trooper(FACTION.ENEMY, 10, 0, slope);
     expect(t.pos.y).toBeCloseTo(5);
     expect(t.object.position.y).toBeCloseTo(5);
+  });
+});
+
+describe("your own kit, seen from inside it", () => {
+  it("is green, because that is the only green you will ever see", () => {
+    /* The literal request was a green helmet, and nobody has ever seen their
+       own helmet. This is the honest answer to it: the parts of yourself a
+       first-person camera can actually show. If these stop being the player
+       hue, the word "green" has left the game entirely — the reticle aside. */
+    const vm = buildViewModel();
+    const hues: number[] = [];
+    vm.traverse((o: THREE.Object3D) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (m && m.color) hues.push(m.color.getHex());
+    });
+    expect(hues).toContain(0x1f6b34);              // the player's armour green
+    expect(hues).not.toContain(0x1f4fa8);          // and not an ally's blue
+    expect(hues).not.toContain(0x8f1f1f);          // nor a hostile's red
+  });
+
+  it("keeps every part outside the ground scene's near plane", () => {
+    /* GROUND_NEAR is 0.5 m. Geometry nearer than that is not "close to the
+       camera", it is clipped away — and a viewmodel that vanishes is worse than
+       none, because it looks like the render broke rather than like a choice.
+       Measured on the bounding boxes, so a part that is *centred* at 0.6 m but
+       half a metre long still fails. */
+    const vm = buildViewModel();
+    vm.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    let nearest = Infinity;
+    vm.traverse((o: THREE.Object3D) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      box.setFromObject(mesh);
+      // Closest face of the box to the eye at the origin.
+      const d = Math.max(0, -box.max.z);
+      nearest = Math.min(nearest, d);
+    });
+    expect(nearest).toBeGreaterThan(0.5);
+  });
+
+  it("casts no shadows, being a body that is not there", () => {
+    const vm = buildViewModel();
+    vm.traverse((o: THREE.Object3D) => {
+      if ((o as THREE.Mesh).isMesh) expect(o.castShadow, o.type).toBe(false);
+    });
+  });
+
+  it("shows only while you are standing on the planet", () => {
+    const b = new Battle(new THREE.Scene(), flat, { count: 0 });
+    const eye = new THREE.Vector3(3, 1.7, -40);
+    const q = new THREE.Quaternion();
+    b.aim(eye, q, false);
+    expect(b.view.visible).toBe(false);
+    b.aim(eye, q, true);
+    expect(b.view.visible).toBe(true);
+    // ...and it is exactly where the eye is, not a frame behind it.
+    expect(b.view.position.toArray()).toEqual(eye.toArray());
+    b.dispose();
+  });
+
+  it("kicks when fired and settles back", () => {
+    const b = new Battle(new THREE.Scene(), flat, { count: 0 });
+    const eye = new THREE.Vector3(), q = new THREE.Quaternion();
+    b.aim(eye, q, true);
+    const rest = b.view.userData.parts.rifle.position.z;
+    b.kick();
+    b.aim(eye, q, true);
+    const kicked = b.view.userData.parts.rifle.position.z;
+    expect(kicked).toBeGreaterThan(rest);          // driven back towards you
+    for (let i = 0; i < 60; i++) b.aim(eye, q, true);
+    expect(b.view.userData.parts.rifle.position.z).toBeCloseTo(rest, 5);
+    expect(b.view.userData.parts.flash.material.opacity).toBe(0);
+    b.dispose();
+  });
+
+  it("goes away with the battle", () => {
+    const scene = new THREE.Scene();
+    const b = new Battle(scene, flat, { count: 0 });
+    expect(b.view).toBeTruthy();
+    b.dispose();
+    expect(b.view).toBeNull();
+    expect(scene.children.length).toBe(0);
+  });
+
+  it("survives being aimed after disposal", () => {
+    const b = new Battle(new THREE.Scene(), flat, { count: 0 });
+    b.dispose();
+    expect(() => b.aim(new THREE.Vector3(), new THREE.Quaternion(), true)).not.toThrow();
   });
 });
 
