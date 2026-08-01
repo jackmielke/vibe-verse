@@ -70,6 +70,10 @@ interface VibeverseGame {
   dispose(): void;
   /** Set by this page. The engine calls it on touchdown on a world planet. */
   onEnterWorld?: (route: string, spec: { name: string }) => void;
+  /** Called once when a contested landing resolves. See Game._updateBattle. */
+  onBattleEnd?: (result: "won" | "lost", counts: { kills: number }) => void;
+  /** The fight on the ground, when there is one — read by the HUD. */
+  battle?: unknown;
   /** The hub's own records, shown on the archive terminal in the cabin. */
   vibe?: { adopt(data: unknown): void };
   /** Applies the cross-world passport bonus once the stamps are known. */
@@ -191,6 +195,19 @@ export default function VibeverseExplorer() {
     let raf = 0;
     let game: VibeverseGame | null = null;
     let fleet: Fleet | null = null;
+    /* The last records the hub answered with, kept so the terminal can be
+       re-adopted without them. `adopt` replaces the whole payload rather than
+       merging it — handing it a bare passport would blank the gallery, the
+       profiles and the treasury, which is exactly what winning a firefight
+       should not do. */
+    let records: Awaited<ReturnType<typeof loadVibeverse>> | null = null;
+    const adoptRecords = () => {
+      game?.vibe?.adopt({
+        ...(records || {}),
+        passport: passportRows(),
+        progress: passportProgress(),
+      });
+    };
 
     void (async () => {
       // ~2 MB of engine, shaders and its own build of Three. It has no business
@@ -215,6 +232,18 @@ export default function VibeverseExplorer() {
              passport page can show the trip the moment you lift off again. */
           stampPassport(route, spec?.name || route);
           navigateRef.current(route);
+        };
+
+        /* Redline. The only world in the vibeverse with no page behind it, and
+           so the only stamp that cannot be earned by arriving — you have to
+           clear the landing site. The route below is a pure identifier: nothing
+           is mounted at it and nothing ever links to it. See lib/passport.ts. */
+        game.onBattleEnd = (result, counts) => {
+          if (result !== "won") return;
+          stampPassport("/vibeverse/redline", "Redline");
+          // The terminal is drawn from a snapshot, so it has to be told.
+          adoptRecords();
+          game?.hud?.log?.(`REDLINE HELD · ${counts?.kills ?? 0} CONFIRMED`, "ok");
         };
         // Kept for the capture and inspection harnesses in the upstream repo,
         // which pose the game through this handle.
@@ -243,7 +272,8 @@ export default function VibeverseExplorer() {
           .then((data) => {
             if (cancelled) return;
             // The passport is local and instant; it rides along with the rest.
-            game?.vibe?.adopt({ ...data, passport: passportRows(), progress: passportProgress() });
+            records = data;
+            adoptRecords();
             // Worlds you have played elsewhere tune this ship. See Game.applyPassportBonus.
             game?.applyPassportBonus?.();
           })
@@ -508,6 +538,10 @@ export default function VibeverseExplorer() {
 
         {/* contextual controls */}
         <div id="hints" />
+
+        {/* The scoreboard on a contested world. Empty and hidden until a
+            battle exists; written by HUD._updateCombat, never by React. */}
+        <div id="combat" />
 
         {/* fold banner */}
         <div id="foldOverlay">

@@ -35,6 +35,7 @@ export class HUD {
       foldSub: document.getElementById('foldSub'),
       perf: document.getElementById('perf'),
       touchUI: document.getElementById('touchUI'),
+      combat: document.getElementById('combat'),
     };
 
     this.markerPool = new Map();
@@ -114,8 +115,14 @@ export class HUD {
     const piloting = g.mode === 'pilot' || g.mode === 'exterior';
     const uiOpen = g.starmap.open || g.codex.open;
 
-    // ---- reticle only when you are actually flying
-    this.el.reticle.classList.toggle('hidden', !piloting || uiOpen);
+    /* ---- reticle
+       Flying, or fighting. It is the same crosshair and it means the same
+       thing both times — where the thing you press the button on will go —
+       and standing in a firefight without one is the single fastest way to
+       make a shooter feel broken. */
+    const aiming = !!(g.battle && g.landed && g.landed.onFoot);
+    this.el.reticle.classList.toggle('hidden', (!piloting && !aiming) || uiOpen);
+    this.el.reticle.classList.toggle('aim', aiming);
     const p = g.scanProgress || 0;
     this.el.rArc.setAttribute('d', p > 0.001 ? arcPath(60, 60, 21, -90, -90 + p * 360) : '');
 
@@ -151,8 +158,9 @@ export class HUD {
        conclude it is not possible. It shows up when it is actually available,
        and says which of land or lift off it will do. */
     const canLand = !!(!g.landed && g.canLand && g.canLand());
+    const fighting = !!g.battle;
     const hintKey = `${g.mode}|${uiOpen ? 1 : 0}|${canLand ? 1 : 0}`
-      + `|${g.landed ? (g.landed.onFoot ? 2 : 1) : 0}`;
+      + `|${g.landed ? (g.landed.onFoot ? 2 : 1) : 0}|${fighting ? 1 : 0}`;
     if (this._hintKey !== hintKey) {
       const wasLand = this._canLand;
       this._hintKey = hintKey;
@@ -166,11 +174,13 @@ export class HUD {
            which advertised a throttle, a scanner and an autopilot to somebody
            standing on a planet. */
         keys = g.landed.onFoot
-          ? [['WASD', 'walk'], ['MOUSE', 'look'], ['SHIFT', 'run'], ['E', 'board'], ['L', 'lift off']]
-          : [['E', 'step out'], ['L', 'lift off'], ['TAB', 'archive']];
+          ? (fighting
+            ? [['WASD', 'walk'], ['LMB', 'fire'], ['SHIFT', 'run'], ['E', 'board'], ['L', 'lift off']]
+            : [['WASD', 'walk'], ['MOUSE', 'look'], ['SHIFT', 'run'], ['E', 'board'], ['L', 'lift off']])
+          : [['E', fighting ? 'take the field' : 'step out'], ['L', 'lift off'], ['TAB', 'archive']];
       } else if (g.mode === 'walk') {
         keys = [['WASD', 'move'], ['MOUSE', 'look'], ['E', 'use'], ['SHIFT', 'run'],
-          ['V', 'outside view'], ['1-3', 'jump to world']];
+          ['V', 'outside view'], ['1-5', 'jump to world']];
       } else {
         /* V has always existed and has never been on this row, which is most of
            why the view "changed by itself" — the only other things that move it
@@ -183,10 +193,13 @@ export class HUD {
         // Landing on a vibeverse world is not "land", it is the door. Say so on
         // the key row, because that row is where a player looks to find out
         // what they can do next.
-        if (canLand) keys.push(['L', g.target?.spec?.worldRoute ? 'enter world' : 'land']);
+        if (canLand) {
+          keys.push(['L', g.target?.spec?.contested ? 'invade'
+            : g.target?.spec?.worldRoute ? 'enter world' : 'land']);
+        }
         // The fast path, and it belongs on the row rather than in a manual
-        // nobody reads: three keys, three worlds, no chart.
-        keys.push(['1-3', 'jump to world']);
+        // nobody reads: one key per world, no chart.
+        keys.push(['1-5', 'jump to world']);
       }
       this.el.hints.innerHTML = keys.map(([k, v]) => `<span><kbd>${k}</kbd>${v}</span>`).join('');
       this._syncTouchLabels();
@@ -200,6 +213,8 @@ export class HUD {
           g.target.spec?.worldRoute ? 'hi' : 'ok');
       }
     }
+
+    this._updateCombat();
 
     // ---- fold banner
     if (g.ship.foldMode) {
@@ -228,17 +243,61 @@ export class HUD {
     }
   }
 
+  /**
+   * The scoreboard, and it only exists while there is a fight.
+   *
+   * Two numbers and a health bar. Not four numbers and a minimap: the whole
+   * read the player needs from a firefight is "am I winning" and "am I about to
+   * die", and everything else is on the field in front of them, in blue or red.
+   */
+  _updateCombat() {
+    const el = this.el.combat;
+    if (!el) return;
+    const B = this.game.battle;
+    if (!B) {
+      if (this._combatOn) { el.classList.remove('on'); this._combatOn = false; }
+      return;
+    }
+    if (!this._combatOn) { el.classList.add('on'); this._combatOn = true; }
+
+    const c = B.counts();
+    const hp = Math.max(0, Math.round(B.playerHp));
+    // Rebuilt only when something changed. This runs every frame on the ground
+    // and innerHTML is not free.
+    const key = `${c.ally}|${c.enemy}|${c.kills}|${hp}|${c.over || ''}`;
+    if (this._combatKey === key) return;
+    this._combatKey = key;
+    el.innerHTML =
+      `<div class="cb-row"><b class="cb-blue">${c.ally}</b><em>ALLIED</em>`
+      + `<span class="cb-vs">·</span><b class="cb-red">${c.enemy}</b><em>HOSTILE</em></div>`
+      + `<div class="cb-bar"><i style="width:${hp}%"></i></div>`
+      + `<div class="cb-foot">${c.over === 'won' ? 'SITE HELD'
+        : c.over === 'lost' ? 'LINE BROKEN' : `KILLS ${c.kills}`}</div>`;
+    el.classList.toggle('won', c.over === 'won');
+    el.classList.toggle('lost', c.over === 'lost');
+  }
+
   _syncTouchLabels() {
-    const walk = this.game.mode === 'walk';
-    const map = walk
-      ? { use: 'USE', boost: 'RUN', scan: 'MAP', auto: 'ARC', fold: 'VIEW' }
-      : { use: 'STAND', boost: 'BOOST', scan: 'SCAN', auto: 'AUTO', fold: 'FOLD' };
+    const g = this.game;
+    const walk = g.mode === 'walk';
+    /* Three label sets now, not two. The ground used to borrow the flight row,
+       which on a phone meant a landed player had a SCAN button, an AUTO button,
+       a FOLD button and no way whatsoever to take off again — L is a key, and a
+       phone has no keys. FIRE is on the row for the same reason. */
+    const ground = !!g.landed;
+    const map = ground
+      ? (g.landed.onFoot
+        ? { use: 'BOARD', boost: 'RUN', scan: g.battle ? 'FIRE' : 'MAP', auto: 'ARC', fold: 'LIFT' }
+        : { use: 'STEP OUT', boost: 'RUN', scan: 'MAP', auto: 'ARC', fold: 'LIFT' })
+      : walk
+        ? { use: 'USE', boost: 'RUN', scan: 'MAP', auto: 'ARC', fold: 'VIEW' }
+        : { use: 'STAND', boost: 'BOOST', scan: 'SCAN', auto: 'AUTO', fold: 'FOLD' };
     document.querySelectorAll('#touchBtns .tb').forEach((b) => {
       const t = map[b.dataset.act];
       if (t) b.textContent = t;
     });
     const thr = document.getElementById('touchThr');
-    if (thr) thr.style.display = walk ? 'none' : '';
+    if (thr) thr.style.display = (walk || ground) ? 'none' : '';
   }
 
   _updateMarkers(active) {
@@ -301,17 +360,24 @@ export class HUD {
       }
       m.el.style.display = '';
       m.el.style.transform = `translate(${sx}px, ${sy}px)`;
-      const isWorld = !!b.spec?.worldRoute;
+      // Authored worlds are marked by key, not by route: the contested one has
+      // no route and is still very much one of ours.
+      const isWorld = !!b.spec?.worldKey;
+      const hostile = !!b.spec?.contested;
       m.el.className = 'mk'
         + (b.kind === 'anomaly' ? ' anom' : '')
         + (isWorld ? ' world' : '')
+        + (hostile ? ' hostile' : '')
         + (b.scanned ? ' scanned' : '')
         + (b === g.target ? ' sel' : '');
       if (m._n !== b.name) { m.name.textContent = b.name; m._n = b.name; }
       /* A world that leads somewhere says so under its name instead of just its
-         range. Everything else out here is scenery; these three are doors, and
-         from a hundred thousand kilometres they look identical to scenery. */
-      m.sub.textContent = isWorld ? `${fmtDist(dist)} · VIBEVERSE WORLD` : fmtDist(dist);
+         range. Everything else out here is scenery; these are doors, and from a
+         hundred thousand kilometres they look identical to scenery. The one you
+         cannot walk into says the other thing, which is what it is for. */
+      m.sub.textContent = hostile
+        ? `${fmtDist(dist)} · CONTESTED`
+        : isWorld ? `${fmtDist(dist)} · VIBEVERSE WORLD` : fmtDist(dist);
     }
     for (const [id, m] of this.markerPool) if (!seen.has(id)) m.el.style.display = 'none';
   }

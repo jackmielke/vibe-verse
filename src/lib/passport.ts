@@ -56,6 +56,13 @@ export const PASSPORT_WORLDS: { route: string; name: string; emoji: string }[] =
   { route: "/terminal", name: "The Terminal", emoji: "🛫" },
   { route: "/city", name: "Vibe City", emoji: "🌆" },
   { route: "/garden", name: "Memory Garden", emoji: "🌱" },
+  /* The one stamp that is not a place you can navigate to.
+     Redline is a planet inside the ship's own galaxy — it has no page, so no
+     `useWorldStamp` can ever write it. It is stamped by *holding* it: clearing
+     the landing site of hostiles, once, on the ground. Which makes a full
+     passport the only thing in the vibeverse you have to earn rather than
+     visit. See Troopers.js and Game._updateBattle. */
+  { route: "/vibeverse/redline", name: "Redline", emoji: "🎖️" },
 ];
 
 /** Read the passport. Never throws: a corrupt entry is an empty passport. */

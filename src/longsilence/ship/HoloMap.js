@@ -3,6 +3,7 @@ import { holoMat } from './Cockpit.js';
 import { HoloScreen, AM, DIM } from './HoloScreen.js';
 import { INTERIOR_LAYER } from './interiorMaterials.js';
 import { LOGD_V_PARS, LOGD_V } from '../gfx/glsl/noise.js';
+import { stampRouteFor } from '../world/vibeworlds.js';
 import { kelvinColor } from '../world/generate.js';
 
 /* ============================================================================
@@ -499,11 +500,18 @@ export class HoloMap {
       /* A world you have actually walked in says so on the chart. Read here
          rather than per frame: the passport only changes when a route changes,
          and the map is rebuilt on entering a system anyway. */
-      const stamped = sys.world && this.game.vibe
-        && (this.game.vibe.passport || []).some((r) => r.route === sys.world.route && r.visited);
+      /* Matched on the stamp identifier, not the route. Redline has no route,
+         and comparing `r.route === undefined` is a comparison that can only
+         ever be false — the one world you have to fight for would have been the
+         one the chart never admitted you had held. */
+      const stampRoute = stampRouteFor(sys.world);
+      const stamped = stampRoute && this.game.vibe
+        && (this.game.vibe.passport || []).some((r) => r.route === stampRoute && r.visited);
       const label = sys.world
         ? labelPlane(sys.name.toUpperCase(),
-          stamped ? 'VISITED · STAMPED' : 'VIBEVERSE WORLD', '#ffffff')
+          sys.world.contested
+            ? (stamped ? 'HELD · STAMPED' : 'CONTESTED')
+            : (stamped ? 'VISITED · STAMPED' : 'VIBEVERSE WORLD'), '#ffffff')
         : labelPlane(
           sys.visited ? sys.name.toUpperCase() : sys.designation,
           sys.visited ? `${sys.starClass.cls}-CLASS` : 'UNCHARTED',

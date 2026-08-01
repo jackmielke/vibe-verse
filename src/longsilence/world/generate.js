@@ -235,8 +235,13 @@ function makeGarden(spec, rnd) {
 function makeVibeWorld(spec, rnd, world) {
   const w = world.planet;
   spec.name = world.name;
-  spec.worldRoute = world.route;
+  spec.worldRoute = world.route || null;
+  /* Set on every authored world, route or not. `worldRoute` means "landing here
+     changes the URL"; `worldKey` means "this planet is one of ours" — and the
+     contested world is one of ours without being a door, so anything that wants
+     to find, ring or fly to an authored world has to read the key. */
   spec.worldKey = world.key;
+  spec.contested = !!world.contested;
   spec.worldTagline = world.tagline;
   spec.worldAccent = world.accent;
 
@@ -250,9 +255,12 @@ function makeVibeWorld(spec, rnd, world) {
   spec.craters = w.craters;
   spec.night = w.night;
   spec.inhabited = true;
-  // `garden` is the flag the habitability field reads to put growth on the
-  // ground rather than gravel. Every one of these is somewhere people live.
-  spec.garden = true;
+  /* `garden` is the flag the habitability field reads to put growth on the
+     ground rather than gravel. Every one of these is somewhere people live —
+     except the one that is being fought over, which opts out, because ground
+     cover tall enough to be pretty is ground cover tall enough to hide a
+     trooper at forty metres. */
+  spec.garden = w.garden !== false;
   spec.ice = 0.35;
 
   /* What this world burns after dark. Optional — without it the planet lights

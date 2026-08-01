@@ -15,6 +15,7 @@ import { AsteroidField } from '../world/Asteroids.js';
 import { Fleet } from '../world/Fleet.js';
 import { buildStation } from '../world/Station.js';
 import { Surface } from '../world/Surface.js';
+import { Battle } from '../world/Troopers.js';
 import { buildRelay, buildDerelict, buildWreck, buildBeacon } from '../world/Structures.js';
 import { Ship } from '../ship/Ship.js';
 import { HULL_LIGHT } from '../gfx/greeble.js';
@@ -187,6 +188,9 @@ export class Game {
        React page refreshes; the engine never learns what a socket is, for the
        same reason it never learns what Supabase is. */
     this.travellers = { travellers: [], here: [], bySystem: {}, online: false, events: [] };
+    /* The fight on the ground, when there is one. Null everywhere else, and
+       declared here so nothing has to test for `undefined` — see _maybeInvade. */
+    this.battle = null;
     // ?q=low|medium|high forces a tier, so the reduced-shader paths that only
     // phones would otherwise hit can be verified on a desktop.
     const forced = new URLSearchParams(location.search).get('q');
@@ -833,10 +837,17 @@ export class Game {
           && (input.tappedCode('KeyE') || input.tapped('use'))) {
         if (this.landed.onFoot) this.board(); else this.disembark();
       }
-      if (input.tappedCode('KeyL') && !this.transition) this.liftOff();
+      /* L, or the touch button that says LIFT. A phone has no keys, and until
+         this line a player who landed on a phone was on that planet for good. */
+      if ((input.tappedCode('KeyL') || input.tapped('fold')) && !this.transition) this.liftOff();
       // The crew controller runs on the ground too — the main update returns
       // before reaching it, so it has to be driven from here.
       if (this.landed && this.landed.onFoot) this.player.update(dt, input, uiOpen);
+      /* The fight, if there is one. After the crew controller, so a shot taken
+         this frame leaves from where the player is standing now rather than
+         from where they were standing last frame — at a run that is half a
+         metre, which at forty metres is most of a torso. */
+      if (this.battle) this._updateBattle(dt, input, uiOpen);
       // Nothing else on the ground: no flight, no proximity, no orbits to
       // integrate. The camera and the sky are the whole simulation — but the
       // hull is still a machine, so the drive has to be allowed to spin down,
@@ -898,8 +909,8 @@ export class Game {
     }
 
     /* ---- straight to a world.
-       The number keys are the hub's fast path: 1, 2, 3 plot and fly the whole
-       fold to San Francisco, Seafair or Vibe Island without opening anything.
+       The number keys are the hub's fast path: one key per world on the chart,
+       and it plots and flies the whole fold without opening anything.
        Available from the helm *and* on foot in the cabin — this is the one
        action that should never be more than one key away, and someone standing
        at the chart table asking to go to Seafair means it just as much as
@@ -1299,6 +1310,147 @@ export class Game {
     this.director.play('land:' + b.id, seq.shots, { title: seq.title, sub: seq.sub });
 
     this._maybeHandOff(b);
+    this._maybeInvade(b);
+  }
+
+  /* --------------------------------------------------------------- the front
+
+     A world with no route to hand off to, and a fight on it.
+
+     `_maybeHandOff` covers the four worlds that are doors: touch down and the
+     browser goes somewhere. This is the other half — a world where touching
+     down is the whole event, because the thing on the other side of the airlock
+     is a contested landing site rather than a URL.
+
+     The battle is built against the surface's own height law, so troopers walk
+     the same terrain the player does. It is created here rather than on
+     `disembark` because the fight should already be under way when the ramp
+     comes down: arriving into a firefight reads, arriving into an empty field
+     that spawns one when you step out does not. */
+  _maybeInvade(b) {
+    if (!b.spec || !b.spec.contested || this.battle || !this.surfaceScene) return;
+    const groundY = (x, z) => (this.surface && this.surface.heightAt
+      ? this.surface.heightAt(x, z, 1.0) : 0);
+    try {
+      this.battle = new Battle(this.surfaceScene, groundY, {
+        // Fewer bodies on a phone. Forty troopers is forty groups of nine
+        // meshes, and the ground scene is already the heaviest thing here.
+        count: this.mobile ? 6 : 9,
+      });
+    } catch (err) {
+      // A world that fails to raise an army is still a world you can stand on.
+      console.error('[vibeverse] battle failed to start', err);
+      this.battle = null;
+      return;
+    }
+    /* Drain anything already queued on the fire buttons. One-shot presses stay
+       in the queue until something consumes them (see Input.tapped), and
+       nothing consumes 'fire' anywhere except here — so a click taken in orbit
+       twenty minutes ago would come out of the rifle on the first frame the
+       player is stood on the planet, before they had touched anything. */
+    this.input.tapped('fire');
+    this.input.tapped('scan');
+    this.hud.log('CONTESTED LANDING · HOSTILES ON THE FIELD', 'hi');
+    this.hud.narrate(b.spec.worldTagline || 'Blue is with you. Red is not.', b.name);
+    this.audio.ping('arrive');
+  }
+
+  /** Stand the battle down. Safe to call when there is not one. */
+  _endBattle() {
+    if (!this.battle) return;
+    try { this.battle.dispose(); } catch { /* the scene is going anyway */ }
+    this.battle = null;
+    this._battleOver = null;
+  }
+
+  /**
+   * One frame of the fight, plus the trigger.
+   *
+   * Only ever called from the landed branch of update(), which is the only
+   * place a battle can exist. The shot comes out of the camera rather than out
+   * of the rifle: the rifle is on the end of an animated arm and a round that
+   * leaves it does not go where the reticle is pointing, which is the one thing
+   * a shooter has to get right.
+   */
+  _updateBattle(dt, input, uiOpen) {
+    const B = this.battle;
+    const onFoot = !!(this.landed && this.landed.onFoot);
+
+    /* Where the player is, in the ground scene's metres. `player.pos` carries
+       the terrain height in `groundY` rather than in `y`, so the two have to be
+       put back together before anything measures a distance to it. */
+    let here = null;
+    if (onFoot) {
+      here = _v.set(this.player.pos.x, this.player.groundY || 0, this.player.pos.z);
+    }
+    B.update(dt, here);
+
+    if (onFoot && !uiOpen && !this.transition) {
+      /* Semi-automatic, and rate-limited here rather than in the weapon: the
+         button is a mouse the player can click faster than the animation can
+         recover, and a rifle that outruns its own recoil looks like a bug. */
+      this._fireCool = Math.max(0, (this._fireCool || 0) - dt);
+      /* Left mouse, F, or the touch button labelled FIRE — which is the `scan`
+         action wearing a different label, because the ground has no scanner and
+         the button row is fixed at five. See _syncTouchLabels. */
+      const wants = input.tapped('fire') || input.lmb === true
+        || input.tapped('scan') || input.held('scan');
+      if (wants && this._fireCool <= 0) {
+        this._fireCool = 0.22;
+        _v2.set(0, 0, -1).applyQuaternion(this.player.quat).normalize();
+        const hit = B.playerShoot(this.player.eye, _v2);
+        this.audio.ping('shot');
+        if (hit) this.audio.ping('hitmark');
+        /* The recoil the player actually feels. There is no third-person body to
+           hang a muzzle flash off — the camera is the eye — so the shot exists
+           in the frame as a kick and a shake, and `look` is the same call the
+           mouse makes, which means it goes through the pitch clamp for free. */
+        this.player.look(0, -13, 1);
+        this.shake = Math.min(1, this.shake + 0.09);
+      }
+    }
+
+    for (const e of B.drainEvents()) {
+      this.hud.log(e, e === 'YOU ARE HIT' || e === 'THE LINE IS BROKEN' ? 'hi' : 'ok');
+    }
+
+    /* Running out of health has to *do* something. A bar that empties and then
+       carries on being empty is worse than no bar — it teaches the player the
+       whole readout is decoration.
+
+       There is no death screen here, and there should not be: this is a hub you
+       flew to for fun, and a game-over on a world with no save is a punishment
+       for exploring. You get pulled back aboard instead, at reduced strength.
+       The ship is a hundred metres away and it is the safe place; walking back
+       out is one keypress. */
+    if (onFoot && B.playerHp <= 0) {
+      B.playerHp = 40;
+      this.landed.onFoot = false;
+      this.player.mode = 'walk';
+      this.player.groundHeight = null;
+      this.player.groundY = 0;
+      this.player.pos.set(0, 0, 2.4);
+      this.hud.log('YOU ARE DOWN · DRAGGED BACK ABOARD', 'hi');
+      this.hud.narrate('They pulled you in. Patch up and go again — E to step out.', 'VIBEY');
+      this.audio.ping('alarm');
+    }
+
+    /* The one thing that leaves the ground scene. Reported once, to whoever is
+       hosting the route — the engine has no idea what a passport is, and the
+       page does. See lib/passport.ts for why holding this site is the only
+       stamp in the vibeverse you cannot simply navigate to. */
+    if (B.over && this._battleOver !== B.over) {
+      this._battleOver = B.over;
+      const c = B.counts();
+      if (B.over === 'won') {
+        this.hud.narrate('The site is yours. Nothing red left standing.', 'VIBEY');
+        this.audio.ping('objective');
+      } else {
+        this.hud.narrate('The line is gone. Get back to the ship.', 'VIBEY');
+        this.audio.ping('alarm');
+      }
+      try { this.onBattleEnd?.(B.over, c); } catch (err) { console.warn('battle handler', err); }
+    }
   }
 
   /**
@@ -1457,7 +1609,21 @@ export class Game {
     if (!this.landed || this.landed.onFoot || this.director.active) return;
     const R = this.ship.length * 1000;                 // hull length, metres
     this.landed.onFoot = true;
-    this.landed.boardAt = new THREE.Vector2(R * 0.30, R * 0.42);
+    /* Which side of the ship you come out on, and which way you are looking.
+
+       Normally: off the starboard quarter, facing the hull, because the first
+       thing worth seeing on a new world is your own ship standing on it.
+
+       On a contested world that is exactly backwards. The fight is down -Z past
+       the nose (see Troopers.js for why it starts that far out), and stepping
+       out to admire the paintwork with your back to it means a hundred and
+       thirty metres of jogging before anything happens. So the ramp comes down
+       on the forward quarter, looking downrange, and the firefight is in frame
+       on the first sight of the planet. */
+    const fight = !!this.battle;
+    this.landed.boardAt = fight
+      ? new THREE.Vector2(R * 0.36, -R * 0.74)
+      : new THREE.Vector2(R * 0.30, R * 0.42);
     const p = this.player;
     p.mode = 'ground';
     p.pos.set(this.landed.boardAt.x, 0, this.landed.boardAt.y);
@@ -1466,8 +1632,9 @@ export class Game {
        vessel with the landscape behind it. The controller's forward vector is
        (-sin yaw, -cos yaw), so facing the origin from (x, z) is atan2(x, z) —
        negating both, which looks like the obvious thing to write, turns you
-       around and puts the ship at your back. */
-    p.yaw = Math.atan2(p.pos.x, p.pos.z);
+       around and puts the ship at your back. Downrange is the same arithmetic
+       aimed the other way: -Z is yaw 0. */
+    p.yaw = fight ? 0 : Math.atan2(p.pos.x, p.pos.z);
     p.pitch = -0.04;
     p.groundHeight = (x, z) => (this.surface && this.surface.heightAt
       ? this.surface.heightAt(x, z, 1.0) : 0);
@@ -1639,6 +1806,9 @@ export class Game {
     this.engine.post.aoWorldRadius = 0;
     this.engine.post.groundMeter = false;
     this.setShadowScale(1);
+    /* Before the surface, not after: the battle's troopers are parented into
+       the ground scene, and the scene is about to stop existing. */
+    this._endBattle();
     if (this.surface) this.surface.dispose();
     this.surface = null;
     this.surfaceScene = null;
@@ -3116,7 +3286,10 @@ export class Game {
     if (sys.id === this.currentSystemId) {
       // Already in the right sky: fly to it instead, which the autopilot does
       // beautifully and which is the correct answer to "take me there".
-      const body = this.bodies.find((b) => b.spec && b.spec.worldRoute);
+      /* By key, not by route. The contested world has no route — landing on it
+         *is* the destination — and finding it by `worldRoute` would have left
+         pressing its number key in its own system doing nothing at all. */
+      const body = this.bodies.find((b) => b.spec && b.spec.worldKey === key);
       if (body) {
         this.target = body;
         this.cancelAutopilot(true);
@@ -3716,9 +3889,13 @@ export class Game {
     if (!pr || !pr.visited || this._passportBonus) return;
     this._passportBonus = true;
 
-    const n = Math.min(pr.visited, 10);
-    const thrust = 1 + n * 0.035;      // up to +35%
-    const range = 1 + n * 0.055;       // up to +55%
+    /* Capped at the size of the passport rather than at a hard ten, so the
+       hardest stamp on it is still worth something. Redline was the eleventh
+       world and under a fixed cap of ten it paid nothing at all — which is a
+       strange thing to say to someone who just held a landing site for it. */
+    const n = Math.min(pr.visited, pr.total || 10);
+    const thrust = 1 + n * 0.035;      // ~+38% with the whole passport
+    const range = 1 + n * 0.055;       // ~+60%
     this.ship.maxSpeed *= thrust;
     this.scanRangeMul *= range;
     // The fold reaches further too, which is the one a player actually feels:
@@ -3746,6 +3923,7 @@ export class Game {
     this._disposed = true;
     this.started = false;
     this._cancelHandOff();
+    try { this._endBattle(); } catch (e) { console.warn('battle teardown', e); }
     try { this.audio?.dispose(); } catch (e) { console.warn('audio teardown', e); }
     try { this.input?.dispose(); } catch (e) { console.warn('input teardown', e); }
     // Drops every geometry, texture and render target the scene holds along

@@ -184,9 +184,11 @@ export class Codex {
           <p>${info.text}</p>
           ${s.worldRoute
     ? `<p class="q">${s.worldTagline} Set down anywhere on it and you are there.</p>`
-    : s.night
-      ? '<p class="q">Photometry of the night hemisphere shows structured emission along the coastlines. Someone lives here. The lights are on.</p>'
-      : ''}
+    : s.contested
+      ? `<p class="q">${s.worldTagline} There is no door here — only a landing site, and someone already standing on it.</p>`
+      : s.night
+        ? '<p class="q">Photometry of the night hemisphere shows structured emission along the coastlines. Someone lives here. The lights are on.</p>'
+        : ''}
         </div>`;
     }
 

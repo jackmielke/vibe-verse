@@ -100,4 +100,21 @@ describe("passport", () => {
     const row = passportRows().find((r) => r.route === "/golf")!;
     expect(row.name).toBe("Vibe Golf");
   });
+
+  it("fits on the panel that draws it", () => {
+    /* Cockpit.drawArchivePassport lays the rows out in two columns on a
+       768 x 486 screen and has to cap them somewhere. It capped at ten, and
+       adding an eleventh world made the grid quietly stop drawing the last row
+       while the counter above it went on saying "/ 11" — the missing world
+       being, of course, the new one. The cap is twelve; this is the other half
+       of that pair, and it fails the moment a thirteenth is added rather than
+       after somebody notices a world is missing from their own passport. */
+    expect(PASSPORT_WORLDS.length).toBeLessThanOrEqual(12);
+  });
+
+  it("gives every world a distinct route", () => {
+    const routes = PASSPORT_WORLDS.map((w) => w.route);
+    expect(new Set(routes).size).toBe(routes.length);
+    for (const r of routes) expect(r).toMatch(/^\//);
+  });
 });

@@ -1,10 +1,10 @@
 /* ============================================================================
    The worlds that are actually out there.
 
-   Everything else in this galaxy falls out of a seed. These three do not. Each
-   one is a real destination in the vibeverse — a route you can walk into — so
-   each gets a star system of its own, named after it, sitting at a fixed place
-   on the chart where it can be found again.
+   Everything else in this galaxy falls out of a seed. These do not. Each one is
+   a real destination in the vibeverse, so each gets a star system of its own,
+   named after it, sitting at a fixed place on the chart where it can be found
+   again.
 
    The planet in each system is hand-authored to *look* like the world it leads
    to, because the only promise a hub can make from orbit is a visual one. San
@@ -12,11 +12,18 @@
    Seafair is a lake world under summer cloud; Vibe Island II is an archipelago
    at golden hour. Land on one and you are in it.
 
-   Adding a fourth is this object plus nothing else — `generateGalaxy` reads the
-   length of this array and the rest of the game follows.
+   Adding another is this object plus nothing else — `generateGalaxy` reads the
+   length of this array and the rest of the game follows. Roll first and
+   override second, though: see the note on the draw sequence in generate.js,
+   and the test that fails if a new world quietly reshuffles the whole galaxy.
+
+   One of them has no `route`. A world without a route is one you cannot walk
+   into, because there is nothing on the other side of it yet — so landing there
+   leaves you standing on it, which is exactly what an invasion wants. See
+   `contested` below and Troopers.js.
    ========================================================================== */
 
-/** Where the three sit on the chart, in light-years. Close enough that the
+/** Where they sit on the chart, in light-years. Close enough that the
  *  fold drive can reach the next one early, far enough that going there is a
  *  decision. The origin system is first and is always San Francisco. */
 export const VIBE_WORLDS = [
@@ -146,9 +153,64 @@ export const VIBE_WORLDS = [
       clouds: { cover: 0.28, scale: 3.0, alt: 0.026, thick: 0.012, tint: 0xd8c8f0 },
     },
   },
+  {
+    key: 'redline',
+    /* No route, deliberately. The other four are doors: land on Seafair and the
+       browser goes to Seafair. This one has nothing behind it — so the landing
+       *is* the destination, the handoff never fires, and you are left on the
+       ground with the ship at your back and a firefight in front of it. */
+    route: null,
+    contested: true,
+    /* It still gets a passport stamp — you just cannot earn it by arriving.
+       Holding the landing site writes this; see lib/passport.ts, which lists
+       the same identifier as the one world nothing is mounted at. */
+    stamp: '/vibeverse/redline',
+    name: 'REDLINE',
+    designation: 'VV-005',
+    tagline: 'Held by someone else. Blue is with you. Red is not.',
+    accent: 0xff3b30,
+    // A K dwarf: low sun, long shadows across open ground, which is the light a
+    // fight reads best in. Nothing here is trying to look welcoming.
+    star: 'K',
+    chart: { x: -9.5, y: -19.0 },
+    planet: {
+      kind: 'terran',
+      radius: 3600,
+      /* Rust, basalt and a shallow iron sea. The palette exists to make blue and
+         red armour the only saturated things on the planet — a green world would
+         swallow the allied line and a red one would swallow the enemy. */
+      colors: {
+        c0: 0x160f0c, c1: 0x4a3324, c2: 0x8a6440, c3: 0x6b4a33,
+        c4: 0xb08a63, polar: 0xe8ded2, water: 0x27201c,
+      },
+      sea: 0.44,             // mostly land: a battlefield needs somewhere to be
+      veg: 0.10,
+      relief: 1.30,
+      craters: 0.34,         // it has been fought over before
+      // A garrison, not a city. Enough light after dark to know it is occupied.
+      night: 0.55,
+      lamp: { warm: 0xff7a3c, cold: 0xff2f24 },
+      clouds: { cover: 0.30, scale: 2.2, alt: 0.024, thick: 0.011, tint: 0xd8bda6 },
+      // The scatter that makes a garden world lush would hide half the troopers.
+      garden: false,
+    },
+  },
 ];
 
 /** Look one up by the route it leads to, or by its key. */
 export function worldFor(keyOrRoute) {
   return VIBE_WORLDS.find((w) => w.key === keyOrRoute || w.route === keyOrRoute) || null;
+}
+
+/**
+ * The identifier this world's passport stamp is filed under.
+ *
+ * For four of the five it is simply the route, because arriving *is* the stamp.
+ * Redline has no route, so it carries its identifier explicitly — and anything
+ * matching a world against the passport has to go through here rather than
+ * reading `.route`, or the one world you have to fight for is the one the chart
+ * will never admit you have been to.
+ */
+export function stampRouteFor(world) {
+  return (world && (world.route || world.stamp)) || null;
 }

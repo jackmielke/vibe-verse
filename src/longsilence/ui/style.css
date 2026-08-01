@@ -92,6 +92,13 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
 #ls-root .r-tick{stroke:rgba(143,228,255,.62);stroke-width:1.3}
 #ls-root .r-dot{fill:var(--am);filter:drop-shadow(0 0 4px var(--am))}
 #ls-root .r-arc{fill:none;stroke:var(--am);stroke-width:2.6;filter:drop-shadow(0 0 5px rgba(255,196,138,.75))}
+/* Aiming a rifle rather than flying a ship: half the size, and the same green
+   as the player's own helmet, so the crosshair belongs to the soldier holding
+   it and not to the ship they arrived in. */
+#ls-root #reticle.aim{width:52px;height:52px;opacity:.95}
+#ls-root #reticle.aim .r-ring{stroke:rgba(110,255,160,.22)}
+#ls-root #reticle.aim .r-tick{stroke:rgba(110,255,160,.85);stroke-width:1.6}
+#ls-root #reticle.aim .r-dot{fill:#6effa0;filter:drop-shadow(0 0 5px rgba(110,255,160,.9))}
 
 /* canopy-projected contact markers.
    Corner brackets rather than a ring: brackets read as a targeting system
@@ -118,6 +125,12 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
 #ls-root .mk.scanned .mk-br{stroke:rgba(138,255,193,.55)}
 #ls-root .mk.sel .mk-br{stroke:var(--cy);stroke-width:1.9}
 #ls-root .mk.sel .mk-lbl{color:#e8f8ff}
+/* A world you cannot walk into, only land on. It is the one marker in the sky
+   that is not cyan, and that is the entire point of it. */
+#ls-root .mk.hostile .mk-br{stroke:rgba(255,90,68,.78);animation:mkPulse 2.4s ease-in-out infinite}
+#ls-root .mk.hostile .mk-dot{fill:#ff5a44}
+#ls-root .mk.hostile .mk-lbl{color:rgba(255,168,150,.92)}
+#ls-root .mk.hostile .mk-lbl em{color:rgba(255,120,96,.8)}
 
 /* message log */
 #ls-root #log{position:absolute;left:calc(26px + var(--safe-l));bottom:calc(88px + var(--safe-b));
@@ -204,6 +217,31 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
   clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,5px 100%,0 calc(100% - 5px));
   font-size:9.5px;letter-spacing:.18em;color:rgba(186,214,230,.78)}
 #ls-root #hints kbd{font:inherit;font-size:9.5px;letter-spacing:.1em;color:rgba(158,234,255,.96)}
+
+/* ---- the scoreboard on a contested world.
+   Top centre, opposite the key row, and only on screen while there is a fight.
+   Two counts in the two colours that matter and one bar for how much of you is
+   left; nothing here is a number the player has to read twice. */
+#ls-root #combat{position:absolute;left:50%;top:calc(16px + var(--safe-t,0px));
+  transform:translateX(-50%) translateY(-8px);
+  min-width:216px;padding:9px 16px 8px;text-align:center;
+  background:rgba(6,10,16,.72);border:1px solid rgba(120,170,200,.16);
+  clip-path:var(--slate);
+  opacity:0;pointer-events:none;transition:opacity .35s,transform .35s}
+#ls-root #combat.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#ls-root .cb-row{display:flex;align-items:baseline;justify-content:center;gap:7px}
+#ls-root .cb-row b{font-size:17px;font-weight:400;letter-spacing:.06em}
+#ls-root .cb-row em{font-style:normal;font-size:8px;letter-spacing:.2em;color:rgba(170,200,216,.6)}
+#ls-root .cb-blue{color:#6ea8ff;text-shadow:0 0 12px rgba(77,141,255,.5)}
+#ls-root .cb-red{color:#ff6a52;text-shadow:0 0 12px rgba(255,90,68,.5)}
+#ls-root .cb-vs{color:rgba(150,180,200,.35);margin:0 3px}
+#ls-root .cb-bar{position:relative;height:3px;margin:7px 0 6px;background:rgba(255,255,255,.08);overflow:hidden}
+#ls-root .cb-bar i{display:block;height:100%;background:#6effa0;
+  box-shadow:0 0 10px rgba(110,255,160,.8);transition:width .3s}
+#ls-root #combat.lost .cb-bar i{background:#ff5a44;box-shadow:0 0 10px rgba(255,90,68,.8)}
+#ls-root .cb-foot{font-size:8.5px;letter-spacing:.24em;color:rgba(170,200,216,.66)}
+#ls-root #combat.won .cb-foot{color:#8effc0}
+#ls-root #combat.lost .cb-foot{color:#ff8f7a}
 
 /* fold banner */
 #ls-root #foldOverlay{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px;

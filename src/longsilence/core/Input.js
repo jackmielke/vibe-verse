@@ -61,8 +61,14 @@ export class Input {
     // --------------------------------------------------------- mouse stick
     dom.addEventListener('mousedown', (e) => {
       if (this.uiOpen || this.touch) return;
-      if (e.button === 0 && !this.locked && dom.requestPointerLock) {
-        dom.requestPointerLock();
+      /* Left button does one of two things depending on whether the pointer is
+         already captured. The click that *takes* the lock must not also fire a
+         weapon — that click was aimed at a browser chrome-covered canvas the
+         player could not see through, and shooting on it would mean every
+         return-to-tab put a round downrange. */
+      if (e.button === 0) {
+        if (!this.locked && dom.requestPointerLock) dom.requestPointerLock();
+        else { this.pressed.add('fire'); this.lmb = true; }
       }
       if (e.button === 2) { this.pressed.add('scanClick'); this.rmb = true; }
     });
@@ -70,7 +76,10 @@ export class Input {
     /* Listeners bound to the canvas die with it. These three are on window and
        document, so they are held and removed in dispose() — the game is a route
        now, and a stale mousemove handler would keep steering a dead ship. */
-    this._onMouseUp = (e) => { if (e.button === 2) this.rmb = false; };
+    this._onMouseUp = (e) => {
+      if (e.button === 2) this.rmb = false;
+      if (e.button === 0) this.lmb = false;
+    };
     this._onLockChange = () => { this.locked = document.pointerLockElement === dom; };
     this._onMouseMove = (e) => {
       if (!this.locked) return;

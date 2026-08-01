@@ -369,6 +369,23 @@ export class Audio {
         tone(740, 0.16, 'square', 0.045);
         tone(740, 0.16, 'square', 0.045, 0.24);
         break;
+      /* A rifle. Three parts, and the order of them is the whole sound: the
+         crack of the round going supersonic, the body of the report behind it,
+         and a low thump you feel rather than hear. Everything else in this
+         switch is a mechanism in a quiet room; this one has to carry across
+         open ground with a firefight already on it, so it is louder than
+         anything else here on purpose. */
+      case 'shot':
+        noiseBurst(0.030, 5400, 1.1, 0.17);
+        noiseBurst(0.170, 430, 0.9, 0.13, 0.004, 'lowpass');
+        tone(96, 0.13, 'square', 0.055, 0.002, 44);
+        break;
+      // Hit confirmation, and deliberately tiny: it lands *inside* the report
+      // above, so anything with a tail would just muddy the shot.
+      case 'hitmark':
+        tone(1480, 0.05, 'square', 0.032, 0.02);
+        tone(1970, 0.07, 'sine', 0.022, 0.05);
+        break;
       default:
         tone(660, 0.2, 'sine', 0.045);
     }
