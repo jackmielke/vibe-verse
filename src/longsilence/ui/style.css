@@ -323,7 +323,8 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
   #ls-root #log{left:calc(12px + var(--safe-l));width:min(230px,48vw)}
   #ls-root .lg{font-size:8px}
   #ls-root #reticle{width:80px;height:80px}
-  #ls-root #narr{bottom:calc(21% + var(--safe-b));width:88vw}
+  #ls-root #narrStack{bottom:calc(21% + var(--safe-b))}
+  #ls-root #narr{width:88vw}
   #ls-root #narrText{font-size:11px;line-height:1.75;letter-spacing:.08em}
   #ls-root #prompt span{font-size:10.5px;letter-spacing:.18em}
   #ls-root #prompt em{display:none}
@@ -346,6 +347,10 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
 
 /* portrait phone */
 @media (max-width:760px) and (orientation:portrait){
+  /* Clear of the sticks. The left stick's touch zone reaches the bottom-left
+     corner, which is exactly where a bottom-docked link wants to live — and a
+     link you cannot press without steering is worse than no link. */
+  #ls-root .ls-out-dock{bottom:calc(188px + var(--safe-b));left:50%;transform:translateX(-50%)}
   #ls-root #touchBtns{right:calc(8px + var(--safe-r));gap:7px}
   #ls-root .tb{width:52px;height:32px;font-size:8.5px}
   #ls-root #touchThr{left:calc(8px + var(--safe-l));top:auto;bottom:calc(158px + var(--safe-b));
@@ -353,7 +358,8 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
   #ls-root .tt{width:38px;height:34px;font-size:15px}
   #ls-root #log{bottom:calc(200px + var(--safe-b))}
   #ls-root #prompt{bottom:calc(24% + var(--safe-b))}
-  #ls-root #narr{bottom:calc(52% + var(--safe-b));width:min(272px,68vw)}
+  #ls-root #narrStack{bottom:calc(52% + var(--safe-b))}
+  #ls-root #narr{width:min(272px,68vw)}
   #ls-root .stick{width:104px;height:104px}
 }
 
@@ -363,7 +369,8 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
     width:min(210px,30vw)}
   #ls-root .lg{font-size:7.5px;letter-spacing:.08em;padding-left:6px}
   #ls-root #prompt{bottom:calc(20% + var(--safe-b))}
-  #ls-root #narr{bottom:calc(50% + var(--safe-b));width:min(520px,58vw)}
+  #ls-root #narrStack{bottom:calc(50% + var(--safe-b))}
+  #ls-root #narr{width:min(520px,58vw)}
   #ls-root #narrText{font-size:10.5px;line-height:1.6}
   #ls-root #reticle{width:66px;height:66px}
   #ls-root .mk-lbl{font-size:7.5px}
@@ -392,7 +399,7 @@ body.ls-playing{overflow:hidden;overscroll-behavior:none}
 }
 
 @media (max-height:400px){
-  #ls-root #narr{bottom:calc(54% + var(--safe-b))}
+  #ls-root #narrStack{bottom:calc(54% + var(--safe-b))}
   #ls-root #log{display:none}
 }
 
