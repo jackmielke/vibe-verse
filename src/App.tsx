@@ -78,6 +78,10 @@ const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
    reason as the rest: nobody who never rings that doorbell should carry the
    house around in the hub's entry chunk. */
 const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
+/* RUN, VIBEY, RUN carries six chapters' worth of world builders — an Alabama
+   road, a stadium, a jungle, a gym, the gulf and the whole of America. Lazy
+   for the same reason as the rest. */
+const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -328,6 +332,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <StarTrek />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* RUN, VIBEY, RUN — a whole life, at a run. Six chapters: the road
+              out of Greenbow, a kickoff return, the treeline, a ping-pong
+              match, the shrimp boat, and then across America. */}
+          {["/run", "/gump", "/forrest"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#0b0d10]" />}>
+                  <RunVibeyRun />
                 </Suspense>
               }
             />

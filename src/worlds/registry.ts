@@ -140,6 +140,23 @@ export const WORLDS: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "run",
+    route: "/run",
+    aliases: ["/gump", "/forrest"],
+    name: "Run, Vibey, Run",
+    emoji: "🏃",
+    kind: "game",
+    blurb:
+      "A whole life, at a run, with the timeline of it across the top of the screen. Six chapters: the road out of Greenbow with the braces still on, a kickoff return that does not stop at the end zone, the treeline in the rain, a ping-pong match to eleven, a shrimp boat in a hurricane, and then across America with the crowd assembling behind you.",
+    status: "Playable — six chapters, desktop and phone",
+    accent: "#e0b53a",
+    featured: true,
+    source: "src/gump",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "home-alone",
     route: "/home-alone",
     aliases: ["/kevin"],
