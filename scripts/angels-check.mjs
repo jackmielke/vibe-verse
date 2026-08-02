@@ -64,6 +64,13 @@ page.on("pageerror", (e) => pageErrors.push(e.message));
 await page.goto(`${BASE}/blue-angels?shot=1`, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForFunction(() => window.__angelsReady === true, { timeout: 180000 });
 
+// Take the wheel. The page starts its own requestAnimationFrame loop, and if it
+// keeps running while the harness poses a camera the jet simply flies out of
+// frame between the two calls — at 230 m/s a quarter of a second is sixty
+// metres. Everything from here is driven by explicit `step()` calls, which also
+// makes every frame reproducible.
+await page.evaluate(() => window.__angels.stop());
+
 let failures = 0;
 const check = (name, ok, detail = "") => {
   console.log(`${ok ? "  ok  " : "FAIL  "}${name}${detail ? `  — ${detail}` : ""}`);

@@ -2,12 +2,22 @@
  * Everything on top of the canvas that is not the HUD: the hangar, the pause
  * card, the radio, the toasts and the ribbon of course progress.
  *
- * The hangar screen is doing more work than it looks like. Choosing an
- * aircraft in most flight games is choosing a skin; here it changes the mass,
- * the wing area, the thrust and six control-law constants, so the blurb for
- * each jet is a promise the flight model actually keeps. The Skyhawk really
- * does roll four times faster than the Phantom. Fat Albert really cannot pull
- * three G.
+ * ## The hangar is one screen with one button
+ *
+ * The first version put the aircraft, the difficulty, the wingman count, the
+ * start point, two game modes and six ring courses on a single scrolling page,
+ * and the result was a wall of choices in front of someone who just wanted to
+ * fly. Worse, on a phone it was unusable outright — the touch overlay is
+ * mounted on `document.body`, outside the React root, so its joystick zone sat
+ * on top of the entire menu and swallowed every tap. There was no way in.
+ *
+ * So: pick an aeroplane, look at it, press FLY. Everything else is behind one
+ * of four quiet links and none of it is required to start. Choosing an
+ * aircraft is the only decision worth making up front, because in this world
+ * it changes the mass, the wing area, the thrust and six control-law constants
+ * — the blurb on each card is a promise the flight model keeps. The Skyhawk
+ * really does roll four times faster than the Phantom, and the pictures are
+ * real renders of the same meshes you fly.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -23,7 +33,27 @@ import type { CameraMode } from "../types";
 import { isShotMode } from "../engine/core";
 import FlightHUD from "./FlightHUD";
 
+import superhornetArt from "@/assets/angels/jets/superhornet.jpg";
+import hornetArt from "@/assets/angels/jets/hornet.jpg";
+import skyhawkArt from "@/assets/angels/jets/skyhawk.jpg";
+import phantomArt from "@/assets/angels/jets/phantom.jpg";
+import tigerArt from "@/assets/angels/jets/tiger.jpg";
+import pantherArt from "@/assets/angels/jets/panther.jpg";
+import albertArt from "@/assets/angels/jets/albert.jpg";
+
+/** Real renders of the same meshes you fly, straight from the shot harness. */
+const JET_ART: Record<JetId, string> = {
+  superhornet: superhornetArt,
+  hornet: hornetArt,
+  skyhawk: skyhawkArt,
+  phantom: phantomArt,
+  tiger: tigerArt,
+  panther: pantherArt,
+  albert: albertArt,
+};
+
 type Screen = "hangar" | "flying" | "paused";
+type Panel = null | "courses" | "options" | "eggs";
 
 interface Props {
   engine: Engine;
@@ -49,9 +79,7 @@ const ASSIST_COPY: Record<AssistLevel, { name: string; blurb: string }> = {
 /**
  * The runway start is the one that turns this from a game into a flight sim.
  * You are stopped, cold, on Boeing Field 14R with the gear down and the
- * throttle at idle, and nothing happens until you push it up — which is the
- * first thirty seconds of every real flight and something almost no arcade
- * flight game lets you have.
+ * throttle at idle, and nothing happens until you push it up.
  */
 const START_POINTS: Array<{ id: "show" | "runway" | "high"; name: string; blurb: string }> = [
   { id: "show", name: "The show line", blurb: "Airborne over Lake Washington, running in from the north." },
@@ -73,6 +101,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   // a menu sitting in front of it.
   const shot = isShotMode();
   const [screen, setScreen] = useState<Screen>(shot ? "flying" : "hangar");
+  const [panel, setPanel] = useState<Panel>(null);
   const [jet, setJet] = useState<JetId>("superhornet");
   const [assist, setAssist] = useState<AssistLevel>("angel");
   const [camera, setCamera] = useState<CameraMode>("chase");
@@ -85,7 +114,6 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [demoCall, setDemoCall] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [timeOfDay, setTimeOfDay] = useState(0.31);
-  const [showAchievements, setShowAchievements] = useState(false);
   const [invertPitch, setInvertPitch] = useState(false);
   const [tilt, setTilt] = useState(false);
   const [wingmen, setWingmen] = useState(5);
@@ -94,6 +122,15 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const services = engine.ctx.services;
   const courses = services.courses as CourseService | undefined;
   const game = services.game as GameService | undefined;
+
+  // The touch overlay lives on document.body, outside the React root, so it
+  // cannot be layered under a menu with z-index alone — the root is its own
+  // stacking context. Hide it outright whenever a menu is up. Without this the
+  // joystick zone covers the hangar on a phone and there is no way in at all.
+  useEffect(() => {
+    const input = services.input as InputService | undefined;
+    input?.setTouchVisible(screen === "flying" ? null : false);
+  }, [services, screen]);
 
   // Pick up whatever the input system restored from localStorage.
   useEffect(() => {
@@ -140,8 +177,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
       if (!g) return;
       setRunTime(g.runTime);
       setScore(g.score);
-      const el = g.demoElement;
-      setDemoCall(el ? el.name : null);
+      setDemoCall(g.demoElement ? g.demoElement.name : null);
     }, 250);
     return () => window.clearInterval(id);
   }, [engine]);
@@ -158,6 +194,19 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   }, [engine]);
 
   const spec = useMemo(() => HANGAR.find((a) => a.id === jet) ?? HANGAR[0], [jet]);
+
+  function applyInvert(v: boolean) {
+    setInvertPitch(v);
+    (services.input as InputService | undefined)?.setSetting("invertPitch", v);
+  }
+  function applyTilt(v: boolean) {
+    setTilt(v);
+    (services.input as InputService | undefined)?.setSetting("tiltRoll", v);
+  }
+  function applyMuted(v: boolean) {
+    setMuted(v);
+    (services.audio as { setMuted(m: boolean): void } | undefined)?.setMuted(v);
+  }
 
   function launch(mode: "free" | "course" | "demo", course?: string) {
     const fleet = services.fleet as FleetService | undefined;
@@ -177,6 +226,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
       courses?.load(null);
       fleet?.respawn(start);
     }
+    setPanel(null);
     setScreen("flying");
   }
 
@@ -215,11 +265,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
       {/* ---- in-flight chrome ------------------------------------------- */}
       {screen === "flying" && (
         <>
-          {/* Radio, top-left under the safe area. */}
           <div
             data-angels-hud="radio"
             className="pointer-events-none fixed left-0 top-0 z-30 max-w-[62vw] space-y-1 p-3"
-            style={{ paddingTop: "max(12px, env(safe-area-inset-top))", paddingLeft: "max(12px, env(safe-area-inset-left))" }}
+            style={{
+              paddingTop: "max(12px, env(safe-area-inset-top))",
+              paddingLeft: "max(12px, env(safe-area-inset-left))",
+            }}
           >
             {radio.slice(0, 3).map((m, i) => (
               <div
@@ -236,7 +288,6 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             ))}
           </div>
 
-          {/* Course / demo strip, top-centre. */}
           {(courseId || demoCall) && (
             <div
               data-angels-hud="course"
@@ -253,7 +304,6 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             </div>
           )}
 
-          {/* Buttons, top-right. Kept clear of the touch throttle. */}
           <div
             data-angels-hud="buttons"
             className="fixed z-30 flex gap-1.5"
@@ -263,10 +313,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             }}
           >
             <button
-              onClick={() => {
-                const cam = services.camera as { cycle(): CameraMode } | undefined;
-                cam?.cycle();
-              }}
+              onClick={() => (services.camera as { cycle(): CameraMode } | undefined)?.cycle()}
               className="rounded-full bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-sky-200 backdrop-blur-sm transition hover:bg-black/65"
             >
               {CAMERA_COPY[camera]}
@@ -295,178 +342,218 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
 
       {/* ---- hangar ------------------------------------------------------ */}
       {screen === "hangar" && (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-gradient-to-b from-[#040a18]/97 via-[#061225]/94 to-[#02060f]/97 backdrop-blur-sm">
-          <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+        <div
+          className="fixed inset-0 z-40 overflow-y-auto overscroll-contain"
+          // Inline rather than a Tailwind gradient: the arbitrary-colour form
+          // with an opacity modifier silently produced a near-transparent
+          // panel, and the live world showing through the copy made the whole
+          // screen unreadable. This is one place where being explicit is worth
+          // more than being idiomatic.
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(4,10,24,0.96) 0%, rgba(6,18,37,0.94) 45%, rgba(2,6,15,0.97) 100%)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+          }}
+        >
+          <div
+            className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-4"
+            style={{
+              paddingTop: "max(22px, env(safe-area-inset-top))",
+              paddingBottom: "max(22px, env(safe-area-inset-bottom))",
+            }}
+          >
             <header className="text-center">
-              <p className="text-[10px] uppercase tracking-[0.5em] text-sky-300/60">
+              <p className="text-[9px] uppercase tracking-[0.45em] text-sky-300/50">
                 US Navy Flight Demonstration Squadron
               </p>
-              <h1 className="mt-2 bg-gradient-to-b from-amber-200 via-amber-300 to-amber-500 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-6xl">
+              <h1 className="mt-1 bg-gradient-to-b from-amber-200 via-amber-300 to-amber-500 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-5xl">
                 BLUE ANGELS
               </h1>
-              <p className="mt-2 text-sm text-sky-100/70">
-                Seafair over Lake Washington. You are number 1 — the other five fly your wing.
+              <p className="mt-1 text-[12.5px] text-sky-100/60">
+                Seafair over Lake Washington. You fly number 1.
               </p>
             </header>
 
-            {/* jets */}
-            <section className="mt-8">
-              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/50">
-                Choose your jet
-              </h2>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {HANGAR.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => setJet(a.id)}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      jet === a.id
-                        ? "border-amber-300/70 bg-amber-400/15 shadow-[0_0_28px_rgba(251,191,36,0.18)]"
-                        : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.07]"
-                    }`}
-                  >
-                    <p className="font-mono text-[9px] uppercase tracking-widest text-sky-300/50">{a.era}</p>
-                    <p className="mt-0.5 text-[13px] font-bold leading-tight text-white">{a.name}</p>
-                    <p className="mt-0.5 text-[10.5px] text-sky-100/50">{a.character}</p>
-                  </button>
-                ))}
-              </div>
-              <p className="mt-3 min-h-[2.5rem] text-[12.5px] leading-snug text-sky-100/65">{spec.blurb}</p>
-              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1 font-mono text-[10.5px] text-sky-200/45 sm:grid-cols-4">
-                <span>SPAN {spec.wingspan.toFixed(1)} m</span>
-                <span>MASS {(spec.mass / 1000).toFixed(1)} t</span>
-                <span>
-                  THRUST {((spec.thrustAB || spec.thrustMil) / 1000).toFixed(0)} kN
-                  {spec.thrustAB > 0 ? " AB" : ""}
-                </span>
-                <span>ROLL {Math.round((spec.feel.rollRate * 180) / Math.PI)}°/s</span>
-              </div>
-            </section>
-
-            {/* difficulty */}
-            <section className="mt-7">
-              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/50">
-                How much flies itself
-              </h2>
-              <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(ASSIST_COPY) as AssistLevel[]).map((level) => (
-                  <button
-                    key={level}
-                    onClick={() => setAssist(level)}
-                    className={`rounded-xl border px-3 py-2 text-left transition ${
-                      assist === level
-                        ? "border-sky-300/70 bg-sky-400/15"
-                        : "border-white/10 bg-white/[0.03] hover:border-white/25"
-                    }`}
-                  >
-                    <p className="text-[12.5px] font-bold text-white">{ASSIST_COPY[level].name}</p>
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 min-h-[2.2rem] text-[12px] leading-snug text-sky-100/55">
-                {ASSIST_COPY[assist].blurb}
-              </p>
-            </section>
-
-            {/* wingmen */}
-            <section className="mt-5 flex items-center gap-3">
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-sky-300/50">Wingmen</span>
-              <input
-                type="range"
-                min={0}
-                max={5}
-                value={wingmen}
-                onChange={(e) => setWingmen(Number(e.target.value))}
-                className="h-1 flex-1 accent-amber-400"
+            {/* the aeroplane, big */}
+            <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+              {/* Capped by viewport height as well as aspect: on a 720p
+                  laptop an uncapped 16:9 hero pushed the FLY button below the
+                  fold, which is the one thing this screen must never do. */}
+              <img
+                src={JET_ART[spec.id]}
+                alt={spec.name}
+                className="block max-h-[34vh] w-full object-cover"
+                style={{ aspectRatio: "16 / 9" }}
               />
-              <span className="w-6 font-mono text-xs text-amber-200">{wingmen}</span>
-            </section>
-
-            {/* where you start */}
-            <section className="mt-6">
-              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/50">
-                Where you start
-              </h2>
-              <div className="grid grid-cols-3 gap-2">
-                {START_POINTS.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setStart(s.id)}
-                    className={`rounded-xl border px-3 py-2 text-left transition ${
-                      start === s.id
-                        ? "border-sky-300/70 bg-sky-400/15"
-                        : "border-white/10 bg-white/[0.03] hover:border-white/25"
-                    }`}
-                  >
-                    <p className="text-[12.5px] font-bold text-white">{s.name}</p>
-                    <p className="mt-0.5 text-[10.5px] leading-snug text-sky-100/50">{s.blurb}</p>
-                  </button>
-                ))}
+              <div className="p-3.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-[17px] font-black leading-tight text-white">{spec.name}</h2>
+                  <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-sky-300/50">
+                    {spec.era}
+                  </span>
+                </div>
+                <p className="mt-1 text-[12.5px] leading-snug text-sky-100/65">{spec.blurb}</p>
+                <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10.5px] text-sky-200/45 sm:grid-cols-4">
+                  <span>SPAN {spec.wingspan.toFixed(1)} m</span>
+                  <span>MASS {(spec.mass / 1000).toFixed(1)} t</span>
+                  <span>
+                    {((spec.thrustAB || spec.thrustMil) / 1000).toFixed(0)} kN
+                    {spec.thrustAB > 0 ? " AB" : ""}
+                  </span>
+                  <span>ROLL {Math.round((spec.feel.rollRate * 180) / Math.PI)}°/s</span>
+                </div>
               </div>
-            </section>
+            </div>
 
-            {/* modes */}
-            <section className="mt-6 grid gap-2 sm:grid-cols-2">
-              <button
-                onClick={() => launch("free")}
-                className="rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 px-6 py-4 text-left transition hover:brightness-110"
-              >
-                <p className="text-lg font-black tracking-tight text-slate-900">Free Flight</p>
-                <p className="text-[12px] leading-snug text-slate-900/70">
-                  Seattle, a jet, and nobody keeping score. Start over the lake at 1,500 feet.
-                </p>
-              </button>
-              <button
-                onClick={() => launch("demo")}
-                className="rounded-2xl border border-sky-300/40 bg-sky-400/10 px-6 py-4 text-left transition hover:bg-sky-400/20"
-              >
-                <p className="text-lg font-black tracking-tight text-sky-100">Fly the Demo</p>
-                <p className="text-[12px] leading-snug text-sky-100/60">
-                  Nine called manoeuvres down the show line, scored on whether you actually flew them.
-                </p>
-              </button>
-            </section>
+            {/* the rest of the hangar, as a thumb strip */}
+            <div className="mt-2.5 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {HANGAR.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setJet(a.id)}
+                  aria-label={a.name}
+                  aria-pressed={jet === a.id}
+                  className={`relative shrink-0 overflow-hidden rounded-xl border transition ${
+                    jet === a.id
+                      ? "border-amber-300/80 shadow-[0_0_18px_rgba(251,191,36,0.28)]"
+                      : "border-white/10 opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  <img src={JET_ART[a.id]} alt="" className="block h-16 w-28 object-cover" />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-3 text-left font-mono text-[8.5px] uppercase tracking-wider text-white/85">
+                    {a.character}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-            <section className="mt-4">
-              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/50">
+            {/* the one button that matters */}
+            <button
+              onClick={() => launch("free")}
+              className="mt-4 w-full rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 py-4 text-2xl font-black tracking-[0.28em] text-slate-900 shadow-[0_0_36px_rgba(251,191,36,0.28)] transition hover:brightness-110 active:scale-[0.99]"
+            >
+              FLY
+            </button>
+            <p className="mt-1.5 text-center font-mono text-[10px] uppercase tracking-widest text-sky-200/35">
+              {START_POINTS.find((s) => s.id === start)?.name} · {ASSIST_COPY[assist].name} · {wingmen}{" "}
+              wingmen
+            </p>
+
+            {/* everything else, out of the way */}
+            <nav className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+              <PanelLink
+                active={panel === "courses"}
+                onClick={() => setPanel(panel === "courses" ? null : "courses")}
+              >
                 Ring courses
-              </h2>
-              <div className="grid gap-2 sm:grid-cols-2">
+              </PanelLink>
+              <PanelLink onClick={() => launch("demo")}>Fly the demo</PanelLink>
+              <PanelLink
+                active={panel === "options"}
+                onClick={() => setPanel(panel === "options" ? null : "options")}
+              >
+                Options
+              </PanelLink>
+              <PanelLink
+                active={panel === "eggs"}
+                onClick={() => setPanel(panel === "eggs" ? null : "eggs")}
+              >
+                Easter eggs {earned}/{achievements.length}
+              </PanelLink>
+            </nav>
+
+            {panel === "courses" && (
+              <section className="mt-3 grid gap-2 sm:grid-cols-2">
                 {(courses?.courses ?? []).map((c) => (
                   <button
                     key={c.id}
                     onClick={() => launch("course", c.id)}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/30 hover:bg-white/[0.07]"
+                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left transition hover:border-white/30 hover:bg-white/[0.07]"
                   >
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-[13.5px] font-bold text-white">{c.name}</p>
-                      <span className="font-mono text-[10px] text-sky-200/40">
+                      <p className="text-[13px] font-bold text-white">{c.name}</p>
+                      <span className="shrink-0 font-mono text-[9.5px] text-sky-200/40">
                         {game?.bestTimes?.[c.id] ? `${game.bestTimes[c.id].toFixed(1)}s` : `par ${c.par}s`}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11.5px] leading-snug text-sky-100/50">{c.blurb}</p>
                   </button>
                 ))}
-              </div>
-            </section>
+              </section>
+            )}
 
-            <section className="mt-6 flex flex-wrap items-center justify-between gap-3">
-              <button
-                onClick={() => setShowAchievements((v) => !v)}
-                className="font-mono text-[11px] uppercase tracking-widest text-amber-200/70 transition hover:text-amber-200"
-              >
-                Easter eggs · {earned}/{achievements.length}
-              </button>
-              <Link
-                to="/"
-                className="font-mono text-[11px] uppercase tracking-[0.3em] text-white/30 transition hover:text-white/60"
-              >
-                ← back to the vibeverse
-              </Link>
-            </section>
+            {panel === "options" && (
+              <section className="mt-3 space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <Group label="How much flies itself" note={ASSIST_COPY[assist].blurb}>
+                  {(Object.keys(ASSIST_COPY) as AssistLevel[]).map((l) => (
+                    <Chip key={l} on={assist === l} onClick={() => setAssist(l)}>
+                      {ASSIST_COPY[l].name}
+                    </Chip>
+                  ))}
+                </Group>
 
-            {showAchievements && (
-              <div className="mt-3 grid gap-1 sm:grid-cols-2">
+                <Group label="Where you start" note={START_POINTS.find((s) => s.id === start)?.blurb ?? ""}>
+                  {START_POINTS.map((s) => (
+                    <Chip key={s.id} on={start === s.id} onClick={() => setStart(s.id)}>
+                      {s.name}
+                    </Chip>
+                  ))}
+                </Group>
+
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/50">
+                    Wingmen
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={5}
+                    value={wingmen}
+                    onChange={(e) => setWingmen(Number(e.target.value))}
+                    className="h-1 flex-1 accent-amber-400"
+                  />
+                  <span className="w-4 font-mono text-xs text-amber-200">{wingmen}</span>
+                </div>
+
+                <Group label="Pitch" note="">
+                  <Chip on={!invertPitch} onClick={() => applyInvert(false)}>
+                    Push up to climb
+                  </Chip>
+                  <Chip on={invertPitch} onClick={() => applyInvert(true)}>
+                    Pull back to climb
+                  </Chip>
+                </Group>
+
+                <Group label="Tilt to roll" note="">
+                  <Chip on={!tilt} onClick={() => applyTilt(false)}>
+                    Off
+                  </Chip>
+                  <Chip on={tilt} onClick={() => applyTilt(true)}>
+                    On
+                  </Chip>
+                </Group>
+
+                <Group label="Sound" note="">
+                  <Chip on={!muted} onClick={() => applyMuted(false)}>
+                    On
+                  </Chip>
+                  <Chip on={muted} onClick={() => applyMuted(true)}>
+                    Muted
+                  </Chip>
+                </Group>
+
+                <p className="pt-1 font-mono text-[10px] leading-relaxed text-white/25">
+                  Desktop: W/S pitch · A/D roll · Q/E rudder · Shift/Z throttle · Space airbrake · G gear ·
+                  X smoke · C camera · R reset · Esc menu
+                  <br />
+                  Phone: left thumb flies, right thumb is the throttle. Landscape or portrait.
+                </p>
+              </section>
+            )}
+
+            {panel === "eggs" && (
+              <section className="mt-3 grid gap-1 sm:grid-cols-2">
                 {achievements.map((a) => (
                   <div
                     key={a.id}
@@ -480,17 +567,16 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                     <p className="text-[11px] leading-snug text-sky-100/45">{a.hint}</p>
                   </div>
                 ))}
-              </div>
+              </section>
             )}
 
-            <p className="mt-8 text-center font-mono text-[10px] leading-relaxed text-white/25">
-              Desktop: W/S pitch · A/D roll · Q/E rudder · Shift/Z throttle · Space airbrake · G gear · X smoke ·
-              C camera · R reset · Esc menu
-              <br />
-              Phone: left thumb flies, right thumb is the throttle. Landscape or portrait, both work.
-              <br />
-              Starting at Boeing Field? Throttle to full, hold the stick back past 130 knots, gear up with G.
-            </p>
+            <div className="min-h-[18px] flex-1" />
+            <Link
+              to="/"
+              className="mt-5 text-center font-mono text-[10.5px] uppercase tracking-[0.3em] text-white/25 transition hover:text-white/60"
+            >
+              ← back to the vibeverse
+            </Link>
           </div>
         </div>
       )}
@@ -498,7 +584,10 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
       {/* ---- pause ------------------------------------------------------- */}
       {screen === "paused" && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#050c1a]/95 p-5">
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/10 p-5"
+            style={{ background: "rgba(5,12,26,0.96)" }}
+          >
             <h2 className="text-center text-2xl font-black tracking-tight text-amber-200">Paused</h2>
 
             <div className="mt-5 space-y-3">
@@ -521,56 +610,36 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               <Row label="Assist">
                 <div className="flex gap-1">
                   {(Object.keys(ASSIST_COPY) as AssistLevel[]).map((l) => (
-                    <button
+                    <Chip
                       key={l}
+                      on={assist === l}
                       onClick={() => {
                         setAssist(l);
                         (services.fleet as FleetService | undefined)?.setAssist(l);
                       }}
-                      className={`rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
-                        assist === l ? "bg-sky-400/25 text-sky-100" : "text-white/40 hover:text-white/70"
-                      }`}
                     >
                       {ASSIST_COPY[l].name}
-                    </button>
+                    </Chip>
                   ))}
                 </div>
               </Row>
 
               <Row label="Pitch">
-                <Toggle
-                  on={invertPitch}
-                  onLabel="Pull back to climb"
-                  offLabel="Push up to climb"
-                  onChange={(v) => {
-                    setInvertPitch(v);
-                    (services.input as InputService | undefined)?.setSetting("invertPitch", v);
-                  }}
-                />
+                <Chip on={invertPitch} onClick={() => applyInvert(!invertPitch)}>
+                  {invertPitch ? "Pull back to climb" : "Push up to climb"}
+                </Chip>
               </Row>
 
               <Row label="Tilt to roll">
-                <Toggle
-                  on={tilt}
-                  onLabel="On"
-                  offLabel="Off"
-                  onChange={(v) => {
-                    setTilt(v);
-                    (services.input as InputService | undefined)?.setSetting("tiltRoll", v);
-                  }}
-                />
+                <Chip on={tilt} onClick={() => applyTilt(!tilt)}>
+                  {tilt ? "On" : "Off"}
+                </Chip>
               </Row>
 
               <Row label="Sound">
-                <Toggle
-                  on={!muted}
-                  onLabel="On"
-                  offLabel="Muted"
-                  onChange={(v) => {
-                    setMuted(!v);
-                    (services.audio as { setMuted(m: boolean): void } | undefined)?.setMuted(!v);
-                  }}
-                />
+                <Chip on={!muted} onClick={() => applyMuted(!muted)}>
+                  {muted ? "Muted" : "On"}
+                </Chip>
               </Row>
             </div>
 
@@ -583,7 +652,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               </button>
               <button
                 onClick={() => {
-                  (services.fleet as FleetService | undefined)?.respawn("show");
+                  (services.fleet as FleetService | undefined)?.respawn(start);
                   setScreen("flying");
                 }}
                 className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-bold uppercase tracking-widest text-white/70 transition hover:bg-white/10"
@@ -613,34 +682,55 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   );
 }
 
+function PanelLink({
+  children,
+  onClick,
+  active,
+}: {
+  children: React.ReactNode;
+  onClick(): void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`font-mono text-[11px] uppercase tracking-[0.16em] transition ${
+        active ? "text-amber-200" : "text-sky-200/55 hover:text-sky-100"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Group({ label, note, children }: { label: string; note: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/50">{label}</p>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+      {note && <p className="mt-1.5 text-[11.5px] leading-snug text-sky-100/45">{note}</p>}
+    </div>
+  );
+}
+
+function Chip({ on, onClick, children }: { on: boolean; onClick(): void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-wider transition ${
+        on ? "bg-sky-400/25 text-sky-100" : "bg-white/[0.06] text-white/45 hover:text-white/75"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-sky-300/50">{label}</span>
       {children}
     </div>
-  );
-}
-
-function Toggle({
-  on,
-  onLabel,
-  offLabel,
-  onChange,
-}: {
-  on: boolean;
-  onLabel: string;
-  offLabel: string;
-  onChange(v: boolean): void;
-}) {
-  return (
-    <button
-      onClick={() => onChange(!on)}
-      className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
-        on ? "bg-sky-400/25 text-sky-100" : "bg-white/[0.06] text-white/45"
-      }`}
-    >
-      {on ? onLabel : offLabel}
-    </button>
   );
 }

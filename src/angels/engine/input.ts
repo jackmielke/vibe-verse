@@ -340,6 +340,17 @@ export function createInput(ctx: AngelsCtx): System {
     settings,
   });
 
+  /**
+   * Whether the thumb controls should be on screen at all.
+   *
+   * `touchForced` is how the React layer says "a menu is open" — and it has to
+   * win outright, because the overlay lives on `document.body` while the menus
+   * live inside the React root. The root is its own stacking context, so the
+   * overlay's z-index competes with the *root*, not with the z-40 card inside
+   * it: a joystick zone at z-26 sat on top of the entire hangar screen and
+   * swallowed every tap on a phone. There was no way in. Gating on the UI is
+   * the fix; fighting the z-index would only have hidden it.
+   */
   function touchVisible(): boolean {
     if (touchForced !== null) return touchForced;
     if (shot) return false;
