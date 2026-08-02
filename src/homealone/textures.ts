@@ -481,16 +481,16 @@ export function face(kind: keyof typeof FACES | string) {
       // Soft form shading: temples and jaw fall away.
       const g = c.createRadialGradient(w / 2, h * 0.5, w * 0.1, w / 2, h * 0.5, w * 0.55);
       g.addColorStop(0, "rgba(255,240,225,0.30)");
-      g.addColorStop(0.65, "rgba(0,0,0,0)");
-      g.addColorStop(1, "rgba(120,72,48,0.26)");
+      g.addColorStop(0.78, "rgba(0,0,0,0)");
+      g.addColorStop(1, "rgba(126,80,56,0.13)");
       c.fillStyle = g;
       c.fillRect(0, 0, w, h);
 
       const cx = w / 2;
       const eyeY = h * 0.5;
-      const eyeDx = w * 0.098;
-      const eyeRx = 30 * o.eyeW;
-      const eyeRy = 23 * o.eyeW;
+      const eyeDx = w * 0.082;
+      const eyeRx = 25 * o.eyeW;
+      const eyeRy = 19.5 * o.eyeW;
 
       if (o.stubble) {
         c.fillStyle = "rgba(40,32,26,0.34)";
@@ -523,7 +523,7 @@ export function face(kind: keyof typeof FACES | string) {
       // them look wet instead of printed.
       for (const s of [-1, 1]) {
         const ex = cx + s * eyeDx;
-        c.fillStyle = "rgba(160,110,80,0.35)";
+        c.fillStyle = "rgba(170,120,92,0.16)";
         c.beginPath();
         c.ellipse(ex, eyeY + eyeRy * 0.9, eyeRx * 0.9, eyeRy * 0.45, 0, 0, Math.PI * 2);
         c.fill(); // under-eye
@@ -544,8 +544,8 @@ export function face(kind: keyof typeof FACES | string) {
         c.arc(ex - eyeRy * 0.3, eyeY - eyeRy * 0.35, eyeRy * 0.22, 0, Math.PI * 2);
         c.fill();
         // Lid line + lashes.
-        c.strokeStyle = "rgba(60,38,24,0.75)";
-        c.lineWidth = 4;
+        c.strokeStyle = "rgba(70,45,30,0.55)";
+        c.lineWidth = 3.2;
         c.beginPath();
         c.ellipse(ex, eyeY, eyeRx, eyeRy, 0, Math.PI * 1.05, Math.PI * 1.95);
         c.stroke();
@@ -553,11 +553,11 @@ export function face(kind: keyof typeof FACES | string) {
 
       // Brows.
       c.strokeStyle = o.brow;
-      c.lineWidth = kind.startsWith("kevin") ? 7 : 12;
+      c.lineWidth = kind.startsWith("kevin") ? 5.5 : 11;
       c.lineCap = "round";
       for (const s of [-1, 1]) {
         const ex = cx + s * eyeDx;
-        const lift = o.mouth === "scream" ? 58 : kind.startsWith("kevin") ? 52 : 40;
+        const lift = o.mouth === "scream" ? 62 : kind.startsWith("kevin") ? 56 : 42;
         c.beginPath();
         if (kind === "harry") {
           // Harry's brows come down in the middle. He is always annoyed.
@@ -584,6 +584,24 @@ export function face(kind: keyof typeof FACES | string) {
         c.beginPath();
         c.ellipse(cx + s * nw * 0.5, noseY + 2, 5, 3.4, 0, 0, Math.PI * 2);
         c.fill();
+      }
+
+      /* Sides of the nose, softly.
+       *
+       * A drawn face is a sticker until something on it implies a third
+       * dimension, and the cheapest thing that does is a shadow down one side
+       * of the nose and a highlight down the other. Two gradients. */
+      {
+        const shade = c.createLinearGradient(cx - nw * 1.5, 0, cx, 0);
+        shade.addColorStop(0, "rgba(150,95,62,0)");
+        shade.addColorStop(1, "rgba(150,95,62,0.30)");
+        c.fillStyle = shade;
+        c.fillRect(cx - nw * 1.5, noseY - (o.bigNose ? 58 : 40), nw * 1.5, (o.bigNose ? 66 : 48));
+        const lit = c.createLinearGradient(cx, 0, cx + nw * 1.2, 0);
+        lit.addColorStop(0, "rgba(255,238,215,0.34)");
+        lit.addColorStop(1, "rgba(255,238,215,0)");
+        c.fillStyle = lit;
+        c.fillRect(cx, noseY - (o.bigNose ? 58 : 40), nw * 1.2, (o.bigNose ? 66 : 48));
       }
 
       // Mouth.
@@ -623,12 +641,70 @@ export function face(kind: keyof typeof FACES | string) {
           c.fillRect(cx + 15, my - 1, 5, 5);
         }
       } else {
-        c.strokeStyle = "#a35c48";
-        c.lineWidth = 8;
+        // Two lips and a shadow between them. One stroke reads as a line
+        // drawn on a face; this reads as a mouth that is shut.
+        c.fillStyle = "rgba(178,102,86,0.75)";
         c.beginPath();
-        c.moveTo(cx - 30, my);
-        c.quadraticCurveTo(cx, my + 12, cx + 30, my);
+        c.moveTo(cx - 32, my);
+        c.quadraticCurveTo(cx - 14, my - 9, cx, my - 3);
+        c.quadraticCurveTo(cx + 14, my - 9, cx + 32, my);
+        c.quadraticCurveTo(cx, my + 5, cx - 32, my);
+        c.fill();
+        c.fillStyle = "rgba(190,116,98,0.8)";
+        c.beginPath();
+        c.moveTo(cx - 30, my + 1);
+        c.quadraticCurveTo(cx, my + 17, cx + 30, my + 1);
+        c.quadraticCurveTo(cx, my + 6, cx - 30, my + 1);
+        c.fill();
+        c.strokeStyle = "rgba(120,62,50,0.7)";
+        c.lineWidth = 3;
+        c.beginPath();
+        c.moveTo(cx - 30, my + 1);
+        c.quadraticCurveTo(cx, my + 7, cx + 30, my + 1);
         c.stroke();
+        // The dip under the lower lip, which is most of a chin.
+        const ch = c.createRadialGradient(cx, my + 22, 2, cx, my + 22, 24);
+        ch.addColorStop(0, "rgba(158,104,74,0.14)");
+        ch.addColorStop(1, "rgba(158,104,74,0)");
+        c.fillStyle = ch;
+        c.fillRect(cx - 26, my + 2, 52, 44);
+      }
+
+      // The shadow the fringe casts on the forehead. Without it the hair is a
+      // hat balanced above a face rather than growing out of one.
+      {
+        const fr = c.createLinearGradient(0, h * 0.2, 0, h * 0.4);
+        fr.addColorStop(0, "rgba(96,64,40,0.22)");
+        fr.addColorStop(1, "rgba(90,58,34,0)");
+        c.fillStyle = fr;
+        c.fillRect(0, h * 0.2, w, h * 0.2);
+      }
+
+      /*
+       * Clean skin around all four edges. This is the fix for a bug that took
+       * four screenshots to name.
+       *
+       * The texture clamps, and the drawing occupies a band in the middle of
+       * the canvas — so every part of the head outside that band (the whole
+       * jaw and throat below it, the crown above, the sides behind the ears)
+       * is painted with whatever colour happens to sit on the canvas *edge*.
+       * The edge was the dark outer stop of the form-shading gradient, so the
+       * entire lower half of his head came out several shades darker than his
+       * cheeks and read, unmistakably, as a beard on an eight-year-old.
+       */
+      {
+        const b = Math.round(h * 0.06);
+        c.fillStyle = o.skin;
+        c.fillRect(0, 0, w, b);
+        c.fillRect(0, h - b, w, b);
+        c.fillRect(0, 0, b, h);
+        c.fillRect(w - b, 0, b, h);
+        // Feather the seam so the band does not show as a hard line.
+        const fade = c.createLinearGradient(0, h - b * 2.4, 0, h - b);
+        fade.addColorStop(0, "rgba(0,0,0,0)");
+        fade.addColorStop(1, o.skin);
+        c.fillStyle = fade;
+        c.fillRect(0, h - b * 2.4, w, b * 1.4);
       }
 
       // Cheeks — cold outside, and it is the last 5% of "this is a child".

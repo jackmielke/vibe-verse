@@ -1343,7 +1343,9 @@ export class HomeAloneEngine {
    * play the level looking at the back of a wall.
    */
   private settleCamera(dt: number) {
-    const headY = this.pos.y + 1.12;
+    // Aim at his shoulders, derived from his actual height rather than a
+    // magic number — the day he got 4 cm taller the magic number was wrong.
+    const headY = this.pos.y + this.kevin.height * 0.86;
     const focus = new THREE.Vector3(this.pos.x, headY, this.pos.z);
 
     if (this.caught > 0 && this.caughtBy) {
@@ -1388,7 +1390,10 @@ export class HomeAloneEngine {
     this.kevin.root.visible = this.camDist > 0.9 || this.zipRide >= 0 || this.shotDist !== null;
 
     const want = focus.clone().addScaledVector(back, this.camDist);
-    want.y += 0.42;
+    // The lift is proportional to the boom. A fixed 42 cm is a gentle
+    // over-the-shoulder angle at three metres and a view of the top of his
+    // head at half a metre, which is exactly where a wall puts you.
+    want.y += Math.min(0.42, this.camDist * 0.15);
     this.camPos.lerp(want, Math.min(1, dt * 16));
     this.camLook.lerp(focus.clone().addScaledVector(dir, 2.2), Math.min(1, dt * 14));
     this.camera.position.copy(this.camPos);

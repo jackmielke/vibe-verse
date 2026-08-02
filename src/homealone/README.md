@@ -204,6 +204,41 @@ look like a game. `surface(kind, w, h)` in `build.ts` fixes it — ask for a kin
 and the real size of the face, get a material whose texture repeats at a fixed
 number of metres per tile, cached on a 25 cm grid.
 
+## The controls, and the sign errors in them
+
+Two of these shipped, and both are the kind that a screenshot cannot see and a
+magnitude test passes happily:
+
+- **The movement basis was negated on both axes.** Pushing the stick forward
+  walked him *at* the camera and pushing right strafed him left, which on a
+  thumb reads as "sometimes it goes backwards". The playtest checked that he
+  moved; it did not check *where*. It checks all four directions now, and the
+  basis is written out in the comment so nobody has to re-derive it:
+  `forward = (sin y, 0, cos y)`, `right = (-cos y, 0, sin y)`.
+- **Pitch fought the drag.** `dir.y` was negated against a `camPitch` that a
+  drag increases, so swiping up the screen tipped the view down. Positive
+  pitch is up. There is an invert toggle for people who want the other one.
+
+**Touch has one owner.** The HUD used to hold a fixed joystick pad while the
+canvas held the look-drag — two owners fighting over one thumb, with three
+consequences: a thumb landing a centimetre outside the pad did nothing, a drag
+starting on the left half was ignored, and a second finger had nowhere to go.
+The engine now takes every pointer on the canvas: **left 45% is a floating
+stick** whose centre is wherever your thumb lands, **right 55% is look**, and
+**two fingers pinch to zoom**. The HUD only draws a ring where the engine says
+the thumb is. Buttons stay DOM elements above the canvas and swallow their own
+events.
+
+The boom's height lift is proportional to its length. A fixed 42 cm is a
+gentle over-the-shoulder angle at three metres and a view of the top of his
+head at half a metre — which is exactly where a wall puts you.
+
+**Nothing is locked.** Gating level 4 behind level 3 is right for a game
+somebody bought and wrong for one somebody opened from a link: the reason to
+post this is "come and see the bit with the paint cans", and that person
+should not first be made to light seven rooms. A ☰ chip switches mode without
+leaving the world.
+
 ## Faces are drawn
 
 Kevin's face is a 512px canvas wrapped round the front of a squashed sphere,
@@ -221,7 +256,45 @@ Two things about that mapping cost a screenshot each to find:
 The bowl cut is three pieces — a shallow crown cap, a deep bowl over the **back
 200° only**, and a fringe resting on the brow. A single hemisphere gives you a
 gold egg with no face. A ring of boxes gives you a flat yellow slab from
-behind. Three pieces give you a haircut.
+behind. Three pieces give you a haircut. Every dimension in it is a fraction of
+`headR`, and that is not tidiness: they were absolute metres once, and the day
+the head got smaller the fringe stayed put and hung down past his nose.
+
+Two more things about the face cost a screenshot each and are worth writing
+down, because neither is guessable:
+
+- **Clean skin round all four canvas edges.** The texture clamps, and the
+  drawing occupies a band in the middle — so every part of the head outside
+  that band takes the colour on the canvas *edge*. The edge was the dark outer
+  stop of the form-shading gradient, and the whole lower head came out several
+  shades darker than the cheeks.
+- **The drawing sits low on the skull, not centred.** Centred, it leaves a
+  hand's width of bare jaw below the mouth, and bare jaw on a head lit from
+  above is a smooth dark wedge that reads as a goatee on an eight-year-old.
+  That one is a *lighting* artefact, and the cure is not to fight the light —
+  it is to stop having that much face below the mouth.
+
+## Nobody is made of boxes any more
+
+Limbs are tapered cylinders with a ball at every joint, and it is the single
+biggest step from "assembled out of blocks" to "a person": a forearm 15%
+narrower at the wrist than at the elbow reads as anatomy at a glance, where two
+boxes of equal width read as furniture however good the texture on them is.
+Hands and feet are squashed spheres, because a cube on the end of an arm is the
+most obviously wrong thing a character can have.
+
+The head is a sphere with four deformations, all of them things you would
+notice missing before you could name them: the jaw narrows towards the chin,
+the cranium is longer front-to-back than side-to-side, the brow steps forward
+over the eyes, and there is a chin rather than the bottom of a circle. The UVs
+are untouched, so the drawn face lands exactly where it did.
+
+**Kevin is a fifth of his own height at the head, not a third.** The first
+build used a third on the theory that children read as children by head-to-body
+ratio. They do — but a third is a Funko pop, and he stopped being a boy and
+became a mascot. The childishness has to come from everywhere else instead:
+narrow shoulders, no waist to speak of, short forearms, and a stride that is
+quick rather than long.
 
 ## Verifying a change
 

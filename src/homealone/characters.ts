@@ -75,31 +75,41 @@ interface Build {
 }
 
 const BUILDS: Record<Who, Build> = {
+  /*
+   * Kevin is 1.31 m with a head about a fifth of his height.
+   *
+   * The first build made it a *third*, on the theory that children read as
+   * children because of head-to-body ratio. They do — but a third is a Funko
+   * pop, and at a third he stopped being a boy and became a mascot. A real
+   * eight-year-old is nearer a fifth-and-a-half, and the childishness has to
+   * come from everywhere else instead: narrow shoulders, no waist to speak
+   * of, short forearms, and a stride that is quick rather than long.
+   */
   kevin: {
-    height: 1.27, headR: 0.205, headSquash: 0.92, shoulder: 0.17,
-    torsoH: 0.42, torsoW: 0.36, torsoD: 0.22,
-    legLen: 0.50, legW: 0.115, armLen: 0.40, armW: 0.095,
+    height: 1.31, headR: 0.116, headSquash: 1.13, shoulder: 0.15,
+    torsoH: 0.42, torsoW: 0.245, torsoD: 0.155,
+    legLen: 0.60, legW: 0.078, armLen: 0.42, armW: 0.055,
     walkSpeed: 2.7, runSpeed: 5.3,
   },
   harry: {
-    height: 1.70, headR: 0.20, headSquash: 1.0, shoulder: 0.25,
-    torsoH: 0.62, torsoW: 0.56, torsoD: 0.34,
-    legLen: 0.74, legW: 0.17, armLen: 0.58, armW: 0.145,
+    height: 1.70, headR: 0.132, headSquash: 1.16, shoulder: 0.24,
+    torsoH: 0.58, torsoW: 0.44, torsoD: 0.28,
+    legLen: 0.76, legW: 0.135, armLen: 0.58, armW: 0.105,
     walkSpeed: 2.5, runSpeed: 4.6,
   },
   marv: {
-    height: 1.96, headR: 0.195, headSquash: 1.14, shoulder: 0.235,
-    torsoH: 0.68, torsoW: 0.44, torsoD: 0.26,
-    legLen: 0.98, legW: 0.135, armLen: 0.72, armW: 0.115,
+    height: 1.96, headR: 0.129, headSquash: 1.3, shoulder: 0.215,
+    torsoH: 0.62, torsoW: 0.34, torsoD: 0.215,
+    legLen: 1.00, legW: 0.105, armLen: 0.74, armW: 0.082,
     walkSpeed: 2.6, runSpeed: 4.9,
   },
   // Old Man Marley: tall, stooped, and slow. Everything about him is built to
   // be misread from a distance as something to be frightened of, which is the
   // entire point of the character.
   marley: {
-    height: 1.84, headR: 0.2, headSquash: 1.04, shoulder: 0.24,
-    torsoH: 0.64, torsoW: 0.52, torsoD: 0.3,
-    legLen: 0.86, legW: 0.15, armLen: 0.64, armW: 0.13,
+    height: 1.84, headR: 0.135, headSquash: 1.18, shoulder: 0.225,
+    torsoH: 0.60, torsoW: 0.41, torsoD: 0.25,
+    legLen: 0.88, legW: 0.12, armLen: 0.66, armW: 0.095,
     walkSpeed: 1.15, runSpeed: 1.6,
   },
 };
@@ -113,6 +123,88 @@ export function makeCharacter(who: Who): Character {
   };
 
   const BOX = keep(new THREE.BoxGeometry(1, 1, 1));
+
+  /*
+   * Limbs are tapered cylinders, not boxes.
+   *
+   * This is the single biggest step from "assembled out of blocks" to "a
+   * person". A forearm that is 15% narrower at the wrist than the elbow, and a
+   * thigh that is wider than the shin, read as anatomy at a glance; two boxes
+   * of the same width read as furniture, however good the texture on them is.
+   * Ten sides is plenty at the size any of these are ever seen.
+   */
+  const limbCache = new Map<string, THREE.CylinderGeometry>();
+  const limbGeo = (top: number, bottom: number) => {
+    const key = `${top.toFixed(3)}:${bottom.toFixed(3)}`;
+    let g = limbCache.get(key);
+    if (!g) {
+      g = keep(new THREE.CylinderGeometry(top, bottom, 1, 10, 1));
+      limbCache.set(key, g);
+    }
+    return g;
+  };
+  /** A tapered limb segment hung from a joint, growing downwards. */
+  const limb = (
+    parent: THREE.Object3D, m: THREE.Material,
+    y: number, len: number, top: number, bottom: number, z = 0,
+  ) => {
+    const o = new THREE.Mesh(limbGeo(top, bottom), m);
+    o.position.set(0, y - len / 2, z);
+    o.scale.set(1, len, 1);
+    o.castShadow = true;
+    parent.add(o);
+    return o;
+  };
+  /** A joint, so elbows and knees are not sharp corners. */
+  const BALL = keep(new THREE.SphereGeometry(1, 10, 8));
+  const ball = (parent: THREE.Object3D, m: THREE.Material, x: number, y: number, z: number, r: number, sy = 1) => {
+    const o = new THREE.Mesh(BALL, m);
+    o.position.set(x, y, z);
+    o.scale.set(r, r * sy, r);
+    o.castShadow = true;
+    parent.add(o);
+    return o;
+  };
+
+  /**
+   * A skull, from a sphere.
+   *
+   * A sphere is a ball, and a face painted on a ball stays a ball. Four
+   * deformations turn it into a head, and all four are things you would notice
+   * missing before you could name them: the jaw narrows towards the chin, the
+   * back of the cranium is longer than the front, the brow steps forward over
+   * the eyes, and there is an actual chin rather than the bottom of a circle.
+   * The UVs are untouched, so the drawn face still lands exactly where it did.
+   */
+  const skullGeo = (r: number) => {
+    const g = keep(new THREE.SphereGeometry(r, 26, 20));
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const ny = v.y / r; // -1 at the chin, +1 at the crown
+      // Jaw: pinch everything below the cheekbones towards the midline.
+      if (ny < -0.1) {
+        // 0.26, not 0.42, and starting below the cheekbones rather than at
+        // them. A harder pinch gives a chin like a chess piece, and the drawn
+        // face gets compressed into it and reads as a beard.
+        const t = Math.min(1, (-0.1 - ny) / 0.9);
+        const pinch = 1 - t * t * 0.26;
+        v.x *= pinch;
+        v.z *= pinch * 0.94 + 0.06;
+      }
+      // Cranium: longer front-to-back than side-to-side, and flatter behind.
+      v.z *= v.z < 0 ? 1.06 : 1.0;
+      v.x *= 0.9;
+      // Brow: a small step forward over the eyes.
+      if (ny > 0.05 && ny < 0.4 && v.z > 0) v.z += r * 0.06 * Math.sin(((ny - 0.05) / 0.35) * Math.PI);
+      // Chin: push the very bottom-front out and up a little.
+      if (ny < -0.6 && v.z > 0) v.z += r * 0.05 * (-ny - 0.6) * 2.5;
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    g.computeVertexNormals();
+    return g;
+  };
   const mat = (color: number, rough = 0.9, metal = 0) =>
     keep(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }));
   const clothMat = (hex: string, seed: number, rx = 1, ry = 1) => {
@@ -171,7 +263,26 @@ export function makeCharacter(who: Who): Character {
           1.4,
         );
 
-  cube(torso, coatMat, 0, b.torsoH / 2, 0, b.torsoW, b.torsoH, b.torsoD);
+  /* The torso is a tapered box rather than a slab: chest wider than waist,
+     and shoulders rounded off with two balls so the arms grow out of
+     something instead of being stuck on the sides of a crate. */
+  {
+    const chest = new THREE.Mesh(BOX, coatMat);
+    chest.position.set(0, b.torsoH * 0.62, 0);
+    chest.scale.set(b.torsoW, b.torsoH * 0.76, b.torsoD);
+    chest.castShadow = true;
+    torso.add(chest);
+    const waist = new THREE.Mesh(BOX, coatMat);
+    waist.position.set(0, b.torsoH * 0.14, 0);
+    waist.scale.set(b.torsoW * 0.86, b.torsoH * 0.34, b.torsoD * 0.9);
+    waist.castShadow = true;
+    torso.add(waist);
+    // Shoulders sit at the *top of the ribcage*, not under the ears. The
+    // first pass had them at 94% of the torso and half its depth across,
+    // which read as a fur collar with a small head resting on it.
+    for (const sd of [-1, 1])
+      ball(torso, coatMat, sd * b.torsoW * 0.44, b.torsoH * 0.86, 0, b.torsoD * 0.42, 0.8);
+  }
 
   if (who === "kevin") {
     // Snow boots and jeans, and the sweater's ribbed hem.
@@ -190,7 +301,9 @@ export function makeCharacter(who: Who): Character {
 
   /* ---- head -------------------------------------------------------- */
   const head = new THREE.Group();
-  head.position.y = b.torsoH + b.headR * b.headSquash * 0.86;
+  /* Clear of the collar. At 0.86 the chin sat *below* the top of the torso
+     and the head looked pushed down into the sweater like a tortoise. */
+  head.position.y = b.torsoH + b.headR * b.headSquash * 1.14;
   torso.add(head);
 
   const faceTex = T.face(who).clone();
@@ -207,24 +320,39 @@ export function makeCharacter(who: Who): Character {
   // FACE_SPAN 1.6 puts the drawing across about 112° of circumference. Lower
   // numbers wrap it round the sides of the skull and the eyes end up level
   // with the ears, which is a very specific kind of wrong.
-  const FACE_SPAN = 1.6;
-  const FACE_BAND = 1.40;
+  const FACE_SPAN = 1.58;
+  const FACE_BAND = 1.62;
   faceTex.repeat.set(FACE_SPAN, FACE_BAND);
-  faceTex.offset.set(0.5 - 0.25 * FACE_SPAN, 0.5 - 0.5 * FACE_BAND);
+  /*
+   * The +0.09 slides the drawing *down* the skull.
+   *
+   * Centred, it leaves a hand's width of bare jaw below the mouth — and bare
+   * jaw on a head lit from above is a smooth dark wedge that reads, from any
+   * distance, as a goatee. It is a lighting artefact rather than a texture
+   * one, and the cure is not to fight the light: it is to stop having that
+   * much face below the mouth.
+   */
+  faceTex.offset.set(0.5 - 0.25 * FACE_SPAN, 0.5 - 0.5 * FACE_BAND + 0.09);
   owned.push(faceTex);
   const faceMat = keep(new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.82 }));
 
-  const headGeo = keep(new THREE.SphereGeometry(b.headR, 22, 18));
-  const skull = new THREE.Mesh(headGeo, faceMat);
-  skull.scale.set(0.94, b.headSquash, 0.98);
+  const skull = new THREE.Mesh(skullGeo(b.headR), faceMat);
+  skull.scale.set(1, b.headSquash, 1);
   skull.castShadow = true;
   head.add(skull);
 
-  // Ears, so the silhouette from behind is not a ball on a stick.
-  for (const s of [-1, 1]) cube(head, skin, s * b.headR * 0.92, 0, -b.headR * 0.06, 0.05, b.headR * 0.5, b.headR * 0.42);
+  // Ears. Rounded, set back, and angled off the skull — square tabs on the
+  // side of a head are one of those details nobody spots until they are wrong.
+  for (const sd of [-1, 1]) {
+    // Set back behind the midline and only just proud of the skull. Ears that
+    // stick out level with the eyes read as handles.
+    const ear = ball(head, skin, sd * b.headR * 0.76, -b.headR * 0.04, -b.headR * 0.18, b.headR * 0.15, 1.2);
+    ear.scale.x *= 0.36;
+    ear.rotation.z = sd * 0.12;
+  }
 
-  // Neck.
-  cube(torso, skin, 0, b.torsoH - 0.02, 0, b.headR * 0.5, 0.09, b.headR * 0.5);
+  // Neck: tapered, and long enough to be visible under the jaw.
+  limb(torso, skin, b.torsoH + b.headR * 0.34, b.headR * 0.55, b.headR * 0.34, b.headR * 0.42);
 
   if (who === "kevin") {
     /* The bowl cut.
@@ -245,7 +373,7 @@ export function makeCharacter(who: Who): Character {
     // phi is what keeps it off his cheeks. A single hemisphere gives you a
     // gold egg with no face; a ring of boxes gives you a flat yellow slab from
     // behind. This gives you a haircut.
-    const capGeo = keep(new THREE.SphereGeometry(b.headR * 1.06, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.36));
+    const capGeo = keep(new THREE.SphereGeometry(b.headR * 1.06, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.42));
     const cap = new THREE.Mesh(capGeo, hairMat);
     cap.position.y = b.headR * 0.02;
     cap.scale.set(1.02, b.headSquash * 1.0, 1.04);
@@ -275,15 +403,18 @@ export function makeCharacter(who: Who): Character {
     rim.scale.set(1.0, 1, 1.03);
     head.add(rim);
 
-    // Fringe: a fine arc across the forehead, hanging to just above the brows.
-    // It has to stop there. Two builds of this had it hanging over his eyes,
-    // and a bowl cut with no eyes under it is a wig on a bowling ball.
-    for (let i = -4; i <= 4; i++) {
-      const a = (i / 4) * 0.66;
+    /* Fringe: a fine arc across the forehead, hanging to just above the brows.
+     *
+     * Every dimension here is a fraction of `headR`, and that is not tidiness
+     * — these were absolute metres once, and the day the head got smaller the
+     * fringe stayed the same size and hung down past his nose. A bowl cut with
+     * no eyes under it is a wig on a bowling ball. */
+    for (let i = -5; i <= 5; i++) {
+      const a = (i / 5) * 0.7;
       const f = cube(
         head, hairMat,
-        Math.sin(a) * b.headR * 0.93, b.headR * 0.72 - Math.abs(i) * 0.008, Math.cos(a) * b.headR * 0.93,
-        0.075, 0.13, 0.05,
+        Math.sin(a) * b.headR * 0.9, b.headR * (0.62 - Math.abs(i) * 0.022), Math.cos(a) * b.headR * 0.9,
+        b.headR * 0.34, b.headR * 0.52, b.headR * 0.3,
       );
       f.rotation.y = a;
     }
@@ -327,30 +458,43 @@ export function makeCharacter(who: Who): Character {
   const legMat = clothMat(who === "kevin" ? "#36537f" : who === "harry" ? "#2f2a26" : "#1e2029", 11, 1, 2);
   const shoeMat = mat(PAL.shoe, 0.7);
 
+  /* Arms: upper tapers to the elbow, forearm tapers to the wrist, and there
+     is a ball at every joint. The hand is a squashed sphere — a cube on the
+     end of an arm is the most obviously wrong thing a character can have. */
   function arm(side: -1 | 1) {
     const upper = new THREE.Group();
-    upper.position.set(side * (b.torsoW / 2 + b.armW * 0.4), b.torsoH * 0.92, 0);
+    upper.position.set(side * (b.torsoW / 2 + b.armW * 0.75), b.torsoH * 0.84, 0);
     torso.add(upper);
-    cube(upper, limbMat, 0, -b.armLen * 0.28, 0, b.armW, b.armLen * 0.56, b.armW);
+    ball(upper, limbMat, 0, 0, 0, b.armW * 1.12);
+    limb(upper, limbMat, 0, b.armLen * 0.56, b.armW * 1.05, b.armW * 0.86);
     const fore = new THREE.Group();
     fore.position.y = -b.armLen * 0.56;
     upper.add(fore);
-    cube(fore, limbMat, 0, -b.armLen * 0.22, 0, b.armW * 0.9, b.armLen * 0.44, b.armW * 0.9);
-    // Hand.
-    cube(fore, skin, 0, -b.armLen * 0.46, 0, b.armW * 1.05, b.armW * 1.15, b.armW * 1.05);
+    ball(fore, limbMat, 0, 0, 0, b.armW * 0.92);
+    limb(fore, limbMat, 0, b.armLen * 0.42, b.armW * 0.88, b.armW * 0.7);
+    // A child's hand is small. At 1.18× the arm's radius it hung off the end
+    // of the sleeve like a boxing glove.
+    const hand = ball(fore, skin, 0, -b.armLen * 0.45, 0, b.armW * 0.82, 1.3);
+    hand.scale.z *= 0.7;
     return { upper, fore };
   }
 
+  /* Legs: thigh into knee into shin, and a shoe with a toe and a sole rather
+     than a brick. */
   function leg(side: -1 | 1) {
     const thigh = new THREE.Group();
-    thigh.position.set(side * b.legW * 1.05, 0, 0);
+    thigh.position.set(side * b.legW * 1.25, b.torsoH * 0.02, 0);
     torso.add(thigh);
-    cube(thigh, legMat, 0, -b.legLen * 0.27, 0, b.legW, b.legLen * 0.54, b.legW);
+    ball(thigh, legMat, 0, 0, 0, b.legW * 1.2);
+    limb(thigh, legMat, 0, b.legLen * 0.54, b.legW * 1.15, b.legW * 0.82);
     const shin = new THREE.Group();
     shin.position.y = -b.legLen * 0.54;
     thigh.add(shin);
-    cube(shin, legMat, 0, -b.legLen * 0.23, 0, b.legW * 0.92, b.legLen * 0.46, b.legW * 0.92);
-    cube(shin, shoeMat, 0, -b.legLen * 0.46, b.legW * 0.28, b.legW * 1.1, b.legW * 0.9, b.legW * 2.0);
+    ball(shin, legMat, 0, 0, 0, b.legW * 0.86);
+    limb(shin, legMat, 0, b.legLen * 0.46, b.legW * 0.84, b.legW * 0.62);
+    const foot = ball(shin, shoeMat, 0, -b.legLen * 0.46, b.legW * 0.42, b.legW * 1.15, 0.62);
+    foot.scale.z *= 1.9;
+    cube(shin, shoeMat, 0, -b.legLen * 0.485, b.legW * 0.34, b.legW * 2.0, b.legW * 0.34, b.legW * 2.6);
     return { thigh, shin };
   }
 
