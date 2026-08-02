@@ -39,6 +39,7 @@ const ALL_WORLDS: Destination[] = [
   { to: "/kart", emoji: "🏁", label: "Vibe Kart" },
   { to: "/i-spy", emoji: "👁", label: "I Spy", matchPaths: ["/ispy", "/geometry-dash"] },
   { to: "/fnaf", emoji: "🐻", label: "Five Nights", matchPaths: ["/five-nights"] },
+  { to: "/home-alone", emoji: "🎄", label: "Home Alone", matchPaths: ["/kevin"] },
   { to: "/vibeverse", emoji: "🛰️", label: "The Vibeverse", matchPaths: ["/explorer", "/long-silence"] },
   { to: "/terminal", emoji: "🛫", label: "The Terminal" },
   { to: "/island-2", emoji: "🏝️", label: "Vibe Island II", matchPaths: ["/vibe-island-2"] },

@@ -71,6 +71,11 @@ const Airplane = lazy(() => import("./pages/Airplane.tsx"));
    procedural planet. Lazy for the same reason as the rest: nobody who never
    takes the centre seat should carry the Enterprise in the hub's entry chunk. */
 const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
+/* HOME ALONE builds 671 Lincoln Avenue — three storeys, sixteen rooms and the
+   block it stands on — out of procedural textures at boot. Lazy for the same
+   reason as the rest: nobody who never rings that doorbell should carry the
+   house around in the hub's entry chunk. */
+const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -117,6 +122,10 @@ const CHROMELESS = new Set([
   "/trek",
   "/star-trek",
   "/final-frontier",
+  // Home Alone is a fullscreen third-person world — the nav would sit on the
+  // objective compass, and on a phone it would eat the look-drag.
+  "/home-alone",
+  "/kevin",
 ]);
 
 const AppChrome = () => {
@@ -298,6 +307,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <ISpy />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* HOME ALONE — 671 Lincoln Avenue at Christmas. Walk an empty
+              house, light it up, arm eight traps, then survive the two men who
+              came for it. First of the films-as-worlds. */}
+          {["/home-alone", "/kevin"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#0d1524]" />}>
+                  <HomeAlone />
                 </Suspense>
               }
             />
