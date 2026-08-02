@@ -64,6 +64,10 @@ export default function FnafHUD({
   // The monitor takes six seconds to come back after you drop it. Looking is
   // free; looking *again straight away* is what costs you.
   const cooling = !state.monitorUp && state.camCooldown > 0;
+  // A thirty-second limit you cannot see is a trap, so the monitor wears its
+  // own countdown. Amber at ten, red at five.
+  const left = state.camUptime;
+  const uptimeTone = left <= 5 ? "bg-red-500" : left <= 10 ? "bg-amber-400" : "bg-emerald-400";
 
   // Power is only ever spent at the moment you press something, so the press
   // has to show its price — otherwise the meter drops for no visible reason.
@@ -146,9 +150,25 @@ export default function FnafHUD({
               {ROOMS[state.camera].name.toUpperCase()}
             </div>
           </div>
-          <div className="absolute right-6 top-6 flex items-center gap-2 text-red-400/90">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-            <span className="text-[11px] tracking-[0.3em]">REC</span>
+          {/* Uptime. The tablet gives you thirty seconds and then falls over. */}
+          <div className="absolute inset-x-0 top-0 h-1 bg-black/50">
+            <div
+              className={`h-full origin-left transition-[transform,background-color] duration-200 ${uptimeTone}`}
+              style={{ transform: `scaleX(${Math.max(0, left / 30)})` }}
+            />
+          </div>
+          <div className="absolute right-6 top-6 flex items-center gap-3">
+            <span
+              className={`text-[11px] font-bold tracking-[0.25em] ${
+                left <= 5 ? "animate-pulse text-red-400" : left <= 10 ? "text-amber-300" : "text-emerald-300/70"
+              }`}
+            >
+              {Math.ceil(left)}s
+            </span>
+            <span className="flex items-center gap-2 text-red-400/90">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              <span className="text-[11px] tracking-[0.3em]">REC</span>
+            </span>
           </div>
 
           {ROOMS[state.camera].camBroken && (
@@ -199,6 +219,24 @@ export default function FnafHUD({
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The fault. Same reboot as dropping the monitor yourself — but this one
+          was not your idea, so it says so out loud. */}
+      {state.camFault && state.camCooldown > 0 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            className="absolute inset-0 opacity-25 mix-blend-screen"
+            style={{ backgroundImage: `url(${noise})`, backgroundPosition: `${jitter * 220}px ${jitter * 90}px` }}
+          />
+          <div className="relative border border-red-500/40 bg-black/80 px-7 py-5 text-center backdrop-blur-sm">
+            <div className="text-[10px] tracking-[0.45em] text-red-400/70">CAMERA SYSTEM</div>
+            <div className="mt-1.5 text-2xl font-black tracking-[0.18em] text-red-500">ERROR</div>
+            <div className="mt-3 text-[11px] tracking-[0.28em] text-white/50">
+              REBOOTING — {Math.ceil(state.camCooldown)}s
             </div>
           </div>
         </div>
@@ -291,13 +329,13 @@ export default function FnafHUD({
             <span className="mx-auto mb-1.5 block h-1 w-16 rounded-full bg-white/30" />
             <span
               className={`block text-[11px] font-bold tracking-[0.4em] ${
-                cooling ? "text-white/35" : "text-white/70"
+                state.camFault && cooling ? "text-red-400/70" : cooling ? "text-white/35" : "text-white/70"
               }`}
             >
               {state.monitorUp
                 ? "CLOSE MONITOR"
                 : cooling
-                  ? `REBOOTING ${Math.ceil(state.camCooldown)}s`
+                  ? `${state.camFault ? "ERROR — " : ""}REBOOTING ${Math.ceil(state.camCooldown)}s`
                   : "CAMERAS"}
             </span>
           </span>

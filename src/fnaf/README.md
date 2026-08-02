@@ -85,7 +85,7 @@ commit to something:
 | --- | --- |
 | dropping a door | 5% |
 | striking a hall light | 2% |
-| checking the cameras | free, but a 6-second cooldown after you drop the monitor |
+| checking the cameras | free, capped at 30 seconds up, then a 6-second reboot |
 | Foxy hitting a shut west door | 3% + 1% per previous charge |
 
 Opening a door and killing a light are free too — nothing should punish you for
@@ -94,16 +94,31 @@ undoing a decision, because that is a drain by another name.
 **The cameras are free outright** — but they are rate-limited. Watching is how
 you find out where everything is, and a price on watching teaches players to sit
 blind in the dark and hope, which is a worse night than the one where you can
-see exactly what is coming and cannot afford the door. So looking costs nothing
-and you may stay on a feed as long as you like; what the game takes instead is
-*six seconds before you can look again*, counted from the moment you drop the
-monitor.
+see exactly what is coming and cannot afford the door. So looking costs nothing; what
+the game takes instead is time, in two parts:
+
+- **Thirty seconds up.** The monitor runs an uptime clock, shown as a bar
+  across the top of the feed and a countdown by the REC light. At zero the
+  system faults out on its own and drops you back into the office.
+- **Six seconds down.** Whichever way the monitor went down — your thumb or the
+  fault — it will not come back for six seconds.
 
 That is a better sentence than a price. A cost says "you may look forty more
 times tonight"; the cooldown says "you cannot look for the next six seconds",
 which lands in the moment you actually feel it — right after you have swept the
-halls and something moves. It also gives Foxy real teeth, since he advances
-while nobody is watching the cove and you can no longer watch it on demand.
+halls and something moves.
+
+The thirty-second cap is aimed at a different problem than the reboot is. The
+reboot stops you *spamming* the cameras; the cap stops you *hiding* behind
+them. Parking on a feed was the one way to opt out of the game — nothing can
+reach you while you are not in the room — and thirty seconds is deliberately
+generous, long enough to sweep every room twice, because the limit is not there
+to stop you looking. Both also give Foxy real teeth: he advances whenever
+nobody is watching the cove, and you can no longer watch it on demand.
+
+Only the fault puts an error on the screen. Dropping the monitor yourself is a
+decision and timing out is an accident, and the interface should not confuse
+the two.
 
 This is a deliberate departure from the original, and it changes the question
 the game asks. FNAF bills you by the second, so the question is *can you afford

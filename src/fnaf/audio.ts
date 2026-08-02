@@ -142,6 +142,16 @@ export class FnafAudio {
     this.burst(0.1, 0.26, 5200, 1800);
   }
 
+  /** The tablet falling over after thirty seconds: a fault, then dead air. */
+  camFault() {
+    this.burst(0.22, 0.42, 6000, 300);
+    this.ping(180, 0.5, "square", 0.12, 60);
+    window.setTimeout(() => {
+      this.ping(120, 0.35, "sawtooth", 0.1, 40);
+      this.burst(0.4, 0.2, 900, 120);
+    }, 160);
+  }
+
   /**
    * A footstep somewhere in the building. `dist` in metres does the work:
    * far away it's a muffled thud, close up it's servos and metal.

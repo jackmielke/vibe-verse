@@ -42,6 +42,10 @@ export interface FnafSnapshot {
   lastSpend: { amount: number; label: string; at: number } | null;
   /** Seconds until the cameras come back; 0 when they are ready. */
   camCooldown: number;
+  /** Seconds of monitor time left before the system faults out. */
+  camUptime: number;
+  /** True when the last shutdown was the system falling over, not you. */
+  camFault: boolean;
 }
 
 /** Seconds of real time per in-game hour. Six of these is a night. */
@@ -58,6 +62,21 @@ const HOUR_SECONDS = 50;
  * are not watching the cove and you can no longer watch it on demand.
  */
 const CAMERA_COOLDOWN = 6;
+
+/**
+ * How long the monitor will stay up before the system falls over.
+ *
+ * Thirty seconds is a long look — long enough to sweep every room twice — and
+ * that is the point: the limit is not there to stop you checking, it is there
+ * to stop you *hiding*. Parking on a camera was the one way to opt out of the
+ * game, because nothing can reach you while you are not in the room, and the
+ * reboot is what takes that away.
+ *
+ * Both ways out land in the same six-second reboot. The difference is that
+ * dropping it yourself is a decision and timing out is an accident, so only
+ * the accident gets an error on the screen.
+ */
+const CAMERA_MAX_UPTIME = 30;
 /**
  * What each action costs, in percent, charged once at the moment you take it.
  *
@@ -126,6 +145,9 @@ export class FnafEngine {
   private scare = 0;
   /** Seconds until the monitor will come up again. */
   private camCooldown = 0;
+  /** Seconds the monitor has been up this time. */
+  private camUptime = 0;
+  private camFault = false;
   private lastSpend: FnafSnapshot["lastSpend"] = null;
   private toast: string | null = null;
   private toastTimer = 0;
@@ -231,6 +253,8 @@ export class FnafEngine {
       scare: this.scare,
       lastSpend: this.lastSpend,
       camCooldown: Math.max(0, this.camCooldown),
+      camUptime: Math.max(0, CAMERA_MAX_UPTIME - this.camUptime),
+      camFault: this.camFault,
     };
   }
 
@@ -262,6 +286,8 @@ export class FnafEngine {
     this.scare = 0;
     // Ready at 12 AM: the first check of the night should never be blocked.
     this.camCooldown = 0;
+    this.camUptime = 0;
+    this.camFault = false;
     this.lastSpend = null;
     this.foxyRunning = false;
     this.yaw = this.yawTarget = 0;
@@ -397,18 +423,38 @@ export class FnafEngine {
     this.monitorUp = !this.monitorUp;
     if (this.monitorUp) {
       this.lightsOn = { left: false, right: false };
+      this.camUptime = 0;
+      this.camFault = false;
       this.audio.lightOff();
       this.audio.camUp();
       this.audio.startCamStatic();
       if (this.camera === "kitchen") this.audio.startKitchenAudio();
     } else {
       this.audio.camDown();
-      this.audio.stopLoop("camstatic");
-      this.audio.stopLoop("kitchen");
-      // The clock starts when you drop it, not when you raise it: holding the
-      // monitor up is still free and still as long as you like.
-      this.camCooldown = CAMERA_COOLDOWN;
+      this.dropMonitor();
     }
+    this.emit();
+  }
+
+  /** Shared by the two ways the monitor goes down: your thumb, and the fault. */
+  private dropMonitor() {
+    this.monitorUp = false;
+    this.camUptime = 0;
+    this.audio.stopLoop("camstatic");
+    this.audio.stopLoop("kitchen");
+    this.camCooldown = CAMERA_COOLDOWN;
+  }
+
+  /**
+   * Thirty seconds up and the system falls over on its own. Same six-second
+   * reboot as dropping it by hand — the only difference is that this one was
+   * not your idea, so it says so.
+   */
+  private faultMonitor() {
+    this.audio.camFault();
+    this.dropMonitor();
+    this.camFault = true;
+    this.say("Camera system error. Rebooting.", 2.6);
     this.emit();
   }
 
@@ -564,6 +610,17 @@ export class FnafEngine {
       this.camCooldown = Math.max(0, this.camCooldown - dt);
       // Emit on each whole second so the HUD can count down honestly.
       if (Math.ceil(this.camCooldown) !== before) this.emit();
+      if (this.camCooldown === 0 && this.camFault) {
+        this.camFault = false;
+        this.emit();
+      }
+    }
+
+    if (this.monitorUp && this.phase === "playing" && !this.blackout) {
+      const before = Math.ceil(CAMERA_MAX_UPTIME - this.camUptime);
+      this.camUptime += dt;
+      if (this.camUptime >= CAMERA_MAX_UPTIME) this.faultMonitor();
+      else if (Math.ceil(CAMERA_MAX_UPTIME - this.camUptime) !== before) this.emit();
     }
 
     if (this.phase === "playing") {
