@@ -9,7 +9,8 @@
  * every eight bars. Nothing here is longer than the level.
  */
 
-const BPM = 145;
+/** 120, so a beat is half a second — the length of a 1× jump. See build.ts. */
+const BPM = 120;
 const BEAT = 60 / BPM;
 const STEP = BEAT / 4; // sixteenths
 const LOOKAHEAD = 0.12;
@@ -29,6 +30,13 @@ export class ISpyAudio {
   private startTime = 0;
   private running = false;
   private muted = false;
+  /**
+   * 0..1, set from the level's current movement. The arrangement adds layers
+   * as it climbs — snare, then hats, then the arp, then the octave lead — so
+   * the soundtrack opens up as the level does instead of looping flat under
+   * sixty seconds of increasingly hard game.
+   */
+  private intensity = 0.3;
 
   async start() {
     if (this.running) return;
@@ -72,6 +80,10 @@ export class ISpyAudio {
 
   get isMuted() {
     return this.muted;
+  }
+
+  setIntensity(v: number) {
+    this.intensity = Math.max(0, Math.min(1, v));
   }
 
   /** 0..1 through the current beat. Drives every strobe on screen. */
@@ -148,6 +160,26 @@ export class ISpyAudio {
     });
   }
 
+  /** A coin: bright, four notes, unmistakably a reward. */
+  coin() {
+    const { ctx, master } = this;
+    if (!ctx || !master) return;
+    const t = ctx.currentTime;
+    [1046.5, 1318.5, 1568, 2093].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      const at = t + i * 0.055;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.2, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.42);
+      o.connect(g).connect(master);
+      o.start(at);
+      o.stop(at + 0.45);
+    });
+  }
+
   win() {
     const { ctx, master } = this;
     if (!ctx || !master) return;
@@ -183,15 +215,23 @@ export class ISpyAudio {
     if (!ctx || !master) return;
     const bar = Math.floor(step / 16);
     const open = bar >= 4; // the second half of the loop lifts
+    const i = this.intensity;
 
+    // Four-on-the-floor is the clock the level is cut to, so it never drops.
     if (step % 4 === 0) this.kick(t);
-    if (step % 8 === 4) this.snare(t);
-    if (step % 2 === 1) this.hat(t, open ? 0.09 : 0.05);
-
     if (step % 4 === 0) this.bass(t, BASS[bar % 4]);
-    if (open || step % 4 !== 3) {
+
+    if (i >= 0.35 && step % 8 === 4) this.snare(t);
+    if (i >= 0.5 && step % 2 === 1) this.hat(t, (open ? 0.09 : 0.05) * i);
+    if (i >= 0.75 && step % 4 === 2) this.hat(t, 0.04 * i);
+
+    if (i >= 0.45 && (open || step % 4 !== 3)) {
       const note = ARP[(step * 3 + bar * 2) % ARP.length] * (open ? 2 : 1);
-      this.arp(t, note, open ? 0.075 : 0.045);
+      this.arp(t, note, (open ? 0.075 : 0.045) * (0.6 + i * 0.4));
+    }
+    // The octave lead only shows up in the loudest movements.
+    if (i >= 0.8 && step % 8 === 0) {
+      this.arp(t, ARP[(bar * 3 + step / 8) % ARP.length] * 4, 0.05 * i);
     }
   }
 

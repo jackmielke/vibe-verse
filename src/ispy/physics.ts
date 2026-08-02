@@ -7,13 +7,18 @@
  * given, which is what lets `bot.ts` run thousands of speculative futures per
  * second through the exact same code the player is playing.
  *
- * Tuning follows Geometry Dash closely enough that muscle memory transfers:
- * a 1× cube jump is 2.6 blocks tall and covers 5.2 blocks of ground.
+ * Tuning follows Geometry Dash closely enough that muscle memory transfers: a
+ * 1× cube jump is 2.6 blocks tall, covers 5 blocks of ground, and takes half a
+ * second — which at 120 BPM is exactly one beat. That coincidence is not a
+ * coincidence; see `BEAT` in build.ts.
  */
 import type { Grav, Input, Level, Obj, PlayerState } from "./types";
 
-/** Blocks per second, by speed portal. 1× is the default. */
-export const SPEEDS = { half: 8.6, one: 10.4, two: 12.9, three: 15.6 } as const;
+/**
+ * Blocks per second, by speed portal. 1× is the default and the level never
+ * leaves it — see `BEAT` in build.ts for why.
+ */
+export const SPEEDS = { half: 8.3, one: 10, two: 12.4, three: 15 } as const;
 
 export const CUBE_GRAVITY = 83;
 export const CUBE_JUMP = 20.8;
@@ -107,7 +112,10 @@ export class World {
     level.objects.forEach((o, i) => {
       // Decoys, scenery, paint and checkpoints are never collidable. The
       // renderer draws them; nothing here ever sees them again.
-      if (o.decoy || o.back || o.kind === "glyph" || o.kind === "checkpoint") return;
+      if (
+        o.decoy || o.back ||
+        o.kind === "glyph" || o.kind === "checkpoint" || o.kind === "coin"
+      ) return;
       for (let c = Math.floor(o.x) - 1; c <= Math.floor(o.x + o.w) + 1; c++) {
         const bucket = this.columns.get(c);
         if (bucket) bucket.push(i);

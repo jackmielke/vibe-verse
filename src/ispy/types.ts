@@ -21,6 +21,7 @@ export type ObjKind =
   | "orb" // tap while touching it, get launched
   | "portal" // changes mode / gravity / speed
   | "checkpoint" // banks the run. Watched by the engine, not the physics
+  | "coin" // one of three. Also watched by the engine, never by the physics
   | "glyph"; // pure paint: the pink "?" that gave the level its name
 
 export type Boost = "yellow" | "pink" | "blue" | "green";

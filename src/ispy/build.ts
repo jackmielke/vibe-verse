@@ -11,19 +11,63 @@
 import type { Grav, Level, Mode, Obj, Section } from "./types";
 
 /**
- * A 1× cube jump traces y(d) = 2d − 0.3837d², where d is blocks travelled
- * since takeoff (v0 = 20.8, g = 83, speed = 10.4). It peaks at 2.6 blocks
- * high after 2.6 blocks, and lands after 5.21.
+ * A 1× cube jump traces y(d) = 2.08d − 0.415d², where d is blocks travelled
+ * since takeoff (v0 = 20.8, g = 83, speed = 10). It peaks 2.6 blocks high
+ * after 2.5 blocks and lands after 5.01.
  *
  * Consequences worth keeping in your head while authoring:
- *   • a ground spike (needs y > 1) is cleared from 0.55 to 4.66 blocks out,
- *   • a spike on a 1-block plinth (y > 2) from 1.28 to 3.93,
+ *   • a ground spike (needs y > 1) is cleared from 0.54 to 4.47 blocks out,
+ *   • a spike on a 1-block plinth (y > 2) from 1.25 to 3.76,
  *   • so a run of three ground spikes is comfortable and five is impossible.
  */
-export const JUMP_WINDOW = { clearsSpikeFrom: 0.55, to: 4.66, apex: 2.6 };
+export const JUMP_WINDOW = { clearsSpikeFrom: 0.54, to: 4.47, apex: 2.5 };
 
 export function arcHeight(d: number): number {
-  return 2 * d - 0.3837 * d * d;
+  return 2.08 * d - 0.415 * d * d;
+}
+
+/**
+ * ONE JUMP IS ONE BEAT IS FIVE BLOCKS.
+ *
+ * This is the spine of the whole level and it is why the speed never changes.
+ * The soundtrack runs at 120 BPM, so a beat is half a second. A 1× cube jump
+ * hangs for 0.501 s and covers 5.01 blocks. Round that to five and three
+ * separate grids collapse into one:
+ *
+ *   • the music's beat grid,
+ *   • the level's block grid,
+ *   • and the player's jump rhythm.
+ *
+ * Jump on a beat and you land on the next one, ready to jump again. A run of
+ * hazards one beat apart is a run of jumps on the downbeat. That is what makes
+ * a Geometry Dash level feel like it was cut to its music instead of merely
+ * played over it, and it is the difference between this level and the one that
+ * used to be here, whose hazards sat wherever the arithmetic left them.
+ *
+ * A speed portal would break all three alignments at once, so there are none.
+ */
+export const BPM = 120;
+export const BEAT = 5;
+
+/**
+ * Left edge of a run of `n` tiles placed under the apex of a jump taken on
+ * beat `b`.
+ *
+ * The offset shifts left as the run grows so that the whole run stays inside
+ * the *conservative* window — the one that asks for a full block of clearance
+ * over every spike, rather than the one that merely avoids the hitboxes. A
+ * three-run at offset 2 puts its last spike 4.5 blocks out, where the arc has
+ * dropped to 0.96 blocks: survivable only because a spike's kill box stops at
+ * 0.7, which is not a margin worth building a level on. At offset 1 the same
+ * run sits at 1.5 / 2.5 / 3.5 blocks out, under 2.19 / 2.61 / 2.19 of cube.
+ */
+export function onBeat(b: number, n = 1): number {
+  return b * BEAT + (n >= 3 ? 1 : 2);
+}
+
+/** Where a jump taken on beat `b` puts you down: the top of beat b + 1. */
+export function landing(b: number): number {
+  return (b + 1) * BEAT;
 }
 
 /** Deterministic noise. The level must look identical on every attempt or
@@ -64,6 +108,40 @@ export class Builder {
   /** `n` spikes in a row starting at x. Three is the honest maximum. */
   spikes(x: number, n: number, y = 0, o: Partial<Obj> = {}) {
     for (let i = 0; i < n; i++) this.spike(x + i, y, o);
+  }
+
+  /** A run of `n` real spikes cleared by jumping on beat `b`. */
+  beatSpikes(b: number, n = 1, o: Partial<Obj> = {}) {
+    this.spikes(onBeat(b, n), n, 0, o);
+  }
+
+  /** The same run, in paint. Decoys sit on the beat too — otherwise the music
+      would tell you which ones were real and the level would solve itself. */
+  fakeBeatSpikes(b: number, n = 1) {
+    this.fakeSpikes(onBeat(b, n), n);
+  }
+
+  /**
+   * Spikes hanging point-down at `y`, which kill you *for jumping*.
+   *
+   * This is the trap the level is built on. Over-jumping is otherwise free —
+   * a jump lands exactly one beat later, so an unnecessary one costs nothing —
+   * which would make every decoy harmless. Put real teeth at head height over
+   * a row of painted floor spikes and the decoy becomes lethal: the honest
+   * move is to walk straight through it, and the instinct is to jump.
+   */
+  ceilingSpikes(x: number, n: number, y = 3) {
+    for (let i = 0; i < n; i++) this.spike(x + i, y, { rot: 180 });
+  }
+
+  fakeCeilingSpikes(x: number, n: number, y = 3) {
+    for (let i = 0; i < n; i++)
+      this.push({ kind: "spike", x: x + i, y, w: 1, h: 1, rot: 180, decoy: true });
+  }
+
+  /** A secret coin. Never on the safe line — that is the entire point. */
+  coin(x: number, y: number) {
+    return this.push({ kind: "coin", x: x - 0.6, y: y - 0.6, w: 1.2, h: 1.2 });
   }
 
   saw(x: number, y: number, size = 2, o: Partial<Obj> = {}) {
