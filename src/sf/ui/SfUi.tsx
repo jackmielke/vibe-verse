@@ -35,7 +35,6 @@ import LoadingScreen from "./LoadingScreen";
 import PhotoMode from "./PhotoMode";
 import DeathScreen from "./DeathScreen";
 import Discovery from "./Discovery";
-import VibeverseChrome from "./VibeverseChrome";
 
 export interface SfUiProps {
   /** Force the whole interface off — the screenshot harness uses this. */
@@ -245,7 +244,9 @@ export default function SfUi({ hidden }: SfUiProps) {
       <PhotoMode />
       <Menus />
       <DeathScreen />
-      <VibeverseChrome />
+      {/* The way out is the vibeverse's own home button now, top-left, in
+          every world rather than in this one. It follows the rule this file's
+          chrome established first: gone while the pointer is locked. */}
     </div>
   );
 }

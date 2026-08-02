@@ -28,6 +28,7 @@ import AdminWorlds from "./pages/AdminWorlds.tsx";
 import AgentLobby from "./pages/AgentLobby.tsx";
 import VibeProfile from "./pages/VibeProfile.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
+import HomeButton from "./components/HomeButton.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
 import IslandExplorer from "./pages/IslandExplorer.tsx";
@@ -89,8 +90,21 @@ const queryClient = new QueryClient();
 const CHROMELESS = new Set([...CHROMELESS_ROUTES, "/live"]);
 
 const AppChrome = () => {
-  const { pathname } = useLocation();
-  if (CHROMELESS.has(pathname)) return null;
+  const { pathname, search } = useLocation();
+
+  /* ?embed=1 — another site is framing us as a broadcast. Pure picture, no
+     chrome of any kind, not even the way home. */
+  const embedded = new URLSearchParams(search).get("embed") === "1";
+  if (embedded) return null;
+
+  /* Inside a fullscreen world the nav would sit on a crosshair, so it is
+     hidden — and for a long time that meant those worlds had no exit at all.
+     They get the one button instead, in the same corner every time. /live is
+     the exception: it is a broadcast, not somewhere a person is standing. */
+  if (CHROMELESS.has(pathname)) {
+    return pathname === "/live" ? null : <HomeButton />;
+  }
+
   return (
     <>
       <GlobalNav />
@@ -106,8 +120,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <VibeIdentityProvider>
-          {/* Global top-center destination nav + VIBE FM — on every route
-              except the clean /live broadcast. */}
+          {/* Global nav + VIBE FM where there is room for them, and the one
+              way home everywhere else. */}
           <AppChrome />
           <Routes>
           {/* The grid of every world is the landing page. It is the clearest

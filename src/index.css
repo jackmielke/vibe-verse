@@ -72,6 +72,17 @@
 }
 
 @layer utilities {
+  /**
+   * Width the global home button occupies in the top-left corner.
+   *
+   * Published as a variable rather than hard-coded into each world, because
+   * three of them keep their own HUD in that corner and a button that lands on
+   * a minimap is not unification, it is a second bug. See HomeButton.tsx.
+   */
+  :root {
+    --vv-home-clear: 56px;
+  }
+
   .glow-mint {
     box-shadow: 0 0 20px hsl(160 80% 50% / 0.3), 0 0 60px hsl(160 80% 50% / 0.1);
   }

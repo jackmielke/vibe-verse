@@ -21,9 +21,9 @@
  *    input, not on a timer, so React only does work when the player does
  *    something. The scene behind it owns the frame budget.
  *
- * And one rule that is not about looks: **this route is chromeless**, so the
- * global nav is not there to get you out. The way back has to live in here or
- * a phone visitor is simply stuck.
+ * The way out is not in this file. `components/HomeButton.tsx` puts one button
+ * in the top-left corner of every world in the vibeverse, this one included,
+ * and the layout below leaves that corner clear for it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -198,19 +198,14 @@ export default function Lobby({ focusedIndex, onFocus, online }: LobbyProps) {
         aria-hidden
       />
 
-      {/* Top bar */}
-      <div className="pointer-events-auto relative flex shrink-0 items-center justify-between gap-2 px-3 sm:px-7">
-        {/* The way out. On a chromeless route this is the only one, so it is a
-            real link with a real label rather than a decorative badge. */}
-        <Link
-          to="/game"
-          className="flex items-center gap-2 rounded-full bg-black/30 py-1.5 pl-2 pr-3 backdrop-blur-md ring-1 ring-white/25 transition hover:bg-black/45"
-        >
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15 text-sm">🌐</span>
-          <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white">
-            All worlds
-          </span>
-        </Link>
+      {/* Top bar. No exit of its own: the global home button sits in the
+          top-left corner of every world, this one included, and two ways out
+          in the same corner is the disunity it was built to end. The corner is
+          left clear for it. */}
+      <div className="pointer-events-auto relative flex shrink-0 items-center justify-between gap-2 pl-[var(--vv-home-clear)] pr-3 sm:pr-7">
+        <span className="hidden text-[11px] font-bold uppercase tracking-[0.34em] text-white/90 drop-shadow-lg sm:block">
+          Vibeverse
+        </span>
 
         <nav className="hidden items-center gap-1 rounded-full bg-black/30 px-1.5 py-1 backdrop-blur-md ring-1 ring-white/20 lg:flex">
           {LINKS.map((l, i) => (

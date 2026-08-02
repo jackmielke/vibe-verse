@@ -212,7 +212,8 @@ export const UI_CSS = String.raw`
    Race HUD
    -------------------------------------------------------------------------- */
 
-.vk-hud-tl { position: absolute; top: 2.4vmin; left: 2.6vmin; display: flex; gap: 1.4vmin; align-items: flex-start; }
+/* Left inset clears the vibeverse home button — see HomeButton.tsx. */
+.vk-hud-tl { position: absolute; top: 2.4vmin; left: calc(2.6vmin + var(--vv-home-clear, 0px)); display: flex; gap: 1.4vmin; align-items: flex-start; }
 .vk-hud-tr { position: absolute; top: 2.4vmin; right: 2.6vmin; display: flex; flex-direction: column; align-items: flex-end; gap: 1.1vmin; }
 .vk-hud-bl { position: absolute; bottom: 2.6vmin; left: 2.6vmin; display: flex; flex-direction: column; gap: 1.1vmin; align-items: flex-start; }
 .vk-hud-br { position: absolute; bottom: 2.6vmin; right: 2.6vmin; }

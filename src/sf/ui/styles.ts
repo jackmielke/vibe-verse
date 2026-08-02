@@ -345,7 +345,10 @@ ${cvdBlock("tritan")}
 .sf-cluster { position: absolute; opacity: var(--sf-hud-opacity); will-change: transform; }
 .sf-cluster[data-anchor="bl"] { left: var(--sf-edge); bottom: var(--sf-edge); transform-origin: bottom left; transform: scale(var(--sf-hud-scale)); }
 .sf-cluster[data-anchor="br"] { right: var(--sf-edge); bottom: var(--sf-edge); transform-origin: bottom right; transform: scale(var(--sf-hud-scale)); }
-.sf-cluster[data-anchor="tl"] { left: var(--sf-edge); top: var(--sf-edge); transform-origin: top left; transform: scale(var(--sf-hud-scale)); }
+/* Cleared past the vibeverse's home button, which sits in this corner in
+   every world. It hides itself under pointer lock, but the minimap is on
+   screen in menus too, and on a phone there is no pointer lock at all. */
+.sf-cluster[data-anchor="tl"] { left: calc(var(--sf-edge) + var(--vv-home-clear, 0px)); top: var(--sf-edge); transform-origin: top left; transform: scale(var(--sf-hud-scale)); }
 .sf-cluster[data-anchor="tr"] { right: var(--sf-edge); top: var(--sf-edge); transform-origin: top right; transform: scale(var(--sf-hud-scale)); }
 .sf-cluster[data-anchor="tc"] { left: 50%; top: var(--sf-edge); transform-origin: top center; transform: translateX(-50%) scale(var(--sf-hud-scale)); }
 .sf-cluster[data-anchor="bc"] { left: 50%; bottom: var(--sf-edge); transform-origin: bottom center; transform: translateX(-50%) scale(var(--sf-hud-scale)); }

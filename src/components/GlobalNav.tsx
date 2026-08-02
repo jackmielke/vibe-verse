@@ -14,6 +14,7 @@ import { Link, useLocation } from "react-router-dom";
 import WorldPicker from "@/components/WorldPicker";
 import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
 import { WORLDS, type WorldEntry } from "@/worlds/registry";
+import { VibeMark } from "@/components/HomeButton";
 
 /**
  * Every hoppable destination, and the order of the chip row, both come from
@@ -108,7 +109,9 @@ export default function GlobalNav() {
             title="Every world and game, on one page"
             aria-current={location.pathname === "/game" ? "page" : undefined}
           >
-            <span className="text-sm leading-none">🌐</span>
+            {/* Same mark as the home button that stands in for this pill
+                inside fullscreen worlds — one corner, one thing, everywhere. */}
+            <VibeMark size={14} />
             <span className={labelClass}>Worlds</span>
           </Link>
         </div>

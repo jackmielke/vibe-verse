@@ -34,7 +34,6 @@ export { default as PhotoMode } from "./PhotoMode";
 export { default as Notifications } from "./Notifications";
 export { default as DeathScreen } from "./DeathScreen";
 export { default as Discovery } from "./Discovery";
-export { default as VibeverseChrome } from "./VibeverseChrome";
 
 /* ---- the 60 Hz channel other subsystems write to ---- */
 export {

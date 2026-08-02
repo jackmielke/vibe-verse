@@ -218,9 +218,14 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
         />
       )}
 
-      {/* ---- Top left: who and where ---- */}
+      {/* ---- Top left: who and where ----
+           Inset past the vibeverse's home button, which sits in this corner in
+           every world. See components/HomeButton.tsx. */}
       {!carded && (
-        <div className="pointer-events-none absolute left-4 top-4 z-20 font-mono text-[10px] uppercase leading-relaxed tracking-[0.24em] text-amber-200/70 sm:text-[11px]">
+        <div
+          className="pointer-events-none absolute top-4 z-20 font-mono text-[10px] uppercase leading-relaxed tracking-[0.24em] text-amber-200/70 sm:text-[11px]"
+          style={{ left: "calc(1rem + var(--vv-home-clear, 0px))" }}
+        >
           <div className="text-amber-100">U.S.S. VIBEVERSE · NCC-1701-V</div>
           <div className="text-amber-200/45">
             STARDATE {snap.stardate} · {snap.missionTitle}
