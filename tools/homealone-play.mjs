@@ -137,11 +137,66 @@ const hold = async (key, ms) => {
 console.log("\n— controller —");
 await load(6);
 {
-  const a = await state();
-  await hold("KeyW", 1600);
-  const b = await state();
-  const moved = Math.hypot(b.pos[0] - a.pos[0], b.pos[2] - a.pos[2]);
-  check("W walks him forward", moved > 0.05, `moved ${moved.toFixed(2)} m`);
+  /*
+   * Direction, not just distance.
+   *
+   * The first version of this only checked that he moved *at all*, and passed
+   * happily for weeks while W walked him backwards and D strafed him left —
+   * both axes of the camera basis were negated. A magnitude test cannot see
+   * that. These four can.
+   */
+  const axis = async (key, camYaw) => {
+    await page.evaluate(
+      (y) => {
+        const e = window.__homeAlone;
+        e.pos.set(0.4, 0, 9.5);
+        e.vel.set(0, 0, 0);
+        e.camYaw = y;
+        e.yaw = y;
+      },
+      camYaw,
+    );
+    await frames(2);
+    const before = await state();
+    await hold(key, 1400);
+    const after = await state();
+    return { dx: after.pos[0] - before.pos[0], dz: after.pos[2] - before.pos[2] };
+  };
+
+  // camYaw 0 means the lens points at +Z, so forward is +Z and right is -X.
+  const w = await axis("KeyW", 0);
+  check("W walks towards what the camera is looking at", w.dz > 0.05, `dz=${w.dz.toFixed(2)}`);
+  const sKey = await axis("KeyS", 0);
+  check("S walks back towards the camera", sKey.dz < -0.05, `dz=${sKey.dz.toFixed(2)}`);
+  const d = await axis("KeyD", 0);
+  check("D strafes to screen right", d.dx < -0.05, `dx=${d.dx.toFixed(2)}`);
+  const aKey = await axis("KeyA", 0);
+  check("A strafes to screen left", aKey.dx > 0.05, `dx=${aKey.dx.toFixed(2)}`);
+  // And with the camera turned a quarter, forward must follow it.
+  const wTurned = await axis("KeyW", Math.PI / 2);
+  check("forward follows the camera when it turns", wTurned.dx > 0.05, `dx=${wTurned.dx.toFixed(2)}`);
+
+  const pitch = await page.evaluate(() => {
+    const e = window.__homeAlone;
+    e.camPitch = 0;
+    // A drag UP the screen is a negative dy and must raise the view.
+    e.look(0, -0.3);
+    const up = e.camPitch;
+    e.camPitch = 0;
+    e.look(0, 0.3);
+    return { up, down: e.camPitch };
+  });
+  check("dragging up looks up", pitch.up > 0 && pitch.down < 0, `up=${pitch.up.toFixed(2)} down=${pitch.down.toFixed(2)}`);
+
+  const z = await page.evaluate(() => {
+    const e = window.__homeAlone;
+    e.camBoom = 3;
+    e.zoom(1.4);
+    const out = e.camBoom;
+    e.zoom(1 / 2.2);
+    return { out, back: e.camBoom };
+  });
+  check("zoom moves the boom both ways", z.out > 3.2 && z.back < 3, `out=${z.out.toFixed(2)} in=${z.back.toFixed(2)}`);
 
   const stair = await page.evaluate(() => {
     const e = window.__homeAlone;

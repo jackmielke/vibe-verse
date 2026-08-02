@@ -58,6 +58,13 @@ export default function HomeAlone() {
   const retry = useCallback(() => engineRef.current?.retry(), []);
   const next = useCallback(() => engineRef.current?.next(), []);
   const menu = useCallback(() => engineRef.current?.toMenu(), []);
+  /* Jump straight into a mode from the in-game switcher: pick it, and start
+     it, without a brief card in between. Somebody who is already playing has
+     read the brief once. */
+  const pick = useCallback((n: number) => {
+    engineRef.current?.select(n);
+    engineRef.current?.begin();
+  }, []);
 
   // Card-art capture drives the world without a human: ?shot=1 skips the menu.
   const shot = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("shot");
@@ -83,7 +90,7 @@ export default function HomeAlone() {
       <canvas ref={canvasRef} className="block h-full w-full touch-none select-none outline-none" />
 
       {engine && state && state.phase !== "menu" && (
-        <HomeAloneHUD engine={engine} state={state} onRetry={retry} onNext={next} onMenu={menu} />
+        <HomeAloneHUD engine={engine} state={state} onRetry={retry} onNext={next} onMenu={menu} onPick={pick} />
       )}
 
       {state?.phase === "menu" && !error && <TitleScreen cleared={state.cleared} onSelect={select} />}
@@ -139,7 +146,16 @@ const TOUCH: Array<[string, string]> = [
 ];
 
 function TitleScreen({ cleared, onSelect }: { cleared: number; onSelect: (n: number) => void }) {
-  const unlocked = Math.min(LEVEL_COUNT, cleared + 1);
+  /*
+   * Nothing is locked.
+   *
+   * Gating level 4 behind level 3 is right for a game somebody bought and
+   * wrong for one somebody opened from a link on a phone — the whole reason to
+   * post this is "come and see the bit with the paint cans", and a person who
+   * arrives wanting that should not first be made to light seven rooms. The
+   * tick still marks what you have actually cleared, which is the part worth
+   * keeping.
+   */
   const controls = COARSE ? TOUCH : KEYS;
   return (
     /*
@@ -169,21 +185,13 @@ function TitleScreen({ cleared, onSelect }: { cleared: number; onSelect: (n: num
 
         <div className="mt-8 flex w-full max-w-md flex-col gap-1.5">
           {LEVELS.filter((l) => l.n <= LEVEL_COUNT).map((l) => {
-            const locked = l.n > unlocked;
             return (
               <button
                 key={l.n}
-                disabled={locked}
                 onClick={() => onSelect(l.n)}
-                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
-                  locked
-                    ? "cursor-not-allowed border-white/5 text-white/15"
-                    : "border-amber-200/20 bg-white/[0.03] text-white/85 active:scale-[0.99] hover:border-amber-200/45 hover:bg-amber-500/10"
-                }`}
+                className="flex items-center gap-3 rounded-lg border border-amber-200/20 bg-white/[0.03] px-3 py-2.5 text-left text-white/85 transition active:scale-[0.99] hover:border-amber-200/45 hover:bg-amber-500/10"
               >
-                <span className="w-5 shrink-0 text-center text-sm font-black tabular-nums">
-                  {locked ? "·" : l.n}
-                </span>
+                <span className="w-5 shrink-0 text-center text-sm font-black tabular-nums">{l.n}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[12px] font-bold tracking-tight sm:text-sm">{l.title}</span>
                   <span className="block truncate text-[9px] uppercase tracking-[0.16em] text-white/30">{l.goal}</span>

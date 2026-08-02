@@ -28,12 +28,14 @@ export default function HomeAloneHUD({
   onRetry,
   onNext,
   onMenu,
+  onPick,
 }: {
   engine: HomeAloneEngine;
   state: Snapshot;
   onRetry: () => void;
   onNext: () => void;
   onMenu: () => void;
+  onPick: (n: number) => void;
 }) {
   const playing = state.phase === "playing" || state.phase === "outro";
 
@@ -51,6 +53,7 @@ export default function HomeAloneHUD({
       {playing && COARSE && <TouchControls engine={engine} state={state} />}
       {playing && !COARSE && <KeyHint state={state} />}
 
+      {playing && <ModeSwitch state={state} onPick={onPick} />}
       {state.phase === "brief" && <BriefCard state={state} onStart={() => engine.begin()} onMenu={onMenu} />}
       {state.phase === "won" && <EndCard state={state} win onRetry={onRetry} onNext={onNext} onMenu={onMenu} />}
       {state.phase === "lost" && <EndCard state={state} onRetry={onRetry} onNext={onNext} onMenu={onMenu} />}
@@ -59,6 +62,67 @@ export default function HomeAloneHUD({
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * Switch mode without going anywhere.
+ *
+ * Every level is open, always. Gating them behind each other is right for a
+ * game somebody bought and wrong for one somebody opened from a link — the
+ * person who wants to see the battle should get to see the battle, and the
+ * person who just wants to walk round the house with the lights on should
+ * never meet a locked door. It collapses to a chip so it costs one tap and no
+ * screen space.
+ */
+const MODES: Array<[number, string]> = [
+  [1, "Empty house"],
+  [2, "Wet Bandits"],
+  [3, "Set the traps"],
+  [4, "The battle"],
+  [5, "The zipline"],
+  [6, "Free roam"],
+];
+
+function ModeSwitch({ state, onPick }: { state: Snapshot; onPick: (n: number) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="pointer-events-auto absolute left-2 top-2 z-20"
+      style={{ top: "max(0.5rem, env(safe-area-inset-top))", left: "max(0.5rem, env(safe-area-inset-left))" }}
+    >
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-lg border border-white/15 bg-black/55 px-2.5 py-1.5 text-[9px] uppercase tracking-[0.2em] text-white/55 backdrop-blur-sm transition hover:text-white/90"
+      >
+        {open ? "✕" : "☰"} Mode
+      </button>
+      {open && (
+        <div className="mt-1.5 w-40 overflow-hidden rounded-lg border border-white/15 bg-black/80 backdrop-blur-md">
+          {MODES.map(([n, label]) => (
+            <button
+              key={n}
+              onClick={() => {
+                setOpen(false);
+                onPick(n);
+              }}
+              className={`block w-full px-3 py-2 text-left text-[10px] tracking-wide transition ${
+                n === state.level ? "bg-amber-500/20 text-amber-100" : "text-white/60 hover:bg-white/10"
+              }`}
+            >
+              {n <= 5 ? `${n}. ` : ""}
+              {label}
+            </button>
+          ))}
+          <Link
+            to="/"
+            className="block border-t border-white/10 px-3 py-2 text-left text-[10px] tracking-wide text-white/35 hover:bg-white/10"
+          >
+            ← the vibeverse
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Vignette({ danger, caught }: { danger: number; caught: number }) {
   return (
@@ -294,7 +358,7 @@ function KeyHint({ state }: { state: Snapshot }) {
   return (
     <div className="absolute bottom-3 left-3 hidden text-[9px] leading-relaxed tracking-[0.16em] text-white/25 sm:block">
       <div>WASD MOVE · SHIFT RUN</div>
-      <div>MOUSE LOOK · E INTERACT</div>
+      <div>MOUSE LOOK · WHEEL ZOOM · E INTERACT</div>
       {fight && (
         <div className={state.tauntCooldown > 0 ? "text-white/15" : "text-amber-200/50"}>
           Q SHOUT{state.tauntCooldown > 0 ? ` (${state.tauntCooldown.toFixed(1)}s)` : ""}
@@ -309,93 +373,73 @@ function KeyHint({ state }: { state: Snapshot }) {
  * Touch
  * ------------------------------------------------------------------ */
 
+/**
+ * Touch controls.
+ *
+ * The *stick is not here any more* — the engine owns every pointer on the
+ * canvas, because a fixed pad in the corner and a look-drag on the canvas were
+ * two owners fighting over the same thumb. What is left here is buttons, which
+ * are real DOM elements sitting above the canvas and therefore swallow their
+ * own pointer events, and a ring drawn wherever the engine says the thumb
+ * currently is.
+ */
 function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snapshot }) {
-  const padRef = useRef<HTMLDivElement | null>(null);
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
-  const idRef = useRef<number | null>(null);
-
-  const move = useCallback(
-    (e: React.PointerEvent) => {
-      const el = padRef.current;
-      if (!el || idRef.current !== e.pointerId) return;
-      const r = el.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const R = r.width / 2;
-      let dx = (e.clientX - cx) / R;
-      let dy = (e.clientY - cy) / R;
-      const m = Math.hypot(dx, dy);
-      if (m > 1) {
-        dx /= m;
-        dy /= m;
-      }
-      // Dead zone — a thumb resting on the pad should not creep.
-      const dead = 0.16;
-      const out = m < dead ? { x: 0, y: 0 } : { x: dx, y: dy };
-      setKnob({ x: dx, y: dy });
-      engine.setStick(out.x, out.y);
-    },
-    [engine],
-  );
-
-  const start = useCallback(
-    (e: React.PointerEvent) => {
-      idRef.current = e.pointerId;
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-      move(e);
-    },
-    [move],
-  );
-
-  const end = useCallback(
-    (e: React.PointerEvent) => {
-      if (idRef.current !== e.pointerId) return;
-      idRef.current = null;
-      setKnob({ x: 0, y: 0 });
-      engine.setStick(0, 0);
-    },
-    [engine],
-  );
-
+  const fight = state.kind === "battle" || state.kind === "escape";
+  const stop = (fn: () => void) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
+  };
   return (
     <>
-      <div
-        ref={padRef}
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={end}
-        onPointerCancel={end}
-        className="pointer-events-auto absolute h-32 w-32 touch-none rounded-full border border-white/15 bg-white/[0.06] backdrop-blur-[2px]"
-        style={{ left: "max(1rem, env(safe-area-inset-left))", bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
-      >
+      {/* The floating stick: a ring at the touch origin, a knob at the thumb. */}
+      {state.stick && (
+        <>
+          <div
+            className="pointer-events-none absolute rounded-full border border-white/25 bg-white/[0.05]"
+            style={{
+              left: state.stick.ox - 68, top: state.stick.oy - 68, width: 136, height: 136,
+            }}
+          />
+          <div
+            className="pointer-events-none absolute rounded-full border border-white/40 bg-white/25"
+            style={{
+              left: clampKnob(state.stick.ox, state.stick.x) - 28,
+              top: clampKnob(state.stick.oy, state.stick.y) - 28,
+              width: 56, height: 56,
+            }}
+          />
+        </>
+      )}
+
+      {/* A standing hint on the left, so the scheme is discoverable at all. */}
+      {!state.stick && (
         <div
-          className="absolute left-1/2 top-1/2 h-14 w-14 rounded-full border border-white/25 bg-white/20"
-          style={{ transform: `translate(-50%,-50%) translate(${knob.x * 32}px, ${knob.y * 32}px)` }}
-        />
-      </div>
+          className="pointer-events-none absolute text-[9px] uppercase leading-relaxed tracking-[0.18em] text-white/20"
+          style={{ left: "max(1.2rem, env(safe-area-inset-left))", bottom: "max(1.6rem, env(safe-area-inset-bottom))" }}
+        >
+          <div>touch here to walk</div>
+          <div>drag right to look</div>
+          <div>pinch to zoom</div>
+        </div>
+      )}
 
       <div
-        className="pointer-events-auto absolute flex flex-col items-end gap-3"
+        className="pointer-events-auto absolute flex flex-col items-end gap-2.5"
         style={{ right: "max(1rem, env(safe-area-inset-right))", bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
       >
         {state.hasBB && (
           <button
-            onPointerDown={(e) => {
-              e.preventDefault();
-              engine.fire();
-            }}
+            onPointerDown={stop(() => engine.fire())}
             disabled={state.ammo <= 0}
             className="h-14 w-14 touch-none rounded-full border border-sky-200/35 bg-sky-400/15 text-[9px] uppercase tracking-[0.1em] text-sky-100/80 active:bg-sky-400/35 disabled:opacity-30"
           >
             BB {state.ammo}
           </button>
         )}
-        {(state.kind === "battle" || state.kind === "escape") && (
+        {fight && (
           <button
-            onPointerDown={(e) => {
-              e.preventDefault();
-              engine.taunt();
-            }}
+            onPointerDown={stop(() => engine.taunt())}
             disabled={state.tauntCooldown > 0}
             className="h-14 w-14 touch-none rounded-full border border-red-300/40 bg-red-500/20 text-[9px] uppercase tracking-[0.1em] text-red-100/85 active:bg-red-500/40 disabled:opacity-30"
           >
@@ -403,19 +447,16 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
           </button>
         )}
         <button
-          onPointerDown={() => engine.setSprint(true)}
-          onPointerUp={() => engine.setSprint(false)}
-          onPointerLeave={() => engine.setSprint(false)}
-          onPointerCancel={() => engine.setSprint(false)}
+          onPointerDown={stop(() => engine.setSprint(true))}
+          onPointerUp={stop(() => engine.setSprint(false))}
+          onPointerLeave={stop(() => engine.setSprint(false))}
+          onPointerCancel={stop(() => engine.setSprint(false))}
           className="h-14 w-14 touch-none rounded-full border border-white/20 bg-white/10 text-[9px] uppercase tracking-[0.14em] text-white/70 active:bg-white/25"
         >
           Run
         </button>
         <button
-          onPointerDown={(e) => {
-            e.preventDefault();
-            engine.act();
-          }}
+          onPointerDown={stop(() => engine.act())}
           className="h-20 w-20 touch-none rounded-full border-2 border-amber-200/45 bg-amber-400/20 text-2xl text-amber-100 active:scale-95 active:bg-amber-400/40"
         >
           ●
@@ -423,6 +464,11 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
       </div>
     </>
   );
+}
+
+/** Keep the drawn knob inside its ring however far the thumb has travelled. */
+function clampKnob(origin: number, at: number) {
+  return origin + Math.max(-68, Math.min(68, at - origin));
 }
 
 /* ------------------------------------------------------------------ *
