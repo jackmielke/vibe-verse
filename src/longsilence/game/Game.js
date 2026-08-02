@@ -16,6 +16,7 @@ import { Fleet } from '../world/Fleet.js';
 import { buildStation } from '../world/Station.js';
 import { Surface } from '../world/Surface.js';
 import { Battle } from '../world/Troopers.js';
+import { Battlefield } from '../world/Battlefield.js';
 import { buildRelay, buildDerelict, buildWreck, buildBeacon } from '../world/Structures.js';
 import { Ship } from '../ship/Ship.js';
 import { HULL_LIGHT } from '../gfx/greeble.js';
@@ -191,6 +192,8 @@ export class Game {
     /* The fight on the ground, when there is one. Null everywhere else, and
        declared here so nothing has to test for `undefined` — see _maybeInvade. */
     this.battle = null;
+    /** The ground it is fought over. Built and torn down with the battle. */
+    this.battlefield = null;
     // ?q=low|medium|high forces a tier, so the reduced-shader paths that only
     // phones would otherwise hit can be verified on a desktop.
     const forced = new URLSearchParams(location.search).get('q');
@@ -1340,16 +1343,33 @@ export class Game {
     if (!b.spec || !b.spec.contested || this.battle || !this.surfaceScene) return;
     const groundY = (x, z) => (this.surface && this.surface.heightAt
       ? this.surface.heightAt(x, z, 1.0) : 0);
+    /* The ground first, and separately, because the fight has to happen even if
+       the scenery does not: a world that raises an army onto a bare field is
+       still a world, and a battlefield that throws must not take the battle
+       with it. `Battle` reads the cover through a closure for the same reason —
+       see readCover, which tolerates every shape this can be in. */
+    try {
+      this.battlefield = new Battlefield(this.surfaceScene, groundY, {
+        seed: b.spec.seed,
+        mobile: this.mobile,
+      });
+    } catch (err) {
+      console.error('[vibeverse] battlefield failed to build', err);
+      this.battlefield = null;
+    }
     try {
       this.battle = new Battle(this.surfaceScene, groundY, {
         // Fewer bodies on a phone. Forty troopers is forty groups of nine
         // meshes, and the ground scene is already the heaviest thing here.
         count: this.mobile ? 6 : 9,
+        cover: () => this.battlefield && this.battlefield.coverPoints(),
       });
     } catch (err) {
       // A world that fails to raise an army is still a world you can stand on.
       console.error('[vibeverse] battle failed to start', err);
-      this.battle = null;
+      // Takes the battlefield with it: ground nobody is fighting over is a
+      // thousand instances of scenery on a planet with no reason to have them.
+      this._endBattle();
       return;
     }
     /* Drain anything already queued on the fire buttons. One-shot presses stay
@@ -1366,9 +1386,18 @@ export class Game {
 
   /** Stand the battle down. Safe to call when there is not one. */
   _endBattle() {
-    if (!this.battle) return;
-    try { this.battle.dispose(); } catch { /* the scene is going anyway */ }
-    this.battle = null;
+    if (this.battle) {
+      try { this.battle.dispose(); } catch { /* the scene is going anyway */ }
+      this.battle = null;
+    }
+    /* Outside that guard rather than inside it. The battlefield is built first
+       and can outlive a `Battle` that failed to construct, and a landing that
+       tore down only the half it knew about would leave a compound and a
+       thousand instances of scenery parented into a scene about to be dropped. */
+    if (this.battlefield) {
+      try { this.battlefield.dispose(); } catch { /* the scene is going anyway */ }
+      this.battlefield = null;
+    }
     this._battleOver = null;
   }
 

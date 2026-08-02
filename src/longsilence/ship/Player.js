@@ -13,9 +13,46 @@ const EYE = 1.66;          // eye height, metres
 const _tmpA = new THREE.Vector3();
 const _tmpB = new THREE.Vector3();
 const _ctrl = new THREE.Vector3();
+const _tmpV = new THREE.Vector3();
 const RADIUS = 0.30;
-const WALK = 1.75;
-const RUN = 3.1;
+
+/* Two sets of speeds, because the two places this controller runs are not the
+   same size. The deck is a nine-metre corridor with a seat at one end: 1.75 m/s
+   is a walk and anything quicker is running into bulkheads. A planet is
+   hundreds of metres of open ground — the hostile line forms about sixty-six
+   metres past where the ramp puts you down — and crossing it at deck pace is
+   half a minute of holding W with nothing happening. Sprint is a shade under
+   double walk in both places, so the key does the same thing in both.
+
+   Ground sprint was 7.6 m/s for a while, which is 27 km/h — a world record,
+   and fast enough that the eye's terrain follow below could not keep up with
+   it. 6.6 still puts the hostile line ten seconds out. */
+const DECK_WALK = 1.75;
+const DECK_RUN = 3.1;
+const GROUND_WALK = 4.0;
+const GROUND_RUN = 6.6;
+
+/* Radians of look per pixel of pointer travel, and the two are separate for the
+   same reason the speeds are. In the cabin you are reading labels off a
+   console; on a planet you are turning to face something shooting at you.
+   0.0034 puts a full turn at about 1850 px, which is a normal shooter. Neither
+   of these is `Input.sensitivity` — that is the gain on the flight rate stick
+   and it is a different quantity in different units.
+
+   LOOK_GROUND is load-bearing outside this file: Game's rifle kicks the muzzle
+   with `player.look(0, -13, 1)`, in pixels, so this gain sets the recoil angle
+   as well as the mouse gain — 13 px is 2.53° here against 1.79° at the old
+   shared 0.0024. onFoot.test.ts pins that number so the next person to touch
+   this has to decide what the rifle does rather than move it by accident. */
+const LOOK_DECK = 0.0024;
+const LOOK_GROUND = 0.0034;
+
+/* Just shy of straight up and straight down. It was 1.32 rad (76°), which is a
+   fine limit for a pilot in a seat and a bad one on foot: you could not look at
+   your own feet on a slope, or up at the thing on the ridge. π/2 exactly is the
+   YXZ gimbal singularity — the head snaps a half turn as it crosses — so stop
+   just under it. */
+const PITCH_LIMIT = 1.54;
 
 export class Player {
   constructor(interior) {
@@ -75,8 +112,9 @@ export class Player {
 
   look(dx, dy, sens = 1) {
     if (this.mode === 'moving') return;
-    this.yaw -= dx * 0.0024 * sens;
-    this.pitch = THREE.MathUtils.clamp(this.pitch - dy * 0.0024 * sens, -1.32, 1.32);
+    const g = (this.mode === 'ground' ? LOOK_GROUND : LOOK_DECK) * sens;
+    this.yaw -= dx * g;
+    this.pitch = THREE.MathUtils.clamp(this.pitch - dy * g, -PITCH_LIMIT, PITCH_LIMIT);
     if (this.mode === 'seated') {
       // Seated look is limited to the arc the canopy actually covers, so you
       // cannot end up staring through the back of your own chair.
@@ -136,7 +174,23 @@ export class Player {
   }
 
   update(dt, input, uiOpen) {
-    const st = input.state;
+    /* The rate stick is a rate, and a rate with no hand on it is a ship that
+       turns by itself. Two modes have no hand on it: standing on a planet,
+       where Game feeds the pointer to `look` and never to `feedStick`, and the
+       half-second of sitting down, where the seat transition has already taken
+       the head off the mouse. The second is the one you can feel — stand up
+       mid-turn, cross the cabin, sit back down, and `autoCenter` at 0.85/s has
+       still got about a third of that turn left to hand you.
+
+       Emphatically *not* "whenever nobody is seated". In exterior view — V from
+       the cabin, which Game supports on foot and counts as `flying` — the
+       player is standing and the mouse is still the ship's only stick. Game
+       feeds it before this runs and reads it on the next frame, so a blanket
+       zero here deleted exterior steering outright. */
+    if (input.stick && (this.mode === 'ground'
+      || (this.mode === 'moving' && this._target === 'seated'))) {
+      input.stick.set(0, 0);
+    }
 
     if (this.mode === 'moving') {
       this._t = Math.min(1, this._t + dt * 1.7);
@@ -152,6 +206,13 @@ export class Player {
         this.yaw = lerpAngle(this._from.yaw, s.baseYaw + Math.PI * 0.0, k);
         this.pitch = THREE.MathUtils.lerp(this._from.pitch, 0, k);
       }
+      /* Bleed the seated lean out over the transition rather than at the end of
+         it. The eye is already flying a scripted path here, so a few degrees of
+         head offset coming off is invisible; snapping it off on the frame the
+         player lands in `walk` would not be. */
+      const k2 = Math.min(1, dt * 5);
+      this.headYawOff = THREE.MathUtils.lerp(this.headYawOff || 0, 0, k2);
+      this.headPitchOff = THREE.MathUtils.lerp(this.headPitchOff || 0, 0, k2);
       if (this._t >= 1) { this.mode = this._target; if (this._target === 'walk') this.seatedAt = null; }
     } else if (this.mode === 'seated') {
       this.eye.copy(this.seatedAt.eye);
@@ -174,12 +235,25 @@ export class Player {
       }
     } else {
       // ---- walking, on a deck or on a planet
+
+      /* The lean is a seated affordance — it is the pilot's head answering the
+         ship's angular velocity — and out of the seat there is no ship under
+         you to answer. It was never cleared, so whatever it happened to be on
+         the frame you stood up was welded on for the rest of the walk: up to
+         about nine degrees between `yaw`, which is what the legs use, and
+         `quat`, which is what the camera and the rifle use. You walked at an
+         angle to where you were looking and shot at an angle to the crosshair. */
+      this.headYawOff = 0;
+      this.headPitchOff = 0;
+
       const onFoot = this.mode === 'ground';
-      const run = input.held('boost');
-      const speed = (run ? RUN : WALK) * (uiOpen ? 0 : 1);
-      const fwd = (input.held('thrUp') ? 1 : 0) - (input.held('thrDn') ? 1 : 0)
+      const run = input.held('sprint');
+      const walkSpeed = onFoot ? GROUND_WALK : DECK_WALK;
+      const runSpeed = onFoot ? GROUND_RUN : DECK_RUN;
+      const speed = (run ? runSpeed : walkSpeed) * (uiOpen ? 0 : 1);
+      const fwd = (input.held('walkF') ? 1 : 0) - (input.held('walkB') ? 1 : 0)
         + (input.touch ? -input.touchL.y : 0);
-      const strafe = (input.held('yawR') ? 1 : 0) - (input.held('yawL') ? 1 : 0)
+      const strafe = (input.held('walkR') ? 1 : 0) - (input.held('walkL') ? 1 : 0)
         + (input.touch ? input.touchL.x : 0);
 
       const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
@@ -188,8 +262,9 @@ export class Player {
       const l = Math.hypot(vx, vz);
       if (l > 1) { vx /= l; vz /= l; }
 
-      const target = new THREE.Vector3(vx * speed, 0, vz * speed);
-      this.vel.lerp(target, Math.min(1, dt * 12));
+      // Reused: this is the walk loop, and on a phone a fresh Vector3 a frame is
+      // a hundred and eighty of them a second for the garbage collector to find.
+      this.vel.lerp(_tmpV.set(vx * speed, 0, vz * speed), Math.min(1, dt * 12));
       if (onFoot) {
         // No corridor to be constrained by. Terrain collision is the ground
         // height under the feet, resolved below.
@@ -200,18 +275,36 @@ export class Player {
       }
 
       const moving = this.vel.length();
-      this.bob += moving * dt * (run ? 5.4 : 6.6);
-      this.bobAmt += (Math.min(moving / WALK, 1.2) - this.bobAmt) * Math.min(1, dt * 8);
+      // Stride cadence, not ground speed. Driving the phase off metres per
+      // second directly meant the outdoor pace — more than twice the deck's —
+      // shook the camera at eight hertz. Normalising by the local walk speed
+      // leaves the deck exactly as it was and gives the planet the same gait.
+      this.bob += (moving / walkSpeed) * DECK_WALK * dt * (run ? 5.4 : 6.6);
+      // Bob amount is a fraction of *this* controller's walking pace. Measured
+      // against the deck's while outdoors it saturates the instant you move and
+      // the head bobs the same however slowly you are creeping.
+      this.bobAmt += (Math.min(moving / walkSpeed, 1.2) - this.bobAmt) * Math.min(1, dt * 8);
       this._headTilt += ((-strafe * 0.02) - this._headTilt) * Math.min(1, dt * 6);
 
       /* Follow the ground, but not instantly. Sampling the height field and
          writing it straight to the eye means every ripple the terrain has at
          stride scale is transmitted directly into the camera, which reads as a
          hand-held shot on a trampoline. Legs absorb the high frequencies; a
-         critically-damped follow is the cheap stand-in for that. */
+         critically-damped follow is the cheap stand-in for that.
+
+         The rate scales with pace for the same reason the bob does. What is
+         being rejected is a *distance* — a ripple a metre or two across — but a
+         fixed rate only rejects a fixed distance at a fixed speed. Measured on
+         a 1-in-5 slope at 60 Hz, the deck's own run trails the true ground by
+         0.29 m of travel, which is the design point 9 was chosen at; a planet
+         sprint at the flat 9 trailed 0.72, which is the trampoline back the
+         other way — the eye sagging behind ground the feet have already left.
+         Normalised, the sprint trails 0.21. The deck is untouched by
+         construction: walkSpeed is DECK_WALK there, so the factor is 1. */
       if (onFoot) {
         const h = this.groundHeight ? this.groundHeight(this.pos.x, this.pos.z) : 0;
-        this.groundY += (h - this.groundY) * Math.min(1, dt * 9);
+        const follow = 9 * (walkSpeed / DECK_WALK);
+        this.groundY += (h - this.groundY) * Math.min(1, dt * follow);
       } else {
         this.groundY = 0;
       }
