@@ -45,6 +45,10 @@ export interface RenderState {
   pulseAge: number | null;
   dead: boolean;
   deathAge: number;
+  /** 0..1 — decays after a death. Knocks the camera about for a moment. */
+  shake: number;
+  /** How many checkpoints the run has banked; earlier ones draw lit. */
+  banked: number;
   /** 0..1, dims everything for the menu. */
   dim: number;
 }
@@ -54,18 +58,60 @@ function hex(c: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+function pad2(n: number): string {
+  return Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+}
+
+/**
+ * Blend two colours. Returns `#rrggbb`, and that matters more than it looks:
+ * every other helper in this file parses its input with `hex`, so a `mix`
+ * that returned `rgb(…)` poisoned anything downstream of it with NaN. The
+ * palette cross-fade at each section seam runs its colours through `mix`,
+ * which meant that for fourteen blocks either side of all six seams the level
+ * was drawing with invalid colours — the one place the game looked broken.
+ */
 function mix(a: string, b: string, t: number): string {
   const [r1, g1, b1] = hex(a);
   const [r2, g2, b2] = hex(b);
   const k = Math.max(0, Math.min(1, t));
-  return `rgb(${Math.round(r1 + (r2 - r1) * k)},${Math.round(g1 + (g2 - g1) * k)},${Math.round(
-    b1 + (b2 - b1) * k,
-  )})`;
+  return `#${pad2(r1 + (r2 - r1) * k)}${pad2(g1 + (g2 - g1) * k)}${pad2(b1 + (b2 - b1) * k)}`;
 }
 
 function rgba(c: string, a: number): string {
   const [r, g, b] = hex(c);
   return `rgba(${r},${g},${b},${a})`;
+}
+
+/** Perceived brightness, 0..1. */
+function luma(c: string): number {
+  const [r, g, b] = hex(c);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+/**
+ * The outline colour for a section, computed rather than authored.
+ *
+ * Every edge in the level used to be stroked in the section's accent, which
+ * is fine on the black sections and invisible in the strobe — yellow on
+ * yellow. So: measure what is actually behind the object and stroke against
+ * it. A bright section gets ink, a dark one gets its accent.
+ */
+/**
+ * The inner wedge every spike carries. Computed from the spike's own fill so
+ * the two tones always separate: in the dark sections the hazard is white and
+ * the core is the accent, and in the strobe the hazard is red and the core has
+ * to go lighter instead. Authoring it per section got it wrong every time a
+ * palette changed.
+ */
+function coreFor(hazard: string, accent: string): string {
+  return Math.abs(luma(hazard) - luma(accent)) > 0.22
+    ? accent
+    : mix(hazard, luma(hazard) > 0.55 ? "#000000" : "#ffffff", 0.55);
+}
+
+function inkFor(pal: Section): string {
+  const bright = (luma(pal.bg[0]) + luma(pal.bg[1])) / 2;
+  return bright > 0.5 ? mix(pal.bg[1], "#000000", 0.82) : pal.accent;
 }
 
 /** The palette at x, cross-faded across the seam so sections bleed into
@@ -164,6 +210,7 @@ export class Renderer {
     ctx.clearRect(0, 0, this.width, this.height);
 
     const pal = paletteAt(this.level, s.player.x);
+    const ink = inkFor(pal);
     // Beat pulse: a hard flash on the downbeat, decaying over the beat.
     const pulse = Math.pow(1 - s.beat, 2.2) * pal.strobe;
 
@@ -199,8 +246,12 @@ export class Renderer {
     ctx.restore();
 
     // ── world transform ──────────────────────────────────────────────────
-    const originX = this.width * PLAYER_SCREEN_X - s.camX * S;
-    const originY = bottom + s.camY * S;
+    // Death shake. Deterministic in the frame, so it never jitters at rest.
+    const k = s.shake * s.shake;
+    const shakeX = k * Math.sin(s.time * 91) * 13;
+    const shakeY = k * Math.sin(s.time * 77 + 2) * 11;
+    const originX = this.width * PLAYER_SCREEN_X - s.camX * S + shakeX;
+    const originY = bottom + s.camY * S + shakeY;
     const toScreenX = (x: number) => originX + x * S;
     const toScreenY = (y: number) => originY - y * S;
 
@@ -212,16 +263,32 @@ export class Renderer {
     if (groundY < bottom) {
       ctx.fillStyle = mix(pal.ground, "#ffffff", pulse * 0.35);
       ctx.fillRect(0, groundY, this.width, bottom - groundY);
-      ctx.fillStyle = rgba(pal.accent, 0.9);
-      ctx.fillRect(0, groundY - 2, this.width, 3);
+      // Scrolling tick marks, so the floor has speed and the eye has
+      // something to read the 1× against.
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = pal.accent;
+      const tick = S;
+      const off = (toScreenX(0) % (tick * 2) + tick * 2) % (tick * 2);
+      for (let px = off - tick * 2; px < this.width; px += tick * 2) {
+        ctx.fillRect(px, groundY + 4, tick, Math.max(2, bottom - groundY - 8));
+      }
+      ctx.restore();
+      ctx.fillStyle = rgba(pal.accent, 0.95);
+      ctx.fillRect(0, groundY - 3, this.width, 4);
+      const glow = ctx.createLinearGradient(0, groundY - 26, 0, groundY);
+      glow.addColorStop(0, rgba(pal.accent, 0));
+      glow.addColorStop(1, rgba(pal.accent, 0.16 + pulse * 0.2));
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, groundY - 26, this.width, 26);
     }
 
     // ── objects ──────────────────────────────────────────────────────────
     const objs = this.index.inView(x0, x1);
     const reveal = this.revealState(s);
 
-    for (const o of objs) if (o.back) this.drawObject(o, pal, toScreenX, toScreenY, S, s, reveal, pulse);
-    for (const o of objs) if (!o.back) this.drawObject(o, pal, toScreenX, toScreenY, S, s, reveal, pulse);
+    for (const o of objs) if (o.back) this.drawObject(o, pal, ink, toScreenX, toScreenY, S, s, reveal, pulse);
+    for (const o of objs) if (!o.back) this.drawObject(o, pal, ink, toScreenX, toScreenY, S, s, reveal, pulse);
 
     // ── finish line ──────────────────────────────────────────────────────
     const fx = toScreenX(this.level.length);
@@ -292,6 +359,7 @@ export class Renderer {
   private drawObject(
     o: Obj,
     pal: Section,
+    ink: string,
     sx: (x: number) => number,
     sy: (y: number) => number,
     S: number,
@@ -303,18 +371,27 @@ export class Renderer {
     let alpha = o.alpha ?? 1;
     let outline: string | null = null;
 
-    if (reveal) {
+    // The pulse only ever speaks about things that collide: it dims the paint
+    // and outlines the danger. Orbs, pads, portals and checkpoints are already
+    // honest, and lighting them up would just add noise to the one moment in
+    // the level that is supposed to be quiet.
+    const speaks = o.kind === "spike" || o.kind === "saw" || o.kind === "block";
+    if (reveal && speaks) {
       const dx = o.x + o.w / 2 - st.player.x;
       const dy = o.y + o.h / 2 - (st.player.y + 0.5);
       if (Math.hypot(dx, dy) < reveal.radius) {
-        if (o.decoy || o.kind === "glyph") alpha *= 1 - 0.88 * reveal.strength;
+        if (o.decoy) alpha *= 1 - 0.88 * reveal.strength;
         else {
           alpha = alpha + (1 - alpha) * reveal.strength;
-          outline = o.kind === "spike" || o.kind === "saw" ? "#ff2b4d" : "#38f5ff";
+          outline = o.kind === "block" ? "#38f5ff" : "#ff2b4d";
         }
       }
+    } else if (reveal && o.kind === "glyph") {
+      const dx = o.x + o.w / 2 - st.player.x;
+      const dy = o.y + o.h / 2 - (st.player.y + 0.5);
+      if (Math.hypot(dx, dy) < reveal.radius) alpha *= 1 - 0.88 * reveal.strength;
     }
-    if (o.back) alpha *= 0.55;
+    if (o.back) alpha *= 0.5;
     if (alpha <= 0.01) return;
 
     const cx = sx(o.x + o.w / 2);
@@ -327,8 +404,12 @@ export class Renderer {
     ctx.translate(cx, cy);
     if (o.rot) ctx.rotate((o.rot * Math.PI) / 180);
 
-    const hazardColor = o.color ?? mix(pal.hazard, "#ffffff", pulse * 0.6);
-    const solidColor = o.color ?? mix(pal.solid, "#ffffff", pulse * 0.4);
+    // Scenery is mixed toward the background rather than toward white, so it
+    // sits behind the play layer instead of competing with it.
+    const hazardColor = o.color ??
+      (o.back ? mix(pal.hazard, pal.bg[1], 0.62) : mix(pal.hazard, "#ffffff", pulse * 0.6));
+    const solidColor = o.color ??
+      (o.back ? mix(pal.solid, pal.bg[1], 0.68) : mix(pal.solid, "#ffffff", pulse * 0.4));
 
     switch (o.kind) {
       case "spike": {
@@ -339,16 +420,16 @@ export class Renderer {
         ctx.closePath();
         ctx.fillStyle = hazardColor;
         ctx.fill();
-        ctx.strokeStyle = outline ?? rgba(pal.accent, 0.75);
-        ctx.lineWidth = outline ? 3 : 1.5;
+        ctx.strokeStyle = outline ?? rgba(ink, o.back ? 0.35 : 0.9);
+        ctx.lineWidth = outline ? 3 : 2;
         ctx.stroke();
-        // The magenta core every I Spy spike has, real or not.
+        // The inner wedge every I Spy spike has, real or not.
         ctx.beginPath();
         ctx.moveTo(-w / 5, h / 2 - 1);
         ctx.lineTo(w / 5, h / 2 - 1);
         ctx.lineTo(0, -h / 6);
         ctx.closePath();
-        ctx.fillStyle = rgba(pal.accent, 0.95);
+        ctx.fillStyle = rgba(coreFor(pal.hazard, pal.accent), 0.95);
         ctx.fill();
         break;
       }
@@ -356,9 +437,18 @@ export class Renderer {
         ctx.fillStyle = solidColor;
         ctx.fillRect(-w / 2, -h / 2, w, h);
         if (!o.plain || outline) {
-          ctx.strokeStyle = outline ?? rgba(pal.accent, 0.8);
+          // Two strokes: the accent edge, and an inset line a few pixels in.
+          // That inset is most of what makes the original's blocks read as
+          // solid objects rather than as flat rectangles.
+          ctx.strokeStyle = outline ?? rgba(ink, o.back ? 0.3 : 0.9);
           ctx.lineWidth = outline ? 3 : 2;
           ctx.strokeRect(-w / 2, -h / 2, w, h);
+          const inset = Math.min(w, h) * 0.16;
+          if (inset > 2) {
+            ctx.strokeStyle = rgba(ink, 0.32);
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(-w / 2 + inset, -h / 2 + inset, w - inset * 2, h - inset * 2);
+          }
         }
         break;
       }
@@ -377,7 +467,7 @@ export class Renderer {
         }
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = rgba(pal.accent, 0.9);
+        ctx.fillStyle = rgba(ink, 0.9);
         ctx.beginPath();
         ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2);
         ctx.fill();
@@ -409,6 +499,24 @@ export class Renderer {
         ctx.beginPath();
         ctx.ellipse(0, 0, w * 0.45, h * 0.5, 0, 0, Math.PI * 2);
         ctx.stroke();
+        break;
+      }
+      case "checkpoint": {
+        // A banner you pass through. Lit once the run is past it.
+        const lit = o.x <= st.player.x;
+        const c = lit ? "#7dffd0" : "#ffffff";
+        ctx.globalAlpha = alpha * (lit ? 0.9 : 0.22);
+        ctx.fillStyle = c;
+        ctx.shadowBlur = lit ? 26 : 0;
+        ctx.shadowColor = c;
+        ctx.fillRect(-w / 2, -h / 2, Math.max(2, w), h);
+        ctx.beginPath();
+        ctx.moveTo(0, -h / 2 - S * 0.55);
+        ctx.lineTo(S * 0.4, -h / 2);
+        ctx.lineTo(0, -h / 2 + S * 0.55);
+        ctx.lineTo(-S * 0.4, -h / 2);
+        ctx.closePath();
+        ctx.fill();
         break;
       }
       case "glyph": {

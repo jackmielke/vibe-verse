@@ -96,63 +96,116 @@ export class Builder {
   // ── the lie ────────────────────────────────────────────────────────────
 
   /**
-   * Scatter convincing rubbish. Decoys are drawn by exactly the same code
-   * that draws the real thing — the renderer is never told which is which —
-   * so the only way to tell them apart is to have been here before, or to
-   * spend a pulse.
+   * Grid-aligned decoy geometry.
+   *
+   * This is the level's whole trick and it only works if the decoys look like
+   * *level*. Earlier versions scattered randomly rotated, randomly sized
+   * shapes, which reads as confetti: you cannot mistake a spike tilted 37°
+   * and scaled to 1.8× for a real hazard, so nothing is being deceived —
+   * the screen is just noisy.
+   *
+   * So every ghost here sits on the integer grid, at the sizes real objects
+   * come in, unrotated, in the section's own colours. A decoy spike row on
+   * the floor is pixel-for-pixel a real spike row. That is the point.
    */
-  noise(
+  ghosts(
     x0: number,
     x1: number,
     yLo: number,
     yHi: number,
-    count: number,
     seed: number,
-    opts: { glyphs?: number; back?: boolean; big?: boolean } = {},
+    opts: { density?: number; ceiling?: number } = {},
   ) {
+    const r = rng(seed);
+    const density = opts.density ?? 0.55;
+    for (let x = Math.ceil(x0); x < x1; x++) {
+      if (r() > density) continue;
+      const roll = r();
+      const y = Math.round(yLo + r() * (yHi - yLo));
+
+      if (roll < 0.34) {
+        // A spike row, standing on a floor exactly like a real one. Three is
+        // the cap for the same reason it is the cap for real ones: a longer
+        // row is not clearable, so it reads as scenery and fools nobody.
+        const n = 1 + Math.floor(r() * 3);
+        for (let i = 0; i < n && x + i < x1; i++) this.fakeSpike(x + i, y);
+        x += n;
+      } else if (roll < 0.58) {
+        // A platform. Some of them carry spikes, because real ones do.
+        const w = 1 + Math.floor(r() * 3);
+        this.push({ kind: "block", x, y, w, h: 1, decoy: true });
+        if (r() < 0.45) for (let i = 0; i < w; i++) this.fakeSpike(x + i, y + 1);
+        x += w;
+      } else if (roll < 0.72) {
+        // A hanging row off a ceiling, pointing down.
+        const top = opts.ceiling ?? yHi;
+        const n = 1 + Math.floor(r() * 2);
+        for (let i = 0; i < n && x + i < x1; i++)
+          this.push({ kind: "spike", x: x + i, y: top - 1, w: 1, h: 1, rot: 180, decoy: true });
+        x += n;
+      } else if (roll < 0.86) {
+        this.push({ kind: "saw", x, y, w: 2, h: 2, decoy: true });
+        x += 2;
+      } else {
+        // A pillar: the shape a real gate is made of.
+        const h = 2 + Math.floor(r() * 3);
+        this.push({ kind: "block", x, y, w: 1, h, decoy: true });
+        x += 1;
+      }
+      // Breathing room. Without it, adjacent patterns fuse into one
+      // fourteen-spike wall that no real level would ever contain.
+      x += 1 + Math.floor(r() * 3);
+    }
+  }
+
+  /**
+   * The layer behind the game: big, soft, slow, dimmed, and free to be as
+   * loose as it likes precisely *because* it is never mistaken for geometry.
+   * All of the level's visual richness comes from here, so the play layer can
+   * stay clean and legible.
+   */
+  backdrop(x0: number, x1: number, yLo: number, yHi: number, count: number, seed: number) {
     const r = rng(seed);
     for (let i = 0; i < count; i++) {
       const x = x0 + r() * (x1 - x0);
       const y = yLo + r() * (yHi - yLo);
+      const s = 2 + r() * 5;
       const roll = r();
-      const back = opts.back ?? false;
-      if (roll < 0.5) {
-        const s = opts.big ? 1 + r() * 2.6 : 0.6 + r() * 1.5;
-        this.push({
-          kind: "spike", x, y, w: s, h: s,
-          rot: (r() - 0.5) * 220, decoy: true, back,
-          alpha: back ? 0.35 + r() * 0.3 : 0.75 + r() * 0.25,
-        });
-      } else if (roll < 0.78) {
-        const w = 0.6 + r() * 2.4;
-        this.push({
-          kind: "block", x, y, w, h: w * (0.4 + r()),
-          rot: (r() - 0.5) * 60, decoy: true, back,
-          alpha: back ? 0.25 + r() * 0.25 : 0.6 + r() * 0.4,
-        });
-      } else {
-        this.push({
-          kind: "saw", x, y, w: 1 + r() * 1.8, h: 1 + r() * 1.8,
-          rot: r() * 360, decoy: true, back, alpha: back ? 0.3 : 0.8,
-        });
-      }
-    }
-    const g = opts.glyphs ?? 0;
-    for (let i = 0; i < g; i++) {
-      const x = x0 + r() * (x1 - x0);
-      const y = yLo + r() * (yHi - yLo);
       this.push({
-        kind: "glyph", x, y, w: 0.8 + r() * 1.4, h: 0.8 + r() * 1.4,
-        rot: (r() - 0.5) * 50, decoy: true, alpha: 0.4 + r() * 0.5,
+        kind: roll < 0.55 ? "spike" : roll < 0.85 ? "block" : "saw",
+        x, y, w: s, h: s * (roll < 0.55 ? 1 : 0.5 + r()),
+        rot: (r() - 0.5) * 160,
+        decoy: true, back: true,
+        alpha: 0.18 + r() * 0.26,
       });
     }
+  }
+
+  /** The pink question marks the level is named after. Paint, always. */
+  glyphs(x0: number, x1: number, yLo: number, yHi: number, count: number, seed: number) {
+    const r = rng(seed);
+    for (let i = 0; i < count; i++) {
+      this.push({
+        kind: "glyph",
+        x: x0 + r() * (x1 - x0),
+        y: yLo + r() * (yHi - yLo),
+        w: 1 + r() * 1.6, h: 1 + r() * 1.6,
+        rot: (r() - 0.5) * 30,
+        decoy: true,
+        alpha: 0.35 + r() * 0.45,
+      });
+    }
+  }
+
+  /** One decoy spike, on the grid, identical to a real one. */
+  fakeSpike(x: number, y = 0) {
+    return this.push({ kind: "spike", x, y, w: 1, h: 1, decoy: true });
   }
 
   /** A row of decoy spikes standing on the floor, indistinguishable from
       the row of real ones you will meet four blocks later. */
   fakeSpikes(x: number, n: number, y = 0) {
-    for (let i = 0; i < n; i++)
-      this.push({ kind: "spike", x: x + i, y, w: 1, h: 1, decoy: true });
+    for (let i = 0; i < n; i++) this.fakeSpike(x + i, y);
   }
 
   /** Ground you cannot stand on. */
@@ -160,6 +213,15 @@ export class Builder {
     return this.push({
       kind: "block", x: x0, y: y - 1.2, w: x1 - x0, h: 1.2, decoy: true,
     });
+  }
+
+  /**
+   * A checkpoint. Crossing one banks the run; dying after it puts you back
+   * here rather than at the start. Not a collider — `World` skips them and
+   * the engine watches the player's x instead.
+   */
+  checkpoint(x: number) {
+    return this.push({ kind: "checkpoint", x, y: 0, w: 0.5, h: 7 });
   }
 
   finish(length: number, start: Level["start"]): Level {

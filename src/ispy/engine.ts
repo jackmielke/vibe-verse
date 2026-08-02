@@ -30,11 +30,15 @@ export interface ISpyStatus {
   best: number;
   attempts: number;
   pulses: number;
-  practice: boolean;
+  /** Checkpoints off — the original's all-or-nothing bargain. */
+  purist: boolean;
   muted: boolean;
   chapter: string;
   /** Seconds into the current attempt. */
   time: number;
+  /** Checkpoints banked this run, and how many the level has. */
+  banked: number;
+  checkpoints: number;
 }
 
 export class ISpyEngine {
@@ -47,8 +51,13 @@ export class ISpyEngine {
   private phase: Phase = "attract";
   private attempts = 0;
   private best = 0;
-  private practice = false;
+  private purist = false;
   private pulses = PULSES_PER_ATTEMPT;
+
+  /** Sorted x of every checkpoint, and how far through them this run is. */
+  private readonly checkpointXs: number[];
+  private nextCheckpoint = 0;
+  private banked: PlayerState | null = null;
 
   private raf = 0;
   private lastFrame = 0;
@@ -61,10 +70,8 @@ export class ISpyEngine {
   private tapPending = false;
   private camY = -0.6;
   private particles: Particle[] = [];
-
-  /** Practice checkpoints: a rolling window of recent safe states. */
-  private snapshots: Array<{ p: PlayerState; t: number }> = [];
-  private sinceSnapshot = 0;
+  private shake = 0;
+  private wasGrounded = true;
 
   /** Attract mode drives the same input the player would. */
   private botHold = false;
@@ -81,6 +88,10 @@ export class ISpyEngine {
     this.world = new World(this.level);
     this.renderer = new Renderer(canvas, this.level);
     this.player = initialState(this.level);
+    this.checkpointXs = this.level.objects
+      .filter((o) => o.kind === "checkpoint")
+      .map((o) => o.x)
+      .sort((a, b) => a - b);
     try {
       this.best = Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
     } catch {
@@ -106,10 +117,12 @@ export class ISpyEngine {
       best: this.best,
       attempts: this.attempts,
       pulses: this.pulses,
-      practice: this.practice,
+      purist: this.purist,
       muted: this.audio.isMuted,
       chapter: chapterAt(this.player.x),
       time: this.attemptTime,
+      banked: this.nextCheckpoint,
+      checkpoints: this.checkpointXs.length,
     };
   }
 
@@ -130,9 +143,9 @@ export class ISpyEngine {
     this.emit(true);
   }
 
-  setPractice(on: boolean) {
-    this.practice = on;
-    this.snapshots = [];
+  setPurist(on: boolean) {
+    this.purist = on;
+    if (on) this.banked = null;
     this.emit(true);
   }
 
@@ -150,8 +163,20 @@ export class ISpyEngine {
     this.emit(true);
   }
 
+  /** Where the checkpoints sit, as percentages, for the HUD's progress bar. */
+  get checkpointPercents(): number[] {
+    return this.checkpointXs.map((x) => (x / this.level.length) * 100);
+  }
+
   resize() {
     this.renderer.resize();
+  }
+
+  /** Kill the player on the spot. Used to test that dying resumes correctly. */
+  debugKill() {
+    if (this.phase !== "playing") return;
+    this.player.dead = true;
+    this.die();
   }
 
   /**
@@ -285,24 +310,29 @@ export class ISpyEngine {
 
   // ── the run ────────────────────────────────────────────────────────────
 
-  private restartFrom(p: PlayerState) {
+  private restartFrom(p: PlayerState, keepProgress = false) {
     this.player = clonePlayer(p);
     this.attemptTime = 0;
     this.deathAge = 0;
     this.pulseAge = null;
     this.particles = [];
     this.pulses = PULSES_PER_ATTEMPT;
-    this.snapshots = [];
-    this.sinceSnapshot = 0;
     this.camY = Math.max(-0.6, this.player.y - VIEW_H * 0.34);
     this.hold = false;
     this.botHold = false;
     this.botClock = 0;
+    this.shake = 0;
+    this.wasGrounded = true;
+    if (!keepProgress) {
+      this.banked = null;
+      this.nextCheckpoint = 0;
+    }
   }
 
   private die() {
     this.phase = "dead";
     this.deathAge = 0;
+    this.shake = 1;
     this.audio.death();
     const pct = (this.player.x / this.level.length) * 100;
     if (pct > this.best) {
@@ -313,17 +343,22 @@ export class ISpyEngine {
         /* private browsing — the run still counts, it just will not persist */
       }
     }
-    for (let i = 0; i < 34; i++) {
+    this.burst(38, "#ff2f5e", 13);
+    this.emit(true);
+  }
+
+  /** A puff of squares at the player. Death, landings, checkpoints. */
+  private burst(n: number, color: string, speed: number) {
+    for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
-      const s = 3 + Math.random() * 12;
+      const s = 2 + Math.random() * speed;
       this.particles.push({
         x: this.player.x, y: this.player.y + 0.5,
-        vx: Math.cos(a) * s, vy: Math.sin(a) * s + 4,
-        life: 0.55 + Math.random() * 0.5, max: 1, size: 0.12 + Math.random() * 0.3,
-        color: Math.random() < 0.5 ? "#ffffff" : "#ff2f5e",
+        vx: Math.cos(a) * s, vy: Math.sin(a) * s + 3,
+        life: 0.4 + Math.random() * 0.5, max: 1, size: 0.1 + Math.random() * 0.24,
+        color: Math.random() < 0.45 ? "#ffffff" : color,
       });
     }
-    this.emit(true);
   }
 
   private win() {
@@ -351,21 +386,15 @@ export class ISpyEngine {
     if (this.phase === "playing" || this.phase === "attract") this.simulate(dt);
     else if (this.phase === "dead") {
       this.deathAge += dt;
-      // Practice mode rewinds instead of restarting: back to where you were
-      // about a second ago, which is what a checkpoint is for.
-      if (this.practice && this.deathAge > 0.45) {
-        const snap = this.snapshots[0];
-        if (snap) {
-          this.phase = "playing";
-          const t = this.attemptTime;
-          this.restartFrom(snap.p);
-          this.attemptTime = Math.max(0, t - 1);
-          this.emit(true);
-        } else {
-          this.play();
-        }
+      // With a checkpoint banked, dying costs half a second, not a minute.
+      if (this.banked && !this.purist && this.deathAge > 0.5) {
+        this.phase = "playing";
+        this.attempts += 1;
+        this.restartFrom(this.banked, true);
+        this.emit(true);
       }
     }
+    this.shake = Math.max(0, this.shake - dt * 3.2);
 
     this.stepParticles(dt);
     if (this.pulseAge !== null) this.pulseAge += dt;
@@ -416,14 +445,23 @@ export class ISpyEngine {
         return;
       }
 
-      // Rolling checkpoints. Kept even outside practice mode so that turning
-      // it on mid-run does something sensible.
-      this.sinceSnapshot += TICK;
-      if (this.sinceSnapshot >= 0.4) {
-        this.sinceSnapshot = 0;
-        this.snapshots.unshift({ p: clonePlayer(this.player), t: this.attemptTime });
-        if (this.snapshots.length > 4) this.snapshots.pop();
+      // Checkpoints. Banked on the way past, even in purist mode, so the
+      // banner still lights up and turning purist off mid-run behaves.
+      while (
+        this.nextCheckpoint < this.checkpointXs.length &&
+        this.player.x >= this.checkpointXs[this.nextCheckpoint]
+      ) {
+        this.nextCheckpoint += 1;
+        if (!attract) {
+          this.banked = clonePlayer(this.player);
+          this.audio.checkpoint();
+          this.burst(10, "#7dffd0", 7);
+        }
       }
+
+      // Landing dust, so a jump has a bottom to it.
+      if (this.player.onGround && !this.wasGrounded) this.burst(7, "#ffffff", 5);
+      this.wasGrounded = this.player.onGround;
     }
 
     // Camera. Cube sections sit the ground low in frame; the flying modes
@@ -468,6 +506,8 @@ export class ISpyEngine {
       pulseAge: this.pulseAge,
       dead: this.phase === "dead",
       deathAge: this.deathAge,
+      shake: this.shake,
+      banked: this.nextCheckpoint,
       dim: this.phase === "attract" ? 0.55 : 0,
     };
   }
@@ -475,8 +515,8 @@ export class ISpyEngine {
   private emit(force: boolean) {
     const s = this.status();
     const key = `${s.phase}|${Math.round(s.percent)}|${s.attempts}|${s.pulses}|${
-      s.practice
-    }|${s.muted}|${s.chapter}|${Math.round(s.best)}`;
+      s.purist
+    }|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}`;
     if (!force && key === this.lastStatus) return;
     this.lastStatus = key;
     for (const fn of this.listeners) fn(s);

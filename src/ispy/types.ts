@@ -20,6 +20,7 @@ export type ObjKind =
   | "pad" // step on it, get launched
   | "orb" // tap while touching it, get launched
   | "portal" // changes mode / gravity / speed
+  | "checkpoint" // banks the run. Watched by the engine, not the physics
   | "glyph"; // pure paint: the pink "?" that gave the level its name
 
 export type Boost = "yellow" | "pink" | "blue" | "green";
@@ -103,6 +104,9 @@ export interface PlayerState {
   onGround: boolean;
   /** Visual rotation, degrees. Cosmetic, but the bot copies it anyway. */
   rot: number;
+  /** Degrees per second the cube is currently turning. Solved at takeoff so
+      that the jump ends on a flat face — see `CUBE_SPIN` in physics.ts. */
+  rotVel: number;
   dead: boolean;
   /** Orbs already used this attempt, by object index — an orb fires once. */
   usedOrbs: Set<number>;

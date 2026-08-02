@@ -21,6 +21,76 @@ serves that one idea.
 | `bot.ts` | a solver. Proves the level is possible, and plays the title screen |
 | `engine.ts` | clock, input, attempts, checkpoints, the spy pulse |
 
+## The cube lands flat
+
+The cube used to spin at a fixed rate and stop wherever the arc ended, which
+is usually on a corner and looks broken. It now **solves its spin from the
+jump**: half a turn spread over exactly the air time that launch buys, so it
+arrives at 180° — flat on a face. Land early on a platform and `settle()`
+rotates the remainder onto the nearest flat face at 1100°/s.
+
+`CUBE_SPIN` and `SETTLE_RATE` in `physics.ts`, and two tests hold it: one
+jumps at four different hold lengths and requires every landing to be within
+half a degree of a multiple of 90, the other checks a full-height jump turns
+between 170° and 190°.
+
+## Hitboxes
+
+`HITBOX` in `physics.ts`, in Geometry Dash's own units — a block is 30×30 px
+there and 1×1 here, so every number is the pixel figure over 30. Two boxes per
+player as in the original: the **solid** box (30×30) stands on blocks and dies
+on their sides, and the smaller **hazard** box (18×18, centred) is what spikes
+test. A spike's own box is 12×18 at the base centre of its tile, not the whole
+tile. That gap is why clipping the corner of a spike survives, and it always
+has been.
+
+## Ghosts, and the backdrop
+
+Two different jobs, deliberately kept apart:
+
+- **`ghosts()`** is the lie, and it only works if the decoys look like *level*.
+  Everything it emits sits on the integer grid, at the sizes real objects come
+  in, unrotated, in the section's colours — a decoy spike row is pixel-for-pixel
+  a real spike row. Rows cap at three, because a longer one is not clearable and
+  so reads as scenery and fools nobody, and patterns are spaced apart so
+  neighbours do not fuse into one fourteen-spike wall no real level would
+  contain.
+- **`backdrop()`** is the atmosphere: big, soft, dim, slow, free to be as loose
+  as it likes precisely *because* it is never mistaken for geometry. All the
+  visual richness lives here so the play layer can stay legible.
+
+An earlier version had one function doing both — randomly rotated, randomly
+scaled shapes everywhere — and it read as confetti. Nobody mistakes a spike
+tilted 37° and scaled 1.8× for a hazard, so nothing was being deceived; the
+screen was just noisy.
+
+## Checkpoints
+
+Eleven of them, at the mouth of each movement and halfway through the long
+ones, all on clear ground you can be dropped onto. Crossing one banks the run;
+dying after it costs half a second instead of a minute. `PURIST` in the menu
+turns them off for the original's all-or-nothing bargain.
+
+Checkpoints are not colliders — `World` skips them entirely and the engine
+watches the player's x against a sorted list, so the physics and the bot never
+have to know they exist.
+
+## Colours are computed, not authored
+
+Three things the renderer works out from the palette rather than being told:
+
+- **`inkFor`** picks the outline colour by measuring what is behind it. Every
+  edge used to be stroked in the section's accent, which is fine on the black
+  sections and invisible in the strobe — yellow on yellow.
+- **`coreFor`** picks the spike's inner wedge from the spike's own fill, so the
+  two tones always separate whatever the palette does.
+- **`mix`** returns `#rrggbb`, and that is load-bearing: every other helper here
+  parses with `hex`, so a `mix` that returned `rgb(…)` poisoned everything
+  downstream with NaN. Since the section cross-fade runs its colours through
+  `mix`, that bug meant the level drew with invalid colours for fourteen blocks
+  either side of all six seams. A test now walks every block of the level and
+  asserts the palette is parseable everywhere.
+
 ## Three rules that are load-bearing
 
 **1. The renderer does not know what is real.** `drawObject` draws a decoy
@@ -54,9 +124,7 @@ because "spend a limited resource to see the truth" is a better answer to *I
 Spy* than "memorise it or leave". Nothing lethal is ever drawn at less than 6%
 opacity, so a pulse is a shortcut through the learning, never the only way.
 
-Practice mode is the other concession: instead of restarting, it rewinds you
-about a second, to one of the rolling checkpoints the engine keeps whether or
-not practice is on.
+Checkpoints are the other concession, and the menu can turn both off.
 
 ## Capturing frames
 
@@ -64,6 +132,8 @@ not practice is on.
 node scripts/ispy-shot.mjs                    # contact sheet of all six movements
 node scripts/ispy-shot.mjs 534 out.jpg        # one frame at block 534
 node scripts/ispy-shot.mjs --run              # …and play the level through for real
+node scripts/ispy-shot.mjs --checkpoints      # …and prove dying resumes correctly
+node scripts/ispy-shot.mjs --phone            # …and shoot it on a portrait phone
 ```
 
 The script boots the route with `?shot`, which hides the menu and HUD and
@@ -79,3 +149,13 @@ exposes the engine on `window.__ispy`. Two things it does that matter:
 `--run` is the end-to-end check: it clicks the real title button, then hands a
 real attempt to the bot and waits for the finish screen. vitest proves the
 level is possible; that proves the page is.
+
+`--checkpoints` proves the thing a screenshot cannot: it plays until three
+checkpoints are banked, kills the player, and checks the run resumes at the
+checkpoint — then does it again in purist mode and checks it does not.
+
+`--phone` matters more than it sounds. A portrait viewport is where this game
+breaks: fifteen blocks of height on a 0.46-aspect screen leaves four blocks of
+warning, which is not a hard level, it is a broken one. The world is
+letterboxed into a band of at least 1.62 aspect and the bars become where the
+HUD lives.

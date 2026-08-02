@@ -58,6 +58,7 @@ export function buildISpy(): Level {
     accent: "#ff2fbf", ground: "#180322", strobe: 0.45,
   });
 
+  checkpoints(b);
   quietPart(b);
   iSpy(b);
   mirror(b);
@@ -67,6 +68,22 @@ export function buildISpy(): Level {
   paint(b);
 
   return b.finish(604, { mode: "cube", speed: ONE, grav: 1, y: 0 });
+}
+
+/**
+ * Checkpoints.
+ *
+ * Not in the original — Geometry Dash gives you the whole level or nothing,
+ * and that is a fine bargain when the level can be read on sight. This one
+ * cannot, by construction, so a sixty-second reset for a mistake at 90% is
+ * not difficulty, it is a tax on having been curious.
+ *
+ * One at the mouth of each movement, plus one halfway through the long ones,
+ * always on clear ground you can be dropped onto. `PURIST` in the menu turns
+ * them all off for the original bargain.
+ */
+function checkpoints(b: Builder) {
+  for (const x of [110, 158, 212, 262, 312, 358, 400, 446, 492, 532, 570]) b.checkpoint(x);
 }
 
 /* ── 0–110 ────────────────────────────────────────────────────────────────
@@ -88,10 +105,13 @@ function quietPart(b: Builder) {
   b.spikes(96, 2);
   b.spike(104);
 
-  // The first decoys in the game float well above your head, where they can
-  // be studied safely. Two seconds of "so THAT'S what a lie looks like".
-  b.noise(88, 109, 4.5, 11, 16, 1207, { glyphs: 5 });
-  b.noise(20, 80, 9, 15, 14, 33, { back: true, big: true });
+  // The first decoys in the game sit well above your head, where they can be
+  // studied safely. Two seconds of "so THAT'S what a lie looks like" — and
+  // they are drawn as real geometry, because that is what they are pretending
+  // to be.
+  b.ghosts(88, 108, 5, 9, 1207, { density: 0.75 });
+  b.glyphs(90, 108, 5, 11, 5, 1208);
+  b.backdrop(6, 108, 6, 15, 16, 33);
 }
 
 /* ── 110–212 ──────────────────────────────────────────────────────────────
@@ -101,7 +121,8 @@ function iSpy(b: Builder) {
   b.fakeSpikes(122, 2);
   b.spikes(128, 2); // these do not care what you learned at 118
 
-  b.noise(132, 143, 0, 5, 22, 91, { glyphs: 6 });
+  b.ghosts(131, 143, 0, 4, 91, { density: 0.95 });
+  b.glyphs(131, 143, 1, 7, 6, 92);
   b.spike(137);
   b.fakeSpikes(140, 3);
 
@@ -109,7 +130,8 @@ function iSpy(b: Builder) {
   b.spike(148);
   b.spikes(155, 3);
 
-  b.noise(158, 172, 0, 6, 26, 512, { glyphs: 8 });
+  b.ghosts(157, 172, 0, 5, 512, { density: 0.95 });
+  b.glyphs(157, 172, 1, 8, 8, 513);
   // The signature move: real, lethal, and drawn at 8% opacity. Learn it or
   // spend a pulse — those are the only two ways through, and both are fair.
   b.spike(163, 0, { alpha: 0.08 });
@@ -118,13 +140,15 @@ function iSpy(b: Builder) {
 
   b.fakeSpikes(180, 4);
   b.spike(184, 0, { alpha: 0.1 });
-  b.noise(176, 196, 0, 7, 24, 77, { glyphs: 7 });
+  b.ghosts(175, 196, 0, 5, 77, { density: 0.95 });
+  b.glyphs(175, 196, 1, 8, 7, 78);
 
   b.block(191, 0, 3, 1);
   b.fakeSlab(196, 201, 2.4);
   b.spikes(198, 2);
   b.spike(206);
-  b.noise(196, 211, 3, 10, 14, 4242, { glyphs: 4 });
+  b.ghosts(201, 210, 2, 6, 4242, { density: 0.75 });
+  b.glyphs(196, 211, 3, 9, 4, 4243);
 }
 
 /* ── 212–312 ──────────────────────────────────────────────────────────────
@@ -143,16 +167,18 @@ function mirror(b: Builder) {
     const x = 219 + i * 10;
     if (lo > 0) b.block(x, 0, 1.6, lo);
     b.block(x, lo + 4.4, 1.6, CEIL - (lo + 4.4));
-    // Two thirds of what is drawn across the opening is paint.
-    b.noise(x - 0.6, x + 2.4, lo + 0.2, lo + 4, 5, 900 + i, {});
+    // The opening itself gets ghosts, so the real gap and the painted one
+    // are the same picture until you have learned which is which.
+    b.ghosts(x - 1, x + 3, lo + 1, lo + 3, 900 + i, { density: 0.85, ceiling: lo + 4.4 });
   });
 
   // Real saws, in the gates you have already learned to trust.
   b.saw(249.4, 4.6, 1.6);
   b.saw(289.4, 1.2, 1.6);
 
-  b.noise(214, 312, 0.5, 9, 60, 31337, { glyphs: 14 });
-  b.noise(214, 312, 1, 8.5, 30, 999, { back: true, big: true });
+  b.ghosts(214, 311, 1, 7, 31337, { density: 0.85, ceiling: CEIL });
+  b.glyphs(214, 312, 1, 8, 14, 31338);
+  b.backdrop(214, 312, 0, 10, 26, 999);
 }
 
 /* ── 312–400 ──────────────────────────────────────────────────────────────
@@ -181,8 +207,9 @@ function strobe(b: Builder) {
     b.fakeSpikes(x - 5, n, side === "floor" ? 0 : 5);
   }
 
-  b.noise(314, 400, 0.5, 5.5, 55, 8080, { glyphs: 18 });
-  b.noise(314, 400, 0, 6, 26, 606, { back: true, big: true });
+  b.ghosts(314, 399, 0, 4, 8080, { density: 0.95, ceiling: 6 });
+  b.glyphs(314, 400, 1, 5, 18, 8081);
+  b.backdrop(314, 400, 0, 7, 24, 606);
 }
 
 /* ── 400–492 ──────────────────────────────────────────────────────────────
@@ -214,9 +241,11 @@ function green(b: Builder) {
     b.roof(x, x + 1.01, c + HALF, { plain: true });
   }
 
-  // Paint the tube shut.
-  b.noise(400, 492, 0, 12, 70, 55055, { glyphs: 20 });
-  b.noise(400, 492, 0, 14, 34, 66066, { back: true, big: true });
+  // Paint the tube shut — ghosts inside it and around it, so its real path
+  // has to be flown rather than read.
+  b.ghosts(400, 491, 0, 10, 55055, { density: 0.9 });
+  b.glyphs(400, 492, 1, 11, 20, 55056);
+  b.backdrop(400, 492, 0, 13, 30, 66066);
 
   b.portal(492, 0, { to: "cube" });
 }
@@ -227,7 +256,8 @@ function everything(b: Builder) {
   b.spike(502);
   b.fakeSpikes(506, 3);
   b.spikes(512, 2);
-  b.noise(496, 530, 0, 8, 30, 12321, { glyphs: 10 });
+  b.ghosts(496, 530, 0, 6, 12321, { density: 0.95 });
+  b.glyphs(496, 530, 1, 9, 10, 12322);
 
   b.pad(520);
   b.spikes(522, 3);
@@ -242,15 +272,17 @@ function everything(b: Builder) {
   b.orb(556.5, 3.2, "yellow");
   b.spikes(560, 2);
 
-  b.noise(534, 580, 0, 9, 34, 45654, { glyphs: 12 });
+  b.ghosts(533, 580, 0, 6, 45654, { density: 0.95 });
+  b.glyphs(533, 580, 1, 9, 12, 45655);
   b.fakeSpikes(566, 4);
   b.spike(572);
   b.spikes(579, 2);
   b.spike(587);
   b.spikes(593, 2);
 
-  // The last twenty blocks are empty and quiet, so you can watch it happen.
-  b.noise(596, 604, 3, 12, 10, 1, { glyphs: 6 });
+  // The last ten blocks are empty and quiet, so you can watch it happen.
+  b.glyphs(596, 604, 3, 11, 6, 1);
+  b.backdrop(496, 604, 4, 13, 22, 2);
 }
 
 /* ── the paint ────────────────────────────────────────────────────────────
@@ -264,12 +296,15 @@ function everything(b: Builder) {
 function paint(b: Builder) {
   const START = 112;
   const END = 604;
-  const CHUNK = 8;
+  const CHUNK = 12;
   for (let x = START; x < END; x += CHUNK) {
     const seed = 700000 + x * 13;
-    b.noise(x, x + CHUNK, -0.2, 6.5, 11, seed, { glyphs: 2 });
-    b.noise(x, x + CHUNK, 5, 12, 5, seed + 1, { glyphs: 1 });
-    b.noise(x, x + CHUNK, 0, 14, 4, seed + 2, { back: true, big: true });
+    // Ghosts thin out with height: the first six blocks of air are where a
+    // cube lives, so that is where the lying is worth doing.
+    b.ghosts(x, x + CHUNK, 0, 5, seed, { density: 0.85 });
+    b.ghosts(x, x + CHUNK, 6, 10, seed + 1, { density: 0.45 });
+    b.glyphs(x, x + CHUNK, 1, 10, 2, seed + 2);
+    b.backdrop(x, x + CHUNK, 2, 14, 3, seed + 3);
   }
 }
 

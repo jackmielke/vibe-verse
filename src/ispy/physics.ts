@@ -32,17 +32,64 @@ const BOOST = {
   green: 24.5,
 } as const;
 
-/** Half-width of the player's *lethal* box. Smaller than its solid box, so
-    clipping a spike's corner by a hair is survivable — as in the real game. */
+/**
+ * Hitboxes, in Geometry Dash's own units.
+ *
+ * A block there is 30×30 px and 1×1 here, so every number below is the
+ * documented pixel figure over 30. Two boxes per player, as in the original:
+ * the **solid** box is what stands on blocks and dies on their sides, and the
+ * smaller **hazard** box is what spikes test — which is why clipping the
+ * corner of a spike by a hair is survivable and always has been.
+ */
+export const HITBOX = {
+  /** 30×30. The whole tile. */
+  cubeSolid: 1,
+  /** 18×18, centred. */
+  cubeHazard: 0.6,
+  /** 30×20 — the ship is wider than it is tall. */
+  shipSolid: 1,
+  /** 15×15, centred on the hull. */
+  shipHazard: 0.5,
+  /** The wave is a dart: 12 wide, and it dies on contact with anything. */
+  waveSolid: 0.4,
+  waveHazard: 0.32,
+  /** 30×30 like the cube; it rolls on the same surfaces. */
+  ballSolid: 1,
+  ballHazard: 0.6,
+  /** A spike is 12×18 at the base centre of its tile, not the whole tile. */
+  spike: [0.4, 0.62] as const,
+  /** A sawblade kills inside ~56% of its drawn diameter. */
+  saw: 0.56,
+} as const;
+
+/**
+ * Degrees the cube turns per jump.
+ *
+ * This is the whole reason the cube lands flat. A fixed spin rate stops
+ * wherever the arc happens to end — usually on a corner, which looks broken —
+ * so instead the spin is solved from the jump: half a turn over exactly the
+ * predicted air time. Land on the ground you left and you arrive at 180°, flat
+ * on a side. Land early on a platform and `settle()` snaps the remainder.
+ */
+const CUBE_SPIN = 180;
+/** Degrees per second the cube rights itself over after an early landing. */
+const SETTLE_RATE = 1100;
+
+/** Half-width of the player's *lethal* box. */
 function dangerHalf(p: PlayerState): number {
-  if (p.mode === "wave") return 0.16;
-  if (p.mode === "ship") return 0.26;
-  return 0.3;
+  if (p.mode === "wave") return HITBOX.waveHazard / 2;
+  if (p.mode === "ship") return HITBOX.shipHazard / 2;
+  return HITBOX.cubeHazard / 2;
 }
 
 /** Half-width of the player's *solid* box: what lands on blocks. */
 function solidHalf(p: PlayerState): number {
-  return p.mode === "wave" ? 0.2 : 0.5;
+  return (p.mode === "wave" ? HITBOX.waveSolid : HITBOX.cubeSolid) / 2;
+}
+
+/** Nearest flat face, in degrees. A cube at rest is always on one. */
+function flatFace(rot: number): number {
+  return Math.round(rot / 90) * 90;
 }
 
 /**
@@ -58,7 +105,9 @@ export class World {
     this.objects = level.objects;
     this.length = level.length;
     level.objects.forEach((o, i) => {
-      if (o.decoy || o.back || o.kind === "glyph") return;
+      // Decoys, scenery, paint and checkpoints are never collidable. The
+      // renderer draws them; nothing here ever sees them again.
+      if (o.decoy || o.back || o.kind === "glyph" || o.kind === "checkpoint") return;
       for (let c = Math.floor(o.x) - 1; c <= Math.floor(o.x + o.w) + 1; c++) {
         const bucket = this.columns.get(c);
         if (bucket) bucket.push(i);
@@ -93,9 +142,19 @@ export function initialState(level: Level): PlayerState {
     speed: level.start.speed,
     onGround: true,
     rot: 0,
+    rotVel: 0,
     dead: false,
     usedOrbs: new Set(),
   };
+}
+
+/** Rotate the last few degrees onto a flat face after an early landing. */
+function settle(p: PlayerState, dt: number) {
+  const target = flatFace(p.rot);
+  const delta = target - p.rot;
+  const stepBy = SETTLE_RATE * dt;
+  p.rot = Math.abs(delta) <= stepBy ? target : p.rot + Math.sign(delta) * stepBy;
+  p.rotVel = 0;
 }
 
 export function clonePlayer(p: PlayerState): PlayerState {
@@ -112,15 +171,22 @@ function overlap(
 /** A spike's kill box: the middle of the tile, not the tile. */
 function hazardBox(o: Obj): [number, number, number, number] {
   if (o.kind === "spike") {
-    return [o.x + o.w * 0.5 - 0.18 * o.w, o.y + o.h * 0.1, 0.36 * o.w, o.h * 0.62];
+    const [hw, hh] = HITBOX.spike;
+    return [o.x + o.w * (0.5 - hw / 2), o.y + o.h * 0.08, o.w * hw, o.h * hh];
   }
-  // saw
-  return [o.x + o.w * 0.22, o.y + o.h * 0.22, o.w * 0.56, o.h * 0.56];
+  const inset = (1 - HITBOX.saw) / 2;
+  return [o.x + o.w * inset, o.y + o.h * inset, o.w * HITBOX.saw, o.h * HITBOX.saw];
 }
 
 function jump(p: PlayerState, strength: number) {
   p.vy = strength * p.grav;
   p.onGround = false;
+  if (p.mode === "cube") {
+    // Solve the spin from the arc: half a turn over the air time this launch
+    // buys, so the cube arrives flat rather than stopping on a corner.
+    const airTime = (2 * Math.abs(strength)) / CUBE_GRAVITY;
+    p.rotVel = CUBE_SPIN / Math.max(airTime, 0.09);
+  }
 }
 
 /**
@@ -139,7 +205,8 @@ export function step(p: PlayerState, world: World, dt: number, input: Input): vo
   if (p.mode === "cube") {
     if (input.hold && p.onGround) jump(p, CUBE_JUMP);
     p.vy -= CUBE_GRAVITY * p.grav * dt;
-    p.rot += (p.onGround ? 0 : 420) * dt * p.grav;
+    if (p.onGround) settle(p, dt);
+    else p.rot += p.rotVel * dt * p.grav;
   } else if (p.mode === "ball") {
     if (input.tap && p.onGround) {
       p.grav = (p.grav === 1 ? -1 : 1) as Grav;

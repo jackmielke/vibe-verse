@@ -128,6 +128,26 @@ export class ISpyAudio {
     o.stop(t + 0.6);
   }
 
+  /** Banking a checkpoint: a short rising two-note, distinct from the pulse. */
+  checkpoint() {
+    const { ctx, master } = this;
+    if (!ctx || !master) return;
+    const t = ctx.currentTime;
+    [523.25, 783.99].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      const at = t + i * 0.07;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.16, at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
+      o.connect(g).connect(master);
+      o.start(at);
+      o.stop(at + 0.32);
+    });
+  }
+
   win() {
     const { ctx, master } = this;
     if (!ctx || !master) return;

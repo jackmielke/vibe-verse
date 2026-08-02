@@ -77,6 +77,7 @@ export default function ISpy() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menu, start]);
 
+  const marks = engineRef.current?.checkpointPercents ?? [];
   const pct = status ? status.percent : 0;
   const best = status ? status.best : 0;
   const won = status?.phase === "won";
@@ -95,6 +96,17 @@ export default function ISpy() {
                   className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-pink-400 to-amber-300 transition-[width] duration-75"
                   style={{ width: `${pct}%` }}
                 />
+                {/* Checkpoint notches — lit once the run is past them. */}
+                {!status.purist &&
+                  marks.map((m, i) => (
+                    <div
+                      key={m}
+                      className={`absolute inset-y-0 w-[2px] ${
+                        i < status.banked ? "bg-emerald-300" : "bg-white/30"
+                      }`}
+                      style={{ left: `${m}%` }}
+                    />
+                  ))}
                 {best > 1 && best < 100 && (
                   <div
                     className="absolute inset-y-0 w-[2px] bg-white/80"
@@ -109,7 +121,14 @@ export default function ISpy() {
             </div>
             <div className="mx-auto mt-1.5 flex max-w-3xl items-center justify-between font-mono text-[10px] uppercase tracking-[0.25em] text-white/45">
               <span>{status.chapter}</span>
-              <span>attempt {status.attempts}</span>
+              <span>
+                {!status.purist && status.banked > 0 && (
+                  <span className="mr-3 text-emerald-300/80">
+                    checkpoint {status.banked}/{status.checkpoints}
+                  </span>
+                )}
+                attempt {status.attempts}
+              </span>
             </div>
           </div>
 
@@ -150,7 +169,7 @@ export default function ISpy() {
               </h2>
               <p className="mt-3 font-mono text-xs text-white/50">
                 {status.attempts} attempt{status.attempts === 1 ? "" : "s"}
-                {status.practice ? " · practice" : ""}
+                {status.purist ? " · purist" : ""}
               </p>
               <div className="mt-8 flex gap-3">
                 <button
@@ -200,17 +219,19 @@ export default function ISpy() {
           )}
 
           <button
-            onClick={() => engineRef.current?.setPractice(!status?.practice)}
+            onClick={() => engineRef.current?.setPurist(!status?.purist)}
             className={`mt-7 rounded-full border px-5 py-2 font-mono text-[10px] uppercase tracking-[0.25em] transition ${
-              status?.practice
-                ? "border-emerald-300/60 bg-emerald-300/15 text-emerald-200"
+              status?.purist
+                ? "border-amber-300/60 bg-amber-300/15 text-amber-200"
                 : "border-white/15 text-white/45 hover:text-white/80"
             }`}
           >
-            practice mode {status?.practice ? "on" : "off"}
+            purist mode {status?.purist ? "on" : "off"}
           </button>
           <p className="mt-2 max-w-xs text-center text-[11px] leading-relaxed text-white/30">
-            Practice rewinds you a second instead of back to the start.
+            {status?.purist
+              ? "No checkpoints. One mistake and you are back at the start — the original bargain."
+              : `${status?.checkpoints ?? 11} checkpoints. Die after one and you resume from it.`}
           </p>
 
           <div className="mt-8 grid max-w-md grid-cols-1 gap-1.5 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-white/35 sm:grid-cols-3">

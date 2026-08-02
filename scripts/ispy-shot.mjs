@@ -181,6 +181,52 @@ if (process.argv.includes("--run")) {
   await page.evaluate(() => window.__ispy.debugAutopilot(false));
 }
 
+// `--checkpoints` proves the thing you cannot see in a screenshot: that dying
+// after a checkpoint puts you back at it rather than at the start.
+if (process.argv.includes("--checkpoints")) {
+  const r = await page.evaluate(async () => {
+    const e = window.__ispy;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const pctToBlocks = (p) => (p / 100) * e.level.length;
+
+    e.setPurist(false);
+    e.play();
+    e.debugAutopilot(true);
+    for (let i = 0; i < 200 && e.status().banked < 3; i++) await wait(100);
+    const banked = e.status().banked;
+    const atDeath = pctToBlocks(e.status().percent);
+    e.debugKill();
+    await wait(1400);
+    const resumed = pctToBlocks(e.status().percent);
+
+    // …and that purist mode does the opposite: it stays dead where it died,
+    // and the restart it eventually gets is from the very start.
+    e.setPurist(true);
+    e.play();
+    for (let i = 0; i < 120 && e.status().banked < 2; i++) await wait(100);
+    e.debugKill();
+    await wait(1400);
+    const puristPhase = e.status().phase;
+    const puristHeld = pctToBlocks(e.status().percent);
+    e.play();
+    await wait(120);
+    const puristRestart = pctToBlocks(e.status().percent);
+    e.debugAutopilot(false);
+    e.setPurist(false);
+    return { banked, atDeath, resumed, puristPhase, puristHeld, puristRestart };
+  });
+  const nearest = r.resumed >= r.atDeath - 4;
+  console.log(
+    `checkpoints: banked ${r.banked}, died at block ${r.atDeath.toFixed(0)}, ` +
+      `resumed at ${r.resumed.toFixed(0)} — ${nearest ? "OK" : "FAILED (fell back to the start)"}`,
+  );
+  console.log(
+    `purist: still "${r.puristPhase}" at block ${r.puristHeld.toFixed(0)} with no auto-resume, ` +
+      `and a restart goes to ${r.puristRestart.toFixed(0)} — ` +
+      `${r.puristPhase === "dead" && r.puristRestart < 5 ? "OK" : "FAILED"}`,
+  );
+}
+
 // `--phone` is not decoration. A portrait viewport is where this game breaks:
 // fifteen blocks of height on a 0.46-aspect screen leaves four blocks of
 // warning, and only a real phone frame shows you that.
