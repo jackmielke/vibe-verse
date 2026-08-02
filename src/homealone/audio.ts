@@ -308,6 +308,25 @@ export class HomeAudio {
     this.tone(4200, 0.16, { type: "triangle", gain: 0.03 });
   }
 
+  /**
+   * A brick leaving a hand, and a brick arriving. `hit` is the difference
+   * between it landing on boards and landing on Marv, and the second one is
+   * duller and lower, because that is what a person sounds like.
+   */
+  brickThrow() {
+    this.noise(0.16, { gain: 0.06, freq: 900, q: 0.7, sweep: 300, type: "bandpass" });
+  }
+
+  brickHit(onFlesh: boolean) {
+    if (onFlesh) {
+      this.tone(58, 0.3, { type: "sine", gain: 0.3, sweep: 30 });
+      this.noise(0.14, { gain: 0.16, freq: 190, q: 0.8, type: "lowpass" });
+    } else {
+      this.tone(150, 0.14, { type: "triangle", gain: 0.16, sweep: 70 });
+      this.noise(0.1, { gain: 0.13, freq: 1400, q: 1.4 });
+    }
+  }
+
   /** A light switch. Small, dry, and the sound of a decision. */
   tick() {
     this.noise(0.03, { gain: 0.09, freq: 2400, q: 3.5 });

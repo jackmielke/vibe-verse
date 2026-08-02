@@ -132,7 +132,8 @@ const KEYS: Array<[string, string]> = [
   ["MOUSE", "swing the camera round him"],
   ["E", "switches, traps, windows, ropes"],
   ["Q", "shout — makes them come to you"],
-  ["SPACE", "Buzz's BB gun, once you've found it"],
+  ["SPACE", "throw a brick. You have infinite bricks"],
+  ["F", "Buzz's BB gun, once you've found it"],
   ["THE ARROW", "always points at what's next"],
 ];
 
@@ -141,6 +142,7 @@ const TOUCH: Array<[string, string]> = [
   ["DRAG RIGHT", "swing the camera round him"],
   ["● BUTTON", "switches, traps, windows, ropes"],
   ["SHOUT", "makes them come to you"],
+  ["🧱", "throw a brick. You have infinite bricks"],
   ["BB", "Buzz's gun, once you've found it"],
   ["THE ARROW", "always points at what's next"],
 ];

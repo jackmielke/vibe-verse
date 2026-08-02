@@ -53,6 +53,8 @@ export interface Character {
   setScream(on: boolean): void;
   /** Show or hide what he is holding — Kevin's BB gun, Marley's shovel. */
   setProp(on: boolean): void;
+  /** Hide the brick in his other hand while one is in the air. */
+  setBrick(on: boolean): void;
   /** Advance the animation. `speed` is metres per second right now. */
   update(dt: number, t: number, speed: number): void;
   dispose(): void;
@@ -514,6 +516,19 @@ export function makeCharacter(who: Who): Character {
   grip.position.set(0, -b.armLen * 0.5, 0.03);
   ra.fore.add(grip);
   let prop: THREE.Group | null = null;
+  let brick: THREE.Mesh | null = null;
+  if (who === "kevin") {
+    /* A brick in the left hand, always. It is infinite ammunition and it
+       should look like it — a throw button with nothing visible attached to it
+       is a button, and a boy holding a brick is a threat. */
+    const brickMat = keep(new THREE.MeshStandardMaterial({ color: 0xa8624e, roughness: 0.95 }));
+    brick = new THREE.Mesh(BOX, brickMat);
+    brick.scale.set(0.17, 0.075, 0.085);
+    brick.position.set(0, -b.armLen * 0.5, 0.045);
+    brick.rotation.x = 0.3;
+    brick.castShadow = true;
+    la.fore.add(brick);
+  }
   if (who === "kevin") {
     prop = new THREE.Group();
     cube(prop, mat(0x4a3116, 0.75), 0, -0.04, -0.12, 0.045, 0.08, 0.22); // stock
@@ -578,6 +593,9 @@ export function makeCharacter(who: Who): Character {
     },
     setProp(on: boolean) {
       if (prop) prop.visible = on;
+    },
+    setBrick(on: boolean) {
+      if (brick) brick.visible = on;
     },
     setScream(on: boolean) {
       if (!screamTex || state.screaming === on) return;

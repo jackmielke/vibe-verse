@@ -379,6 +379,47 @@ await load(4);
     `phase=${s2.phase} ${JSON.stringify(s2.burglars.map((b) => b.state))}`);
 }
 {
+  /* Bricks. Infinite, and they have to actually connect — a projectile that
+     misses a man standing four metres away is worse than no projectile. */
+  await load(4);
+  const nerve0 = await page.evaluate(() => {
+    const e = window.__homeAlone;
+    e.grace = 0;
+    const b = e.burglars[0];
+    // Four metres dead ahead of where the camera is pointing.
+    e.pos.set(0.4, 0, 3.0);
+    e.camYaw = 0;
+    e.yaw = 0;
+    b.spawn(0.4, 0, 7.0, Math.PI);
+    b.state = "prowl";
+    return b.nerve;
+  });
+  await frames(3);
+  await page.keyboard.press("Space");
+  // The brick is a real projectile, so give it a flight.
+  await page.waitForFunction(
+    (n) => window.__homeAlone.burglars[0].nerve < n,
+    nerve0,
+    { timeout: 40000, polling: 150 },
+  ).catch(() => {});
+  const hit = await state();
+  check("a thrown brick knocks a burglar down", hit.burglars[0].nerve < nerve0,
+    `nerve ${nerve0} → ${hit.burglars[0].nerve}, state=${hit.burglars[0].state}`);
+
+  const infinite = await page.evaluate(async () => {
+    const e = window.__homeAlone;
+    let thrown = 0;
+    for (let i = 0; i < 12; i++) {
+      e.throwCd = 0;
+      const before = e.bricks.group.children.length;
+      e.throwBrick();
+      if (e.bricks.group.children.length > before) thrown++;
+    }
+    return thrown;
+  });
+  check("the bricks never run out", infinite === 12, `${infinite}/12 thrown`);
+}
+{
   // Getting caught has to end it too.
   await load(4);
   await page.evaluate(() => {

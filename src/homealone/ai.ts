@@ -120,6 +120,25 @@ export class Burglar {
   }
 
   /**
+   * A brick. Off his feet, and it costs him properly.
+   *
+   * Between the BB (a stumble) and a trap (a pratfall and half his nerve),
+   * closer to the trap — a brick to the head is the most decisive thing in
+   * either film. It is still not lethal and it is still not enough on its own:
+   * three good hits is one burglar out, which is roughly two traps' worth, and
+   * that is deliberate. The bricks are the *fun* answer, not the best one.
+   */
+  brick(t: number) {
+    if (this.state === "gone" || this.state === "flee") return false;
+    this.stun = 2.4;
+    this.state = "down";
+    this.nerve = Math.max(0, this.nerve - 18);
+    this.path = [];
+    this.speak(t, "trap", true);
+    return true;
+  }
+
+  /**
    * A BB in the shoulder. Not a knockdown — a stumble.
    *
    * This is the whole design of the gun: it never takes anybody out of the

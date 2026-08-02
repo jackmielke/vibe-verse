@@ -364,7 +364,8 @@ function KeyHint({ state }: { state: Snapshot }) {
           Q SHOUT{state.tauntCooldown > 0 ? ` (${state.tauntCooldown.toFixed(1)}s)` : ""}
         </div>
       )}
-      {state.hasBB && <div className="text-amber-200/50">SPACE FIRE · {state.ammo} BBs</div>}
+      <div className="text-amber-200/50">SPACE THROW A BRICK</div>
+      {state.hasBB && <div className="text-sky-200/50">F BB GUN · {state.ammo} left</div>}
     </div>
   );
 }
@@ -421,6 +422,7 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
           <div>touch here to walk</div>
           <div>drag right to look</div>
           <div>pinch to zoom</div>
+          <div className="text-orange-200/40">🧱 throws a brick</div>
         </div>
       )}
 
@@ -428,6 +430,15 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
         className="pointer-events-auto absolute flex flex-col items-end gap-2.5"
         style={{ right: "max(1rem, env(safe-area-inset-right))", bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
       >
+        {/* Always there, always loaded. */}
+        <button
+          onPointerDown={stop(() => engine.throwBrick())}
+          disabled={state.brickCooldown > 0}
+          className="h-16 w-16 touch-none rounded-full border-2 border-orange-300/45 bg-orange-700/30 text-[10px] font-bold uppercase leading-tight tracking-[0.08em] text-orange-100 active:scale-95 active:bg-orange-600/50 disabled:opacity-40"
+        >
+          🧱
+          <span className="mt-0.5 block text-[8px] tracking-[0.14em] opacity-70">Brick</span>
+        </button>
         {state.hasBB && (
           <button
             onPointerDown={stop(() => engine.fire())}

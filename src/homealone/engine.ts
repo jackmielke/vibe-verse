@@ -23,6 +23,7 @@
  */
 import * as THREE from "three";
 import { line as banterLine, resetBanter } from "./banter";
+import { makeBricks, type BrickRig, type BrickTarget } from "./bricks";
 import { twinkle } from "./christmas";
 import { buildTraps, type TrapRig } from "./traps";
 import { Burglar, clearLine, spawnPoint } from "./ai";
@@ -115,6 +116,8 @@ export interface Snapshot {
   stick: { ox: number; oy: number; x: number; y: number } | null;
   /** Boom length, for the zoom readout. */
   boom: number;
+  /** Seconds until another brick can be thrown; 0 when ready. */
+  brickCooldown: number;
   invertLook: boolean;
 }
 
@@ -169,6 +172,7 @@ export class HomeAloneEngine {
   private camera: THREE.PerspectiveCamera;
   private world: BuiltWorld;
   private traps: TrapRig;
+  private bricks: BrickRig;
   private audio = new HomeAudio();
   private kevin: Character;
   private burglars: Burglar[] = [];
@@ -242,6 +246,9 @@ export class HomeAloneEngine {
   private ammo = 0;
   private tauntCd = 0;
   private muzzle = 0;
+  /** Counts down through the throwing animation. */
+  private throwT = 0;
+  private throwCd = 0;
   /* ---- Old Man Marley ----------------------------------------------- */
   private marley: Character | null = null;
   private marleyT = 0;
@@ -315,6 +322,7 @@ export class HomeAloneEngine {
 
     this.world = buildWorld(this.scene);
     this.traps = buildTraps(this.world.root);
+    this.bricks = makeBricks(this.scene);
 
     this.kevin = makeCharacter("kevin");
     this.scene.add(this.kevin.root);
@@ -497,6 +505,53 @@ export class HomeAloneEngine {
   }
 
   /**
+   * Throw a brick.
+   *
+   * There is always another brick. Kevin's supply is not a resource to manage:
+   * the moment you make somebody count bricks they stop throwing them, and the
+   * entire point of this is that you throw one at Marv because you can. The
+   * only limit is the half-second between throws, which exists so the arm
+   * animation can finish rather than to ration anything.
+   */
+  throwBrick() {
+    if (this.phase !== "playing" || this.caught > 0 || this.throwCd > 0 || this.zipRide >= 0) return;
+    this.throwCd = 0.55;
+    this.throwT = 1;
+    this.kevin.setBrick(false);
+    this.audio.brickThrow();
+
+    // Out of his hand, in the direction the camera is looking.
+    const from = new THREE.Vector3(this.pos.x, this.pos.y + this.kevin.height * 0.84, this.pos.z);
+    const dir = new THREE.Vector3(
+      Math.sin(this.camYaw) * Math.cos(this.camPitch),
+      Math.sin(this.camPitch),
+      Math.cos(this.camYaw) * Math.cos(this.camPitch),
+    );
+    from.addScaledVector(dir, 0.3);
+    this.bricks.hurl(from, dir, this.brickTargets());
+    // He turns to face the throw, or it looks like he lobbed it sideways.
+    this.yaw = Math.atan2(dir.x, dir.z);
+    // And it is loud.
+    for (const b of this.burglars) b.hear(this.pos.x, this.pos.y, this.pos.z, 14);
+  }
+
+  /** The burglars, as things a brick can hit. */
+  private brickTargets(): BrickTarget[] {
+    const out: BrickTarget[] = [];
+    for (const b of this.burglars) {
+      if (b.state === "gone") continue;
+      out.push({
+        x: b.pos.x,
+        y: b.pos.y,
+        z: b.pos.z,
+        height: b.char.height,
+        hit: () => b.brick(this.time),
+      });
+    }
+    return out;
+  }
+
+  /**
    * Fire the BB gun.
    *
    * It never knocks anybody down — see `Burglar.sting`. A gun that solved the
@@ -573,6 +628,9 @@ export class HomeAloneEngine {
     /* Traps. Level 3 arms them; level 4 inherits whatever level 3 left; level 5
        starts with the lot spent, because that is the premise of level 5. */
     resetBanter();
+    this.bricks.clear();
+    this.throwT = 0;
+    this.throwCd = 0;
     this.hasBB = false;
     this.ammo = 0;
     this.tauntCd = 0;
@@ -687,6 +745,20 @@ export class HomeAloneEngine {
     }
 
     this.updateMarley(dt);
+    this.bricks.update(
+      dt,
+      {
+        groundAt: (x, z, c) => this.groundAt(x, z, c),
+        blocked: (x, y, z) => this.blocked(x, y, z),
+      },
+      this.brickTargets(),
+      (t) => {
+        this.audio.brickHit(true);
+        this.flash("BRICK", 1.2);
+        // The other one hears his partner go down.
+        for (const b of this.burglars) b.hear(t.x, t.y, t.z, 24);
+      },
+    );
     this.traps.update(dt, this.time);
     this.updateDoors(dt);
     this.updateAtmosphere(dt);
@@ -802,6 +874,16 @@ export class HomeAloneEngine {
     this.kevin.root.position.copy(this.pos);
     this.kevin.root.rotation.y = this.yaw;
     this.kevin.update(dt, this.time, this.speed);
+    /* The throw: the right arm goes over the top. It is applied *after*
+       `update`, because the gait would otherwise overwrite it every frame —
+       and a throw you cannot see is a button that does nothing. */
+    if (this.throwT > 0) {
+      const f = 1 - this.throwT; // 0 wind-up … 1 follow-through
+      const swing = f < 0.35 ? -(f / 0.35) * 2.6 : -2.6 + ((f - 0.35) / 0.65) * 4.0;
+      this.kevin.limbs.rArm.rotation.x = swing;
+      this.kevin.limbs.rFore.rotation.x = -1.1 + f * 0.9;
+      this.kevin.body.rotation.y = -0.35 * Math.sin(f * Math.PI);
+    }
   }
 
   /** Push a circle out of every wall box it has ended up inside. */
@@ -1331,6 +1413,11 @@ export class HomeAloneEngine {
     }
     this.tauntCd = Math.max(0, this.tauntCd - dt);
     this.muzzle = Math.max(0, this.muzzle - dt * 4);
+    this.throwCd = Math.max(0, this.throwCd - dt);
+    const wasThrowing = this.throwT > 0;
+    this.throwT = Math.max(0, this.throwT - dt * 2.6);
+    // He reaches for the next one the moment the last has left.
+    if (wasThrowing && this.throwT <= 0) this.kevin.setBrick(true);
 
     this.world.cullLights(this.pos.x, this.pos.y, this.pos.z);
   }
@@ -1398,6 +1485,16 @@ export class HomeAloneEngine {
     this.camLook.lerp(focus.clone().addScaledVector(dir, 2.2), Math.min(1, dt * 14));
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
+  }
+
+  /** Is a point inside a wall? Used by the bricks to bounce off things. */
+  blocked(x: number, y: number, z: number) {
+    for (const c of this.world.colliders) {
+      if (x < c.x0 || x > c.x1 || z < c.z0 || z > c.z1) continue;
+      if (y < c.y0 || y > c.y1) continue;
+      return true;
+    }
+    return false;
   }
 
   /** Distance along a ray to the first wall, or null. */
@@ -1487,7 +1584,11 @@ export class HomeAloneEngine {
         this.taunt();
         e.preventDefault();
       }
-      if (e.code === "KeyF" || e.code === "Space") {
+      if (e.code === "Space") {
+        this.throwBrick();
+        e.preventDefault();
+      }
+      if (e.code === "KeyF") {
         this.fire();
         e.preventDefault();
       }
@@ -1722,6 +1823,7 @@ export class HomeAloneEngine {
           ? { ox: this.stickOrigin.x, oy: this.stickOrigin.y, x: this.stickAt.x, y: this.stickAt.y }
           : null,
       boom: this.camBoom,
+      brickCooldown: this.throwCd,
       invertLook: this.invertLook,
     };
   }
@@ -1742,6 +1844,7 @@ export class HomeAloneEngine {
     for (const b of this.burglars) b.dispose();
     this.marley?.dispose();
     this.kevin.dispose();
+    this.bricks.dispose();
     this.traps.dispose();
     this.world.dispose();
     this.scene.traverse((o) => {

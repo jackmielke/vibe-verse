@@ -152,6 +152,16 @@ for (const [name, x, y, z, yaw, pitch, level, bodyYaw] of shots) {
     },
     bodyYaw ?? null,
   );
+  // Optionally throw a brick and catch it mid-flight.
+  if (process.env.HA_BRICK) {
+    await page.evaluate(() => {
+      const e = window.__homeAlone;
+      e.grace = 0;
+      e.throwCd = 0;
+      e.throwBrick();
+    });
+    await page.waitForTimeout(Number(process.env.HA_BRICK));
+  }
   const where = await page.evaluate(() => {
     const e = window.__homeAlone;
     return e ? [+e.pos.x.toFixed(2), +e.pos.y.toFixed(2), +e.pos.z.toFixed(2), +e.camDist.toFixed(2)] : null;

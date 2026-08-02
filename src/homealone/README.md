@@ -38,6 +38,7 @@ switches, which means nothing can switch *wrongly*.
 | `characters.ts` | Kevin, Harry and Marv, off one skeleton |
 | `christmas.ts` | the lights, the garland, the wreath, the icicles — all instanced |
 | `banter.ts` | every line anybody says, in shuffled bags |
+| `bricks.ts` | infinite bricks: a real projectile, a bounce, and a bit of aim assist |
 | `traps.ts` | what each trap looks like armed, and what it does when it fires |
 | `ai.ts` | five states and a breadth-first search |
 | `audio.ts` | wind, boards, a furnace, and Shchedryk |
@@ -126,6 +127,40 @@ never knocks anybody down — it stings, staggers them for about a second and a
 half, and takes five off their nerve. A gun that solved the problem would
 replace the traps, and the traps are the game. What it buys is a head start and
 a very satisfying noise.
+
+## Infinite bricks
+
+The roof of the brownstone in *Lost in New York*, imported wholesale into
+Winnetka, on `Space` or the 🧱 pad. It earns its place because it is the one
+thing in either film that is pure uncomplicated wish fulfilment: no setup, no
+clock, no plan — a boy with a brick and a man who deserves it.
+
+Three decisions make it feel good rather than fiddly:
+
+- **It is a real projectile.** It arcs, it spins, it bounces off boards and
+  thumps off walls. A hitscan brick would be easier and would feel like
+  nothing; the half-second it is in the air, while you watch to see whether you
+  led him enough, *is* the mechanic.
+- **It aims itself, a bit.** There is no crosshair on a phone and there never
+  will be, so a throw landing anywhere inside a 24° cone bends onto the nearest
+  burglar's chest with the drop already compensated. Aim assist is usually a
+  smell; here it is the difference between a toy that works with a thumb and
+  one that does not. The cone is narrow enough that you cannot hit somebody
+  behind you.
+- **There are infinitely many, and that is the point.** The moment you make
+  somebody count bricks they stop throwing them. The only limit is half a
+  second between throws, which exists so the arm animation can finish — not to
+  ration anything.
+
+A brick is worth 18 nerve and about two and a half seconds on the floor: more
+than the BB gun's stumble, less than a trap. Three good hits takes one burglar
+out of the fight, which is roughly two traps' worth. **The bricks are the fun
+answer, not the best one** — if they were the best one nobody would ever set
+the paint cans again, and the paint cans are the game.
+
+He carries one in his left hand at all times, and reaches for the next the
+moment the last has left. A throw button with nothing visible attached to it is
+a button; a boy holding a brick is a threat.
 
 ## Old Man Marley
 
