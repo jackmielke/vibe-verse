@@ -40,7 +40,6 @@ long because the building is twelve rooms with one door each.
 | `ai.ts` | the director: routes, d20 rolls, door timers, Foxy's cove stages |
 | `engine.ts` | renderer, clock, power, input, and the loop that joins the above |
 | `ui/FnafHUD.tsx` | clock, battery, thumb-sized buttons, and the monitor overlay |
-| `ui/VibeyChat.tsx` | the desk intercom, on the same `unit7-chat` brain as Vibe City |
 
 ## The AI is three lines of arithmetic
 
@@ -98,12 +97,12 @@ night still ends — he is a hazard, not a bonus — but this ending is a curtai
 call, and he bounces facing you rather than filling the lens with teeth. One of
 the five should be a delight to meet.
 
-**You can talk to him.** The desk has an intercom, on the same `unit7-chat` edge
-function as Vibe City, Jerry the snail and the `/start` onboarding — the same
-brain, given a line about where he currently is. The night does not pause while
-you type, which is the trade. The engine ignores keystrokes aimed at a form
-field for exactly this reason: without that guard, messaging him the word
-"door" slams both of them.
+**There is no talking to him.** There was, briefly — an intercom on the desk
+running the same `unit7-chat` brain as Vibe City. It came out again because it
+played badly: a chat panel in the corner of a game about watching two doorways
+is a second thing demanding your eyes, and the night does not pause for it. The
+engine still ignores keystrokes aimed at a form field, which is worth keeping
+whether or not anything types today.
 
 ## You do not leave the office
 

@@ -11,7 +11,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { FnafSnapshot, FnafEngine, Side } from "../engine";
 import { CAMERA_ORDER, MAP_POINTS, ROOMS, type RoomId } from "../rooms";
-import VibeyChat from "./VibeyChat";
 
 const HOURS = ["12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM"];
 
@@ -305,10 +304,6 @@ export default function FnafHUD({
 
         </>
       )}
-
-      {/* The intercom. Available while the night runs — talking to him costs
-          you attention, and the building does not pause for it. */}
-      {playing && !state.monitorUp && !state.blackout && <VibeyChat />}
 
       {/* ------------------------------------------------------- monitor pull */}
       {playing && !state.blackout && (

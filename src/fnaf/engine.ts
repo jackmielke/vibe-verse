@@ -888,8 +888,9 @@ export class FnafEngine {
 
   private onKey = (e: KeyboardEvent) => {
     if (this.phase !== "playing") return;
-    // A field has the keyboard — the intercom panel, most likely. Typing a
-    // message to Vibey must not work the doors, and "d" is a common letter.
+    // A field has the keyboard. Nothing in the office takes typed input today,
+    // but the office binds single letters — A, D, Q, E — and the day something
+    // does, every one of them would slam a door. Cheap guard, kept deliberately.
     const el = e.target as HTMLElement | null;
     if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
     const k = e.key.toLowerCase();
