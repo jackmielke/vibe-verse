@@ -37,8 +37,9 @@ export interface MissionCtx {
   spawn(spec: SpawnSpec): Ship;
   after(seconds: number, fn: () => void): void;
   setObjective(text: string): void;
-  win(): void;
-  lose(reason: string): void;
+  /** End the episode. An optional text overrides the mission's stock line. */
+  win(text?: string): void;
+  lose(reason: string, text?: string): void;
   /** Free-form per-mission state. */
   state: Record<string, unknown>;
 }
@@ -221,7 +222,21 @@ export const MISSIONS: Mission[] = [
         lookAt: m.fleet.player.position,
         // Aggression zero is load-bearing: `think` reads it and never fires.
         ai: { aggression: 0, skill: 0 },
-        hullStrength: 240,
+        /*
+         * Twelve hundred, on a creature whose class stats say 240.
+         *
+         * Not because it is hard to kill — opening fire ends the episode via
+         * `onFire` long before its hull matters. This is entirely about
+         * *ramming*. A player closing to scanning range will bump it, and at
+         * 240 hull a single collision killed it outright and ended the episode
+         * in the one way the player never chose. A headless run lost this
+         * episode with zero shots fired, which is exactly the kind of unfair
+         * loss that reads as the game being broken.
+         *
+         * It is a creature that tunnels through solid rock. Being nudged by a
+         * starship should bruise it, and now it does.
+         */
+        hullStrength: 1200,
       });
       horta.shieldsUp = false;
       m.state.horta = horta;
@@ -333,6 +348,15 @@ export const MISSIONS: Mission[] = [
         return;
       }
 
+      // Bumping it is survivable, and it says so. A silent 8% hull loss on a
+      // creature you are not allowed to shoot is a mystery; a line from Spock
+      // is feedback.
+      if (horta.hull_ < 0.98 && !m.state.bumped) {
+        m.state.bumped = true;
+        m.say("SPOCK", "We have struck it, Captain. No apparent injury — but it is backing away from us.", 8);
+        if (horta.ai) horta.ai.state = "break";
+      }
+
       // The colony's clock. It is pressure, not a fail state you can see
       // coming — the administrator gets louder as it runs down.
       const left = (m.state.deadline as number) - m.elapsed;
@@ -404,14 +428,68 @@ export const MISSIONS: Mission[] = [
       m.after(11, () => m.say("SPOCK", "I would remind the Captain that a ship under such a screen must lower it in order to fire. That will be our only opportunity.", 8));
     },
 
+    /**
+     * The other ending.
+     *
+     * Once she is crippled the Romulan stops shooting, and hailing her gets an
+     * answer — the most humane antagonist in the whole of TOS, who is doing his
+     * duty and knows exactly what it costs. You can finish her, and the episode
+     * counts that as a win. Or you can not, and the episode counts *that* as a
+     * win too, and says something different about it afterwards.
+     *
+     * Giving both outcomes the same objective and different endings is the
+     * point. A branch that only pays out if you pick the nice one is a lecture;
+     * a branch where both are honestly available is a decision.
+     */
+    onHail(m) {
+      const bop = m.state.bop as Ship;
+      if (!bop?.alive || !m.state.crippled || m.state.spared) return false;
+      m.state.spared = true;
+      m.say("UHURA", "Captain — they are answering. Audio only.", 9);
+      m.after(4, () =>
+        m.say("ROMULAN", "You are a worthy adversary. I regret that we meet in this way, and in this century.", 10),
+      );
+      m.after(13, () =>
+        m.say("ROMULAN", "I have followed my orders, as you have followed yours. There is no shame in either of us.", 10),
+      );
+      m.after(23, () =>
+        m.say("CAPTAIN", "Mr Sulu, hold your fire and let her go. Log it as a withdrawal across the Zone, and log that she went under her own power.", 10),
+      );
+      m.after(31, () =>
+        m.win(
+          "She limps back across the Neutral Zone under her own power, and the border holds anyway. " +
+            "In another century, in some other reality, her commander says, he could have called you friend. " +
+            "That is not nothing to have brought home.",
+        ),
+      );
+      return true;
+    },
+
     update(m, dt) {
       void dt;
       const bop = m.state.bop as Ship;
       const p = m.fleet.player;
 
       if (!bop.alive) {
-        m.win();
+        m.win(
+          "The intruder is destroyed and the border holds. Her commander never answered a hail, and now nobody will ever " +
+            "know whether he would have.",
+        );
         return;
+      }
+
+      // Crippled: she stops fighting, drops her screen, and drifts. This is the
+      // window the other ending lives in, and it has to be *visible* — a player
+      // who cannot tell she has stopped shooting will simply finish her.
+      if (!m.state.crippled && bop.hull_ < 0.26) {
+        m.state.crippled = true;
+        if (bop.ai) bop.ai.aggression = 0;
+        bop.cloaked = false;
+        bop.canCloak = false;
+        bop.throttle = 0.08;
+        m.say("SPOCK", "Captain, she is badly damaged and her weapons have fallen silent. She is not running, and she is not firing.", 9);
+        m.after(8, () => m.say("MCCOY", "Jim — whoever is over there has stopped shooting at us. That usually means something.", 7));
+        m.after(15, () => m.say("UHURA", "There is a carrier signal, Captain. If we hail them, I believe they will answer.", 8));
       }
       if (p.hull_ <= 0.001 || !p.alive) {
         m.lose("hull");
@@ -435,9 +513,11 @@ export const MISSIONS: Mission[] = [
       }
 
       m.setObjective(
-        bop.cloakLevel > 0.5
-          ? "The intruder is cloaked. Hold your fire and wait for it to appear."
-          : "She is visible — FIRE.",
+        m.state.crippled
+          ? "She is crippled and silent. Finish her — or HAIL her (H)."
+          : bop.cloakLevel > 0.5
+            ? "The intruder is cloaked. Hold your fire and wait for it to appear."
+            : "She is visible — FIRE.",
       );
     },
   },

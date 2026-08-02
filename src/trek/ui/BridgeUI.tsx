@@ -65,6 +65,7 @@ interface Snapshot {
   magnification: number;
   target: { name: string; range: number; hull: number; shields: number; cloaked: boolean } | null;
   evasive: boolean;
+  outcome: string | null;
 }
 
 const EMPTY: Snapshot = {
@@ -87,6 +88,7 @@ const EMPTY: Snapshot = {
   magnification: 1,
   target: null,
   evasive: false,
+  outcome: null,
 };
 
 export default function BridgeUI({ engine, ready, progress }: Props) {
@@ -129,6 +131,7 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
         camera: s.camera?.mode ?? "viewscreen",
         magnification: s.camera?.magnification ?? 1,
         evasive: engine.ctx.elapsed < game.evasiveUntil,
+        outcome: game.outcome,
         target: target
           ? {
               name: target.name,
@@ -437,7 +440,11 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
               <>
                 <p className="font-mono text-[10px] uppercase tracking-[0.6em] text-emerald-300/70">Mission complete</p>
                 <h2 className="mt-4 text-3xl font-black tracking-[0.14em] text-emerald-200 sm:text-4xl">{mission.title}</h2>
-                <p className="mx-auto mt-6 max-w-xl text-[15px] leading-relaxed text-white/70">{mission.victory}</p>
+                {/* The episode's own account of how *this* run ended, when it
+                    has one. Some of them end more than one way. */}
+                <p className="mx-auto mt-6 max-w-xl text-[15px] leading-relaxed text-white/70">
+                  {snap.outcome ?? mission.victory}
+                </p>
                 <button
                   onClick={() => engine.ctx.services.game?.advance()}
                   className="mt-9 rounded-full bg-emerald-400 px-10 py-3 text-sm font-bold uppercase tracking-[0.24em] text-black transition hover:bg-emerald-300"
@@ -453,7 +460,9 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
                   {mission.id === "kobayashi" ? "Simulation terminated" : "The Vibeverse is lost"}
                 </p>
                 <h2 className="mt-4 text-3xl font-black tracking-[0.14em] text-red-300 sm:text-4xl">{mission.title}</h2>
-                <p className="mx-auto mt-6 max-w-xl text-[15px] leading-relaxed text-white/70">{mission.defeat}</p>
+                <p className="mx-auto mt-6 max-w-xl text-[15px] leading-relaxed text-white/70">
+                  {snap.outcome ?? mission.defeat}
+                </p>
                 {/* The Kobayashi Maru is supposed to end this way, so losing it
                     moves you on rather than back to the start. */}
                 <div className="mt-9 flex flex-wrap justify-center gap-3">

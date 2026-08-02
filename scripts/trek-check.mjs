@@ -28,6 +28,14 @@ const flag = (n, d) => {
 const only = flag("only", null);
 const budget = Number(flag("seconds", 260));
 const gunner = args.includes("--gunner");
+/*
+ * A third captain: shoots until the other ship stops shooting, then talks.
+ *
+ * Balance of Terror has two endings and the gunner can only ever find one of
+ * them. This one holds fire once the target is crippled and hails instead,
+ * which is the only way the mercy branch is ever executed by anything.
+ */
+const merciful = args.includes("--merciful");
 const PORT = Number(process.env.TREK_PORT ?? 5179);
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -91,7 +99,7 @@ await page.evaluate(() => window.__trek.stop());
  */
 async function play(index) {
   return page.evaluate(
-    async ([idx, seconds, gunner]) => {
+    async ([idx, seconds, gunner, merciful]) => {
       const e = window.__trek;
       const s = e.ctx.services;
       const game = s.game;
@@ -143,7 +151,11 @@ async function play(index) {
             e.ctx.input.yaw = Math.max(-1, Math.min(1, -Math.atan2(local.x, -local.z) * 2));
             e.ctx.input.pitch = Math.max(-1, Math.min(1, Math.asin(Math.max(-1, Math.min(1, local.y))) * 2));
             const range = p.position.distanceTo(contact.position);
-            e.ctx.input.throttle = range > 3000 ? 0.8 : 0.15;
+            // Hold a band rather than closing to zero. Flying straight at it
+            // ends in a collision, which is a thing a real player would also
+            // do — and the episode now survives it, but the harness should be
+            // testing the intended loop rather than the recovery from it.
+            e.ctx.input.throttle = range > 3200 ? 0.8 : range < 2000 ? 0 : 0.15;
             // Alternate the two orders every two seconds, close in only.
             if (range < 3800 && i % 60 === 0) {
               if (verb++ % 2 === 0) e.ctx.input.scan = true;
@@ -167,8 +179,11 @@ async function play(index) {
           e.ctx.input.yaw = Math.max(-1, Math.min(1, -Math.atan2(local.x, -local.z) * 2));
           e.ctx.input.pitch = Math.max(-1, Math.min(1, Math.asin(Math.max(-1, Math.min(1, local.y))) * 2));
           e.ctx.input.throttle = p.position.distanceTo(target.position) > 3000 ? 0.9 : 0.25;
-          e.ctx.input.firePhasers = true;
-          if (p.torpedoCooldown <= 0 && p.torpedoes > 0) {
+          const spare = merciful && target.hull_ < 0.26;
+          e.ctx.input.firePhasers = !spare;
+          if (spare) {
+            if (i % 60 === 0) e.ctx.input.hail = true;
+          } else if (p.torpedoCooldown <= 0 && p.torpedoes > 0) {
             e.ctx.input.fireTorpedo = true;
             torpedoesFired++;
           }
@@ -192,7 +207,7 @@ async function play(index) {
         alive: fleet.ships.filter((t) => t.alive && t !== p).map((t) => `${t.name} ${Math.round(t.hull_ * 100)}%`),
       };
     },
-    [index, budget, gunner],
+    [index, budget, gunner, merciful],
   );
 }
 

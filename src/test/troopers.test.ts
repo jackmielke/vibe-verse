@@ -100,6 +100,17 @@ describe("trooper livery", () => {
     for (let i = 0; i < 240; i++) b.update(1 / 60, null);
     expect(target.alive).toBe(true);
 
+    /* Settle the recoil before measuring anything.
+       Each round kicks the rifle 0.9 rad and the kick decays at 6.5/s, so it
+       is off-axis for about a sixth of a second after every shot. Sampling a
+       fixed frame count therefore lands mid-kick roughly one run in five, and
+       the muzzle legitimately points at the sky — which is the animation
+       working, not the aim being wrong. This test is about where the rifle
+       *rests* while aiming, so wait for the kick to die.
+       It always terminates: the fire cooldown is 0.7 s at minimum and the
+       decay needs 0.16 s, so no new round can land inside this loop. */
+    for (let i = 0; i < 30 && shooter.recoil > 0.02; i++) b.update(1 / 60, null);
+
     const parts = (shooter.object as THREE.Object3D).userData.parts;
     shooter.object.updateMatrixWorld(true);
     // Where the muzzle actually looks, in world space.

@@ -340,6 +340,15 @@ export interface GameService {
   missionTitle: string;
   stardate: string;
   objective: string;
+  /**
+   * How *this* run of the episode ended, when it ended in a way the episode
+   * wants to describe itself. Null falls back to the mission's stock text.
+   *
+   * It exists so an episode can have more than one ending — which at least one
+   * of them should, because "you destroyed it" and "you did not have to" are
+   * not the same story even when the objective is met either way.
+   */
+  outcome: string | null;
   status: "briefing" | "playing" | "won" | "lost" | "complete";
   /** `ctx.elapsed` until which the helm is flying evasive. Gunners hate it. */
   evasiveUntil: number;

@@ -85,7 +85,11 @@ Each one is built around a mechanic no other episode has.
    the miners is alive, it is intelligent, it is in pain, and it is guarding
    eggs. See below.
 3. **Balance of Terror** — the enemy is invisible and must decloak to fire. The
-   entire episode is the four seconds it is visible.
+   entire episode is the four seconds it is visible. **It has two endings**:
+   cripple her and she stops shooting, and from there you can finish her or hail
+   her. Both count as a win; the episode says something different about each.
+   Giving the branch two honestly available outcomes is the point — a branch
+   that only pays out if you pick the kind one is a lecture, not a decision.
 4. **Errand of Mercy** — an escort. You are not trying to win a fight, you are
    trying to keep something else alive for ninety seconds.
 5. **The Doomsday Machine** — a boss with an armoured hull and one open mouth.
@@ -198,7 +202,7 @@ first draft:
   everything within 900 m of the path, which is both more dangerous and
   actually dodgeable.
 
-There are two captains in there, because one is not enough. The gunner turns
+There are three captains in there, because one is not enough. The gunner turns
 toward the nearest hostile and holds the trigger; the **pacifist** closes to
 scanning range and alternates scan and hail. The pacifist exists because an
 episode that cannot be finished by anything that shoots can only ever be proved
@@ -206,6 +210,11 @@ episode that cannot be finished by anything that shoots can only ever be proved
 `--gunner` forces the shooting captain everywhere, which is how the other half
 of episode two gets covered: open fire on the creature and the episode has to
 end.
+
+The third is the **merciful** one (`--merciful`): it shoots until the other ship
+stops shooting, then holds fire and hails. It exists for the same reason — the
+gunner can only ever find one of Balance of Terror's two endings. A run of
+`--only 2 --merciful` should come back WON with the Bird-of-Prey *still alive*.
 
 The autopilot is the *floor*, not the target. It never uses evasive
 manoeuvres, never moves power around, and never breaks off — so the numbers it

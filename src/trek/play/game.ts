@@ -42,6 +42,7 @@ export function createGame(ctx: TrekCtx): System {
     missionTitle: MISSIONS[0].title,
     stardate: MISSIONS[0].stardate,
     objective: "",
+    outcome: null,
     status: "briefing",
     evasiveUntil: 0,
     advance() {
@@ -82,8 +83,8 @@ export function createGame(ctx: TrekCtx): System {
     setObjective: (text) => {
       service.objective = text;
     },
-    win: () => finish(true),
-    lose: () => finish(false),
+    win: (text) => finish(true, text),
+    lose: (_reason, text) => finish(false, text),
     state,
   };
 
@@ -94,6 +95,7 @@ export function createGame(ctx: TrekCtx): System {
     service.missionTitle = mission.title;
     service.stardate = mission.stardate;
     service.objective = "";
+    service.outcome = null;
     service.status = "briefing";
     service.targetId = null;
     crew()?.clear();
@@ -149,8 +151,9 @@ export function createGame(ctx: TrekCtx): System {
     }
   }
 
-  function finish(won: boolean): void {
+  function finish(won: boolean, text?: string): void {
     if (service.status !== "playing") return;
+    service.outcome = text ?? null;
     service.status = won ? "won" : "lost";
     audio()?.setPhaserBeam(false);
     phaserBeamOn = false;
