@@ -57,8 +57,22 @@ import kartArt from "@/assets/worlds/kart.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import iSpyArt from "@/assets/worlds/i-spy.jpg";
 import airplaneArt from "@/assets/worlds/airplane.jpg";
+import trekArt from "@/assets/worlds/final-frontier.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/trek",
+    emoji: "🖖",
+    name: "The Final Frontier",
+    // A real frame: the bridge at red alert with a Klingon battle cruiser
+    // magnified on the main viewer. Which is the whole world in one picture.
+    art: trekArt,
+    blurb:
+      "You are the captain, and the main viewscreen is a live render of the space your ship is actually in. Five episodes, one Constitution-class starship, and a crew who tell you what they see.",
+    featured: true,
+    status: "Playable — five episodes, desktop and phone",
+    accent: "#ffb648",
+  },
   {
     to: "/i-spy",
     emoji: "👁",
