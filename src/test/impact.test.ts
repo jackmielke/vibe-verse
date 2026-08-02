@@ -382,8 +382,23 @@ describe("the explosion", () => {
 
 type Stub = Record<string, unknown>;
 
-/** A body shaped the way loadSystem builds one. */
-function planet(radius = 6000) {
+/**
+ * A body shaped the way loadSystem builds one.
+ *
+ * `TestBody` exists because `harness`'s default argument is a planet, and a
+ * planet is the only kind with a `planet` field — inferring the parameter type
+ * from the default made every station and craft in this file a type error.
+ */
+interface TestBody {
+  kind: string;
+  name: string;
+  id: string;
+  radius: number;
+  absPos: THREE.Vector3;
+  planet?: object;
+}
+
+function planet(radius = 6000): TestBody {
   return {
     kind: "planet", name: "Test", id: "planet:Test", planet: {}, radius,
     absPos: new THREE.Vector3(0, 0, 0),
@@ -408,7 +423,7 @@ function freshShip() {
   return s;
 }
 
-function harness(bodies = [planet()]) {
+function harness(bodies: TestBody[] = [planet()]) {
   const logs: string[] = [];
   const pings: string[] = [];
   const g: Stub = {
