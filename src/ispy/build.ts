@@ -130,13 +130,34 @@ export class Builder {
    * a row of painted floor spikes and the decoy becomes lethal: the honest
    * move is to walk straight through it, and the instinct is to jump.
    */
-  ceilingSpikes(x: number, n: number, y = 3) {
+  ceilingSpikes(x: number, n: number, y = 3, mount = true) {
     for (let i = 0; i < n; i++) this.spike(x + i, y, { rot: 180 });
+    if (mount) this.beam(x, n, y);
   }
 
-  fakeCeilingSpikes(x: number, n: number, y = 3) {
+  fakeCeilingSpikes(x: number, n: number, y = 3, mount = true) {
     for (let i = 0; i < n; i++)
       this.push({ kind: "spike", x: x + i, y, w: 1, h: 1, rot: 180, decoy: true });
+    if (mount) this.beam(x, n, y);
+  }
+
+  /**
+   * The girder a row of hanging teeth is bolted to.
+   *
+   * Decoy, always — a solid block at head height would either be landed on or
+   * killed against, and the trap needs the air above the spikes to stay air.
+   * It is here purely so the teeth are attached to something: a row of spikes
+   * hanging in empty sky reads as a rendering bug, not as a level.
+   *
+   * Pass `mount = false` wherever a real ceiling already exists (the ship
+   * tunnel, the ball corridor) — the teeth are hanging off that, and a second
+   * bar inside it is just an object nobody can see.
+   */
+  private beam(x: number, n: number, y: number) {
+    this.push({
+      kind: "block", x: x - 0.25, y: y + 1, w: n + 0.5, h: 0.7,
+      decoy: true, mount: true,
+    });
   }
 
   /** A secret coin. Never on the safe line — that is the entire point. */
@@ -174,60 +195,66 @@ export class Builder {
   // ── the lie ────────────────────────────────────────────────────────────
 
   /**
-   * Grid-aligned decoy geometry.
+   * Grid-aligned decoy geometry, **standing on something**.
    *
-   * This is the level's whole trick and it only works if the decoys look like
-   * *level*. Earlier versions scattered randomly rotated, randomly sized
-   * shapes, which reads as confetti: you cannot mistake a spike tilted 37°
-   * and scaled to 1.8× for a real hazard, so nothing is being deceived —
-   * the screen is just noisy.
+   * Two rules, and the second one is newer and just as important as the first.
    *
-   * So every ghost here sits on the integer grid, at the sizes real objects
-   * come in, unrotated, in the section's own colours. A decoy spike row on
-   * the floor is pixel-for-pixel a real spike row. That is the point.
+   * 1. Decoys have to look like *level*. Everything here sits on the integer
+   *    grid, at the sizes real objects come in, unrotated, in the section's own
+   *    colours. A decoy spike row is pixel-for-pixel a real spike row. An
+   *    earlier version scattered randomly rotated, randomly scaled shapes and
+   *    it read as confetti: nobody mistakes a spike tilted 37° for a hazard, so
+   *    nothing was being deceived — the screen was just noisy.
+   *
+   * 2. Decoys have to be **grounded**. Spikes stand on the floor or on top of a
+   *    pillar that reaches the floor; rows hang from a ceiling that exists.
+   *    Nothing is left floating in mid-air, because a spike hanging in space is
+   *    not something a level contains, and a screen full of them reads as a bug
+   *    rather than as a lie.
+   *
+   * The one exception is the sawblade, which floats by design and always has —
+   * see `gears`.
    */
   ghosts(
     x0: number,
     x1: number,
-    yLo: number,
-    yHi: number,
+    floor: number,
     seed: number,
-    opts: { density?: number; ceiling?: number } = {},
+    opts: { density?: number; ceiling?: number; maxHeight?: number } = {},
   ) {
     const r = rng(seed);
     const density = opts.density ?? 0.55;
+    const maxH = opts.maxHeight ?? 4;
     for (let x = Math.ceil(x0); x < x1; x++) {
       if (r() > density) continue;
       const roll = r();
-      const y = Math.round(yLo + r() * (yHi - yLo));
 
-      if (roll < 0.34) {
-        // A spike row, standing on a floor exactly like a real one. Three is
-        // the cap for the same reason it is the cap for real ones: a longer
-        // row is not clearable, so it reads as scenery and fools nobody.
+      if (roll < 0.36) {
+        // A spike row on the floor, exactly like a real one.
         const n = 1 + Math.floor(r() * 3);
-        for (let i = 0; i < n && x + i < x1; i++) this.fakeSpike(x + i, y);
+        for (let i = 0; i < n && x + i < x1; i++) this.fakeSpike(x + i, floor);
         x += n;
-      } else if (roll < 0.58) {
-        // A platform. Some of them carry spikes, because real ones do.
+      } else if (roll < 0.62) {
+        // A plinth standing on the floor, some of them carrying spikes —
+        // because real ones do, and because it gives the eye somewhere to go
+        // other than the floor line.
         const w = 1 + Math.floor(r() * 3);
-        this.push({ kind: "block", x, y, w, h: 1, decoy: true });
-        if (r() < 0.45) for (let i = 0; i < w; i++) this.fakeSpike(x + i, y + 1);
+        const h = 1 + Math.floor(r() * Math.max(1, maxH - 1));
+        this.push({ kind: "block", x, y: floor, w, h, decoy: true });
+        if (r() < 0.5) for (let i = 0; i < w; i++) this.fakeSpike(x + i, floor + h);
         x += w;
-      } else if (roll < 0.72) {
-        // A hanging row off a ceiling, pointing down.
-        const top = opts.ceiling ?? yHi;
+      } else if (roll < 0.8 && opts.ceiling !== undefined) {
+        // A row hanging from a ceiling that is actually there.
         const n = 1 + Math.floor(r() * 2);
         for (let i = 0; i < n && x + i < x1; i++)
-          this.push({ kind: "spike", x: x + i, y: top - 1, w: 1, h: 1, rot: 180, decoy: true });
+          this.push({
+            kind: "spike", x: x + i, y: opts.ceiling - 1, w: 1, h: 1, rot: 180, decoy: true,
+          });
         x += n;
-      } else if (roll < 0.86) {
-        this.push({ kind: "saw", x, y, w: 2, h: 2, decoy: true });
-        x += 2;
       } else {
-        // A pillar: the shape a real gate is made of.
-        const h = 2 + Math.floor(r() * 3);
-        this.push({ kind: "block", x, y, w: 1, h, decoy: true });
+        // A column, the shape a real gate is made of.
+        const h = 2 + Math.floor(r() * Math.max(1, maxH));
+        this.push({ kind: "block", x, y: floor, w: 1, h, decoy: true });
         x += 1;
       }
       // Breathing room. Without it, adjacent patterns fuse into one
@@ -237,24 +264,22 @@ export class Builder {
   }
 
   /**
-   * The layer behind the game: big, soft, slow, dimmed, and free to be as
-   * loose as it likes precisely *because* it is never mistaken for geometry.
-   * All of the level's visual richness comes from here, so the play layer can
-   * stay clean and legible.
+   * Floating sawblades — the only thing in this level allowed to hang in mid
+   * air, because a saw hanging in mid air is what a saw *is*. They spin, they
+   * catch the light, and they are the one piece of decoration that reads as
+   * deliberate rather than as debris.
    */
-  backdrop(x0: number, x1: number, yLo: number, yHi: number, count: number, seed: number) {
+  gears(x0: number, x1: number, yLo: number, yHi: number, count: number, seed: number) {
     const r = rng(seed);
     for (let i = 0; i < count; i++) {
-      const x = x0 + r() * (x1 - x0);
-      const y = yLo + r() * (yHi - yLo);
-      const s = 2 + r() * 5;
-      const roll = r();
+      const size = 1.5 + Math.round(r() * 2) * 0.75;
       this.push({
-        kind: roll < 0.55 ? "spike" : roll < 0.85 ? "block" : "saw",
-        x, y, w: s, h: s * (roll < 0.55 ? 1 : 0.5 + r()),
-        rot: (r() - 0.5) * 160,
-        decoy: true, back: true,
-        alpha: 0.18 + r() * 0.26,
+        kind: "saw",
+        x: Math.round(x0 + r() * (x1 - x0)),
+        y: Math.round(yLo + r() * (yHi - yLo)),
+        w: size, h: size,
+        decoy: true,
+        alpha: 0.6 + r() * 0.4,
       });
     }
   }
@@ -286,11 +311,13 @@ export class Builder {
     for (let i = 0; i < n; i++) this.fakeSpike(x + i, y);
   }
 
-  /** Ground you cannot stand on. */
+  /** Ground you cannot stand on. Rests on decoy columns, so even the lie
+      obeys gravity. */
   fakeSlab(x0: number, x1: number, y: number) {
-    return this.push({
-      kind: "block", x: x0, y: y - 1.2, w: x1 - x0, h: 1.2, decoy: true,
-    });
+    this.push({ kind: "block", x: x0, y: y - 1.2, w: x1 - x0, h: 1.2, decoy: true });
+    for (const x of [x0, x1 - 1]) {
+      this.push({ kind: "block", x, y: 0, w: 1, h: y - 1.2, decoy: true });
+    }
   }
 
   /**
@@ -300,6 +327,30 @@ export class Builder {
    */
   checkpoint(x: number) {
     return this.push({ kind: "checkpoint", x, y: 0, w: 0.5, h: 7 });
+  }
+
+  /**
+   * A wave tube: a corridor of a given half-height whose centreline is a
+   * piecewise-linear path through `nodes` ([x, y] pairs). The wave dies on
+   * contact with anything, so the tube is the level here — there is nothing
+   * else in it.
+   */
+  tube(nodes: Array<[number, number]>, half = 1.8) {
+    const centre = (x: number) => {
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const [x0, y0] = nodes[i];
+        const [x1, y1] = nodes[i + 1];
+        if (x >= x0 && x <= x1) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+      }
+      return nodes[nodes.length - 1][1];
+    };
+    const from = nodes[0][0];
+    const to = nodes[nodes.length - 1][0];
+    for (let x = from; x < to; x += 1) {
+      const c = centre(x + 0.5);
+      this.slab(x, x + 1.01, c - half, { plain: true });
+      this.roof(x, x + 1.01, c + half, { plain: true });
+    }
   }
 
   finish(length: number, start: Level["start"]): Level {

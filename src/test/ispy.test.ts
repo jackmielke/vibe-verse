@@ -35,6 +35,50 @@ describe("I Spy", () => {
     expect(run.time).toBeLessThan(100);
   });
 
+  it("leaves nothing floating in the sky but the gears", () => {
+    // The complaint that prompted this: decoy spikes and blocks hanging in
+    // mid-air read as a rendering bug rather than as a lie. Everything that
+    // is drawn as level geometry now has to be standing on something, or
+    // hanging from something. Sawblades are exempt, because a sawblade
+    // hanging in mid-air is what a sawblade is.
+    const blocks = level.objects.filter((o) => o.kind === "block");
+    const supports = (o: (typeof level.objects)[number]) => {
+      if (o.y <= 0.01) return true;
+      return blocks.some(
+        (bl) =>
+          bl !== o &&
+          Math.abs(bl.y + bl.h - o.y) < 0.3 &&
+          bl.x < o.x + o.w - 0.05 &&
+          bl.x + bl.w > o.x + 0.05,
+      );
+    };
+    const hangs = (o: (typeof level.objects)[number]) =>
+      blocks.some(
+        (bl) =>
+          Math.abs(bl.y - (o.y + o.h)) < 0.35 &&
+          bl.x < o.x + o.w - 0.05 &&
+          bl.x + bl.w > o.x + 0.05,
+      );
+
+    const floating: string[] = [];
+    for (const o of level.objects) {
+      if (o.kind === "saw" || o.kind === "glyph") continue;
+      if (o.kind !== "spike" && o.kind !== "block") continue;
+      // Real structural geometry — tunnel roofs, wave tubes — is the level,
+      // and a ceiling is supposed to be over your head.
+      if (!o.decoy && (o.plain || o.w > 4)) continue;
+      // A girder spans; that is what a girder does. It is the reason the
+      // teeth bolted under it are not the thing floating.
+      if (o.mount) continue;
+      const hanging = o.rot === 180;
+      // A block may stand on something *or* hang off something — the upper
+      // half of a ship gate is bolted to the tunnel roof, not to the floor.
+      if (hanging ? hangs(o) : supports(o) || (o.kind === "block" && hangs(o))) continue;
+      floating.push(`${o.decoy ? "decoy " : ""}${o.kind} at ${o.x.toFixed(1)},${o.y.toFixed(1)}`);
+    }
+    expect(floating.slice(0, 8), `${floating.length} floating`).toEqual([]);
+  });
+
   it("never lets a decoy collide", () => {
     const decoys = level.objects.filter((o) => o.decoy);
     expect(decoys.length).toBeGreaterThan(200);

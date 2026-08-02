@@ -19,7 +19,7 @@ serves that one idea.
 | `render.ts` | 2D canvas. Never told which objects are real |
 | `audio.ts` | the score — synthesised, through-composed, and the clock the strobe runs on |
 | `bot.ts` | a solver. Proves the level is possible and its coins reachable, and plays the title screen |
-| `engine.ts` | clock, input, attempts, checkpoints, the spy pulse |
+| `engine.ts` | clock, input, attempts, checkpoints, the sonar |
 
 ## The music
 
@@ -66,6 +66,18 @@ jump over". The decoys are placed the same way, on the beat, because a decoy
 off the beat is *audible* — the music would tell you which spikes were real and
 the level would solve itself.
 
+## The wave, twice
+
+The full wave section is at beat 80 — forty seconds in, behind the hardest half
+of the level, which meant the best-looking mode in the game was one almost
+nobody was going to see. So there is now five beats of it at beat 38, about
+eighteen seconds in, as a taster and as the transition into the ship.
+
+Neither wave stretch gets any paint. A wave dies on contact with *anything*, so
+a decoy inside its tube is indistinguishable from a wall, and a section you
+cannot read is not a hard section, it is a coin flip. The green does the lying
+there; the gears do the decorating.
+
 ## What makes a decoy dangerous
 
 Not being a spike. An unnecessary jump lands exactly one beat later, in time
@@ -78,6 +90,37 @@ jump the lie and die on the ceiling. It is the one trap in the genre where the
 honest move is to do nothing, and the level plays it three times — once to
 teach it, once mirrored (real floor, painted ceiling), and once with the rest
 of the level shouting over it.
+
+## The sonar
+
+The reveal mechanic is a **sound**, not an eye. Three pings per attempt, `E` or
+right-click or the button. A ping goes out and for 1.6 seconds what comes back
+is the truth: every decoy inside an expanding ring drops to ~12% opacity and
+everything that can actually kill you gets a bright outline.
+
+It started life as an "eye" that let you see in the dark, which was exactly the
+wrong idea for a level about not being able to trust your eyes. As sound it is
+both better thematically and better to use: the ping is two falling sine notes
+0.75 of a beat apart — the one you send, and the one that comes back — and the
+sweep on screen is two rings at the same spacing, so what you see is what you
+just heard.
+
+Nothing lethal is ever drawn below 6% opacity, so a ping is a shortcut through
+the learning and never the only way through.
+
+## The background is the music
+
+The vertical bars behind the level are not decoration. `audio.ts` taps the
+master bus with an `AnalyserNode`, and `render.ts` draws those bins — log-
+bucketed, because linear bins put everything you can hear in the first eighth
+of the display — as the backdrop. In a level whose one honest signal is a
+sound, the background should be that sound.
+
+When there is nothing real to show, the bars fall back to breathing on the beat
+clock. That covers two cases that both matter: before the first user gesture
+there is no audio context at all, and a muted player produces a live analyser
+reading pure silence. Either way a dead flat graph would be worse than an
+honest idle animation.
 
 ## Three secret coins
 
@@ -119,25 +162,33 @@ test. A spike's own box is 12×18 at the base centre of its tile, not the whole
 tile. That gap is why clipping the corner of a spike survives, and it always
 has been.
 
-## Ghosts, and the backdrop
+## Nothing floats but the gears
 
-Two different jobs, deliberately kept apart:
+Two rules for decoy geometry, and the second one took two rewrites to find.
 
-- **`ghosts()`** is the lie, and it only works if the decoys look like *level*.
-  Everything it emits sits on the integer grid, at the sizes real objects come
-  in, unrotated, in the section's colours — a decoy spike row is pixel-for-pixel
-  a real spike row. Rows cap at three, because a longer one is not clearable and
-  so reads as scenery and fools nobody, and patterns are spaced apart so
-  neighbours do not fuse into one fourteen-spike wall no real level would
-  contain.
-- **`backdrop()`** is the atmosphere: big, soft, dim, slow, free to be as loose
-  as it likes precisely *because* it is never mistaken for geometry. All the
-  visual richness lives here so the play layer can stay legible.
+**1. Decoys have to look like level.** Everything `ghosts()` emits sits on the
+integer grid, at the sizes real objects come in, unrotated, in the section's
+colours — a decoy spike row is pixel-for-pixel a real spike row. Rows cap at
+three, because a longer one is not clearable and so reads as scenery, and
+patterns are spaced so neighbours do not fuse into a fourteen-spike wall no
+real level would contain. (The version before that scattered randomly rotated,
+randomly scaled shapes and read as confetti: nobody mistakes a spike tilted
+37° for a hazard, so nothing was being deceived — the screen was just noisy.)
 
-An earlier version had one function doing both — randomly rotated, randomly
-scaled shapes everywhere — and it read as confetti. Nobody mistakes a spike
-tilted 37° and scaled 1.8× for a hazard, so nothing was being deceived; the
-screen was just noisy.
+**2. Decoys have to be standing on something.** Spikes stand on the floor or on
+a plinth that reaches the floor; hanging rows hang from a ceiling that exists,
+or from a **girder** (`mount: true`) put there for exactly that purpose. A
+spike in mid-air is not something a level contains, and a screen of them reads
+as a rendering bug rather than as a lie.
+
+The one exception is `gears()` — floating sawblades — because a sawblade
+hanging in mid-air is what a sawblade *is*. They are the only decoration above
+head height in the whole level, and the level is much better for it.
+
+`ispy.test.ts` walks every object and fails on anything that is neither
+standing on, nor hanging from, nor a gear. It found sixteen the first time it
+ran, including a row of painted ceiling teeth in the ball section that had been
+drawn point-*up* with six blocks of air beneath them.
 
 ## Checkpoints live in practice mode
 
@@ -182,7 +233,7 @@ Three things the renderer works out from the palette rather than being told:
 spike with exactly the code that draws a lethal one — same fill, same outline,
 same magenta core. The moment those two paths differ by a pixel this stops
 being I Spy and becomes a normal level with clutter in it. The only exception
-is the spy pulse, and it is deliberate.
+is the sonar, and it is deliberate.
 
 **2. `step()` reads nothing outside its arguments.** That is what lets `bot.ts`
 run thousands of speculative futures per second through the same code the
@@ -198,16 +249,13 @@ takeoff. Every pattern in `level.ts` is placed against that window (see
 `JUMP_WINDOW`). Introduce a speed portal and the arithmetic in the comments
 stops being true everywhere.
 
-## The spy pulse
+## Why there is a reveal at all
 
-Three per attempt, `E` or right-click or the eye button. For 1.6 seconds every
-decoy within an expanding ring drops to ~12% opacity and everything that can
-actually kill you gets a bright outline.
+Three per attempt, `E` or right-click or the button in the corner.
 
 It exists because the alternative is a level whose only teacher is death, and
-because "spend a limited resource to see the truth" is a better answer to *I
-Spy* than "memorise it or leave". Nothing lethal is ever drawn at less than 6%
-opacity, so a pulse is a shortcut through the learning, never the only way.
+because "spend a limited resource to hear the truth" is a better answer to *I
+Spy* than "memorise it or leave".
 
 Checkpoints are the other concession, and the menu can turn both off.
 

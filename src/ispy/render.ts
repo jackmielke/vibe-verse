@@ -7,8 +7,8 @@
  * by a pixel the level stops being I Spy and becomes a normal level with a lot
  * of clutter in it.
  *
- * The one exception is the spy pulse, and it is deliberate: for a second and a
- * half after you spend one, the lie is drawn as a lie.
+ * The one exception is the sonar, and it is deliberate: for a second and a
+ * half after a ping, the lie is drawn as a lie.
  */
 import type { Level, Obj, PlayerState, Section } from "./types";
 
@@ -41,8 +41,8 @@ export interface RenderState {
   /** 0..1 within the current beat, for the strobe. */
   beat: number;
   particles: Particle[];
-  /** Seconds since the last spy pulse, or null. */
-  pulseAge: number | null;
+  /** Seconds since the last sonar ping, or null. */
+  sonarAge: number | null;
   dead: boolean;
   deathAge: number;
   /** 0..1 — decays after a death. Knocks the camera about for a moment. */
@@ -51,6 +51,10 @@ export interface RenderState {
   banked: number;
   /** Checkpoint banners are drawn in practice mode only. */
   showCheckpoints: boolean;
+  /** The mix, low frequencies first, 0..1. Empty when nothing is playing. */
+  spectrum: Float32Array;
+  /** False when the spectrum is idle filler rather than real audio. */
+  spectrumLive: boolean;
   /** x of every coin already taken this attempt. */
   collected: Set<number>;
   /** 0..1, dims everything for the menu. */
@@ -237,15 +241,26 @@ export class Renderer {
     ctx.fillStyle = g;
     ctx.fillRect(0, top, this.width, bandH);
 
-    // Parallax bars — the vertical streaks in the original's darker sections.
+    // ── the spectrum ─────────────────────────────────────────────────────
+    // The vertical bars behind the level are not decoration any more: they
+    // are the score, tapped off the master bus. In a level whose one honest
+    // signal is a sound, the background should be that sound.
     ctx.save();
-    ctx.globalAlpha = 0.13 + pulse * 0.25;
-    ctx.fillStyle = pal.accent;
-    const bw = this.width / 26;
-    for (let i = -1; i < 28; i++) {
-      const px = ((i * bw - (s.camX * S * 0.22) % (bw * 2)) + this.width * 2) % (this.width + bw * 2) - bw;
-      const hgt = bandH * (0.25 + ((i * 37) % 11) / 20);
-      ctx.fillRect(px, bottom - hgt, bw * 0.32, hgt);
+    const bars = s.spectrum.length;
+    const bw = this.width / bars;
+    for (let i = 0; i < bars; i++) {
+      const v = s.spectrum[i];
+      if (v <= 0.004) continue;
+      const hgt = bandH * (0.06 + v * 0.72);
+      const px = i * bw;
+      const g2 = ctx.createLinearGradient(0, bottom - hgt, 0, bottom);
+      g2.addColorStop(0, rgba(pal.accent, 0));
+      g2.addColorStop(1, rgba(pal.accent, (s.spectrumLive ? 0.3 : 0.16) + pulse * 0.28));
+      ctx.fillStyle = g2;
+      ctx.fillRect(px + bw * 0.22, bottom - hgt, bw * 0.56, hgt);
+      // A bright cap, so a loud band reads as a hit rather than as a smear.
+      ctx.fillStyle = rgba(pal.accent, 0.5 * v + pulse * 0.3);
+      ctx.fillRect(px + bw * 0.22, bottom - hgt, bw * 0.56, Math.max(2, bandH * 0.006));
     }
     ctx.restore();
 
@@ -320,16 +335,24 @@ export class Renderer {
     // ── player ───────────────────────────────────────────────────────────
     if (!s.dead) this.drawPlayer(s.player, pal, toScreenX, toScreenY, S);
 
-    // ── the pulse ring ───────────────────────────────────────────────────
-    if (s.pulseAge !== null && s.pulseAge < 2.4) {
-      const r = s.pulseAge * 34 * S;
-      const a = Math.max(0, 1 - s.pulseAge / 2.4);
+    // ── the sonar sweep ──────────────────────────────────────────────────
+    // Two rings, half a beat apart, because the ping is two notes half a beat
+    // apart: the one you send and the one that comes back.
+    if (s.sonarAge !== null && s.sonarAge < 2.6) {
       ctx.save();
-      ctx.strokeStyle = rgba("#ffffff", a * 0.7);
-      ctx.lineWidth = 2 + a * 5;
-      ctx.beginPath();
-      ctx.arc(toScreenX(s.player.x), toScreenY(s.player.y + 0.5), r, 0, Math.PI * 2);
-      ctx.stroke();
+      const cxp = toScreenX(s.player.x);
+      const cyp = toScreenY(s.player.y + 0.5);
+      for (const lag of [0, 0.375]) {
+        const age = s.sonarAge - lag;
+        if (age <= 0 || age > 2.4) continue;
+        const r = age * 34 * S;
+        const a = Math.max(0, 1 - age / 2.4) * (lag ? 0.4 : 1);
+        ctx.strokeStyle = rgba("#ffffff", a * 0.65);
+        ctx.lineWidth = 2 + a * 5;
+        ctx.beginPath();
+        ctx.arc(cxp, cyp, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -353,8 +376,8 @@ export class Renderer {
 
   /** Ring radius in blocks and how strongly the truth is showing, 0..1. */
   private revealState(s: RenderState): { radius: number; strength: number } | null {
-    if (s.pulseAge === null) return null;
-    const age = s.pulseAge;
+    if (s.sonarAge === null) return null;
+    const age = s.sonarAge;
     const strength = age < 1.6 ? 1 : Math.max(0, 1 - (age - 1.6) / 0.8);
     if (strength <= 0) return null;
     return { radius: age * 34, strength };
@@ -375,7 +398,7 @@ export class Renderer {
     let alpha = o.alpha ?? 1;
     let outline: string | null = null;
 
-    // The pulse only ever speaks about things that collide: it dims the paint
+    // The ping only ever speaks about things that collide: it dims the paint
     // and outlines the danger. Orbs, pads, portals and checkpoints are already
     // honest, and lighting them up would just add noise to the one moment in
     // the level that is supposed to be quiet.

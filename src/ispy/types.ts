@@ -52,6 +52,13 @@ export interface Obj {
    */
   plain?: boolean;
   /**
+   * A girder: the horizontal bar a row of hanging teeth is bolted to. Spans
+   * rather than stands, which is the one shape allowed to do that — a row of
+   * spikes hanging off nothing reads as a bug, and a row hanging off a beam
+   * reads as a level.
+   */
+  mount?: boolean;
+  /**
    * 0..1 draw opacity for objects that are real. A few genuinely lethal
    * spikes sit at 0.06 and you are expected to learn them by dying to them,
    * or to spend a pulse. Nothing that can kill you is ever fully invisible.

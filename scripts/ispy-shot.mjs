@@ -166,6 +166,15 @@ if (process.argv.includes("--run")) {
     window.__ispy.play();
     window.__ispy.debugAutopilot(true);
   });
+  // Ten seconds in, with the score actually playing, grab a frame: the
+  // background of this level is its own spectrum and a silent screenshot
+  // cannot show whether that works.
+  await page.waitForTimeout(10000);
+  await page.evaluate(() => window.__ispy.debugPause(true));
+  writeFileSync(`${OUTDIR}/live-audio.png`, await page.screenshot());
+  await page.evaluate(() => window.__ispy.debugPause(false));
+  console.log(`wrote ${OUTDIR}/live-audio.png (spectrum, with the score running)`);
+
   const won = await page
     .waitForFunction(() => window.__ispy.status().phase === "won", null, {
       timeout: 120000,

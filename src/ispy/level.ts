@@ -16,7 +16,8 @@
  *
  * Six movements, 120 beats, sixty seconds:
  *   THE QUIET PART  cube   b0–21    honest. Teaches the language.
- *   I SPY           cube   b21–42   the language starts lying.
+ *   I SPY           cube   b21–37   the language starts lying.
+ *   (the taster)    wave   b38–42   five beats of wave, eighteen seconds in.
  *   MIRROR          ship   b42–62   gates you have to find inside the noise.
  *   STROBE          ball   b62–80   pink and lime, flipping between ceilings.
  *   GREEN           wave   b80–98   one long tube through a green blowout.
@@ -69,6 +70,7 @@ export function buildISpy(): Level {
   checkpoints(b);
   quietPart(b);
   iSpy(b);
+  waveTaster(b);
   mirror(b);
   strobe(b);
   green(b);
@@ -117,12 +119,12 @@ function quietPart(b: Builder) {
   b.beatSpikes(17);
   b.beatSpikes(19, 2);
 
-  // The first decoys sit well above your head, where they can be studied
-  // safely. Two seconds of "so THAT'S what a lie looks like" — drawn as real
+  // The first decoys stand on the floor beside real ones, where they can be
+  // compared. Two seconds of "so THAT'S what a lie looks like" — built as real
   // geometry, because that is what they are pretending to be.
-  b.ghosts(beat(17), beat(21), 5, 9, 1207, { density: 0.75 });
-  b.glyphs(beat(17), beat(21), 5, 11, 5, 1208);
-  b.backdrop(6, beat(21), 6, 15, 16, 33);
+  b.ghosts(beat(17), beat(21), 0, 1207, { density: 0.6, maxHeight: 3 });
+  b.gears(beat(6), beat(21), 5, 11, 5, 1207);
+  b.glyphs(beat(17), beat(21), 4, 9, 4, 1208);
 }
 
 /* ── beats 21–42 ──────────────────────────────────────────────────────────
@@ -147,33 +149,51 @@ function iSpy(b: Builder) {
   b.beatSpikes(28, 2);
   b.fakeCeilingSpikes(onBeat(28, 2), 3, 3);
 
-  b.ghosts(beat(29), beat(31), 0, 4, 91, { density: 0.95 });
-  b.glyphs(beat(29), beat(31), 1, 7, 6, 92);
+  b.beatSpikes(30, 3);
 
-  // Beat 31: a floor that is a photograph of a floor, over a real pit.
+  // Beat 31: a floor that is a photograph of a floor, standing on painted
+  // columns, over a real pit.
   b.fakeSlab(beat(31) + 1, beat(32) + 3, 3.2);
-  b.beatSpikes(31, 2);
 
-  b.beatSpikes(33, 3);
-
-  b.ghosts(beat(34), beat(37), 0, 5, 512, { density: 0.95 });
-  b.glyphs(beat(34), beat(37), 1, 8, 8, 513);
-  // Real, lethal, and drawn at 8% opacity. Learn it or spend a pulse — those
+  // Real, lethal, and drawn at 8% opacity. Learn it or spend a ping — those
   // are the only two ways through, and both are fair.
-  b.beatSpikes(35, 1, { alpha: 0.08 });
+  b.beatSpikes(32, 1, { alpha: 0.08 });
 
-  // Beat 37: the trap again, now that you have been taught to distrust it.
-  b.fakeBeatSpikes(37, 3);
-  b.ceilingSpikes(onBeat(37, 3), 4, 3);
+  // COIN 1 sits over beat 33, at the exact height of a jump's apex, on a beat
+  // with nothing to jump. The only way to it is a jump you did not have to
+  // make — seven beats after being taught that jumping is what kills you.
+  b.coin(beat(33) + 2.5, 2.6);
 
-  // COIN 1 sits over beat 39, at the exact height of a jump's apex — so the
-  // only way to it is to jump a beat you did not have to jump. Two beats
-  // after being taught that jumping is what kills you.
-  b.coin(beat(39) + 2.5, 2.6);
-  b.beatSpikes(40, 2);
+  // Beat 34: the trap again, now that you have been taught to distrust it.
+  b.fakeBeatSpikes(34, 3);
+  b.ceilingSpikes(onBeat(34, 3), 4, 3);
 
-  b.ghosts(beat(38), beat(42), 0, 5, 77, { density: 0.9 });
-  b.glyphs(beat(38), beat(42), 1, 8, 7, 78);
+  b.beatSpikes(36, 2);
+
+  b.ghosts(beat(22), beat(37), 0, 91, { density: 0.85, maxHeight: 4 });
+  b.gears(beat(22), beat(37), 4, 11, 9, 512);
+  b.glyphs(beat(22), beat(37), 3, 10, 9, 92);
+}
+
+/* ── beats 38–42 ──────────────────────────────────────────────────────────
+   The wave, early.
+
+   The full wave section is at beat 80, forty seconds in, which most people
+   were never going to reach — the best-looking mode in the game was hidden
+   behind the hardest half of the level. So here is five beats of it at the
+   eighteen-second mark, as a taster and as a transition into the ship: a
+   clean tube, no paint inside it, nothing to learn except what a wave is. */
+function waveTaster(b: Builder) {
+  b.portal(beat(38) - 2, 0, { to: "wave" });
+  b.tube([
+    [beat(38) - 1, 2.4],
+    [beat(39), 2.4],
+    [beat(40), 5.2],
+    [beat(41), 2.6],
+    [beat(42) - 1.5, 3.2],
+  ], 1.9);
+  b.gears(beat(38), beat(42), 7, 12, 4, 7788);
+  b.glyphs(beat(38), beat(42), 7, 12, 3, 7789);
 }
 
 /* ── beats 42–62 ──────────────────────────────────────────────────────────
@@ -192,7 +212,10 @@ function mirror(b: Builder) {
     const x = beat(43 + i * 2);
     if (lo > 0) b.block(x, 0, 1.6, lo);
     b.block(x, lo + 4.4, 1.6, CEIL - (lo + 4.4));
-    b.ghosts(x - 1, x + 3, lo + 1, lo + 3, 900 + i, { density: 0.85, ceiling: lo + 4.4 });
+    // From the tunnel floor, not from the gate's lip — the ghost band is
+    // wider than the gate block, so anything rooted at the lip would be
+    // standing on nothing for most of its width.
+    b.ghosts(x - 1, x + 3, 0, 900 + i, { density: 0.9, maxHeight: lo + 3 });
   });
 
   // Real saws, in gates you have already learned to trust.
@@ -204,9 +227,9 @@ function mirror(b: Builder) {
   // up the middle of the corridor for four beats to take it.
   b.coin(beat(52), 7.8);
 
-  b.ghosts(beat(42), beat(62), 1, 7, 31337, { density: 0.85, ceiling: CEIL });
-  b.glyphs(beat(42), beat(62), 1, 8, 14, 31338);
-  b.backdrop(beat(42), beat(62), 0, 10, 26, 999);
+  b.ghosts(beat(42), beat(62), 0, 31337, { density: 0.8, ceiling: CEIL, maxHeight: 5 });
+  b.gears(beat(42), beat(62), 1, 8, 14, 999);
+  b.glyphs(beat(42), beat(62), 1, 8, 12, 31338);
 }
 
 /* ── beats 62–80 ──────────────────────────────────────────────────────────
@@ -232,13 +255,16 @@ function strobe(b: Builder) {
     const x = beat(n);
     if (side === "floor") b.spikes(x, count, 0);
     else b.spikes(x, count, 5, { rot: 180 });
-    // …and the same row again, one beat earlier, in paint.
-    b.fakeSpikes(x - BEAT, count, side === "floor" ? 0 : 5);
+    // …and the same row again, one beat earlier, in paint. A painted ceiling
+    // row has to hang like a real one — an upright spike at y = 5 with six
+    // blocks of air under it is not a decoy, it is a mistake.
+    if (side === "floor") b.fakeSpikes(x - BEAT, count, 0);
+    else b.fakeCeilingSpikes(x - BEAT, count, 5, false);
   }
 
-  b.ghosts(beat(62), beat(80), 0, 4, 8080, { density: 0.95, ceiling: 6 });
-  b.glyphs(beat(62), beat(80), 1, 5, 18, 8081);
-  b.backdrop(beat(62), beat(80), 0, 7, 24, 606);
+  b.ghosts(beat(62), beat(80), 0, 8080, { density: 0.9, ceiling: 6, maxHeight: 3 });
+  b.gears(beat(62), beat(80), 1, 5, 12, 606);
+  b.glyphs(beat(62), beat(80), 1, 5, 14, 8081);
 }
 
 /* ── beats 80–98 ──────────────────────────────────────────────────────────
@@ -249,31 +275,16 @@ function strobe(b: Builder) {
 function green(b: Builder) {
   b.portal(beat(80) - 2, 0, { to: "wave" });
 
-  const nodes: Array<[number, number]> = [
-    [79, 2.2], [83, 2.2], [87, 6.4], [90, 6.4],
-    [93, 2.6], [95, 5.2], [98, 2.0], [99, 2.0],
-  ];
-  const centre = (x: number) => {
-    for (let i = 0; i < nodes.length - 1; i++) {
-      const [n0, y0] = nodes[i];
-      const [n1, y1] = nodes[i + 1];
-      const x0 = beat(n0);
-      const x1 = beat(n1);
-      if (x >= x0 && x <= x1) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
-    }
-    return nodes[nodes.length - 1][1];
-  };
+  b.tube([
+    [beat(79), 2.2], [beat(83), 2.2], [beat(87), 6.4], [beat(90), 6.4],
+    [beat(93), 2.6], [beat(95), 5.2], [beat(98), 2.0], [beat(99), 2.0],
+  ]);
 
-  const HALF = 1.8;
-  for (let x = beat(79); x < beat(99); x += 1) {
-    const c = centre(x + 0.5);
-    b.slab(x, x + 1.01, c - HALF, { plain: true });
-    b.roof(x, x + 1.01, c + HALF, { plain: true });
-  }
-
-  b.ghosts(beat(80), beat(98), 0, 10, 55055, { density: 0.9 });
-  b.glyphs(beat(80), beat(98), 1, 11, 20, 55056);
-  b.backdrop(beat(80), beat(98), 0, 13, 30, 66066);
+  // No ghosts inside a wave tube: the wave dies on contact with anything, so
+  // a corridor you cannot read is not a hard section, it is a coin flip. The
+  // green does the lying here, and the gears do the decorating.
+  b.gears(beat(80), beat(98), 8, 13, 16, 66066);
+  b.glyphs(beat(80), beat(98), 8, 13, 12, 55056);
 
   b.portal(beat(98) + 1, 0, { to: "cube" });
 }
@@ -285,8 +296,8 @@ function everything(b: Builder) {
   b.fakeBeatSpikes(101, 3);
   b.beatSpikes(102, 2);
 
-  b.ghosts(beat(99), beat(104), 0, 6, 12321, { density: 0.95 });
-  b.glyphs(beat(99), beat(106), 1, 9, 10, 12322);
+  b.ghosts(beat(99), beat(104), 0, 12321, { density: 0.9, maxHeight: 4 });
+  b.glyphs(beat(99), beat(106), 3, 10, 8, 12322);
 
   // The trap, a third time, with the rest of the level shouting over it.
   b.fakeBeatSpikes(104, 3);
@@ -313,12 +324,12 @@ function everything(b: Builder) {
   b.coin(beat(116) + 2.5, 2.6);
   b.beatSpikes(117, 2);
 
-  b.ghosts(beat(107), beat(118), 0, 6, 45654, { density: 0.9 });
-  b.glyphs(beat(107), beat(118), 1, 9, 12, 45655);
+  b.ghosts(beat(107), beat(118), 0, 45654, { density: 0.9, maxHeight: 5 });
+  b.gears(beat(99), beat(118), 5, 12, 14, 2);
+  b.glyphs(beat(107), beat(118), 4, 11, 10, 45655);
 
   // The last two beats are empty and quiet, so you can watch it happen.
-  b.glyphs(beat(118), beat(120), 3, 11, 6, 1);
-  b.backdrop(beat(98), beat(120), 4, 13, 22, 2);
+  b.glyphs(beat(118), beat(120), 4, 11, 5, 1);
 }
 
 /* ── the paint ────────────────────────────────────────────────────────────
@@ -331,11 +342,14 @@ function everything(b: Builder) {
    exactly where a cube spends its life. */
 function paint(b: Builder) {
   for (let n = 21; n < 120; n += 2) {
+    // The two wave stretches are left alone. A wave dies on contact with
+    // anything, so paint inside its tube would be indistinguishable from a
+    // wall and the section would stop being a test of nerve.
+    if ((n >= 37 && n < 42) || (n >= 79 && n < 99)) continue;
     const seed = 700000 + n * 13;
-    b.ghosts(beat(n), beat(n + 2), 0, 5, seed, { density: 0.85 });
-    b.ghosts(beat(n), beat(n + 2), 6, 10, seed + 1, { density: 0.45 });
-    b.glyphs(beat(n), beat(n + 2), 1, 10, 2, seed + 2);
-    b.backdrop(beat(n), beat(n + 2), 2, 14, 3, seed + 3);
+    b.ghosts(beat(n), beat(n + 2), 0, seed, { density: 0.75, maxHeight: 5 });
+    b.gears(beat(n), beat(n + 2), 5, 12, 1, seed + 1);
+    b.glyphs(beat(n), beat(n + 2), 3, 11, 2, seed + 2);
   }
 }
 

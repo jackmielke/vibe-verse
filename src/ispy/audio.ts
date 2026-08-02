@@ -62,6 +62,9 @@ const LEAD: number[] = [
 export class ISpyAudio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  /** Taps the master so the renderer can draw what is actually playing. */
+  private analyser: AnalyserNode | null = null;
+  private bins: Uint8Array | null = null;
   /** Everything except the kick goes through here, so the kick can duck it. */
   private duck: GainNode | null = null;
   private delay: DelayNode | null = null;
@@ -86,6 +89,15 @@ export class ISpyAudio {
       this.master = ctx.createGain();
       this.master.gain.value = this.muted ? 0 : 0.42;
       this.master.connect(ctx.destination);
+
+      // The background of this level is its spectrum, so the renderer needs a
+      // real tap on the real mix — not an approximation driven off the beat
+      // clock. 64 bins is plenty at the size the bars are drawn.
+      this.analyser = ctx.createAnalyser();
+      this.analyser.fftSize = 128;
+      this.analyser.smoothingTimeConstant = 0.72;
+      this.bins = new Uint8Array(this.analyser.frequencyBinCount);
+      this.master.connect(this.analyser);
 
       this.duck = ctx.createGain();
       this.duck.gain.value = 1;
@@ -159,6 +171,30 @@ export class ISpyAudio {
     return this.muted;
   }
 
+  /**
+   * The mix, as `bands` values in 0..1, low frequencies first.
+   *
+   * Returns false when there is nothing to look at — before the first user
+   * gesture there is no audio context, and the renderer falls back to its own
+   * idle animation rather than drawing a flat line.
+   */
+  spectrum(out: Float32Array): boolean {
+    const { analyser, bins } = this;
+    if (!analyser || !bins || !this.running) return false;
+    analyser.getByteFrequencyData(bins);
+    const bands = out.length;
+    // Logarithmic buckets: linear bins put almost everything you can hear in
+    // the first eighth of the display and leave the rest dead.
+    for (let i = 0; i < bands; i++) {
+      const lo = Math.floor(Math.pow(i / bands, 1.7) * bins.length);
+      const hi = Math.max(lo + 1, Math.floor(Math.pow((i + 1) / bands, 1.7) * bins.length));
+      let sum = 0;
+      for (let k = lo; k < hi && k < bins.length; k++) sum += bins[k];
+      out[i] = Math.min(1, sum / (hi - lo) / 210);
+    }
+    return true;
+  }
+
   /** 0..1 through the current beat. Drives every strobe on screen. */
   beatPhase(): number {
     if (!this.ctx || !this.running) return (performance.now() / 1000 / BEAT) % 1;
@@ -172,6 +208,8 @@ export class ISpyAudio {
     this.master = null;
     this.duck = null;
     this.delay = null;
+    this.analyser = null;
+    this.bins = null;
   }
 
   // ── one-shots ──────────────────────────────────────────────────────────
@@ -194,22 +232,38 @@ export class ISpyAudio {
     noise.stop(t + 0.5);
   }
 
-  /** The spy pulse: a rising sweep, so you hear the truth arrive. */
-  pulse() {
-    const { ctx, master } = this;
+  /**
+   * The sonar ping.
+   *
+   * The mechanic is a sound, not an eye — you send a pulse out and what comes
+   * back is the shape of what is really there. So it has to *sound* like that:
+   * a clean falling sine, then the same note again a beat later at a third of
+   * the level, as if it had bounced off something and returned.
+   */
+  sonar() {
+    const { ctx, master, delay } = this;
     if (!ctx || !master) return;
     const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(220, t);
-    o.frequency.exponentialRampToValueAtTime(2400, t + 0.4);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.28, t + 0.05);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-    o.connect(g).connect(master);
-    o.start(t);
-    o.stop(t + 0.6);
+    const send = ctx.createGain();
+    send.gain.value = 1;
+    send.connect(master);
+    if (delay) send.connect(delay);
+    for (const [at, level, from, to] of [
+      [0, 0.3, 1400, 620],
+      [BEAT * 0.75, 0.11, 1400, 620],
+    ] as Array<[number, number, number, number]>) {
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(from, t + at);
+      o.frequency.exponentialRampToValueAtTime(to, t + at + 0.5);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + at);
+      g.gain.exponentialRampToValueAtTime(level, t + at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.7);
+      o.connect(g).connect(send);
+      o.start(t + at);
+      o.stop(t + at + 0.72);
+    }
   }
 
   /** Banking a checkpoint: a short rising two-note. */

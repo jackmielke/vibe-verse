@@ -18,7 +18,8 @@ import type { Level, PlayerState } from "./types";
 
 const TICK = 1 / 240;
 const MAX_FRAME = 0.25;
-const PULSES_PER_ATTEMPT = 3;
+/** Sonar pings per attempt. See `fireSonar`. */
+const PINGS_PER_ATTEMPT = 3;
 const BEST_KEY = "ispy:best";
 const COINS_KEY = "ispy:coins";
 
@@ -30,7 +31,8 @@ export interface ISpyStatus {
   percent: number;
   best: number;
   attempts: number;
-  pulses: number;
+  /** Sonar pings left this attempt. */
+  pings: number;
   /**
    * Practice mode. Checkpoints only exist here, exactly as in the original —
    * a normal attempt is the whole level or nothing.
@@ -60,7 +62,7 @@ export class ISpyEngine {
   private attempts = 0;
   private best = 0;
   private practice = false;
-  private pulses = PULSES_PER_ATTEMPT;
+  private pings = PINGS_PER_ATTEMPT;
 
   /** Sorted x of every checkpoint, and how far through them this run is. */
   private readonly checkpointXs: number[];
@@ -77,7 +79,7 @@ export class ISpyEngine {
   private accumulator = 0;
   private attemptTime = 0;
   private deathAge = 0;
-  private pulseAge: number | null = null;
+  private sonarAge: number | null = null;
 
   private hold = false;
   private tapPending = false;
@@ -85,6 +87,9 @@ export class ISpyEngine {
   private particles: Particle[] = [];
   private shake = 0;
   private wasGrounded = true;
+  /** Reused every frame — the renderer reads it, nobody keeps it. */
+  private readonly spectrum = new Float32Array(30);
+  private spectrumLive = false;
 
   /** Attract mode drives the same input the player would. */
   private botHold = false;
@@ -135,7 +140,7 @@ export class ISpyEngine {
       percent: Math.min(100, (this.player.x / this.level.length) * 100),
       best: this.best,
       attempts: this.attempts,
-      pulses: this.pulses,
+      pings: this.pings,
       practice: this.practice,
       muted: this.audio.isMuted,
       chapter: chapterAt(this.player.x),
@@ -176,12 +181,19 @@ export class ISpyEngine {
     this.emit(true);
   }
 
-  /** Spend a pulse: for a second and a half, the level stops lying. */
-  firePulse() {
-    if (this.phase !== "playing" || this.pulses <= 0) return;
-    this.pulses -= 1;
-    this.pulseAge = 0;
-    this.audio.pulse();
+  /**
+   * Send a sonar ping. Three per attempt.
+   *
+   * The mechanic is a *sound*: a pulse goes out, and for a second and a half
+   * what comes back is the shape of what is really there — decoys fade, real
+   * hazards outline. It used to be an eye, which was the wrong idea for a
+   * level about not being able to trust your eyes.
+   */
+  fireSonar() {
+    if (this.phase !== "playing" || this.pings <= 0) return;
+    this.pings -= 1;
+    this.sonarAge = 0;
+    this.audio.sonar();
     this.emit(true);
   }
 
@@ -275,7 +287,7 @@ export class ISpyEngine {
       this.press();
     } else if (e.code === "KeyE" || e.code === "KeyQ") {
       e.preventDefault();
-      this.firePulse();
+      this.fireSonar();
     } else if (e.code === "KeyR") {
       if (this.phase !== "attract") this.play();
     }
@@ -287,7 +299,7 @@ export class ISpyEngine {
 
   private onPointerDown = (e: PointerEvent) => {
     if (e.button === 2) {
-      this.firePulse();
+      this.fireSonar();
       return;
     }
     this.canvas.setPointerCapture?.(e.pointerId);
@@ -336,9 +348,9 @@ export class ISpyEngine {
     this.player = clonePlayer(p);
     this.attemptTime = 0;
     this.deathAge = 0;
-    this.pulseAge = null;
+    this.sonarAge = null;
     this.particles = [];
-    this.pulses = PULSES_PER_ATTEMPT;
+    this.pings = PINGS_PER_ATTEMPT;
     this.camY = Math.max(-0.6, this.player.y - VIEW_H * 0.34);
     this.hold = false;
     this.botHold = false;
@@ -432,7 +444,8 @@ export class ISpyEngine {
     this.shake = Math.max(0, this.shake - dt * 3.2);
 
     this.stepParticles(dt);
-    if (this.pulseAge !== null) this.pulseAge += dt;
+    if (this.sonarAge !== null) this.sonarAge += dt;
+    this.readSpectrum();
 
     this.renderer.draw(this.renderState());
     this.emit(false);
@@ -541,6 +554,36 @@ export class ISpyEngine {
     }
   }
 
+  /**
+   * Fill the spectrum for this frame, or fake one.
+   *
+   * Before the first user gesture there is no audio context at all, and the
+   * title screen would draw a flat line where the music should be. So when
+   * there is nothing real to show, the bars breathe on the beat clock instead
+   * — which is honest enough for a menu and much better than a dead graph.
+   */
+  private readSpectrum() {
+    this.spectrumLive = this.audio.spectrum(this.spectrum);
+    if (this.spectrumLive) {
+      // Silence counts as "nothing to show" too: a muted player, or a browser
+      // with no audio sink at all, would otherwise get a dead graph where the
+      // music should be. Fall through to the idle animation.
+      let total = 0;
+      for (const v of this.spectrum) total += v;
+      if (total > 0.05) return;
+      this.spectrumLive = false;
+    }
+    const phase = this.audio.beatPhase();
+    const thump = Math.pow(1 - phase, 2.4);
+    const t = performance.now() / 1000;
+    for (let i = 0; i < this.spectrum.length; i++) {
+      const tilt = 1 - i / this.spectrum.length;
+      const wobble =
+        0.55 + 0.45 * Math.sin(t * 1.9 + i * 0.8) * Math.cos(t * 0.7 + i * 0.31);
+      this.spectrum[i] = Math.min(1, (0.18 + tilt * 0.62) * (0.4 + thump * 0.8) * wobble);
+    }
+  }
+
   private stepParticles(dt: number) {
     for (const p of this.particles) {
       p.life -= dt;
@@ -560,10 +603,12 @@ export class ISpyEngine {
       time: this.attemptTime,
       beat: this.audio.beatPhase(),
       particles: this.particles,
-      pulseAge: this.pulseAge,
+      sonarAge: this.sonarAge,
       dead: this.phase === "dead",
       deathAge: this.deathAge,
       shake: this.shake,
+      spectrum: this.spectrum,
+      spectrumLive: this.spectrumLive,
       banked: this.nextCheckpoint,
       // Checkpoint banners are a practice-mode object. In a normal attempt
       // they are not there, because in a normal attempt they do nothing.
@@ -575,7 +620,7 @@ export class ISpyEngine {
 
   private emit(force: boolean) {
     const s = this.status();
-    const key = `${s.phase}|${Math.round(s.percent)}|${s.attempts}|${s.pulses}|${
+    const key = `${s.phase}|${Math.round(s.percent)}|${s.attempts}|${s.pings}|${
       s.practice
     }|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}|${s.coins}`;
     if (!force && key === this.lastStatus) return;

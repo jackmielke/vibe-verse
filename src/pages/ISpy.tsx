@@ -146,15 +146,26 @@ export default function ISpy() {
             </div>
           </div>
 
-          {/* Spy pulse: the only thing in the game that tells you the truth. */}
+          {/* Sonar: the only thing in the game that tells you the truth, and
+              it does it with a sound rather than with an eye. */}
           <button
-            onClick={() => engineRef.current?.firePulse()}
-            disabled={status.pulses === 0 || status.phase !== "playing"}
+            onClick={() => engineRef.current?.fireSonar()}
+            disabled={status.pings === 0 || status.phase !== "playing"}
+            aria-label={`sonar ping, ${status.pings} left`}
             className="absolute bottom-5 right-5 z-20 flex h-16 w-16 flex-col items-center justify-center rounded-full border border-white/25 bg-white/10 backdrop-blur transition active:scale-90 disabled:opacity-25 sm:bottom-8 sm:right-8"
           >
-            <span className="text-xl leading-none">👁</span>
+            {/* Three arcs leaving a point — a ping going out. */}
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" aria-hidden="true">
+              <circle cx="5" cy="12" r="2" fill="currentColor" />
+              <path
+                d="M10 7.5a6.5 6.5 0 0 1 0 9M14 4a11 11 0 0 1 0 16M18 1a15.5 15.5 0 0 1 0 22"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              />
+            </svg>
             <span className="mt-0.5 font-mono text-[10px] tabular-nums text-white/70">
-              {status.pulses}
+              {status.pings}
             </span>
           </button>
 
@@ -285,13 +296,14 @@ export default function ISpy() {
 
           <div className="mt-8 grid max-w-md grid-cols-1 gap-1.5 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-white/35 sm:grid-cols-3">
             <span>space / tap — jump &amp; fly</span>
-            <span>E / right-click — spy pulse</span>
+            <span>E / right-click — sonar</span>
             <span>R — restart</span>
           </div>
           <p className="mt-5 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
-            Three pulses per attempt. A pulse dims every decoy on screen and
-            outlines everything that is actually going to kill you. Three coins
-            are hidden off the safe line — you keep the ones you finish a
+            Three sonar pings per attempt. A ping goes out as a sound, and for
+            a second and a half what comes back is the truth — every decoy
+            fades and everything that can actually kill you lights up. Three
+            coins are hidden off the safe line; you keep the ones you finish a
             normal run holding.
           </p>
 
