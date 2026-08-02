@@ -110,7 +110,7 @@ export function createFleet(ctx: TrekCtx): System {
       agility: stats.agility,
       mass: maxHull,
       shields: [1, 1, 1, 1],
-      shieldsUp: !spec.isPlayer && spec.allegiance !== "neutral",
+      shieldsUp: !spec.isPlayer && spec.allegiance !== "neutral" && spec.allegiance !== "creature",
       shieldRegen: 0.028,
       hull_: 1,
       maxHull,
@@ -130,7 +130,12 @@ export function createFleet(ctx: TrekCtx): System {
       arriving: spec.arriving ?? 0,
     };
 
-    if (spec.hull !== "planetKiller" && spec.hull !== "freighter") {
+    // Deflector screens are a thing ships have. A two-kilometre machine does
+    // not need one, a civilian hull cannot afford one, and a silicon lifeform
+    // has never heard of one — and the faint bubble around it on the
+    // viewscreen was quietly telling the player it was a vessel, in the one
+    // episode where that reading is the mistake.
+    if (spec.hull !== "planetKiller" && spec.hull !== "freighter" && spec.hull !== "creature") {
       // Hugging the hull rather than englobing it. A bubble at 1.5× radius is
       // a visible sphere the ship rattles around inside; at 1.15× it reads as
       // a skin over the hull, which is what it is meant to be.
