@@ -55,8 +55,21 @@ import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
+import runArt from "@/assets/worlds/run-vibey-run.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/run",
+    emoji: "🏃",
+    name: "Run, Vibey, Run",
+    // A real frame: the highway across Arizona, on the way home.
+    art: runArt,
+    blurb:
+      "A whole life, at a run. Six chapters — the road out of Greenbow, a kickoff return, the treeline, a ping-pong match, the shrimp boat, and then across America.",
+    featured: true,
+    status: "Playable — six chapters, desktop and phone",
+    accent: "#e0b53a",
+  },
   {
     to: "/blue-angels",
     emoji: "🔵",

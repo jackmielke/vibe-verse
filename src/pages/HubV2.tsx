@@ -91,12 +91,15 @@ import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
+import runArt from "@/assets/worlds/run-vibey-run.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
 import CityEntryScreen from "@/components/city/CityEntryScreen";
 
 const OFFICIAL_WORLDS: World[] = [
+  { to: "/run", name: "Run, Vibey, Run", art: runArt, color: "#e0b53a",
+    blurb: "A whole life, at a run — Greenbow, the field, the treeline, ping-pong, the boat, America." },
   { to: "/blue-angels", name: "Blue Angels", art: blueAngelsArt, color: "#ffc61e",
     blurb: "Seafair over Lake Washington — you fly number 1 and five jets fly your wing." },
   // Edge Island leads the carousel — first-time visitors land on the

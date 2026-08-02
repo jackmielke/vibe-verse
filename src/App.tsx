@@ -58,6 +58,10 @@ const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
    thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
    nobody who never flies it should carry the city in the hub's entry chunk. */
 const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
+/* RUN, VIBEY, RUN carries six chapters' worth of world builders — an Alabama
+   road, a stadium, a jungle, a gym, the gulf and the whole of America. Lazy
+   for the same reason as the rest. */
+const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -90,6 +94,11 @@ const CHROMELESS = new Set([
   "/blue-angels",
   "/angels",
   "/seafair-show",
+  // Run, Vibey, Run owns the whole viewport — the nav would sit on the
+  // chapter timeline, which is the one thing that has to stay readable.
+  "/run",
+  "/gump",
+  "/forrest",
 ]);
 
 const AppChrome = () => {
@@ -253,6 +262,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
                   <BlueAngels />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* RUN, VIBEY, RUN — a whole life, at a run. Six chapters: the road
+              out of Greenbow, a kickoff return, the treeline, a ping-pong
+              match, the shrimp boat, and then across America. */}
+          {["/run", "/gump", "/forrest"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#0b0d10]" />}>
+                  <RunVibeyRun />
                 </Suspense>
               }
             />
