@@ -66,6 +66,8 @@ const POSES = {
   sound: { from: [47.63, -122.34, 1600], to: [47.62, -122.46, 100] },
   cut: { from: [47.6465, -122.315, 120], to: [47.647, -122.296, 30] },
   bfi: { from: [47.552, -122.315, 500], to: [47.528, -122.3, 20] },
+  // The Seafair course itself: hydroplanes, log booms and the spectator fleet.
+  hydro: { from: [47.5735, -122.2695, 90], to: [47.5665, -122.2625, 5] },
 };
 
 const M_LAT = 111182.5;

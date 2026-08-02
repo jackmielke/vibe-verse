@@ -51,6 +51,7 @@ world/
   terrain.ts       the ground mesh, and the mountains outside the box
   water.ts         Puget Sound, Lake Washington, Lake Union, Green Lake
   city.ts          instanced fill + two dozen hand-built landmarks
+  life.ts          hydroplanes, the spectator fleet, log booms, ferries
 entities/
   jet.ts           the parametric airframe builder and its livery
   effects.ts       smoke oil, wingtip vapour, contrails, the vapour cone
@@ -66,6 +67,31 @@ Systems never import one another. They publish into `ctx.services` and any one
 of them can fail at boot without taking the world down.
 
 ---
+
+## Seafair is the point
+
+The air show was added to a boat race, not the other way round, so the boat
+race is in here: six unlimited hydroplanes running the real course off Stan
+Sayres at 150 mph with thirty-metre rooster tails, the log booms that bound it,
+and several hundred spectator boats rafted up outside them. That fleet is what
+makes a low pass down the show line feel like it is *for* somebody, and it is
+also the only thing that gives the water a scale — at 1,500 feet over open
+water you genuinely cannot tell how fast you are going until something small
+goes past underneath.
+
+The fleet is placed by rejection sampling against the terrain's own water mask,
+because a fixed offset band from the course centreline puts a third of it in
+Genesee Park, and a cabin cruiser parked in a park is the sort of detail that
+becomes the only thing anyone sees.
+
+## You can start cold on the runway
+
+"Boeing Field" in the hangar puts you stopped on 14R with the gear down and the
+throttle at idle, and nothing happens until you push it up. Full power, hold it
+straight, rotate somewhere past 130 knots, gear up: about fourteen seconds to
+airborne in a Super Hornet, which is what it should be. Almost no arcade flight
+game lets you have the first thirty seconds of a real flight, and they are some
+of the best thirty seconds in aviation.
 
 ## Things that took more than one try
 

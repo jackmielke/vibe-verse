@@ -46,6 +46,19 @@ const ASSIST_COPY: Record<AssistLevel, { name: string; blurb: string }> = {
   },
 };
 
+/**
+ * The runway start is the one that turns this from a game into a flight sim.
+ * You are stopped, cold, on Boeing Field 14R with the gear down and the
+ * throttle at idle, and nothing happens until you push it up — which is the
+ * first thirty seconds of every real flight and something almost no arcade
+ * flight game lets you have.
+ */
+const START_POINTS: Array<{ id: "show" | "runway" | "high"; name: string; blurb: string }> = [
+  { id: "show", name: "The show line", blurb: "Airborne over Lake Washington, running in from the north." },
+  { id: "runway", name: "Boeing Field", blurb: "Stopped on 14R. Throttle up and fly it off yourself." },
+  { id: "high", name: "High over the city", blurb: "14,000 feet with the whole Sound in front of you." },
+];
+
 const CAMERA_COPY: Record<CameraMode, string> = {
   chase: "Chase",
   cockpit: "Cockpit",
@@ -76,6 +89,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [invertPitch, setInvertPitch] = useState(false);
   const [tilt, setTilt] = useState(false);
   const [wingmen, setWingmen] = useState(5);
+  const [start, setStart] = useState<"show" | "runway" | "high">("show");
 
   const services = engine.ctx.services;
   const courses = services.courses as CourseService | undefined;
@@ -161,7 +175,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
     } else {
       g?.setMode("free");
       courses?.load(null);
-      fleet?.respawn("show");
+      fleet?.respawn(start);
     }
     setScreen("flying");
   }
@@ -368,8 +382,31 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               <span className="w-6 font-mono text-xs text-amber-200">{wingmen}</span>
             </section>
 
+            {/* where you start */}
+            <section className="mt-6">
+              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/50">
+                Where you start
+              </h2>
+              <div className="grid grid-cols-3 gap-2">
+                {START_POINTS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setStart(s.id)}
+                    className={`rounded-xl border px-3 py-2 text-left transition ${
+                      start === s.id
+                        ? "border-sky-300/70 bg-sky-400/15"
+                        : "border-white/10 bg-white/[0.03] hover:border-white/25"
+                    }`}
+                  >
+                    <p className="text-[12.5px] font-bold text-white">{s.name}</p>
+                    <p className="mt-0.5 text-[10.5px] leading-snug text-sky-100/50">{s.blurb}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             {/* modes */}
-            <section className="mt-8 grid gap-2 sm:grid-cols-2">
+            <section className="mt-6 grid gap-2 sm:grid-cols-2">
               <button
                 onClick={() => launch("free")}
                 className="rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 px-6 py-4 text-left transition hover:brightness-110"
@@ -451,6 +488,8 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               C camera · R reset · Esc menu
               <br />
               Phone: left thumb flies, right thumb is the throttle. Landscape or portrait, both work.
+              <br />
+              Starting at Boeing Field? Throttle to full, hold the stick back past 130 knots, gear up with G.
             </p>
           </div>
         </div>

@@ -17,6 +17,7 @@ import { createSky } from "./world/sky";
 import { createTerrain } from "./world/terrain";
 import { createWater } from "./world/water";
 import { createCity } from "./world/city";
+import { createLife } from "./world/life";
 import { createFleet } from "./play/fleet";
 import { createEffects } from "./entities/effects";
 import { createCourses } from "./play/courses";
@@ -35,6 +36,7 @@ const STAGES = [
   { label: "Carving the Sound", factory: createTerrain },
   { label: "Filling the lake", factory: createWater },
   { label: "Building the skyline", factory: createCity },
+  { label: "Launching the hydros", factory: createLife },
   { label: "Rolling out the jets", factory: createFleet },
   { label: "Mixing the smoke oil", factory: createEffects },
   { label: "Hanging the hoops", factory: createCourses },

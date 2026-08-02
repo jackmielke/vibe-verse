@@ -2,13 +2,14 @@
 /**
  * angels-check — headless smoke test for the parts a screenshot cannot show.
  *
- * Five claims, each of which has been wrong at least once:
+ * Six claims, each of which has been wrong at least once:
  *
  *  1. a ring course loads and its hoops actually register when flown through;
  *  2. the Easter-egg layer fires on the geography it says it fires on;
  *  3. the wingmen converge on their slots instead of oscillating around them;
  *  4. the demo caller advances when you fly what it asked for;
- *  5. `dispose()` releases the WebGL context — a world that leaks one breaks
+ *  5. a cold jet on Boeing Field 14R actually accelerates, rotates and climbs;
+ *  6. `dispose()` releases the WebGL context — a world that leaks one breaks
  *     the *next* world a visitor opens, which is a miserable thing to debug.
  *
  * Exits non-zero on any failure, so it can gate a push.
@@ -217,7 +218,42 @@ check(
   `"${demo.first}" → "${demo.now}"`,
 );
 
-// ---- 5. teardown releases the context -------------------------------------
+// ---- 5. you can actually fly it off the runway -----------------------------
+const takeoff = await page.evaluate(() => {
+  const e = window.__angels;
+  const fleet = e.ctx.services.fleet;
+  e.ctx.services.game.setMode("free");
+  fleet.respawn("runway");
+  const s = fleet.player.state;
+  const startY = s.position.y;
+  let rotated = 0;
+  let liftedAt = 0;
+  for (let i = 0; i < 120 * 60; i++) {
+    e.ctx.input.throttle = 1;
+    // Hold it on the deck, then rotate once there is enough air over the wing.
+    const kts = s.ias * 1.94384;
+    e.ctx.input.pitch = kts > 135 ? 0.6 : 0;
+    if (kts > 135 && !rotated) rotated = i / 120;
+    e.step(1 / 120, false);
+    if (!liftedAt && !s.onGround && s.position.y > startY + 30) liftedAt = i / 120;
+    if (liftedAt && s.position.y > startY + 300) break;
+  }
+  e.ctx.input.pitch = 0;
+  return {
+    liftedAt: +liftedAt.toFixed(1),
+    rotatedAt: +rotated.toFixed(1),
+    alt: Math.round(s.position.y - startY),
+    kias: Math.round(s.ias * 1.94384),
+    airborne: !s.onGround,
+  };
+});
+check(
+  "the jet flies itself off Boeing Field",
+  takeoff.airborne && takeoff.alt > 250,
+  `rotate at ${takeoff.rotatedAt}s, airborne at ${takeoff.liftedAt}s, ${takeoff.alt} m up at ${takeoff.kias} kn`,
+);
+
+// ---- 6. teardown releases the context -------------------------------------
 const torn = await page.evaluate(() => {
   const e = window.__angels;
   const gl = e.ctx.renderer.getContext();
