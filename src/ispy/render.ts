@@ -49,6 +49,8 @@ export interface RenderState {
   shake: number;
   /** How many checkpoints the run has banked; earlier ones draw lit. */
   banked: number;
+  /** x of every coin already taken this attempt. */
+  collected: Set<number>;
   /** 0..1, dims everything for the menu. */
   dim: number;
 }
@@ -499,6 +501,39 @@ export class Renderer {
         ctx.beginPath();
         ctx.ellipse(0, 0, w * 0.45, h * 0.5, 0, 0, Math.PI * 2);
         ctx.stroke();
+        break;
+      }
+      case "coin": {
+        if (st.collected.has(o.x)) break;
+        const r = Math.min(w, h) / 2;
+        const spin = st.time * 2.4;
+        // A halo that does not turn, so the coin is still findable at the
+        // moment the disc is edge-on and two pixels wide.
+        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.6);
+        glow.addColorStop(0, "rgba(255,212,0,0.5)");
+        glow.addColorStop(0.5, "rgba(255,212,0,0.14)");
+        glow.addColorStop(1, "rgba(255,212,0,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        // Squashed on a sine so it reads as a disc turning in space, which is
+        // how every collectible in every platformer has announced itself.
+        ctx.scale(Math.abs(Math.cos(spin)) * 0.65 + 0.35, 1);
+        ctx.shadowBlur = 28;
+        ctx.shadowColor = "#ffd400";
+        ctx.fillStyle = "#ffd400";
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "#7a4a00";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "#fff3b0";
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
         break;
       }
       case "checkpoint": {

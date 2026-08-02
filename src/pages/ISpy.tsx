@@ -121,13 +121,27 @@ export default function ISpy() {
             </div>
             <div className="mx-auto mt-1.5 flex max-w-3xl items-center justify-between font-mono text-[10px] uppercase tracking-[0.25em] text-white/45">
               <span>{status.chapter}</span>
-              <span>
+              <span className="flex items-center gap-3">
+                {/* Three coins, always shown, so you know what you are missing
+                    long before you know where they are. */}
+                <span className="flex items-center gap-1">
+                  {Array.from({ length: status.totalCoins }, (_, i) => (
+                    <span
+                      key={i}
+                      className={`inline-block h-2 w-2 rounded-full ${
+                        i < status.coins
+                          ? "bg-amber-300 shadow-[0_0_8px_rgba(255,212,0,0.9)]"
+                          : "bg-white/20"
+                      }`}
+                    />
+                  ))}
+                </span>
                 {!status.purist && status.banked > 0 && (
-                  <span className="mr-3 text-emerald-300/80">
-                    checkpoint {status.banked}/{status.checkpoints}
+                  <span className="text-emerald-300/80">
+                    ckpt {status.banked}/{status.checkpoints}
                   </span>
                 )}
-                attempt {status.attempts}
+                <span>attempt {status.attempts}</span>
               </span>
             </div>
           </div>
@@ -170,6 +184,23 @@ export default function ISpy() {
               <p className="mt-3 font-mono text-xs text-white/50">
                 {status.attempts} attempt{status.attempts === 1 ? "" : "s"}
                 {status.purist ? " · purist" : ""}
+              </p>
+              <p className="mt-4 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-amber-200/90">
+                {Array.from({ length: status.totalCoins }, (_, i) => (
+                  <span
+                    key={i}
+                    className={`inline-block h-3.5 w-3.5 rounded-full ${
+                      i < status.coinsEarned
+                        ? "bg-amber-300 shadow-[0_0_14px_rgba(255,212,0,0.9)]"
+                        : "border border-white/25"
+                    }`}
+                  />
+                ))}
+                <span className="ml-1 text-white/45">
+                  {status.coinsEarned === status.totalCoins
+                    ? "every coin"
+                    : `${status.coinsEarned} of ${status.totalCoins} coins`}
+                </span>
               </p>
               <div className="mt-8 flex gap-3">
                 <button
@@ -218,6 +249,24 @@ export default function ISpy() {
             </p>
           )}
 
+          {/* Three secret coins, hidden off the safe line. Shown from the
+              first visit, because "there are three of something" is the hook. */}
+          <div className="mt-4 flex items-center gap-2">
+            {Array.from({ length: status?.totalCoins ?? 3 }, (_, i) => (
+              <span
+                key={i}
+                className={`inline-block h-3.5 w-3.5 rounded-full ${
+                  i < (status?.coinsEarned ?? 0)
+                    ? "bg-amber-300 shadow-[0_0_14px_rgba(255,212,0,0.9)]"
+                    : "border border-white/25"
+                }`}
+              />
+            ))}
+            <span className="ml-1 font-mono text-[10px] uppercase tracking-[0.25em] text-white/35">
+              secret coins
+            </span>
+          </div>
+
           <button
             onClick={() => engineRef.current?.setPurist(!status?.purist)}
             className={`mt-7 rounded-full border px-5 py-2 font-mono text-[10px] uppercase tracking-[0.25em] transition ${
@@ -241,7 +290,9 @@ export default function ISpy() {
           </div>
           <p className="mt-5 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
             Three pulses per attempt. A pulse dims every decoy on screen and
-            outlines everything that is actually going to kill you.
+            outlines everything that is actually going to kill you. Three coins
+            are hidden off the safe line — you only keep the ones you finish
+            the run with.
           </p>
 
           <Link

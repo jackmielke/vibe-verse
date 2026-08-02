@@ -58,6 +58,7 @@ import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import iSpyArt from "@/assets/worlds/i-spy.jpg";
 import airplaneArt from "@/assets/worlds/airplane.jpg";
 import trekArt from "@/assets/worlds/final-frontier.jpg";
+import homeAloneArt from "@/assets/worlds/home-alone.jpg";
 
 const WORLDS: WorldCard[] = [
   {
@@ -139,6 +140,20 @@ const WORLDS: WorldCard[] = [
     featured: true,
     status: "Playable — desktop only, wants a real GPU",
     accent: "#8fe4ff",
+  },
+  {
+    to: "/home-alone",
+    emoji: "🎄",
+    name: "Home Alone",
+    // A real frame: 671 Lincoln Avenue from the street with the lights up,
+    // every window burning, snow coming down. If a picture has to do one job,
+    // it is that one.
+    art: homeAloneArt,
+    blurb:
+      "671 Lincoln Avenue at Christmas — lights on the eaves, a tree in the window, and two men outside who think it is empty. Walk the house, light it up, arm eight traps, then shout from the top of the stairs and see who comes.",
+    featured: true,
+    status: "Playable — five levels, plus free roam",
+    accent: "#e0b64a",
   },
   {
     to: "/fnaf",

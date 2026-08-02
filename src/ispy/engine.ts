@@ -20,6 +20,7 @@ const TICK = 1 / 240;
 const MAX_FRAME = 0.25;
 const PULSES_PER_ATTEMPT = 3;
 const BEST_KEY = "ispy:best";
+const COINS_KEY = "ispy:coins";
 
 export type Phase = "attract" | "playing" | "dead" | "won";
 
@@ -39,6 +40,10 @@ export interface ISpyStatus {
   /** Checkpoints banked this run, and how many the level has. */
   banked: number;
   checkpoints: number;
+  /** Coins picked up on this attempt, and coins ever earned by finishing. */
+  coins: number;
+  coinsEarned: number;
+  totalCoins: number;
 }
 
 export class ISpyEngine {
@@ -57,7 +62,12 @@ export class ISpyEngine {
   /** Sorted x of every checkpoint, and how far through them this run is. */
   private readonly checkpointXs: number[];
   private nextCheckpoint = 0;
-  private banked: PlayerState | null = null;
+  private banked: { p: PlayerState; coins: Set<number> } | null = null;
+
+  /** The three secret coins, by x, and which of them this attempt has. */
+  private readonly coinXs: number[];
+  private got = new Set<number>();
+  private earned = new Set<number>();
 
   private raf = 0;
   private lastFrame = 0;
@@ -92,8 +102,14 @@ export class ISpyEngine {
       .filter((o) => o.kind === "checkpoint")
       .map((o) => o.x)
       .sort((a, b) => a - b);
+    this.coinXs = this.level.objects
+      .filter((o) => o.kind === "coin")
+      .map((o) => o.x)
+      .sort((a, b) => a - b);
     try {
       this.best = Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
+      const saved = JSON.parse(localStorage.getItem(COINS_KEY) ?? "[]");
+      if (Array.isArray(saved)) this.earned = new Set(saved.filter((n) => typeof n === "number"));
     } catch {
       this.best = 0;
     }
@@ -123,6 +139,9 @@ export class ISpyEngine {
       time: this.attemptTime,
       banked: this.nextCheckpoint,
       checkpoints: this.checkpointXs.length,
+      coins: this.got.size,
+      coinsEarned: this.earned.size,
+      totalCoins: this.coinXs.length,
     };
   }
 
@@ -323,9 +342,13 @@ export class ISpyEngine {
     this.botClock = 0;
     this.shake = 0;
     this.wasGrounded = true;
-    if (!keepProgress) {
+    if (keepProgress && this.banked) {
+      // Coins taken after the checkpoint are lost with the run that took them.
+      this.got = new Set(this.banked.coins);
+    } else {
       this.banked = null;
       this.nextCheckpoint = 0;
+      this.got = new Set();
     }
   }
 
@@ -364,8 +387,13 @@ export class ISpyEngine {
   private win() {
     this.phase = "won";
     this.best = 100;
+    // Coins are earned by *finishing*. Picking one up and dying with it is
+    // how the original works and it is the right rule: the coin is a detour
+    // you took, and a detour you did not survive did not happen.
+    for (const c of this.got) this.earned.add(c);
     try {
       localStorage.setItem(BEST_KEY, "100");
+      localStorage.setItem(COINS_KEY, JSON.stringify([...this.earned]));
     } catch {
       /* nothing to do */
     }
@@ -390,7 +418,7 @@ export class ISpyEngine {
       if (this.banked && !this.purist && this.deathAge > 0.5) {
         this.phase = "playing";
         this.attempts += 1;
-        this.restartFrom(this.banked, true);
+        this.restartFrom(this.banked.p, true);
         this.emit(true);
       }
     }
@@ -453,11 +481,33 @@ export class ISpyEngine {
       ) {
         this.nextCheckpoint += 1;
         if (!attract) {
-          this.banked = clonePlayer(this.player);
+          this.banked = { p: clonePlayer(this.player), coins: new Set(this.got) };
           this.audio.checkpoint();
           this.burst(10, "#7dffd0", 7);
         }
       }
+
+      // Coins. Watched here rather than in the physics for the same reason
+      // checkpoints are: picking one up must never be able to affect a
+      // trajectory, and the solver must never have to reason about them.
+      if (!attract) {
+        for (const cx of this.coinXs) {
+          if (this.got.has(cx)) continue;
+          const o = this.level.objects.find((c) => c.kind === "coin" && c.x === cx);
+          if (!o) continue;
+          const px = this.player.x;
+          const py = this.player.y + 0.5;
+          if (px > o.x - 0.4 && px < o.x + o.w + 0.4 && py > o.y - 0.4 && py < o.y + o.h + 0.4) {
+            this.got.add(cx);
+            this.audio.coin();
+            this.burst(16, "#ffd400", 9);
+            this.emit(true);
+          }
+        }
+      }
+
+      // The arrangement follows the level through its movements.
+      this.audio.setIntensity(intensityAt(this.player.x));
 
       // Landing dust, so a jump has a bottom to it.
       if (this.player.onGround && !this.wasGrounded) this.burst(7, "#ffffff", 5);
@@ -508,6 +558,7 @@ export class ISpyEngine {
       deathAge: this.deathAge,
       shake: this.shake,
       banked: this.nextCheckpoint,
+      collected: this.got,
       dim: this.phase === "attract" ? 0.55 : 0,
     };
   }
@@ -516,7 +567,7 @@ export class ISpyEngine {
     const s = this.status();
     const key = `${s.phase}|${Math.round(s.percent)}|${s.attempts}|${s.pulses}|${
       s.purist
-    }|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}`;
+    }|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}|${s.coins}`;
     if (!force && key === this.lastStatus) return;
     this.lastStatus = key;
     for (const fn of this.listeners) fn(s);
@@ -527,4 +578,15 @@ function chapterAt(x: number): string {
   let name = CHAPTERS[0].name;
   for (const c of CHAPTERS) if (x >= c.at) name = c.name;
   return name;
+}
+
+/** How loud the arrangement should be in each movement. */
+const MOVEMENT_INTENSITY = [0.25, 0.5, 0.62, 1, 0.85, 1];
+
+function intensityAt(x: number): number {
+  let v = MOVEMENT_INTENSITY[0];
+  CHAPTERS.forEach((c, i) => {
+    if (x >= c.at) v = MOVEMENT_INTENSITY[i] ?? 1;
+  });
+  return v;
 }

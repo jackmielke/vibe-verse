@@ -18,8 +18,58 @@ serves that one idea.
 | `level.ts` | the level: six movements, then one pass of paint over all of them |
 | `render.ts` | 2D canvas. Never told which objects are real |
 | `audio.ts` | the soundtrack, synthesised, so the strobe can be locked to the beat |
-| `bot.ts` | a solver. Proves the level is possible, and plays the title screen |
+| `bot.ts` | a solver. Proves the level is possible and its coins reachable, and plays the title screen |
 | `engine.ts` | clock, input, attempts, checkpoints, the spy pulse |
+
+## One jump is one beat is five blocks
+
+The spine of the level, and the reason `level.ts` is written in beat numbers
+rather than x coordinates.
+
+The soundtrack runs at 120 BPM, so a beat is half a second. A 1× cube jump
+hangs for 0.501 s and covers 5.01 blocks. Round that to five and three separate
+grids collapse into one — the music's beat grid, the level's block grid, and
+the player's jump rhythm. Jump on a beat and you land on the next one, ready to
+jump again; a run of hazards one beat apart is a run of jumps on the downbeat.
+
+That is the difference between a level cut to its music and a level merely
+played over one. It is also why there are no speed portals: a speed change
+breaks all three alignments at once.
+
+`b.beatSpikes(24, 2)` reads "on beat 24 the player jumps, and this is what they
+jump over". The decoys are placed the same way, on the beat, because a decoy
+off the beat is *audible* — the music would tell you which spikes were real and
+the level would solve itself.
+
+## What makes a decoy dangerous
+
+Not being a spike. An unnecessary jump lands exactly one beat later, in time
+for the next one, so jumping at a painted spike costs nothing — a level of
+harmless decoys is a level with no teeth.
+
+What makes a decoy lethal is what sits **above** it. Painted spikes on the
+floor with real ones hanging at head height: walk through the lie and live,
+jump the lie and die on the ceiling. It is the one trap in the genre where the
+honest move is to do nothing, and the level plays it three times — once to
+teach it, once mirrored (real floor, painted ceiling), and once with the rest
+of the level shouting over it.
+
+## Three secret coins
+
+Off the safe line, and only kept if you *finish* the run holding them — the
+original's rule, and the right one: a detour you did not survive did not
+happen. Taking one after a checkpoint and dying loses it again.
+
+Verifying them was the interesting part. "The coin sits near the line the bot
+flies" is an estimate, and a bad one: a coin four blocks off the path might
+need a detour that cannot be recovered from. So `canCollect` in `bot.ts` runs
+the real solver with a coin-seeking policy — at each decision it scores both
+options by simulating which future passes closer to the coin, takes the better
+one, and still requires it to survive the search horizon. The test asserts each
+coin is *not* on the safe line and *is* collectable by a run that then finishes
+the level. It caught two bad placements: one coin sat exactly on the apex of a
+jump you had to make anyway, and another was pinned against a tunnel roof in a
+spot no survivable line reached.
 
 ## The cube lands flat
 
