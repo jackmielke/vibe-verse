@@ -419,10 +419,10 @@ export class Renderer {
     let alpha = o.alpha ?? 1;
     let outline: string | null = null;
 
-    // The ping only ever speaks about things that collide: it dims the paint
-    // and outlines the danger. Orbs, pads, portals and checkpoints are already
-    // honest, and lighting them up would just add noise to the one moment in
-    // the level that is supposed to be quiet.
+    // The ping speaks about the play layer only: scenery drops back, hazards
+    // light up, and the one spike drawn at 15% opacity comes all the way in.
+    // Orbs, pads, portals and checkpoints are already honest, and lighting
+    // them up would add noise to the one quiet moment in the level.
     const speaks = o.kind === "spike" || o.kind === "saw" || o.kind === "block";
     if (reveal && speaks) {
       const dx = o.x + o.w / 2 - st.player.x;

@@ -1,12 +1,17 @@
 # I Spy
 
-A tribute to the Geometry Dash level of the same name, in two dimensions, at
-`/i-spy`.
+A Geometry Dash level in two dimensions, at `/i-spy`.
 
-The original's idea is not "hard jumps". It is that **you cannot trust your
-eyes**: the screen is packed with decoration drawn exactly like the things that
-kill you, so the level cannot be read on sight — only learned. Everything here
-serves that one idea.
+It started as a tribute to the level of the same name, whose idea is that you
+cannot trust your eyes — a screen packed with decoration drawn exactly like the
+things that kill you. That is not what this is any more, on purpose and at the
+owner's instruction. **Every spike here is a real spike. Every sawblade kills.**
+The only scenery left is architecture, because nobody has ever mistaken a
+building for a spike.
+
+What the level is instead: sixty seconds cut to its music, where one jump is
+one beat is five blocks, everything you can see can hurt you, and exactly one
+hazard is hard to *see* rather than hard to do.
 
 ## The files
 
@@ -78,25 +83,28 @@ a decoy inside its tube is indistinguishable from a wall, and a section you
 cannot read is not a hard section, it is a coin flip. The green does the lying
 there; the gears do the decorating.
 
-## What makes a decoy dangerous
+## The move the level is built on
 
-Not being a spike. An unnecessary jump lands exactly one beat later, in time
-for the next one, so jumping at a painted spike costs nothing — a level of
-harmless decoys is a level with no teeth.
+An unnecessary jump costs nothing — it lands one beat later, in time for the
+next one — so a level made of things to jump over has only one instruction in
+it. The interesting instruction is the other one: **do not jump.**
 
-What makes a decoy lethal is what sits **above** it. Painted spikes on the
-floor with real ones hanging at head height: walk through the lie and live,
-jump the lie and die on the ceiling. It is the one trap in the genre where the
-honest move is to do nothing, and the level plays it three times — once to
-teach it, once mirrored (real floor, painted ceiling), and once with the rest
-of the level shouting over it.
+Real teeth at head height over clear floor, and a real sawblade at the same
+height a few beats later, saying the same thing with the other shape. Run
+straight through and live; jump and die on the ceiling. It is the hardest thing
+to do in a game whose only verb is jump, and the level asks for it four times.
+
+A cube at the apex of a jump has its top 3.6 blocks up; the teeth hang at 3 and
+their girder sits at 4. So the girder is real solid geometry that nothing can
+ever touch — honest without being in the way.
 
 ## The sonar
 
 The reveal mechanic is a **sound**, not an eye. Three pings per attempt, `E` or
 right-click or the button. A ping goes out and for 1.6 seconds what comes back
-is the truth: every decoy inside an expanding ring drops to ~12% opacity and
-everything that can actually kill you gets a bright outline.
+is the shape of the level: scenery inside an expanding ring drops away, every
+hazard gets a bright outline, and the one spike drawn at 15% opacity comes all
+the way in.
 
 It started life as an "eye" that let you see in the dark, which was exactly the
 wrong idea for a level about not being able to trust your eyes. As sound it is
@@ -164,8 +172,9 @@ has been.
 
 ## Nothing is spawned. It is drawn.
 
-There is **no random number generator in this game**, anywhere, and getting
-there took three attempts at the same problem.
+There is **no random number generator in this game**, anywhere — and now
+nothing that is drawn like a hazard is anything but one. Getting here took four
+attempts at the same problem.
 
 1. A scatter of randomly rotated, randomly scaled shapes. Read as confetti —
    nobody mistakes a spike tilted 37° for a hazard, so nothing was being
@@ -178,26 +187,38 @@ there took three attempts at the same problem.
    background each, written as a list of motifs at block offsets; read a column
    of the x numbers and you are reading the silhouette. Each movement picks
    which bars to tile. That is how levels in this genre are actually built — a
-   designer draws a bar of background they like and reuses it — and it is the
-   only one of the three that looks like a decision.
+   designer draws a bar of background they like and reuses it.
+4. **The bars became architecture only.** They used to contain painted spike
+   rows, pixel-for-pixel identical to lethal ones. There is not a single
+   painted spike left anywhere in the level.
 
-Three rules hold the dressing together:
+Three rules hold it together:
 
-- **It looks like level.** Motifs are built from the same pieces real geometry
-  is: a pillar with a cap, a plinth with spikes along its top, a ridge of
-  floor spikes. A decoy spike row is pixel-for-pixel a real spike row.
-- **It stands on something.** Spikes stand on the floor or on a plinth that
-  reaches it; hanging rows hang from a ceiling that exists, or from a **girder**
-  (`mount: true`) put there for the purpose. A spike in mid-air reads as a
-  rendering bug, not as a lie.
-- **Nothing floats but the gears**, because a sawblade hanging in mid-air is
-  what a sawblade *is*. They are the only decoration above head height.
+- **Every hazard is real.** No painted spikes, no painted sawblades. The
+  scenery layer may contain buildings and question marks and nothing else.
+- **It stands on something.** Scenery rises from the floor; teeth hang from a
+  ceiling that exists, or from a **girder** (`mount: true`) put there for the
+  purpose. A spike in mid-air reads as a rendering bug.
+- **Nothing floats but the sawblades**, because a sawblade hanging in mid-air
+  is what a sawblade *is* — and now that they kill, floating is the whole
+  point of them.
 
-Two tests hold all of it: one fails on anything that is neither standing on,
-nor hanging from, nor a gear — it found sixteen the first time it ran — and one
-fails on any decoy off the half-block authoring grid, because a thing placed by
-a random number lands on an arbitrary coordinate and a thing placed by a person
-lands on the grid they were drawing on.
+Four tests hold all of it: no painted spike or sawblade exists; nothing with a
+hitbox lives in the scenery layer; nothing is neither standing on nor hanging
+from anything except a sawblade; and no piece of scenery sits off the
+half-block authoring grid, because a thing placed by a random number lands on
+an arbitrary coordinate and a thing placed by a person lands on the grid they
+were drawing on.
+
+## Sawblades kill
+
+They were decoration for most of this level's life, which was always slightly
+dishonest: a spinning blade of teeth that cannot hurt you is a promise the game
+does not keep. Every one is real now, placed by hand at a height chosen against
+the jump arc, and `ispy.test.ts` flies the whole level to prove the placements
+are survivable. Nothing lethal is left to a loop's arithmetic, let alone to
+chance. The first one in the level hangs at 5.5 blocks where nothing can reach
+it, so you get eight seconds to learn the shape before one is in your way.
 
 ## A base you could stand on
 
@@ -271,9 +292,7 @@ stops being true everywhere.
 
 Three per attempt, `E` or right-click or the button in the corner.
 
-It exists because the alternative is a level whose only teacher is death, and
-because "spend a limited resource to hear the truth" is a better answer to *I
-Spy* than "memorise it or leave".
+It exists because the alternative is a level whose only teacher is death.
 
 Checkpoints are the other concession, and the menu can turn both off.
 

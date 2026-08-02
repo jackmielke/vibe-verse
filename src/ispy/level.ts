@@ -1,18 +1,19 @@
 /**
  * I SPY — the level.
  *
- * A tribute to the Geometry Dash level of the same name, whose whole idea is
- * that you cannot trust your eyes: the screen is packed with things that look
- * exactly like the things that kill you, and almost none of them do. You are
- * not meant to read this level. You are meant to learn it.
+ * Every spike in here is a real spike and every sawblade kills. It began as a
+ * tribute to the Geometry Dash level of the same name, which is built on
+ * painted hazards you cannot tell from lethal ones; that idea is gone, on
+ * purpose, and what is left is a level where what you see is what is there.
  *
  * It is written on beats, not on blocks. One jump is one beat is five blocks
  * (see `BEAT` in build.ts), so `b.beatSpikes(23, 2)` means "on beat 23 the
  * player jumps, and this is what they jump over". Read the beat numbers down
  * the page and you are reading the rhythm the level is played to.
  *
- * The decoys are on the beat as well. They have to be: put them off it and the
- * music tells you which spikes are real, and the level solves itself.
+ * The background is architecture only — see BAR_STREET and friends below. It
+ * is drawn behind the play field and dimmed, and it contains no spikes,
+ * because a painted spike is exactly the thing this level no longer has.
  *
  * Six movements, 120 beats, sixty seconds:
  *   THE QUIET PART  cube   b0–21    honest. Teaches the language.
@@ -32,69 +33,52 @@ const ONE = SPEEDS.one;
 const beat = (n: number) => n * BEAT;
 const END = beat(120);
 
-/* ── the dressing ─────────────────────────────────────────────────────────
-   Four bars of background, drawn by hand, eight beats each, tiled along the
+/* ── the background ───────────────────────────────────────────────────────
+   Four bars of skyline, drawn by hand, eight beats each, tiled along the
    level in an order chosen per movement.
 
-   This replaces a seeded scatter function, and the reason is worth writing
-   down: a PRNG gave results that were reproducible and still looked like
-   debris — three towers in a row, then forty empty blocks, none of it saying
-   anything. It read as spawned because it was spawned. What a level in this
-   genre actually has is a designer drawing eight beats of background they
-   like and reusing it, which is what these are. The x numbers are blocks from
-   the start of the bar; read a column of them and you are reading the
-   silhouette. */
+   It is architecture and nothing else. There used to be painted spikes in
+   here — rows that looked exactly like the lethal ones and were not — and
+   they are gone: **every spike in this game kills you.** A building can be
+   scenery because nobody has ever mistaken a building for a spike.
+
+   The x numbers are blocks from the start of the bar; read a column of them
+   and you are reading the silhouette. */
 
 /** Low and busy: a street of short buildings. */
 const BAR_STREET: Motif[] = [
   ["far", 0, 6], ["far", 5, 9], ["far", 12, 5], ["far", 17, 11],
   ["far", 23, 7], ["far", 29, 10], ["far", 35, 6],
-  ["ridge", 1, 2],
-  ["plinth", 5, 3, 1, true],
+  ["plinth", 4, 3, 2],
   ["tower", 10, 4],
-  ["ridge", 13, 1],
   ["mark", 15, 6],
-  ["plinth", 17, 2, 2],
-  ["ridge", 20, 3],
+  ["plinth", 17, 2, 3],
   ["tower", 25, 6],
-  ["gears", 27, 8],
-  ["plinth", 30, 4, 1, true],
-  ["ridge", 35, 2],
+  ["plinth", 30, 4, 2],
   ["tower", 38, 3],
 ];
 
-/** Tall and open: fewer things on the floor, more reaching up. */
+/** Tall and open: fewer things, further apart, reaching higher. */
 const BAR_SPIRES: Motif[] = [
   ["far", 2, 12], ["far", 8, 7], ["far", 14, 13], ["far", 21, 8],
   ["far", 27, 12], ["far", 33, 6], ["far", 38, 10],
   ["tower", 2, 7],
-  ["ridge", 6, 1],
-  ["plinth", 9, 2, 3],
-  ["gears", 12, 9],
-  ["ridge", 15, 2],
-  ["plinth", 18, 4, 1, true],
+  ["plinth", 9, 2, 4],
+  ["plinth", 18, 4, 2],
   ["mark", 23, 7],
   ["tower", 25, 5],
-  ["ridge", 29, 3],
   ["tower", 33, 8],
   ["mark", 36, 4],
-  ["plinth", 38, 2, 2, true],
 ];
 
 /** Flat: for corridors, where nothing may be taller than the ceiling. */
 const BAR_LOW: Motif[] = [
-  ["plinth", 1, 3, 1, true],
-  ["hang", 5, 2],
-  ["ridge", 9, 2],
-  ["plinth", 12, 2, 2],
-  ["hang", 15, 1],
+  ["plinth", 1, 3, 2],
+  ["plinth", 12, 2, 3],
   ["mark", 17, 3],
-  ["plinth", 19, 3, 1],
-  ["ridge", 23, 1],
-  ["hang", 25, 2],
-  ["plinth", 28, 4, 1, true],
-  ["gears", 33, 4],
-  ["ridge", 36, 2],
+  ["plinth", 19, 3, 2],
+  ["plinth", 28, 4, 2],
+  ["tower", 34, 3],
 ];
 
 /** Sparse: the quiet part, and the run-out at the end. */
@@ -102,9 +86,7 @@ const BAR_SPARSE: Motif[] = [
   ["far", 3, 7], ["far", 14, 10], ["far", 26, 6], ["far", 34, 9],
   ["tower", 4, 3],
   ["mark", 12, 6],
-  ["ridge", 19, 1],
-  ["gears", 26, 8],
-  ["plinth", 33, 2, 1],
+  ["plinth", 33, 2, 2],
 ];
 
 export function buildISpy(): Level {
@@ -198,6 +180,10 @@ function quietPart(b: Builder) {
   // compared. Two seconds of "so THAT'S what a lie looks like" — built as real
   // geometry, because that is what they are pretending to be.
   b.dress(beat(13), beat(21), [BAR_SPARSE], { maxHeight: 3 });
+
+  // The first sawblade in the game hangs where nothing can reach it. You get
+  // eight seconds to learn what one looks like before one is in your way.
+  b.saws(beat(9), 5.5, 2);
 }
 
 /* ── beats 21–42 ──────────────────────────────────────────────────────────
@@ -205,41 +191,31 @@ function quietPart(b: Builder) {
    jump lands on the next beat and costs nothing, so a harmless decoy is
    genuinely harmless. What makes a decoy lethal is what is over it. */
 function iSpy(b: Builder) {
-  // Beat 22: pure paint, and nothing above it. A free lesson.
-  b.fakeBeatSpikes(22, 3);
-
-  // Beat 24: real. Same picture as beat 22.
+  b.beatSpikes(22, 2);
   b.beatSpikes(24, 2);
 
-  // ── The trap the level is built on ─────────────────────────────────────
-  // Beat 26: painted spikes on the floor, real teeth at head height. Walk
-  // through the fake and live; jump the fake and die on the ceiling. It is
-  // the first time in the level that the honest move is to do nothing.
-  b.fakeBeatSpikes(26, 3);
-  b.ceilingSpikes(onBeat(26, 3), 4, 3);
+  // ── The move the level is built on ─────────────────────────────────────
+  // Beat 26: clear floor, real teeth at head height. Run straight through it.
+  // The honest move is to do nothing, which is the hardest thing to do in a
+  // game whose only verb is jump.
+  b.ceilingSpikes(onBeat(26, 3), 5, 3);
 
-  // Beat 28: the mirror image — real floor, painted ceiling. Jump.
+  // Beat 28: floor spikes under an open sky. Now you jump.
   b.beatSpikes(28, 2);
-  b.fakeCeilingSpikes(onBeat(28, 2), 3, 3);
 
   b.beatSpikes(30, 3);
 
-  // Beat 31: a floor that is a photograph of a floor, standing on painted
-  // columns, over a real pit.
-  b.fakeSlab(beat(31) + 1, beat(32) + 3, 3);
+  // Beat 32: a real sawblade at head height. Same instruction as the teeth,
+  // said with the other shape, so both readings have to be learned.
+  b.saws(beat(32) + 1, 2.6, 2.5);
 
-  // Real, lethal, and drawn at 8% opacity. Learn it or spend a ping — those
-  // are the only two ways through, and both are fair.
-  b.beatSpikes(32, 1, { alpha: 0.08 });
+  // Real, lethal, and drawn at 15% opacity — the one thing left in the level
+  // that is hard to *see* rather than hard to do. Learn it or spend a ping.
+  b.beatSpikes(34, 1, { alpha: 0.15 });
 
   // COIN 1 sits over beat 33, at the exact height of a jump's apex, on a beat
-  // with nothing to jump. The only way to it is a jump you did not have to
-  // make — seven beats after being taught that jumping is what kills you.
+  // with nothing to jump — and one beat after a saw that punishes jumping.
   b.coin(beat(33) + 2.5, 2.6);
-
-  // Beat 34: the trap again, now that you have been taught to distrust it.
-  b.fakeBeatSpikes(34, 3);
-  b.ceilingSpikes(onBeat(34, 3), 4, 3);
 
   b.beatSpikes(36, 2);
 
@@ -263,10 +239,10 @@ function waveTaster(b: Builder) {
     [beat(41), 2.6],
     [beat(42) - 1.5, 3.2],
   ], 1.9);
-  b.gearPair(beat(38) + 2, 8);
-  b.gearPair(beat(40) + 1, 9.5);
-  b.mark(beat(39), 10);
-  b.mark(beat(41) + 2, 8);
+  // Well clear of the tube: a wave dies on contact with anything, and a saw
+  // is now anything.
+  b.saws(beat(39), 9, 2);
+  b.mark(beat(41), 10);
 }
 
 /* ── beats 42–62 ──────────────────────────────────────────────────────────
@@ -285,15 +261,14 @@ function mirror(b: Builder) {
     const x = beat(43 + i * 2);
     if (lo > 0) b.block(x, 0, 1.6, lo);
     b.block(x, lo + 4.4, 1.6, CEIL - (lo + 4.4));
-    // A pillar in the mouth of the gate, rooted on the tunnel floor, so the
-    // real opening and the painted one are the same picture.
-    if (i % 2 === 0) b.tower(x + 3, Math.max(1, lo + 2));
-    else b.plinth(x + 3, 2, Math.max(1, lo + 1), true);
+    // Background masonry between the gates, so the tunnel has walls rather
+    // than a void either side of the opening.
+    b.plinth(x + 3, 2, Math.max(1, lo));
   });
 
   // Real saws, in gates you have already learned to trust.
-  b.saw(beat(49) + 0.4, 4.6, 1.6);
-  b.saw(beat(57) + 0.4, 1.2, 1.6);
+  b.saws(beat(49) + 0.5, 4.5, 1.5);
+  b.saws(beat(57) + 0.5, 1, 1.5);
 
   // COIN 2 rides the ceiling between the two highest gates — the one stretch
   // of tunnel where there is room above the line, and you still have to give
@@ -326,12 +301,12 @@ function strobe(b: Builder) {
     const x = beat(n);
     if (side === "floor") b.spikes(x, count, 0);
     else b.spikes(x, count, 5, { rot: 180 });
-    // …and the same row again, one beat earlier, in paint. A painted ceiling
-    // row has to hang like a real one — an upright spike at y = 5 with six
-    // blocks of air under it is not a decoy, it is a mistake.
-    if (side === "floor") b.fakeSpikes(x - BEAT, count, 0);
-    else b.fakeCeilingSpikes(x - BEAT, count, 5, false);
+
   }
+
+  // One saw dead in the middle of the corridor, on the beat you would have
+  // been coasting through.
+  b.saws(beat(73), 2.5, 2);
 
   b.dress(beat(62), beat(80), [BAR_LOW], { maxHeight: 3, ceiling: 6 });
 }
@@ -353,8 +328,8 @@ function green(b: Builder) {
   // so a corridor you cannot read is not a hard section, it is a coin flip.
   // The green does the lying here, and the gears do the decorating — placed
   // above the tube, where they can be seen and never confused for a wall.
-  for (let n = 81; n < 98; n += 3) b.gearPair(beat(n), 10 + ((n / 3) % 3));
-  for (let n = 82; n < 98; n += 4) b.mark(beat(n), 12);
+  for (let n = 82; n < 98; n += 5) b.saws(beat(n), 11, 2);
+  for (let n = 84; n < 98; n += 6) b.mark(beat(n), 13);
 
   b.portal(beat(98) + 1, 0, { to: "cube" });
 }
@@ -363,33 +338,23 @@ function green(b: Builder) {
    Cube again, with everything the level has taught you, at a beat a jump. */
 function everything(b: Builder) {
   b.beatSpikes(100);
-  b.fakeBeatSpikes(101, 3);
   b.beatSpikes(102, 2);
 
+  // The head-height move again, with the level shouting over it.
+  b.ceilingSpikes(onBeat(104, 3), 5, 3);
+  b.saws(beat(107) + 1, 2.6, 2.5);
 
+  b.pad(beat(109));
+  b.spikes(onBeat(109, 3), 3);
+  b.beatSpikes(111, 1, { alpha: 0.15 });
 
-  // The trap, a third time, with the rest of the level shouting over it.
-  b.fakeBeatSpikes(104, 3);
-  b.ceilingSpikes(onBeat(104, 3), 4, 3);
-
-  b.pad(beat(106));
-  b.spikes(onBeat(106, 3), 3);
-  b.beatSpikes(108, 1, { alpha: 0.09 });
-
-  b.block(beat(110), 0, 3, 2);
-  b.fakeSlab(beat(111) + 1, beat(112) + 2, 2);
-  b.beatSpikes(111, 2);
+  b.block(beat(113), 0, 3, 2);
 
   // The orb: nothing under it but a pit, and the floor is not enough here.
-  b.spikes(onBeat(113, 3), 3);
-  b.orb(onBeat(113) + 0.5, 3.2, "yellow");
-  b.beatSpikes(115, 2);
+  b.spikes(onBeat(114, 3), 3);
+  b.orb(onBeat(114) + 0.5, 3.2, "yellow");
 
-  // COIN 3 hangs over the decoy row at beat 116 — so the jump that takes it
-  // is precisely the jump the level has spent a minute teaching you not to
-  // make. Land on beat 117 and the real row is already there: the coin costs
-  // you a jump you did not need and a chain jump you now cannot miss.
-  b.fakeBeatSpikes(116, 2);
+  // COIN 3 over beat 116, one beat before the last row of the level.
   b.coin(beat(116) + 2.5, 2.6);
   b.beatSpikes(117, 2);
 

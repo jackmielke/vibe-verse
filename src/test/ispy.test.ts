@@ -91,6 +91,7 @@ describe("I Spy", () => {
     const strays: string[] = [];
     for (const o of level.objects) {
       if (!o.decoy) continue;
+      if (o.kind === "glyph") continue;
       const onGrid = (v: number) => Math.abs(v / OFF - Math.round(v / OFF)) < 1e-9;
       if (onGrid(o.x) && onGrid(o.y) && onGrid(o.w) && onGrid(o.h) && !o.rot) continue;
       if (o.rot === 180 && onGrid(o.x) && onGrid(o.y)) continue;
@@ -99,10 +100,34 @@ describe("I Spy", () => {
     expect(strays.slice(0, 6), `${strays.length} off-grid`).toEqual([]);
   });
 
-  it("never lets a decoy collide", () => {
-    const decoys = level.objects.filter((o) => o.decoy);
-    expect(decoys.length).toBeGreaterThan(200);
-    for (const d of decoys) expect(world.near(d.x)).not.toContain(level.objects.indexOf(d));
+  it("has no spike in it that does not kill you", () => {
+    // The level used to be built on painted spikes: rows that looked exactly
+    // like the lethal ones and were not. They are gone. Every spike on screen
+    // is a real one, and the only scenery left is architecture, because
+    // nobody has ever mistaken a building for a spike.
+    const painted = level.objects.filter((o) => o.kind === "spike" && o.decoy);
+    expect(painted).toEqual([]);
+
+    // Sawblades kill too, now, so none of those may be paint either.
+    const paintedSaws = level.objects.filter((o) => o.kind === "saw" && o.decoy);
+    expect(paintedSaws).toEqual([]);
+  });
+
+  it("keeps every hazard out of the scenery layer", () => {
+    // Anything drawn behind the play field is non-colliding by construction,
+    // so nothing that can kill you is allowed to live there — a lethal object
+    // you cannot reach reads as a bug, and a dimmed one reads as unfair.
+    for (const o of level.objects) {
+      if (!o.back) continue;
+      // Buildings and question marks. Nothing that has a hitbox.
+      expect(["block", "glyph"], `a ${o.kind} is in the background layer`).toContain(o.kind);
+    }
+  });
+
+  it("never lets scenery collide", () => {
+    const scenery = level.objects.filter((o) => o.decoy);
+    expect(scenery.length).toBeGreaterThan(100);
+    for (const d of scenery) expect(world.near(d.x)).not.toContain(level.objects.indexOf(d));
   });
 
   it("keeps every lethal object visible enough to learn", () => {
@@ -128,13 +153,21 @@ describe("I Spy", () => {
     expect(level.length / SPEEDS.one).toBeCloseTo(60, 5);
   });
 
-  it("puts every hazard on a beat, decoys included", () => {
-    // A decoy off the beat would be audible, and the level would solve itself.
-    const spikes = level.objects.filter((o) => o.kind === "spike" && !o.back && o.w === 1);
+  it("puts every hazard on a beat", () => {
+    // A hazard off the beat would be a hazard the music does not announce.
+    const spikes = level.objects.filter((o) => o.kind === "spike" && o.w === 1);
     let onGrid = 0;
     for (const o of spikes) if (Number.isInteger(o.x)) onGrid++;
-    expect(spikes.length).toBeGreaterThan(200);
+    expect(spikes.length).toBeGreaterThan(50);
     expect(onGrid / spikes.length).toBeGreaterThan(0.99);
+
+    // Sawblades are placed by hand, one at a time, and every one of them is
+    // lethal — so none of them may be left to a loop's arithmetic either.
+    const saws = level.objects.filter((o) => o.kind === "saw");
+    expect(saws.length).toBeGreaterThan(5);
+    for (const o of saws) {
+      expect(Math.abs(o.x * 2 - Math.round(o.x * 2)), `saw at ${o.x} is off-grid`).toBeLessThan(1e-9);
+    }
   });
 
   // Three full solver runs with a coin-seeking policy. Slow, and worth it:

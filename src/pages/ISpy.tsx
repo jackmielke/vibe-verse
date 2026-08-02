@@ -242,9 +242,9 @@ export default function ISpy() {
             I SPY
           </h1>
           <p className="mt-4 max-w-md text-center text-sm leading-relaxed text-white/60">
-            A one-button auto-runner where most of what you can see is a lie.
-            Two thirds of the spikes on screen cannot hurt you, and the ones
-            that can are hiding in with them.
+            A one-button auto-runner cut to its music: one jump is one beat.
+            Everything you can see can kill you — every spike, every sawblade —
+            and one of them you can barely see at all.
           </p>
 
           <button
@@ -301,10 +301,10 @@ export default function ISpy() {
           </div>
           <p className="mt-5 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
             Three sonar pings per attempt. A ping goes out as a sound, and for
-            a second and a half what comes back is the truth — every decoy
-            fades and everything that can actually kill you lights up. Three
-            coins are hidden off the safe line; you keep the ones you finish a
-            normal run holding.
+            a second and a half what comes back is the shape of the level —
+            the scenery drops away and every hazard lights up, including the
+            one you cannot see. Three coins are hidden off the safe line; you
+            keep the ones you finish a normal run holding.
           </p>
 
           <Link

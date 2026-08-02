@@ -76,14 +76,19 @@ export function landing(b: number): number {
  * There is deliberately no random number generator in this file. Everything in
  * the level, foreground and background, is placed by hand.
  */
+/**
+ * A piece of hand-drawn background, at an x offset inside its bar.
+ *
+ * Architecture only. There are no spike motifs here and there never will be
+ * again: every spike in this game is a real one that kills you, so a painted
+ * spike is not a thing the level is allowed to contain. Buildings can be
+ * scenery because nobody has ever mistaken a building for a spike.
+ */
 export type Motif =
-  | ["ridge", number, number]
   | ["tower", number, number]
-  | ["plinth", number, number, number, boolean?]
-  | ["gears", number, number]
+  | ["plinth", number, number, number]
   | ["mark", number, number]
-  | ["hang", number, number]
-  /** A dim tower on the course behind the play lane. Depth, not obstacle. */
+  /** A dimmer, taller course further back. Depth, not obstacle. */
   | ["far", number, number];
 
 export interface DressOpts {
@@ -130,12 +135,6 @@ export class Builder {
     this.spikes(onBeat(b, n), n, 0, o);
   }
 
-  /** The same run, in paint. Decoys sit on the beat too — otherwise the music
-      would tell you which ones were real and the level would solve itself. */
-  fakeBeatSpikes(b: number, n = 1) {
-    this.fakeSpikes(onBeat(b, n), n);
-  }
-
   /**
    * Spikes hanging point-down at `y`, which kill you *for jumping*.
    *
@@ -150,18 +149,14 @@ export class Builder {
     if (mount) this.beam(x, n, y);
   }
 
-  fakeCeilingSpikes(x: number, n: number, y = 3, mount = true) {
-    for (let i = 0; i < n; i++)
-      this.push({ kind: "spike", x: x + i, y, w: 1, h: 1, rot: 180, decoy: true });
-    if (mount) this.beam(x, n, y);
-  }
-
   /**
    * The girder a row of hanging teeth is bolted to.
    *
-   * Decoy, always — a solid block at head height would either be landed on or
-   * killed against, and the trap needs the air above the spikes to stay air.
-   * It is here purely so the teeth are attached to something: a row of spikes
+   * Real solid geometry, and safely so: the top of a cube at the apex of a
+   * jump is 3.6 blocks up, and the girder's underside is at 4. Nothing can
+   * ever touch it, so it can be honest without being in the way.
+   *
+   * It is here so the teeth are attached to something — a row of spikes
    * hanging in empty sky reads as a rendering bug, not as a level.
    *
    * Pass `mount = false` wherever a real ceiling already exists (the ship
@@ -169,10 +164,7 @@ export class Builder {
    * bar inside it is just an object nobody can see.
    */
   private beam(x: number, n: number, y: number) {
-    this.push({
-      kind: "block", x: x - 0.5, y: y + 1, w: n + 1, h: 0.5,
-      decoy: true, mount: true,
-    });
+    this.push({ kind: "block", x: x - 0.5, y: y + 1, w: n + 1, h: 0.5, mount: true });
   }
 
   /** A secret coin. Never on the safe line — that is the entire point. */
@@ -209,42 +201,35 @@ export class Builder {
 
   // ── the lie ────────────────────────────────────────────────────────────
 
-  /**
-   * A row of decoy spikes on a surface. The commonest lie in the level.
-   */
-  ridge(x: number, n: number, y = 0) {
-    for (let i = 0; i < n; i++) this.fakeSpike(x + i, y);
-  }
-
-  /** A one-block column with a wider cap — a pillar, not a stray rectangle. */
+  /** A pillar with a cap, on the background course. */
   tower(x: number, h: number, floor = 0) {
-    this.push({ kind: "block", x, y: floor, w: 1, h, decoy: true });
-    this.push({ kind: "block", x: x - 0.5, y: floor + h, w: 2, h: 0.5, decoy: true });
+    this.push({ kind: "block", x, y: floor, w: 1, h, decoy: true, back: true, alpha: 0.8 });
+    this.push({
+      kind: "block", x: x - 0.5, y: floor + h, w: 2, h: 0.5,
+      decoy: true, back: true, alpha: 0.8,
+    });
   }
 
-  /** A block standing on the floor, optionally with spikes along its top. */
-  plinth(x: number, w: number, h: number, spiked = false, floor = 0) {
-    this.push({ kind: "block", x, y: floor, w, h, decoy: true });
-    if (spiked) this.ridge(x, w, floor + h);
+  /** A block of building on the background course. */
+  plinth(x: number, w: number, h: number, floor = 0) {
+    this.push({ kind: "block", x, y: floor, w, h, decoy: true, back: true, alpha: 0.8 });
   }
 
-  /** Two gears on a bracket. The only thing in the level allowed to float. */
-  gearPair(x: number, y: number) {
-    this.push({ kind: "saw", x, y, w: 2, h: 2, decoy: true, alpha: 0.9 });
-    this.push({ kind: "saw", x: x + 2.5, y: y + 1.5, w: 1.5, h: 1.5, decoy: true, alpha: 0.7 });
+  /**
+   * A real sawblade. Spins, floats, and kills — which is what a sawblade is
+   * for and what it had never been allowed to do here until now.
+   *
+   * Every one is placed by hand at a height chosen against the jump arc, and
+   * `ispy.test.ts` flies the level to prove the placements are survivable.
+   * Nothing about a lethal object may be left to chance.
+   */
+  saws(x: number, y: number, size = 2) {
+    return this.push({ kind: "saw", x, y, w: size, h: size });
   }
 
   /** One question mark. The level is named after these. */
   mark(x: number, y: number, size = 1.5) {
-    this.push({ kind: "glyph", x, y, w: size, h: size, decoy: true, alpha: 0.7 });
-  }
-
-  /** A row of painted teeth hanging off a ceiling that exists. */
-  hang(x: number, n: number, ceiling: number) {
-    for (let i = 0; i < n; i++)
-      this.push({
-        kind: "spike", x: x + i, y: ceiling - 1, w: 1, h: 1, rot: 180, decoy: true,
-      });
+    this.push({ kind: "glyph", x, y, w: size, h: size, decoy: true, back: true, alpha: 0.6 });
   }
 
   /**
@@ -272,52 +257,23 @@ export class Builder {
         const x = base + m[1];
         if (x < x0 || x >= x1 - 0.5) continue;
         switch (m[0]) {
-          case "ridge":
-            this.ridge(x, m[2], floor);
-            break;
           case "tower":
             this.tower(x, Math.min(m[2], cap), floor);
             break;
           case "plinth":
-            this.plinth(x, m[2], Math.min(m[3], cap), m[4] ?? false, floor);
-            break;
-          case "gears":
-            this.gearPair(x, m[2]);
+            this.plinth(x, m[2], Math.min(m[3], cap), floor);
             break;
           case "mark":
             this.mark(x, m[2]);
             break;
-          case "hang":
-            if (opts.ceiling !== undefined) this.hang(x, m[2], opts.ceiling);
-            break;
           case "far":
             this.push({
               kind: "block", x, y: floor, w: 2, h: Math.min(m[2], cap + 3),
-              decoy: true, back: true, alpha: 0.5,
+              decoy: true, back: true, alpha: 0.4,
             });
             break;
         }
       }
-    }
-  }
-
-  /** One decoy spike, on the grid, identical to a real one. */
-  fakeSpike(x: number, y = 0) {
-    return this.push({ kind: "spike", x, y, w: 1, h: 1, decoy: true });
-  }
-
-  /** A row of decoy spikes standing on the floor, indistinguishable from
-      the row of real ones you will meet four blocks later. */
-  fakeSpikes(x: number, n: number, y = 0) {
-    for (let i = 0; i < n; i++) this.fakeSpike(x + i, y);
-  }
-
-  /** Ground you cannot stand on. Rests on decoy columns, so even the lie
-      obeys gravity. */
-  fakeSlab(x0: number, x1: number, y: number) {
-    this.push({ kind: "block", x: x0, y: y - 1, w: x1 - x0, h: 1, decoy: true });
-    for (const x of [x0, x1 - 1]) {
-      this.push({ kind: "block", x, y: 0, w: 1, h: y - 1, decoy: true });
     }
   }
 
