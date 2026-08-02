@@ -17,9 +17,34 @@ serves that one idea.
 | `build.ts` | authoring helpers, and the jump arithmetic every pattern is built on |
 | `level.ts` | the level: six movements, then one pass of paint over all of them |
 | `render.ts` | 2D canvas. Never told which objects are real |
-| `audio.ts` | the soundtrack, synthesised, so the strobe can be locked to the beat |
+| `audio.ts` | the score — synthesised, through-composed, and the clock the strobe runs on |
 | `bot.ts` | a solver. Proves the level is possible and its coins reachable, and plays the title screen |
 | `engine.ts` | clock, input, attempts, checkpoints, the spy pulse |
+
+## The music
+
+Not the original level's track: that song belongs to the person who wrote it,
+and shipping a copy of it here is not ours to do. This is an original piece in
+the same idiom — F♯ minor, 120 BPM, i–VI–III–VII, sidechained
+four-on-the-floor, a detuned saw lead through a dotted-eighth delay.
+
+It is **through-composed, not looped**. The level is exactly 120 beats and its
+six movements are at known beats, so the arrangement is written against those
+same boundaries: the drop lands when the strobe section starts because both of
+them start at beat 62.
+
+| beat | movement | what the score does |
+| --- | --- | --- |
+| 0 | The quiet part | half-time kick, sub, filtered pad |
+| 21 | I spy | snare, offbeat hats, the arp arrives |
+| 42 | Mirror | sixteenth hats, the bass opens up |
+| 62 | Strobe | the drop — lead, crash, everything |
+| 80 | Green | breakdown, filter down, no lead |
+| 98 | Everything | final drop, lead an octave up |
+
+Everything but the kick runs through a `duck` gain node that the kick pulls
+down and releases over 0.62 of a beat. That pump is most of what makes this
+genre sound like this genre.
 
 ## One jump is one beat is five blocks
 
@@ -114,16 +139,26 @@ scaled shapes everywhere — and it read as confetti. Nobody mistakes a spike
 tilted 37° and scaled 1.8× for a hazard, so nothing was being deceived; the
 screen was just noisy.
 
-## Checkpoints
+## Checkpoints live in practice mode
 
-Eleven of them, at the mouth of each movement and halfway through the long
-ones, all on clear ground you can be dropped onto. Crossing one banks the run;
-dying after it costs half a second instead of a minute. `PURIST` in the menu
-turns them off for the original's all-or-nothing bargain.
+Where the original puts them, and where they belong: a normal attempt is the
+whole level or nothing. Turn practice on and eleven checkpoints appear — at the
+mouth of each movement and halfway through the long ones, all on clear ground
+you can be dropped onto. Crossing one banks the run; dying after it costs half
+a second instead of a minute.
+
+Two consequences worth keeping, both the original's rules:
+
+- **Coins do not count in practice.** A run with checkpoints in it is not a run.
+- **The banners are not drawn outside practice**, because outside practice they
+  do nothing, and drawing an object that does nothing in a level about objects
+  that do nothing is a joke at the player's expense.
 
 Checkpoints are not colliders — `World` skips them entirely and the engine
-watches the player's x against a sorted list, so the physics and the bot never
-have to know they exist.
+watches the player's x against a sorted list, so the physics and the solver
+never have to know they exist. Resuming from one also seeks the *score* to the
+matching movement, so coming back in at 80% drops you into the final drop
+rather than the filtered intro.
 
 ## Colours are computed, not authored
 
