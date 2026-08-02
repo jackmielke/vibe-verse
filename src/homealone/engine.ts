@@ -108,6 +108,14 @@ export interface Snapshot {
   tauntCooldown: number;
   /** True while Old Man Marley is on screen doing something about it. */
   marley: boolean;
+  /**
+   * Where the floating touch stick is, in CSS pixels, so the HUD can draw a
+   * ring around the thumb. Null when nothing is touching the left side.
+   */
+  stick: { ox: number; oy: number; x: number; y: number } | null;
+  /** Boom length, for the zoom readout. */
+  boom: number;
+  invertLook: boolean;
 }
 
 const STEP_UP = 0.62;
@@ -180,8 +188,11 @@ export class HomeAloneEngine {
 
   /* ---- camera ------------------------------------------------------- */
   private camYaw = 0;
-  private camPitch = -0.13;
+  private camPitch = 0.1;
   private camDist = 3.1;
+  /** The boom length the player has chosen with the wheel or a pinch. */
+  private camBoom = 3.0;
+  private invertLook = false;
   private camPos = new THREE.Vector3();
   private camLook = new THREE.Vector3();
 
@@ -191,8 +202,14 @@ export class HomeAloneEngine {
   private sprintHeld = false;
   private actionQueued = false;
   private pointerLocked = false;
-  private dragging: number | null = null;
   private dragLast = { x: 0, y: 0 };
+  /** Which pointer is driving the stick, and which is driving the look. */
+  private stickId: number | null = null;
+  private lookId: number | null = null;
+  private stickOrigin = { x: 0, y: 0 };
+  private stickAt = { x: 0, y: 0 };
+  private livePointers = new Map<number, { x: number; y: number }>();
+  private pinchFrom: number | null = null;
 
   /* ---- level state --------------------------------------------------- */
   private phase: Phase = "menu";
@@ -326,6 +343,11 @@ export class HomeAloneEngine {
     } catch {
       this.cleared = 0;
     }
+    try {
+      this.invertLook = localStorage.getItem("homealone:invert") === "1";
+    } catch {
+      this.invertLook = false;
+    }
     this.setLevelLights(LEVELS[0]);
     this.pos.set(0.4, 0, 12.0);
     this.camYaw = Math.PI;
@@ -420,9 +442,30 @@ export class HomeAloneEngine {
     this.stick.y = y;
   }
 
+  /**
+   * Swing the camera. `dx`/`dy` are screen-space deltas in radians, so
+   * dragging *up* the screen is a negative `dy` and must raise the view.
+   */
   look(dx: number, dy: number) {
     this.camYaw -= dx;
-    this.camPitch = clamp(this.camPitch - dy, -0.95, 0.62);
+    const d = this.invertLook ? -dy : dy;
+    // Up is generous, down is not: the useful thing to look at below you is
+    // the floor two metres ahead, and any more than that puts the lens in it.
+    this.camPitch = clamp(this.camPitch - d, -0.62, 1.0);
+  }
+
+  /** Pull the boom in or out. `k` > 1 zooms out. */
+  zoom(k: number) {
+    this.camBoom = clamp(this.camBoom * k, 1.15, 7.5);
+  }
+
+  setInvertLook(on: boolean) {
+    this.invertLook = on;
+    try {
+      localStorage.setItem("homealone:invert", on ? "1" : "0");
+    } catch {
+      /* private browsing */
+    }
   }
 
   setSprint(on: boolean) {
@@ -524,7 +567,7 @@ export class HomeAloneEngine {
     this.vel.set(0, 0, 0);
     this.yaw = level.spawn.yaw;
     this.camYaw = level.spawn.yaw;
-    this.camPitch = -0.13;
+    this.camPitch = 0.1;
     this.kevin.root.visible = true;
 
     /* Traps. Level 3 arms them; level 4 inherits whatever level 3 left; level 5
@@ -682,12 +725,24 @@ export class HomeAloneEngine {
     // only round a corner and over something you left on the floor.
     const top = running ? 5.1 : 2.55;
 
-    // Move relative to where the camera is looking, which is the only scheme
-    // that survives a camera that swings round corners on its own.
+    /*
+     * Move relative to where the camera is looking.
+     *
+     * The basis, written out, because getting a sign wrong here is invisible
+     * in a screenshot and infuriating with a thumb on it — this shipped once
+     * with *both* axes flipped, so pushing the stick forward walked him at the
+     * camera and pushing right strafed left:
+     *
+     *   forward = ( sin(yaw), 0,  cos(yaw) )   — the way the lens points
+     *   right   = (-cos(yaw), 0,  sin(yaw) )   — cross(forward, up)
+     *
+     * `iz` is screen-space down-positive (W and a stick pushed forward both
+     * give -1), so forward is scaled by `-iz`.
+     */
     const sin = Math.sin(this.camYaw);
     const cos = Math.cos(this.camYaw);
-    const wx = ix * cos - iz * sin;
-    const wz = ix * sin + iz * cos;
+    const wx = sin * -iz + -cos * ix;
+    const wz = cos * -iz + sin * ix;
 
     const want = new THREE.Vector3(wx, 0, wz);
     if (want.lengthSq() > 0) want.normalize().multiplyScalar(top * input);
@@ -1311,10 +1366,13 @@ export class HomeAloneEngine {
     }
 
     // Indoors the boom has to be short enough to survive a 1.6 m corridor.
-    const dist = this.shotDist ?? (this.zipRide >= 0 ? 5.4 : 2.85);
+    const dist = this.shotDist ?? (this.zipRide >= 0 ? Math.max(5.4, this.camBoom) : this.camBoom);
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
-      -Math.sin(this.camPitch),
+      // Positive pitch is UP. The first cut had this negated, so dragging up
+      // the screen tipped the view down — which is the one control complaint
+      // that makes a game feel broken rather than unfamiliar.
+      Math.sin(this.camPitch),
       Math.cos(this.camYaw) * Math.cos(this.camPitch),
     );
     // The boom points *behind* him: from his head, backwards along his view.
@@ -1327,10 +1385,10 @@ export class HomeAloneEngine {
     // first-person view rather than a close-up of the back of his head.
     if (hit !== null && this.shotDist === null) d = Math.max(0.45, hit - 0.28);
     this.camDist += (d - this.camDist) * Math.min(1, dt * (d < this.camDist ? 26 : 6));
-    this.kevin.root.visible = this.camDist > 0.95 || this.zipRide >= 0 || this.shotDist !== null;
+    this.kevin.root.visible = this.camDist > 0.9 || this.zipRide >= 0 || this.shotDist !== null;
 
     const want = focus.clone().addScaledVector(back, this.camDist);
-    want.y += 0.42 + this.camPitch * 0.4;
+    want.y += 0.42;
     this.camPos.lerp(want, Math.min(1, dt * 16));
     this.camLook.lerp(focus.clone().addScaledVector(dir, 2.2), Math.min(1, dt * 14));
     this.camera.position.copy(this.camPos);
@@ -1451,25 +1509,98 @@ export class HomeAloneEngine {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("pointerlockchange", onLock);
 
-    // Touch look: any drag that starts on the right-hand side of the screen.
+    /*
+     * Touch, all of it, owned here rather than by the HUD.
+     *
+     * The HUD used to hold a fixed joystick pad in the corner and the canvas
+     * held the look-drag, which produced three separate miseries on a phone: a
+     * thumb that landed a centimetre outside the pad did nothing, a drag that
+     * began on the left half was ignored entirely, and there was no way at all
+     * to reach a second finger for zoom. One owner, three rules:
+     *
+     *   left 45%   — a *floating* stick. Its centre is wherever your thumb
+     *                lands, so it is never in the wrong place.
+     *   right 55%  — look.
+     *   two fingers — pinch to zoom, and neither of the other two runs while
+     *                a pinch is live.
+     *
+     * Buttons are real DOM elements above the canvas, so their pointerdowns
+     * never reach these handlers at all.
+     */
+    const STICK_RADIUS = 68;
     const tStart = (e: PointerEvent) => {
       if (e.pointerType === "mouse") return;
-      if (e.clientX < window.innerWidth * 0.42) return;
-      this.dragging = e.pointerId;
-      this.dragLast = { x: e.clientX, y: e.clientY };
+      this.audio.resume();
+      const left = e.clientX < window.innerWidth * 0.45;
+      if (left && this.stickId === null) {
+        this.stickId = e.pointerId;
+        this.stickOrigin = { x: e.clientX, y: e.clientY };
+        this.stickAt = { x: e.clientX, y: e.clientY };
+      } else if (this.lookId === null) {
+        this.lookId = e.pointerId;
+        this.dragLast = { x: e.clientX, y: e.clientY };
+      }
+      this.livePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.livePointers.size === 2) {
+        const [a, b] = [...this.livePointers.values()];
+        this.pinchFrom = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+      e.preventDefault();
     };
     const tMove = (e: PointerEvent) => {
-      if (this.dragging !== e.pointerId) return;
-      this.look((e.clientX - this.dragLast.x) * 0.0055, (e.clientY - this.dragLast.y) * 0.0045);
-      this.dragLast = { x: e.clientX, y: e.clientY };
+      if (e.pointerType === "mouse") return;
+      if (!this.livePointers.has(e.pointerId)) return;
+      this.livePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (this.livePointers.size >= 2 && this.pinchFrom !== null) {
+        const [a, b] = [...this.livePointers.values()];
+        const now = Math.hypot(a.x - b.x, a.y - b.y);
+        if (now > 8 && this.pinchFrom > 8) {
+          this.zoom(this.pinchFrom / now);
+          this.pinchFrom = now;
+        }
+        return;
+      }
+      if (e.pointerId === this.stickId) {
+        this.stickAt = { x: e.clientX, y: e.clientY };
+        let dx = (e.clientX - this.stickOrigin.x) / STICK_RADIUS;
+        let dy = (e.clientY - this.stickOrigin.y) / STICK_RADIUS;
+        const m = Math.hypot(dx, dy);
+        if (m > 1) {
+          dx /= m;
+          dy /= m;
+        }
+        // A dead zone big enough that a resting thumb does not creep, and
+        // small enough that a deliberate nudge still registers.
+        this.stick.x = m < 0.18 ? 0 : dx;
+        this.stick.y = m < 0.18 ? 0 : dy;
+      } else if (e.pointerId === this.lookId) {
+        this.look((e.clientX - this.dragLast.x) * 0.0052, (e.clientY - this.dragLast.y) * 0.0044);
+        this.dragLast = { x: e.clientX, y: e.clientY };
+      }
     };
     const tEnd = (e: PointerEvent) => {
-      if (this.dragging === e.pointerId) this.dragging = null;
+      this.livePointers.delete(e.pointerId);
+      if (this.livePointers.size < 2) this.pinchFrom = null;
+      if (e.pointerId === this.stickId) {
+        this.stickId = null;
+        this.stick.x = 0;
+        this.stick.y = 0;
+      }
+      if (e.pointerId === this.lookId) this.lookId = null;
     };
     canvas.addEventListener("pointerdown", tStart);
     window.addEventListener("pointermove", tMove);
     window.addEventListener("pointerup", tEnd);
     window.addEventListener("pointercancel", tEnd);
+
+    // Desktop zoom. Trackpad pinches arrive here as ctrl+wheel.
+    const onWheel = (e: WheelEvent) => {
+      if (this.phase !== "playing") return;
+      e.preventDefault();
+      this.zoom(1 + Math.sign(e.deltaY) * 0.12);
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
 
     this.unbind = () => {
       window.removeEventListener("keydown", down);
@@ -1481,6 +1612,7 @@ export class HomeAloneEngine {
       window.removeEventListener("pointermove", tMove);
       window.removeEventListener("pointerup", tEnd);
       window.removeEventListener("pointercancel", tEnd);
+      canvas.removeEventListener("wheel", onWheel);
     };
   }
 
@@ -1580,6 +1712,12 @@ export class HomeAloneEngine {
       ammo: this.ammo,
       tauntCooldown: this.tauntCd,
       marley: this.marleyShowUntil > this.time,
+      stick:
+        this.stickId !== null
+          ? { ox: this.stickOrigin.x, oy: this.stickOrigin.y, x: this.stickAt.x, y: this.stickAt.y }
+          : null,
+      boom: this.camBoom,
+      invertLook: this.invertLook,
     };
   }
 
