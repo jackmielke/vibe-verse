@@ -27,6 +27,7 @@ import createWeapons from "./play/weapons";
 import createTraversal from "./play/traversal";
 import createVehicles from "./play/vehicles";
 import createAi from "./play/ai";
+import createTroopers from "./play/troopers";
 
 export interface BootResult {
   engine: Engine;
@@ -51,6 +52,7 @@ const STAGES = [
   { label: "Spooling the grapple", factory: createTraversal },
   { label: "Parking the fleet", factory: createVehicles },
   { label: "Deploying the cartel", factory: createAi },
+  { label: "Mustering the squad", factory: createTroopers },
   { label: "Grading the image", factory: createPostFx },
 ] as const;
 
