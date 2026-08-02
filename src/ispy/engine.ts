@@ -83,7 +83,7 @@ export class ISpyEngine {
 
   private hold = false;
   private tapPending = false;
-  private camY = -0.6;
+  private camY = -1.7;
   private particles: Particle[] = [];
   private shake = 0;
   private wasGrounded = true;
@@ -351,7 +351,7 @@ export class ISpyEngine {
     this.sonarAge = null;
     this.particles = [];
     this.pings = PINGS_PER_ATTEMPT;
-    this.camY = Math.max(-0.6, this.player.y - VIEW_H * 0.34);
+    this.camY = Math.max(-1.7, this.player.y - VIEW_H * 0.34);
     this.hold = false;
     this.botHold = false;
     this.botClock = 0;
@@ -536,8 +536,10 @@ export class ISpyEngine {
 
     // Camera. Cube sections sit the ground low in frame; the flying modes
     // centre on you, because there is no ground to anchor to.
+    // The floor of the camera sits below the floor of the level, so the base
+    // is a thing you can see rather than a line the world stops at.
     const anchor = this.player.mode === "cube" || this.player.mode === "ball" ? 0.34 : 0.46;
-    const target = Math.max(-0.6, this.player.y - VIEW_H * anchor);
+    const target = Math.max(-1.7, this.player.y - VIEW_H * anchor);
     const k = 1 - Math.pow(0.0008, dt);
     this.camY += (target - this.camY) * k;
 

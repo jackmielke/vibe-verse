@@ -23,7 +23,7 @@
  *   GREEN           wave   b80–98   one long tube through a green blowout.
  *   EVERYTHING      cube   b98–120  all of it at once.
  */
-import { BEAT, Builder, onBeat, rng } from "./build";
+import { BEAT, Builder, onBeat, type Motif } from "./build";
 import { SPEEDS } from "./physics";
 import type { Level } from "./types";
 
@@ -31,6 +31,81 @@ const ONE = SPEEDS.one;
 /** Blocks per beat — 5. Written as `beat(n)` where an x is wanted. */
 const beat = (n: number) => n * BEAT;
 const END = beat(120);
+
+/* ── the dressing ─────────────────────────────────────────────────────────
+   Four bars of background, drawn by hand, eight beats each, tiled along the
+   level in an order chosen per movement.
+
+   This replaces a seeded scatter function, and the reason is worth writing
+   down: a PRNG gave results that were reproducible and still looked like
+   debris — three towers in a row, then forty empty blocks, none of it saying
+   anything. It read as spawned because it was spawned. What a level in this
+   genre actually has is a designer drawing eight beats of background they
+   like and reusing it, which is what these are. The x numbers are blocks from
+   the start of the bar; read a column of them and you are reading the
+   silhouette. */
+
+/** Low and busy: a street of short buildings. */
+const BAR_STREET: Motif[] = [
+  ["far", 0, 6], ["far", 5, 9], ["far", 12, 5], ["far", 17, 11],
+  ["far", 23, 7], ["far", 29, 10], ["far", 35, 6],
+  ["ridge", 1, 2],
+  ["plinth", 5, 3, 1, true],
+  ["tower", 10, 4],
+  ["ridge", 13, 1],
+  ["mark", 15, 6],
+  ["plinth", 17, 2, 2],
+  ["ridge", 20, 3],
+  ["tower", 25, 6],
+  ["gears", 27, 8],
+  ["plinth", 30, 4, 1, true],
+  ["ridge", 35, 2],
+  ["tower", 38, 3],
+];
+
+/** Tall and open: fewer things on the floor, more reaching up. */
+const BAR_SPIRES: Motif[] = [
+  ["far", 2, 12], ["far", 8, 7], ["far", 14, 13], ["far", 21, 8],
+  ["far", 27, 12], ["far", 33, 6], ["far", 38, 10],
+  ["tower", 2, 7],
+  ["ridge", 6, 1],
+  ["plinth", 9, 2, 3],
+  ["gears", 12, 9],
+  ["ridge", 15, 2],
+  ["plinth", 18, 4, 1, true],
+  ["mark", 23, 7],
+  ["tower", 25, 5],
+  ["ridge", 29, 3],
+  ["tower", 33, 8],
+  ["mark", 36, 4],
+  ["plinth", 38, 2, 2, true],
+];
+
+/** Flat: for corridors, where nothing may be taller than the ceiling. */
+const BAR_LOW: Motif[] = [
+  ["plinth", 1, 3, 1, true],
+  ["hang", 5, 2],
+  ["ridge", 9, 2],
+  ["plinth", 12, 2, 2],
+  ["hang", 15, 1],
+  ["mark", 17, 3],
+  ["plinth", 19, 3, 1],
+  ["ridge", 23, 1],
+  ["hang", 25, 2],
+  ["plinth", 28, 4, 1, true],
+  ["gears", 33, 4],
+  ["ridge", 36, 2],
+];
+
+/** Sparse: the quiet part, and the run-out at the end. */
+const BAR_SPARSE: Motif[] = [
+  ["far", 3, 7], ["far", 14, 10], ["far", 26, 6], ["far", 34, 9],
+  ["tower", 4, 3],
+  ["mark", 12, 6],
+  ["ridge", 19, 1],
+  ["gears", 26, 8],
+  ["plinth", 33, 2, 1],
+];
 
 export function buildISpy(): Level {
   const b = new Builder();
@@ -122,9 +197,7 @@ function quietPart(b: Builder) {
   // The first decoys stand on the floor beside real ones, where they can be
   // compared. Two seconds of "so THAT'S what a lie looks like" — built as real
   // geometry, because that is what they are pretending to be.
-  b.ghosts(beat(17), beat(21), 0, 1207, { density: 0.6, maxHeight: 3 });
-  b.gears(beat(6), beat(21), 5, 11, 5, 1207);
-  b.glyphs(beat(17), beat(21), 4, 9, 4, 1208);
+  b.dress(beat(13), beat(21), [BAR_SPARSE], { maxHeight: 3 });
 }
 
 /* ── beats 21–42 ──────────────────────────────────────────────────────────
@@ -153,7 +226,7 @@ function iSpy(b: Builder) {
 
   // Beat 31: a floor that is a photograph of a floor, standing on painted
   // columns, over a real pit.
-  b.fakeSlab(beat(31) + 1, beat(32) + 3, 3.2);
+  b.fakeSlab(beat(31) + 1, beat(32) + 3, 3);
 
   // Real, lethal, and drawn at 8% opacity. Learn it or spend a ping — those
   // are the only two ways through, and both are fair.
@@ -170,9 +243,7 @@ function iSpy(b: Builder) {
 
   b.beatSpikes(36, 2);
 
-  b.ghosts(beat(22), beat(37), 0, 91, { density: 0.85, maxHeight: 4 });
-  b.gears(beat(22), beat(37), 4, 11, 9, 512);
-  b.glyphs(beat(22), beat(37), 3, 10, 9, 92);
+  b.dress(beat(21), beat(37), [BAR_STREET, BAR_SPIRES], { maxHeight: 6 });
 }
 
 /* ── beats 38–42 ──────────────────────────────────────────────────────────
@@ -192,8 +263,10 @@ function waveTaster(b: Builder) {
     [beat(41), 2.6],
     [beat(42) - 1.5, 3.2],
   ], 1.9);
-  b.gears(beat(38), beat(42), 7, 12, 4, 7788);
-  b.glyphs(beat(38), beat(42), 7, 12, 3, 7789);
+  b.gearPair(beat(38) + 2, 8);
+  b.gearPair(beat(40) + 1, 9.5);
+  b.mark(beat(39), 10);
+  b.mark(beat(41) + 2, 8);
 }
 
 /* ── beats 42–62 ──────────────────────────────────────────────────────────
@@ -212,10 +285,10 @@ function mirror(b: Builder) {
     const x = beat(43 + i * 2);
     if (lo > 0) b.block(x, 0, 1.6, lo);
     b.block(x, lo + 4.4, 1.6, CEIL - (lo + 4.4));
-    // From the tunnel floor, not from the gate's lip — the ghost band is
-    // wider than the gate block, so anything rooted at the lip would be
-    // standing on nothing for most of its width.
-    b.ghosts(x - 1, x + 3, 0, 900 + i, { density: 0.9, maxHeight: lo + 3 });
+    // A pillar in the mouth of the gate, rooted on the tunnel floor, so the
+    // real opening and the painted one are the same picture.
+    if (i % 2 === 0) b.tower(x + 3, Math.max(1, lo + 2));
+    else b.plinth(x + 3, 2, Math.max(1, lo + 1), true);
   });
 
   // Real saws, in gates you have already learned to trust.
@@ -227,9 +300,7 @@ function mirror(b: Builder) {
   // up the middle of the corridor for four beats to take it.
   b.coin(beat(52), 7.8);
 
-  b.ghosts(beat(42), beat(62), 0, 31337, { density: 0.8, ceiling: CEIL, maxHeight: 5 });
-  b.gears(beat(42), beat(62), 1, 8, 14, 999);
-  b.glyphs(beat(42), beat(62), 1, 8, 12, 31338);
+  b.dress(beat(42), beat(62), [BAR_LOW, BAR_STREET], { maxHeight: 5, ceiling: CEIL });
 }
 
 /* ── beats 62–80 ──────────────────────────────────────────────────────────
@@ -262,9 +333,7 @@ function strobe(b: Builder) {
     else b.fakeCeilingSpikes(x - BEAT, count, 5, false);
   }
 
-  b.ghosts(beat(62), beat(80), 0, 8080, { density: 0.9, ceiling: 6, maxHeight: 3 });
-  b.gears(beat(62), beat(80), 1, 5, 12, 606);
-  b.glyphs(beat(62), beat(80), 1, 5, 14, 8081);
+  b.dress(beat(62), beat(80), [BAR_LOW], { maxHeight: 3, ceiling: 6 });
 }
 
 /* ── beats 80–98 ──────────────────────────────────────────────────────────
@@ -280,11 +349,12 @@ function green(b: Builder) {
     [beat(93), 2.6], [beat(95), 5.2], [beat(98), 2.0], [beat(99), 2.0],
   ]);
 
-  // No ghosts inside a wave tube: the wave dies on contact with anything, so
-  // a corridor you cannot read is not a hard section, it is a coin flip. The
-  // green does the lying here, and the gears do the decorating.
-  b.gears(beat(80), beat(98), 8, 13, 16, 66066);
-  b.glyphs(beat(80), beat(98), 8, 13, 12, 55056);
+  // No dressing inside a wave tube: the wave dies on contact with anything,
+  // so a corridor you cannot read is not a hard section, it is a coin flip.
+  // The green does the lying here, and the gears do the decorating — placed
+  // above the tube, where they can be seen and never confused for a wall.
+  for (let n = 81; n < 98; n += 3) b.gearPair(beat(n), 10 + ((n / 3) % 3));
+  for (let n = 82; n < 98; n += 4) b.mark(beat(n), 12);
 
   b.portal(beat(98) + 1, 0, { to: "cube" });
 }
@@ -296,8 +366,7 @@ function everything(b: Builder) {
   b.fakeBeatSpikes(101, 3);
   b.beatSpikes(102, 2);
 
-  b.ghosts(beat(99), beat(104), 0, 12321, { density: 0.9, maxHeight: 4 });
-  b.glyphs(beat(99), beat(106), 3, 10, 8, 12322);
+
 
   // The trap, a third time, with the rest of the level shouting over it.
   b.fakeBeatSpikes(104, 3);
@@ -324,12 +393,10 @@ function everything(b: Builder) {
   b.coin(beat(116) + 2.5, 2.6);
   b.beatSpikes(117, 2);
 
-  b.ghosts(beat(107), beat(118), 0, 45654, { density: 0.9, maxHeight: 5 });
-  b.gears(beat(99), beat(118), 5, 12, 14, 2);
-  b.glyphs(beat(107), beat(118), 4, 11, 10, 45655);
+  b.dress(beat(98), beat(118), [BAR_SPIRES, BAR_STREET], { maxHeight: 6 });
 
   // The last two beats are empty and quiet, so you can watch it happen.
-  b.glyphs(beat(118), beat(120), 4, 11, 5, 1);
+  b.dress(beat(118), beat(120), [BAR_SPARSE], { maxHeight: 3 });
 }
 
 /* ── the paint ────────────────────────────────────────────────────────────
@@ -341,16 +408,12 @@ function everything(b: Builder) {
    Density is deliberately highest in the first six blocks of air, which is
    exactly where a cube spends its life. */
 function paint(b: Builder) {
-  for (let n = 21; n < 120; n += 2) {
-    // The two wave stretches are left alone. A wave dies on contact with
-    // anything, so paint inside its tube would be indistinguishable from a
-    // wall and the section would stop being a test of nerve.
-    if ((n >= 37 && n < 42) || (n >= 79 && n < 99)) continue;
-    const seed = 700000 + n * 13;
-    b.ghosts(beat(n), beat(n + 2), 0, seed, { density: 0.75, maxHeight: 5 });
-    b.gears(beat(n), beat(n + 2), 5, 12, 1, seed + 1);
-    b.glyphs(beat(n), beat(n + 2), 3, 11, 2, seed + 2);
-  }
+  // Each movement dresses itself now, in `quietPart`, `iSpy`, `mirror`,
+  // `strobe` and `everything`. There is nothing left to sprinkle over the top
+  // — which is the whole improvement. What used to be here was a pass that
+  // scattered another eight hundred objects across the level with a seeded
+  // PRNG, and no amount of tuning made a scatter look like a decision.
+  void b;
 }
 
 /** Named beats for the progress readout, so a run reads as a place. */
@@ -362,8 +425,3 @@ export const CHAPTERS: Array<{ at: number; name: string }> = [
   { at: beat(80), name: "Green" },
   { at: beat(98), name: "Everything" },
 ];
-
-/** Only used by the renderer's starfield — kept here so the level file owns
-    every deterministic seed in the world. */
-export const DECOR_SEED = 4041;
-export const decorRng = () => rng(DECOR_SEED);

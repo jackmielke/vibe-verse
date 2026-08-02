@@ -78,6 +78,9 @@ page.on("console", (m) => {
 
 await page.goto(`${BASE}/i-spy?shot=1`, { waitUntil: "domcontentloaded", timeout: 90000 });
 await page.waitForFunction(() => !!window.__ispy, null, { timeout: 30000 });
+// The global way-home chip is right in every world and wrong in a world card.
+// Hide it for the shot rather than teaching a shared component about capture.
+await page.addStyleTag({ content: '[class*="z-[45]"] { display: none !important; }' });
 await page.waitForTimeout(1200);
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));

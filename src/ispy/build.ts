@@ -70,16 +70,31 @@ export function landing(b: number): number {
   return (b + 1) * BEAT;
 }
 
-/** Deterministic noise. The level must look identical on every attempt or
-    memorising it — the entire game — would be impossible. */
-export function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/**
+ * A piece of hand-drawn dressing, at an x offset inside its bar.
+ *
+ * There is deliberately no random number generator in this file. Everything in
+ * the level, foreground and background, is placed by hand.
+ */
+export type Motif =
+  | ["ridge", number, number]
+  | ["tower", number, number]
+  | ["plinth", number, number, number, boolean?]
+  | ["gears", number, number]
+  | ["mark", number, number]
+  | ["hang", number, number]
+  /** A dim tower on the course behind the play lane. Depth, not obstacle. */
+  | ["far", number, number];
+
+export interface DressOpts {
+  /** Length of one bar of dressing, in blocks. Eight beats by default. */
+  barBlocks?: number;
+  /** Clamp for tower and plinth heights, for use inside a corridor. */
+  maxHeight?: number;
+  /** Surface the dressing stands on. */
+  floor?: number;
+  /** Surface a "hang" motif hangs from. Omit and hangs are skipped. */
+  ceiling?: number;
 }
 
 export class Builder {
@@ -155,7 +170,7 @@ export class Builder {
    */
   private beam(x: number, n: number, y: number) {
     this.push({
-      kind: "block", x: x - 0.25, y: y + 1, w: n + 0.5, h: 0.7,
+      kind: "block", x: x - 0.5, y: y + 1, w: n + 1, h: 0.5,
       decoy: true, mount: true,
     });
   }
@@ -195,108 +210,94 @@ export class Builder {
   // ── the lie ────────────────────────────────────────────────────────────
 
   /**
-   * Grid-aligned decoy geometry, **standing on something**.
-   *
-   * Two rules, and the second one is newer and just as important as the first.
-   *
-   * 1. Decoys have to look like *level*. Everything here sits on the integer
-   *    grid, at the sizes real objects come in, unrotated, in the section's own
-   *    colours. A decoy spike row is pixel-for-pixel a real spike row. An
-   *    earlier version scattered randomly rotated, randomly scaled shapes and
-   *    it read as confetti: nobody mistakes a spike tilted 37° for a hazard, so
-   *    nothing was being deceived — the screen was just noisy.
-   *
-   * 2. Decoys have to be **grounded**. Spikes stand on the floor or on top of a
-   *    pillar that reaches the floor; rows hang from a ceiling that exists.
-   *    Nothing is left floating in mid-air, because a spike hanging in space is
-   *    not something a level contains, and a screen full of them reads as a bug
-   *    rather than as a lie.
-   *
-   * The one exception is the sawblade, which floats by design and always has —
-   * see `gears`.
+   * A row of decoy spikes on a surface. The commonest lie in the level.
    */
-  ghosts(
-    x0: number,
-    x1: number,
-    floor: number,
-    seed: number,
-    opts: { density?: number; ceiling?: number; maxHeight?: number } = {},
-  ) {
-    const r = rng(seed);
-    const density = opts.density ?? 0.55;
-    const maxH = opts.maxHeight ?? 4;
-    for (let x = Math.ceil(x0); x < x1; x++) {
-      if (r() > density) continue;
-      const roll = r();
+  ridge(x: number, n: number, y = 0) {
+    for (let i = 0; i < n; i++) this.fakeSpike(x + i, y);
+  }
 
-      if (roll < 0.36) {
-        // A spike row on the floor, exactly like a real one.
-        const n = 1 + Math.floor(r() * 3);
-        for (let i = 0; i < n && x + i < x1; i++) this.fakeSpike(x + i, floor);
-        x += n;
-      } else if (roll < 0.62) {
-        // A plinth standing on the floor, some of them carrying spikes —
-        // because real ones do, and because it gives the eye somewhere to go
-        // other than the floor line.
-        const w = 1 + Math.floor(r() * 3);
-        const h = 1 + Math.floor(r() * Math.max(1, maxH - 1));
-        this.push({ kind: "block", x, y: floor, w, h, decoy: true });
-        if (r() < 0.5) for (let i = 0; i < w; i++) this.fakeSpike(x + i, floor + h);
-        x += w;
-      } else if (roll < 0.8 && opts.ceiling !== undefined) {
-        // A row hanging from a ceiling that is actually there.
-        const n = 1 + Math.floor(r() * 2);
-        for (let i = 0; i < n && x + i < x1; i++)
-          this.push({
-            kind: "spike", x: x + i, y: opts.ceiling - 1, w: 1, h: 1, rot: 180, decoy: true,
-          });
-        x += n;
-      } else {
-        // A column, the shape a real gate is made of.
-        const h = 2 + Math.floor(r() * Math.max(1, maxH));
-        this.push({ kind: "block", x, y: floor, w: 1, h, decoy: true });
-        x += 1;
-      }
-      // Breathing room. Without it, adjacent patterns fuse into one
-      // fourteen-spike wall that no real level would ever contain.
-      x += 1 + Math.floor(r() * 3);
-    }
+  /** A one-block column with a wider cap — a pillar, not a stray rectangle. */
+  tower(x: number, h: number, floor = 0) {
+    this.push({ kind: "block", x, y: floor, w: 1, h, decoy: true });
+    this.push({ kind: "block", x: x - 0.5, y: floor + h, w: 2, h: 0.5, decoy: true });
+  }
+
+  /** A block standing on the floor, optionally with spikes along its top. */
+  plinth(x: number, w: number, h: number, spiked = false, floor = 0) {
+    this.push({ kind: "block", x, y: floor, w, h, decoy: true });
+    if (spiked) this.ridge(x, w, floor + h);
+  }
+
+  /** Two gears on a bracket. The only thing in the level allowed to float. */
+  gearPair(x: number, y: number) {
+    this.push({ kind: "saw", x, y, w: 2, h: 2, decoy: true, alpha: 0.9 });
+    this.push({ kind: "saw", x: x + 2.5, y: y + 1.5, w: 1.5, h: 1.5, decoy: true, alpha: 0.7 });
+  }
+
+  /** One question mark. The level is named after these. */
+  mark(x: number, y: number, size = 1.5) {
+    this.push({ kind: "glyph", x, y, w: size, h: size, decoy: true, alpha: 0.7 });
+  }
+
+  /** A row of painted teeth hanging off a ceiling that exists. */
+  hang(x: number, n: number, ceiling: number) {
+    for (let i = 0; i < n; i++)
+      this.push({
+        kind: "spike", x: x + i, y: ceiling - 1, w: 1, h: 1, rot: 180, decoy: true,
+      });
   }
 
   /**
-   * Floating sawblades — the only thing in this level allowed to hang in mid
-   * air, because a saw hanging in mid air is what a saw *is*. They spin, they
-   * catch the light, and they are the one piece of decoration that reads as
-   * deliberate rather than as debris.
+   * Lay a bar of hand-drawn dressing along a stretch of level.
+   *
+   * There is no randomness anywhere in this file any more, and that is the
+   * point. Scattering decoration with a seeded PRNG produces something that is
+   * *technically* deterministic and still looks like debris — clumps, gaps,
+   * three towers in a row and then forty empty blocks, none of it saying
+   * anything. It reads as spawned, because it was.
+   *
+   * So the dressing is drawn by hand, one bar at a time, and tiled. That is
+   * how real levels in this genre are built: a designer draws eight beats of
+   * background they like and reuses it down the length of the level, varying
+   * which bar goes where. `BARS` in level.ts is that drawing, and you can read
+   * the shape of it straight off the page.
    */
-  gears(x0: number, x1: number, yLo: number, yHi: number, count: number, seed: number) {
-    const r = rng(seed);
-    for (let i = 0; i < count; i++) {
-      const size = 1.5 + Math.round(r() * 2) * 0.75;
-      this.push({
-        kind: "saw",
-        x: Math.round(x0 + r() * (x1 - x0)),
-        y: Math.round(yLo + r() * (yHi - yLo)),
-        w: size, h: size,
-        decoy: true,
-        alpha: 0.6 + r() * 0.4,
-      });
-    }
-  }
-
-  /** The pink question marks the level is named after. Paint, always. */
-  glyphs(x0: number, x1: number, yLo: number, yHi: number, count: number, seed: number) {
-    const r = rng(seed);
-    for (let i = 0; i < count; i++) {
-      this.push({
-        kind: "glyph",
-        x: x0 + r() * (x1 - x0),
-        y: yLo + r() * (yHi - yLo),
-        w: 1 + r() * 1.6, h: 1 + r() * 1.6,
-        rot: (r() - 0.5) * 30,
-        decoy: true,
-        alpha: 0.35 + r() * 0.45,
-      });
+  dress(x0: number, x1: number, bars: Motif[][], opts: DressOpts = {}) {
+    const span = opts.barBlocks ?? 40;
+    const cap = opts.maxHeight ?? 99;
+    const floor = opts.floor ?? 0;
+    let bar = 0;
+    for (let base = x0; base < x1; base += span, bar++) {
+      for (const m of bars[bar % bars.length]) {
+        const x = base + m[1];
+        if (x < x0 || x >= x1 - 0.5) continue;
+        switch (m[0]) {
+          case "ridge":
+            this.ridge(x, m[2], floor);
+            break;
+          case "tower":
+            this.tower(x, Math.min(m[2], cap), floor);
+            break;
+          case "plinth":
+            this.plinth(x, m[2], Math.min(m[3], cap), m[4] ?? false, floor);
+            break;
+          case "gears":
+            this.gearPair(x, m[2]);
+            break;
+          case "mark":
+            this.mark(x, m[2]);
+            break;
+          case "hang":
+            if (opts.ceiling !== undefined) this.hang(x, m[2], opts.ceiling);
+            break;
+          case "far":
+            this.push({
+              kind: "block", x, y: floor, w: 2, h: Math.min(m[2], cap + 3),
+              decoy: true, back: true, alpha: 0.5,
+            });
+            break;
+        }
+      }
     }
   }
 
@@ -314,9 +315,9 @@ export class Builder {
   /** Ground you cannot stand on. Rests on decoy columns, so even the lie
       obeys gravity. */
   fakeSlab(x0: number, x1: number, y: number) {
-    this.push({ kind: "block", x: x0, y: y - 1.2, w: x1 - x0, h: 1.2, decoy: true });
+    this.push({ kind: "block", x: x0, y: y - 1, w: x1 - x0, h: 1, decoy: true });
     for (const x of [x0, x1 - 1]) {
-      this.push({ kind: "block", x, y: 0, w: 1, h: y - 1.2, decoy: true });
+      this.push({ kind: "block", x, y: 0, w: 1, h: y - 1, decoy: true });
     }
   }
 

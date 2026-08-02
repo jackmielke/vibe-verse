@@ -162,33 +162,51 @@ test. A spike's own box is 12×18 at the base centre of its tile, not the whole
 tile. That gap is why clipping the corner of a spike survives, and it always
 has been.
 
-## Nothing floats but the gears
+## Nothing is spawned. It is drawn.
 
-Two rules for decoy geometry, and the second one took two rewrites to find.
+There is **no random number generator in this game**, anywhere, and getting
+there took three attempts at the same problem.
 
-**1. Decoys have to look like level.** Everything `ghosts()` emits sits on the
-integer grid, at the sizes real objects come in, unrotated, in the section's
-colours — a decoy spike row is pixel-for-pixel a real spike row. Rows cap at
-three, because a longer one is not clearable and so reads as scenery, and
-patterns are spaced so neighbours do not fuse into a fourteen-spike wall no
-real level would contain. (The version before that scattered randomly rotated,
-randomly scaled shapes and read as confetti: nobody mistakes a spike tilted
-37° for a hazard, so nothing was being deceived — the screen was just noisy.)
+1. A scatter of randomly rotated, randomly scaled shapes. Read as confetti —
+   nobody mistakes a spike tilted 37° for a hazard, so nothing was being
+   deceived; the screen was just noisy.
+2. A scatter of grid-aligned, correctly-sized shapes from a seeded PRNG.
+   Better, and still debris: three towers in a row and then forty empty
+   blocks, saying nothing. Reproducible is not the same as designed.
+3. **Four bars of dressing, drawn by hand, tiled.** `BAR_STREET`,
+   `BAR_SPIRES`, `BAR_LOW` and `BAR_SPARSE` in `level.ts` are eight beats of
+   background each, written as a list of motifs at block offsets; read a column
+   of the x numbers and you are reading the silhouette. Each movement picks
+   which bars to tile. That is how levels in this genre are actually built — a
+   designer draws a bar of background they like and reuses it — and it is the
+   only one of the three that looks like a decision.
 
-**2. Decoys have to be standing on something.** Spikes stand on the floor or on
-a plinth that reaches the floor; hanging rows hang from a ceiling that exists,
-or from a **girder** (`mount: true`) put there for exactly that purpose. A
-spike in mid-air is not something a level contains, and a screen of them reads
-as a rendering bug rather than as a lie.
+Three rules hold the dressing together:
 
-The one exception is `gears()` — floating sawblades — because a sawblade
-hanging in mid-air is what a sawblade *is*. They are the only decoration above
-head height in the whole level, and the level is much better for it.
+- **It looks like level.** Motifs are built from the same pieces real geometry
+  is: a pillar with a cap, a plinth with spikes along its top, a ridge of
+  floor spikes. A decoy spike row is pixel-for-pixel a real spike row.
+- **It stands on something.** Spikes stand on the floor or on a plinth that
+  reaches it; hanging rows hang from a ceiling that exists, or from a **girder**
+  (`mount: true`) put there for the purpose. A spike in mid-air reads as a
+  rendering bug, not as a lie.
+- **Nothing floats but the gears**, because a sawblade hanging in mid-air is
+  what a sawblade *is*. They are the only decoration above head height.
 
-`ispy.test.ts` walks every object and fails on anything that is neither
-standing on, nor hanging from, nor a gear. It found sixteen the first time it
-ran, including a row of painted ceiling teeth in the ball section that had been
-drawn point-*up* with six blocks of air beneath them.
+Two tests hold all of it: one fails on anything that is neither standing on,
+nor hanging from, nor a gear — it found sixteen the first time it ran — and one
+fails on any decoy off the half-block authoring grid, because a thing placed by
+a random number lands on an arbitrary coordinate and a thing placed by a person
+lands on the grid they were drawing on.
+
+## A base you could stand on
+
+The ground used to be a two-pixel line with the picture stopping under it. It
+is now three courses of masonry with offset joints, a lit lip, and the glow it
+throws up into the level — and the camera floor sits 1.7 blocks below the level
+floor so you can actually see it. The palettes' ground colours are nearly
+black, so the face is mixed toward the section accent; otherwise a "solid base"
+renders as the place the screen ends.
 
 ## Checkpoints live in practice mode
 

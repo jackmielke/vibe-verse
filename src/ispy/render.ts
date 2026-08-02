@@ -280,26 +280,47 @@ export class Renderer {
     // Ground slab, drawn under everything.
     const groundY = toScreenY(0);
     if (groundY < bottom) {
-      ctx.fillStyle = mix(pal.ground, "#ffffff", pulse * 0.35);
+      // A real base, not a line. Three courses of block, a bright lip, and a
+      // glow above it — the ground is the one thing on screen that is never
+      // lying to you, so it should look like something you can stand on.
+      // The palettes' ground colours are nearly black, so the base has to be
+      // lifted toward the section's accent to be a surface at all rather than
+      // the place the picture stops.
+      const course = S;
+      const face = mix(pal.ground, pal.accent, 0.22);
+      ctx.fillStyle = mix(pal.ground, "#000000", 0.45);
       ctx.fillRect(0, groundY, this.width, bottom - groundY);
-      // Scrolling tick marks, so the floor has speed and the eye has
-      // something to read the 1× against.
+      ctx.fillStyle = mix(face, "#ffffff", pulse * 0.3);
+      ctx.fillRect(0, groundY, this.width, Math.min(course, bottom - groundY));
+      ctx.fillStyle = mix(pal.ground, pal.accent, 0.1);
+      ctx.fillRect(0, groundY + course, this.width, Math.max(0, bottom - groundY - course));
+
+      // Mortar. Vertical joints on the block grid, offset on the lower
+      // course, so the base reads as masonry rather than as a fill.
       ctx.save();
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = pal.accent;
-      const tick = S;
-      const off = (toScreenX(0) % (tick * 2) + tick * 2) % (tick * 2);
-      for (let px = off - tick * 2; px < this.width; px += tick * 2) {
-        ctx.fillRect(px, groundY + 4, tick, Math.max(2, bottom - groundY - 8));
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = mix(pal.ground, "#000000", 0.8);
+      const originPx = toScreenX(0);
+      for (let row = 0; row < 3; row++) {
+        const y = groundY + row * course;
+        if (y > bottom) break;
+        const shift = row % 2 ? course / 2 : 0;
+        const off = ((originPx + shift) % course + course) % course;
+        for (let px = off - course; px < this.width; px += course) {
+          ctx.fillRect(px, y, 2, Math.min(course, bottom - y));
+        }
+        ctx.fillRect(0, y, this.width, 2);
       }
       ctx.restore();
+
+      // The lip, and the light it throws up into the level.
       ctx.fillStyle = rgba(pal.accent, 0.95);
       ctx.fillRect(0, groundY - 3, this.width, 4);
-      const glow = ctx.createLinearGradient(0, groundY - 26, 0, groundY);
+      const glow = ctx.createLinearGradient(0, groundY - 30, 0, groundY);
       glow.addColorStop(0, rgba(pal.accent, 0));
-      glow.addColorStop(1, rgba(pal.accent, 0.16 + pulse * 0.2));
+      glow.addColorStop(1, rgba(pal.accent, 0.18 + pulse * 0.22));
       ctx.fillStyle = glow;
-      ctx.fillRect(0, groundY - 26, this.width, 26);
+      ctx.fillRect(0, groundY - 30, this.width, 30);
     }
 
     // ── objects ──────────────────────────────────────────────────────────

@@ -79,6 +79,26 @@ describe("I Spy", () => {
     expect(floating.slice(0, 8), `${floating.length} floating`).toEqual([]);
   });
 
+  it("spawns nothing at random — every decoy is on the authoring grid", () => {
+    // The level's decoration used to come out of a seeded PRNG. It was
+    // reproducible and it still looked like debris, because a scatter is not a
+    // decision: three towers in a row, then forty empty blocks, saying
+    // nothing. It is all hand-drawn now — four bars of dressing in `level.ts`,
+    // tiled — and this is what keeps it that way. Anything placed by a random
+    // number lands on an arbitrary coordinate; anything placed by a person
+    // lands on the grid they were drawing on.
+    const OFF = 0.5;
+    const strays: string[] = [];
+    for (const o of level.objects) {
+      if (!o.decoy) continue;
+      const onGrid = (v: number) => Math.abs(v / OFF - Math.round(v / OFF)) < 1e-9;
+      if (onGrid(o.x) && onGrid(o.y) && onGrid(o.w) && onGrid(o.h) && !o.rot) continue;
+      if (o.rot === 180 && onGrid(o.x) && onGrid(o.y)) continue;
+      strays.push(`${o.kind} at ${o.x},${o.y} ${o.w}x${o.h} rot=${o.rot ?? 0}`);
+    }
+    expect(strays.slice(0, 6), `${strays.length} off-grid`).toEqual([]);
+  });
+
   it("never lets a decoy collide", () => {
     const decoys = level.objects.filter((o) => o.decoy);
     expect(decoys.length).toBeGreaterThan(200);
