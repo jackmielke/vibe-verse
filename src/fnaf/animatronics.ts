@@ -291,16 +291,57 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
   head.add(jaw);
 
   if (kind === "chica") {
-    const upperBeak = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.34, 4), mat(p.muzzle, 0.7));
-    upperBeak.rotation.x = Math.PI / 2;
-    upperBeak.rotation.z = Math.PI / 4;
-    upperBeak.position.set(0, 0.02, 0.31);
+    /*
+     * A wide flat bill, built from tapered boxes, sitting *proud of the face*.
+     *
+     * Two things were wrong before and both mattered.
+     *
+     * The solid was wrong: a four-sided cone pointed down the view axis is a
+     * rhombus seen head-on, so her whole face was a kite. A tapered box reads
+     * as a bill from every angle.
+     *
+     * And the placement was wrong, which is the part that survived the first
+     * fix. The skull is radius 0.377 in Z, so its surface at beak height is at
+     * z ≈ 0.374 — a 0.34-deep beak centred at z = 0.31 is therefore *inside her
+     * head*, with only the narrow tapered tip breaking the surface. Hence the
+     * numbers below: back edge tucked just inside the skull at 0.28, front edge
+     * out at 0.62, so a quarter of a metre of bill actually projects. If this
+     * ever needs moving again, move it in Z against the skull radius rather
+     * than nudging it and looking at the front view — from straight on, a beak
+     * buried in the face and a beak sticking out of it look nearly identical.
+     */
+    const beakMat = mat(p.muzzle, 0.7);
+    const mandible = (w: number, h: number, d: number, taper: number) => {
+      const g = new THREE.BoxGeometry(w, h, d);
+      // Pinch the front face in, so it is a bill and not a brick.
+      const pos = g.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) {
+        if (pos.getZ(i) > 0) {
+          pos.setX(i, pos.getX(i) * taper);
+          pos.setY(i, pos.getY(i) * taper);
+        }
+      }
+      pos.needsUpdate = true;
+      g.computeVertexNormals();
+      return g;
+    };
+
+    const upperBeak = new THREE.Mesh(mandible(0.32, 0.1, 0.34, 0.66), beakMat);
+    upperBeak.position.set(0, -0.05, 0.45);
+    upperBeak.rotation.x = 0.13;
     head.add(upperBeak);
-    const lowerBeak = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.26, 4), mat(p.muzzle, 0.7));
-    lowerBeak.rotation.x = Math.PI / 2;
-    lowerBeak.rotation.z = Math.PI / 4;
-    lowerBeak.position.set(0, -0.04, 0.24);
+
+    // Jaw sits at (0, -0.12, 0.18), so this lands at world (0, -0.135, 0.43):
+    // directly under the upper bill, meeting it along the mouth line.
+    const lowerBeak = new THREE.Mesh(mandible(0.28, 0.075, 0.3, 0.7), beakMat);
+    lowerBeak.position.set(0, -0.015, 0.25);
+    lowerBeak.rotation.x = -0.05;
     jaw.add(lowerBeak);
+
+    // The seam, so the mouth is a line rather than a crease between two solids.
+    const gape = bx(0.3, 0.018, 0.3, mat(0x140f08, 0.9));
+    gape.position.set(0, -0.099, 0.46);
+    head.add(gape);
   } else if (kind === "foxy") {
     const snout = bx(0.24, 0.16, 0.4, muzzle);
     snout.position.set(0, 0.0, 0.36);
