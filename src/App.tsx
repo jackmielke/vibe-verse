@@ -58,6 +58,10 @@ const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
    thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
    nobody who never flies it should carry the city in the hub's entry chunk. */
 const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
+/* I SPY is a 2D canvas game with no Three in it at all, but it carries a
+   1,400-object level and a solver, and nobody who never plays it should
+   carry those around in the hub's entry chunk either. */
+const ISpy = lazy(() => import("./pages/ISpy.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -90,6 +94,11 @@ const CHROMELESS = new Set([
   "/blue-angels",
   "/angels",
   "/seafair-show",
+  // I Spy fills the frame with things that look like spikes. The nav would
+  // become one more of them.
+  "/i-spy",
+  "/ispy",
+  "/geometry-dash",
 ]);
 
 const AppChrome = () => {
@@ -253,6 +262,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
                   <BlueAngels />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* I SPY — the Geometry Dash level, in 2D, in the vibeverse. One
+              button, sixty seconds, and a screen full of spikes that are not
+              there. */}
+          {["/i-spy", "/ispy", "/geometry-dash"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <ISpy />
                 </Suspense>
               }
             />
