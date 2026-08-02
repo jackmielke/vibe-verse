@@ -13,6 +13,7 @@
  * card that lists controls you do not have is worse than none.
  */
 import type { ControlScheme } from "../engine/input";
+import type { SpawnPoint } from "../play/fleet";
 
 export const HELP_SEEN_KEY = "angels.helpSeen";
 
@@ -70,7 +71,11 @@ export function bindingsFor(scheme: ControlScheme, touch: boolean): Binding[] {
 }
 
 /** One line of advice that is worth more than the whole key list. */
-const TIPS: Record<"show" | "runway" | "high", string> = {
+const TIPS: Record<SpawnPoint, string> = {
+  needle:
+    "The Space Needle is dead ahead, thirteen seconds away. Go over the top of it, " +
+    "then put the nose down into downtown — and try not to hit anything, because " +
+    "the landmarks here are solid.",
   show:
     "You are already flying, southbound down the show line at 1,500 feet. " +
     "Ease the nose over and see how low you dare take it past the boats.",
@@ -85,7 +90,7 @@ const TIPS: Record<"show" | "runway" | "high", string> = {
 interface Props {
   scheme: ControlScheme;
   touch: boolean;
-  start: "show" | "runway" | "high";
+  start: SpawnPoint;
   onScheme(next: ControlScheme): void;
   onClose(): void;
 }

@@ -106,6 +106,7 @@ const ACHIEVEMENTS: Array<{ id: string; name: string; hint: string }> = [
   { id: "night", name: "Night Show", hint: "Fly the show line after dark." },
   { id: "loop", name: "Round the Top", hint: "Complete a loop." },
   { id: "inverted", name: "Double Farvel", hint: "Hold inverted flight for eight seconds." },
+  { id: "worldsfair", name: "1962 World's Fair", hint: "Hit the Space Needle. Please do not." },
 ];
 
 const STORE_KEY = "angels.progress";
@@ -303,6 +304,38 @@ export function createGame(ctx: AngelsCtx): System {
     if (progress.flown.length >= 7) award("roster");
   });
 
+  /**
+   * The flight watches you write one off and says so.
+   *
+   * Small thing, and it is the difference between a game over and a moment.
+   * The lines are the ones an actual demo team's safety officer would use,
+   * which is to say dry.
+   */
+  const offCrash = ctx.on(
+    "angels:crash",
+    (e: { cause: string; speed: number; landmark: string | null }) => {
+      if (e.landmark === "Space Needle") award("worldsfair");
+      say("BOSS", "Knock it off, knock it off. Lead is down.", "warn");
+      say("SAFETY", `Number 1 into ${e.cause} at ${Math.round(e.speed * 1.94384)} knots.`, "warn");
+      running = false;
+    },
+  );
+
+  /**
+   * A crashed run does not carry over. Restarting the course rather than
+   * abandoning it is the difference between "try that again" and "go back to
+   * the menu", and the hoops are already in the world.
+   */
+  const offRespawn = ctx.on("angels:respawn", () => {
+    const c = ctx.services.courses as { active: unknown; restart(): void } | undefined;
+    runTime = 0;
+    score = 0;
+    if (c?.active) {
+      c.restart();
+      running = true;
+    }
+  });
+
   const _tmp = new THREE.Vector3();
   let sinceLandmarkCheck = 0;
 
@@ -469,6 +502,8 @@ export function createGame(ctx: AngelsCtx): System {
       offHoop();
       offCourse();
       offJet();
+      offCrash();
+      offRespawn();
       if (ctx.services.game === service) delete ctx.services.game;
     },
   };

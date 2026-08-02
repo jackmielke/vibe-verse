@@ -9,7 +9,11 @@
  *  3. the wingmen converge on their slots instead of oscillating around them;
  *  4. the demo caller advances when you fly what it asked for;
  *  5. a cold jet on Boeing Field 14R actually accelerates, rotates and climbs;
- *  6. `dispose()` releases the WebGL context — a world that leaks one breaks
+ *  6. flying into the Space Needle is fatal, and flying into the lake is too,
+ *     while a normal landing is not — a crash system that fires on a firm
+ *     touchdown would be worse than none;
+ *  7. the wreck hands the jet back by itself, at the start point you chose;
+ *  8. `dispose()` releases the WebGL context — a world that leaks one breaks
  *     the *next* world a visitor opens, which is a miserable thing to debug.
  *
  * Exits non-zero on any failure, so it can gate a push.
@@ -260,7 +264,140 @@ check(
   `rotate at ${takeoff.rotatedAt}s, airborne at ${takeoff.liftedAt}s, ${takeoff.alt} m up at ${takeoff.kias} kn`,
 );
 
-// ---- 6. teardown releases the context -------------------------------------
+// ---- 6. you can write one off ----------------------------------------------
+// Straight at the Space Needle from two kilometres out, at the height of the
+// saucer. Nothing here nudges the crash flag by hand: the jet is placed, flown,
+// and either hits the thing or does not.
+const needle = await page.evaluate(() => {
+  const e = window.__angels;
+  e.ctx.services.game.setMode("free");
+  const fleet = e.ctx.services.fleet;
+  fleet.respawn("needle");
+  const s = fleet.player.state;
+  // Aim at the saucer rather than over it.
+  s.position.y = 168;
+  e.ctx.input.pitch = 0;
+  e.ctx.input.roll = 0;
+  e.ctx.input.throttle = 0.9;
+  let hitAt = 0;
+  for (let i = 0; i < 120 * 40; i++) {
+    // Hold the altitude the Needle's saucer is at, so this is a test of the
+    // collision hull and not of whether the jet happens to descend into it.
+    s.position.y = 168;
+    s.velocity.y = 0;
+    e.step(1 / 120, false);
+    if (fleet.wreck.active && !hitAt) {
+      hitAt = i / 120;
+      break;
+    }
+  }
+  return { hitAt: +hitAt.toFixed(1), cause: fleet.wreck.cause, active: fleet.wreck.active };
+});
+check(
+  "flying into the Space Needle writes the jet off",
+  needle.active && needle.cause === "the Space Needle",
+  `${needle.cause || "nothing hit"} after ${needle.hitAt}s`,
+);
+
+const worldsFair = await page.evaluate(
+  () => window.__angels.ctx.services.game.achievements.find((a) => a.id === "worldsfair")?.earned,
+);
+check("and the 1962 World's Fair remembers it", worldsFair === true);
+
+// ---- 7. the wreck hands the jet back ---------------------------------------
+const handback = await page.evaluate(() => {
+  const e = window.__angels;
+  const fleet = e.ctx.services.fleet;
+  const before = { ...fleet.wreck };
+  // Run past the countdown.
+  for (let i = 0; i < 120 * 6; i++) e.step(1 / 120, false);
+  const s = fleet.player.state;
+  return {
+    wasActive: before.active,
+    stillActive: fleet.wreck.active,
+    flying: !s.onGround && s.airspeed > 100,
+    spawn: fleet.spawnPoint,
+    alt: Math.round(s.position.y),
+  };
+});
+check(
+  "the countdown hands the jet back by itself",
+  handback.wasActive && !handback.stillActive && handback.flying,
+  `${handback.alt} m, ${handback.spawn} start`,
+);
+check("and puts you back where you chose to start", handback.spawn === "needle");
+
+// ---- 8. hitting the water is a crash, a landing is not ---------------------
+const water = await page.evaluate(() => {
+  const e = window.__angels;
+  const fleet = e.ctx.services.fleet;
+  const terrain = e.ctx.services.terrain;
+  fleet.respawn("show");
+  const s = fleet.player.state;
+  // Directly over the middle of the show box, which is open water, and then
+  // flown into it. Setting a sink rate is not enough — the fly-by-wire holds
+  // 1 G with the stick centred, so the jet levels off and cruises down the
+  // lake for the whole test instead of arriving anywhere.
+  const M_LAT = 111182.5;
+  const M_LON = 75128.0;
+  // SHOW_CENTRE, from world/geo.ts: the middle of the Seafair box.
+  const cx = (-122.265 - -122.3321) * M_LON;
+  const cz = -(47.564 - 47.6062) * M_LAT;
+  s.position.set(cx, 520, cz);
+  for (let i = 0; i < 120 * 40; i++) {
+    e.ctx.input.pitch = -0.85;
+    e.step(1 / 120, false);
+    if (fleet.wreck.active) break;
+  }
+  e.ctx.input.pitch = 0;
+  return {
+    active: fleet.wreck.active,
+    cause: fleet.wreck.cause,
+    overWater: terrain.isWater(s.position.x, s.position.z),
+  };
+});
+check(
+  "and so does arriving at Lake Washington",
+  water.active && water.cause === "the water",
+  `${water.cause || "survived a lake"}, terrain says ${water.overWater ? "water" : "land"}`,
+);
+
+const landing = await page.evaluate(() => {
+  const e = window.__angels;
+  const fleet = e.ctx.services.fleet;
+  fleet.respawn("runway");
+  const s = fleet.player.state;
+  // A takeoff roll straight into a landing: full power, rotate, gear up is NOT
+  // touched, come back down. What is being asked here is only that the runway
+  // itself never trips the crash test.
+  for (let i = 0; i < 120 * 45; i++) {
+    e.ctx.input.throttle = 1;
+    const kts = s.ias * 1.94384;
+    e.ctx.input.pitch = kts > 135 && s.position.y < 260 ? 0.55 : 0;
+    e.step(1 / 120, false);
+    if (fleet.wreck.active) {
+      return {
+        active: true,
+        cause: fleet.wreck.cause,
+        alt: Math.round(s.position.y),
+        at: +(i / 120).toFixed(1),
+        kias: Math.round(s.ias * 1.94384),
+        sink: +(-s.velocity.y).toFixed(1),
+        gear: +s.gearPos.toFixed(2),
+      };
+    }
+  }
+  return { active: false, cause: "", alt: Math.round(s.position.y), at: -1 };
+});
+check(
+  "but flying off a runway is not a crash",
+  !landing.active,
+  landing.active
+    ? `wrecked on "${landing.cause}" at ${landing.at}s, ${landing.alt} m, ${landing.kias} kn, sink ${landing.sink}, gear ${landing.gear}`
+    : `climbed to ${landing.alt} m clean`,
+);
+
+// ---- 9. teardown releases the context -------------------------------------
 const torn = await page.evaluate(() => {
   const e = window.__angels;
   const gl = e.ctx.renderer.getContext();

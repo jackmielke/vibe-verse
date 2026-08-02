@@ -380,6 +380,64 @@ export function createAudio(ctx: AngelsCtx): System {
         src.stop(t + 2.5);
         break;
       }
+      case "crash": {
+        // Three layers, because one noise burst is a door slamming and an
+        // explosion is not a door slamming.
+        //
+        //  - a sub that starts at 90 Hz and falls to 28 over a second, which
+        //    is the thump you feel rather than hear;
+        //  - a wide noise crack, filtered from bright to dark, which is the
+        //    part that arrives first;
+        //  - a long low rumble underneath both that outlasts them, so the
+        //    tail decays into the scene instead of stopping.
+        const sub = r.ac.createOscillator();
+        sub.type = "sine";
+        sub.frequency.setValueAtTime(90, t);
+        sub.frequency.exponentialRampToValueAtTime(28, t + 1.1);
+        const subEnv = r.ac.createGain();
+        subEnv.gain.setValueAtTime(0.0001, t);
+        subEnv.gain.exponentialRampToValueAtTime(1.0 * g, t + 0.012);
+        subEnv.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+        sub.connect(subEnv);
+        subEnv.connect(env);
+        sub.start(t);
+        sub.stop(t + 1.5);
+
+        const crack = r.ac.createBufferSource();
+        crack.buffer = r.noise;
+        const lp = r.ac.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.setValueAtTime(5200, t);
+        lp.frequency.exponentialRampToValueAtTime(120, t + 1.6);
+        const crackEnv = r.ac.createGain();
+        crackEnv.gain.setValueAtTime(0.95 * g, t);
+        crackEnv.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+        crack.connect(lp);
+        lp.connect(crackEnv);
+        crackEnv.connect(env);
+        crack.start(t);
+        crack.stop(t + 2.4);
+
+        const rumble = r.ac.createBufferSource();
+        rumble.buffer = r.noise;
+        rumble.playbackRate.value = 0.32;
+        const rlp = r.ac.createBiquadFilter();
+        rlp.type = "lowpass";
+        rlp.frequency.setValueAtTime(220, t);
+        rlp.frequency.exponentialRampToValueAtTime(55, t + 3.4);
+        const rEnv = r.ac.createGain();
+        rEnv.gain.setValueAtTime(0.0001, t);
+        rEnv.gain.exponentialRampToValueAtTime(0.5 * g, t + 0.16);
+        rEnv.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
+        rumble.connect(rlp);
+        rlp.connect(rEnv);
+        rEnv.connect(env);
+        rumble.start(t);
+        rumble.stop(t + 3.8);
+
+        env.gain.setValueAtTime(1, t);
+        break;
+      }
       case "warn": {
         const o = r.ac.createOscillator();
         o.type = "square";
@@ -427,6 +485,7 @@ export function createAudio(ctx: AngelsCtx): System {
     ctx.on("angels:radio", () => cue("radio")),
     ctx.on("angels:gear", () => cue("gear")),
     ctx.on("angels:impact", (v: number) => cue("impact", { gain: Math.min(1, v) })),
+    ctx.on("angels:crash", () => cue("crash")),
   ];
 
   let wasSupersonic = false;

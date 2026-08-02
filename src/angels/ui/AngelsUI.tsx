@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Engine } from "../engine/core";
 import { HANGAR, type JetId } from "../flight/aircraft";
-import type { FleetService } from "../play/fleet";
+import type { FleetService, SpawnPoint } from "../play/fleet";
 import type { CourseService } from "../play/courses";
 import type { GameService, RadioMessage, Achievement } from "../play/game";
 import type { InputService, ControlScheme } from "../engine/input";
@@ -82,7 +82,12 @@ const ASSIST_COPY: Record<AssistLevel, { name: string; blurb: string }> = {
  * You are stopped, cold, on Boeing Field 14R with the gear down and the
  * throttle at idle, and nothing happens until you push it up.
  */
-const START_POINTS: Array<{ id: "show" | "runway" | "high"; name: string; blurb: string }> = [
+const START_POINTS: Array<{ id: SpawnPoint; name: string; blurb: string }> = [
+  {
+    id: "needle",
+    name: "The Space Needle",
+    blurb: "Two miles out and pointed straight at it. Thirteen seconds to the saucer.",
+  },
   { id: "show", name: "The show line", blurb: "Airborne over Lake Washington, running in from the north." },
   { id: "runway", name: "Boeing Field", blurb: "Stopped on 14R. Throttle up and fly it off yourself." },
   { id: "high", name: "High over the city", blurb: "14,000 feet with the whole Sound in front of you." },
@@ -118,10 +123,11 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [invertPitch, setInvertPitch] = useState(false);
   const [tilt, setTilt] = useState(false);
   const [wingmen, setWingmen] = useState(5);
-  const [start, setStart] = useState<"show" | "runway" | "high">("show");
+  const [start, setStart] = useState<SpawnPoint>("needle");
   const [help, setHelp] = useState(false);
   const [scheme, setScheme] = useState<ControlScheme>("mouse");
   const [thumbs, setThumbs] = useState(false);
+  const [wreck, setWreck] = useState<{ cause: string; speed: number } | null>(null);
 
   const services = engine.ctx.services;
   const courses = services.courses as CourseService | undefined;
@@ -138,8 +144,11 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   // and it re-anchors neutral under the cursor on the way back out.
   useEffect(() => {
     const input = services.input as InputService | undefined;
-    input?.setMenuOpen(screen !== "flying" || help);
-  }, [services, screen, help]);
+    // A wreck counts: there is no jet to fly, so the thumb overlay comes down
+    // (in portrait it sat on top of the FLY AGAIN button) and the mouse stops
+    // being a stick.
+    input?.setMenuOpen(screen !== "flying" || help || !!wreck);
+  }, [services, screen, help, wreck]);
 
   // Pick up whatever the input system restored from localStorage.
   useEffect(() => {
@@ -175,6 +184,8 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
         const c = engine.ctx.services.courses as CourseService | undefined;
         setHoopProgress({ done: 0, total: id && c ? c.hoops.length : 0 });
       }),
+      engine.on("angels:crash", (e: { cause: string; speed: number }) => setWreck(e)),
+      engine.on("angels:respawn", () => setWreck(null)),
       engine.on("angels:camera", (m: CameraMode) => setCamera(m)),
       engine.on("angels:jet", (id: JetId) => setJet(id)),
       engine.on("angels:assist", (a: AssistLevel) => setAssist(a)),
@@ -230,6 +241,24 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   }, [engine, closeHelp]);
 
   const spec = useMemo(() => HANGAR.find((a) => a.id === jet) ?? HANGAR[0], [jet]);
+
+  // The countdown bar and the white flash are both "start at one, transition to
+  // zero" — two renders and CSS does the rest. Driving either from the 4 Hz
+  // sampler would make the bar step in visible chunks and would miss the flash
+  // entirely, since the whole flash is shorter than one sample.
+  const [wreckBar, setWreckBar] = useState(1);
+  const [flash, setFlash] = useState(0);
+  const wreckSeconds = (services.fleet as FleetService | undefined)?.wreck.duration ?? 3.6;
+  useEffect(() => {
+    if (!wreck) return;
+    setWreckBar(1);
+    setFlash(1);
+    const id = requestAnimationFrame(() => {
+      setWreckBar(0);
+      setFlash(0);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [wreck]);
 
   function applyInvert(v: boolean) {
     setInvertPitch(v);
@@ -313,9 +342,67 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
 
   return (
     <>
-      {/* The HUD stays up behind the card — dimmed by its backdrop, but there,
-          so dismissing it does not feel like the instruments rebooting. */}
-      <FlightHUD engine={engine} visible={screen === "flying"} />
+      {/* The HUD stays up behind the controls card — dimmed by its backdrop,
+          but there, so dismissing it does not feel like the instruments
+          rebooting. It goes away entirely for a crash: a velocity vector and a
+          G reading laid over your own fireball is the game insisting the jet
+          is still flying. */}
+      <FlightHUD engine={engine} visible={screen === "flying" && !wreck} />
+
+      {/* ---- the smoking hole -------------------------------------------- */}
+      {wreck && (
+        <>
+          {/* One frame of white, then out. This is what makes the fireball
+              read as something that happened *to you* rather than something
+              you are watching from across the lake. */}
+          <div
+            data-angels-hud="flash"
+            className="pointer-events-none fixed inset-0 z-40"
+            style={{
+              background: "#fff5e2",
+              opacity: flash * 0.86,
+              transition: "opacity 420ms cubic-bezier(0.2,0,0.4,1)",
+            }}
+          />
+          <div
+            data-angels-hud="wreck"
+            className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4"
+            style={{ bottom: "max(28px, calc(env(safe-area-inset-bottom) + 22px))" }}
+          >
+            <div
+              className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-2xl border border-red-400/30"
+              style={{ background: "rgba(14,4,4,0.86)", backdropFilter: "blur(4px)" }}
+            >
+              <div className="px-4 pb-3 pt-3">
+                <p className="font-mono text-[9.5px] uppercase tracking-[0.42em] text-red-300/70">
+                  Scratch one
+                </p>
+                <p className="mt-1 text-[15px] font-black leading-tight text-white">
+                  You flew into {wreck.cause}
+                  <span className="ml-1.5 font-mono text-[11.5px] font-normal text-red-200/60">
+                    at {Math.round(wreck.speed * 1.94384)} knots
+                  </span>
+                </p>
+              </div>
+              <div className="h-[3px] w-full bg-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-300 to-red-400"
+                  style={{
+                    width: `${wreckBar * 100}%`,
+                    transition: `width ${wreckSeconds}s linear`,
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => (services.fleet as FleetService | undefined)?.restart()}
+                className="w-full bg-gradient-to-b from-amber-300 to-amber-500 py-2.5 text-[13px] font-black uppercase tracking-[0.24em] text-slate-900 transition hover:brightness-110"
+              >
+                Fly again
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {help && (
         <ControlsCard
@@ -401,7 +488,11 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
           {toast && (
             <div
               data-angels-hud="toast"
-              className="pointer-events-none fixed bottom-24 left-1/2 z-40 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4"
+              className="pointer-events-none fixed left-1/2 z-40 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4"
+              // Out of the crash card's way when there is one. An achievement
+              // and a "you are dead" notice arriving together is exactly what
+              // happens when you fly into the Space Needle.
+              style={{ bottom: wreck ? 188 : 96 }}
             >
               <div className="rounded-xl border border-amber-300/40 bg-gradient-to-b from-amber-500/25 to-black/70 px-5 py-3 text-center backdrop-blur-md">
                 <p className="font-mono text-[9px] uppercase tracking-[0.35em] text-amber-200/70">Seafair</p>

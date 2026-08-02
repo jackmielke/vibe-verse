@@ -182,6 +182,12 @@ export interface FlightState {
   fuel: number;
   /** Set for one step when the aircraft touches down or hits something. */
   impact: number;
+  /**
+   * Set for one step when the aircraft arrived at the ground in a way it does
+   * not walk away from. Distinct from `impact`, which a firm but legal landing
+   * also raises — this one means the aeroplane is scrap.
+   */
+  crashed: boolean;
   /** Seconds of continuous flight since the last reset. */
   age: number;
 }
@@ -215,6 +221,7 @@ export function createFlightState(spec: AircraftSpec): FlightState {
     gStrain: 1,
     fuel: spec.mass * 0.18,
     impact: 0,
+    crashed: false,
     age: 0,
   };
 }
@@ -225,6 +232,11 @@ export interface FlightEnvironment {
   terrainHeight(x: number, z: number): number;
   /** Wind vector in world space, m/s. */
   wind(position: THREE.Vector3, out: THREE.Vector3): THREE.Vector3;
+  /**
+   * Whether this XZ is over water. Optional, and only used to decide whether
+   * arriving at the surface counts as a landing — nothing here floats.
+   */
+  isWater?(x: number, z: number): boolean;
 }
 
 // Scratch vectors. This runs 120 times a second per aircraft with seven
@@ -520,18 +532,48 @@ export function stepFlight(
   const gearHeight = spec.height * 0.42 * Math.max(state.gearPos, 0.35);
   let jolt = 0;
   state.impact = 0;
+  state.crashed = false;
 
   if (state.position.y - gearHeight <= ground) {
     const sink = -state.velocity.y;
     const wingsLevel = _up.y > 0.86;
-    const noseOk = Math.abs(state.pitchAttitude) < 0.28;
+    // Read the attitude off this step's orientation, not off `pitchAttitude`,
+    // which is published at the *bottom* of this function and is therefore one
+    // step stale. Normally that costs nothing; on the first step after a
+    // respawn it is the attitude of the previous flight, which is how a jet
+    // parked on Boeing Field came to be judged by the dive it was in when it
+    // hit the lake thirty seconds earlier.
+    const noseUp = Math.asin(THREE.MathUtils.clamp(_fwd.y, -1, 1));
+    const noseOk = Math.abs(noseUp) < 0.28;
     const gentle = sink < 6 && wingsLevel && noseOk && state.gearPos > 0.85;
+    // Only the transition from flying to not-flying is an arrival. Evaluating
+    // this every frame would call a takeoff roll past 200 knots a crash, and
+    // it is the same contact block either way.
+    const arriving = !state.onGround;
 
     state.position.y = ground + gearHeight;
 
     if (!gentle && (sink > 3.5 || !wingsLevel)) {
       // That was not a landing.
       state.impact = Math.max(1, sink / 6);
+      jolt = state.impact;
+    }
+
+    // And this was not even a bad landing. The thresholds are deliberately
+    // looser than `gentle`: a firm arrival should rattle the airframe and the
+    // camera without ending the flight, so there is a band between "ouch" and
+    // "scrap". Wheels up is outside it at any speed, and so is water, because
+    // nothing here floats.
+    if (
+      arriving &&
+      (sink > 9 ||
+        _up.y < 0.72 ||
+        Math.abs(noseUp) > 0.42 ||
+        state.gearPos < 0.6 ||
+        env.isWater?.(state.position.x, state.position.z) === true)
+    ) {
+      state.crashed = true;
+      state.impact = Math.max(state.impact, Math.max(1.4, sink / 5));
       jolt = state.impact;
     }
 
@@ -633,11 +675,19 @@ export function trimLevel(
   const air = atmosphere(position.y);
   const qBar = dynamicPressure(air.density, speed);
   const clNeeded = (spec.mass * GRAVITY) / Math.max(1, qBar * spec.wingArea);
-  const alpha = THREE.MathUtils.clamp(
-    (clNeeded - spec.cl0) / spec.clAlpha,
-    -0.1,
-    spec.stallAlpha * 0.85,
-  );
+
+  // Below flying speed there is no such thing as a trimmed attitude, and
+  // asking for one gives you the worst possible answer: at zero knots the lift
+  // equation wants infinite CL, the clamp hands back 85% of the stall angle,
+  // and a Super Hornet parked on Boeing Field spawns pointing thirty degrees
+  // at the sky. It used to snap level over the next few frames and look like a
+  // pop; now that arriving nose-high is a crash, it detonated on the ramp. A
+  // stationary aeroplane sits on its gear — 0.02 rad, the same nose-up rake
+  // the ground handler holds it at.
+  const alpha =
+    speed > 40
+      ? THREE.MathUtils.clamp((clNeeded - spec.cl0) / spec.clAlpha, -0.1, spec.stallAlpha * 0.85)
+      : 0.02;
 
   // Yaw is the negation of the compass heading: see the note in `stepFlight`.
   _euler.set(alpha, -headingRad, 0, "YXZ");
@@ -656,4 +706,15 @@ export function trimLevel(
   state.onGround = false;
   state.age = 0;
   state.impact = 0;
+  state.crashed = false;
+  // Publish the derived attitude too. Everything that reads these before the
+  // first step — the HUD's first frame, the contact test — would otherwise see
+  // the previous flight's numbers.
+  state.pitchAttitude = alpha;
+  state.bank = 0;
+  state.heading = normalizeAngle(headingRad);
+  state.alpha = alpha;
+  state.gamma = 0;
+  state.airspeed = speed;
+  state.climb = 0;
 }

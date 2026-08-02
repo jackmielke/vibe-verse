@@ -423,6 +423,41 @@ export interface Landmark {
   note?: string;
 }
 
+/**
+ * The radius of the vertical cylinder a jet is not allowed inside.
+ *
+ * Deliberately coarse: a landmark's collision hull is one cylinder, not the
+ * dozen primitives it is drawn from. A Space Needle modelled to the metre
+ * would mean flying between its three legs at 400 knots and calling it a near
+ * miss, and nobody watching would agree with the game about what happened.
+ * Round numbers you can see from a mile out are the right amount of accuracy.
+ *
+ * Parks and the locks are flat, so they get nothing — their `height` is
+ * scenery, not structure, and a no-fly cylinder over Discovery Park would be
+ * absurd. The callers skip anything that returns zero.
+ */
+export function landmarkHull(lm: Landmark): number {
+  switch (lm.kind) {
+    case "needle":
+      // Wide enough to include the saucer, which is the bit you aim at.
+      return 24;
+    case "tower":
+      return (lm.radius ?? 24) * 1.15;
+    case "wheel":
+      return lm.radius ?? 32;
+    case "gasworks":
+    case "lighthouse":
+    case "museum":
+    case "market":
+      return lm.radius ?? 22;
+    case "stadium":
+    case "arena":
+      return lm.radius ?? 120;
+    default:
+      return 0;
+  }
+}
+
 export const LANDMARKS: Landmark[] = [
   {
     id: "needle",

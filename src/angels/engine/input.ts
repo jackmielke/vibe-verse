@@ -427,6 +427,9 @@ export function createInput(ctx: AngelsCtx): System {
    * the fix; fighting the z-index would only have hidden it.
    */
   function touchVisible(): boolean {
+    // A menu wins over everything: the overlay lives on `document.body` and
+    // would sit on top of it.
+    if (menuOpen) return false;
     if (touchForced !== null) return touchForced;
     if (shot) return false;
     if (input.source === "touch") return true;
@@ -449,8 +452,13 @@ export function createInput(ctx: AngelsCtx): System {
       touchForced = visible;
     },
     setMenuOpen(open) {
+      // Deliberately does *not* write `touchForced`. These are two different
+      // statements — "the game has a menu up" and "something has explicitly
+      // overridden the visibility heuristic" — and folding them into one flag
+      // meant whichever was called last won. The screenshot harness turns the
+      // overlay on by hand and React turns menus off on mount, so which one
+      // that was came down to a race.
       menuOpen = open;
-      touchForced = open ? false : null;
       if (open) {
         // Centre the stick so the jet is not left in a turn behind the menu.
         stick.x = 0;

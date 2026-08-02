@@ -220,6 +220,116 @@ describe("ground", () => {
   });
 });
 
+describe("writing one off", () => {
+  /**
+   * Arrive at the ground with exactly the sink, attitude and gear asked for.
+   *
+   * The jet is placed already touching and stepped once, rather than flown
+   * down an approach. Flying it down is the wrong test twice over: the
+   * fly-by-wire holds 1 G with the stick centred, so a commanded sink rate is
+   * mostly gone by the time the wheels get there, and whether the jet arrives
+   * at all inside the loop depends on the throttle setting. What is under test
+   * here is the contact rule, and the contact rule reads the state it is given.
+   */
+  function arrive(opts: {
+    sink: number;
+    gear: boolean;
+    bank?: number;
+    speed?: number;
+    water?: boolean;
+  }) {
+    const spec = aircraft("superhornet");
+    const state = createFlightState(spec);
+    const env: FlightEnvironment = {
+      terrainHeight: () => 0,
+      wind: (_p, out) => out.set(0, 0, 0),
+      isWater: () => opts.water === true,
+    };
+    trimLevel(state, spec, new THREE.Vector3(0, 200, 0), 0, opts.speed ?? 80);
+    state.gearPos = opts.gear ? 1 : 0;
+    if (opts.bank) {
+      state.orientation.setFromEuler(new THREE.Euler(0, 0, -opts.bank, "YXZ"));
+    }
+    // Just touching: gear height for the gear position set above.
+    state.position.y = spec.height * 0.42 * Math.max(state.gearPos, 0.35) - 0.2;
+    state.velocity.y = -opts.sink;
+    state.onGround = false;
+
+    const c: Controls = { ...neutralControls(), throttle: 0.2, gear: opts.gear };
+    stepFlight(state, spec, c, assistsFor("angel"), env, DT);
+    return { crashed: state.crashed, state };
+  }
+
+  it("a wheels-down arrival at two metres a second is a landing", () => {
+    expect(arrive({ sink: 2, gear: true }).crashed).toBe(false);
+  });
+
+  it("a firm one at seven is still a landing, just a bad one", () => {
+    // The band between "ouch" and "scrap" is the whole point: a heavy arrival
+    // should rattle the airframe and the camera without ending the flight.
+    expect(arrive({ sink: 7, gear: true }).crashed).toBe(false);
+  });
+
+  it("but arriving at fifteen metres a second is not", () => {
+    expect(arrive({ sink: 15, gear: true }).crashed).toBe(true);
+  });
+
+  it("nor is a belly landing, however gentle", () => {
+    expect(arrive({ sink: 1, gear: false }).crashed).toBe(true);
+  });
+
+  it("nor is one on a wingtip", () => {
+    expect(arrive({ sink: 2, gear: true, bank: 1.0 }).crashed).toBe(true);
+  });
+
+  it("and nothing here floats", () => {
+    expect(arrive({ sink: 2, gear: true, water: true }).crashed).toBe(true);
+  });
+
+  it("a jet parked below flying speed sits on its gear, not at the stall angle", () => {
+    // A trim solution at zero knots wants infinite lift coefficient, and the
+    // clamp used to hand back 85% of the stall angle — a Super Hornet on the
+    // Boeing Field ramp pointing thirty degrees at the sky. Once arriving
+    // nose-high became a crash, that spawned a fireball on the concrete.
+    const spec = aircraft("superhornet");
+    const state = createFlightState(spec);
+    trimLevel(state, spec, new THREE.Vector3(0, 8, 0), 0, 0);
+    expect(Math.abs(state.pitchAttitude)).toBeLessThan(0.1);
+
+    const env: FlightEnvironment = {
+      terrainHeight: () => 8 - spec.height * 0.42,
+      wind: (_p, out) => out.set(0, 0, 0),
+      isWater: () => false,
+    };
+    const c: Controls = { ...neutralControls(), throttle: 0, gear: true, wheelBrake: 1 };
+    state.gearPos = 1;
+    for (let i = 0; i < 120; i++) {
+      stepFlight(state, spec, c, assistsFor("angel"), env, DT);
+      expect(state.crashed).toBe(false);
+    }
+  });
+
+  it("does not judge an arrival by the attitude of the previous flight", () => {
+    // `pitchAttitude` is published at the bottom of stepFlight, so on the first
+    // step after a respawn it still holds the last flight's numbers. Reusing a
+    // state that ended in a dive must not condemn the jet that replaces it.
+    const spec = aircraft("superhornet");
+    const state = createFlightState(spec);
+    state.pitchAttitude = -1.2;
+    state.bank = 2.4;
+    const env: FlightEnvironment = {
+      terrainHeight: () => 0,
+      wind: (_p, out) => out.set(0, 0, 0),
+      isWater: () => false,
+    };
+    trimLevel(state, spec, new THREE.Vector3(0, spec.height * 0.42, 0), 0, 0);
+    state.gearPos = 1;
+    const c: Controls = { ...neutralControls(), throttle: 0, gear: true, wheelBrake: 1 };
+    stepFlight(state, spec, c, assistsFor("angel"), env, DT);
+    expect(state.crashed).toBe(false);
+  });
+});
+
 describe("numbers stay finite", () => {
   it("survives ten minutes of violent random input", () => {
     const spec = aircraft("superhornet");

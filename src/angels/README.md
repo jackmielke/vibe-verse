@@ -68,6 +68,76 @@ of them can fail at boot without taking the world down.
 
 ---
 
+## You start pointed at the Space Needle, and it is solid
+
+The default start puts the flight two and a half kilometres north-north-west of
+the Space Needle at 1,500 feet, on a heading of 152° — which is the bearing to
+the Needle and on over Columbia Center. Thirteen seconds later you are over the
+saucer with the whole of downtown opening up in front of you. Every other start
+is still there; this one is the default because the first ten seconds of a world
+are the ones that decide whether anybody sees the eleventh.
+
+The landmarks have collision hulls. One vertical cylinder each, from
+`landmarkHull()` in `world/geo.ts`, deliberately coarse: a Space Needle modelled
+to the metre would mean threading its three legs at 400 knots and calling it a
+near miss, and nobody watching would agree with the game about what happened.
+The eleven thousand *fill* buildings have no hulls at all, and that asymmetry is
+the right one — fill has no identity, so passing through it reads as nothing
+happening, while passing through the Space Needle reads as the game being
+broken.
+
+Player only. A wingman who clips a tower every time you take the flight down
+Fifth Avenue is a lake full of dead teammates, which is why the formation
+controller already cheats to stay out of the ground.
+
+## Crashing
+
+Three things had to be separated that all look like "hit the ground":
+
+- **A landing** — wheels down, wings level, under six metres a second.
+- **A firm arrival** — rattles the airframe and the camera via `impact`, and
+  you fly on. This band exists on purpose. A crash system with no "ouch" short
+  of "scrap" punishes every heavy landing with a cutscene.
+- **A crash** — `state.crashed`: more than nine metres a second of sink, past
+  about 40° of bank, more than 24° nose-up or nose-down, wheels up at any
+  speed, or water, because nothing here floats.
+
+The last of those hands off to `entities/blast.ts`, which is the one thing in
+this world built to look *good* rather than to look *right*: a white flash, a
+fireball that expands fast and decelerates through white → orange → soot, two
+dozen tumbling shards on ballistic arcs, a shock ring on the deck and a smoke
+column that outlives all of it. The camera cuts to a wreck cam two hundred
+metres back and watches. After 3.6 seconds — or as soon as you press the button
+on the card — you are back at whatever start point you chose.
+
+Things that were wrong first:
+
+**`OUTPUT_GLSL` declares `uniform float uExposure` itself.** Declaring it again
+next to the include is a GLSL redefinition, a redefinition is a failed compile,
+and a failed compile is a mesh that is `visible: true`, at the right position,
+at the right scale, drawing absolutely nothing. All five shaders in the blast
+did it, so the first working crash was a perfect card in front of an empty sky.
+
+**`length(position)` on a sphere shell is 1.0 at every vertex.** It was meant to
+fade the fireball from the edges in; what it actually did was make every
+fragment equally translucent, and the explosion came out as a yellow glass
+balloon. The number that turns a sphere into a fireball is how square-on the
+surface is to the camera — the middle of the disc is looking down the deepest
+column of burning fuel, so it is both the hottest and the most opaque.
+
+**A parked jet was being trimmed to the stall angle.** `trimLevel` solves for
+the angle of attack that gives level flight at the speed you ask for; at zero
+knots that wants infinite lift coefficient, and the clamp handed back 85% of the
+stall angle. A Super Hornet on the Boeing Field ramp spawned pointing thirty
+degrees at the sky. It used to snap level over the next few frames and read as a
+pop; once arriving nose-high became a crash, it detonated on the concrete.
+
+**`pitchAttitude` is published at the bottom of `stepFlight`**, so the contact
+test at the top was reading the previous step's value. Normally free; on the
+first step after a respawn it is the *previous flight's* attitude, which is how
+a jet parked on a runway came to be judged by the dive it was in when it hit the
+lake thirty seconds earlier. The contact test reads the live orientation now.
+
 ## On a desktop, the cursor is the stick
 
 The first version shipped with the keys listed in an options panel on the
@@ -215,9 +285,11 @@ node scripts/angels-shot.mjs src/assets/worlds/blue-angels.jpg --pose card \
 # control lands outside the viewport or the stick fails to reach the jet.
 node scripts/angels-phone.mjs shots
 
-# The six gameplay claims a screenshot cannot show: hoops register, the Easter
-# eggs fire on the right geography, the Diamond converges, the demo caller
-# advances, a cold jet flies off 14R, and dispose() releases the context.
+# The gameplay claims a screenshot cannot show: hoops register, the Easter eggs
+# fire on the right geography, the Diamond converges, the demo caller advances,
+# a cold jet flies off 14R, the Space Needle and the lake are both fatal while a
+# runway is not, the wreck hands the jet back, and dispose() releases the
+# context.
 node scripts/angels-check.mjs
 
 # The desktop controls, end to end through React: the card opens once, the

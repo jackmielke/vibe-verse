@@ -35,7 +35,19 @@ import {
 } from "../flight/dynamics";
 import { buildJet, createJetMaterial, poseJet, type JetRig } from "../entities/jet";
 import type { EnvService } from "../world/sky";
-import { SHOW_CENTRE, latToZ, lonToX } from "../world/geo";
+import { LANDMARKS, SHOW_CENTRE, latToZ, lonToX } from "../world/geo";
+
+/** Where the flight can be put. */
+export type SpawnPoint = "needle" | "show" | "runway" | "high";
+
+/**
+ * How long you watch your own fireball before the jet is handed back.
+ *
+ * Long enough to see what you did and swear at it, short enough that you are
+ * not sitting through a cutscene the third time. The card that comes up counts
+ * it down and has a button on it, so nobody who wants to go now has to wait.
+ */
+const WRECK_SECONDS = 3.6;
 
 /**
  * The Diamond, in the leader's body frame: +X right, +Y up, -Z forward.
@@ -136,8 +148,29 @@ export interface FleetService {
   /** Number of wingmen actually in the air. */
   wingmanCount: number;
   setWingmanCount(n: number): void;
-  /** Put the player back somewhere sensible. */
-  respawn(where?: "show" | "runway" | "high"): void;
+  /** Put the player back somewhere sensible. Defaults to wherever you started. */
+  respawn(where?: SpawnPoint): void;
+  /** Where the last respawn put the flight. `R` and the crash reset reuse it. */
+  readonly spawnPoint: SpawnPoint;
+  /**
+   * The state of the smoking hole, if there is one.
+   *
+   * `active` is true from the moment of the crash until the jet is handed
+   * back; `timer` counts up toward `WRECK_SECONDS`. The UI reads it to draw
+   * the card, the camera reads it to go and watch, and the fleet itself reads
+   * it to know not to fly a jet that is in several pieces.
+   */
+  readonly wreck: {
+    active: boolean;
+    timer: number;
+    duration: number;
+    /** What you hit, in words. */
+    cause: string;
+    speed: number;
+    position: THREE.Vector3;
+  };
+  /** Skip the countdown and go now. */
+  restart(): void;
   /**
    * Put the whole flight on a run-in of your choosing, in formation.
    * Heading is degrees true, speed m/s.
@@ -163,6 +196,7 @@ export function createFleet(ctx: AngelsCtx): System {
 
   const flightEnv: FlightEnvironment = {
     terrainHeight: (x, z) => terrain?.surfaceAt(x, z) ?? 0,
+    isWater: (x, z) => terrain?.isWater(x, z) ?? false,
     wind: (p, out) => {
       // A light north-westerly off the Sound, plus thermals over the city on
       // an August afternoon. Small, but it is the difference between air you
@@ -182,6 +216,21 @@ export function createFleet(ctx: AngelsCtx): System {
   let formation: FormationName = "diamond";
   let tightness = 0;
   let wingmanCount = 5;
+  let spawnPoint: SpawnPoint = "needle";
+
+  // Declared up here rather than beside the rest of the crash code because the
+  // initial `respawn()` at the bottom of this factory clears it, and a `const`
+  // below that call is still in its temporal dead zone when it runs — which
+  // took the whole fleet system down at boot, and with it the game, the
+  // effects and the explosion that depend on it.
+  const wreck = {
+    active: false,
+    timer: 0,
+    duration: WRECK_SECONDS,
+    cause: "",
+    speed: 0,
+    position: new THREE.Vector3(),
+  };
 
   const all: Aircraft[] = [];
 
@@ -234,13 +283,36 @@ export function createFleet(ctx: AngelsCtx): System {
   const BODY_RIGHT = new THREE.Vector3(1, 0, 0);
   const BODY_UP = new THREE.Vector3(0, 1, 0);
 
-  function respawn(where: "show" | "runway" | "high" = "show"): void {
+  function respawn(where: SpawnPoint = spawnPoint): void {
+    spawnPoint = where;
     const spec = aircraft(jetId);
     let pos: THREE.Vector3;
     let heading: number;
     let speed: number;
 
-    if (where === "runway") {
+    if (where === "needle") {
+      // Two and a half kilometres north-north-west of the Space Needle, over
+      // Interbay, pointed straight at it and low enough that it is already the
+      // biggest thing in the windscreen. Thirteen seconds later you are over
+      // the saucer with the whole of downtown opening up behind it — which is
+      // a better first ten seconds than any amount of straight-and-level over
+      // open water, and it is the reason this is the default.
+      //
+      // 152° is the bearing from here to the Needle and on over Columbia
+      // Center; 470 m clears the spire by nearly a thousand feet, which is
+      // close enough to feel and far enough that arriving is not an accident.
+      heading = (152 * Math.PI) / 180;
+      const needle = LANDMARKS.find((l) => l.id === "needle")!;
+      const nx = lonToX(needle.at[1]);
+      const nz = latToZ(needle.at[0]);
+      const range = 2500;
+      pos = new THREE.Vector3(
+        nx - Math.sin(heading) * range,
+        470,
+        nz + Math.cos(heading) * range,
+      );
+      speed = 195;
+    } else if (where === "runway") {
       // Lined up on Boeing Field 14R, which is where the team actually parks.
       pos = new THREE.Vector3(lonToX(-122.309), 8, latToZ(47.5429));
       heading = (159.6 * Math.PI) / 180;
@@ -280,6 +352,14 @@ export function createFleet(ctx: AngelsCtx): System {
       a.detached = false;
       a.smoke = false;
     }
+    wreck.active = false;
+    wreck.timer = 0;
+    // Clearing the cause matters as much as clearing the flag: anything that
+    // reads it without checking `active` first — a test, a HUD, a later
+    // version of this file — otherwise gets told you flew into the Space
+    // Needle every flight after the one where you did.
+    wreck.cause = "";
+    wreck.speed = 0;
     ctx.emit("angels:respawn", where);
   }
 
@@ -315,7 +395,7 @@ export function createFleet(ctx: AngelsCtx): System {
     return _v.copy(base).multiplyScalar(1 - tightness * 0.04);
   }
 
-  respawn("show");
+  respawn("needle");
 
   /**
    * One wingman's control inputs for this step.
@@ -423,6 +503,62 @@ export function createFleet(ctx: AngelsCtx): System {
     return -_euler.z;
   }
 
+  // ---- crashing ------------------------------------------------------------
+
+  /**
+   * The one piece of hard geometry in the world, and it is the one you are
+   * pointed at when the game starts.
+   *
+   * Eleven thousand fill buildings are scenery you fly through; the two dozen
+   * hand-built landmarks are not. That asymmetry is deliberate and it is the
+   * right one — the fill has no identity, so passing through it reads as
+   * nothing happening, while passing through the Space Needle reads as the
+   * game being broken. Twenty-odd cylinder tests a frame is a rounding error.
+   *
+   * Player only. A wingman who clips a tower every time you take the flight
+   * down Fifth Avenue is a lake full of dead teammates, and the formation
+   * controller already cheats to stay out of the ground for the same reason.
+   */
+  function landmarkStrike(s: FlightState, spec: AircraftSpec): string | null {
+    const marks = ctx.services.landmarks as
+      | Array<{ name: string; position: THREE.Vector3; base: number; top: number; hull: number }>
+      | undefined;
+    if (!marks) return null;
+    const half = spec.wingspan * 0.5;
+    for (const m of marks) {
+      if (m.hull <= 0) continue;
+      if (s.position.y < m.base || s.position.y > m.top + half) continue;
+      const dx = s.position.x - m.position.x;
+      const dz = s.position.z - m.position.z;
+      const r = m.hull + half;
+      if (dx * dx + dz * dz < r * r) return m.name;
+    }
+    return null;
+  }
+
+  function crash(cause: string, landmark: string | null = null): void {
+    if (wreck.active) return;
+    const s = all[0].state;
+    wreck.active = true;
+    wreck.timer = 0;
+    wreck.cause = cause;
+    wreck.speed = s.airspeed;
+    wreck.position.copy(s.position);
+    // Stop it dead. A fireball that keeps flying its last heading through the
+    // ground for three seconds is funny exactly once.
+    s.velocity.set(0, 0, 0);
+    s.angular.set(0, 0, 0);
+    all[0].controls = neutralControls();
+    all[0].controls.throttle = 0;
+    all[0].smoke = false;
+    ctx.emit("angels:crash", {
+      position: { x: wreck.position.x, y: wreck.position.y, z: wreck.position.z },
+      speed: wreck.speed,
+      cause,
+      landmark,
+    });
+  }
+
   const service: FleetService = {
     get player() {
       return all[0];
@@ -459,7 +595,7 @@ export function createFleet(ctx: AngelsCtx): System {
       if (id === jetId) return;
       jetId = id;
       buildFleet(id);
-      respawn("show");
+      respawn();
       ctx.emit("angels:jet", id);
     },
     get wingmanCount() {
@@ -469,6 +605,13 @@ export function createFleet(ctx: AngelsCtx): System {
       wingmanCount = THREE.MathUtils.clamp(Math.round(n), 0, Math.max(0, all.length - 1));
     },
     respawn,
+    get spawnPoint() {
+      return spawnPoint;
+    },
+    wreck,
+    restart() {
+      if (wreck.active) respawn();
+    },
     place,
     greyout: { grey: 0, red: 0 },
     nearestSeparation: Infinity,
@@ -479,6 +622,27 @@ export function createFleet(ctx: AngelsCtx): System {
     fixedUpdate(dt) {
       const player = all[0];
       const input = ctx.input;
+
+      if (wreck.active) {
+        wreck.timer += dt;
+        // The wingmen break away rather than continuing to fly formation on a
+        // hole in the ground. Four jets converging on their leader's fireball
+        // is not a thing the Blue Angels do, and it looked exactly as bad as
+        // it sounds.
+        for (let i = 1; i <= wingmanCount && i < all.length; i++) {
+          const a = all[i];
+          a.controls.pitch = 0.32;
+          a.controls.roll = i % 2 ? 0.42 : -0.42;
+          a.controls.yaw = 0;
+          a.controls.throttle = 0.95;
+          a.controls.brake = 0;
+          a.controls.smoke = false;
+          a.smoke = false;
+          stepFlight(a.state, a.spec, a.controls, assistsFor("rookie"), flightEnv, dt);
+        }
+        if (wreck.timer >= wreck.duration) respawn();
+        return;
+      }
 
       // The player's controls come straight off the input service; the flight
       // model's own fly-by-wire is what makes them flyable.
@@ -518,9 +682,25 @@ export function createFleet(ctx: AngelsCtx): System {
       service.greyout.red = g.red;
 
       if (player.state.impact > 0) ctx.emit("angels:impact", player.state.impact);
+
+      // Two ways to write one off, and the order matters: a jet that flew into
+      // the Space Needle should be told it flew into the Space Needle, not
+      // that it hit the ground a quarter of a second later.
+      const struck = landmarkStrike(player.state, player.spec);
+      if (struck) crash(`the ${struck}`, struck);
+      else if (player.state.crashed) {
+        const water = terrain?.isWater(player.state.position.x, player.state.position.z) ?? false;
+        crash(water ? "the water" : "the ground");
+      }
     },
 
     update(dt, c) {
+      // Nothing on the jet answers while it is a fireball, except the one key
+      // that means "get me back in the air".
+      if (wreck.active) {
+        if (c.input.resetPressed) respawn();
+        return;
+      }
       // Edge-triggered inputs the fleet owns.
       if (c.input.gearToggle) {
         all[0].controls.gear = !all[0].controls.gear;
@@ -531,13 +711,19 @@ export function createFleet(ctx: AngelsCtx): System {
         all[0].controls.smoke = all[0].smoke;
         ctx.emit("angels:smoke", all[0].smoke);
       }
-      if (c.input.resetPressed) respawn("show");
+      // R puts you back where you started, not back at the show line — the
+      // start point is a choice the pilot made and a reset should not quietly
+      // overrule it.
+      if (c.input.resetPressed) respawn();
     },
 
     lateUpdate(_dt, c) {
       for (let i = 0; i < all.length; i++) {
         const a = all[i];
-        if (i > wingmanCount && i > 0) {
+        if ((i > wingmanCount && i > 0) || (i === 0 && wreck.active)) {
+          // A wrecked jet is not drawn: the blast system is showing what is
+          // left of it, and a pristine Super Hornet parked inside its own
+          // fireball undoes the whole effect.
           a.rig.root.visible = false;
           continue;
         }

@@ -20,7 +20,15 @@ import * as THREE from "three";
 import type { AngelsCtx, System, TerrainService } from "../types";
 import { AERIAL_GLSL, ENV_UNIFORMS_GLSL, OUTPUT_GLSL } from "./env";
 import type { EnvService } from "./sky";
-import { AIRPORTS, BRIDGES, LANDMARKS, latToZ, lonToX, type Landmark } from "./geo";
+import {
+  AIRPORTS,
+  BRIDGES,
+  LANDMARKS,
+  landmarkHull,
+  latToZ,
+  lonToX,
+  type Landmark,
+} from "./geo";
 
 const BUILDING_BUDGET: Record<string, number> = {
   low: 3200,
@@ -304,8 +312,22 @@ export function createCity(ctx: AngelsCtx): System {
   heroes.name = "landmarks";
   group.add(heroes);
 
-  /** Landmark positions in world space, for the Easter-egg proximity layer. */
-  const landmarkPoints: Array<{ id: string; name: string; position: THREE.Vector3; note?: string }> = [];
+  /**
+   * Landmark positions in world space, for the Easter-egg proximity layer and
+   * for the one piece of hard geometry in the world a jet can hit. `position`
+   * is a point *inside* the structure for the proximity test; `base`, `top`
+   * and `hull` are the cylinder the collision uses, and `hull` is zero for
+   * anything that is not really a structure.
+   */
+  const landmarkPoints: Array<{
+    id: string;
+    name: string;
+    position: THREE.Vector3;
+    note?: string;
+    base: number;
+    top: number;
+    hull: number;
+  }> = [];
 
   for (const lm of LANDMARKS) {
     const x = lonToX(lm.at[1]);
@@ -321,6 +343,9 @@ export function createCity(ctx: AngelsCtx): System {
       name: lm.name,
       position: new THREE.Vector3(x, y + lm.height * 0.6, z),
       note: lm.note,
+      base: y,
+      top: y + lm.height,
+      hull: landmarkHull(lm),
     });
   }
   ctx.services.landmarks = landmarkPoints;

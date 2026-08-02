@@ -47,6 +47,32 @@ export function createCamera(ctx: AngelsCtx): System {
   const smoothLook = new THREE.Vector3();
   let initialised = false;
 
+  // Wreck-cam state: which side of the fireball we ended up on, and whether
+  // the shot has been struck yet.
+  let wreckPosed = false;
+  let wreckAngle = 0;
+
+  /** Ground under a point, so the wreck cam never ends up inside a hill. */
+  const groundNear = (c: AngelsCtx, p: THREE.Vector3): number => {
+    const terrain = c.services.terrain;
+    return terrain ? terrain.surfaceAt(p.x, p.z) : 0;
+  };
+
+  /**
+   * Trauma shake, decaying. Shared by the flying rigs and the wreck cam —
+   * being thrown around by your own explosion is most of what sells it.
+   */
+  function applyShake(c: AngelsCtx, dt: number): void {
+    const amp = trauma * trauma * 0.9;
+    if (amp > 0.0005) {
+      const t = c.elapsed;
+      cam.rotateX(Math.sin(t * 47.3) * amp * 0.02);
+      cam.rotateY(Math.sin(t * 39.7 + 1.7) * amp * 0.02);
+      cam.rotateZ(Math.sin(t * 53.1 + 3.1) * amp * 0.014);
+    }
+    trauma = Math.max(0, trauma - dt * 1.5);
+  }
+
   const _desired = new THREE.Vector3();
   const _look = new THREE.Vector3();
   const _fwd = new THREE.Vector3();
@@ -102,6 +128,8 @@ export function createCamera(ctx: AngelsCtx): System {
   ctx.services.camera = service;
 
   const offImpact = ctx.on("angels:impact", (v: number) => service.shake(Math.min(0.9, v * 0.5)));
+  // A crash is the one thing allowed to peg the shake outright.
+  const offCrash = ctx.on("angels:crash", () => service.shake(1));
 
   return {
     lateUpdate(dt, c) {
@@ -112,6 +140,60 @@ export function createCamera(ctx: AngelsCtx): System {
         cam.position.copy(posed.position);
         cam.lookAt(posed.lookAt);
         return;
+      }
+
+      // ---- the wreck cam ----------------------------------------------------
+      // The rig you were flying is chase, which is anchored to a jet that no
+      // longer exists — it would sit exactly where the fireball is and show
+      // you the inside of it. So the camera steps back and watches, drifting
+      // sideways and rising, which is both the only way to actually see what
+      // you did and the shot every crash in every film is framed as.
+      const wreck = fleet.wreck;
+      if (wreck?.active) {
+        const t = wreck.timer;
+        if (!wreckPosed) {
+          // Which side to watch from, decided before the shot is framed: the
+          // side the chase camera was already on, so the cut does not jump the
+          // line. Computing the frame first and *then* picking the angle put
+          // the snap on the previous shot's bearing, which is a cut to a
+          // camera that then slid sideways for three seconds.
+          wreckPosed = true;
+          wreckAngle = Math.atan2(cam.position.x - wreck.position.x, cam.position.z - wreck.position.z);
+        }
+        const ang = wreckAngle + t * 0.24;
+        // Far enough back to hold a hundred-metre fireball in frame. The first
+        // version stood off seventy metres and put the camera inside it.
+        // Portrait is a narrow window with a narrower field of view, so the
+        // same standoff puts the fireball through both edges of the frame.
+        const back = (205 + t * 9) * (c.viewport.portrait ? 1.4 : 1);
+        _desired.set(
+          wreck.position.x + Math.sin(ang) * back,
+          Math.max(wreck.position.y, groundNear(c, wreck.position)) + 40 + t * 7,
+          wreck.position.z + Math.cos(ang) * back,
+        );
+        _look.copy(wreck.position);
+        _look.y += 14 + t * 7;
+        if (t <= 0) {
+          // Snap on the first frame: easing into the shot from wherever the
+          // chase camera happened to be means the first half second of the
+          // explosion is spent flying through it.
+          smoothPos.copy(_desired);
+          smoothLook.copy(_look);
+        }
+        const k = 1 - Math.exp(-2.4 * dt);
+        smoothPos.lerp(_desired, k);
+        smoothLook.lerp(_look, k);
+        cam.position.copy(smoothPos);
+        cam.up.set(0, 1, 0);
+        cam.lookAt(smoothLook);
+        applyShake(c, dt);
+        return;
+      }
+      if (wreckPosed) {
+        // Coming back: the next frame is a fresh jet somewhere else entirely,
+        // and a camera that lerps to it draws a line across the whole map.
+        wreckPosed = false;
+        initialised = false;
       }
 
       if (c.input.viewPressed) service.cycle();
@@ -285,14 +367,13 @@ export function createCamera(ctx: AngelsCtx): System {
       // the wing is separated. You feel a stall before you read it.
       const buffet = s.stalled ? 0.5 : Math.max(0, s.liftDemand - 0.82) * 1.4;
       const q = Math.min(1, s.airspeed / 340);
-      const shakeAmp = trauma * trauma * 0.9 + buffet * 0.5 * q;
-      if (shakeAmp > 0.0005) {
+      const buffetAmp = buffet * 0.5 * q;
+      if (buffetAmp > 0.0005) {
         const t = c.elapsed;
-        cam.rotateX(Math.sin(t * 47.3) * shakeAmp * 0.02);
-        cam.rotateY(Math.sin(t * 39.7 + 1.7) * shakeAmp * 0.02);
-        cam.rotateZ(Math.sin(t * 53.1 + 3.1) * shakeAmp * 0.014);
+        cam.rotateX(Math.sin(t * 61.7) * buffetAmp * 0.02);
+        cam.rotateY(Math.sin(t * 44.3 + 0.9) * buffetAmp * 0.02);
       }
-      trauma = Math.max(0, trauma - dt * 1.5);
+      applyShake(c, dt);
 
       if (Math.abs(cam.fov - fov) > 0.05) {
         cam.fov += (fov - cam.fov) * Math.min(1, dt * 5);
@@ -302,6 +383,7 @@ export function createCamera(ctx: AngelsCtx): System {
 
     dispose() {
       offImpact();
+      offCrash();
       if (ctx.services.camera === service) delete ctx.services.camera;
     },
   };
