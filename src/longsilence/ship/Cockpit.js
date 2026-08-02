@@ -1185,12 +1185,19 @@ function drawArchivePassport(g, v, ctx) {
 
   let y = 196;
   const colW = (w - 64) / 2;
-  /* Twelve, not ten. The panel is 768 x 486 and six rows of two end at y=346,
-     eighty pixels clear of the footer — but the cap was ten, and the day
-     Redline was added as an eleventh world the grid quietly stopped drawing
-     the last row while the counter above it went on saying "/ 11". The one
-     world missing from the list would have been the new one. */
-  rows.slice(0, 12).forEach((r, i) => {
+  /* Fourteen, not ten, and not twelve. The panel is 768 x 486; seven rows of
+     two end at y=376, fifty pixels clear of the footer.
+
+     The cap has now been raised twice for the same reason, and the reason is
+     worth the paragraph: it was ten when Redline became an eleventh world, and
+     the grid quietly stopped drawing the last row while the counter above it
+     went on saying "/ 11" — the one world missing from the list being, of
+     course, the new one. It was twelve when The Final Frontier became a
+     thirteenth. A silent truncation on a completion panel is the worst kind of
+     bug, because the panel's entire job is to tell you what you have not done
+     yet. The test in passport.test.ts is the other half of this pair and it is
+     the only reason either raise happened before somebody noticed. */
+  rows.slice(0, 14).forEach((r, i) => {
     const col = i % 2, row = Math.floor(i / 2);
     const x = 26 + col * (colW + 12);
     const yy = y + row * 30;

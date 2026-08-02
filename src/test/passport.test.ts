@@ -106,10 +106,11 @@ describe("passport", () => {
        768 x 486 screen and has to cap them somewhere. It capped at ten, and
        adding an eleventh world made the grid quietly stop drawing the last row
        while the counter above it went on saying "/ 11" — the missing world
-       being, of course, the new one. The cap is twelve; this is the other half
-       of that pair, and it fails the moment a thirteenth is added rather than
-       after somebody notices a world is missing from their own passport. */
-    expect(PASSPORT_WORLDS.length).toBeLessThanOrEqual(12);
+       being, of course, the new one. The cap is now fourteen, raised with the
+       panel each time; this is the other half of that pair, and it fails the
+       moment a fifteenth is added rather than after somebody notices a world
+       is missing from their own passport. */
+    expect(PASSPORT_WORLDS.length).toBeLessThanOrEqual(14);
   });
 
   it("gives every world a distinct route", () => {

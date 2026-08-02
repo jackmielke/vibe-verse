@@ -55,8 +55,20 @@ import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
+import trekArt from "@/assets/worlds/final-frontier.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/trek",
+    emoji: "🖖",
+    name: "The Final Frontier",
+    art: trekArt,
+    blurb:
+      "You are the captain, and the main viewscreen is a live render of the space your ship is actually in. Five episodes, one Constitution-class starship, and a crew who tell you what they see.",
+    featured: true,
+    status: "Playable — five episodes, desktop and phone",
+    accent: "#ffb648",
+  },
   {
     to: "/blue-angels",
     emoji: "🔵",

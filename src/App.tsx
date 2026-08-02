@@ -58,6 +58,10 @@ const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
    thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
    nobody who never flies it should carry the city in the hub's entry chunk. */
 const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
+/* THE FINAL FRONTIER carries a whole starship bridge, five hulls and a
+   procedural planet. Lazy for the same reason as the rest: nobody who never
+   takes the centre seat should carry the Enterprise in the hub's entry chunk. */
+const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -90,6 +94,11 @@ const CHROMELESS = new Set([
   "/blue-angels",
   "/angels",
   "/seafair-show",
+  // The bridge fills the frame edge to edge; the nav would sit on the
+  // viewscreen's bezel.
+  "/trek",
+  "/star-trek",
+  "/final-frontier",
 ]);
 
 const AppChrome = () => {
@@ -253,6 +262,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
                   <BlueAngels />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* THE FINAL FRONTIER — you are the captain of a Constitution-class
+              starship, and the main viewscreen is a live render of the space
+              your ship is actually flying through. Five episodes. */}
+          {["/trek", "/star-trek", "/final-frontier"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <StarTrek />
                 </Suspense>
               }
             />
