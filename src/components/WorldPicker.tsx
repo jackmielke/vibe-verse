@@ -56,6 +56,7 @@ import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import iSpyArt from "@/assets/worlds/i-spy.jpg";
+import airplaneArt from "@/assets/worlds/airplane.jpg";
 
 const WORLDS: WorldCard[] = [
   {
@@ -70,6 +71,17 @@ const WORLDS: WorldCard[] = [
     featured: true,
     status: "Playable — desktop, phone, one button",
     accent: "#ff2fbf",
+  },
+  {
+    to: "/airplane",
+    emoji: "🛩️",
+    name: "Airplane!",
+    art: airplaneArt,
+    blurb:
+      "Trans American 209, Los Angeles to Chicago. The crew had the fish, there are 187 people behind you, and O'Hare is under a thunderstorm. You are in the left seat of a 707.",
+    featured: true,
+    status: "Playable — desktop, phone, gamepad",
+    accent: "#f0a020",
   },
   {
     to: "/blue-angels",

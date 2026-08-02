@@ -62,6 +62,11 @@ const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
    1,400-object level and a solver, and nobody who never plays it should
    carry those around in the hub's entry chunk either. */
 const ISpy = lazy(() => import("./pages/ISpy.tsx"));
+/* AIRPLANE! builds a 707 flight deck, a thunderstorm and the whole of Chicago
+   at boot. Lazy for the same reason as the rest: nobody who never flies 209
+   should carry a light field of three million street lamps around in the hub's
+   entry chunk. */
+const Airplane = lazy(() => import("./pages/Airplane.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -98,6 +103,11 @@ const CHROMELESS = new Set([
   "/i-spy",
   "/ispy",
   "/geometry-dash",
+  // AIRPLANE! is a cockpit that fills the viewport — the nav would sit on the
+  // attitude indicator, which is the one instrument you cannot spare.
+  "/airplane",
+  "/flight-209",
+  "/209",
 ]);
 
 const AppChrome = () => {
@@ -279,6 +289,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <ISpy />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* AIRPLANE! — Trans American 209, LAX to Chicago. The crew had the
+              fish. You are in the left seat of a 707 in a thunderstorm, and
+              there are 187 people behind you. */}
+          {["/airplane", "/flight-209", "/209"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <Airplane />
                 </Suspense>
               }
             />
