@@ -35,6 +35,7 @@ const ALL_WORLDS: Destination[] = [
   { to: "/blue-angels", emoji: "🔵", label: "Blue Angels", matchPaths: ["/angels", "/seafair-show"] },
   { to: "/seafair", emoji: "🛩️", label: "Seafair 2117" },
   { to: "/kart", emoji: "🏁", label: "Vibe Kart" },
+  { to: "/i-spy", emoji: "👁", label: "I Spy", matchPaths: ["/ispy", "/geometry-dash"] },
   { to: "/fnaf", emoji: "🐻", label: "Five Nights", matchPaths: ["/five-nights"] },
   { to: "/vibeverse", emoji: "🛰️", label: "The Vibeverse", matchPaths: ["/explorer", "/long-silence"] },
   { to: "/terminal", emoji: "🛫", label: "The Terminal" },

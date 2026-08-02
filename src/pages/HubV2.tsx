@@ -91,12 +91,15 @@ import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
+import iSpyArt from "@/assets/worlds/i-spy.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
 import CityEntryScreen from "@/components/city/CityEntryScreen";
 
 const OFFICIAL_WORLDS: World[] = [
+  { to: "/i-spy", name: "I Spy", art: iSpyArt, color: "#ff2fbf",
+    blurb: "Geometry Dash's I Spy, in 2D — one button, and most of what you see is a lie." },
   { to: "/blue-angels", name: "Blue Angels", art: blueAngelsArt, color: "#ffc61e",
     blurb: "Seafair over Lake Washington — you fly number 1 and five jets fly your wing." },
   // Edge Island leads the carousel — first-time visitors land on the
