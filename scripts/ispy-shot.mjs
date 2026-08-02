@@ -182,48 +182,84 @@ if (process.argv.includes("--run")) {
 }
 
 // `--checkpoints` proves the thing you cannot see in a screenshot: that dying
-// after a checkpoint puts you back at it rather than at the start.
+// after a checkpoint in *practice* puts you back at it, and that a normal
+// attempt gets no such thing.
 if (process.argv.includes("--checkpoints")) {
   const r = await page.evaluate(async () => {
     const e = window.__ispy;
     const wait = (ms) => new Promise((res) => setTimeout(res, ms));
     const pctToBlocks = (p) => (p / 100) * e.level.length;
 
-    e.setPurist(false);
+    e.setPractice(true);
     e.play();
     e.debugAutopilot(true);
     for (let i = 0; i < 200 && e.status().banked < 3; i++) await wait(100);
     const banked = e.status().banked;
     const atDeath = pctToBlocks(e.status().percent);
+    const marks = e.checkpointPercents.map((p) => (p / 100) * e.level.length);
+    const lastPassed = marks.filter((x) => x <= atDeath).pop() ?? 0;
     e.debugKill();
     await wait(1400);
     const resumed = pctToBlocks(e.status().percent);
 
-    // …and that purist mode does the opposite: it stays dead where it died,
-    // and the restart it eventually gets is from the very start.
-    e.setPurist(true);
+    // …and that a normal attempt does the opposite: it stays dead where it
+    // died, and the restart it eventually gets is from the very start.
+    e.setPractice(false);
     e.play();
     for (let i = 0; i < 120 && e.status().banked < 2; i++) await wait(100);
     e.debugKill();
     await wait(1400);
-    const puristPhase = e.status().phase;
-    const puristHeld = pctToBlocks(e.status().percent);
+    const normalPhase = e.status().phase;
+    const normalHeld = pctToBlocks(e.status().percent);
     e.play();
     await wait(120);
-    const puristRestart = pctToBlocks(e.status().percent);
+    const normalRestart = pctToBlocks(e.status().percent);
     e.debugAutopilot(false);
-    e.setPurist(false);
-    return { banked, atDeath, resumed, puristPhase, puristHeld, puristRestart };
+    return { banked, atDeath, resumed, lastPassed, normalPhase, normalHeld, normalRestart };
   });
-  const nearest = r.resumed >= r.atDeath - 4;
+  // Resuming puts you *behind* where you died — at the last checkpoint you
+  // passed — and then the autopilot runs on for the second and a half we
+  // waited. So the bar is: at or past that checkpoint, and not back at zero.
+  const ok = r.resumed >= r.lastPassed - 1 && r.resumed < r.atDeath && r.lastPassed > 0;
   console.log(
     `checkpoints: banked ${r.banked}, died at block ${r.atDeath.toFixed(0)}, ` +
-      `resumed at ${r.resumed.toFixed(0)} — ${nearest ? "OK" : "FAILED (fell back to the start)"}`,
+      `resumed at ${r.resumed.toFixed(0)} (last checkpoint ${r.lastPassed.toFixed(0)}) — ` +
+      `${ok ? "OK" : "FAILED"}`,
   );
   console.log(
-    `purist: still "${r.puristPhase}" at block ${r.puristHeld.toFixed(0)} with no auto-resume, ` +
-      `and a restart goes to ${r.puristRestart.toFixed(0)} — ` +
-      `${r.puristPhase === "dead" && r.puristRestart < 5 ? "OK" : "FAILED"}`,
+    `normal mode: still "${r.normalPhase}" at block ${r.normalHeld.toFixed(0)} with no ` +
+      `auto-resume, and a restart goes to ${r.normalRestart.toFixed(0)} — ` +
+      `${r.normalPhase === "dead" && r.normalRestart < 5 ? "OK" : "FAILED"}`,
+  );
+}
+
+// `--audio` walks the score through all six movements. A synthesised track is
+// a lot of scheduling code that a screenshot cannot see, and a thrown
+// exception inside the scheduler is silent — the music simply stops.
+if (process.argv.includes("--audio")) {
+  const r = await page.evaluate(async () => {
+    const e = window.__ispy;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const errors = [];
+    window.addEventListener("error", (ev) => errors.push(String(ev.message)));
+    await e.audio.start();
+    e.audio.restart();
+    const phases = [];
+    for (let m = 0; m < 6; m++) {
+      e.audio.setMovement(m);
+      await wait(600);
+      phases.push(e.audio.beatPhase());
+    }
+    // A checkpoint resume should move the score, not restart it.
+    e.audio.seekToMovement(5);
+    await wait(300);
+    const afterSeek = e.audio.beatPhase();
+    const moving = new Set(phases.map((p) => p.toFixed(3))).size > 1;
+    return { moving, afterSeek, errors };
+  });
+  console.log(
+    `score: six movements played, clock ${r.moving ? "advancing" : "STUCK"}, ` +
+      `${r.errors.length} scheduler error(s)`,
   );
 }
 

@@ -96,8 +96,8 @@ export default function ISpy() {
                   className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-pink-400 to-amber-300 transition-[width] duration-75"
                   style={{ width: `${pct}%` }}
                 />
-                {/* Checkpoint notches — lit once the run is past them. */}
-                {!status.purist &&
+                {/* Checkpoint notches — practice only, lit once past them. */}
+                {status.practice &&
                   marks.map((m, i) => (
                     <div
                       key={m}
@@ -136,9 +136,9 @@ export default function ISpy() {
                     />
                   ))}
                 </span>
-                {!status.purist && status.banked > 0 && (
+                {status.practice && (
                   <span className="text-emerald-300/80">
-                    ckpt {status.banked}/{status.checkpoints}
+                    practice · ckpt {status.banked}/{status.checkpoints}
                   </span>
                 )}
                 <span>attempt {status.attempts}</span>
@@ -183,7 +183,7 @@ export default function ISpy() {
               </h2>
               <p className="mt-3 font-mono text-xs text-white/50">
                 {status.attempts} attempt{status.attempts === 1 ? "" : "s"}
-                {status.purist ? " · purist" : ""}
+                {status.practice ? " · practice" : ""}
               </p>
               <p className="mt-4 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-amber-200/90">
                 {Array.from({ length: status.totalCoins }, (_, i) => (
@@ -268,19 +268,19 @@ export default function ISpy() {
           </div>
 
           <button
-            onClick={() => engineRef.current?.setPurist(!status?.purist)}
+            onClick={() => engineRef.current?.setPractice(!status?.practice)}
             className={`mt-7 rounded-full border px-5 py-2 font-mono text-[10px] uppercase tracking-[0.25em] transition ${
-              status?.purist
-                ? "border-amber-300/60 bg-amber-300/15 text-amber-200"
+              status?.practice
+                ? "border-emerald-300/60 bg-emerald-300/15 text-emerald-200"
                 : "border-white/15 text-white/45 hover:text-white/80"
             }`}
           >
-            purist mode {status?.purist ? "on" : "off"}
+            practice mode {status?.practice ? "on" : "off"}
           </button>
           <p className="mt-2 max-w-xs text-center text-[11px] leading-relaxed text-white/30">
-            {status?.purist
-              ? "No checkpoints. One mistake and you are back at the start — the original bargain."
-              : `${status?.checkpoints ?? 11} checkpoints. Die after one and you resume from it.`}
+            {status?.practice
+              ? `${status?.checkpoints ?? 11} checkpoints. Die after one and you resume from it — but coins do not count in practice.`
+              : "One mistake and you are back at the start. Checkpoints live in practice mode."}
           </p>
 
           <div className="mt-8 grid max-w-md grid-cols-1 gap-1.5 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-white/35 sm:grid-cols-3">
@@ -291,8 +291,8 @@ export default function ISpy() {
           <p className="mt-5 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
             Three pulses per attempt. A pulse dims every decoy on screen and
             outlines everything that is actually going to kill you. Three coins
-            are hidden off the safe line — you only keep the ones you finish
-            the run with.
+            are hidden off the safe line — you keep the ones you finish a
+            normal run holding.
           </p>
 
           <Link

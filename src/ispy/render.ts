@@ -49,6 +49,8 @@ export interface RenderState {
   shake: number;
   /** How many checkpoints the run has banked; earlier ones draw lit. */
   banked: number;
+  /** Checkpoint banners are drawn in practice mode only. */
+  showCheckpoints: boolean;
   /** x of every coin already taken this attempt. */
   collected: Set<number>;
   /** 0..1, dims everything for the menu. */
@@ -537,6 +539,7 @@ export class Renderer {
         break;
       }
       case "checkpoint": {
+        if (!st.showCheckpoints) break;
         // A banner you pass through. Lit once the run is past it.
         const lit = o.x <= st.player.x;
         const c = lit ? "#7dffd0" : "#ffffff";

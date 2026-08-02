@@ -31,8 +31,11 @@ export interface ISpyStatus {
   best: number;
   attempts: number;
   pulses: number;
-  /** Checkpoints off — the original's all-or-nothing bargain. */
-  purist: boolean;
+  /**
+   * Practice mode. Checkpoints only exist here, exactly as in the original —
+   * a normal attempt is the whole level or nothing.
+   */
+  practice: boolean;
   muted: boolean;
   chapter: string;
   /** Seconds into the current attempt. */
@@ -56,7 +59,7 @@ export class ISpyEngine {
   private phase: Phase = "attract";
   private attempts = 0;
   private best = 0;
-  private purist = false;
+  private practice = false;
   private pulses = PULSES_PER_ATTEMPT;
 
   /** Sorted x of every checkpoint, and how far through them this run is. */
@@ -133,7 +136,7 @@ export class ISpyEngine {
       best: this.best,
       attempts: this.attempts,
       pulses: this.pulses,
-      purist: this.purist,
+      practice: this.practice,
       muted: this.audio.isMuted,
       chapter: chapterAt(this.player.x),
       time: this.attemptTime,
@@ -162,9 +165,9 @@ export class ISpyEngine {
     this.emit(true);
   }
 
-  setPurist(on: boolean) {
-    this.purist = on;
-    if (on) this.banked = null;
+  setPractice(on: boolean) {
+    this.practice = on;
+    if (!on) this.banked = null;
     this.emit(true);
   }
 
@@ -387,10 +390,10 @@ export class ISpyEngine {
   private win() {
     this.phase = "won";
     this.best = 100;
-    // Coins are earned by *finishing*. Picking one up and dying with it is
-    // how the original works and it is the right rule: the coin is a detour
-    // you took, and a detour you did not survive did not happen.
-    for (const c of this.got) this.earned.add(c);
+    // Coins are earned by *finishing*, and not in practice — both of those
+    // are the original's rules and both are right. A detour you did not
+    // survive did not happen, and a run with checkpoints in it is not a run.
+    if (!this.practice) for (const c of this.got) this.earned.add(c);
     try {
       localStorage.setItem(BEST_KEY, "100");
       localStorage.setItem(COINS_KEY, JSON.stringify([...this.earned]));
@@ -415,10 +418,14 @@ export class ISpyEngine {
     else if (this.phase === "dead") {
       this.deathAge += dt;
       // With a checkpoint banked, dying costs half a second, not a minute.
-      if (this.banked && !this.purist && this.deathAge > 0.5) {
+      if (this.banked && this.practice && this.deathAge > 0.5) {
         this.phase = "playing";
         this.attempts += 1;
+        const at = movementAt(this.banked.p.x);
         this.restartFrom(this.banked.p, true);
+        // Put the score where the level is. Resuming at 80% should not drop
+        // you back into the filtered intro.
+        this.audio.seekToMovement(at);
         this.emit(true);
       }
     }
@@ -473,14 +480,14 @@ export class ISpyEngine {
         return;
       }
 
-      // Checkpoints. Banked on the way past, even in purist mode, so the
-      // banner still lights up and turning purist off mid-run behaves.
+      // Checkpoints, in practice mode only — the original puts them there and
+      // it is the right place for them: a normal attempt is the whole level.
       while (
         this.nextCheckpoint < this.checkpointXs.length &&
         this.player.x >= this.checkpointXs[this.nextCheckpoint]
       ) {
         this.nextCheckpoint += 1;
-        if (!attract) {
+        if (!attract && this.practice) {
           this.banked = { p: clonePlayer(this.player), coins: new Set(this.got) };
           this.audio.checkpoint();
           this.burst(10, "#7dffd0", 7);
@@ -507,7 +514,7 @@ export class ISpyEngine {
       }
 
       // The arrangement follows the level through its movements.
-      this.audio.setIntensity(intensityAt(this.player.x));
+      this.audio.setMovement(movementAt(this.player.x));
 
       // Landing dust, so a jump has a bottom to it.
       if (this.player.onGround && !this.wasGrounded) this.burst(7, "#ffffff", 5);
@@ -558,6 +565,9 @@ export class ISpyEngine {
       deathAge: this.deathAge,
       shake: this.shake,
       banked: this.nextCheckpoint,
+      // Checkpoint banners are a practice-mode object. In a normal attempt
+      // they are not there, because in a normal attempt they do nothing.
+      showCheckpoints: this.practice,
       collected: this.got,
       dim: this.phase === "attract" ? 0.55 : 0,
     };
@@ -566,7 +576,7 @@ export class ISpyEngine {
   private emit(force: boolean) {
     const s = this.status();
     const key = `${s.phase}|${Math.round(s.percent)}|${s.attempts}|${s.pulses}|${
-      s.purist
+      s.practice
     }|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}|${s.coins}`;
     if (!force && key === this.lastStatus) return;
     this.lastStatus = key;
@@ -580,13 +590,11 @@ function chapterAt(x: number): string {
   return name;
 }
 
-/** How loud the arrangement should be in each movement. */
-const MOVEMENT_INTENSITY = [0.25, 0.5, 0.62, 1, 0.85, 1];
-
-function intensityAt(x: number): number {
-  let v = MOVEMENT_INTENSITY[0];
-  CHAPTERS.forEach((c, i) => {
-    if (x >= c.at) v = MOVEMENT_INTENSITY[i] ?? 1;
+/** Which of the score's six movements belongs at x. */
+function movementAt(x: number): number {
+  let i = 0;
+  CHAPTERS.forEach((c, n) => {
+    if (x >= c.at) i = n;
   });
-  return v;
+  return i;
 }
