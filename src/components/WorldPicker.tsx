@@ -59,6 +59,19 @@ import iSpyArt from "@/assets/worlds/i-spy.jpg";
 
 const WORLDS: WorldCard[] = [
   {
+    to: "/i-spy",
+    emoji: "👁",
+    name: "I Spy",
+    // A real frame from block 541: the player, one orb, four real spikes, and
+    // about sixty things that look exactly like them. That is the game.
+    art: iSpyArt,
+    blurb:
+      "The Geometry Dash level, in two dimensions. One button, sixty seconds, and a screen so full of spikes that most of them have to be lying — because they are.",
+    featured: true,
+    status: "Playable — desktop, phone, one button",
+    accent: "#ff2fbf",
+  },
+  {
     to: "/blue-angels",
     emoji: "🔵",
     name: "Blue Angels",
@@ -162,19 +175,6 @@ const WORLDS: WorldCard[] = [
     blurb: "Arcade kart racing — drift for mini-turbos, sling shells, and take the hairpin shortcut.",
     status: "New — one circuit, eight racers",
     accent: "#ffcc22",
-  },
-  {
-    to: "/i-spy",
-    emoji: "👁",
-    name: "I Spy",
-    // A real frame from block 541: the player, one orb, four real spikes, and
-    // about sixty things that look exactly like them. That is the game.
-    art: iSpyArt,
-    blurb:
-      "The Geometry Dash level, in two dimensions. One button, sixty seconds, and a screen so full of spikes that most of them have to be lying — because they are.",
-    featured: true,
-    status: "Playable — desktop, phone, one button",
-    accent: "#ff2fbf",
   },
   {
     to: "/golf",
