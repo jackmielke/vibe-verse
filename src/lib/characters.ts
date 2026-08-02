@@ -83,6 +83,16 @@ export type CharSpec = {
 const prettyName = (filename: string) => filename.replace(/_/g, " ");
 
 export const CHARACTERS: CharSpec[] = [
+  // Flux has no `url` because it has no model file — it is assembled
+  // from primitives and animated entirely in code. Anything that renders
+  // a character should go through loadCharacterRig(), which handles the
+  // empty url; anything that reaches for `spec.url` directly will show
+  // nothing for this one.
+  {
+    id: "flux", url: "", label: "Flux", emoji: "✦",
+    blurb: "Built from code, not a model file. Animated head to toe.",
+    accent: "#73ffb8",
+  },
   { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
   { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
   ...Object.entries(QUATERNIUS_URLS)

@@ -43,3 +43,6 @@ public/models/*.glb
 # Supabase CLI local cache (linked-project metadata, version files, etc.)
 supabase/.temp/
 supabase/.branches/
+
+# Screenshot harness output
+shots/

@@ -1,0 +1,161 @@
+{
+  "shorewalk": {
+    "pos": [
+      40,
+      3.2,
+      -6
+    ],
+    "yaw": 3.05,
+    "pitch": 0.05,
+    "fov": 74,
+    "noclip": true,
+    "note": "Eye level on the strand looking inland: waterline, beach, riprap, grass and the wooded bluff behind. Judges ground materials and vegetation."
+  },
+  "lakeview": {
+    "pos": [
+      0,
+      5,
+      55
+    ],
+    "yaw": 0.0,
+    "pitch": -0.02,
+    "fov": 78,
+    "noclip": true,
+    "note": "Spawn view: standing on the pit apron looking down -Z over Lake Washington and the race course. The establishing shot."
+  },
+  "racecourse": {
+    "pos": [
+      60,
+      9,
+      -180
+    ],
+    "yaw": 0.55,
+    "pitch": -0.05,
+    "fov": 72,
+    "noclip": true,
+    "note": "Over deep water looking down the hydroplane race course."
+  },
+  "logboom": {
+    "pos": [
+      -190,
+      5,
+      -120
+    ],
+    "yaw": 5.6,
+    "pitch": -0.06,
+    "fov": 74,
+    "noclip": true,
+    "note": "Alongside the log boom, looking back along the raft of spectator boats."
+  },
+  "blueangels": {
+    "pos": [
+      0,
+      8,
+      -40
+    ],
+    "yaw": 0.2,
+    "pitch": 0.45,
+    "fov": 66,
+    "noclip": true,
+    "note": "Looking up over the lake as the Blue Angels come over."
+  },
+  "pits": {
+    "pos": [
+      20,
+      5,
+      95
+    ],
+    "yaw": 0.9,
+    "pitch": -0.04,
+    "fov": 76,
+    "noclip": true,
+    "note": "Inside the Stan Sayres pits looking across the festival ground toward the water."
+  },
+  "needle": {
+    "pos": [
+      -700,
+      60,
+      1200
+    ],
+    "yaw": 2.55,
+    "pitch": 0.16,
+    "fov": 55,
+    "noclip": true,
+    "note": "Hero shot of the Space Needle and the alien structure grafted onto it."
+  },
+  "waterline": {
+    "pos": [
+      0,
+      1.2,
+      -70
+    ],
+    "yaw": 0.35,
+    "pitch": -0.04,
+    "fov": 82,
+    "noclip": true,
+    "note": "Just above the lake surface in genuinely deep water, looking out. Judges water shading, wave silhouette, foam, sun glitter."
+  },
+  "skyline": {
+    "pos": [
+      0,
+      40,
+      -300
+    ],
+    "yaw": 3.05,
+    "pitch": 0.03,
+    "fov": 66,
+    "noclip": true,
+    "note": "Out on the lake looking back at the shore, the bluff and the city plateau. Judges terrain, vegetation, city massing."
+  },
+  "sunward": {
+    "pos": [
+      0,
+      4,
+      -140
+    ],
+    "yaw": 5.2,
+    "pitch": 0.1,
+    "fov": 78,
+    "noclip": true,
+    "note": "Into the sun over open water. Judges sky scattering, bloom, sun glitter, lens response. Yaw 5.2 actually faces the sun; 2.1 was anti-solar."
+  },
+  "mobile": {
+    "pos": [
+      0,
+      5,
+      55
+    ],
+    "yaw": 0.0,
+    "pitch": -0.02,
+    "fov": 78,
+    "width": 844,
+    "height": 390,
+    "quality": "low",
+    "noclip": true,
+    "note": "Phone landscape at low quality, spawn view. Must still read as a beautiful game."
+  },
+  "sunglitter": {
+    "pos": [
+      0,
+      3,
+      -140
+    ],
+    "yaw": 5.2,
+    "pitch": -0.03,
+    "fov": 80,
+    "noclip": true,
+    "note": "Over deep water with the sun's azimuth dead ahead. Judges the glitter path, Fresnel ramp and the water/sky horizon."
+  },
+  "covenant": {
+    "pos": [
+      0,
+      4.2,
+      52
+    ],
+    "yaw": 0.0,
+    "pitch": -0.02,
+    "fov": 62,
+    "noclip": true,
+    "note": "Down the beach at the Remnant landing zone from the pit apron. Judges enemy silhouettes, colour separation and readability against the shore."
+  }
+}

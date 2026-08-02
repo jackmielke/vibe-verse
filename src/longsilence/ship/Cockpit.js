@@ -1167,6 +1167,14 @@ function drawArchiveGallery(g, v, ctx) {
  * first time anything in this project has known that two worlds are the same
  * place.
  */
+/**
+ * How many passport rows the archive panel will draw.
+ *
+ * Exported so `passport.test.ts` can assert against the drawing code's real
+ * limit instead of a number copied into the test and left behind.
+ */
+export const PASSPORT_ROWS = 20;
+
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
   const rows = v.passport || [];
@@ -1183,28 +1191,46 @@ function drawArchivePassport(g, v, ctx) {
   g.fill(26, 158, bw, 4, '#12313f', 1);
   if (pr.total) g.fill(26, 158, Math.round(bw * (pr.visited / pr.total)), 4, '#8fe4ff', 0.95);
 
-  let y = 196;
   const colW = (w - 64) / 2;
-  /* Twelve, not ten. The panel is 768 x 486 and six rows of two end at y=346,
-     eighty pixels clear of the footer — but the cap was ten, and the day
-     Redline was added as an eleventh world the grid quietly stopped drawing
-     the last row while the counter above it went on saying "/ 11". The one
-     world missing from the list would have been the new one. */
-  rows.slice(0, 12).forEach((r, i) => {
+  /* The row pitch is computed, not fixed, and that is the whole point.
+
+     This cap was raised three times for the same reason. It was ten when
+     Redline became an eleventh world, and the grid quietly stopped drawing the
+     last row while the counter above it went on saying "/ 11" — the one world
+     missing from the list being, of course, the new one. Then twelve, when The
+     Final Frontier made thirteen. Then fourteen. Then six games landed in one
+     week and it was eighteen. A silent truncation on a completion panel is the
+     worst kind of bug, because the panel's entire job is to tell you what you
+     have not done yet.
+
+     So the rows now shrink to fit instead of falling off the bottom. TOP to
+     BOTTOM is the band that is genuinely free between the progress bar and the
+     footer line, and the pitch is whatever divides it. PASSPORT_ROWS is the
+     point past which the text gets too small to read rather than the point
+     past which it stops being drawn — and passport.test.ts still holds the
+     other end, so a nineteenth world fails a test rather than vanishing from
+     somebody's passport. */
+  const TOP = 196;
+  const BOTTOM = h - 76;
+  const shown = rows.slice(0, PASSPORT_ROWS);
+  const nRows = Math.max(1, Math.ceil(shown.length / 2));
+  const pitch = Math.min(30, (BOTTOM - TOP) / Math.max(nRows - 1, 1));
+  const nameSize = pitch >= 28 ? 13.5 : 12;
+  shown.forEach((r, i) => {
     const col = i % 2, row = Math.floor(i / 2);
     const x = 26 + col * (colW + 12);
-    const yy = y + row * 30;
+    const yy = TOP + row * pitch;
     if (r.visited) {
       /* A stamped row breathes; an unvisited one is flat. The pulse is offset
          per row so the column does not blink in unison like a fault light. */
       const pulse = 0.6 + 0.4 * Math.sin(ctx.time * 1.6 + i * 0.9);
       g.dot(x + 5, yy - 5, 3.2, '#8fe4ff', pulse);
-      g.text(r.name, x + 18, yy, { size: 13.5, color: VAL });
+      g.text(r.name, x + 18, yy, { size: nameSize, color: VAL });
       g.text(r.count > 1 ? `×${r.count}` : '✓', x + colW - 10, yy,
         { size: 12, color: AM, align: 'right' });
     } else {
       g.dot(x + 5, yy - 5, 2.4, DIM, 0.3);
-      g.text(r.name, x + 18, yy, { size: 13.5, color: DIM, alpha: 0.55 });
+      g.text(r.name, x + 18, yy, { size: nameSize, color: DIM, alpha: 0.55 });
       g.text('—', x + colW - 10, yy, { size: 12, color: DIM, align: 'right', alpha: 0.5 });
     }
   });

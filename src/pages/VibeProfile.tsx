@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { ArrowLeft, Check, LogOut, Loader2 } from "lucide-react";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import VibeAvatar, { VIBE_COLORS } from "@/components/vibe-auth/VibeAvatar";
@@ -115,7 +115,7 @@ export default function VibeProfile() {
     scene.add(turntable);
 
     let currentId = "";
-    let mixer: THREE.AnimationMixer | null = null;
+    let rig: CharacterRig | null = null;
     let loadGen = 0;
 
     const loadCharacter = (id: string) => {
@@ -125,29 +125,16 @@ export default function VibeProfile() {
       const myGen = loadGen;
       // Clear previous model.
       while (turntable.children.length) turntable.remove(turntable.children[0]);
-      mixer = null;
+      rig?.dispose();
+      rig = null;
       (ring.material as THREE.MeshBasicMaterial).color.set(spec.accent);
 
-      new GLTFLoader().load(spec.url, (gltf) => {
-        if (myGen !== loadGen) return;
-        const model = gltf.scene;
-        model.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const fit = 2.0 / Math.max(size.x, size.y, size.z, 0.0001);
-        model.scale.setScalar(fit);
-        model.updateMatrixWorld(true);
-        const scaled = new THREE.Box3().setFromObject(model);
-        model.position.y = 0.05 - scaled.min.y;
-        turntable.add(model);
-
-        if (gltf.animations.length) {
-          mixer = new THREE.AnimationMixer(model);
-          const idle =
-            gltf.animations.find((c) => /idle/i.test(c.name)) ?? gltf.animations[0];
-          mixer.clipAction(idle).play();
-        }
+      void loadCharacterRig(spec, { height: 2.0, fitBy: "max", castShadow: false }).then((r) => {
+        // Superseded by a newer pick while this one was loading.
+        if (myGen !== loadGen) return r.dispose();
+        rig = r;
+        r.object.position.y += 0.05; // float clear of the ring
+        turntable.add(r.object);
       });
     };
     loadCharacter(charRef.current);
@@ -198,7 +185,7 @@ export default function VibeProfile() {
       if (!dragging && now - manualSpin > 600) turntable.rotation.y += dt * 0.5;
       const rm = ring.material as THREE.MeshBasicMaterial;
       rm.opacity = 0.55 + Math.sin(now * 0.002) * 0.25;
-      if (mixer) mixer.update(dt);
+      rig?.update(dt);
       renderer.render(scene, camera);
     };
     renderer.setAnimationLoop(tick);

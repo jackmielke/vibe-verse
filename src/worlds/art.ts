@@ -30,9 +30,23 @@ import vibeArt from "@/assets/worlds/vibe.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import villageArt from "@/assets/edge-app-icon-bg.png";
+import airplaneArt from "@/assets/worlds/airplane.jpg";
+import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
+import fnafArt from "@/assets/worlds/fnaf.jpg";
+import homeAloneArt from "@/assets/worlds/home-alone.jpg";
+import iSpyArt from "@/assets/worlds/i-spy.jpg";
+import kartArt from "@/assets/worlds/kart.jpg";
+import trekArt from "@/assets/worlds/final-frontier.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
+  airplane: airplaneArt,
+  "blue-angels": blueAngelsArt,
+  fnaf: fnafArt,
+  "home-alone": homeAloneArt,
+  "i-spy": iSpyArt,
+  kart: kartArt,
+  trek: trekArt,
   city: cityArt,
   "edm-town": edmTownArt,
   evolve: evolveArt,
@@ -55,7 +69,6 @@ export const WORLD_ART: Record<string, string> = {
   village: villageArt,
   // Deliberately absent, and each for the same reason — no honest capture yet:
   //   seafair  · still being art-directed
-  //   kart     · a screenshot of a half-built racetrack promises the wrong thing
   //   globetrotter, go, agent-lobby, times, companions, world-builder,
   //   submit-world, characters, vibestar
 };

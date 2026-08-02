@@ -1,12 +1,18 @@
 /**
  * The Vibe Times — the world's own newspaper.
  *
- * Written nightly by the autonomous build loop from what ACTUALLY happened
- * in the world (the event stream, the graffiti wall, the residents' chat).
- * The loop is the journalist; this page is the printing press. Issues live
- * in public/vibe-times.json; the plaza newsstand shows the front page.
+ * Written from what ACTUALLY happened: the build record (this repo's own
+ * commits, which are the world's construction history) and the live world
+ * (residents arriving, leaving, walking up to each other). The daily loop
+ * is the journalist and this page is the printing press —
+ * `tools/vibe-times-brief.mjs` gathers the facts,
+ * `.claude/skills/vibe-times/SKILL.md` is the style guide.
+ *
+ * The current issue is public/vibe-times.json; everything older is in
+ * public/vibe-times-archive.json, newest first. The plaza newsstand reads
+ * the current issue, which is why that file keeps its name and shape.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 interface Issue {
@@ -20,16 +26,50 @@ interface Issue {
   stats: Record<string, number | string>;
 }
 
+/** "2026-08-01" → "Saturday, 1 August 2026", in a newspaper's voice. */
+function longDate(iso: string) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+  });
+}
+
+/** Whole days between an issue date and today, UTC. */
+function daysOld(iso: string) {
+  const then = Date.parse(`${iso}T00:00:00Z`);
+  if (Number.isNaN(then)) return 0;
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  return Math.max(0, Math.round((today - then) / 86_400_000));
+}
+
 export default function VibeTimes() {
-  const [issue, setIssue] = useState<Issue | null>(null);
+  const [current, setCurrent] = useState<Issue | null>(null);
+  const [archive, setArchive] = useState<Issue[]>([]);
+  const [reading, setReading] = useState<number | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     fetch("/vibe-times.json")
       .then((r) => r.json())
-      .then(setIssue)
+      .then(setCurrent)
       .catch(() => setError(true));
+    // Back issues are a nice-to-have: a missing or malformed archive
+    // must never stop today's paper from printing.
+    fetch("/vibe-times-archive.json")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setArchive(Array.isArray(rows) ? rows : []))
+      .catch(() => setArchive([]));
   }, []);
+
+  const issues = useMemo(
+    () => (current ? [current, ...archive.filter((a) => a.issue !== current.issue)] : []),
+    [current, archive],
+  );
+  const issue = useMemo(
+    () => issues.find((i) => i.issue === reading) ?? current,
+    [issues, reading, current],
+  );
 
   if (error) {
     return (
@@ -38,12 +78,16 @@ export default function VibeTimes() {
       </div>
     );
   }
-  if (!issue) return <div className="min-h-screen bg-[#efe8d8]" />;
+  if (!issue || !current) return <div className="min-h-screen bg-[#efe8d8]" />;
 
   const [lead, ...rest] = issue.headlines;
+  const isBackIssue = issue.issue !== current.issue;
+  const age = daysOld(current.date);
 
   return (
-    <div className="min-h-screen overflow-y-auto bg-[#efe8d8] px-4 py-10 text-[#2a2118]" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+    // The global nav floats over the top of the page, and it was sitting
+    // right on top of the "est. the night the loop woke up" line.
+    <div className="min-h-screen overflow-y-auto bg-[#efe8d8] px-4 pb-10 pt-24 text-[#2a2118]" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
       <div className="mx-auto max-w-4xl">
         {/* Masthead */}
         <header className="border-b-4 border-double border-[#2a2118] pb-4 text-center">
@@ -52,12 +96,56 @@ export default function VibeTimes() {
             The Vibe Times
           </h1>
           <p className="mt-1 italic">“{issue.motto}”</p>
-          <div className="mt-3 flex items-center justify-between border-t border-[#2a2118] pt-2 text-xs uppercase tracking-widest">
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#2a2118] pt-2 text-[10px] uppercase tracking-widest sm:text-xs">
             <span>Issue №{issue.issue}</span>
-            <span>{issue.date}</span>
+            <span className="text-center">{longDate(issue.date)}</span>
             <span>price: one good vibe</span>
           </div>
         </header>
+
+        {/* Back issues. Only shown once there is more than one, so the
+            paper doesn't advertise an empty archive on day one. */}
+        {issues.length > 1 && (
+          <nav className="mt-3 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
+            <span className="opacity-60">Back issues:</span>
+            {issues.map((i) => {
+              const active = i.issue === issue.issue;
+              return (
+                <button
+                  key={i.issue}
+                  onClick={() => setReading(i.issue)}
+                  className={
+                    active
+                      ? "font-bold underline decoration-2 underline-offset-2"
+                      : "underline decoration-dotted underline-offset-2 opacity-70 hover:opacity-100"
+                  }
+                  aria-current={active ? "page" : undefined}
+                >
+                  №{i.issue}
+                </button>
+              );
+            })}
+          </nav>
+        )}
+
+        {/* Reading something other than today's front page. */}
+        {isBackIssue && (
+          <p className="mt-3 border border-[#2a2118]/40 bg-[#2a2118]/[0.04] px-3 py-2 text-center text-xs uppercase tracking-widest">
+            from the archive ·{" "}
+            <button onClick={() => setReading(null)} className="underline">
+              back to issue №{current.issue}
+            </button>
+          </p>
+        )}
+
+        {/* The masthead used to claim a nightly loop that did not exist.
+            If the presses genuinely stall, say so rather than letting a
+            stale front page pass for today's news. */}
+        {!isBackIssue && age >= 3 && (
+          <p className="mt-3 border border-[#2a2118]/40 px-3 py-2 text-center text-xs italic">
+            The presses have been quiet for {age} days — this is the most recent issue.
+          </p>
+        )}
 
         {/* Lead story */}
         {lead && (
@@ -109,7 +197,10 @@ export default function VibeTimes() {
         </section>
 
         <footer className="mt-10 border-t-4 border-double border-[#2a2118] pt-4 text-center text-xs uppercase tracking-widest">
-          <p>reported & written by the autonomous build loop · no fabrication, only vibes</p>
+          <p>reported from the build record and the world's own event stream</p>
+          <p className="mt-1 normal-case tracking-normal opacity-70">
+            Every claim in this paper traces to a commit or a logged event. Nothing here is invented.
+          </p>
           <p className="mt-2">
             <Link to="/city?spawn=island" className="underline">visit the island</Link>
             <span className="mx-2">·</span>

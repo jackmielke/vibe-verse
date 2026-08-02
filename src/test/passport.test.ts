@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   readPassport, stampPassport, passportRows, passportProgress, PASSPORT_WORLDS,
 } from "@/lib/passport";
+import { PASSPORT_ROWS } from "@/longsilence/ship/Cockpit.js";
 
 const KEY = "vibe.passport";
 
@@ -102,14 +103,12 @@ describe("passport", () => {
   });
 
   it("fits on the panel that draws it", () => {
-    /* Cockpit.drawArchivePassport lays the rows out in two columns on a
-       768 x 486 screen and has to cap them somewhere. It capped at ten, and
-       adding an eleventh world made the grid quietly stop drawing the last row
-       while the counter above it went on saying "/ 11" — the missing world
-       being, of course, the new one. The cap is twelve; this is the other half
-       of that pair, and it fails the moment a thirteenth is added rather than
-       after somebody notices a world is missing from their own passport. */
-    expect(PASSPORT_WORLDS.length).toBeLessThanOrEqual(12);
+    /* Cockpit.drawArchivePassport lays the rows out in two columns and shrinks
+       the pitch to fit, so this is no longer a number copied into a test: it is
+       the drawing code's own limit, imported. Past it the panel truncates
+       silently, which on a completion panel is the worst kind of bug — the
+       whole job of that screen is telling you what you have *not* done. */
+    expect(PASSPORT_WORLDS.length).toBeLessThanOrEqual(PASSPORT_ROWS);
   });
 
   it("gives every world a distinct route", () => {

@@ -116,6 +116,56 @@ describe("the contested planet, once generated", () => {
   });
 });
 
+/**
+ * `worldRoute` means "landing here changes the URL". `worldKey` means "this
+ * planet is one of ours". They were the same predicate for as long as every
+ * authored world was a door, and Redline separated them — so every place that
+ * asked "is this one of our worlds?" by testing the route quietly stopped
+ * seeing the fifth one. Three of them shipped that way before this was written:
+ *
+ *   - `jumpToWorld` in-system: pressing 5 while already at Redline did nothing.
+ *   - the star map: matched the passport on `.route`, which for a routeless
+ *     world can only ever compare false, so it would never say HELD.
+ *   - the arrival: `sys.planets.find(p => p.worldRoute)` picks what you come out
+ *     of a fold looking at, and with no match it fell through to "the most
+ *     interesting body" — you folded to Redline and arrived beside a gas giant.
+ *     Found by driving the landing in a browser, not by reading the code.
+ *
+ * This reads the engine source, which is blunt, but the alternative is booting a
+ * WebGL context in jsdom. What it protects is the distinction itself.
+ */
+describe("worldKey versus worldRoute", () => {
+  const src = () =>
+    import("node:fs").then((m) => m.readFileSync("src/longsilence/game/Game.js", "utf8"));
+
+  it("finds the planet to arrive at by key", async () => {
+    expect(await src()).toContain("sys.planets.find((p) => p.worldKey)");
+  });
+
+  it("finds the planet to fly to by key", async () => {
+    expect(await src()).toContain("b.spec.worldKey === key");
+  });
+
+  it("still gates the handoff on the route, which is the one thing it means", async () => {
+    // The navigation itself must stay route-based: no route, no navigation.
+    expect(await src()).toContain("const route = b.spec && b.spec.worldRoute;");
+  });
+
+  it("marks worlds in the sky by key and hostility, not by route", async () => {
+    const hud = await import("node:fs")
+      .then((m) => m.readFileSync("src/longsilence/ui/HUD.js", "utf8"));
+    expect(hud).toContain("const isWorld = !!b.spec?.worldKey;");
+    expect(hud).not.toContain("const isWorld = !!b.spec?.worldRoute;");
+  });
+
+  it("matches the star map against the passport through stampRouteFor", async () => {
+    const map = await import("node:fs")
+      .then((m) => m.readFileSync("src/longsilence/ship/HoloMap.js", "utf8"));
+    expect(map).toContain("stampRouteFor(sys.world)");
+    expect(map).not.toMatch(/r\.route === sys\.world\.route/);
+  });
+});
+
 describe("the draw sequence", () => {
   /* Captured from the galaxy with four worlds on the chart, before Redline
      existed. Adding the fifth rolled its name, position, class and designation

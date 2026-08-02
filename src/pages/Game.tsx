@@ -63,6 +63,15 @@ function DrawnPanel({ accent }: { accent: string }) {
   );
 }
 
+/**
+ * One card.
+ *
+ * `wide` only takes effect from `md:` up. On a phone every card is the same
+ * size and two fit across, which is the whole point of the grid: the previous
+ * homepage gave nine of the worlds a full-width hero treatment, so a phone
+ * showed one and a half games per screen and browsing thirty of them meant a
+ * very long scroll.
+ */
 function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: boolean }) {
   const art = artFor(world.key);
   return (
@@ -70,15 +79,15 @@ function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: 
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       /* Capped so the last card of a long list does not arrive a second late. */
-      transition={{ delay: Math.min(index, 12) * 0.035, duration: 0.35 }}
-      className={wide ? "sm:col-span-2 lg:col-span-2" : ""}
+      transition={{ delay: Math.min(index, 12) * 0.03, duration: 0.32 }}
+      className={wide ? "md:col-span-2" : ""}
     >
       <Link
         to={world.route}
         className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-background/40 transition-colors hover:border-transparent"
         style={{ boxShadow: `inset 0 0 0 1px ${world.accent}22` }}
       >
-        <div className={`relative overflow-hidden bg-black/50 ${wide ? "aspect-[16/8]" : "aspect-video"}`}>
+        <div className={`relative overflow-hidden bg-black/50 ${wide ? "aspect-video md:aspect-[16/8]" : "aspect-video"}`}>
           {art ? (
             <img
               src={art}
@@ -93,21 +102,33 @@ function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: 
               readable over a white sky as well as a night city. */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
           {world.status && (
+            /* "Playable — five episodes, desktop and phone" does not fit on a
+               170 px card, and a pill reading "PLAYABLE — FIVE EPISOD…" is
+               worse than one reading "PLAYABLE". The phone gets the part before
+               the dash; everything wider gets the sentence. */
             <span
-              className="absolute bottom-2 left-2 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-black"
+              className="absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate rounded-full px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.12em] text-black sm:bottom-2 sm:left-2 sm:px-2.5 sm:py-1 sm:text-[9px]"
               style={{ background: world.accent }}
             >
-              {world.status}
+              <span className="sm:hidden">{world.status.split("—")[0].trim()}</span>
+              <span className="hidden sm:inline">{world.status}</span>
             </span>
           )}
         </div>
-        <div className="p-3.5">
-          <div className="flex items-baseline gap-2">
-            <span className="text-base leading-none">{world.emoji}</span>
-            <h3 className="font-heading text-sm font-semibold tracking-wide">{world.name}</h3>
+        <div className="p-2.5 sm:p-3.5">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-sm leading-none sm:text-base">{world.emoji}</span>
+            <h3 className="font-heading text-[12.5px] font-semibold leading-tight tracking-wide sm:text-sm">
+              {world.name}
+            </h3>
           </div>
-          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">{world.blurb}</p>
-          <p className="mt-2 font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/45">
+          {/* Two lines on a phone, four on a desktop. A card is a promise, not
+              an essay, and at 170 px wide the blurb otherwise runs to eight. */}
+          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground sm:line-clamp-4 sm:text-[11.5px]">
+            {world.blurb}
+          </p>
+          {/* Where the code lives. Useful on a laptop, noise on a phone. */}
+          <p className="mt-2 hidden font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/45 sm:block">
             {world.source}
           </p>
         </div>
@@ -157,48 +178,55 @@ export default function Game() {
         aria-hidden
       />
 
-      <div className="relative mx-auto max-w-6xl px-4 pb-20 pt-20 sm:px-6 sm:pt-24">
+      {/* The header is deliberately short on a phone. This page is the front
+          door, and a front door's job is to show you the room — every line of
+          hero copy above the fold is a game the visitor did not see. */}
+      <div className="relative mx-auto max-w-6xl px-3 pb-20 pt-16 sm:px-6 sm:pt-24">
         <motion.header
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <p className="font-heading text-[10px] font-bold uppercase tracking-[0.42em] text-muted-foreground">
+          <p className="font-heading text-[9px] font-bold uppercase tracking-[0.36em] text-muted-foreground sm:text-[10px] sm:tracking-[0.42em]">
             Every builder grows the universe
           </p>
-          <h1 className="mt-2 font-heading text-4xl font-black tracking-tight sm:text-6xl">
+          <h1 className="mt-1 font-heading text-3xl font-black tracking-tight sm:mt-2 sm:text-6xl">
             <span className="text-gradient-mint">VIBEVERSE</span>
           </h1>
-          <p className="mt-2 font-heading text-sm font-semibold text-foreground/85 sm:text-base">
+          <p className="mt-1.5 font-heading text-[13px] font-semibold leading-snug text-foreground/85 sm:mt-2 sm:text-base">
             A massive collection of AI-coded games by Jack Mielke and friends.
           </p>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+          {/* The full pitch is desktop-only; the phone gets the one-line
+              version in the row of chips below. */}
+          <p className="mt-3 hidden max-w-xl text-sm leading-relaxed text-muted-foreground sm:block">
             {counts.playable} worlds and games, all in one browser tab. No install, no
             account, no launcher — pick a card and you are in it in a few seconds.
           </p>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2 text-[11px]">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10.5px] sm:mt-5 sm:gap-2 sm:text-[11px]">
             <Link
               to="/terminal"
-              className="rounded-full bg-primary px-4 py-2 font-heading font-semibold uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.03]"
+              className="rounded-full bg-primary px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.03] sm:px-4 sm:py-2"
             >
               🛫 Start at the Terminal
             </Link>
             <Link
-              to="/"
-              className="rounded-full border border-border/60 px-4 py-2 font-heading font-semibold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
+              to="/lobby-3d"
+              className="rounded-full border border-border/60 px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground sm:px-4 sm:py-2"
             >
               🪐 The 3D hub
             </Link>
-            <span className="rounded-full border border-border/40 px-3 py-2 text-muted-foreground">
-              Passport: {progress.visited}/{progress.total} stamped
+            <span className="rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground sm:py-2">
+              {counts.playable} playable · passport {progress.visited}/{progress.total}
             </span>
           </div>
         </motion.header>
 
-        {/* Filters + search. One row on desktop, two on a phone. */}
-        <div className="sticky top-0 z-10 -mx-4 mt-8 bg-background/80 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Filters + search. The tabs scroll horizontally on a phone rather
+            than wrapping to a second row and pushing the grid further down. */}
+        <div className="sticky top-0 z-10 -mx-3 mt-5 bg-background/85 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="order-2 flex items-center gap-2 overflow-x-auto sm:order-1 sm:contents [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {TABS.map((t) => {
               const active = tab === t.id;
               return (
@@ -206,7 +234,7 @@ export default function Game() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   title={t.hint}
-                  className={`rounded-full px-3 py-1.5 font-heading text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
+                  className={`shrink-0 rounded-full px-3 py-1.5 font-heading text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
                     active
                       ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.3)]"
                       : "text-foreground/60 hover:bg-muted/50 hover:text-foreground"
@@ -216,21 +244,28 @@ export default function Game() {
                 </button>
               );
             })}
+            </div>
+            {/* On a phone this sits above the tabs instead of after them. As the
+                last item of a horizontally-scrolling row it was simply off the
+                right-hand edge of the screen, which is a search box nobody can
+                find. */}
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              className="ml-auto w-full rounded-full border border-border/60 bg-background/50 px-4 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:w-52"
+              placeholder={`Search ${WORLDS.length} worlds…`}
+              className="order-1 w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:order-2 sm:ml-auto sm:w-52 sm:px-4"
             />
           </div>
         </div>
 
-        <p className="mt-3 text-[11px] text-muted-foreground/70">
+        <p className="mt-2.5 text-[10.5px] text-muted-foreground/70 sm:mt-3 sm:text-[11px]">
           {TABS.find((t) => t.id === tab)?.hint} · {shown.length} shown
         </p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
+        {/* Two across on a phone, always. Seeing several games at once is the
+            entire job of this page. */}
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {shown.map((w, i) => (
             <Card key={w.key} world={w} index={i} wide={Boolean(w.featured) && !query} />
           ))}

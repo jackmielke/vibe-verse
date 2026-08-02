@@ -88,11 +88,22 @@ const createPlayer: SystemFactory = (ctx) => {
       return !collision.resolveCapsule(probe, RADIUS * 4, 1.8);
     };
 
-    if (settle(0, 0)) return; // origin was fine after all
+    // Start from the waterfront by the Mercado Ferry rather than the map
+    // origin. The origin is the middle of downtown, which is the densest,
+    // most enclosed place in the city — the worst spot to open a game in.
+    // The waterfront gives an open plaza, a view of the bay, La Aguja and
+    // Torre Palma on the skyline, and the bridge in the distance where it
+    // belongs: something to walk toward, not something to stand under.
+    const ANCHOR = { x: 560, z: -470 };
+    if (settle(ANCHOR.x, ANCHOR.z)) {
+      position.set(ANCHOR.x, (terrain?.heightAt(ANCHOR.x, ANCHOR.z) ?? 0) + 2, ANCHOR.z);
+      yaw = Math.atan2(-ANCHOR.x, -ANCHOR.z); // face back toward downtown
+      return;
+    }
 
-    // ~8 m steps out to 160 m, sixteen bearings per ring. Streets in this city
-    // are well under 160 m apart, so a clear spot is always within reach.
-    for (let r = 8; r <= 160; r += 8) {
+    // Otherwise spiral out from the anchor. The ring is wider than before
+    // because requiring open sky rules out a lot of a dense downtown.
+    for (let r = 10; r <= 420; r += 10) {
       for (let i = 0; i < 16; i++) {
         const a = (i / 16) * Math.PI * 2;
         const x = Math.cos(a) * r;

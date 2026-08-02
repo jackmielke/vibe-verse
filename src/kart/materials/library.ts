@@ -345,7 +345,18 @@ export function createMaterialLibrary(opts: MaterialLibraryOptions = {}): Baking
     switch (name) {
       case "asphalt":
       case "asphaltWorn":
-        return std(name, maps, { envMapIntensity: 0.5, normalScale: 1, dithering: true });
+        // Double-sided, and not for looks: the ground is the one surface a
+        // player can ever get underneath — clip the camera below the track on
+        // a landing and a front-sided road simply is not there, so you see the
+        // void through the floor of the world. Backfaces cost almost nothing
+        // here (the depth buffer rejects them immediately) and the guarantee
+        // is worth more than the saving.
+        return std(name, maps, {
+          envMapIntensity: 0.5,
+          normalScale: 1,
+          dithering: true,
+          side: THREE.DoubleSide,
+        });
 
       case "kerb":
         return std(name, maps, { envMapIntensity: 0.6, normalScale: 1 });
@@ -380,7 +391,9 @@ export function createMaterialLibrary(opts: MaterialLibraryOptions = {}): Baking
       case "grass":
       case "dirt":
       case "sand":
-        return std(name, maps, { envMapIntensity: 0.4, normalScale: 1 });
+        // Same reasoning as the asphalt above: the world must have a floor
+        // from underneath as well as from on top.
+        return std(name, maps, { envMapIntensity: 0.4, normalScale: 1, side: THREE.DoubleSide });
 
       case "water": {
         const mat = phys(name, maps, {

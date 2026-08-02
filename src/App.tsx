@@ -38,7 +38,6 @@ import VibeTimes from "./pages/VibeTimes.tsx";
 import SanFrancisco from "./pages/SanFrancisco.tsx";
 import SanPalmas from "./pages/SanPalmas.tsx";
 import VibeGolf from "./pages/VibeGolf.tsx";
-import Worlds from "./pages/Worlds.tsx";
 import VibeIsland2 from "./pages/VibeIsland2.tsx";
 import Terminal from "./pages/Terminal.tsx";
 import Game from "./pages/Game.tsx";
@@ -52,15 +51,42 @@ const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 /* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
+/* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
+   at boot. Lazy for the same reason: nobody who never works a night shift
+   should carry the pizzeria around in the hub's entry chunk. */
+const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
+/* BLUE ANGELS builds all of Seattle at boot — a 44 km height field, eleven
+   thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
+   nobody who never flies it should carry the city in the hub's entry chunk. */
+const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
+/* I SPY is a 2D canvas game with no Three in it at all, but it carries a
+   1,400-object level and a solver, and nobody who never plays it should
+   carry those around in the hub's entry chunk either. */
+const ISpy = lazy(() => import("./pages/ISpy.tsx"));
+/* AIRPLANE! builds a 707 flight deck, a thunderstorm and the whole of Chicago
+   at boot. Lazy for the same reason as the rest: nobody who never flies 209
+   should carry a light field of three million street lamps around in the hub's
+   entry chunk. */
+const Airplane = lazy(() => import("./pages/Airplane.tsx"));
+/* THE FINAL FRONTIER carries a whole starship bridge, five hulls and a
+   procedural planet. Lazy for the same reason as the rest: nobody who never
+   takes the centre seat should carry the Enterprise in the hub's entry chunk. */
+const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
+/* HOME ALONE builds 671 Lincoln Avenue — three storeys, sixteen rooms and the
+   block it stands on — out of procedural textures at boot. Lazy for the same
+   reason as the rest: nobody who never rings that doorbell should carry the
+   house around in the hub's entry chunk. */
+const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
 
 const queryClient = new QueryClient();
 
 /** App chrome (nav + radio) — hidden anywhere that owns the whole viewport and
-    the pointer, where the nav would sit on top of a crosshair or eat a drag.
-    Derived from the registry (`chromeless: true`, aliases included) so a world
-    cannot ship fullscreen in one URL and chromed in another, plus the two
-    surfaces that are not worlds: the clean /live broadcast and the picker. */
-const CHROMELESS = new Set([...CHROMELESS_ROUTES, "/live", "/worlds"]);
+    the pointer, where the nav would sit on top of a crosshair, a pitch ladder,
+    a door button or an attitude indicator. Derived from the registry
+    (`chromeless: true`, aliases included) so a world cannot ship fullscreen on
+    one URL and chromed on another, plus /live, the one surface that is not a
+    world: a clean broadcast with no UI at all. */
+const CHROMELESS = new Set([...CHROMELESS_ROUTES, "/live"]);
 
 const AppChrome = () => {
   const { pathname } = useLocation();
@@ -84,8 +110,13 @@ const App = () => (
               except the clean /live broadcast. */}
           <AppChrome />
           <Routes>
-          {/* Hub is now the landing page — the VibeVerse lobby. */}
-          <Route path="/" element={<HubV2 />} />
+          {/* The grid of every world is the landing page. It is the clearest
+              way to see what exists in one glance, and one tap gets you in.
+              The 3D lobbies (/terminal, /lobby-3d) are the second way in.
+              "/", "/game" and "/worlds" are all the same page — one grid, three
+              names, because there is no version of this where two different
+              grids of the same worlds stay in agreement. */}
+          <Route path="/" element={<Game />} />
           {/* Old Edge Esmeralda splash, kept reachable for those who want it. */}
           <Route path="/welcome" element={<Index />} />
           {/* Mario-Kart-style character + vehicle picker. */}
@@ -120,12 +151,13 @@ const App = () => (
           <Route path="/ninja" element={<FruitNinja />} />
           {/* EDM Town — low-poly party world with photo mode + guestbook. */}
           <Route path="/edm-town" element={<EdmTown />} />
-          {/* /hub still works as an alias for the lobby. */}
+          {/* The 3D carousel lobby, still reachable — it just is not the
+              front door any more. */}
           <Route path="/hub" element={<HubV2 />} />
+          <Route path="/lobby-3d" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
           <Route path="/hub-old" element={<Hub />} />
-          {/* /game — every world and game on one flat, fast, linkable page.
-              The 3D hub at "/" is the front door; this is the index. */}
+          {/* The landing grid, on URLs that say what it is. */}
           <Route path="/game" element={<Game />} />
           <Route path="/games" element={<Navigate to="/game" replace />} />
           {/* Community-submitted worlds. */}
@@ -153,8 +185,7 @@ const App = () => (
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
           <Route path="/times" element={<VibeTimes />} />
-          {/* WORLDS — the shooter picker. Choose a city, then drop in. */}
-          <Route path="/worlds" element={<Worlds />} />
+          <Route path="/worlds" element={<Game />} />
           {/* San Francisco: Free Fall — open-world shooter, real SF geometry. */}
           <Route path="/sf" element={<SanFrancisco />} />
           <Route path="/san-francisco" element={<SanFrancisco />} />
@@ -193,6 +224,20 @@ const App = () => (
               }
             />
           ))}
+          {/* FIVE NIGHTS AT VIBEY'S — midnight to 6 AM, two doors, one battery.
+              Four animatronics walk a real twelve-room building; the security
+              cameras are cameras standing in it. */}
+          {["/fnaf", "/five-nights"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <FiveNights />
+                </Suspense>
+              }
+            />
+          ))}
           {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
           <Route path="/golf" element={<VibeGolf />} />
           {/* Vibe Kart — arcade kart racing: drift, mini-turbos, shells. */}
@@ -204,6 +249,75 @@ const App = () => (
               </Suspense>
             }
           />
+          {/* BLUE ANGELS — Seafair over Lake Washington. You fly number 1 and
+              the other five fly your wing, over a real Seattle. */}
+          {["/blue-angels", "/angels", "/seafair-show"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
+                  <BlueAngels />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* I SPY — the Geometry Dash level, in 2D, in the vibeverse. One
+              button, sixty seconds, and a screen full of spikes that are not
+              there. */}
+          {["/i-spy", "/ispy", "/geometry-dash"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <ISpy />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* HOME ALONE — 671 Lincoln Avenue at Christmas. Walk an empty
+              house, light it up, arm eight traps, then survive the two men who
+              came for it. First of the films-as-worlds. */}
+          {["/home-alone", "/kevin"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#0d1524]" />}>
+                  <HomeAlone />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* AIRPLANE! — Trans American 209, LAX to Chicago. The crew had the
+              fish. You are in the left seat of a 707 in a thunderstorm, and
+              there are 187 people behind you. */}
+          {["/airplane", "/flight-209", "/209"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <Airplane />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* THE FINAL FRONTIER — you are the captain of a Constitution-class
+              starship, and the main viewscreen is a live render of the space
+              your ship is actually flying through. Five episodes. */}
+          {["/trek", "/star-trek", "/final-frontier"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <StarTrek />
+                </Suspense>
+              }
+            />
+          ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

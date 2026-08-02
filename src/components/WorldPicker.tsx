@@ -1,16 +1,21 @@
 /**
- * WorldPicker — the "choose your world" gateway.
+ * WorldPicker — the "choose your world" overlay.
  *
- * Shows automatically once per session after the splash, and any time from the
- * 🌐 Worlds chip in GlobalNav. Lists EVERY world as a preview card, ordered
- * featured-first. Clicking a card routes straight there — including the Vibe
- * Island card, which spawns you on the island lawn.
+ * Opens over whatever world you are already in, from the ⋯ menu in GlobalNav
+ * and once per session on the village map. Lists EVERY world as a preview card,
+ * featured-first. Clicking a card routes straight there.
+ *
+ * **Overlay only.** It used to double as a full page for "/" and "/worlds",
+ * which is where a real bug lived: as a page, `onClose` navigated somewhere,
+ * and the card handler called `navigate(world)` and then `onClose()` in the
+ * same tick — so the second navigation won and every card on the homepage took
+ * you to the Terminal instead of to the world you tapped. The grid page is
+ * `src/pages/Game.tsx` now, and it uses plain links.
  *
  * The list itself is `src/worlds/registry.ts`. This component used to keep its
  * own copy, as did the nav, the hub and the Terminal, and the four of them
- * disagreed about which worlds exist. Now there is one list and four views of
- * it. Card art is keyed off the world's `key` in `src/worlds/art.ts` — recapture
- * it when a world changes enough that its card starts lying.
+ * disagreed about which worlds exist. Now there is one list and several views
+ * of it. Card art is keyed off the world's `key` in `src/worlds/art.ts`.
  */
 import { createPortal } from "react-dom";
 import { useMemo, useState, useEffect } from "react";
@@ -22,15 +27,9 @@ import { artFor } from "@/worlds/art";
 export default function WorldPicker({
   open,
   onClose,
-  asPage = false,
 }: {
   open: boolean;
   onClose: () => void;
-  /**
-   * Render inline as a full page (for the /worlds route) instead of as a
-   * portalled overlay. Same component, same list.
-   */
-  asPage?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,11 +53,7 @@ export default function WorldPicker({
     <AnimatePresence>
       {open && (
         <motion.div
-          className={
-            asPage
-              ? "min-h-[100dvh] w-full bg-background overflow-y-auto"
-              : "fixed inset-0 z-50 bg-background/85 backdrop-blur-md overflow-y-auto"
-          }
+          className="fixed inset-0 z-50 overflow-y-auto bg-background/85 backdrop-blur-md"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.4 } }}
@@ -187,7 +182,7 @@ export default function WorldPicker({
               onClick={onClose}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              {asPage ? "← back to the hub" : "✕ close"}
+              ✕ close
             </motion.button>
           </div>
         </motion.div>
@@ -195,7 +190,6 @@ export default function WorldPicker({
     </AnimatePresence>
   );
 
-  // As a page it is ordinary document flow; as the gateway it is portalled to
-  // <body> so it floats above whatever world is already running.
-  return asPage ? body : createPortal(body, document.body);
+  // Portalled to <body> so it floats above whatever world is already running.
+  return createPortal(body, document.body);
 }

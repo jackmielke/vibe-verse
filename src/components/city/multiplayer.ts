@@ -17,6 +17,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
 
 export interface PlayerState {
   x: number;
@@ -136,6 +137,12 @@ interface Ghost {
   walk: THREE.AnimationAction | null;
   idle: THREE.AnimationAction | null;
   active: "walk" | "idle" | null;
+  /** Set instead of mixer/walk/idle when the peer plays a model-less
+   *  character — driven from the ghost's interpolated velocity. */
+  proc: ProceduralPilot | null;
+  /** Previous frame's position, for deriving that velocity. */
+  prevPos: THREE.Vector3;
+  prevYaw: number;
   target: { x: number; y: number; z: number; yaw: number; scale: number };
   bumpVel: THREE.Vector3;
   char: string;
@@ -390,6 +397,9 @@ export function createMultiplayer(opts: {
       walk: null,
       idle: null,
       active: null,
+      proc: null,
+      prevPos: new THREE.Vector3(0, -500, 0),
+      prevYaw: 0,
       target: { x: 0, y: -500, z: 0, yaw: 0, scale: initialScale },
       bumpVel: new THREE.Vector3(),
       char,
@@ -397,6 +407,20 @@ export function createMultiplayer(opts: {
       userId,
     };
     ghosts.set(key, placeholder);
+    // A character with no model file is built here rather than fetched,
+    // so peers playing one are visible to everyone else instead of
+    // silently becoming an invisible placeholder.
+    if (!characterUrl(char)) {
+      const p = buildProceduralPilot();
+      placeholder.proc = p;
+      placeholder.inst = p.group;
+      placeholder.baseFit = 1;
+      p.group.scale.setScalar(placeholder.appliedScale);
+      placeholder.group.add(p.group);
+      placeholder.group.add(makeLabelSprite(label));
+      scene.add(placeholder.group);
+      return;
+    }
     try {
       const base = await loadBase(char);
       if (disposed || !ghosts.has(key)) return;
@@ -436,6 +460,11 @@ export function createMultiplayer(opts: {
     if (!g) return;
     ghosts.delete(key);
     scene.remove(g.group);
+    // Cloned GLB ghosts share cached geometry with the base, so they
+    // must NOT be disposed here — but a procedural ghost owns its own,
+    // and leaking one per peer per session adds up.
+    g.proc?.dispose();
+    g.proc = null;
   };
 
   const playEmoteOn = (g: Ghost, emote: EmoteName) => {
@@ -634,6 +663,26 @@ export function createMultiplayer(opts: {
           }
         }
         g.mixer?.update(dt);
+        // Model-less peers get the same rig the local pilot uses, fed
+        // from the motion we just interpolated. It reads as a real gait
+        // because the speed is real — it's how far they actually moved.
+        if (g.proc) {
+          const step = Math.hypot(p.x - g.prevPos.x, p.z - g.prevPos.z);
+          let dy = g.group.rotation.y - g.prevYaw;
+          while (dy > Math.PI) dy -= Math.PI * 2;
+          while (dy < -Math.PI) dy += Math.PI * 2;
+          g.proc.update(dt, {
+            speed: step / Math.max(dt, 1e-4),
+            // Peers report position, not contact — treat a clear rise as
+            // airborne so jumps and jetpack climbs still read.
+            grounded: p.y - g.prevPos.y < 0.02 * (dt * 60),
+            verticalVel: (p.y - g.prevPos.y) / Math.max(dt, 1e-4),
+            yawRate: dy / Math.max(dt, 1e-4),
+            thrusting: false,
+          });
+          g.prevPos.copy(p);
+          g.prevYaw = g.group.rotation.y;
+        }
 
         // Emote bubble lifecycle: bob, fade, then detach.
         if (g.emote) {

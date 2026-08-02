@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Image as ImageIcon, Sun, Moon, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +38,8 @@ interface CharacterOption {
   url: string;
 }
 const CHARACTERS: CharacterOption[] = [
+  // Empty url = no model file; loadCharacterRig builds this one in code.
+  { id: "flux", label: "Flux", emoji: "✦", url: "" },
   { id: "vibey", label: "Vibey", emoji: "🤖", url: robotVibeyUrl },
   { id: "alien", label: "Alien", emoji: "👽", url: alienUrl },
   { id: "wizard", label: "Wizard", emoji: "🧙", url: quaternius("Wizard") ?? robotVibeyUrl },
@@ -341,10 +343,11 @@ export default function VibeGallery() {
     // ---- Character + walking ---------------------------------------
     const vibeyGroup = new THREE.Group();
     scene.add(vibeyGroup);
-    let vibey: THREE.Group | null = null;
-    let vibeyMixer: THREE.AnimationMixer | null = null;
-    let walkAction: THREE.AnimationAction | null = null;
-    let idleAction: THREE.AnimationAction | null = null;
+    // The rig handles both kinds of character: a GLB with clips, or one
+    // built in code with none. Fitting, anchoring and the idle↔walk
+    // blend all live behind setLocomotion().
+    let rig: CharacterRig | null = null;
+    let walkBlend = 0;
     const vibeyState = {
       pos: new THREE.Vector3(-ROOM_LENGTH / 2 + 2.5, 0, 0),
       target: new THREE.Vector3(-ROOM_LENGTH / 2 + 2.5, 0, 0),
@@ -375,48 +378,11 @@ export default function VibeGallery() {
     targetRing.position.y = 0.02;
     scene.add(targetRing);
 
-    const loader = new GLTFLoader();
-    loader.load(characterUrl, (gltf) => {
-      vibey = gltf.scene;
-      vibey.position.set(0, 0, 0);
-      vibey.scale.setScalar(1);
-      vibey.updateMatrixWorld(true);
-      const box0 = new THREE.Box3().setFromObject(vibey);
-      const size0 = new THREE.Vector3();
-      box0.getSize(size0);
-      const fit = 1.6 / Math.max(size0.y, 0.01);
-      vibey.scale.setScalar(fit);
-      vibey.updateMatrixWorld(true);
-      const box1 = new THREE.Box3().setFromObject(vibey);
-      vibey.position.y = -box1.min.y;
-      const c = new THREE.Vector3();
-      box1.getCenter(c);
-      vibey.position.x = -c.x;
-      vibey.position.z = -c.z;
-      vibey.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) {
-          m.castShadow = true;
-        }
-      });
-      vibeyGroup.add(vibey);
-      if (gltf.animations && gltf.animations.length > 0) {
-        vibeyMixer = new THREE.AnimationMixer(vibey);
-        const idleClip =
-          gltf.animations.find((c) => /idle|breath|stand/i.test(c.name)) ?? gltf.animations[0];
-        const walkClip =
-          gltf.animations.find((c) => /walk|run/i.test(c.name)) ?? idleClip;
-        if (idleClip) {
-          idleAction = vibeyMixer.clipAction(idleClip);
-          idleAction.play();
-        }
-        if (walkClip && walkClip !== idleClip) {
-          walkAction = vibeyMixer.clipAction(walkClip);
-          walkAction.setLoop(THREE.LoopRepeat, Infinity);
-          walkAction.weight = 0;
-          walkAction.play();
-        }
-      }
+    let disposed = false;
+    void loadCharacterRig({ url: characterUrl }, { height: 1.6 }).then((r) => {
+      if (disposed) return r.dispose();
+      rig = r;
+      vibeyGroup.add(r.object);
     });
 
     // ---- Click handling --------------------------------------------
@@ -517,12 +483,9 @@ export default function VibeGallery() {
       vibeyGroup.position.copy(vibeyState.pos);
       vibeyGroup.rotation.y = vibeyState.heading;
 
-      if (walkAction && idleAction) {
-        const targetWalkW = vibeyState.walking ? 1 : 0;
-        walkAction.weight += (targetWalkW - walkAction.weight) * Math.min(1, dt * 6);
-        idleAction.weight += ((1 - targetWalkW) - idleAction.weight) * Math.min(1, dt * 6);
-      }
-      vibeyMixer?.update(dt);
+      walkBlend += ((vibeyState.walking ? 1 : 0) - walkBlend) * Math.min(1, dt * 6);
+      rig?.setLocomotion(walkBlend);
+      rig?.update(dt);
 
       // Camera: third-person chase, biased a touch higher than the
       // garden cam so we can see the paintings on the walls.
@@ -546,6 +509,9 @@ export default function VibeGallery() {
     raf = requestAnimationFrame(tick);
 
     return () => {
+      // Stops a rig that is still loading from being mounted into a
+      // scene that is already being torn down.
+      disposed = true;
       cancelAnimationFrame(raf);
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouch as EventListener);
