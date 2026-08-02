@@ -126,6 +126,22 @@ export function createGame(ctx: TrekCtx): System {
       p.systems[key as keyof typeof p.systems] = 1;
     }
 
+    /*
+     * Let go of the trigger.
+     *
+     * `firePhasers` is *held* state, not an edge — and it survives an episode
+     * boundary, so a captain who was still holding the button when the last
+     * one ended opens fire the instant the next one acquires a target. Which
+     * is merely untidy in five of these episodes and fatal in the one where
+     * firing at all is the losing move: a sequential playthrough lost The
+     * Devil in the Dark having pressed nothing, because the previous episode's
+     * trigger was still down.
+     */
+    ctx.input.firePhasers = false;
+    ctx.input.yaw = 0;
+    ctx.input.pitch = 0;
+    ctx.input.roll = 0;
+
     ctx.services.space?.setScene(mission.scene);
     ctx.services.camera?.setMode("viewscreen");
     setAlert("normal");

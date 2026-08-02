@@ -354,7 +354,11 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
 
       {/* ---- Touch orders. Phones cannot press T. ---- */}
       {!carded && (
-        <div className="pointer-events-auto absolute bottom-[92px] right-3 z-30 flex flex-col gap-1.5 sm:hidden">
+        // Two columns, not one. Seven buttons stacked is 344 px of column
+        // starting 92 px up, which runs clean off the top of a phone held in
+        // landscape — the orientation this world is actually played in. Four
+        // rows of two is 194 px and fits.
+        <div className="pointer-events-auto absolute bottom-[92px] right-3 z-30 grid grid-cols-2 gap-1.5 sm:hidden">
           <TouchKey label="FIRE" onDown={() => order("firePhasers", true)} onUp={() => order("firePhasers", false)} />
           <TouchKey label="TORP" onDown={() => order("fireTorpedo")} />
           <TouchKey label="LOCK" onDown={() => order("nextTarget")} />
