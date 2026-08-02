@@ -148,6 +148,20 @@ export const ISLANDS: IslandDef[] = [
     irregularity: 0.58, seed: 8,
   },
   {
+    // Reference 2's snow-capped mountain: bare alpine rock at a scale that
+    // makes the inhabited isles read as small. It is deliberately the largest
+    // thing in the world and deliberately the only uninhabited one.
+    key: "snow-peak",
+    name: "The White Peak",
+    kind: "heart",
+    // Far enough away to read as a mountain rather than a wall. At 980 m it
+    // filled a third of the frame and the only face you ever saw was its dark
+    // underside — distance is what turns a large object into a landmark.
+    x: 1750, z: -1950,
+    radius: 520, elevation: 400, dome: 1.85, keel: 460,
+    irregularity: 0.34, seed: 11,
+  },
+  {
     key: "low-shelf",
     name: "The Low Shelf",
     kind: "shard",
@@ -323,7 +337,9 @@ export type Biome =
   | "jungle" // dense canopy on the flanks
   | "terrace" // cultivated steps near SnackFe
   | "stone" // exposed rock and cliff
-  | "summit"; // the bare high ground the Palace sits on
+  | "summit" // the bare high ground the Palace sits on
+  | "snow" // the White Peak's snowfield
+  | "scree"; // loose rock below the snowline
 
 /**
  * Biome at a point. Driven by elevation above the island's own base, slope,
@@ -336,6 +352,14 @@ export function biomeAt(x: number, z: number): Biome {
   const h = surfaceHeight(x, z) ?? 0;
   const rel = h - isle.elevation;
   const slope = surfaceSlope(x, z);
+
+  // The White Peak has its own rules: a snowline, and bare scree below it.
+  // Snow does not cling to anything steeper than about 50 degrees, which is
+  // what gives a real mountain its striped look rather than a white blanket.
+  if (isle.key === "snow-peak") {
+    if (h > SNOWLINE && slope < 0.88) return "snow";
+    return h > SNOWLINE - 90 ? "scree" : "stone";
+  }
 
   if (slope > 0.72) return "stone";
   // The lagoon and the sand ring around it, driven by the carved basin.
@@ -364,6 +388,13 @@ export function biomeAt(x: number, z: number): Biome {
  * Spill, and the whole reason the lagoon exists is to have something that
  * visibly pours off the edge of the world.
  */
+/**
+ * Height above which the White Peak holds snow, absolute metres. Snow does not
+ * cling to slopes much steeper than ~50 degrees, which is what gives a real
+ * mountain its striped look instead of a white blanket.
+ */
+export const SNOWLINE = 455;
+
 export const LAGOON = {
   /** Centre of the basin, world metres (on the heart island). */
   x: 150,

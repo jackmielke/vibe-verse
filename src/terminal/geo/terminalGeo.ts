@@ -22,10 +22,17 @@ import { fbm2, valueNoise2 } from "@/shared/proc/rng";
  * ------------------------------------------------------------------ */
 
 export const HOME = {
-  /** Radius of the grassy island you stand on, metres. */
-  radius: 30,
+  /**
+   * Radius of the grassy island you stand on, metres.
+   *
+   * Sized so its rim is inside the camera's field of view. At 30 m the island
+   * filled the bottom of the frame and ran off both edges, so it read as a
+   * green plane rather than as somewhere floating — which loses the entire
+   * premise in the very first frame anyone sees.
+   */
+  radius: 17,
   /** Depth of its keel. */
-  keel: 26,
+  keel: 21,
   /** Radius of the stone platform at its centre. */
   platformRadius: 7.4,
   /** Height of the platform's top above the island's grass. */

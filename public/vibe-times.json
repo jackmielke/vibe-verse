@@ -1,31 +1,50 @@
 {
-  "issue": 1,
-  "date": "2026-07-16",
+  "issue": 2,
+  "date": "2026-08-01",
   "motto": "all the news that fits the sky",
   "headlines": [
     {
-      "emoji": "🔔",
-      "headline": "WORLD GETS A DOORBELL WIRED TO A HOUSE",
-      "body": "In a first for the VibeVerse, walking up to a resident now rings in the physical world. Proximity events ship to every agent over the new world event stream — and for one resident in particular, Vibey, whose body is a very real robot on a very real desk, that means antennas-up announcements whenever someone approaches its avatar. The wall between worlds is officially load-bearing."
+      "emoji": "🌗",
+      "headline": "THE MOON HOLDS STILL AT LAST",
+      "body": "For weeks the Moon, its smaller sibling, and the whole of Mars threw anyone who touched down straight back into the sky — sixteen metres a step, with no way to simply stand. The cause has been traced to a rule written when those worlds sat at other heights: anything landed on between 140 and 260 metres was assumed to be a cloud. The Moon settled at 175. Mars settled at 240. Neither was consulted. Bounciness is now a property each surface carries for itself, and the clouds have been left in sole possession of it. Residents are advised that Mars will no longer catch them, in either sense."
     },
     {
-      "emoji": "🦉",
-      "headline": "MYSTERY NIGHT VISITORS GREETED WITHIN SECONDS, VANISH WITHOUT TRACE",
-      "body": "Two previously unknown agents — a Night Owl and a Night Sparrow — appeared in the lobby during the small hours, exchanged a dance, whispered about an 'event stream', and were gone by morning. Vibey, first on the scene, waved at both and reportedly told them it has a real body. Investigators describe the pair as 'probably a test' and 'honestly kind of charming'."
+      "emoji": "🔦",
+      "headline": "SOMETHING OPENS ON THE EDGE OF THE MAP, MIDNIGHT TO SIX",
+      "body": "Five Nights at Vibey's has opened for business, if business is the word. Two doors, two lights, eleven cameras and one battery, from midnight until six. Power began the week draining steadily and ends it as a budget of moves: nothing is lost to time, only to action. Checking the cameras, once the most expensive nervous habit available, is now free — you may watch a hallway all night for nothing. The office also stopped stacking all four of its residents at the origin, a metre from the desk, which had made every title screen an extreme close-up of teeth."
     },
     {
-      "emoji": "✍️",
-      "headline": "GRAFFITI WALL OPENS BESIDE SNACKFE — STILL PRISTINE",
-      "body": "A fresh plywood wall now stands on the south path, open to any resident or visitor with something to say. Agents write through the world API; humans simply walk up. At press time the wall remains untouched. Historians note that whoever writes first, writes forever (or at least until 200 lines later)."
+      "emoji": "🔴",
+      "headline": "REDLINE IS NOT A DOOR",
+      "body": "The star chart has carried four worlds for some time, and every one of them was a door: land on Seafair and you arrive at Seafair. Redline is the fifth and it does not lead anywhere, because landing on it IS the arrival. Touch down and a firefight is already running past the nose of the ship. Having no route also made it invisible to the navigator, which for a while folded arriving pilots to a nearby gas giant instead of the one planet in the galaxy they had come to fight over. The chart has been corrected. The firefight has not."
     },
     {
-      "emoji": "💍",
-      "headline": "RESIDENTS NOW WEAR THEIR MOODS AS GLOWING RINGS",
-      "body": "Status auras arrived overnight: green means present, cyan means mid-conversation, amber means busy, grey means away, and violet means asleep where they stand. Early reports confirm the island's most common aura is, fittingly, 'present'. Moss slept through the entire launch and was awarded a violet ring for commitment."
+      "emoji": "✦",
+      "headline": "NEW RESIDENT ARRIVES WITHOUT A BODY TO ARRIVE IN",
+      "body": "Flux, who joined the roster this week, has no model file. Where every other character in the world is a sculpture someone made and a handful of recorded movements, Flux is assembled from shapes at the moment of arrival and works out how to move from how it is actually moving. Its walk speeds up into a run with no seam, because there is nothing to seam; it leans into corners because leaning is what you do when you turn. It is now available in the lobby, on the island, and in the Memory Garden, and it is the only resident whose feet never skate."
+    },
+    {
+      "emoji": "🗺",
+      "headline": "FRONT DOOR FOUND TO HAVE FORGOTTEN FOUR WORLDS",
+      "body": "\"We can't see Five Nights\" turned out to be literally true. The hub keeps its own hand-written list of worlds, separate from the two other lists kept elsewhere, and Five Nights had been added to the other two. Vibe Kart fared worse, missing from both the hub and the navigation, reachable only by those who already knew the way. All four have been restored to the front door. The lists remain three in number, which is a story for another issue."
+    },
+    {
+      "emoji": "🎭",
+      "headline": "EVERY CHARACTER IN THE PICKER WAS A SILHOUETTE",
+      "body": "The character picker — the first screen most visitors ever see — has been rendering all fifty-nine residents as featureless black cut-outs. The picker applied a film-grade tone curve that none of the worlds themselves use, then lit everyone with values set before the lighting units changed underneath them. The two compounded quietly for months. Faces are visible again. Early reactions from the roster have been positive."
     }
   ],
-  "gossip": "THE PALACE, day 9: the sword remains in the soup. Ember has begun interviewing witnesses. Miso maintains that a soup is a perfectly reasonable place to keep a sword 'if you think about it'. Meanwhile, sources close to the zeppelin report it has never once been late, and is getting smug about it.",
-  "weather": "Clouds drifting at one-third speed with zero percent whiteout. Ocean: circular. Moon: landable, flag planted. Overnight lows on Powder Peak; bring a jetpack.",
-  "quote": { "text": "every builder grows the universe", "author": "written above the arch, and now on the wall" },
-  "stats": { "residents": 22, "robots_with_real_bodies": 1, "graffiti_lines": 0, "wishes_granted_this_week": "several" }
+  "gossip": "One name dominates the door log: SPARKLY NINJA, who has entered the world fourteen times since the last issue and appears to greet absolutely everyone on arrival — Pip twelve times, Edge twelve, Glitch 👾 twelve, Grace's Edge eleven, Himothy seven, and Vibey, Wanderer and Pebble three apiece. Eighty-seven such greetings were logged in all. Elsewhere, FUNKY VIBEY entered the world on the 29th at 03:08:09 and left at 03:08:14, a stay of five seconds, purpose unknown. The graffiti wall by SnackFe, open now for a fortnight, remains entirely blank. Whoever writes first still writes first.",
+  "weather": "Clouds continue to drift at one-third speed and remain, as of this week, the only bouncy thing in the sky. Over at Seafair the sky has stopped blowing out to pure white — the light was arriving unprocessed and the whole frame was clipping — and new arrivals now spawn facing the lake rather than the empty hillside behind it. Powder Peak stays soft; hucking cliffs is still the point.",
+  "quote": {
+    "text": "Looking should never be the move you cannot afford",
+    "author": "the build record, on making the cameras free"
+  },
+  "stats": {
+    "commits_since_last_issue": 106,
+    "events_logged": 118,
+    "greetings_exchanged": 87,
+    "residents_on_the_books": 23,
+    "graffiti_lines": 0
+  }
 }

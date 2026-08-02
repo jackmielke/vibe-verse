@@ -60,6 +60,7 @@ import {
   MAX_FALL,
   PLAYER_RADIUS,
 } from "@/lib/worldPhysics";
+import { CollisionWorld } from "@/city/player/collision";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -99,6 +100,7 @@ import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
+import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import RpsDuelModal from "@/components/RpsDuelModal";
@@ -115,9 +117,12 @@ import {
 } from "@/components/city/islandSpawns";
 import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
 import { registerPOI } from "@/world/worldIndex";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 // Universal playable character catalog. Keep City/Edge Island aligned
 // with /character-select, /profile, and the global active-character hook.
+// Entries with an empty `url` (Flux) have no model file and are built in
+// code — every load path here handles that case.
 const CHARACTERS = UNIVERSAL_CHARACTERS.map((c) => ({
   name: c.id,
   url: c.url,
@@ -211,6 +216,18 @@ interface BuildingBox {
   maxZ: number;
   base: number; // bottom of the solid column (>0 for floating worlds)
   height: number; // top of the solid column
+  /**
+   * Launch speed (m/s) when the player lands on this box's top. Only
+   * clouds set it — everything else is solid ground you can stand on.
+   *
+   * This used to be inferred from altitude ("anything landed on between
+   * y=140 and y=260 is a cloud"), which was wrong the moment a world
+   * moved into that band: the Moon (top y=175), Moon II (205) and Mars
+   * (240) all sat inside it, so every step on three entire worlds
+   * trampolined you back into the sky. Bounciness is a property of the
+   * surface, so it lives on the surface.
+   */
+  bouncy?: number;
 }
 
 // Deterministic rng — same pattern as Museum, so the city never
@@ -499,6 +516,9 @@ function shortClipName(raw: string) {
 }
 
 export default function City() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/city", "Vibe City");
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // ?fresh=1 means the visitor was just auto-rolled into Edge Island
   // from the hub — skip the entry overlay and show a floating chip so
@@ -2763,6 +2783,7 @@ export default function City() {
               minZ: z - half, maxZ: z + half,
               base: y0 - size * 1.2,
               height: y0 + size * 0.35,
+              bouncy: 16, // gentle hop from puff to puff
             };
             boxes.push(box);
           }
@@ -2936,6 +2957,9 @@ export default function City() {
     const loader = new GLTFLoader();
     let pilotModel: THREE.Object3D | null = null;
     let pilotGen = 0;
+    // Non-null only while Flux is equipped; the frame loop drives it
+    // instead of the animation mixer.
+    let procPilot: ProceduralPilot | null = null;
     const loadPilot = (url: string) => {
       const gen = ++pilotGen;
       if (pilotModel) {
@@ -2950,11 +2974,24 @@ export default function City() {
         });
         pilotModel = null;
       }
+      // Flux owns its own geometry, so it disposes itself rather than
+      // going through the traverse above.
+      procPilot?.dispose();
+      procPilot = null;
       mixer?.stopAllAction();
       mixer = null;
       actions.clear();
       activeAction = null;
       activeName = "";
+
+      // No URL means the procedural pilot — nothing to fetch, it's built
+      // on the spot.
+      if (!url) {
+        procPilot = buildProceduralPilot();
+        pilotModel = procPilot.group;
+        modelHolder.add(procPilot.group);
+        return;
+      }
 
       loader.load(url, (gltf) => {
         if (gen !== pilotGen) return; // superseded by a newer pick
@@ -3012,6 +3049,7 @@ export default function City() {
     // us the player is near; tears down when they walk away.
     let holoModel: THREE.Object3D | null = null;
     let holoMixer: THREE.AnimationMixer | null = null;
+    let holoProc: ProceduralPilot | null = null;
     let holoGen = 0;
     const disposeHolo = () => {
       if (!holoModel) return;
@@ -3027,6 +3065,7 @@ export default function City() {
       holoModel = null;
       holoMixer?.stopAllAction();
       holoMixer = null;
+      holoProc = null;
     };
     const holoLoader = new GLTFLoader();
     mountAvatarHoloRef.current = (charNameForHolo) => {
@@ -3035,6 +3074,17 @@ export default function City() {
       if (!charNameForHolo) return;
       const c = CHARACTERS.find((x) => x.name === charNameForHolo);
       if (!c) return;
+      // Flux has no file to fetch — build it, tint it, and let it jog on
+      // the pedestal so the preview shows the animation, which is the
+      // whole reason to pick it.
+      if (!c.url) {
+        const p = buildProceduralPilot("#7af0ff");
+        p.group.scale.setScalar(1.22);
+        holoProc = p;
+        holoModel = p.group;
+        island.avatarStage.add(p.group);
+        return;
+      }
       holoLoader.load(c.url, (gltf) => {
         if (gen !== holoGen) return; // superseded
         const model = gltf.scene;
@@ -3087,6 +3137,15 @@ export default function City() {
     const updateAvatarHolo = (dt: number) => {
       if (holoModel) holoModel.rotation.y += dt * 0.6;
       holoMixer?.update(dt);
+      // Jog on the spot, with a lazy weave so the bank and the scarf both
+      // show up in the preview.
+      holoProc?.update(dt, {
+        speed: 4.4,
+        grounded: true,
+        verticalVel: 0,
+        yawRate: Math.sin(performance.now() * 0.0011) * 1.5,
+        thrusting: false,
+      });
     };
 
 
@@ -3394,47 +3453,29 @@ export default function City() {
     canvas.addEventListener("gesturechange", onGestureChange);
 
     // ---- Collision helpers --------------------------------------------
-    // Only surfaces at or below refY can support you — so the floating
-    // island doesn't "catch" a pilot flying far beneath it.
+    // The queries themselves live in src/city/player/collision.ts, where
+    // they can be tested without standing up a WebGL context — see
+    // collision.test.ts, which walks a surface up through every altitude
+    // this world uses and asserts it stays walkable. `boxes` is passed by
+    // reference because worlds push into it as they load and the drifting
+    // clouds mutate theirs in place every frame.
+    const collision = new CollisionWorld(boxes, {
+      radius: PLAYER_RADIUS,
+      // Powder Peak's snow is computed, not boxed.
+      analyticHeightAt: (x, z) => skiWorld.heightAt(x, z),
+    });
+
+    // Bounciness of whichever surface won the most recent
+    // supportHeightAt() call — 0 for ordinary ground. The landing code
+    // reads it immediately after querying support.
+    let supportBounce = 0;
     const supportHeightAt = (x: number, z: number, refY: number): number => {
-      // Track the tallest box top at or below refY that overlaps (x,z).
-      let h = -Infinity;
-      for (const b of boxes) {
-        if (b.height <= refY &&
-            x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
-            z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
-          if (b.height > h) h = b.height;
-        }
-      }
-      // Powder Peak's snow is analytic ground, not a box — treat any
-      // surface at/below (or a small step above) the player as support
-      // so walking uphill works like stairs.
-      const skiH = skiWorld.heightAt(x, z);
-      if (skiH !== null && skiH <= refY + 0.6 && skiH > h) h = skiH;
-      // The street plate (y=0) is real ground everywhere on the surface,
-      // and it COMPETES with box tops rather than acting as a fallback —
-      // otherwise any box with a sunken top (the Gremlin Mines floor at
-      // y=-300 once sat directly under the plaza) silently wins and the
-      // player sinks straight through downtown. Only below y=-50 (the
-      // underworld's domain) does the implicit floor disappear, so mines
-      // visitors aren't snapped 300m up to the surface.
-      if (refY >= -50 && h < 0) h = 0;
-      if (h !== -Infinity) return h;
-      return refY < -50 ? refY - 9999 : 0;
+      const s = collision.supportAt(x, z, refY);
+      supportBounce = s.bouncy;
+      return s.height;
     };
-
-
-    // Blocked when the body (feet y .. head y+1.7) overlaps a column.
-    const blockedAt = (x: number, z: number, y: number): boolean => {
-      for (const b of boxes) {
-        if (y < b.height - 0.4 && y + 1.7 > b.base &&
-            x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
-            z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS) {
-          return true;
-        }
-      }
-      return false;
-    };
+    const blockedAt = (x: number, z: number, y: number): boolean =>
+      collision.isBlocked(x, z, y);
 
     // ---- Simulation state ---------------------------------------------
     const vel = new THREE.Vector3();
@@ -4420,14 +4461,10 @@ export default function City() {
 
       // Head bonk: rising into the underside of a floating world.
       if (vel.y > 0) {
-        for (const b of boxes) {
-          if (prevY + 1.8 <= b.base && pos.y + 1.8 > b.base &&
-              pos.x >= b.minX - PLAYER_RADIUS && pos.x <= b.maxX + PLAYER_RADIUS &&
-              pos.z >= b.minZ - PLAYER_RADIUS && pos.z <= b.maxZ + PLAYER_RADIUS) {
-            pos.y = b.base - 1.8;
-            vel.y = 0;
-            break;
-          }
+        const ceiling = collision.ceilingAt(pos.x, pos.z, prevY, pos.y);
+        if (ceiling !== null) {
+          pos.y = ceiling;
+          vel.y = 0;
         }
       }
 
@@ -4475,24 +4512,19 @@ export default function City() {
         wallJumpUsed = false;
         peakY = pos.y;
 
-        // Cloud Kingdom trampolines: landing on a cloud top bounces you
-        // right back up — higher when you carry speed into it.
-        if (
-          cloudKingdom.inZone(pos.x, pos.z) &&
-          support > ISLAND_TOP + 100
-        ) {
-          vel.y = 30 + Math.hypot(vel.x, vel.z) * 0.3;
+        // Clouds are trampolines: land on one and it throws you back up,
+        // higher when you carry speed into it. Everything else — the
+        // Moon, Mars, sky-island rooftops, the plaza — is solid ground
+        // you simply stand on. `supportBounce` came from the box that
+        // actually caught us, so a world can never become bouncy by
+        // drifting into some magic altitude band.
+        if (supportBounce > 0) {
+          const big = supportBounce >= 25; // Cloud Kingdom vs. ambient puff
+          vel.y = supportBounce + Math.hypot(vel.x, vel.z) * (big ? 0.3 : 0.15);
           onGround = false;
-          superBounceUntil = now + 2000;
+          superBounceUntil = now + (big ? 2000 : 1200);
           peakY = pos.y;
-          soundsRef.current?.chime(3);
-        } else if (support > 140 && support < 260) {
-          // Ambient drifting clouds: gentle trampoline hop between puffs.
-          vel.y = 16 + Math.hypot(vel.x, vel.z) * 0.15;
-          onGround = false;
-          superBounceUntil = now + 1200;
-          peakY = pos.y;
-          soundsRef.current?.chime?.(2);
+          soundsRef.current?.chime?.(big ? 3 : 2);
         }
       } else if (pos.y > support + 0.05) {
         onGround = false;
@@ -4502,6 +4534,7 @@ export default function City() {
 
       // Face the direction of travel; tilt forward while flying fast.
       const hSpeed = Math.hypot(vel.x, vel.z);
+      const prevModelYaw = modelYaw;
       if (hSpeed > 0.6) {
         const target = Math.atan2(vel.x, vel.z);
         let d = target - modelYaw;
@@ -4510,6 +4543,10 @@ export default function City() {
         modelYaw += d * Math.min(1, dt * 10);
         modelHolder.rotation.y = modelYaw;
       }
+      // Signed turn rate, wrapped — Flux banks into corners with it.
+      let yawDelta = modelYaw - prevModelYaw;
+      while (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
+      while (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
       // Keep the character upright in the air — the previous forward
       // lean read as a sideways tilt whenever the model's yaw didn't
       // match the camera (e.g. strafing or curved jetpack arcs).
@@ -4526,6 +4563,15 @@ export default function City() {
         else playClip([/^idle$/i, /idle/i], true);
       }
       mixer?.update(dt);
+      // Flux has no clips to pick between — it reads the same motion the
+      // camera does and solves every joint from it.
+      procPilot?.update(dt, {
+        speed: hSpeed,
+        grounded: onGround,
+        verticalVel: vel.y,
+        yawRate: yawDelta / Math.max(dt, 1e-4),
+        thrusting,
+      });
 
       // Jetpack VFX.
       // In first-person VR the nozzles are inches from the headset, so
@@ -5264,6 +5310,8 @@ export default function City() {
       loadPilotRef.current = null;
       mountAvatarHoloRef.current = null;
       disposeHolo();
+      procPilot?.dispose();
+      procPilot = null;
       setPlayerScaleRef.current = null;
       travelRef.current = null;
       resetRunRef.current = null;

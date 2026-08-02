@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -36,9 +37,31 @@ import Companions from "./pages/Companions.tsx";
 import VibeTimes from "./pages/VibeTimes.tsx";
 import SanFrancisco from "./pages/SanFrancisco.tsx";
 import SanPalmas from "./pages/SanPalmas.tsx";
+import VibeGolf from "./pages/VibeGolf.tsx";
 import Worlds from "./pages/Worlds.tsx";
 import VibeIsland2 from "./pages/VibeIsland2.tsx";
 import Terminal from "./pages/Terminal.tsx";
+
+
+const Seafair = lazy(() => import("./pages/Seafair.tsx"));
+/* THE VIBEVERSE brings its own build of Three and ~2 MB of shaders. It is lazy
+   for the same reason Seafair is: nobody who never flies there should pay for
+   it in the hub's entry chunk. */
+const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
+/* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
+const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
+/* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
+   at boot. Lazy for the same reason: nobody who never works a night shift
+   should carry the pizzeria around in the hub's entry chunk. */
+const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
+/* BLUE ANGELS builds all of Seattle at boot — a 44 km height field, eleven
+   thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
+   nobody who never flies it should carry the city in the hub's entry chunk. */
+const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
+/* I SPY is a 2D canvas game with no Three in it at all, but it carries a
+   1,400-object level and a solver, and nobody who never plays it should
+   carry those around in the hub's entry chunk either. */
+const ISpy = lazy(() => import("./pages/ISpy.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -55,6 +78,26 @@ const CHROMELESS = new Set([
   "/island-2",
   "/vibe-island-2",
   "/terminal",
+  "/seafair",
+  "/vibeverse",
+  "/explorer",
+  "/long-silence",
+  // Five Nights owns the pointer — the nav would sit on the west door button.
+  "/fnaf",
+  "/five-nights",
+  // Vibe Golf is a fullscreen touch game — the nav would eat the drag gesture.
+  "/golf",
+  // Vibe Kart owns the whole viewport, and the nav would sit on the HUD.
+  "/kart",
+  // Blue Angels is a fullscreen HUD — the nav would sit on the pitch ladder.
+  "/blue-angels",
+  "/angels",
+  "/seafair-show",
+  // I Spy fills the frame with things that look like spikes. The nav would
+  // become one more of them.
+  "/i-spy",
+  "/ispy",
+  "/geometry-dash",
 ]);
 
 const AppChrome = () => {
@@ -162,6 +205,84 @@ const App = () => (
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
           <Route path="/san-palmas" element={<SanPalmas />} />
           <Route path="/fps" element={<SanPalmas />} />
+          {/* SEAFAIR 2117 — future Seattle during Seafair. Hydros, Blue Angels,
+              and aliens holding the Space Needle. */}
+          <Route
+            path="/seafair"
+            element={
+              <Suspense fallback={<div className="fixed inset-0 bg-[#04080f]" />}>
+                <Seafair />
+              </Suspense>
+            }
+          />
+          {/* THE VIBEVERSE — the hub seen from orbit. Fly the survey vessel VIBEY
+              through a procedural galaxy where three of the stars are real
+              destinations, and land on one to walk into it. /long-silence stays
+              wired up: it was the route before the remix and links exist.
+              Desktop and a real GPU. */}
+          {["/vibeverse", "/explorer", "/long-silence"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <VibeverseExplorer />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* FIVE NIGHTS AT VIBEY'S — midnight to 6 AM, two doors, one battery.
+              Four animatronics walk a real twelve-room building; the security
+              cameras are cameras standing in it. */}
+          {["/fnaf", "/five-nights"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <FiveNights />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
+          <Route path="/golf" element={<VibeGolf />} />
+          {/* Vibe Kart — arcade kart racing: drift, mini-turbos, shells. */}
+          <Route
+            path="/kart"
+            element={
+              <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
+                <VibeKart />
+              </Suspense>
+            }
+          />
+          {/* BLUE ANGELS — Seafair over Lake Washington. You fly number 1 and
+              the other five fly your wing, over a real Seattle. */}
+          {["/blue-angels", "/angels", "/seafair-show"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
+                  <BlueAngels />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* I SPY — the Geometry Dash level, in 2D, in the vibeverse. One
+              button, sixty seconds, and a screen full of spikes that are not
+              there. */}
+          {["/i-spy", "/ispy", "/geometry-dash"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <ISpy />
+                </Suspense>
+              }
+            />
+          ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

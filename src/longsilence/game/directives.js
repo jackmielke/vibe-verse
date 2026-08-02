@@ -1,0 +1,193 @@
+/* ============================================================================
+   Directives.
+
+   The complaint that a sandbox is "boring" is almost always a complaint that
+   nothing tells you what the next interesting thing is. So there is always
+   exactly one active directive; it names a concrete next action, it is visible
+   on the dashboard, and completing it pays out something you can see: a Canto,
+   a recovered log, or a measurable upgrade to the ship.
+
+   The chain also doubles as the tutorial — the first four steps happen to teach
+   sitting, targeting, scanning and folding without ever saying "tutorial".
+   ========================================================================== */
+
+export const UPGRADES = {
+  scanner: { label: 'SCANNER GAIN', apply: (g) => { g.ship.scanRate *= 1.35; } },
+  drive: { label: 'FOLD REGENERATION', apply: (g) => { g.ship.foldRegen *= 1.6; } },
+  thrust: { label: 'THRUST', apply: (g) => { g.ship.maxSpeed *= 1.22; } },
+  hull: { label: 'HULL PLATING', apply: (g) => { g.ship.hullMax = 1.0; g.ship.hull = 1.0; } },
+  range: { label: 'SENSOR RANGE', apply: (g) => { g.scanRangeMul *= 1.4; } },
+};
+
+function bodiesScannedHere(g) {
+  return g.bodies.filter((b) => b.scanned && b.kind !== 'anomaly').length;
+}
+
+export const CHAIN = [
+  {
+    id: 'helm',
+    short: 'Take the helm',
+    full: 'TAKE THE HELM',
+    hint: 'The pilot seat is forward, through the corridor.',
+    check: (g) => g.mode === 'pilot',
+    onDone: (g) => {
+      g.hud.narrate('Drive is warm, scanner is yours. Go and see who is home.',
+        'HUB');
+    },
+  },
+  {
+    id: 'firstScan',
+    short: 'Scan any world',
+    full: 'SURVEY A WORLD',
+    hint: 'Put a body in the reticle and hold F.',
+    check: (g) => bodiesScannedHere(g) >= 1,
+    onDone: (g) => {
+      g.hud.narrate('Logged. Every body you catalogue narrows where the Choir went.',
+        'HUB');
+      g.grantUpgrade('scanner');
+    },
+  },
+  {
+    id: 'survey3',
+    short: 'Survey 3 bodies in this system',
+    full: 'SURVEY THREE BODIES',
+    hint: 'Target with T, fly with G, scan with F.',
+    total: 3,
+    progress: (g) => bodiesScannedHere(g),
+    check: (g) => bodiesScannedHere(g) >= 3,
+    onDone: (g) => {
+      g.revealRelay();
+      g.hud.narrate('Triangulation holds. There is a Relay in this system — bearing marked.',
+        'HUB');
+      g.grantUpgrade('range');
+    },
+  },
+  {
+    id: 'resonator',
+    short: 'Reach the Relay',
+    full: 'INVESTIGATE THE RESONANCE',
+    hint: 'It is marked on the tactical plate. Scan it.',
+    check: (g) => g.cantos.length >= 1,
+    onDone: (g) => { g.grantUpgrade('drive'); },
+  },
+  {
+    id: 'chamber',
+    short: 'Seat the Canto in the resonance chamber',
+    full: 'RETURN TO THE CHAMBER',
+    hint: 'Leave the helm and walk aft.',
+    check: (g) => g.chamberVisits >= 1,
+    onDone: (g) => {
+      g.hud.narrate('One of seven. The chamber remembers the rest of the shape.',
+        'VIBEY');
+      g.grantUpgrade('thrust');
+    },
+  },
+  {
+    id: 'fold',
+    short: 'Fold to another system',
+    full: 'CHART A NEW SYSTEM',
+    hint: 'Use the navigation table in the habitat.',
+    check: (g) => g.galaxy.filter((s) => s.visited).length >= 2,
+    onDone: (g) => {
+      g.hud.narrate('Every system out here is carrying somebody\u2019s traffic. Keep listening.',
+        'HUB');
+    },
+  },
+];
+
+/**
+ * A world you can walk into, if this system has one.
+ *
+ * This outranks the whole survey chain. The place is a hub before it is a
+ * game: when there is a door in front of the player, the one line of objective
+ * text on the dashboard should be pointing at the door. The chain carries on
+ * completing underneath — the upgrades still pay out — it just stops being the
+ * thing the strip talks about until the door is behind them.
+ */
+function worldDirective(g) {
+  const world = g.bodies.find((b) => b.spec && b.spec.worldRoute);
+  if (!world) return null;
+  return {
+    id: 'world:' + world.id,
+    short: `Land on ${world.name}`,
+    full: 'ENTER THE WORLD',
+    hint: 'Fly in close and press L.',
+  };
+}
+
+/** After the scripted chain, directives are generated from the world state. */
+function proceduralDirective(g) {
+  const res = g.anomalies.find((a) => a.anomalyType === 'resonator' && !a.scanned);
+  if (res && g.resonatorRevealed) {
+    return { id: 'res:' + res.id, short: `Attune ${res.name}`, full: 'ATTUNE THE RELAY', hint: 'Scan it.' };
+  }
+  const unscanned = g.bodies.filter((b) => !b.scanned && b.kind !== 'anomaly').length;
+  if (unscanned > 0 && bodiesScannedHere(g) < 3) {
+    return {
+      id: 'survey:' + g.currentSystemId,
+      short: `Survey this system`,
+      full: 'CONTINUE THE SURVEY',
+      hint: 'Three bodies reveals any Relay here.',
+      total: 3, done: bodiesScannedHere(g),
+    };
+  }
+  const sig = g.anomalies.find((a) => !a.scanned);
+  if (sig) {
+    return { id: 'sig:' + sig.id, short: `Investigate ${sig.name}`, full: 'UNRESOLVED SIGNAL', hint: 'Scan it.' };
+  }
+  const next = g.galaxy.find((s) => !s.visited);
+  if (next) {
+    return {
+      id: 'jump:' + next.id,
+      short: `Fold to ${next.designation}`,
+      full: 'CHART A NEW SYSTEM',
+      hint: 'Use the navigation table.',
+    };
+  }
+  return { id: 'done', short: 'Attune all seven Relays', full: 'OPEN THE BAND', hint: '' };
+}
+
+export class Directives {
+  constructor(game) {
+    this.game = game;
+    this.index = 0;
+    this.current = null;
+    this._announced = null;
+  }
+
+  update() {
+    const g = this.game;
+    let step = CHAIN[this.index];
+
+    if (step && step.check(g)) {
+      this.index++;
+      step.onDone?.(g);
+      g.hud.log(`DIRECTIVE COMPLETE · ${step.full}`, 'ok');
+      g.audio.ping('objective');
+      step = CHAIN[this.index];
+    }
+
+    /* Not before the helm: standing in the corridor being told to land is
+       worse than useless. One step of chain first, then the door. */
+    const door = this.index >= 1 ? worldDirective(g) : null;
+    const src = door || step || proceduralDirective(g);
+    const done = (!door && step)
+      ? (step.progress ? step.progress(g) : 0)
+      : (src.done || 0);
+
+    this.current = {
+      id: src.id,
+      short: src.short,
+      full: src.full,
+      hint: src.hint,
+      total: src.total || 1,
+      done: Math.min(done, src.total || 1),
+    };
+    g.directive = this.current;
+
+    if (this._announced !== this.current.id) {
+      this._announced = this.current.id;
+      g.hud.log(`DIRECTIVE · ${this.current.short}`, 'hi');
+    }
+  }
+}

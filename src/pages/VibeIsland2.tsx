@@ -7,6 +7,7 @@
  */
 import { Suspense, lazy, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 const IslandGame = lazy(() => import("@/island2/IslandGame"));
 
@@ -75,6 +76,9 @@ function Overlay() {
 }
 
 export default function VibeIsland2() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/island-2", "Vibe Island II");
+
   const [params] = useSearchParams();
   const spawn = params.get("spawn") ?? "plaza";
   const capturing = params.has("shot");

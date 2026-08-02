@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 type GuestbookEntry = {
   id: string;
@@ -46,6 +47,9 @@ const NIGHT_SKY = 0x0a0420;
 const GROUND = 0x140826;
 
 export default function EdmTown() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/edm-town", "EDM Town");
+
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const [photoMode, setPhotoMode] = useState(false);

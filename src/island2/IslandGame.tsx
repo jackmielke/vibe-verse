@@ -15,6 +15,7 @@ import { SPAWNS, WORLD, surfaceHeight, walkableHeight } from "./geo/islandGeo";
 import Sky from "./sky/Sky";
 import Islands from "./world/Islands";
 import Lagoon from "./world/Lagoon";
+import Tendrils from "./world/Tendrils";
 import Explorer from "./player/Explorer";
 import { ISLAND_SHOTS, installIslandHook, readIslandShot } from "./debug/shotHook";
 
@@ -110,6 +111,7 @@ function World() {
       <Sky />
       <Islands />
       <Lagoon />
+      <Tendrils />
     </>
   );
 }

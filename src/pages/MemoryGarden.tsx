@@ -17,6 +17,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Database, Flower2, Image as ImageIcon, Sun, Moon, Users } from "lucide-react";
@@ -54,6 +55,8 @@ interface CharacterOption {
 // a reliable rig. The robot stays first because he's the canonical
 // "Vibey" we've been showing across Space.
 const CHARACTERS: CharacterOption[] = [
+  // Empty url = no model file; loadCharacterRig builds this one in code.
+  { id: "flux", label: "Flux", emoji: "✦", url: "" },
   { id: "vibey", label: "Vibey", emoji: "🤖", url: robotVibeyUrl },
   { id: "alien", label: "Alien", emoji: "👽", url: alienUrl },
   { id: "wizard", label: "Wizard", emoji: "🧙", url: quaternius("Wizard") ?? robotVibeyUrl },
@@ -210,6 +213,7 @@ import treeUrl from "@/assets/glb/nature/Tree3.glb";
 import { enableVR, createVRLocomotion } from "@/lib/webxr";
 import { createVRPortal, leaveXrAndNavigate } from "@/lib/vrPortals";
 import { useNavigate } from "react-router-dom";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 interface Memory {
   id: string;
@@ -448,6 +452,9 @@ function makeTextCanvasTexture({
 }
 
 export default function MemoryGarden() {
+  // Passport: every world records that you were here. See lib/passport.ts.
+  useWorldStamp("/garden", "Memory Garden");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
@@ -750,8 +757,8 @@ export default function MemoryGarden() {
     // Vibey carrier — initialized after the GLB loads.
     const vibeyGroup = new THREE.Group();
     scene.add(vibeyGroup);
-    let vibey: THREE.Group | null = null;
-    let vibeyMixer: THREE.AnimationMixer | null = null;
+    let rig: CharacterRig | null = null;
+    let walkBlend = 0;
     const vibeyState = {
       pos: new THREE.Vector3(0, 0, 0),
       target: new THREE.Vector3(0, 0, 0),
@@ -930,61 +937,15 @@ export default function MemoryGarden() {
     // GLB loader, shared.
     const loader = new GLTFLoader();
 
-    // Load the selected character. We do TWO measurement passes to
-    // anchor the model so its FEET sit at the carrier's origin
-    // (y = 0). Quaternius rigs sometimes have armatures whose origin
-    // is NOT at the feet, so reading the world-space bbox after a
-    // matrixWorld update is the only reliable anchor.
-    let walkAction: THREE.AnimationAction | null = null;
-    let idleAction: THREE.AnimationAction | null = null;
-    loader.load(characterUrl, (gltf) => {
-      vibey = gltf.scene;
-      // Reset any incoming transforms before we measure.
-      vibey.position.set(0, 0, 0);
-      vibey.scale.setScalar(1);
-      vibey.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(vibey);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const heightSrc = Math.max(size.y, 0.01);
-      const fit = 1.6 / heightSrc; // target ~1.6m tall
-      vibey.scale.setScalar(fit);
-      vibey.updateMatrixWorld(true);
-      // Bottom-anchor: lift so the lowest point sits at y = 0.
-      const fittedBox = new THREE.Box3().setFromObject(vibey);
-      vibey.position.y = -fittedBox.min.y;
-      // X/Z center — keep the visible silhouette over the carrier.
-      const fittedCenter = new THREE.Vector3();
-      fittedBox.getCenter(fittedCenter);
-      vibey.position.x = -fittedCenter.x;
-      vibey.position.z = -fittedCenter.z;
-      vibey.traverse((o) => {
-        if ((o as THREE.Mesh).isMesh) {
-          (o as THREE.Mesh).castShadow = true;
-        }
-      });
-      vibeyGroup.add(vibey);
-      // If the rig ships with clips, prefer Idle for standing,
-      // Walking/Running for moving. Falls back to anything available.
-      if (gltf.animations && gltf.animations.length > 0) {
-        vibeyMixer = new THREE.AnimationMixer(vibey);
-        const idleClip =
-          gltf.animations.find((c) => /idle|breath|stand/i.test(c.name)) ??
-          gltf.animations[0];
-        const walkClip =
-          gltf.animations.find((c) => /walk|run/i.test(c.name)) ??
-          idleClip;
-        if (idleClip) {
-          idleAction = vibeyMixer.clipAction(idleClip);
-          idleAction.play();
-        }
-        if (walkClip && walkClip !== idleClip) {
-          walkAction = vibeyMixer.clipAction(walkClip);
-          walkAction.setLoop(THREE.LoopRepeat, Infinity);
-          walkAction.weight = 0;
-          walkAction.play();
-        }
-      }
+    // Load the selected character. The rig handles the fiddly part —
+    // Quaternius armatures often have their origin somewhere other than
+    // the feet, so it measures the world-space bbox to anchor them — and
+    // it handles characters with no model file at all.
+    let rigDisposed = false;
+    void loadCharacterRig({ url: characterUrl }, { height: 1.6 }).then((r) => {
+      if (rigDisposed) return r.dispose();
+      rig = r;
+      vibeyGroup.add(r.object);
     });
 
     // Load all the memory plants. Same bottom-anchor pattern as the
@@ -1614,17 +1575,16 @@ export default function MemoryGarden() {
       vibeyState.pos.y = sampleTerrainHeight(terrain, vibeyState.pos.x, vibeyState.pos.z);
       vibeyGroup.position.copy(vibeyState.pos);
       vibeyGroup.rotation.y = vibeyState.heading;
-      // Crossfade idle ↔ walk animations if both are available; fall
-      // back to a manual bob otherwise so even rigless models look alive.
-      if (walkAction && idleAction) {
-        const targetWalkW = vibeyState.walking ? 1 : 0;
-        walkAction.weight += (targetWalkW - walkAction.weight) * Math.min(1, dt * 6);
-        idleAction.weight += ((1 - targetWalkW) - idleAction.weight) * Math.min(1, dt * 6);
-        if (vibey) vibey.position.y = 0;
-      } else if (vibey) {
-        vibey.position.y = vibeyState.walking ? Math.abs(Math.sin(t * 8)) * 0.08 : 0;
+      // Crossfade idle ↔ walk; fall back to a manual bob for models that
+      // animate neither by clip nor in code, so even those look alive.
+      walkBlend += ((vibeyState.walking ? 1 : 0) - walkBlend) * Math.min(1, dt * 6);
+      if (rig) {
+        rig.setLocomotion(walkBlend);
+        rig.object.position.y = rig.animated
+          ? 0
+          : vibeyState.walking ? Math.abs(Math.sin(t * 8)) * 0.08 : 0;
+        rig.update(dt);
       }
-      vibeyMixer?.update(dt);
 
       // Camera: smooth third-person chase, clamped above terrain so it
       // can't dip into the hill behind Vibey on downslopes. Skipped in
@@ -1658,6 +1618,9 @@ export default function MemoryGarden() {
     renderer.setAnimationLoop(tick);
 
     return () => {
+      // Stops a rig that is still loading from being mounted into a
+      // scene that is already being torn down.
+      rigDisposed = true;
       renderer.setAnimationLoop(null);
       disposeVR();
       portalSpace.dispose();

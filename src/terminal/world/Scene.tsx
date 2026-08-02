@@ -265,13 +265,20 @@ void main() {
   // Big soft cumulus, banded hard so they stay graphic rather than turning
   // into the soft photographic haze this style is specifically not.
   if (d.y > -0.05) {
-    vec2 p = d.xz / max(d.y + 0.32, 0.12) * 0.9 + vec2(uTime * 0.006, 0.0);
+    vec2 p = d.xz / max(d.y + 0.30, 0.10) * 0.62 + vec2(uTime * 0.006, 0.0);
     float c = fbm(p * 1.15);
     // Harder bands and a lower threshold: reference 3's sky is most of the
     // frame and its clouds are big, bright and confident, not a faint texture.
-    float band = smoothstep(0.44, 0.50, c) * 0.62 + smoothstep(0.50, 0.62, c) * 0.38;
-    float horizonFade = smoothstep(-0.05, 0.22, d.y);
-    col = mix(col, uCloud, band * horizonFade);
+    // Wide, bright, hard-edged. These are the big fluffy cumulus of a
+    // children's-book sky, not atmospheric haze.
+    float band = smoothstep(0.40, 0.455, c) * 0.70 + smoothstep(0.455, 0.58, c) * 0.30;
+    float horizonFade = smoothstep(-0.04, 0.13, d.y);
+    // Fade the deck out toward the zenith. The projection d.xz/d.y collapses
+    // to a point directly overhead, so the noise there is a single constant
+    // value — which painted the entire top of the sky as one solid cloud.
+    // Clouds belong in the lower and middle sky anyway; straight up is blue.
+    float zenithFade = 1.0 - smoothstep(0.42, 0.92, d.y);
+    col = mix(col, uCloud, band * horizonFade * zenithFade);
   }
 
   gl_FragColor = vec4(col, 1.0);
@@ -331,8 +338,10 @@ export default function Scene({ focusedKey }: SceneProps) {
 
   const skyUniforms = useMemo(
     () => ({
-      uTop: { value: new THREE.Color(0.11, 0.44, 0.92) },
-      uBottom: { value: new THREE.Color(0.62, 0.83, 0.98) },
+      // Reference 3's sky is a deep, confident blue that carries most of the
+      // frame. A pale gradient reads as washed-out rather than as sunny.
+      uTop: { value: new THREE.Color(0.055, 0.36, 0.90) },
+      uBottom: { value: new THREE.Color(0.52, 0.79, 0.99) },
       uCloud: { value: new THREE.Color(1.0, 1.0, 1.0) },
       uTime: { value: 0 },
     }),

@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { CharacterOption } from "./characters";
+import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
 
 function findClip(clips: THREE.AnimationClip[], names: string[]): THREE.AnimationClip | null {
   for (const n of names) {
@@ -49,10 +50,27 @@ function PreviewModel({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const procRef = useRef<ProceduralPilot | null>(null);
   const [scene, setScene] = useState<THREE.Group | null>(null);
 
   useEffect(() => {
     let alive = true;
+    // An empty url means the character has no model file — it's built
+    // from primitives and animated in code. Build it and let it walk;
+    // a still pose would sell none of what makes it different.
+    if (!character.url) {
+      const p = buildProceduralPilot();
+      procRef.current = p;
+      const size = new THREE.Vector3();
+      new THREE.Box3().setFromObject(p.group).getSize(size);
+      setScene(p.group);
+      onFit(size);
+      return () => {
+        alive = false;
+        procRef.current?.dispose();
+        procRef.current = null;
+      };
+    }
     const loader = new GLTFLoader();
     loader.loadAsync(character.url).then((gltf) => {
       if (!alive) return;
@@ -100,8 +118,17 @@ function PreviewModel({
     };
   }, [character.url, character.scale, character.yOffset, onFit]);
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     if (mixerRef.current) mixerRef.current.update(Math.min(dt, 0.05));
+    procRef.current?.update(dt, {
+      // A slow weave rather than a straight jog, so the card shows the
+      // bank into turns and the scarf trailing it.
+      speed: 3.8,
+      grounded: true,
+      verticalVel: 0,
+      yawRate: Math.sin(state.clock.elapsedTime * 0.9) * 1.3,
+      thrusting: false,
+    });
     if (groupRef.current && spinning) {
       groupRef.current.rotation.y += dt * 0.6;
     }
@@ -157,11 +184,22 @@ export function CharacterPreview({
       dpr={[1, 1.5]}
       camera={{ position: [0, 1.4, 3], fov, near: 0.1, far: 50 }}
       gl={{ antialias: true, alpha: true }}
+      // `flat` = NoToneMapping. R3F defaults to ACES filmic, which
+      // crushes these midtones badly: every character in the picker was
+      // rendering as a black silhouette, and the worlds themselves don't
+      // tone-map either, so the card didn't match what you got in-game.
+      flat
     >
       <CameraRig targetY={targetY} distance={distance} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[2, 4, 3]} intensity={1.2} color="#ffe6b8" />
-      <directionalLight position={[-3, 2, -2]} intensity={0.6} color="#a0c8ff" />
+      {/* Intensities are for three's post-r155 physical lighting units,
+          where the old hand-tuned values land about a stop and a half
+          under. Key warm, fill cool, rim behind to lift the edge off a
+          dark card background. */}
+      <ambientLight intensity={1.5} />
+      <hemisphereLight args={["#dff0ff", "#4a4a55", 1.2]} />
+      <directionalLight position={[2, 4, 3]} intensity={2.6} color="#ffe6b8" />
+      <directionalLight position={[-3, 2, -2]} intensity={1.4} color="#a0c8ff" />
+      <directionalLight position={[0, 2.5, -4]} intensity={1.6} color="#ffffff" />
       <Suspense fallback={null}>
         <PreviewModel character={character} spinning={spinning} onFit={onFit} />
       </Suspense>

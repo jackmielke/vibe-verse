@@ -49,8 +49,36 @@ import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
+import terminalArt from "@/assets/worlds/terminal.jpg";
+import golfArt from "@/assets/worlds/golf.jpg";
+import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
+import fnafArt from "@/assets/worlds/fnaf.jpg";
+import kartArt from "@/assets/worlds/kart.jpg";
+import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
+import iSpyArt from "@/assets/worlds/i-spy.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/blue-angels",
+    emoji: "🔵",
+    name: "Blue Angels",
+    art: blueAngelsArt,
+    blurb:
+      "Seafair over Lake Washington. You fly number 1 and the other five fly your wing — over a real Seattle, from Alki to Rainier.",
+    featured: true,
+    status: "Playable — desktop, phone, gamepad",
+    accent: "#ffc61e",
+  },
+  {
+    to: "/terminal",
+    emoji: "🛫",
+    name: "The Terminal",
+    art: terminalArt,
+    blurb: "The front door. Stand on a platform in the sky with every world floating around you, and pick one.",
+    featured: true,
+    status: "Playable — the lobby",
+    accent: "#38bdf8",
+  },
   {
     to: "/island-2",
     emoji: "🏝️",
@@ -60,6 +88,43 @@ const WORLDS: WorldCard[] = [
     featured: true,
     status: "In progress — fly it now",
     accent: "#ffb347",
+  },
+  {
+    to: "/vibeverse",
+    emoji: "🛰️",
+    name: "The Vibeverse",
+    // A real frame out of the running build, not key art.
+    art: vibeverseArt,
+    blurb:
+      "The whole place, seen from orbit. Fly the survey vessel Vibey between the stars — three of them are real worlds you can land on, and landing is how you walk in.",
+    featured: true,
+    status: "Playable — desktop only, wants a real GPU",
+    accent: "#8fe4ff",
+  },
+  {
+    to: "/fnaf",
+    emoji: "🐻",
+    name: "Five Nights at Vibey's",
+    // A real frame: Bonnie in the west doorway with the hall light burning
+    // battery to show him to you. That is the game in one picture.
+    art: fnafArt,
+    blurb:
+      "Midnight to six in a pizzeria that does not want you there. Two doors, two lights, eleven cameras, one battery — and four animatronics walking the building on their own.",
+    featured: true,
+    status: "Playable — five nights, and a sixth if you earn it",
+    accent: "#dc2626",
+  },
+  {
+    to: "/seafair",
+    emoji: "🛩️",
+    name: "Seafair 2117",
+    // No capture yet — the world is still being art-directed, and their own
+    // rule applies: misleading card art is worse than none.
+    blurb:
+      "Future Seattle on Seafair weekend. Hydros on Lake Washington, Blue Angels overhead, and something alien holding the Space Needle.",
+    featured: true,
+    status: "In progress — playable, being art-directed",
+    accent: "#12a5f5",
   },
   {
     to: "/san-palmas",
@@ -87,6 +152,36 @@ const WORLDS: WorldCard[] = [
     name: "EDM Town",
     art: edmTownArt,
     blurb: "Low-poly neon festival town — lasers, a dancing crowd, photo mode, and a guestbook.",
+  },
+  {
+    to: "/kart",
+    art: kartArt,
+    emoji: "🏁",
+    name: "Vibe Kart",
+    // A real frame off the attract camera: the grid under the start gantry.
+    blurb: "Arcade kart racing — drift for mini-turbos, sling shells, and take the hairpin shortcut.",
+    status: "New — one circuit, eight racers",
+    accent: "#ffcc22",
+  },
+  {
+    to: "/i-spy",
+    emoji: "👁",
+    name: "I Spy",
+    // A real frame from block 541: the player, one orb, four real spikes, and
+    // about sixty things that look exactly like them. That is the game.
+    art: iSpyArt,
+    blurb:
+      "The Geometry Dash level, in two dimensions. One button, sixty seconds, and a screen so full of spikes that most of them have to be lying — because they are.",
+    featured: true,
+    status: "Playable — desktop, phone, one button",
+    accent: "#ff2fbf",
+  },
+  {
+    to: "/golf",
+    emoji: "⛳",
+    name: "Vibe Golf",
+    art: golfArt,
+    blurb: "Physics golf across 63 holes — portals, jetpacks, and a bag of very silly balls.",
   },
   {
     to: "/space",
@@ -335,7 +430,16 @@ export default function WorldPicker({
                     <div className="font-heading font-semibold text-sm">
                       {w.emoji} {w.name}
                     </div>
-                    <div className="text-[11px] text-muted-foreground leading-snug mt-0.5 hidden sm:block">
+                    {/* Featured worlds always explain themselves. Hiding the
+                        blurb on small screens meant a card could say only "The
+                        Terminal" on a phone — a name is not an explanation, and
+                        the whole job of this screen is telling you what is
+                        behind each door. */}
+                    <div
+                      className={`text-[11px] text-muted-foreground leading-snug mt-0.5 ${
+                        w.featured ? "block" : "hidden sm:block"
+                      }`}
+                    >
                       {w.blurb}
                     </div>
                   </div>
