@@ -111,13 +111,13 @@
     "pos": [
       0,
       4,
-      -120
+      -140
     ],
-    "yaw": 2.1,
+    "yaw": 5.2,
     "pitch": 0.1,
     "fov": 78,
     "noclip": true,
-    "note": "Into the sun over open water. Judges sky scattering, bloom, sun glitter, lens response."
+    "note": "Into the sun over open water. Judges sky scattering, bloom, sun glitter, lens response. Yaw 5.2 actually faces the sun; 2.1 was anti-solar."
   },
   "mobile": {
     "pos": [

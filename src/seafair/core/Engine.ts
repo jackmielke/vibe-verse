@@ -479,13 +479,17 @@ export class Engine {
     }
 
     if (this.profile.bloom) {
-      // Threshold sits above sunlit white diffuse (~1.0 linear) so bloom only
-      // catches the sun, specular glints and emissives — never the sky field.
+      // Must sit above the SKY, not merely above sunlit diffuse. Sky.ts
+      // calibrates its horizon band at ~1.7 linear, so the old 1.25 threshold
+      // put the entire horizon into bloom and smeared a blue-white veil across
+      // the whole frame — which is what was draining chroma out of the ground
+      // and making the lake read as a grey plate. 2.6 clears the horizon while
+      // still catching the sun disc (~105), specular glints and emissives.
       const bloom = new UnrealBloomPass(
         new THREE.Vector2(w, h),
-        this.profile.tier === "low" ? 0.22 : 0.3,
-        0.55,
-        1.25,
+        this.profile.tier === "low" ? 0.16 : 0.22,
+        0.6,
+        2.6,
       );
       this.bloomPass = bloom;
       this.composer.addPass(bloom);

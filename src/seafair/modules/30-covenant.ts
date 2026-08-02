@@ -528,7 +528,8 @@ const C: Record<string, Paint> = {
 };
 
 const GLOW = {
-  methane: [0.9, 3.0, 3.7] as const,
+  methane: [0.55, 1.9, 2.4] as const,
+  pilot: [0.35, 1.2, 1.5] as const,
   eye: [3.4, 0.8, 0.12] as const,
   // Kept inside the AgX shoulder. Above ~4 these thin strips pin to flat white
   // and lose their hue entirely, which is the opposite of a readability cue.
@@ -623,8 +624,11 @@ function buildGrunt(seg: number): KindGeo {
   const glow = merge([
     paint(put(new THREE.TorusGeometry(0.16, 0.045, 4, 10), [0, 1.04, 0.30], [Math.PI / 2, 0, 0], [1, 1.4, 1]), GLOW_PAINT(GLOW.methane)),
     paint(put(new THREE.BoxGeometry(0.19, 0.05, 0.05), [0, 1.52, -0.16], [0.1, 0, 0]), GLOW_PAINT(GLOW.eye)),
-    paint(put(new THREE.BoxGeometry(0.06, 0.2, 0.05), [-0.44, 1.12, -0.1], [0, 0, 0.34]), GLOW_PAINT(GLOW.methane)),
-    paint(put(new THREE.BoxGeometry(0.06, 0.2, 0.05), [0.44, 1.12, -0.1], [0, 0, -0.34]), GLOW_PAINT(GLOW.methane)),
+    // Shoulder-cap pilot lights. Small and dim on purpose: at chest height and
+    // full brightness they blew out into two headlamps and read as the widest
+    // thing on the body, which is not what the silhouette should be saying.
+    paint(put(new THREE.BoxGeometry(0.05, 0.05, 0.05), [-0.38, 1.28, -0.09]), GLOW_PAINT(GLOW.pilot)),
+    paint(put(new THREE.BoxGeometry(0.05, 0.05, 0.05), [0.38, 1.28, -0.09]), GLOW_PAINT(GLOW.pilot)),
   ]);
   // Hip pivot at the top; 0.62 m of leg plus a foot that catches the light.
   const limbA = merge([
@@ -1364,10 +1368,6 @@ const mod: GameModule = {
       });
     }
     let boltCursor = 0;
-    let firedCount = 0;
-    let spawnCount = 0;
-    let waveStarts = 0;
-    let respawns = 0;
 
     function fireBolt(from: THREE.Vector3, dir: THREE.Vector3, spec: Spec, skill: number): void {
       let b: Bolt | null = null;
@@ -1380,7 +1380,6 @@ const mod: GameModule = {
         }
       }
       if (!b) return;
-      firedCount++;
       b.active = true;
       b.pos.copy(from);
       b.prev.copy(from);
@@ -1485,6 +1484,15 @@ const mod: GameModule = {
     }
 
     // ------------------------------------------------------- spawning ---
+    /**
+     * Whether this landing has already seen the player. The opening group of a
+     * wave has: it dropped onto the strand to take the pits and the player is
+     * standing in them, so a second of blank staring before anyone reacts is
+     * neither plausible nor fun. Reinforcements arriving off-screen still have
+     * to find you the hard way.
+     */
+    let spawnAlert = false;
+
     function spawnAt(kind: Kind, at: THREE.Vector3): Enemy | null {
       const e = free(kind);
       if (!e) return null;
@@ -1492,7 +1500,6 @@ const mod: GameModule = {
       const rank =
         kind === "grunt" ? pickRank(GRUNT_RANKS) : kind === "elite" ? pickRank(ELITE_RANKS) : GRUNT_RANKS[0];
 
-      spawnCount++;
       e.active = true;
       e.pos.copy(at);
       e.vel.set(0, 0, 0);
@@ -1511,7 +1518,7 @@ const mod: GameModule = {
 
       e.state = "patrol";
       e.stateT = 0;
-      e.aware = false;
+      e.aware = spawnAlert;
       e.awareT = 0;
       e.canSee = false;
       e.senseT = rng() * 0.2;
@@ -1535,7 +1542,7 @@ const mod: GameModule = {
       // and can actually be art-directed. Per-frame combat jitter stays on
       // Math.random — nobody screenshots a recoil cone.
       e.phase = rng() * Math.PI * 2;
-      e.gait = 0;
+      e.gait = rng() * 6;
       e.scale = 0.94 + rng() * 0.12;
       e.tint.copy(rank.tint);
 
@@ -1547,7 +1554,7 @@ const mod: GameModule = {
       e.lead = 0.3 + rng() * 0.55 * (2 - rank.skill);
 
       const yawToPlayer = Math.atan2(ctx.player.position.x - at.x, ctx.player.position.z - at.z);
-      e.yaw = yawToPlayer + Math.PI + (rng() - 0.5) * 1.4;
+      e.yaw = yawToPlayer + Math.PI + (rng() - 0.5) * (spawnAlert ? 0.5 : 1.4);
       e.aimYaw = e.yaw;
       e.aimPitch = 0;
 
@@ -1561,7 +1568,9 @@ const mod: GameModule = {
       bodyPool.tint(e.slot, e.tint);
 
       _v.copy(e.pos).setY(e.pos.y + 0.9);
-      ctx.fx.spawn("plasma-burst", _v, UP, 1.1);
+      // The opening group is already on the ground when the fight starts, so it
+      // does not get a translocation flare — only reinforcements phase in.
+      if (!spawnAlert) ctx.fx.spawn("plasma-burst", _v, UP, 1.1);
       ctx.sound.play("impact-metal", _v, 0.45, 1.7);
       return e;
     }
@@ -1663,7 +1672,6 @@ const mod: GameModule = {
     let pendingAnnounce: (() => void) | null = null;
 
     function startWave(): void {
-      waveStarts++;
       wave += 1;
       waveQueue = composeWave(wave);
       waveTotal = waveQueue.length;
@@ -1676,6 +1684,7 @@ const mod: GameModule = {
       // shield bubble reads as the thing at the back of the picture you have to
       // work through — rather than wherever the shuffle happened to put them.
       const first = Math.min(waveQueue.length, budget - liveCount());
+      spawnAlert = true;
       const order = waveQueue
         .slice(0, first)
         .map((k, i) => ({ k, i }))
@@ -1688,6 +1697,8 @@ const mod: GameModule = {
         if (!at || !spawnAt(kind, at)) break;
         waveQueue.splice(waveQueue.indexOf(kind), 1);
       }
+
+      spawnAlert = false;
 
       const n = wave;
       const total = waveTotal;
@@ -2375,16 +2386,23 @@ const mod: GameModule = {
       const bodyBase = e.pos.y - 0.15;
       const stride = THREE.MathUtils.clamp(e.speedSeen / e.spec.speed, 0, 1.4);
       const flinch = e.flinch * 0.22;
+      // A soldier standing still is not a soldier standing to attention. At
+      // zero stride the walk cycle collapses to two parallel legs and a rigid
+      // torso, which reads as a mannequin, so blend in a planted stance and a
+      // slow breath that never fully switch off.
+      const rest = 1 - Math.min(1, stride * 1.6);
+      const plant = (0.2 + 0.16 * Math.sin(e.phase * 1.7)) * rest;
+      const breathe = Math.sin(e.gait * 0.55 + e.phase) * 0.018 * rest;
 
       if (e.kind === "grunt") {
         // Waddle: the whole body rolls side to side, which is the tell that
         // separates a grunt from a zealot before you can see either clearly.
-        const roll = Math.sin(e.gait * 2) * 0.13 * stride;
-        const bob = Math.abs(Math.sin(e.gait * 2)) * 0.06 * stride;
+        const roll = Math.sin(e.gait * 2) * 0.13 * stride + breathe * 0.6;
+        const bob = Math.abs(Math.sin(e.gait * 2)) * 0.06 * stride + breathe;
         place(pools.gruntBody, e.slot, 0, bob, 0, 0.06 + flinch, 0, roll);
         place(pools.gruntGlow, e.slot, 0, bob, 0, 0.06 + flinch, 0, roll);
         for (let i = 0; i < 2; i++) {
-          const swing = Math.sin(e.gait * 2 + i * Math.PI) * 0.62 * stride;
+          const swing = Math.sin(e.gait * 2 + i * Math.PI) * 0.62 * stride + (i ? plant : -plant);
           place(pools.gruntLeg, e.slot * 2 + i, (i ? 1 : -1) * 0.19, 0.64, 0, swing, 0, (i ? 1 : -1) * 0.09);
         }
         // Arms pivot at the chest, on the centreline. The old off-centre pivot
@@ -2405,13 +2423,13 @@ const mod: GameModule = {
         pools.gruntLeg.setBurn(e.slot * 2, burn, bodyBase);
         pools.gruntLeg.setBurn(e.slot * 2 + 1, burn, bodyBase);
       } else if (e.kind === "elite") {
-        const sway = Math.sin(e.gait * 1.7) * 0.05 * stride;
-        const bob = Math.abs(Math.sin(e.gait * 1.7)) * 0.09 * stride;
+        const sway = Math.sin(e.gait * 1.7) * 0.05 * stride + breathe * 0.5;
+        const bob = Math.abs(Math.sin(e.gait * 1.7)) * 0.09 * stride + breathe;
         place(pools.eliteBody, e.slot, 0, bob, 0, 0.1 + flinch, 0, sway);
         place(pools.eliteGlow, e.slot, 0, bob, 0, 0.1 + flinch, 0, sway);
         for (let i = 0; i < 2; i++) {
           const ph = e.gait * 1.7 + i * Math.PI;
-          const swing = Math.sin(ph) * 0.7 * stride;
+          const swing = Math.sin(ph) * 0.7 * stride + (i ? plant : -plant) * 0.8;
           const hipY = 1.16;
           place(pools.eliteThigh, e.slot * 2 + i, (i ? 1 : -1) * 0.26, hipY, 0.05, -0.42 + swing, 0, 0);
           // Knee position follows the thigh so the shin stays attached.
@@ -2503,7 +2521,6 @@ const mod: GameModule = {
 
     // ---------------------------------------------------------- frame ---
     const offRespawn = bus.on("player:respawn", () => {
-      respawns++;
       for (const e of enemies) if (e.active) release(e);
       for (const b of bolts) b.active = false;
       wave = Math.max(0, wave - 1);
@@ -2520,12 +2537,10 @@ const mod: GameModule = {
     startWave();
 
     let elapsedTotal = 0;
-    let ticks = 0;
 
     return {
       update(dt: number) {
         const step = Math.min(dt, 0.05);
-        ticks++;
         elapsedTotal += step;
         matShield.uniforms.uTime.value = elapsedTotal;
 
@@ -2586,13 +2601,6 @@ const mod: GameModule = {
         }
         if (scorchDirty) scorchAttr.needsUpdate = true;
 
-        (window as unknown as { __COV__: unknown }).__COV__ = {
-          bolts: bolts.filter((b) => b.active).length,
-          fired: firedCount,
-          dead: ctx.player.dead, ticks, elapsedTotal, rawdt: dt,
-          spawnCount, waveStarts, respawns, wave, queue: waveQueue.length, waveActive,
-          en: enemies.filter((e) => e.active).map((e) => `${e.kind} ${e.state} aware=${e.aware} see=${e.canSee} senseT=${e.senseT.toFixed(2)} awareT=${e.awareT.toFixed(2)} rx=${e.reaction.toFixed(2)} d=${e.distToPlayer.toFixed(0)}`),
-        };
         shieldAttr.needsUpdate = true;
         contactAttr.needsUpdate = true;
         for (const p of allPools) p.flush();

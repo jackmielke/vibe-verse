@@ -868,7 +868,7 @@ function plasmaRecipe(): Recipe {
       firingHand(b, -0.006, 0.18);
       supportHand(hand, -0.310, 0.026, 0.070);
     },
-    shift: [0, 0, -0.04],
+    shift: [0, 0, -0.34],
     muzzle: [0, 0.028, -0.740],
     eject: [0, 0, 0],
     sightY: 0.104,
@@ -876,7 +876,7 @@ function plasmaRecipe(): Recipe {
     kick: 0.55,
     ejects: false,
     hideAtAds: false,
-    hip: [0.146, -0.192, -0.290],
+    hip: [0.152, -0.205, -0.360],
     adsZ: -0.32,
     glowColor: lin(0.55, 3.4, 5.2),
     glowIntensity: 1,
@@ -996,7 +996,7 @@ function rocketRecipe(): Recipe {
       firingHand(b, 0.010);
       supportHand(hand, -0.380, -0.042, 0.052);
     },
-    shift: [0, -0.02, -0.10],
+    shift: [0, -0.02, -0.20],
     muzzle: [0, 0.098, -0.700],
     eject: [0, 0, 0],
     sightY: 0.190,
@@ -1004,7 +1004,7 @@ function rocketRecipe(): Recipe {
     kick: 3.6,
     ejects: false,
     hideAtAds: false,
-    hip: [0.150, -0.215, -0.300],
+    hip: [0.152, -0.262, -0.340],
     adsZ: -0.34,
     glowColor: lin(3.4, 1.0, 0.18),
     glowIntensity: 1,
@@ -1028,6 +1028,9 @@ interface ViewmodelDebug {
   fov?: number | null;
   /** [x,y,z,rx,ry,rz] replacing the composed rest pose, for model review. */
   pose?: number[] | null;
+  /** Snap to a weapon with no draw animation — a 0.5 s swap is longer than a
+   *  software-rendered screenshot session gets. */
+  weapon?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────── the module ──
@@ -1291,10 +1294,21 @@ const mod: GameModule = {
       // Hip: right of centre and low, with the buttstock running off the
       // bottom-right corner rather than sitting in front of the eye. The yaw
       // turns the receiver far enough to read as a profile instead of a slab.
+      // The rigs were authored much too close to the eye — the weapon was
+      // eating roughly 40% of the frame. Push the hip pose back along the bore
+      // and scale the model to match, so it reads as a weapon held at the
+      // shoulder rather than pressed against the lens. Scaling as well as
+      // pushing keeps the receiver's apparent thickness right; pushing alone
+      // just makes a huge gun look like a huge gun further away.
+      const VM_PUSH = 0.62;   // extra metres back from the eye
+      const VM_SCALE = 0.74;  // uniform shrink of the whole rig
+      root.scale.setScalar(VM_SCALE);
+
       const hipPos = new THREE.Vector3().fromArray(r.hip);
+      hipPos.z -= VM_PUSH;
       const hipRot = new THREE.Euler(0.0, 0.145, -0.15);
       // ADS puts the sight line exactly on the camera axis.
-      const adsPos = new THREE.Vector3(-r.shift[0], -(r.sightY + r.shift[1]), r.adsZ);
+      const adsPos = new THREE.Vector3(-r.shift[0], -(r.sightY + r.shift[1]), r.adsZ - VM_PUSH * 0.45);
       const adsRot = new THREE.Euler(0, 0, 0);
       const sprintPos = new THREE.Vector3(hipPos.x + 0.075, hipPos.y - 0.075, hipPos.z + 0.055);
       const sprintRot = new THREE.Euler(-0.26, -0.60, 0.42);
@@ -1490,6 +1504,13 @@ const mod: GameModule = {
       const dbg = (window as unknown as { __VIEWMODEL__?: ViewmodelDebug }).__VIEWMODEL__;
 
       // --- weapon swap: lower the old, raise the new ---
+      if (dbg?.weapon && dbg.weapon !== currentDef.id && WEAPONS[dbg.weapon]) {
+        current.root.visible = false;
+        currentDef = WEAPONS[dbg.weapon];
+        current = rigFor(currentDef);
+        pendingDef = null;
+        swapT = 0;
+      }
       if (swapT > 0) {
         swapT = Math.max(0, swapT - dt);
         const p = 1 - swapT / 0.5;
@@ -1602,8 +1623,8 @@ const mod: GameModule = {
         const tilt = smooth(seg(t, 0, 0.16)) - smooth(seg(t, 0.84, 1));
 
         if (current.reloadStyle === "mag") {
-          rRot.set(-0.34 * tilt, 0.30 * tilt, 0.58 * tilt);
-          rPos.set(0.030 * tilt, -0.070 * tilt, 0.040 * tilt);
+          rRot.set(-0.30 * tilt, 0.26 * tilt, 0.46 * tilt);
+          rPos.set(0.026 * tilt, -0.060 * tilt, 0.035 * tilt);
           const drop = seg(t, 0.13, 0.34);
           const insert = seg(t, 0.40, 0.62);
           mag.position.y = drop < 1 ? -0.34 * drop * drop : -0.34 * (1 - smooth(insert));
@@ -1619,16 +1640,18 @@ const mod: GameModule = {
           rPos.z += 0.020 * hump(t, 0.72, 0.80);
         } else if (current.reloadStyle === "vent") {
           // Battery weapons do not reload — they crack open and dump heat.
-          rRot.set(0.12 * tilt, 0.95 * tilt, -0.95 * tilt);
-          rPos.set(-0.075 * tilt, -0.045 * tilt, 0.055 * tilt);
+          // Turned far enough to show the vent opening on the near face, but
+          // not so far that the weapon leaves the frame — at 0.95 rad it did.
+          rRot.set(0.10 * tilt, 0.46 * tilt, -0.52 * tilt);
+          rPos.set(-0.040 * tilt, -0.030 * tilt, 0.045 * tilt);
           ventGlow = 2.8 * (smooth(seg(t, 0.12, 0.34)) - smooth(seg(t, 0.55, 0.92)));
           const away = smooth(seg(t, 0.14, 0.32)) - smooth(seg(t, 0.66, 0.88));
           lhand.position.set(-0.05 * away, -0.10 * away, 0.16 * away);
           lhand.rotation.set(0.2 * away, -0.5 * away, 0);
           rPos.x -= 0.012 * hump(t, 0.30, 0.40);
         } else {
-          rRot.set(-0.55 * tilt, 0.30 * tilt, 0.20 * tilt);
-          rPos.set(0.030 * tilt, -0.100 * tilt, 0.070 * tilt);
+          rRot.set(-0.46 * tilt, 0.24 * tilt, 0.18 * tilt);
+          rPos.set(0.026 * tilt, -0.085 * tilt, 0.060 * tilt);
           const out = seg(t, 0.16, 0.40);
           const back = seg(t, 0.52, 0.80);
           mag.position.z = -0.34 * smooth(out) + 0.34 * smooth(back);

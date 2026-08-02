@@ -16,7 +16,7 @@
 
 import { chromium } from "playwright";
 import { createServer } from "vite";
-import { readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const args = process.argv.slice(2);
@@ -140,8 +140,30 @@ async function main() {
 
       await page.waitForTimeout(pose.hold ?? 2200);
       await page.screenshot({ path: out });
-      console.log(`✓ ${name} -> ${out}${errors.length ? ` (${errors.length} console errors)` : ""}`);
-      if (errors.length) console.error(errors.slice(0, 6).join("\n"));
+
+      // A run that half-fails still writes a plausible-looking file, and a
+      // critic handed an all-black PNG will confidently grade the darkness.
+      //
+      // Measure the PNG on disk, not the canvas: reading a WebGL canvas back
+      // through drawImage returns an empty buffer unless preserveDrawingBuffer
+      // is set, so a canvas-side probe reports black for every healthy frame.
+      // Compressed size is a blunt but honest proxy — a real frame of this
+      // world is hundreds of kB, a flat fill is a few.
+      const bytes = statSync(out).size;
+      const floor = Math.max(12000, (pose.width ?? width) * (pose.height ?? height) * 0.004);
+
+      if (bytes < floor) {
+        failures++;
+        console.error(
+          `✗ ${name} looks BLANK (${(bytes / 1024).toFixed(0)} kB < ${(floor / 1024).toFixed(0)} kB floor) — treat as invalid and re-run.`,
+        );
+        if (errors.length) console.error(errors.slice(0, 8).join("\n"));
+      } else {
+        console.log(
+          `✓ ${name} -> ${out} (${(bytes / 1024).toFixed(0)} kB)${errors.length ? ` (${errors.length} console errors)` : ""}`,
+        );
+        if (errors.length) console.error(errors.slice(0, 6).join("\n"));
+      }
     } catch (err) {
       failures++;
       console.error(`✗ ${name} FAILED: ${err.message}`);
