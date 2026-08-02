@@ -491,6 +491,15 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
 
   /* ---- stairs -------------------------------------------------------- */
 
+  /**
+   * A flight of stairs.
+   *
+   * Each step also pushes a camera blocker filling the solid under it. The
+   * treads are decoration and carry no collider — the ramp is what you stand
+   * on — which meant the boom happily reversed *into* the staircase and
+   * rendered the inside of a step whenever you walked up or down. The player
+   * never touches these boxes; only the lens does.
+   */
   function flight(r: Ramp, tread: THREE.Material, riser: THREE.Material) {
     const len = r.axis === "z" ? r.z1 - r.z0 : r.x1 - r.x0;
     const wide = r.axis === "z" ? r.x1 - r.x0 : r.z1 - r.z0;
@@ -503,6 +512,19 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       const stepLen = len / r.steps;
       const mid = a0 + stepLen / 2;
       const rise = (r.yHigh - r.yLow) / r.steps;
+      const solidTop = yA;
+      const solidBottom = Math.min(r.yLow, r.yHigh) - 0.4;
+      if (r.axis === "z") {
+        camBlockers.push({
+          x0: r.x0, x1: r.x1, z0: mid - stepLen / 2, z1: mid + stepLen / 2,
+          y0: solidBottom, y1: solidTop,
+        });
+      } else {
+        camBlockers.push({
+          x0: mid - stepLen / 2, x1: mid + stepLen / 2, z0: r.z0, z1: r.z1,
+          y0: solidBottom, y1: solidTop,
+        });
+      }
       if (r.axis === "z") {
         const m = new THREE.Mesh(BOX, tread);
         m.position.set((r.x0 + r.x1) / 2, yA - 0.03, mid);
@@ -1005,9 +1027,16 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       m.position.set(x, y, z);
       m.rotation.y = rotY;
       root.add(m);
-      const t = 0.04;
-      if (Math.abs(Math.cos(rotY)) > 0.5) deco(frameMat, x, y - h / 2 - 0.05, z, w + 0.12, h + 0.12, t);
-      else deco(frameMat, x, y - h / 2 - 0.05, z, t, h + 0.12, w + 0.12);
+      // The frame sits *behind* the print along the plane's own normal. Put
+      // it at the same coordinate and it either z-fights the photograph or
+      // hides it, and from the stairs you see a plain brown slab where a
+      // family should be.
+      const t = 0.035;
+      const nx = Math.sin(rotY) * 0.028;
+      const nz = Math.cos(rotY) * 0.028;
+      if (Math.abs(Math.cos(rotY)) > 0.5)
+        deco(frameMat, x - nx, y - h / 2 - 0.055, z - nz, w + 0.11, h + 0.11, t);
+      else deco(frameMat, x - nx, y - h / 2 - 0.055, z - nz, t, h + 0.11, w + 0.11);
     };
     // Climbing the stair wall, each one a little higher than the last.
     for (let i = 0; i < 4; i++) {
