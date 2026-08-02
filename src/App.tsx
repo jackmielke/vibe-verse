@@ -52,7 +52,6 @@ const CHROMELESS = new Set([
   "/free-fall",
   "/san-palmas",
   "/fps",
-  "/worlds",
   "/island-2",
   "/vibe-island-2",
   "/terminal",
@@ -80,8 +79,10 @@ const App = () => (
               except the clean /live broadcast. */}
           <AppChrome />
           <Routes>
-          {/* Hub is now the landing page — the VibeVerse lobby. */}
-          <Route path="/" element={<HubV2 />} />
+          {/* The grid of every world is the landing page. It is the clearest
+              way to see what exists in one glance, and one tap gets you in.
+              The 3D lobbies (/terminal, /hub) are the second way in. */}
+          <Route path="/" element={<Worlds />} />
           {/* Old Edge Esmeralda splash, kept reachable for those who want it. */}
           <Route path="/welcome" element={<Index />} />
           {/* Mario-Kart-style character + vehicle picker. */}
@@ -116,8 +117,10 @@ const App = () => (
           <Route path="/ninja" element={<FruitNinja />} />
           {/* EDM Town — low-poly party world with photo mode + guestbook. */}
           <Route path="/edm-town" element={<EdmTown />} />
-          {/* /hub still works as an alias for the lobby. */}
+          {/* The 3D carousel lobby, still reachable — it just is not the
+              front door any more. */}
           <Route path="/hub" element={<HubV2 />} />
+          <Route path="/lobby-3d" element={<HubV2 />} />
           {/* Old constellation experiment, kept for comparison. */}
           <Route path="/hub-old" element={<Hub />} />
           {/* Community-submitted worlds. */}

@@ -192,9 +192,12 @@ export default function WorldPicker({
   open,
   onClose,
   asPage = false,
+  homeLabel,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Overrides the footer action's label when rendered as a page. */
+  homeLabel?: string;
   /**
    * Render inline as a full page (for the /worlds route) instead of as a
    * portalled overlay. Same component, same list — there is exactly one
@@ -347,7 +350,7 @@ export default function WorldPicker({
               onClick={onClose}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              {asPage ? "← back to the hub" : "✕ close"}
+              {asPage ? homeLabel ?? "← back to the hub" : "✕ close"}
             </motion.button>
           </div>
         </motion.div>
