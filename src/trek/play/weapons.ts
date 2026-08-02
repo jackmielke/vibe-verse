@@ -183,6 +183,9 @@ export function createWeapons(ctx: TrekCtx): System {
     firePhasers(from, target) {
       if (!from.alive || !target.alive || from.systems.phasers < 0.15) return false;
       if (from.cloakLevel > 0.05) return false;
+      // No emitters, no beam. A hull that declares an empty port list is
+      // saying it has no weapons, and it must not get one by default.
+      if (!((from.object.userData.phaserPorts as THREE.Vector3[] | undefined)?.length)) return false;
       const range = from.position.distanceTo(target.position);
       if (range > 12000) return false;
 

@@ -355,6 +355,11 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
           <TouchKey label="FIRE" onDown={() => order("firePhasers", true)} onUp={() => order("firePhasers", false)} />
           <TouchKey label="TORP" onDown={() => order("fireTorpedo")} />
           <TouchKey label="LOCK" onDown={() => order("nextTarget")} />
+          {/* Scan and hail are on the phone too. One episode cannot be
+              finished without them, and a world that is playable on a phone
+              only if you never meet the creature is not playable on a phone. */}
+          <TouchKey label="SCAN" onDown={() => order("scan")} />
+          <TouchKey label="HAIL" onDown={() => order("hail")} />
           <TouchKey label="ALERT" onDown={() => order("toggleAlert")} />
           <TouchKey label="EVADE" onDown={() => order("evasive")} />
         </div>
@@ -389,6 +394,13 @@ export default function BridgeUI({ engine, ready, progress }: Props) {
           <div className="w-full max-w-2xl text-center">
             {snap.status === "briefing" && (
               <>
+                {/* Only before the first episode. It is an overture, not a
+                    loading screen — reading it six times would make it wallpaper. */}
+                {snap.missionIndex === 0 && (
+                  <p className="mx-auto mb-9 max-w-2xl text-[13px] italic leading-relaxed text-amber-100/45 sm:text-[15px]">
+                    {MONOLOGUE}
+                  </p>
+                )}
                 <p className="font-mono text-[10px] uppercase tracking-[0.6em] text-amber-300/55">
                   Episode {snap.missionIndex + 1} of {MISSIONS.length}
                 </p>
@@ -527,14 +539,29 @@ const KEYS: [string, string][] = [
   ["SPACE / LMB", "fire phasers"],
   ["T", "photon torpedo"],
   ["R", "next target"],
+  ["C", "science station: scan"],
+  ["H", "hailing frequencies"],
   ["Y", "red alert"],
   ["F", "evasive"],
-  ["H", "hailing frequencies"],
   ["1 / 2 / 3", "power: engines / shields / weapons"],
   ["Z", "magnification"],
   ["TAB", "change view"],
   ["MOUSE", "look around the bridge"],
 ];
+
+/**
+ * The opening.
+ *
+ * Written rather than quoted — the famous one is somebody's property, and in
+ * any case the point is not to recite it but to set the register: this is a
+ * ship whose job is to find things out, and only incidentally to shoot. Two
+ * sentences, and the player knows what kind of story they are in before they
+ * have pressed anything.
+ */
+const MONOLOGUE =
+  "Space. Still the last frontier, and still very nearly empty of us. " +
+  "These are the voyages of the starship Vibeverse: to make the unknown a little smaller, to find out who else is out here, " +
+  "and to go — carefully first, and then boldly — a very long way past the edge of the chart.";
 
 function avg(v: number[]): number {
   return (v[0] + v[1] + v[2] + v[3]) / 4;

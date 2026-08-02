@@ -80,15 +80,48 @@ Each one is built around a mechanic no other episode has.
 1. **The Kobayashi Maru** — the tutorial, and a no-win scenario. It teaches the
    controls while you lose, so the tutorial has stakes and no consequences at
    once. Losing it is the pass condition. Winning it says so.
-2. **Balance of Terror** — the enemy is invisible and must decloak to fire. The
+2. **The Devil in the Dark** — **you cannot shoot your way out of this one, and
+   opening fire ends it immediately.** Scan, hail, scan, hail: the thing killing
+   the miners is alive, it is intelligent, it is in pain, and it is guarding
+   eggs. See below.
+3. **Balance of Terror** — the enemy is invisible and must decloak to fire. The
    entire episode is the four seconds it is visible.
-3. **Errand of Mercy** — an escort. You are not trying to win a fight, you are
+4. **Errand of Mercy** — an escort. You are not trying to win a fight, you are
    trying to keep something else alive for ninety seconds.
-4. **The Doomsday Machine** — a boss with an armoured hull and one open mouth.
+5. **The Doomsday Machine** — a boss with an armoured hull and one open mouth.
    Phasers do nothing. Read the tell, put a torpedo down its throat while it is
    charging.
-5. **The Mutara Nebula** — no shields, no sensors, and an opponent who fights in
+6. **The Mutara Nebula** — no shields, no sensors, and an opponent who fights in
    two dimensions. Climb.
+
+## The other verb
+
+`C` — scan.
+
+Every other order in this game is about moving the ship or shooting something
+with it. This one is about *looking*, and it is what makes the world Star Trek
+rather than a submarine sim with better lighting. It answers even when there is
+nothing to fight: point it at empty space and Spock tells you about the sector
+you are crossing, which is the only moment in the game where the ship is doing
+the job it was actually built for.
+
+Episode two exists because of it. **The Devil in the Dark** is a chase you are
+forbidden to win with weapons: a fast, erratic contact that has never fired on
+anything, a colony screaming at you to destroy it, and a four-beat solution
+(scan → hail → scan → hail) that is only reachable by holding contact at under
+4,000 km with something that turns at 1.1 rad/s. Fire once and `onFire` ends
+the episode on the spot — not after you have finished the job, because a player
+who is allowed to kill it and *then* told reads the loss as a gotcha instead of
+a choice.
+
+The creature model earns its own note: nothing about it is bilaterally
+symmetrical, nothing about it is straight, and it has no weapon ports at all —
+an empty `phaserPorts` list that `firePhasers` now checks, so a thing with no
+guns cannot acquire one by default. If a player's first glance reads "ship", the
+episode has already failed.
+
+Both paths are covered by the playthrough harness, which needed a second,
+equally stupid captain to do it — see below.
 
 ## Why every sound is synthesised
 
@@ -136,8 +169,9 @@ channel — and it can be switched off entirely from the `VOX` button.
 ## Playing it headless
 
 ```
-node scripts/trek-check.mjs            # all five episodes
-node scripts/trek-check.mjs --only 3   # just The Doomsday Machine
+node scripts/trek-check.mjs             # every episode
+node scripts/trek-check.mjs --only 4    # just The Doomsday Machine
+node scripts/trek-check.mjs --only 1 --gunner   # shoot the creature, and lose
 ```
 
 A screenshot proves the world *draws*. It proves nothing about whether the
@@ -164,10 +198,20 @@ first draft:
   everything within 900 m of the path, which is both more dangerous and
   actually dodgeable.
 
+There are two captains in there, because one is not enough. The gunner turns
+toward the nearest hostile and holds the trigger; the **pacifist** closes to
+scanning range and alternates scan and hail. The pacifist exists because an
+episode that cannot be finished by anything that shoots can only ever be proved
+*losable* by a gunner, and a win path nobody ever runs is not a win path.
+`--gunner` forces the shooting captain everywhere, which is how the other half
+of episode two gets covered: open fire on the creature and the episode has to
+end.
+
 The autopilot is the *floor*, not the target. It never uses evasive
 manoeuvres, never moves power around, and never breaks off — so the numbers it
 comes back with are roughly what a player who does nothing clever should
-expect. Read them that way: episode one should say LOST, and everything else
+expect. Read them that way: episode one should say LOST, episode two should say
+WON with zero torpedoes fired and the contact still alive, and everything else
 should be won with real damage on the hull.
 
 ## Screenshots

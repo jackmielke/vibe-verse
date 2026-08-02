@@ -27,6 +27,7 @@ const flag = (n, d) => {
 };
 const only = flag("only", null);
 const budget = Number(flag("seconds", 260));
+const gunner = args.includes("--gunner");
 const PORT = Number(process.env.TREK_PORT ?? 5179);
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -90,7 +91,7 @@ await page.evaluate(() => window.__trek.stop());
  */
 async function play(index) {
   return page.evaluate(
-    async ([idx, seconds]) => {
+    async ([idx, seconds, gunner]) => {
       const e = window.__trek;
       const s = e.ctx.services;
       const game = s.game;
@@ -110,11 +111,47 @@ async function play(index) {
       let decloaks = 0;
       const offDecloak = e.ctx.on("trek:decloak", () => decloaks++);
 
+      /*
+       * The pacifist.
+       *
+       * One episode cannot be finished by anything that shoots, so the gunner
+       * autopilot below can only ever prove it is *losable*. This second,
+       * equally stupid captain closes to scanning range and then alternates
+       * scan and hail — which is exactly the loop the episode is built on, and
+       * the only way the win path gets tested at all.
+       */
+      // `--gunner` forces the shooting captain everywhere, which is how the
+      // *lose* path of the pacifist episode gets tested: opening fire on the
+      // creature has to end the episode, and an assertion nobody ever runs is
+      // not an assertion.
+      const diplomat = title.includes("DEVIL") && !gunner;
+      let verb = 0;
+
       for (let i = 0; i < steps && game.status === "playing"; i++) {
         const p = fleet.player;
-        if (!redAlert) {
+        if (!redAlert && !diplomat) {
           e.ctx.input.toggleAlert = true;
           redAlert = true;
+        }
+
+        if (diplomat) {
+          const contact = fleet.ships.find((t) => t.alive && t !== p && t.allegiance === "creature");
+          if (contact) {
+            if (game.targetId !== contact.id) game.targetId = contact.id;
+            const dir = contact.position.clone().sub(p.position).normalize();
+            const local = dir.clone().applyQuaternion(p.quaternion.clone().invert());
+            e.ctx.input.yaw = Math.max(-1, Math.min(1, -Math.atan2(local.x, -local.z) * 2));
+            e.ctx.input.pitch = Math.max(-1, Math.min(1, Math.asin(Math.max(-1, Math.min(1, local.y))) * 2));
+            const range = p.position.distanceTo(contact.position);
+            e.ctx.input.throttle = range > 3000 ? 0.8 : 0.15;
+            // Alternate the two orders every two seconds, close in only.
+            if (range < 3800 && i % 60 === 0) {
+              if (verb++ % 2 === 0) e.ctx.input.scan = true;
+              else e.ctx.input.hail = true;
+            }
+          }
+          e.step(dt, false);
+          continue;
         }
         // Acquire, point at it, and hold the trigger down.
         const hostiles = fleet.ships.filter(
@@ -155,11 +192,12 @@ async function play(index) {
         alive: fleet.ships.filter((t) => t.alive && t !== p).map((t) => `${t.name} ${Math.round(t.hull_ * 100)}%`),
       };
     },
-    [index, budget],
+    [index, budget, gunner],
   );
 }
 
-const indices = only != null ? [Number(only)] : [0, 1, 2, 3, 4];
+const episodeCount = await page.evaluate(() => window.__trek.ctx.services.game.missionCount);
+const indices = only != null ? [Number(only)] : [...Array(episodeCount).keys()];
 let bad = 0;
 for (const i of indices) {
   const r = await play(i);

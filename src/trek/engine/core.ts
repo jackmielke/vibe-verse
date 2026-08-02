@@ -228,6 +228,7 @@ export class Engine {
     input.cycleCamera = false;
     input.cycleMagnification = false;
     input.hail = false;
+    input.scan = false;
     input.allStop = false;
     input.warp = false;
     input.advance = false;

@@ -170,18 +170,6 @@ function registryTexture(registry: string, name: string, top: boolean): THREE.Ca
     g.textAlign = "center";
     g.textBaseline = "middle";
     /*
-     * Which way up the text goes, worked out rather than guessed.
-     *
-     * `discDecal` maps uv.x to local +X and uv.y to local +Z, and a texture's
-     * v runs *up* the image — so text drawn upright in this canvas ends up
-     * with its top pointing +Z, which is **aft**. Viewed from above with the
-     * bow away from you, that is upside down. Hence the half-turn on the top
-     * decal.
-     *
-     * The bottom decal is seen from the other side, which mirrors X on top of
-     * everything else, so it needs the flip as well.
-     */
-    /*
      * Which way up the text goes.
      *
      * `discDecal`'s UVs, the texture's flip and the way you look at a saucer
@@ -885,6 +873,107 @@ export function buildPlanetKiller(): THREE.Group {
   return ship;
 }
 
+/**
+ * A living thing.
+ *
+ * The most important property of this model is that **nothing about it is
+ * bilaterally symmetrical and nothing about it is straight**. Every other hull
+ * in this file is a machine: mirrored, panelled, with an obvious front. This
+ * one is a lump of hot rock that moves. If the player's first glance reads
+ * "ship", the episode it appears in has already failed, because that episode
+ * is entirely about whether you shoot before you look.
+ *
+ * It glows from within rather than being lit from without — silicon at a
+ * temperature that would ruin a hull, banked in the crevices where a
+ * creature's heat would actually show.
+ */
+export function buildCreature(): THREE.Group {
+  const g = new THREE.Group();
+  // 180 m across. Big enough to read on a viewscreen at one magnification —
+  // which matters, because the player has to decide what it is from that
+  // picture before deciding whether to shoot it.
+  const R = 90;
+
+  const geo = new THREE.IcosahedronGeometry(R, 3);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  // Deterministic lumpiness. Three octaves of cheap trig noise is plenty —
+  // this is a rock, and rocks are not subtle.
+  const wobble = (p: THREE.Vector3) =>
+    0.22 * Math.sin(p.x * 0.055 + 1.3) * Math.cos(p.y * 0.048) +
+    0.13 * Math.sin(p.y * 0.11 + 2.1) * Math.cos(p.z * 0.095) +
+    0.07 * Math.sin(p.z * 0.21 + 0.7) * Math.cos(p.x * 0.19);
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const k = 1 + wobble(v);
+    // Flattened, and heavier underneath: it moves along things rather than
+    // through them.
+    pos.setXYZ(i, v.x * k * 1.12, v.y * k * 0.62, v.z * k);
+  }
+  geo.computeVertexNormals();
+
+  const body = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0x5f4a3a, roughness: 1, metalness: 0.1, flatShading: true }),
+  );
+  g.add(body);
+
+  // Banked heat in the crevices. Small emissive nodules rather than a texture:
+  // they catch the eye as the thing turns, which a baked map cannot do.
+  const hot: THREE.Mesh[] = [];
+  const glowGeo = new THREE.IcosahedronGeometry(1, 0);
+  for (let i = 0; i < 42; i++) {
+    // Fibonacci sphere, so the nodules are evenly spread without clumping.
+    const t = (i + 0.5) / 42;
+    const phi = Math.acos(1 - 2 * t);
+    const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+    v.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi) * 0.62, Math.sin(phi) * Math.sin(theta));
+    const k = 1 + wobble(v.clone().multiplyScalar(R));
+    const node = new THREE.Mesh(
+      glowGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0xff7a2a,
+        emissive: 0xff6a1a,
+        emissiveIntensity: 2.6,
+        roughness: 0.6,
+      }),
+    );
+    node.position.copy(v).multiplyScalar(R * k * 0.97);
+    node.scale.setScalar(5 + (i % 5) * 2.8);
+    node.userData.phase = i * 0.7;
+    g.add(node);
+    hot.push(node);
+  }
+
+  g.userData.kind = "creature";
+  g.userData.hot = hot;
+  g.userData.body = body;
+  /*
+   * A generic per-frame hook the fleet calls on any hull that declares one.
+   *
+   * It exists for this model above all: a rock that does not move is a rock,
+   * and the single cheapest thing that makes something read as *alive* is that
+   * it breathes. The nodules brighten out of phase with one another and the
+   * whole body swells about four percent — barely visible, and the difference
+   * between a creature and an asteroid with lights on.
+   */
+  g.userData.animate = (t: number) => {
+    const breath = 1 + 0.04 * Math.sin(t * 0.9);
+    body.scale.setScalar(breath);
+    for (const node of hot) {
+      const phase = node.userData.phase as number;
+      const heat = 0.55 + 0.45 * Math.sin(t * 1.6 + phase);
+      (node.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + heat * 2.6;
+      node.scale.setScalar((5 + (phase % 4) * 2.4) * (0.9 + heat * 0.25));
+    }
+  };
+  // It has no weapons. Not "weapons that do nothing" — none, so that anything
+  // asking where its guns are gets an honest empty answer.
+  g.userData.phaserPorts = [];
+  g.userData.torpedoPorts = [];
+  return g;
+}
+
 export function buildHull(kind: HullClass, registry: string, name: string): THREE.Group {
   switch (kind) {
     case "constitution":
@@ -899,6 +988,8 @@ export function buildHull(kind: HullClass, registry: string, name: string): THRE
       return buildFreighter();
     case "planetKiller":
       return buildPlanetKiller();
+    case "creature":
+      return buildCreature();
     default:
       return buildFreighter();
   }

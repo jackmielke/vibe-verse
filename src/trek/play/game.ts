@@ -38,6 +38,7 @@ export function createGame(ctx: TrekCtx): System {
     power: { engines: 0.34, shields: 0.33, weapons: 0.33 },
     targetId: null,
     mission: 0,
+    missionCount: MISSIONS.length,
     missionTitle: MISSIONS[0].title,
     stardate: MISSIONS[0].stardate,
     objective: "",
@@ -241,6 +242,78 @@ export function createGame(ctx: TrekCtx): System {
     crew()?.bark("targetAcquired", { cooldown: 7, priority: 6 });
   }
 
+  /**
+   * The science officer's report.
+   *
+   * Note what it does when there is nothing to shoot at: it still answers, and
+   * it answers about *where you are*. A scan key that only works on enemies is
+   * a targeting computer with a different label; one that describes the empty
+   * sector you are crossing is a science station, and the difference is most
+   * of what separates this ship from a gunboat.
+   */
+  function doScan(target: Ship | null): void {
+    audio()?.cue("computer");
+    const interference = ctx.services.space?.interference ?? 0;
+    const sensors = fleet.player.systems.sensors;
+
+    if (sensors < 0.2) {
+      crew()?.say({ who: "SPOCK", text: "I have no sensors to scan with, Captain. The main array is out.", priority: 7 });
+      return;
+    }
+    // The episode gets first refusal — see the caller.
+    if (mission.onScan?.(missionCtx, target)) return;
+
+    if (interference > 0.5 && !target) {
+      crew()?.say({ who: "SPOCK", text: "Scanning is futile in this soup, Captain. I can resolve nothing beyond visual range.", priority: 6 });
+      return;
+    }
+
+    if (!target) {
+      // A report on the neighbourhood. Cosmetic, and worth every line: it is
+      // the only moment in the game where the ship is doing the job it was
+      // actually built for.
+      const scene = mission.scene;
+      const notes: Record<string, string> = {
+        spacedock: "We are within the Sol system's outer marker, Captain. Traffic is heavy and entirely routine.",
+        neutralZone:
+          "Long-range scan shows nothing but rock and hard vacuum, Captain. We are eleven light-years from the nearest inhabited world, and rather further than that from help.",
+        colony:
+          "The colony reads two thousand one hundred and six souls, Captain. Atmosphere breathable, gravity nine tenths of Earth normal. A pleasant place, by any standard.",
+        l374:
+          "The system had seven planets when it was charted, Captain. It has four. The debris is consistent with the remaining three having been broken up and consumed.",
+        mutara: "Sensors are useless in here, Captain. We are, in effect, blind — and so are they.",
+        deepSpace: "Nothing within sensor range, Captain. Space, largely, is empty. It is worth remembering how much of it there is.",
+      };
+      crew()?.say({ who: "SPOCK", text: notes[scene] ?? notes.deepSpace, priority: 6 });
+      return;
+    }
+
+    // A specific contact. Spock reads out what a tactical officer would want
+    // and one thing they would not: whether the thing is alive.
+    const range = Math.round(target.position.distanceTo(fleet.player.position) / 100) / 10;
+    const cls: Record<string, string> = {
+      constitution: "a Constitution-class heavy cruiser",
+      miranda: "a Miranda-class light cruiser",
+      d7: "a Klingon D-seven battle cruiser",
+      birdOfPrey: "a Romulan vessel of the Bird-of-Prey design",
+      freighter: "a civilian hull, unarmed",
+      planetKiller: "a cylinder of solid neutronium some two kilometres in length",
+      shuttle: "a shuttlecraft",
+    };
+    const broken = Object.entries(target.systems)
+      .filter(([, v]) => v < 0.5)
+      .map(([k]) => k);
+    const parts = [
+      `${cls[target.hull] ?? "an unidentified vessel"}, range ${range} thousand kilometres.`,
+      target.shieldsUp && target.shields.some((v) => v > 0.05)
+        ? `Her screens are up at ${Math.round((target.shields.reduce((a, b) => a + b, 0) / 4) * 100)} percent.`
+        : "Her screens are down.",
+      `Hull integrity ${Math.round(target.hull_ * 100)} percent.`,
+      broken.length ? `She has lost the use of her ${broken[0]}.` : "",
+    ];
+    crew()?.say({ who: "SPOCK", text: parts.filter(Boolean).join(" "), priority: 6 });
+  }
+
   function shiftPower(to: number): void {
     const keys = ["engines", "shields", "weapons"] as const;
     const key = keys[to];
@@ -353,12 +426,6 @@ export function createGame(ctx: TrekCtx): System {
         audio()?.cue("ack");
         crew()?.bark("evasive", { cooldown: 7, priority: 7 });
       }
-      if (input.hail) {
-        audio()?.cue("hail");
-        crew()?.say({ who: "UHURA", text: "Hailing frequencies open, Captain.", priority: 6 });
-        crew()?.bark("hailNoAnswer", { cooldown: 10, priority: 5 });
-      }
-
       // -- Targeting --------------------------------------------------------
       const max = lockRange();
       let target = service.targetId != null ? fleet.byId(service.targetId) : undefined;
@@ -387,6 +454,20 @@ export function createGame(ctx: TrekCtx): System {
       }
       fleet.player.targetId = service.targetId;
 
+      // -- Looking, and talking ---------------------------------------------
+      // Both live below the targeting block because both need to know what is
+      // on the screen, and both give the episode first refusal: most of them
+      // have nothing to say and fall through to the generic report, but the
+      // ones that do are the reason these are keys at all.
+      if (input.hail) {
+        audio()?.cue("hail");
+        crew()?.say({ who: "UHURA", text: "Hailing frequencies open, Captain.", priority: 6 });
+        if (!mission.onHail?.(missionCtx, target ?? null)) {
+          crew()?.bark("hailNoAnswer", { cooldown: 10, priority: 5 });
+        }
+      }
+      if (input.scan) doScan(target ?? null);
+
       // -- Weapons ----------------------------------------------------------
       const weaponGain = 0.6 + service.power.weapons * 1.2;
       p.phaserCharge = clamp(p.phaserCharge + dt * 0.075 * weaponGain, 0, 1);
@@ -401,6 +482,8 @@ export function createGame(ctx: TrekCtx): System {
           crew()?.say({ who: "CHEKOV", text: "Phaser banks are out, Captain — no response from fire control.", priority: 7 });
         } else if (p.phaserCooldown <= 0) {
           if (ctx.services.weapons?.firePhasers(p, target)) {
+            // Some episodes care very much that you opened fire.
+            mission.onFire?.(missionCtx, target);
             p.phaserCooldown = 0.95;
             p.phaserCharge = Math.max(0, p.phaserCharge - 0.16);
             firing = true;
@@ -427,6 +510,7 @@ export function createGame(ctx: TrekCtx): System {
         } else if (p.torpedoCooldown > 0) {
           audio()?.cue("deny");
         } else if (ctx.services.weapons?.fireTorpedo(p, target)) {
+          mission.onFire?.(missionCtx, target);
           p.torpedoCooldown = 2.1;
         }
       }

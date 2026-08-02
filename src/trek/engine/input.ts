@@ -73,6 +73,9 @@ export function createInput(ctx: TrekCtx): System {
       case "h":
         input.hail = true;
         break;
+      case "c":
+        input.scan = true;
+        break;
       case "x":
         input.allStop = true;
         break;
@@ -159,10 +162,10 @@ export function createInput(ctx: TrekCtx): System {
       if (touch.throttle >= 0) {
         input.throttle = touch.throttle;
       } else {
+        // Shift up, Ctrl down. `C` used to be the second "down" key and is now
+        // the scan order, which is a much better use of a letter.
         if (down.has("shift")) input.throttle = Math.min(1, input.throttle + dt * 0.9);
-        if (down.has("control") || down.has("c")) {
-          input.throttle = Math.max(0, input.throttle - dt * 0.9);
-        }
+        if (down.has("control")) input.throttle = Math.max(0, input.throttle - dt * 0.9);
       }
 
       if (pointerActive && !input.touch) {

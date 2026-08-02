@@ -531,6 +531,12 @@ export function createSpace(ctx: TrekCtx): System {
         case "colony":
           setPlanet("colony", new THREE.Vector3(20000, -18000, -66000));
           break;
+        case "janus":
+          // A mining world: airless, close, and surrounded by the rubble a
+          // century of pergium extraction throws into orbit.
+          setPlanet("outpost", new THREE.Vector3(9000, -13000, -44000), 0.8);
+          rocks.visible = true;
+          break;
         case "l374":
           setPlanet("dead", new THREE.Vector3(-26000, -12000, -74000), 0.7);
           rocks.visible = true;

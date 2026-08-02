@@ -70,6 +70,11 @@ const POSES = {
   battle: { view: "space", from: [-1450, 560, -520], to: [230, 60, -1450], spawn: "d7", range: 2400, alert: true, fire: true, warm: 120 },
   // Straight down on the saucer, to check the registry actually reads.
   topside: { view: "space", from: [30, 430, -300], to: [0, 0, -30], warm: 40 },
+  // The creature, close. The only thing this frame has to prove is that
+  // nobody would mistake it for a vessel.
+  creature: { view: "space", from: [-130, 90, -1750], to: [220, 60, -2000], spawn: "creature", range: 2000, warm: 60 },
+  // And on the viewscreen, which is where the player actually meets it.
+  contact: { view: "bridge", look: [0, -0.02], spawn: "creature", range: 2400, warm: 90 },
 };
 
 async function up(url, ms) {
@@ -170,16 +175,16 @@ async function arm(pose) {
     player.hull_ = 1;
     player.shields = [1, 1, 1, 1];
 
-    if (p.spawn === "d7" || p.spawn === "bop") {
+    if (p.spawn === "d7" || p.spawn === "bop" || p.spawn === "creature") {
       const THREE = e.ctx.space.background ? null : null;
       const range = p.range ?? 2500;
       const enemy = fleet.spawn({
-        name: p.spawn === "d7" ? "KLINGON BATTLE CRUISER" : "ROMULAN BIRD-OF-PREY",
-        hull: p.spawn === "d7" ? "d7" : "birdOfPrey",
-        allegiance: p.spawn === "d7" ? "klingon" : "romulan",
+        name: p.spawn === "d7" ? "KLINGON BATTLE CRUISER" : p.spawn === "bop" ? "ROMULAN BIRD-OF-PREY" : "UNKNOWN CONTACT",
+        hull: p.spawn === "d7" ? "d7" : p.spawn === "bop" ? "birdOfPrey" : "creature",
+        allegiance: p.spawn === "d7" ? "klingon" : p.spawn === "bop" ? "romulan" : "creature",
         position: new (Object.getPrototypeOf(player.position).constructor)(range * 0.18, range * 0.05, -range),
         lookAt: player.position,
-        ai: { aggression: 0.7, skill: 0.6 },
+        ai: p.spawn === "creature" ? { aggression: 0, skill: 0 } : { aggression: 0.7, skill: 0.6 },
       });
       enemy.throttle = 0.25;
       game.targetId = enemy.id;

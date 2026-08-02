@@ -44,6 +44,9 @@ const CLASS_STATS: Record<HullClass, { hull: number; speed: number; agility: num
   birdOfPrey: { hull: 520, speed: 400, agility: 0.42, radius: 80, torpedoes: 8 },
   freighter: { hull: 300, speed: 130, agility: 0.1, radius: 100, torpedoes: 0 },
   planetKiller: { hull: 9000, speed: 90, agility: 0.05, radius: 700, torpedoes: 0 },
+  // Fast and extremely nimble, and made of rock rather than duranium. It can
+  // out-turn anything else in this file and it cannot take a single volley.
+  creature: { hull: 240, speed: 520, agility: 1.1, radius: 100, torpedoes: 0 },
   shuttle: { hull: 90, speed: 260, agility: 0.7, radius: 12, torpedoes: 0 },
 };
 
@@ -353,8 +356,10 @@ export function createFleet(ctx: TrekCtx): System {
       }
     }
 
-    // Firing. A cloaked ship never shoots; a ship with a broken weapon cannot.
-    if (ship.cloakLevel > 0.05) return;
+    // Firing. A cloaked ship never shoots; a ship with a broken weapon cannot;
+    // and something with no aggression at all never opens fire on anybody,
+    // which is the entire characterisation of one of the things in this game.
+    if (ship.cloakLevel > 0.05 || ai.aggression <= 0) return;
     const weapons = ctx.services.weapons;
     if (!weapons) return;
 
@@ -503,6 +508,10 @@ export function createFleet(ctx: TrekCtx): System {
 
     update(dt) {
       for (const ship of ships) {
+        // Any hull may declare a per-frame animation of its own. Nothing here
+        // needs to know what it does — see buildCreature.
+        (ship.object.userData.animate as ((t: number) => void) | undefined)?.(ctx.elapsed);
+
         // Cloak, applied to the materials. A ship at cloakLevel 1 is gone;
         // between 0 and 1 it is a ghost, and the ghost is the tell.
         const bubble = bubbles.get(ship);

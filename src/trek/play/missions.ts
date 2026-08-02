@@ -56,6 +56,19 @@ export interface Mission {
   briefing: string[];
   setup(m: MissionCtx): void;
   update(m: MissionCtx, dt: number): void;
+  /**
+   * The episode's chance to answer a scan with something other than a stat
+   * readout. Return true if it handled the order.
+   *
+   * This hook is the difference between a sensor sweep that reports a hull
+   * percentage and one that reports *what the thing actually is* — which, in
+   * at least one episode here, is the entire solution.
+   */
+  onScan?(m: MissionCtx, target: Ship | null): boolean;
+  /** Same, for hailing frequencies. Return true if the episode answered. */
+  onHail?(m: MissionCtx, target: Ship | null): boolean;
+  /** Called the first time the player opens fire. Some episodes care a lot. */
+  onFire?(m: MissionCtx, target: Ship | null): void;
   /** Shown when it is over. */
   victory: string;
   defeat: string;
@@ -171,6 +184,177 @@ export const MISSIONS: Mission[] = [
       }
       const hostiles = m.fleet.ships.filter((s) => s.alive && s.allegiance === "klingon");
       if (m.elapsed > 20 && hostiles.length === 0) m.win();
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  {
+    id: "devil",
+    title: "THE DEVIL IN THE DARK",
+    stardate: "3196.1",
+    scene: "janus",
+    teaser: "Something is killing the miners of Janus VI. Every instinct you have is going to be wrong.",
+    log:
+      "Captain's log, stardate 3196.1. The pergium mining colony on Janus VI has lost fifty men in three months to something the survivors will only call a monster. " +
+      "It moves through solid rock, it has destroyed the main reactor pump, and without that pump the colony's air plant fails within hours. " +
+      "We have been asked to hunt it and kill it. We have not been asked to find out what it is.",
+    briefing: [
+      "The colony wants it dead. Starfleet has left the decision to you.",
+      "It is fast, it is erratic — and it has never once fired on anything.",
+      "SCAN it (C) before you shoot. Not everything out here is a ship.",
+    ],
+    victory:
+      "It was never hunting. It was defending ten thousand eggs from men with drills who had no idea what they were breaking. The colony has a new partner, and the last of the old ones is not the last after all.",
+    defeat: "The creature is dead. Starfleet's inquiry will note that it was the only one of its kind, that it was intelligent, and that it never fired a shot.",
+
+    setup(m) {
+      m.fleet.player.object.position.set(0, 0, 3000);
+      m.fleet.player.object.quaternion.identity();
+      m.fleet.player.shieldsUp = false;
+      m.fleet.player.torpedoes = 16;
+
+      const horta = m.spawn({
+        name: "UNKNOWN CONTACT",
+        hull: "creature",
+        allegiance: "creature",
+        position: V(1800, 300, -3600),
+        lookAt: m.fleet.player.position,
+        // Aggression zero is load-bearing: `think` reads it and never fires.
+        ai: { aggression: 0, skill: 0 },
+        hullStrength: 240,
+      });
+      horta.shieldsUp = false;
+      m.state.horta = horta;
+      m.state.stage = 0;
+      m.state.deadline = 260;
+
+      m.state.base = "Close to within 4,000 km of the contact and SCAN it (C).";
+      m.say("UHURA", "The colony administrator is on the line again, Captain. He would like to know why we have not destroyed it yet.", 9);
+      m.after(13, () =>
+        m.say("SPOCK", "I would observe, Captain, that in fifty encounters this creature has killed men who were operating drilling equipment, and no one else. That is not the behaviour of a predator.", 8),
+      );
+    },
+
+    /**
+     * The four beats. Scan, hail, scan, hail — and the only reason that is not
+     * a button-mashing sequence is the range gate: the creature moves at 520
+     * m/s on a 1.1 rad/s turn rate and will not sit still to be studied. The
+     * episode is a chase you are forbidden to win with weapons.
+     */
+    onScan(m, target) {
+      const horta = m.state.horta as Ship;
+      if (!horta?.alive) return false;
+      const range = horta.position.distanceTo(m.fleet.player.position);
+      if (!target || target.id !== horta.id || range > 4000) {
+        m.say("SPOCK", "I cannot resolve it at this range, Captain. We must close, and we must hold contact.", 7);
+        return true;
+      }
+
+      const stage = m.state.stage as number;
+      if (stage === 0) {
+        m.state.stage = 1;
+        m.say("SPOCK", "Captain — the reading is not a vessel. There is no metal in it, no drive, no crew. It is alive. Silicon-based, and quite unlike anything in the record.", 9);
+        m.state.base = "It is alive. Open hailing frequencies (H).";
+      } else if (stage === 2) {
+        m.state.stage = 3;
+        m.say("SPOCK", "It is in considerable pain, Captain. And it is not hunting — it is guarding. There are some ten thousand spheroid silicon nodules in the lower tunnels. The miners have been breaking them for months. They are its eggs.", 9);
+        m.after(6, () => m.say("MCCOY", "Fifty men, Jim. And every one of them was standing over a nest with a drill in his hands.", 8));
+        m.state.base = "Hail it again (H). Tell it we understand.";
+      } else if (stage === 1) {
+        m.say("SPOCK", "I have all I can take from a passive scan, Captain. We must attempt to speak to it.", 7);
+      } else {
+        m.say("SPOCK", "No further data, Captain. The next move is not a scientific one.", 6);
+      }
+      return true;
+    },
+
+    onHail(m, target) {
+      const horta = m.state.horta as Ship;
+      if (!horta?.alive) return false;
+      const range = horta.position.distanceTo(m.fleet.player.position);
+      const stage = m.state.stage as number;
+      if (stage === 0) {
+        m.say("UHURA", "I'm broadcasting on all frequencies, Captain. If there's anyone aboard that thing, they aren't listening.", 7);
+        return true;
+      }
+      if (range > 4500) {
+        m.say("UHURA", "I can't hold a channel at this range, sir. We need to be closer.", 7);
+        return true;
+      }
+      if (stage === 1) {
+        m.state.stage = 2;
+        m.say("UHURA", "Captain — there's a pattern in the emissions. It's repeating. Sir, I think it is trying to talk to us.", 9);
+        m.after(7, () => m.say("SPOCK", "Fascinating. It has been signalling the entire time. We were reading it as interference.", 7));
+        m.state.base = "Scan it again (C). Find out what it wants.";
+      } else if (stage === 3) {
+        m.state.stage = 4;
+        m.say("UHURA", "Channel is open and holding, Captain. It's… answering.", 9);
+        m.after(4, () =>
+          m.say("SPOCK", "One word, Captain, repeated. Translated as closely as the computer can manage: 'no kill I.'", 10),
+        );
+        m.after(13, () =>
+          m.say("CAPTAIN", "No kill I. Mr Spock, tell the colony administrator he has just been introduced to the finest mining machine in the quadrant, and that she works for eggs.", 10),
+        );
+        m.after(20, () => m.win());
+      } else {
+        m.say("UHURA", "Still nothing new on the channel, sir.", 5);
+      }
+      return true;
+    },
+
+    /**
+     * The whole episode, in one branch.
+     *
+     * There is no partial credit and no health bar for this. The moment you
+     * open fire on it you have failed, and you have failed for the reason the
+     * briefing warned you about. It ends the episode immediately rather than
+     * letting you finish the job, because a player who is allowed to kill it
+     * and *then* be told will read the loss as a gotcha instead of a choice.
+     */
+    onFire(m) {
+      const horta = m.state.horta as Ship;
+      if (!horta?.alive || m.state.fired) return;
+      m.state.fired = true;
+      m.say("SPOCK", "Captain — no!", 10);
+      m.after(2.5, () => m.lose("fired"));
+    },
+
+    update(m, dt) {
+      void dt;
+      const horta = m.state.horta as Ship;
+      const p = m.fleet.player;
+      if (!p.alive) {
+        m.lose("hull");
+        return;
+      }
+      if (!horta.alive && !m.state.fired) {
+        m.state.fired = true;
+        m.lose("killed");
+        return;
+      }
+
+      // The colony's clock. It is pressure, not a fail state you can see
+      // coming — the administrator gets louder as it runs down.
+      const left = (m.state.deadline as number) - m.elapsed;
+      if (left <= 0 && (m.state.stage as number) < 4) {
+        m.say("UHURA", "The colony has begun evacuating, Captain. They say they will handle it themselves.", 9);
+        m.lose("timeout");
+        return;
+      }
+      if (!m.state.nag1 && left < 170) {
+        m.state.nag1 = true;
+        m.say("UHURA", "The administrator again, Captain. He is asking whether Starfleet intends to do anything at all.", 6);
+      }
+      if (!m.state.nag2 && left < 70) {
+        m.state.nag2 = true;
+        m.say("SCOTT", "Their air plant is on reserve, Captain. An hour, maybe less. Whatever you're going to do, do it.", 8);
+      }
+
+      if ((m.state.stage as number) < 4) {
+        const range = Math.round(horta.position.distanceTo(p.position) / 100) / 10;
+        const base = (m.state.base as string) ?? "Find the contact.";
+        m.setObjective(`${base}  ·  range ${range}k km  ·  ${Math.ceil(left)}s`);
+      }
     },
   },
 

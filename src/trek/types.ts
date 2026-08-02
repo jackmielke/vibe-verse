@@ -88,6 +88,16 @@ export interface TrekInput {
   cycleCamera: boolean;
   cycleMagnification: boolean;
   hail: boolean;
+  /**
+   * The other verb.
+   *
+   * Every other order in this list is about moving the ship or shooting
+   * something with it. This one is about *looking*, and it is the one that
+   * makes the game Star Trek rather than a submarine sim with better lighting:
+   * there are problems out here that a full spread of photon torpedoes makes
+   * strictly worse, and you find them by asking Mr Spock what he sees.
+   */
+  scan: boolean;
   allStop: boolean;
   warp: boolean;
   /** 0 = engines, 1 = shields, 2 = weapons. -1 = nothing asked for. */
@@ -113,6 +123,7 @@ export function makeInput(): TrekInput {
     cycleCamera: false,
     cycleMagnification: false,
     hail: false,
+    scan: false,
     allStop: false,
     warp: false,
     powerTo: -1,
@@ -125,7 +136,12 @@ export function makeInput(): TrekInput {
 // Ships
 // ---------------------------------------------------------------------------
 
-export type Allegiance = "starfleet" | "klingon" | "romulan" | "neutral" | "machine";
+/**
+ * `creature` is not a faction and does not want anything from you. It is here
+ * so that a living thing can be *targetable* without being an enemy — which is
+ * the whole tension of the episode it appears in.
+ */
+export type Allegiance = "starfleet" | "klingon" | "romulan" | "neutral" | "machine" | "creature";
 
 export type HullClass =
   | "constitution"
@@ -134,6 +150,7 @@ export type HullClass =
   | "birdOfPrey"
   | "freighter"
   | "planetKiller"
+  | "creature"
   | "shuttle";
 
 /** Fore, aft, port, starboard — the four the show actually names. */
@@ -318,6 +335,8 @@ export interface GameService {
   power: { engines: number; shields: number; weapons: number };
   targetId: number | null;
   mission: number;
+  /** How many episodes there are. Read by the playthrough harness. */
+  missionCount: number;
   missionTitle: string;
   stardate: string;
   objective: string;
@@ -356,6 +375,7 @@ export type SpaceSceneName =
   | "spacedock"
   | "neutralZone"
   | "colony"
+  | "janus"
   | "l374"
   | "mutara"
   | "deepSpace";
