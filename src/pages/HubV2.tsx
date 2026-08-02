@@ -90,12 +90,15 @@ import golfArt from "@/assets/worlds/golf.jpg";
 import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
+import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import { CHARACTERS as ALL_CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
 import CityEntryScreen from "@/components/city/CityEntryScreen";
 
 const OFFICIAL_WORLDS: World[] = [
+  { to: "/blue-angels", name: "Blue Angels", art: blueAngelsArt, color: "#ffc61e",
+    blurb: "Seafair over Lake Washington — you fly number 1 and five jets fly your wing." },
   // Edge Island leads the carousel — first-time visitors land on the
   // floating papercraft island as the focused world.
   { to: "/city?spawn=island", name: "Vibe Island", art: islandArt, color: "#fde68a",

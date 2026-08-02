@@ -54,6 +54,10 @@ const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
    at boot. Lazy for the same reason: nobody who never works a night shift
    should carry the pizzeria around in the hub's entry chunk. */
 const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
+/* BLUE ANGELS builds all of Seattle at boot — a 44 km height field, eleven
+   thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
+   nobody who never flies it should carry the city in the hub's entry chunk. */
+const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -82,6 +86,10 @@ const CHROMELESS = new Set([
   "/golf",
   // Vibe Kart owns the whole viewport, and the nav would sit on the HUD.
   "/kart",
+  // Blue Angels is a fullscreen HUD — the nav would sit on the pitch ladder.
+  "/blue-angels",
+  "/angels",
+  "/seafair-show",
 ]);
 
 const AppChrome = () => {
@@ -236,6 +244,19 @@ const App = () => (
               </Suspense>
             }
           />
+          {/* BLUE ANGELS — Seafair over Lake Washington. You fly number 1 and
+              the other five fly your wing, over a real Seattle. */}
+          {["/blue-angels", "/angels", "/seafair-show"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
+                  <BlueAngels />
+                </Suspense>
+              }
+            />
+          ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

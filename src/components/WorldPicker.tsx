@@ -54,8 +54,20 @@ import golfArt from "@/assets/worlds/golf.jpg";
 import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
+import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 
 const WORLDS: WorldCard[] = [
+  {
+    to: "/blue-angels",
+    emoji: "🔵",
+    name: "Blue Angels",
+    art: blueAngelsArt,
+    blurb:
+      "Seafair over Lake Washington. You fly number 1 and the other five fly your wing — over a real Seattle, from Alki to Rainier.",
+    featured: true,
+    status: "Playable — desktop, phone, gamepad",
+    accent: "#ffc61e",
+  },
   {
     to: "/terminal",
     emoji: "🛫",

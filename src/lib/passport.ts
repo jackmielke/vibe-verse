@@ -48,6 +48,7 @@ const EMPTY: Passport = { version: VERSION, stamps: {} };
 export const PASSPORT_WORLDS: { route: string; name: string; emoji: string }[] = [
   { route: "/vibeverse", name: "The Vibeverse", emoji: "🛰️" },
   { route: "/sf", name: "San Francisco", emoji: "🌉" },
+  { route: "/blue-angels", name: "Blue Angels", emoji: "🔵" },
   { route: "/seafair", name: "Seafair 2117", emoji: "🛩️" },
   { route: "/island-2", name: "Vibe Island II", emoji: "🏝️" },
   { route: "/edm-town", name: "EDM Town", emoji: "🪩" },
