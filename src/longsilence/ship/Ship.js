@@ -3,6 +3,10 @@ import { buildHull } from './hull.js';
 
 /* ------------------------------------------------------------- flight model */
 
+/* The chart's plane. Systems are laid out around it, so it is the only "up"
+   there is out here and it is what the assist levels the wings against. */
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
 export class Ship {
   constructor() {
     const built = buildHull();
@@ -46,6 +50,33 @@ export class Ship {
     this._fwd = new THREE.Vector3();
     this._tmp = new THREE.Vector3();
     this._tq = new THREE.Quaternion();
+    // Level-assist scratch; see _bankError.
+    this._lf = new THREE.Vector3();
+    this._lr = new THREE.Vector3();
+    this._lu = new THREE.Vector3();
+    this._lw = new THREE.Vector3();
+  }
+
+  /**
+   * How far the ship is rolled off the chart's plane, in radians, signed.
+   *
+   * `forward × up` is the direction the wings would lie along if they were
+   * level, and the answer is the angle from there to where they actually are,
+   * measured around the nose. Returns zero inside a cone about seven degrees
+   * wide around straight up and straight down: that cross product collapses
+   * there, and the angle it yields is noise that would spin the ship on the
+   * spot. Flying vertically means the assist quietly lets go, which is right —
+   * there is no horizon to hold.
+   */
+  _bankError() {
+    const f = this._lf.set(0, 0, -1).applyQuaternion(this.quat);
+    const w = this._lw.crossVectors(f, WORLD_UP);
+    const l = w.length();
+    if (l < 0.12) return 0;
+    w.multiplyScalar(1 / l);
+    const r = this._lr.set(1, 0, 0).applyQuaternion(this.quat);
+    const u = this._lu.set(0, 1, 0).applyQuaternion(this.quat);
+    return Math.atan2(w.dot(u), w.dot(r));
   }
 
   /** Gear is down only on the ground; in flight it is stowed and invisible. */
@@ -57,13 +88,48 @@ export class Ship {
   update(dt, input, env) {
     const q = this.quat;
 
+    /* The assist switch is a control preference, so it is stored and persisted
+       with the rest of them on the Input — but this method is also handed a
+       synthesised input by the autopilot, which has no opinion on the subject
+       and would otherwise silently switch it off every frame it steers. Only
+       take the flag from an object that actually carries one. Cockpit.js reads
+       `ship.assist` for the annunciator, which is why it lives here at all. */
+    if (typeof input.assist === 'boolean') this.assist = input.assist;
+
     // ---------------------------------------------------------- rotation
     const ta = this.turnAccel;
-    const damp = this.foldMode ? this.turnDamp * 2.4 : this.turnDamp;
-    const authority = this.foldMode ? 0.20 : 1.0;
+    /* Assist is off inside a fold: the tunnel is a scripted two and a half
+       seconds with 20% control authority, and levelling the ship through it
+       fights the one thing the player is watching. */
+    const assist = this.assist && !this.foldMode;
+    /* Half again as much damping with the assist in — and half again as much
+       authority with it, which is the half that matters.
+
+       Damping alone was the obvious fix and the wrong one. The steady turn rate
+       of this model is input × turnAccel ÷ damp, so damping the tumble out also
+       took a third off how fast the ship could turn at all, and a sluggish ship
+       is the same complaint one step further along. Raising both leaves the
+       rate exactly where it was and shortens the time constant instead: the
+       ship reaches its rate sooner and gives it up sooner, and stops carrying a
+       spin nobody asked for. Assist off restores the original numbers rather
+       than approximating them. */
+    const grip = assist ? 1.55 : 1;
+    const damp = this.foldMode ? this.turnDamp * 2.4 : this.turnDamp * grip;
+    const authority = (this.foldMode ? 0.20 : 1.0) * grip;
+
+    /* Wings level, unless the player is asking for something else.
+       The threshold on pitch is there because a deliberate climb or dive is
+       usually flown with some bank in it, and an assist that rolls you upright
+       in the middle of one feels like the ship arguing. */
+    let roll = input.roll;
+    if (assist && Math.abs(input.roll) < 0.06 && Math.abs(input.pitch) < 0.30) {
+      roll += THREE.MathUtils.clamp(this._bankError() * 1.5, -1, 1) * 0.75;
+    }
+    roll = THREE.MathUtils.clamp(roll, -1, 1);
+
     this.angVel.x += (input.pitch * ta.x * authority - this.angVel.x * damp) * dt;
     this.angVel.y += (input.yaw * ta.y * authority - this.angVel.y * damp) * dt;
-    this.angVel.z += (input.roll * ta.z * authority - this.angVel.z * damp) * dt;
+    this.angVel.z += (roll * ta.z * authority - this.angVel.z * damp) * dt;
     this.angVel.x = THREE.MathUtils.clamp(this.angVel.x, -this.maxTurn.x, this.maxTurn.x);
     this.angVel.y = THREE.MathUtils.clamp(this.angVel.y, -this.maxTurn.y, this.maxTurn.y);
     this.angVel.z = THREE.MathUtils.clamp(this.angVel.z, -this.maxTurn.z, this.maxTurn.z);

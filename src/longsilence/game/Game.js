@@ -10,6 +10,8 @@ import { Planet } from '../world/Planet.js';
 import { Star } from '../world/Star.js';
 import { Dust } from '../world/Dust.js';
 import { FoldTunnel } from '../gfx/FoldTunnel.js';
+import { Impact, approachVerdict, impactSeverity, CRASH_CLOSING, CRASH_CLOSING_HARD }
+  from '../gfx/Impact.js';
 import { LOGD_V_PARS, LOGD_V, LOGD_F_PARS, LOGD_F } from '../gfx/glsl/noise.js';
 import { AsteroidField } from '../world/Asteroids.js';
 import { Fleet } from '../world/Fleet.js';
@@ -71,6 +73,10 @@ const SURFACE_GEAR_HEIGHT = 14.6;
    this is the part of it the audience is actually watching, so it wants to be
    a descent you can read the rate of rather than a drop. */
 const SETTLE_TIME = 4.2;
+/* How long the wreck burns before the ship is put back together. Long enough
+   for the fireball to bloom, the debris to slow and the smoke to start; short
+   enough that nobody sits there wondering whether the game has hung. */
+const CRASH_HOLD = 2.6;
 /* How long the touchdown gets to breathe before a world takes over the page.
    Long enough for the dust to settle and the name to land, short enough that
    nobody wonders whether it worked. */
@@ -194,6 +200,9 @@ export class Game {
     this.battle = null;
     /** The ground it is fought over. Built and torn down with the battle. */
     this.battlefield = null;
+    /* The wreck, while there is one. Null everywhere else; the flight branch,
+       the approach envelope and the fold drive all test it. See _crashInto. */
+    this.crash = null;
     // ?q=low|medium|high forces a tier, so the reduced-shader paths that only
     // phones would otherwise hit can be verified on a desktop.
     const forced = new URLSearchParams(location.search).get('q');
@@ -294,6 +303,16 @@ export class Game {
     P(0.58, 'assembling VIBEY');
     this.ship = new Ship();
     this.scene.add(this.ship.object);
+
+    /* The wreck, built now rather than at the moment somebody needs it.
+       Everything it draws is pooled, and its point light has to be in the
+       scene before anything compiles against it — `NUM_POINT_LIGHTS` is part
+       of every lit program's key, so a light introduced on the frame of an
+       impact would recompile the whole frame on the one frame that must not
+       stall. See gfx/Impact.js. */
+    this.impact = new Impact(this.scene, {
+      mobile: this.mobile, quality: this.quality, scale: this.ship.length,
+    });
 
     // ---- habitable module
     // It lives in its own scene, rendered as a second pass with its own camera.
@@ -496,6 +515,13 @@ export class Game {
     await frame();
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = false;
+
+    /* The wreck's programs, built here rather than on the frame somebody
+       explodes — see Impact.prewarm for why its own group cannot supply them.
+       Not awaited: the synchronous half of a compile happens inside the call
+       either way, and waiting on the driver's parallel half would hold the
+       boot screen open for it. */
+    void this.impact.prewarm(this.renderer, this.camera);
 
     P(1.0, 'ready');
   }
@@ -776,6 +802,17 @@ export class Game {
   }
 
   update(dt) {
+    /* A crash owns the clock for a beat.
+       `impact` runs on real seconds — it is what has to end the freeze — and
+       everything downstream of here runs on what it hands back, so the world
+       stops nearly dead on the frame of the hit and comes back up over the
+       next half second. Idle it returns 1 and this is three reads. */
+    if (this.impact) {
+      this.impact.update(dt, this.origin);
+      if (this.crash) this._updateCrash(dt);
+      this.shake = Math.max(this.shake, this.impact.shake);
+      dt *= this.impact.timeScale;
+    }
     this.time += dt;
     const input = this.input;
     input.update(dt);
@@ -934,7 +971,10 @@ export class Game {
     }
 
     // ------------------------------------------------------------ flight
-    const flying = (this.mode === 'pilot' || this.mode === 'exterior') && !this.transition;
+    // ...and not while the hull is a fireball. Nothing on the stick reaches a
+    // ship that no longer has a drive.
+    const flying = (this.mode === 'pilot' || this.mode === 'exterior')
+      && !this.transition && !this.crash;
     if (!uiOpen && flying) {
       if (input.tapped('stop')) { ship.throttle = 0; ship.vel.multiplyScalar(0.02); this.cancelAutopilot(); }
       if (input.tapped('fold') || input.tapped('foldBtn')) this.toggleFold();
@@ -3056,20 +3096,61 @@ export class Game {
    */
   updateProximity(dt) {
     const ship = this.ship;
+    /* A wreck is not on approach to anything. Skipping the envelope here also
+       keeps its two `Math.min(1, shake + …)` clamps off the impact's own
+       shake, which is authored well above 1 on purpose. */
+    if (this.crash) return;
     this.proximityWarn = null;
+    let doomed = null;
     for (const b of this.bodies) {
-      if (!b.planet && b.kind !== 'star') continue;
       const isStar = b.kind === 'star';
-      const floor = b.radius * (isStar ? 2.2 : 1.02);
-      const soft = b.radius * (isStar ? 4.0 : 1.16);
+      /* Structures joined this loop for the collision test and for nothing
+         else. A station has no atmosphere to brake in and no field to be
+         pushed off by, so `soft` is `floor` and the only two outcomes are
+         "missed it" and "hit it" — see the `hard` early-out below. Traffic is
+         deliberately *not* here: a craft's closing speed would have to be
+         measured relative to a hull flying its own path, and a freighter that
+         detonates you because it crossed your drift is the false positive this
+         whole feature cannot afford. */
+      const hard = b.kind === 'station';
+      if (!b.planet && !isStar && !hard) continue;
+      const floor = b.radius * (isStar ? 2.2 : hard ? 1.0 : 1.02);
+      const soft = b.radius * (isStar ? 4.0 : hard ? 1.0 : 1.16);
 
       _v.copy(ship.absPos).sub(b.absPos);
       const d = _v.length();
       if (d > soft) continue;
       _v.multiplyScalar(1 / Math.max(d, 1e-6));
 
+      /* What the envelope is allowed to do about this. It is an assist, not a
+         wall, and an assist has an authority limit — see gfx/Impact.js, where
+         the decision lives as a pure function so that the one thing that could
+         ruin the game (exploding on an approach somebody was flying carefully)
+         is testable without a renderer. */
+      const closing = -ship.vel.dot(_v);
+      const verdict = approachVerdict(d, floor, soft, closing,
+        hard ? CRASH_CLOSING_HARD : CRASH_CLOSING);
+      if (verdict === 'crash') { this._crashInto(b, _v, closing); return; }
+      if (hard) continue;
+
       const t = THREE.MathUtils.clamp((soft - d) / (soft - floor), 0, 1);
       this.proximityWarn = isStar ? 'STELLAR PROXIMITY' : 'TERRAIN PROXIMITY';
+
+      if (verdict === 'doomed') {
+        /* Past saving, and said once rather than once a frame. There is still
+           time to turn — the envelope is 14% of a radius deep, which is
+           thousands of kilometres — so this is a warning and not an epitaph. */
+        doomed = b;
+        if (this._pullUp !== b.id) {
+          this._pullUp = b.id;
+          this.hud.log(`IMPACT WARNING · ${b.name.toUpperCase()} · PULL UP`, 'hi');
+          this.audio.ping('alarm');
+        }
+        this.cancelAutopilot(true);
+        if (ship.foldMode) this.toggleFold(false);
+        this.shake = Math.min(1.5, this.shake + t * dt * 5.0);
+        continue;
+      }
 
       // cancel automation and cut the drive as the envelope closes
       if (t > 0.25) { this.cancelAutopilot(true); if (ship.foldMode) this.toggleFold(false); }
@@ -3089,6 +3170,127 @@ export class Game {
       this.shake = Math.min(1, this.shake + t * dt * 1.6);
       if (isStar && t > 0.35) ship.hull = Math.max(0, ship.hull - dt * 0.05 * t);
     }
+    // so the next approach that goes wrong gets its own warning
+    if (!doomed) this._pullUp = null;
+  }
+
+  /* ============================================================================
+     The crash.
+
+     There was no collision anywhere in this game: a hull could be flown into a
+     world at two hundred kilometres a second and the approach envelope above
+     would tuck it neatly against the surface. It still does, for anything
+     under `CRASH_CLOSING`. Past that the assist stands down and the ship goes
+     in.
+
+     What follows is not a game over, and that is a decision rather than an
+     omission. This is a hub somebody flew to for fun, there is no save, and
+     the on-foot death two hundred lines up already made exactly this call for
+     exactly this reason. So: the hull is destroyed, it burns for a couple of
+     seconds with the world nearly stopped around it, and then VIBEY puts you
+     back in a high orbit on thirty-five per cent of a ship with the fold
+     charge gone. The cost is real and the lesson is legible, which is the
+     whole job of a consequence.
+
+     Two things it deliberately does not hit, both because of what they are
+     rather than because of cost:
+
+     **The terrain.** Only `world/Surface.js` has a CPU height field, and that
+     is the landed scene. A world in orbit is a shader-displaced sphere with no
+     sampler on this side of the GPU, so its own radius is the only surface an
+     approach can be tested against — which is right anyway at this range,
+     where the displacement is a couple of kilometres against six thousand.
+
+     **The belts.** `world/Asteroids.js` is drawn in a frame centred on the
+     ship — `_updateWorld` passes it a `shipRel` of (0,0,0) and parks its group
+     at the scene origin — so every rock in it is welded to the hull and none
+     of them ever gets any closer. Colliding with that would mean detonating on
+     the frame you entered a belt and never being able to leave. Making the
+     field move through the world rather than with it is the fix, and it is not
+     this file's to make; see the report.
+     ========================================================================= */
+
+  /**
+   * Destroy the ship against `b`. Called from the approach envelope, which is
+   * the only thing that knows a hull went through a shell.
+   *
+   * @param {object} b        the body that was hit
+   * @param {THREE.Vector3} normal  unit vector out of it, through the ship
+   * @param {number} closing  the speed it was hit at, for the severity ramp
+   */
+  _crashInto(b, normal, closing) {
+    if (this.crash || this._disposed) return;
+    const ship = this.ship;
+    const sev = impactSeverity(closing);
+    this.crash = { body: b, t: 0, sev };
+
+    /* Sit the wreck exactly on the shell rather than inside it. The fireball
+       is drawn at the ship, and half a fireball buried in a planet reads as a
+       clipping bug rather than as an impact. */
+    const shell = b.radius * (b.kind === 'star' ? 2.2 : b.kind === 'station' ? 1.0 : 1.02);
+    ship.absPos.copy(b.absPos).addScaledVector(normal, shell);
+    this.origin.copy(ship.absPos);
+    ship.object.position.set(0, 0, 0);
+    ship.vel.set(0, 0, 0);
+    ship.throttle = 0;
+    ship.boost = 0;
+    ship.hull = 0;
+    if (ship.foldMode) this.toggleFold(false);
+    this.cancelAutopilot(true);
+    // Tumbling, not merely stopped. Damped out by the flight model's own
+    // turnDamp over about a second, which is as long as it is worth watching.
+    const spin = () => (Math.random() - 0.5) * 3.4;
+    ship.angVel.set(spin(), spin(), spin() * 1.4).multiplyScalar(sev);
+
+    this.impact.fire(ship.absPos, normal, sev, this.audio);
+    this.hud.log(`HULL LOST · IMPACT WITH ${(b.name || 'MASS').toUpperCase()}`, 'hi');
+  }
+
+  /** Runs on *real* seconds, from the top of update(), because the clock the
+   *  rest of the frame gets is the dilated one. */
+  _updateCrash(dt) {
+    const C = this.crash;
+    C.t += dt;
+    // Held where it hit: the floating origin is the ship, so a wreck that flew
+    // on would take the fireball with it and leave the planet behind.
+    this.ship.vel.set(0, 0, 0);
+    this.ship.throttle = 0;
+    if (C.t < CRASH_HOLD) return;
+    this.crash = null;
+    this._respawnFromCrash(C.body);
+  }
+
+  _respawnFromCrash(b) {
+    const ship = this.ship;
+    _v.copy(ship.absPos).sub(b.absPos);
+    if (_v.lengthSq() < 1e-9) _v.set(0, 1, 0);
+    _v.normalize();
+    // Clear of the well, and nose along the climb rather than back down it —
+    // the same two things _finishSpace has to get right after a liftoff.
+    ship.absPos.copy(b.absPos).addScaledVector(_v, b.radius * 2.8);
+    ship.vel.set(0, 0, 0);
+    ship.angVel.set(0, 0, 0);
+    _m4.lookAt(ZERO, _v, UP);
+    ship.quat.setFromRotationMatrix(_m4);
+    ship.object.quaternion.copy(ship.quat);
+    ship.object.position.set(0, 0, 0);
+    this.origin.copy(ship.absPos);
+    // The wreck stays on the surface. Without this it is drawn against the old
+    // origin for one frame, which puts the fireball on the ship that just left.
+    this.impact.reanchor(this.origin);
+    this.camRig.copy(ship.quat);
+    /* Crippled rather than restored. 0.35 is under the half a hull that
+       updatePost's damage vignette keys off, so the frame itself keeps saying
+       what state the ship is in the whole way home. */
+    ship.hull = 0.35;
+    ship.foldCharge = 0.15;
+    ship.throttle = 0;
+    this.mode = (this.player.mode === 'seated' || this.player.mode === 'moving')
+      ? 'pilot' : this.mode;
+    this.hud.log('HULL RECONSTITUTED · 35% · FOLD CHARGE LOST', 'hi');
+    this.hud.narrate(
+      'I put you back together. Come in slower next time — X kills your speed, L lands.', 'VIBEY');
+    this.audio.ping('boot');
   }
 
   /* ------------------------------------------------------------ targeting */
@@ -3263,7 +3465,11 @@ export class Game {
    * the landing sequence uses with its cloud deck, and for the same reason.
    */
   async hyperjump(id) {
-    if (id === this.currentSystemId || this._jumping) return;
+    /* `crash` blocks it, and it has to: the chart is still reachable from the
+       wreck (M opens it, J confirms), and a jump that lands mid-explosion
+       leaves `_respawnFromCrash` holding a body from the system before last to
+       put the ship back beside. */
+    if (id === this.currentSystemId || this._jumping || this.crash) return;
     const dest = this.galaxy[id];
     this._jumping = true;
     this._jumpDest = dest.name;
@@ -3319,7 +3525,9 @@ export class Game {
    */
   jumpToWorld(key) {
     const sys = this.galaxy.find((s) => s.world && s.world.key === key);
-    if (!sys || this._jumping || this.transition || this.landed) return false;
+    // `crash` for the same reason hyperjump refuses one, and here as well as
+    // there so the charge is not spent on a jump that will not happen.
+    if (!sys || this._jumping || this.transition || this.landed || this.crash) return false;
 
     if (sys.id === this.currentSystemId) {
       // Already in the right sky: fly to it instead, which the autopilot does
@@ -3400,6 +3608,18 @@ export class Game {
     u.uDamage.value += ((ship.hull < 0.5 ? (0.5 - ship.hull) * 1.2 : 0) - u.uDamage.value) * Math.min(1, dt * 3);
     if (this._flash > 0) { this._flash = Math.max(0, this._flash - dt * 1.6); }
     u.uFlash.value = this._flash || 0;
+
+    /* The hit, in the picture rather than in the world: a white frame, a
+       moment of the lens coming apart at the edges, and the colour draining
+       and coming back. Only written while an impact is live, and put back to
+       the authored 1.00 on the frame after — nothing else in the game touches
+       uSat and it should not start finding it changed. */
+    const imp = this.impact;
+    if (imp && imp.live) {
+      u.uFlash.value = Math.max(u.uFlash.value, imp.flash);
+      u.uCA.value += imp.chroma;
+      u.uSat.value = 1 - imp.desat;
+    } else if (u.uSat.value !== 1) u.uSat.value = 1;
 
     /* The deck the landing goes through. Its colour is the sky's, when there
        is a sky to read it off — cloud is lit by the same air the dome is, and
@@ -3962,6 +4182,8 @@ export class Game {
     this.started = false;
     this._cancelHandOff();
     try { this._endBattle(); } catch (e) { console.warn('battle teardown', e); }
+    this.crash = null;
+    try { this.impact?.dispose(); } catch (e) { console.warn('impact teardown', e); }
     try { this.audio?.dispose(); } catch (e) { console.warn('audio teardown', e); }
     try { this.input?.dispose(); } catch (e) { console.warn('input teardown', e); }
     // Drops every geometry, texture and render target the scene holds along

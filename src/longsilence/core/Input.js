@@ -10,13 +10,82 @@ const KEYMAP = {
   KeyW: 'thrUp', KeyS: 'thrDn',
   KeyA: 'yawL', KeyD: 'yawR',
   KeyQ: 'rollL', KeyE: 'rollR',
-  ArrowUp: 'pitchU', ArrowDown: 'pitchD', ArrowLeft: 'yawL', ArrowRight: 'yawR',
+  /* The arrows are a *fallback*, and `turnL/turnR` exist so they can be.
+     ArrowLeft used to be `yawL` — the same action A is bound to — which meant
+     the two could never mean different things. They have to: under the simple
+     scheme A and D slide the ship sideways, and losing keyboard yaw with them
+     would leave a player with a dead trackpad no way to turn at all. So the
+     arrows keep their own names, always steer, and nothing essential is on
+     them because the pointer does the same job better. */
+  ArrowUp: 'pitchU', ArrowDown: 'pitchD', ArrowLeft: 'turnL', ArrowRight: 'turnR',
   Space: 'up', ControlLeft: 'down', KeyC: 'down',
   ShiftLeft: 'boost', ShiftRight: 'boost',
   KeyF: 'scan', KeyJ: 'fold', KeyX: 'stop',
   KeyR: 'align', KeyV: 'view', KeyT: 'target',
   AltLeft: 'look', AltRight: 'look',
 };
+
+/* ============================================================================
+   Control schemes.
+
+   The layout this shipped with is a six-degree-of-freedom sim: throttle on
+   W/S, yaw on A/D, and *pitch on the arrow keys*. That asks a laptop pilot to
+   steer with both hands at opposite ends of the keyboard, and the report that
+   started this was exactly that — "not intuitive at all", nobody could work
+   out how to fly it.
+
+   So there are two, and the one that a laptop can actually do is the default:
+
+   - `simple`  — one hand on WASD, one on the pointer. The pointer pitches and
+     yaws; A and D become translation, which is what they are for in every
+     browser space game. Nothing needed to fly is on the arrow keys.
+   - `sim`     — the original. A and D yaw, the arrows pitch, six axes under
+     your fingers. Kept whole, because the people who like it are not wrong.
+
+   The three tuning numbers ride on the scheme rather than on the class,
+   because they are the scheme: the pointer is a *virtual stick* (see
+   feedStick), and how far a flick throws it, how fast it springs back and how
+   much slop sits at the centre is the entire difference between "this flies
+   like a mouse" and "this drifts".
+   ========================================================================== */
+export const SCHEMES = {
+  simple: {
+    id: 'simple',
+    label: 'SIMPLE',
+    /* A and D are translation, not rotation. */
+    strafeAD: true,
+    /* Half again as much throw per pixel as the sim layout. A trackpad has
+       about a third of the travel a mouse does before the finger runs out of
+       glass, and at 0.0022 a full swipe across one barely reached half stick. */
+    sensitivity: 0.0034,
+    /* Springs back in about a third of a second, so letting go of the pointer
+       stops the turn. At the sim layout's 0.85/s a hard turn is still a third
+       of itself a second later, which is the "it keeps going" complaint. */
+    autoCenter: 2.6,
+    /* Slop at the centre, and it is here for the trackpad. A resting finger on
+       a trackpad still emits a pixel or two a second; without a deadzone the
+       ship yaws very slowly forever and the player cannot tell why. */
+    deadzone: 0.12,
+    /* Full throttle in a little over half a second rather than 1.1 s. Held
+       against a ship that takes seconds to change speed, a slow throttle reads
+       as an unresponsive one. */
+    throttleRate: 1.9,
+  },
+  sim: {
+    id: 'sim',
+    label: 'SIM · 6DOF',
+    strafeAD: false,
+    sensitivity: 0.0022,
+    autoCenter: 0.85,
+    deadzone: 0,
+    throttleRate: 1,
+  },
+};
+
+export const DEFAULT_SCHEME = 'simple';
+
+/** Where the control preferences live between visits. */
+export const PREFS_KEY = 'vibe.explorer.controls';
 
 /**
  * The same four keys, named for the other thing they do.
@@ -43,14 +112,33 @@ export const FOOT_ALIAS = {
    within ~300 ms of touchend; 800 ms covers the slow cases with margin. */
 const TOUCH_SETTLE_MS = 800;
 
+/* Scratch for the deadzoned stick. One per module: Input.update is the only
+   caller and it is not re-entrant. */
+const _axes = { x: 0, y: 0 };
+
 export class Input {
   constructor(dom) {
     this.dom = dom;
     this.keys = new Set();
     this.pressed = new Set();
     this.stick = new THREE.Vector2(0, 0);
-    this.sensitivity = 0.0022;
-    this.autoCenter = 0.85;
+    /* Set by _applyScheme, which runs before anything can read them. Listed
+       here anyway so the shape of an Input is readable in one place. */
+    this.sensitivity = 0;
+    this.autoCenter = 0;
+    this.deadzone = 0;
+    this.throttleRate = 1;
+    /** Player gain on top of the scheme's own, adjustable in flight. */
+    this.flySens = 1;
+    /** Flight assist: auto-level and extra damping. Ship.update reads it. */
+    this.assist = true;
+    this.scheme = DEFAULT_SCHEME;
+    /* Bumped whenever a preference changes, with a line to show for it. The
+       HUD watches the counter rather than taking a callback, so nothing here
+       needs to know a HUD exists. */
+    this.settingsRev = 0;
+    this.settingsMsg = '';
+    this._applyScheme(SCHEMES[DEFAULT_SCHEME]);
     this.locked = false;
     this.touch = false;
     this._touchAt = 0;                  // ms of the last finger down/up
@@ -69,14 +157,18 @@ export class Input {
     this.state = {
       pitch: 0, yaw: 0, roll: 0,
       throttleDelta: 0, strafeX: 0, strafeY: 0,
-      boost: 0,
+      boost: 0, assist: this.assist,
     };
 
     this._onKeyDown = (e) => {
       if (e.repeat) return;
       const a = KEYMAP[e.code];
       if (a) { this.keys.add(a); this.pressed.add(a); }
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
+      /* Slash joins the list for Firefox, where `/` opens quick-find and steals
+         every keystroke after it from the ship. Safe to swallow for the same
+         reason Tab and Space already are: while this route is mounted there is
+         nothing on the page to type into. */
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Slash'].includes(e.code)) e.preventDefault();
       this.pressed.add('code:' + e.code);
     };
     this._onKeyUp = (e) => { const a = KEYMAP[e.code]; if (a) this.keys.delete(a); };
@@ -157,6 +249,97 @@ export class Input {
     document.addEventListener('mousemove', this._onMouseMove);
 
     this._initTouch();
+    this._loadPrefs();
+  }
+
+  /* ------------------------------------------------------------ preferences
+
+     Controls are the one setting a player changes once and expects to keep.
+     `localStorage` rather than a query string or a table: this route can be
+     opened offline and signed out, and a control scheme is not worth a network
+     round trip. Every access is wrapped — Safari in private mode throws on
+     `getItem`, and a thrown preference should not take the ship down with it. */
+
+  _applyScheme(s) {
+    this.scheme = s.id;
+    this.sensitivity = s.sensitivity;
+    this.autoCenter = s.autoCenter;
+    this.deadzone = s.deadzone;
+    this.throttleRate = s.throttleRate;
+  }
+
+  /** The scheme object currently in force, never undefined. */
+  get schemeDef() { return SCHEMES[this.scheme] || SCHEMES[DEFAULT_SCHEME]; }
+
+  /**
+   * Switch layouts. `quiet` is for the load path, which is restoring a choice
+   * rather than announcing one.
+   */
+  setScheme(id, quiet) {
+    const s = SCHEMES[id] || SCHEMES[DEFAULT_SCHEME];
+    this._applyScheme(s);
+    /* The virtual stick carries a deflection in the old scheme's units and
+       under the old scheme's deadzone. Handing that across is a ship that
+       turns on its own for a second after the switch. */
+    this.stick.set(0, 0);
+    if (!quiet) this._note(`CONTROLS · ${s.label}`);
+    this._savePrefs();
+  }
+
+  setFlySens(v, quiet) {
+    // Below about a third the ship stops answering a trackpad; above three a
+    // mouse twitch is a barrel roll.
+    this.flySens = THREE.MathUtils.clamp(v, 0.35, 3);
+    if (!quiet) this._note(`STEERING · ${Math.round(this.flySens * 100)}%`);
+    this._savePrefs();
+  }
+
+  setAssist(on, quiet) {
+    this.assist = !!on;
+    if (!quiet) this._note(`FLIGHT ASSIST · ${this.assist ? 'ON' : 'OFF'}`);
+    this._savePrefs();
+  }
+
+  _note(msg) { this.settingsMsg = msg; this.settingsRev++; }
+
+  _loadPrefs() {
+    let raw = null;
+    try { raw = window.localStorage && window.localStorage.getItem(PREFS_KEY); } catch (e) { return; }
+    if (!raw) return;
+    let p = null;
+    try { p = JSON.parse(raw); } catch (e) { return; }
+    if (!p || typeof p !== 'object') return;
+    if (SCHEMES[p.scheme]) this.setScheme(p.scheme, true);
+    if (Number.isFinite(p.flySens)) this.setFlySens(p.flySens, true);
+    if (typeof p.assist === 'boolean') this.setAssist(p.assist, true);
+    if (typeof p.invertY === 'boolean') this.invertY = p.invertY;
+  }
+
+  _savePrefs() {
+    try {
+      window.localStorage && window.localStorage.setItem(PREFS_KEY, JSON.stringify({
+        scheme: this.scheme, flySens: this.flySens,
+        assist: this.assist, invertY: this.invertY,
+      }));
+    } catch (e) { /* private mode, or a full quota: not worth failing over */ }
+  }
+
+  /**
+   * The keys that change how the ship flies rather than where it goes.
+   *
+   * Handled here rather than in Game because Input owns every one of the
+   * values they move, and because a control scheme has to be reachable from
+   * inside the cockpit — a player who cannot fly it is not going to find a
+   * settings menu behind a route change.
+   */
+  _settingsKeys() {
+    if (this.tappedCode('KeyO')) this.setScheme(this.scheme === 'simple' ? 'sim' : 'simple');
+    if (this.tappedCode('KeyZ')) this.setAssist(!this.assist);
+    // Both are consumed every frame on purpose: reading one and skipping the
+    // other would leave a stale press to fire on some later frame.
+    const up = this.tappedCode('BracketRight');
+    const dn = this.tappedCode('BracketLeft');
+    if (up !== dn) this.setFlySens(this.flySens * (up ? 1.25 : 1 / 1.25));
   }
 
   _initTouch() {
@@ -380,10 +563,32 @@ export class Input {
 
   /** Push a pointer delta into the flight stick. */
   feedStick(dx, dy) {
-    this.stick.x += dx * this.sensitivity;
-    this.stick.y += dy * this.sensitivity;
+    const g = this.sensitivity * this.flySens;
+    this.stick.x += dx * g;
+    this.stick.y += dy * g;
     const l = this.stick.length();
     if (l > 1) this.stick.multiplyScalar(1 / l);
+  }
+
+  /**
+   * The virtual stick as the flight model should see it: centred slop removed
+   * and the rest stretched back out over the full throw.
+   *
+   * Without this a trackpad is unflyable. A finger resting on one still emits
+   * a pixel or two a second, which lands as a permanent fraction of a degree
+   * per second of yaw — far too small to see and far too large to ignore over
+   * a minute of flight, with nothing on screen to explain it. Rescaling rather
+   * than subtracting matters as much: a plain subtraction loses the top of the
+   * range, so full deflection would stop meaning full rate.
+   */
+  stickAxes(out) {
+    const dz = this.deadzone;
+    const l = this.stick.length();
+    if (l <= dz || l <= 1e-6) { out.x = 0; out.y = 0; return out; }
+    const s = ((l - dz) / (1 - dz)) / l;
+    out.x = this.stick.x * s;
+    out.y = this.stick.y * s;
+    return out;
   }
 
   /** Pointer delta since the last call, in pixels. */
@@ -396,20 +601,34 @@ export class Input {
   update(dt) {
     const s = this.state;
     const k = (a) => (this.keys.has(a) ? 1 : 0);
+    const scheme = this.schemeDef;
 
-    // the stick self-centres slowly, so you can fly hands-off
+    /* Before anything reads the axes, because switching scheme mid-frame has
+       to leave the stick and the deadzone consistent with each other. Skipped
+       while a panel owns the screen: O, Z and the brackets are typing keys as
+       far as the star map is concerned. */
+    if (!this.uiOpen) this._settingsKeys();
+
+    // the stick self-centres, so you can take your hand off the pointer
     if (!this.touch) this.stick.multiplyScalar(Math.max(0, 1 - this.autoCenter * dt));
     else this.stick.set(0, 0);
 
     let pitch = 0, yaw = 0, roll = 0;
-    /* `autoCenter` is a hands-off self-centre, not a reset: at 0.85/s a hard
-       turn is still a third of itself a second later. Player.update zeroes the
-       stick outright in the two cases where nobody's hand is on it at all —
-       see the note there, and note that standing up is not one of them. */
-    pitch = -this.stick.y;
-    yaw = -this.stick.x;
+    /* `autoCenter` is a self-centre, not a reset. Under the simple scheme it is
+       quick enough (2.6/s) that letting go of the pointer stops the turn, which
+       is the behaviour a mouse implies; the sim layout keeps the original
+       0.85/s, where a hard turn is still a third of itself a second later and
+       you can fly hands-off. Player.update zeroes the stick outright in the two
+       cases where nobody's hand is on it at all — see the note there, and note
+       that standing up is not one of them. */
+    this.stickAxes(_axes);
+    pitch = -_axes.y;
+    yaw = -_axes.x;
     pitch += (k('pitchU') - k('pitchD')) * 0.9;
-    yaw += (k('yawL') - k('yawR')) * 0.9;
+    /* The arrows steer under both schemes; A and D only under the sim one,
+       where they are yaw rather than translation. */
+    yaw += (k('turnL') - k('turnR')) * 0.9;
+    if (!scheme.strafeAD) yaw += (k('yawL') - k('yawR')) * 0.9;
     roll += (k('rollL') - k('rollR'));
 
     // ---- touch sticks
@@ -444,10 +663,24 @@ export class Input {
     if (this.touchBtn.has('thrUp')) td += 1;
     if (this.touchBtn.has('thrDn')) td -= 1;
     td += gpThrottle;
+    td *= this.throttleRate;
+    /* A wheel notch is a *step*, and it was not one. Game integrates this field
+       as a rate — `throttle += throttleDelta * dt * 0.9` — so a flat `-w * 6`
+       moved the throttle by however long the frame happened to be: a sixth as
+       far at 360 Hz as at 60, and a whole notch on a frame that hitched.
+       Dividing by dt here cancels the multiply there, so one notch is 0.14 of
+       the range wherever it is spun. */
     const w = this.wheel();
-    s.throttleDelta = td + (-w * 6);
+    s.throttleDelta = td + (w ? (-w * 0.16) / Math.max(dt, 1 / 240) : 0);
 
     s.strafeY = k('up') - k('down');
-    s.strafeX = 0;
+    /* A and D, when the scheme says they are translation. They keep the `yawL`
+       and `yawR` names because those names are also what the on-foot
+       controller walks on through FOOT_ALIAS — one key set, one source of
+       truth, and only the flight model's reading of them changes. */
+    s.strafeX = scheme.strafeAD ? (k('yawR') - k('yawL')) : 0;
+    /* Carried on the state object because that is the only thing that reaches
+       Ship.update. See the note there about the autopilot. */
+    s.assist = this.assist;
   }
 }
