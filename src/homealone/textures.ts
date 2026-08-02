@@ -830,6 +830,172 @@ export function softDot() {
   );
 }
 
+/**
+ * A framed family photograph. Eight of these go up the stairs and along the
+ * landing, and they are the cheapest possible way to say *nine people live
+ * here*. Faces are three dots and a curve at this size; what reads is the
+ * arrangement — a row of adults with a row of smaller heads in front.
+ */
+export function familyPhoto(seed = 1) {
+  return make(
+    `photo${seed}`,
+    192,
+    144,
+    (c, w, h) => {
+      const r = rnd(seed * 6247 + 11);
+      // Warm 1980s print stock: never white, always a bit orange and faded.
+      c.fillStyle = "#d9c9a8";
+      c.fillRect(0, 0, w, h);
+      const g = c.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, "rgba(190,150,90,0.35)");
+      g.addColorStop(1, "rgba(60,40,20,0.18)");
+      c.fillStyle = g;
+      c.fillRect(0, 0, w, h);
+      // A wall or a hedge behind them.
+      c.fillStyle = r() < 0.5 ? "#7e8a5e" : "#8a7a63";
+      c.fillRect(0, 0, w, h * 0.55);
+      const skins = ["#e8c39c", "#f0cba6", "#d9ab7f", "#eac194"];
+      const tops = ["#9c3b3b", "#3b5b9c", "#3b7a4a", "#8a6ca8", "#c0a24a", "#5c5c66"];
+      const person = (x: number, base: number, scale: number) => {
+        const hr = 9 * scale;
+        c.fillStyle = tops[Math.floor(r() * tops.length)];
+        c.fillRect(x - 11 * scale, base - 30 * scale, 22 * scale, 32 * scale);
+        c.fillStyle = skins[Math.floor(r() * skins.length)];
+        c.beginPath();
+        c.arc(x, base - 34 * scale, hr, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = ["#3a2a18", "#6b4a24", "#1d1510", "#c9a24a"][Math.floor(r() * 4)];
+        c.beginPath();
+        c.arc(x, base - 36 * scale, hr, Math.PI, Math.PI * 2);
+        c.fill();
+        c.fillStyle = "rgba(40,25,15,0.75)";
+        c.fillRect(x - 3.4 * scale, base - 36 * scale, 1.8 * scale, 1.8 * scale);
+        c.fillRect(x + 1.6 * scale, base - 36 * scale, 1.8 * scale, 1.8 * scale);
+        c.strokeStyle = "rgba(120,50,40,0.8)";
+        c.lineWidth = 1.4 * scale;
+        c.beginPath();
+        c.arc(x, base - 31 * scale, 3.4 * scale, 0.2, Math.PI - 0.2);
+        c.stroke();
+      };
+      const backs = 3 + Math.floor(r() * 2);
+      for (let i = 0; i < backs; i++) person(w * (0.2 + (i / (backs - 1)) * 0.6), h * 0.82, 1);
+      const fronts = 2 + Math.floor(r() * 3);
+      for (let i = 0; i < fronts; i++) person(w * (0.24 + (i / Math.max(1, fronts - 1)) * 0.52), h * 0.98, 0.72);
+      // Print wear.
+      grain(c, w, h, 22, seed * 13);
+      c.fillStyle = "rgba(255,240,210,0.10)";
+      c.fillRect(0, 0, w, h * 0.2);
+    },
+    false,
+  );
+}
+
+/**
+ * The hall mirror. There is no reflection probe here and there is not going to
+ * be one, so this is a *painted* reflection: a dark vertical smear of the hall
+ * behind you, a bright rectangle where the fanlight is, and a lot of silvering.
+ * At the angles you ever see it from, that reads as a mirror; a flat grey
+ * rectangle reads as a hole in the wall.
+ */
+export function mirrorGlass() {
+  return make(
+    "mirror",
+    128,
+    192,
+    (c, w, h) => {
+      const g = c.createLinearGradient(0, 0, w * 0.7, h);
+      g.addColorStop(0, "#4a4f5c");
+      g.addColorStop(0.45, "#2b303b");
+      g.addColorStop(1, "#171b24");
+      c.fillStyle = g;
+      c.fillRect(0, 0, w, h);
+      // A doorway and a warm lamp, blurred to nothing.
+      c.fillStyle = "rgba(255,210,150,0.20)";
+      c.fillRect(w * 0.18, h * 0.12, w * 0.24, h * 0.34);
+      c.fillStyle = "rgba(255,225,180,0.12)";
+      c.beginPath();
+      c.ellipse(w * 0.72, h * 0.3, w * 0.2, h * 0.12, 0, 0, Math.PI * 2);
+      c.fill();
+      // Silvering, foxed at the edges as old mirrors are.
+      const r = rnd(4242);
+      for (let i = 0; i < 160; i++) {
+        const x = r() * w;
+        const y = r() * h;
+        const edge = Math.min(x, y, w - x, h - y) / (w * 0.5);
+        c.fillStyle = `rgba(90,90,80,${(1 - Math.min(1, edge)) * 0.35 * r()})`;
+        c.beginPath();
+        c.arc(x, y, 1 + r() * 7, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.fillStyle = "rgba(255,255,255,0.06)";
+      c.beginPath();
+      c.moveTo(0, h * 0.75);
+      c.lineTo(w, h * 0.1);
+      c.lineTo(w, h * 0.3);
+      c.lineTo(0, h * 0.95);
+      c.fill();
+    },
+    false,
+  );
+}
+
+/**
+ * A frame of the black-and-white gangster picture on the television.
+ *
+ * Three frames, cycled. It only ever occupies about eighty pixels on screen,
+ * so what has to read is *black and white, hard contrast, a man in a hat* —
+ * and that is enough for anybody to know exactly which film Kevin is watching.
+ */
+export function filmFrame(i: number) {
+  return make(
+    `film${i}`,
+    128,
+    96,
+    (c, w, h) => {
+      c.fillStyle = "#12120f";
+      c.fillRect(0, 0, w, h);
+      const r = rnd(900 + i * 37);
+      // Key light from the left, hard.
+      const g = c.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, "rgba(230,230,220,0.5)");
+      g.addColorStop(0.55, "rgba(120,120,115,0.12)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = g;
+      c.fillRect(0, 0, w, h);
+      // Two men: hat, shoulders, and on frame 2 a muzzle flash.
+      const man = (x: number, s: number) => {
+        c.fillStyle = "#0a0a09";
+        c.fillRect(x - 15 * s, h - 46 * s, 30 * s, 46 * s);
+        c.beginPath();
+        c.arc(x, h - 48 * s, 9 * s, 0, Math.PI * 2);
+        c.fill();
+        c.fillRect(x - 16 * s, h - 56 * s, 32 * s, 5 * s); // brim
+        c.fillRect(x - 9 * s, h - 64 * s, 18 * s, 9 * s); // crown
+      };
+      man(w * 0.32, 1);
+      man(w * 0.72, 0.92);
+      if (i === 1) {
+        c.fillStyle = "rgba(255,255,240,0.95)";
+        c.beginPath();
+        c.arc(w * 0.52, h * 0.52, 13, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = "rgba(255,255,255,0.35)";
+        c.fillRect(0, 0, w, h);
+      }
+      // Print damage and scan lines.
+      for (let y = 0; y < h; y += 2) {
+        c.fillStyle = "rgba(0,0,0,0.18)";
+        c.fillRect(0, y, w, 1);
+      }
+      for (let k = 0; k < 40; k++) {
+        c.fillStyle = `rgba(255,255,255,${r() * 0.25})`;
+        c.fillRect(r() * w, r() * h, 1, 1 + r() * 3);
+      }
+    },
+    false,
+  );
+}
+
 export function disposeTextures() {
   cache.forEach((t) => t.dispose());
   cache.clear();

@@ -36,6 +36,8 @@ switches, which means nothing can switch *wrongly*.
 | `textures.ts` | every surface and every face, drawn into a 2D canvas at boot. No image files |
 | `build.ts` | the geometry: walls with holes in them, furniture, the street, the snow |
 | `characters.ts` | Kevin, Harry and Marv, off one skeleton |
+| `christmas.ts` | the lights, the garland, the wreath, the icicles — all instanced |
+| `banter.ts` | every line anybody says, in shuffled bags |
 | `traps.ts` | what each trap looks like armed, and what it does when it fires |
 | `ai.ts` | five states and a breadth-first search |
 | `audio.ts` | wind, boards, a furnace, and Shchedryk |
@@ -85,6 +87,57 @@ people who open a link like this want to walk round the house with the lights
 on and look at the tree, and telling them to clear level 1 first is a bad way
 to greet a visitor.
 
+## Christmas is doing more work than the floor plan
+
+The single strongest nostalgia signal in the whole world is not the house or
+the burglars — it is **a row of fat coloured bulbs along a gutter, in snow**.
+Everybody has that image. So `christmas.ts` hangs a string along all four
+eaves, a garland across the porch beam and spiralling down both columns, a
+wreath with a bow on the front door, and a fringe of icicles with gaps in it
+(a fringe without gaps reads as a comb).
+
+Two decisions in there are worth stating:
+
+- **The bulbs are geometry; the glow is not.** Two hundred and forty little
+  emissive spheres cost nothing to shade. Two hundred and forty point lights
+  would cost the frame. Six warm point lights spread along the front do the
+  actual lighting and the bulbs are just bright dots — which, at night, in
+  snow, is exactly what they are.
+- **All of it is instanced.** The first cut used a `Mesh` per bulb, per cap,
+  per icicle, per sprig: about seven hundred draw calls hung on the front of
+  one house, which is more than the rest of the world put together. That is the
+  classic shape of a thing that runs beautifully on a laptop and drops a phone
+  to single figures. Instanced, the whole of Christmas is four draw calls and
+  the twinkle is one buffer write per frame.
+
+The twinkle is a slow **chase** along the string rather than a random flicker,
+because that is what a 1990 controller box did, and random reads as a fault.
+
+## The shout is the mechanic the battle turns on
+
+You cannot fight them and you cannot outrun them. What you *can* do is stand at
+the top of the stairs where the paint cans are hanging, **shout** (`Q`), and
+make them come to you. Without it, leading two men onto eight specific spots is
+a matter of luck; with it, it is a plan. It is also the most quoted thing in
+the film, which is not a coincidence.
+
+**Buzz's BB gun** is on his dresser upstairs in the battle and the escape. It
+never knocks anybody down — it stings, staggers them for about a second and a
+half, and takes five off their nerve. A gun that solved the problem would
+replace the traps, and the traps are the game. What it buys is a head start and
+a very satisfying noise.
+
+## Old Man Marley
+
+He shovels the pavement in the three quiet levels and never comes onto the
+property, and he is *meant* to be alarming there: a tall stooped shape with a
+snow shovel, who stops every so often and turns to look at the house.
+
+Then, in the last level, the first time either of them gets hold of you, he
+turns up. Once — it is a beat, not a mechanic, and a second one would just be
+an extra life. It only works at all because you have spent four levels being
+frightened of him, which is exactly the trick the film plays.
+
 ## The traps are fixed spots, not free placement
 
 Free placement sounds better and plays worse. On a phone, aiming a trap at a
@@ -116,6 +169,15 @@ this well is *walking*.
 Nerve, not health: two good traps take one of them out of the fight, and he
 leaves through the front door rather than dying, because nobody dies in this
 film.
+
+**And they talk.** Harry and Marv talk constantly in the film, and that is most
+of why two men breaking into a house is funny rather than frightening. A silent
+burglar is a horror-game monster; one who yells "you little jerk" from the
+bottom of the stairs is a cartoon you are winning against, and the difference
+is entirely `banter.ts`. Lines are picked by beat — entering, prowling,
+spotting you, losing you, taking a trap in the face, giving up — with a
+cooldown so they punctuate rather than chatter, and each character draws from a
+shuffled bag so nothing repeats until it has to.
 
 ## Lighting is physical, and that bit you cannot guess
 
@@ -165,7 +227,7 @@ behind. Three pieces give you a haircut.
 
 `npm run build` will not tell you the hall renders black, and it did.
 
-    node tools/homealone-shot.mjs --set     # twelve reference frames
+    node tools/homealone-shot.mjs --set     # fifteen reference frames
     node tools/homealone-play.mjs           # drive all five levels, assert
 
 The shot harness poses the camera by reaching into the engine — its fields are
@@ -177,12 +239,18 @@ spawn point, which reads exactly like a broken camera.
 
 The playtest asks `groundAt` and `resolve` directly rather than holding W and
 hoping. It runs on SwiftShader at a handful of frames a second, where "hold W
-for two seconds" measures the renderer rather than the game.
+for two seconds" measures the renderer rather than the game — and for the same
+reason it waits on `engine.frames` and on the phase, never on a stopwatch. A
+fixed millisecond wait is sometimes shorter than a single frame here, and then
+the test presses against a stale prompt and switches off a room two rooms away,
+which looks exactly like a level that cannot be won.
 
 Bugs found this way, none of which the compiler could have found: the hall's
 wallpaper facing Lincoln Avenue, every room lit as if the house had no roof,
-the camera outside the front door, a bowl cut with no eyes under it, and a
-fringe across Kevin's mouth.
+the camera outside the front door, a bowl cut with no eyes under it, a fringe
+across Kevin's mouth, a hall table standing squarely in the only doorway
+between the front door and the stairs, and a porch garland that read as a
+chain of coal.
 
 ## Teardown
 

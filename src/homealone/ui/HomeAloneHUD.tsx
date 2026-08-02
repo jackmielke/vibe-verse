@@ -45,10 +45,11 @@ export default function HomeAloneHUD({
       {playing && <TrapRail state={state} />}
       {playing && <NerveBars state={state} />}
       {playing && <Speech state={state} />}
+      {playing && <BurglarChatter state={state} />}
       {playing && state.banner && <Banner text={state.banner} />}
       {playing && state.action && <ActionPrompt label={state.action} touch={COARSE} />}
-      {playing && COARSE && <TouchControls engine={engine} />}
-      {playing && !COARSE && <KeyHint />}
+      {playing && COARSE && <TouchControls engine={engine} state={state} />}
+      {playing && !COARSE && <KeyHint state={state} />}
 
       {state.phase === "brief" && <BriefCard state={state} onStart={() => engine.begin()} onMenu={onMenu} />}
       {state.phase === "won" && <EndCard state={state} win onRetry={onRetry} onNext={onNext} onMenu={onMenu} />}
@@ -236,6 +237,35 @@ function Speech({ state }: { state: Snapshot }) {
   );
 }
 
+/**
+ * What Harry and Marv are shouting.
+ *
+ * Deliberately *not* in the middle: their lines are colour, not instructions,
+ * and the middle of the screen belongs to the corridor. They sit at the top
+ * corners under the nerve bars, one line each, and fade on their own.
+ */
+function BurglarChatter({ state }: { state: Snapshot }) {
+  const talking = state.burglars.filter((b) => b.says);
+  if (!talking.length) return null;
+  return (
+    <div className="absolute right-2 top-48 flex w-52 flex-col items-end gap-1.5 sm:top-52 sm:w-64">
+      {talking.map((b) => (
+        <p
+          key={b.who}
+          className={`rounded-lg border px-2.5 py-1.5 text-right text-[10px] italic leading-snug backdrop-blur-sm sm:text-[11px] ${
+            b.who === "harry"
+              ? "border-amber-700/40 bg-amber-950/50 text-amber-100/85"
+              : "border-sky-700/40 bg-sky-950/50 text-sky-100/85"
+          }`}
+        >
+          <span className="mr-1.5 text-[8px] uppercase not-italic tracking-[0.2em] opacity-50">{b.who}</span>
+          “{b.says}”
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function Banner({ text }: { text: string }) {
   return (
     <div className="absolute inset-x-0 top-1/3 flex justify-center px-6">
@@ -259,11 +289,18 @@ function ActionPrompt({ label, touch }: { label: string; touch: boolean }) {
   );
 }
 
-function KeyHint() {
+function KeyHint({ state }: { state: Snapshot }) {
+  const fight = state.kind === "battle" || state.kind === "escape";
   return (
     <div className="absolute bottom-3 left-3 hidden text-[9px] leading-relaxed tracking-[0.16em] text-white/25 sm:block">
       <div>WASD MOVE · SHIFT RUN</div>
       <div>MOUSE LOOK · E INTERACT</div>
+      {fight && (
+        <div className={state.tauntCooldown > 0 ? "text-white/15" : "text-amber-200/50"}>
+          Q SHOUT{state.tauntCooldown > 0 ? ` (${state.tauntCooldown.toFixed(1)}s)` : ""}
+        </div>
+      )}
+      {state.hasBB && <div className="text-amber-200/50">SPACE FIRE · {state.ammo} BBs</div>}
     </div>
   );
 }
@@ -272,7 +309,7 @@ function KeyHint() {
  * Touch
  * ------------------------------------------------------------------ */
 
-function TouchControls({ engine }: { engine: HomeAloneEngine }) {
+function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snapshot }) {
   const padRef = useRef<HTMLDivElement | null>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const idRef = useRef<number | null>(null);
@@ -341,6 +378,30 @@ function TouchControls({ engine }: { engine: HomeAloneEngine }) {
         className="pointer-events-auto absolute flex flex-col items-end gap-3"
         style={{ right: "max(1rem, env(safe-area-inset-right))", bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
       >
+        {state.hasBB && (
+          <button
+            onPointerDown={(e) => {
+              e.preventDefault();
+              engine.fire();
+            }}
+            disabled={state.ammo <= 0}
+            className="h-14 w-14 touch-none rounded-full border border-sky-200/35 bg-sky-400/15 text-[9px] uppercase tracking-[0.1em] text-sky-100/80 active:bg-sky-400/35 disabled:opacity-30"
+          >
+            BB {state.ammo}
+          </button>
+        )}
+        {(state.kind === "battle" || state.kind === "escape") && (
+          <button
+            onPointerDown={(e) => {
+              e.preventDefault();
+              engine.taunt();
+            }}
+            disabled={state.tauntCooldown > 0}
+            className="h-14 w-14 touch-none rounded-full border border-red-300/40 bg-red-500/20 text-[9px] uppercase tracking-[0.1em] text-red-100/85 active:bg-red-500/40 disabled:opacity-30"
+          >
+            {state.tauntCooldown > 0 ? state.tauntCooldown.toFixed(0) : "Shout"}
+          </button>
+        )}
         <button
           onPointerDown={() => engine.setSprint(true)}
           onPointerUp={() => engine.setSprint(false)}

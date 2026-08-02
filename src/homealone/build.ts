@@ -44,6 +44,7 @@ import {
   type Ramp,
   type RoomId,
 } from "./house";
+import { dressForChristmas, type Dressing } from "./christmas";
 import * as T from "./textures";
 
 export interface Collider {
@@ -107,6 +108,12 @@ export interface BuiltWorld {
   van: THREE.Group;
   /** The zipline rope, hidden until the last level needs it. */
   zip: THREE.Line;
+  /** The Christmas string, for the twinkle. */
+  dressing: Dressing;
+  /** The television, which plays one black-and-white picture on a loop. */
+  tv: THREE.MeshBasicMaterial;
+  /** The light the television throws, which flickers with the cut. */
+  tvGlow: THREE.PointLight;
   porchLight: THREE.PointLight;
   cullLights(px: number, py: number, pz: number): void;
   setRoomLight(room: RoomId, on: boolean): void;
@@ -185,6 +192,8 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   const roomLights = new Map<RoomId, RoomLight>();
   const doors: DoorLeaf[] = [];
   const treeLights: THREE.PointLight[] = [];
+  let tv: THREE.MeshBasicMaterial | null = null;
+  let tvGlow: THREE.PointLight | null = null;
   /** The fireplace. Assigned when the living room is built, a few hundred
    *  lines below — finding it again afterwards by matching a colour hex was
    *  one careless palette tweak away from returning a streetlight. */
@@ -696,6 +705,59 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     }
   }
 
+  /* ---- the bay window ---------------------------------------------------- *
+   * The living room's front window projects. It is three panes on a canted
+   * plan with a little lead roof and a snow cap, and it costs about thirty
+   * lines — but it is the one piece of the facade that stops the house reading
+   * as a brick box with holes in it. Every photograph of this house that
+   * anybody remembers has the bay in it.
+   * ------------------------------------------------------------------- */
+  {
+    const bx = 4.4;
+    const bz = Z.S;
+    const halfW = 1.5;
+    const depth = 0.62;
+    const sill = 0.55;
+    const hgt = 1.9;
+    const glassMat = track(
+      new THREE.MeshStandardMaterial({
+        map: T.darkWindow(21),
+        emissiveMap: T.litWindow(21),
+        emissive: new THREE.Color(0xffc98a),
+        emissiveIntensity: 0,
+        roughness: 0.28,
+        side: THREE.FrontSide,
+      }),
+    );
+    roomLightOf("living").glass.push(glassMat);
+    // Cheek, front, cheek — the canted plan, as three quads.
+    const panes: Array<[number, number, number, number, number]> = [
+      [bx - halfW * 0.72, bz + depth * 0.5, 0.9, -0.7, 0],
+      [bx, bz + depth, halfW * 1.15, 0, 0],
+      [bx + halfW * 0.72, bz + depth * 0.5, 0.9, 0.7, 0],
+    ];
+    for (const [px, pz, pw, rot] of panes) {
+      const g = new THREE.PlaneGeometry(pw, hgt);
+      disposables.push(g);
+      const m = new THREE.Mesh(g, glassMat);
+      m.position.set(px, sill + hgt / 2, pz);
+      m.rotation.y = rot;
+      root.add(m);
+      // Mullions either side of each pane.
+      for (const s2 of [-1, 1])
+        deco(M.trim, px + Math.cos(rot) * s2 * pw * 0.5, sill, pz - Math.sin(rot) * s2 * pw * 0.5, 0.1, hgt, 0.1);
+    }
+    // The box the bay sits in: sill board, head, and a lead roof with snow.
+    deco(M.trim, bx, sill - 0.12, bz + depth * 0.55, halfW * 2.3, 0.14, depth * 1.25);
+    deco(M.trim, bx, sill + hgt, bz + depth * 0.55, halfW * 2.3, 0.16, depth * 1.3);
+    deco(surface("roof", 3, 1), bx, sill + hgt + 0.16, bz + depth * 0.55, halfW * 2.4, 0.14, depth * 1.4);
+    deco(M.snowCap, bx, sill + hgt + 0.3, bz + depth * 0.55, halfW * 2.45, 0.1, depth * 1.45);
+    deco(M.snowCap, bx, sill - 0.04, bz + depth * 0.62, halfW * 2.2, 0.07, depth * 1.1);
+    // Below the sill, brick, and a solid box so you cannot walk into the bay.
+    deco(surface("brick", halfW * 2.3, sill), bx, 0, bz + depth * 0.55, halfW * 2.3, sill, depth * 1.2);
+    colliders.push({ x0: bx - halfW * 1.15, x1: bx + halfW * 1.15, z0: bz, z1: bz + depth * 1.2, y0: 0, y1: sill + hgt });
+  }
+
   /* ---- roof, porch, chimney -------------------------------------------- */
 
   const roofBase = FLOOR.upper + CEILING.upper;
@@ -781,10 +843,19 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     deco(M.fabric, 3.6, 0.7, 1.15, 2.4, 0.5, 0.3);
     prop(M.fabric, 5.6, 0, 2.6, 0.9, 0.8, 0.9); // armchair
     prop(M.darkOak, 3.6, 0, 2.9, 1.2, 0.42, 0.6); // coffee table
-    // The television, playing Angels with Filthy Souls at nobody.
+    /* The television, playing a black-and-white gangster picture at nobody.
+       It is eighty pixels of screen and it is worth every one of them: a lit
+       TV in an empty room is the loneliest object in the house, and it is the
+       reason the living room reads as *abandoned* rather than *unfinished*. */
     prop(M.black, 2.7, 0, 4.6, 1.0, 0.75, 0.6);
-    const tvMat = track(new THREE.MeshBasicMaterial({ color: 0x8fb8d8 }));
-    deco(tvMat, 2.7, 0.18, 4.28, 0.78, 0.5, 0.03);
+    deco(M.darkOak, 2.7, 0.75, 4.6, 1.04, 0.06, 0.64);
+    tv = track(new THREE.MeshBasicMaterial({ map: T.filmFrame(0) }));
+    deco(tv, 2.7, 0.2, 4.27, 0.74, 0.48, 0.02);
+    // Its light on the room, which flickers with the cut.
+    const tvLight = new THREE.PointLight(0xbcd4ea, 5, 4.5, 1.9);
+    tvLight.position.set(2.7, 0.55, 4.0);
+    root.add(tvLight);
+    tvGlow = tvLight;
 
     // Christmas tree. Six stacked cones and a hundred lights, and it is the
     // single most load-bearing prop in the house — a dark living room with a
@@ -832,6 +903,39 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       const s = 0.25 + (i % 3) * 0.12;
       deco(i % 2 ? M.red : M.green, 5.0 + (i % 3) * 0.55, 0, 3.6 + Math.floor(i / 3) * 0.5, s, s, s);
     }
+  }
+
+  /* Front hall: the console table and the mirror over it.
+     Against the *blind* stretch of the west wall, between the front door and
+     the cased opening to the staircase. The first cut of this stood the table
+     squarely in that opening — the one route from the front door to the
+     stairs — which is the sort of thing that only shows up when you walk it. */
+  {
+    const wx = X.w2 + 0.1;
+    prop(M.darkOak, wx + 0.17, 0, 1.5, 0.34, 0.8, 1.1);
+    deco(M.darkOak, wx + 0.19, 0.8, 1.5, 0.42, 0.05, 1.2);
+    const mg = new THREE.PlaneGeometry(0.62, 0.94);
+    disposables.push(mg);
+    const mirror = new THREE.Mesh(mg, track(new THREE.MeshBasicMaterial({ map: T.mirrorGlass() })));
+    mirror.position.set(wx + 0.01, 1.68, 1.5);
+    mirror.rotation.y = Math.PI / 2;
+    root.add(mirror);
+    // Gilt frame as four rails round the glass. A single box behind it just
+    // reads as a gold slab with a window cut in it.
+    for (const [dz, dy, w, h] of [
+      [0, 0.53, 0.74, 0.08], [0, -0.53, 0.74, 0.08],
+      [0.37, 0, 0.08, 1.06], [-0.37, 0, 0.08, 1.06],
+    ] as const)
+      deco(M.brass, wx, 1.68 + dy - h / 2, 1.5 + dz, 0.05, h, w);
+    // A brass lamp on the table, and the light it actually casts.
+    deco(M.brass, wx + 0.2, 0.85, 1.82, 0.14, 0.3, 0.14);
+    deco(M.white, wx + 0.2, 1.13, 1.82, 0.3, 0.24, 0.3);
+    const lamp = new THREE.PointLight(0xffd8a0, 9, 4.2, 1.8);
+    lamp.position.set(wx + 0.2, 1.24, 1.82);
+    root.add(lamp);
+    // Coat hooks by the front door, mostly empty. Nine people left in a hurry.
+    for (let i = 0; i < 4; i++) deco(M.brass, 1.86, 1.72, 4.35 + i * 0.28, 0.06, 0.1, 0.06);
+    deco(M.red, 1.78, 1.28, 4.9, 0.16, 0.52, 0.26);
   }
 
   /* Dining room. */
@@ -886,6 +990,37 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     prop(M.darkOak, -5.6, y, -1.9, 0.5, 1.9, 1.4); // shelving
   }
 
+  /* The photographs.
+     Eight frames up the staircase wall and along the landing. Nothing else in
+     the house says "nine people live here" as cheaply or as loudly, and in the
+     back half — when the house is dark and there are men in it — walking past
+     a row of family photographs is doing a job no line of dialogue could. */
+  {
+    const frameMat = M.darkOak;
+    let n = 0;
+    const hang = (x: number, y: number, z: number, rotY: number, w: number, h: number) => {
+      const g = new THREE.PlaneGeometry(w, h);
+      disposables.push(g);
+      const m = new THREE.Mesh(g, track(new THREE.MeshBasicMaterial({ map: T.familyPhoto(++n) })));
+      m.position.set(x, y, z);
+      m.rotation.y = rotY;
+      root.add(m);
+      const t = 0.04;
+      if (Math.abs(Math.cos(rotY)) > 0.5) deco(frameMat, x, y - h / 2 - 0.05, z, w + 0.12, h + 0.12, t);
+      else deco(frameMat, x, y - h / 2 - 0.05, z, t, h + 0.12, w + 0.12);
+    };
+    // Climbing the stair wall, each one a little higher than the last.
+    for (let i = 0; i < 4; i++) {
+      const f = i / 3;
+      hang(X.w1 + 0.1, 1.55 + f * 2.35, 4.4 - f * 2.4, Math.PI / 2, 0.42, 0.34);
+    }
+    // Along the landing.
+    hang(-0.6, 4.85, 0.32, Math.PI, 0.5, 0.38);
+    hang(1.6, 4.9, 0.32, Math.PI, 0.42, 0.34);
+    hang(-4.4, 4.85, -1.12, 0, 0.46, 0.36);
+    hang(2.6, 4.9, -1.12, 0, 0.42, 0.34);
+  }
+
   /* Bedrooms. */
   const bed = (x: number, z: number, w: number, quiltHex: string) => {
     prop(M.darkOak, x, FLOOR.upper, z, w, 0.42, 2.0);
@@ -897,6 +1032,23 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   bed(4.6, 3.2, 1.5, "#6a4a6e"); // Mom & Dad
   bed(4.4, -3.4, 1.0, "#3c5a3a"); // Buzz
   bed(-3.2, -3.4, 1.0, "#7a6a4a"); // guest
+  /* Buzz's tarantula, in its tank, which everybody remembers. */
+  {
+    const y = FLOOR.upper;
+    prop(M.darkOak, 6.2, y, -4.6, 0.9, 0.75, 0.5);
+    const tank = track(new THREE.MeshStandardMaterial({ color: 0x9fd8e8, roughness: 0.1, transparent: true, opacity: 0.28 }));
+    deco(tank, 6.2, y + 0.75, -4.6, 0.62, 0.4, 0.42);
+    const legMat = track(new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.85 }));
+    deco(legMat, 6.2, y + 0.8, -4.6, 0.15, 0.08, 0.11);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const l = deco(legMat, 6.2 + Math.cos(a) * 0.11, y + 0.79, -4.6 + Math.sin(a) * 0.09, 0.14, 0.02, 0.02);
+      l.rotation.y = -a;
+    }
+  }
+  /* The toboggan Kevin rides down the front stairs, parked at the top of them. */
+  deco(M.red, X.w2 - 0.42, FLOOR.upper + 0.04, 0.95, 0.42, 0.08, 1.15);
+  deco(M.darkOak, X.w2 - 0.42, FLOOR.upper + 0.12, 0.95, 0.36, 0.05, 1.0);
   prop(M.darkOak, 1.7, FLOOR.upper, 1.2, 0.5, 1.4, 0.9); // Kevin's dresser
   prop(M.darkOak, 6.2, FLOOR.upper, 1.4, 0.5, 1.3, 1.4);
   prop(M.white, IN.W + 0.6, FLOOR.upper, 4.6, 0.9, 0.6, 1.7); // bathtub
@@ -1120,6 +1272,10 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     van.add(plate);
   }
 
+  /* Christmas, hung on the house. See `christmas.ts` — the string of bulbs
+     along the eaves is the single strongest thing in the whole world. */
+  const dressing = dressForChristmas(root, roofBase);
+
   /* Falling snow. One Points cloud, recycled through a box around the camera —
      the engine moves it, so it always snows wherever you are. */
   const FLAKES = 2600;
@@ -1185,6 +1341,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       if (m.geometry) m.geometry.dispose();
     });
     for (const d of disposables) d.dispose();
+    dressing.dispose();
     scene.remove(root);
   }
 
@@ -1202,6 +1359,9 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     snow: snowPts,
     van,
     zip,
+    dressing,
+    tv: tv!,
+    tvGlow: tvGlow!,
     porchLight,
     cullLights,
     setRoomLight,

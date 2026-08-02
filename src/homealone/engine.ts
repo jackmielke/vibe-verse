@@ -22,6 +22,8 @@
  * When you hear one upstairs, one is upstairs.
  */
 import * as THREE from "three";
+import { line as banterLine, resetBanter } from "./banter";
+import { twinkle } from "./christmas";
 import { buildTraps, type TrapRig } from "./traps";
 import { Burglar, clearLine, spawnPoint } from "./ai";
 import { buildWorld, type BuiltWorld, type Collider } from "./build";
@@ -61,6 +63,8 @@ export interface BurglarState {
   nerve: number;
   state: string;
   down: boolean;
+  /** What he is shouting, if anything. */
+  says: string | null;
 }
 
 export interface Snapshot {
@@ -97,6 +101,13 @@ export interface Snapshot {
   caught: number;
   running: boolean;
   cleared: number;
+  /** Kevin has been to Buzz's room and taken the BB gun. */
+  hasBB: boolean;
+  ammo: number;
+  /** 0 when the shout is ready, otherwise seconds left. */
+  tauntCooldown: number;
+  /** True while Old Man Marley is on screen doing something about it. */
+  marley: boolean;
 }
 
 const STEP_UP = 0.62;
@@ -105,7 +116,7 @@ const GRAVITY = 20;
 
 interface Interactable {
   id: string;
-  kind: "switch" | "trap" | "zip" | "rope";
+  kind: "switch" | "trap" | "zip" | "rope" | "bb";
   label: string;
   x: number;
   y: number;
@@ -209,8 +220,28 @@ export class HomeAloneEngine {
   private muted = false;
   private cleared = 0;
   private nearest: Interactable | null = null;
+  /* ---- Kevin's kit -------------------------------------------------- */
+  private hasBB = false;
+  private ammo = 0;
+  private tauntCd = 0;
+  private muzzle = 0;
+  /* ---- Old Man Marley ----------------------------------------------- */
+  private marley: Character | null = null;
+  private marleyT = 0;
+  private marleyActive = false;
+  private marleyUsed = false;
+  private marleyShowUntil = 0;
   private compassTarget: { x: number; y: number; z: number; label: string } | null = null;
   private time = 0;
+  private tvFrame = -1;
+  /**
+   * Frames rendered. Public for `tools/homealone-play.mjs`, which has to wait
+   * for the world to actually tick between teleporting and pressing a key —
+   * on a software renderer a fixed millisecond wait is sometimes less than one
+   * frame, and the test then presses against a stale prompt and toggles a room
+   * two rooms away. Waiting on this number cannot go wrong at any frame rate.
+   */
+  frames = 0;
   /**
    * Boom length override for the capture harness (`tools/homealone-shot.mjs`).
    * Null in play. It exists because checking a face at 2.85 m is checking a
@@ -271,6 +302,18 @@ export class HomeAloneEngine {
     this.kevin = makeCharacter("kevin");
     this.scene.add(this.kevin.root);
 
+    /*
+     * Old Man Marley. He shovels the pavement in the quiet levels and he is
+     * *meant* to be alarming there — a tall stooped shape with a snow shovel
+     * that Kevin runs away from. In the last level he is the one who turns up
+     * when they finally have hold of you, which only works because you have
+     * spent four levels being frightened of him.
+     */
+    this.marley = makeCharacter("marley");
+    this.marley.setProp(true);
+    this.marley.root.visible = false;
+    this.scene.add(this.marley.root);
+
     this.burglars = [new Burglar("harry"), new Burglar("marv")];
     for (const b of this.burglars) {
       this.scene.add(b.char.root);
@@ -305,6 +348,7 @@ export class HomeAloneEngine {
       this.raf = requestAnimationFrame(loop);
       const dt = Math.min(0.05, this.clock.getDelta());
       this.time += dt;
+      this.frames++;
       this.tick(dt);
       this.renderer.render(this.scene, this.camera);
       if (this.time > this.emitAt) {
@@ -389,6 +433,65 @@ export class HomeAloneEngine {
     this.actionQueued = true;
   }
 
+  /**
+   * Shout at them.
+   *
+   * This is the mechanic the whole battle turns on. You cannot fight them and
+   * you cannot outrun them — what you *can* do is stand at the top of the
+   * stairs where the paint cans are, yell, and make them come to you. Without
+   * it, leading two men onto eight specific spots is a matter of luck; with
+   * it, it is a plan. It is also the single most quoted thing in the film,
+   * which is not a coincidence.
+   */
+  taunt() {
+    if (this.phase !== "playing" || this.tauntCd > 0 || this.caught > 0) return;
+    this.tauntCd = 5.5;
+    const l = banterLine("kevin", "taunt");
+    if (l) this.speak(l, 3.2);
+    this.audio.scream();
+    // Heard through walls, through floors, from anywhere in the house.
+    for (const b of this.burglars) b.hear(this.pos.x, this.pos.y, this.pos.z, 60);
+  }
+
+  /**
+   * Fire the BB gun.
+   *
+   * It never knocks anybody down — see `Burglar.sting`. A gun that solved the
+   * problem would replace the traps, and the traps are the game; this buys a
+   * second and a half and a very satisfying noise.
+   */
+  fire() {
+    if (this.phase !== "playing" || !this.hasBB || this.ammo <= 0 || this.caught > 0) return;
+    this.ammo--;
+    this.muzzle = 1;
+    this.audio.bb();
+    const eye = this.pos.clone();
+    eye.y += 1.0;
+    let best: Burglar | null = null;
+    let bestD = 15;
+    for (const b of this.burglars) {
+      if (b.state === "gone") continue;
+      const dx = b.pos.x - this.pos.x;
+      const dz = b.pos.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > bestD) continue;
+      let diff = Math.atan2(dx, dz) - this.yaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) > 0.4) continue;
+      const target = b.pos.clone();
+      target.y += b.char.eyeY * 0.7;
+      if (!clearLine(eye, target, this.world.colliders)) continue;
+      best = b;
+      bestD = d;
+    }
+    if (best?.sting(this.time)) {
+      this.flash("HIT", 1.1);
+      // The other one hears it and comes looking.
+      for (const o of this.burglars) if (o !== best) o.hear(best.pos.x, best.pos.y, best.pos.z, 20);
+    }
+  }
+
   /* ================================================================== *
    * Level setup
    * ================================================================== */
@@ -426,6 +529,18 @@ export class HomeAloneEngine {
 
     /* Traps. Level 3 arms them; level 4 inherits whatever level 3 left; level 5
        starts with the lot spent, because that is the premise of level 5. */
+    resetBanter();
+    this.hasBB = false;
+    this.ammo = 0;
+    this.tauntCd = 0;
+    this.kevin.setProp(false);
+    this.marleyUsed = false;
+    this.marleyShowUntil = 0;
+    // He shovels his path on the quiet nights and turns up on the loud one.
+    this.marleyActive = level.kind === "explore" || level.kind === "lights" || level.kind === "traps" || level.kind === "roam";
+    this.marleyT = 0;
+    if (this.marley) this.marley.root.visible = this.marleyActive;
+
     this.traps.reset();
     if (level.kind === "traps") {
       this.armed.clear();
@@ -482,6 +597,15 @@ export class HomeAloneEngine {
         x: xz[0], y: FLOOR[room.floor] + 1.2, z: xz[1], radius: 1.25, room: id,
       });
     }
+    // Buzz's BB gun. It lives on his dresser in every level that has anybody
+    // to shoot at, and finding it is a small reward for going up two floors
+    // while there are men in the house.
+    if (level.kind === "battle" || level.kind === "escape" || level.kind === "roam") {
+      list.push({
+        id: "bb", kind: "bb", label: "Take Buzz's BB gun",
+        x: 6.2, y: FLOOR.upper + 1.3, z: -4.6, radius: 1.6,
+      });
+    }
     if (level.kind === "traps") {
       for (const t of TRAPS)
         list.push({
@@ -519,6 +643,7 @@ export class HomeAloneEngine {
       this.updateInteract();
     }
 
+    this.updateMarley(dt);
     this.traps.update(dt, this.time);
     this.updateDoors(dt);
     this.updateAtmosphere(dt);
@@ -738,11 +863,17 @@ export class HomeAloneEngine {
       if (grabby && this.caught <= 0 && this.zipRide < 0) {
         const d = Math.hypot(b.pos.x - this.pos.x, b.pos.z - this.pos.z);
         if (d < 0.85 && Math.abs(b.pos.y - this.pos.y) < 1.4) {
-          this.caught = 0.01;
-          this.caughtBy = b;
-          this.kevin.setScream(true);
-          this.audio.scream();
-          this.audio.playMusic(null);
+          if (this.level.kind === "escape" && !this.marleyUsed) {
+            b.speak(this.time, "gotcha", true);
+            this.marleySave(b);
+          } else {
+            this.caught = 0.01;
+            this.caughtBy = b;
+            b.speak(this.time, "gotcha", true);
+            this.kevin.setScream(true);
+            this.audio.scream();
+            this.audio.playMusic(null);
+          }
         }
       }
     }
@@ -969,6 +1100,15 @@ export class HomeAloneEngine {
         this.speak("Whoa—", 2.4);
         break;
       }
+      case "bb": {
+        this.hasBB = true;
+        this.ammo = 12;
+        best.done = true;
+        this.kevin.setProp(true);
+        this.audio.chime(true);
+        this.speak("Buzz's BB gun. He'll never know.", 3.4);
+        break;
+      }
       case "rope": {
         this.ropeCut = true;
         best.done = true;
@@ -1012,6 +1152,68 @@ export class HomeAloneEngine {
       this.grounded = true;
       this.speak("Made it. Now the rope.", 3);
     }
+  }
+
+  /**
+   * Marley, shovelling.
+   *
+   * He walks the pavement, turns at each end, and never comes onto the
+   * property. That distance is the point: for four levels he is a shape at the
+   * edge of the world you are told nothing about.
+   */
+  private updateMarley(dt: number) {
+    const m = this.marley;
+    if (!m) return;
+    if (this.marleyShowUntil > this.time) {
+      m.update(dt, this.time, 0);
+      return;
+    }
+    if (!this.marleyActive) {
+      // Not shovelling tonight, and not mid-rescue: he is simply not here.
+      if (m.root.visible) m.root.visible = false;
+      return;
+    }
+    this.marleyT += dt;
+    const span = 34;
+    const period = 58;
+    const f = (this.marleyT % period) / period;
+    const back = f > 0.5;
+    const g = back ? 1 - (f - 0.5) * 2 : f * 2;
+    m.root.position.set(-18 + g * span, -0.02, STREET.kerb - 2.6);
+    m.root.rotation.y = back ? -Math.PI / 2 : Math.PI / 2;
+    // He stops every so often and looks at the house, which is unnerving and
+    // is meant to be — you find out much later that he is not the problem.
+    const pause = Math.sin(this.marleyT * 0.42) > 0.86;
+    m.update(dt, this.time, pause ? 0 : m.walkSpeed * 0.8);
+    if (pause) m.root.rotation.y = Math.PI;
+  }
+
+  /**
+   * The save.
+   *
+   * In the last level the first time they get hold of you, Marley turns up
+   * with the snow shovel and that is that. Once, and only once — it is a beat,
+   * not a mechanic, and if it happened twice it would be a second life.
+   */
+  private marleySave(b: Burglar) {
+    this.marleyUsed = true;
+    this.caught = 0;
+    this.caughtBy = null;
+    this.kevin.setScream(false);
+    b.hit(6.5, 48);
+    const m = this.marley;
+    if (m) {
+      m.root.visible = true;
+      m.root.position.set(b.pos.x + Math.sin(b.yaw) * 1.4, b.pos.y, b.pos.z + Math.cos(b.yaw) * 1.4);
+      m.root.rotation.y = b.yaw + Math.PI;
+      m.update(0.016, this.time, 0);
+    }
+    this.marleyShowUntil = this.time + 6;
+    this.flash("OLD MAN MARLEY", 3.2);
+    this.speak(banterLine("marley", "trap") ?? "That's about enough of that.", 3.4);
+    this.audio.thud(0.2);
+    this.audio.clang();
+    for (const o of this.burglars) if (o !== b) o.hear(b.pos.x, b.pos.y, b.pos.z, 30);
   }
 
   /* ---- doors, atmosphere, camera ---------------------------------------- */
@@ -1060,6 +1262,20 @@ export class HomeAloneEngine {
     this.world.fire.intensity = 1.7 + Math.sin(this.time * 9.1) * 0.3 + Math.sin(this.time * 3.3) * 0.25;
     for (let i = 0; i < this.world.treeLights.length; i++)
       this.world.treeLights[i].intensity = 1.1 + Math.sin(this.time * (1.6 + i * 0.7)) * 0.35;
+
+    // The string of bulbs, chasing along the eaves.
+    twinkle(this.world.dressing, this.time);
+    // The television. Three frames on a 4 Hz cut, and its light moving with
+    // them — a still picture in a dark room reads as a poster, not a set.
+    const frame = Math.floor(this.time * 4) % 3;
+    if (this.tvFrame !== frame) {
+      this.tvFrame = frame;
+      this.world.tv.map = T.filmFrame(frame);
+      this.world.tv.needsUpdate = true;
+      this.world.tvGlow.intensity = frame === 1 ? 11 : 4.5;
+    }
+    this.tauntCd = Math.max(0, this.tauntCd - dt);
+    this.muzzle = Math.max(0, this.muzzle - dt * 4);
 
     this.world.cullLights(this.pos.x, this.pos.y, this.pos.z);
   }
@@ -1200,8 +1416,16 @@ export class HomeAloneEngine {
     const down = (e: KeyboardEvent) => {
       if (e.code === "Tab") return;
       this.keys.add(e.code);
-      if (e.code === "KeyE" || e.code === "Space" || e.code === "Enter") {
+      if (e.code === "KeyE" || e.code === "Enter") {
         this.actionQueued = true;
+        e.preventDefault();
+      }
+      if (e.code === "KeyQ") {
+        this.taunt();
+        e.preventDefault();
+      }
+      if (e.code === "KeyF" || e.code === "Space") {
+        this.fire();
         e.preventDefault();
       }
       if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code))
@@ -1342,6 +1566,7 @@ export class HomeAloneEngine {
         nerve: b.nerve,
         state: b.state,
         down: b.state === "down",
+        says: b.says,
       })),
       compass,
       compassLabel: this.compassTarget?.label ?? null,
@@ -1351,6 +1576,10 @@ export class HomeAloneEngine {
       caught: this.caught,
       running: this.sprintHeld || this.keys.has("ShiftLeft"),
       cleared: this.cleared,
+      hasBB: this.hasBB,
+      ammo: this.ammo,
+      tauntCooldown: this.tauntCd,
+      marley: this.marleyShowUntil > this.time,
     };
   }
 
@@ -1368,6 +1597,7 @@ export class HomeAloneEngine {
     if (document.pointerLockElement) document.exitPointerLock?.();
     this.audio.dispose();
     for (const b of this.burglars) b.dispose();
+    this.marley?.dispose();
     this.kevin.dispose();
     this.traps.dispose();
     this.world.dispose();

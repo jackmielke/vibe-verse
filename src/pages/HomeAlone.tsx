@@ -124,6 +124,8 @@ const KEYS: Array<[string, string]> = [
   ["WASD", "walk — hold SHIFT to run"],
   ["MOUSE", "swing the camera round him"],
   ["E", "switches, traps, windows, ropes"],
+  ["Q", "shout — makes them come to you"],
+  ["SPACE", "Buzz's BB gun, once you've found it"],
   ["THE ARROW", "always points at what's next"],
 ];
 
@@ -131,6 +133,8 @@ const TOUCH: Array<[string, string]> = [
   ["STICK", "walk — the RUN pad makes him leg it"],
   ["DRAG RIGHT", "swing the camera round him"],
   ["● BUTTON", "switches, traps, windows, ropes"],
+  ["SHOUT", "makes them come to you"],
+  ["BB", "Buzz's gun, once you've found it"],
   ["THE ARROW", "always points at what's next"],
 ];
 
@@ -157,9 +161,10 @@ function TitleScreen({ cleared, onSelect }: { cleared: number; onSelect: (n: num
           <span className="mt-1 block text-[1.9rem] tracking-[0.22em] text-red-500/85 sm:text-5xl">ALONE</span>
         </h1>
         <p className="mt-5 max-w-md text-balance text-center text-[11px] leading-relaxed tracking-wide text-white/50">
-          671 Lincoln Avenue, Winnetka, Illinois. Three floors, sixteen rooms,
-          a basement with a furnace in it, and two men outside who think the
-          house is empty. It is not.
+          671 Lincoln Avenue, Winnetka, Illinois. Lights on the eaves, a tree
+          in the window, three floors, sixteen rooms and a basement with a
+          furnace in it — and two men outside who think the house is empty.
+          It is not.
         </p>
 
         <div className="mt-8 flex w-full max-w-md flex-col gap-1.5">

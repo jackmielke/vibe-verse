@@ -108,6 +108,16 @@ const put = (x, y, z, yaw = Math.PI) =>
     [x, y, z, yaw],
   );
 
+/** Wait for the world to actually render `n` frames. */
+const frames = async (n = 3) => {
+  const from = await page.evaluate(() => window.__homeAlone.frames);
+  await page.waitForFunction(
+    ([f, k]) => window.__homeAlone.frames >= f + k,
+    [from, n],
+    { timeout: 30000, polling: 120 },
+  );
+};
+
 const hold = async (key, ms) => {
   await page.keyboard.down(key);
   await page.waitForTimeout(ms);
@@ -182,7 +192,7 @@ await load(1);
   const beacons = await page.evaluate(() => window.__homeAlone.level.beacons.map((b) => [b.x, b.y, b.z, b.id]));
   for (const [x, y, z] of beacons) {
     await put(x, y + 0.05, z);
-    await page.waitForTimeout(1000);
+    await frames(3);
   }
   const s = await state();
   check("visiting every beacon clears it", s.phase === "won", `phase=${s.phase} ${s.done}/${s.total}`);
@@ -224,12 +234,13 @@ await load(2);
     // level was unwinnable at 6/7.
     const alreadyOn = await page.evaluate((r) => window.__homeAlone.world.roomLights.get(r).on, room);
     if (alreadyOn) continue;
-    // A frame has to run between arriving and pressing, or the prompt is
-    // still the *previous* switch and you toggle a room two rooms away.
+    // Frames, not milliseconds. A fixed wait is sometimes less than one frame
+    // here, and then the prompt is still the *previous* switch and you toggle
+    // a room two rooms away.
     await put(x, y, z);
-    await page.waitForTimeout(1300);
+    await frames(3);
     await page.keyboard.press("KeyE");
-    await page.waitForTimeout(700);
+    await frames(3);
   }
   const s = await state();
   const dark = await page.evaluate(() =>
@@ -260,14 +271,15 @@ await load(3);
   );
   check("all eight traps are reachable objects", spots.length === 8, `${spots.length} spots`);
   for (const [x, y, z] of spots) {
-    // A frame has to run between arriving and pressing, or the prompt is
-    // still the *previous* switch and you toggle a room two rooms away.
+    // Frames, not milliseconds. A fixed wait is sometimes less than one frame
+    // here, and then the prompt is still the *previous* switch and you toggle
+    // a room two rooms away.
     await put(x, y, z);
-    await page.waitForTimeout(1300);
+    await frames(3);
     await page.keyboard.press("KeyE");
-    await page.waitForTimeout(700);
+    await frames(3);
   }
-  await page.waitForTimeout(2000);
+  await frames(4);
   const s = await state();
   check("arming all eight wins it", s.phase === "won", `phase=${s.phase} armed=${s.armed.length}`);
 }
@@ -351,7 +363,11 @@ await load(5);
     `at ${JSON.stringify(rode.pos)}`);
   await page.waitForTimeout(400);
   await page.keyboard.press("KeyE");
-  await page.waitForTimeout(8000);
+  // The rope-cut plays a 3.4-second outro *in sim time*, which is a lot longer
+  // than that in wall-clock here. Wait for the phase, not for a stopwatch.
+  await page
+    .waitForFunction(() => window.__homeAlone.snapshot().phase === "won", null, { timeout: 90000, polling: 200 })
+    .catch(() => {});
   const cut = await state();
   check("cutting the rope wins the game", cut.phase === "won", `phase=${cut.phase}`);
 }

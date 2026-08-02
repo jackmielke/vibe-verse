@@ -145,11 +145,12 @@ const WORLDS: WorldCard[] = [
     to: "/home-alone",
     emoji: "🎄",
     name: "Home Alone",
-    // A real frame: 671 Lincoln Avenue from the street, every window burning,
-    // snow coming down. If a picture has to do one job, it is that one.
+    // A real frame: 671 Lincoln Avenue from the street with the lights up,
+    // every window burning, snow coming down. If a picture has to do one job,
+    // it is that one.
     art: homeAloneArt,
     blurb:
-      "671 Lincoln Avenue at Christmas. Three floors, sixteen rooms and a basement with a furnace in it — walk the empty house, light it up, arm eight traps, then survive the two men who came for it.",
+      "671 Lincoln Avenue at Christmas — lights on the eaves, a tree in the window, and two men outside who think it is empty. Walk the house, light it up, arm eight traps, then shout from the top of the stairs and see who comes.",
     featured: true,
     status: "Playable — five levels, plus free roam",
     accent: "#e0b64a",

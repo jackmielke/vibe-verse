@@ -24,7 +24,7 @@
 import * as THREE from "three";
 import * as T from "./textures";
 
-export type Who = "kevin" | "harry" | "marv";
+export type Who = "kevin" | "harry" | "marv" | "marley";
 
 export interface Character {
   who: Who;
@@ -51,6 +51,8 @@ export interface Character {
   down: number;
   /** Set true for one frame to make Kevin scream. */
   setScream(on: boolean): void;
+  /** Show or hide what he is holding — Kevin's BB gun, Marley's shovel. */
+  setProp(on: boolean): void;
   /** Advance the animation. `speed` is metres per second right now. */
   update(dt: number, t: number, speed: number): void;
   dispose(): void;
@@ -91,6 +93,15 @@ const BUILDS: Record<Who, Build> = {
     legLen: 0.98, legW: 0.135, armLen: 0.72, armW: 0.115,
     walkSpeed: 2.6, runSpeed: 4.9,
   },
+  // Old Man Marley: tall, stooped, and slow. Everything about him is built to
+  // be misread from a distance as something to be frightened of, which is the
+  // entire point of the character.
+  marley: {
+    height: 1.84, headR: 0.2, headSquash: 1.04, shoulder: 0.24,
+    torsoH: 0.64, torsoW: 0.52, torsoD: 0.3,
+    legLen: 0.86, legW: 0.15, armLen: 0.64, armW: 0.13,
+    walkSpeed: 1.15, runSpeed: 1.6,
+  },
 };
 
 export function makeCharacter(who: Who): Character {
@@ -117,6 +128,7 @@ export function makeCharacter(who: Who): Character {
     kevin: { skin: 0xf2c49e, coat: 0xe9e0cc, trouser: 0x36537f, shoe: 0xdedad0, hair: 0xe4c36a },
     harry: { skin: 0xd9a97f, coat: 0x6d4d2c, trouser: 0x2f2a26, shoe: 0x231d18, hair: 0x241a12 },
     marv: { skin: 0xe4c09a, coat: 0x2b2f3a, trouser: 0x1e2029, shoe: 0x1a1a1e, hair: 0x3a2a1a },
+    marley: { skin: 0xd6b89c, coat: 0x3d4148, trouser: 0x2c2f36, shoe: 0x241f1b, hair: 0xc8c4bc },
   }[who];
 
   const skin = mat(PAL.skin, 0.82);
@@ -140,6 +152,7 @@ export function makeCharacter(who: Who): Character {
   torso.position.y = hipY;
   body.add(torso);
 
+  const heavyCoat = who === "harry" || who === "marv" || who === "marley";
   const coatMat =
     who === "kevin"
       ? keep(
@@ -151,7 +164,12 @@ export function makeCharacter(who: Who): Character {
             return new THREE.MeshStandardMaterial({ map: t, roughness: 0.98 });
           })(),
         )
-      : clothMat(who === "harry" ? "#6d4d2c" : "#2b2f3a", who === "harry" ? 3 : 5, 1.4, 1.4);
+      : clothMat(
+          who === "harry" ? "#6d4d2c" : who === "marley" ? "#3d4148" : "#2b2f3a",
+          who === "harry" ? 3 : who === "marley" ? 7 : 5,
+          1.4,
+          1.4,
+        );
 
   cube(torso, coatMat, 0, b.torsoH / 2, 0, b.torsoW, b.torsoH, b.torsoD);
 
@@ -160,13 +178,14 @@ export function makeCharacter(who: Who): Character {
     cube(torso, mat(0xd8cdb4), 0, 0.03, 0, b.torsoW + 0.02, 0.07, b.torsoD + 0.02);
   } else {
     // The overcoat: skirts below the hips, which is most of the silhouette.
-    const skirtH = who === "marv" ? 0.78 : 0.56;
+    const skirtH = who === "marv" ? 0.78 : who === "marley" ? 0.62 : 0.56;
     cube(torso, coatMat, 0, -skirtH / 2 + 0.02, 0, b.torsoW * 1.06, skirtH, b.torsoD * 1.06);
     // Lapels.
     for (const s of [-1, 1])
-      cube(torso, mat(who === "harry" ? 0x543a20 : 0x1e222c), s * b.torsoW * 0.2, b.torsoH * 0.68, b.torsoD / 2 + 0.005, b.torsoW * 0.3, b.torsoH * 0.6, 0.02);
-    // Something under the coat — Marv's is a dirty pink, Harry's a green shirt.
-    cube(torso, mat(who === "harry" ? 0x4a5c3a : 0x8e5f66), 0, b.torsoH * 0.62, b.torsoD / 2 + 0.004, b.torsoW * 0.22, b.torsoH * 0.6, 0.02);
+      cube(torso, mat(who === "harry" ? 0x543a20 : who === "marley" ? 0x2b2f36 : 0x1e222c), s * b.torsoW * 0.2, b.torsoH * 0.68, b.torsoD / 2 + 0.005, b.torsoW * 0.3, b.torsoH * 0.6, 0.02);
+    // Something under the coat — Marv's is a dirty pink, Harry's a green
+    // shirt, Marley's a scarf.
+    cube(torso, mat(who === "harry" ? 0x4a5c3a : who === "marley" ? 0x7a2b2b : 0x8e5f66), 0, b.torsoH * 0.62, b.torsoD / 2 + 0.004, b.torsoW * (who === "marley" ? 0.5 : 0.22), b.torsoH * 0.6, 0.03);
   }
 
   /* ---- head -------------------------------------------------------- */
@@ -268,6 +287,21 @@ export function makeCharacter(who: Who): Character {
       );
       f.rotation.y = a;
     }
+  } else if (who === "marley") {
+    /* White hair and a flat cap. He is the only adult here who is not a
+       cartoon, so nothing about him is exaggerated. */
+    const hairMat = mat(PAL.hair, 0.98);
+    const backGeo = keep(new THREE.SphereGeometry(b.headR * 1.05, 18, 12, Math.PI * 0.9, Math.PI * 1.2, 0, Math.PI * 0.6));
+    const back = new THREE.Mesh(backGeo, hairMat);
+    back.scale.set(1.02, b.headSquash, 1.03);
+    head.add(back);
+    const capMat = mat(0x4a4a50, 0.9);
+    const capGeo = keep(new THREE.SphereGeometry(b.headR * 1.05, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.34));
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.y = b.headR * 0.06;
+    cap.scale.set(1.05, b.headSquash * 0.8, 1.08);
+    head.add(cap);
+    cube(head, capMat, 0, b.headR * 0.5, b.headR * 0.72, b.headR * 1.5, 0.035, b.headR * 0.7);
   } else {
     /* Both burglars wear the black knit cap. Marv's sits higher because his
        head is longer; Harry's is pulled down to his eyebrows. */
@@ -322,6 +356,36 @@ export function makeCharacter(who: Who): Character {
 
   const la = arm(-1);
   const ra = arm(1);
+
+  /*
+   * A socket in the right hand, and the two things that go in it.
+   *
+   * Both are hidden by default and toggled from the engine, so a character
+   * carrying something is one boolean rather than a second model. Kevin's BB
+   * gun only appears once he has been to Buzz's room, and Marley's shovel is
+   * the reason his silhouette on the street is unmistakable and slightly
+   * alarming, which is exactly how the film introduces him.
+   */
+  const grip = new THREE.Group();
+  grip.position.set(0, -b.armLen * 0.5, 0.03);
+  ra.fore.add(grip);
+  let prop: THREE.Group | null = null;
+  if (who === "kevin") {
+    prop = new THREE.Group();
+    cube(prop, mat(0x4a3116, 0.75), 0, -0.04, -0.12, 0.045, 0.08, 0.22); // stock
+    cube(prop, mat(0x2a2c31, 0.4, 0.7), 0, 0.01, 0.16, 0.03, 0.03, 0.42); // barrel
+    cube(prop, mat(0x4a3116, 0.75), 0, -0.02, 0.02, 0.05, 0.05, 0.14); // receiver
+    prop.rotation.x = 1.35;
+    prop.visible = false;
+    grip.add(prop);
+  } else if (who === "marley") {
+    prop = new THREE.Group();
+    cube(prop, mat(0x6a4a28, 0.9), 0, 0, 0.5, 0.04, 0.04, 1.0); // handle
+    cube(prop, mat(0xb9c0c8, 0.35, 0.6), 0, 0, 1.05, 0.3, 0.03, 0.34); // blade
+    prop.rotation.x = 1.9;
+    prop.position.set(0.02, -0.02, 0);
+    grip.add(prop);
+  }
   const ll = leg(-1);
   const rl = leg(1);
 
@@ -367,6 +431,9 @@ export function makeCharacter(who: Who): Character {
     },
     set down(v: number) {
       state.down = v;
+    },
+    setProp(on: boolean) {
+      if (prop) prop.visible = on;
     },
     setScream(on: boolean) {
       if (!screamTex || state.screaming === on) return;

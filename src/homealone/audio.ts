@@ -297,6 +297,17 @@ export class HomeAudio {
     vib.stop(t0 + 1.55);
   }
 
+  /**
+   * The BB gun. A spring, a puff of air, and a tiny metallic ring — the point
+   * is that it sounds like a *toy*, because it is one, and because a real
+   * gunshot in this world would be a different and much worse game.
+   */
+  bb() {
+    this.noise(0.05, { gain: 0.13, freq: 3200, q: 1.2, sweep: 900, type: "bandpass" });
+    this.tone(1750, 0.09, { type: "square", gain: 0.06, sweep: 620 });
+    this.tone(4200, 0.16, { type: "triangle", gain: 0.03 });
+  }
+
   /** A light switch. Small, dry, and the sound of a decision. */
   tick() {
     this.noise(0.03, { gain: 0.09, freq: 2400, q: 3.5 });

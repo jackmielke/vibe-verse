@@ -25,6 +25,7 @@
 import * as THREE from "three";
 import { makeCharacter, type Character } from "./characters";
 import { FLOOR, NAV, nearestNode, pathBetween, type NavNode } from "./house";
+import { line as banterLine, type Beat } from "./banter";
 import type { Collider } from "./build";
 
 export type BurglarState = "prowl" | "hunt" | "search" | "down" | "flee" | "gone";
@@ -62,6 +63,28 @@ export class Burglar {
   private speed = 0;
   /** Ramps 0→1 as he closes; the HUD turns it into a heartbeat. */
   proximity = 0;
+  /** What he is saying right now, and until when. */
+  says: string | null = null;
+  private saysUntil = 0;
+  private nextLineAt = 0;
+  /** Knocked sideways by a BB, but still on his feet. */
+  private flinch = 0;
+
+  /**
+   * Say something, if he has not said something too recently.
+   *
+   * `force` is for the beats that must land — taking a trap in the face, or
+   * giving up. Everything else is opportunistic, because a burglar who never
+   * shuts up stops being funny about ninety seconds in.
+   */
+  speak(t: number, beat: Beat, force = false) {
+    if (!force && t < this.nextLineAt) return;
+    const l = banterLine(this.who, beat);
+    if (!l) return;
+    this.says = l;
+    this.saysUntil = t + (force ? 3.4 : 2.6);
+    this.nextLineAt = t + (force ? 2.4 : 6 + Math.random() * 6);
+  }
 
   constructor(who: "harry" | "marv") {
     this.who = who;
@@ -76,6 +99,10 @@ export class Burglar {
     this.state = "prowl";
     this.stun = 0;
     this.alert = 0;
+    this.says = null;
+    this.saysUntil = 0;
+    this.nextLineAt = 0;
+    this.flinch = 0;
     this.path = [];
     this.pathI = 0;
     this.char.down = 0;
@@ -90,6 +117,21 @@ export class Burglar {
     this.state = "down";
     this.nerve = Math.max(0, this.nerve - damage);
     this.path = [];
+  }
+
+  /**
+   * A BB in the shoulder. Not a knockdown — a stumble.
+   *
+   * This is the whole design of the gun: it never takes anybody out of the
+   * fight, it buys you about a second and a half of a head start. If it
+   * knocked them down it would replace the traps, and the traps are the game.
+   */
+  sting(t: number) {
+    if (this.state === "down" || this.state === "gone" || this.state === "flee") return false;
+    this.flinch = 1.5;
+    this.nerve = Math.max(0, this.nerve - 5);
+    this.speak(t, "trap", true);
+    return true;
   }
 
   /** Something loud, somewhere. Louder than `radius` away and he never hears it. */
@@ -124,6 +166,16 @@ export class Burglar {
     opts: { aggression: number; playerHidden: boolean },
   ) {
     if (this.state === "gone") return;
+    if (this.says && t > this.saysUntil) this.says = null;
+
+    // A sting does not floor him; it stops him for a beat and turns him round.
+    if (this.flinch > 0) {
+      this.flinch -= dt;
+      this.speed = 0;
+      this.yaw += Math.sin(t * 22) * dt * 2.2;
+      this.apply(dt, t);
+      return;
+    }
 
     const eye = this.pos.clone();
     eye.y += this.char.eyeY;
@@ -137,6 +189,7 @@ export class Burglar {
       this.speed = 0;
       if (this.stun <= 0) {
         this.state = this.nerve <= 0 ? "flee" : "search";
+        this.speak(t, this.nerve <= 0 ? "flee" : "hurt", true);
         this.lastSeen.copy(player);
         this.path = [];
       }
@@ -180,13 +233,18 @@ export class Burglar {
     }
 
     if (sees) {
+      if (this.state !== "hunt") this.speak(t, "spot", true);
+      else this.speak(t, "chase");
       this.state = "hunt";
       this.lastSeen.copy(player);
       this.alert = 1;
     } else if (this.state === "hunt") {
       this.state = "search";
+      this.speak(t, "lost", true);
       this.path = [];
       this.repathIn = 0;
+    } else if (this.state === "prowl") {
+      this.speak(t, "prowl");
     }
 
     this.alert = Math.max(0, this.alert - dt * 0.12);

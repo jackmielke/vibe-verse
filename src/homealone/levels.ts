@@ -143,8 +143,9 @@ export const LEVELS: Level[] = [
     quote: "“Hey, I'm up here, you big horse's ass! Come and get me!”",
     brief: [
       "Harry is coming through the front. Marv has the back door.",
-      "You cannot fight them. You can only run past something",
-      "you set up earlier — so run past it on purpose.",
+      "You cannot fight them and you cannot outrun them.",
+      "What you can do is stand somewhere you set up earlier and SHOUT,",
+      "and make them come to you. Buzz's BB gun is still on his dresser.",
     ],
     goal: "Break their nerve. Lead them onto everything you armed",
     // In the living room by the tree, not in the hall — the hall is a straight
@@ -162,6 +163,7 @@ export const LEVELS: Level[] = [
       "Everything is spent and they are both still standing.",
       "Guest room, back of the house, window over the yard.",
       "Take the wire to the treehouse — then cut the rope.",
+      "And if they get hold of you… somebody is out there shovelling.",
     ],
     goal: "Reach the guest-room window and ride the zipline",
     spawn: { x: 0.4, y: G, z: 3.4, yaw: Math.PI },
@@ -201,17 +203,21 @@ export function levelByNumber(n: number): Level {
  * the film works. One line at a time, on a timer, in whatever room you are in.
  */
 export const ROOM_LINES: Partial<Record<RoomId, string[]>> = {
-  living: ["A tree, and no one to look at it.", "Dad'd kill me if he saw me in here with shoes on."],
+  living: [
+    "A tree, and no one to look at it.",
+    "Dad'd kill me if he saw me in here with shoes on.",
+    "Angels with Filthy Souls. Nobody said I couldn't.",
+  ],
   kitchen: ["I made my family disappear.", "Cheese pizza. A whole one. Just for me."],
   basement: ["I'm not scared. I'm not scared.", "That furnace is not looking at me. Furnaces can't look."],
   parents: ["Mom's suitcase is gone. Everything's gone."],
-  buzz: ["Buzz's room. Buzz's spider. Buzz's problem."],
+  buzz: ["Buzz's room. Buzz's spider. Buzz's problem.", "Buzz, your spider — is it still alive?"],
   kevin: ["This is my room. This is my house."],
   bathroom: ["Aftershave. …Aaaaaah!"],
   den: ["Dad's desk. Nobody says I can't."],
   guest: ["Nobody's slept in here since Grandma."],
   corridor: ["Nine people lived here yesterday."],
-  hall: ["This is my house. I have to defend it."],
+  hall: ["This is my house. I have to defend it.", "Keep the change, ya filthy animal."],
   dining: ["Nine chairs. One kid."],
   family: ["The TV's still warm."],
   backhall: ["The laundry chute goes all the way down."],
