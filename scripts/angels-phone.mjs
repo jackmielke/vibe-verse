@@ -84,7 +84,7 @@ for (const c of CASES) {
     waitUntil: "domcontentloaded",
     timeout: 120000,
   });
-  await page.waitForFunction(() => window.__angelsReady === true, { timeout: 180000 });
+  await page.waitForFunction(() => window.__angelsReady === true, undefined, { timeout: 180000 });
 
   // Let the world settle, then hand the input system back to real devices —
   // shot mode is only being used to skip the hangar screen.

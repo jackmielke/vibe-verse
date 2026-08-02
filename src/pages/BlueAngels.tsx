@@ -46,7 +46,13 @@ export default function BlueAngels() {
         setEngine(eng);
         eng.start();
         setReady(true);
-        if (isShotMode()) {
+        // A handle for the harnesses. The screenshot and check runs pose the
+        // engine directly; the desktop control run needs it on the *real*
+        // page, menus and all, because what it is testing is the path from a
+        // DOM event through React to the flight model. Dev builds get it too
+        // so that path can be poked by hand, and neither leaks into a
+        // production bundle.
+        if (isShotMode() || import.meta.env.DEV) {
           (window as unknown as Record<string, unknown>).__angels = eng;
           (window as unknown as Record<string, unknown>).__angelsReady = true;
         }

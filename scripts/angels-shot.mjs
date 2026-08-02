@@ -126,7 +126,7 @@ await page.goto(`${BASE}/blue-angels?shot=1${quality ? `&q=${quality}` : ""}`, {
   waitUntil: "domcontentloaded",
   timeout: 120000,
 });
-await page.waitForFunction(() => window.__angelsReady === true, { timeout: 180000 });
+await page.waitForFunction(() => window.__angelsReady === true, undefined, { timeout: 180000 });
 
 // Take the wheel. The page starts its own requestAnimationFrame loop, and if it
 // keeps running while the harness poses a camera the jet simply flies out of

@@ -19,19 +19,20 @@
  * really does roll four times faster than the Phantom, and the pictures are
  * real renders of the same meshes you fly.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Engine } from "../engine/core";
 import { HANGAR, type JetId } from "../flight/aircraft";
 import type { FleetService } from "../play/fleet";
 import type { CourseService } from "../play/courses";
 import type { GameService, RadioMessage, Achievement } from "../play/game";
-import type { InputService } from "../engine/input";
+import type { InputService, ControlScheme } from "../engine/input";
 import type { EnvService } from "../world/sky";
 import type { AssistLevel } from "../flight/dynamics";
 import type { CameraMode } from "../types";
 import { isShotMode } from "../engine/core";
 import FlightHUD from "./FlightHUD";
+import ControlsCard, { HELP_SEEN_KEY } from "./Controls";
 
 import superhornetArt from "@/assets/angels/jets/superhornet.jpg";
 import hornetArt from "@/assets/angels/jets/hornet.jpg";
@@ -118,19 +119,27 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [tilt, setTilt] = useState(false);
   const [wingmen, setWingmen] = useState(5);
   const [start, setStart] = useState<"show" | "runway" | "high">("show");
+  const [help, setHelp] = useState(false);
+  const [scheme, setScheme] = useState<ControlScheme>("mouse");
+  const [thumbs, setThumbs] = useState(false);
 
   const services = engine.ctx.services;
   const courses = services.courses as CourseService | undefined;
   const game = services.game as GameService | undefined;
 
+  // One statement, both problems.
+  //
   // The touch overlay lives on document.body, outside the React root, so it
   // cannot be layered under a menu with z-index alone — the root is its own
-  // stacking context. Hide it outright whenever a menu is up. Without this the
-  // joystick zone covers the hangar on a phone and there is no way in at all.
+  // stacking context, and the joystick zone covered the hangar on a phone with
+  // no way in at all. And on a desktop the cursor *is* the stick, so any card
+  // in front of you would otherwise have the jet rolling while you tried to
+  // click a button on it. Telling the input layer "a menu is up" fixes both,
+  // and it re-anchors neutral under the cursor on the way back out.
   useEffect(() => {
     const input = services.input as InputService | undefined;
-    input?.setTouchVisible(screen === "flying" ? null : false);
-  }, [services, screen]);
+    input?.setMenuOpen(screen !== "flying" || help);
+  }, [services, screen, help]);
 
   // Pick up whatever the input system restored from localStorage.
   useEffect(() => {
@@ -138,9 +147,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
     if (input) {
       setInvertPitch(input.settings.invertPitch);
       setTilt(input.settings.tiltRoll);
+      setScheme(input.settings.controlScheme);
     }
     const audio = services.audio as { muted: boolean } | undefined;
     if (audio) setMuted(audio.muted);
+    if (typeof window !== "undefined") {
+      setThumbs(!!window.matchMedia?.("(pointer: coarse)").matches);
+    }
   }, [services]);
 
   // Engine events → React state. Everything continuous stays out of here.
@@ -178,20 +191,43 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
       setRunTime(g.runTime);
       setScore(g.score);
       setDemoCall(g.demoElement ? g.demoElement.name : null);
+      // A tablet with a keyboard is a coarse pointer that might still be flown
+      // with keys, so the card follows whatever was touched last rather than
+      // whatever the media query guessed at load.
+      if (engine.ctx.input.source === "touch") setThumbs(true);
     }, 250);
     return () => window.clearInterval(id);
   }, [engine]);
 
-  // Escape and the pause button both land here.
+  // Escape, the pad's start button and the pause button all land here; H opens
+  // the controls card. Both arrive as engine events rather than a poll — see
+  // the note in core.ts about why polling an edge flag loses the race.
+  const helpOpen = useRef(false);
+  helpOpen.current = help;
+
+  const closeHelp = useCallback(() => {
+    setHelp(false);
+    try {
+      localStorage?.setItem(HELP_SEEN_KEY, "1");
+    } catch {
+      /* private mode. Worst case it opens once more next time. */
+    }
+  }, []);
+
   useEffect(() => {
-    const id = window.setInterval(() => {
-      if (engine.ctx.input.pausePressed) {
+    const offs = [
+      engine.on("angels:pause", () => {
+        // Escape with the card up means "close the card", not "also pause".
+        if (helpOpen.current) {
+          closeHelp();
+          return;
+        }
         setScreen((s) => (s === "flying" ? "paused" : s === "paused" ? "flying" : s));
-        engine.ctx.input.pausePressed = false;
-      }
-    }, 60);
-    return () => window.clearInterval(id);
-  }, [engine]);
+      }),
+      engine.on("angels:help", () => (helpOpen.current ? closeHelp() : setHelp(true))),
+    ];
+    return () => offs.forEach((o) => o());
+  }, [engine, closeHelp]);
 
   const spec = useMemo(() => HANGAR.find((a) => a.id === jet) ?? HANGAR[0], [jet]);
 
@@ -206,6 +242,10 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   function applyMuted(v: boolean) {
     setMuted(v);
     (services.audio as { setMuted(m: boolean): void } | undefined)?.setMuted(v);
+  }
+  function applyScheme(v: ControlScheme) {
+    setScheme(v);
+    (services.input as InputService | undefined)?.setSetting("controlScheme", v);
   }
 
   function launch(mode: "free" | "course" | "demo", course?: string) {
@@ -228,6 +268,19 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
     }
     setPanel(null);
     setScreen("flying");
+
+    // The first flight opens the controls card by itself. Pressing FLY and
+    // arriving in a jet over Lake Washington with no idea which key does
+    // anything was the whole of the complaint; you can work out a shooter by
+    // pressing W, but you cannot work out an aeroplane. After that it is on H
+    // and on the ? button, and it stays out of the way.
+    let seen = false;
+    try {
+      seen = localStorage?.getItem(HELP_SEEN_KEY) === "1";
+    } catch {
+      /* private mode counts as never seen, which is the safe way round */
+    }
+    if (!seen) setHelp(true);
   }
 
   const achievements = game?.achievements ?? [];
@@ -260,7 +313,19 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
 
   return (
     <>
+      {/* The HUD stays up behind the card — dimmed by its backdrop, but there,
+          so dismissing it does not feel like the instruments rebooting. */}
       <FlightHUD engine={engine} visible={screen === "flying"} />
+
+      {help && (
+        <ControlsCard
+          scheme={scheme}
+          touch={thumbs}
+          start={start}
+          onScheme={applyScheme}
+          onClose={closeHelp}
+        />
+      )}
 
       {/* ---- in-flight chrome ------------------------------------------- */}
       {screen === "flying" && (
@@ -312,6 +377,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               right: "max(12px, env(safe-area-inset-right))",
             }}
           >
+            <button
+              onClick={() => setHelp(true)}
+              aria-label="Controls"
+              className="rounded-full bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-200 backdrop-blur-sm transition hover:bg-black/65"
+            >
+              {thumbs ? "?" : "? Keys"}
+            </button>
             <button
               onClick={() => (services.camera as { cycle(): CameraMode } | undefined)?.cycle()}
               className="rounded-full bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-sky-200 backdrop-blur-sm transition hover:bg-black/65"
@@ -439,6 +511,16 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               {START_POINTS.find((s) => s.id === start)?.name} · {ASSIST_COPY[assist].name} · {wingmen}{" "}
               wingmen
             </p>
+            {/* The one line someone needs before they press the button. The
+                full card opens by itself on the first flight; this is so the
+                second visit does not have to wait for it. */}
+            <p className="mt-1 text-center text-[11.5px] text-sky-100/45">
+              {thumbs
+                ? "Left thumb flies, right thumb is the throttle."
+                : scheme === "mouse"
+                  ? "Move the mouse to fly · W and S for the throttle · H for every key"
+                  : "W S climb and dive · A D roll · Shift and Z for the throttle · H for every key"}
+            </p>
 
             {/* everything else, out of the way */}
             <nav className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
@@ -516,6 +598,22 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                   <span className="w-4 font-mono text-xs text-amber-200">{wingmen}</span>
                 </div>
 
+                <Group
+                  label="How you hold the stick"
+                  note={
+                    scheme === "mouse"
+                      ? "The cursor is the stick: move it to fly, W and S are the throttle. A ring on the HUD shows where neutral is and how far full deflection is."
+                      : "W and S climb and dive, A and D roll, Shift and Z are the throttle."
+                  }
+                >
+                  <Chip on={scheme === "mouse"} onClick={() => applyScheme("mouse")}>
+                    Mouse
+                  </Chip>
+                  <Chip on={scheme === "keyboard"} onClick={() => applyScheme("keyboard")}>
+                    Keyboard
+                  </Chip>
+                </Group>
+
                 <Group label="Pitch" note="">
                   <Chip on={!invertPitch} onClick={() => applyInvert(false)}>
                     Push up to climb
@@ -543,12 +641,12 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                   </Chip>
                 </Group>
 
-                <p className="pt-1 font-mono text-[10px] leading-relaxed text-white/25">
-                  Desktop: W/S pitch · A/D roll · Q/E rudder · Shift/Z throttle · Space airbrake · G gear ·
-                  X smoke · C camera · R reset · Esc menu
-                  <br />
-                  Phone: left thumb flies, right thumb is the throttle. Landscape or portrait.
-                </p>
+                <button
+                  onClick={() => setHelp(true)}
+                  className="w-full rounded-lg bg-white/[0.06] py-2 font-mono text-[10.5px] uppercase tracking-[0.2em] text-sky-200/70 transition hover:bg-white/[0.12] hover:text-sky-100"
+                >
+                  Show the full control list
+                </button>
               </section>
             )}
 
@@ -624,6 +722,19 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                 </div>
               </Row>
 
+              {!thumbs && (
+                <Row label="Stick">
+                  <div className="flex gap-1">
+                    <Chip on={scheme === "mouse"} onClick={() => applyScheme("mouse")}>
+                      Mouse
+                    </Chip>
+                    <Chip on={scheme === "keyboard"} onClick={() => applyScheme("keyboard")}>
+                      Keyboard
+                    </Chip>
+                  </div>
+                </Row>
+              )}
+
               <Row label="Pitch">
                 <Chip on={invertPitch} onClick={() => applyInvert(!invertPitch)}>
                   {invertPitch ? "Pull back to climb" : "Push up to climb"}
@@ -660,6 +771,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                 Reset
               </button>
             </div>
+
+            <button
+              onClick={() => setHelp(true)}
+              className="mt-2 w-full rounded-xl border border-white/10 py-2 font-mono text-[11px] uppercase tracking-widest text-sky-200/60 transition hover:bg-white/[0.07] hover:text-sky-100"
+            >
+              Controls
+            </button>
 
             <div className="mt-3 flex items-center justify-between">
               <button

@@ -68,7 +68,19 @@ function dead(v: number): number {
   return Math.sign(v) * ((a - DEADZONE) / (1 - DEADZONE));
 }
 
+export type ControlScheme = "mouse" | "keyboard";
+
 export interface InputSettings {
+  /**
+   * How the stick is held on a desktop.
+   *
+   * "mouse" is the default and it is the one that makes this fun to play with
+   * a laptop: the cursor *is* the stick, so pitch and roll are one continuous
+   * two-axis input instead of four keys that ramp. Keyboard flying is fine for
+   * gentle turns and hopeless for anything you would actually want to fly at
+   * an air show.
+   */
+  controlScheme: ControlScheme;
   /** Real stick sense: pull back to climb. */
   invertPitch: boolean;
   /** Roll the jet by tilting the phone instead of using the stick's X axis. */
@@ -83,6 +95,21 @@ export interface InputService {
   setSetting<K extends keyof InputSettings>(key: K, value: InputSettings[K]): void;
   /** Show or hide the touch overlay. Null hands the decision back to the heuristic. */
   setTouchVisible(visible: boolean | null): void;
+  /**
+   * Tell the input layer a menu is up.
+   *
+   * Everything that reads a raw device has to stand down: the thumb overlay
+   * would sit on top of the menu and eat its taps, and mouse flight would have
+   * the jet rolling while you were trying to click a button.
+   */
+  setMenuOpen(open: boolean): void;
+  /**
+   * Where the virtual stick is, for the HUD to draw. Mouse scheme only.
+   *
+   * `cx`/`cy` are the neutral point in CSS pixels — usually the middle of the
+   * window, but not always, so the HUD has to be told rather than assume.
+   */
+  readonly stick: { x: number; y: number; active: boolean; radius: number; cx: number; cy: number };
   /** Ask iOS for motion permission. Must be called from a real user gesture. */
   requestTilt(): void;
   hasGamepad(): boolean;
@@ -92,6 +119,7 @@ const SETTINGS_KEY = "angels.input";
 
 function loadSettings(): InputSettings {
   const base: InputSettings = {
+    controlScheme: "mouse",
     invertPitch: false,
     tiltRoll: false,
     autoThrottle: false,
@@ -138,6 +166,18 @@ export function createInput(ctx: AngelsCtx): System {
   let tiltZero = 0;
   let tiltCalibrated = false;
 
+  let menuOpen = false;
+  // Cursor position in CSS pixels, and whether it is still in the window.
+  let mouseX = 0;
+  let mouseY = 0;
+  let mouseInside = false;
+  const stick = { x: 0, y: 0, active: false, radius: 0, cx: 0, cy: 0 };
+  // Where neutral is. Normally the middle of the window; re-anchored under the
+  // cursor whenever a menu closes — see `recentre`.
+  let boxX = -1;
+  let boxY = -1;
+  let recentre = true;
+
   let padIndex: number | null = null;
 
   const touch = buildTouchOverlay();
@@ -151,7 +191,7 @@ export function createInput(ctx: AngelsCtx): System {
     Escape: "pausePressed",
     KeyP: "pausePressed",
     KeyR: "resetPressed",
-    KeyH: "photoPressed",
+    KeyH: "helpPressed",
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -203,11 +243,44 @@ export function createInput(ctx: AngelsCtx): System {
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!looking || e.pointerType === "touch") return;
+    if (e.pointerType === "touch") return;
+    if (!looking) return;
     input.lookX += e.movementX * 0.0022 * settings.sensitivity;
     input.lookY += e.movementY * 0.0022 * settings.sensitivity;
     input.looking = true;
   };
+
+  /**
+   * Cursor tracking, on the window rather than the canvas.
+   *
+   * In the mouse scheme the cursor *is* the stick, and it has to keep flying
+   * while the pointer passes over a HUD button in the corner. Listening on the
+   * canvas meant `pointerleave` fired the moment anything was drawn on top of
+   * it and the jet went limp mid-turn. Menus are handled by `menuOpen`, which
+   * is a statement about the game rather than a guess from hit-testing.
+   */
+  const onWindowPointerMove = (e: PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    mouseInside = true;
+  };
+
+  /**
+   * A cursor that has left the window is a stick that has been let go of.
+   *
+   * `pointerleave` on the document element, specifically. The obvious test —
+   * a `pointerout` whose `relatedTarget` is null — is wrong: removing the
+   * element under the cursor fires exactly that, so dismissing the controls
+   * card read as the cursor leaving the window and the jet went limp until it
+   * was moved again. The document element is only left when the pointer really
+   * does leave.
+   */
+  const onDocLeave = (e: PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    mouseInside = false;
+  };
+  const docEl = typeof document !== "undefined" ? document.documentElement : null;
 
   const onPointerUp = (e: PointerEvent) => {
     if (e.pointerType === "touch") return;
@@ -327,6 +400,8 @@ export function createInput(ctx: AngelsCtx): System {
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
+  window.addEventListener("pointermove", onWindowPointerMove);
+  docEl?.addEventListener("pointerleave", onDocLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", onContext);
   canvas.addEventListener("touchmove", onTouchMove, { passive: false });
@@ -373,6 +448,23 @@ export function createInput(ctx: AngelsCtx): System {
     setTouchVisible(visible) {
       touchForced = visible;
     },
+    setMenuOpen(open) {
+      menuOpen = open;
+      touchForced = open ? false : null;
+      if (open) {
+        // Centre the stick so the jet is not left in a turn behind the menu.
+        stick.x = 0;
+        stick.y = 0;
+        stick.active = false;
+      } else {
+        // Coming back out, neutral is re-anchored under wherever the cursor
+        // happens to be. Without this, pressing a button near the bottom of a
+        // card handed control back with the stick already most of the way
+        // forward, and the jet bunted the instant the menu vanished.
+        recentre = true;
+      }
+    },
+    stick,
     requestTilt() {
       const DOE = (
         window as unknown as {
@@ -409,7 +501,10 @@ export function createInput(ctx: AngelsCtx): System {
         return;
       }
 
-      // ---- keyboard axes, ramped ------------------------------------------
+      // ---- desktop --------------------------------------------------------
+      const mouseFlying =
+        settings.controlScheme === "mouse" && mouseInside && !menuOpen && !shot;
+
       const rate = 3.4 * settings.sensitivity;
       const centre = 5.2;
 
@@ -420,10 +515,6 @@ export function createInput(ctx: AngelsCtx): System {
       const yawL = held.has("KeyQ") || held.has("Comma");
       const yawR = held.has("KeyE") || held.has("Period");
 
-      // "Up" means climb unless the pilot has asked for real stick sense.
-      const climb = settings.invertPitch ? down : up;
-      const dive = settings.invertPitch ? up : down;
-
       const step = (v: number, wantPos: boolean, wantNeg: boolean) => {
         if (wantPos) return clamp(v + rate * dt, -1, 1);
         if (wantNeg) return clamp(v - rate * dt, -1, 1);
@@ -431,9 +522,61 @@ export function createInput(ctx: AngelsCtx): System {
         return Math.abs(v) <= decay ? 0 : v - Math.sign(v) * decay;
       };
 
-      kbPitch = step(kbPitch, climb, dive);
-      kbRoll = step(kbRoll, right, left);
       kbYaw = step(kbYaw, yawR, yawL);
+
+      if (mouseFlying) {
+        // The cursor *is* the stick. Its offset from the centre of the window,
+        // scaled by a box a bit under a third of the screen, is the deflection
+        // — so the whole range is reachable without ever leaving the window,
+        // and the cursor stays visible so you can always see where the stick
+        // is. Beyond the box it simply saturates, which is what a real stick
+        // does when it hits the stop.
+        const w = window.innerWidth;
+        const h = Math.max(1, window.innerHeight);
+        const radius = Math.min(w, h) * 0.3;
+        if (recentre || boxX < 0) {
+          // Clamped to keep most of the travel on screen: anchoring neutral in
+          // the far corner would leave one direction unreachable, which is a
+          // worse failure than a slightly off-centre box.
+          boxX = clamp(mouseX, radius * 0.5, w - radius * 0.5);
+          boxY = clamp(mouseY, radius * 0.5, h - radius * 0.5);
+          recentre = false;
+        }
+        // Re-clamp every frame so a resize or an orientation change cannot
+        // leave neutral off the edge of the window.
+        boxX = clamp(boxX, radius * 0.5, Math.max(radius * 0.5, w - radius * 0.5));
+        boxY = clamp(boxY, radius * 0.5, Math.max(radius * 0.5, h - radius * 0.5));
+        stick.radius = radius;
+        stick.cx = boxX;
+        stick.cy = boxY;
+        const nx = clamp((mouseX - boxX) / radius, -1, 1);
+        const ny = clamp((mouseY - boxY) / radius, -1, 1);
+        stick.x = nx;
+        stick.y = ny;
+        stick.active = true;
+
+        input.roll = expo(dead(nx), 1.5) * settings.sensitivity;
+        // Cursor up means climb, unless the pilot asked for real stick sense.
+        input.pitch = expo(dead(settings.invertPitch ? ny : -ny), 1.6) * settings.sensitivity;
+
+        // With pitch on the mouse, W and S are free — and throttle is the
+        // control a hand on the keyboard most wants.
+        if (up) kbThrottle = clamp(kbThrottle + dt * 0.7, 0, 1);
+        if (down) kbThrottle = clamp(kbThrottle - dt * 0.7, 0, 1);
+        // Roll is on the mouse, so A and D become a fine-trim nudge for the
+        // one thing a mouse is bad at: holding a precise bank in formation.
+        kbRoll = step(kbRoll, right, left);
+        input.roll = clamp(input.roll + kbRoll * 0.45, -1, 1);
+      } else {
+        stick.active = false;
+        // "Up" means climb unless the pilot has asked for real stick sense.
+        const climb = settings.invertPitch ? down : up;
+        const dive = settings.invertPitch ? up : down;
+        kbPitch = step(kbPitch, climb, dive);
+        kbRoll = step(kbRoll, right, left);
+        input.pitch = kbPitch;
+        input.roll = kbRoll;
+      }
 
       if (held.has("ShiftLeft") || held.has("ShiftRight")) kbThrottle = clamp(kbThrottle + dt * 0.7, 0, 1);
       if (held.has("ControlLeft") || held.has("KeyZ")) kbThrottle = clamp(kbThrottle - dt * 0.7, 0, 1);
@@ -443,8 +586,6 @@ export function createInput(ctx: AngelsCtx): System {
       }
       if (held.has("Digit0")) kbThrottle = 1;
 
-      input.pitch = kbPitch;
-      input.roll = kbRoll;
       input.yaw = kbYaw;
       input.throttle = kbThrottle;
       input.brake = held.has("Space") ? 1 : 0;
@@ -463,6 +604,8 @@ export function createInput(ctx: AngelsCtx): System {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("pointermove", onWindowPointerMove);
+      docEl?.removeEventListener("pointerleave", onDocLeave);
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("contextmenu", onContext);
       canvas.removeEventListener("touchmove", onTouchMove);

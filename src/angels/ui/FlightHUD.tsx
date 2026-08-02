@@ -31,6 +31,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Engine } from "../engine/core";
 import type { FleetService } from "../play/fleet";
 import type { CourseService } from "../play/courses";
+import type { InputService } from "../engine/input";
 import { FEET_PER_METER, KNOTS_PER_MPS } from "../flight/atmosphere";
 import { trueToMagnetic } from "../world/geo";
 
@@ -120,6 +121,8 @@ export default function FlightHUD({ engine, visible }: Props) {
   const warnText = useRef<SVGTextElement>(null);
   const gearText = useRef<SVGTextElement>(null);
   const targetRing = useRef<SVGGElement>(null);
+  const stickRing = useRef<SVGGElement>(null);
+  const stickDot = useRef<SVGGElement>(null);
   const greyVeil = useRef<HTMLDivElement>(null);
   const redVeil = useRef<HTMLDivElement>(null);
 
@@ -273,6 +276,36 @@ export default function FlightHUD({ engine, visible }: Props) {
               `translate(${cx + Math.cos(ang) * L.box.w * 0.55} ${cy + Math.sin(ang) * L.box.h * 0.6})`,
             );
           }
+        }
+      }
+
+      // ---- the mouse stick -------------------------------------------------
+      // Drawn so the control explains itself: a ring showing how far the
+      // cursor has to travel for full deflection, and a line to where the
+      // stick currently is. Without it the first thirty seconds of mouse
+      // flight are a guess about how sensitive the thing is.
+      const inputSvc = engine.ctx.services.input as InputService | undefined;
+      const st = inputSvc?.stick;
+      if (stickRing.current && stickDot.current) {
+        if (st?.active && st.radius > 0) {
+          // Neutral is wherever the input layer put it, not the middle of the
+          // screen — it re-anchors under the cursor when a menu closes, and a
+          // ring drawn in the wrong place is worse than no ring at all.
+          stickRing.current.setAttribute("opacity", "0.30");
+          stickRing.current.setAttribute("transform", `translate(${st.cx} ${st.cy})`);
+          (stickRing.current.firstElementChild as SVGCircleElement)?.setAttribute(
+            "r",
+            String(st.radius),
+          );
+          const mag = Math.hypot(st.x, st.y);
+          stickDot.current.setAttribute("opacity", String(0.25 + Math.min(1, mag) * 0.6));
+          stickDot.current.setAttribute(
+            "transform",
+            `translate(${st.cx + st.x * st.radius} ${st.cy + st.y * st.radius})`,
+          );
+        } else {
+          stickRing.current.setAttribute("opacity", "0");
+          stickDot.current.setAttribute("opacity", "0");
         }
       }
 
@@ -531,6 +564,18 @@ export default function FlightHUD({ engine, visible }: Props) {
             PWR 75
           </text>
           <text ref={gearText} x={0} y={fs(100)} fill={GREEN} fontSize={fs(10)} fontFamily={MONO} />
+        </g>
+
+        {/* mouse stick: the box, and where the stick is in it */}
+        <g ref={stickRing} opacity={0} fill="none" stroke={GREEN} strokeWidth={1.2}>
+          <circle cx={0} cy={0} r={200} strokeDasharray="3 9" />
+          {/* neutral, marked: the ring says how far, this says from where */}
+          <line x1={-7} y1={0} x2={7} y2={0} />
+          <line x1={0} y1={-7} x2={0} y2={7} />
+        </g>
+        <g ref={stickDot} opacity={0}>
+          <circle cx={0} cy={0} r={fs(5)} fill="none" stroke={GREEN} strokeWidth={2} />
+          <circle cx={0} cy={0} r={1.6} fill={GREEN} />
         </g>
 
         {/* next hoop */}

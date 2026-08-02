@@ -52,7 +52,7 @@ export interface AngelsInput {
   viewPressed: boolean;
   pausePressed: boolean;
   resetPressed: boolean;
-  photoPressed: boolean;
+  helpPressed: boolean;
 
   /** Which device most recently did something. Drives the on-screen prompts. */
   source: InputSource;
@@ -76,7 +76,7 @@ export function makeInput(): AngelsInput {
     viewPressed: false,
     pausePressed: false,
     resetPressed: false,
-    photoPressed: false,
+    helpPressed: false,
     source: "keyboard",
     touch: false,
   };

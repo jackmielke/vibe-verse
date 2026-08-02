@@ -235,13 +235,21 @@ export class Engine {
     }
 
     // Edge-triggered input is consumed exactly once per frame.
+    //
+    // The two the React layer cares about are announced on the way past. It
+    // used to poll these flags on a 60 ms timer, which is a race it loses more
+    // often than it wins: the flag is raised in a DOM handler and cleared at
+    // the end of the very next frame, so it exists for about sixteen
+    // milliseconds. Escape opened the menu roughly one press in three.
     const input = this.ctx.input;
+    if (input.pausePressed) this.emit("angels:pause");
+    if (input.helpPressed) this.emit("angels:help");
     input.gearToggle = false;
     input.smokeToggle = false;
     input.viewPressed = false;
     input.pausePressed = false;
     input.resetPressed = false;
-    input.photoPressed = false;
+    input.helpPressed = false;
     input.lookX = 0;
     input.lookY = 0;
 

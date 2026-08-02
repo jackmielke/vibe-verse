@@ -68,6 +68,56 @@ of them can fail at boot without taking the world down.
 
 ---
 
+## On a desktop, the cursor is the stick
+
+The first version shipped with the keys listed in an options panel on the
+hangar screen and nothing at all once you pressed FLY, and the first report
+back was that nobody could work out how to fly it. Two things were wrong.
+
+The obvious one: **nothing told you.** You can work out a first-person shooter
+by pressing W. You cannot work out an aeroplane. So `ui/Controls.tsx` opens by
+itself the first time you fly, remembers that you have seen it, and is on `H`
+and a `? Keys` button for ever after. It lists the bindings for the scheme you
+are actually using rather than both, because a control card that lists controls
+you do not have is worse than none.
+
+The less obvious one: **four keys are a bad stick.** W-A-S-D driving an
+analogue control law through a ramp is fine for gentle turns and hopeless for
+anything you would want to fly at an air show — you cannot hold thirty degrees
+of bank and a quarter of aft stick at the same time with digital keys. So the
+default desktop scheme puts pitch and roll on the mouse: the cursor's offset
+from a neutral point, inside a box a bit under a third of the screen, *is* the
+stick deflection. W and S become the throttle, which is what a hand on the
+keyboard most wants when the other hand is flying. Keyboard flying is still
+there, one toggle away, and the setting is remembered.
+
+Two details make it work rather than merely exist:
+
+**The HUD draws the stick.** A dashed ring at the edge of the box, a cross at
+neutral, and a dot where the stick currently is. Without it the first thirty
+seconds are a guess about how sensitive the thing is; with it the control
+explains itself and never needs to be read about again.
+
+**Neutral re-anchors when a menu closes.** Neutral is normally the middle of
+the window, but the button you just clicked to get back into the game is not,
+and handing control back with the stick already three quarters forward bunted
+the jet the instant the card vanished. So closing a menu re-anchors neutral
+under the cursor — zero deflection, no lurch — and the ring moves with it,
+which is why the HUD is told where the box is instead of assuming.
+
+The thing that made this hard to get right is that the two guards involved look
+interchangeable and are not. `pointerleave` on the document element means the
+cursor left the window. A `pointerout` whose `relatedTarget` is null looks like
+the same statement and is not: removing the element under the cursor fires
+exactly that, so dismissing the controls card read as the cursor leaving and
+the jet went limp until the mouse was moved again.
+
+Related: edge-triggered input is announced on the event bus, not polled. The
+React layer used to watch `input.pausePressed` on a 60 ms timer, which is a
+race it loses more often than it wins — the flag is raised in a DOM handler and
+cleared at the end of the very next frame, so it exists for about sixteen
+milliseconds and Escape opened the menu roughly one press in three.
+
 ## Seafair is the point
 
 The air show was added to a boat race, not the other way round, so the boat
@@ -164,13 +214,31 @@ node scripts/angels-shot.mjs src/assets/worlds/blue-angels.jpg --pose card \
 # Prove the touch controls work in both orientations. Exits non-zero if a
 # control lands outside the viewport or the stick fails to reach the jet.
 node scripts/angels-phone.mjs shots
+
+# The six gameplay claims a screenshot cannot show: hoops register, the Easter
+# eggs fire on the right geography, the Diamond converges, the demo caller
+# advances, a cold jet flies off 14R, and dispose() releases the context.
+node scripts/angels-check.mjs
+
+# The desktop controls, end to end through React: the card opens once, the
+# cursor flies the jet, W and S are the throttle, and closing the card does
+# not bunt it.
+node scripts/angels-desktop.mjs
 ```
 
 `?shot=1` skips the hangar screen, exposes the engine on `window.__angels`,
 and drops the quality to `low` so the software rasteriser can keep up; `?q=`
-overrides the tier. `engine.step(dt, render)` advances the simulation without
-drawing, which is how the harness fast-forwards five hundred frames of
-formation flying in under a second.
+overrides the tier. A dev build exposes the engine too, which is what lets
+`angels-desktop.mjs` start on the real page with its menus intact — the path
+it is testing runs from a DOM event through React to the flight model, so
+skipping the menus would skip the thing under test. `engine.step(dt, render)`
+advances the simulation without drawing, which is how the harness
+fast-forwards five hundred frames of formation flying in under a second.
+
+Anything that measures the aeroplane must drive `step()` rather than wait on
+the clock. SwiftShader runs this world at about three frames a second, so a
+check that sleeps for half a second and expects the jet to have banked is a
+check that passes on a laptop and fails on the build machine.
 
 Both harnesses refuse to write a blank frame. On SwiftShader a lost context
 produces a perfectly plausible black JPEG, and a black JPEG committed as card
