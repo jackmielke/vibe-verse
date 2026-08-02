@@ -22,7 +22,17 @@ export interface Animatronic {
   head: THREE.Group;
   jaw: THREE.Group;
   eyeMats: THREE.MeshStandardMaterial[];
-  limbs: { la: THREE.Object3D; ra: THREE.Object3D; ll: THREE.Object3D; rl: THREE.Object3D };
+  limbs: {
+    la: THREE.Object3D;
+    ra: THREE.Object3D;
+    ll: THREE.Object3D;
+    rl: THREE.Object3D;
+    /** Elbows and knees — what makes a run a run instead of a swing. */
+    le: THREE.Object3D;
+    re: THREE.Object3D;
+    lk: THREE.Object3D;
+    rk: THREE.Object3D;
+  };
   /** Metres per second when crossing a room. Foxy is not like the others. */
   speed: number;
   /**
@@ -35,6 +45,8 @@ export interface Animatronic {
   targetYaw: number;
   /** Gait phase, so the legs keep swinging across frames. */
   phase: number;
+  /** 0 = walking, 1 = flat sprint. Blended from speed, not switched. */
+  runBlend: number;
   /** 0 = idle, 1 = fully lunging. Driven by the jumpscare. */
   scare: number;
   walkTo: (x: number, z: number, yaw: number, speed?: number, y?: number) => void;
@@ -53,12 +65,15 @@ export interface Animatronic {
 
 const PALETTE: Record<
   AnimKind,
-  { fur: number; muzzle: number; accent: number; eye: number; iris: number }
+  { fur: number; muzzle: number; accent: number; eye: number; iris: number; inner: number }
 > = {
-  freddy: { fur: 0x6b4526, muzzle: 0x8a5f36, accent: 0x14141a, eye: 0xffffff, iris: 0x2f6ecf },
-  bonnie: { fur: 0x54397f, muzzle: 0x6f52a0, accent: 0xb02a3c, eye: 0xffffff, iris: 0xc0397a },
-  chica: { fur: 0xd9bb35, muzzle: 0xe8a13a, accent: 0xe86a2a, eye: 0xffffff, iris: 0x9b6ad0 },
-  foxy: { fur: 0x8c3320, muzzle: 0xa8452c, accent: 0xd8d2c0, eye: 0xffe9a8, iris: 0x141414 },
+  // `inner` is ear-lining and belly plate. It is deliberately close to `fur`
+  // rather than to `muzzle`: lining an ear in the muzzle tone made Bonnie's
+  // ears read as two lit tubes from across a dark room.
+  freddy: { fur: 0x6b4526, muzzle: 0x8a5f36, accent: 0x14141a, eye: 0xf6f2e6, iris: 0x2f6ecf, inner: 0x5c3a20 },
+  bonnie: { fur: 0x54397f, muzzle: 0x6f52a0, accent: 0xb02a3c, eye: 0xf6f2e6, iris: 0xc0397a, inner: 0x6a4f95 },
+  chica: { fur: 0xd9bb35, muzzle: 0xe8a13a, accent: 0xe86a2a, eye: 0xf6f2e6, iris: 0x9b6ad0, inner: 0xc9a92e },
+  foxy: { fur: 0x8c3320, muzzle: 0xa8452c, accent: 0xd8d2c0, eye: 0xffe9a8, iris: 0x141414, inner: 0x7a2b1a },
 };
 
 function mat(color: number, rough = 0.86, metal = 0.04) {
@@ -77,6 +92,24 @@ function bibTexture() {
   c.fillText("LET'S", 64, 52);
   c.fillText("EAT!!!", 64, 82);
   return new THREE.CanvasTexture(el);
+}
+
+/**
+ * A bow tie, worn under the chin. It used to be one box at chest height, which
+ * the skull hung over and hid — and a box is not a bow anyway.
+ */
+function bowTie(m: THREE.Material, y: number): THREE.Group {
+  const g = new THREE.Group();
+  g.position.set(0, y, 0.27);
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.ConeGeometry(0.088, 0.15, 4), m);
+    wing.rotation.z = s * Math.PI / 2;
+    wing.position.x = s * 0.078;
+    g.add(wing);
+  }
+  const knot = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.07, 0.06), m);
+  g.add(knot);
+  return g;
 }
 
 export function makeAnimatronic(kind: AnimKind): Animatronic {
@@ -100,35 +133,50 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
   chest.position.y = 1.22;
   chest.castShadow = true;
   body.add(chest);
-  const belly = sp(0.36, fur);
-  belly.position.set(0, 0.98, 0.05);
-  belly.scale.set(0.95, 0.8, 0.85);
+  // A belly *plate* pressed into the chest, not a sphere sitting on top of it.
+  // The sphere read as a beach ball stuck to the front of a box from every
+  // angle the game ever shows you.
+  const belly = sp(0.32, mat(p.inner, 0.9), 16);
+  belly.position.set(0, 1.05, 0.19);
+  belly.scale.set(1.02, 1.18, 0.34);
   body.add(belly);
   const hips = bx(0.62, 0.3, 0.44, fur);
   hips.position.y = 0.76;
   body.add(hips);
 
-  /* legs ----------------------------------------------------------------- */
+  /* legs ------------------------------------------------------------------
+   * Hip and knee, not one rigid limb. A leg that only swings from the hip is a
+   * pendulum, and a pendulum cannot run — the knee is the whole difference
+   * between Foxy sprinting and Foxy skating down the hall.
+   */
   const legs: THREE.Object3D[] = [];
+  const knees: THREE.Object3D[] = [];
   for (const s of [-1, 1]) {
-    const pivot = new THREE.Group();
-    pivot.position.set(s * 0.19, 0.72, 0);
-    body.add(pivot);
+    const hip = new THREE.Group();
+    hip.position.set(s * 0.19, 0.72, 0);
+    body.add(hip);
     // Foxy's suit is shredded, so his shins are bare endoskeleton.
     const thigh = bx(0.24, 0.42, 0.26, fur);
     thigh.position.y = -0.21;
-    pivot.add(thigh);
+    hip.add(thigh);
+
+    const knee = new THREE.Group();
+    knee.position.y = -0.42;
+    hip.add(knee);
     const shin = bx(0.2, 0.36, 0.22, kind === "foxy" ? endo : fur);
-    shin.position.y = -0.58;
-    pivot.add(shin);
+    shin.position.y = -0.16;
+    knee.add(shin);
     const foot = bx(0.26, 0.12, 0.42, kind === "foxy" ? endo : fur);
-    foot.position.set(0, -0.72, 0.08);
-    pivot.add(foot);
-    legs.push(pivot);
+    foot.position.set(0, -0.3, 0.08);
+    knee.add(foot);
+
+    legs.push(hip);
+    knees.push(knee);
   }
 
   /* arms ----------------------------------------------------------------- */
   const arms: THREE.Object3D[] = [];
+  const elbows: THREE.Object3D[] = [];
   for (const s of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(s * 0.45, 1.5, 0);
@@ -140,27 +188,32 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
     const upper = bx(0.19, 0.42, 0.19, fur);
     upper.position.y = -0.21;
     pivot.add(upper);
+
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.42;
+    pivot.add(elbow);
     const fore = bx(0.17, 0.4, 0.17, kind === "foxy" && s > 0 ? endo : fur);
-    fore.position.y = -0.6;
-    pivot.add(fore);
+    fore.position.y = -0.18;
+    elbow.add(fore);
     if (kind === "foxy" && s > 0) {
       // The hook.
       const hook = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.028, 6, 14, Math.PI * 1.4), endo);
-      hook.position.set(0, -0.88, 0);
+      hook.position.set(0, -0.46, 0);
       hook.rotation.set(Math.PI / 2, 0, 0.4);
-      pivot.add(hook);
+      elbow.add(hook);
     } else {
       const hand = sp(0.12, fur, 10);
-      hand.position.y = -0.86;
-      pivot.add(hand);
+      hand.position.y = -0.44;
+      elbow.add(hand);
       // Three stubby fingers — enough to read as a hand in silhouette.
       for (let f = -1; f <= 1; f++) {
         const finger = bx(0.05, 0.16, 0.05, fur);
-        finger.position.set(f * 0.06, -0.98, 0.02);
-        pivot.add(finger);
+        finger.position.set(f * 0.06, -0.56, 0.02);
+        elbow.add(finger);
       }
     }
     arms.push(pivot);
+    elbows.push(elbow);
   }
 
   /* head ----------------------------------------------------------------- */
@@ -180,16 +233,24 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
   skull.castShadow = true;
   head.add(skull);
 
-  // Ears: the fastest way to tell four silhouettes apart in the dark.
+  // Ears: the fastest way to tell four silhouettes apart in the dark. Each one
+  // is lined in `inner` rather than `muzzle` — the muzzle tone is bright enough
+  // that Bonnie's ears turned into two glowing tubes under a hall light.
+  const innerMat = mat(p.inner, 0.95);
   if (kind === "bonnie") {
     for (const s of [-1, 1]) {
-      const ear = bx(0.14, 0.62, 0.12, fur);
-      ear.position.set(s * 0.18, 0.56, -0.02);
-      ear.rotation.z = s * 0.16;
+      const ear = bx(0.15, 0.5, 0.13, fur);
+      ear.position.set(s * 0.16, 0.5, -0.03);
+      ear.rotation.z = s * 0.12;
       head.add(ear);
-      const inner = bx(0.08, 0.44, 0.02, muzzle);
-      inner.position.set(s * 0.18, 0.56, 0.07);
-      inner.rotation.z = s * 0.16;
+      // Rounded tip, so the ear stops looking like a length of timber.
+      const tip = sp(0.075, fur, 10);
+      tip.scale.set(1, 1.05, 0.87);
+      tip.position.set(s * 0.16 - Math.sin(s * 0.12) * 0.25, 0.5 + 0.25, -0.03);
+      head.add(tip);
+      const inner = bx(0.075, 0.34, 0.03, innerMat);
+      inner.position.set(s * 0.16, 0.5, 0.05);
+      inner.rotation.z = s * 0.12;
       head.add(inner);
     }
   } else if (kind === "foxy") {
@@ -199,12 +260,28 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
       ear.rotation.z = s * 0.2;
       head.add(ear);
     }
+  } else if (kind === "chica") {
+    // A chicken has no ears. She had Freddy's, which is most of why her head
+    // read wrong. Three feathers instead, swept back off the crown.
+    for (let i = -1; i <= 1; i++) {
+      const quill = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.3, 6), fur);
+      quill.position.set(i * 0.12, 0.36, -0.06 - Math.abs(i) * 0.02);
+      quill.rotation.x = -0.5;
+      quill.rotation.z = i * 0.35;
+      head.add(quill);
+    }
   } else {
+    // Freddy: round bear ears standing on the crown, facing forward, not flat
+    // discs bolted to the sides of the skull at mid-height.
     for (const s of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.07, 14), fur);
-      ear.position.set(s * 0.35, 0.3, 0);
-      ear.rotation.z = Math.PI / 2;
+      const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.155, 0.075, 18), fur);
+      ear.position.set(s * 0.245, 0.31, -0.03);
+      ear.rotation.x = Math.PI / 2;
       head.add(ear);
+      const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.02, 16), innerMat);
+      inner.position.set(s * 0.245, 0.31, 0.02);
+      inner.rotation.x = Math.PI / 2;
+      head.add(inner);
     }
   }
 
@@ -265,12 +342,27 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
     }
   }
 
-  /* eyes — two hot dots in a dark socket ---------------------------------- */
+  /*
+   * Eyes — two lit dots set *into* a dark socket.
+   *
+   * What was wrong before: the iris was a full sphere floating in front of the
+   * eyeball and the pupil a second one in front of that, so every face had two
+   * stalks growing out of it. The eyeball now sits flush with the skull, and
+   * the iris is a heavily flattened sphere resting on its surface — proud by
+   * about a millimetre, enough to catch light, not enough to be a nose.
+   */
   const eyeMats: THREE.MeshStandardMaterial[] = [];
+  const EYE_X = 0.152;
+  const EYE_Y = 0.09;
+  const EYE_R = 0.1;
+  const EYE_Z = 0.255;
   for (const s of [-1, 1]) {
-    const socket = sp(0.105, mat(0x0a0a0e, 0.6), 12);
-    socket.position.set(s * 0.155, 0.1, 0.28);
+    // The socket is a shell behind the eye, so the eye reads as set in a hole.
+    const socket = sp(0.132, mat(0x08080c, 0.7), 14);
+    socket.position.set(s * EYE_X, EYE_Y, EYE_Z - 0.05);
+    socket.scale.set(1, 1, 0.85);
     head.add(socket);
+
     const eyeMat = new THREE.MeshStandardMaterial({
       color: p.eye,
       emissive: new THREE.Color(p.eye),
@@ -278,19 +370,24 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
       roughness: 0.3,
     });
     eyeMats.push(eyeMat);
-    const eye = sp(0.082, eyeMat, 12);
-    eye.position.set(s * 0.155, 0.1, 0.31);
+    const eye = sp(EYE_R, eyeMat, 16);
+    eye.position.set(s * EYE_X, EYE_Y, EYE_Z);
     head.add(eye);
-    const iris = sp(0.042, mat(p.iris, 0.35), 10);
-    iris.position.set(s * 0.155, 0.1, 0.38);
+
+    const iris = sp(0.053, mat(p.iris, 0.3), 14);
+    iris.scale.set(1, 1, 0.3);
+    iris.position.set(s * EYE_X, EYE_Y, EYE_Z + EYE_R * 0.93);
     head.add(iris);
-    const pupil = sp(0.021, mat(0x000000, 0.2), 8);
-    pupil.position.set(s * 0.155, 0.1, 0.405);
+    const pupil = sp(0.023, mat(0x050505, 0.2), 10);
+    pupil.scale.set(1, 1, 0.35);
+    pupil.position.set(s * EYE_X, EYE_Y, EYE_Z + EYE_R * 1.02);
     head.add(pupil);
-    // Brow — a single angled box, and the whole face turns unfriendly.
-    const brow = bx(0.19, 0.06, 0.1, fur);
-    brow.position.set(s * 0.16, 0.23, 0.28);
-    brow.rotation.z = -s * 0.28;
+
+    // Brow. Thin, and tucked against the skull rather than hovering off it —
+    // at the old depth it read as a plank taped above the eye.
+    const brow = bx(0.155, 0.042, 0.055, mat(p.inner, 0.9));
+    brow.position.set(s * (EYE_X + 0.012), EYE_Y + 0.128, EYE_Z + 0.03);
+    brow.rotation.z = -s * 0.32;
     head.add(brow);
   }
 
@@ -305,10 +402,7 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.252, 0.252, 0.06, 18), mat(0x2a2a34, 0.8));
     band.position.y = 0.4;
     head.add(band);
-    // Bow tie + two buttons.
-    const tie = bx(0.24, 0.11, 0.07, accent);
-    tie.position.set(0, 1.55, 0.25);
-    body.add(tie);
+    body.add(bowTie(accent, 1.44));
     for (const y of [1.2, 1.02]) {
       const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 10), accent);
       btn.rotation.x = Math.PI / 2;
@@ -323,27 +417,28 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
     micHead.position.set(0, -1.12, 0.04);
     arms[1].add(micHead);
   } else if (kind === "bonnie") {
-    const tie = bx(0.22, 0.1, 0.07, accent);
-    tie.position.set(0, 1.55, 0.25);
-    body.add(tie);
+    body.add(bowTie(accent, 1.44));
     // The guitar, slung across the front. Bonnie only carries it on stage —
     // the AI drops it when he leaves, which is a small thing you notice.
     const guitar = new THREE.Group();
     guitar.name = "guitar";
-    const bodyG = bx(0.3, 0.38, 0.09, mat(0x6d1a26, 0.45, 0.25));
+    const bodyG = bx(0.22, 0.28, 0.07, mat(0x6d1a26, 0.45, 0.25));
     guitar.add(bodyG);
-    const neck = bx(0.08, 0.5, 0.06, mat(0x2a1a10, 0.7));
-    neck.position.y = 0.44;
+    const neck = bx(0.06, 0.38, 0.05, mat(0x2a1a10, 0.7));
+    neck.position.y = 0.32;
     guitar.add(neck);
-    guitar.position.set(0.18, 1.15, 0.34);
-    guitar.rotation.z = 0.5;
+    const head6 = bx(0.08, 0.1, 0.04, mat(0x2a1a10, 0.7));
+    head6.position.y = 0.54;
+    guitar.add(head6);
+    guitar.position.set(0.24, 1.02, 0.31);
+    guitar.rotation.set(0, -0.25, 0.62);
     body.add(guitar);
   } else if (kind === "chica") {
     const bib = new THREE.Mesh(
       new THREE.PlaneGeometry(0.46, 0.36),
       new THREE.MeshStandardMaterial({ map: bibTexture(), roughness: 0.95 }),
     );
-    bib.position.set(0, 1.3, 0.26);
+    bib.position.set(0, 1.34, 0.33);
     body.add(bib);
     // The cupcake, held out in the left hand, staring at you.
     const cup = new THREE.Group();
@@ -384,9 +479,19 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
     head,
     jaw,
     eyeMats,
-    limbs: { la: arms[0], ra: arms[1], ll: legs[0], rl: legs[1] },
+    limbs: {
+      la: arms[0],
+      ra: arms[1],
+      ll: legs[0],
+      rl: legs[1],
+      le: elbows[0],
+      re: elbows[1],
+      lk: knees[0],
+      rk: knees[1],
+    },
     speed: kind === "foxy" ? 6.5 : 1.35,
     groundY: 0,
+    runBlend: 0,
     target: null,
     targetYaw: 0,
     phase: 0,
@@ -414,10 +519,14 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
       a.target = null;
       a.targetYaw = yaw;
       a.groundY = y;
+      // Land standing up, not mid-sprint: a parked character carrying a lean
+      // and a bent knee reads as broken.
+      a.runBlend = 0;
+      a.phase = 0;
     },
     moving: () => a.target !== null,
     update(dt, t) {
-      const { la, ra, ll, rl } = a.limbs;
+      const { la, ra, ll, rl, le, re, lk, rk } = a.limbs;
 
       if (a.target) {
         const d = a.target.clone().sub(root.position);
@@ -435,7 +544,10 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
           root.rotation.y += diff * Math.min(1, dt * 6);
-          a.phase += dt * a.speed * 3.1;
+          // Stride rate rises with speed but not linearly — at Foxy's 6.5 m/s
+          // the walk cadence would be three and a half strides a second, which
+          // reads as a cartoon scramble rather than a sprint.
+          a.phase += dt * a.speed * (a.speed > 3 ? 1.9 : 3.1);
         }
       } else {
         let diff = a.targetYaw - root.rotation.y;
@@ -450,25 +562,59 @@ export function makeAnimatronic(kind: AnimKind): Animatronic {
       const dy = a.groundY - root.position.y;
       if (Math.abs(dy) > 0.001) root.position.y += Math.sign(dy) * Math.min(Math.abs(dy), dt * 1.1);
 
-      const swing = Math.sin(a.phase) * 0.55;
-      ll.rotation.x = swing;
-      rl.rotation.x = -swing;
-      la.rotation.x = -swing * 0.7;
-      ra.rotation.x = swing * 0.7;
-      body.position.y = Math.abs(Math.sin(a.phase)) * 0.045;
+      /*
+       * One gait, blended by speed. A walker sits near runBlend 0 and swings
+       * gently from the hip; Foxy at 6.5 m/s sits at 1 and gets the lot — long
+       * stride, knees folding under him, elbows up, a forward lean and a bounce
+       * on every footfall. Blending rather than switching means the first
+       * stride out of the cove accelerates into the sprint instead of snapping.
+       */
+      const wantRun = a.target ? Math.min(1, Math.max(0, (a.speed - 1.8) / 3.6)) : 0;
+      a.runBlend += (wantRun - a.runBlend) * Math.min(1, dt * 6);
+      const run = a.runBlend;
+
+      const swing = Math.sin(a.phase);
+      const swingBack = Math.sin(a.phase + Math.PI);
+      const amp = 0.5 + run * 0.62;
+      ll.rotation.x = swing * amp;
+      rl.rotation.x = swingBack * amp;
+      // A knee only folds one way. Most of the fold happens as the foot comes
+      // through underneath, which is the shape the eye reads as "running".
+      const fold = 0.3 + run * 1.35;
+      lk.rotation.x = -Math.max(0, -swing) * fold - run * 0.12;
+      rk.rotation.x = -Math.max(0, -swingBack) * fold - run * 0.12;
+
+      la.rotation.x = -swing * (0.42 + run * 0.55);
+      ra.rotation.x = -swingBack * (0.42 + run * 0.55);
+      le.rotation.x = -(0.12 + run * 0.95);
+      re.rotation.x = -(0.12 + run * 0.95);
+
+      body.rotation.x = run * 0.3;
+      body.rotation.z = swing * 0.05 * run;
+      body.position.y = Math.abs(swing) * (0.045 + run * 0.055) - run * 0.05;
 
       // Idle: a servo twitch every couple of seconds. Nothing here is alive,
       // and the twitch is what says so.
       const twitch = Math.sin(t * 0.7 + kind.length) > 0.985 ? (Math.random() - 0.5) * 0.25 : 0;
       if (a.scare < 0.01) {
         head.rotation.y = Math.sin(t * 0.31 + kind.length * 2) * 0.06 + twitch;
-        head.rotation.x = Math.sin(t * 0.23) * 0.03;
-        jaw.rotation.x = 0.04 + Math.sin(t * 0.9 + kind.length) * 0.03;
+        // Counter the body's lean and then some, so a sprinter is looking down
+        // the hall at you rather than at the floor in front of his feet.
+        head.rotation.x = Math.sin(t * 0.23) * 0.03 - run * 0.42;
+        // Running with your mouth shut is for people who are not Foxy.
+        jaw.rotation.x = 0.04 + Math.sin(t * 0.9 + kind.length) * 0.03 + run * 0.34;
       }
 
       // The scare pose: jaw wide, head thrown back, arms up.
       if (a.scare > 0) {
         const s = a.scare;
+        body.rotation.x = -s * 0.12;
+        body.rotation.z = 0;
+        // Arms up and folded, legs straight — a lunge, not a jog.
+        le.rotation.x = -1.5 * s;
+        re.rotation.x = -1.5 * s;
+        lk.rotation.x = -0.1 * s;
+        rk.rotation.x = -0.1 * s;
         jaw.rotation.x = 0.05 + s * 0.95;
         head.rotation.x = -s * 0.12 + Math.sin(t * 60) * 0.05 * s;
         head.rotation.y = Math.sin(t * 47) * 0.09 * s;
