@@ -36,6 +36,15 @@ const gunner = args.includes("--gunner");
  * which is the only way the mercy branch is ever executed by anything.
  */
 const merciful = args.includes("--merciful");
+/*
+ * A fourth captain, who gives no orders at all.
+ *
+ * The quiet-watch banter only speaks after thirty-two seconds in which nobody
+ * said anything that mattered, so any captain who presses a key every couple of
+ * seconds suppresses it by construction — which is correct behaviour and makes
+ * the other three useless for testing it. This one just holds course.
+ */
+const idle = args.includes("--idle");
 const PORT = Number(process.env.TREK_PORT ?? 5179);
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -99,7 +108,7 @@ await page.evaluate(() => window.__trek.stop());
  */
 async function play(index) {
   return page.evaluate(
-    async ([idx, seconds, gunner, merciful]) => {
+    async ([idx, seconds, gunner, merciful, idle]) => {
       const e = window.__trek;
       const s = e.ctx.services;
       const game = s.game;
@@ -118,6 +127,12 @@ async function play(index) {
       const steps = Math.round(seconds / dt);
       let decloaks = 0;
       const offDecloak = e.ctx.on("trek:decloak", () => decloaks++);
+      // Quiet-watch banter is priority 2 and nothing else is. Counting it is
+      // the only way to know the system ever actually fires.
+      let banter = 0;
+      const offLine = e.ctx.on("trek:line", (l) => {
+        if (l.priority === 2) banter++;
+      });
 
       /*
        * The pacifist.
@@ -137,6 +152,11 @@ async function play(index) {
 
       for (let i = 0; i < steps && game.status === "playing"; i++) {
         const p = fleet.player;
+        if (idle) {
+          e.ctx.input.throttle = 0.2;
+          e.step(dt, false);
+          continue;
+        }
         if (!redAlert && !diplomat) {
           e.ctx.input.toggleAlert = true;
           redAlert = true;
@@ -194,6 +214,7 @@ async function play(index) {
         e.step(dt, false);
       }
       offDecloak();
+      offLine();
 
       const p = fleet.player;
       return {
@@ -204,10 +225,11 @@ async function play(index) {
         torpedoesFired,
         torpedoesLeft: p.torpedoes,
         decloaks,
+        banter,
         alive: fleet.ships.filter((t) => t.alive && t !== p).map((t) => `${t.name} ${Math.round(t.hull_ * 100)}%`),
       };
     },
-    [index, budget, gunner, merciful],
+    [index, budget, gunner, merciful, idle],
   );
 }
 
@@ -220,11 +242,14 @@ for (const i of indices) {
     r.status === "won" ? "WON " : r.status === "lost" ? "LOST" : "OPEN"; // OPEN = ran out of budget
   // "OPEN" is the only genuinely suspicious outcome: it means the episode
   // neither resolved nor killed you inside four minutes of hard fighting.
-  if (r.status === "playing") bad++;
+  // An idle captain never finishes anything, so OPEN is the expected result
+  // there rather than a failure.
+  if (r.status === "playing" && !idle) bad++;
   console.log(
     `${verdict}  ${i + 1}. ${r.title}\n` +
       `        hull ${r.hull}%  shields [${r.shields}]  torpedoes ${r.torpedoesFired} fired / ${r.torpedoesLeft} left` +
       (r.decloaks ? `  decloaks ${r.decloaks}` : "") +
+      (r.banter ? `  banter ${r.banter}` : "") +
       (r.alive.length ? `\n        still out there: ${r.alive.join(", ")}` : ""),
   );
 }

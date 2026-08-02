@@ -130,6 +130,53 @@ const BANKS: Record<string, Bank> = {
   powerWeapons: [{ who: "SCOTT", text: "All available power to the weapons banks." }],
 };
 
+/**
+ * What the crew say when nothing is happening.
+ *
+ * This is the most Star Trek thing in the file and it does no mechanical work
+ * whatsoever. Half of TOS is two people needling each other on a quiet bridge
+ * between the things that explode, and a game that only ever hears from its
+ * crew when a shield is failing has a crew of instruments rather than people.
+ *
+ * They are written to be *warm*, and several of them are about how much is
+ * still unmapped — because that is the show's actual argument, and an
+ * exchange like these is the only place in this world it gets made out loud.
+ */
+const BANTER: readonly (readonly { who: string; text: string }[])[] = [
+  [
+    { who: "MCCOY", text: "You know, Spock, one of these days I am going to get you to admit that you enjoy this." },
+    { who: "SPOCK", text: "Doctor, I have never denied that the work is interesting. You are the one who insists on translating that into enjoyment." },
+  ],
+  [
+    { who: "SULU", text: "Course steady, Captain. Nothing out there but the nothing." },
+    { who: "SPOCK", text: "A useful reminder, Mr Sulu, that very nearly all of the universe is somewhere we have not yet been." },
+  ],
+  [
+    { who: "SCOTT", text: "She is purring, Captain. Whatever the yard did to her at the last refit, they did it right." },
+  ],
+  [
+    { who: "UHURA", text: "Picking up a subspace concert out of the Deneva colony, Captain. Shall I put it on the speakers?" },
+    { who: "CAPTAIN", text: "Quietly, Lieutenant. And log our thanks." },
+  ],
+  [
+    { who: "CHEKOV", text: "My grandmother came from a town where they said space was cold and empty. She never once saw it from up here." },
+  ],
+  [
+    { who: "SPOCK", text: "Captain, we are the first vessel of any registry to pass through this volume. Whatever we record here becomes the reference for everyone who follows us." },
+  ],
+  [
+    { who: "MCCOY", text: "Jim, I have three crewmen in sickbay with nothing worse than homesickness. There is no hypospray for that one." },
+    { who: "CAPTAIN", text: "Give them the observation deck for an hour, Bones. It usually works on me." },
+  ],
+  [
+    { who: "SULU", text: "Botany reports the specimen from the last survey is flowering, Captain. First time anyone has seen it happen away from its own world." },
+  ],
+  [
+    { who: "UHURA", text: "All decks report normal, Captain. It is a very quiet watch." },
+    { who: "SCOTT", text: "Do not say that out loud, lass." },
+  ],
+];
+
 export interface CrewService {
   say(line: Partial<CrewLine> & { who: string; text: string }): void;
   bark(bank: string, opts?: { cooldown?: number; priority?: number }): void;
@@ -147,8 +194,14 @@ export function createCrew(ctx: TrekCtx): System {
   /** Roughly how long a line takes to read out loud. */
   const durationOf = (text: string) => Math.min(9, 1.1 + text.length * 0.055);
 
+  /** When anybody last had something to say. Drives the quiet-watch banter. */
+  let lastLineAt = 0;
+  let lastBanterAt = -60;
+  let lastBanter: (typeof BANTER)[number] | null = null;
+
   function emit(line: CrewLine): void {
     speakingFor = line.hold;
+    if (line.priority > 2) lastLineAt = ctx.elapsed;
     ctx.emit("trek:line", line);
     ctx.services.audio?.cue(line.who === "COMPUTER" ? "computer" : "blip", { rate: 1.4 });
     ctx.services.audio?.speak(line);
@@ -165,6 +218,12 @@ export function createCrew(ctx: TrekCtx): System {
       };
       // A high-priority line jumps the queue but never cuts off a line that is
       // already being spoken — see the header.
+      // Anything urgent throws away whatever small talk is still waiting. A
+      // quiet-watch exchange landing on top of "hull breach on deck seven" is
+      // worse than no banter at all.
+      if (full.priority >= 7) {
+        for (let i = queue.length - 1; i >= 0; i--) if (queue[i].priority <= 2) queue.splice(i, 1);
+      }
       const at = queue.findIndex((q) => q.priority < full.priority);
       if (at >= 0) queue.splice(at, 0, full);
       else queue.push(full);
@@ -282,6 +341,39 @@ export function createCrew(ctx: TrekCtx): System {
       speakingFor = Math.max(0, speakingFor - dt);
       service.busy = speakingFor > 0;
       if (speakingFor <= 0 && queue.length) emit(queue.shift()!);
+
+      // The quiet watch. Strict conditions, because the one thing worse than a
+      // silent crew is a chatty one during a battle: the episode has to be
+      // running, the ship has to be off alert, nobody can have said anything
+      // that mattered for forty seconds, and there must be nothing hostile
+      // inside twelve thousand kilometres.
+      if (queue.length || speakingFor > 0) return;
+      const game = ctx.services.game;
+      if (!game || game.status !== "playing" || game.alert === "red") return;
+      if (ctx.elapsed - lastLineAt < 32 || ctx.elapsed - lastBanterAt < 105) return;
+      const fleet = ctx.services.fleet;
+      // "Anything that might shoot at us", which is not the same set as
+      // "anything targetable". A creature is neither Starfleet nor neutral and
+      // is emphatically not a reason to stop talking — and the episode it
+      // appears in is the quietest in the game, so excluding it here is most of
+      // what makes this system ever fire at all.
+      if (
+        fleet?.ships.some(
+          (s) =>
+            s.alive &&
+            s !== fleet.player &&
+            s.allegiance !== "starfleet" &&
+            s.allegiance !== "neutral" &&
+            s.allegiance !== "creature" &&
+            s.position.distanceTo(fleet.player.position) < 9000,
+        )
+      ) {
+        return;
+      }
+      lastBanterAt = ctx.elapsed;
+      const exchange = pick(BANTER, lastBanter);
+      lastBanter = exchange;
+      for (const line of exchange) service.say({ ...line, priority: 2 });
     },
     dispose() {
       for (const off of offs) off();

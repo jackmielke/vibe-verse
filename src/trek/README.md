@@ -1,6 +1,7 @@
 # THE FINAL FRONTIER
 
-A Constitution-class starship, her bridge, and five episodes. Route: `/trek`.
+A Constitution-class starship, her bridge, and six episodes — one of which you
+cannot shoot your way out of. Route: `/trek`.
 
 ## The one idea
 
@@ -127,6 +128,21 @@ episode has already failed.
 Both paths are covered by the playthrough harness, which needed a second,
 equally stupid captain to do it — see below.
 
+## The quiet watch
+
+Half of TOS is two people needling each other on a quiet bridge between the
+things that explode. A game whose crew only speaks when a shield is failing has
+a crew of instruments rather than people — so when the episode is running, the
+ship is off alert, nothing hostile is inside 9,000 km and nobody has said
+anything that mattered for thirty-two seconds, two of them talk to each other
+about nothing. Several of the exchanges are about how much is still unmapped,
+because that is the show's actual argument and this is the only place in the
+world it gets made out loud.
+
+Anything urgent throws away whatever small talk is still queued: a line about a
+subspace concert landing on top of "hull breach on deck seven" is worse than no
+banter at all.
+
 ## Why every sound is synthesised
 
 The actual effects are somebody's property, and a world that shipped them would
@@ -202,7 +218,7 @@ first draft:
   everything within 900 m of the path, which is both more dangerous and
   actually dodgeable.
 
-There are three captains in there, because one is not enough. The gunner turns
+There are four captains in there, because one is not enough. The gunner turns
 toward the nearest hostile and holds the trigger; the **pacifist** closes to
 scanning range and alternates scan and hail. The pacifist exists because an
 episode that cannot be finished by anything that shoots can only ever be proved
@@ -215,6 +231,11 @@ The third is the **merciful** one (`--merciful`): it shoots until the other ship
 stops shooting, then holds fire and hails. It exists for the same reason — the
 gunner can only ever find one of Balance of Terror's two endings. A run of
 `--only 2 --merciful` should come back WON with the Bird-of-Prey *still alive*.
+
+The fourth (`--idle`) gives no orders at all. It exists to test the quiet-watch
+banter, which only speaks after thirty-two seconds in which nobody said anything
+that mattered — so every other captain suppresses it by construction. `--only 1
+--idle` should report `banter 2` or so, and OPEN, which is not a failure there.
 
 The autopilot is the *floor*, not the target. It never uses evasive
 manoeuvres, never moves power around, and never breaks off — so the numbers it
