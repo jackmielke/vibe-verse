@@ -338,6 +338,27 @@ export function buildWorld(): BuiltWorld {
   slot(world, "eastCorner:chica", 3.05, -1.5, -Math.PI / 2);
   slot(world, "eastCorner:freddy", 3.45, -2.0, -Math.PI / 2.1);
   slot(world, "cove:foxy", -14.1, -17.1, 0.15, 0.4);
+  // Freddy roams the whole building now, so he needs somewhere to stand in
+  // every room he can reach — without these he defaults to the room's centre,
+  // which on camera means standing in the middle of a doorway or a table.
+  slot(world, "westCorner:freddy", -3.5, -2.05, Math.PI / 2.1);
+  slot(world, "westHall:freddy", -4.8, -8.6, Math.PI);
+  slot(world, "supply:freddy", -9.9, -8.9, 1.5);
+  slot(world, "backstage:freddy", -8.2, -26.9, 0.9);
+  slot(world, "cove:freddy", -12.6, -15.4, 0.9);
+  // Vibey wanders everywhere too. He is small, so he tucks into corners and
+  // sits on things rather than standing in the middle of the room.
+  slot(world, "dining:vibey", 1.6, -15.2, 0.2);
+  slot(world, "stage:vibey", 3.4, -24.6, -0.3, 0.45);
+  slot(world, "backstage:vibey", -10.4, -24.6, 1.1);
+  slot(world, "cove:vibey", -12.2, -17.6, 0.7, 0.4);
+  slot(world, "restrooms:vibey", 12.4, -17.8, 2.4);
+  slot(world, "kitchen:vibey", 8.6, -7.4, 1.8);
+  slot(world, "supply:vibey", -8.6, -7.2, 1.7);
+  slot(world, "westHall:vibey", -6.6, -6.2, Math.PI);
+  slot(world, "eastHall:vibey", 6.6, -6.2, Math.PI);
+  slot(world, "westCorner:vibey", -3.6, -1.1, Math.PI / 2);
+  slot(world, "eastCorner:vibey", 3.6, -1.1, -Math.PI / 2);
   slot(world, "westHall:foxy", -4.95, -7.0, Math.PI);
 
   world.dispose = () => {

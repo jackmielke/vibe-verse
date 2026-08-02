@@ -190,6 +190,45 @@ export class FnafAudio {
     }
   }
 
+  /** Vibey saying hello: two bright rising bleeps, the way a toy boots up. */
+  vibeyHi() {
+    this.ping(680, 0.16, "sine", 0.16);
+    window.setTimeout(() => this.ping(1020, 0.22, "sine", 0.16), 130);
+  }
+
+  /** And goodbye: the same two notes, the other way round, softer. */
+  vibeyBye() {
+    this.ping(1020, 0.18, "sine", 0.13);
+    window.setTimeout(() => this.ping(680, 0.3, "sine", 0.13), 140);
+  }
+
+  /**
+   * The party. A major arpeggio, a shaker, and a little fanfare — this plays
+   * instead of the scream when Vibey is the one who finds you, and the whole
+   * character depends on it not being scary.
+   */
+  vibeyParty() {
+    if (!this.ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+    notes.forEach((f, i) => {
+      window.setTimeout(() => {
+        this.ping(f, 0.5, "triangle", 0.11);
+        this.ping(f * 2, 0.3, "sine", 0.04);
+      }, i * 95);
+    });
+    // Party-popper hiss, and a couple of confetti thumps.
+    window.setTimeout(() => this.burst(0.35, 0.2, 7000, 2200), 380);
+    window.setTimeout(() => {
+      this.ping(196, 0.35, "triangle", 0.09);
+      this.ping(392, 0.4, "sine", 0.06);
+    }, 520);
+    // A jaunty little tag so it lands as music rather than a sound effect.
+    const tag = [783.99, 659.25, 523.25, 659.25, 783.99, 1046.5];
+    tag.forEach((f, i) => {
+      window.setTimeout(() => this.ping(f, 0.34, "sine", 0.085), 900 + i * 150);
+    });
+  }
+
   /** The scream. Distorted, layered, and mercifully short. */
   scream() {
     if (!this.ctx) return;

@@ -20,6 +20,8 @@ export interface AiConfig {
   bonnie: number;
   chica: number;
   foxy: number;
+  /** Vibey. He plays by the same rules; he is just nice about it. */
+  vibey: number;
 }
 
 /**
@@ -29,13 +31,13 @@ export interface AiConfig {
  * first thing you learn is that the doors matter.
  */
 export const NIGHTS: AiConfig[] = [
-  { freddy: 0, bonnie: 2, chica: 1, foxy: 1 },
-  { freddy: 1, bonnie: 4, chica: 3, foxy: 3 },
-  { freddy: 2, bonnie: 6, chica: 5, foxy: 5 },
-  { freddy: 4, bonnie: 8, chica: 7, foxy: 7 },
-  { freddy: 6, bonnie: 10, chica: 10, foxy: 10 },
-  { freddy: 10, bonnie: 14, chica: 14, foxy: 14 }, // night 6, once you've earned it
-  { freddy: 20, bonnie: 20, chica: 20, foxy: 20 }, // 4/20. Good luck.
+  { freddy: 0, bonnie: 2, chica: 1, foxy: 1, vibey: 2 },
+  { freddy: 1, bonnie: 4, chica: 3, foxy: 3, vibey: 3 },
+  { freddy: 2, bonnie: 6, chica: 5, foxy: 5, vibey: 4 },
+  { freddy: 4, bonnie: 8, chica: 7, foxy: 7, vibey: 5 },
+  { freddy: 6, bonnie: 10, chica: 10, foxy: 10, vibey: 6 },
+  { freddy: 10, bonnie: 14, chica: 14, foxy: 14, vibey: 9 }, // night 6, once you've earned it
+  { freddy: 20, bonnie: 20, chica: 20, foxy: 20, vibey: 20 }, // 5/20. Good luck.
 ];
 
 export const NIGHT_COUNT = NIGHTS.length;
@@ -58,15 +60,49 @@ const ROUTES: Record<AnimKind, Partial<Record<RoomId, RoomId[]>>> = {
     eastHall: ["eastCorner", "eastCorner", "kitchen"],
     eastCorner: ["office"],
   },
+  /*
+   * Freddy goes anywhere. He used to own one corridor — stage, dining,
+   * restrooms, kitchen, east hall, east door — which meant that once you knew
+   * the game you never checked the west side for him and he was really just a
+   * slower Chica. He can now reach every room in the building, including the
+   * supply closet and the kitchen, and he can come to *either* door.
+   *
+   * The weighting still leans forward: hall entries repeat, so he drifts
+   * towards a door rather than wandering the dining room all night.
+   */
   freddy: {
-    stage: ["dining"],
-    dining: ["restrooms"],
-    restrooms: ["kitchen"],
-    kitchen: ["eastHall"],
-    eastHall: ["eastCorner"],
+    stage: ["dining", "dining", "backstage"],
+    dining: ["restrooms", "eastHall", "westHall", "cove", "stage"],
+    restrooms: ["kitchen", "kitchen", "dining"],
+    kitchen: ["eastHall", "eastHall", "restrooms"],
+    eastHall: ["eastCorner", "eastCorner", "kitchen", "dining"],
     eastCorner: ["office"],
+    westHall: ["westCorner", "westCorner", "supply", "dining"],
+    westCorner: ["office"],
+    supply: ["westHall", "westHall", "dining"],
+    backstage: ["dining", "westHall"],
+    cove: ["dining", "westHall"],
   },
   foxy: {},
+  /*
+   * Vibey wanders the whole building too, but he is not hunting — he drifts,
+   * doubles back, and visits rooms with nothing in them. Every room links to
+   * most of its neighbours with no forward weighting, which is what makes him
+   * read as pottering about rather than closing in.
+   */
+  vibey: {
+    stage: ["dining", "backstage"],
+    dining: ["stage", "cove", "restrooms", "westHall", "eastHall"],
+    backstage: ["stage", "dining"],
+    cove: ["dining", "westHall"],
+    restrooms: ["dining", "kitchen"],
+    kitchen: ["restrooms", "eastHall"],
+    westHall: ["dining", "supply", "westCorner"],
+    supply: ["westHall"],
+    eastHall: ["dining", "kitchen", "eastCorner"],
+    westCorner: ["office", "westHall"],
+    eastCorner: ["office", "eastHall"],
+  },
 };
 
 /**
@@ -82,6 +118,7 @@ const INTERVAL: Record<AnimKind, number> = {
   bonnie: 4.9,
   chica: 5.1,
   foxy: 5.4,
+  vibey: 4.2,
 };
 
 export interface Agent {
@@ -130,7 +167,7 @@ export class Director {
     const mk = (kind: AnimKind, level: number): Agent => ({
       kind,
       level,
-      room: kind === "foxy" ? "cove" : "stage",
+      room: kind === "foxy" ? "cove" : kind === "vibey" ? "dining" : "stage",
       timer: INTERVAL[kind] * (0.6 + Math.random() * 0.8),
       doorTimer: 0,
       atDoor: false,
@@ -142,6 +179,7 @@ export class Director {
       bonnie: mk("bonnie", cfg.bonnie),
       chica: mk("chica", cfg.chica),
       foxy: mk("foxy", cfg.foxy),
+      vibey: mk("vibey", cfg.vibey),
     };
   }
 

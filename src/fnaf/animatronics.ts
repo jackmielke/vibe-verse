@@ -14,7 +14,8 @@
  */
 import * as THREE from "three";
 
-export type AnimKind = "freddy" | "bonnie" | "chica" | "foxy";
+/** Vibey is built in `vibey.ts`, but he is a cast member like the rest. */
+export type AnimKind = "freddy" | "bonnie" | "chica" | "foxy" | "vibey";
 
 export interface Animatronic {
   kind: AnimKind;
@@ -64,7 +65,7 @@ export interface Animatronic {
 }
 
 const PALETTE: Record<
-  AnimKind,
+  Exclude<AnimKind, "vibey">,
   { fur: number; muzzle: number; accent: number; eye: number; iris: number; inner: number }
 > = {
   // `inner` is ear-lining and belly plate. It is deliberately close to `fur`
@@ -112,7 +113,7 @@ function bowTie(m: THREE.Material, y: number): THREE.Group {
   return g;
 }
 
-export function makeAnimatronic(kind: AnimKind): Animatronic {
+export function makeAnimatronic(kind: Exclude<AnimKind, "vibey">): Animatronic {
   const p = PALETTE[kind];
   const fur = mat(p.fur);
   const muzzle = mat(p.muzzle, 0.9);

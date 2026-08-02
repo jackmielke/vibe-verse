@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { Director, NIGHTS, type AiConfig } from "./ai";
 import { makeAnimatronic, setGuitarVisible, type AnimKind, type Animatronic } from "./animatronics";
 import { FnafAudio } from "./audio";
+import { makeVibey } from "./vibey";
 import { buildWorld, DOOR_CLOSED_Y, DOOR_OPEN_Y, type BuiltWorld, type ButtonId } from "./build";
 import { CAMERA_ORDER, DESK_EYE, pathBetween, ROOMS, YAW_LIMIT, type RoomId } from "./rooms";
 import { disposeTextures } from "./textures";
@@ -204,6 +205,7 @@ export class FnafEngine {
       bonnie: makeAnimatronic("bonnie"),
       chica: makeAnimatronic("chica"),
       foxy: makeAnimatronic("foxy"),
+      vibey: makeVibey(),
     };
     for (const a of Object.values(this.cast)) this.world.scene.add(a.root);
     // Park them where a night starts, at construction rather than at
@@ -215,6 +217,7 @@ export class FnafEngine {
     this.park("bonnie", "stage");
     this.park("chica", "stage");
     this.park("foxy", "cove");
+    this.park("vibey", "dining");
 
     this.bindInput();
     this.resize();
@@ -300,6 +303,7 @@ export class FnafEngine {
     this.park("bonnie", "stage");
     this.park("chica", "stage");
     this.park("foxy", "cove");
+    this.park("vibey", "dining");
     setGuitarVisible(this.cast.bonnie, true);
     this.world.coveCurtain.children.forEach((c) => {
       if (c.userData.side) c.position.x = c.userData.side * 1.3;
@@ -538,11 +542,33 @@ export class FnafEngine {
     this.audio.stopLoop("camstatic");
     this.audio.stopLoop("kitchen");
     this.audio.stopLoop("toreador");
-    this.audio.scream();
+    if (kind === "vibey") {
+      // Vibey does not scream. He says hello, throws a party, and then says
+      // goodbye — your night ends either way, but this one ends kindly.
+      this.audio.stopLoop("fan");
+      this.audio.vibeyHi();
+      window.setTimeout(() => this.audio.vibeyParty(), 420);
+      window.setTimeout(() => this.audio.vibeyBye(), 2400);
+    } else {
+      this.audio.scream();
+    }
 
     // Put them in your face, at the height a person's face would be.
     const a = this.cast[kind];
     const fwd = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+    if (kind === "vibey") {
+      // Far enough back that you can see all of him bouncing, and stood on the
+      // floor rather than dropped to eye level: this is a curtain call, not a
+      // face full of teeth.
+      a.teleport(
+        this.officeCam.position.x + fwd.x * 1.45,
+        this.officeCam.position.z + fwd.z * 1.45,
+        this.yaw,
+      );
+      this.shake = 0;
+      this.emit();
+      return;
+    }
     a.teleport(
       this.officeCam.position.x + fwd.x * 1.3,
       this.officeCam.position.z + fwd.z * 1.3,
@@ -862,6 +888,10 @@ export class FnafEngine {
 
   private onKey = (e: KeyboardEvent) => {
     if (this.phase !== "playing") return;
+    // A field has the keyboard — the intercom panel, most likely. Typing a
+    // message to Vibey must not work the doors, and "d" is a common letter.
+    const el = e.target as HTMLElement | null;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
     const k = e.key.toLowerCase();
     if (k === "a") this.toggleDoor("left");
     else if (k === "d") this.toggleDoor("right");

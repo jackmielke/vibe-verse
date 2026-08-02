@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { FnafSnapshot, FnafEngine, Side } from "../engine";
 import { CAMERA_ORDER, MAP_POINTS, ROOMS, type RoomId } from "../rooms";
+import VibeyChat from "./VibeyChat";
 
 const HOURS = ["12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM"];
 
@@ -305,6 +306,10 @@ export default function FnafHUD({
         </>
       )}
 
+      {/* The intercom. Available while the night runs — talking to him costs
+          you attention, and the building does not pause for it. */}
+      {playing && !state.monitorUp && !state.blackout && <VibeyChat />}
+
       {/* ------------------------------------------------------- monitor pull */}
       {playing && !state.blackout && (
         <button
@@ -358,7 +363,7 @@ export default function FnafHUD({
       )}
 
       {/* ------------------------------------------------------------- endings */}
-      {state.phase === "dead" && (
+      {state.phase === "dead" && state.killer !== "vibey" && (
         <>
           <div
             className="absolute inset-0"
@@ -377,6 +382,11 @@ export default function FnafHUD({
         </>
       )}
 
+      {/* Vibey found you. No static, no red, no screech — a party. */}
+      {state.phase === "dead" && state.killer === "vibey" && (
+        <PartyCard night={state.night} onRetry={onRetry} />
+      )}
+
       {state.phase === "won" && <SunriseCard night={state.night} onNext={onNext} />}
 
       {/* Getting out. Only offered when nothing is chasing you. */}
@@ -388,6 +398,88 @@ export default function FnafHUD({
           ← back to the vibeverse
         </Link>
       )}
+    </div>
+  );
+}
+
+/**
+ * The other ending.
+ *
+ * Being caught by Vibey still costs you the night, but nothing about this
+ * screen is a punishment: confetti, a warm wash instead of red static, and a
+ * hello-then-goodbye that arrives in the same order the audio does. The whole
+ * reason he is in the building is that one of the five should be a delight to
+ * meet.
+ */
+function PartyCard({ night, onRetry }: { night: number; onRetry: () => void }) {
+  const [stage, setStage] = useState<"hi" | "party" | "bye">("hi");
+  useEffect(() => {
+    const a = window.setTimeout(() => setStage("party"), 700);
+    const b = window.setTimeout(() => setStage("bye"), 2600);
+    return () => {
+      window.clearTimeout(a);
+      window.clearTimeout(b);
+    };
+  }, []);
+
+  const confetti = useMemo(
+    () =>
+      Array.from({ length: 54 }, (_, i) => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 2.2,
+        dur: 2.4 + Math.random() * 2.2,
+        size: 6 + Math.random() * 9,
+        tilt: Math.random() * 360,
+        color: ["#ffd23f", "#ff70a6", "#59d2fe", "#7bf1a8", "#c084fc", "#ff9f45"][i % 6],
+      })),
+    [],
+  );
+
+  return (
+    <div className="pointer-events-none absolute inset-0">
+      <style>{`@keyframes fnaf-confetti {
+        0% { transform: translateY(-12vh) rotate(0deg); opacity: 0; }
+        8% { opacity: 1; }
+        100% { transform: translateY(112vh) rotate(720deg); opacity: 0.9; }
+      }`}</style>
+      <div className="absolute inset-0 bg-gradient-to-b from-sky-300/10 via-fuchsia-300/5 to-amber-200/10" />
+      {confetti.map((c, i) => (
+        <span
+          key={i}
+          className="absolute top-0 block rounded-[2px]"
+          style={{
+            left: `${c.left}%`,
+            width: c.size,
+            height: c.size * 0.6,
+            background: c.color,
+            transform: `rotate(${c.tilt}deg)`,
+            animation: `fnaf-confetti ${c.dur}s linear ${c.delay}s infinite`,
+          }}
+        />
+      ))}
+
+      <div className="absolute inset-x-0 bottom-0 top-0 flex flex-col items-center justify-end pb-16">
+        <div className="rounded-2xl border border-white/15 bg-black/55 px-8 py-5 text-center backdrop-blur-md">
+          <div className="text-4xl font-black tracking-tight text-white drop-shadow sm:text-5xl">
+            {stage === "hi" ? "hi!" : stage === "party" ? "🎉" : "bye!"}
+          </div>
+          <p className="mt-2 text-[11px] tracking-[0.28em] text-white/70">VIBEY FOUND YOU</p>
+          {stage === "bye" && (
+            <>
+              <p className="mt-3 max-w-xs text-xs leading-relaxed text-white/45">
+                He only wanted to say hello. Your shift is over anyway — night {night}
+                {" "}ends here.
+              </p>
+              <button
+                onClick={onRetry}
+                className="pointer-events-auto mt-5 rounded-full border border-white/25 bg-white/15 px-9 py-2.5 text-[11px] font-bold uppercase tracking-[0.28em] text-white transition hover:bg-white/25"
+              >
+                Another night
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

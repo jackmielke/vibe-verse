@@ -36,9 +36,11 @@ long because the building is twelve rooms with one door each.
 | `textures.ts` | every surface, drawn into a 2D canvas at boot. No image files |
 | `build.ts` | the geometry: walls with holes in them, props, lights, doors, buttons |
 | `animatronics.ts` | the four of them, built from boxes and spheres, with a gait |
+| `vibey.ts` | Vibey — the fifth one, and the only one pleased to see you |
 | `ai.ts` | the director: routes, d20 rolls, door timers, Foxy's cove stages |
 | `engine.ts` | renderer, clock, power, input, and the loop that joins the above |
 | `ui/FnafHUD.tsx` | clock, battery, thumb-sized buttons, and the monitor overlay |
+| `ui/VibeyChat.tsx` | the desk intercom, on the same `unit7-chat` brain as Vibe City |
 
 ## The AI is three lines of arithmetic
 
@@ -48,20 +50,60 @@ entire system, and it is the original's, because it is a very good one — the
 pauses, the sudden rushes, and the night where Bonnie will not leave your door
 all fall out of a dice roll and a graph.
 
-Two characters break the pattern, also as in the original:
+Three characters break the pattern:
 
 - **Freddy** will not move while you are looking at the camera he is on, and
-  will not leave the stage until one of the others already has. He comes down
-  the east side and he is the reason a blackout is fatal.
+  will not leave the stage until one of the others already has. He is the
+  reason a blackout is fatal. He also goes *anywhere* — the original's Freddy
+  owns one corridor, and here that made him a slower Chica: once you knew the
+  game you never checked the west side for him. His graph now covers every room
+  including the supply closet and the kitchen, and he can arrive at either
+  door.
 - **Foxy** doesn't walk a route. He advances through four stages behind the
   Pirate Cove curtain — which physically parts as he does, the only warning the
   game gives that is purely visual — and then sprints the west hall. A shut west
   door costs battery instead of your life, and costs more every time.
 
+- **Vibey** is not an animatronic at all — see below.
+
 Night 1 in the original is all zeroes. Here it is `{freddy: 0, bonnie: 2,
 chica: 1, foxy: 1}`, because zeroes are correct for a game you will play for a
 week and wrong for one somebody opens from a link: the first thing night 1
 should teach is that the doors matter.
+
+## Vibey
+
+The vibeverse's own mascot has wandered in, and he is the fifth thing moving
+around the building. He plays by exactly the same rules as the other four — a
+d20, a route graph, doors that stop him — and the director drives him through
+the same `Animatronic` contract with no special cases. Everything else about
+him is different on purpose.
+
+**He is built, not loaded.** The obvious move was `/models/vibey.glb`, the file
+Vibe City and the village map share. That model is a *humanoid* robot with arms,
+legs and feet; the Vibey in the reference photo is a different design — rounded
+white head, two goggle lenses on a bridge, two coiled antennas, an egg body
+wearing a lightning-bolt smiley, sat on a dark ring. The photo was the brief, so
+the photo is what `vibey.ts` builds. It also downloads nothing, which is not
+nothing on a phone.
+
+**He scoots.** No legs, so no gait: a disc under him spins with travel, he hops,
+and he lands with a squash. His route graph has no forward weighting either, so
+he doubles back and visits empty rooms — he reads as pottering about rather than
+closing in.
+
+**Being caught by him is a party.** No scream, no static, no red. He says hi,
+the room fills with confetti, a major arpeggio plays, and he says bye. Your
+night still ends — he is a hazard, not a bonus — but this ending is a curtain
+call, and he bounces facing you rather than filling the lens with teeth. One of
+the five should be a delight to meet.
+
+**You can talk to him.** The desk has an intercom, on the same `unit7-chat` edge
+function as Vibe City, Jerry the snail and the `/start` onboarding — the same
+brain, given a line about where he currently is. The night does not pause while
+you type, which is the trade. The engine ignores keystrokes aimed at a form
+field for exactly this reason: without that guard, messaging him the word
+"door" slams both of them.
 
 ## You do not leave the office
 

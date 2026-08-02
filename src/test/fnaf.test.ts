@@ -100,6 +100,53 @@ describe("the route graphs", () => {
     }
   });
 
+  it("lets Freddy reach every room in the building", () => {
+    // He used to own one corridor, which made him a slower Chica and meant the
+    // west side was never worth checking for him.
+    const graph = ROUTES_FOR_TEST.freddy;
+    const reachable = new Set<string>(["stage"]);
+    const queue = ["stage"];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const next of graph[cur as RoomId] ?? []) {
+        if (next === "office" || reachable.has(next)) continue;
+        reachable.add(next);
+        queue.push(next);
+      }
+    }
+    for (const id of Object.keys(ROOMS) as RoomId[]) {
+      if (id === "office") continue;
+      expect(reachable.has(id), `Freddy can never reach ${id}`).toBe(true);
+    }
+  });
+
+  it("lets Freddy come to either door, not just the east one", () => {
+    const graph = ROUTES_FOR_TEST.freddy;
+    expect(graph.eastCorner).toContain("office");
+    expect(graph.westCorner).toContain("office");
+  });
+
+  it("sends Vibey everywhere too, and never traps him", () => {
+    const graph = ROUTES_FOR_TEST.vibey;
+    const reachable = new Set<string>(["dining"]);
+    const queue = ["dining"];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const next of graph[cur as RoomId] ?? []) {
+        if (next === "office" || reachable.has(next)) continue;
+        reachable.add(next);
+        queue.push(next);
+      }
+    }
+    for (const id of Object.keys(ROOMS) as RoomId[]) {
+      if (id === "office") continue;
+      expect(reachable.has(id), `Vibey can never reach ${id}`).toBe(true);
+    }
+    for (const room of reachable) {
+      expect((graph[room as RoomId] ?? []).length, `Vibey is stuck in ${room}`).toBeGreaterThan(0);
+    }
+  });
+
   it("leaves nobody stranded in a room with no way out", () => {
     for (const [kind, graph] of Object.entries(ROUTES_FOR_TEST)) {
       if (kind === "foxy") continue; // Foxy has no graph; he has a curtain
@@ -124,6 +171,10 @@ describe("the route graphs", () => {
 });
 
 describe("the difficulty table", () => {
+  it("gives Vibey a level on every night, so he is always somewhere", () => {
+    for (const night of NIGHTS) expect(typeof night.vibey).toBe("number");
+  });
+
   it("has an entry for every night the menu offers", () => {
     expect(NIGHTS).toHaveLength(NIGHT_COUNT);
   });
