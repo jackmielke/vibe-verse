@@ -2976,7 +2976,7 @@ export const createMaterials: SystemFactory = (ctx: WorldCtx): System => {
     uDzMacro: { value: new THREE.Vector2(1 / MACRO_METRES, MACRO_STRENGTH) },
   };
   let envTexture: THREE.Texture | null = null;
-  let envHandle: { dispose(): void } | null = null;
+  let envHandle: { texture: THREE.Texture | null; dispose(): void } | null = null;
   let disposed = false;
 
   // ---- service, published before a single texel is painted ----------------
