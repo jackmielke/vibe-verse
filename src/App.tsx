@@ -52,6 +52,7 @@ const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 /* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
+const VibeKartMultiplayer = lazy(() => import("./pages/VibeKartMultiplayer.tsx"));
 /* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
    at boot. Lazy for the same reason: nobody who never works a night shift
    should carry the pizzeria around in the hub's entry chunk. */
@@ -264,6 +265,15 @@ const App = () => (
             element={
               <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
                 <VibeKart />
+              </Suspense>
+            }
+          />
+          {/* Vibe Kart · Multiplayer — lobby + room-coded races. */}
+          <Route
+            path="/kart-mp"
+            element={
+              <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
+                <VibeKartMultiplayer />
               </Suspense>
             }
           />
