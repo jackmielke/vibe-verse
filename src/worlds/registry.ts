@@ -307,6 +307,20 @@ export const WORLDS: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "kart-mp",
+    route: "/kart-mp",
+    name: "Vibe Kart · Multiplayer",
+    emoji: "🏎️",
+    kind: "game",
+    blurb:
+      "Race the same circuit with your friends — share a room code, fill the grid, drop the flag.",
+    status: "New — room-code lobbies",
+    accent: "#ffcc22",
+    source: "src/kart/net",
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "golf",
     route: "/golf",
     name: "Vibe Golf",

@@ -228,7 +228,7 @@ export class BlendableLut {
     // Strip layout: slice b laid out left to right, so u = (r + b*size)/(size*size).
     this.bytes = new Uint8Array(size * size * size * 4);
     this.texture = new THREE.DataTexture(
-      this.bytes,
+      this.bytes as unknown as Uint8Array<ArrayBuffer>,
       size * size,
       size,
       THREE.RGBAFormat,
@@ -243,7 +243,7 @@ export class BlendableLut {
     this.texture.name = "SfGradeLUT";
 
     this.volumeBytes = new Uint8Array(size * size * size * 4);
-    this.volume = new THREE.Data3DTexture(this.volumeBytes, size, size, size);
+    this.volume = new THREE.Data3DTexture(this.volumeBytes as unknown as Uint8Array<ArrayBuffer>, size, size, size);
     this.volume.format = THREE.RGBAFormat;
     this.volume.type = THREE.UnsignedByteType;
     this.volume.minFilter = THREE.LinearFilter;

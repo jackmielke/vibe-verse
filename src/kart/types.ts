@@ -314,6 +314,11 @@ export interface RacerState {
   /** Character/kart preset id — the model system keys off this. */
   characterId: string;
   isPlayer: boolean;
+  /**
+   * Driven over the network by another human. The AI leaves it alone and the
+   * integrator does not step it — netplay writes the pose directly.
+   */
+  remote?: boolean;
 
   position: THREE.Vector3;
   /** Linear velocity in world space, m/s. */

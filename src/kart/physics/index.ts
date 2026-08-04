@@ -485,6 +485,12 @@ export default function createPhysics(ctx: KartCtx): System {
   // -------------------------------------------------------------------------
   function stepRacer(sim: Sim, dt: number): void {
     const r = sim.racer;
+    // A networked human owns this kart: its pose arrives on the wire, so the
+    // only thing left to do locally is keep its lap/place bookkeeping honest.
+    if (r.remote) {
+      locate(sim);
+      return;
+    }
     const edges = gatherControls(sim);
 
     if (r.respawning) {

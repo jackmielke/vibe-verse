@@ -26,6 +26,7 @@ import createAudio from "./audio";
 import createCamera from "./engine/camera";
 import createPostFx from "./postfx";
 import createMinimap from "./ui/minimap";
+import createNetplay from "./net/netplay";
 
 export interface KartBootResult {
   engine: KartEngine;
@@ -61,9 +62,16 @@ export async function bootKart(
     engine.renderOverride = typeof fn === "function" ? (fn as (dt: number) => void) : null;
   }) as (p: never) => void);
 
-  for (let i = 0; i < STAGES.length; i++) {
-    const stage = STAGES[i];
-    onProgress?.(stage.label, i / STAGES.length);
+  // Multiplayer is one extra system on the end: it only ever reads physics
+  // and writes remote poses, so a room that fails to connect costs the ghosts
+  // and nothing else.
+  const stages = opts.net
+    ? [...STAGES, { label: "Opening the pit lane", factory: createNetplay(opts.net) }]
+    : [...STAGES];
+
+  for (let i = 0; i < stages.length; i++) {
+    const stage = stages[i];
+    onProgress?.(stage.label, i / stages.length);
     try {
       await engine.add(stage.factory);
     } catch (err) {

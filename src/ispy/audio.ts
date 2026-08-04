@@ -181,7 +181,7 @@ export class ISpyAudio {
   spectrum(out: Float32Array): boolean {
     const { analyser, bins } = this;
     if (!analyser || !bins || !this.running) return false;
-    analyser.getByteFrequencyData(bins);
+    analyser.getByteFrequencyData(bins as unknown as Uint8Array<ArrayBuffer>);
     const bands = out.length;
     // Logarithmic buckets: linear bins put almost everything you can hear in
     // the first eighth of the display and leave the rest dead.

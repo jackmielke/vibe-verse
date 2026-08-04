@@ -173,7 +173,7 @@ export function createEngineRig(g: AudioGraph): EngineRig {
   filter.frequency.value = 500;
   filter.Q.value = 4.5;
   const shaper = ac.createWaveShaper();
-  shaper.curve = curve;
+  shaper.curve = curve as unknown as Float32Array<ArrayBuffer>;
   shaper.oversample = "2x";
   const out = ac.createGain();
   out.gain.value = 0.0001;

@@ -409,7 +409,7 @@ export function saturator(
   kind: ShaperKind = "tanh",
 ): WaveShaperNode {
   const ws = ctx.createWaveShaper();
-  ws.curve = waveshaperCurve(amount, kind);
+  ws.curve = waveshaperCurve(amount, kind) as unknown as Float32Array<ArrayBuffer>;
   ws.oversample = "2x";
   return ws;
 }

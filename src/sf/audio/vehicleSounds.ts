@@ -946,7 +946,7 @@ export class VehicleVoice {
         now,
         0.06,
       );
-      this.drive.curve = waveshaperCurve(clamp01(spec.grit * (0.25 + load * 0.9)), "asym");
+      this.drive.curve = waveshaperCurve(clamp01(spec.grit * (0.25 + load * 0.9)), "asym") as unknown as Float32Array<ArrayBuffer>;
     }
 
     this.engineGain.gain.setTargetAtTime(spec.level * (s.grounded ? 1 : 0.85), now, 0.1);
