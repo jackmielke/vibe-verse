@@ -238,6 +238,7 @@ function KartRace({ room, peerId, name }: { room: string; peerId: string; name: 
         setEngine(eng);
         eng.start();
         setReady(true);
+        (window as unknown as Record<string, unknown>).__kartmp = eng;
       } catch (err) {
         console.error("[Vibe Kart MP] boot failed", err);
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -262,7 +263,7 @@ function KartRace({ room, peerId, name }: { room: string; peerId: string; name: 
 
       {engine && <KartUI engine={engine} ready={ready} progress={progress} />}
 
-      <div className="pointer-events-none absolute left-3 top-3 z-40 rounded-full border border-amber-300/30 bg-black/50 px-3 py-1 font-mono text-[11px] tracking-widest text-amber-200 backdrop-blur">
+      <div className="pointer-events-none absolute bottom-16 left-3 z-40 rounded-full border border-amber-300/30 bg-black/50 px-3 py-1 font-mono text-[11px] tracking-widest text-amber-200 backdrop-blur">
         ROOM {room}
       </div>
 
