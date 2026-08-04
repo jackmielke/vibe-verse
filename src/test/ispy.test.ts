@@ -16,6 +16,7 @@ import { arcHeight } from "@/ispy/build";
 import { BEAT, BPM, JUMP_WINDOW } from "@/ispy/build";
 import { CUBE_GRAVITY, CUBE_JUMP, HITBOX, initialState, SPEEDS, step, World } from "@/ispy/physics";
 import { paletteAt } from "@/ispy/render";
+import { DIFFICULTIES, type Difficulty } from "@/ispy/engine";
 
 describe("I Spy", () => {
   const level = buildISpy();
@@ -205,6 +206,61 @@ describe("I Spy", () => {
       expect(detour.got, `coin at ${cx},${cy} cannot be reached`).toBe(true);
       expect(detour.finished, `the detour to ${cx},${cy} cannot be survived`).toBe(true);
     }
+  });
+
+  it("offers modes that are strictly kinder, in the same level", () => {
+    // The easier settings must not be a different level. `rate` scales the
+    // simulation and the tempo together, so every arc is identical in space
+    // and only the clock changes; `hazard` shrinks the player's lethal box.
+    // Neither can add a hazard or move a block.
+    const order: Difficulty[] = ["chill", "easy", "normal"];
+    let lastRate = 0;
+    let lastHazard = -1;
+    for (const d of order) {
+      const r = DIFFICULTIES[d];
+      expect(r.rate, `${d} rate`).toBeGreaterThan(lastRate);
+      expect(r.rate).toBeLessThanOrEqual(1);
+      expect(r.hazard, `${d} hazard`).toBeGreaterThan(lastHazard);
+      expect(r.hazard).toBeLessThanOrEqual(1);
+      lastRate = r.rate;
+      lastHazard = r.hazard;
+    }
+    expect(DIFFICULTIES.normal.rate).toBe(1);
+    expect(DIFFICULTIES.normal.hazard).toBe(1);
+    // Nothing that cannot kill you is allowed to bank a coin.
+    expect(DIFFICULTIES.chill.coinsCount).toBe(false);
+  });
+
+  it("cannot kill you in chill, even if you do nothing at all", () => {
+    // The point of the mode. Hold no buttons for the entire level and you
+    // still arrive: hazards do not touch you, walls are not there, and the
+    // wave stops dying on contact. If this ever goes red, chill has a hole in
+    // it, and a mode whose only promise is "you cannot die" has exactly one
+    // thing it must not get wrong.
+    const p = initialState(level);
+    p.chill = true;
+    p.hazardScale = 0;
+    let ticks = 0;
+    while (p.x < level.length && ticks < 240 * 200) {
+      step(p, world, 1 / 240, { hold: false, tap: false });
+      expect(p.dead, `died at x=${p.x.toFixed(1)} doing nothing in chill`).toBe(false);
+      ticks++;
+    }
+    expect(p.x).toBeGreaterThanOrEqual(level.length);
+  });
+
+  it("still gets to the end on chill while holding the button down", () => {
+    // The other way someone plays a sightseeing mode: leaning on the button.
+    const p = initialState(level);
+    p.chill = true;
+    p.hazardScale = 0;
+    let ticks = 0;
+    while (p.x < level.length && ticks < 240 * 200) {
+      step(p, world, 1 / 240, { hold: true, tap: ticks % 60 === 0 });
+      expect(p.dead, `died at x=${p.x.toFixed(1)} holding jump in chill`).toBe(false);
+      ticks++;
+    }
+    expect(p.x).toBeGreaterThanOrEqual(level.length);
   });
 
   it("lands the cube flat on a face, never on a corner", () => {

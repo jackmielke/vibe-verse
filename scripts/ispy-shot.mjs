@@ -213,6 +213,7 @@ if (process.argv.includes("--checkpoints")) {
     e.debugKill();
     await wait(1400);
     const resumed = pctToBlocks(e.status().percent);
+    const resumedPhase = e.status().phase;
 
     // …and that a normal attempt does the opposite: it stays dead where it
     // died, and the restart it eventually gets is from the very start.
@@ -227,15 +228,20 @@ if (process.argv.includes("--checkpoints")) {
     await wait(120);
     const normalRestart = pctToBlocks(e.status().percent);
     e.debugAutopilot(false);
-    return { banked, atDeath, resumed, lastPassed, normalPhase, normalHeld, normalRestart };
+    return {
+      banked, atDeath, resumed, resumedPhase, lastPassed,
+      normalPhase, normalHeld, normalRestart,
+    };
   });
-  // Resuming puts you *behind* where you died — at the last checkpoint you
-  // passed — and then the autopilot runs on for the second and a half we
-  // waited. So the bar is: at or past that checkpoint, and not back at zero.
-  const ok = r.resumed >= r.lastPassed - 1 && r.resumed < r.atDeath && r.lastPassed > 0;
+  // Resuming puts you back at the last checkpoint you passed, and then the
+  // autopilot runs on for the second and a half we waited — which can carry
+  // it past the spot it died at, if it died just after a checkpoint. So the
+  // bar is: alive again, at or past that checkpoint, and not back at zero.
+  const ok = r.resumedPhase === "playing" && r.resumed >= r.lastPassed - 1 && r.lastPassed > 0;
   console.log(
     `checkpoints: banked ${r.banked}, died at block ${r.atDeath.toFixed(0)}, ` +
-      `resumed at ${r.resumed.toFixed(0)} (last checkpoint ${r.lastPassed.toFixed(0)}) — ` +
+      `resumed ${r.resumedPhase} at ${r.resumed.toFixed(0)} ` +
+      `(last checkpoint ${r.lastPassed.toFixed(0)}) — ` +
       `${ok ? "OK" : "FAILED"}`,
   );
   console.log(
@@ -272,6 +278,51 @@ if (process.argv.includes("--audio")) {
   console.log(
     `score: six movements played, clock ${r.moving ? "advancing" : "STUCK"}, ` +
       `${r.errors.length} scheduler error(s)`,
+  );
+}
+
+// `--modes` walks the difficulties in the real engine. The unit tests prove
+// the physics of chill; this proves the wiring — that picking a mode reaches
+// the player, the clock and the tempo.
+if (process.argv.includes("--modes")) {
+  const r = await page.evaluate(async () => {
+    const e = window.__ispy;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const out = [];
+    for (const d of ["chill", "easy", "normal"]) {
+      e.setDifficulty(d);
+      e.play();
+      // No input at all. On chill that has to be survivable.
+      await wait(4000);
+      const s = e.status();
+      out.push({
+        d,
+        phase: s.phase,
+        pct: s.percent,
+        pings: Number.isFinite(s.pings) ? s.pings : "inf",
+      });
+    }
+    e.setDifficulty("normal");
+    return out;
+  });
+  for (const m of r) {
+    const expected = m.d === "chill" ? "playing" : "any";
+    const ok = m.d !== "chill" || m.phase === "playing";
+    console.log(
+      `${m.d}: after 4s of no input — ${m.phase} at ${m.pct.toFixed(0)}%, ` +
+        `${m.pings} pings — ${ok ? "OK" : `FAILED (wanted ${expected})`}`,
+    );
+  }
+  // Does the clock actually scale? Comparing chill's progress against
+  // normal's is meaningless — normal dies at 3% and its percentage freezes
+  // there — so compare chill against the distance its own rate predicts:
+  // four seconds at 0.8 x 10 blocks/second is 32 blocks of a 600-block level.
+  const chill = r.find((m) => m.d === "chill");
+  const predicted = ((4 * 0.8 * 10) / 600) * 100;
+  const drift = Math.abs(chill.pct - predicted);
+  console.log(
+    `clock: chill covered ${chill.pct.toFixed(1)}% in 4s, 0.8x predicts ` +
+      `${predicted.toFixed(1)}% — ${drift < 1.2 ? "OK" : `FAILED (off by ${drift.toFixed(1)})`}`,
   );
 }
 

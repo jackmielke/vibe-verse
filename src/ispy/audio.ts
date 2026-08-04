@@ -69,13 +69,40 @@ export class ISpyAudio {
   private duck: GainNode | null = null;
   private delay: DelayNode | null = null;
   private timer: number | null = null;
-  private step = 0;
+  private stepIndex = 0;
   private nextTime = 0;
   private startTime = 0;
   private running = false;
   private muted = false;
   /** Which of the level's six movements is playing. Set by the engine. */
   private movement = 0;
+  /**
+   * Time scale from the difficulty, and the reason easy mode does not break
+   * the level.
+   *
+   * One jump is one beat is five blocks. Slow the *player* down and the jump
+   * covers fewer blocks; slow the *level* down and the beat no longer lands
+   * where the spikes are. Slow both, together, and all three grids stay welded
+   * — the arcs are identical in space, the level is identical in blocks, and
+   * only the clock changes. So easy mode is 0.85× on the simulation and 0.85×
+   * on the tempo, and it is the same level played more slowly rather than a
+   * different level.
+   */
+  private rate = 1;
+
+  /** Seconds per beat and per sixteenth, at the current rate. */
+  private get beatSecs() {
+    return BEAT / this.rate;
+  }
+  private get stepSecs() {
+    return STEP / this.rate;
+  }
+
+  setRate(r: number) {
+    if (r === this.rate) return;
+    this.rate = r;
+    if (this.delay) this.delay.delayTime.value = this.beatSecs * 0.75;
+  }
 
   async start() {
     if (this.running) return;
@@ -106,7 +133,7 @@ export class ISpyAudio {
       // A dotted-eighth delay — 0.375 s at 120 BPM, so echoes land on the
       // offbeat instead of smearing across it.
       this.delay = ctx.createDelay(1);
-      this.delay.delayTime.value = BEAT * 0.75;
+      this.delay.delayTime.value = this.beatSecs * 0.75;
       const feedback = ctx.createGain();
       feedback.gain.value = 0.33;
       const wet = ctx.createGain();
@@ -116,7 +143,7 @@ export class ISpyAudio {
     }
     await this.ctx.resume().catch(() => undefined);
     this.running = true;
-    this.step = 0;
+    this.stepIndex = 0;
     this.startTime = this.ctx.currentTime;
     this.nextTime = this.ctx.currentTime + 0.06;
     this.timer = window.setInterval(() => this.schedule(), 25);
@@ -132,7 +159,7 @@ export class ISpyAudio {
       is written against the level, so it has to start where the level does. */
   restart() {
     if (!this.ctx) return;
-    this.step = 0;
+    this.stepIndex = 0;
     this.movement = 0;
     this.startTime = this.ctx.currentTime;
     this.nextTime = this.ctx.currentTime + 0.03;
@@ -147,8 +174,8 @@ export class ISpyAudio {
     if (!this.ctx) return;
     const clamped = Math.max(0, Math.min(MOVEMENT_BEATS.length - 1, i));
     this.movement = clamped;
-    this.step = MOVEMENT_BEATS[clamped] * 4;
-    this.startTime = this.ctx.currentTime - MOVEMENT_BEATS[clamped] * BEAT;
+    this.stepIndex = MOVEMENT_BEATS[clamped] * 4;
+    this.startTime = this.ctx.currentTime - MOVEMENT_BEATS[clamped] * this.beatSecs;
     this.nextTime = this.ctx.currentTime + 0.03;
   }
 
@@ -197,8 +224,8 @@ export class ISpyAudio {
 
   /** 0..1 through the current beat. Drives every strobe on screen. */
   beatPhase(): number {
-    if (!this.ctx || !this.running) return (performance.now() / 1000 / BEAT) % 1;
-    return ((((this.ctx.currentTime - this.startTime) / BEAT) % 1) + 1) % 1;
+    if (!this.ctx || !this.running) return (performance.now() / 1000 / this.beatSecs) % 1;
+    return ((((this.ctx.currentTime - this.startTime) / this.beatSecs) % 1) + 1) % 1;
   }
 
   dispose() {
@@ -250,7 +277,7 @@ export class ISpyAudio {
     if (delay) send.connect(delay);
     for (const [at, level, from, to] of [
       [0, 0.3, 1400, 620],
-      [BEAT * 0.75, 0.11, 1400, 620],
+      [this.beatSecs * 0.75, 0.11, 1400, 620],
     ] as Array<[number, number, number, number]>) {
       const o = ctx.createOscillator();
       o.type = "sine";
@@ -305,11 +332,11 @@ export class ISpyAudio {
     const { ctx } = this;
     if (!ctx || !this.running) return;
     while (this.nextTime < ctx.currentTime + LOOKAHEAD) {
-      this.playStep(this.step, this.nextTime);
+      this.playStep(this.stepIndex, this.nextTime);
       // 480 sixteenths is the whole level. Past the end it wraps, which only
       // happens when someone is standing on the finish line admiring it.
-      this.step = (this.step + 1) % 480;
-      this.nextTime += STEP;
+      this.stepIndex = (this.stepIndex + 1) % 480;
+      this.nextTime += this.stepSecs;
     }
   }
 
@@ -340,12 +367,12 @@ export class ISpyAudio {
 
     // ── bass ─────────────────────────────────────────────────────────────
     const root = BASS_ROOTS[bar];
-    if (inBar === 0) this.sub(t, root, quiet ? BEAT * 3.6 : BEAT * 1.8);
+    if (inBar === 0) this.sub(t, root, quiet ? this.beatSecs * 3.6 : this.beatSecs * 1.8);
     if (!quiet && inBar % 4 === 0) this.reese(t, root * 2, drop ? 0.22 : 0.14);
     if (drop && (inBar === 6 || inBar === 10 || inBar === 14)) this.reese(t, root * 2, 0.16);
 
     // ── pad ──────────────────────────────────────────────────────────────
-    if (inBar === 0) this.pad(t, PAD_CHORDS[bar], BEAT * 3.6, quiet ? 900 : 2600);
+    if (inBar === 0) this.pad(t, PAD_CHORDS[bar], this.beatSecs * 3.6, quiet ? 900 : 2600);
 
     // ── arp ──────────────────────────────────────────────────────────────
     if (m >= 1 && inBar % 2 === 0) {
@@ -366,7 +393,7 @@ export class ISpyAudio {
     if (!this.duck) return;
     this.duck.gain.cancelScheduledValues(t);
     this.duck.gain.setValueAtTime(depth, t);
-    this.duck.gain.linearRampToValueAtTime(1, t + BEAT * 0.62);
+    this.duck.gain.linearRampToValueAtTime(1, t + this.beatSecs * 0.62);
   }
 
   private noiseBuffer(seconds: number, decay = false): AudioBuffer {

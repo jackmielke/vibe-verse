@@ -80,11 +80,11 @@ const CUBE_SPIN = 180;
 /** Degrees per second the cube rights itself over after an early landing. */
 const SETTLE_RATE = 1100;
 
-/** Half-width of the player's *lethal* box. */
+/** Half-width of the player's *lethal* box, after the difficulty's scaling. */
 function dangerHalf(p: PlayerState): number {
-  if (p.mode === "wave") return HITBOX.waveHazard / 2;
-  if (p.mode === "ship") return HITBOX.shipHazard / 2;
-  return HITBOX.cubeHazard / 2;
+  const base =
+    p.mode === "wave" ? HITBOX.waveHazard : p.mode === "ship" ? HITBOX.shipHazard : HITBOX.cubeHazard;
+  return (base / 2) * p.hazardScale;
 }
 
 /** Half-width of the player's *solid* box: what lands on blocks. */
@@ -151,6 +151,8 @@ export function initialState(level: Level): PlayerState {
     onGround: true,
     rot: 0,
     rotVel: 0,
+    hazardScale: 1,
+    chill: false,
     dead: false,
     usedOrbs: new Set(),
   };
@@ -256,13 +258,13 @@ export function step(p: PlayerState, world: World, dt: number, input: Input): vo
   const inset = py - p.y;
 
   if (py < FLOOR) {
-    if (p.mode === "wave") { p.dead = true; return; }
+    if (p.mode === "wave" && !p.chill) { p.dead = true; return; }
     p.y = FLOOR - inset;
     p.vy = 0;
     if (p.grav === 1) p.onGround = true;
   }
   if (py + ph > ROOF) {
-    if (p.mode === "wave") { p.dead = true; return; }
+    if (p.mode === "wave" && !p.chill) { p.dead = true; return; }
     p.y = ROOF - ph - inset;
     p.vy = 0;
     if (p.grav === -1) p.onGround = true;
@@ -275,7 +277,11 @@ export function step(p: PlayerState, world: World, dt: number, input: Input): vo
     if (o.kind === "block") {
       if (!overlap(px, p.y + inset, pw, ph, o.x, o.y, o.w, o.h)) continue;
       // The wave dies on anything it touches. That is the whole wave.
-      if (p.mode === "wave") { p.dead = true; return; }
+      if (p.mode === "wave") {
+        if (p.chill) continue;
+        p.dead = true;
+        return;
+      }
       const top = o.y + o.h;
       const landedOnTop = prevBottom >= top - 0.02 && p.vy <= 0;
       const landedOnBottom = prevTop <= o.y + 0.02 && p.vy >= 0;
@@ -290,6 +296,8 @@ export function step(p: PlayerState, world: World, dt: number, input: Input): vo
         p.vy = 0;
         if (p.grav === -1) p.onGround = true;
       } else {
+        // Ran into a wall. In chill it is not there.
+        if (p.chill) continue;
         p.dead = true;
         return;
       }
@@ -297,7 +305,9 @@ export function step(p: PlayerState, world: World, dt: number, input: Input): vo
     }
 
     if (o.kind === "spike" || o.kind === "saw") {
+      if (p.chill) continue;
       const dh = dangerHalf(p);
+      if (dh <= 0) continue;
       const [hx, hy, hw, hh] = hazardBox(o);
       const cy = p.y + 0.5;
       if (overlap(p.x - dh, cy - dh, dh * 2, dh * 2, hx, hy, hw, hh)) {

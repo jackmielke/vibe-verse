@@ -24,6 +24,52 @@ const BEST_KEY = "ispy:best";
 const COINS_KEY = "ispy:coins";
 
 export type Phase = "attract" | "playing" | "dead" | "won";
+export type Difficulty = "chill" | "easy" | "normal";
+
+/**
+ * The three ways to play, hardest last.
+ *
+ * `rate` scales the simulation *and* the tempo by the same factor, which is
+ * what lets an easier mode exist at all: this level is welded to its music —
+ * one jump is one beat is five blocks — so slowing the player alone would
+ * shorten the jumps and slowing the music alone would move the beat off the
+ * spikes. Slowing both leaves every arc identical in space and only changes
+ * the clock. Easy is the same level, played more slowly.
+ *
+ * `hazard` scales the player's lethal box. 1 is the original's 18×18 against a
+ * spike's 12×18; 0.62 is a forgiving mode that still has hazards; 0 plus
+ * `chill` is a mode where nothing can touch you at all.
+ */
+export const DIFFICULTIES: Record<
+  Difficulty,
+  {
+    label: string;
+    blurb: string;
+    rate: number;
+    hazard: number;
+    chill: boolean;
+    pings: number;
+    checkpoints: boolean;
+    /** Whether a finish on this setting is allowed to bank a coin. */
+    coinsCount: boolean;
+  }
+> = {
+  chill: {
+    label: "Chill",
+    blurb: "Nothing can kill you. See the whole level and hear the whole track.",
+    rate: 0.8, hazard: 0, chill: true, pings: Infinity, checkpoints: true, coinsCount: false,
+  },
+  easy: {
+    label: "Easy",
+    blurb: "Slower, a smaller hitbox, six pings, and checkpoints on.",
+    rate: 0.85, hazard: 0.62, chill: false, pings: 6, checkpoints: true, coinsCount: true,
+  },
+  normal: {
+    label: "Normal",
+    blurb: "Full speed, the original's hitboxes, three pings, no checkpoints.",
+    rate: 1, hazard: 1, chill: false, pings: 3, checkpoints: false, coinsCount: true,
+  },
+};
 
 export interface ISpyStatus {
   phase: Phase;
@@ -31,8 +77,9 @@ export interface ISpyStatus {
   percent: number;
   best: number;
   attempts: number;
-  /** Sonar pings left this attempt. */
+  /** Sonar pings left this attempt. Infinity below Normal. */
   pings: number;
+  difficulty: Difficulty;
   /**
    * Practice mode. Checkpoints only exist here, exactly as in the original —
    * a normal attempt is the whole level or nothing.
@@ -62,7 +109,17 @@ export class ISpyEngine {
   private attempts = 0;
   private best = 0;
   private practice = false;
+  private difficulty: Difficulty = "normal";
   private pings = PINGS_PER_ATTEMPT;
+
+  private get rules() {
+    return DIFFICULTIES[this.difficulty];
+  }
+
+  /** Checkpoints exist in practice, and in the modes that hand them to you. */
+  private get checkpointsOn() {
+    return this.practice || this.rules.checkpoints;
+  }
 
   /** Sorted x of every checkpoint, and how far through them this run is. */
   private readonly checkpointXs: number[];
@@ -141,6 +198,7 @@ export class ISpyEngine {
       best: this.best,
       attempts: this.attempts,
       pings: this.pings,
+      difficulty: this.difficulty,
       practice: this.practice,
       muted: this.audio.isMuted,
       chapter: chapterAt(this.player.x),
@@ -159,6 +217,7 @@ export class ISpyEngine {
     this.attempts += 1;
     this.restartFrom(initialState(this.level));
     this.audio.start();
+    this.audio.setRate(this.rules.rate);
     this.audio.restart();
     this.emit(true);
   }
@@ -172,8 +231,23 @@ export class ISpyEngine {
 
   setPractice(on: boolean) {
     this.practice = on;
-    if (!on) this.banked = null;
+    if (!this.checkpointsOn) this.banked = null;
     this.emit(true);
+  }
+
+  setDifficulty(d: Difficulty) {
+    this.difficulty = d;
+    this.audio.setRate(this.rules.rate);
+    if (!this.checkpointsOn) this.banked = null;
+    this.applyRules();
+    this.emit(true);
+  }
+
+  /** Push the difficulty onto the player. Called on every restart too, since
+      the state is rebuilt from scratch each attempt. */
+  private applyRules() {
+    this.player.hazardScale = this.rules.hazard;
+    this.player.chill = this.rules.chill;
   }
 
   toggleMute() {
@@ -191,7 +265,7 @@ export class ISpyEngine {
    */
   fireSonar() {
     if (this.phase !== "playing" || this.pings <= 0) return;
-    this.pings -= 1;
+    if (Number.isFinite(this.pings)) this.pings -= 1;
     this.sonarAge = 0;
     this.audio.sonar();
     this.emit(true);
@@ -350,7 +424,8 @@ export class ISpyEngine {
     this.deathAge = 0;
     this.sonarAge = null;
     this.particles = [];
-    this.pings = PINGS_PER_ATTEMPT;
+    this.pings = this.rules.pings;
+    this.applyRules();
     this.camY = Math.max(-1.7, this.player.y - VIEW_H * 0.34);
     this.hold = false;
     this.botHold = false;
@@ -405,7 +480,9 @@ export class ISpyEngine {
     // Coins are earned by *finishing*, and not in practice — both of those
     // are the original's rules and both are right. A detour you did not
     // survive did not happen, and a run with checkpoints in it is not a run.
-    if (!this.practice) for (const c of this.got) this.earned.add(c);
+    // A coin is banked only by a run that could have gone wrong: not in
+    // practice, and not on a setting where nothing can kill you.
+    if (!this.practice && this.rules.coinsCount) for (const c of this.got) this.earned.add(c);
     try {
       localStorage.setItem(BEST_KEY, "100");
       localStorage.setItem(COINS_KEY, JSON.stringify([...this.earned]));
@@ -430,7 +507,7 @@ export class ISpyEngine {
     else if (this.phase === "dead") {
       this.deathAge += dt;
       // With a checkpoint banked, dying costs half a second, not a minute.
-      if (this.banked && this.practice && this.deathAge > 0.5) {
+      if (this.banked && this.checkpointsOn && this.deathAge > 0.5) {
         this.phase = "playing";
         this.attempts += 1;
         const at = movementAt(this.banked.p.x);
@@ -452,7 +529,9 @@ export class ISpyEngine {
   };
 
   private simulate(dt: number) {
-    this.accumulator = Math.min(this.accumulator + dt, 0.3);
+    // The whole simulation runs on the difficulty's clock. Everything the
+    // player touches is downstream of this one multiply.
+    this.accumulator = Math.min(this.accumulator + dt * this.rules.rate, 0.3);
     const attract = this.phase === "attract";
     const useBot = attract || this.autopilot;
 
@@ -500,7 +579,7 @@ export class ISpyEngine {
         this.player.x >= this.checkpointXs[this.nextCheckpoint]
       ) {
         this.nextCheckpoint += 1;
-        if (!attract && this.practice) {
+        if (!attract && this.checkpointsOn) {
           this.banked = { p: clonePlayer(this.player), coins: new Set(this.got) };
           this.audio.checkpoint();
           this.burst(10, "#7dffd0", 7);
@@ -540,7 +619,7 @@ export class ISpyEngine {
     // is a thing you can see rather than a line the world stops at.
     const anchor = this.player.mode === "cube" || this.player.mode === "ball" ? 0.34 : 0.46;
     const target = Math.max(-1.7, this.player.y - VIEW_H * anchor);
-    const k = 1 - Math.pow(0.0008, dt);
+    const k = 1 - Math.pow(0.0008, dt * this.rules.rate);
     this.camY += (target - this.camY) * k;
 
     // Trail.
@@ -614,7 +693,7 @@ export class ISpyEngine {
       banked: this.nextCheckpoint,
       // Checkpoint banners are a practice-mode object. In a normal attempt
       // they are not there, because in a normal attempt they do nothing.
-      showCheckpoints: this.practice,
+      showCheckpoints: this.checkpointsOn,
       collected: this.got,
       dim: this.phase === "attract" ? 0.55 : 0,
     };
@@ -624,7 +703,7 @@ export class ISpyEngine {
     const s = this.status();
     const key = `${s.phase}|${Math.round(s.percent)}|${s.attempts}|${s.pings}|${
       s.practice
-    }|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}|${s.coins}`;
+    }|${s.difficulty}|${s.muted}|${s.chapter}|${Math.round(s.best)}|${s.banked}|${s.coins}`;
     if (!force && key === this.lastStatus) return;
     this.lastStatus = key;
     for (const fn of this.listeners) fn(s);

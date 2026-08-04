@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ISpyEngine, type ISpyStatus } from "@/ispy/engine";
+import { DIFFICULTIES, ISpyEngine, type Difficulty, type ISpyStatus } from "@/ispy/engine";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 export default function ISpy() {
@@ -120,7 +120,14 @@ export default function ISpy() {
               </span>
             </div>
             <div className="mx-auto mt-1.5 flex max-w-3xl items-center justify-between font-mono text-[10px] uppercase tracking-[0.25em] text-white/45">
-              <span>{status.chapter}</span>
+              <span>
+                {status.difficulty !== "normal" && (
+                  <span className="mr-3 text-sky-300/80">
+                    {DIFFICULTIES[status.difficulty].label.toLowerCase()}
+                  </span>
+                )}
+                {status.chapter}
+              </span>
               <span className="flex items-center gap-3">
                 {/* Three coins, always shown, so you know what you are missing
                     long before you know where they are. */}
@@ -165,7 +172,7 @@ export default function ISpy() {
               />
             </svg>
             <span className="mt-0.5 font-mono text-[10px] tabular-nums text-white/70">
-              {status.pings}
+              {Number.isFinite(status.pings) ? status.pings : "∞"}
             </span>
           </button>
 
@@ -194,6 +201,9 @@ export default function ISpy() {
               </h2>
               <p className="mt-3 font-mono text-xs text-white/50">
                 {status.attempts} attempt{status.attempts === 1 ? "" : "s"}
+                {status.difficulty !== "normal"
+                  ? ` · ${DIFFICULTIES[status.difficulty].label.toLowerCase()}`
+                  : ""}
                 {status.practice ? " · practice" : ""}
               </p>
               <p className="mt-4 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-amber-200/90">
@@ -278,9 +288,30 @@ export default function ISpy() {
             </span>
           </div>
 
+          {/* Difficulty. Chill and Easy slow the simulation *and* the tempo by
+              the same factor, so the level stays welded to its music. */}
+          <div className="mt-8 flex items-center gap-1.5 rounded-full border border-white/12 p-1">
+            {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => (
+              <button
+                key={d}
+                onClick={() => engineRef.current?.setDifficulty(d)}
+                className={`rounded-full px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] transition ${
+                  status?.difficulty === d
+                    ? "bg-sky-300/20 text-sky-200 shadow-[0_0_18px_rgba(125,211,252,0.25)]"
+                    : "text-white/40 hover:text-white/80"
+                }`}
+              >
+                {DIFFICULTIES[d].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 max-w-xs text-center text-[11px] leading-relaxed text-white/30">
+            {DIFFICULTIES[status?.difficulty ?? "normal"].blurb}
+          </p>
+
           <button
             onClick={() => engineRef.current?.setPractice(!status?.practice)}
-            className={`mt-7 rounded-full border px-5 py-2 font-mono text-[10px] uppercase tracking-[0.25em] transition ${
+            className={`mt-6 rounded-full border px-5 py-2 font-mono text-[10px] uppercase tracking-[0.25em] transition ${
               status?.practice
                 ? "border-emerald-300/60 bg-emerald-300/15 text-emerald-200"
                 : "border-white/15 text-white/45 hover:text-white/80"

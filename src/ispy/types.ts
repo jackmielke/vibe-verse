@@ -115,6 +115,16 @@ export interface PlayerState {
   /** Degrees per second the cube is currently turning. Solved at takeoff so
       that the jump ends on a flat face — see `CUBE_SPIN` in physics.ts. */
   rotVel: number;
+  /**
+   * Multiplier on the player's *lethal* box, from the difficulty. 1 is the
+   * original's 18×18; easier modes shrink it, and 0 means nothing can touch
+   * you. It lives on the state rather than in a module global so that the
+   * solver copies it along with everything else and can be run at any
+   * difficulty without the physics knowing which one is "real".
+   */
+  hazardScale: number;
+  /** Nothing kills. Walls are passed through rather than died against. */
+  chill: boolean;
   dead: boolean;
   /** Orbs already used this attempt, by object index — an orb fires once. */
   usedOrbs: Set<number>;

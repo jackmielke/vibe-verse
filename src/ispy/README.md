@@ -229,6 +229,33 @@ floor so you can actually see it. The palettes' ground colours are nearly
 black, so the face is mixed toward the section accent; otherwise a "solid base"
 renders as the place the screen ends.
 
+## Three ways to play
+
+`DIFFICULTIES` in `engine.ts`. The interesting constraint is that this level is
+welded to its music — one jump is one beat is five blocks — so the usual easy
+mode of "slow the player down" would shorten every jump and stop the hazards
+lining up with the beat.
+
+So `rate` scales **the simulation and the tempo by the same factor**. Every arc
+stays identical in space, every block stays where it was, and only the clock
+changes. Easy is the same level, played more slowly.
+
+| mode | rate | hitbox | pings | checkpoints | coins |
+| --- | --- | --- | --- | --- | --- |
+| Chill | 0.8× | none — nothing can touch you | ∞ | yes | no |
+| Easy | 0.85× | 62% of the original's | 6 | yes | yes |
+| Normal | 1× | the original's 18×18 | 3 | no | yes |
+
+Chill is a sightseeing mode: hazards do not touch you, walls are not there, and
+the wave stops dying on contact, so anyone can see the whole level and hear the
+whole score. Two tests hold it, and they are the ones worth having — hold no
+buttons for the entire level and you still arrive; lean on the button for the
+entire level and you still arrive. A mode whose only promise is "you cannot
+die" has exactly one thing it must not get wrong.
+
+Coins are banked only by a run that could have gone wrong, so Chill and
+practice do not count. Easy does.
+
 ## Checkpoints live in practice mode
 
 Where the original puts them, and where they belong: a normal attempt is the
