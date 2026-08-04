@@ -250,6 +250,7 @@ export class Engine {
     input.pausePressed = false;
     input.resetPressed = false;
     input.helpPressed = false;
+    input.levelPressed = false;
     input.lookX = 0;
     input.lookY = 0;
 

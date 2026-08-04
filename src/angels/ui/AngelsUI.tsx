@@ -93,6 +93,32 @@ const START_POINTS: Array<{ id: SpawnPoint; name: string; blurb: string }> = [
   { id: "high", name: "High over the city", blurb: "14,000 feet with the whole Sound in front of you." },
 ];
 
+/**
+ * The three ways to fly it, in the order they should be tried.
+ *
+ * "Point & fly" leads because it is the one that needs no explanation: you put
+ * a ring where you want to go and the jet works out the bank and the pull. The
+ * other two ask you to think about a control surface first and a destination
+ * second, which is the right way round for someone who already flies and the
+ * wrong way round for everyone else.
+ */
+const SCHEME_COPY: Record<ControlScheme, { name: string; blurb: string }> = {
+  pursuit: {
+    name: "Point & fly",
+    blurb:
+      "Move the mouse and a ring follows it. The jet banks and pulls to fly through the ring, so climbing is just putting it above the horizon. W and S are the throttle.",
+  },
+  stick: {
+    name: "Direct stick",
+    blurb:
+      "The cursor is the stick and the middle of the screen is neutral: up climbs, left rolls left. More control, more to think about.",
+  },
+  keyboard: {
+    name: "Keyboard",
+    blurb: "W and S climb and dive, A and D roll, Shift and Z are the throttle. No mouse at all.",
+  },
+};
+
 const CAMERA_COPY: Record<CameraMode, string> = {
   chase: "Chase",
   cockpit: "Cockpit",
@@ -125,7 +151,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [wingmen, setWingmen] = useState(5);
   const [start, setStart] = useState<SpawnPoint>("needle");
   const [help, setHelp] = useState(false);
-  const [scheme, setScheme] = useState<ControlScheme>("mouse");
+  const [scheme, setScheme] = useState<ControlScheme>("pursuit");
   const [thumbs, setThumbs] = useState(false);
   const [wreck, setWreck] = useState<{ cause: string; speed: number } | null>(null);
 
@@ -465,6 +491,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             }}
           >
             <button
+              onClick={() => (services.fleet as FleetService | undefined)?.levelOut()}
+              aria-label="Level out"
+              className="rounded-full bg-amber-400/85 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-slate-900 backdrop-blur-sm transition hover:bg-amber-300"
+            >
+              Level
+            </button>
+            <button
               onClick={() => setHelp(true)}
               aria-label="Controls"
               className="rounded-full bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-200 backdrop-blur-sm transition hover:bg-black/65"
@@ -607,10 +640,12 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                 second visit does not have to wait for it. */}
             <p className="mt-1 text-center text-[11.5px] text-sky-100/45">
               {thumbs
-                ? "Left thumb flies, right thumb is the throttle."
-                : scheme === "mouse"
-                  ? "Move the mouse to fly · W and S for the throttle · H for every key"
-                  : "W S climb and dive · A D roll · Shift and Z for the throttle · H for every key"}
+                ? "Left thumb flies · right thumb is the throttle · LEVEL if you get lost"
+                : scheme === "pursuit"
+                  ? "Move the mouse where you want to go · W and S for the throttle · Space if you get lost"
+                  : scheme === "stick"
+                    ? "The cursor is the stick · W and S for the throttle · Space if you get lost"
+                    : "W S climb and dive · A D roll · Shift and Z for the throttle · Space if you get lost"}
             </p>
 
             {/* everything else, out of the way */}
@@ -689,20 +724,12 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                   <span className="w-4 font-mono text-xs text-amber-200">{wingmen}</span>
                 </div>
 
-                <Group
-                  label="How you hold the stick"
-                  note={
-                    scheme === "mouse"
-                      ? "The cursor is the stick: move it to fly, W and S are the throttle. A ring on the HUD shows where neutral is and how far full deflection is."
-                      : "W and S climb and dive, A and D roll, Shift and Z are the throttle."
-                  }
-                >
-                  <Chip on={scheme === "mouse"} onClick={() => applyScheme("mouse")}>
-                    Mouse
-                  </Chip>
-                  <Chip on={scheme === "keyboard"} onClick={() => applyScheme("keyboard")}>
-                    Keyboard
-                  </Chip>
+                <Group label="How you fly it" note={SCHEME_COPY[scheme].blurb}>
+                  {(Object.keys(SCHEME_COPY) as ControlScheme[]).map((k) => (
+                    <Chip key={k} on={scheme === k} onClick={() => applyScheme(k)}>
+                      {SCHEME_COPY[k].name}
+                    </Chip>
+                  ))}
                 </Group>
 
                 <Group label="Pitch" note="">
@@ -814,14 +841,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               </Row>
 
               {!thumbs && (
-                <Row label="Stick">
+                <Row label="Controls">
                   <div className="flex gap-1">
-                    <Chip on={scheme === "mouse"} onClick={() => applyScheme("mouse")}>
-                      Mouse
-                    </Chip>
-                    <Chip on={scheme === "keyboard"} onClick={() => applyScheme("keyboard")}>
-                      Keyboard
-                    </Chip>
+                    {(Object.keys(SCHEME_COPY) as ControlScheme[]).map((k) => (
+                      <Chip key={k} on={scheme === k} onClick={() => applyScheme(k)}>
+                        {SCHEME_COPY[k].name}
+                      </Chip>
+                    ))}
                   </div>
                 </Row>
               )}

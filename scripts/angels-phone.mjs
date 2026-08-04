@@ -113,6 +113,7 @@ for (const c of CASES) {
       smoke: box(".smk"),
       view: box(".vw"),
       gear: box(".gr"),
+      level: box(".lvl"),
       rudderL: box(".rl"),
       rudderR: box(".rr"),
       vw: window.innerWidth,
@@ -135,6 +136,36 @@ for (const c of CASES) {
         failures++;
       }
     }
+  }
+
+  // ---- does the LEVEL button do anything? --------------------------------
+  // The panic button matters most on a phone, where there is no keyboard to
+  // reach for and the thumb that would fix the problem is the one holding it.
+  const recovered = await page.evaluate(async () => {
+    const e = window.__angels;
+    const fleet = e.ctx.services.fleet;
+    e.stop();
+    fleet.respawn("high");
+    const s = fleet.player.state;
+    s.orientation.set(0, 0, 1, 0); // inverted
+    s.velocity.set(0, -80, -180);
+    for (let i = 0; i < 30; i++) e.step(1 / 120, false);
+    const before = Math.abs((s.bank * 180) / Math.PI);
+    const btn = document.querySelector("#blue-angels-touch .lvl");
+    const r = btn.getBoundingClientRect();
+    const opts = { bubbles: true, pointerId: 9, pointerType: "touch",
+      clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 };
+    btn.dispatchEvent(new PointerEvent("pointerdown", opts));
+    btn.dispatchEvent(new PointerEvent("pointerup", opts));
+    for (let i = 0; i < 120 * 3; i++) e.step(1 / 120, false);
+    return { before, after: Math.abs((s.bank * 180) / Math.PI), levelling: fleet.levelling };
+  });
+  console.log(
+    `[${c.name}] LEVEL button: ${recovered.before.toFixed(0)}° of bank → ${recovered.after.toFixed(0)}°`,
+  );
+  if (!(recovered.after < 25)) {
+    console.error(`[${c.name}] FAIL: the LEVEL button did not roll it upright`, recovered);
+    failures++;
   }
 
   // ---- does the stick actually fly the aeroplane? ------------------------

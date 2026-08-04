@@ -68,18 +68,25 @@ function dead(v: number): number {
   return Math.sign(v) * ((a - DEADZONE) / (1 - DEADZONE));
 }
 
-export type ControlScheme = "mouse" | "keyboard";
+/**
+ * How a desktop flies it.
+ *
+ * "pursuit" is the default and it is the reason this file was rewritten. The
+ * other two ask the pilot to think about a *stick* — a thing whose deflection
+ * commands a rate, whose neutral is somewhere they have to remember, and whose
+ * relationship to where the aeroplane ends up is two integrations away. That
+ * is a fine mental model for someone who already flies and a terrible one for
+ * everyone else, and "it is very unclear how we are supposed to pull up" is
+ * exactly what it sounds like from the outside.
+ *
+ * Pursuit removes the stick from the conversation. You put a ring where you
+ * want to go and the jet goes there — it picks the bank angle and the pull for
+ * you, the way a real pilot does without thinking about it. Pulling up is
+ * "move the ring above the horizon", which needs no explanation at all.
+ */
+export type ControlScheme = "pursuit" | "stick" | "keyboard";
 
 export interface InputSettings {
-  /**
-   * How the stick is held on a desktop.
-   *
-   * "mouse" is the default and it is the one that makes this fun to play with
-   * a laptop: the cursor *is* the stick, so pitch and roll are one continuous
-   * two-axis input instead of four keys that ramp. Keyboard flying is fine for
-   * gentle turns and hopeless for anything you would actually want to fly at
-   * an air show.
-   */
   controlScheme: ControlScheme;
   /** Real stick sense: pull back to climb. */
   invertPitch: boolean;
@@ -104,12 +111,21 @@ export interface InputService {
    */
   setMenuOpen(open: boolean): void;
   /**
-   * Where the virtual stick is, for the HUD to draw. Mouse scheme only.
+   * Where the virtual stick is, for the HUD to draw. "stick" scheme only.
    *
-   * `cx`/`cy` are the neutral point in CSS pixels — usually the middle of the
-   * window, but not always, so the HUD has to be told rather than assume.
+   * `cx`/`cy` are the neutral point in CSS pixels. Always the middle of the
+   * window now — an earlier version re-anchored it under the cursor whenever a
+   * menu closed, to stop the jet bunting when you clicked a button near the
+   * bottom of a card, and the cure was worse than the disease: neutral ended
+   * up two hundred pixels below the middle of the screen and stayed there, so
+   * the natural thing to do — put the cursor in the middle — was a hard pull.
    */
   readonly stick: { x: number; y: number; active: boolean; radius: number; cx: number; cy: number };
+  /**
+   * Where the pursuit ring is. `x`/`y` are NDC for unprojecting through the
+   * camera; `px`/`py` are CSS pixels for the HUD to draw at.
+   */
+  readonly aim: { x: number; y: number; px: number; py: number; active: boolean };
   /** Ask iOS for motion permission. Must be called from a real user gesture. */
   requestTilt(): void;
   hasGamepad(): boolean;
@@ -119,7 +135,7 @@ const SETTINGS_KEY = "angels.input";
 
 function loadSettings(): InputSettings {
   const base: InputSettings = {
-    controlScheme: "mouse",
+    controlScheme: "pursuit",
     invertPitch: false,
     tiltRoll: false,
     autoThrottle: false,
@@ -129,7 +145,13 @@ function loadSettings(): InputSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return base;
-    return { ...base, ...(JSON.parse(raw) as Partial<InputSettings>) };
+    const saved = JSON.parse(raw) as Partial<InputSettings>;
+    // "mouse" was the old name for the direct-stick scheme. Anyone carrying it
+    // in localStorage is carrying the scheme the feedback was about, so it is
+    // treated as unset rather than migrated — they get the new default, and
+    // the picker is one click away if they want the old one back.
+    if ((saved.controlScheme as string) === "mouse") delete saved.controlScheme;
+    return { ...base, ...saved };
   } catch {
     return base;
   }
@@ -172,11 +194,27 @@ export function createInput(ctx: AngelsCtx): System {
   let mouseY = 0;
   let mouseInside = false;
   const stick = { x: 0, y: 0, active: false, radius: 0, cx: 0, cy: 0 };
-  // Where neutral is. Normally the middle of the window; re-anchored under the
-  // cursor whenever a menu closes — see `recentre`.
-  let boxX = -1;
-  let boxY = -1;
-  let recentre = true;
+  const aim = { x: 0, y: 0, px: 0, py: 0, active: false };
+
+  /**
+   * Mouse flying is disarmed until the pilot moves the mouse, and then eases
+   * in over half a second.
+   *
+   * Both halves earn their keep. The *disarm* is because a menu closes with
+   * the cursor on whatever button was clicked, which is rarely the middle of
+   * the screen — handing over control at that instant meant the jet reacted to
+   * a position the pilot never chose. The *ease* is because even a deliberate
+   * first move should not arrive as a step input.
+   *
+   * The earlier fix for this moved neutral to the cursor instead. That solved
+   * the same problem and created a worse one: neutral stayed wherever the
+   * button had been, so "put the cursor in the middle of the screen" — the
+   * single most natural thing anyone does — became a hard pull.
+   */
+  let armed = false;
+  let armBlend = 0;
+  let armX = 0;
+  let armY = 0;
 
   let padIndex: number | null = null;
 
@@ -192,6 +230,14 @@ export function createInput(ctx: AngelsCtx): System {
     KeyP: "pausePressed",
     KeyR: "resetPressed",
     KeyH: "helpPressed",
+    // The panic button, on the biggest key there is. Airbrake moved to B,
+    // which now does what the phone's BRK button has always done — airbrake in
+    // the air, wheel brakes on the ground. Space was the least-used control on
+    // the keyboard and is now the most useful one: a pilot who is upside down
+    // over Lake Union and does not know which way to push needs one key that
+    // means "sort this out", and every second they spend looking for it is a
+    // second they spend descending.
+    Space: "levelPressed",
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -464,15 +510,17 @@ export function createInput(ctx: AngelsCtx): System {
         stick.x = 0;
         stick.y = 0;
         stick.active = false;
-      } else {
-        // Coming back out, neutral is re-anchored under wherever the cursor
-        // happens to be. Without this, pressing a button near the bottom of a
-        // card handed control back with the stick already most of the way
-        // forward, and the jet bunted the instant the menu vanished.
-        recentre = true;
       }
+      // Either way, the mouse has to be picked up again before it flies
+      // anything: `armed` clears on the way in *and* on the way out.
+      armed = false;
+      armBlend = 0;
+      armX = mouseX;
+      armY = mouseY;
+      aim.active = false;
     },
     stick,
+    aim,
     requestTilt() {
       const DOE = (
         window as unknown as {
@@ -496,10 +544,20 @@ export function createInput(ctx: AngelsCtx): System {
     update(dt) {
       touch.setVisible(touchVisible());
 
+      // Every path that is not desktop-mouse has to say so: `aim.active` is
+      // what the fleet reads to decide whether anything is flying the jet for
+      // the pilot, and a stale `true` left behind by a scheme nobody is using
+      // any more would keep steering toward a ring that is not there.
       const padActive = samplePad();
-      if (padActive) return;
+      if (padActive) {
+        aim.active = false;
+        stick.active = false;
+        return;
+      }
 
       if (input.source === "touch") {
+        aim.active = false;
+        stick.active = false;
         touch.write(
           input,
           settings.tiltRoll && tiltCalibrated
@@ -510,8 +568,23 @@ export function createInput(ctx: AngelsCtx): System {
       }
 
       // ---- desktop --------------------------------------------------------
-      const mouseFlying =
-        settings.controlScheme === "mouse" && mouseInside && !menuOpen && !shot;
+      const w = window.innerWidth;
+      const h = Math.max(1, window.innerHeight);
+      const scheme = settings.controlScheme;
+      const mouseUsable = mouseInside && !menuOpen && !shot;
+
+      // Arming. The mouse does not fly anything until it has been moved a
+      // deliberate amount since the last menu closed, and then it fades in.
+      if (mouseUsable && !armed && Math.hypot(mouseX - armX, mouseY - armY) > 26) armed = true;
+      if (!mouseUsable) {
+        armed = false;
+        armBlend = 0;
+        armX = mouseX;
+        armY = mouseY;
+      } else if (armed) {
+        armBlend = Math.min(1, armBlend + dt / 0.5);
+      }
+      const mouseFlying = mouseUsable && armed && scheme !== "keyboard";
 
       const rate = 3.4 * settings.sensitivity;
       const centre = 5.2;
@@ -532,33 +605,53 @@ export function createInput(ctx: AngelsCtx): System {
 
       kbYaw = step(kbYaw, yawR, yawL);
 
-      if (mouseFlying) {
+      if (mouseFlying && scheme === "pursuit") {
+        // Point where you want to go.
+        //
+        // Nothing is computed here beyond "where on the screen is the ring".
+        // Turning that into a bank angle and a pull is the fleet's job, in
+        // `flyToAim` — it is the only place that knows which way the aeroplane
+        // is currently facing, and the whole trick of this scheme is that the
+        // answer depends on that and the pilot never has to think about it.
+        stick.active = false;
+        aim.px = clamp(mouseX, 0, w);
+        aim.py = clamp(mouseY, 0, h);
+        aim.x = (aim.px / w) * 2 - 1;
+        aim.y = -((aim.py / h) * 2 - 1);
+        if (settings.invertPitch) aim.y = -aim.y;
+        aim.active = true;
+        // The blend is applied to the *aim offset*, not to a control command:
+        // easing in a ring that is already drawn where the cursor is would be
+        // a ring that lies about where you are pointing.
+        aim.x *= armBlend;
+        aim.y *= armBlend;
+
+        // Both hands stay useful. W and S are the throttle — the control a
+        // hand on the keyboard most wants when the other one is steering.
+        if (up) kbThrottle = clamp(kbThrottle + dt * 0.7, 0, 1);
+        if (down) kbThrottle = clamp(kbThrottle - dt * 0.7, 0, 1);
+        // A and D roll directly, on top of whatever the pursuit law is doing.
+        // That is what makes a barrel roll possible in a scheme whose entire
+        // job is to keep the jet the right way up.
+        kbRoll = step(kbRoll, right, left);
+        input.roll = kbRoll;
+        input.pitch = 0;
+      } else if (mouseFlying) {
         // The cursor *is* the stick. Its offset from the centre of the window,
         // scaled by a box a bit under a third of the screen, is the deflection
         // — so the whole range is reachable without ever leaving the window,
         // and the cursor stays visible so you can always see where the stick
         // is. Beyond the box it simply saturates, which is what a real stick
         // does when it hits the stop.
-        const w = window.innerWidth;
-        const h = Math.max(1, window.innerHeight);
+        aim.active = false;
         const radius = Math.min(w, h) * 0.3;
-        if (recentre || boxX < 0) {
-          // Clamped to keep most of the travel on screen: anchoring neutral in
-          // the far corner would leave one direction unreachable, which is a
-          // worse failure than a slightly off-centre box.
-          boxX = clamp(mouseX, radius * 0.5, w - radius * 0.5);
-          boxY = clamp(mouseY, radius * 0.5, h - radius * 0.5);
-          recentre = false;
-        }
-        // Re-clamp every frame so a resize or an orientation change cannot
-        // leave neutral off the edge of the window.
-        boxX = clamp(boxX, radius * 0.5, Math.max(radius * 0.5, w - radius * 0.5));
-        boxY = clamp(boxY, radius * 0.5, Math.max(radius * 0.5, h - radius * 0.5));
+        // Neutral is the middle of the window, always. See the note on
+        // `InputService.stick` for what happened when it was not.
         stick.radius = radius;
-        stick.cx = boxX;
-        stick.cy = boxY;
-        const nx = clamp((mouseX - boxX) / radius, -1, 1);
-        const ny = clamp((mouseY - boxY) / radius, -1, 1);
+        stick.cx = w / 2;
+        stick.cy = h / 2;
+        const nx = clamp((mouseX - stick.cx) / radius, -1, 1) * armBlend;
+        const ny = clamp((mouseY - stick.cy) / radius, -1, 1) * armBlend;
         stick.x = nx;
         stick.y = ny;
         stick.active = true;
@@ -577,6 +670,7 @@ export function createInput(ctx: AngelsCtx): System {
         input.roll = clamp(input.roll + kbRoll * 0.45, -1, 1);
       } else {
         stick.active = false;
+        aim.active = false;
         // "Up" means climb unless the pilot has asked for real stick sense.
         const climb = settings.invertPitch ? down : up;
         const dive = settings.invertPitch ? up : down;
@@ -596,7 +690,11 @@ export function createInput(ctx: AngelsCtx): System {
 
       input.yaw = kbYaw;
       input.throttle = kbThrottle;
-      input.brake = held.has("Space") ? 1 : 0;
+      // One brake control, the way the touch overlay has always had it: the
+      // airbrake when you are flying and the wheel brakes when you are not.
+      // Two separate keys for two things that are never both useful at once
+      // was one more binding to explain for no gain.
+      input.brake = held.has("KeyB") ? 1 : 0;
       input.wheelBrake = held.has("KeyB") ? 1 : 0;
       input.touch = false;
     },
@@ -719,6 +817,11 @@ function buildTouchOverlay(): TouchOverlay {
 #${OVERLAY_ID} .vw{right:max(92px,calc(env(safe-area-inset-right) + 92px));bottom:max(168px,calc(env(safe-area-inset-bottom) + 148px))}
 #${OVERLAY_ID} .gr{right:max(92px,calc(env(safe-area-inset-right) + 92px));bottom:max(240px,calc(env(safe-area-inset-bottom) + 220px));
   width:52px;height:52px;font-size:9.5px}
+/* The panic button. Amber, on the left where the flying thumb already is, and
+   above the stick zone so it cannot be hit by accident mid-manoeuvre. */
+#${OVERLAY_ID} .lvl{left:max(16px,env(safe-area-inset-left));top:max(64px,calc(env(safe-area-inset-top) + 52px));
+  width:60px;height:60px;font-size:10px;color:#1a1408;
+  background:linear-gradient(180deg,#ffd75c,#f0a90c);border-color:rgba(255,246,214,.9)}
 
 #${OVERLAY_ID} .rud{position:absolute;pointer-events:auto;bottom:max(18px,env(safe-area-inset-bottom));
   width:56px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:15px;
@@ -730,6 +833,7 @@ function buildTouchOverlay(): TouchOverlay {
 /* Portrait: the view is the top two thirds and nothing may cover it. */
 @media (orientation:portrait){
   #${OVERLAY_ID} .zone{width:52%;top:38%}
+  #${OVERLAY_ID} .lvl{top:max(84px,calc(env(safe-area-inset-top) + 72px))}
   #${OVERLAY_ID} .thr{width:56px;height:min(30vh,190px)}
   #${OVERLAY_ID} .btn{width:56px;height:56px;font-size:10px}
   #${OVERLAY_ID} .brk{right:max(84px,calc(env(safe-area-inset-right) + 84px))}
@@ -742,6 +846,7 @@ function buildTouchOverlay(): TouchOverlay {
 }
 /* A short landscape window (a phone on its side) has no vertical room to spare. */
 @media (orientation:landscape) and (max-height:430px){
+  #${OVERLAY_ID} .lvl{width:52px;height:52px;font-size:9px;top:max(56px,calc(env(safe-area-inset-top) + 46px))}
   #${OVERLAY_ID} .base{width:124px;height:124px}
   #${OVERLAY_ID} .knob{width:56px;height:56px}
   #${OVERLAY_ID} .thr{width:56px;height:min(58vh,200px)}
@@ -760,6 +865,7 @@ function buildTouchOverlay(): TouchOverlay {
     '<div class="zone"></div><div class="base"></div><div class="knob"></div>' +
     '<div class="thr"><div class="fill"></div><div class="ab"></div><div class="thrLabel">PWR</div></div>' +
     '<div class="btn brk">Brk</div><div class="btn smk">Smoke</div>' +
+    '<div class="btn lvl">Level</div>' +
     '<div class="btn vw">View</div><div class="btn gr">Gear</div>' +
     '<div class="rud rl">&#9664;</div><div class="rud rr">&#9654;</div>';
 
@@ -772,6 +878,7 @@ function buildTouchOverlay(): TouchOverlay {
   const smkBtn = root.querySelector(".smk") as HTMLDivElement;
   const viewBtn = root.querySelector(".vw") as HTMLDivElement;
   const gearBtn = root.querySelector(".gr") as HTMLDivElement;
+  const levelBtn = root.querySelector(".lvl") as HTMLDivElement;
   const rudL = root.querySelector(".rl") as HTMLDivElement;
   const rudR = root.querySelector(".rr") as HTMLDivElement;
 
@@ -921,6 +1028,9 @@ function buildTouchOverlay(): TouchOverlay {
         gearBtn.classList.toggle("lit", gearOn);
         if (inputRef) inputRef.gearToggle = true;
       });
+      bindButton(levelBtn, () => {
+        if (inputRef) inputRef.levelPressed = true;
+      });
       bindButton(rudL, () => { rudder = -1; }, () => { if (rudder < 0) rudder = 0; });
       bindButton(rudR, () => { rudder = 1; }, () => { if (rudder > 0) rudder = 0; });
     },
@@ -960,7 +1070,7 @@ function buildTouchOverlay(): TouchOverlay {
       buttonIds.clear();
       base.classList.remove("live");
       knob.classList.remove("live");
-      for (const el of [brkBtn, smkBtn, viewBtn, gearBtn, rudL, rudR]) el.classList.remove("down");
+      for (const el of [brkBtn, smkBtn, viewBtn, gearBtn, levelBtn, rudL, rudR]) el.classList.remove("down");
     },
 
     dispose() {

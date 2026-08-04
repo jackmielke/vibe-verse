@@ -8,14 +8,16 @@
  * Both are the sort of change that typechecks perfectly and does nothing, so:
  *
  *  1. pressing FLY puts the controls card up, once, and never again;
- *  2. dismissing it hands control back *without* snapping the stick to
- *     wherever the button you just clicked happened to be — neutral is
- *     re-anchored under the cursor, which is the whole point;
- *  3. moving the cursor right rolls the jet right;
- *  4. moving it up pitches the nose up;
- *  5. W and S move the throttle rather than the nose;
- *  6. H reopens the card and Escape closes it without also pausing;
- *  7. the keyboard scheme puts pitch back on W and S.
+ *  2. "point & fly" does what it says: put the ring above the horizon and the
+ *     jet climbs, put it to the right and the jet banks right and comes round;
+ *  3. it settles rather than hunting — a pursuit law that oscillates is worse
+ *     than no pursuit law at all;
+ *  4. Space rolls an inverted diving jet upright and stops it going down;
+ *  5. the direct-stick scheme still works, with neutral at the middle of the
+ *     screen and no lurch when a menu closes;
+ *  6. W and S move the throttle rather than the nose;
+ *  7. H reopens the card and Escape closes it without also pausing;
+ *  8. the keyboard scheme puts pitch back on W.
  *
  * Unlike the other harnesses this one starts on the *real* page, menus and
  * all, because what is being tested is the path from a DOM event through React
@@ -96,18 +98,37 @@ const step = (n) =>
 
 const state = () =>
   page.evaluate(() => {
-    const s = window.__angels.ctx.services.fleet.player.state;
-    const st = window.__angels.ctx.services.input.stick;
+    const fleet = window.__angels.ctx.services.fleet;
+    const s = fleet.player.state;
+    const svc = window.__angels.ctx.services.input;
     const i = window.__angels.ctx.input;
     return {
       bank: (s.bank * 180) / Math.PI,
       attitude: (s.pitchAttitude * 180) / Math.PI,
+      climb: s.climb,
+      alt: s.position.y,
+      gamma: (s.gamma * 180) / Math.PI,
+      heading: (s.heading * 180) / Math.PI,
       roll: i.roll,
       pitch: i.pitch,
       throttle: i.throttle,
-      stick: { x: st.x, y: st.y, active: st.active, cx: st.cx, cy: st.cy },
+      stick: { x: st_(svc).x, y: st_(svc).y, active: st_(svc).active, cx: st_(svc).cx, cy: st_(svc).cy },
+      aim: { x: svc.aim.x, y: svc.aim.y, active: svc.aim.active },
+      levelling: fleet.levelling,
     };
+    function st_(v) {
+      return v.stick;
+    }
   });
+
+/** Put the flight somewhere clean and predictable before a manoeuvre. */
+const reset = (scheme) =>
+  page.evaluate((sc) => {
+    const e = window.__angels;
+    e.ctx.services.input.setSetting("controlScheme", sc);
+    e.ctx.services.fleet.respawn("high");
+    for (let i = 0; i < 60; i++) e.step(1 / 120, false);
+  }, scheme);
 
 const FLY = { name: "FLY", exact: true };
 
@@ -126,55 +147,201 @@ check("the Got it button sits well below centre", btnY > 380, `y=${Math.round(bt
 await gotIt.click();
 await card.waitFor({ state: "hidden", timeout: 10000 });
 await page.evaluate(() => window.__angels.stop());
-await step(4); // enough for the input system to see the menu close
-const back = await state();
+await step(4);
 check("Got it dismisses the card", true);
+
+// The mouse is disarmed until it is deliberately moved: a menu closes with the
+// cursor on whatever button was clicked, which is never where the pilot meant
+// to be pointing.
+const handback = await state();
 check(
-  "the mouse stick is live once the card is gone",
-  back.stick.active,
-  `stick ${back.stick.active ? "live" : "not live"}`,
-);
-check(
-  "neutral is re-anchored under the cursor, not at the screen centre",
-  Math.abs(back.stick.cy - btnY) < 40 && Math.abs(back.stick.cy - 360) > 100,
-  `neutral y=${Math.round(back.stick.cy)}, button was at ${Math.round(btnY)}`,
-);
-check(
-  "so the jet is not bunted the instant the card closes",
-  Math.abs(back.stick.y) < 0.05 && Math.abs(back.pitch) < 0.02,
-  `stick.y=${back.stick.y.toFixed(3)}, pitch cmd=${back.pitch.toFixed(3)}`,
+  "the jet is not steered by wherever the button happened to be",
+  !handback.aim.active && Math.abs(handback.pitch) < 0.02 && Math.abs(handback.roll) < 0.02,
+  `aim ${handback.aim.active ? "already live" : "disarmed"}, pitch cmd ${handback.pitch.toFixed(3)}`,
 );
 
-const NEUTRAL = { x: back.stick.cx, y: back.stick.cy };
+// ---- 3. point & fly: the ring above the horizon makes it climb -------------
+await reset("pursuit");
+const CX = 640;
+const CY = 360;
+await page.mouse.move(CX, CY);
+await step(20);
+await page.mouse.move(CX, CY - 250); // ring well above the horizon
+await step(360);
+const climb = await state();
+check(
+  "putting the ring above the horizon makes the jet climb",
+  climb.aim.active && climb.gamma > 12 && climb.climb > 35,
+  `flight path ${climb.gamma.toFixed(1)}° up, ${climb.climb.toFixed(0)} m/s`,
+);
+check(
+  "and it does it by pulling, not by pointing the nose and mushing",
+  climb.attitude > 8,
+  `attitude ${climb.attitude.toFixed(1)}°`,
+);
 
-// ---- 3. cursor right rolls right -------------------------------------------
-await page.mouse.move(NEUTRAL.x + 170, NEUTRAL.y);
-// Three quarters of a second. Any longer and it has rolled past the vertical
-// and the sign of `bank` stops meaning what the check thinks it means — the
-// first version of this ran for five seconds, went round three times, and
-// reported a *left* bank from a right command.
+// ---- 4. the ring to the right makes it bank and turn ------------------------
+await reset("pursuit");
+await page.mouse.move(CX, CY);
+await step(20);
+const hdg0 = (await state()).heading;
+await page.mouse.move(CX + 320, CY);
+await step(360);
+const turning = await state();
+const turned = ((turning.heading - hdg0 + 540) % 360) - 180;
+check(
+  "the ring to the right banks the jet right and brings it round",
+  turning.bank > 25 && turned > 12,
+  `bank ${turning.bank.toFixed(0)}°, turned ${turned.toFixed(0)}° right`,
+);
+
+// ---- 5. and it settles instead of hunting ----------------------------------
+// A pursuit law that oscillates is worse than none: the jet feels like it is
+// fighting you. Bring the ring back to the middle, let it converge, then watch
+// the bank for a couple of seconds.
+await page.mouse.move(CX, CY);
+await step(700);
+const swing = await page.evaluate(() => {
+  const e = window.__angels;
+  const s = e.ctx.services.fleet.player.state;
+  let lo = 999;
+  let hi = -999;
+  for (let k = 0; k < 60; k++) {
+    for (let i = 0; i < 4; i++) e.step(1 / 120, false);
+    const b = (s.bank * 180) / Math.PI;
+    lo = Math.min(lo, b);
+    hi = Math.max(hi, b);
+  }
+  return { lo, hi, swing: hi - lo };
+});
+check(
+  "with the ring centred the jet settles rather than hunting",
+  swing.swing < 12 && Math.abs(swing.hi) < 20,
+  `bank ${swing.lo.toFixed(1)}°..${swing.hi.toFixed(1)}° over two seconds`,
+);
+
+// ---- 6. Space is the way out of trouble ------------------------------------
+// Inverted and going down, which is the exact situation the complaint was
+// about — and the one where "which way do I push?" has no obvious answer.
+const rolledOut = await page.evaluate(() => {
+  const e = window.__angels;
+  const fleet = e.ctx.services.fleet;
+  fleet.respawn("high");
+  const s = fleet.player.state;
+  s.orientation.set(0, 0, 1, 0); // 180° roll about the nose axis
+  s.velocity.set(0, -90, -180);
+  for (let i = 0; i < 30; i++) e.step(1 / 120, false);
+  // The pursuit ring is still armed from the last check; stand it down so what
+  // is being measured is the recovery and not the recovery plus a ring.
+  e.ctx.services.input.aim.active = false;
+  fleet.levelOut();
+  for (let i = 0; i < 120 * 2.8; i++) e.step(1 / 120, false);
+  return {
+    bank: Math.abs((s.bank * 180) / Math.PI),
+    gamma: (s.gamma * 180) / Math.PI,
+    wrecked: fleet.wreck.active,
+  };
+});
+check(
+  "Space rolls an inverted diving jet upright",
+  !rolledOut.wrecked && rolledOut.bank < 25,
+  rolledOut.wrecked ? "hit the ground first" : `${rolledOut.bank.toFixed(0)}° of bank left`,
+);
+check(
+  "and pulls the flight path back toward level",
+  !rolledOut.wrecked && rolledOut.gamma > -14,
+  `flight path ${rolledOut.gamma.toFixed(0)}°, was -27°`,
+);
+
+// The promise is not "the numbers improve", it is "you do not die". Forty
+// degrees nose down through two thousand three hundred feet, which is a
+// smoking hole in five seconds if nobody does anything.
+const saved = await page.evaluate(() => {
+  const e = window.__angels;
+  const fleet = e.ctx.services.fleet;
+
+  const dive = (useLevel) => {
+    fleet.respawn("high");
+    const s = fleet.player.state;
+    s.position.y = 700;
+    // Pitch the nose 45° down about the *body* right axis: setting x/w on a
+    // fresh quaternion and post-multiplying is a rotation in the body frame,
+    // which is the only way to do this from page context without THREE in
+    // scope. Then put the velocity straight down the nose, so the jet is
+    // genuinely diving rather than mushing at a fictional angle of attack.
+    const a = -Math.PI / 4.5;
+    const q = s.orientation.clone();
+    q.set(Math.sin(a / 2), 0, 0, Math.cos(a / 2));
+    s.orientation.multiply(q);
+    s.velocity.set(0, 0, -1).applyQuaternion(s.orientation).multiplyScalar(200);
+    s.angular.set(0, 0, 0);
+    e.ctx.services.input.aim.active = false;
+    e.ctx.input.pitch = 0;
+    e.ctx.input.roll = 0;
+    for (let i = 0; i < 12; i++) e.step(1 / 120, false);
+    if (useLevel) fleet.levelOut();
+    let lowest = s.position.y;
+    let atRecovery = null;
+    for (let i = 0; i < 120 * 9; i++) {
+      e.step(1 / 120, false);
+      lowest = Math.min(lowest, s.radarAltitude);
+      if (useLevel && atRecovery === null && fleet.levelling === 0 && i > 60) {
+        atRecovery = Math.round(s.climb);
+      }
+      if (fleet.wreck.active) break;
+    }
+    const out = {
+      wrecked: fleet.wreck.active,
+      alt: Math.round(s.position.y),
+      climb: Math.round(s.climb),
+      lowest: Math.round(lowest),
+      atRecovery,
+    };
+    if (fleet.wreck.active) fleet.restart();
+    return out;
+  };
+
+  const without = dive(false);
+  const with_ = dive(true);
+  return { without, with_ };
+});
+check(
+  "and a dive at the ground that would otherwise kill you does not",
+  saved.without.wrecked && !saved.with_.wrecked && saved.with_.atRecovery > -12,
+  `hands off: ${saved.without.wrecked ? "crashed" : `survived at ${saved.without.alt} m`} · ` +
+    `LEVEL: ${
+      saved.with_.wrecked
+        ? "crashed"
+        : `bottomed out ${saved.with_.lowest} m over the ground, ${saved.with_.atRecovery} m/s at hand-back`
+    }`,
+);
+
+// ---- 7. the direct-stick scheme, with neutral in the middle ----------------
+await reset("stick");
+await page.mouse.move(CX + 30, CY + 30);
+await step(10);
+await page.mouse.move(CX, CY);
 await step(90);
-const rolled = await state();
+const centred = await state();
 check(
-  "moving the cursor right rolls the jet right",
-  rolled.roll > 0.3 && rolled.bank > 10 && rolled.bank < 170,
-  `roll cmd ${rolled.roll.toFixed(2)}, bank ${rolled.bank.toFixed(1)}°`,
+  "direct stick puts neutral at the middle of the screen",
+  centred.stick.active &&
+    Math.abs(centred.stick.cx - CX) < 2 &&
+    Math.abs(centred.stick.cy - CY) < 2 &&
+    Math.abs(centred.pitch) < 0.02,
+  `neutral at ${Math.round(centred.stick.cx)},${Math.round(centred.stick.cy)}`,
+);
+await page.mouse.move(CX + 170, CY);
+await step(90);
+const stickRoll = await state();
+check(
+  "and the cursor to the right still rolls it right",
+  stickRoll.roll > 0.3 && stickRoll.bank > 10 && stickRoll.bank < 170,
+  `roll cmd ${stickRoll.roll.toFixed(2)}, bank ${stickRoll.bank.toFixed(1)}°`,
 );
 
-// ---- 4. cursor up pitches up ------------------------------------------------
-await page.mouse.move(NEUTRAL.x, NEUTRAL.y);
-await step(900); // wings back level
-await page.mouse.move(NEUTRAL.x, NEUTRAL.y - 170);
-await step(500);
-const climbed = await state();
-check(
-  "moving the cursor up pitches the nose up",
-  climbed.pitch > 0.3 && climbed.attitude > 5,
-  `pitch cmd ${climbed.pitch.toFixed(2)}, attitude ${climbed.attitude.toFixed(1)}°`,
-);
-
-// ---- 5. W and S are the throttle in the mouse scheme ------------------------
-await page.mouse.move(NEUTRAL.x, NEUTRAL.y);
+// ---- 8. W and S are the throttle whenever the mouse is flying ---------------
+await page.mouse.move(CX, CY);
 await step(30);
 const before = (await state()).throttle;
 await page.keyboard.down("s");

@@ -138,57 +138,85 @@ first step after a respawn it is the *previous flight's* attitude, which is how
 a jet parked on a runway came to be judged by the dive it was in when it hit the
 lake thirty seconds earlier. The contact test reads the live orientation now.
 
-## On a desktop, the cursor is the stick
+## Three ways to fly it, and one of them needs no explanation
 
-The first version shipped with the keys listed in an options panel on the
-hangar screen and nothing at all once you pressed FLY, and the first report
-back was that nobody could work out how to fly it. Two things were wrong.
+The first version of the desktop controls put pitch and roll on the mouse as a
+*stick*: cursor offset from neutral, deflection commands a rate. That is a fine
+model for somebody who already flies and a poor one for everybody else, and the
+feedback said so — "it is very unclear how we are supposed to pull up". A stick
+is two integrations away from where the aeroplane ends up. Nobody thinks in
+roll rates.
 
-The obvious one: **nothing told you.** You can work out a first-person shooter
-by pressing W. You cannot work out an aeroplane. So `ui/Controls.tsx` opens by
-itself the first time you fly, remembers that you have seen it, and is on `H`
-and a `? Keys` button for ever after. It lists the bindings for the scheme you
-are actually using rather than both, because a control card that lists controls
-you do not have is worse than none.
+So the default is now **Point & fly**, and it takes the stick out of the
+conversation entirely. A ring follows the mouse. The jet flies to the ring: it
+picks the bank angle, it picks the pull, and it coordinates the two the way a
+pilot does without narrating it to themselves. *Pulling up is putting the ring
+above the horizon.* That is the whole control, and it is the first line on the
+controls card in larger type than anything else on it.
 
-The less obvious one: **four keys are a bad stick.** W-A-S-D driving an
-analogue control law through a ramp is fine for gentle turns and hopeless for
-anything you would want to fly at an air show — you cannot hold thirty degrees
-of bank and a quarter of aft stick at the same time with digital keys. So the
-default desktop scheme puts pitch and roll on the mouse: the cursor's offset
-from a neutral point, inside a box a bit under a third of the screen, *is* the
-stick deflection. W and S become the throttle, which is what a hand on the
-keyboard most wants when the other hand is flying. Keyboard flying is still
-there, one toggle away, and the setting is remembered.
+The law lives in `flyToAim` in `play/fleet.ts` and it is two numbers. The aim
+direction, resolved in the aircraft's body frame, gives how far off it is to
+the right and how far above the canopy. `atan2` of the pair is how far to roll
+to put the target overhead — which is where a wing wants it before it pulls —
+and the vertical component alone is how hard to pull once you are there.
 
-Two details make it work rather than merely exist:
+Three details are the difference between "works" and "feels right", and all
+three were found by watching it misbehave:
 
-**The HUD draws the stick.** A dashed ring at the edge of the box, a cross at
-neutral, and a dot where the stick currently is. Without it the first thirty
-seconds are a guess about how sensitive the thing is; with it the control
-explains itself and never needs to be read about again.
+**Weight the roll by how much error there is.** `atan2` answers "which way
+round" without caring "by how much", so a two-degree pointing error earns a
+ninety-degree roll command exactly as loudly as a real one does. Combine that
+with a chase camera that lags in a turn — so the middle of the screen is never
+quite the nose — and the jet hunts: it rolls hard to fix an error the roll
+itself created.
 
-**Neutral re-anchors when a menu closes.** Neutral is normally the middle of
-the window, but the button you just clicked to get back into the game is not,
-and handing control back with the stick already three quarters forward bunted
-the jet the instant the card vanished. So closing a menu re-anchors neutral
-under the cursor — zero deflection, no lurch — and the ring moves with it,
-which is why the HUD is told where the box is instead of assuming.
+**Floor the denominator.** `atan2(lat, max(vert, 0))` snaps to ±90° for any
+lateral error at all when the target is a hair below the nose, which, because
+the chase camera looks slightly down at its own aeroplane, is *always*.
 
-The thing that made this hard to get right is that the two guards involved look
-interchangeable and are not. `pointerleave` on the document element means the
-cursor left the window. A `pointerout` whose `relatedTarget` is null looks like
-the same statement and is not: removing the element under the cursor fires
-exactly that, so dismissing the controls card read as the cursor leaving and
-the jet went limp until the mouse was moved again.
+**Blend into levelling.** With the ring centred there is nothing left to roll
+toward, so the command hands over to rolling wings level. Without it the jet
+flies straight ahead in a thirty-degree bank — which is correct, it is going
+where you pointed — and reads as the controls being stuck.
 
-Related: edge-triggered input is announced on the event bus, not polled. The
-React layer used to watch `input.pausePressed` on a 60 ms timer, which is a
-race it loses more often than it wins — the flag is raised in a DOM handler and
-cleared at the end of the very next frame, so it exists for about sixteen
-milliseconds and Escape opened the menu roughly one press in three.
+The other two schemes are still there, one click away in Options, the pause
+menu or the card: **Direct stick** (the old scheme, with neutral now pinned to
+the middle of the screen) and **Keyboard**.
 
-## Seafair is the point
+## Space is the way out of trouble
+
+The other half of the answer. Press it — or the amber `LEVEL` button, which is
+in the corner on a desktop and on the touch overlay on a phone — and the jet
+rolls upright and flies back to the horizon, climbing if it is low. Any real
+stick input cancels it instantly, because the point is to hand the aeroplane
+back rather than to fly it for you.
+
+Two things it gets right that the obvious implementation does not:
+
+**It flies the flight path, not the attitude.** Levelling the nose of a jet
+descending at ninety metres a second leaves it descending at ninety metres a
+second with the nose level, because the wing is at a positive angle of attack
+and the aeroplane goes where the air says. Driving *gamma* to zero is the
+difference between looking recovered and being recovered.
+
+**It measures bank off the body axes, not off `state.bank`.** That number comes
+out of a YXZ Euler decomposition, which is fine for an instrument and
+degenerate at exactly inverted — where it reports a bank of *zero*, in the one
+attitude the recovery most needs to know better. Two dot products have no such
+opinion.
+
+And it ends when the jet is level, not when a stopwatch says so. A fixed
+three-second recovery gave a steep dive three seconds of pull and then handed
+the aeroplane back still pointed at the ground, which is the exact outcome the
+control exists to prevent. There is still a cap, so a jet with no speed and no
+wing does not fly itself for ever.
+
+Airbrake moved from `Space` to `B`, where it merged with the wheel brakes —
+one control that is the airbrake in the air and the brakes on the ground, which
+is what the phone's BRK button always was. They are never both useful at once,
+and it freed the biggest key on the keyboard for the one that matters most.
+
+## Seafair is the point## Seafair is the point
 
 The air show was added to a boat race, not the other way round, so the boat
 race is in here: six unlimited hydroplanes running the real course off Stan
@@ -292,9 +320,9 @@ node scripts/angels-phone.mjs shots
 # context.
 node scripts/angels-check.mjs
 
-# The desktop controls, end to end through React: the card opens once, the
-# cursor flies the jet, W and S are the throttle, and closing the card does
-# not bunt it.
+# The desktop controls, end to end through React: the card opens once, the ring
+# actually steers the jet and settles rather than hunting, Space saves a dive
+# that would otherwise kill you, and W and S are the throttle.
 node scripts/angels-desktop.mjs
 ```
 

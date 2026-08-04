@@ -123,6 +123,9 @@ export default function FlightHUD({ engine, visible }: Props) {
   const targetRing = useRef<SVGGElement>(null);
   const stickRing = useRef<SVGGElement>(null);
   const stickDot = useRef<SVGGElement>(null);
+  const aimRing = useRef<SVGGElement>(null);
+  const aimLine = useRef<SVGLineElement>(null);
+  const levelTag = useRef<SVGTextElement>(null);
   const greyVeil = useRef<HTMLDivElement>(null);
   const redVeil = useRef<HTMLDivElement>(null);
 
@@ -172,6 +175,8 @@ export default function FlightHUD({ engine, visible }: Props) {
         const vx = Math.max(-lim, Math.min(lim, -betaDeg * pxPerDeg));
         const vy = Math.max(-L.box.h * 0.44, Math.min(L.box.h * 0.44, aoaDeg * pxPerDeg));
         vv.current.setAttribute("transform", `translate(${cx + vx} ${cy + vy})`);
+        vv.current.dataset.x = String(vx);
+        vv.current.dataset.y = String(vy);
         vv.current.setAttribute("stroke", s.stalled ? RED : s.liftDemand > 0.88 ? AMBER : GREEN);
       }
 
@@ -307,6 +312,37 @@ export default function FlightHUD({ engine, visible }: Props) {
           stickRing.current.setAttribute("opacity", "0");
           stickDot.current.setAttribute("opacity", "0");
         }
+      }
+
+      // ---- the pursuit ring ------------------------------------------------
+      // The single most important symbol in the "point where you want to go"
+      // scheme, because it *is* the control. Drawn with a line back to the
+      // velocity vector so the relationship is stated rather than inferred:
+      // that is where you are going, this is where you asked to go, and the
+      // jet is closing the gap between them.
+      const av = inputSvc?.aim;
+      if (aimRing.current && aimLine.current) {
+        if (av?.active) {
+          aimRing.current.setAttribute("opacity", "0.95");
+          aimRing.current.setAttribute("transform", `translate(${av.px} ${av.py})`);
+          const vvx = cx + Number(vv.current?.dataset.x ?? 0);
+          const vvy = cy + Number(vv.current?.dataset.y ?? 0);
+          const far = Math.hypot(av.px - vvx, av.py - vvy) > 26;
+          aimLine.current.setAttribute("opacity", far ? "0.4" : "0");
+          aimLine.current.setAttribute("x1", String(vvx));
+          aimLine.current.setAttribute("y1", String(vvy));
+          aimLine.current.setAttribute("x2", String(av.px));
+          aimLine.current.setAttribute("y2", String(av.py));
+        } else {
+          aimRing.current.setAttribute("opacity", "0");
+          aimLine.current.setAttribute("opacity", "0");
+        }
+      }
+
+      if (levelTag.current) {
+        const on = fleet.levelling > 0;
+        levelTag.current.setAttribute("opacity", on ? "1" : "0");
+        levelTag.current.textContent = on ? "RECOVERING" : "";
       }
 
       if (greyVeil.current) greyVeil.current.style.opacity = String(fleet.greyout.grey * 0.94);
@@ -577,6 +613,39 @@ export default function FlightHUD({ engine, visible }: Props) {
           <circle cx={0} cy={0} r={fs(5)} fill="none" stroke={GREEN} strokeWidth={2} />
           <circle cx={0} cy={0} r={1.6} fill={GREEN} />
         </g>
+
+        {/* the pursuit ring: where you asked to go */}
+        <line
+          ref={aimLine}
+          x1={0}
+          y1={0}
+          x2={0}
+          y2={0}
+          stroke={AMBER}
+          strokeWidth={1.4}
+          strokeDasharray="4 7"
+          opacity={0}
+        />
+        <g ref={aimRing} opacity={0} fill="none" stroke={AMBER} strokeWidth={2.2}>
+          <circle cx={0} cy={0} r={fs(15)} />
+          <line x1={fs(-24)} y1={0} x2={fs(-19)} y2={0} />
+          <line x1={fs(19)} y1={0} x2={fs(24)} y2={0} />
+          <line x1={0} y1={fs(-24)} x2={0} y2={fs(-19)} />
+          <line x1={0} y1={fs(19)} x2={0} y2={fs(24)} />
+          <circle cx={0} cy={0} r={2} fill={AMBER} />
+        </g>
+
+        <text
+          ref={levelTag}
+          x={cx}
+          y={box.y + box.h + fs(26)}
+          fill={AMBER}
+          fontSize={fs(13)}
+          textAnchor="middle"
+          fontFamily={MONO}
+          fontWeight="bold"
+          opacity={0}
+        />
 
         {/* next hoop */}
         <g ref={targetRing} opacity={0}>

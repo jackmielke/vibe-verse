@@ -29,6 +29,7 @@ export function bindingsFor(scheme: ControlScheme, touch: boolean): Binding[] {
     return [
       { keys: "Left thumb", what: "Fly — drag anywhere on the left half", primary: true },
       { keys: "Right thumb", what: "Throttle — the orange strip", primary: true },
+      { keys: "LEVEL", what: "Lost? This rolls you upright and finds the horizon" },
       { keys: "BRK", what: "Airbrake, and the wheel brakes on the ground" },
       { keys: "SMOKE", what: "Smoke on and off" },
       { keys: "VIEW", what: "Change camera" },
@@ -36,18 +37,37 @@ export function bindingsFor(scheme: ControlScheme, touch: boolean): Binding[] {
       { keys: "◀ ▶", what: "Rudder" },
     ];
   }
-  if (scheme === "mouse") {
+  if (scheme === "pursuit") {
     return [
-      { keys: "Move mouse", what: "Fly. The cursor is the stick.", primary: true },
+      { keys: "Move mouse", what: "Put the ring where you want to go. The jet flies to it.", primary: true },
       { keys: "W  S", what: "Throttle up and down", primary: true },
+      { keys: "Space", what: "Lost? Rolls you upright and finds the horizon", primary: true },
+      { keys: "A  D", what: "Roll by hand — this is how you do a barrel roll" },
       { keys: "Q  E", what: "Rudder" },
-      { keys: "A  D", what: "Fine roll trim, for formation work" },
-      { keys: "Space", what: "Airbrake" },
+      { keys: "B", what: "Brakes: airbrake in the air, wheels on the ground" },
       { keys: "1 – 0", what: "Throttle gate: 1 idle, 0 full burner" },
       { keys: "G", what: "Landing gear" },
       { keys: "X", what: "Smoke" },
       { keys: "C", what: "Change camera" },
-      { keys: "R", what: "Put me back over the lake" },
+      { keys: "R", what: "Put me back at the start" },
+      { keys: "Right-drag", what: "Look around" },
+      { keys: "H", what: "Show this card" },
+      { keys: "Esc", what: "Menu" },
+    ];
+  }
+  if (scheme === "stick") {
+    return [
+      { keys: "Move mouse", what: "Fly. The cursor is the stick; the middle of the screen is neutral.", primary: true },
+      { keys: "W  S", what: "Throttle up and down", primary: true },
+      { keys: "Space", what: "Lost? Rolls you upright and finds the horizon", primary: true },
+      { keys: "Q  E", what: "Rudder" },
+      { keys: "A  D", what: "Fine roll trim, for formation work" },
+      { keys: "B", what: "Brakes: airbrake in the air, wheels on the ground" },
+      { keys: "1 – 0", what: "Throttle gate: 1 idle, 0 full burner" },
+      { keys: "G", what: "Landing gear" },
+      { keys: "X", what: "Smoke" },
+      { keys: "C", what: "Change camera" },
+      { keys: "R", what: "Put me back at the start" },
       { keys: "Right-drag", what: "Look around" },
       { keys: "H", what: "Show this card" },
       { keys: "Esc", what: "Menu" },
@@ -56,19 +76,46 @@ export function bindingsFor(scheme: ControlScheme, touch: boolean): Binding[] {
   return [
     { keys: "W  S", what: "Climb and dive", primary: true },
     { keys: "A  D", what: "Roll left and right", primary: true },
-    { keys: "Shift  Z", what: "Throttle up and down", primary: true },
+    { keys: "Space", what: "Lost? Rolls you upright and finds the horizon", primary: true },
+    { keys: "Shift  Z", what: "Throttle up and down" },
     { keys: "Q  E", what: "Rudder" },
-    { keys: "Space", what: "Airbrake" },
+    { keys: "B", what: "Brakes: airbrake in the air, wheels on the ground" },
     { keys: "1 – 0", what: "Throttle gate: 1 idle, 0 full burner" },
     { keys: "G", what: "Landing gear" },
     { keys: "X", what: "Smoke" },
     { keys: "C", what: "Change camera" },
-    { keys: "R", what: "Put me back over the lake" },
+    { keys: "R", what: "Put me back at the start" },
     { keys: "Right-drag", what: "Look around" },
     { keys: "H", what: "Show this card" },
     { keys: "Esc", what: "Menu" },
   ];
 }
+
+/**
+ * The one sentence that answers the question everybody actually asks.
+ *
+ * "It is very unclear how we are supposed to pull up" is not a request for a
+ * longer key list — it is a sign that the key list was the wrong answer. Every
+ * scheme gets a plain-English statement of how to climb, in bigger type than
+ * anything else on this card, because that is the thing a first-time pilot
+ * needs and everything else can wait until they are in the air.
+ */
+const HOW_TO_CLIMB: Record<ControlScheme | "touch", string> = {
+  pursuit: "To pull up: move the ring above the horizon. That is the whole control.",
+  stick: "To pull up: move the mouse toward the top of the screen.",
+  keyboard: "To pull up: hold W.",
+  touch: "To pull up: slide your left thumb up the screen.",
+};
+
+const SCHEMES: Array<{ id: ControlScheme; name: string; blurb: string }> = [
+  {
+    id: "pursuit",
+    name: "Point & fly",
+    blurb: "Aim the ring, the jet goes there",
+  },
+  { id: "stick", name: "Direct stick", blurb: "The cursor is the stick" },
+  { id: "keyboard", name: "Keyboard", blurb: "W A S D only" },
+];
 
 /** One line of advice that is worth more than the whole key list. */
 const TIPS: Record<SpawnPoint, string> = {
@@ -103,12 +150,15 @@ export default function ControlsCard({ scheme, touch, start, onScheme, onClose }
   return (
     <div
       data-angels-hud="help"
-      className="fixed inset-0 z-40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto p-4"
       style={{ background: "rgba(2,6,15,0.62)", backdropFilter: "blur(3px)" }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/12"
+        // `my-auto` rather than centring the flex item, so that on a short
+        // laptop window the card scrolls instead of having its top and its
+        // "Got it" button both clipped off the screen at once.
+        className="my-auto w-full max-w-md overflow-hidden rounded-2xl border border-white/12"
         style={{ background: "rgba(5,12,26,0.97)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -117,28 +167,30 @@ export default function ControlsCard({ scheme, touch, start, onScheme, onClose }
             How to fly it
           </p>
 
+          <p className="mt-2 text-[15px] font-bold leading-snug text-amber-200">
+            {HOW_TO_CLIMB[touch ? "touch" : scheme]}
+          </p>
+
           {!touch && (
-            <div className="mt-2.5 flex gap-1.5">
-              {(["mouse", "keyboard"] as ControlScheme[]).map((s) => (
+            <div className="mt-3 flex gap-1.5">
+              {SCHEMES.map((o) => (
                 <button
-                  key={s}
-                  onClick={() => onScheme(s)}
-                  className={`flex-1 rounded-lg px-3 py-2 text-left transition ${
-                    scheme === s
+                  key={o.id}
+                  onClick={() => onScheme(o.id)}
+                  className={`flex-1 rounded-lg px-2.5 py-2 text-left transition ${
+                    scheme === o.id
                       ? "bg-amber-400/20 ring-1 ring-amber-300/60"
                       : "bg-white/[0.05] hover:bg-white/[0.1]"
                   }`}
                 >
                   <p
-                    className={`text-[12.5px] font-bold ${
-                      scheme === s ? "text-amber-100" : "text-white/60"
+                    className={`text-[12px] font-bold ${
+                      scheme === o.id ? "text-amber-100" : "text-white/60"
                     }`}
                   >
-                    {s === "mouse" ? "Mouse" : "Keyboard"}
+                    {o.name}
                   </p>
-                  <p className="text-[10.5px] leading-snug text-sky-100/45">
-                    {s === "mouse" ? "The cursor is the stick" : "W A S D only"}
-                  </p>
+                  <p className="text-[10px] leading-snug text-sky-100/45">{o.blurb}</p>
                 </button>
               ))}
             </div>

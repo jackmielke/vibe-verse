@@ -53,6 +53,8 @@ export interface AngelsInput {
   pausePressed: boolean;
   resetPressed: boolean;
   helpPressed: boolean;
+  /** "Get me out of this" — roll upright and fly to the horizon. */
+  levelPressed: boolean;
 
   /** Which device most recently did something. Drives the on-screen prompts. */
   source: InputSource;
@@ -77,6 +79,7 @@ export function makeInput(): AngelsInput {
     pausePressed: false,
     resetPressed: false,
     helpPressed: false,
+    levelPressed: false,
     source: "keyboard",
     touch: false,
   };

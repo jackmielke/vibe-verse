@@ -171,6 +171,10 @@ export interface FleetService {
   };
   /** Skip the countdown and go now. */
   restart(): void;
+  /** Roll upright and fly to the horizon for a couple of seconds. */
+  levelOut(): void;
+  /** Seconds of recovery left, for the HUD to show it is doing something. */
+  readonly levelling: number;
   /**
    * Put the whole flight on a run-in of your choosing, in formation.
    * Heading is degrees true, speed m/s.
@@ -503,6 +507,151 @@ export function createFleet(ctx: AngelsCtx): System {
     return -_euler.z;
   }
 
+  // ---- flying it without thinking about a stick -----------------------------
+
+  const _aimDir = new THREE.Vector3();
+  const _want = new THREE.Vector3();
+
+  /**
+   * Bank angle, measured off the body axes rather than off an Euler triple.
+   *
+   * `state.bank` comes out of a YXZ decomposition and is fine for an instrument
+   * — but at exactly inverted the decomposition is degenerate and reports a
+   * bank of *zero*, which is the one attitude where the recovery most needs to
+   * know better. Two dot products have no such opinion: how far the right wing
+   * is above the horizon and how far the canopy is, and the arctangent of the
+   * pair is the bank, continuous all the way round through ±180°.
+   */
+  function trueBank(a: Aircraft): number {
+    _right.copy(BODY_RIGHT).applyQuaternion(a.state.orientation);
+    _up.copy(BODY_UP).applyQuaternion(a.state.orientation);
+    return -Math.atan2(_right.y, _up.y);
+  }
+
+  /**
+   * Fly toward a point on the screen.
+   *
+   * This is the whole of the "pursuit" control scheme, and it is a different
+   * *kind* of control from the stick: the pilot names an outcome — that place,
+   * out there — and this picks the bank angle and the pull that get there. It
+   * is what a real pilot does without narrating it to themselves, and it is
+   * why "how do I pull up" stops being a question. You put the ring above the
+   * horizon.
+   *
+   * Two numbers do the work. The aim direction is resolved in the aircraft's
+   * *body* frame, giving how far off it is to the right (`lat`) and how far
+   * above the canopy (`vert`):
+   *
+   *  - **Roll** is `atan2(lat, vert)` — how far you would have to roll to put
+   *    the target directly above your head, which is where a wing wants it
+   *    before it pulls. That is a *relative* angle, so it is commanded
+   *    directly: the control law takes a roll rate, and a rate proportional to
+   *    an angle error is already a position loop. Damped by the measured roll
+   *    rate so it arrives rather than swinging past.
+   *  - **Pitch** is just `vert`. Once the roll is right the target is above
+   *    you, so pulling is the only thing left to do — and if it is below you
+   *    and dead ahead, `vert` is negative and the same expression pushes.
+   *
+   * `Math.max(vert, 0)` in the roll term is what stops it rolling inverted to
+   * chase something below the nose. Aerobatically that would be correct; for
+   * somebody who just wants to go down, it is the game turning upside down for
+   * no reason they can see.
+   *
+   * The last term is the one that makes it *feel* right rather than merely
+   * work: as the ring closes on the middle there is nothing left to roll
+   * toward, so the command blends into rolling wings level. Without it the jet
+   * happily flies straight ahead in a thirty-degree bank, which is correct —
+   * it is going where you pointed — and looks like the controls are stuck.
+   */
+  function flyToAim(a: Aircraft, aim: { x: number; y: number }): void {
+    const s = a.state;
+    // A point a long way down the camera ray. Four kilometres is far enough
+    // that the offset between the camera and the jet stops mattering, and
+    // close enough that the direction still changes usefully as you fly.
+    _aimDir.set(aim.x, aim.y, 0.5).unproject(ctx.camera).sub(ctx.camera.position).normalize();
+    _want
+      .copy(ctx.camera.position)
+      .addScaledVector(_aimDir, 4000)
+      .sub(s.position)
+      .normalize();
+
+    _right.copy(BODY_RIGHT).applyQuaternion(s.orientation);
+    _up.copy(BODY_UP).applyQuaternion(s.orientation);
+    const lat = _want.dot(_right);
+    const vert = _want.dot(_up);
+
+    // The floor on the denominator is not cosmetic. At exactly zero, a target
+    // a hair below the nose and a hair to the right gives `atan2(tiny, 0)` =
+    // ninety degrees — so the jet would snap into a knife-edge over a lateral
+    // error of nothing, and because the chase camera looks slightly down at
+    // its own aeroplane, "ring in the middle of the screen" is *always* a
+    // little below the nose. The result was a jet that rolled continuously
+    // whenever you were not asking it to do anything.
+    const toAim = THREE.MathUtils.clamp(Math.atan2(lat, Math.max(vert, 0.12)), -1.3, 1.3);
+
+    // Weight the pursuit roll by how much pointing error there actually is.
+    //
+    // `atan2` answers "which way round" without caring "by how much", so a two
+    // degree error a hair below the nose earns a ninety degree roll command
+    // exactly as loudly as a real one does. Combine that with a chase camera
+    // that lags in a turn — so the middle of the screen is never quite the
+    // nose — and the jet hunts: it rolls hard to fix an error that the roll
+    // itself created. Below a couple of degrees the command is pure levelling,
+    // above about ten it is pure pursuit, and in between it is a blend.
+    const err = Math.hypot(lat, vert);
+    const pursuit = THREE.MathUtils.clamp((err - 0.03) / 0.16, 0, 1);
+    const wantRoll = toAim * pursuit + -trueBank(a) * (1 - pursuit);
+
+    a.controls.roll = THREE.MathUtils.clamp(wantRoll * 1.6 - s.rollRate * 0.38, -1, 1);
+    a.controls.pitch = THREE.MathUtils.clamp(vert * 2.6 - s.pitchRate * 0.10, -1, 1);
+  }
+
+  /**
+   * The panic button: roll upright, come back to the horizon, and if you are
+   * low, climb.
+   *
+   * Three seconds of it, cancelled the moment the pilot touches
+   * anything, because the point is to hand the aeroplane back rather than to
+   * fly it for them. The pitch term is scaled by how upright the jet is, so an
+   * inverted dive rolls level *first* and only then pulls — pulling while
+   * inverted is how you make a recovery into an impact.
+   */
+  let levelTimer = 0;
+  /**
+   * A ceiling, not a duration.
+   *
+   * The recovery ends when the jet is *level*, not when a stopwatch says so.
+   * Running it for a fixed three seconds meant a steep dive got three seconds
+   * of pull and then had the aeroplane handed back still pointed at the
+   * ground, which is the one outcome this control exists to prevent. The cap
+   * is only there so a jet that cannot recover — no speed, no wing — does not
+   * fly itself for ever.
+   */
+  const LEVEL_MAX_SECONDS = 8;
+
+  function flyLevel(a: Aircraft): void {
+    const s = a.state;
+    const bank = trueBank(a);
+    _up.copy(BODY_UP).applyQuaternion(s.orientation);
+    const upright = THREE.MathUtils.clamp(_up.y, 0, 1);
+    // Down low, level is not enough — get some air underneath first.
+    //
+    // Flown on the *flight path*, not the attitude. Levelling the nose of a
+    // jet that is already descending at ninety metres a second leaves it
+    // descending at ninety metres a second with the nose level, because the
+    // wing is at a positive angle of attack and the aeroplane is going where
+    // the air says, not where the nose points. Driving gamma to zero is the
+    // difference between looking recovered and being recovered.
+    const wantGamma = s.radarAltitude < 400 ? 0.16 : 0;
+    a.controls.roll = THREE.MathUtils.clamp(-bank * 1.9 - s.rollRate * 0.34, -1, 1);
+    a.controls.pitch = THREE.MathUtils.clamp(
+      (wantGamma - s.gamma) * 2.4 * upright - s.pitchRate * 0.22,
+      -1,
+      1,
+    );
+    a.controls.yaw = 0;
+  }
+
   // ---- crashing ------------------------------------------------------------
 
   /**
@@ -612,6 +761,12 @@ export function createFleet(ctx: AngelsCtx): System {
     restart() {
       if (wreck.active) respawn();
     },
+    levelOut() {
+      levelTimer = LEVEL_MAX_SECONDS;
+    },
+    get levelling() {
+      return Math.max(0, levelTimer);
+    },
     place,
     greyout: { grey: 0, red: 0 },
     nearestSeparation: Infinity,
@@ -652,6 +807,32 @@ export function createFleet(ctx: AngelsCtx): System {
       player.controls.throttle = input.throttle;
       player.controls.brake = input.brake;
       player.controls.wheelBrake = input.wheelBrake;
+
+      // Then the two things that fly it *for* you, in the order they should
+      // win: pursuit first, and the recovery on top of it, because the whole
+      // value of the recovery is that it overrides whatever got you here.
+      const in$ = ctx.services.input as
+        | { aim: { x: number; y: number; active: boolean } }
+        | undefined;
+      if (in$?.aim.active && !player.state.onGround) flyToAim(player, in$.aim);
+
+      // Any real input cancels the recovery — it hands the jet back the
+      // instant you want it, which is the difference between an assist and a
+      // cutscene.
+      if (levelTimer > 0 && (Math.abs(input.pitch) > 0.3 || Math.abs(input.roll) > 0.3)) {
+        levelTimer = 0;
+      }
+      if (levelTimer > 0) {
+        levelTimer -= dt;
+        flyLevel(player);
+        // Done when it is actually level and climbing again, rather than when
+        // the clock says so. The half-second floor stops it declaring victory
+        // on the frame it started, before anything has moved.
+        const s = player.state;
+        const settled =
+          Math.abs(trueBank(player)) < 0.1 && s.gamma > -0.02 && s.radarAltitude > 120;
+        if (settled && levelTimer < LEVEL_MAX_SECONDS - 0.5) levelTimer = 0;
+      }
 
       for (let i = 0; i < all.length; i++) {
         const a = all[i];
@@ -711,6 +892,7 @@ export function createFleet(ctx: AngelsCtx): System {
         all[0].controls.smoke = all[0].smoke;
         ctx.emit("angels:smoke", all[0].smoke);
       }
+      if (c.input.levelPressed) levelTimer = LEVEL_MAX_SECONDS;
       // R puts you back where you started, not back at the show line — the
       // start point is a choice the pilot made and a reset should not quietly
       // overrule it.
