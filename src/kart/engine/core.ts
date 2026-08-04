@@ -20,6 +20,8 @@ export interface KartEngineOptions {
   canvas: HTMLCanvasElement;
   quality?: KartQuality;
   seed?: number;
+  /** Present only in a multiplayer room — see `net/netplay.ts`. */
+  net?: { room: string; peerId: string; name: string };
 }
 
 export function detectKartQuality(): KartQuality {
