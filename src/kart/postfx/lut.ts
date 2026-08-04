@@ -173,7 +173,7 @@ export class GradeLut {
   constructor(params: GradeParams = KART_GRADE) {
     const size = LUT_SIZE;
     this.data = new Uint8Array(size * size * size * 4);
-    this.texture = new THREE.DataTexture(this.data, size * size, size);
+    this.texture = new THREE.DataTexture(this.data as unknown as Uint8Array<ArrayBuffer>, size * size, size);
     this.texture.name = "KartGradeLut";
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.magFilter = THREE.LinearFilter;

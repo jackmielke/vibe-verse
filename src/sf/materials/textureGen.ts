@@ -1271,7 +1271,7 @@ export function applyTextureOpts(tex: THREE.Texture, o: TextureOpts = {}): THREE
  * once at load costs nothing.
  */
 export function rasterTexture(data: Raster, size: number, o: TextureOpts = {}): THREE.DataTexture {
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const tex = new THREE.DataTexture(data as unknown as Uint8Array<ArrayBuffer>, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.flipY = false;
   tex.unpackAlignment = 4;
   applyTextureOpts(tex, o);

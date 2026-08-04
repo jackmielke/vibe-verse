@@ -1016,7 +1016,7 @@ export function applyTextureOpts(tex: THREE.Texture, o: TextureOpts = {}): THREE
  * once at bake time instead, which costs nothing.
  */
 export function rasterTexture(data: Raster, size: number, o: TextureOpts = {}): THREE.DataTexture {
-  const tex = new THREE.DataTexture(flipRaster(data, size), size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const tex = new THREE.DataTexture(flipRaster(data, size) as unknown as Uint8Array<ArrayBuffer>, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.flipY = false;
   tex.unpackAlignment = 4;
   applyTextureOpts(tex, o);
