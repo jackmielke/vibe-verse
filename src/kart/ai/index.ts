@@ -520,6 +520,8 @@ export default function createAi(ctx: KartCtx): System {
       // The player is never driven, never rubber-banded, and never has an item
       // spent for them — unless attract mode has explicitly asked for it.
       if (racer.isPlayer && !driveThePlayer) continue;
+      // Somebody else's human is driving this one.
+      if (racer.remote) continue;
       const node = field[i];
       if (!node) continue;
 
