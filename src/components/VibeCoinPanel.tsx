@@ -14,7 +14,7 @@
  * live data" message — the rest of the lobby stays unaffected.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TrendingUp, TrendingDown, Coins, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Coins, RefreshCw, Copy, Check } from "lucide-react";
 
 // Source of truth: GeckoTerminal's canonical $VIBE pool on Base.
 // Jack prefers the pool view's headline number (~$92K FDV) over
