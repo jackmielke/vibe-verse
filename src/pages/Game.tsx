@@ -64,13 +64,13 @@ function DrawnPanel({ accent }: { accent: string }) {
 }
 
 /**
- * One card.
+ * One card. Every card is the same size, on every breakpoint.
  *
- * `wide` only takes effect from `md:` up. On a phone every card is the same
- * size and two fit across, which is the whole point of the grid: the previous
- * homepage gave nine of the worlds a full-width hero treatment, so a phone
- * showed one and a half games per screen and browsing thirty of them meant a
- * very long scroll.
+ * Featured worlds used to span two columns from `md:` up, which left ragged
+ * gaps in the grid and made the list read as a ranking instead of an index.
+ * The order in `src/worlds/registry.ts` already says what leads; the cards
+ * only have to be scannable, so they share one aspect ratio and one height
+ * (`auto-rows-fr` on the grid, image fixed, body flexed).
  */
 function Card({ world, index }: { world: WorldEntry; index: number }) {
   const art = artFor(world.key);
