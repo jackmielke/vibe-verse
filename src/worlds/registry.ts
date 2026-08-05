@@ -70,7 +70,7 @@ export interface WorldEntry {
  * everything after that is hand-tuned and should stay stable, because a list
  * that reorders itself is a list nobody can build muscle memory for.
  */
-export const WORLDS: WorldEntry[] = [
+const WORLDS_RAW: WorldEntry[] = [
   {
     key: "trek",
     route: "/trek",
@@ -441,7 +441,7 @@ export const WORLDS: WorldEntry[] = [
     key: "evolve",
     route: "/evolve",
     aliases: ["/bestiary"],
-    name: "Genesis Bloom",
+    name: "Evolution",
     emoji: "🧬",
     kind: "game",
     blurb: "The evolution sim — play a creature, eat, mutate, survive the apex.",
@@ -566,7 +566,7 @@ export const WORLDS: WorldEntry[] = [
     key: "coin",
     route: "/coin",
     aliases: ["/vibe"],
-    name: "VIBE",
+    name: "Vibe Coin",
     emoji: "🪙",
     kind: "tool",
     blurb: "$VIBE — the community currency hub, holders, and market.",
@@ -635,6 +635,41 @@ export const WORLDS: WorldEntry[] = [
 ];
 
 /**
+ * Hand-picked top of the list.
+ *
+ * The order people see everywhere (nav, hub, picker, /game) is this array
+ * first, then whatever is left in the order it is declared above. Keys only —
+ * a world that vanishes from here just falls to the tail, nothing breaks.
+ */
+const ORDER: string[] = [
+  "island",
+  "blue-angels",
+  "fnaf",
+  "kart",
+  "vibeverse",
+  "i-spy",
+  "kart-mp",
+  "city",
+  "edm-town",
+  "ski",
+  "home-alone",
+  "trek",
+  "run",
+  "sf",
+  "garden",
+  "coin",
+  "golf",
+  "evolve",
+];
+
+const rank = (w: WorldEntry): number => {
+  const i = ORDER.indexOf(w.key);
+  return i === -1 ? ORDER.length + WORLDS_RAW.indexOf(w) : i;
+};
+
+export const WORLDS: WorldEntry[] = [...WORLDS_RAW].sort((a, b) => rank(a) - rank(b));
+
+/**
  * The one world in the vibeverse with no route.
  *
  * Redline is a planet inside the ship's own galaxy — it has no page, so no
@@ -662,9 +697,12 @@ export const worldByRoute = (route: string): WorldEntry | undefined => byRoute.g
 export const worldByKey = (key: string): WorldEntry | undefined =>
   WORLDS.find((w) => w.key === key);
 
-/** Featured first, otherwise the hand-tuned order above. */
+/**
+ * The curated order above wins. `featured` still exists for card styling, but
+ * it no longer reshuffles the list — the explicit ORDER is the running order.
+ */
 export const featuredFirst = (list: WorldEntry[] = WORLDS): WorldEntry[] =>
-  [...list].sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+  [...list].sort((a, b) => rank(a) - rank(b));
 
 export const worldsOfKind = (kind: WorldKind): WorldEntry[] =>
   WORLDS.filter((w) => w.kind === kind);

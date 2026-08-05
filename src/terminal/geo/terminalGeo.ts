@@ -144,7 +144,7 @@ export const GATES: GateDef[] = [
     accent: 0xfbcfe8, motif: "pagoda", bearing: -1.92, distance: 224, elevation: 24, radius: 11,
   },
   {
-    key: "evolve", to: "/evolve", name: "Genesis Bloom",
+    key: "evolve", to: "/evolve", name: "Evolution",
     blurb: "Play a creature. Mutate. Survive.",
     accent: 0xa3e635, motif: "tree", bearing: 1.98, distance: 232, elevation: 8, radius: 11,
   },
