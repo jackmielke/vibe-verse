@@ -113,6 +113,19 @@ function fmtCompact(n: number | null): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
+// Human-readable token amount: "298.76M", "1.24B", "12,450".
+function abbrevTokens(raw: string): string | null {
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n) || n === 0) return null;
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+
 export default function VibeCoinPanel() {
   const [stats, setStats] = useState<VibeStats | null>(null);
   const [loading, setLoading] = useState(true);
