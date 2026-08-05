@@ -131,6 +131,7 @@ export default function VibeCoinPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [pulse, setPulse] = useState(0); // bumps on every successful refresh
+  const [copied, setCopied] = useState(false);
 
   // Calculator: drive both sides off whichever the user last edited.
   // We keep raw strings (not numbers) so the user can type "0." mid-flow.
