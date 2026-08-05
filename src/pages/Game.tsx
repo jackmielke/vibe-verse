@@ -72,7 +72,7 @@ function DrawnPanel({ accent }: { accent: string }) {
  * showed one and a half games per screen and browsing thirty of them meant a
  * very long scroll.
  */
-function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: boolean }) {
+function Card({ world, index }: { world: WorldEntry; index: number }) {
   const art = artFor(world.key);
   return (
     <motion.div
@@ -80,14 +80,14 @@ function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: 
       animate={{ opacity: 1, y: 0 }}
       /* Capped so the last card of a long list does not arrive a second late. */
       transition={{ delay: Math.min(index, 12) * 0.03, duration: 0.32 }}
-      className={wide ? "md:col-span-2" : ""}
+      className="h-full"
     >
       <Link
         to={world.route}
-        className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-background/40 transition-colors hover:border-transparent"
+        className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/40 transition-colors hover:border-transparent"
         style={{ boxShadow: `inset 0 0 0 1px ${world.accent}22` }}
       >
-        <div className={`relative overflow-hidden bg-black/50 ${wide ? "aspect-video md:aspect-[16/8]" : "aspect-video"}`}>
+        <div className="relative aspect-video shrink-0 overflow-hidden bg-black/50">
           {art ? (
             <img
               src={art}
@@ -115,7 +115,7 @@ function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: 
             </span>
           )}
         </div>
-        <div className="p-2.5 sm:p-3.5">
+        <div className="flex flex-1 flex-col p-2.5 sm:p-3.5">
           <div className="flex items-baseline gap-1.5">
             <span className="text-sm leading-none sm:text-base">{world.emoji}</span>
             <h3 className="font-heading text-[12.5px] font-semibold leading-tight tracking-wide sm:text-sm">
@@ -124,11 +124,11 @@ function Card({ world, index, wide }: { world: WorldEntry; index: number; wide: 
           </div>
           {/* Two lines on a phone, four on a desktop. A card is a promise, not
               an essay, and at 170 px wide the blurb otherwise runs to eight. */}
-          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground sm:line-clamp-4 sm:text-[11.5px]">
+          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground sm:line-clamp-3 sm:text-[11.5px]">
             {world.blurb}
           </p>
           {/* Where the code lives. Useful on a laptop, noise on a phone. */}
-          <p className="mt-2 hidden font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/45 sm:block">
+          <p className="mt-auto pt-2 hidden font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/45 sm:block">
             {world.source}
           </p>
         </div>
@@ -265,9 +265,9 @@ export default function Game() {
 
         {/* Two across on a phone, always. Seeing several games at once is the
             entire job of this page. */}
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {shown.map((w, i) => (
-            <Card key={w.key} world={w} index={i} wide={Boolean(w.featured) && !query} />
+            <Card key={w.key} world={w} index={i} />
           ))}
         </div>
 
