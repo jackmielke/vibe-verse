@@ -19,6 +19,7 @@ import gardenArt from "@/assets/worlds/garden.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
 import lobbyArt from "@/assets/worlds/lobby.png";
+import moonArt from "@/assets/worlds/moon.jpg";
 import museumArt from "@/assets/worlds/museum.jpg";
 import ninjaArt from "@/assets/worlds/ninja.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
@@ -58,7 +59,7 @@ export const WORLD_ART: Record<string, string> = {
   island: islandArt,
   "island-explorer": islandArt,
   lobby: lobbyArt,
-  moon: islandArt,
+  moon: moonArt,
   museum: museumArt,
   ninja: ninjaArt,
   sf: sanFranciscoArt,
