@@ -364,6 +364,11 @@ export default function VibeCoinPanel() {
                 className="bg-transparent outline-none flex-1 text-sm font-mono"
               />
             </div>
+            {abbrevTokens(vibeInput) && (
+              <span className="text-[10px] text-primary/90 font-medium tabular-nums">
+                ≈ {abbrevTokens(vibeInput)} $VIBE
+              </span>
+            )}
           </label>
         </div>
         <div className="flex flex-wrap gap-1 mt-1">
@@ -381,6 +386,40 @@ export default function VibeCoinPanel() {
           ))}
         </div>
       </div>
+
+      {/* Contract address — one click to copy. */}
+      <div className="rounded-lg border border-border/60 bg-background/30 p-3 flex flex-col gap-1.5">
+        <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground">
+          Token contract · Base
+        </p>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(VIBE_TOKEN_ADDRESS);
+            } catch {
+              /* clipboard blocked — nothing else to do */
+            }
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1800);
+          }}
+          title="Copy the $VIBE contract address"
+          className="group flex items-center gap-2 rounded-md border border-border/60 bg-background/60 hover:border-primary/60 px-2 py-1.5 text-left transition-colors"
+        >
+          <span className="flex-1 min-w-0 truncate font-mono text-[11px] text-foreground/85">
+            {VIBE_TOKEN_ADDRESS}
+          </span>
+          {copied ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          ) : (
+            <Copy className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+          )}
+        </button>
+        <span className="text-[9px] text-muted-foreground/70">
+          {copied ? "Copied to clipboard" : "Click to copy"}
+        </span>
+      </div>
+
 
       {stats && (
         <p className="text-[9px] text-muted-foreground/70 text-right">
