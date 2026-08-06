@@ -285,7 +285,10 @@ export function buildProceduralPilot(
         // its emissive, which glowed straight through the lens.
         new THREE.MeshStandardMaterial({ color: 0x0a0c12, roughness: 0.5, metalness: 0.1 }),
       );
-      materials.push(rim.material as THREE.Material);
+      // `materials` is inferred as MeshStandardMaterial[] from its initialiser,
+      // so widening this to Material fails the push. It IS a standard material
+      // — it is constructed as one four lines up.
+      materials.push(rim.material as THREE.MeshStandardMaterial);
       rim.castShadow = true;
       rim.position.copy(eye.position);
       rim.position.z -= 0.014;

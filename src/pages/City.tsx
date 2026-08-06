@@ -25,7 +25,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Rocket } from "lucide-react";
@@ -61,6 +60,7 @@ import {
   PLAYER_RADIUS,
 } from "@/lib/worldPhysics";
 import { CollisionWorld } from "@/city/player/collision";
+import { buildDistrict } from "@/city/district";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -149,7 +149,6 @@ const BLOCK = 28; // buildable block size (m)
 const STREET = 12; // street width between blocks (m)
 const PITCH = BLOCK + STREET; // cell-to-cell distance
 const CITY_HALF = (GRID * PITCH) / 2;
-const WINDOW_TILE = 12.8; // world meters covered by one window-texture tile
 const PAD_MIN_HEIGHT = 48; // towers taller than this get a landing pad
 
 // Cardboard Island — the kids' world floating east of the district.
@@ -245,244 +244,6 @@ function rng(seed: string) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-// ------------------------------------------------------------------
-// Window textures — one facade canvas (dark, with unlit + lit panes)
-// and one emissive canvas (lit panes only) per variant. The top-left
-// corner pixel stays pure facade so roof faces can sample it.
-// ------------------------------------------------------------------
-function makeWindowTextures(
-  variantSeed: string,
-  opts: {
-    facade: string;
-    lit: string;
-    litChance: number; // 0 for daytime facades — windows become glass
-    windowColor: string;
-    roofColor: string;
-  },
-): { map: THREE.CanvasTexture; emissiveMap: THREE.CanvasTexture } {
-  const { facade, lit, litChance, windowColor, roofColor } = opts;
-  const S = 512;
-  const cols = 16;
-  const rows = 16;
-  const cell = S / cols;
-  const r = rng(variantSeed);
-
-  const base = document.createElement("canvas");
-  base.width = base.height = S;
-  const bctx = base.getContext("2d")!;
-  const emi = document.createElement("canvas");
-  emi.width = emi.height = S;
-  const ectx = emi.getContext("2d")!;
-
-  bctx.fillStyle = facade;
-  bctx.fillRect(0, 0, S, S);
-  ectx.fillStyle = "#000000";
-  ectx.fillRect(0, 0, S, S);
-
-  for (let cy = 0; cy < rows; cy++) {
-    for (let cx = 0; cx < cols; cx++) {
-      const x = cx * cell + cell * 0.22;
-      const y = cy * cell + cell * 0.2;
-      const w = cell * 0.56;
-      const h = cell * 0.6;
-      const isLit = r() < litChance;
-      if (isLit) {
-        const dim = 0.55 + r() * 0.45;
-        bctx.fillStyle = lit;
-        bctx.globalAlpha = dim;
-        bctx.fillRect(x, y, w, h);
-        bctx.globalAlpha = 1;
-        ectx.fillStyle = lit;
-        ectx.globalAlpha = dim;
-        ectx.fillRect(x, y, w, h);
-        ectx.globalAlpha = 1;
-      } else {
-        bctx.fillStyle = windowColor;
-        bctx.fillRect(x, y, w, h);
-      }
-    }
-  }
-  // Reserved roof-colored corner texel for roofs/floors — slightly
-  // lighter than the facade so rooftops read from above.
-  bctx.fillStyle = roofColor;
-  bctx.fillRect(0, 0, 4, 4);
-  ectx.fillStyle = "#000";
-  ectx.fillRect(0, 0, 4, 4);
-
-  const mk = (c: HTMLCanvasElement) => {
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  };
-  return { map: mk(base), emissiveMap: mk(emi) };
-}
-
-// ------------------------------------------------------------------
-// Building geometry: a box whose side-face UVs are scaled so windows
-// keep a constant world size, and whose roof/floor UVs collapse onto
-// the reserved facade texel.
-// ------------------------------------------------------------------
-function buildingGeometry(
-  w: number,
-  h: number,
-  d: number,
-  cx: number,
-  cz: number,
-): THREE.BufferGeometry {
-  const geo = new THREE.BoxGeometry(w, h, d);
-  const uv = geo.attributes.uv as THREE.BufferAttribute;
-  const normal = geo.attributes.normal as THREE.BufferAttribute;
-  for (let i = 0; i < uv.count; i++) {
-    const ny = normal.getY(i);
-    if (Math.abs(ny) > 0.5) {
-      uv.setXY(i, 0.003, 0.997); // roof + floor → reserved roof texel
-      continue;
-    }
-    const horiz = Math.abs(normal.getX(i)) > 0.5 ? d : w;
-    uv.setXY(i, (uv.getX(i) * horiz) / WINDOW_TILE, (uv.getY(i) * h) / WINDOW_TILE);
-  }
-  uv.needsUpdate = true;
-  geo.translate(cx, h / 2, cz);
-  return geo;
-}
-
-// ------------------------------------------------------------------
-// Generate the district: building AABBs (for collision) plus merged
-// geometry per material variant (for cheap rendering).
-// ------------------------------------------------------------------
-function generateCity(): {
-  boxes: BuildingBox[];
-  geoByVariant: THREE.BufferGeometry[][];
-  pads: Array<{ x: number; z: number; y: number }>;
-} {
-  const r = rng(CITY_SEED);
-  const boxes: BuildingBox[] = [];
-  const variants = 6;
-  const geoByVariant: THREE.BufferGeometry[][] = Array.from({ length: variants }, () => []);
-  const pads: Array<{ x: number; z: number; y: number }> = [];
-  const center = (GRID - 1) / 2;
-
-  for (let gx = 0; gx < GRID; gx++) {
-    for (let gz = 0; gz < GRID; gz++) {
-      // The middle cell is the spawn plaza — keep it open.
-      if (gx === Math.floor(center) && gz === Math.floor(center)) continue;
-
-      const cellX = (gx - center) * PITCH;
-      const cellZ = (gz - center) * PITCH;
-      const ringDist = Math.max(Math.abs(gx - center), Math.abs(gz - center));
-
-      // 1, 2 or 4 buildings per block.
-      const layout = r();
-      const lots: Array<[number, number, number, number]> =
-        layout < 0.35
-          ? [[cellX, cellZ, BLOCK, BLOCK]]
-          : layout < 0.7
-            ? r() < 0.5
-              ? [
-                  [cellX - BLOCK / 4, cellZ, BLOCK / 2, BLOCK],
-                  [cellX + BLOCK / 4, cellZ, BLOCK / 2, BLOCK],
-                ]
-              : [
-                  [cellX, cellZ - BLOCK / 4, BLOCK, BLOCK / 2],
-                  [cellX, cellZ + BLOCK / 4, BLOCK, BLOCK / 2],
-                ]
-            : [
-                [cellX - BLOCK / 4, cellZ - BLOCK / 4, BLOCK / 2, BLOCK / 2],
-                [cellX + BLOCK / 4, cellZ - BLOCK / 4, BLOCK / 2, BLOCK / 2],
-                [cellX - BLOCK / 4, cellZ + BLOCK / 4, BLOCK / 2, BLOCK / 2],
-                [cellX + BLOCK / 4, cellZ + BLOCK / 4, BLOCK / 2, BLOCK / 2],
-              ];
-
-      for (const [lx, lz, lw, ld] of lots) {
-        // Inset from the lot edge so neighbors don't touch.
-        const w = lw - 3 - r() * 3;
-        const d = ld - 3 - r() * 3;
-        // Towers cluster on the ring right around the plaza; the
-        // outskirts stay low so the skyline reads from the center.
-        const towerChance = ringDist <= 2 ? 0.38 : ringDist === 3 ? 0.18 : 0.05;
-        const roll = r();
-        const height =
-          roll < towerChance
-            ? 46 + r() * 42 // tower 46–88
-            : roll < 0.62
-              ? 16 + r() * 26 // mid-rise 16–42
-              : 7 + r() * 8; // low-rise 7–15
-
-        const variant = Math.floor(r() * variants);
-        geoByVariant[variant].push(buildingGeometry(w, height, d, lx, lz));
-        boxes.push({
-          minX: lx - w / 2,
-          maxX: lx + w / 2,
-          minZ: lz - d / 2,
-          maxZ: lz + d / 2,
-          base: 0,
-          height,
-        });
-        if (height > PAD_MIN_HEIGHT) pads.push({ x: lx, z: lz, y: height });
-      }
-    }
-  }
-  return { boxes, geoByVariant, pads };
-}
-
-// Ground texture: asphalt with sidewalk-edged blocks and dashed
-// street center lines, drawn once per mode for the whole district.
-function makeGroundTexture(day: boolean): THREE.CanvasTexture {
-  const S = 2048;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = S;
-  const ctx = canvas.getContext("2d")!;
-  const m = S / (GRID * PITCH); // px per meter
-  const center = (GRID - 1) / 2;
-
-  ctx.fillStyle = day ? "#6e7884" : "#0e1219"; // asphalt
-  ctx.fillRect(0, 0, S, S);
-
-  for (let gx = 0; gx < GRID; gx++) {
-    for (let gz = 0; gz < GRID; gz++) {
-      const px = (gx * PITCH + STREET / 2) * m;
-      const pz = (gz * PITCH + STREET / 2) * m;
-      const side = BLOCK * m;
-      // Sidewalk ring then block interior.
-      ctx.fillStyle = day ? "#9aa4b1" : "#1d2531";
-      ctx.fillRect(px, pz, side, side);
-      ctx.fillStyle =
-        gx === center && gz === center
-          ? day
-            ? "#74b294"
-            : "#13312a"
-          : day
-            ? "#86909d"
-            : "#121822";
-      ctx.fillRect(px + 2.2 * m, pz + 2.2 * m, side - 4.4 * m, side - 4.4 * m);
-    }
-  }
-
-  // Dashed center lines down every street, both axes.
-  ctx.strokeStyle = day ? "rgba(255, 255, 255, 0.7)" : "rgba(45, 212, 168, 0.6)";
-  ctx.lineWidth = 0.35 * m;
-  ctx.setLineDash([3 * m, 4.5 * m]);
-  for (let g = 0; g <= GRID; g++) {
-    const p = g * PITCH * m;
-    if (g > 0 && g < GRID) {
-      ctx.beginPath();
-      ctx.moveTo(p, 0);
-      ctx.lineTo(p, S);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, p);
-      ctx.lineTo(S, p);
-      ctx.stroke();
-    }
-  }
-
-  const t = new THREE.CanvasTexture(canvas);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
 }
 
 // Neon "VIBE CITY" marquee sprite floating over the plaza.
@@ -1287,6 +1048,32 @@ export default function City() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 
+    /**
+     * Tone mapping. The city rendered with none at all, which is why every
+     * bright thing in it — a lit window, the sun glint on the water, a neon
+     * sign — hit pure white and stayed there. ACES rolls the top end off
+     * instead of clipping it, so highlights keep their colour and the night
+     * skyline stops looking like it was drawn with a highlighter.
+     *
+     * It costs about 15% of apparent brightness across the midtones, which the
+     * light intensities below are raised to pay for. Do not change one without
+     * the other.
+     */
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    /**
+     * Shadows. The single biggest reason the city did not look real from the
+     * air: nothing cast one, so ninety towers appeared to hover a little above
+     * their own plate. A sun shadow is what puts a building ON the ground.
+     *
+     * Scoped tightly on purpose — see the shadow camera set up with the
+     * moonlight below. Soft PCF because the map has to cover a 360 m district
+     * and hard edges at that scale look like stencils.
+     */
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#05080d");
     scene.fog = new THREE.Fog("#05080d", 90, 520);
@@ -1413,68 +1200,93 @@ export default function City() {
     scene.add(ambient);
     const hemi = new THREE.HemisphereLight(0x32445e, 0x0c1018, 1.1);
     scene.add(hemi);
-    const moonlight = new THREE.DirectionalLight(0xbfd4ff, 1.05);
-    moonlight.position.set(180, 320, -140);
+    const moonlight = new THREE.DirectionalLight(0xbfd4ff, 1.3);
+    /**
+     * Where the sun is, and why it is low.
+     *
+     * It used to sit at (180, 320, −140) — 54° up, which is noon. A noon sun
+     * puts every shadow directly under its own building, where you cannot see
+     * it, and lights every face of every tower at almost the same angle, which
+     * is why the massing read as flat even once it stopped being flat.
+     *
+     * 30° is late afternoon. Shadows run about 1.7× the height of what casts
+     * them, so the towers lay stripes across the district and each setback
+     * catches light on its own roof while shading the step below. That is the
+     * whole reason for the setbacks in `district.ts`, and at noon it is
+     * invisible.
+     *
+     * The bearing also points roughly at the moon (MOON_X/MOON_Z), so the
+     * shadows agree with the light source you can actually see in the sky.
+     */
+    moonlight.position.set(300, 210, -170);
     scene.add(moonlight);
+
+    /**
+     * The sun's shadow camera.
+     *
+     * Deliberately narrow. A directional light's shadow is an orthographic
+     * render of everything inside its frustum into one texture, so the frustum
+     * is a resolution budget: widen it to take in Mars and the whole 2048 map
+     * is spent on empty ocean, leaving the district a couple of texels per
+     * metre and shadows that shimmer. So it covers the district and nothing
+     * else — ±210 m, which is the 360 m grid plus a margin for the long shadows
+     * a low sun throws off the tall towers.
+     *
+     * The far worlds (the island, the moons, Mars, TJ's) sit outside it and are
+     * simply lit without shadows, which is correct rather than a compromise:
+     * they are floating in the sky with nothing under them to receive one.
+     *
+     * `normalBias` rather than a big depth bias — the facades are single-sided
+     * planes, and a depth bias large enough to stop them shadow-acneing pulls
+     * the contact shadow visibly away from the wall.
+     */
+    moonlight.castShadow = true;
+    // Half-resolution on a phone. A 2048² depth texture is 16 MB of VRAM and a
+    // full extra pass over the district every frame, which is a fine trade on a
+    // laptop and a bad one on a handset that is already pushing a 3× pixel
+    // ratio. 1024² over 500 m is two texels per metre — soft, but a soft shadow
+    // is still the thing that puts a building on the ground.
+    const smallScreen = Math.min(window.innerWidth, window.innerHeight) < 700;
+    const shadowRes = smallScreen ? 1024 : 2048;
+    moonlight.shadow.mapSize.set(shadowRes, shadowRes);
+    // ±250, not ±180: the district is 360 m across, but a 30° sun throws an
+    // 88 m tower's shadow 150 m past its own footprint, and a frustum sized to
+    // the buildings clips the shadows off the far edge.
+    moonlight.shadow.camera.left = -250;
+    moonlight.shadow.camera.right = 250;
+    moonlight.shadow.camera.top = 250;
+    moonlight.shadow.camera.bottom = -250;
+    moonlight.shadow.camera.near = 20;
+    moonlight.shadow.camera.far = 900;
+    moonlight.shadow.bias = -0.0006;
+    moonlight.shadow.normalBias = 0.7;
+    // Aim it at the plaza. Without a target the light points at the origin
+    // anyway, but the target has to be IN the scene for three to update its
+    // world matrix, and a stale target is a shadow that lags the sun.
+    moonlight.target.position.set(0, 0, 0);
+    scene.add(moonlight.target);
     const plazaGlow = new THREE.PointLight(0x2dd4a8, 60, 90, 1.6);
     plazaGlow.position.set(0, 10, 0);
     scene.add(plazaGlow);
 
     // ---- The district ----------------------------------------------
-    const { boxes, geoByVariant, pads } = generateCity();
-    const facades = ["#151b27", "#132033", "#11141c"];
-    const dayFacades = ["#aab4c2", "#9fb0c4", "#b6bdc9"];
-    const litColors = ["#2dd4a8", "#ffd9a0", "#6fd9ff"];
-    const buildingMeshes: THREE.Mesh[] = [];
-    // Each variant keeps both skins so day/night can swap facades.
-    const buildingSkins: Array<{
-      mat: THREE.MeshStandardMaterial;
-      nightMap: THREE.CanvasTexture;
-      dayMap: THREE.CanvasTexture;
-    }> = [];
-    geoByVariant.forEach((geos, i) => {
-      if (!geos.length) return;
-      const lit = litColors[Math.floor(i / facades.length) % litColors.length];
-      const night = makeWindowTextures(`${CITY_SEED}-tex-${i}`, {
-        facade: facades[i % facades.length],
-        lit,
-        litChance: 0.32,
-        windowColor: "rgba(8, 12, 16, 0.92)",
-        roofColor: "#1f2733",
-      });
-      const day = makeWindowTextures(`${CITY_SEED}-tex-${i}-day`, {
-        facade: dayFacades[i % dayFacades.length],
-        lit,
-        litChance: 0, // daytime windows are just dark glass
-        windowColor: "#3d5168",
-        roofColor: "#99a3ae",
-      });
-      const merged = mergeGeometries(geos, false)!;
-      geos.forEach((g) => g.dispose());
-      const mat = new THREE.MeshStandardMaterial({
-        map: night.map,
-        emissive: new THREE.Color("#ffffff"),
-        emissiveMap: night.emissiveMap,
-        emissiveIntensity: 1.0,
-        roughness: 0.85,
-        metalness: 0.1,
-      });
-      const mesh = new THREE.Mesh(merged, mat);
-      scene.add(mesh);
-      buildingMeshes.push(mesh);
-      buildingSkins.push({ mat, nightMap: night.map, dayMap: day.map });
+    // Buildings, roofs, streets, trees and traffic all come out of
+    // `src/city/district.ts`. It used to be `generateCity()` right here: a
+    // loop that extruded one box per lot and a material that painted every
+    // roof a single flat colour, which is exactly what the city looked like
+    // from the air. See that module's header for what replaced it and why.
+    const district = buildDistrict({
+      seed: CITY_SEED,
+      grid: GRID,
+      block: BLOCK,
+      street: STREET,
+      padMinHeight: PAD_MIN_HEIGHT,
     });
-
-    // Ground: textured district plate over a huge dark apron.
-    const groundNight = makeGroundTexture(false);
-    const groundDay = makeGroundTexture(true);
-    const plateMat = new THREE.MeshStandardMaterial({ map: groundNight, roughness: 0.95 });
-    const plate = new THREE.Mesh(
-      new THREE.PlaneGeometry(GRID * PITCH, GRID * PITCH),
-      plateMat,
-    );
-    plate.rotation.x = -Math.PI / 2;
-    scene.add(plate);
+    scene.add(district.group);
+    // Held live by reference — every world that loads after this pushes its
+    // own collision into the same array. See CollisionWorld's constructor.
+    const boxes = district.boxes;
+    const pads = district.pads;
     // Surrounding "ocean": a shader plane around the city plate. Gentle
     // animated waves, fresnel sky reflection, sun glints, and a day/night
     // tint so the world feels like a city on an island.
@@ -2672,6 +2484,76 @@ export default function City() {
         }
       });
 
+    /**
+     * The sky, as a gradient instead of a fill.
+     *
+     * `scene.background` was one flat colour, and a flat colour is the single
+     * clearest tell that a 3D scene is a 3D scene: real sky is darkest
+     * overhead, palest at the horizon, and warm where the sun is. Once the
+     * horizon band matches the fog colour, distant things — the far towers, the
+     * sky islands, Mars — dissolve into it instead of ending against a wall,
+     * which is most of what "aerial perspective" actually is.
+     *
+     * A dome, not an environment map: the colours are driven by uniforms so
+     * `applyMode` can cross a whole sky from night to day by setting three
+     * vectors, and there is no cubemap to bake or ship.
+     *
+     * `fog: false` because fogging the sky with the fog colour that came FROM
+     * the sky is a slow way to draw a flat fill again. `depthWrite: false` and
+     * a low render order keep it behind everything without a depth range.
+     */
+    const skyUniforms = {
+      uZenith: { value: new THREE.Color("#050810") },
+      uHorizon: { value: new THREE.Color("#05080d") },
+      uGround: { value: new THREE.Color("#04060a") },
+      uSun: { value: new THREE.Vector3(300, 210, -170).normalize() },
+      uSunColor: { value: new THREE.Color("#bfd4ff") },
+      uSunPower: { value: 0.35 },
+    };
+    const skyDome = new THREE.Mesh(
+      new THREE.SphereGeometry(2600, 32, 20),
+      new THREE.ShaderMaterial({
+        uniforms: skyUniforms,
+        side: THREE.BackSide,
+        depthWrite: false,
+        fog: false,
+        vertexShader: `
+          varying vec3 vDir;
+          void main() {
+            vDir = normalize(position);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uZenith;
+          uniform vec3 uHorizon;
+          uniform vec3 uGround;
+          uniform vec3 uSun;
+          uniform vec3 uSunColor;
+          uniform float uSunPower;
+          varying vec3 vDir;
+          void main() {
+            vec3 d = normalize(vDir);
+            // Tight band at the horizon, long fade to the zenith. The pow is
+            // what stops the gradient looking like a linear ramp, which reads
+            // as a UI element rather than as air.
+            float up = clamp(d.y, -1.0, 1.0);
+            vec3 col = up >= 0.0
+              ? mix(uHorizon, uZenith, pow(up, 0.42))
+              : mix(uHorizon, uGround, pow(-up, 0.6));
+            // Sun scatter — broad and weak, not a disk. The moon mesh is the
+            // disk; this is the air around it.
+            float s = max(dot(d, normalize(uSun)), 0.0);
+            col += uSunColor * pow(s, 6.0) * uSunPower;
+            col += uSunColor * pow(s, 1.6) * uSunPower * 0.18;
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `,
+      }),
+    );
+    skyDome.renderOrder = -1000;
+    scene.add(skyDome);
+
     // Stars + moon (fog-exempt so they read at any distance).
     const starGeo = new THREE.BufferGeometry();
     {
@@ -2846,23 +2728,34 @@ export default function City() {
       baseFogFar = day ? 1100 : 520;
       fog.near = baseFogNear;
       fog.far = baseFogFar;
+      // Intensities are ~30% up on what they were, paying for the ACES curve
+      // set on the renderer — it rolls the top end off rather than clipping it,
+      // which costs apparent brightness through the midtones. Changing one of
+      // these without the other is what makes the city look washed out or
+      // black.
       ambient.color.set(day ? 0xffffff : 0x8899bb);
+      ambient.intensity = day ? 0.62 : 0.5;
       hemi.color.set(day ? 0xcfe8ff : 0x32445e);
       hemi.groundColor.set(day ? 0x8c96a4 : 0x0c1018);
-      hemi.intensity = day ? 1.9 : 1.1;
-      moonlight.color.set(day ? 0xfff2d0 : 0xbfd4ff);
-      moonlight.intensity = day ? 2.3 : 1.05;
+      hemi.intensity = day ? 2.3 : 1.35;
+      moonlight.color.set(day ? 0xffeec4 : 0xbfd4ff);
+      // Night shadows come out softer for free: the moon is a fifth of the
+      // sun's intensity against an ambient that barely drops, so the shadow is
+      // a tint rather than a hole. (`shadow.intensity` would say this directly
+      // but it does not exist until three r165 and this app is on r160.)
+      moonlight.intensity = day ? 3.1 : 1.35;
       plazaGlow.intensity = day ? 0 : 60;
       stars.visible = !day;
       clouds.visible = day;
       moonMat.color.set(day ? 0xfff6cf : 0xe8f1ff);
-      buildingSkins.forEach((s) => {
-        s.mat.map = day ? s.dayMap : s.nightMap;
-        s.mat.emissiveIntensity = day ? 0 : 1.0;
-        s.mat.needsUpdate = true;
-      });
-      plateMat.map = day ? groundDay : groundNight;
-      plateMat.needsUpdate = true;
+      // The horizon stop matches the fog colour exactly, which is what makes
+      // distant geometry dissolve into the sky rather than end against it.
+      skyUniforms.uZenith.value.set(day ? "#3d7fc4" : "#04060e");
+      skyUniforms.uHorizon.value.set(day ? "#cfe6f5" : "#05080d");
+      skyUniforms.uGround.value.set(day ? "#8ea7bb" : "#03050a");
+      skyUniforms.uSunColor.value.set(day ? "#ffe6b0" : "#8fb4e8");
+      skyUniforms.uSunPower.value = day ? 0.9 : 0.22;
+      district.setDay(day);
       waterUniforms.uDay.value = day ? 1 : 0;
       waterUniforms.uShallow.value.set(day ? "#3aa9c4" : "#0a1a2a");
       waterUniforms.uDeep.value.set(day ? "#0a2238" : "#02060d");
@@ -2872,6 +2765,20 @@ export default function City() {
       waterUniforms.uFogFar.value = day ? 1100 : 520;
     };
     applyModeRef.current = applyMode;
+    /**
+     * Start from ONE coherent state.
+     *
+     * Every piece of the atmosphere used to pick its own initial value at
+     * construction, and they disagreed: the sky, the fog and the facades were
+     * built for night, while the ocean's uniforms were declared with day
+     * colours and `uDay: 1`. Nothing reconciled them until the `world_settings`
+     * row arrived from Supabase — so on a slow connection, and permanently on a
+     * failed one, the city sat at night on a bright turquoise daylight sea.
+     *
+     * Calling the one function that owns the whole atmosphere is the fix. The
+     * realtime subscription still overrides this the moment it answers.
+     */
+    applyMode(false);
 
     // ---- Pilot + jetpack rig ----------------------------------------
     const player = new THREE.Group(); // origin = feet
@@ -3016,6 +2923,10 @@ export default function City() {
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
           if (!mesh.isMesh) return;
+          // A character standing on the plaza with no shadow under them is the
+          // street-level version of the towers hovering above their own plate.
+          // One avatar in the shadow pass costs nothing.
+          mesh.castShadow = true;
           const apply = (mat: THREE.Material) => {
             const std = mat as THREE.MeshStandardMaterial;
             if (std && "metalness" in std) {
@@ -3340,6 +3251,33 @@ export default function City() {
     // input hands control straight back.
     let arrivalStart = 0;
     const ARRIVAL_MS = 4500;
+
+    /**
+     * Dev-only: pose the orbit camera from a script.
+     *
+     * `scripts/city-flyover.mjs` photographs the city from a fixed set of
+     * altitudes so a change to how it looks can be compared instead of
+     * remembered. It used to do that by synthesising wheel and drag events,
+     * which on a software GL renderer took three minutes a shot and still
+     * landed somewhere else — the zoom is exponential per notch, so a dropped
+     * event is a different altitude, and there is nothing to read back.
+     *
+     * Stripped from production builds by the `DEV` guard: `import.meta.env.DEV`
+     * is a compile-time constant, so the whole block is dead code the minifier
+     * removes rather than a hook shipped to visitors.
+     */
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__cityCam = (
+        dist: number,
+        pitch: number,
+        yaw: number,
+      ) => {
+        arrivalStart = 0; // cancel the arrival swoop, or it fights the pose
+        camDist = THREE.MathUtils.clamp(dist, MIN_CAM_DIST, MAX_CAM_DIST);
+        camPitch = THREE.MathUtils.clamp(pitch, 0.06, 1.25);
+        camYaw = yaw;
+      };
+    }
     // VR-only: stable "body yaw" the dolly is parked behind. This is
     // intentionally decoupled from the headset rotation so turning your
     // head doesn't slide the world (the #1 source of sim-sickness here).
@@ -4702,6 +4640,7 @@ export default function City() {
         }
       }
 
+      district.update(dt); // the traffic
       island.update(dt, now);
       ninjaShow.update(dt, now);
       updateAvatarHolo(dt);
@@ -5399,8 +5338,10 @@ export default function City() {
       agentResidentsRef.current = null;
       unsubRoster();
       rosterBoard.dispose();
+      district.dispose();
 
       delete devWindow.__cityDebug;
+      delete (window as unknown as Record<string, unknown>).__cityCam;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();
