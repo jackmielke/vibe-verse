@@ -639,6 +639,10 @@ export default function City() {
   const [arriving, setArriving] = useState(false);
   const [gameHud, setGameHud] = useState<string | null>(null);
   const [nearGamePrompt, setNearGamePrompt] = useState<{ key: SkyGameKey; name: string } | null>(null);
+  // Zeppelin helm: "aboard" once you're standing on the deck, "piloting"
+  // once you take the wheel. The ref is what the render loop reads.
+  const [zepMode, setZepMode] = useState<"off" | "aboard" | "piloting">("off");
+  const zepPilotRef = useRef(false);
   // Gremlin Mines (underground) — world handle + per-tick state.
   const undergroundWorldRef = useRef<UndergroundWorld | null>(null);
   const undergroundActiveRef = useRef(false);
