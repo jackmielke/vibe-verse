@@ -3357,6 +3357,10 @@ export default function City() {
       if (e.code === "KeyV") {
         vrFirstPerson = !vrFirstPerson;
       }
+      // "P" takes / releases the zeppelin helm while standing on its deck.
+      if (e.code === "KeyP" && ridingZeppelin) {
+        setZepPilotMode(!zepPilotRef.current);
+      }
     };
     window.addEventListener("keydown", onToggleView);
     // Manual delta tracking (movementX is unreliable for touch
