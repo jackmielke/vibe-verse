@@ -469,6 +469,7 @@ varying vec3 vWorld;
 varying vec2 vSurf;        // (angle 0..1, height 0..1)
 varying float vHeightM;    // metres above the ground line
 varying float vDist;       // view distance, for fog and near-fade
+varying float vDistXZ;     // GROUND distance camera -> this column
 varying vec3 vViewDir;     // fragment -> camera, world space
 
 void main() {
@@ -488,6 +489,14 @@ void main() {
 
   vec4 mv = viewMatrix * vec4(world, 1.0);
   vDist = length(mv.xyz);
+  // How far away the COLUMN is, measured on the ground plane — deliberately
+  // not vDist. Everything that fades the wall out with range has to key off
+  // this, because vDist grows with the fragment's own height: 400 m up a
+  // wall you are standing five metres from is 400 m of "distance", and a
+  // range fade driven by it would erase the top of the wall exactly when you
+  // are close enough for it to tower over you, which is the one view the
+  // whole effect exists for.
+  vDistXZ = length(cameraPosition.xz - world.xz);
   vViewDir = cameraPosition - world;
   gl_Position = projectionMatrix * mv;
 }
@@ -499,6 +508,7 @@ precision highp float;
 uniform float uTime;
 uniform vec3 uCenter;
 uniform float uBaseDrop;
+uniform float uHeight;       // metres of column above the ground line
 
 uniform sampler2D uHex;
 uniform float uHexRepeatU;   // integer — seamless around the circumference
@@ -519,6 +529,7 @@ varying vec3 vWorld;
 varying vec2 vSurf;
 varying float vHeightM;
 varying float vDist;
+varying float vDistXZ;
 varying vec3 vViewDir;
 
 ${GLSL_NOISE3}
@@ -575,6 +586,22 @@ void main() {
   float f2 = fract(rise * 0.31 + colSeed * 3.1);
   float bolt2 = pow(0.5 - 0.5 * cos(6.28318530718 * f2), 5.0) * 0.55;
   float streak = (bolt + bolt2) * colLive;
+  // ...and they are a CLOSE-RANGE effect, exclusively.
+  //
+  // A bolt is a thin, high-contrast, world-vertical line. At the wall that is
+  // the signature of the mode. At 900 m — and at zone 1 the wall is 1250 m
+  // from the centre of a 1155 m island, so it is ALWAYS about that far from
+  // somebody — the same term projects, at pitch 0, as a set of exactly
+  // vertical parallel lines a few pixels wide, spread across the upper third
+  // of the frame with the buildings depth-testing holes in them. It stops
+  // reading as a wall and starts reading as scratches on the lens; that was
+  // this shader's worst artefact and it was in the sky of essentially every
+  // ground-level shot in the game.
+  //
+  // So the bolts are gone by half a kilometre. What survives at range is the
+  // lattice, the body and the rim, which is what a distant storm wall is
+  // supposed to be: a soft coloured band on the horizon.
+  streak *= 1.0 - smoothstep(140.0, 520.0, vDistXZ);
 
   // ---- fresnel ------------------------------------------------------------
   // The cylinder normal is purely radial, so this is exact without a normal
@@ -592,6 +619,24 @@ void main() {
   float contact = exp(-h * 0.055);          // the first ~20 m
   float body = exp(-h * 0.0021);            // the long climb
   float topFade = 1.0 - smoothstep(0.62, 1.0, vSurf.y);
+  // The geometric top fade above is a fraction of the COLUMN, so it is the
+  // same 560 m no matter where you are standing — and a 560 m column seen
+  // from 900 m out subtends 32 degrees, which is most of the sky above the
+  // roofline. A wall that towers over you from a kilometre away is not a
+  // landmark, it is a ceiling.
+  //
+  // So cap the visible height by range as well. hCap is the full column
+  // while you are anywhere near it — under 60 m nothing changes at all, which
+  // is the view that has to stay spectacular — and relaxes to roughly a fixed
+  // ANGULAR height beyond half a kilometre (0.17 rise over run, about ten
+  // degrees, plus a 45 m floor so the contact glow never vanishes outright).
+  float hCap = clamp(
+      uHeight * (1.0 - smoothstep(60.0, 520.0, vDistXZ)) + 45.0 + 0.17 * vDistXZ,
+      45.0,
+      uHeight);
+  // Fade over the top 55% of whatever that cap works out to, so the band ends
+  // in air rather than on a line.
+  topFade *= 1.0 - smoothstep(hCap * 0.45, hCap, h);
   // Soft bottom: below the ground line the wall is buried, but on a rise you
   // can see under the skirt, so it fades out rather than ending on a plane.
   float bottomFade = smoothstep(-uBaseDrop, -uBaseDrop * 0.25, vHeightM);
@@ -614,6 +659,14 @@ void main() {
   // While the wall is charging up to move it gets visibly angrier. This is a
   // free, readable warning that costs no HUD real estate.
   energy *= 1.0 + 0.55 * uCharge;
+  // The vertical profile gates the LIGHT as well as the coverage. It never
+  // used to: topFade was applied to cover only, so above the fade the
+  // wall stopped occluding but went on emitting, and the additive surplus
+  // (see the composite at the end) painted the sky on its own. That is why
+  // the bolts read as bright marks *over* an otherwise clean sky rather than
+  // as part of a violet mass, and it is why fading coverage alone would not
+  // have fixed anything.
+  energy *= topFade * bottomFade;
 
   // Coverage is DETAIL, not paint. The old build opened with a flat 0.30 of
   // solid violet on every fragment plus 0.44 of body, which at 0.95 opacity
