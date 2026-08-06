@@ -1988,8 +1988,13 @@ void main() {
 const PLATE_FRAG = /* glsl */ `
 precision highp float;
 #include <common>
+// tonemapping only. three r160 prepends <colorspace_pars_fragment> to every
+// non-raw ShaderMaterial (WebGLProgram.js), so including it here declares
+// LinearSRGBToLinearDisplayP3 twice and the whole fragment shader fails to
+// compile — nameplates then render as nothing at all. The tonemapping include
+// IS needed and must stay: this material sets toneMapped:false, so three
+// skips that chunk.
 #include <tonemapping_pars_fragment>
-#include <colorspace_pars_fragment>
 uniform sampler2D uAtlas;
 uniform float uRows;
 varying vec2 vUv;
