@@ -717,22 +717,67 @@ function buildZeppelin(): { group: THREE.Group; update: (now: number) => void; r
     deckY: DECK_Y + 0.12, // top of the plank slab
     halfW: DECK_HALF_W,
     halfL: DECK_HALF_L,
+    piloted: false,
+    control: { throttle: 0, turn: 0, climb: 0 },
+    speed: 14.5,
   };
+
+  // Free-flight state. Kept live even on autopilot so taking the helm
+  // never produces a jump — the hand-off is always from wherever the
+  // hull actually is.
+  const P = new THREE.Vector3(CX + R, CY, CZ);
+  let hdg = ride.yaw;
+
+  const MAX_SPEED = 30;      // full throttle, m/s
+  const TURN_RATE = 0.55;    // rad/s at full rudder — airship-lazy on purpose
+  const CLIMB_RATE = 9;      // m/s
+  const MIN_Y = 26, MAX_Y = 420;
+
   return {
     group: g,
     ride,
-    update(now: number) {
+    update(now: number, dt: number) {
       ride.prevPos.copy(ride.pos);
       ride.prevYaw = ride.yaw;
-      const a = now * 0.001 * OMEGA * Math.PI * 2;
-      g.position.set(CX + Math.cos(a) * R, CY + Math.sin(now * 0.0005) * 2.5, CZ + Math.sin(a) * R);
-      // Face along the orbit tangent (-sin a, 0, cos a).
-      g.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a));
-      ride.pos.copy(g.position);
-      ride.yaw = g.rotation.y;
+      const step = Math.min(Math.max(dt, 0), 0.1);
+
+      if (ride.piloted) {
+        const c = ride.control;
+        hdg -= c.turn * TURN_RATE * step;
+        const target = c.throttle * MAX_SPEED;
+        ride.speed += (target - ride.speed) * Math.min(1, step * 0.9);
+        // Forward is +Z in the hull's local frame.
+        P.x += Math.sin(hdg) * ride.speed * step;
+        P.z += Math.cos(hdg) * ride.speed * step;
+        P.y += c.climb * CLIMB_RATE * step;
+        P.y = Math.min(MAX_Y, Math.max(MIN_Y, P.y));
+      } else {
+        // Autopilot: the old city loop, but eased into rather than
+        // snapped to, so releasing the helm is a graceful bank home.
+        const a = now * 0.001 * OMEGA * Math.PI * 2;
+        const tx = CX + Math.cos(a) * R;
+        const ty = CY + Math.sin(now * 0.0005) * 2.5;
+        const tz = CZ + Math.sin(a) * R;
+        const k = 1 - Math.exp(-step * 0.5);
+        P.x += (tx - P.x) * k;
+        P.y += (ty - P.y) * k;
+        P.z += (tz - P.z) * k;
+        const targetYaw = Math.atan2(-Math.sin(a), Math.cos(a));
+        let d = targetYaw - hdg;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        hdg += d * k;
+        ride.speed += (14.5 - ride.speed) * k;
+      }
+
+      g.position.copy(P);
+      g.rotation.y = hdg;
+      ride.pos.copy(P);
+      ride.yaw = hdg;
     },
   };
 }
+
 
 // ---------------------------------------------------------------------------
 // Assembly
