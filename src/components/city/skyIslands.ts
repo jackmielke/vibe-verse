@@ -40,7 +40,18 @@ export interface ZeppelinRide {
   /** Deck half-extents in the zeppelin's local frame. */
   halfW: number;
   halfL: number;
+  /**
+   * Pilot mode. While true the orbit autopilot is off and `control` drives
+   * the hull directly; when it flips back to false the ship eases itself
+   * home to its city loop rather than snapping (a teleporting airship with
+   * a rider on the deck is a great way to fling someone into the sea).
+   */
+  piloted: boolean;
+  control: { throttle: number; turn: number; climb: number };
+  /** Current airspeed, m/s — handy for a HUD. */
+  speed: number;
 }
+
 
 export interface SkyIslandsWorld {
   group: THREE.Group;
