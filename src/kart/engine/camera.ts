@@ -158,6 +158,17 @@ const MIN_BOOM = 1.75;
 const GROUND_CLEAR = 0.85;
 /** Clearance above the plane the kart is sitting on (anti-gravity safe). */
 const PLANE_CLEAR = 0.55;
+/**
+ * Clearance the *settled* eye keeps, after the spring has run.
+ *
+ * Slightly under `GROUND_CLEAR`: the boom solver is what should be keeping the
+ * camera honest, and this is the backstop that catches the frames where the
+ * spring has not caught up with it yet. Making it equal would have the backstop
+ * fighting the solver on every crest.
+ */
+const EYE_CLEAR = 0.6;
+/** How far above the waterline the camera is allowed to get, ever. */
+const SEA_CLEAR = 1.2;
 /** Seconds a scenic beauty mark holds before the camera cuts to the next. */
 const SCENIC_HOLD = 12;
 /** Seconds the race-start sweep takes to arc into the chase pose. */
@@ -677,13 +688,82 @@ export default function createCamera(ctx: KartCtx): System {
    * boom and asking `surfaceAt` / `wallAt` at each station, which is an order
    * of magnitude cheaper than a BVH and exactly stable.
    *
-   * Two guards, deliberately different:
-   *   · a *vertical* guard against the surface height, only trusted where the
-   *     surface normal is roughly upright (on the anti-gravity plating the
-   *     analytic height is meaningless);
-   *   · a *plane* guard against the plane the kart is standing on, which works
-   *     on a wall, a ceiling and a loop alike.
+   * The clearance test is `probe.y − sample.height`, and that one expression is
+   * correct everywhere because of how `surfaceAt` defines `height`:
+   *
+   *   · on the ribbon it is `probe.y − (signed distance along the surface
+   *     normal)`, so the subtraction is a true along-normal clearance — it
+   *     works on the Quarry Bowl's banking and on the vertical anti-gravity
+   *     plating, where a naive drop test means nothing;
+   *   · off the ribbon it is the terrain height at that XZ, and for a
+   *     heightfield "below the height at my XZ" *is* "inside the hill",
+   *     however steep the hill happens to be.
+   *
+   * This used to be gated on `normal.y > 0.45`, which was a stand-in for "is
+   * this a floor". It is also true of every cliff face on the course, so the
+   * bluff, the quarry walls and the rock slab behind the plating were all
+   * invisible to the solver and the camera marched straight into them.
+   *
+   * A *plane* guard against the plane the kart is standing on backs it up,
+   * which works on a wall, a ceiling and a loop alike.
    */
+  /**
+   * Move `point` out of whatever it is inside, along that surface's own normal.
+   *
+   * The shortfall is measured the way `surfaceAt` reports it — along the normal
+   * on the ribbon, vertically off it — so an off-track push has to be divided
+   * by the normal's vertical component to actually clear the shortfall. The
+   * divisor is floored: on a near-vertical cliff the honest answer diverges,
+   * and one bounded shove followed by a second call is better behaved than a
+   * single enormous one.
+   */
+  function pushClear(point: THREE.Vector3, t: TrackService, hint: number | undefined, want: number): void {
+    const s = t.surfaceAt(point, hint, sample);
+    if (!s) return;
+    const clear = point.y - s.height;
+    const need = (s.onTrack ? want : want + 0.35) - clear;
+    if (!(need > 0) || !Number.isFinite(need)) return;
+    _tmp2.copy(s.normal);
+    if (_tmp2.lengthSq() < 1e-6) _tmp2.copy(WORLD_UP);
+    else _tmp2.normalize();
+    point.addScaledVector(_tmp2, need / (s.onTrack ? 1 : Math.max(0.35, _tmp2.y)));
+  }
+
+  /**
+   * The backstop, applied to the settled eye rather than to the pose it is
+   * springing toward.
+   *
+   * `resolveCollision` only ever guarantees that the *target* is legal. The eye
+   * is a spring, and a spring lags — through a respawn lift, the roll onto the
+   * anti-gravity plating, a fall into Gull Creek — which is exactly when the
+   * camera used to end up filming the inside of a hillside or the underside of
+   * the sea. Bleeding the velocity that put it there matters as much as moving
+   * it: without that the spring simply drives it back in on the next frame and
+   * the picture judders.
+   */
+  function keepEyeClear(racer: CamRacer | null): void {
+    const t = track();
+    const sea = (t as (TrackService & { seaLevel?: number }) | undefined)?.seaLevel;
+    // The sea is a plane over the whole world, so it needs no probe at all.
+    if (typeof sea === "number" && eye.y < sea + SEA_CLEAR) {
+      eye.y = sea + SEA_CLEAR;
+      if (eyeVel.y < 0) eyeVel.y = 0;
+    }
+    if (!t || typeof t.surfaceAt !== "function") return;
+    const hint =
+      racer && typeof racer.t === "number" && Number.isFinite(racer.t) ? racer.t : undefined;
+    _tmp.copy(eye);
+    pushClear(eye, t, hint, EYE_CLEAR);
+    pushClear(eye, t, hint, EYE_CLEAR);
+    _tmp.subVectors(eye, _tmp);
+    const moved = _tmp.lengthSq();
+    if (moved > 1e-8) {
+      _tmp.multiplyScalar(1 / Math.sqrt(moved));
+      const into = eyeVel.dot(_tmp);
+      if (into < 0) eyeVel.addScaledVector(_tmp, -into);
+    }
+  }
+
   function resolveCollision(racer: CamRacer, anchor: THREE.Vector3, desired: THREE.Vector3, dt: number): void {
     const t = track();
     _tmp.copy(desired).sub(anchor);
@@ -700,13 +780,9 @@ export default function createCamera(ctx: KartCtx): System {
         _probe.copy(anchor).addScaledVector(_tmp, len * u);
         const s = t.surfaceAt(_probe, hint, sample);
         let blocked = false;
-        // The analytic surface height is a *height*, so it only means anything
-        // where the surface is roughly level. On the anti-gravity plating the
-        // road is a wall and this test is nonsense — the plane guard below is
-        // what covers that case.
-        if (s && s.normal.y > 0.45) {
+        if (s) {
           const clear = s.onTrack ? GROUND_CLEAR : GROUND_CLEAR + 0.35;
-          if (_probe.y < s.height + clear) blocked = true;
+          if (_probe.y - s.height < clear) blocked = true;
         }
         if (!blocked && typeof t.wallAt === "function") {
           const hit = t.wallAt(_probe, 0.55, hint);
@@ -728,13 +804,10 @@ export default function createCamera(ctx: KartCtx): System {
     desired.copy(anchor).addScaledVector(_tmp, len * collision);
 
     // Riding a crest, shortening the boom does not help — the ground behind is
-    // simply higher than the camera. Lift instead; it keeps the framing.
+    // simply higher than the camera. Push out instead; it keeps the framing.
     if (t && typeof t.surfaceAt === "function") {
-      const s = t.surfaceAt(desired, hint, sample);
-      if (s && s.normal.y > 0.45) {
-        const floor = s.height + (s.onTrack ? GROUND_CLEAR : GROUND_CLEAR + 0.35);
-        if (desired.y < floor) desired.y = floor;
-      }
+      pushClear(desired, t, hint, GROUND_CLEAR);
+      pushClear(desired, t, hint, GROUND_CLEAR);
     }
 
     // Anti-gravity safe floor: stay on the driving side of the plane the kart
@@ -844,12 +917,9 @@ export default function createCamera(ctx: KartCtx): System {
   }
 
   /** Scenic and results never pull the boom in — that would wreck the framing
-   *  — but they still must not end up inside a hill. */
+   *  — but they still must not end up inside a hill or under the waterline. */
   function keepAboveGround(): void {
-    const t = track();
-    if (!t || typeof t.surfaceAt !== "function") return;
-    const s = t.surfaceAt(eye, undefined, sample);
-    if (s && s.normal.y > 0.45 && eye.y < s.height + 1.1) eye.y = s.height + 1.1;
+    keepEyeClear(null);
   }
 
   // -------------------------------------------------------------------------
@@ -1013,6 +1083,7 @@ export default function createCamera(ctx: KartCtx): System {
     } else {
       springVec(eye, eyeVel, _desired, omega, dt);
     }
+    keepEyeClear(racer);
     dampVec(look, _lookTarget, rig.lookRate, dt);
 
     // --- field of view -----------------------------------------------------

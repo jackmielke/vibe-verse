@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { makeKartInput, makeRng, type KartCtx, type RacerState } from "../types";
 import { bakeSoundBank } from "./bank";
-import { bakeKit } from "./music";
+import { MUSIC_SCALE, bakeKit, snapToChord, trackHarmony, type MusicTrack } from "./music";
 import { createGraph } from "./graph";
 import { clamp, noteHz, normalize, onePole, oneHigh, percEnv, svfBand } from "./synth";
 import createAudio from "./index";
@@ -229,5 +229,62 @@ describe("with no WebAudio at all", () => {
     }).not.toThrow();
 
     expect(ctx.services.audio).toBeUndefined();
+  });
+});
+
+/**
+ * The written score.
+ *
+ * Neither of these is audible in a screenshot and both of them were wrong: the
+ * dominant was voiced as a major 7th (a G♯ in a piece in D major, colliding
+ * with the melody's G natural every time the V came round), and the melody's
+ * "snap it onto the chord" rule moved a 9th *down* onto a flat 9th — it
+ * manufactured the semitone it was there to remove. Hearing either as a bug
+ * rather than as "the music is a bit much" takes a trained ear; asserting them
+ * takes four lines.
+ */
+describe("the score", () => {
+  const tracks: MusicTrack[] = ["menu", "race", "finalLap", "results"];
+
+  for (const track of tracks) {
+    it(`${track} is diatonic`, () => {
+      for (const chord of trackHarmony(track)) {
+        for (const tone of chord.tones) {
+          const pitchClass = (((chord.root + tone) % 12) + 12) % 12;
+          expect(`${track} ${chord.root}+${tone} = ${pitchClass}`).toBe(
+            `${track} ${chord.root}+${tone} = ${MUSIC_SCALE.includes(pitchClass) ? pitchClass : "OUT OF KEY"}`,
+          );
+        }
+      }
+    });
+  }
+
+  it("never voice-leads a melody note into a semitone clash", () => {
+    for (const track of tracks) {
+      for (const chord of trackHarmony(track)) {
+        for (let degree = 0; degree < 14; degree++) {
+          const octave = 12 * Math.floor(degree / 7);
+          const midi = 50 + 24 + octave + MUSIC_SCALE[degree % 7];
+          for (const steps of [2, 4]) {
+            const fixed = snapToChord(midi, 50 + chord.root, chord.tones, steps);
+            const rel = (((fixed - (50 + chord.root)) % 12) + 12) % 12;
+            // Either it landed on a chord tone, or it was left alone as colour
+            // — a 9th or a 6th. A flat 9th is neither.
+            const ok = chord.tones.includes(rel) || rel === 2 || rel === 9;
+            expect(`degree ${degree} over ${chord.root}: ${ok ? "ok" : `clashes at ${rel}`}`).toBe(
+              `degree ${degree} over ${chord.root}: ok`,
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it("moves a note no further than it has to", () => {
+    // A tritone above a major chord is 6 semitones; the nearest chord tone is
+    // one step away, and one step is what it should move.
+    expect(snapToChord(50 + 6, 50, [0, 4, 7, 9], 4)).toBe(50 + 7);
+    // A chord tone is never touched, at any length.
+    expect(snapToChord(50 + 4, 50, [0, 4, 7, 9], 8)).toBe(50 + 4);
   });
 });
