@@ -129,8 +129,33 @@ const SHOTS = {
   },
 };
 
-function poseSource(fn) {
-  return `(${fn.toString()})(window.__dz)`;
+/**
+ * Install the pose as a camera override.
+ *
+ * Setting `camera.position` from the outside does nothing: the player system
+ * owns the camera and rewrites it in `lateUpdate`, every frame, after any
+ * value we could poke in. The first run of this harness produced three
+ * byte-identical screenshots of the battle bus for exactly that reason.
+ *
+ * `renderOverride` is the hook that works. The engine calls it last, after
+ * every update and lateUpdate have run, so posing the camera inside it lands
+ * after the player rig has had its say. Camera-driven systems (grass
+ * streaming, terrain LOD) read the posed position on the FOLLOWING frame,
+ * which is why every shot still gets a settle window rather than one frame.
+ */
+function installPose(fn) {
+  return `(() => {
+    const e = window.__dz;
+    if (!e) return;
+    if (!e.__dzBaseRender) e.__dzBaseRender = e.renderOverride;
+    const pose = ${fn.toString()};
+    e.renderOverride = (dt) => {
+      pose(e);
+      e.ctx.camera.updateMatrixWorld();
+      if (e.__dzBaseRender) e.__dzBaseRender(dt);
+      else e.ctx.renderer.render(e.ctx.scene, e.ctx.camera);
+    };
+  })()`;
 }
 
 async function up(url, ms) {
@@ -206,7 +231,7 @@ for (const name of names) {
   const shot = SHOTS[name];
   if (booted) {
     try {
-      await page.evaluate(poseSource(shot.pose));
+      await page.evaluate(installPose(shot.pose));
     } catch (err) {
       errors.push(`pose "${name}" threw: ${err.message}`);
     }
