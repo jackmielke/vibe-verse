@@ -23,6 +23,8 @@ import {
 } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
 import { passportProgress } from "@/lib/passport";
+import VibeCoinMark from "@/components/VibeCoinMark";
+import { useVibecoin } from "@/hooks/use-vibecoin";
 
 /** Filter tabs. `all` is not a kind, so it is spelled out here. */
 const TABS: { id: WorldKind | "all"; label: string; hint: string }[] = [
@@ -145,6 +147,10 @@ export default function Game() {
      render to draw one line of text is not worth a subscription. */
   const progress = useMemo(() => passportProgress(), []);
 
+  /* The wallet, for the chip below the headline. Shares the nav's fetch — see
+     `use-vibecoin`, which reference-counts a single request per page. */
+  const coin = useVibecoin();
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = tab === "all" ? WORLDS : WORLDS.filter((w) => w.kind === tab);
@@ -215,6 +221,19 @@ export default function Game() {
               className="rounded-full border border-border/60 px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground sm:px-4 sm:py-2"
             >
               🪐 The 3D hub
+            </Link>
+            {/* The currency, on the front door. The balance is already in the
+                corner on every page, but the corner does not say what it is
+                for — this chip is the one that tells a first-time visitor the
+                vibeverse has money in it and points at where to spend it. */}
+            <Link
+              to="/arcade"
+              title="Vibecoin — the currency of the vibeverse. Earn it in the worlds, spend it in the arcade."
+              className="flex items-center gap-1.5 rounded-full border border-[#7dffd4]/35 bg-[#7dffd4]/[0.07] px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-[#7dffd4] transition-colors hover:border-[#7dffd4]/60 sm:px-4 sm:py-2"
+            >
+              <VibeCoinMark size={13} />
+              <span className="tabular-nums">{coin.display}</span>
+              <span className="opacity-70">Vibecoin</span>
             </Link>
             <span className="rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground sm:py-2">
               {counts.playable} playable · passport {progress.visited}/{progress.total}

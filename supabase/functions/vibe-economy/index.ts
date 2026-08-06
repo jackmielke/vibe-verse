@@ -17,6 +17,10 @@
 //   tick_agent     { agentId }                            -> decays needs, may put agent to sleep / wake them
 //   game_reward    { ownerKind, ownerRef, game, score }   -> mints $VIBE for a sky-island mini-game run
 //                                                            (server-side score clamp + 3 rewarded plays/game/day)
+//   arcade_insert  { ownerKind, ownerRef, game }          -> debits a cabinet's stake, returns a playId
+//   arcade_settle  { ownerKind, ownerRef, playId, game, score }
+//                                                         -> pays out that ONE play, once, clamped + daily-capped
+//   arcade_allowance { ownerKind, ownerRef }              -> tops a near-broke wallet up, once per UTC day
 //
 // fromKind/ownerKind ∈ {"user","agent"}.  ownerRef is a uuid for signed-in
 // users + agents and a stable guest-id string for anonymous visitors.
@@ -53,6 +57,9 @@ Deno.serve(async (req) => {
       case "claim_bounty":   return ok(await claimBounty(supabase, body));
       case "complete_bounty":return ok(await completeBounty(supabase, body));
       case "game_reward":    return ok(await gameReward(supabase, body));
+      case "arcade_insert":  return ok(await arcadeInsert(supabase, body));
+      case "arcade_settle":  return ok(await arcadeSettle(supabase, body));
+      case "arcade_allowance": return ok(await arcadeAllowance(supabase, body));
       default: return json({ error: `unknown action: ${action}` }, 400);
     }
   } catch (e) {
@@ -359,4 +366,196 @@ async function gameReward(supabase: Supa, b: any) {
     capped: false,
     playsLeft: GAME_PLAYS_PER_DAY - played - 1,
   };
+}
+
+// ---- the arcade ---------------------------------------------------------
+//
+// The first thing in the vibeverse that CHARGES. Everything above this line
+// pays out, which meant the ledger could only ever inflate; a cabinet that
+// takes a stake before it runs a frame is the other half of a currency.
+//
+// The shape is deliberately a real coin-op:
+//
+//   arcade_insert  debits the stake and returns the debit's ledger row id.
+//   arcade_settle  quotes that id, and pays out against it exactly once.
+//
+// Which gives us the three properties that matter:
+//
+//   * You cannot be paid for a game you did not pay for — settle refuses a
+//     playId that is not a real, matching, recent `arcade_play` row.
+//   * You cannot be paid twice for one run — a settled play already has an
+//     `arcade_win` row quoting its id, and the second attempt finds it.
+//   * You cannot be paid more than a perfect run is worth — the score is
+//     clamped to the cabinet's ceiling before the curve is applied, so the
+//     worst a modified client can claim is "I was perfect", and perfect has
+//     a price.
+//
+// It is not tamper-PROOF: a determined player can still claim a perfect run
+// they did not have. That is a fair trade for a browser game with no server
+// simulation, and the daily ceiling below bounds what it is worth doing.
+//
+// ARCADE_SPECS mirrors `CABINETS` in `src/arcade/cabinets.ts`. THIS copy is
+// the authority — the client's exists so the cabinet can print an honest
+// paytable. `src/test/arcade.test.ts` checks they still agree.
+
+const ARCADE_DAILY_CAP = 400;   // most any wallet can WIN from the arcade per UTC day
+const ARCADE_PLAY_TTL_MIN = 60; // a coin goes stale; settle the run you just played
+const ALLOWANCE_TARGET = 30;    // the floor a near-broke wallet is lifted to, once a day
+
+const ARCADE_SPECS: Record<string, { cost: number; maxScore: number; payout: (s: number) => number }> = {
+  stacker: { cost: 10, maxScore: 12, payout: (s) => (s <= 0 ? 0 : s * 4 + (s >= 12 ? 40 : 0)) },
+  pattern: { cost: 8,  maxScore: 14, payout: (s) => (s < 3 ? 0 : Math.round(s * s * 0.6)) },
+  reflex:  { cost: 6,  maxScore: 24, payout: (s) => Math.round(s * 2.4) },
+};
+
+function utcMidnight(): string {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+async function balanceOf(supabase: Supa, kind: string, ref: string): Promise<number> {
+  const { data } = await supabase.from("vibe_balances")
+    .select("balance").eq("owner_kind", kind).eq("owner_ref", ref).maybeSingle();
+  return Number(data?.balance ?? 0);
+}
+
+async function setBalance(supabase: Supa, kind: string, ref: string, value: number) {
+  const { error } = await supabase.from("vibe_balances")
+    .update({ balance: value, updated_at: new Date().toISOString() })
+    .eq("owner_kind", kind).eq("owner_ref", ref);
+  if (error) throw new Error(error.message);
+}
+
+async function arcadeInsert(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  const game = String(b.game ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+  const spec = ARCADE_SPECS[game];
+  if (!spec) throw new Error(`unknown cabinet: ${game}`);
+
+  // ensureWallet also seeds a first-time visitor's 100, so a brand new player
+  // can put a coin in the very first machine they walk up to.
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef);
+  if (balance < spec.cost) {
+    throw new Error(`not enough vibe (have ${balance}, need ${spec.cost})`);
+  }
+
+  await setBalance(supabase, ownerKind, ownerRef, balance - spec.cost);
+  const { data: row, error } = await supabase.from("vibe_ledger").insert({
+    from_kind: ownerKind, from_ref: ownerRef,
+    to_kind: "system",    to_ref: "arcade",
+    amount: spec.cost, reason: "arcade_play", memo: game,
+  }).select().single();
+  if (error || !row) {
+    // Put the coin back rather than leave them charged for a play they can
+    // never settle — the debit is only real if it has a play id attached.
+    await setBalance(supabase, ownerKind, ownerRef, balance);
+    throw new Error(error?.message ?? "could not open a play");
+  }
+
+  return { playId: row.id, cost: spec.cost, balance: balance - spec.cost };
+}
+
+async function arcadeSettle(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  const game = String(b.game ?? "");
+  const playId = String(b.playId ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+  const spec = ARCADE_SPECS[game];
+  if (!spec) throw new Error(`unknown cabinet: ${game}`);
+  if (!playId) throw new Error("playId required");
+
+  // The play must exist, be this player's, be for this cabinet, and be recent.
+  const { data: play } = await supabase.from("vibe_ledger")
+    .select("id, from_kind, from_ref, reason, memo, created_at")
+    .eq("id", playId).maybeSingle();
+  if (!play) throw new Error("no such play");
+  if (play.reason !== "arcade_play") throw new Error("that is not a play");
+  if (play.from_kind !== ownerKind || play.from_ref !== ownerRef) {
+    throw new Error("that play belongs to someone else");
+  }
+  if (play.memo !== game) throw new Error("that play was for a different cabinet");
+  const age = (Date.now() - new Date(play.created_at as string).getTime()) / 60000;
+  if (age > ARCADE_PLAY_TTL_MIN) throw new Error("that coin has gone cold");
+
+  // Settle once. The winning row quotes the play id, so its own existence is
+  // the lock — no extra table, and it survives a redeploy.
+  const tag = `play:${playId}`;
+  const { count: already } = await supabase.from("vibe_ledger")
+    .select("id", { count: "exact", head: true })
+    .eq("reason", "arcade_win").like("memo", `%${tag}%`);
+  if ((already ?? 0) > 0) throw new Error("that play is already settled");
+
+  const score = Math.min(Math.max(0, Math.floor(Number(b.score) || 0)), spec.maxScore);
+  const gross = Math.max(0, Math.round(spec.payout(score)));
+
+  // Daily ceiling on winnings. Losing runs are unlimited — it is the payout
+  // that needs a bound, not the play.
+  const { data: wins } = await supabase.from("vibe_ledger")
+    .select("amount")
+    .eq("to_kind", ownerKind).eq("to_ref", ownerRef)
+    .eq("reason", "arcade_win")
+    .gte("created_at", utcMidnight());
+  const wonToday = (wins ?? []).reduce((t: number, r: any) => t + Number(r.amount), 0);
+  const headroom = Math.max(0, ARCADE_DAILY_CAP - wonToday);
+  const amount = Math.min(gross, headroom);
+
+  const balance = await balanceOf(supabase, ownerKind, ownerRef);
+  if (amount <= 0) {
+    return {
+      amount: 0,
+      balance,
+      capped: gross > 0,           // they won, the ceiling ate it
+      remainingToday: headroom,
+    };
+  }
+
+  await setBalance(supabase, ownerKind, ownerRef, balance + amount);
+  await supabase.from("vibe_ledger").insert({
+    from_kind: "system", from_ref: "treasury",
+    to_kind: ownerKind,  to_ref: ownerRef,
+    amount, reason: "arcade_win", memo: `${game} · score ${score} · ${tag}`,
+  });
+
+  return {
+    amount,
+    balance: balance + amount,
+    capped: amount < gross,
+    remainingToday: Math.max(0, headroom - amount),
+  };
+}
+
+async function arcadeAllowance(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef);
+  // Only for players who are actually stuck. Topping up to a floor rather than
+  // paying a flat grant means someone sitting at 29 cannot farm it.
+  if (balance >= ALLOWANCE_TARGET) {
+    return { granted: 0, balance, nextAt: null };
+  }
+  const { count } = await supabase.from("vibe_ledger")
+    .select("id", { count: "exact", head: true })
+    .eq("to_kind", ownerKind).eq("to_ref", ownerRef)
+    .eq("reason", "arcade_allowance")
+    .gte("created_at", utcMidnight());
+  if ((count ?? 0) > 0) {
+    const tomorrow = new Date(utcMidnight());
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    return { granted: 0, balance, nextAt: tomorrow.toISOString() };
+  }
+
+  const granted = Math.round((ALLOWANCE_TARGET - balance) * 100) / 100;
+  await setBalance(supabase, ownerKind, ownerRef, ALLOWANCE_TARGET);
+  await supabase.from("vibe_ledger").insert({
+    from_kind: "system", from_ref: "treasury",
+    to_kind: ownerKind,  to_ref: ownerRef,
+    amount: granted, reason: "arcade_allowance", memo: "daily allowance",
+  });
+  return { granted, balance: ALLOWANCE_TARGET, nextAt: null };
 }

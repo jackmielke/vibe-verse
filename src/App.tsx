@@ -17,6 +17,7 @@ import Bestiary from "./pages/Bestiary.tsx";
 import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import VibeGo from "./pages/VibeGo.tsx";
+import VibeArcade from "./pages/VibeArcade.tsx";
 import StartFlow from "./pages/StartFlow.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
@@ -162,6 +163,10 @@ const App = () => (
           {/* COIN Hub — wallet login, community holders, market. */}
           <Route path="/coin" element={<VibeHub />} />
           <Route path="/vibe" element={<Navigate to="/coin" replace />} />
+          {/* VIBE ARCADE — the first place Vibecoin is spent rather than
+              earned. Three coin-operated cabinets; the insert debits the real
+              ledger and the payout is settled server-side. */}
+          <Route path="/arcade" element={<VibeArcade />} />
           {/* VIBE GO — Pokémon-GO-style real-world catching, PWA-first. */}
           <Route path="/go" element={<VibeGo />} />
           {/* First-time onboarding: name → character → email-or-guest. */}

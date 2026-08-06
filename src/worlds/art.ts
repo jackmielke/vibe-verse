@@ -32,6 +32,7 @@ import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 import villageArt from "@/assets/edge-app-icon-bg.png";
 import airplaneArt from "@/assets/worlds/airplane.jpg";
+import arcadeArt from "@/assets/worlds/arcade.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import homeAloneArt from "@/assets/worlds/home-alone.jpg";
@@ -42,6 +43,7 @@ import trekArt from "@/assets/worlds/final-frontier.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
+  arcade: arcadeArt,
   airplane: airplaneArt,
   "blue-angels": blueAngelsArt,
   fnaf: fnafArt,

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import WorldPicker from "@/components/WorldPicker";
 import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
+import VibeCoinChip from "@/components/VibeCoinChip";
 import { WORLDS, type WorldEntry } from "@/worlds/registry";
 import { VibeMark } from "@/components/HomeButton";
 
@@ -206,15 +207,20 @@ export default function GlobalNav() {
         </div>
       </nav>
 
-      {/* Vibe Profile — own pill, top-right, height-matched to the nav row. */}
+      {/* Wallet + Vibe Profile — one pill, top-right, height-matched to the
+          nav row. The balance shares the profile's pill rather than taking a
+          fourth corner: on a phone there are only two free corners at the top,
+          and the currency belongs next to the identity that holds it. */}
       <div className="fixed top-3 right-3 z-40 pointer-events-auto">
         <div
-          className="glass-panel rounded-full border border-border/60 px-1.5 py-1 flex items-center"
+          className="glass-panel rounded-full border border-border/60 px-1.5 py-1 flex items-center gap-1"
           style={{
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
           }}
         >
+          <VibeCoinChip />
+          <span className="h-4 w-px bg-border/60" aria-hidden />
           <LogInWithVibe />
         </div>
       </div>

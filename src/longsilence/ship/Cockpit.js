@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 20;
+export const PASSPORT_ROWS = 22;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1199,9 +1199,13 @@ function drawArchivePassport(g, v, ctx) {
      last row while the counter above it went on saying "/ 11" — the one world
      missing from the list being, of course, the new one. Then twelve, when The
      Final Frontier made thirteen. Then fourteen. Then six games landed in one
-     week and it was eighteen. A silent truncation on a completion panel is the
-     worst kind of bug, because the panel's entire job is to tell you what you
-     have not done yet.
+     week and it was eighteen. Then the Vibe Arcade made twenty-one. A silent
+     truncation on a completion panel is the worst kind of bug, because the
+     panel's entire job is to tell you what you have not done yet.
+
+     The archive canvas is 768 × ~486, so the band this divides is 214 px. At
+     twenty-two stamps that is eleven rows at a 21 px pitch with 12 px names —
+     legible, and about two worlds short of where it stops being.
 
      So the rows now shrink to fit instead of falling off the bottom. TOP to
      BOTTOM is the band that is genuinely free between the progress bar and the

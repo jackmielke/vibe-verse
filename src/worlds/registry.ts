@@ -575,6 +575,20 @@ const WORLDS_RAW: WorldEntry[] = [
     nav: true,
   },
   {
+    key: "arcade",
+    route: "/arcade",
+    name: "Vibe Arcade",
+    emoji: "🕹️",
+    kind: "game",
+    blurb:
+      "Coin-operated cabinets. Each one charges real Vibecoin to start and pays it back if you are good enough.",
+    status: "Playable — three cabinets",
+    accent: "#7dffd4",
+    source: "src/pages/VibeArcade.tsx",
+    nav: true,
+    passport: true,
+  },
+  {
     key: "times",
     route: "/times",
     name: "The Vibe Times",
@@ -643,6 +657,7 @@ const WORLDS_RAW: WorldEntry[] = [
  */
 const ORDER: string[] = [
   "island",
+  "arcade",
   "blue-angels",
   "fnaf",
   "kart",
