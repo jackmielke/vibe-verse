@@ -51,6 +51,10 @@ const Seafair = lazy(() => import("./pages/Seafair.tsx"));
    for the same reason Seafair is: nobody who never flies there should pay for
    it in the hub's entry chunk. */
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
+/* DROP ZERO is the biggest world in the building — its own terrain, build
+   system, weapons and bots, ~65k lines. Lazy for the same reason as the rest:
+   nobody who never drops in should carry an island in the hub's entry chunk. */
+const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 /* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
 const VibeKartMultiplayer = lazy(() => import("./pages/VibeKartMultiplayer.tsx"));
@@ -244,6 +248,19 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <VibeverseExplorer />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* DROP ZERO — battle royale. Bus, island, storm, and the build loop.
+              /royale and /br are aliases; the world calls itself Drop Zero. */}
+          {["/drop-zero", "/royale", "/br"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#05060f]" />}>
+                  <DropZero />
                 </Suspense>
               }
             />

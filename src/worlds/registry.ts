@@ -257,6 +257,23 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "drop-zero",
+    route: "/drop-zero",
+    aliases: ["/royale", "/br"],
+    name: "Drop Zero",
+    emoji: "🪂",
+    kind: "game",
+    blurb:
+      "One island, one storm, one hundred rivals. Ride the bus, harvest anything that isn't nailed down, and build faster than they can shoot.",
+    status: "Playable — battle royale",
+    accent: "#818cf8",
+    featured: true,
+    source: "src/royale",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "san-palmas",
     route: "/san-palmas",
     aliases: ["/fps"],

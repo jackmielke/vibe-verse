@@ -46,3 +46,6 @@ supabase/.branches/
 
 # Screenshot harness output
 shots/
+
+# Capture harness output — regenerate with scripts/dz-shot.mjs, never commit.
+shots/
