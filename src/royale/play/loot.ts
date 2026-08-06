@@ -3744,8 +3744,10 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
 
   let holdKey: unknown = null;
   let holdT = 0;
-  /** Seconds since the last floor item was taken. Gates the held-E sweep. */
+  /** Seconds since the last floor item was taken. Paces the held-E sweep. */
   let sinceTake = ITEM_REPEAT;
+  /** Has the current target been offered to the current press yet? */
+  let takeArmed = true;
   let target: Target | null = null;
 
   function eyePosition(out: THREE.Vector3): THREE.Vector3 {
@@ -3817,15 +3819,18 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
       return;
     }
     const key = targetKey(target);
-    /** First frame this particular thing is the target. */
-    const fresh = key !== holdKey;
-    if (fresh) {
+    // A new thing in reach is a new offer: re-arm the take and restart the hold.
+    if (key !== holdKey) {
       holdKey = key;
       holdT = 0;
+      takeArmed = true;
     }
     if (!input.interact) {
       holdT = 0;
       prevInteract = false;
+      // Letting go re-arms: the next press is a fresh ask, even for a target
+      // this press already tried and could not take (a full inventory).
+      takeArmed = true;
       return;
     }
     const need = holdTimeFor(target);
@@ -3834,20 +3839,25 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
        * There are two ways a player asks for a floor item and BOTH have to
        * work:
        *
-       *  - press E while the gun is already in reach — the rising edge,
-       *    `!prevInteract`;
-       *  - be holding E as they run at the gun, or as it settles out of the
-       *    chest they just opened — `fresh`, the edge on the *target*.
+       *  - press E while the gun is already in reach — the rising edge;
+       *  - be holding E as they run onto the gun, or as it settles out of the
+       *    chest they just opened — the edge on the *target*.
        *
        * Only the first was implemented, and because `prevInteract` latches
        * true on every frame where there is nothing in reach (see the `!target`
        * branch above), the second was not merely unsupported — it was
-       * unreachable. Hold E, walk onto a rifle, and the game silently refuses
-       * it until you let go and press again. `ITEM_REPEAT` is what the old
-       * global edge was really protecting: it keeps a held key sweeping a pile
-       * at a readable rate instead of emptying it in one frame.
+       * unreachable. Hold E, walk onto a rifle, and the game silently refused
+       * it until you let go and pressed again.
+       *
+       * So the edge that matters is per-target: `takeArmed` is set when this
+       * pickup becomes the offer and cleared the moment the offer is answered,
+       * which is what the old global edge was really trying to express — one
+       * take per item, never a room emptied by a leaning key. `ITEM_REPEAT`
+       * paces the sweep across a chest's spill so the player can see what they
+       * are collecting and let go before their last slot goes.
        */
-      if (target.kind === "item" && (!prevInteract || (fresh && sinceTake >= ITEM_REPEAT))) {
+      if (target.kind === "item" && takeArmed && (!prevInteract || sinceTake >= ITEM_REPEAT)) {
+        takeArmed = false;
         if (takePickup(target.pickup)) sinceTake = 0;
       }
     } else {
