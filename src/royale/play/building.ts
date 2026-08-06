@@ -2135,16 +2135,42 @@ const createBuilding: SystemFactory = (ctx: WorldCtx): System => {
    * the slot map instead: two pieces of different kinds legitimately share a
    * cell (a ramp under a cone, a floor under both) and an AABB test cannot tell
    * that from a real conflict.
+   *
+   * The test volume is also clipped to the placement's own footing plane, and
+   * that clip is load-bearing. A wall's collider starts exactly on the lattice
+   * plane, but a floor's entire 0.25 m slab hangs *below* it (its walking
+   * surface is the plane) and a ramp's staircase underhangs it by HALF_T. What
+   * lies below that plane is the thing holding the piece up — `isAnchored` goes
+   * looking for exactly such a collider and calls it support. Testing it here
+   * as an obstruction made the two functions contradict each other, and the
+   * world is authored so they contradict each other *everywhere it matters*:
+   * `apron()` gives every POI a solid hardstanding whose top face is the grid
+   * plane the district stands on. So on any street in any town a wall was legal
+   * and a floor and a ramp were refused, always, with the ghost correctly red —
+   * measured at 21 of 21 probes walking out across Vista Villa. A battle royale
+   * in which you cannot ramp-rush in a POI is missing its movement game.
    */
   function volumeClear(l: Loc, mask: number): boolean {
     const collision = ctx.services.collision as CollisionLike | undefined;
     if (!collision) return true;
+    const footing = l.b * GRID;
     const boxes = colliderBoxes(l, mask, tier);
     for (const b of boxes) {
       // Shrink before testing. Every legal build touches the world — a floor
       // rests on dirt, a wall shares a seam with the wall beside it — and a
       // strict test would call all of it a collision.
       _boxB.copy(b).expandByScalar(-0.09);
+      if (_boxB.max.y <= footing) {
+        // A floor claims nothing whatever above its own plane, so clipping it
+        // would leave no volume to test and let one be posted inside solid
+        // rock. Test the slab its deck occupies instead — "is there room to
+        // stand here" is the question the player is really asking, and it is
+        // the one a floor should be refused for.
+        _boxB.min.y = footing;
+        _boxB.max.y = footing + WALL_THICKNESS;
+      } else if (_boxB.min.y < footing) {
+        _boxB.min.y = footing;
+      }
       if (_boxB.min.x >= _boxB.max.x || _boxB.min.y >= _boxB.max.y || _boxB.min.z >= _boxB.max.z) {
         continue;
       }

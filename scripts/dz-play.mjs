@@ -520,14 +520,14 @@ await step("build-ramp", "C selects a ramp and it places", async () => {
   // The wall from the last beat is standing in the old spot, so find a fresh
   // one rather than clicking at an occupied cell four times.
   //
-  // This one still fails, and `legalAim=false` is the finding, not the excuse:
-  // asked at eight IDENTICAL crosshairs around the drop POI, the build service
-  // reported wall placeable at six of them and ramp and floor at NONE. Wall is
-  // 4 x 0.3 m on a grid line; ramp and floor claim the whole 4 x 4 m cell. So
-  // either a POI street genuinely never has a clear cell — in which case the
-  // beat needs to walk out of town first — or `validate()` is wrong about the
-  // footprint pieces. That is building.ts's question; this beat's job is to
-  // keep asking it loudly.
+  // `legalAim=false` here was a real bug, not a bad crosshair, and the beat
+  // asking it loudly is what found it: wall placeable at six of eight probes,
+  // ramp and floor at NONE. Not the 4 x 4 m footprint — the sub-grid underhang.
+  // A floor's whole slab and a ramp's staircase hang below their own lattice
+  // plane, `apron()` gives every POI a solid hardstanding whose top face IS
+  // that plane, and `volumeClear` was counting the ground the piece stands on
+  // as the thing blocking it. Fixed in building.ts by clipping the test volume
+  // to the placement's footing plane.
   const legal = await aimAtBuildableGround();
   const before = (await state()).pieces;
   let after = before;
