@@ -13,8 +13,10 @@
  *    positions, so the deck has parallax when you sprint and when you drop.
  *  - The key sun: one DirectionalLight on an adaptive, texel-snapped shadow
  *    cascade that reshapes itself for on-foot / elevated / skydiving framing.
- *  - A hemisphere fill (cool sky, warm sand bounce) and a cool anti-sun rim
- *    light that fakes the sky's wrap-around bounce on shadowed faces.
+ *  - A hemisphere fill driven by the dome's own measured cosine-weighted
+ *    irradiance plus an explicit warm ground/wall bounce, and a cool anti-sun
+ *    rim light that fakes the sky's wrap-around on shadowed faces. Between them
+ *    they own how bright and how blue every shadow in the world is.
  *  - Exp² fog whose colour is re-sampled from the sky *in the view direction*
  *    every frame. Look toward the sun and the haze goes gold; look away and it
  *    goes blue. That single behaviour is most of what reads as "AAA landscape".
@@ -204,7 +206,38 @@ const FOG_DENSITY_LOW_SUN = 0.00012;
  * radiance every time the sun moves, so the fill can never disagree with the
  * dome above it.
  */
-const HEMI_GROUND = new THREE.Color().setRGB(0.34, 0.26, 0.17);
+const HEMI_GROUND = new THREE.Color().setRGB(0.4, 0.3, 0.19);
+
+/**
+ * The single-bounce term, and the reason a golden-hour shadow is not blue.
+ *
+ * The cosine-weighted diffuse irradiance of this dome at t = 0.3 measures
+ * linear (0.089, 0.238, 0.543) — a 6.1 : 1 blue-to-red ratio. That number is
+ * *correct*: skylight at golden hour really is that blue, and a hemisphere
+ * light driven from it alone is what put the plaza in shots/street.png at
+ * sRGB(24, 38, 61) with 90% of its red coming from an albedo-independent
+ * ambient. It is also the wrong answer, because a plaza is not a plane under
+ * an empty sky: it is a floor surrounded by four storeys of sunlit sandstone,
+ * and most of the light reaching it in shadow has bounced off that sandstone,
+ * not fallen out of the zenith.
+ *
+ * A hemisphere light cannot know about the walls, so we tell it: albedo of
+ * the world's dominant surfaces (warm sand / flagstone / terracotta) times the
+ * key's own irradiance times a form factor. `BOUNCE_GAIN` is that form factor,
+ * and 0.25 is high because a POI courtyard is nearly enclosed — an open field
+ * would be nearer 0.08. It is one constant standing in for a radiosity solve,
+ * and it is the difference between shadows with colour in them and shadows
+ * that read as a blue-grey hole in the frame.
+ */
+const BOUNCE_ALBEDO = new THREE.Color().setRGB(0.5, 0.36, 0.18);
+const BOUNCE_GAIN = 0.25;
+
+/**
+ * How hard the measured sky irradiance itself is driven, on top of the bounce.
+ * Fortnite's shadows are BRIGHT — the readable half of the image lives in
+ * them — and the sky is the only thing filling them.
+ */
+const SKY_FILL_GAIN = 1.75;
 
 const MOON_TINT = new THREE.Color().setRGB(0.66, 0.75, 1.0);
 
@@ -1480,6 +1513,9 @@ const createSky: SystemFactory = (ctx) => {
 
   const keyDirection = new THREE.Vector3(0, 1, 0);
   const ambientColor = new THREE.Color();
+  /** Measured sky irradiance and the bounce term added to it. See applyTime. */
+  const skyFill = new THREE.Color();
+  const bounce = new THREE.Color();
   const lightColor = new THREE.Color();
   const horizonSample = new THREE.Vector3();
   const azimuth = new THREE.Vector3();
@@ -1511,6 +1547,47 @@ const createSky: SystemFactory = (ctx) => {
       b += c[2] * weights[i];
     }
     out.setRGB(Math.min(r, 3), Math.min(g, 3), Math.min(b, 3));
+  }
+
+  /**
+   * The dome's actual cosine-weighted diffuse irradiance — what a flat, upward
+   * facing surface in full shadow receives from the sky and nothing else.
+   *
+   * This replaces a two-point `zenith.lerp(horizon, 0.32)`, which was not an
+   * approximation of anything: mixing a deep blue zenith with a gold horizon
+   * lands on the magenta line between them, so the fill was green-deficient as
+   * well as too blue and every shadowed surface picked up a faint plum cast.
+   * A 6 x 8 cosine-weighted quadrature over the hemisphere costs 48 evaluations
+   * of the CPU scattering mirror and only runs when the sun moves — which,
+   * with `timeScale` at its default 0, is once, at boot.
+   */
+  function computeSkyFill(out: THREE.Color, turbidity: number): void {
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let wsum = 0;
+    const NE = 6;
+    const NA = 8;
+    for (let i = 0; i < NE; i++) {
+      const elev = ((i + 0.5) / NE) * (Math.PI / 2);
+      const dy = Math.sin(elev);
+      const ring = Math.cos(elev);
+      // cos(theta) for the Lambert weight, sin(theta) for the solid-angle
+      // jacobian — the standard hemisphere quadrature weight.
+      const w = dy * ring;
+      for (let j = 0; j < NA; j++) {
+        const az = ((j + 0.5) / NA) * Math.PI * 2;
+        const dx = ring * Math.cos(az);
+        const dz = ring * Math.sin(az);
+        const c = skyRadiance(dy, dx * sunDir.x + dy * sunDir.y + dz * sunDir.z, sunDir.y, turbidity);
+        r += c[0] * w;
+        g += c[1] * w;
+        b += c[2] * w;
+      }
+      wsum += w * NA;
+    }
+    const inv = 1 / Math.max(wsum, 1e-6);
+    out.setRGB(Math.min(r * inv, 3), Math.min(g * inv, 3), Math.min(b * inv, 3));
   }
 
   /** Turbidity currently in force. Shared by the dome and every CPU sample. */
@@ -1593,19 +1670,42 @@ const createSky: SystemFactory = (ctx) => {
     key.visible = key.intensity > 0.002;
 
     // ---- Ambient -----------------------------------------------------------
-    // scene.environment carries the IBL for standard materials; the hemisphere
-    // exists for everything else (Lambert props, particles, foliage) and is
-    // deliberately weak so the two do not double-count into a washed-out image.
+    // `ambientColor` is the CLOUD deck's fill and stays what it was: a cloud is
+    // in the sky, so the sky's own colour is the right answer for it. What a
+    // surface on the ground sees is a different quantity entirely, and conflating
+    // the two is what tied the shadow's colour to the cloud's.
     ambientColor.copy(zenithColor).lerp(horizonColor, 0.32);
-    hemi.color.copy(ambientColor).multiplyScalar(1.45);
-    hemi.groundColor.copy(HEMI_GROUND).multiplyScalar(0.22 + 0.78 * daylight);
-    hemi.intensity = 0.14 + 0.42 * daylight;
+
+    // Measured sky irradiance + the bounce the hemisphere cannot see. See the
+    // note on BOUNCE_ALBEDO: without the second term the fill is 6 : 1 blue and
+    // every shadow in the world reads as a cold hole.
+    computeSkyFill(skyFill, liveTurbidity);
+    bounce
+      .copy(service.sunColor)
+      .multiply(BOUNCE_ALBEDO)
+      .multiplyScalar(sunIntensity * BOUNCE_GAIN);
+
+    hemi.color.copy(skyFill).multiplyScalar(SKY_FILL_GAIN).add(bounce);
+    // Downward-facing normals — eaves, foliage undersides, the bottom of a
+    // built ramp — see the ground and nothing else, so they get the bounce at
+    // full strength on top of the terrain's own warm albedo.
+    hemi.groundColor
+      .copy(HEMI_GROUND)
+      .multiplyScalar(0.22 + 0.78 * daylight)
+      .add(bounce);
+    // Was 0.14 + 0.42. The old pair put the plaza in shots/street.png at
+    // sRGB(24, 38, 61) — near black, and blue enough that no albedo work could
+    // be seen through it. Measured at the same pose, this lands it near
+    // sRGB(90, 89, 95): bright, barely cool, and every flagstone joint readable.
+    hemi.intensity = 0.22 + 1.28 * daylight;
 
     // The rim sits opposite the sun on the ground plane and slightly above it,
     // tinted with the sky rather than the sun. It is what puts an edge on a
-    // shadowed wall.
-    fill.color.copy(zenithColor).lerp(scratch.setRGB(0.62, 0.76, 1.0), 0.55);
-    fill.intensity = 0.18 + 0.5 * daylight;
+    // shadowed wall. Its tint was a saturated cornflower, which on top of an
+    // already-blue hemisphere doubled down on exactly the cast we are removing;
+    // a desaturated cool white does the same silhouette job without it.
+    fill.color.copy(zenithColor).lerp(scratch.setRGB(0.7, 0.78, 0.95), 0.62);
+    fill.intensity = 0.26 + 0.74 * daylight;
 
     // ---- Clouds ------------------------------------------------------------
     // The deck is lit by the key, but never goes fully black at night: high

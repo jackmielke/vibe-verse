@@ -988,12 +988,29 @@ function wall(y: Yard, spec: WallSpec): void {
     (o) => o.u - o.w * 0.5 > 0.12 && o.u + o.w * 0.5 < L - 0.12 && o.sill + o.h < H - 0.12,
   );
 
+  /**
+   * Infill: flush on every side that meets another piece of the SAME wall.
+   *
+   * A chamfer earns its triangles on an edge that is actually an edge — a
+   * building corner, a sill, a coping. On the joint between a pier and the
+   * lintel above it, both faces are coplanar and the chamfer is a 4 cm V-groove
+   * that catches the sky fill and paints a bright pinstripe up the wall at
+   * every window edge. On a pale plaster elevation that reads as a rendering
+   * artefact, and the module places tens of thousands of these pieces, so it
+   * is also the cheapest triangle in the file to give up: a plain box is 12
+   * triangles against a chamfered box's 44.
+   */
+  const flush: BoxOpts = { bevel: 0 };
+
   // --- piers between openings ---
   let cursor = 0;
   for (const o of valid) {
     const left = o.u - o.w * 0.5;
     if (left - cursor > 0.02) {
-      put(spec.body, a0 + (cursor + left) * 0.5, (left - cursor) * 0.5, spec.base + H * 0.5, H * 0.5, 0, ht, {}, true, spec.harvest);
+      // Only a pier that runs out to one end of the wall carries the chamfer:
+      // that is the building's vertical corner and it needs the light catch.
+      const corner = cursor <= 0.02 || left >= L - 0.02;
+      put(spec.body, a0 + (cursor + left) * 0.5, (left - cursor) * 0.5, spec.base + H * 0.5, H * 0.5, 0, ht, corner ? {} : flush, true, spec.harvest);
     }
     cursor = o.u + o.w * 0.5;
   }
@@ -1009,11 +1026,11 @@ function wall(y: Yard, spec: WallSpec): void {
     const hy = spec.base + o.sill + o.h;
 
     if (o.sill > 0.02) {
-      put(spec.body, uc, hu, spec.base + o.sill * 0.5, o.sill * 0.5, 0, ht, {}, true, spec.harvest);
+      put(spec.body, uc, hu, spec.base + o.sill * 0.5, o.sill * 0.5, 0, ht, flush, true, spec.harvest);
     }
     const lint = spec.top - hy;
     if (lint > 0.02) {
-      put(spec.body, uc, hu, hy + lint * 0.5, lint * 0.5, 0, ht, {}, true, spec.harvest);
+      put(spec.body, uc, hu, hy + lint * 0.5, lint * 0.5, 0, ht, flush, true, spec.harvest);
     }
 
     // Reveal: a 6 cm lining set back into the hole on all four sides. Without
@@ -1063,7 +1080,11 @@ function wall(y: Yard, spec: WallSpec): void {
 
   // --- plinth and band ---
   if (spec.plinth && spec.plinth > 0.02) {
-    put(spec.trim, a0 + L * 0.5, L * 0.5 + 0.04, spec.base + spec.plinth * 0.5, spec.plinth * 0.5, 0, ht + 0.07, { bevel: 0.035 });
+    put(spec.trim, a0 + L * 0.5, L * 0.5 + 0.04, spec.base + spec.plinth * 0.5, spec.plinth * 0.5, 0, ht + 0.09, { bevel: 0.035 });
+    // Cap moulding on the plinth. A plinth with a square top is a skirting
+    // board; the chamfered course that oversails it is what makes the wall look
+    // like it is standing on something.
+    put(spec.trim, a0 + L * 0.5, L * 0.5 + 0.06, spec.base + spec.plinth + 0.035, 0.04, 0, ht + 0.15, { bevel: 0.025 });
   }
   if (spec.band) {
     put(spec.trim, a0 + L * 0.5, L * 0.5 + 0.06, spec.top - 0.11, 0.085, 0, ht + 0.1, { bevel: 0.03 });
@@ -1665,28 +1686,176 @@ interface BuildingSpec {
   interior?: boolean;
   /** A projecting balcony on the top storey of the front elevation. */
   balconyChance?: number;
+  /** Trim colour override — sills, frames, cornice, quoins. */
+  trimColor?: number;
+  /** How the elevations group their openings. Random per building if absent. */
+  bayStyle?: BayStyle;
+  /** Parapet height on a flat roof. Varying it varies the skyline for one box. */
+  parapet?: number;
 }
 
-/** Evenly spaced window bays for one wall of one storey. */
-function bays(L: number, floor: number, shop: boolean, rng: () => number, doorAt: number | null): Opening[] {
-  const out: Opening[] = [];
-  // One bay per grid cell. Aligning the bay rhythm to GRID is not cosmetic:
-  // a player who builds a wall against a facade lands between windows, not
-  // through one.
-  const n = Math.max(1, Math.round((L - 1.4) / GRID));
-  if (n <= 0) return out;
-  const pitch = L / n;
-  for (let i = 0; i < n; i++) {
-    const u = pitch * (i + 0.5);
-    if (doorAt !== null && Math.abs(u - doorAt) < 1.5) continue;
-    if (floor === 0 && shop) {
-      out.push({ u, w: Math.min(2.7, pitch * 0.78), sill: 0.62, h: 2.35, kind: "shopfront" });
-    } else {
-      const w = Math.min(1.5, pitch * 0.44);
-      out.push({ u, w, sill: 1.0, h: 1.85, kind: "window", boarded: rng() < 0.06 });
-    }
+/* ------------------------------------------------------------------------ *
+ * Facade composition
+ *
+ * A facade is not a grid of windows, and a grid of windows is the single
+ * loudest tell that a street was generated rather than designed. Real
+ * architecture does three things this module has to do too:
+ *
+ *  - It GROUPS. Windows arrive in twos and threes with a thin pier between
+ *    them and a wide blank pier between groups. The blank wall is not wasted
+ *    space; it is what gives the groups an edge to read against.
+ *  - It DIMINISHES. Storeys are not interchangeable. The first floor is the
+ *    piano nobile and takes the tallest lights; the top storey is an attic and
+ *    takes short, narrower ones on the SAME centre lines, because windows
+ *    stack over the piers below them and a facade whose openings wander
+ *    between floors reads as a texture, not a building.
+ *  - It CHANGES AT THE GROUND. A shopfront is a different animal from a
+ *    window: lower sill, higher head, three times the width, a door beside it.
+ *    A ground floor that repeats the upper rhythm is the clearest single tell
+ *    there is, which is why floor 0 never goes through the same code path.
+ * ------------------------------------------------------------------------ */
+
+/** Which group shape a building's elevations use. Chosen once per building. */
+type BayStyle = 0 | 1 | 2 | 3;
+
+/**
+ * The widths of the lights inside one bay group, per style.
+ *
+ * Every style has at least TWO lights, and that is the whole point of the
+ * table. A "group" of one is not a group — it is a window, and a row of evenly
+ * spaced single windows is precisely the grid this file was rebuilt to stop
+ * making, whatever the pier between them measures.
+ */
+const BAY_GROUPS: Record<BayStyle, readonly number[]> = {
+  /** Ganged pair — the tenement default. */
+  0: [1.25, 1.25],
+  /** Tripartite: a wide centre light between two narrow ones. */
+  1: [0.85, 1.75, 0.85],
+  /** A ganged triple of equal lights, read as one wide opening. */
+  2: [1.15, 1.15, 1.15],
+  /** A wide light with a narrow one beside it. Deliberately asymmetric. */
+  3: [1.6, 0.75],
+};
+
+/**
+ * Horizontal bay layout for one wall, shared by every upper storey of it.
+ *
+ * Deterministic in `(L, style)` on purpose — the RNG is not consulted here, so
+ * the second floor lands on exactly the same centres as the first and the bays
+ * stack. Slack is pushed into the blank piers rather than the groups, so a
+ * 20 m wall and a 32 m wall get the same window sizes and a different count,
+ * which is how a real terrace of different-width plots behaves.
+ */
+function bayRun(L: number, style: BayStyle): Array<{ u: number; w: number }> {
+  const out: Array<{ u: number; w: number }> = [];
+  // Corner margin: leaves a real pier for the quoins to sit on.
+  const margin = 1.3;
+  const usable = L - margin * 2;
+  if (usable < 1.2) return out;
+
+  const ww = BAY_GROUPS[style];
+  /** Pier inside a group — near enough a mullion. */
+  const inner = 0.5;
+  // Blank wall between groups. This number is the whole effect: it has to beat
+  // the widest light in the group by a clear margin or the eye re-reads the
+  // groups as one even run and the facade is a grid again.
+  const wantPier = style === 2 ? 3.4 : 2.5;
+  const gw = ww.reduce((a, b) => a + b, 0) + inner * (ww.length - 1);
+  if (gw > usable) {
+    return [{ u: L * 0.5, w: Math.min(1.5, usable * 0.65) }];
   }
-  if (doorAt !== null) out.push({ u: doorAt, w: 1.35, sill: 0, h: 2.35, kind: "door" });
+  const n = Math.max(1, Math.floor((usable + wantPier) / (gw + wantPier)));
+  const slack = usable - (n * gw + (n - 1) * wantPier);
+  const pier = wantPier + (n > 1 ? slack / (n - 1) : 0);
+  let u = margin + (n > 1 ? 0 : slack * 0.5);
+  for (let g = 0; g < n; g++) {
+    for (let k = 0; k < ww.length; k++) {
+      out.push({ u: u + ww[k] * 0.5, w: ww[k] });
+      u += ww[k] + (k < ww.length - 1 ? inner : 0);
+    }
+    u += pier;
+  }
+  return out;
+}
+
+/** The openings for one wall of one storey. */
+function bays(
+  L: number,
+  floor: number,
+  floors: number,
+  shop: boolean,
+  rng: () => number,
+  doorAt: number | null,
+  style: BayStyle,
+): Opening[] {
+  const out: Opening[] = [];
+  if (L < 2.4) return out;
+
+  if (floor === 0) {
+    if (shop) {
+      // One retail unit per ~8.5 m of frontage: a wide shopfront on a low
+      // stall riser with its own doorway beside it. The head sits at 3.05 m,
+      // above every upper window, and the sill at 0.55, below every upper
+      // sill — the two together are what make the ground floor a different
+      // storey rather than the same storey with bigger holes.
+      const units = Math.max(1, Math.round((L - 2.2) / 8.5));
+      const pitch = (L - 2.2) / units;
+      for (let i = 0; i < units; i++) {
+        const u0 = 1.1 + i * pitch;
+        const dw = 1.3;
+        const glaze = Math.min(5.0, pitch - dw - 2.3);
+        if (glaze < 1.6) {
+          out.push({ u: u0 + pitch * 0.5, w: 1.35, sill: 0, h: 2.5, kind: "door" });
+          continue;
+        }
+        // Alternate which end of the unit the entry sits on. A row of doors
+        // all hard left is its own kind of grid.
+        const flip = ((i + style) & 1) === 0;
+        const a = u0 + 0.75;
+        out.push({
+          u: flip ? a + glaze * 0.5 : a + dw + 0.55 + glaze * 0.5,
+          w: glaze, sill: 0.55, h: 2.5, kind: "shopfront",
+        });
+        out.push({
+          u: flip ? a + glaze + 0.55 + dw * 0.5 : a + dw * 0.5,
+          w: dw, sill: 0, h: 2.5, kind: "door",
+        });
+      }
+      return out;
+    }
+    // A single-storey building has no upper floors to be different FROM — its
+    // ground floor IS the elevation, so it takes proper windows. Handing a
+    // farm shed the service-slit treatment below would leave it blank-walled.
+    if (floors === 1) {
+      if (doorAt !== null) out.push({ u: doorAt, w: 1.35, sill: 0, h: 2.5, kind: "door" });
+      for (const b of bayRun(L, style)) {
+        if (doorAt !== null && Math.abs(b.u - doorAt) < 2.0) continue;
+        out.push({ u: b.u, w: b.w, sill: 1.0, h: 1.8, kind: "window", boarded: rng() < 0.08 });
+      }
+      return out;
+    }
+    // A flank or a back: mostly blank wall, one service door, and a handful of
+    // small high windows. Blank wall at eye level is a feature — it is what
+    // gives the glazing on the shop elevation something to be different from.
+    if (doorAt !== null) out.push({ u: doorAt, w: 1.35, sill: 0, h: 2.5, kind: "door" });
+    for (const b of bayRun(L, style)) {
+      if (doorAt !== null && Math.abs(b.u - doorAt) < 2.2) continue;
+      if (rng() < 0.45) continue;
+      out.push({ u: b.u, w: Math.min(b.w, 1.05), sill: 2.0, h: 1.1, kind: "window", boarded: rng() < 0.08 });
+    }
+    return out;
+  }
+
+  // Diminishing storeys. Same centres, different vertical dimensions; the
+  // attic narrows on the same centre so the bays still stack.
+  const attic = floors > 2 && floor === floors - 1;
+  const piano = floor === 1;
+  const h = attic ? 1.35 : piano ? 2.05 : 1.8;
+  const sill = attic ? 1.35 : piano ? 0.85 : 1.05;
+  const wk = attic ? 0.78 : 1;
+  for (const b of bayRun(L, style)) {
+    out.push({ u: b.u, w: b.w * wk, sill, h, kind: "window", boarded: rng() < 0.05 });
+  }
   return out;
 }
 
@@ -1703,8 +1872,9 @@ function building(y: Yard, spec: BuildingSpec): { top: number } {
   const floors = Math.max(1, spec.floors);
   const wallMat = spec.wallMat ?? pal.wallMat;
   const body = surf(wallMat, spec.wallColor ?? pal.wall);
-  const trim = surf("concrete", pal.trim);
+  const trim = surf("concrete", spec.trimColor ?? pal.trim);
   const glass = surf("glass", 0xdff2f7);
+  const style: BayStyle = spec.bayStyle ?? ((Math.floor(rng() * 4) % 4) as BayStyle);
   const roofSurf = surf(pal.roofMat, pal.roof);
   const front = spec.front ?? 0;
   const interior = (spec.interior ?? true) && tier.interiors;
@@ -1731,11 +1901,69 @@ function building(y: Yard, spec: BuildingSpec): { top: number } {
         base: y0, top: y1,
         body, trim, glass,
         harvest: pal.harvest,
-        openings: bays(s.len, f, !!spec.shop && isFront, rng, doorAt),
+        openings: bays(s.len, f, floors, !!spec.shop && isFront, rng, doorAt, style),
         outward: s.id === 0 || s.id === 2 ? 1 : -1,
         plinth: f === 0 ? 0.42 : 0,
         band: f < floors - 1,
       });
+    }
+  }
+
+  /* --- facade relief ---------------------------------------------------- *
+   *
+   * Everything below projects from the wall face. A wall plane and a window
+   * hole is a drawing of a building; the shadow lines thrown by a cornice, a
+   * base course and a set of quoins are what make it a solid. All of it is
+   * a handful of boxes per building — cheap in draw calls (it merges into the
+   * block's existing trim bucket) and cheap in triangles next to the interior
+   * it sits on — and it is the difference the plaza actually reads.
+   * ---------------------------------------------------------------------- */
+  if (tier.trim) {
+    // Cornice: two courses, the upper oversailing further. The single highest
+    // value box in this function — it is the line that stops a wall and starts
+    // a roof, and without it a parapet reads as an extrusion.
+    y.box(trim, cx, eaves - 0.18, cz, hx + 0.13, 0.18, hz + 0.13, { bevel: 0.04 });
+    y.box(trim, cx, eaves + 0.05, cz, hx + 0.25, 0.07, hz + 0.25, { bevel: 0.03 });
+
+    // Quoins: alternating corner blocks, projecting 12 cm from both faces.
+    // Every other course only — a continuous strip reads as a pilaster, and it
+    // is the *alternation* that says masonry.
+    const courses = Math.floor((floors * FLOOR_H - 1.5) / 1.1);
+    for (let i = 0; i < courses; i++) {
+      const qy = base + 0.8 + i * 1.1;
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          y.box(trim, cx + sx * (hx - 0.18), qy, cz + sz * (hz - 0.18), 0.3, 0.3, 0.3, { bevel: 0.04 });
+        }
+      }
+    }
+
+    // Shopfront fascia: a deep signage band capping the ground floor, with a
+    // cornice above and a moulding below. This band is what a street sees
+    // first, and it is the reason the eye accepts the glazing under it as
+    // retail rather than as an oversized window.
+    // Heights are tight: the shopfront head lands at 3.05 and its architrave
+    // tops out at 3.18, the first-floor slab at FLOOR_H = 4. The band lives in
+    // the 80 cm between them and nowhere else.
+    if (spec.shop) {
+      const fy = base + 3.55;
+      y.box(body, cx, fy, cz, hx + 0.11, 0.26, hz + 0.11, { bevel: 0.03 });
+      y.box(trim, cx, fy + 0.32, cz, hx + 0.2, 0.07, hz + 0.2, { bevel: 0.025 });
+      y.box(trim, cx, fy - 0.3, cz, hx + 0.16, 0.05, hz + 0.16, { bevel: 0.02 });
+    }
+
+    // Downpipes on the two rear corners, run to the ground with brackets.
+    // Nobody looks at a downpipe; everybody notices a wall that has none.
+    const dh = eaves - base - 0.4;
+    if (dh > 1) {
+      for (const sx of [-1, 1]) {
+        const dx = cx + sx * (hx + 0.12);
+        const dz = cz - hz + 0.9;
+        y.cyl(trim, dx, base + 0.2 + dh * 0.5, dz, 0.06, 0.06, dh, { seg: 6, capTop: false });
+        for (let i = 0; i < floors; i++) {
+          y.box(trim, dx, base + 1.1 + i * FLOOR_H, dz, 0.09, 0.022, 0.09, { bevel: 0.008 });
+        }
+      }
     }
   }
 
@@ -1793,7 +2021,10 @@ function building(y: Yard, spec: BuildingSpec): { top: number } {
       if (rng() < 0.5) chimney(y, cx + hx * 0.45, cz - hz * 0.3, eaves + 0.4, rise + 0.9, surf("brick", 0xa9633f), trim);
     }
   } else {
-    flatRoof(y, cx, cz, hx, hz, eaves, trim, trim, pal.harvest);
+    // Parapet height varies per building. It is one number and it is worth a
+    // lot: a row of flat roofs capped at the same height is a single ruled line
+    // across the sky, which is exactly what the skyline must not be.
+    flatRoof(y, cx, cz, hx, hz, eaves, trim, trim, pal.harvest, spec.parapet ?? 0.72);
     if (tier.trim) {
       acUnit(y, cx - hx * 0.4, cz + hz * 0.35, eaves - 0.12, surf("metalPanel", 0xb9bec2), trim, rng() * 1.4);
       if (rng() < 0.55) acUnit(y, cx + hx * 0.45, cz - hz * 0.2, eaves - 0.12, surf("metalPanel", 0xa8adb1), trim, rng() * 1.4);
@@ -1808,31 +2039,60 @@ function building(y: Yard, spec: BuildingSpec): { top: number } {
   }
 
   // --- street-level dressing ---
+  const outZ = front === 0 ? 1 : front === 1 ? -1 : 0;
+  const outX = front === 2 ? 1 : front === 3 ? -1 : 0;
+  const frontLen = sides[front].len;
   if (spec.shop && tier.trim) {
+    // One awning and one sign PER RETAIL UNIT, on the same 8.5 m module the
+    // shopfronts were cut on — and not on every unit. A single awning running
+    // the full frontage says "one building"; four of different colours with
+    // gaps between them says "four shops", which is the read a battle royale
+    // street wants because it is what tells a player where the doors are.
+    const units = Math.max(1, Math.round((frontLen - 2.2) / 8.5));
+    const pitch = (frontLen - 2.2) / units;
+    // Wall-local u runs from the side's start corner; convert to world.
     const s = sides[front];
-    const outZ = front === 0 ? 1 : front === 1 ? -1 : 0;
-    const outX = front === 2 ? 1 : front === 3 ? -1 : 0;
-    const ax0 = s.x0 + (outX ? 0 : 0.6), az0 = s.z0 + (outZ ? 0 : 0.6);
-    const ax1 = s.x1 - (outX ? 0 : 0.6), az1 = s.z1 - (outZ ? 0 : 0.6);
-    awning(y,
-      ax0 + outX * 0.2, az0 + outZ * 0.2,
-      ax1 + outX * 0.2, az1 + outZ * 0.2,
-      base + 3.35, 1.25, outX, outZ,
-      surf("fabric", pal.accent), trim);
-    shopSign(y,
-      cx + outX * hx, cz + outZ * hz, base + FLOOR_H + 0.9,
-      outX, outZ, Math.min(2.6, Math.max(hx, hz)),
-      surf("metalPanel", rng() < 0.5 ? pal.accent : pal.accent2), trim);
+    const ux = outX ? 0 : 1;
+    const at = (u: number) => ({
+      x: ux ? Math.min(s.x0, s.x1) + u : s.x0,
+      z: ux ? s.z0 : Math.min(s.z0, s.z1) + u,
+    });
+    for (let i = 0; i < units; i++) {
+      const u0 = 1.1 + i * pitch, u1 = u0 + pitch - 0.7;
+      const a = at(u0 + 0.35), b = at(u1 - 0.35);
+      const m = at((u0 + u1) * 0.5);
+      // Awning or blade sign, never both — they occupy the same 80 cm of
+      // elevation between the shopfront head and the first-floor slab.
+      if (rng() < 0.6) {
+        awning(y,
+          a.x + outX * 0.2, a.z + outZ * 0.2,
+          b.x + outX * 0.2, b.z + outZ * 0.2,
+          base + 3.2, 1.2, outX, outZ,
+          surf("fabric", rng() < 0.5 ? pal.accent : pal.accent2), trim);
+      } else {
+        shopSign(y,
+          m.x + outX * inset, m.z + outZ * inset,
+          base + 3.5,
+          outX, outZ, 1.6 + rng() * 0.9,
+          surf("metalPanel", rng() < 0.5 ? pal.accent : pal.accent2), trim);
+      }
+    }
     vent(y, cx + outX * hx - outZ * 1.4, cz + outZ * hz + outX * 1.4, base + FLOOR_H - 0.6, outX, outZ, trim);
   }
-  if (floors >= 2 && rng() < (spec.balconyChance ?? 0.28)) {
-    const outZ = front === 0 ? 1 : front === 1 ? -1 : 0;
-    const outX = front === 2 ? 1 : front === 3 ? -1 : 0;
-    balcony(y,
-      cx + outX * (hx + 0.7), cz + outZ * (hz + 0.7),
-      outX ? 0.7 : Math.min(hx * 0.6, 2.2), outZ ? 0.7 : Math.min(hz * 0.6, 2.2),
-      base + (floors - 1) * FLOOR_H + 0.16,
-      trim, trim, pal.harvest);
+  // Balconies, floor by floor rather than one per building. An elevation with
+  // a balcony on the second floor and none on the third is asymmetric, and
+  // asymmetry is most of what stops a row of blocks reading as a pattern.
+  if (tier.trim) {
+    for (let f = 1; f < floors; f++) {
+      if (rng() >= (spec.balconyChance ?? 0.28)) continue;
+      // Offset along the frontage so consecutive balconies do not stack.
+      const off = (rng() - 0.5) * Math.max(0, (outX ? hz : hx) - 3.2) * 1.2;
+      balcony(y,
+        cx + outX * (hx + 0.7) + (outX ? 0 : off), cz + outZ * (hz + 0.7) + (outZ ? 0 : off),
+        outX ? 0.7 : Math.min(hx * 0.42, 2.1), outZ ? 0.7 : Math.min(hz * 0.42, 2.1),
+        base + f * FLOOR_H + 0.16,
+        trim, trim, pal.harvest);
+    }
   }
 
   return { top: eaves };
@@ -1979,7 +2239,31 @@ function buildNeonHeights(s: Site): void {
   // Three body colours, not six. Each extra colour is another material and
   // therefore another draw call per block, and the district's identity comes
   // from the roofs anyway.
-  const bodies = [0xe8d9be, 0xd3c0a4, 0xc9d1d4];
+  // Six bodies and two trims, all of them NEAR-WHITE — see the paving note
+  // above: `tinted()` multiplies in linear space, so a tint that reads as a
+  // handsome mid-ochre in a picker lands on the plaster plate at a third of
+  // its value and the street goes brown-black. Everything here keeps its
+  // minimum channel above 0xc4; the variety comes from the hue, not the value.
+  //
+  // The MATERIAL varies too, not only the tint, and that matters more than it
+  // looks. A tint multiplies the plate, so six tints over one ochre plaster
+  // plate are six shades of the same ochre — which is what the first capture
+  // of this street showed. Putting a third of the block in brick changes what
+  // the wall is made of rather than what colour it is painted, and brick's
+  // plate carries courses that plaster's does not.
+  const skins: Array<[MaterialName, number]> = [
+    ["plaster", 0xe8d9be],
+    ["plaster", 0xd7c4a8],
+    ["plaster", 0xc9d1d4],
+    ["plaster", 0xe3d5cd],
+    ["plaster", 0xd8ddd2],
+    ["brick", 0xe8d6c4],
+    ["brick", 0xdfc9bf],
+  ];
+  // Trim carries the sills, quoins and cornices. Two options: the palette's
+  // near-white and a warmer stone. More than two costs a draw call per block
+  // for a distinction nobody reads at 30 m.
+  const trims = [pal.trim, 0xe4dccb];
   let placed = 0;
   const top = gy + 0.19;
   for (const bx of centres) {
@@ -1998,13 +2282,22 @@ function buildNeonHeights(s: Site): void {
       ];
       for (const e of edges) {
         if (placed >= tier.townBuildings) break;
-        const depth = 16;
-        const width = rng() < 0.45 ? 32 : 20;
+        // Plot size varies in both axes. Depth only ever gets SHALLOWER than
+        // the 16 m default, never deeper: the street face stays on the block
+        // edge (a ragged street line would fight the kerbs) and the variation
+        // is taken out of the back, which widens the courtyard rather than
+        // closing it. That courtyard is where the fights are.
+        const depth = pick([16, 16, 16, 13], rng);
+        const width = pick([16, 20, 20, 26, 32, 32], rng);
         const hw = width * 0.5, hd = depth * 0.5;
-        const jitter = width < 40 ? snap((rng() - 0.5) * 20) : 0;
+        const jitter = snap((rng() - 0.5) * 20);
         const bcx = snap(cx + bx + (e.alongX ? jitter : e.ex - Math.sign(e.ex) * hd));
         const bcz = snap(cz + bz + (e.alongX ? e.ez - Math.sign(e.ez) * hd : jitter));
-        const floors = 2 + Math.floor(rng() * 2.8);
+        // Height in whole floors, with the occasional landmark. One in seven
+        // plots goes to five or six storeys, which is what puts a step in the
+        // skyline instead of a ruled line.
+        const floors = rng() < 0.15 ? 5 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 3);
+        const skin = pick(skins, rng);
         building(y, {
           cx: bcx, cz: bcz,
           hx: e.alongX ? hw : hd,
@@ -2016,7 +2309,11 @@ function buildNeonHeights(s: Site): void {
           ridgeX: e.alongX,
           shop: true,
           front: e.front,
-          wallColor: pick(bodies, rng),
+          wallMat: skin[0],
+          wallColor: skin[1],
+          trimColor: pick(trims, rng),
+          bayStyle: Math.floor(rng() * 4) as BayStyle,
+          parapet: 0.55 + rng() * 0.85,
           interior: true,
         });
         placed++;
