@@ -851,7 +851,7 @@ export function buildSkyIslands({ boxes }: { boxes: WorldBox[] }): SkyIslandsWor
       for (const p of pulsers) {
         p.mat.emissiveIntensity = p.base + Math.sin(t * p.speed + p.phase) * p.amp;
       }
-      zeppelin.update(now);
+      zeppelin.update(now, _dt);
     },
   };
 }
