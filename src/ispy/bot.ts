@@ -181,6 +181,20 @@ function distTo(p: PlayerState, c: { x: number; y: number }): number {
   return Math.hypot(p.x - c.x, p.y + 0.5 - c.y);
 }
 
+/**
+ * Has the player actually picked the coin up?
+ *
+ * The same box the engine uses — a coin is 1.2 blocks wide and collects within
+ * 0.4 of its edge, so the real reach is ±1 block on each axis. The chase used
+ * to ask for a 0.85-block *radius*, which is smaller than the game's own
+ * pickup, so it reported coins as unreachable that the engine would happily
+ * have handed you. A verifier that is stricter than the thing it verifies
+ * fails honest work.
+ */
+function collects(p: PlayerState, c: { x: number; y: number }): boolean {
+  return Math.abs(p.x - c.x) < 1 && Math.abs(p.y + 0.5 - c.y) < 1;
+}
+
 /** Follow the cheap policy for a few decisions and report the closest this
     future ever comes to `c`. Cheap on purpose — it runs twice per decision. */
 function closestApproach(
@@ -229,7 +243,7 @@ export function canCollect(
   let got = false;
   let t = 0;
   while (t < maxSeconds && p.x < world.length) {
-    if (distTo(p, coin) < 0.85) got = true;
+    if (collects(p, coin)) got = true;
     const flying = p.mode === "ship" || p.mode === "wave";
     const horizon = flying ? FLY_HORIZON : HORIZON;
     // Only steer for the coin while it is ahead and close enough to plan for.
@@ -247,7 +261,7 @@ export function canCollect(
         const q = clonePlayer(p);
         if (!advance(q, world, hold)) continue;
         if (!survives(q, world, horizon)) continue;
-        if (distTo(q, coin) < 0.85) got = true;
+        if (collects(q, coin)) got = true;
         const score = closestApproach(q, world, 12, coin);
         if (score < bestScore) {
           bestScore = score;

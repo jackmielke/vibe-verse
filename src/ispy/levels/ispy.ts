@@ -24,14 +24,9 @@
  *   GREEN           wave   b80–98   one long tube through a green blowout.
  *   EVERYTHING      cube   b98–120  all of it at once.
  */
-import { BEAT, Builder, onBeat, type Motif } from "./build";
-import { SPEEDS } from "./physics";
-import type { Level } from "./types";
-
-const ONE = SPEEDS.one;
-/** Blocks per beat — 5. Written as `beat(n)` where an x is wanted. */
-const beat = (n: number) => n * BEAT;
-const END = beat(120);
+import { Builder, type Motif } from "../build";
+import { CLASSIC } from "../physics";
+import type { Level } from "../types";
 
 /* ── the background ───────────────────────────────────────────────────────
    Four bars of skyline, drawn by hand, eight beats each, tiled along the
@@ -90,7 +85,16 @@ const BAR_SPARSE: Motif[] = [
 ];
 
 export function buildISpy(): Level {
-  const b = new Builder();
+  const b = new Builder({
+    id: "i-spy",
+    name: "I Spy",
+    world: "The neon district",
+    tagline: "Where it started. A city at night, and everything in it can kill you.",
+    tuning: CLASSIC,
+  });
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = CLASSIC.blocksPerBeat;
 
   // ── palettes ───────────────────────────────────────────────────────────
   b.section({
@@ -134,7 +138,7 @@ export function buildISpy(): Level {
   everything(b);
   paint(b);
 
-  return b.finish(END, { mode: "cube", speed: ONE, grav: 1, y: 0 });
+  return b.finish(120, { mode: "cube", grav: 1, y: 0 });
 }
 
 /**
@@ -150,6 +154,7 @@ export function buildISpy(): Level {
  * them all off for the original bargain.
  */
 function checkpoints(b: Builder) {
+  const beat = (n: number) => b.beat(n);
   for (const n of [21, 31, 42, 52, 62, 71, 80, 89, 98, 106, 113]) b.checkpoint(beat(n));
 }
 
@@ -158,6 +163,9 @@ function checkpoints(b: Builder) {
    and the rhythm is deliberately slow — a jump every two or three beats — so
    that by beat 21 the player is counting without having been told to. */
 function quietPart(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   b.beatSpikes(3);
   b.beatSpikes(5);
   b.beatSpikes(7, 2);
@@ -184,6 +192,13 @@ function quietPart(b: Builder) {
   // The first sawblade in the game hangs where nothing can reach it. You get
   // eight seconds to learn what one looks like before one is in your way.
   b.saws(beat(9), 5.5, 2);
+
+  // COIN 3, over beat 20 — the one beat in the quiet part with nothing after
+  // it. Everywhere else in this level, the gap between two hazards is a beat
+  // you land on and immediately jump off again, and a coin there asks for a
+  // detour with no room to take it. The solver rejected three placements
+  // before this one, which is the whole reason it flies these levels.
+  b.coinOnBeat(20);
 }
 
 /* ── beats 21–42 ──────────────────────────────────────────────────────────
@@ -191,6 +206,9 @@ function quietPart(b: Builder) {
    jump lands on the next beat and costs nothing, so a harmless decoy is
    genuinely harmless. What makes a decoy lethal is what is over it. */
 function iSpy(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   b.beatSpikes(22, 2);
   b.beatSpikes(24, 2);
 
@@ -231,6 +249,9 @@ function iSpy(b: Builder) {
    eighteen-second mark, as a taster and as a transition into the ship: a
    clean tube, no paint inside it, nothing to learn except what a wave is. */
 function waveTaster(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   b.portal(beat(38) - 2, 0, { to: "wave" });
   b.tube([
     [beat(38) - 1, 2.4],
@@ -249,6 +270,9 @@ function waveTaster(b: Builder) {
    Ship. A tunnel with a gate every two beats, and enough painted rubbish
    inside it that finding the gate is the whole job. */
 function mirror(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   const CEIL = 9.5;
   b.portal(beat(42) - 2, 0, { to: "ship" });
   b.roof(beat(42), beat(62) + 1, CEIL);
@@ -282,6 +306,9 @@ function mirror(b: Builder) {
    Ball, between a floor and a ceiling six blocks apart, in the pink-and-lime
    blowout the level is famous for. Tap to fall the other way. */
 function strobe(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   b.portal(beat(62) - 2, 0, { to: "ball" });
   b.roof(beat(62), beat(80) + 1, 6);
 
@@ -317,6 +344,9 @@ function strobe(b: Builder) {
    3.6 blocks — and then filled with green paint until you cannot see where it
    goes. */
 function green(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   b.portal(beat(80) - 2, 0, { to: "wave" });
 
   b.tube([
@@ -337,6 +367,9 @@ function green(b: Builder) {
 /* ── beats 98–120 ─────────────────────────────────────────────────────────
    Cube again, with everything the level has taught you, at a beat a jump. */
 function everything(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   b.beatSpikes(100);
   b.beatSpikes(102, 2);
 
@@ -354,8 +387,6 @@ function everything(b: Builder) {
   b.spikes(onBeat(114, 3), 3);
   b.orb(onBeat(114) + 0.5, 3.2, "yellow");
 
-  // COIN 3 over beat 116, one beat before the last row of the level.
-  b.coin(beat(116) + 2.5, 2.6);
   b.beatSpikes(117, 2);
 
   b.dress(beat(98), beat(118), [BAR_SPIRES, BAR_STREET], { maxHeight: 6 });
@@ -373,6 +404,9 @@ function everything(b: Builder) {
    Density is deliberately highest in the first six blocks of air, which is
    exactly where a cube spends its life. */
 function paint(b: Builder) {
+  const beat = (n: number) => b.beat(n);
+  const onBeat = (n: number, k = 1) => b.onBeat(n, k);
+  const BEAT = b.meta.tuning.blocksPerBeat;
   // Each movement dresses itself now, in `quietPart`, `iSpy`, `mirror`,
   // `strobe` and `everything`. There is nothing left to sprinkle over the top
   // — which is the whole improvement. What used to be here was a pass that
@@ -380,13 +414,3 @@ function paint(b: Builder) {
   // PRNG, and no amount of tuning made a scatter look like a decision.
   void b;
 }
-
-/** Named beats for the progress readout, so a run reads as a place. */
-export const CHAPTERS: Array<{ at: number; name: string }> = [
-  { at: 0, name: "The quiet part" },
-  { at: beat(21), name: "I spy" },
-  { at: beat(42), name: "Mirror" },
-  { at: beat(62), name: "Strobe" },
-  { at: beat(80), name: "Green" },
-  { at: beat(98), name: "Everything" },
-];

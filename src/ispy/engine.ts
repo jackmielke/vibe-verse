@@ -11,7 +11,7 @@
  */
 import { ISpyAudio } from "./audio";
 import { botDecision, corridorAt, DECISION_DT } from "./bot";
-import { buildISpy, CHAPTERS } from "./level";
+import { LEVELS, levelById } from "./levels";
 import { clonePlayer, initialState, step, World } from "./physics";
 import { Renderer, VIEW_H, type Particle, type RenderState } from "./render";
 import type { Level, PlayerState } from "./types";
@@ -20,8 +20,9 @@ const TICK = 1 / 240;
 const MAX_FRAME = 0.25;
 /** Sonar pings per attempt. See `fireSonar`. */
 const PINGS_PER_ATTEMPT = 3;
-const BEST_KEY = "ispy:best";
-const COINS_KEY = "ispy:coins";
+/** Saves are per level, so a best on one is not a best on all eleven. */
+const bestKey = (id: string) => `ispy:best:${id}`;
+const coinsKey = (id: string) => `ispy:coins:${id}`;
 
 export type Phase = "attract" | "playing" | "dead" | "won";
 export type Difficulty = "chill" | "easy" | "normal";
@@ -71,6 +72,17 @@ export const DIFFICULTIES: Record<
   },
 };
 
+/** What the level-select needs to know about a level without building it. */
+export function levelProgress(id: string): { best: number; coins: number } {
+  try {
+    const best = Number(localStorage.getItem(bestKey(id)) ?? 0) || 0;
+    const saved = JSON.parse(localStorage.getItem(coinsKey(id)) ?? "[]");
+    return { best, coins: Array.isArray(saved) ? saved.length : 0 };
+  } catch {
+    return { best: 0, coins: 0 };
+  }
+}
+
 export interface ISpyStatus {
   phase: Phase;
   /** 0..100. */
@@ -87,6 +99,8 @@ export interface ISpyStatus {
   practice: boolean;
   muted: boolean;
   chapter: string;
+  levelId: string;
+  levelName: string;
   /** Seconds into the current attempt. */
   time: number;
   /** Checkpoints banked this run, and how many the level has. */
@@ -158,8 +172,8 @@ export class ISpyEngine {
   private lastStatus = "";
   private disposed = false;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
-    this.level = buildISpy();
+  constructor(private readonly canvas: HTMLCanvasElement, levelId?: string) {
+    this.level = levelById(levelId).build();
     this.world = new World(this.level);
     this.renderer = new Renderer(canvas, this.level);
     this.player = initialState(this.level);
@@ -172,8 +186,8 @@ export class ISpyEngine {
       .map((o) => o.x)
       .sort((a, b) => a - b);
     try {
-      this.best = Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
-      const saved = JSON.parse(localStorage.getItem(COINS_KEY) ?? "[]");
+      this.best = Number(localStorage.getItem(bestKey(this.level.id)) ?? 0) || 0;
+      const saved = JSON.parse(localStorage.getItem(coinsKey(this.level.id)) ?? "[]");
       if (Array.isArray(saved)) this.earned = new Set(saved.filter((n) => typeof n === "number"));
     } catch {
       this.best = 0;
@@ -201,7 +215,9 @@ export class ISpyEngine {
       difficulty: this.difficulty,
       practice: this.practice,
       muted: this.audio.isMuted,
-      chapter: chapterAt(this.player.x),
+      chapter: sectionAt(this.level, this.player.x).name,
+      levelId: this.level.id,
+      levelName: this.level.name,
       time: this.attemptTime,
       banked: this.nextCheckpoint,
       checkpoints: this.checkpointXs.length,
@@ -451,7 +467,7 @@ export class ISpyEngine {
     if (pct > this.best) {
       this.best = pct;
       try {
-        localStorage.setItem(BEST_KEY, String(pct));
+        localStorage.setItem(bestKey(this.level.id), String(pct));
       } catch {
         /* private browsing — the run still counts, it just will not persist */
       }
@@ -484,8 +500,8 @@ export class ISpyEngine {
     // practice, and not on a setting where nothing can kill you.
     if (!this.practice && this.rules.coinsCount) for (const c of this.got) this.earned.add(c);
     try {
-      localStorage.setItem(BEST_KEY, "100");
-      localStorage.setItem(COINS_KEY, JSON.stringify([...this.earned]));
+      localStorage.setItem(bestKey(this.level.id), "100");
+      localStorage.setItem(coinsKey(this.level.id), JSON.stringify([...this.earned]));
     } catch {
       /* nothing to do */
     }
@@ -510,7 +526,7 @@ export class ISpyEngine {
       if (this.banked && this.checkpointsOn && this.deathAge > 0.5) {
         this.phase = "playing";
         this.attempts += 1;
-        const at = movementAt(this.banked.p.x);
+        const at = sectionAt(this.level, this.banked.p.x).index;
         this.restartFrom(this.banked.p, true);
         // Put the score where the level is. Resuming at 80% should not drop
         // you back into the filtered intro.
@@ -606,7 +622,7 @@ export class ISpyEngine {
       }
 
       // The arrangement follows the level through its movements.
-      this.audio.setMovement(movementAt(this.player.x));
+      this.audio.setMovement(sectionAt(this.level, this.player.x).index);
 
       // Landing dust, so a jump has a bottom to it.
       if (this.player.onGround && !this.wasGrounded) this.burst(7, "#ffffff", 5);
@@ -710,17 +726,17 @@ export class ISpyEngine {
   }
 }
 
-function chapterAt(x: number): string {
-  let name = CHAPTERS[0].name;
-  for (const c of CHAPTERS) if (x >= c.at) name = c.name;
-  return name;
-}
-
-/** Which of the score's six movements belongs at x. */
-function movementAt(x: number): number {
-  let i = 0;
-  CHAPTERS.forEach((c, n) => {
-    if (x >= c.at) i = n;
+/**
+ * The name of the stretch of level at x, and its index.
+ *
+ * `level.sections` already carries a name and an x for every movement — it is
+ * what the palettes are keyed on — so there is no second list to keep in step
+ * with it. The score's arrangement is indexed by the same number.
+ */
+function sectionAt(level: Level, x: number): { name: string; index: number } {
+  let index = 0;
+  level.sections.forEach((c, n) => {
+    if (x >= c.x) index = n;
   });
-  return i;
+  return { name: level.sections[index]?.name ?? "", index };
 }

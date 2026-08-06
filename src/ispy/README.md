@@ -1,6 +1,46 @@
 # I Spy
 
-A Geometry Dash level in two dimensions, at `/i-spy`.
+**Eleven** Geometry Dash levels in two dimensions, at `/i-spy` — one per corner
+of the vibeverse, picked from the title screen or deep-linked with
+`?level=<id>`.
+
+They are different *games*, not skins. Each level chooses a **tuning** — a
+tempo, a blocks-per-beat and a jump apex — and every other constant is solved
+from those three (`derive` in `physics.ts`):
+
+    T     = 60 / bpm                 seconds per beat
+    speed = blocksPerBeat / T        blocks per second
+    v0    = 4 · apex / T             takeoff velocity
+    g     = 8 · apex / T²            gravity
+
+so Unit 7 at 96 BPM with a 3.6-block apex has moon gravity and a ship that
+drifts, Afterparty at 140 BPM has a jump that lasts 0.43 s, and in both of them
+one jump is still exactly one beat. Feed the derivation the classic tuning —
+120 BPM, five blocks, 2.6 apex — and it hands back precisely the speed 10 /
+v0 20.8 / g 83 the first level was hand-tuned to, which is how we know it is
+the shape the game already had.
+
+| level | world | bpm | feel |
+| --- | --- | --- | --- |
+| Cardboard | Vibe Island | 100 | floaty, six-block beat, the gentlest |
+| Unit 7 | Space Outpost | 96 | lowest gravity; everything hangs |
+| The Long Silence | The Vibeverse | 90 | monochrome, mostly one long tube |
+| Night Shift | Five Nights at Vibey's | 84 | slow, heavy, nearly black |
+| Genesis | Genesis Bloom | 110 | organic; the platforms keep growing |
+| Hydro | Seafair | 118 | mostly wave |
+| Free Fall | San Francisco | 128 | fog, and a bridge you fly the cables of |
+| Fractal Hall | Fractal Museum | 126 | symmetric; the back half answers the front |
+| I Spy | The neon district | 120 | where it started |
+| Grand Prix | Vibe Kart | 150 | long straights, late corners |
+| Afterparty | EDM Town | 140 | short jumps, no gaps, lights on |
+
+Every one of them is flown end to end by the solver in `ispy.test.ts`, along
+with its coins, its chill mode and its palettes. A hand-authored beat map is
+easy to make impossible by accident and impossible to check by playing.
+
+## The rest of this document describes the first level
+
+…and everything in it applies to all eleven, because they share one engine.
 
 It started as a tribute to the level of the same name, whose idea is that you
 cannot trust your eyes — a screen packed with decoration drawn exactly like the

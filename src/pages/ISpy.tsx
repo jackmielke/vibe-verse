@@ -7,13 +7,22 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { DIFFICULTIES, ISpyEngine, type Difficulty, type ISpyStatus } from "@/ispy/engine";
+import {
+  DIFFICULTIES, ISpyEngine, levelProgress, type Difficulty, type ISpyStatus,
+} from "@/ispy/engine";
+import { LEVELS } from "@/ispy/levels";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 export default function ISpy() {
   // Passport: every world records that you were here. See lib/passport.ts.
   useWorldStamp("/i-spy", "I Spy");
 
+  // ?level=<id> deep-links a level; the picker rebuilds the engine on change.
+  const [levelId, setLevelId] = useState(() => {
+    if (typeof window === "undefined") return LEVELS[0].id;
+    const want = new URLSearchParams(window.location.search).get("level");
+    return LEVELS.find((l) => l.id === want)?.id ?? "i-spy";
+  });
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<ISpyEngine | null>(null);
   const [status, setStatus] = useState<ISpyStatus | null>(null);
@@ -29,7 +38,7 @@ export default function ISpy() {
     if (!canvas) return;
     let engine: ISpyEngine | null = null;
     try {
-      engine = new ISpyEngine(canvas);
+      engine = new ISpyEngine(canvas, levelId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
@@ -51,6 +60,15 @@ export default function ISpy() {
       engine?.dispose();
       engineRef.current = null;
     };
+  }, [levelId]);
+
+  /** Switch levels: tear the engine down and build the new one. */
+  const pickLevel = useCallback((id: string) => {
+    setLevelId(id);
+    setMenu(true);
+    const url = new URL(window.location.href);
+    url.searchParams.set("level", id);
+    window.history.replaceState(null, "", url);
   }, []);
 
   const start = useCallback(() => {
@@ -248,14 +266,58 @@ export default function ISpy() {
           <p className="font-mono text-[10px] uppercase tracking-[0.5em] text-fuchsia-300/70">
             The vibeverse presents
           </p>
-          <h1 className="mt-3 text-center text-6xl font-black tracking-tighter text-white drop-shadow-[0_0_50px_rgba(255,47,191,0.55)] sm:text-8xl">
-            I SPY
+          <h1 className="mt-3 text-center text-5xl font-black tracking-tighter text-white drop-shadow-[0_0_50px_rgba(255,47,191,0.55)] sm:text-7xl">
+            {status?.levelName?.toUpperCase() ?? "I SPY"}
           </h1>
-          <p className="mt-4 max-w-md text-center text-sm leading-relaxed text-white/60">
-            A one-button auto-runner cut to its music: one jump is one beat.
-            Everything you can see can kill you — every spike, every sawblade —
-            and one of them you can barely see at all.
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.35em] text-white/40">
+            {LEVELS.find((l) => l.id === levelId)?.world}
           </p>
+          <p className="mt-3 max-w-md text-center text-sm leading-relaxed text-white/60">
+            {LEVELS.find((l) => l.id === levelId)?.tagline}
+          </p>
+
+          {/* Eleven levels, one per corner of the vibeverse. Each has its own
+              tempo, gravity and palette — they are different games, not skins. */}
+          <div className="mt-6 grid w-full max-w-3xl grid-cols-2 gap-1.5 px-2 sm:grid-cols-3">
+            {LEVELS.map((l) => {
+              const p = levelProgress(l.id);
+              const on = l.id === levelId;
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => pickLevel(l.id)}
+                  className={`group rounded-lg border px-3 py-2 text-left transition ${
+                    on
+                      ? "border-fuchsia-300/60 bg-fuchsia-300/12"
+                      : "border-white/10 hover:border-white/30 hover:bg-white/5"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span
+                      className={`font-mono text-[11px] uppercase tracking-[0.14em] ${
+                        on ? "text-fuchsia-200" : "text-white/70"
+                      }`}
+                    >
+                      {l.name}
+                    </span>
+                    <span className="font-mono text-[9px] tabular-nums text-white/35">
+                      {p.best > 0 ? `${p.best.toFixed(0)}%` : ""}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <span className="truncate font-mono text-[9px] uppercase tracking-[0.12em] text-white/30">
+                      {l.world}
+                    </span>
+                    {p.coins > 0 && (
+                      <span className="font-mono text-[9px] text-amber-300/80">
+                        {"●".repeat(p.coins)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
           <button
             onClick={start}

@@ -452,12 +452,17 @@ export class Renderer {
     ctx.translate(cx, cy);
     if (o.rot) ctx.rotate((o.rot * Math.PI) / 180);
 
-    // Scenery is mixed toward the background rather than toward white, so it
-    // sits behind the play layer instead of competing with it.
+    // Scenery recedes toward whatever is *behind* it — which on a dark level
+    // means the background colour and on a bright one means black. Mixing a
+    // near-white building toward a near-white sky, as this used to, makes the
+    // whole back layer vanish; the island and the museum are lit like day.
+    const bright = luma(pal.bg[0]) + luma(pal.bg[1]) > 1;
+    const behind = bright ? "#101018" : pal.bg[1];
+    const sink = bright ? 0.5 : 0.65;
     const hazardColor = o.color ??
-      (o.back ? mix(pal.hazard, pal.bg[1], 0.62) : mix(pal.hazard, "#ffffff", pulse * 0.6));
+      (o.back ? mix(pal.hazard, behind, sink) : mix(pal.hazard, "#ffffff", pulse * 0.6));
     const solidColor = o.color ??
-      (o.back ? mix(pal.solid, pal.bg[1], 0.68) : mix(pal.solid, "#ffffff", pulse * 0.4));
+      (o.back ? mix(pal.solid, behind, sink) : mix(pal.solid, "#ffffff", pulse * 0.4));
 
     switch (o.kind) {
       case "spike": {
@@ -540,12 +545,17 @@ export class Renderer {
         break;
       }
       case "portal": {
+        // Drawn as a doorway near the floor, whatever the trigger's height.
+        // The box is deliberately tall enough that nothing can jump over it
+        // (see `Builder.portal`); a twelve-block ellipse would be a silo.
+        const gate = Math.min(h, S * 3.4);
+        const lift = h / 2 - gate / 2;
         ctx.strokeStyle = pal.accent;
         ctx.lineWidth = 5;
         ctx.shadowBlur = 30;
         ctx.shadowColor = pal.accent;
         ctx.beginPath();
-        ctx.ellipse(0, 0, w * 0.45, h * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, lift, w * 0.45, gate * 0.5, 0, 0, Math.PI * 2);
         ctx.stroke();
         break;
       }

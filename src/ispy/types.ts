@@ -91,7 +91,38 @@ export interface Section {
   ground: string;
 }
 
+/**
+ * The three numbers that define how a level *feels*, and from which every
+ * other constant is derived.
+ *
+ * One jump is one beat is `blocksPerBeat` blocks. Given a tempo and an apex
+ * height, that identity forces the rest — with T = 60/bpm seconds per beat:
+ *
+ *     speed = blocksPerBeat / T        blocks per second
+ *     v0    = 4 · apex / T             takeoff velocity
+ *     g     = 8 · apex / T²            gravity
+ *
+ * Feed it 120 BPM, 5 blocks and a 2.6-block apex and it hands back exactly the
+ * speed 10 / v0 20.8 / g 83 that the first level was hand-tuned to, which is
+ * how we know the derivation is the same shape the game already had. Change
+ * any of the three and a level gets its own gravity and its own tempo while
+ * every jump still lands on a downbeat.
+ */
+export interface Tuning {
+  bpm: number;
+  blocksPerBeat: number;
+  /** Apex height of a cube jump, in blocks. */
+  apex: number;
+}
+
 export interface Level {
+  /** Stable id, used in the URL and in save keys. */
+  id: string;
+  name: string;
+  /** Which corner of the vibeverse this one is set in. */
+  world: string;
+  tagline: string;
+  tuning: Tuning;
   objects: Obj[];
   sections: Section[];
   /** x of the end wall. Reaching it is 100%. */
