@@ -43,3 +43,6 @@ public/models/*.glb
 # Supabase CLI local cache (linked-project metadata, version files, etc.)
 supabase/.temp/
 supabase/.branches/
+
+# Capture harness output — regenerate with scripts/dz-shot.mjs, never commit.
+shots/
