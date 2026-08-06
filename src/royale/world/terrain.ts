@@ -1881,6 +1881,22 @@ const createTerrain: SystemFactory = async (ctx) => {
   root.matrixAutoUpdate = false;
   ctx.scene.add(root);
 
+  /**
+   * The camera the previous frame was actually rendered with.
+   *
+   * `ctx.camera` is the right answer in play, but it is only the camera as of
+   * the update pass; anything that re-poses the camera afterwards (the capture
+   * harness poses in `renderOverride`) leaves LOD selection chasing a viewpoint
+   * nobody is looking from. three hands every rendered mesh the real camera, so
+   * we take it from there and use it next frame — one frame of lag on a
+   * streaming decision is invisible, and it makes the level of detail track the
+   * picture rather than the simulation.
+   */
+  let renderCamera: THREE.Camera | null = null;
+  const noteRenderCamera: THREE.Mesh["onBeforeRender"] = (_r, _s, cam) => {
+    renderCamera = cam;
+  };
+
   const LOD_SEGS = tier.segs;
   const MAX_SEGS = LOD_SEGS[0];
   const HALO = MAX_SEGS + 3;
@@ -1961,13 +1977,35 @@ const createTerrain: SystemFactory = async (ctx) => {
     geom.setAttribute("aSplat", new THREE.BufferAttribute(splat, 4, true));
     geom.setAttribute("aAux", new THREE.BufferAttribute(aux, 2, true));
     geom.setIndex(sharedIndex[lod]);
-    // Culling is done by hand against the chunk box, which is cheaper and more
-    // accurate than three re-deriving a sphere from a buffer we rewrite.
-    geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(), CHUNK);
+    // We maintain this by hand in `commit` rather than letting three derive it,
+    // because the vertex buffer is rewritten in place and a recompute per
+    // rebuild would walk every vertex twice. It has to be RIGHT, though: it is
+    // what three frustum-culls against. See the note on `frustumCulled` below.
+    geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(), CHUNK * 1.5);
 
     const mesh = new THREE.Mesh(geom, material);
     mesh.name = `dz.terrain.lod${lod}`;
-    mesh.frustumCulled = false;
+    /**
+     * FRUSTUM CULLING BELONGS TO THREE, NOT TO US.
+     *
+     * This was false, and the chunk was shown or hidden by a frustum this
+     * module built itself in `lateUpdate` from `ctx.camera`. That is a bet that
+     * the camera which will render the frame is the camera we just looked at,
+     * and the bet does not always pay: anything that re-poses the camera after
+     * the update pass — the capture harness does exactly this, in
+     * `renderOverride` — renders from a camera whose frustum the terrain never
+     * saw. Every chunk then holds the previous camera's answer, and with the
+     * old camera pointed away from the island that answer is "hidden" for all
+     * 121 of them. The ground does not render at all, the water plane shows
+     * through where the island should be, and the frame reads as a flat white
+     * sheet — which is exactly what it looks like when the splat shader is
+     * broken, so it gets misdiagnosed as one.
+     *
+     * three culls against the camera it is actually rendering with, so it
+     * cannot be wrong in that way. Distance and LOD selection stay ours (they
+     * are streaming hints and tolerate a frame of lag); presence does not.
+     */
+    mesh.frustumCulled = true;
     mesh.matrixAutoUpdate = false;
     mesh.receiveShadow = true;
     // Terrain deliberately does not cast: at cascade sizes of 135–900 m a
@@ -1975,6 +2013,7 @@ const createTerrain: SystemFactory = async (ctx) => {
     // AO carries the large-scale occlusion instead.
     mesh.castShadow = false;
     mesh.visible = false;
+    mesh.onBeforeRender = noteRenderCamera;
     root.add(mesh);
 
     return { lod, segs, geom, mesh, pos, nrm, splat, aux, chunk: null, ready: false };
@@ -2168,8 +2207,14 @@ const createTerrain: SystemFactory = async (ctx) => {
     slot.mesh.updateMatrix();
     const sphere = slot.geom.boundingSphere as THREE.Sphere;
     sphere.center.set(0, (job.minY + job.maxY) * 0.5, 0);
+    // The skirt hangs `depth` below the lowest vertex and is part of the mesh,
+    // so it is part of the bounds. Leaving it out understated the sphere by up
+    // to 75 m at the coarsest level, and now that three culls against this
+    // sphere an understated one is a chunk that pops out at the screen edge.
     sphere.radius =
-      Math.sqrt(CHUNK * CHUNK * 0.5 + Math.pow((job.maxY - job.minY) * 0.5, 2)) + CHUNK * 0.1;
+      Math.sqrt(CHUNK * CHUNK * 0.5 + Math.pow((job.maxY - job.minY) * 0.5, 2)) +
+      Math.max(2.5, (CHUNK / slot.segs) * 3) +
+      CHUNK * 0.1;
     slot.ready = true;
 
     // The coarsest level is the one that defines the chunk's real vertical
@@ -2278,7 +2323,7 @@ const createTerrain: SystemFactory = async (ctx) => {
   const byDistance = (a: { dist: number }, b: { dist: number }) => a.dist - b.dist;
   const byJobDistance = (a: BuildJob, b: BuildJob) => a.chunk.dist - b.chunk.dist;
 
-  function refreshLod(camera: THREE.PerspectiveCamera): void {
+  function refreshLod(camera: THREE.Camera): void {
     camera.updateMatrixWorld();
     camPos.setFromMatrixPosition(camera.matrixWorld);
     viewInverse.copy(camera.matrixWorld).invert();
@@ -2333,14 +2378,17 @@ const createTerrain: SystemFactory = async (ctx) => {
       }
     }
 
-    // Finally decide what is on screen: the finest committed slot each chunk
-    // owns, and nothing else.
+    // Finally decide what is DRAWABLE: the finest committed slot each chunk
+    // owns, and nothing else. Deliberately not gated on `inView` — see the
+    // note on `frustumCulled` in `makeSlot`. A chunk outside the view costs one
+    // sphere test in three's projectObject and is then skipped; a chunk wrongly
+    // marked invisible here is a hole in the world.
     for (const chunk of chunks) {
       let shown = false;
       for (let l = 0; l < 4; l++) {
         const s = chunk.owned[l];
         if (!s) continue;
-        const show = !shown && s.ready && chunk.inView;
+        const show = !shown && s.ready;
         s.mesh.visible = show;
         if (show) shown = true;
       }
@@ -2429,7 +2477,9 @@ const createTerrain: SystemFactory = async (ctx) => {
      * the bus, where a frame of lag is 140 m of wrongly-culled ground.
      */
     lateUpdate(_dt, c) {
-      refreshLod(c.camera);
+      // Prefer the camera the last frame was really drawn with; fall back to
+      // the engine's until the first frame has been rendered.
+      refreshLod(renderCamera ?? c.camera);
     },
 
     dispose() {

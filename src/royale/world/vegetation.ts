@@ -47,8 +47,13 @@
  *         glow; a canopy that only ever gets darker as it turns away from the
  *         key light reads as a dark green blob, which is the single loudest
  *         "this is a Three.js demo" tell foliage has.
- *       • AN ORDERED-DITHER DISTANCE FADE, so ground cover and the far LOD
- *         dissolve instead of popping. It writes depth and needs no sorting.
+ *       • A SKY FILL, because the shadowed side of a canopy is lit by the
+ *         whole dome and not by the key, and a leaf whose albedo is already
+ *         near-black in shade has nothing left for the standard ambient path
+ *         to work with.
+ *       • A BLUE-NOISE DISTANCE FADE over a narrow band, so ground cover and
+ *         the far LOD dissolve instead of popping. It writes depth and needs
+ *         no sorting.
  *     A matching `MeshDepthMaterial` carries the same wind into the shadow
  *     map — without it every plant casts the shadow of a plant standing still.
  *
@@ -134,6 +139,28 @@ const GRASS_CELL = 24;
  * it much either way costs one of those two things.
  */
 const ALPHA_TEST = 0.38;
+
+/**
+ * The floor the foliage cells of the atlas are lifted onto, in sRGB.
+ *
+ * Every leaf painter authors its interior shade around 0.05–0.13 — and those
+ * are *sRGB* numbers. 0.05 sRGB is 0.004 linear. Multiply that by a vertex AO
+ * term and a per-instance tint and the interior of a canopy arrives at the
+ * lighting a thousandth as bright as its lit rim, at which point no amount of
+ * ambient brings it back: it is black, and it measures as pure haze colour
+ * with no leaf in it at all. Fortnite's foliage never does this — its shadowed
+ * side stays a rich, saturated green — so the darkest texel a leaf can reach is
+ * clamped to one. Green-dominant on purpose: a neutral floor reads as fog.
+ */
+const FOLIAGE_FLOOR: readonly [number, number, number] = [0.13, 0.30, 0.09];
+
+/**
+ * Vertex AO is compressed into `[AO_FLOOR, 1]` before it becomes a vertex
+ * colour. The authored values go as low as 0.34, and 0.34 on top of an
+ * already-dark canopy interior is the second half of the same near-black
+ * compound. Occlusion should shade a canopy, not delete it.
+ */
+const AO_FLOOR = 0.58;
 
 /** Atlas layout. Square grid, so a cell is `size / ATLAS_COLS` on a side. */
 const ATLAS_COLS = 4;
@@ -1329,6 +1356,39 @@ function buildAtlas(size: number, aniso: number, rng: () => number, mats?: Mater
     }
   }
 
+  // ---- the foliage albedo floor -------------------------------------------
+  //
+  // See `FOLIAGE_FLOOR`. Applied as a soft max, `sqrt(v² + floor²)`, rather
+  // than a hard `max`: a hard clamp flattens every texel below the floor into
+  // one value and the interior of a leaf mass loses the painted ramp that
+  // gives it depth, while the soft form leaves anything well above the floor
+  // essentially untouched and only lifts the blacks.
+  //
+  // Run *after* the Sobel and the roughness pass, deliberately: relief and the
+  // gloss ramp are derived from the authored contrast, and only what finally
+  // reaches the eye is floored.
+  const FLOOR_CELLS = [
+    C_BROAD, C_OAK, C_NEEDLE, C_BIRCH, C_FROND, C_FERN,
+    C_GRASS, C_REED, C_FLOWER, C_MOSS, C_IMP_BROAD, C_IMP_CONIF,
+  ];
+  const floor255 = [FOLIAGE_FLOOR[0] * 255, FOLIAGE_FLOOR[1] * 255, FOLIAGE_FLOOR[2] * 255];
+  const floorSq = [floor255[0] * floor255[0], floor255[1] * floor255[1], floor255[2] * floor255[2]];
+  for (const cell of FLOOR_CELLS) {
+    const col = cell % ATLAS_COLS;
+    // `alb` is the flipped buffer, so the cell's row is counted from the top.
+    const rowF = ATLAS_ROWS - 1 - Math.floor(cell / ATLAS_COLS);
+    const x0 = col * csi, y0 = rowF * csi;
+    for (let y = y0; y < y0 + csi; y++) {
+      for (let x = x0; x < x0 + csi; x++) {
+        const o = (y * size + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const v = alb[o + c];
+          alb[o + c] = Math.min(255, Math.sqrt(v * v + floorSq[c]));
+        }
+      }
+    }
+  }
+
   const albedo = finishTex(new THREE.DataTexture(alb, size, size, THREE.RGBAFormat), true, aniso);
   const normal = finishTex(new THREE.DataTexture(nrm, size, size, THREE.RGBAFormat), false, aniso);
   const rough = finishTex(new THREE.DataTexture(rgh, size, size, THREE.RGBAFormat), false, aniso);
@@ -1393,10 +1453,14 @@ class Build {
     this.pos.push(_v.x, _v.y, _v.z);
     this.nrm.push(_n.x, _n.y, _n.z);
     this.uvs.push(u, v);
+    // Occlusion is compressed onto `AO_FLOOR` before it becomes a colour: this
+    // term multiplies an albedo that is already at its darkest inside a canopy,
+    // and the two compound straight to black.
+    const a = AO_FLOOR + (1 - AO_FLOOR) * ao;
     // The cool shift: 4 % more blue than red at full occlusion, none at all in
     // full light. Small enough to read as light rather than as a tint.
-    const cool = 1 + (1 - ao) * 0.06;
-    this.col.push(ao, ao * (1 + (1 - ao) * 0.015), ao * cool);
+    const cool = 1 + (1 - a) * 0.06;
+    this.col.push(a, a * (1 + (1 - a) * 0.015), a * cool);
     this.flx.push(sway, flut, trans);
     return this.pos.length / 3 - 1;
   }
@@ -2832,6 +2896,7 @@ export interface VegMaterials {
   uWind: { value: THREE.Vector4 };
   uTrans: { value: THREE.Color };
   uTransGain: { value: number };
+  uSkyFill: { value: THREE.Color };
   dispose(): void;
 }
 
@@ -2843,6 +2908,9 @@ function makeMaterials(atlas: VegAtlas): VegMaterials {
   const uWind = { value: new THREE.Vector4(0.86, 0.51, 0.14, 1.0) };
   const uTrans = { value: new THREE.Color(0.58, 0.94, 0.34) };
   const uTransGain = { value: 1 };
+  // Full-daylight default, so the very first frame — before `sky` has been
+  // read once — is already lit rather than black.
+  const uSkyFill = { value: new THREE.Color(0.44, 0.54, 0.66) };
 
   const main = new THREE.MeshStandardMaterial({
     map: atlas.albedo,
@@ -2870,6 +2938,7 @@ function makeMaterials(atlas: VegAtlas): VegMaterials {
     shader.uniforms.uWind = uWind;
     shader.uniforms.uTrans = uTrans;
     shader.uniforms.uTransGain = uTransGain;
+    shader.uniforms.uSkyFill = uSkyFill;
 
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", /* glsl */ `#include <common>
@@ -2888,13 +2957,44 @@ function makeMaterials(atlas: VegAtlas): VegMaterials {
         varying float vVegFade;
         uniform vec3 uTrans;
         uniform float uTransGain;
-        // Ordered dither. Screen-door beats popping, and unlike alpha blending
-        // it needs no sorting and still writes depth.
-        float vegBayer2( vec2 a ) { a = floor( a ); return fract( a.x * 0.5 + a.y * a.y * 0.75 ); }
-        float vegBayer4( vec2 a ) { return vegBayer2( a * 0.5 ) * 0.25 + vegBayer2( a ); }`)
+        uniform vec3 uSkyFill;
+        // The dissolve threshold.
+        //
+        // This was a 4×4 Bayer matrix, and a Bayer matrix is exactly the wrong
+        // pattern here: it repeats every four pixels, so the eye locks onto the
+        // grid and the fade reads as a coarse stipple crawling over the
+        // treeline instead of as a dissolve. Interleaved-gradient noise is the
+        // cheap blue-noise stand-in — one fract chain, no texture, and its
+        // energy is all at the highest spatial frequency, which is precisely
+        // the frequency that disappears at final resolution.
+        float vegDither( vec2 p ) {
+          return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) ) );
+        }`)
+      // Guarded, not just thresholded: an instance that is not in its fade band
+      // must be *fully* opaque. Punching one pixel in sixteen out of a canopy
+      // that is nowhere near the horizon is how a stipple ends up visible in
+      // the middle of the frame.
       .replace("#include <clipping_planes_fragment>", /* glsl */ `#include <clipping_planes_fragment>
-        if ( vVegFade < 0.997 && vegBayer4( gl_FragCoord.xy ) * 1.0667 > vVegFade ) discard;`)
+        if ( vVegFade < 0.999 && vegDither( gl_FragCoord.xy ) >= vVegFade ) discard;`)
       .replace("#include <lights_fragment_end>", /* glsl */ `#include <lights_fragment_end>
+        {
+          // SKY FILL.
+          //
+          // Fortnite's foliage never goes black, and the reason is not the
+          // back-light — with the sun high and behind the camera the
+          // transmission term below contributes almost nothing, which is the
+          // common case. It is the sky: a canopy's shadowed side is lit by the
+          // whole dome. Standard's own ambient path gives a leaf far too
+          // little of that, so foliage gets an explicit hemispheric fill,
+          // weighted toward up-facing but with a floor, because the underside
+          // of a canopy still has to read as green rather than as a hole.
+          //
+          // Keyed off vVegTrans so it lands on leaves (1) at full strength and
+          // on bark (0) at just under half — a trunk wants to stay woody.
+          float vegSky = mix( 0.62, 1.0, geometryNormal.y * 0.5 + 0.5 );
+          reflectedLight.indirectDiffuse +=
+            uSkyFill * diffuseColor.rgb * vegSky * mix( 0.45, 1.0, clamp( vVegTrans, 0.0, 1.0 ) );
+        }
         #if ( NUM_DIR_LIGHTS > 0 )
         if ( vVegTrans > 0.01 ) {
           // Sub-surface transmission: forward scatter for the moment the sun
@@ -2930,7 +3030,7 @@ function makeMaterials(atlas: VegAtlas): VegMaterials {
   };
 
   return {
-    main, depth, uTime, uWind, uTrans, uTransGain,
+    main, depth, uTime, uWind, uTrans, uTransGain, uSkyFill,
     dispose() {
       main.dispose();
       depth.dispose();
@@ -3679,13 +3779,18 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
   const GRIDS: GridDef[] = [
     {
       name: "trees", cell: PLANT_CELL, radius: tier.plantRadius, mix: MIX_TREE,
-      step: 9.5, bands: tier.bands, fade: tier.plantRadius * 0.16,
+      // 28 m, not 16 % of the radius. The band is the depth range that sits at
+      // partial alpha, and at 540 m that was 86 m of treeline held permanently
+      // half-dissolved — a dither is invisible over a few metres and a coarse
+      // stipple over eighty. Capped in metres rather than scaled, because the
+      // thing that has to stay small is the band itself, not its ratio.
+      step: 9.5, bands: tier.bands, fade: Math.min(28, tier.plantRadius * 0.16),
       colliders: tier.colliderRadius,
     },
     {
       name: "shrubs", cell: 48, radius: Math.min(tier.plantRadius, tier.bands[0] * 1.7),
       mix: MIX_SHRUB, step: 5.2, bands: [tier.bands[0] * 0.7],
-      fade: Math.min(tier.plantRadius, tier.bands[0] * 1.7) * 0.22, colliders: 0,
+      fade: Math.min(18, Math.min(tier.plantRadius, tier.bands[0] * 1.7) * 0.22), colliders: 0,
     },
     {
       name: "grass", cell: GRASS_CELL, radius: tier.grassRadius, mix: MIX_GRASS,
@@ -3693,9 +3798,10 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
       // cell, which is the point where the ground reads as covered rather than
       // as dotted. Below ~2 m it starts to look sparse from standing height.
       step: 1.5, bands: [],
-      // A third of the radius: the dissolve has to be long enough that the
-      // last tufts are already ghosts when they go, or the field visibly ends.
-      fade: tier.grassRadius * 0.34, colliders: 0,
+      // Long enough that the last tufts are already ghosts when they go, short
+      // enough that the dissolve never covers a third of the visible field.
+      // 12 m of dissolve at 82 m is a couple of degrees of the frame.
+      fade: Math.min(12, tier.grassRadius * 0.34), colliders: 0,
     },
   ];
 
@@ -3981,6 +4087,10 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
         // glowing bush, and a glowing bush is worse than a dark one.
         _sun.copy(sky.sunDirection);
         mats.uTransGain.value = clamp01(sky.daylight * 1.15) * clamp01(0.25 + _sun.y * 2.2);
+        // The sky fill follows daylight but never falls to nothing: a canopy at
+        // dusk is dim, not a hole in the frame. Cool, because the dome is.
+        const fill = 0.30 + 0.70 * clamp01(sky.daylight);
+        mats.uSkyFill.value.setRGB(0.44 * fill, 0.54 * fill, 0.66 * fill);
       }
 
       // --- streaming -------------------------------------------------------
