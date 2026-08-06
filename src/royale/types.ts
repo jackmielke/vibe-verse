@@ -162,6 +162,15 @@ export interface RayHit {
   piece?: BuildPiece;
   /** Set when the ray hit a damageable actor. */
   target?: DamageTarget;
+  /**
+   * The `owner` the collider was registered with, passed straight through.
+   *
+   * `piece` and `target` are the two owners collision knows how to recognise;
+   * this is how everything else finds its way home. Vegetation needs it so a
+   * pickaxe hit can tell *which* tree it just felled — without it a harvested
+   * trunk's canopy is left standing in the air with nothing underneath.
+   */
+  owner?: unknown;
   tag?: string;
 }
 
@@ -521,6 +530,14 @@ export type QualityTier = "low" | "medium" | "high" | "ultra";
 /** A subsystem instance. All hooks are optional. */
 export interface System {
   name: string;
+  /**
+   * Deterministic simulation step, called at a hard 120 Hz with leftover time
+   * carried in the engine's accumulator. Movement, capsule resolution, build
+   * placement and projectiles belong here — all of them misbehave at variable
+   * dt, which is how you end up walking through your own wall on a frame
+   * spike. Cosmetics belong in `update`.
+   */
+  fixed?(dt: number, ctx: WorldCtx): void;
   update?(dt: number, ctx: WorldCtx): void;
   /** Called after all systems have updated — camera-dependent work. */
   lateUpdate?(dt: number, ctx: WorldCtx): void;

@@ -912,6 +912,7 @@ class Broadphase implements CollisionService {
       harvest: opts?.harvest,
       piece,
       target,
+      owner,
       tag: opts?.tag,
     };
   }
