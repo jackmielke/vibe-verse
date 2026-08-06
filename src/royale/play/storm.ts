@@ -292,12 +292,16 @@ const INTERIOR_RAMP = 55;
 /** Purple the interior fog and veil converge on. */
 const STORM_FOG_COLOR = 0x4b2a86;
 /**
-  * Fog density inside the storm at full intensity. Half-obscured at ~52 m and
-  * effectively blind past ~110 m: enough that being caught is disorienting
-  * and a fight inside the wall is a knife fight, but not so much that you
-  * cannot see the ground you are running on.
+  * Fog density inside the storm at full intensity. This was 0.016, which is
+  * a quarter-obscured at 30 m and effectively blind past 110 m — combined with
+  * a full lerp to violet it turned the whole frame into one flat mauve field
+  * and was a large part of why the first capture pass had no colour in it.
+  * At 0.0055 you lose about a quarter of the frame's contrast at 100 m and
+  * two thirds at 200 m: distance closes in on you, but the ground you are
+  * running on and the buildings you are running to stay legible and stay
+  * green. The storm is a threat, not a wipe.
   */
-const STORM_FOG_DENSITY = 0.016;
+const STORM_FOG_DENSITY = 0.0055;
 /** Box the streak particles live in, camera-anchored. */
 const PARTICLE_BOX = 110;
 /** Seconds a streak lives before it recycles. */
@@ -611,7 +615,20 @@ void main() {
   // free, readable warning that costs no HUD real estate.
   energy *= 1.0 + 0.55 * uCharge;
 
-  float cover = 0.30 + 0.44 * body + 0.34 * contact + 0.30 * hex * body + 0.22 * fres;
+  // Coverage is DETAIL, not paint. The old build opened with a flat 0.30 of
+  // solid violet on every fragment plus 0.44 of body, which at 0.95 opacity
+  // meant the whole island read through a ~90% opaque sheet — the wall stopped
+  // being a wall you look through and became a wipe. Every term here is now
+  // tied to something the eye can see moving: the lattice, the bolts, and the
+  // grazing rim. The flat floor is a whisper (0.05) that only exists so a dead
+  // patch of wall is not a hole in the effect.
+  float cover =
+      0.05 +
+      0.13 * body +
+      0.16 * contact +
+      0.30 * hex * body +
+      0.26 * fres +
+      0.22 * streak * body;
   cover *= 0.72 + 0.50 * slow;
   cover = clamp(cover, 0.0, 1.0) * uOpacity * topFade * bottomFade;
 
@@ -640,8 +657,17 @@ void main() {
   // threat, and it wants to be a touch heavier.
   cover *= mix(0.86, 1.0, uInside);
 
-  cover = clamp(cover, 0.0, 0.96);
-  vec3 emit = col * (cover * 0.85 + clamp(energy, 0.0, 2.2) * 0.34 * uIntensity);
+  // Hard ceiling. Nowhere on the wall — not the contact line, not a bolt at
+  // full charge — is allowed to fully hide what is behind it. The test is
+  // standing inside the circle looking out: the terrain and the buildings past
+  // the wall have to stay legible and stay their own colour.
+  cover = clamp(cover, 0.0, 0.72);
+  // Coverage fell by roughly two thirds, so the light it used to carry has to
+  // come from the emissive term instead, or a transparent wall is also a dim
+  // one. This is what keeps the rim and the bolts reading as hot at a fraction
+  // of the occlusion: premultiplied alpha lets emit exceed cover, and the
+  // surplus is pure additive glow over the untouched island behind it.
+  vec3 emit = col * (cover * 0.85 + clamp(energy, 0.0, 2.2) * 0.50 * uIntensity);
   gl_FragColor = vec4(emit, cover);
 }
 `;
@@ -882,10 +908,15 @@ void main() {
   float n2 = dzFbm(vUv * vec2(uAspect, 1.0) * 6.7 - vec2(uTime * 0.13, uTime * 0.04));
   float cloud = mix(n, n2, 0.4);
 
-  float a = uIntensity * (0.10 + 0.34 * vig) * (0.62 + 0.76 * cloud);
+  // Dialled well back from the first build. Being in the storm has to feel
+  // dangerous, not look like a broken colour filter: the centre of the frame
+  // stays almost clear (~0.09 at full intensity) and even the corners top out
+  // around a third, so the world you are sprinting back across keeps its own
+  // colour the whole way.
+  float a = uIntensity * (0.045 + 0.20 * vig) * (0.62 + 0.76 * cloud);
   vec3 col = mix(uTint, uEdge, vig * 0.7 + cloud * 0.25);
 
-  gl_FragColor = vec4(col, clamp(a, 0.0, 0.72));
+  gl_FragColor = vec4(col, clamp(a, 0.0, 0.42));
 }
 `;
 
@@ -1689,6 +1720,8 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
   /** 0..1 how close the camera is to the wall, from either side. */
   let proximity = 0;
   let inStorm = false;
+  /** False until we have emitted `dz:in-storm` at least once. */
+  let inStormPrimed = false;
 
   const tmpA = new THREE.Vector3();
   /** Scratch for the sky's live fog colour, read before we blend over it. */
@@ -1908,7 +1941,9 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
     uDeep: { value: new THREE.Color(0x2a1160) },
     uMid: { value: new THREE.Color(0x7b3fe4) },
     uHot: { value: new THREE.Color(0xdcc4ff) },
-    uOpacity: { value: 0.95 },
+    // Deliberately low. The wall reads as a wall through density of detail and
+    // a hot rim, never through paint — see the coverage block in WALL_FRAG.
+    uOpacity: { value: 0.34 },
     uIntensity: { value: 1 },
     uCharge: { value: 0 },
     uInside: { value: 1 },
@@ -2280,10 +2315,18 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       // of a degree — far below the threshold where a jump is visible.
       wallUniforms.uHexRepeatU.value = Math.max(6, Math.round((TWO_PI * r) / HEX_WORLD_SIZE));
 
-      // The wall is up from the loading screen onward — the first circle is
-      // information the player needs while they are still choosing where to
-      // jump. `running` gates the clock and the damage, never the picture.
-      const visible = r > 2.5;
+      // The island is entirely safe until the match goes live. There is no
+      // wall on it, no footprint ring, no veil, no streaks — Fortnite shows
+      // you a clean island from the bus and the circle lives on the minimap
+      // only, which the HUD already draws. The previous build had the wall up
+      // "from the loading screen onward" on the theory that it was drop
+      // information; what it actually did was put a kilometre of violet across
+      // every frame of the drop, which is the first thing anyone sees.
+      //
+      // `matchLive()` already gates the damage. This extends it to the picture
+      // so the two can never disagree: nothing that can hurt you is invisible,
+      // and nothing that cannot hurt you is on screen.
+      const visible = r > 2.5 && matchLive();
       wallMesh.visible = visible;
 
       // ---- charge ---------------------------------------------------------
@@ -2319,12 +2362,20 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       intensity += (targetIntensity - intensity) * clamp01(dt * 3.2);
       if (intensity < 0.002) intensity = 0;
 
+      // `dz:in-storm` normally fires only on the flip, which means a listener
+      // that mounts believing "inside" (or that survived a previous match)
+      // would never hear otherwise. One forced `false` on our first frame
+      // gives every consumer of the veil a definite baseline, and since the
+      // bus starts the player outside the circle by design, that baseline is
+      // exactly the frame where a latched veil would do the most damage.
       const nowInStorm = outside && stormActive;
-      if (nowInStorm !== inStorm) {
+      if (nowInStorm !== inStorm || !inStormPrimed) {
+        const flipped = nowInStorm !== inStorm;
         inStorm = nowInStorm;
+        inStormPrimed = true;
         const payload: InStormEvent = { inside: inStorm, intensity, dps: service.dps };
         c.emit("dz:in-storm", payload);
-        cc.audio?.play?.(inStorm ? "storm-enter" : "storm-exit", { volume: 0.55 });
+        if (flipped) cc.audio?.play?.(inStorm ? "storm-enter" : "storm-exit", { volume: 0.55 });
       }
 
       // ---- ground re-projection -------------------------------------------
@@ -2369,7 +2420,10 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
           fogInstalled = true;
           c.scene.fog = stormFog;
         }
-        stormFog.color.copy(baseColor).lerp(stormFogColor, clamp01(intensity * 1.15));
+        // Capped short of a full replacement: the fog keeps a good half of the
+        // sky's own hue even at full intensity, so the horizon inside the
+        // storm still belongs to this island rather than to a purple void.
+        stormFog.color.copy(baseColor).lerp(stormFogColor, clamp01(intensity * 0.62));
         stormFog.density = THREE.MathUtils.lerp(baseDensity, STORM_FOG_DENSITY, intensity);
       } else if (fogInstalled) {
         fogInstalled = false;
@@ -2407,12 +2461,17 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
           : mode === "done"
             ? 0
             : 1;
-      nextRing.material.uniforms.uOpacity.value = service.nextRadius > 4 ? previewAlpha : 0;
-      nextRing.mesh.visible = service.nextRadius > 4 && previewAlpha > 0.01;
+      const previewOn = service.nextRadius > 4 && matchLive();
+      nextRing.material.uniforms.uOpacity.value = previewOn ? previewAlpha : 0;
+      nextRing.mesh.visible = previewOn && previewAlpha > 0.01;
 
       // ---- streaks --------------------------------------------------------
       if (streaks) {
-        const on = intensity > 0.02;
+        // `intensity` cannot rise unless `stormActive` is true, which already
+        // carries `matchLive()`. Repeated here anyway: this is the one field
+        // that lives in a box around the camera, so if it ever did leak on
+        // during the bus it would be in the player's face and nowhere else.
+        const on = intensity > 0.02 && visible;
         streaks.mesh.visible = on;
         if (on) {
           const u = streaks.material.uniforms;
@@ -2442,12 +2501,13 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
       // ---- veil -----------------------------------------------------------
       if (veilMesh && veilMaterial) {
-        const on = intensity > 0.01;
+        // Same belt-and-braces as the streaks, and it matters more here: the
+        // veil is a full-screen quad with `depthTest: false` at renderOrder
+        // 9990. If it is ever on when it should not be, it is the whole frame.
+        const on = intensity > 0.01 && matchLive();
         veilMesh.visible = on;
-        if (on) {
-          veilMaterial.uniforms.uTime.value = c.elapsed;
-          veilMaterial.uniforms.uIntensity.value = intensity;
-        }
+        veilMaterial.uniforms.uIntensity.value = on ? intensity : 0;
+        if (on) veilMaterial.uniforms.uTime.value = c.elapsed;
       }
 
       // ---- audio ----------------------------------------------------------
@@ -2489,6 +2549,14 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
     dispose() {
       offLock();
+      // Leave nothing latched behind us. Anything still listening when the
+      // storm goes away must not be holding a violet overlay it can no longer
+      // be told to drop.
+      if (inStorm) {
+        inStorm = false;
+        const payload: InStormEvent = { inside: false, intensity: 0, dps: 0 };
+        ctx.emit("dz:in-storm", payload);
+      }
       if (ctx.scene.fog === stormFog) ctx.scene.fog = hostFog;
       fogInstalled = false;
 

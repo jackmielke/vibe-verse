@@ -243,15 +243,39 @@ const L_ROCK = 3;
 const TILE_METRES: [number, number, number, number] = [22, 26, 24, 18];
 
 /**
- * Metres per repeat for the NORMAL maps, which tile four times finer.
+ * Metres per repeat for the NORMAL maps, which tile much finer.
  *
  * Splitting the two is what buys both halves of the look. Albedo has to tile
  * large or its low-frequency blotches read as a lattice; normals can tile small
  * because a tangent-space normal map has almost no low-frequency energy — a
  * test render with the normals switched off was indistinguishable — so this is
  * where the crisp, close-up "you can see individual pebbles" detail comes from.
+ *
+ * These are now the rates the library actually painted for (SPEC[].metres:
+ * grass 3.0, dirt/sand 4.0, rock 4.5). At the old 5.5–6.5 m every feature was
+ * blown up ~2× past its authored size, which is most of the way to "smooth".
  */
-const TILE_NORMAL_METRES: [number, number, number, number] = [5.5, 6.5, 6.0, 4.5];
+const TILE_NORMAL_METRES: [number, number, number, number] = [4.0, 3.0, 4.0, 4.5];
+
+/**
+ * Metres per repeat for the DETAIL albedo tap. See DZ_DETAIL in the shader.
+ *
+ * The albedo maps are authored at 3–4.5 m per tile: `paintGrass` strokes blades
+ * ~1.7–8.4 cm long at that rate, `paintSand` lays grain at texel scale. Tiling
+ * them at TILE_METRES instead stretches every one of those features ~7×, which
+ * turns grass blades into half-metre smears and sand grain into gravel. That —
+ * not a failed shader patch — is why the ground had no character underfoot: the
+ * texture WAS bound, it was just magnified past the point where its content
+ * meant anything.
+ *
+ * We cannot simply tile smaller (the header above explains what that costs), so
+ * the map is sampled a SECOND time at its authored rate and high-passed against
+ * its own blurred self. What survives is only the frequencies above ~3 cm —
+ * blades, grain, pebbles — and a signal with no low-frequency energy left in it
+ * cannot draw a lattice however tightly it tiles. Exactly the argument the
+ * normal maps have always relied on, applied to albedo.
+ */
+const TILE_DETAIL_METRES: [number, number, number, number] = [4.0, 3.0, 4.0, 4.5];
 
 /** Which library material feeds each splat layer. */
 const LAYER_MATERIAL: [MaterialName, MaterialName, MaterialName, MaterialName] = [
@@ -1292,12 +1316,26 @@ const createTerrain: SystemFactory = async (ctx) => {
         1 / TILE_NORMAL_METRES[3],
       ),
     },
+    uTileD: {
+      value: new THREE.Vector4(
+        1 / TILE_DETAIL_METRES[0],
+        1 / TILE_DETAIL_METRES[1],
+        1 / TILE_DETAIL_METRES[2],
+        1 / TILE_DETAIL_METRES[3],
+      ),
+    },
     // Base roughness and the per-texel swing around it, per layer. Uniform
     // roughness is what makes a surface read as plastic; sand is matte and
     // even, wet rock is glossy and blotchy, and the difference has to be
     // visible in the specular roll-off or none of this looks expensive.
-    uRough: { value: new THREE.Vector4(0.93, 0.87, 0.9, 0.72) },
-    uRoughVar: { value: new THREE.Vector4(0.1, 0.22, 0.18, 0.34) },
+    //
+    // Pulled down and widened from (0.93,0.87,0.90,0.72)/(0.10,0.22,0.18,0.34).
+    // Above ~0.9 the GGX lobe is so broad that the whole surface responds to
+    // light as pure Lambert: every normal-map bump and every roughness break
+    // lands on the same flat shading term, and the ground reads as felt. The
+    // relief was there; there was nothing in the BRDF for it to catch.
+    uRough: { value: new THREE.Vector4(0.86, 0.78, 0.82, 0.62) },
+    uRoughVar: { value: new THREE.Vector4(0.2, 0.34, 0.3, 0.44) },
     // Mean colour per layer, used past the detail-fade distance. Sampling a
     // 5 m tile at 2 km is pure aliasing; a flat mean modulated by the macro
     // map reads better and costs less.
@@ -1315,32 +1353,60 @@ const createTerrain: SystemFactory = async (ctx) => {
   });
   if (tier.cheap) material.defines = { ...(material.defines ?? {}), DZ_CHEAP: "" };
 
+  /**
+   * Chunk names this build of three did not hand us. See `inject`.
+   *
+   * A `String.replace` whose needle is absent is a silent no-op: the patch
+   * evaporates, the material compiles perfectly, and what renders is a plain
+   * untextured MeshStandardMaterial — a smooth pastel surface, which is exactly
+   * what a broken splat looks like from the outside. There is no way to tell
+   * that apart from "the splat ran and the tuning is wrong" by looking at a
+   * frame, so it gets checked rather than assumed.
+   */
+  const injectionFailures: string[] = [];
+
+  function inject(src: string, needle: string, into: string, label: string): string {
+    const out = src.replace(needle, into);
+    if (out === src) {
+      injectionFailures.push(label);
+      console.error(
+        `[Drop Zero] terrain: shader injection "${label}" FAILED — three r${THREE.REVISION} ` +
+          `has no "${needle}" in its physical shader. The ground will render untextured.`,
+      );
+    }
+    return out;
+  }
+
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
+    injectionFailures.length = 0;
 
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        "#include <common>",
-        /* glsl */ `#include <common>
+    shader.vertexShader = inject(
+      shader.vertexShader,
+      "#include <common>",
+      /* glsl */ `#include <common>
         attribute vec4 aSplat;
         attribute vec2 aAux;
         varying vec3 vWPos;
         varying vec3 vWNrm;
         varying vec4 vSplat;
         varying vec2 vAux;`,
-      )
-      .replace(
-        "#include <begin_vertex>",
-        /* glsl */ `#include <begin_vertex>
+      "vert:common",
+    );
+    shader.vertexShader = inject(
+      shader.vertexShader,
+      "#include <begin_vertex>",
+      /* glsl */ `#include <begin_vertex>
         vWPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
         vWNrm = normalize( mat3( modelMatrix ) * objectNormal );
         vSplat = aSplat;
         vAux = aAux;`,
-      );
+      "vert:begin_vertex",
+    );
 
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "#include <common>",
+    shader.fragmentShader = inject(
+      shader.fragmentShader,
+      "#include <common>",
         /* glsl */ `#include <common>
         uniform sampler2D uSand;
         uniform sampler2D uGrass;
@@ -1358,6 +1424,7 @@ const createTerrain: SystemFactory = async (ctx) => {
         uniform vec3 uAvgRock;
         uniform vec4 uTile;
         uniform vec4 uTileN;
+        uniform vec4 uTileD;
         uniform vec4 uRough;
         uniform vec4 uRoughVar;
         uniform float uSeaLevel;
@@ -1383,22 +1450,44 @@ const createTerrain: SystemFactory = async (ctx) => {
          * pixel where floor(l) steps sees a wrong gradient, and it sits inside
          * the cross-fade where both taps agree anyway.
          */
-        vec3 dzDetile( sampler2D tex, vec2 uv, float v ) {
+        vec3 dzDetile( sampler2D tex, vec2 uv, float v, float mipB ) {
           float l = v * 8.0;
           float fl = floor( l );
           vec2 offa = sin( vec2( 3.0, 7.0 ) * fl );
           vec2 offb = sin( vec2( 3.0, 7.0 ) * ( fl + 1.0 ) );
-          vec3 ca = texture2D( tex, uv + offa ).rgb;
-          vec3 cb = texture2D( tex, uv + offb ).rgb;
+          vec3 ca = texture2D( tex, uv + offa, mipB ).rgb;
+          vec3 cb = texture2D( tex, uv + offb, mipB ).rgb;
           // Blended on the difference between the two taps, so the cross-fade
           // hides itself where they disagree most.
           return mix( ca, cb, smoothstep( 0.2, 0.8, fract( l ) - 0.1 * ( ca.g - cb.g ) ) );
         }
 
         /** Micro-relief 0..1: luminance minus its own heavily blurred self. */
-        float dzRelief( sampler2D tex, vec2 uv, vec3 col ) {
-          float lo = dot( texture2D( tex, uv, 4.0 ).rgb, DZ_LUM );
+        float dzRelief( sampler2D tex, vec2 uv, vec3 col, float mipB ) {
+          float lo = dot( texture2D( tex, uv, 4.0 + mipB ).rgb, DZ_LUM );
           return clamp( 0.5 + ( dot( col, DZ_LUM ) - lo ) * 2.4, 0.0, 1.0 );
+        }
+
+        /**
+         * DZ_DETAIL — the map at the rate it was actually painted for, with its
+         * low frequencies taken back out. Signed, centred on zero.
+         *
+         * Two taps of the same sampler: the surface, and the surface three mips
+         * up (~8× the current footprint). The difference is only the content
+         * finer than that footprint — blades, grain, chips — and because the
+         * footprint is measured in screen space the band self-selects: standing
+         * on the ground it is centimetre detail, at 200 m the two taps have
+         * converged and the term goes to zero on its own. That is both the
+         * anti-alias and the distance fade, for free, with no tuned constant.
+         *
+         * Because everything below the local footprint is subtracted away there
+         * is no low-frequency energy left to line up on a grid, which is the one
+         * thing that made TILE_METRES unable to go this fine in the first place.
+         */
+        float dzDetail( sampler2D tex, vec2 uv ) {
+          float hi = dot( texture2D( tex, uv ).rgb, DZ_LUM );
+          float lo = dot( texture2D( tex, uv, 3.0 ).rgb, DZ_LUM );
+          return hi - lo;
         }
 
         /**
@@ -1427,6 +1516,22 @@ const createTerrain: SystemFactory = async (ctx) => {
           vec3 wN = normalize( vWNrm );
           vec3 p = vWPos;
           float dist = length( p - cameraPosition );
+
+          // --- far-field mip bias --------------------------------------------
+          // Carrying the real albedo out to a kilometre and a half is what makes
+          // the island read as geography from the bus — but a 20 m tile seen at
+          // that range is a few pixels across, and hardware mip selection off
+          // screen-space derivatives under-blurs a surface this oblique. The
+          // result is a moire lattice crawling over every far ridge, which is
+          // the exact artefact TILE_METRES was chosen to avoid. Two and a half
+          // mips of extra blur past 300 m costs nothing at that size and makes
+          // the fine path converge smoothly onto the mean instead of racing it.
+          float mipB = smoothstep( 250.0, 1000.0, dist ) * 3.0;
+          // Rock gets a mip more than the rest. It tiles tightest (18 m), it is
+          // the one layer the detiler never touches because the triplanar path
+          // owns it, and its painted facets are the most regular signature of
+          // the four — so it is always the first surface to draw a lattice.
+          float mipR = mipB + smoothstep( 220.0, 900.0, dist ) * 1.3;
 
           // --- variation ---------------------------------------------------
           vec3 mac = texture2D( uMacro, p.xz * 0.00042 ).rgb;
@@ -1465,20 +1570,20 @@ const createTerrain: SystemFactory = async (ctx) => {
           vec2 uvR = p.xz * uTile.w;
 
           #ifndef DZ_CHEAP
-            vec3 cS = dzDetile( uSand, uvS, pat.r );
-            vec3 cG = dzDetile( uGrass, uvG, pat.g );
-            vec3 cD = dzDetile( uDirt, uvD, pat.b );
-            vec3 cR = texture2D( uRock, p.zy * uTile.w ).rgb * bw.x
-                    + texture2D( uRock, uvR ).rgb * bw.y
-                    + texture2D( uRock, p.xy * uTile.w ).rgb * bw.z;
+            vec3 cS = dzDetile( uSand, uvS, pat.r, mipB );
+            vec3 cG = dzDetile( uGrass, uvG, pat.g, mipB );
+            vec3 cD = dzDetile( uDirt, uvD, pat.b, mipB );
+            vec3 cR = texture2D( uRock, p.zy * uTile.w, mipR ).rgb * bw.x
+                    + texture2D( uRock, uvR, mipR ).rgb * bw.y
+                    + texture2D( uRock, p.xy * uTile.w, mipR ).rgb * bw.z;
           #else
             // One tap each: no detiling, no triplanar. The tile size still does
             // most of the work, so what a low-end machine loses is the far-field
             // repeat and stretched cliff faces — not the whole look.
-            vec3 cS = texture2D( uSand, uvS ).rgb;
-            vec3 cG = texture2D( uGrass, uvG ).rgb;
-            vec3 cD = texture2D( uDirt, uvD ).rgb;
-            vec3 cR = texture2D( uRock, uvR ).rgb;
+            vec3 cS = texture2D( uSand, uvS, mipB ).rgb;
+            vec3 cG = texture2D( uGrass, uvG, mipB ).rgb;
+            vec3 cD = texture2D( uDirt, uvD, mipB ).rgb;
+            vec3 cR = texture2D( uRock, uvR, mipR ).rgb;
           #endif
 
           // Relief proxy for the interlocking blend. The library's albedo maps
@@ -1494,10 +1599,10 @@ const createTerrain: SystemFactory = async (ctx) => {
           vec4 relief;
           #ifndef DZ_CHEAP
             relief = vec4(
-              dzRelief( uSand,  uvS, cS ),
-              dzRelief( uGrass, uvG, cG ),
-              dzRelief( uDirt,  uvD, cD ),
-              dzRelief( uRock,  uvR, cR ) );
+              dzRelief( uSand,  uvS, cS, mipB ),
+              dzRelief( uGrass, uvG, cG, mipB ),
+              dzRelief( uDirt,  uvD, cD, mipB ),
+              dzRelief( uRock,  uvR, cR, mipR ) );
           #else
             relief = vec4( dot( cS, DZ_LUM ), dot( cG, DZ_LUM ),
                            dot( cD, DZ_LUM ), dot( cR, DZ_LUM ) );
@@ -1506,29 +1611,72 @@ const createTerrain: SystemFactory = async (ctx) => {
 
           vec3 fine = cS * b.x + cG * b.y + cD * b.z + cR * b.w;
           vec3 mean = uAvgSand * b.x + uAvgGrass * b.y + uAvgDirt * b.z + uAvgRock * b.w;
-          vec3 alb = mix( mean, fine, smoothstep( 780.0, 180.0, dist ) );
+          // Was smoothstep( 780.0, 180.0, dist ): every pixel past 780 m was a
+          // flat per-layer average. From the bus, from a ridge, from anywhere
+          // above head height that is nearly the whole screen — the island had
+          // no surface at all in the exact shots that are supposed to sell it.
+          // Mip-mapping is what stops a 24 m tile aliasing at range; the mean is
+          // only needed once the tile is genuinely sub-pixel, which is 2 km out.
+          vec3 alb = mix( mean, fine, smoothstep( 1500.0, 400.0, dist ) );
+
+          // --- detail albedo --------------------------------------------------
+          // The band the large tile threw away. See DZ_DETAIL / dzDetail.
+          //
+          // Taken unconditionally, not inside a distance branch: an implicit-
+          // derivative fetch in non-uniform control flow has undefined mip
+          // selection, and "undefined" on a ground shader means a band of the
+          // hillside picking mip 0 at a kilometre. The gate scales the result
+          // instead, and the two taps have converged to zero by then anyway.
+          float dGate = smoothstep( 420.0, 90.0, dist );
+          float det = dzDetail( uGrass, p.xz * uTileD.y ) * b.y
+                    + dzDetail( uDirt,  p.xz * uTileD.z ) * b.z;
+          #ifndef DZ_CHEAP
+            det += dzDetail( uSand, p.xz * uTileD.x ) * b.x
+                 + dzDetail( uRock, p.xz * uTileD.w ) * b.w;
+          #else
+            // Beach and cliff borrow the two maps already fetched. Wrong map,
+            // right frequency band — and a wrong-but-present grain reads far
+            // better than a surface with none.
+            det += dzDetail( uDirt, p.xz * uTileD.x ) * ( b.x + b.w );
+          #endif
+          det *= dGate;
+          // 2.2 is a lot, and deliberately: this is high-passed luminance with
+          // a tiny standard deviation, so anything gentler is invisible and we
+          // are back to a pastel slope.
+          alb *= clamp( 1.0 + det * 2.2, 0.35, 1.9 );
 
           // Roughness from the per-texel relief, around a per-layer base.
           // Darker (recessed, damp, shaded) reads rougher; proud reads
           // smoother. This is the variation that stops everything looking
           // moulded from the same plastic.
           vec4 rr = uRough + ( vec4( 0.5 ) - relief ) * uRoughVar;
-          oRough = dot( rr, b );
+          oRough = clamp( dot( rr, b ) - det * 1.6, 0.05, 1.0 );
 
           // Micro occlusion falls straight out of the relief — free contact
           // shading in every crevice of the ground.
           oAo = mix( 1.0, 0.55 + 0.45 * dot( relief, b ), 0.6 );
+          oAo *= clamp( 1.0 + det * 1.8, 0.5, 1.0 );
 
           // --- macro tint ----------------------------------------------------
-          alb *= 0.78 + 0.48 * mac.r;
+          alb *= 0.72 + 0.60 * mac.r;
           // A second, tighter octave straight onto the albedo. The splat
           // weights are already jittered by the same field, but where one
           // layer covers everything (open grass, open sand) there is no
           // boundary to jitter, and this is all that is left breaking up the
           // repeat.
           alb *= 0.86 + 0.28 * mic.g;
-          alb = mix( alb, alb * vec3( 1.10, 1.02, 0.84 ), mac.g * 0.7 );          // sun-bleached
-          alb = mix( alb, alb * vec3( 0.84, 1.06, 0.82 ), ( 1.0 - mac.g ) * 0.40 * b.y );
+          // Biome drift, ~800 m across. Pushed well past the old 0.7/0.40: from
+          // 600 m up you are looking at three or four of these at once, and if
+          // the swing between them is under about 15% the island reads as one
+          // painted tone rather than as dry uplands and lush valleys. This is
+          // the term that has to make the map look like geography.
+          alb = mix( alb, alb * vec3( 1.16, 1.05, 0.78 ), mac.g * 0.85 );         // sun-bleached
+          alb = mix( alb, alb * vec3( 0.76, 1.12, 0.74 ), ( 1.0 - mac.g ) * 0.62 * b.y );
+          // A third, slower band on the mineral layers, so rock and dirt drift
+          // warm to cool across the island instead of being one grey everywhere.
+          float mineral = clamp( b.z + b.w, 0.0, 1.0 );
+          alb *= mix( vec3( 0.90, 0.95, 1.08 ), vec3( 1.12, 1.00, 0.86 ),
+                      clamp( mac.b, 0.0, 1.0 ) ) * mineral + ( 1.0 - mineral );
 
           // --- baked macro occlusion ------------------------------------------
           alb *= mix( 0.38, 1.0, vAux.x );
@@ -1554,14 +1702,29 @@ const createTerrain: SystemFactory = async (ctx) => {
           oRough = mix( oRough, 0.55, sub );
 
           // --- normals ------------------------------------------------------------
-          float nFade = smoothstep( 420.0, 60.0, dist );
+          // Was smoothstep( 420.0, 60.0 ): relief only existed within 60 m and
+          // was gone by 420, so a hillside two hundred metres off — which is
+          // what a landscape shot is mostly made of — had a perfectly smooth
+          // shading normal. Held to full strength out to 200 m now, and carried
+          // (weakening) to 1.1 km; the maps mip down long before they alias.
+          float nFade = smoothstep( 1100.0, 200.0, dist );
+          // Normals tile ~5× finer than albedo, so they alias ~2.3 mips sooner.
+          // Without this the relief that was just turned up shimmers on every
+          // distant slope, which is worse than the flat slope it replaced.
+          float mipN = mipB + smoothstep( 80.0, 700.0, dist ) * 2.0;
           vec2 tn = vec2( 0.0 );
           #ifndef DZ_CHEAP
-            vec3 nS = texture2D( uSandN, p.xz * uTileN.x ).xyz * 2.0 - 1.0;
-            vec3 nD = texture2D( uDirtN, p.xz * uTileN.z ).xyz * 2.0 - 1.0;
+            vec3 nS = texture2D( uSandN, p.xz * uTileN.x, mipN ).xyz * 2.0 - 1.0;
+            vec3 nD = texture2D( uDirtN, p.xz * uTileN.z, mipN ).xyz * 2.0 - 1.0;
             tn += nS.xy * b.x + nD.xy * b.z;
+          #else
+            // Even the cheap tier gets dirt: bare earth is what the splat falls
+            // back to on every slope and path, and with only grass wired up it
+            // was the one surface guaranteed to render dead flat.
+            vec3 nD = texture2D( uDirtN, p.xz * uTileN.z, mipN ).xyz * 2.0 - 1.0;
+            tn += nD.xy * ( b.x + b.z );
           #endif
-          vec3 nG = texture2D( uGrassN, p.xz * uTileN.y ).xyz * 2.0 - 1.0;
+          vec3 nG = texture2D( uGrassN, p.xz * uTileN.y, mipN ).xyz * 2.0 - 1.0;
           tn += nG.xy * b.y;
           tn *= nFade;
 
@@ -1572,15 +1735,19 @@ const createTerrain: SystemFactory = async (ctx) => {
                    : ( a.y <= a.z ) ? vec3( 0.0, 1.0, 0.0 ) : vec3( 0.0, 0.0, 1.0 );
           vec3 T = normalize( cross( ref, wN ) );
           vec3 B = cross( wN, T );
-          vec3 nGround = normalize( wN + T * tn.x * 0.9 + B * tn.y * 0.9 );
+          // 1.5, up from 0.9. The library paints these maps for a 3–4 m tile on
+          // a wall, where the geometry underneath is flat; on ground seen at a
+          // grazing angle the same perturbation subtends a fraction as much
+          // screen space and needs to shout to be seen at all.
+          vec3 nGround = normalize( wN + T * tn.x * 1.5 + B * tn.y * 1.5 );
 
           #ifndef DZ_CHEAP
             // Whiteout-style triplanar normal blend: swizzle each projection's
             // tangent normal into world space and weight it the same way the
             // albedo was weighted, so cliff relief lines up with cliff colour.
-            vec3 rx = texture2D( uRockN, p.zy * uTileN.w ).xyz * 2.0 - 1.0;
-            vec3 ry = texture2D( uRockN, p.xz * uTileN.w ).xyz * 2.0 - 1.0;
-            vec3 rz = texture2D( uRockN, p.xy * uTileN.w ).xyz * 2.0 - 1.0;
+            vec3 rx = texture2D( uRockN, p.zy * uTileN.w, mipN ).xyz * 2.0 - 1.0;
+            vec3 ry = texture2D( uRockN, p.xz * uTileN.w, mipN ).xyz * 2.0 - 1.0;
+            vec3 rz = texture2D( uRockN, p.xy * uTileN.w, mipN ).xyz * 2.0 - 1.0;
             vec3 nx = vec3( rx.xy + wN.zy, abs( rx.z ) * wN.x ).zyx;
             vec3 ny = vec3( ry.xy + wN.xz, abs( ry.z ) * wN.y ).xzy;
             vec3 nz = vec3( rz.xy + wN.xy, abs( rz.z ) * wN.z ).xyz;
@@ -1600,26 +1767,53 @@ const createTerrain: SystemFactory = async (ctx) => {
 
           oAlb = alb;
         }`,
-      )
-      .replace(
-        "#include <map_fragment>",
-        /* glsl */ `
+      "frag:common",
+    );
+    shader.fragmentShader = inject(
+      shader.fragmentShader,
+      "#include <map_fragment>",
+      /* glsl */ `
         vec3 dzAlbedo; float dzRough; vec3 dzNormal; float dzAo;
         dzSurface( dzAlbedo, dzRough, dzNormal, dzAo );
         diffuseColor.rgb *= dzAlbedo;`,
-      )
-      .replace(
-        "#include <roughnessmap_fragment>",
-        /* glsl */ `float roughnessFactor = clamp( dzRough, 0.05, 1.0 );`,
-      )
-      .replace(
-        "#include <normal_fragment_maps>",
-        /* glsl */ `normal = normalize( ( viewMatrix * vec4( dzNormal, 0.0 ) ).xyz );`,
-      )
-      .replace(
-        "#include <aomap_fragment>",
-        /* glsl */ `reflectedLight.indirectDiffuse *= dzAo;`,
+      "frag:map_fragment",
+    );
+    shader.fragmentShader = inject(
+      shader.fragmentShader,
+      "#include <roughnessmap_fragment>",
+      /* glsl */ `float roughnessFactor = clamp( dzRough, 0.05, 1.0 );`,
+      "frag:roughnessmap_fragment",
+    );
+    shader.fragmentShader = inject(
+      shader.fragmentShader,
+      "#include <normal_fragment_maps>",
+      /* glsl */ `normal = normalize( ( viewMatrix * vec4( dzNormal, 0.0 ) ).xyz );`,
+      "frag:normal_fragment_maps",
+    );
+    shader.fragmentShader = inject(
+      shader.fragmentShader,
+      "#include <aomap_fragment>",
+      /* glsl */ `reflectedLight.indirectDiffuse *= dzAo;`,
+      "frag:aomap_fragment",
+    );
+
+    // One line, once, saying whether the ground is actually being shaded by
+    // this module or by a stock standard material. Reading it off a frame is
+    // impossible; reading it off the console takes a second.
+    const ok = injectionFailures.length === 0;
+    const usesSplat = shader.fragmentShader.includes("dzSurface(");
+    ctx.emit("dz:terrain-shader", {
+      injected: ok && usesSplat,
+      failures: injectionFailures.slice(),
+      revision: THREE.REVISION,
+      cheap: tier.cheap,
+    });
+    if (ok && usesSplat) {
+      console.info(
+        `[Drop Zero] terrain: splat shader injected (three r${THREE.REVISION}, ` +
+          `${tier.cheap ? "cheap" : "full"} path).`,
       );
+    }
   };
 
   /**
@@ -1634,13 +1828,23 @@ const createTerrain: SystemFactory = async (ctx) => {
   let mapsResolved = false;
   let resolveTries = 0;
 
-  function adoptMaps(mats: MaterialsService): void {
+  /**
+   * Returns true only when all four layers ended up on a real map.
+   *
+   * Anything still pointing at a 4×4 placeholder shades as one flat tone, so
+   * "the service answered" is not the success condition — "the textures are
+   * bigger than the stand-ins" is. Reported per layer, because losing one of
+   * the four is a subtler and much more confusing failure than losing all of
+   * them: three quarters of the island looks right.
+   */
+  function adoptMaps(mats: MaterialsService): boolean {
     const slots: [MaterialName, "uSand" | "uGrass" | "uDirt" | "uRock", "uSandN" | "uGrassN" | "uDirtN" | "uRockN"][] = [
       [LAYER_MATERIAL[L_SAND], "uSand", "uSandN"],
       [LAYER_MATERIAL[L_GRASS], "uGrass", "uGrassN"],
       [LAYER_MATERIAL[L_DIRT], "uDirt", "uDirtN"],
       [LAYER_MATERIAL[L_ROCK], "uRock", "uRockN"],
     ];
+    const missing: string[] = [];
     for (const [name, albedoKey, normalKey] of slots) {
       let src: THREE.MeshStandardMaterial | null = null;
       try {
@@ -1652,7 +1856,20 @@ const createTerrain: SystemFactory = async (ctx) => {
       // never dispose them — ownedTextures is the list we are allowed to free.
       if (src?.map) uniforms[albedoKey].value = src.map;
       if (src?.normalMap) uniforms[normalKey].value = src.normalMap;
+
+      // A 1×1 or 4×4 image is either our own placeholder or the library's
+      // canvas-less fallback. Either way there is no texture content in it, and
+      // the detail tap will return a constant zero for that layer.
+      const img = uniforms[albedoKey].value.image as { width?: number } | undefined;
+      if (!src?.map || !src?.normalMap || (img?.width ?? 0) < 64) missing.push(name);
     }
+    if (missing.length) {
+      console.warn(
+        `[Drop Zero] terrain: ground maps unresolved for [${missing.join(", ")}] — ` +
+          `those layers will render as a flat tone.`,
+      );
+    }
+    return missing.length === 0;
   }
 
   // -------------------------------------------------------------------------
@@ -2180,13 +2397,21 @@ const createTerrain: SystemFactory = async (ctx) => {
     update(_dt, c) {
       if (!mapsResolved) {
         const mats = c.services.materials;
-        if (mats) {
-          adoptMaps(mats);
+        // Retried until every layer is on a real map, not latched on the first
+        // frame the service happens to exist: the library bakes lazily, and a
+        // slot that came back as a fallback texture on frame 1 is exactly the
+        // failure that used to stick for the whole match.
+        if (mats && adoptMaps(mats)) {
           mapsResolved = true;
         } else if (++resolveTries > 30) {
-          // The library never came up. The placeholders are ugly but the world
-          // still renders, which is the whole point of failing soft.
-          console.warn("[Drop Zero] terrain: materials service never appeared.");
+          // The library never came up, or never produced usable ground maps.
+          // The placeholders are ugly but the world still renders, which is the
+          // whole point of failing soft.
+          console.warn(
+            mats
+              ? "[Drop Zero] terrain: ground maps never resolved after 30 frames; running on placeholders."
+              : "[Drop Zero] terrain: materials service never appeared.",
+          );
           mapsResolved = true;
         }
       }

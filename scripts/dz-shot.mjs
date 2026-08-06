@@ -25,6 +25,19 @@ const PORT = Number(process.env.DZ_PORT ?? 5178);
 const BASE = `http://127.0.0.1:${PORT}`;
 const OUT = process.env.DZ_OUT ?? "shots";
 const WAIT = Number(process.env.DZ_WAIT ?? 30000);
+/**
+ * How long to let the world rebuild itself after each pose.
+ *
+ * This was 2.5 s and that was measurably wrong. Under SwiftSHADER the engine
+ * runs at roughly one frame per second, so 2.5 s is two or three frames —
+ * and camera-driven streaming (grass, tree cells, terrain LOD) needs dozens
+ * to refill after the camera teleports across the island. The first capture
+ * runs photographed a world that had planted about a thousand instances of a
+ * possible seven thousand, and I read that as "vegetation is broken".
+ *
+ * It is not enough for the frame to be rendered; the frame has to be FINISHED.
+ */
+const SETTLE = Number(process.env.DZ_SETTLE ?? 25000);
 
 /**
  * Vantage points. `pose` runs in the page with the live engine, so a shot can
@@ -38,7 +51,7 @@ const WAIT = Number(process.env.DZ_WAIT ?? 30000);
 const SHOTS = {
   /** The bus view — first thing a player ever sees. Whole-island silhouette. */
   aerial: {
-    settle: 2500,
+    settle: SETTLE,
     pose: (e) => {
       const c = e.ctx.camera;
       c.position.set(-620, 470, 640);
@@ -47,7 +60,7 @@ const SHOTS = {
   },
   /** Golden-hour approach on the marquee POI. Silhouette + roof identity. */
   town: {
-    settle: 2500,
+    settle: SETTLE,
     pose: (e) => {
       const p = e.ctx.services.pois ?? [];
       const t = p.find((x) => x.tier === "landmark") ?? p[0];
@@ -64,7 +77,7 @@ const SHOTS = {
   },
   /** Eye height in the street. Materials, trim, shadows, grass — the hard test. */
   street: {
-    settle: 2500,
+    settle: SETTLE,
     pose: (e) => {
       const p = e.ctx.services.pois ?? [];
       const t = p.find((x) => x.tier === "landmark") ?? p[0];
@@ -81,7 +94,7 @@ const SHOTS = {
   },
   /** Treeline at ground level: canopy shading, wind, grass, aerial haze. */
   nature: {
-    settle: 2500,
+    settle: SETTLE,
     pose: (e) => {
       const terrain = e.ctx.services.terrain;
       const c = e.ctx.camera;
@@ -95,7 +108,7 @@ const SHOTS = {
   },
   /** The coast: water shading, foam, the shoreline gradient, the horizon. */
   coast: {
-    settle: 2500,
+    settle: SETTLE,
     pose: (e) => {
       const terrain = e.ctx.services.terrain;
       const size = terrain?.worldSize ?? 1500;

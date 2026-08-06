@@ -3294,6 +3294,8 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
   const layers: Layer[] = [];
   /** layerIndex[species][lod][variant] — variants collapse to one above LOD 0. */
   const layerIndex: number[][][] = [];
+  /** Species index per layer. Only the boot census reads it. */
+  const layerSpecies: number[] = [];
   let totalTris = 0;
 
   for (let sp = 0; sp < SPECIES.length; sp++) {
@@ -3328,6 +3330,7 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
         );
         root.add(layer.mesh);
         row.push(layers.length);
+        layerSpecies.push(sp);
         layers.push(layer);
       }
       perLod.push(row);
@@ -3378,7 +3381,13 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
   function classify(x: number, z: number, h: number, slope: number): Biome {
     const w = weightsAt(x, z);
     if (h < seaLevel + 0.9) return "marsh";
-    if (slope > 0.52 || w[3] > 0.58) return "cliff";
+    // A rock splat on its own is NOT a cliff. The terrain paints rock over
+    // flat highland shelves as readily as over crags — measured, four fifths
+    // of the plateau comes back rock-dominant at a slope of 0.04 — and the
+    // bare `w[3] > 0.58` test handed all of it to the cliff mix, which is one
+    // sparse pine and some scrub. That is why the highlands came up bald in
+    // the first captures. A cliff has to actually be steep.
+    if (slope > 0.52 || (w[3] > 0.58 && slope > 0.26)) return "cliff";
     if (w[0] > 0.42 && h < 9) return "shore";
     if (h > 96) return "highland";
     return forestAt(x, z) > 0.42 ? "wood" : "plain";
@@ -3695,13 +3704,55 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
     cells: Map<number, VegCell>;
     live: VegCell[];
     pending: VegCell[];
+    /** Diagnostics only: how much ground this grid has actually generated. */
+    cellsGenerated: number;
+    recordsGenerated: number;
   }
 
   const grids: GridState[] = GRIDS.map((def) => ({
     def, cells: new Map<number, VegCell>(), live: [], pending: [],
+    cellsGenerated: 0, recordsGenerated: 0,
   }));
 
   let stamp = 0;
+
+  /* ---- streaming pace ---------------------------------------------------- *
+   *
+   * `tier.budget` is authored as instances per frame *at 60 fps*, and two
+   * things break that assumption. Both of them are real, and together they are
+   * why the first captures photographed a bare island:
+   *
+   *  • A SLOW RENDERER. Under software rasterisation this world runs at about
+   *    one frame a second. A per-frame budget then fills the island sixty
+   *    times slower in wall-clock terms than it does on a GPU, so a harness
+   *    that poses the camera and waits two and a half seconds gets two or
+   *    three frames of streaming — roughly one grass cell — and screenshots
+   *    bare ground. `dt` cannot be used to correct for it: the engine clamps
+   *    dt to 1/15 so a stalled tab cannot tunnel the player, which means at
+   *    1 fps dt under-reports by a factor of four. The real interval has to be
+   *    measured directly.
+   *  • A TELEPORT. The camera warps when the player lands, when a shot is
+   *    posed, and whenever anything else moves it a kilometre in one frame.
+   *    Every cell in range is new at once, and dribbling them in at the idle
+   *    rate leaves the ground undressed for as long as it takes. Burst until
+   *    the backlog is gone, then go back to idling.
+   *
+   * The governor is the wall clock, not the instance count: the deadline is a
+   * fraction of the frame we are already spending, so this can take a 400 ms
+   * bite of a 1 s software frame and only an 8 ms bite of a 60 fps one.
+   */
+  const nowMs = (): number =>
+    typeof performance !== "undefined" ? performance.now() : Date.now();
+  /** A camera move this big in one update is a warp, not a walk. */
+  const WARP2 = 64 * 64;
+  /** Budget multiplier while catching up after a warp. */
+  const CATCHUP = 40;
+
+  const _lastCam = new THREE.Vector3(Infinity, 0, Infinity);
+  let lastTick = -1;
+  let deadline = Infinity;
+  /** Set by `updateGrid` when it leaves cells unplaced. */
+  let backlog = false;
 
   function cellKey(ix: number, iz: number): number {
     // 16-bit signed range per axis is ±32 km of cells; the island is ±1.5 km.
@@ -3775,7 +3826,11 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
     g.pending.sort((a, c) => a.dist - c.dist);
 
     let spent = 0;
-    for (let i = 0; i < g.pending.length && spent < budget; i++) {
+    let i = 0;
+    for (; i < g.pending.length && spent < budget; i++) {
+      // Checked every fourth cell rather than every cell: `now()` is cheap but
+      // not free, and a cell is already the unit of work here.
+      if ((i & 3) === 3 && nowMs() > deadline) break;
       const cell = g.pending[i];
       if (!cell.generated) {
         const rng = makeRng((SEED ^ (cell.key * 2654435761) ^ (def.name.length * 7919)) >>> 0);
@@ -3786,6 +3841,8 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
           cell.recs.length = 0;
         }
         cell.generated = true;
+        g.cellsGenerated++;
+        g.recordsGenerated += cell.recs.length / REC;
         // Generation is the expensive half. Charge it, so a frame that
         // generates three dense cells does not also place four hundred
         // instances on top.
@@ -3810,6 +3867,9 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
       if (!wasLive) g.live.push(cell);
       spent += cell.recs.length / REC;
     }
+    // Anything left in `pending` is ground the player can see that has not
+    // been dressed yet. Saying so is what keeps the burst running.
+    if (i < g.pending.length) backlog = true;
     return spent;
   }
 
@@ -3821,6 +3881,67 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
     atlas: tier.atlas,
     species: SPECIES.length,
   });
+  console.info(
+    `[Drop Zero] vegetation: baked ${layers.length} layers, ` +
+    `${totalTris} triangles, ${tier.atlas}px atlas, quality "${ctx.quality}".`,
+  );
+
+  /* ---- the census -------------------------------------------------------- *
+   *
+   * A scatter system that plants nothing fails silently: the root is in the
+   * scene, the layers are in the root, the draw calls are simply never issued
+   * because every `InstancedMesh.count` is zero, and no error is thrown
+   * anywhere. That cost this world a whole capture round. So the first time
+   * the streamer settles, say out loud what actually went into the ground —
+   * and if the answer is nothing, say that louder still, with the numbers that
+   * distinguish "generated nothing" from "generated records and placed none".
+   */
+  let censusDone = false;
+  let censusClock = 0;
+  const _cp = new THREE.Vector3();
+  const _cbox = new THREE.Box3();
+
+  function census(): void {
+    censusDone = true;
+    const per = new Map<string, number>();
+    let total = 0;
+    _cbox.makeEmpty();
+    for (let li = 0; li < layers.length; li++) {
+      const l = layers[li];
+      const key = SPECIES[layerSpecies[li]].key;
+      per.set(key, (per.get(key) ?? 0) + l.count);
+      total += l.count;
+      for (let s = 0; s < l.count; s++) {
+        const o = s * 16;
+        _cbox.expandByPoint(_cp.set(l.mat[o + 12], l.mat[o + 13], l.mat[o + 14]));
+      }
+    }
+    const gridLine = grids
+      .map((g) => `${g.def.name} ${g.cellsGenerated} cells/${Math.round(g.recordsGenerated)} recs`)
+      .join(", ");
+    if (total === 0) {
+      console.warn(
+        "[Drop Zero] vegetation: PLANTED NOTHING. " +
+        `camera (${_cam.x.toFixed(0)}, ${_cam.z.toFixed(0)}), ` +
+        `ground ${terrain.heightAt(_cam.x, _cam.z).toFixed(1)} m, ` +
+        `sea ${seaLevel.toFixed(1)} m, ${gridLine}. ` +
+        "Records with no instances means the pools or the LOD lookup; " +
+        "no records means the scatter rules rejected every candidate.",
+      );
+      return;
+    }
+    const bySpecies = [...per.entries()]
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${k} ${n}`)
+      .join(", ");
+    const b = _cbox;
+    console.info(
+      `[Drop Zero] vegetation: ${total} instances placed — ${bySpecies}. ` +
+      `bounds (${b.min.x.toFixed(0)}, ${b.min.y.toFixed(0)}, ${b.min.z.toFixed(0)}) → ` +
+      `(${b.max.x.toFixed(0)}, ${b.max.y.toFixed(0)}, ${b.max.z.toFixed(0)}). ${gridLine}.`,
+    );
+  }
 
   const _cam = new THREE.Vector3();
   const _sun = new THREE.Vector3();
@@ -3864,17 +3985,48 @@ const createVegetation: SystemFactory = async (ctx: WorldCtx): Promise<System> =
 
       // --- streaming -------------------------------------------------------
       _cam.copy(c.camera.position);
-      let budget = tier.budget;
+
+      // The honest frame interval. `dt` is clamped by the engine and lies at
+      // low frame rates, which is exactly the case this has to get right.
+      const t0 = nowMs();
+      const realDt = lastTick < 0 ? 1 / 60 : Math.min(2, (t0 - lastTick) * 0.001);
+      lastTick = t0;
+      // A warp starts a burst; the burst runs until every grid is caught up,
+      // so it survives however many frames the refill actually needs.
+      if (_lastCam.distanceToSquared(_cam) > WARP2) backlog = true;
+      _lastCam.copy(_cam);
+      const catchUp = backlog;
+      const scale = catchUp ? CATCHUP : Math.min(CATCHUP, Math.max(1, realDt * 60));
+      let budget = Math.round(tier.budget * scale);
+      // Never more than a fixed slice of the frame we are already spending:
+      // 8 ms of a 60 fps frame, 400 ms of a one-second software frame. This,
+      // not the instance count, is what actually stops a runaway refill.
+      deadline = t0 + Math.min(400, Math.max(8, realDt * 400));
+
+      backlog = false;
       // Grass first: it is the layer the player's own feet are standing in,
       // and it is the one that has to keep up during a sprint.
-      for (let i = grids.length - 1; i >= 0 && budget > 0; i--) {
-        budget -= updateGrid(grids[i], _cam.x, _cam.z, budget);
+      let gi = grids.length - 1;
+      for (; gi >= 0 && budget > 0; gi--) {
+        budget -= updateGrid(grids[gi], _cam.x, _cam.z, budget);
+        if (nowMs() > deadline) { gi--; break; }
       }
+      // Grids the budget never reached still owe work.
+      if (gi >= 0) backlog = true;
       stamp++;
 
       if (dirty) {
         for (let i = 0; i < layers.length; i++) flushLayer(layers[i]);
         dirty = false;
+      }
+
+      if (!censusDone) {
+        censusClock += dt;
+        // Report on the first settle — but not before the world has had a
+        // chance to stream at all, and not while the camera is still out over
+        // the sea in the bus, where planting nothing is the correct answer.
+        if (!backlog && censusClock > 1 && terrain.heightAt(_cam.x, _cam.z) > seaLevel) census();
+        else if (censusClock > 25) census();
       }
     },
 
