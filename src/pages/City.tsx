@@ -4229,8 +4229,28 @@ export default function City() {
       }
       const tm = touchMoveRef.current;
       const touchLen = Math.hypot(tm.x, tm.y);
+      // ---- Zeppelin helm ------------------------------------------------
+      // While piloting, the same sticks/keys fly the airship instead of
+      // walking the body: the player is glued to the deck by the ride code
+      // below, so any walk intent would just march them off the edge.
+      const piloting = zepPilotRef.current && ridingZeppelin;
+      if (zepPilotRef.current && !ridingZeppelin) setZepPilotMode(false);
+      {
+        const zc = skyIslands.zeppelin.control;
+        if (piloting) {
+          const kf = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+          const ks = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
+          zc.throttle = THREE.MathUtils.clamp(kf + (touchLen > 0.12 ? -tm.y : 0), -0.4, 1);
+          zc.turn = THREE.MathUtils.clamp(ks + (touchLen > 0.12 ? tm.x : 0), -1, 1);
+          zc.climb = (keys.has("Space") || touchJetRef.current ? 1 : 0) - (keys.has("KeyC") ? 1 : 0);
+        } else {
+          zc.throttle = 0;
+          zc.turn = 0;
+          zc.climb = 0;
+        }
+      }
       const intent = new THREE.Vector3();
-      if (enteredRef.current) {
+      if (enteredRef.current && !piloting) {
         if (keys.has("KeyW") || keys.has("ArrowUp")) intent.add(fwd);
         if (keys.has("KeyS") || keys.has("ArrowDown")) intent.sub(fwd);
         if (keys.has("KeyD") || keys.has("ArrowRight")) intent.add(right);
@@ -4242,7 +4262,7 @@ export default function City() {
       }
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
-      const jetInput = enteredRef.current && (keys.has("Space") || touchJetRef.current);
+      const jetInput = enteredRef.current && !piloting && (keys.has("Space") || touchJetRef.current);
       // The Gremlin Mines deaden the jetpack — you fight on foot down there.
       const undergroundNow = undergroundActiveRef.current;
       const thrusting = jetpackEquipped && jetInput && !undergroundNow;
