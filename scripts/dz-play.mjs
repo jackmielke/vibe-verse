@@ -240,6 +240,51 @@ async function clickSim(simSeconds) {
   }
 }
 
+/**
+ * Point the crosshair somewhere the game will actually let you build.
+ *
+ * The eleventh harness artifact on this project. The build beats used to click
+ * with the camera left dead level from the beat before, and `aimPoint` puts the
+ * ghost at the full 10.5 m build range when the look ray hits nothing — which,
+ * at eye height in the middle of a POI, is inside somebody's concrete wall.
+ * `validate()` returned "blocked", every click was correctly refused, and the
+ * beat reported a working builder as broken. Traced by instrumenting
+ * `collision.overlapBox`: the box refusing the wall was a real concrete slab
+ * genuinely intersecting the cell, and stubbing that one overlap out placed the
+ * piece and charged the wood. The builder was never the problem; the aim was.
+ *
+ * A player aims at the floor in front of them. So: pitch down about 30°, then
+ * sweep — turn, nod, look again — until the engine's own preview says the spot
+ * is legal, and only then hand the beat back so it can CLICK. Nothing here
+ * places anything; `build.place()` is never called. The assertion is still that
+ * a real mouse button produces a real piece.
+ */
+let aimX = 320;
+let aimY = 180;
+async function aimBy(dx, dy) {
+  aimX += dx;
+  aimY += dy;
+  await page.mouse.move(aimX, aimY, { steps: 3 });
+}
+async function aimAtBuildableGround(samples = 8) {
+  await page.mouse.move(320, 180, { steps: 2 });
+  aimX = 320;
+  aimY = 180;
+  // Overshoot to the pitch clamp, then come back up: that lands the crosshair
+  // on the ground a couple of metres ahead regardless of where it started.
+  await aimBy(0, 900);
+  await waitSim(0.15);
+  await aimBy(0, -450);
+  await waitSim(0.15);
+  const legal = () => page.evaluate("window.__dz.ctx.services.build?.canPlace === true");
+  for (let i = 0; i < samples; i++) {
+    if (await legal()) return true;
+    await aimBy(240, i % 2 === 0 ? -70 : 70);
+    await waitSim(0.18);
+  }
+  return await legal();
+}
+
 // ---------------------------------------------------------------- the match
 
 await step("boot", "engine boots and reaches a phase", async () => {
@@ -322,22 +367,111 @@ await step("jump", "Space leaves the ground and lands again", async () => {
   return { ok: rose && back, detail: `rose=${rose} landed=${back}` };
 });
 
-await step("harvest", "swinging the pickaxe at the world yields materials", async () => {
+await step("harvest", "swinging the pickaxe at a harvestable surface yields materials", async () => {
+  /**
+   * THE PICKAXE HAS A 3.4 m REACH, AND THE FIRST VERSION OF THIS BEAT NEVER
+   * USED IT.
+   *
+   * It stood exactly where `skipToLive` dropped the player, swept the view a
+   * few degrees, and swung six times. It reported 0/0/0 and building.ts was
+   * blamed for it. Instrumenting the swing ray showed the swing firing every
+   * time, the raycast running every time, and every single cast returning
+   * *null*: at the drop point (472, 36, -631) a 48-direction probe at 3.4 m
+   * found nothing at all, and `collision.query(pos, 12)` found two colliders
+   * in a twelve-metre sphere. The nearest harvestable was 30 m away. The beat
+   * was swinging at air and calling it a bug.
+   *
+   * So: find something harvestable, close the distance, THEN swing. The swing
+   * itself is still real input — mouse down, `input.fire`, `swingPickaxe`,
+   * `collision.raycast`, `inventory.addMaterial` — and the assertion is
+   * unchanged and un-weakened: the material counters must go up on their own.
+   * All that is added is standing where a player would have walked to, which
+   * is the same licence the storm and loot beats already take.
+   */
   const before = await state();
-  // Face slightly down so the swing meets ground/props rather than sky, then
-  // swing repeatedly while turning — something harvestable should be in reach.
+  const gainOf = (a) => a.wood - before.wood + (a.stone - before.stone) + (a.metal - before.metal);
+
+  // Where we started, so the rest of the match is not fought from wherever
+  // the nearest tree happened to be.
+  const home = await page.evaluate(
+    "window.__dz.ctx.services.player.position.toArray()",
+  );
+
+  // Pass 1: swing in place. If the drop point really does have something in
+  // reach, that is the most honest test there is and it costs nothing.
   for (let sweep = 0; sweep < 6; sweep++) {
     await page.mouse.move(320 + sweep * 25, 210, { steps: 2 });
     await clickSim(0.9);
     await waitSim(0.25);
   }
   await waitSim(0.4);
-  const after = await state();
-  const gained =
-    after.wood - before.wood + (after.stone - before.stone) + (after.metal - before.metal);
+  let after = await state();
+  let how = "in reach at the drop point";
+
+  if (gainOf(after) <= 0) {
+    /**
+     * Pass 2: go to the material. Probe the aim ray out to 90 m; if the
+     * crosshair is not already on something harvestable, turn with the MOUSE
+     * (small steps, re-probing each one) until it is, then stand 2.2 m short
+     * of the hit along that same aim ray and swing again.
+     */
+    const probe = () =>
+      page.evaluate(`(() => {
+        const ctx = window.__dz.ctx, s = ctx.services, p = s.player;
+        const V = ctx.camera.position.constructor;
+        const h = s.collision.raycast(p.eye(new V()), p.look(new V()), 90);
+        return h && h.harvest ? { kind: h.harvest, dist: +h.distance.toFixed(1) } : null;
+      })()`);
+
+    let found = await probe();
+    let mx = 320 + 5 * 25;
+    for (let turn = 0; turn < 48 && !found; turn++) {
+      mx += 30; // ~0.06 rad of yaw per step at the default sensitivity
+      await page.mouse.move(mx, 205, { steps: 2 });
+      await page.waitForTimeout(60);
+      found = await probe();
+    }
+
+    if (found) {
+      // Close to arm's reach along the *current* aim ray, so no second turn is
+      // needed — the ray that found it is the ray the swing will cast.
+      const moved = await page.evaluate(`(() => {
+        const ctx = window.__dz.ctx, s = ctx.services, p = s.player, t = s.terrain;
+        const V = ctx.camera.position.constructor;
+        const eye = p.eye(new V()), look = p.look(new V());
+        const h = s.collision.raycast(eye, look, 90);
+        if (!h) return null;
+        const stand = h.point.clone().addScaledVector(look, -2.2);
+        const gy = t?.heightAt ? t.heightAt(stand.x, stand.z) : stand.y;
+        p.teleport(new V(stand.x, gy + 0.15, stand.z));
+        return [+stand.x.toFixed(0), +stand.z.toFixed(0)];
+      })()`);
+      await waitSim(0.6);
+      for (let i = 0; i < 3; i++) {
+        await clickSim(1.0);
+        await waitSim(0.3);
+      }
+      await waitSim(0.4);
+      after = await state();
+      how = `walked to ${found.kind} at ${found.dist}m, stood at ${JSON.stringify(moved)}`;
+    } else {
+      how = "no harvestable surface within 90m of the drop point in any direction";
+    }
+  }
+
+  // Hand the player back where the drop left them; later beats assume it.
+  await page.evaluate(`(() => {
+    const ctx = window.__dz.ctx, p = ctx.services.player;
+    const V = ctx.camera.position.constructor;
+    p.teleport(new V(${home[0]}, ${home[1]}, ${home[2]}));
+  })()`);
+  await waitSim(0.3);
+
   return {
-    ok: gained > 0,
-    detail: `materials ${before.wood}/${before.stone}/${before.metal} -> ${after.wood}/${after.stone}/${after.metal}`,
+    ok: gainOf(after) > 0,
+    detail:
+      `${how}; materials ${before.wood}/${before.stone}/${before.metal}` +
+      ` -> ${after.wood}/${after.stone}/${after.metal}`,
   };
 });
 
@@ -349,34 +483,45 @@ await step("build-select", "Z selects a wall", async () => {
 });
 
 await step("build-place", "clicking in build mode places a piece", async () => {
-  const before = (await state()).pieces;
   // Give the player materials if harvesting could not find anything, so this
   // beat tests PLACEMENT rather than re-testing harvest.
   await page.evaluate(`(() => {
     const inv = window.__dz.ctx.services.inventory;
     if (inv && inv.wood < 100) inv.addMaterial("wood", 500);
   })()`);
-  for (let i = 0; i < 4; i++) {
+  const legal = await aimAtBuildableGround();
+  const before = (await state()).pieces;
+  let after = before;
+  for (let i = 0; i < 4 && after === before; i++) {
     await clickSim(0.35);
     await waitSim(0.35);
+    after = (await state()).pieces;
   }
-  await waitSim(0.6);
-  const after = (await state()).pieces;
-  return { ok: after > before, detail: `pieces ${before} -> ${after}` };
+  const s = await state();
+  return {
+    ok: after > before,
+    detail: `legalAim=${legal} wood=${s.wood} pieces ${before} -> ${after}`,
+  };
 });
 
 await step("build-ramp", "C selects a ramp and it places", async () => {
   await press("KeyC");
   await page.waitForTimeout(1500);
   const kind = (await state()).buildKind;
+  // The wall from the last beat is standing in the old spot, so find a fresh
+  // one rather than clicking at an occupied cell four times.
+  const legal = await aimAtBuildableGround();
   const before = (await state()).pieces;
-  for (let i = 0; i < 3; i++) {
+  let after = before;
+  for (let i = 0; i < 3 && after === before; i++) {
     await clickSim(0.35);
     await waitSim(0.35);
+    after = (await state()).pieces;
   }
-  await waitSim(0.6);
-  const after = (await state()).pieces;
-  return { ok: kind === "ramp" && after > before, detail: `kind=${kind} pieces ${before} -> ${after}` };
+  return {
+    ok: kind === "ramp" && after > before,
+    detail: `kind=${kind} legalAim=${legal} pieces ${before} -> ${after}`,
+  };
 });
 
 await step("loot", "a weapon can be acquired and selected", async () => {

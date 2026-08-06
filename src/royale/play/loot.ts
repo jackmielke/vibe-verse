@@ -184,6 +184,16 @@ const ACTIVE_INTERVAL = 0.125;
 const PICKUP_RANGE = 2.4;
 const CHEST_RANGE_INTERACT = 3.0;
 
+/**
+ * Seconds between two takes inside ONE continuous press of interact. A floor
+ * item is a tap, but a held key must still be able to sweep a pile — walking
+ * into a chest's spill with E down is how everybody actually collects loot.
+ * The delay is what keeps that a sweep rather than a vacuum: one item every
+ * quarter second, in nearest-first order, so the player can see what they took
+ * and let go before the fifth thing fills their last slot.
+ */
+const ITEM_REPEAT = 0.25;
+
 /** Hold times. A chest is deliberate; an item you have already decided on. */
 const CHEST_HOLD = 0.5;
 const AMMO_HOLD = 0.35;
@@ -3157,6 +3167,9 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
 
   function makeVisual(kind: "chest" | "ammo"): ContainerVisual {
     const group = new THREE.Group();
+    // Named because a chest is the thing every harness and every debug overlay
+    // goes looking for by name, and an anonymous group is invisible to both.
+    group.name = kind === "chest" ? "dz:loot:chest" : "dz:loot:ammo-box";
     const lidPivot = new THREE.Group();
     let base: THREE.Mesh;
     let lid: THREE.Mesh;
@@ -3731,6 +3744,8 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
 
   let holdKey: unknown = null;
   let holdT = 0;
+  /** Seconds since the last floor item was taken. Gates the held-E sweep. */
+  let sinceTake = ITEM_REPEAT;
   let target: Target | null = null;
 
   function eyePosition(out: THREE.Vector3): THREE.Vector3 {
@@ -3794,6 +3809,7 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
     const controllable = player ? player.controllable !== false : true;
     target = controllable ? scanTarget() : null;
     const input = ctx.input;
+    sinceTake += dt;
     if (!target) {
       holdKey = null;
       holdT = 0;
@@ -3801,7 +3817,9 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
       return;
     }
     const key = targetKey(target);
-    if (key !== holdKey) {
+    /** First frame this particular thing is the target. */
+    const fresh = key !== holdKey;
+    if (fresh) {
       holdKey = key;
       holdT = 0;
     }
@@ -3812,8 +3830,26 @@ const createLoot: SystemFactory = (ctx: WorldCtx): FixedSystem => {
     }
     const need = holdTimeFor(target);
     if (need <= 0) {
-      // Tap: fire on the rising edge only, or holding E would vacuum a room.
-      if (!prevInteract && target.kind === "item") takePickup(target.pickup);
+      /**
+       * There are two ways a player asks for a floor item and BOTH have to
+       * work:
+       *
+       *  - press E while the gun is already in reach — the rising edge,
+       *    `!prevInteract`;
+       *  - be holding E as they run at the gun, or as it settles out of the
+       *    chest they just opened — `fresh`, the edge on the *target*.
+       *
+       * Only the first was implemented, and because `prevInteract` latches
+       * true on every frame where there is nothing in reach (see the `!target`
+       * branch above), the second was not merely unsupported — it was
+       * unreachable. Hold E, walk onto a rifle, and the game silently refuses
+       * it until you let go and press again. `ITEM_REPEAT` is what the old
+       * global edge was really protecting: it keeps a held key sweeping a pile
+       * at a readable rate instead of emptying it in one frame.
+       */
+      if (target.kind === "item" && (!prevInteract || (fresh && sinceTake >= ITEM_REPEAT))) {
+        if (takePickup(target.pickup)) sinceTake = 0;
+      }
     } else {
       holdT += dt;
       if (holdT >= need) {
