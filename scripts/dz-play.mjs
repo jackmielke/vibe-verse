@@ -215,9 +215,36 @@ await step("drop", "skipToLive puts the player on the ground, alive, in a POI", 
   };
 });
 
+await step("lock", "the pointer locks, which is what ungates all input", async () => {
+  /**
+   * Nothing in `?shot=1` ever asks for the pointer.
+   *
+   * `player.controllable` is false whenever `ctx.input.locked` is false, and
+   * `input.locked` is only set by the pointerlockchange handler. The only
+   * thing that calls `requestPointerLock()` is the "Drop in" button on the
+   * entry veil — which shot mode deliberately does not render. So the first
+   * run of this harness reported that look, walk, jump and harvest were all
+   * broken, when in fact the game was correctly ignoring a player who had
+   * never picked up the controller.
+   *
+   * requestPointerLock needs a trusted gesture, so arm a one-shot listener
+   * and let Playwright's real click fire it.
+   */
+  await page.evaluate(`(() => {
+    const c = document.querySelector("canvas");
+    if (!c) return;
+    c.addEventListener("click", () => { c.requestPointerLock?.(); }, { once: true });
+  })()`);
+  await canvas.click({ position: { x: 640, y: 360 } }).catch(() => {});
+  const locked = await until("locked", `e.ctx.input.locked === true`, 20000);
+  const controllable = await page.evaluate(
+    "window.__dz.ctx.services.player?.controllable ?? null",
+  );
+  return { ok: locked && controllable === true, detail: `locked=${locked} controllable=${controllable}` };
+});
+
 await step("look", "mouse look changes yaw", async () => {
   const y0 = await page.evaluate("window.__dz.ctx.services.player.yaw");
-  await canvas.click({ position: { x: 640, y: 360 } }).catch(() => {});
   for (let i = 0; i < 12; i++) {
     await page.mouse.move(640 + i * 14, 360, { steps: 2 });
     await page.waitForTimeout(40);
