@@ -643,6 +643,7 @@ export default function City() {
   // once you take the wheel. The ref is what the render loop reads.
   const [zepMode, setZepMode] = useState<"off" | "aboard" | "piloting">("off");
   const zepPilotRef = useRef(false);
+  const zepHelmRef = useRef<((on: boolean) => void) | null>(null);
   // Gremlin Mines (underground) — world handle + per-tick state.
   const undergroundWorldRef = useRef<UndergroundWorld | null>(null);
   const undergroundActiveRef = useRef(false);
