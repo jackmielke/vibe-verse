@@ -220,6 +220,43 @@ interface Surf {
 const surf = (name: MaterialName, color = 0xffffff): Surf => ({ name, color });
 const surfKey = (s: Surf) => `${s.name}|${s.color.toString(16)}`;
 
+/* ---------------------------------------------------------------- paving --
+ *
+ * Ground albedo, and why these numbers are so close to white.
+ *
+ * `tinted()` MULTIPLIES its tint into a map that is already painted in its own
+ * colours, and three does that multiply in LINEAR space. So a tint that looks
+ * like honest mid-grey paving in a colour picker is nothing of the sort once
+ * it lands on the mid-grey concrete plate: 0xa8a49b is 0.40 linear over
+ * concrete's own 0.42, which is a surface that reflects 0.165 — a sixth of
+ * what the hex says. Asphalt was worse by an order of magnitude: 0x4a4c50
+ * (0.07 linear) over an asphalt plate painted at 0.027 is 0.0019, i.e. a floor
+ * blacker than any real material, which is what the district's apron was.
+ *
+ * That arithmetic matters more here than anywhere else in the module, because
+ * the ground is the one surface with no light of its own to fall back on. The
+ * key sun sits at ~16° at this world's time of day, so a district of 12–20 m
+ * buildings on a 56 m block grid casts 40–70 m shadows and puts essentially
+ * ALL of its own ground — streets, courtyards, plaza — in permanent shade. The
+ * only thing reaching it is the cool sky fill. Ground albedo is therefore the
+ * entire budget for reading that surface, which is why these tints are
+ * near-white (so the joints and cracks the bakery painted survive being
+ * shaded) and warm (so a floor lit by nothing but a blue hemisphere still
+ * reads as warm stone rather than as navy).
+ *
+ * Keep them near-white. A "realistic" dark tint here is the bug, not the fix.
+ */
+/** Plaza flags and kerbs — the lightest stone in a district. */
+const PAVE_LIGHT = 0xfbebd2;
+/** Walkways, sidewalks and courtyards. */
+const PAVE = 0xf3ddbb;
+/** The carriageway between the kerbs: a value step down, same stone. */
+const PAVE_DARK = 0xdcc5a4;
+/** Painted markings. Near-white, because paint is. */
+const PAVE_LINE = 0xfff6e2;
+/** Rammed-earth yards. Dirt is painted dark; the tint must not darken it again. */
+const YARD = 0xe8d3b4;
+
 /**
  * A district's colour identity. This is the single most important thing in the
  * module for map legibility: from the bus you cannot read a shape, you can only
@@ -1888,17 +1925,23 @@ function buildNeonHeights(s: Site): void {
   const span = BLOCK * 1.5 + STREET;
 
   y.group = "neon-ground";
-  apron(s, cx, cz, span, span, gy, surf("asphalt", 0x4a4c50), surf("concrete", 0xbfb9ad));
+  // Paved, not asphalt. This apron is 200 m square and it is the floor of every
+  // ground fight in the marquee POI, and asphalt cannot carry it: the plate is
+  // painted at 0.027 linear, so even tinted pure white it is a 5% surface, and
+  // in a district that shades its own ground all day that is a black hole with
+  // buildings standing in it. Concrete's plate is painted with slab joints and
+  // cracks, which is the read the town wants anyway.
+  apron(s, cx, cz, span, span, gy, surf("concrete", PAVE_DARK), surf("concrete", PAVE_LIGHT));
 
-  const paintSurf = surf("concrete", 0xf0e4bd);
-  const walkSurf = surf("concrete", 0xa8a49b);
+  const paintSurf = surf("concrete", PAVE_LINE);
+  const walkSurf = surf("concrete", PAVE);
 
   // Sidewalks: one raised slab per block, buildings sit on top of it.
   const centres = [-(BLOCK + STREET), 0, BLOCK + STREET];
   for (const bx of centres) {
     for (const bz of centres) {
       const isPlaza = bx === 0 && bz === 0;
-      y.box(isPlaza ? surf("concrete", 0xcabfa8) : walkSurf,
+      y.box(isPlaza ? surf("concrete", PAVE_LIGHT) : walkSurf,
         cx + bx, gy + 0.09, cz + bz, BLOCK * 0.5 + 2.4, 0.1, BLOCK * 0.5 + 2.4, { bevel: 0.05, mask: F_NO_BOTTOM });
       if (!isPlaza) {
         // Kerb line around the slab, and a crossing at each corner.
@@ -1908,7 +1951,7 @@ function buildNeonHeights(s: Site): void {
           [BLOCK * 0.5 + 2.4, 0, 0.1, BLOCK * 0.5 + 2.5],
           [-(BLOCK * 0.5 + 2.4), 0, 0.1, BLOCK * 0.5 + 2.5],
         ]) {
-          y.box(surf("concrete", 0xd6cfc2), cx + bx + ox, gy + 0.13, cz + bz + oz, ax, 0.09, az, { bevel: 0.025 });
+          y.box(surf("concrete", PAVE_LIGHT), cx + bx + ox, gy + 0.13, cz + bz + oz, ax, 0.09, az, { bevel: 0.025 });
         }
       }
     }
@@ -2131,7 +2174,7 @@ function buildFoundryFlats(s: Site): void {
   const roofS = surf("corrugated", pal.roof);
 
   y.group = "foundry-ground";
-  apron(s, cx, cz, 96, 78, gy, surf("concrete", 0x6d6a64), surf("concrete", 0x9a958c), "stone");
+  apron(s, cx, cz, 96, 78, gy, surf("concrete", PAVE_DARK), surf("concrete", PAVE), "stone");
   // Oil staining and bay markings — a yard with no markings reads as a slab.
   const line = surf("concrete", 0xd8cf9c);
   for (let i = -5; i <= 5; i++) {
@@ -2337,7 +2380,7 @@ function buildSaltHarbor(s: Site): void {
 
   y.group = "harbor-quay";
   apron(s, cx - ax * 12, cz - az * 12, ax ? 46 : 74, ax ? 74 : 46, gy,
-    surf("concrete", 0x8d8880), surf("concrete", 0xb3aca0), "stone");
+    surf("concrete", PAVE_DARK), surf("concrete", PAVE), "stone");
 
   // --- piers on stilts ---
   y.group = "harbor-piers";
@@ -2504,7 +2547,7 @@ function buildMillHollow(s: Site): void {
   const barnWall = surf("woodPlank", pal.wall);
 
   y.group = "mill-ground";
-  apron(s, cx, cz, 62, 54, gy, surf("dirt", 0x9c8259), surf("woodPlank", 0x7d6242), "wood");
+  apron(s, cx, cz, 62, 54, gy, surf("dirt", YARD), surf("woodPlank", 0x7d6242), "wood");
 
   // --- the barn ---
   y.group = "mill-barn";
@@ -2632,7 +2675,7 @@ function buildVistaVilla(s: Site): void {
   const stoneS = surf("plaster", pal.wall);
 
   y.group = "villa-ground";
-  apron(s, cx, cz, 54, 46, gy, surf("concrete", 0xbcb3a2), surf("concrete", 0xd6cfc0));
+  apron(s, cx, cz, 54, 46, gy, surf("concrete", PAVE), surf("concrete", PAVE_LIGHT));
 
   // Terraces: three steps down toward the view, each with a balustrade.
   y.group = "villa-terrace";
@@ -2860,7 +2903,7 @@ function buildSignalSummit(s: Site): void {
   const accent = surf("metalPanel", pal.accent);
 
   y.group = "summit-ground";
-  apron(s, cx, cz, 44, 40, gy, surf("concrete", 0x807d78), surf("metalPanel", pal.accent), "stone");
+  apron(s, cx, cz, 44, 40, gy, surf("concrete", PAVE_DARK), surf("metalPanel", pal.accent), "stone");
 
   // --- the dish ---
   y.group = "summit-dish";
@@ -2996,7 +3039,7 @@ function buildTimberTents(s: Site): void {
   const cx = snap(s.cx), cz = snap(s.cz), gy = s.gy;
   const trim = surf("woodPlank", pal.trim);
   y.group = "timber";
-  apron(s, cx, cz, 30, 26, gy, surf("dirt", 0x8a7350), surf("woodLog", 0x6d5233), "wood");
+  apron(s, cx, cz, 30, 26, gy, surf("dirt", YARD), surf("woodLog", 0x6d5233), "wood");
 
   // Saw shed: three walls and a roof, so it is cover you can be flanked in.
   const bx = snap(cx - 10), bz = snap(cz - 6);
@@ -3063,7 +3106,7 @@ function buildStonewallStand(s: Site): void {
   const stone = surf("rock", pal.wall);
   const trim = surf("rock", pal.trim);
   y.group = "stonewall";
-  apron(s, cx, cz, 26, 24, gy, surf("dirt", 0x8f8a76), trim, "stone");
+  apron(s, cx, cz, 26, 24, gy, surf("dirt", YARD), trim, "stone");
 
   // Curtain wall with a gate and a collapsed stretch on the south side.
   const hx = 22, hz = 20;
@@ -3129,7 +3172,7 @@ function buildLonelyLookout(s: Site): void {
   const cx = snap(s.cx), cz = snap(s.cz), gy = s.gy;
   const trim = surf("concrete", pal.trim);
   y.group = "lookout";
-  apron(s, cx, cz, 22, 20, gy, surf("concrete", 0xa8a297), trim, "stone");
+  apron(s, cx, cz, 22, 20, gy, surf("concrete", PAVE), trim, "stone");
 
   // The tower: a tapered shaft in banded white and red, a gallery with a
   // railing, a glazed lantern room and a domed cap.
@@ -3352,9 +3395,12 @@ function buildRoad(
     dist += segLen;
   }
 
-  if (!road.empty) y.emit(surf("asphalt", 0x53565b), road);
-  if (!skirt.empty) y.emit(surf("dirt", 0x8f8069), skirt);
-  const paintS = surf("concrete", 0xece0b4);
+  // Near-white on both: the asphalt plate is painted at 0.027 linear and the
+  // dirt plate at 0.09, and `tinted()` multiplies. A "road grey" tint here is
+  // how the road network became a black ribbon across a green island.
+  if (!road.empty) y.emit(surf("asphalt", 0xf2efe8), road);
+  if (!skirt.empty) y.emit(surf("dirt", YARD), skirt);
+  const paintS = surf("concrete", PAVE_LINE);
   for (const [mx, my, mz, hl, yaw] of marks) {
     y.box(paintS, mx, my + 0.012, mz, 0.13, 0.02, hl, { bevel: 0, mask: F_PY, yaw });
   }

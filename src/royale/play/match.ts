@@ -154,8 +154,13 @@ interface MatchServices {
   audio?: AudioLike;
   combat?: CombatLike;
   sky?: SkyService;
-  /** Only `closing` is read — it biases who the fabricated feed blames. */
-  storm?: { closing?: boolean };
+  /**
+   * `closing` biases who the fabricated feed blames. `center`/`radius` are
+   * read by `skipToLive`, which must not put a fast-forwarded player down
+   * inside the wall. Both optional: the storm may not have booted, and in the
+   * first frames of a match it has not chosen a circle yet.
+   */
+  storm?: { closing?: boolean; center?: THREE.Vector3; radius?: number };
   pois?: Poi[];
   match?: MatchService;
 }
@@ -321,6 +326,27 @@ const DRAIN_CURVE: readonly (readonly [number, number])[] = [
 
 /** Alive counts that get an announcement. Descending. */
 const CALLOUTS: readonly number[] = [75, 50, 25, 10, 5, 3, 2];
+
+/**
+ * `skipToLive` placement budget.
+ *
+ * `ZONE_MARGIN` is how far inside the safe-zone edge the default spot insists
+ * on standing. It is not cosmetic: a capture or a debug session that starts
+ * on the boundary is one circle-move from taking storm damage, and the last
+ * harness had to pin the player's health every 8 ms to survive its own
+ * vantage. Sixty metres is more than circle 1's first move can eat before a
+ * human would have reacted.
+ *
+ * `SHORE_MARGIN` is metres of ground above sea level, not metres from the
+ * waterline — `terrain.isWater` is a below-sea-level test, so a point that
+ * merely passes it can still be ankle-deep in surf.
+ */
+const SKIP_ZONE_MARGIN = 60;
+const SKIP_SHORE_MARGIN = 1.5;
+/** Rings of candidate offsets tried inside the chosen POI, as a fraction of its radius. */
+const SKIP_POI_RINGS: readonly number[] = [0.55, 0.35, 0.75, 0];
+/** Angular samples per ring. Eight is enough to find the dry side of a coastal POI. */
+const SKIP_POI_SPOKES = 8;
 
 /** Crowd size (visible canopies during the drop) per quality tier. */
 const DIVERS: Record<QualityTier, number> = { low: 0, medium: 22, high: 40, ultra: 56 };
@@ -3222,23 +3248,173 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     emitMatch(`phase:${prev}->${next}`);
   }
 
+  /* ---- skipToLive placement ---------------------------------------------
+   *
+   * Three independent things have to be true of the spot, and the old
+   * one-liner ("marquee POI, nudged 0.55 radii south") checked none of them:
+   * it took whatever the POI list handed back, added a fixed +Z offset that
+   * walks a coastal POI straight into the sea, and never looked at the
+   * circle. It happened to be survivable only because circle 1 is wider than
+   * the island — the first time anything called it after a close, or on a map
+   * whose landmark sits on the shore, it would drop the player into the storm
+   * or into the water, and the capture harness would go on pinning health to
+   * paper over it.
+   *
+   * So: inside the zone with real margin, on dry land with real freeboard,
+   * and in a POI rather than in a field, in that order of priority. Every
+   * service involved may be absent, and each fallback degrades to the next
+   * weakest claim rather than to nothing.
+   */
+
+  /** Ground height at a point, or null when terrain has not booted. */
+  function groundAt(x: number, z: number): number | null {
+    const terrain = services.terrain;
+    if (!terrain) return null;
+    try {
+      const y = terrain.heightAt(x, z);
+      return Number.isFinite(y) ? y : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
-   * Where `skipToLive` puts someone when the caller does not say. The marquee
-   * POI, nudged off dead centre so the player is standing in a street rather
-   * than inside the one building at the middle of it, and snapped onto the
-   * terrain. Collision pushes the capsule out of anything it still overlaps on
-   * the first fixed step.
+   * Dry land with enough freeboard to stand on. Unknown terrain counts as dry
+   * — refusing every candidate when the service is missing would leave us with
+   * no spot at all, and the player's own ground snap will sort it out.
+   */
+  function isStandable(x: number, z: number): boolean {
+    const terrain = services.terrain;
+    if (!terrain) return true;
+    try {
+      if (terrain.isWater(x, z)) return false;
+    } catch {
+      /* fall through to the height test */
+    }
+    const y = groundAt(x, z);
+    if (y === null) return true;
+    return y > (terrain.seaLevel ?? 0) + SKIP_SHORE_MARGIN;
+  }
+
+  /**
+   * Distance from the safe-zone edge — negative inside, positive out. Returns
+   * a large negative number when there is no storm to be outside of, so every
+   * caller can treat "no storm service" as "everywhere is safe".
+   */
+  function depthInsideZone(x: number, z: number): number {
+    const storm = services.storm;
+    const c = storm?.center;
+    const r = storm?.radius;
+    if (!c || typeof r !== "number" || !(r > 0)) return -1e6;
+    return Math.hypot(x - c.x, z - c.z) - r;
+  }
+
+  function insideZone(x: number, z: number): boolean {
+    return depthInsideZone(x, z) <= -SKIP_ZONE_MARGIN;
+  }
+
+  /**
+   * A point inside `poi` that is standable and inside the circle, or null.
+   *
+   * Rings before spokes, so the first acceptable answer is still the one the
+   * old code was aiming for — off dead centre, in a street rather than inside
+   * whatever building the POI was authored around. The last ring is 0, i.e.
+   * the centre itself, which is the right answer for a POI so small or so
+   * hemmed in by water that nothing else lands.
+   */
+  function spotInPoi(poi: Poi): THREE.Vector3 | null {
+    const span = Math.max(poi.radius, 24);
+    // A fixed phase per POI rather than a fixed direction: +Z for everything
+    // is why the old spot walked south into the sea at Neon Heights.
+    const phase = (poi.center.x * 0.017 + poi.center.z * 0.031) % (Math.PI * 2);
+    for (const ring of SKIP_POI_RINGS) {
+      const d = span * ring;
+      const spokes = d < 0.5 ? 1 : SKIP_POI_SPOKES;
+      for (let i = 0; i < spokes; i++) {
+        const a = phase + (i / spokes) * Math.PI * 2;
+        const x = poi.center.x + Math.cos(a) * d;
+        const z = poi.center.z + Math.sin(a) * d;
+        if (!isStandable(x, z)) continue;
+        if (!insideZone(x, z)) continue;
+        return new THREE.Vector3(x, groundAt(x, z) ?? poi.center.y, z);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Last resort when no POI can host us: walk out from the circle's centre
+   * until the ground is dry. Rings rather than a random scatter so the result
+   * is deterministic, and capped well inside the zone so a spot found this way
+   * is still a spot the storm is not about to reach.
+   */
+  function spotNearZoneCentre(): THREE.Vector3 {
+    const storm = services.storm;
+    const cx = storm?.center?.x ?? 0;
+    const cz = storm?.center?.z ?? 0;
+    const inZoneReach = Math.max(0, (storm?.radius ?? 900) - SKIP_ZONE_MARGIN);
+    const scan = (reach: number): THREE.Vector3 | null => {
+      for (let ring = 0; ring <= 14; ring++) {
+        const d = (reach * ring) / 14;
+        const spokes = ring === 0 ? 1 : 12;
+        for (let i = 0; i < spokes; i++) {
+          // The per-ring twist keeps successive rings from sampling the same
+          // twelve bearings, which on a radial coastline can miss a whole
+          // peninsula between two spokes.
+          const a = (i / spokes) * Math.PI * 2 + ring * 0.4;
+          const x = cx + Math.cos(a) * d;
+          const z = cz + Math.sin(a) * d;
+          if (isStandable(x, z)) return new THREE.Vector3(x, groundAt(x, z) ?? 0, z);
+        }
+      }
+      return null;
+    };
+    // Dry land inside the circle is the answer we want.
+    const inside = scan(inZoneReach);
+    if (inside) return inside;
+    // There is none — the circle has closed over open water, which the real
+    // storm's land-biased centre picking will not do but a debug caller can
+    // arrange trivially. Dry ground *outside* the circle beats the seabed
+    // inside it: the storm is survivable for a while and drowning is not, and
+    // a player who can see the island can run for it.
+    const anywhere = scan(services.terrain?.worldSize ?? 1500);
+    if (anywhere) return anywhere;
+    // Not even that. Stand at the circle's centre, but never below the
+    // waterline — a spot on the surface is recoverable, one under the seabed
+    // is a black frame and a drowned player.
+    const floor = Math.max(groundAt(cx, cz) ?? 0, services.terrain?.seaLevel ?? 0);
+    return new THREE.Vector3(cx, floor, cz);
+  }
+
+  /**
+   * Where `skipToLive` puts someone when the caller does not say: the best POI
+   * that is inside the current safe zone and has dry ground in it.
+   *
+   * Ranked by how showable the place is (a landmark is what you want in a
+   * capture) and then by how deep inside the circle it sits, so that as the
+   * zone closes the choice follows it inward instead of stranding the player
+   * at the far end of the island.
    */
   function defaultLandingSpot(): THREE.Vector3 {
     const list = services.pois ?? [];
-    const poi = list.find((p) => p.tier === "landmark") ?? list[0] ?? null;
-    const out = new THREE.Vector3(0, 0, 0);
-    if (poi) out.set(poi.center.x, poi.center.y, poi.center.z + Math.max(poi.radius, 24) * 0.55);
-    try {
-      out.y = (services.terrain?.heightAt(out.x, out.z) ?? out.y) + 0.05;
-    } catch {
-      /* terrain may not have booted; the player snaps down again anyway */
+    const tierRank: Record<Poi["tier"], number> = { landmark: 2, major: 1, minor: 0 };
+    let best: THREE.Vector3 | null = null;
+    let bestScore = -Infinity;
+    for (const poi of list) {
+      const spot = spotInPoi(poi);
+      if (!spot) continue;
+      // Depth is negative inside, so subtracting it rewards the middle of the
+      // circle. Scaled to ~1 point per 200 m, which keeps tier dominant among
+      // POIs that are all comfortably inside and lets depth break the tie when
+      // the circle has closed enough to matter.
+      const score = tierRank[poi.tier] * 3 - depthInsideZone(spot.x, spot.z) / 200;
+      if (score > bestScore) {
+        bestScore = score;
+        best = spot;
+      }
     }
+    const out = best ?? spotNearZoneCentre();
+    out.y += 0.05;
     return out;
   }
 
@@ -3253,12 +3429,14 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
   function skipToLive(at?: THREE.Vector3): THREE.Vector3 {
     const spot = at ? at.clone() : defaultLandingSpot();
     if (at) {
-      try {
-        const ty = services.terrain?.heightAt(spot.x, spot.z);
-        if (ty !== undefined && spot.y < ty + 0.05) spot.y = ty + 0.05;
-      } catch {
-        /* as above */
-      }
+      // An explicit point is honoured, including a deliberately nasty one — a
+      // storm vantage stands outside the circle on purpose. The only thing
+      // forced is the height, and the sea floor is a floor: without the sea
+      // level term, a point out over water snapped onto a seabed 60 m down
+      // and the caller got a frame from inside the ocean.
+      const ty = groundAt(spot.x, spot.z);
+      const floor = Math.max(ty ?? -Infinity, services.terrain?.seaLevel ?? -Infinity);
+      if (Number.isFinite(floor) && spot.y < floor + 0.05) spot.y = floor + 0.05;
     }
 
     // `fixed` holds the entire machine at the title screen until the pointer
@@ -3283,6 +3461,17 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     // the player's head is the tell that the match was fast-forwarded.
     routeU = Math.max(routeU, 0.62);
     service.busT = clamp01(routeU);
+    // Everyone whose stop the bus has already passed is, in the fiction we
+    // just fast-forwarded through, already on the ground. Retire their drops
+    // silently instead of letting `releaseDrops` find thirty overdue ones on
+    // the first fixed step and open thirty canopies at once directly overhead:
+    // their contrails are thin white verticals in the top half of the frame,
+    // and two separate reviews of shots/street.png read them as storm rain and
+    // concluded the player had been dropped inside the wall. Nothing consumes
+    // `dz:bot-drop`, so suppressing the announcement costs nothing.
+    for (const d of drops) {
+      if (!d.released && d.t <= service.busT) d.released = true;
+    }
     // The cinematic camera has to be fully released or the hand-off spends
     // HANDOFF_TIME seconds lerping in from the fly-over path.
     cineTarget = 0;
