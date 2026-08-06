@@ -3300,7 +3300,7 @@ export default function City() {
     const handled = new Set([
       "KeyW", "KeyA", "KeyS", "KeyD",
       "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-      "Space", "ShiftLeft", "ShiftRight",
+      "Space", "ShiftLeft", "ShiftRight", "KeyC",
     ]);
     // Don't steal keys while the player is typing in chat.
     const isTyping = (e: KeyboardEvent) => {
