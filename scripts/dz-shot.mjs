@@ -283,7 +283,10 @@ for (const name of names) {
     await page.waitForTimeout(shot.settle);
   }
   const file = `${OUT}/${name}.png`;
-  await page.screenshot({ path: file });
+  // Playwright's 30s default is not enough here. Compositing a 1600x900 frame
+  // of a 3 km island through a software rasteriser on the full-quality shader
+  // path takes minutes, and a timeout here throws away the whole run.
+  await page.screenshot({ path: file, timeout: 600000, animations: "disabled" });
   written.push(file);
   console.log(`wrote ${file}`);
 }
