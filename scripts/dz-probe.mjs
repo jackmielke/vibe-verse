@@ -2,6 +2,17 @@
 /**
  * dz-probe — ask the running world about itself.
  *
+ * Currently pointed at the shadow pipeline: it poses the world exactly the way
+ * `dz-shot aerial` does (by driving the PLAYER, never the camera — see the long
+ * note in dz-shot.mjs about why bypassing the engine measures the harness), then
+ * dumps the key light, its cascade, and a readback of the shadow map itself.
+ *
+ * The readback is the decisive bit. three renders directional shadows with a
+ * MeshDepthMaterial at RGBADepthPacking into a plain RGBA8 target, so an
+ * untouched texel is (255,255,255,255) — the far plane. Any texel below that is
+ * a caster that actually rasterised. "Are there shadows?" stops being a matter
+ * of squinting at a 1600x900 png.
+ *
  * Usage: node scripts/dz-probe.mjs
  */
 import { chromium } from "playwright";
@@ -46,185 +57,250 @@ const browser = await chromium.launch({
     "--ignore-gpu-blocklist",
     "--no-sandbox",
     "--disable-dev-shm-usage",
+    "--js-flags=--max-old-space-size=4096",
   ],
 });
-const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on("console", (m) => logs.push(`${m.type()}: ${m.text().slice(0, 300)}`));
 page.on("pageerror", (e) => logs.push(`PAGEERROR: ${e.message.slice(0, 300)}`));
 
 await page.goto(`${BASE}/drop-zero?shot=1&q=high`, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForFunction("window.__dzReady === true", null, { timeout: 60000 }).catch(() => {});
-await page.waitForTimeout(15000);
 
-// Pose exactly like `dz-shot town`, so the state we dump is the state that
-// produced the white frame — not the battle-bus spawn frame.
-await page.evaluate(`(() => {
+/**
+ * Put the match ON THE GROUND AND LIVE, with `match.skipToLive()`.
+ *
+ * This is the fourth thing this probe tried and the only one that works, and
+ * the reason is worth writing down because it is the same class of mistake the
+ * capture harness has made three times now.
+ *
+ * `match.jump()` only fires a request that the phase machine services, and the
+ * phase machine is held at the title screen until the pointer locks — which a
+ * headless page never does. So `jump()` is a no-op, `player.state` never
+ * becomes "bus", the "wait until we leave the bus" loop exits on its first
+ * iteration believing it succeeded, and the world stays in the warm-up
+ * fly-over forever. Every frame captured that way is a bus frame, which is why
+ * the HUD in shots/ says "BATTLE BUS 0:35".
+ *
+ * That also produces a completely convincing false "shadows are broken": while
+ * the fly-over runs, match.ts calls sky.focus(cineLook) every fixed step, so
+ * the shadow cascade is pinned wherever the cinematic happens to be aimed —
+ * repeatedly, in measurement, 2 km out over open water with a seabed 60 m
+ * below it. An empty shadow map is the correct output for that input.
+ *
+ * `skipToLive()` exists for exactly this case; match.ts says so in its own
+ * comment. It starts the machine by hand and fast-forwards the warm-up and bus.
+ */
+const live = await page
+  .evaluate(`(async () => {
+    const e = window.__dz;
+    const m = e?.ctx?.services?.match;
+    const list = e?.ctx?.services?.pois ?? [];
+    if (!m) return "no match service";
+    const t = (list.find && list.find((x) => x.tier === "landmark")) || (list[0] ?? null);
+    const V = e.ctx.camera.position.constructor;
+    const spot = t ? new V(t.center.x - 34, t.center.y, t.center.z + 38) : new V(0, 0, 0);
+    try { m.skipWarmup(); } catch (err) { /* optional */ }
+    try { m.skipToLive(spot); } catch (err) { return "skipToLive threw: " + err.message; }
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 60; i++) {
+      await sleep(250);
+      if (m.phase === "live") return "live after " + i + " ticks, player=" + e.ctx.services.player?.state;
+    }
+    return "phase stuck at " + m.phase;
+  })()`)
+  .catch((err) => `skipToLive threw: ${err.message}`);
+console.log("live:", live);
+await page.waitForTimeout(8000);
+
+/** Pose: ground level in the landmark POI — where a cast shadow must be obvious. */
+const posed = await page.evaluate(`(() => {
   const e = window.__dz;
-  if (!e) return;
-  if (!e.__dzBaseRender) e.__dzBaseRender = e.renderOverride;
-  const pose = (e) => {
-    const p = e.ctx.services.pois ?? [];
-    const t = p.find((x) => x.tier === "landmark") ?? p[0];
-    const c = e.ctx.camera;
-    if (!t) { c.position.set(0, 120, 220); c.lookAt(0, 20, 0); return; }
-    const r = Math.max(t.radius, 60);
-    c.position.set(t.center.x - r * 1.5, t.center.y + r * 0.85, t.center.z + r * 1.5);
-    c.lookAt(t.center.x, t.center.y + 8, t.center.z);
+  if (!e) return "no engine";
+  if (e.__dzPin) clearInterval(e.__dzPin);
+  const list = e.ctx.services.pois ?? [];
+  const t = (list.find && list.find((x) => x.tier === "landmark")) || (list[0] ?? null);
+  const terrain = e.ctx.services.terrain;
+  const cx = t ? t.center.x : 0;
+  const cz = t ? t.center.z : 0;
+  const gx = cx - 34;
+  const gz = cz + 38;
+  const y = (terrain?.heightAt?.(gx, gz) ?? 0) + 1.0;
+  const apply = () => {
+    const p = e.ctx.services.player;
+    if (!p) return;
+    const V = e.ctx.camera.position.constructor;
+    p.teleport(new V(gx, y, gz));
+    p.velocity.set(0, 0, 0);
+    p.yaw = Math.atan2(-(cx - gx), -(cz - gz));
+    p.pitch = 0;
   };
-  e.renderOverride = (dt) => {
-    pose(e);
-    e.ctx.camera.updateMatrixWorld();
-    if (e.__dzBaseRender) e.__dzBaseRender(dt);
-    else e.ctx.renderer.render(e.ctx.scene, e.ctx.camera);
-  };
+  apply();
+  e.__dzPin = setInterval(apply, 8);
+  return { poi: t ? t.name ?? "(unnamed)" : "NONE", want: [gx, +y.toFixed(1), gz] };
 })()`);
-await page.waitForTimeout(25000);
+console.log("posed:", JSON.stringify(posed));
+await page.waitForTimeout(30000);
+// The frame itself, because a shadow-map texel count is evidence and a picture
+// is proof, and this file has been wrong about the difference before.
+// DZ_PROBE_SHOT=0 skips it — a full 1600x900 SwiftSHADER composite is minutes.
+if (process.env.DZ_PROBE_SHOT !== "0") {
+  const shot = process.env.DZ_PROBE_SHOT || "shots/probe.png";
+  await page.screenshot({ path: shot, timeout: 600000, animations: "disabled" });
+  console.log("wrote", shot);
+}
 
 const report = await page.evaluate(`(() => {
   const e = window.__dz;
   if (!e) return { error: "no engine" };
-  const out = { visibleTerrain: [], notes: [] };
+  const out = {};
   const renderer = e.ctx.renderer;
-  const gl = renderer.getContext();
+  const sky = e.ctx.services.sky;
+  const v3 = (v) => v ? [ +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2) ] : null;
 
-  const texInfo = (t) => {
-    if (!t) return null;
-    if (!t.isTexture) return { NOT_A_TEXTURE: String(t).slice(0,80) };
-    const img = t.image;
-    return { w: img?.width ?? null, h: img?.height ?? null, cs: t.colorSpace, uuid: t.uuid.slice(0,8) };
+  out.renderer = {
+    shadowEnabled: renderer.shadowMap.enabled,
+    autoUpdate: renderer.shadowMap.autoUpdate,
+    needsUpdate: renderer.shadowMap.needsUpdate,
+    type: renderer.shadowMap.type,
+    toneMapping: renderer.toneMapping,
+    exposure: renderer.toneMappingExposure,
+    outputColorSpace: renderer.outputColorSpace,
   };
-
-  let terrainMat = null;
-  const attrStats = (geom, name) => {
-    const a = geom.attributes[name];
-    if (!a) return "ABSENT";
-    const arr = a.array;
-    const n = a.itemSize;
-    const mn = new Array(n).fill(Infinity), mx = new Array(n).fill(-Infinity);
-    let sum = new Array(n).fill(0);
-    const count = Math.min(a.count, 4000);
-    for (let i = 0; i < count; i++) for (let k = 0; k < n; k++) {
-      const v = arr[i*n+k]; if (v<mn[k]) mn[k]=v; if (v>mx[k]) mx[k]=v; sum[k]+=v;
-    }
-    return { type: arr.constructor.name, normalized: a.normalized, itemSize: n,
-             count: a.count, min: mn, max: mx, mean: sum.map(s=>+(s/count).toFixed(2)) };
-  };
-
-  e.ctx.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    const nm = (o.name || "") + "|" + (o.parent?.name || "");
-    if (!/terrain/i.test(nm)) return;
-    if (o.material) terrainMat = o.material;
-    if (!o.visible || out.visibleTerrain.length >= 3) return;
-    out.visibleTerrain.push({
-      name: o.name, visible: o.visible,
-      matUuid: o.material?.uuid.slice(0,8),
-      color: o.material?.color ? "#"+o.material.color.getHexString() : null,
-      hasUserDataShader: !!o.material?.userData?.shader,
-      defines: o.material?.defines ? Object.keys(o.material.defines) : null,
-      aSplat: attrStats(o.geometry, "aSplat"),
-      aAux: attrStats(o.geometry, "aAux"),
-    });
-  });
-  out.visibleTerrainCount = out.visibleTerrain.length;
-
-  if (terrainMat) {
-    const props = renderer.properties.get(terrainMat);
-    out.matProps = { keys: Object.keys(props) };
-    const u = props.uniforms;
-    if (u) {
-      out.uniforms = {};
-      for (const k of Object.keys(u)) {
-        const v = u[k]?.value;
-        if (v && v.isTexture) out.uniforms[k] = texInfo(v);
-        else if (v && v.isColor) out.uniforms[k] = "col#"+v.getHexString();
-        else if (v && v.isVector4) out.uniforms[k] = [v.x,v.y,v.z,v.w];
-        else if (typeof v === "number") out.uniforms[k] = v;
-        else out.uniforms[k] = v === null ? "NULL" : (v === undefined ? "UNDEFINED" : typeof v);
-      }
-    } else out.uniforms = "NO props.uniforms";
-
-    const prog = props.currentProgram;
-    if (prog) {
-      out.program = { cacheKey: String(prog.cacheKey).slice(0,120) };
-      try {
-        const fs = gl.getShaderSource(prog.fragmentShader);
-        const vs = gl.getShaderSource(prog.vertexShader);
-        out.program.fsLen = fs.length;
-        out.program.fsHasDzSurface = fs.includes("void dzSurface");
-        out.program.fsCallsDzSurface = fs.includes("dzSurface( dzAlbedo");
-        out.program.fsHasDzCheap = /#define DZ_CHEAP/.test(fs);
-        out.program.vsHasASplat = /aSplat/.test(vs);
-        out.program.fsInfoLog = gl.getShaderInfoLog(prog.fragmentShader).slice(0,600);
-        out.program.vsInfoLog = gl.getShaderInfoLog(prog.vertexShader).slice(0,600);
-        out.program.progInfoLog = gl.getProgramInfoLog(prog.program).slice(0,600);
-        out.program.linked = gl.getProgramParameter(prog.program, gl.LINK_STATUS);
-        // What the map_fragment slot actually turned into.
-        const i = fs.indexOf("dzAlbedo; float dzRough");
-        out.program.mapSlot = i >= 0 ? fs.slice(i-80, i+220) : "NOT FOUND";
-        // Which sampler units are bound
-        const au = prog.getUniforms();
-        out.program.uniformNames = Object.keys(au.map || {}).filter(n=>/^u[A-Z]/.test(n));
-      } catch (err) { out.program.err = String(err).slice(0,200); }
-    } else out.program = "NO currentProgram";
-  }
-
-  const ms = e.ctx.services.materials;
-  if (ms) {
-    out.materialsService = {};
-    for (const n of ["grass", "dirt", "rock", "sand"]) {
-      try {
-        const m = ms.get(n);
-        out.materialsService[n] = { map: texInfo(m?.map), normalMap: texInfo(m?.normalMap) };
-      } catch (err) { out.materialsService[n] = { error: String(err).slice(0, 120) }; }
-    }
-  }
-
-  out.toneMappingExposure = renderer.toneMappingExposure;
-  out.toneMapping = renderer.toneMapping;
-  out.outputColorSpace = renderer.outputColorSpace;
+  out.cam = v3(e.ctx.camera.position);
   out.quality = e.ctx.quality;
-  out.ready = window.__dzReady;
-  out.systems = (e.systems || []).map(s => s.name);
-  out.hasRenderOverride = !!e.renderOverride;
-  out.running = e.running;
-  out.sceneUuid = e.ctx.scene.uuid.slice(0,8);
-  // Terrain census
-  let tTotal = 0, tVis = 0;
-  const root = e.ctx.scene.getObjectByName("dz.terrain");
-  out.rootFound = !!root;
-  if (root) {
-    out.rootVisible = root.visible;
-    out.rootChildren = root.children.length;
-    for (const c of root.children) { tTotal++; if (c.visible) tVis++; }
-  }
-  out.terrainMeshes = { total: tTotal, visible: tVis };
-  out.cam = e.ctx.camera ? [ +e.ctx.camera.position.x.toFixed(1), +e.ctx.camera.position.y.toFixed(1), +e.ctx.camera.position.z.toFixed(1) ] : null;
-  // Big non-terrain meshes that could be the white sheet
-  out.bigMeshes = [];
+  const pl = e.ctx.services.player;
+  out.player = pl ? { state: pl.state, pos: v3(pl.position) } : null;
+
+  if (!sky) return Object.assign(out, { error: "no sky service" });
+  const key = sky.sun;
+  const sh = key.shadow;
+  const sc = sh.camera;
+  sc.updateMatrixWorld();
+  out.sky = {
+    time: +sky.time.toFixed(4),
+    sunDir: v3(sky.sunDirection),
+    sunElevationDeg: +(Math.asin(sky.sunDirection.y) * 180 / Math.PI).toFixed(2),
+    daylight: +sky.daylight.toFixed(3),
+    sunColor: "#" + sky.sunColor.getHexString(),
+    horizonColor: "#" + sky.horizonColor.getHexString(),
+    zenithColor: "#" + sky.zenithColor.getHexString(),
+    fogColor: e.ctx.scene.fog ? "#" + e.ctx.scene.fog.color.getHexString() : null,
+    fogDensity: e.ctx.scene.fog ? e.ctx.scene.fog.density : null,
+  };
+  out.key = {
+    castShadow: key.castShadow,
+    visible: key.visible,
+    intensity: +key.intensity.toFixed(3),
+    position: v3(key.position),
+    target: v3(key.target.position),
+    inScene: !!key.parent,
+    targetInScene: !!key.target.parent,
+  };
+  out.shadowCam = {
+    worldPos: v3(sc.getWorldPosition(new (e.ctx.camera.position.constructor)())),
+    left: sc.left, right: sc.right, top: sc.top, bottom: sc.bottom,
+    near: sc.near, far: sc.far,
+    bias: sh.bias, normalBias: sh.normalBias,
+    mapSize: [sh.mapSize.x, sh.mapSize.y],
+    hasMap: !!sh.map,
+    mapDims: sh.map ? [sh.map.width, sh.map.height] : null,
+  };
+
+  // How far along the light ray from the shadow camera does the ground sit?
+  const t = e.ctx.services.terrain;
+  const tgt = key.target.position;
+  out.shadowCam.groundYUnderCentre = t ? +t.heightAt(tgt.x, tgt.z).toFixed(2) : null;
+  out.shadowCam.distToCentre = +key.position.distanceTo(tgt).toFixed(1);
+
+  // Census: shadow casters whose centre falls inside the cascade footprint.
+  let casters = 0, castersInside = 0, receivers = 0;
+  const V = e.ctx.camera.position.constructor;
+  const p = new V();
+  const R = sc.right;
   e.ctx.scene.traverse((o) => {
-    if (!o.isMesh || !o.visible) return;
-    const g = o.geometry;
-    if (!g) return;
-    if (!g.boundingSphere) { try { g.computeBoundingSphere(); } catch {} }
-    const r = g.boundingSphere?.radius ?? 0;
-    if (r > 400 && out.bigMeshes.length < 14) {
-      const m = Array.isArray(o.material) ? o.material[0] : o.material;
-      out.bigMeshes.push({ name: o.name || "(anon)", parent: o.parent?.name, r: Math.round(r),
-        matType: m?.type, matName: m?.name, col: m?.color ? "#"+m.color.getHexString() : null,
-        hasMap: !!m?.map, y: +o.position.y.toFixed(1) });
-    }
+    if (!o.isMesh && !o.isInstancedMesh) return;
+    if (o.receiveShadow) receivers++;
+    if (!o.castShadow || !o.visible) return;
+    casters++;
+    o.getWorldPosition(p);
+    if (Math.abs(p.x - tgt.x) < R + 200 && Math.abs(p.z - tgt.z) < R + 200) castersInside++;
   });
+  out.census = { casters, castersInside, receivers };
+
+  // ---- The other half: does anything RECEIVE what the map wrote? ----------
+  // A written shadow map proves the depth pass ran. It says nothing about the
+  // lit pass. Any receiving material must have compiled with USE_SHADOWMAP and
+  // must actually call getShadowMask() — if the world's materials were built
+  // before the light existed, or a custom onBeforeCompile dropped the lights
+  // chunk, the map is written every frame and read by nobody.
+  out.receivers = [];
+  const gl = renderer.getContext();
+  const seen = new Set();
+  e.ctx.scene.traverse((o) => {
+    if (!o.receiveShadow || !o.visible || out.receivers.length >= 4) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (!m || seen.has(m.uuid)) return;
+    seen.add(m.uuid);
+    const rec = { mesh: o.name || "(anon)", mat: m.type, matName: m.name || null };
+    try {
+      const prog = renderer.properties.get(m).currentProgram;
+      if (!prog) { rec.program = "NOT COMPILED (never drawn)"; }
+      else {
+        const fs = gl.getShaderSource(prog.fragmentShader);
+        // NB: this whole evaluate body is a JS template literal, so every
+        // backslash has to survive one round of string escaping first.
+        rec.useShadowMap = /#define USE_SHADOWMAP/.test(fs);
+        rec.callsGetShadowMask = fs.indexOf("getShadowMask") >= 0;
+        rec.hasDirLightShadow = fs.indexOf("directionalLightShadows[") >= 0;
+        rec.numDirLightShadows = (fs.match(/NUM_DIR_LIGHT_SHADOWS[^0-9]*([0-9]+)/) || [])[1] ?? null;
+        rec.shadowMapType = (fs.match(/SHADOWMAP_TYPE_[A-Z_]+/) || [])[0] ?? null;
+        rec.shadowUniformBound = !!prog.getUniforms().map.directionalShadowMap;
+      }
+    } catch (err) { rec.err = String(err).slice(0, 160); }
+    out.receivers.push(rec);
+  });
+
+  // ---- The decisive test: read the shadow map back. -----------------------
+  // RGBADepthPacking, so an untouched texel is (255,255,255,255).
+  if (sh.map) {
+    const w = sh.map.width, h = sh.map.height;
+    const q = Math.floor(w / 4);
+    const rects = [
+      [q, q, q * 2, q * 2, "centre-half"],
+      [0, 0, q, q, "corner-lo"],
+      [w - q, h - q, q, q, "corner-hi"],
+    ];
+    out.shadowMapSamples = [];
+    for (const [x, y, rw, rh, name] of rects) {
+      try {
+        const buf = new Uint8Array(rw * rh * 4);
+        renderer.readRenderTargetPixels(sh.map, x, y, rw, rh, buf);
+        let written = 0, minR = 255, sum = 0;
+        for (let i = 0; i < rw * rh; i++) {
+          const r = buf[i*4];
+          sum += r;
+          if (r < minR) minR = r;
+          if (r < 254) written++;
+        }
+        out.shadowMapSamples.push({
+          name, texels: rw*rh, writtenTexels: written,
+          pctWritten: +(100 * written / (rw*rh)).toFixed(2),
+          minR, meanR: +(sum / (rw*rh)).toFixed(1),
+        });
+      } catch (err) {
+        out.shadowMapSamples.push({ name, err: String(err).slice(0, 160) });
+      }
+    }
+  }
   return out;
 })()`);
 
 console.log(JSON.stringify(report, null, 1));
-const interesting = logs.filter((l) =>
-  /dz-dbg|terrain|shader|PAGEERROR/i.test(l),
-);
+const interesting = logs.filter((l) => /dz-dbg|shadow|shader|PAGEERROR|error/i.test(l));
 console.log("logs total:", logs.length, "matched:", interesting.length);
-if (interesting.length) console.log("\n--- console ---\n" + interesting.slice(-40).join("\n"));
+if (interesting.length) console.log("\n--- console ---\n" + interesting.slice(-30).join("\n"));
 
 await browser.close();
 if (server) server.kill();

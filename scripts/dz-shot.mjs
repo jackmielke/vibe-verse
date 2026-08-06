@@ -81,7 +81,16 @@ const SHOTS = {
       return { pos, ...aim(pos, V(e, t.center.x, t.center.y + 8, t.center.z)) };
     },
   },
-  /** Eye height in the plaza. Materials, trim, shadows — the hard test. */
+  /**
+   * Eye height in the plaza. Materials, trim, shadows — the hard test.
+   *
+   * `pos` is the PLAYER's feet, not the camera: the engine derives the camera
+   * from the player, over the shoulder and about four metres back, and that is
+   * the view the game is actually played from. So plant them on the ground —
+   * a metre of clearance only makes them fall between pins — and aim at head
+   * height across the POI rather than up at 5 m, which filled the frame with
+   * sky and was half of why this vantage read as an aerial.
+   */
   street: {
     settle: SETTLE,
     pose: (e) => {
@@ -90,10 +99,14 @@ const SHOTS = {
       const terrain = e.ctx.services.terrain;
       const cx = t ? t.center.x : 0;
       const cz = t ? t.center.z : 0;
-      const gx = cx - 34;
-      const gz = cz + 38;
-      const pos = V(e, gx, (terrain?.heightAt?.(gx, gz) ?? 0) + 1.0, gz);
-      return { pos, ...aim(pos, V(e, cx, pos.y + 5, cz)) };
+      // Two thirds of the way out from the middle, looking back across it, so
+      // there is town on both sides of the frame and more of it beyond.
+      const r = t ? Math.max(t.radius, 40) * 0.62 : 46;
+      const a = 2.3;
+      const gx = cx + Math.cos(a) * r;
+      const gz = cz + Math.sin(a) * r;
+      const pos = V(e, gx, (terrain?.heightAt?.(gx, gz) ?? 0) + 0.06, gz);
+      return { pos, ...aim(pos, V(e, cx, pos.y + 2.2, cz)) };
     },
   },
   /** Treeline at ground level: canopy shading, wind, grass, aerial haze. */
@@ -103,7 +116,9 @@ const SHOTS = {
       const terrain = e.ctx.services.terrain;
       const x = -300;
       const z = 340;
-      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 1.0, z);
+      // Planted, not floating: the pin re-teleports every 8 ms, so a metre of
+      // clearance is a metre of permanent falling and the state reads `air`.
+      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 0.06, z);
       return { pos, ...aim(pos, V(e, 60, pos.y + 55, -260)) };
     },
   },
@@ -116,11 +131,20 @@ const SHOTS = {
       const a = 0.7;
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
-      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 1.0, z);
+      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 0.06, z);
       return { pos, ...aim(pos, V(e, Math.cos(a) * (r + 500), 0, Math.sin(a) * (r + 500))) };
     },
   },
-  /** The storm wall — the signature effect of the mode. */
+  /**
+   * The storm wall — the signature effect of the mode, shot from inside the
+   * circle looking out at it.
+   *
+   * The fixed bearing this used to take stood the player wherever the circle
+   * happened to be, which on the first live-match run was 900 m out to sea:
+   * the frame came back as a beautiful underwater shot of the seabed with the
+   * storm on the minimap and nowhere else. So search the circle for dry land
+   * near the wall instead of assuming any exists at 0.6 radians.
+   */
   storm: {
     settle: SETTLE,
     pose: (e) => {
@@ -130,14 +154,36 @@ const SHOTS = {
         const pos = V(e, 0, 60, 300);
         return { pos, ...aim(pos, V(e, 0, 40, 0)) };
       }
-      const a = 0.6;
-      const r = Math.max(s.radius - 90, 40);
-      const x = s.center.x + Math.cos(a) * r;
-      const z = s.center.z + Math.sin(a) * r;
-      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 2, z);
-      const tx = s.center.x + Math.cos(a) * (r + 400);
-      const tz = s.center.z + Math.sin(a) * (r + 400);
-      return { pos, ...aim(pos, V(e, tx, pos.y + 40, tz)) };
+      const sea = terrain?.seaLevel ?? -1e9;
+      const edge = Math.max(s.radius - 60, 30);
+      // Sweep the compass; for each bearing walk inward from the wall until
+      // the ground is dry. Keep the candidate that ends up nearest the wall,
+      // because the wall is the subject.
+      let best = null;
+      for (let i = 0; i < 32; i++) {
+        const a = (i / 32) * Math.PI * 2;
+        for (let r = edge; r > 25; r -= 20) {
+          const x = s.center.x + Math.cos(a) * r;
+          const z = s.center.z + Math.sin(a) * r;
+          const y = terrain?.heightAt?.(x, z) ?? 0;
+          if (y <= sea + 1.5) continue;
+          if (!best || r > best.r) best = { a, r, x, z, y };
+          break;
+        }
+      }
+      if (!best) {
+        // Wholly at sea: stand at the middle and look out anyway rather than
+        // returning nothing, and let the ground-truth line say `swim`.
+        const x = s.center.x;
+        const z = s.center.z;
+        best = { a: 0.6, r: edge, x, z, y: terrain?.heightAt?.(x, z) ?? 0 };
+      }
+      const pos = V(e, best.x, best.y + 0.06, best.z);
+      const tx = s.center.x + Math.cos(best.a) * (best.r + 400);
+      const tz = s.center.z + Math.sin(best.a) * (best.r + 400);
+      // Aim up the face of the wall: it is hundreds of metres tall and a level
+      // look reads as purple fog rather than as a wall.
+      return { pos, ...aim(pos, V(e, tx, pos.y + 90, tz)) };
     },
   },
 };
@@ -164,6 +210,21 @@ const SHOTS = {
  * one source for it. We pin the player on a fast interval so gravity never
  * accumulates and the pose holds for the whole settle window.
  *
+ * v4 kept v3's teleport pin but stopped trusting it blindly. `teleport` only
+ * moves the player in the states where the player owns their own position —
+ * on the bus, in the dive and under canopy the position is *derived* every
+ * fixed step, so the pin was writing 120 times a second into a value that was
+ * recomputed from the bus route immediately afterward. Every pose held for
+ * zero frames and every shot came back as a view from the battle bus. The fix
+ * is upstream, in `match.skipToLive()`: get the match onto the ground first,
+ * and only then is a teleport pin a meaningful thing to do.
+ *
+ * The pin also holds health up. A capture run is over an hour of wall clock,
+ * which under the dt clamp is several minutes of match time — long enough for
+ * the storm to close over a vantage that is deliberately standing outside it
+ * and kill the player mid-shoot, which flips the match to the spectate camera
+ * and quietly ruins every remaining frame.
+ *
  * The lesson generalises: a capture harness that bypasses the engine measures
  * the harness, not the game.
  */
@@ -187,11 +248,48 @@ function installPose(fn) {
       p.velocity.set(0, 0, 0);
       if (typeof want.yaw === "number") p.yaw = want.yaw;
       if (typeof want.pitch === "number") p.pitch = want.pitch;
+      // Outlive the storm. See the note above.
+      p.health = p.maxHealth;
+      p.shield = p.maxShield;
     };
     apply();
     e.__dzPin = setInterval(apply, 8);
   })()`;
 }
+
+/**
+ * Read the ground truth out of the live engine: is this actually a frame of a
+ * live match at ground level, or is it the bus again?
+ *
+ * Called before every screenshot, because "the pose was applied" and "the
+ * engine agrees the player is standing in a town" are different claims and
+ * this project has already paid for confusing them six times.
+ */
+const GROUND_TRUTH = `(() => {
+  const e = window.__dz;
+  const p = e?.ctx?.services?.player;
+  const m = e?.ctx?.services?.match;
+  const t = e?.ctx?.services?.terrain;
+  if (!p || !m) return { ok: false, why: "no services" };
+  const gy = t?.heightAt ? t.heightAt(p.position.x, p.position.z) : 0;
+  const pois = e.ctx.services.pois ?? [];
+  let where = "open ground";
+  let best = Infinity;
+  for (const poi of pois) {
+    const d = Math.hypot(poi.center.x - p.position.x, poi.center.z - p.position.z);
+    if (d < Math.max(poi.radius, 40) * 1.4 && d < best) { best = d; where = poi.name; }
+  }
+  return {
+    ok: m.phase === "live" && p.state !== "bus" && p.state !== "skydive" && p.state !== "glide",
+    phase: m.phase,
+    state: p.state,
+    altitude: Math.round((p.position.y - gy) * 100) / 100,
+    where,
+    x: Math.round(p.position.x),
+    z: Math.round(p.position.z),
+    health: Math.round(p.health),
+  };
+})()`;
 
 
 async function up(url, ms) {
@@ -240,6 +338,52 @@ const browser = await chromium.launch({
   ],
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+
+/**
+ * Deafen Vite's hot-module client before any page script runs.
+ *
+ * A full run is over an hour of wall clock on a single dev server, and this
+ * repo is edited while captures are in flight. One save of a file this route
+ * imports and HMR tears the engine down and rebuilds it *mid-screenshot* — or,
+ * if the save was momentarily unparseable, replaces the world with a white
+ * canvas and leaves the HUD showing stale state from the engine that no longer
+ * exists. That is exactly what the first run of this version photographed:
+ * `drawCalls: 0`, a blank frame, and a "SPACE DROP" prompt from a match that
+ * had already gone live. The frame is not evidence of anything about the game.
+ *
+ * The socket is stubbed rather than the client module blocked, because Vite's
+ * client reloads the whole page when it *reconnects* after a dropped
+ * connection — pointing it at a dead port would be worse than leaving it on.
+ */
+await page.addInitScript(() => {
+  const Real = window.WebSocket;
+  class DeafSocket extends EventTarget {
+    constructor() {
+      super();
+      this.readyState = 1;
+      this.url = "";
+      this.protocol = "vite-hmr";
+    }
+    send() {}
+    close() {
+      this.readyState = 3;
+    }
+  }
+  DeafSocket.CONNECTING = 0;
+  DeafSocket.OPEN = 1;
+  DeafSocket.CLOSING = 2;
+  DeafSocket.CLOSED = 3;
+  Object.assign(DeafSocket.prototype, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
+  window.WebSocket = new Proxy(Real, {
+    construct(target, args) {
+      const p = args[1];
+      const hmr = Array.isArray(p) ? p.includes("vite-hmr") : p === "vite-hmr";
+      if (hmr) return new DeafSocket();
+      return new target(...args);
+    },
+  });
+});
+
 const errors = [];
 page.on("pageerror", (e) => errors.push(`PAGEERROR: ${e.message}`));
 page.on("console", (m) => {
@@ -261,45 +405,89 @@ try {
 /**
  * Skip the drop and put the match on the ground.
  *
- * Every shot in the first two runs was taken during the bus phase, which is
+ * Every shot in the first three runs was taken during the bus phase, which is
  * the one phase where the player is deliberately OUTSIDE the safe zone — so
  * the storm veil was full-screen in all six, and the island underneath was
  * judged through a purple filter that no real player ever sees for more than
- * thirty seconds. Jump, land, and let the match go live before posing.
+ * thirty seconds. Nothing below the bus had ever been looked at.
+ *
+ * The previous attempt at this drove the player's own controls: wait for
+ * `player.state === "bus"`, then call `match.jump()`. It logged "left bus in
+ * state air after 0" and moved on, which looked like success and was not. Two
+ * things were wrong with it, and both are worth writing down because they are
+ * the same mistake in different clothes.
+ *
+ *  1. **It waited on the wrong signal.** `player.state` is only `"bus"` once
+ *     `match.phase` has reached `bus`, and the match holds the whole phase
+ *     machine at the title card until `ctx.input.locked` — which a headless
+ *     capture never sets, because nothing ever clicks the canvas to request
+ *     pointer lock. So the phase sat in `warmup` forever, the player state was
+ *     `air` at the first poll, the loop exited immediately having called
+ *     `jump()` zero times, and the match stayed exactly where it was.
+ *  2. **It drove the simulation through the player.** Every step of that
+ *     handshake — reach the bus, jump, dive, deploy, land — is a thing the
+ *     game does over ninety seconds for reasons that have nothing to do with
+ *     taking a photograph.
+ *
+ * `match.skipToLive()` replaces the whole handshake: one call, phase machine
+ * started and moved to `live`, player placed on the ground, drop UI gone. It
+ * is a real documented API on the match service rather than a harness hack —
+ * see the comment on it — because "put me in a live match on the ground" is
+ * what you want for debugging any late-game system, not just for captures.
  */
 if (booted) {
-  /**
-   * Getting out of the bus is a handshake, not a single call.
-   *
-   * `match.jump()` only does anything once the phase machine has actually
-   * reached `bus` — call it during `warmup` and it is a no-op, which is what
-   * happened on the previous run: every "ground level" shot came back as a
-   * view from the bus, because the player never left it. And while the player
-   * is in the `bus` state their position is driven by the bus, so posing them
-   * is ignored too. So: keep asking until the state changes, then land.
-   */
-  const left = await page
-    .evaluate(`(async () => {
+  const drop = await page
+    .evaluate(`(() => {
       const e = window.__dz;
-      const p = e?.ctx?.services?.player;
       const m = e?.ctx?.services?.match;
-      if (!p || !m) return "no services";
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      for (let i = 0; i < 120; i++) {
-        if (p.state !== "bus") return "left bus in state " + p.state + " after " + i;
-        try { m.jump(); } catch (err) { /* not ready yet */ }
-        await sleep(250);
+      if (!m) return { ok: false, why: "no match service" };
+      if (typeof m.skipToLive !== "function") {
+        return { ok: false, why: "match.skipToLive is missing — harness and engine disagree" };
       }
-      return "still in bus after 30s, phase=" + m.phase;
+      try {
+        const at = m.skipToLive();
+        return { ok: true, x: Math.round(at.x), y: Math.round(at.y), z: Math.round(at.z) };
+      } catch (err) {
+        return { ok: false, why: "skipToLive threw: " + err.message };
+      }
     })()`)
-    .catch((err) => `jump threw: ${err.message}`);
-  if (typeof left === "string" && /still in bus|no services|threw/.test(left)) {
-    errors.push(`drop: ${left}`);
+    .catch((err) => ({ ok: false, why: `evaluate threw: ${err.message}` }));
+  if (!drop.ok) {
+    // Loud, and fatal to the run: without this every frame below is a lie.
+    errors.push(`skipToLive: ${drop.why}`);
+    console.error(`skipToLive FAILED: ${drop.why}`);
   } else {
-    console.log(`drop: ${left}`);
+    console.log(`skipToLive: placed at ${drop.x},${drop.y},${drop.z}`);
   }
-  // Skydive/glide has to run itself out before a pose will stick.
-  await page.waitForTimeout(10000);
+
+  /**
+   * `skipToLive` is synchronous, so the state it promises is true the instant
+   * it returns — but the engine still has to run a fixed step before the
+   * player's own machine has agreed, and under SwiftSHADER a step is a second
+   * away. Poll for the agreement with a real timeout rather than sleeping and
+   * hoping; it normally passes on the first look.
+   */
+  const live = await page
+    .waitForFunction(
+      `(() => {
+        const e = window.__dz;
+        const p = e?.ctx?.services?.player;
+        const m = e?.ctx?.services?.match;
+        if (!p || !m) return false;
+        return m.phase === "live" && p.state !== "bus" && p.state !== "skydive" && p.state !== "glide";
+      })()`,
+      null,
+      { timeout: 60000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  if (!live) {
+    const state = await page.evaluate(GROUND_TRUTH).catch(() => null);
+    errors.push(`never reached a live ground match: ${JSON.stringify(state)}`);
+    console.error(`ground handshake FAILED: ${JSON.stringify(state)}`);
+  } else {
+    console.log(`ground: ${JSON.stringify(await page.evaluate(GROUND_TRUTH))}`);
+  }
 }
 
 // Let the first frames land: shadows, LOD selection, grass population and any
@@ -316,6 +504,13 @@ for (const name of names) {
       errors.push(`pose "${name}" threw: ${err.message}`);
     }
     await page.waitForTimeout(shot.settle);
+    // Ask the engine what it thinks this frame is, immediately before taking
+    // it. A shot whose telemetry says "phase: bus" is not evidence of
+    // anything, and printing that next to the filename is the only reason the
+    // last three review rounds were not another four.
+    const truth = await page.evaluate(GROUND_TRUTH).catch((err) => ({ ok: false, why: err.message }));
+    console.log(`ground-truth ${name}: ${JSON.stringify(truth)}`);
+    if (!truth.ok) errors.push(`shot "${name}" is not a live ground frame: ${JSON.stringify(truth)}`);
   }
   const file = `${OUT}/${name}.png`;
   // Playwright's 30s default is not enough here. Compositing a 1600x900 frame

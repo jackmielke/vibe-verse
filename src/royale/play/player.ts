@@ -1687,6 +1687,30 @@ interface HudPayload {
 
 // ---------------------------------------------------------------- system
 
+/**
+ * Our service: the shared `PlayerService` plus one documented escape hatch out
+ * of the drop machine. Anyone reading `ctx.services.player` as a plain
+ * `PlayerService` is unaffected.
+ */
+export interface DropZeroPlayerService extends PlayerService {
+  /**
+   * DEBUG / PHOTO ENTRY POINT: stand the player on the ground at `p`, and
+   * cancel whatever the drop machine was doing to get there.
+   *
+   * `teleport` deliberately does *not* do this, and cannot. While `dropStage`
+   * is `bus`, `skydive` or `glide` the position is derived every fixed step —
+   * from the bus route, or by integrating the dive — so an outside write to
+   * `position` is overwritten within 8 ms and the caller sees a teleport that
+   * silently did nothing. That is precisely how the capture harness spent six
+   * runs photographing the underside of the battle bus while pinning the
+   * player 800 m away a hundred and twenty times a second.
+   *
+   * `match.skipToLive` calls this. Call it directly if you want to inspect a
+   * ground-level system without flying the ninety-second drop first.
+   */
+  placeOnGround(p: THREE.Vector3): void;
+}
+
 const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   const camera = ctx.camera;
   const BASE_FOV = camera.fov;
@@ -1706,7 +1730,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   const _eye = new THREE.Vector3();
   const _look = new THREE.Vector3();
 
-  const service: PlayerService = {
+  const service: DropZeroPlayerService = {
     position,
     velocity,
     yaw: 0,
@@ -1746,10 +1770,20 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       if (shieldAmt > 0) service.shield = Math.min(service.maxShield, service.shield + shieldAmt);
       ctx.emit("dz:heal", { hp, shield: shieldAmt });
     },
+    /**
+     * Move the body. Honoured on the ground, in the air and in water — but
+     * NOT during `bus`, `skydive` or `glide`, where the position is derived
+     * every fixed step from the bus route or from integrating the dive, and
+     * an outside write survives at most one step. Use `placeOnGround` for
+     * those; it ends the drop first, then places.
+     */
     teleport(p) {
       position.copy(p);
       velocity.set(0, 0, 0);
       landingDip = 0;
+    },
+    placeOnGround(p) {
+      placeOnGround(p);
     },
     get controllable() {
       if (!ctx.input.locked) return false;
@@ -2117,6 +2151,45 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     ctx.services.audio?.play("glider-deploy", { volume: 0.85 });
   }
 
+  /** See the doc comment on `DropZeroPlayerService.placeOnGround`. */
+  function placeOnGround(p: THREE.Vector3): void {
+    // End the drop FIRST. Everything below is a write to state that the bus /
+    // dive / glide steps would otherwise recompute from scratch.
+    dropStage = "landed";
+    service.state = "ground";
+    glideT = 0;
+    diveTime = 0;
+    windLevel = 0;
+    ctx.services.audio?.ambience("wind", false);
+
+    position.copy(p);
+    // Land on what is actually under the requested point rather than on the
+    // caller's guess at a height: a photo vantage is authored in plan view and
+    // the terrain here is anything but flat.
+    const floor = terrainY(position.x, position.z);
+    if (position.y < floor + 0.05) position.y = floor + 0.05;
+    // Then push out of any building the point landed inside. POI interiors are
+    // dense and "the centre of the plaza" is often the centre of a shed.
+    ctx.services.collision?.resolveCapsule(position, RADIUS, STAND_HEIGHT);
+
+    velocity.set(0, 0, 0);
+    grounded = true;
+    groundNormal.set(0, 1, 0);
+    groundY = position.y;
+    crouching = false;
+    capsuleHeight = STAND_HEIGHT;
+    eyeHeight = STAND_EYE;
+    inWater = false;
+    // This is a placement, not an arrival: no landing dip, no fall damage
+    // accumulator, and no "just landed" window for the animation to play.
+    landingDip = 0;
+    sinceLanding = 99;
+    spawnResolved = true;
+    // The spring arm damps toward the pivot; from wherever the camera was it
+    // would otherwise fly across the island for several visible seconds.
+    camInit = false;
+  }
+
   function landFromDrop(): void {
     dropStage = "landed";
     service.state = "ground";
@@ -2190,6 +2263,22 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       } else {
         dropStage = "landed";
       }
+    }
+
+    /**
+     * The bus can leave without us, and until this existed we kept holding the
+     * rail anyway. Two ways it happens: the end-of-the-line forced jump, which
+     * flips the match to `dropping` from inside the match's own step without
+     * routing through `requestJump`; and `match.skipToLive`, which jumps
+     * straight to `live`. In both cases `dropStage` stayed `bus`, `busFixed`
+     * kept re-deriving the position from a route the bus had finished flying,
+     * and the player rode the clamped end of the line for the rest of the
+     * match. That is the bug behind every capture that came back as a view
+     * from the battle bus.
+     */
+    if (dropStage === "bus" && match && match.phase !== "bus" && match.phase !== "warmup") {
+      if (match.phase === "dropping") enterSkydive();
+      else landFromDrop();
     }
 
     if (dropStage === "bus" && match) {

@@ -98,38 +98,70 @@ const SUN_ARC_TILT = THREE.MathUtils.degToRad(24);
 
 /**
  * Clear maritime air over a tropical island: markedly less turbid than a city
- * haze, which is what lets the zenith go deep blue instead of milky. Rayleigh
- * is pushed above physical because the target is Fortnite's sky, not a
- * photometer's. The Mie term is the golden-hour halo and does most of the
- * "warm horizon" work on its own.
+ * haze, which is what lets the zenith go deep blue instead of milky.
+ *
+ * These four numbers were the whole of the "why is the sky grey-beige" bug.
+ * Mie is forward-scattering by aerosol and it is spectrally almost flat, so
+ * every unit of it whitens the entire dome — not just the halo around the sun.
+ * At turbidity 4.6 / mie 0.0085 the Mie extinction ran a third of the Rayleigh
+ * term in the RED channel, which is exactly the channel the blue sky needs to
+ * be missing, and the zenith measured sRGB(101,143,182): a pale denim, not a
+ * sky. Cutting turbidity to clear maritime air and more than halving the mie
+ * coefficient drops that to sRGB(43,114,187) at golden hour.
+ *
+ * Rayleigh comes DOWN too, which is counter-intuitive — more Rayleigh sounds
+ * like more blue. It is not: past about 2.5 the optical depth saturates the
+ * `1 - exp(-beta*s)` in-scatter term in all three channels, they converge, and
+ * the sky washes out. 3.4 was over that cliff; 2.4 sits under it.
  */
 const ATMOSPHERE = {
-  turbidity: 4.6,
-  rayleigh: 3.4,
-  mieCoefficient: 0.0085,
-  mieG: 0.8,
+  turbidity: 2.6,
+  rayleigh: 2.4,
+  mieCoefficient: 0.0035,
+  mieG: 0.76,
 };
 
 /**
  * Preetham radiance is enormous in absolute terms. This exposure lands a
- * golden-hour zenith near sRGB(62,116,196) and a noon zenith near
- * sRGB(96,150,224) once ACES and the engine's 1.0 exposure have had their say.
+ * golden-hour zenith near sRGB(43,114,187) and a noon zenith near
+ * sRGB(104,168,225) once ACES and the engine's 1.0 exposure have had their say.
  * ACES applies exposure as a plain pre-multiply, so scaling here is exactly
  * equivalent to re-exposing the entire sky — change it and re-grade nothing else.
  */
 const SKY_BOOST = 0.29;
 
 /**
- * The grade that turns "physically plausible" into "Fortnite". Preetham gives
- * a slightly grey-green zenith and a horizon that washes out too early; this
- * pushes saturation up, cools the zenith and warms the last few degrees above
- * the horizon. Applied identically in GLSL and on the CPU.
+ * The grade that turns "physically plausible" into "Fortnite". Applied
+ * identically in GLSL and on the CPU.
+ *
+ * Two things here were doing real damage and are worth spelling out.
+ *
+ * `gamma` is the exponent Preetham's radiance is raised to before exposure —
+ * three's own Sky shader hard-codes `1/(1.2 + 1.2*sunfade)`, i.e. 1/2.4 in
+ * daylight. That is a savage compression: the raw zenith radiance has a 23:1
+ * blue-to-red ratio and 1/2.4 flattens it to 3.7:1, which is precisely why
+ * every three.js sky is the same washed denim. Raising the exponent to 1/1.6
+ * preserves 8:1 of it and the zenith goes properly deep. `gammaSun` keeps the
+ * old sunfade coupling so twilight still compresses more than noon does.
+ *
+ * The horizon tint is now SUN-RELATIVE. One tint for the whole horizon ring is
+ * why the old sky read beige: to get a warm sunward band you had to warm the
+ * anti-sun sky too, and a golden-hour sky is warm in ONE direction and cool
+ * cyan-blue everywhere else. That opposition is most of what sells the hour.
  */
 const GRADE = {
-  saturation: 1.2,
-  /** Multiplier at the horizon (warm) and at the zenith (cool, deep). */
-  horizonTint: [1.07, 1.0, 0.95] as [number, number, number],
-  zenithTint: [0.86, 0.95, 1.16] as [number, number, number],
+  saturation: 1.3,
+  /** Radiance exponent is 1 / (gamma + gammaSun * sunfade). */
+  gamma: 1.0,
+  gammaSun: 0.6,
+  /** Horizon multiplier looking away from the sun (cool) and into it (gold). */
+  horizonAway: [0.8, 0.94, 1.1] as [number, number, number],
+  horizonSun: [1.3, 1.03, 0.72] as [number, number, number],
+  /** …and at the zenith: deep, cool, and darker than the horizon. */
+  zenithTint: [0.62, 0.86, 1.28] as [number, number, number],
+  /** cos(angle to sun) over which the horizon crossfades away → sunward. */
+  sunwardFrom: -0.15,
+  sunwardTo: 0.95,
 };
 
 /** Cumulus deck geometry, in metres above sea level. */
@@ -152,13 +184,19 @@ const CLOUD_WIND = 11;
 const SUN_ANGULAR_RADIUS = 0.021;
 
 /**
- * Fog. Exp² over a 3 km island: at 800 m the far treeline is ~20% hazed, at
- * 2 km it is ~70%, at the map edge it is nearly gone. That gradient is what
- * makes the island read as kilometres across rather than as a diorama.
+ * Fog. Exp² over a 3 km island.
+ *
+ * The previous pair (0.00034 / 0.00021) put ~26% haze on anything 1 km away
+ * and ~51% at 2 km, which from the bus is most of the island — the greens went
+ * to grey-beige and the sea and sky fused into one band. Aerial perspective is
+ * a DEPTH CUE, not a veil: it has to be readable as "that ridge is further than
+ * this one" while both ridges are still obviously green. These land ~6% at
+ * 1 km, ~21% at 2 km and ~41% at 3 km, so the far shore still reads as land and
+ * the gradient across the island is if anything more legible than it was.
  */
-const FOG_DENSITY_DAY = 0.00034;
+const FOG_DENSITY_DAY = 0.0002;
 /** Golden hour and dusk thicken the air — more aerosol, longer light path. */
-const FOG_DENSITY_LOW_SUN = 0.00021;
+const FOG_DENSITY_LOW_SUN = 0.00012;
 
 /**
  * Warm bounce off sand, grass and terracotta — the hemisphere light's floor.
@@ -619,9 +657,14 @@ const float EE = 1000.0;
 const float THREE_OVER_SIXTEENPI = 0.05968310365946075;
 const float ONE_OVER_FOURPI = 0.07957747154594767;
 
-const vec3 GRADE_HORIZON = vec3(${GRADE.horizonTint.map((v) => v.toFixed(4)).join(", ")});
+const vec3 GRADE_HORIZON_AWAY = vec3(${GRADE.horizonAway.map((v) => v.toFixed(4)).join(", ")});
+const vec3 GRADE_HORIZON_SUN = vec3(${GRADE.horizonSun.map((v) => v.toFixed(4)).join(", ")});
 const vec3 GRADE_ZENITH = vec3(${GRADE.zenithTint.map((v) => v.toFixed(4)).join(", ")});
 const float GRADE_SAT = ${GRADE.saturation.toFixed(4)};
+const float GRADE_GAMMA = ${GRADE.gamma.toFixed(4)};
+const float GRADE_GAMMA_SUN = ${GRADE.gammaSun.toFixed(4)};
+const float SUNWARD_FROM = ${GRADE.sunwardFrom.toFixed(4)};
+const float SUNWARD_TO = ${GRADE.sunwardTo.toFixed(4)};
 
 /** Preetham's earth-shadow hack: the sun's power dies past the terminator. */
 float sunIntensity(float zenithAngleCos) {
@@ -646,13 +689,15 @@ float hgPhase(float cosTheta, float g) {
 /**
  * The stylisation pass. Preetham alone gives a slightly grey-green zenith and
  * a horizon that desaturates a few degrees too early; this pushes chroma,
- * cools the deep sky and warms the last band above the horizon. Mirrored
+ * deepens the zenith and — crucially — warms the horizon ONLY where it faces
+ * the sun, leaving the rest of the ring cool. sunward is cos(angle to sun),
+ * remapped, so the gold band follows the sun round the compass. Mirrored
  * exactly on the CPU so the fog is graded the same way the sky is.
  */
-vec3 gradeSky(vec3 c, float upness) {
+vec3 gradeSky(vec3 c, float upness, float sunward) {
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(vec3(lum), c, GRADE_SAT);
-  c *= mix(GRADE_HORIZON, GRADE_ZENITH, upness);
+  c *= mix(mix(GRADE_HORIZON_AWAY, GRADE_HORIZON_SUN, sunward), GRADE_ZENITH, upness);
   return max(c, vec3(0.0));
 }
 
@@ -770,8 +815,12 @@ void main() {
 
   vec3 texColor = (Lin + L0) * 0.04 + vec3(0.0, 0.0003, 0.00075);
   float upness = clamp(dir.y, 0.0, 1.0);
-  vec3 color = pow(texColor, vec3(1.0 / (1.2 + 1.2 * sunfade))) * uSkyBoost;
-  color = gradeSky(color, smoothstep(0.0, 0.55, upness));
+  vec3 color = pow(texColor, vec3(1.0 / (GRADE_GAMMA + GRADE_GAMMA_SUN * sunfade))) * uSkyBoost;
+  color = gradeSky(
+    color,
+    smoothstep(0.0, 0.55, upness),
+    smoothstep(SUNWARD_FROM, SUNWARD_TO, cosTheta)
+  );
 
   // ---- Clouds --------------------------------------------------------------
   float horizonFade = smoothstep(0.010, 0.075, dir.y);
@@ -1066,7 +1115,7 @@ function skyRadiance(
     ((1 - g2) / Math.pow(Math.max(1e-4, 1 - 2 * ATMOSPHERE.mieG * cosTheta + g2), 1.5));
 
   const floorTerm = [0, 0.0003, 0.00075];
-  const gamma = 1 / (1.2 + 1.2 * sunfade);
+  const gamma = 1 / (GRADE.gamma + GRADE.gammaSun * sunfade);
   const inScatterMix = THREE.MathUtils.clamp(Math.pow(Math.max(0, 1 - sunUp), 5), 0, 1);
 
   for (let i = 0; i < 3; i++) {
@@ -1086,10 +1135,16 @@ function skyRadiance(
     0,
     1,
   );
+  const sunward = THREE.MathUtils.clamp(
+    THREE.MathUtils.smoothstep(cosTheta, GRADE.sunwardFrom, GRADE.sunwardTo),
+    0,
+    1,
+  );
   const lum = cpuOut[0] * 0.2126 + cpuOut[1] * 0.7152 + cpuOut[2] * 0.0722;
   for (let i = 0; i < 3; i++) {
     const sat = lum + (cpuOut[i] - lum) * GRADE.saturation;
-    const tint = GRADE.horizonTint[i] + (GRADE.zenithTint[i] - GRADE.horizonTint[i]) * upness;
+    const horizon = GRADE.horizonAway[i] + (GRADE.horizonSun[i] - GRADE.horizonAway[i]) * sunward;
+    const tint = horizon + (GRADE.zenithTint[i] - horizon) * upness;
     cpuOut[i] = Math.max(0, sat * tint);
   }
   return cpuOut;

@@ -121,6 +121,13 @@ interface PlayerLike {
   camera?: THREE.PerspectiveCamera;
   rig?: THREE.Object3D;
   teleport?(p: THREE.Vector3): void;
+  /**
+   * `player.ts`'s documented escape hatch out of the drop machine. `teleport`
+   * alone is not enough: while the player is on the bus, diving or gliding
+   * their position is *derived* every fixed step, so a write from outside is
+   * overwritten within 8 ms. See `skipToLive` below.
+   */
+  placeOnGround?(p: THREE.Vector3): void;
 }
 
 /** Audio's one-shot surface. Every method optional — audio may not have booted. */
@@ -213,6 +220,23 @@ export interface DropZeroMatchService extends MatchService {
   skipWarmup(): void;
   /** How many people the lobby started with. */
   readonly lobbySize: number;
+  /**
+   * DEBUG / PHOTO ENTRY POINT: fast-forward the whole opening — cinematic,
+   * bus, drop — and hand back a live match with the player standing on the
+   * ground. Returns the world point they were put at.
+   *
+   * This exists because the first ninety seconds of a match are not skippable
+   * from outside without reaching into three systems at once, and *everything*
+   * after them is consequently hard to look at: the capture harness spent six
+   * runs photographing the underside of the battle bus, and any change to the
+   * storm, the loot table or the end cards costs a 90-second drop per attempt
+   * to see. One call, no waiting on a handshake.
+   *
+   * `at` is where to stand; omitted, it picks the marquee POI. The point is
+   * snapped down onto whatever the terrain is doing there, so a caller may
+   * pass any Y.
+   */
+  skipToLive(at?: THREE.Vector3): THREE.Vector3;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -2626,6 +2650,9 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     skipWarmup() {
       skipRequested = true;
     },
+    skipToLive(at) {
+      return skipToLive(at);
+    },
     jump() {
       requestJump();
     },
@@ -3193,6 +3220,82 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       console.error("[Drop Zero] match enter hook failed", next, err);
     }
     emitMatch(`phase:${prev}->${next}`);
+  }
+
+  /**
+   * Where `skipToLive` puts someone when the caller does not say. The marquee
+   * POI, nudged off dead centre so the player is standing in a street rather
+   * than inside the one building at the middle of it, and snapped onto the
+   * terrain. Collision pushes the capsule out of anything it still overlaps on
+   * the first fixed step.
+   */
+  function defaultLandingSpot(): THREE.Vector3 {
+    const list = services.pois ?? [];
+    const poi = list.find((p) => p.tier === "landmark") ?? list[0] ?? null;
+    const out = new THREE.Vector3(0, 0, 0);
+    if (poi) out.set(poi.center.x, poi.center.y, poi.center.z + Math.max(poi.radius, 24) * 0.55);
+    try {
+      out.y = (services.terrain?.heightAt(out.x, out.z) ?? out.y) + 0.05;
+    } catch {
+      /* terrain may not have booted; the player snaps down again anyway */
+    }
+    return out;
+  }
+
+  /**
+   * See the doc comment on `DropZeroMatchService.skipToLive`.
+   *
+   * The order below matters. The player is placed BEFORE the phase flips,
+   * because `player.ts` reads `match.phase` in its own fixed step to decide
+   * whether it is still holding the bus rail — placing first means there is no
+   * frame in which the match is live and the player is still at 620 m.
+   */
+  function skipToLive(at?: THREE.Vector3): THREE.Vector3 {
+    const spot = at ? at.clone() : defaultLandingSpot();
+    if (at) {
+      try {
+        const ty = services.terrain?.heightAt(spot.x, spot.z);
+        if (ty !== undefined && spot.y < ty + 0.05) spot.y = ty + 0.05;
+      } catch {
+        /* as above */
+      }
+    }
+
+    // `fixed` holds the entire machine at the title screen until the pointer
+    // locks, and a headless capture never locks it. Start the machine by hand
+    // and fast-forward the state the warmup and bus phases would have left.
+    if (!started) {
+      started = true;
+      try {
+        buildFlyover();
+        buildDropPlans();
+      } catch (err) {
+        console.error("[Drop Zero] skipToLive setup failed", err);
+      }
+      emitMatch("skip-to-live");
+    }
+    skipRequested = true;
+    warmupT = WARMUP_TIME;
+    jumped = true;
+    landed = true;
+    // Put the bus where it would be about half a minute in: past us, still on
+    // its run, still dropping the tail of the lobby. A bus parked at t=0 over
+    // the player's head is the tell that the match was fast-forwarded.
+    routeU = Math.max(routeU, 0.62);
+    service.busT = clamp01(routeU);
+    // The cinematic camera has to be fully released or the hand-off spends
+    // HANDOFF_TIME seconds lerping in from the fly-over path.
+    cineTarget = 0;
+    cineWeight = 0;
+
+    const player = services.player;
+    if (player) {
+      if (player.placeOnGround) player.placeOnGround(spot);
+      else player.teleport?.(spot);
+    }
+
+    if (phase !== "live") setPhase("live");
+    return spot;
   }
 
   function offerRestart(delay: number): void {
