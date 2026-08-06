@@ -35,7 +35,14 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 const PORT = Number(process.env.DZ_PORT ?? 5179);
 const BASE = `http://127.0.0.1:${PORT}`;
 const OUT = process.env.DZ_PLAY_OUT ?? "shots/play";
-const QUALITY = process.env.DZ_QUALITY ?? "high";
+/**
+ * Gameplay logic is quality-tier independent — tiers change shader paths and
+ * instance counts, not physics or rules. So the playtest runs small and cheap
+ * on purpose: every frame we do not spend rasterising is simulation we do get,
+ * and the simulation is the thing under test. Rendering quality is dz-shot's
+ * job, not this file's.
+ */
+const QUALITY = process.env.DZ_QUALITY ?? "low";
 
 async function up(url, ms) {
   const t0 = Date.now();
@@ -77,7 +84,7 @@ const browser = await chromium.launch({
     "--js-flags=--max-old-space-size=4096",
   ],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 
 /** Page errors, attributed to whatever beat was running when they landed. */
 let beat = "boot";
@@ -183,6 +190,35 @@ async function step(name, description, run) {
 // Keys go through the canvas so pointer-lock-gated handlers see them the same
 // way they would from a player.
 const canvas = await page.$("canvas");
+/**
+ * Hold a key for a duration measured in SIMULATED seconds, not wall seconds.
+ *
+ * This distinction is the whole reason the first honest playtest reported
+ * walk, jump, harvest and building as broken when they were not. `core.ts`
+ * clamps dt to 1/15 and runs at most six fixed steps per frame, so at
+ * SwiftSHADER's fraction of a frame per second the simulation advances about
+ * 400x slower than the clock on the wall. Holding W for four real seconds
+ * bought roughly a centimetre of movement.
+ *
+ * So: hold until the engine itself says enough time has passed.
+ */
+const simNow = () => page.evaluate("window.__dz?.ctx?.elapsed ?? 0");
+async function holdSim(key, simSeconds, capMs = 240000) {
+  const t0 = await simNow();
+  const w0 = Date.now();
+  if (key) await page.keyboard.down(key);
+  try {
+    while ((await simNow()) - t0 < simSeconds && Date.now() - w0 < capMs) {
+      await page.waitForTimeout(500);
+    }
+  } finally {
+    if (key) await page.keyboard.up(key);
+  }
+  return (await simNow()) - t0;
+}
+/** Let `simSeconds` of simulation pass with no input. */
+const waitSim = (simSeconds, capMs) => holdSim(null, simSeconds, capMs);
+
 const press = async (key, ms = 90) => {
   await page.keyboard.down(key);
   await page.waitForTimeout(ms);
@@ -193,6 +229,16 @@ const click = async (ms = 120) => {
   await page.waitForTimeout(ms);
   await page.mouse.up();
 };
+/** Click and hold for a simulated duration — a pickaxe swing needs sim time. */
+async function clickSim(simSeconds) {
+  const t0 = await simNow();
+  await page.mouse.down();
+  try {
+    while ((await simNow()) - t0 < simSeconds) await page.waitForTimeout(400);
+  } finally {
+    await page.mouse.up();
+  }
+}
 
 // ---------------------------------------------------------------- the match
 
@@ -235,7 +281,7 @@ await step("lock", "the pointer locks, which is what ungates all input", async (
     if (!c) return;
     c.addEventListener("click", () => { c.requestPointerLock?.(); }, { once: true });
   })()`);
-  await canvas.click({ position: { x: 640, y: 360 } }).catch(() => {});
+  await canvas.click({ position: { x: 320, y: 180 } }).catch(() => {});
   const locked = await until("locked", `e.ctx.input.locked === true`, 20000);
   const controllable = await page.evaluate(
     "window.__dz.ctx.services.player?.controllable ?? null",
@@ -246,7 +292,7 @@ await step("lock", "the pointer locks, which is what ungates all input", async (
 await step("look", "mouse look changes yaw", async () => {
   const y0 = await page.evaluate("window.__dz.ctx.services.player.yaw");
   for (let i = 0; i < 12; i++) {
-    await page.mouse.move(640 + i * 14, 360, { steps: 2 });
+    await page.mouse.move(320 + i * 8, 180, { steps: 2 });
     await page.waitForTimeout(40);
   }
   await page.waitForTimeout(1500);
@@ -256,18 +302,23 @@ await step("look", "mouse look changes yaw", async () => {
 
 await step("walk", "W moves the player across the ground", async () => {
   const a = (await state()).pos;
-  await press("KeyW", 4000);
-  await page.waitForTimeout(2500);
+  const simmed = await holdSim("KeyW", 2.0);
+  await waitSim(0.3);
   const b = (await state()).pos;
   const d = Math.hypot(b[0] - a[0], b[2] - a[2]);
-  return { ok: d > 1.0, detail: `moved ${d.toFixed(2)}m ${JSON.stringify(a)} -> ${JSON.stringify(b)}` };
+  return {
+    ok: d > 1.0,
+    detail: `moved ${d.toFixed(2)}m over ${simmed.toFixed(2)}s sim ${JSON.stringify(a)} -> ${JSON.stringify(b)}`,
+  };
 });
 
 await step("jump", "Space leaves the ground and lands again", async () => {
   const y0 = (await state()).pos[1];
   await press("Space", 120);
-  const rose = await until("airborne", `s.player.position.y > ${y0 + 0.35} || s.player.state === "air"`, 20000);
-  const back = await until("grounded", `s.player.state === "ground"`, 30000);
+  // The arc is ~0.8s of simulation; at 400x dilation that is minutes of wall.
+  const rose = await until("airborne", `s.player.position.y > ${y0 + 0.3} || s.player.state === "air"`, 180000);
+  await waitSim(1.4);
+  const back = await until("grounded", `s.player.state === "ground"`, 180000);
   return { ok: rose && back, detail: `rose=${rose} landed=${back}` };
 });
 
@@ -275,12 +326,12 @@ await step("harvest", "swinging the pickaxe at the world yields materials", asyn
   const before = await state();
   // Face slightly down so the swing meets ground/props rather than sky, then
   // swing repeatedly while turning — something harvestable should be in reach.
-  for (let sweep = 0; sweep < 8; sweep++) {
-    await page.mouse.move(640 + sweep * 40, 400, { steps: 2 });
-    for (let i = 0; i < 4; i++) await click(140);
-    await page.waitForTimeout(700);
+  for (let sweep = 0; sweep < 6; sweep++) {
+    await page.mouse.move(320 + sweep * 25, 210, { steps: 2 });
+    await clickSim(0.9);
+    await waitSim(0.25);
   }
-  await page.waitForTimeout(2000);
+  await waitSim(0.4);
   const after = await state();
   const gained =
     after.wood - before.wood + (after.stone - before.stone) + (after.metal - before.metal);
@@ -305,11 +356,11 @@ await step("build-place", "clicking in build mode places a piece", async () => {
     const inv = window.__dz.ctx.services.inventory;
     if (inv && inv.wood < 100) inv.addMaterial("wood", 500);
   })()`);
-  for (let i = 0; i < 5; i++) {
-    await click(150);
-    await page.waitForTimeout(900);
+  for (let i = 0; i < 4; i++) {
+    await clickSim(0.35);
+    await waitSim(0.35);
   }
-  await page.waitForTimeout(2500);
+  await waitSim(0.6);
   const after = (await state()).pieces;
   return { ok: after > before, detail: `pieces ${before} -> ${after}` };
 });
@@ -319,11 +370,11 @@ await step("build-ramp", "C selects a ramp and it places", async () => {
   await page.waitForTimeout(1500);
   const kind = (await state()).buildKind;
   const before = (await state()).pieces;
-  for (let i = 0; i < 4; i++) {
-    await click(150);
-    await page.waitForTimeout(900);
+  for (let i = 0; i < 3; i++) {
+    await clickSim(0.35);
+    await waitSim(0.35);
   }
-  await page.waitForTimeout(2000);
+  await waitSim(0.6);
   const after = (await state()).pieces;
   return { ok: kind === "ramp" && after > before, detail: `kind=${kind} pieces ${before} -> ${after}` };
 });
@@ -336,18 +387,21 @@ await step("loot", "a weapon can be acquired and selected", async () => {
     const s = window.__dz.ctx.services;
     const p = s.player, loot = s.loot, inv = s.inventory;
     if (!loot || !inv) return "no loot/inventory service";
-    const near = loot.nearest ? loot.nearest(p.position, 40) : null;
-    if (near) { try { loot.take(near); return "took nearby " + (near.item?.name ?? "?"); } catch (e) { return "take threw: " + e.message; } }
+    // Deliberately NOT taking whatever is nearest: the first run picked up
+    // Heavy Ammo, which correctly goes to the ammo pool and never occupies a
+    // slot, and the beat read that as "loot is broken". Spawn a gun.
     try {
       loot.spawn({ id: "probe-ar", kind: "weapon", def: "ar", name: "Assault Rifle", rarity: "rare", ammo: 30 }, p.position.clone());
       return "spawned a rifle at the player";
     } catch (e) { return "spawn threw: " + e.message; }
   })()`);
-  await page.waitForTimeout(2500);
-  await press("KeyE", 900);
-  await page.waitForTimeout(2500);
+  await waitSim(0.4);
+  await page.keyboard.down("KeyE");
+  await waitSim(0.9);
+  await page.keyboard.up("KeyE");
+  await waitSim(0.4);
   await press("Digit2");
-  await page.waitForTimeout(2000);
+  await waitSim(0.5);
   const s = await state();
   const hasWeapon = (s.slots ?? []).slice(1).some(Boolean);
   return { ok: hasWeapon, detail: `${r}; slots=${JSON.stringify(s.slots)} active=${s.active}` };
@@ -370,12 +424,9 @@ await step("shoot", "firing a weapon consumes ammo", async () => {
     const a = window.__dz.ctx.services.inventory?.active;
     return a ? (a.ammo ?? null) : null;
   })()`);
-  await page.mouse.move(640, 340, { steps: 2 });
-  for (let i = 0; i < 8; i++) {
-    await click(220);
-    await page.waitForTimeout(500);
-  }
-  await page.waitForTimeout(2000);
+  await page.mouse.move(320, 170, { steps: 2 });
+  await clickSim(1.2);
+  await waitSim(0.5);
   const after = await page.evaluate(`(() => {
     const a = window.__dz.ctx.services.inventory?.active;
     return a ? (a.ammo ?? null) : null;
@@ -417,7 +468,9 @@ await step("storm-damage", "standing outside the circle costs health", async () 
     return "no dry ground outside the circle";
   })()`);
   const hp0 = (await state()).hp;
-  const hurt = await until("hp drops", `s.player.health < ${hp0 - 0.5}`, 90000);
+  // Circle 1 is 1 dps, so this needs seconds of SIMULATION, not of wall clock.
+  await waitSim(3.0, 300000);
+  const hurt = await until("hp drops", `s.player.health < ${hp0 - 0.5}`, 120000);
   const s = await state();
   return { ok: hurt, detail: `${r}; safe=${s.safe} hp ${hp0} -> ${s.hp}` };
 });
@@ -430,16 +483,16 @@ await step("survive", "returning inside the circle stops the damage", async () =
     p.teleport(new (window.__dz.ctx.camera.position.constructor)(st.center.x, y + 0.5, st.center.z));
     p.heal ? p.heal(100, 0) : null;
   })()`);
-  await page.waitForTimeout(6000);
+  await waitSim(0.5);
   const hp0 = (await state()).hp;
-  await page.waitForTimeout(12000);
+  await waitSim(2.5);
   const s = await state();
   return { ok: s.hp >= hp0 - 0.5, detail: `safe=${s.safe} hp ${hp0} -> ${s.hp}` };
 });
 
 await step("clock", "the match clock actually advances", async () => {
   const a = await page.evaluate("window.__dz.ctx.services.storm?.timer ?? null");
-  await page.waitForTimeout(20000);
+  await waitSim(1.0);
   const b = await page.evaluate("window.__dz.ctx.services.storm?.timer ?? null");
   return { ok: a !== null && b !== null && b !== a, detail: `storm timer ${a} -> ${b}` };
 });
