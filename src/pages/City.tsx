@@ -4747,7 +4747,9 @@ export default function City() {
         const lx = dx * cy - dz * sy;
         const lz = dx * sy + dz * cy;
         const deckPrevY = zep.prevPos.y + zep.deckY;
-        const catchBand = ridingZeppelin ? 1.8 : 1.0; // sticky once aboard
+        // Sticky once aboard, stickier still at the helm — a pilot who
+        // slips off their own ship mid-climb is pure frustration.
+        const catchBand = zepPilotRef.current ? 3.2 : ridingZeppelin ? 1.8 : 1.0;
         const overDeck = Math.abs(lx) <= zep.halfW + 0.3 && Math.abs(lz) <= zep.halfL + 0.3;
         if (
           overDeck &&
