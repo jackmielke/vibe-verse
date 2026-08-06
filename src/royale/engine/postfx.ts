@@ -73,8 +73,21 @@
  *           "dz:shake"      {amount,point,range}             — lens character
  *           "dz:damage"     {amount}                         — hurt vignette
  *           "dz:death" / "dz:down" / "dz:victory"            — grade takeovers
+ *           "dz:fx"         {effect,enabled}                  — the switchboard
  * Publishes "dz:postfx"     the render override the engine installs
  *           "dz:depth"      last frame's depth texture, for vfx soft particles
+ *
+ * ## The switchboard
+ *
+ * Every pass below can be turned off from outside at runtime, without a
+ * rebuild, via `dz:fx {effect, enabled}` — see FX_EFFECTS for the full list and
+ * `all` for the wildcard. This is not a debug nicety. Post-processing is the
+ * one place in the engine where a wrong number produces a frame that is
+ * obviously broken and gives you no clue which of eleven passes broke it, and
+ * bisecting that from the outside in eleven captures beats reading this file.
+ *
+ * Camera motion blur is the one effect that starts **off**; it has to be asked
+ * for. The reasoning is on MOTION_DEFAULT_ON.
  *
  * Nothing in here is allowed to be fatal. The whole build is wrapped, every
  * frame is wrapped, and a throw at any point hands rendering straight back to
@@ -2188,7 +2201,7 @@ function buildPostFx(ctx: WorldCtx): System {
       compositeMat.uniforms.tScene.value = sceneTex;
       compositeMat.uniforms.tDepth.value = depthTex;
 
-      if (smaa) {
+      if (smaa && fx.aa) {
         draw(compositeMat, ldrRT);
         smaa.render(renderer, null as unknown as THREE.WebGLRenderTarget, ldrRT, clampedDt, false);
       } else {
