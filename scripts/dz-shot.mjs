@@ -50,48 +50,50 @@ const QUALITY = process.env.DZ_QUALITY ?? "high";
  *   - does the ground detail survive at eye height?
  *   - do the signature effects (storm, loot, build) look expensive?
  */
+const V = (e, x, y, z) => new (e.ctx.camera.position.constructor)(x, y, z);
+/** Yaw/pitch aiming from a point at a target, in the engine's convention. */
+const aim = (from, to) => ({
+  yaw: Math.atan2(-(to.x - from.x), -(to.z - from.z)),
+  pitch: Math.atan2(to.y - from.y, Math.hypot(to.x - from.x, to.z - from.z)),
+});
+
 const SHOTS = {
-  /** The bus view — first thing a player ever sees. Whole-island silhouette. */
+  /** High over the island — reads the whole map's silhouette and layout. */
   aerial: {
     settle: SETTLE,
     pose: (e) => {
-      const c = e.ctx.camera;
-      c.position.set(-620, 470, 640);
-      c.lookAt(60, 40, -60);
+      const pos = V(e, -520, 400, 540);
+      return { pos, ...aim(pos, V(e, 60, 40, -60)) };
     },
   },
-  /** Golden-hour approach on the marquee POI. Silhouette + roof identity. */
+  /** Approach on the marquee POI. Silhouette + roof identity. */
   town: {
     settle: SETTLE,
     pose: (e) => {
-      const p = e.ctx.services.pois ?? [];
-      const t = p.find((x) => x.tier === "landmark") ?? p[0];
-      const c = e.ctx.camera;
+      const list = e.ctx.services.pois ?? [];
+      const t = list.find((x) => x.tier === "landmark") ?? list[0];
       if (!t) {
-        c.position.set(0, 120, 220);
-        c.lookAt(0, 20, 0);
-        return;
+        const pos = V(e, 0, 120, 220);
+        return { pos, ...aim(pos, V(e, 0, 20, 0)) };
       }
       const r = Math.max(t.radius, 60);
-      c.position.set(t.center.x - r * 1.5, t.center.y + r * 0.85, t.center.z + r * 1.5);
-      c.lookAt(t.center.x, t.center.y + 8, t.center.z);
+      const pos = V(e, t.center.x - r * 1.2, t.center.y + r * 0.7, t.center.z + r * 1.2);
+      return { pos, ...aim(pos, V(e, t.center.x, t.center.y + 8, t.center.z)) };
     },
   },
-  /** Eye height in the street. Materials, trim, shadows, grass — the hard test. */
+  /** Eye height in the plaza. Materials, trim, shadows — the hard test. */
   street: {
     settle: SETTLE,
     pose: (e) => {
-      const p = e.ctx.services.pois ?? [];
-      const t = p.find((x) => x.tier === "landmark") ?? p[0];
+      const list = e.ctx.services.pois ?? [];
+      const t = list.find((x) => x.tier === "landmark") ?? list[0];
       const terrain = e.ctx.services.terrain;
-      const c = e.ctx.camera;
       const cx = t ? t.center.x : 0;
       const cz = t ? t.center.z : 0;
-      const gx = cx - 30;
-      const gz = cz + 34;
-      const y = (terrain?.heightAt?.(gx, gz) ?? 0) + 1.7;
-      c.position.set(gx, y, gz);
-      c.lookAt(cx, y + 6, cz);
+      const gx = cx - 34;
+      const gz = cz + 38;
+      const pos = V(e, gx, (terrain?.heightAt?.(gx, gz) ?? 0) + 1.0, gz);
+      return { pos, ...aim(pos, V(e, cx, pos.y + 5, cz)) };
     },
   },
   /** Treeline at ground level: canopy shading, wind, grass, aerial haze. */
@@ -99,13 +101,10 @@ const SHOTS = {
     settle: SETTLE,
     pose: (e) => {
       const terrain = e.ctx.services.terrain;
-      const c = e.ctx.camera;
-      // Somewhere off the road, looking at the highlands.
-      const x = -260;
-      const z = 300;
-      const y = (terrain?.heightAt?.(x, z) ?? 0) + 1.8;
-      c.position.set(x, y, z);
-      c.lookAt(120, y + 90, -420);
+      const x = -300;
+      const z = 340;
+      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 1.0, z);
+      return { pos, ...aim(pos, V(e, 60, pos.y + 55, -260)) };
     },
   },
   /** The coast: water shading, foam, the shoreline gradient, the horizon. */
@@ -113,65 +112,87 @@ const SHOTS = {
     settle: SETTLE,
     pose: (e) => {
       const terrain = e.ctx.services.terrain;
-      const size = terrain?.worldSize ?? 1500;
-      const c = e.ctx.camera;
-      c.position.set(size * 0.72, 46, size * 0.2);
-      c.lookAt(size * 1.4, 0, size * 0.1);
+      const r = (terrain?.islandRadius ?? 1155) * 0.94;
+      const a = 0.7;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 1.0, z);
+      return { pos, ...aim(pos, V(e, Math.cos(a) * (r + 500), 0, Math.sin(a) * (r + 500))) };
     },
   },
-  /** The storm wall, up close — the signature effect of the whole mode. */
+  /** The storm wall — the signature effect of the mode. */
   storm: {
-    settle: 3000,
+    settle: SETTLE,
     pose: (e) => {
       const s = e.ctx.services.storm;
       const terrain = e.ctx.services.terrain;
-      const c = e.ctx.camera;
       if (!s) {
-        c.position.set(0, 80, 300);
-        c.lookAt(0, 40, 0);
-        return;
+        const pos = V(e, 0, 60, 300);
+        return { pos, ...aim(pos, V(e, 0, 40, 0)) };
       }
-      // Stand just inside the wall looking along it, so it fills the frame
-      // without becoming a flat purple screen.
       const a = 0.6;
-      const r = Math.max(s.radius - 40, 40);
+      const r = Math.max(s.radius - 90, 40);
       const x = s.center.x + Math.cos(a) * r;
       const z = s.center.z + Math.sin(a) * r;
-      const y = (terrain?.heightAt?.(x, z) ?? 0) + 12;
-      c.position.set(x, y, z);
-      c.lookAt(s.center.x + Math.cos(a + 0.9) * (r + 120), y, s.center.z + Math.sin(a + 0.9) * (r + 120));
+      const pos = V(e, x, (terrain?.heightAt?.(x, z) ?? 0) + 2, z);
+      const tx = s.center.x + Math.cos(a) * (r + 400);
+      const tz = s.center.z + Math.sin(a) * (r + 400);
+      return { pos, ...aim(pos, V(e, tx, pos.y + 40, tz)) };
     },
   },
 };
 
 /**
- * Install the pose as a camera override.
+ * Pose by driving the PLAYER, not the camera.
  *
- * Setting `camera.position` from the outside does nothing: the player system
- * owns the camera and rewrites it in `lateUpdate`, every frame, after any
- * value we could poke in. The first run of this harness produced three
- * byte-identical screenshots of the battle bus for exactly that reason.
+ * This is the third design of this function and the first correct one, and
+ * the history is worth keeping because it cost four wrong diagnoses.
  *
- * `renderOverride` is the hook that works. The engine calls it last, after
- * every update and lateUpdate have run, so posing the camera inside it lands
- * after the player rig has had its say. Camera-driven systems (grass
- * streaming, terrain LOD) read the posed position on the FOLLOWING frame,
- * which is why every shot still gets a settle window rather than one frame.
+ * v1 set `camera.position` directly. The player system rewrites the camera in
+ * `lateUpdate`, so every shot came back identical — the battle bus, six times.
+ *
+ * v2 posed inside `renderOverride`, which the engine calls last. The camera
+ * then pointed where we asked, but ONLY at draw time: every system that reads
+ * the camera during `update`/`lateUpdate` — terrain LOD and culling, grass
+ * streaming, the shadow cascade's focus — still saw the player's camera,
+ * somewhere else entirely. That produced an island whose 121 terrain chunks
+ * all culled themselves (read as "the terrain is white"), a world that looked
+ * unplanted, and a frame with no shadows in it. Three bugs that were not bugs.
+ *
+ * v3: move the player and let the engine derive the camera the way it does in
+ * a real match. Everything then agrees, because there is only one camera and
+ * one source for it. We pin the player on a fast interval so gravity never
+ * accumulates and the pose holds for the whole settle window.
+ *
+ * The lesson generalises: a capture harness that bypasses the engine measures
+ * the harness, not the game.
  */
 function installPose(fn) {
   return `(() => {
     const e = window.__dz;
     if (!e) return;
-    if (!e.__dzBaseRender) e.__dzBaseRender = e.renderOverride;
+    // The pose bodies close over these in Node; they must exist in the page too.
+    const V = ${V.toString()};
+    const aim = ${aim.toString()};
     const pose = ${fn.toString()};
-    e.renderOverride = (dt) => {
-      pose(e);
-      e.ctx.camera.updateMatrixWorld();
-      if (e.__dzBaseRender) e.__dzBaseRender(dt);
-      else e.ctx.renderer.render(e.ctx.scene, e.ctx.camera);
+    if (e.__dzPin) clearInterval(e.__dzPin);
+    const apply = () => {
+      const p = e.ctx.services.player;
+      if (!p) return;
+      const want = pose(e);
+      if (!want) return;
+      // Teleport rather than assign, so the system can clear its own state
+      // (grounded flags, fall damage accumulators) as it sees fit.
+      p.teleport(want.pos);
+      p.velocity.set(0, 0, 0);
+      if (typeof want.yaw === "number") p.yaw = want.yaw;
+      if (typeof want.pitch === "number") p.pitch = want.pitch;
     };
+    apply();
+    e.__dzPin = setInterval(apply, 8);
   })()`;
 }
+
 
 async function up(url, ms) {
   const t0 = Date.now();
