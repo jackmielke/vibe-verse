@@ -57,7 +57,7 @@ const logs = [];
 page.on("console", (m) => logs.push(`${m.type()}: ${m.text().slice(0, 300)}`));
 page.on("pageerror", (e) => logs.push(`PAGEERROR: ${e.message.slice(0, 300)}`));
 
-await page.goto(`${BASE}/drop-zero?shot=1`, { waitUntil: "domcontentloaded", timeout: 120000 });
+await page.goto(`${BASE}/drop-zero?shot=1&q=high`, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForFunction("window.__dzReady === true", null, { timeout: 60000 }).catch(() => {});
 await page.waitForTimeout(20000);
 

@@ -46,6 +46,22 @@ export default function DropZero() {
   const shotMode =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).has("shot");
 
+  /**
+   * `?q=high` forces a quality tier.
+   *
+   * Capture runs in this container auto-detect `medium`, because the box has
+   * no GPU and `detectQuality` reads deviceMemory and core count. Medium takes
+   * terrain's cheap path — so every frame reviewed so far has been the
+   * low-end rendering path, not the one a visitor with a real GPU gets. A
+   * capture that is not representative of the shipped experience is worse
+   * than no capture, because it sends you fixing the wrong renderer.
+   */
+  const forcedQuality = (() => {
+    if (typeof window === "undefined") return null;
+    const q = new URLSearchParams(window.location.search).get("q");
+    return q === "low" || q === "medium" || q === "high" || q === "ultra" ? q : null;
+  })();
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -54,7 +70,7 @@ export default function DropZero() {
     (async () => {
       try {
         const { engine: eng } = await boot(
-          { canvas, quality: detectQuality() },
+          { canvas, quality: forcedQuality ?? detectQuality() },
           (stage, fraction) => {
             if (!cancelled) setProgress({ stage, fraction });
           },
@@ -87,7 +103,7 @@ export default function DropZero() {
       engineRef.current?.dispose();
       engineRef.current = null;
     };
-  }, [shotMode]);
+  }, [shotMode, forcedQuality]);
 
   const enter = useCallback(() => {
     canvasRef.current?.requestPointerLock?.();

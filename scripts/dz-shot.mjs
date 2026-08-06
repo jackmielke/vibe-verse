@@ -38,6 +38,8 @@ const WAIT = Number(process.env.DZ_WAIT ?? 30000);
  * It is not enough for the frame to be rendered; the frame has to be FINISHED.
  */
 const SETTLE = Number(process.env.DZ_SETTLE ?? 25000);
+/** Force the tier a real visitor gets. See the note in DropZero.tsx. */
+const QUALITY = process.env.DZ_QUALITY ?? "high";
 
 /**
  * Vantage points. `pose` runs in the page with the live engine, so a shot can
@@ -225,7 +227,7 @@ page.on("console", (m) => {
   if (t.includes("failed to boot")) errors.push(t);
 });
 
-await page.goto(`${BASE}/drop-zero?shot=1`, { waitUntil: "domcontentloaded", timeout: 120000 });
+await page.goto(`${BASE}/drop-zero?shot=1&q=${QUALITY}`, { waitUntil: "domcontentloaded", timeout: 120000 });
 
 let booted = true;
 try {
