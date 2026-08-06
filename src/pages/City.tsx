@@ -4770,15 +4770,18 @@ export default function City() {
           peakY = pp.y;
           if (!ridingZeppelin) {
             ridingZeppelin = true;
+            setZepMode(zepPilotRef.current ? "piloting" : "aboard");
             if (!zeppelinToastShown) {
               zeppelinToastShown = true;
               toast("🎈 All aboard!", {
-                description: "The zeppelin loops the whole city — ride as long as you like.",
+                description: "Press P (or tap Take the helm) to fly it yourself.",
               });
             }
           }
-        } else {
+        } else if (ridingZeppelin) {
           ridingZeppelin = false;
+          setZepPilotMode(false);
+          setZepMode("off");
         }
       }
 
