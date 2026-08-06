@@ -71,20 +71,30 @@ function dead(v: number): number {
 /**
  * How a desktop flies it.
  *
- * "pursuit" is the default and it is the reason this file was rewritten. The
- * other two ask the pilot to think about a *stick* — a thing whose deflection
- * commands a rate, whose neutral is somewhere they have to remember, and whose
- * relationship to where the aeroplane ends up is two integrations away. That
- * is a fine mental model for someone who already flies and a terrible one for
- * everyone else, and "it is very unclear how we are supposed to pull up" is
- * exactly what it sounds like from the outside.
+ * The default is "easy", and the reason is one detail that reads as a bug to
+ * anybody who has not flown: **in a real aeroplane, left does not turn left.**
+ * Left rolls. The aeroplane then falls sideways out of the sky until you also
+ * pull, and a beginner who presses left and watches the nose drop concludes
+ * the controls are broken. That is what "roll" is doing in the "keyboard"
+ * scheme below, and it is most of why this world was hard to fly.
  *
- * Pursuit removes the stick from the conversation. You put a ring where you
- * want to go and the jet goes there — it picks the bank angle and the pull for
- * you, the way a real pilot does without thinking about it. Pulling up is
- * "move the ring above the horizon", which needs no explanation at all.
+ * So the schemes are, in the order they should be tried:
+ *
+ *  - **easy** — arrow keys. Left turns left. Up climbs. Let go and it flies
+ *    straight and level. The bank and the pull that a turn actually needs are
+ *    worked out for you, and so is the throttle.
+ *  - **pursuit** — the same idea with a mouse: a ring follows the cursor and
+ *    the jet flies to the ring.
+ *  - **stick** — the cursor *is* the stick. Rates, not destinations.
+ *  - **keyboard** — the real thing. A and D roll, W and S pull.
+ *
+ * The first two share all their machinery: both of them end up moving a point
+ * on the screen, and `flyToAim` in `play/fleet.ts` turns that point into a
+ * bank angle and a pull. "Easy" is pursuit with the arrow keys driving the
+ * ring instead of the mouse, which is also why it gets the ring drawn on the
+ * HUD for free — the control explains itself.
  */
-export type ControlScheme = "pursuit" | "stick" | "keyboard";
+export type ControlScheme = "easy" | "pursuit" | "stick" | "keyboard";
 
 export interface InputSettings {
   controlScheme: ControlScheme;
@@ -125,7 +135,22 @@ export interface InputService {
    * Where the pursuit ring is. `x`/`y` are NDC for unprojecting through the
    * camera; `px`/`py` are CSS pixels for the HUD to draw at.
    */
-  readonly aim: { x: number; y: number; px: number; py: number; active: boolean };
+  readonly aim: {
+    x: number;
+    y: number;
+    px: number;
+    py: number;
+    active: boolean;
+    /**
+     * How far the jet is allowed to bank chasing the ring, radians.
+     *
+     * Only the easy scheme sets one. "Turn left" from a beginner means a turn,
+     * not a knife-edge, and the pursuit law on its own will happily roll to
+     * eighty-seven degrees because that is genuinely the fastest way to get
+     * where it was pointed.
+     */
+    limit: number;
+  };
   /** Ask iOS for motion permission. Must be called from a real user gesture. */
   requestTilt(): void;
   hasGamepad(): boolean;
@@ -135,7 +160,7 @@ const SETTINGS_KEY = "angels.input";
 
 function loadSettings(): InputSettings {
   const base: InputSettings = {
-    controlScheme: "pursuit",
+    controlScheme: "easy",
     invertPitch: false,
     tiltRoll: false,
     autoThrottle: false,
@@ -194,7 +219,14 @@ export function createInput(ctx: AngelsCtx): System {
   let mouseY = 0;
   let mouseInside = false;
   const stick = { x: 0, y: 0, active: false, radius: 0, cx: 0, cy: 0 };
-  const aim = { x: 0, y: 0, px: 0, py: 0, active: false };
+  const aim = { x: 0, y: 0, px: 0, py: 0, active: false, limit: Math.PI };
+  // Where the easy scheme's ring has got to. Ramps toward the held direction
+  // and springs back to the middle when nothing is held, which is what makes
+  // "let go and it flies straight and level" true without a separate autopilot.
+  let easyX = 0;
+  let easyY = 0;
+  /** Auto-throttle target, m/s indicated. Nudged by Shift and Z. */
+  let easySpeed = 195;
 
   /**
    * Mouse flying is disarmed until the pilot moves the mouse, and then eases
@@ -584,7 +616,7 @@ export function createInput(ctx: AngelsCtx): System {
       } else if (armed) {
         armBlend = Math.min(1, armBlend + dt / 0.5);
       }
-      const mouseFlying = mouseUsable && armed && scheme !== "keyboard";
+      const mouseFlying = mouseUsable && armed && (scheme === "pursuit" || scheme === "stick");
 
       const rate = 3.4 * settings.sensitivity;
       const centre = 5.2;
@@ -605,7 +637,65 @@ export function createInput(ctx: AngelsCtx): System {
 
       kbYaw = step(kbYaw, yawR, yawL);
 
-      if (mouseFlying && scheme === "pursuit") {
+      if (scheme === "easy" && !menuOpen && !shot) {
+        // The whole scheme, and it is deliberately the same machinery the
+        // mouse uses: the arrow keys walk the pursuit ring around the screen
+        // and `flyToAim` works out what the aeroplane has to do to get there.
+        //
+        // Which means "left" genuinely turns left — the bank and the pull that
+        // a turn needs are computed, not asked for — and letting go returns the
+        // ring to the middle, which levels the wings. Those two sentences are
+        // the entire difference between this and the scheme below it.
+        stick.active = false;
+        // Full deflection is a bit under half the screen, which through the
+        // pursuit law is about a fifty-degree bank. Sixty-two per cent — the
+        // first try — was an eighty-eight degree knife-edge from one tap of
+        // the left arrow, which is a lot of aeroplane for "turn left".
+        const EDGE_X = 0.40;
+        const EDGE_Y = 0.42;
+        const push = 2.1 * dt;
+        const spring = 3.4 * dt;
+        const ramp = (v: number, pos: boolean, neg: boolean, lim: number) => {
+          if (pos) return clamp(v + push, -lim, lim);
+          if (neg) return clamp(v - push, -lim, lim);
+          return Math.abs(v) <= spring ? 0 : v - Math.sign(v) * spring;
+        };
+        easyX = ramp(easyX, right, left, EDGE_X);
+        easyY = ramp(easyY, settings.invertPitch ? down : up, settings.invertPitch ? up : down, EDGE_Y);
+        aim.x = easyX;
+        aim.y = easyY;
+        aim.px = ((easyX + 1) / 2) * w;
+        aim.py = ((1 - easyY) / 2) * h;
+        aim.limit = 0.96; // 55°
+        aim.active = true;
+
+        // The throttle looks after itself. Somebody learning to fly has enough
+        // to think about without also discovering that an aeroplane falls out
+        // of the sky when it gets slow — Shift and Z shift the target rather
+        // than taking the lever.
+        if (held.has("ShiftLeft") || held.has("ShiftRight")) easySpeed += 40 * dt;
+        if (held.has("ControlLeft") || held.has("KeyZ")) easySpeed -= 40 * dt;
+        easySpeed = clamp(easySpeed, 110, 330);
+        const fleet = ctx.services.fleet as { player?: { state: { ias: number } } } | undefined;
+        const ias = fleet?.player?.state.ias ?? easySpeed;
+        kbThrottle = clamp(
+          0.55 + (easySpeed - ias) * 0.02 + Math.max(0, easyY) * 0.5,
+          0.12,
+          1,
+        );
+        input.pitch = 0;
+        input.roll = 0;
+      } else if (scheme === "easy") {
+        // Menu up, or the screenshot harness driving: the ring stands down and
+        // the jet holds what it has rather than answering keys nobody pressed
+        // at it.
+        aim.active = false;
+        stick.active = false;
+        easyX = 0;
+        easyY = 0;
+        input.pitch = 0;
+        input.roll = 0;
+      } else if (mouseFlying && scheme === "pursuit") {
         // Point where you want to go.
         //
         // Nothing is computed here beyond "where on the screen is the ring".
@@ -619,6 +709,7 @@ export function createInput(ctx: AngelsCtx): System {
         aim.x = (aim.px / w) * 2 - 1;
         aim.y = -((aim.py / h) * 2 - 1);
         if (settings.invertPitch) aim.y = -aim.y;
+        aim.limit = Math.PI; // the mouse gets the whole aeroplane
         aim.active = true;
         // The blend is applied to the *aim offset*, not to a control command:
         // easing in a ring that is already drawn where the cursor is would be

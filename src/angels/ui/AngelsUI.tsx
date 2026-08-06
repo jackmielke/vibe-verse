@@ -103,6 +103,11 @@ const START_POINTS: Array<{ id: SpawnPoint; name: string; blurb: string }> = [
  * wrong way round for everyone else.
  */
 const SCHEME_COPY: Record<ControlScheme, { name: string; blurb: string }> = {
+  easy: {
+    name: "Arrow keys",
+    blurb:
+      "Left and right turn — properly, with the bank and the pull worked out for you. Up and down climb and dive. Let go and it flies straight and level, and the throttle looks after itself.",
+  },
   pursuit: {
     name: "Point & fly",
     blurb:
@@ -118,6 +123,17 @@ const SCHEME_COPY: Record<ControlScheme, { name: string; blurb: string }> = {
     blurb: "W and S climb and dive, A and D roll, Shift and Z are the throttle. No mouse at all.",
   },
 };
+
+/** The one line worth having on screen while you are actually flying. */
+const HINT: Record<ControlScheme | "touch", string> = {
+  easy: "← → turn · ↑ ↓ climb and dive · Space if you get lost",
+  pursuit: "The jet flies to the ring — move the mouse · Space if you get lost",
+  stick: "The cursor is the stick, middle of the screen is neutral · Space if you get lost",
+  keyboard: "W S climb and dive · A D roll · Space if you get lost",
+  touch: "Left thumb flies · right thumb is the throttle · LEVEL if you get lost",
+};
+
+const HINT_SEEN_KEY = "angels.hintSeen";
 
 const CAMERA_COPY: Record<CameraMode, string> = {
   chase: "Chase",
@@ -151,9 +167,10 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [wingmen, setWingmen] = useState(5);
   const [start, setStart] = useState<SpawnPoint>("needle");
   const [help, setHelp] = useState(false);
-  const [scheme, setScheme] = useState<ControlScheme>("pursuit");
+  const [scheme, setScheme] = useState<ControlScheme>("easy");
   const [thumbs, setThumbs] = useState(false);
   const [wreck, setWreck] = useState<{ cause: string; speed: number } | null>(null);
+  const [hint, setHint] = useState(false);
 
   const services = engine.ctx.services;
   const courses = services.courses as CourseService | undefined;
@@ -241,6 +258,15 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   // the note in core.ts about why polling an edge flag loses the race.
   const helpOpen = useRef(false);
   helpOpen.current = help;
+
+  const dismissHint = useCallback(() => {
+    setHint(false);
+    try {
+      localStorage?.setItem(HINT_SEEN_KEY, "1");
+    } catch {
+      /* private mode; it comes back next time, which is harmless */
+    }
+  }, []);
 
   const closeHelp = useCallback(() => {
     setHelp(false);
@@ -336,6 +362,17 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
       /* private mode counts as never seen, which is the safe way round */
     }
     if (!seen) setHelp(true);
+
+    let hintSeen = false;
+    try {
+      hintSeen = localStorage?.getItem(HINT_SEEN_KEY) === "1";
+    } catch {
+      /* see above */
+    }
+    if (!hintSeen) {
+      setHint(true);
+      window.setTimeout(() => setHint(false), 60000);
+    }
   }
 
   const achievements = game?.achievements ?? [];
@@ -375,6 +412,32 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
           is still flying. */}
       <FlightHUD engine={engine} visible={screen === "flying" && !wreck} />
 
+      {/* ---- the first-flight strip -------------------------------------- */}
+      {/* Three keys, on screen, for the first minute. The controls card
+          answers "how do I fly this" once and then goes away; this answers
+          "which key was it again" while you are actually flying, which is when
+          the question is actually asked. It goes for good once dismissed. */}
+      {screen === "flying" && !wreck && !help && hint && (
+        <div
+          data-angels-hud="hint"
+          className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4"
+          style={{ bottom: "max(18px, calc(env(safe-area-inset-bottom) + 14px))" }}
+        >
+          <div
+            className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 px-4 py-2"
+            style={{ background: "rgba(4,10,24,0.72)", backdropFilter: "blur(6px)" }}
+          >
+            <span className="text-[12.5px] leading-none text-white/85">{HINT[thumbs ? "touch" : scheme]}</span>
+            <button
+              onClick={dismissHint}
+              className="rounded-full bg-white/10 px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-widest text-white/60 transition hover:bg-white/20 hover:text-white"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ---- the smoking hole -------------------------------------------- */}
       {wreck && (
         <>
@@ -385,9 +448,9 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             data-angels-hud="flash"
             className="pointer-events-none fixed inset-0 z-40"
             style={{
-              background: "#fff5e2",
-              opacity: flash * 0.86,
-              transition: "opacity 420ms cubic-bezier(0.2,0,0.4,1)",
+              background: "#fff8ec",
+              opacity: flash,
+              transition: "opacity 900ms cubic-bezier(0.15,0,0.35,1)",
             }}
           />
           <div
@@ -641,11 +704,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             <p className="mt-1 text-center text-[11.5px] text-sky-100/45">
               {thumbs
                 ? "Left thumb flies · right thumb is the throttle · LEVEL if you get lost"
-                : scheme === "pursuit"
-                  ? "Move the mouse where you want to go · W and S for the throttle · Space if you get lost"
-                  : scheme === "stick"
-                    ? "The cursor is the stick · W and S for the throttle · Space if you get lost"
-                    : "W S climb and dive · A D roll · Shift and Z for the throttle · Space if you get lost"}
+                : scheme === "easy"
+                  ? "Arrow keys fly it — left turns left, up climbs · Space if you get lost"
+                  : scheme === "pursuit"
+                    ? "Move the mouse where you want to go · W and S for the throttle · Space if you get lost"
+                    : scheme === "stick"
+                      ? "The cursor is the stick · W and S for the throttle · Space if you get lost"
+                      : "W S climb and dive · A D roll · Shift and Z for the throttle · Space if you get lost"}
             </p>
 
             {/* everything else, out of the way */}

@@ -37,6 +37,24 @@ export function bindingsFor(scheme: ControlScheme, touch: boolean): Binding[] {
       { keys: "◀ ▶", what: "Rudder" },
     ];
   }
+  if (scheme === "easy") {
+    return [
+      { keys: "← →", what: "Turn left and right. The jet banks and pulls for you.", primary: true },
+      { keys: "↑ ↓", what: "Climb and dive", primary: true },
+      { keys: "Space", what: "Lost? Rolls you upright and finds the horizon", primary: true },
+      { keys: "W A S D", what: "The same four, if you would rather" },
+      { keys: "Shift  Z", what: "Faster and slower. The throttle is automatic otherwise." },
+      { keys: "Q  E", what: "Rudder" },
+      { keys: "B", what: "Brakes: airbrake in the air, wheels on the ground" },
+      { keys: "G", what: "Landing gear" },
+      { keys: "X", what: "Smoke" },
+      { keys: "C", what: "Change camera" },
+      { keys: "R", what: "Put me back at the start" },
+      { keys: "Right-drag", what: "Look around" },
+      { keys: "H", what: "Show this card" },
+      { keys: "Esc", what: "Menu" },
+    ];
+  }
   if (scheme === "pursuit") {
     return [
       { keys: "Move mouse", what: "Put the ring where you want to go. The jet flies to it.", primary: true },
@@ -101,6 +119,7 @@ export function bindingsFor(scheme: ControlScheme, touch: boolean): Binding[] {
  * needs and everything else can wait until they are in the air.
  */
 const HOW_TO_CLIMB: Record<ControlScheme | "touch", string> = {
+  easy: "To pull up: hold the up arrow. Left and right turn. Let go and it flies level.",
   pursuit: "To pull up: move the ring above the horizon. That is the whole control.",
   stick: "To pull up: move the mouse toward the top of the screen.",
   keyboard: "To pull up: hold W.",
@@ -108,6 +127,7 @@ const HOW_TO_CLIMB: Record<ControlScheme | "touch", string> = {
 };
 
 const SCHEMES: Array<{ id: ControlScheme; name: string; blurb: string }> = [
+  { id: "easy", name: "Arrow keys", blurb: "Left turns left. Auto-levels." },
   {
     id: "pursuit",
     name: "Point & fly",

@@ -51,9 +51,17 @@ import type { AngelsCtx, System } from "../types";
 import { OUTPUT_GLSL } from "../world/env";
 
 /** How long the whole thing lasts. The smoke is the last to go. */
-const LIFE = 4.6;
-const PUFFS = 34;
-const SHARDS = 22;
+const LIFE = 6.2;
+const PUFFS = 54;
+const SHARDS = 42;
+/**
+ * Delayed secondary fireballs, seconds after the first.
+ *
+ * One fireball is a puff. Three, arriving on top of each other from slightly
+ * different places, is a jet full of fuel coming apart — and the ear reads the
+ * overlap as a much bigger single event than any one of them.
+ */
+const SECONDARIES = [0.32, 0.62, 1.05];
 
 interface Puff {
   position: THREE.Vector3;
@@ -159,6 +167,7 @@ export function createBlast(ctx: AngelsCtx): System {
       }
     `,
   });
+  const balls: THREE.Mesh[] = [];
   const ball = new THREE.Mesh(ballGeo, ballMat);
   ball.frustumCulled = false;
   // Above the smoke, not below it. Both are transparent and neither writes
@@ -168,6 +177,17 @@ export function createBlast(ctx: AngelsCtx): System {
   // what an explosion looks like.
   ball.renderOrder = 15;
   group.add(ball);
+  balls.push(ball);
+  // The secondaries share the geometry and clone only the material, so each
+  // can be at its own point in its own life.
+  for (let i = 0; i < SECONDARIES.length; i++) {
+    const b = new THREE.Mesh(ballGeo, ballMat.clone());
+    b.frustumCulled = false;
+    b.renderOrder = 15;
+    b.visible = false;
+    group.add(b);
+    balls.push(b);
+  }
 
   // ---- the flash -----------------------------------------------------------
   // A camera-facing additive disc for the first fifth of a second. Additive on
@@ -187,8 +207,8 @@ export function createBlast(ctx: AngelsCtx): System {
       ${OUTPUT_GLSL}
       void main() {
         float r = length(vUv - 0.5) * 2.0;
-        float a = pow(max(0.0, 1.0 - r), 2.2) * max(0.0, 1.0 - uT * 5.5);
-        gl_FragColor = vec4(outputColor(vec3(14.0, 10.0, 6.0) * a), a);
+        float a = pow(max(0.0, 1.0 - r), 1.9) * max(0.0, 1.0 - uT * 3.2);
+        gl_FragColor = vec4(outputColor(vec3(22.0, 15.0, 8.0) * a), a);
       }
     `,
   });
@@ -211,7 +231,7 @@ export function createBlast(ctx: AngelsCtx): System {
       uniform float uT;
       ${OUTPUT_GLSL}
       void main() {
-        float a = max(0.0, 1.0 - uT * 1.35) * 0.5;
+        float a = max(0.0, 1.0 - uT * 0.9) * 0.62;
         gl_FragColor = vec4(outputColor(vec3(1.6, 1.35, 1.1)), a);
       }
     `,
@@ -384,16 +404,16 @@ export function createBlast(ctx: AngelsCtx): System {
       // A wide spread of upward speeds is what makes a column instead of a
       // ball: the fastest puffs are two hundred metres up while the slowest
       // are still boiling around the wreck.
-      p.velocity.set(spread() * 17 * scale, 10 + rand() * 36 * scale, spread() * 17 * scale);
+      p.velocity.set(spread() * 22 * scale, 12 + rand() * 46 * scale, spread() * 22 * scale);
       p.born = rand() * 0.35;
-      p.size = (30 + rand() * 44) * scale;
+      p.size = (36 + rand() * 58) * scale;
       p.spin = spread() * 0.7;
       p.tone = rand() * rand();
     }
     for (const s of shards) {
       s.dead = false;
       s.position.copy(origin);
-      s.velocity.set(spread() * 30 * scale, 12 + rand() * 34 * scale, spread() * 30 * scale);
+      s.velocity.set(spread() * 44 * scale, 14 + rand() * 52 * scale, spread() * 44 * scale);
       s.spin.set(spread() * 9, spread() * 9, spread() * 9);
       s.angle.set(rand() * 6.28, rand() * 6.28, rand() * 6.28);
       // Big enough to read as airframe from two hundred metres. Small tumbling
@@ -429,30 +449,41 @@ export function createBlast(ctx: AngelsCtx): System {
       // Radius goes as a decelerating power of time — fast out of the gate,
       // then coasting. Linear growth is the single most common thing that
       // makes a game explosion look cheap.
-      const bt = age / 1.9;
-      ball.visible = bt < 1;
-      if (ball.visible) {
-        const r = (7 + 24 * Math.pow(Math.min(1, bt), 0.34)) * scale;
-        ball.position.copy(origin);
-        ball.position.y = Math.max(origin.y, groundY + r * 0.35);
-        ball.scale.setScalar(r);
-        ballMat.uniforms.uT.value = bt;
-        ballMat.uniforms.uSeed.value = seed % 97;
+      for (let i = 0; i < balls.length; i++) {
+        const b = balls[i];
+        const born = i === 0 ? 0 : SECONDARIES[i - 1];
+        const bt = (age - born) / (i === 0 ? 2.4 : 1.8);
+        b.visible = bt >= 0 && bt < 1;
+        if (!b.visible) continue;
+        const size = i === 0 ? 1 : 0.62 - i * 0.06;
+        const r = (11 + 38 * Math.pow(Math.min(1, bt), 0.34)) * scale * size;
+        // The secondaries come from somewhere else along the wreckage, which is
+        // what stops them reading as one ball pulsing.
+        const off = i === 0 ? 0 : 1;
+        b.position.set(
+          origin.x + off * ((((seed >> (i * 5)) & 31) - 15) * 1.7) * scale,
+          Math.max(origin.y, groundY + r * 0.35),
+          origin.z + off * ((((seed >> (i * 7 + 3)) & 31) - 15) * 1.7) * scale,
+        );
+        b.scale.setScalar(r);
+        const m = b.material as THREE.ShaderMaterial;
+        m.uniforms.uT.value = bt;
+        m.uniforms.uSeed.value = (seed + i * 37) % 97;
       }
 
       // ---- flash -------------------------------------------------------------
-      flash.visible = age < 0.2;
+      flash.visible = age < 0.34;
       if (flash.visible) {
         flash.position.copy(ball.position);
-        flash.scale.setScalar(430 * scale);
+        flash.scale.setScalar(780 * scale);
         flash.quaternion.copy(c.camera.quaternion);
         flashMat.uniforms.uT.value = age;
       }
 
       // ---- shock ring --------------------------------------------------------
-      ring.visible = age < 0.75;
+      ring.visible = age < 1.15;
       if (ring.visible) {
-        const rr = 30 + age * 460 * scale;
+        const rr = 30 + age * 640 * scale;
         ring.position.set(origin.x, groundY + 2.5, origin.z);
         ring.scale.set(rr, 1, rr);
         ringMat.uniforms.uT.value = age;
@@ -521,7 +552,7 @@ export function createBlast(ctx: AngelsCtx): System {
       off();
       ctx.scene.remove(group);
       ballGeo.dispose();
-      ballMat.dispose();
+      for (const b of balls) (b.material as THREE.Material).dispose();
       flashGeo.dispose();
       flashMat.dispose();
       ringGeo.dispose();

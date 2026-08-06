@@ -176,6 +176,14 @@ export interface AngelsCtx {
   viewport: Viewport;
   emit(event: string, payload?: unknown): void;
   on(event: string, fn: (payload: never) => void): () => void;
+  /**
+   * Run the world at `scale` speed for `hold` seconds, then ramp back.
+   *
+   * On the ctx rather than in a service because it belongs to the clock, and
+   * the clock belongs to the engine. Only the live frame loop honours it; the
+   * harnesses drive time explicitly and are deliberately unaffected.
+   */
+  slowMotion(scale: number, hold: number): void;
 }
 
 export interface System {

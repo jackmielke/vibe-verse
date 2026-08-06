@@ -509,8 +509,11 @@ export function createFleet(ctx: AngelsCtx): System {
 
   // ---- flying it without thinking about a stick -----------------------------
 
-  const _aimDir = new THREE.Vector3();
   const _want = new THREE.Vector3();
+  const _vel = new THREE.Vector3();
+  const _camFwd = new THREE.Vector3();
+  const _camRight = new THREE.Vector3();
+  const _camUp = new THREE.Vector3();
 
   /**
    * Bank angle, measured off the body axes rather than off an Euler triple.
@@ -563,47 +566,81 @@ export function createFleet(ctx: AngelsCtx): System {
    * happily flies straight ahead in a thirty-degree bank, which is correct —
    * it is going where you pointed — and looks like the controls are stuck.
    */
-  function flyToAim(a: Aircraft, aim: { x: number; y: number }): void {
+  function flyToAim(a: Aircraft, aim: { x: number; y: number; limit: number }): void {
     const s = a.state;
-    // A point a long way down the camera ray. Four kilometres is far enough
-    // that the offset between the camera and the jet stops mattering, and
-    // close enough that the direction still changes usefully as you fly.
-    _aimDir.set(aim.x, aim.y, 0.5).unproject(ctx.camera).sub(ctx.camera.position).normalize();
-    _want
-      .copy(ctx.camera.position)
-      .addScaledVector(_aimDir, 4000)
-      .sub(s.position)
-      .normalize();
+    const cam = ctx.camera;
+
+    _camFwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    _camRight.set(1, 0, 0).applyQuaternion(cam.quaternion);
+    _camUp.set(0, 1, 0).applyQuaternion(cam.quaternion);
+    const halfV = Math.tan((cam.fov * Math.PI) / 360);
+    const halfH = halfV * cam.aspect;
+
+    // Where the jet is actually going — the velocity vector, which is the
+    // winged circle on the HUD.
+    const speed = s.velocity.length();
+    _vel.copy(speed > 1 ? s.velocity : _camFwd).normalize();
+    const vf = Math.max(0.25, _vel.dot(_camFwd));
+
+    // The ring is an offset from *that*, not from the middle of the screen.
+    //
+    // This is the fix for the single worst thing about the first version: the
+    // law drove the *nose* onto the ring, so with the ring centred it flew the
+    // nose to where the camera was looking — which meant unloading to zero G,
+    // because level flight needs the nose a few degrees above the flight path
+    // and this was busy removing exactly those few degrees. Let go and the jet
+    // sank at twenty-four metres a second. Measuring the error from the
+    // velocity vector instead makes "ring centred" mean "carry on as you are",
+    // which is what anybody would expect it to mean, and it also makes the
+    // dashed line the HUD draws between the two literally the thing being
+    // closed.
+    const tx = _vel.dot(_camRight) / vf + aim.x * halfH;
+    const ty = _vel.dot(_camUp) / vf + aim.y * halfV;
+    _want.copy(_camFwd).addScaledVector(_camRight, tx).addScaledVector(_camUp, ty).normalize();
 
     _right.copy(BODY_RIGHT).applyQuaternion(s.orientation);
     _up.copy(BODY_UP).applyQuaternion(s.orientation);
-    const lat = _want.dot(_right);
-    const vert = _want.dot(_up);
+    const lat = _want.dot(_right) - _vel.dot(_right);
+    const vert = _want.dot(_up) - _vel.dot(_up);
 
     // The floor on the denominator is not cosmetic. At exactly zero, a target
-    // a hair below the nose and a hair to the right gives `atan2(tiny, 0)` =
-    // ninety degrees — so the jet would snap into a knife-edge over a lateral
-    // error of nothing, and because the chase camera looks slightly down at
-    // its own aeroplane, "ring in the middle of the screen" is *always* a
-    // little below the nose. The result was a jet that rolled continuously
-    // whenever you were not asking it to do anything.
+    // a hair below the flight path and a hair to the right gives
+    // `atan2(tiny, 0)` = ninety degrees, so the jet would snap into a
+    // knife-edge over a lateral error of nothing.
     const toAim = THREE.MathUtils.clamp(Math.atan2(lat, Math.max(vert, 0.12)), -1.3, 1.3);
 
-    // Weight the pursuit roll by how much pointing error there actually is.
+    // Weight the pursuit by how much pointing error there actually is.
     //
     // `atan2` answers "which way round" without caring "by how much", so a two
-    // degree error a hair below the nose earns a ninety degree roll command
-    // exactly as loudly as a real one does. Combine that with a chase camera
-    // that lags in a turn — so the middle of the screen is never quite the
-    // nose — and the jet hunts: it rolls hard to fix an error that the roll
-    // itself created. Below a couple of degrees the command is pure levelling,
-    // above about ten it is pure pursuit, and in between it is a blend.
+    // degree error earns a ninety degree roll command exactly as loudly as a
+    // real one does — and the jet hunts, rolling hard to fix an error the roll
+    // itself created. Below a couple of degrees the command is pure "settle
+    // down": wings level and back to level flight.
     const err = Math.hypot(lat, vert);
     const pursuit = THREE.MathUtils.clamp((err - 0.03) / 0.16, 0, 1);
-    const wantRoll = toAim * pursuit + -trueBank(a) * (1 - pursuit);
 
+    const bank = trueBank(a);
+    let wantRoll = toAim * pursuit + -bank * (1 - pursuit);
+    // A soft wall at the scheme's bank limit. Past it the only thing the roll
+    // axis is asked to do is come back inside, which caps the turn rate — and
+    // capping the turn rate is the whole point of an easy mode.
+    const over = Math.abs(bank) - aim.limit;
+    if (over > 0) wantRoll = -Math.sign(bank) * over * 2.6;
     a.controls.roll = THREE.MathUtils.clamp(wantRoll * 1.6 - s.rollRate * 0.38, -1, 1);
-    a.controls.pitch = THREE.MathUtils.clamp(vert * 2.6 - s.pitchRate * 0.10, -1, 1);
+
+    // Hands off is *level*, not "whatever attitude you left it in". Holding the
+    // last flight path would be defensible and is not what anybody means by
+    // letting go of the controls.
+    // Asymmetric on purpose: coming back down to level should be a gentle
+    // unload, not a bunt. Letting this reach -0.6 pushed to zero G, which is
+    // the sensation of the floor dropping away and is not what "let go of the
+    // controls" should feel like.
+    const settle = THREE.MathUtils.clamp(-s.gamma * 2.2, -0.45, 0.9);
+    a.controls.pitch = THREE.MathUtils.clamp(
+      (vert * 2.6) * pursuit + settle * (1 - pursuit) - s.pitchRate * 0.10,
+      -1,
+      1,
+    );
   }
 
   /**
@@ -700,6 +737,12 @@ export function createFleet(ctx: AngelsCtx): System {
     all[0].controls = neutralControls();
     all[0].controls.throttle = 0;
     all[0].smoke = false;
+    // Stretch the moment. At four hundred knots an impact is over in about a
+    // tenth of a second, which is roughly how long it takes to notice one
+    // started — this buys enough real time to actually watch the aeroplane
+    // come apart, and then ramps back.
+    ctx.slowMotion(0.28, 0.85);
+
     ctx.emit("angels:crash", {
       position: { x: wreck.position.x, y: wreck.position.y, z: wreck.position.z },
       speed: wreck.speed,
@@ -812,7 +855,7 @@ export function createFleet(ctx: AngelsCtx): System {
       // win: pursuit first, and the recovery on top of it, because the whole
       // value of the recovery is that it overrides whatever got you here.
       const in$ = ctx.services.input as
-        | { aim: { x: number; y: number; active: boolean } }
+        | { aim: { x: number; y: number; active: boolean; limit: number } }
         | undefined;
       if (in$?.aim.active && !player.state.onGround) flyToAim(player, in$.aim);
 

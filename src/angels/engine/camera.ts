@@ -52,6 +52,15 @@ export function createCamera(ctx: AngelsCtx): System {
   let wreckPosed = false;
   let wreckAngle = 0;
 
+  /**
+   * A crash pegs the shake and *holds* it.
+   *
+   * `trauma` decays in well under a second, which for an impact reads as a
+   * flinch rather than a blow. This keeps it topped up for a second and a half
+   * so the camera is still being thrown around while the fireball is climbing.
+   */
+  let crashShake = 0;
+
   /** Ground under a point, so the wreck cam never ends up inside a hill. */
   const groundNear = (c: AngelsCtx, p: THREE.Vector3): number => {
     const terrain = c.services.terrain;
@@ -63,12 +72,16 @@ export function createCamera(ctx: AngelsCtx): System {
    * being thrown around by your own explosion is most of what sells it.
    */
   function applyShake(c: AngelsCtx, dt: number): void {
-    const amp = trauma * trauma * 0.9;
+    if (crashShake > 0) {
+      crashShake = Math.max(0, crashShake - dt);
+      trauma = Math.max(trauma, Math.min(1, crashShake / 1.6));
+    }
+    const amp = trauma * trauma * 1.9;
     if (amp > 0.0005) {
       const t = c.elapsed;
-      cam.rotateX(Math.sin(t * 47.3) * amp * 0.02);
-      cam.rotateY(Math.sin(t * 39.7 + 1.7) * amp * 0.02);
-      cam.rotateZ(Math.sin(t * 53.1 + 3.1) * amp * 0.014);
+      cam.rotateX(Math.sin(t * 47.3) * amp * 0.026);
+      cam.rotateY(Math.sin(t * 39.7 + 1.7) * amp * 0.026);
+      cam.rotateZ(Math.sin(t * 53.1 + 3.1) * amp * 0.02);
     }
     trauma = Math.max(0, trauma - dt * 1.5);
   }
@@ -128,8 +141,10 @@ export function createCamera(ctx: AngelsCtx): System {
   ctx.services.camera = service;
 
   const offImpact = ctx.on("angels:impact", (v: number) => service.shake(Math.min(0.9, v * 0.5)));
-  // A crash is the one thing allowed to peg the shake outright.
-  const offCrash = ctx.on("angels:crash", () => service.shake(1));
+  const offCrash = ctx.on("angels:crash", () => {
+    service.shake(1);
+    crashShake = 1.6;
+  });
 
   return {
     lateUpdate(dt, c) {

@@ -150,17 +150,85 @@ await page.evaluate(() => window.__angels.stop());
 await step(4);
 check("Got it dismisses the card", true);
 
-// The mouse is disarmed until it is deliberately moved: a menu closes with the
-// cursor on whatever button was clicked, which is never where the pilot meant
-// to be pointing.
+// Under the default scheme the ring is keyboard-driven and starts in the
+// middle, so there is nothing to disarm — it just means "carry on".
 const handback = await state();
 check(
-  "the jet is not steered by wherever the button happened to be",
-  !handback.aim.active && Math.abs(handback.pitch) < 0.02 && Math.abs(handback.roll) < 0.02,
-  `aim ${handback.aim.active ? "already live" : "disarmed"}, pitch cmd ${handback.pitch.toFixed(3)}`,
+  "control comes back centred, not wherever the button was",
+  Math.abs(handback.aim.x) < 0.02 && Math.abs(handback.aim.y) < 0.02,
+  `ring at ${handback.aim.x.toFixed(2)},${handback.aim.y.toFixed(2)}`,
 );
 
-// ---- 3. point & fly: the ring above the horizon makes it climb -------------
+// The mouse schemes *are* disarmed until the mouse is deliberately moved: a
+// menu closes with the cursor on whatever button was clicked, which is never
+// where the pilot meant to be pointing.
+await page.evaluate(() => {
+  window.__angels.ctx.services.input.setSetting("controlScheme", "pursuit");
+  window.__angels.ctx.services.input.setMenuOpen(true);
+  window.__angels.ctx.services.input.setMenuOpen(false);
+});
+await step(4);
+const mouseHandback = await state();
+check(
+  "and the mouse schemes wait to be picked up",
+  !mouseHandback.aim.active,
+  mouseHandback.aim.active ? "already live" : "disarmed",
+);
+
+// ---- 3. the easy scheme: left turns left, and letting go flies level -------
+// The complaint this answers is that in a real aeroplane left does not turn
+// left, it rolls — and a beginner who presses left, watches the nose drop and
+// concludes the controls are broken is not wrong about what they saw.
+await reset("easy");
+const easy = await page.evaluate(async () => {
+  const e = window.__angels;
+  const s = e.ctx.services.fleet.player.state;
+  const deg = (r) => (r * 180) / Math.PI;
+  const hdg0 = (deg(s.heading) + 360) % 360;
+  const press = (code, key, down) =>
+    window.dispatchEvent(
+      new KeyboardEvent(down ? "keydown" : "keyup", { code, key, bubbles: true }),
+    );
+
+  press("ArrowLeft", "ArrowLeft", true);
+  for (let i = 0; i < 120 * 3; i++) e.step(1 / 120, false);
+  const turning = { bank: deg(s.bank), hdg: (deg(s.heading) + 360) % 360 };
+  press("ArrowLeft", "ArrowLeft", false);
+  // Eight seconds, because levelling off is an aeroplane bleeding a climb with
+  // slightly less than one G, not a bunt. Pushing hard enough to do it in five
+  // would be the controls fighting the pilot every time they let go.
+  for (let i = 0; i < 120 * 8; i++) e.step(1 / 120, false);
+  const letGo = { bank: deg(s.bank), gamma: deg(s.gamma), climb: s.climb };
+
+  press("ArrowUp", "ArrowUp", true);
+  for (let i = 0; i < 120 * 3; i++) e.step(1 / 120, false);
+  const climbing = { gamma: deg(s.gamma), climb: s.climb };
+  press("ArrowUp", "ArrowUp", false);
+  return { hdg0, turning, letGo, climbing };
+});
+const swung = ((easy.turning.hdg - easy.hdg0 + 540) % 360) - 180;
+check(
+  "the left arrow turns the jet left",
+  swung < -12 && easy.turning.bank < -20,
+  `${swung.toFixed(0)}° of heading, ${easy.turning.bank.toFixed(0)}° of bank`,
+);
+check(
+  "and does not knife-edge to do it",
+  easy.turning.bank > -62,
+  `${easy.turning.bank.toFixed(0)}° of bank`,
+);
+check(
+  "letting go flies straight and level",
+  Math.abs(easy.letGo.bank) < 6 && Math.abs(easy.letGo.climb) < 12,
+  `${easy.letGo.bank.toFixed(0)}° of bank, ${easy.letGo.climb.toFixed(0)} m/s`,
+);
+check(
+  "the up arrow climbs",
+  easy.climbing.gamma > 8 && easy.climbing.climb > 25,
+  `flight path ${easy.climbing.gamma.toFixed(0)}°, ${easy.climbing.climb.toFixed(0)} m/s`,
+);
+
+// ---- 4. point & fly: the ring above the horizon makes it climb -------------
 await reset("pursuit");
 const CX = 640;
 const CY = 360;
@@ -275,7 +343,11 @@ const saved = await page.evaluate(() => {
     s.orientation.multiply(q);
     s.velocity.set(0, 0, -1).applyQuaternion(s.orientation).multiplyScalar(200);
     s.angular.set(0, 0, 0);
-    e.ctx.services.input.aim.active = false;
+    // Raw controls for both runs. Under the default scheme the pursuit law is
+    // always flying — with the ring centred it settles the jet back to level
+    // all by itself, so an "untouched" dive is not untouched at all and there
+    // is no fatal control case left to compare against.
+    e.ctx.services.input.setSetting("controlScheme", "keyboard");
     e.ctx.input.pitch = 0;
     e.ctx.input.roll = 0;
     for (let i = 0; i < 12; i++) e.step(1 / 120, false);

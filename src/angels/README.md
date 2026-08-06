@@ -104,11 +104,22 @@ Three things had to be separated that all look like "hit the ground":
 
 The last of those hands off to `entities/blast.ts`, which is the one thing in
 this world built to look *good* rather than to look *right*: a white flash, a
-fireball that expands fast and decelerates through white → orange → soot, two
-dozen tumbling shards on ballistic arcs, a shock ring on the deck and a smoke
-column that outlives all of it. The camera cuts to a wreck cam two hundred
-metres back and watches. After 3.6 seconds — or as soon as you press the button
-on the card — you are back at whatever start point you chose.
+fireball that expands fast and decelerates through white → orange → soot, three
+more fireballs behind it from different points along the wreckage, forty
+tumbling shards on ballistic arcs, a shock ring on the deck and a smoke column
+that outlives all of it. The camera cuts to a wreck cam two hundred metres back
+and watches. After 3.6 seconds — or as soon as you press the button on the card
+— you are back at whatever start point you chose.
+
+Two things do more for the *weight* of it than any amount of fireball. The
+engine drops to 28% speed for most of a second (`ctx.slowMotion`) — an impact at
+four hundred knots is over in about as long as it takes to notice one started,
+and stretching that out is why every game with a good crash has one. And the
+camera shake is *held* for a second and a half rather than decaying in the usual
+third of a second, so the frame is still being thrown around while the fireball
+is climbing. `step()` is deliberately exempt from the time scale: the harnesses
+drive time explicitly, and a hidden multiplier on their dt would make every
+frame-counting check a function of whether something happened to be exploding.
 
 Things that were wrong first:
 
@@ -138,50 +149,60 @@ first step after a respawn it is the *previous flight's* attitude, which is how
 a jet parked on a runway came to be judged by the dive it was in when it hit the
 lake thirty seconds earlier. The contact test reads the live orientation now.
 
-## Three ways to fly it, and one of them needs no explanation
+## Four ways to fly it, and the default needs no explanation
 
-The first version of the desktop controls put pitch and roll on the mouse as a
-*stick*: cursor offset from neutral, deflection commands a rate. That is a fine
-model for somebody who already flies and a poor one for everybody else, and the
-feedback said so — "it is very unclear how we are supposed to pull up". A stick
-is two integrations away from where the aeroplane ends up. Nobody thinks in
-roll rates.
+The thing that made this world hard to fly is one detail that reads as a bug to
+anybody who has not flown: **left does not turn left.** Left *rolls*. The
+aeroplane then falls sideways out of the sky until you also pull, and somebody
+who presses left, watches the nose drop and concludes the controls are broken is
+not wrong about what they saw. The first keyboard scheme did exactly that.
 
-So the default is now **Point & fly**, and it takes the stick out of the
-conversation entirely. A ring follows the mouse. The jet flies to the ring: it
-picks the bank angle, it picks the pull, and it coordinates the two the way a
-pilot does without narrating it to themselves. *Pulling up is putting the ring
-above the horizon.* That is the whole control, and it is the first line on the
-controls card in larger type than anything else on it.
+So the default is **Arrow keys**, and in it left turns left. Up climbs. Let go
+and it flies straight and level. The bank angle and the pull that a turn
+actually needs are worked out for you, and so is the throttle.
 
-The law lives in `flyToAim` in `play/fleet.ts` and it is two numbers. The aim
-direction, resolved in the aircraft's body frame, gives how far off it is to
-the right and how far above the canopy. `atan2` of the pair is how far to roll
-to put the target overhead — which is where a wing wants it before it pulls —
-and the vertical component alone is how hard to pull once you are there.
+It is not a separate control system. The arrow keys walk the same pursuit ring
+the mouse moves in **Point & fly**, and `flyToAim` in `play/fleet.ts` turns that
+ring into a bank and a pull for both. Which means "easy mode" gets the ring
+drawn on the HUD for free, and the control explains itself: there is the thing
+you are steering, and there is the velocity vector chasing it.
 
-Three details are the difference between "works" and "feels right", and all
-three were found by watching it misbehave:
+The other two are **Direct stick** (the cursor is the stick, neutral at the
+middle of the screen) and **Keyboard** (A and D roll, W and S pull — the real
+thing). All four are one click apart in the card, Options, or the pause menu.
+
+### The pursuit law
+
+Two numbers. The aim direction, resolved in the aircraft's body frame, gives how
+far off it is to the right and how far above the canopy. `atan2` of the pair is
+how far to roll to put the target overhead — where a wing wants it before it
+pulls — and the vertical component alone is how hard to pull once you are there.
+
+Four details separate "works" from "feels right", and all four came from
+watching it misbehave:
+
+**Measure the error from the velocity vector, not the nose.** The first version
+drove the *nose* onto the ring, so with the ring centred it flew the nose to
+where the camera was looking — which means unloading to zero G, because level
+flight needs the nose a few degrees above the flight path and this was busy
+removing exactly those few degrees. Let go and the jet sank at twenty-four
+metres a second. Measuring from the velocity vector makes "ring centred" mean
+"carry on as you are", and makes the dashed line the HUD draws between the two
+literally the thing being closed.
 
 **Weight the roll by how much error there is.** `atan2` answers "which way
 round" without caring "by how much", so a two-degree pointing error earns a
 ninety-degree roll command exactly as loudly as a real one does. Combine that
-with a chase camera that lags in a turn — so the middle of the screen is never
-quite the nose — and the jet hunts: it rolls hard to fix an error the roll
-itself created.
+with a chase camera that lags in a turn and the jet hunts, rolling hard to fix
+an error the roll itself created.
 
-**Floor the denominator.** `atan2(lat, max(vert, 0))` snaps to ±90° for any
-lateral error at all when the target is a hair below the nose, which, because
-the chase camera looks slightly down at its own aeroplane, is *always*.
+**Floor the `atan2` denominator.** At zero it snaps to ±90° for any lateral
+error at all when the target is a hair below the nose — which, because the chase
+camera looks slightly down at its own aeroplane, is always.
 
-**Blend into levelling.** With the ring centred there is nothing left to roll
-toward, so the command hands over to rolling wings level. Without it the jet
-flies straight ahead in a thirty-degree bank — which is correct, it is going
-where you pointed — and reads as the controls being stuck.
-
-The other two schemes are still there, one click away in Options, the pause
-menu or the card: **Direct stick** (the old scheme, with neutral now pinned to
-the middle of the screen) and **Keyboard**.
+**Cap the bank in easy mode.** The law will happily roll to eighty-seven degrees
+because that genuinely is the fastest way to get where it was pointed, and
+"turn left" from a beginner does not mean a knife-edge. Fifty-five degrees.
 
 ## Space is the way out of trouble
 

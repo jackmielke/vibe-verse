@@ -83,6 +83,30 @@ export class Engine {
   /** Set by the post-processing system to take over the final draw. */
   renderOverride: ((dt: number) => void) | null = null;
 
+  /**
+   * Slow motion, 0..1, applied to the live frame loop only.
+   *
+   * A crash is over in a tenth of a second at four hundred knots, which is
+   * about as long as it takes to notice it started. Stretching that tenth of a
+   * second out is the single cheapest way to make an impact land — it is why
+   * every game that has ever had a good crash has one.
+   *
+   * `step()` is deliberately exempt. The harnesses drive time explicitly and a
+   * hidden multiplier on their dt would make every frame-counting check a
+   * function of whether something happened to be exploding.
+   */
+  timeScale = 1;
+  private timeScaleTarget = 1;
+
+  /** Ramp to `scale` now and back to 1 over `hold` seconds of real time. */
+  slowMotion(scale: number, hold: number): void {
+    this.timeScale = scale;
+    this.timeScaleTarget = scale;
+    window.setTimeout(() => {
+      this.timeScaleTarget = 1;
+    }, hold * 1000);
+  }
+
   readonly stats = { fps: 0, frameMs: 0, frames: 0 };
 
   constructor(opts: EngineOptions) {
@@ -155,6 +179,7 @@ export class Engine {
       },
       emit: (e, p) => this.emit(e, p),
       on: (e, f) => this.on(e, f),
+      slowMotion: (scale, hold) => this.slowMotion(scale, hold),
     };
   }
 
@@ -216,7 +241,13 @@ export class Engine {
     const t0 = performance.now();
     const raw = forcedDt ?? this.clock.getDelta();
     // A tab switch or a shader compile must never teleport a jet across the lake.
-    const dt = Math.min(raw, 1 / 15);
+    let dt = Math.min(raw, 1 / 15);
+    if (forcedDt === undefined) {
+      // Ease toward the target so coming *out* of slow motion is a ramp rather
+      // than a jump — a hard cut back to real time reads as a dropped frame.
+      this.timeScale += (this.timeScaleTarget - this.timeScale) * Math.min(1, dt * 4.5);
+      dt *= this.timeScale;
+    }
     this.ctx.dt = dt;
     this.ctx.elapsed += dt;
 
