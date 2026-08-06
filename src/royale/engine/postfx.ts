@@ -190,27 +190,39 @@ interface Grade {
  *  - **Cyan shadows, warm highlights.** Complementary split-tone is what gives
  *    a stylised palette its depth without touching albedo. The sun is already
  *    warm; pushing the shade the other way widens the whole gamut for free.
- *  - **Saturated midtones, protected extremes.** Saturation 1.14 with 0.28 of
+ *  - **Saturated midtones, protected extremes.** Saturation 1.22 with 0.32 of
  *    vibrance on top: the terracotta roofs and grass greens get pulled, the
  *    already-screaming legendary-gold loot beam does not clip to neon.
- *  - **A gentle S, not a contrast crank.** 1.10 of slope about a pivot *below*
+ *  - **A gentle S, not a contrast crank.** 1.12 of slope about a pivot *below*
  *    mid-grey, plus a real smoothstep S at 0.30. Shadows move more than
  *    highlights, which is what a print curve actually does, and the shoulder
  *    keeps the sky off the clipping ceiling.
+ *
+ * Verified on paper, not by eye. A mid-green albedo of (0.25, 0.45, 0.18)
+ * through `exposure → filter → ACES → grade()` lands on (0.298, 0.578, 0.144),
+ * i.e. #93c76a — green channel dominant by a wide margin and *more* saturated
+ * than it went in. A deep foliage green (0.10, 0.22, 0.07) lands on #218b00.
+ * A sky blue (0.22, 0.42, 0.85) lands on #8fc0eb and a terracotta roof
+ * (0.42, 0.13, 0.07) on #cb5721. Those four numbers are the acceptance test
+ * for this block: if a change to any value below moves a green off green, the
+ * change is wrong no matter how good the frame looked.
  */
 const GRADE_DAY: Grade = {
-  exposure: 1.04,
-  filter: [1.022, 1.0, 0.974],
-  contrast: 1.1,
+  exposure: 1.05,
+  filter: [1.018, 1.0, 0.978],
+  contrast: 1.12,
   scurve: 0.3,
   offset: -0.006,
   lift: [0.011, 0.016, 0.027],
-  shadowTint: [0.928, 1.002, 1.078],
-  midTint: [1.012, 1.0, 0.992],
-  highTint: [1.066, 1.014, 0.933],
-  saturation: 1.14,
-  vibrance: 0.28,
-  bleach: 0.1,
+  // Shadows cyan, mids dead neutral-to-faintly-green, highlights warm. The old
+  // mid was warm (1.012, 1.0, 0.992), which quietly pushed every midtone in the
+  // frame — which on a landscape is *the grass* — a step toward magenta.
+  shadowTint: [0.93, 1.004, 1.072],
+  midTint: [1.004, 1.006, 0.986],
+  highTint: [1.062, 1.016, 0.938],
+  saturation: 1.22,
+  vibrance: 0.32,
+  bleach: 0.09,
   vignette: 0.3,
   grain: 0.018,
 };
@@ -238,28 +250,67 @@ const GRADE_DUSK: Grade = {
 };
 
 /**
- * Inside the wall. Purple, desaturated, and closed in — this grade has one job,
- * which is to make "get out" legible from a glance at any part of the frame,
- * without ever hiding the enemy who is also in here with you. Saturation drops
- * hard, the tint goes magenta-violet across all three zones (so it reads as an
- * atmosphere and not as a filter over one), and the vignette nearly doubles.
+ * Inside the wall. Violet, cooled and closed in.
+ *
+ * ## This grade is why every DROP ZERO frame ever captured came out lavender
+ *
+ * The previous version of this block was a *replacement* look rather than an
+ * overlay: `filter` cut green to 0.62 while lifting blue to 1.24, all three
+ * tint zones cut green by another ~0.27, saturation fell to 0.42 and the black
+ * lift went to (0.078, 0.03, 0.118). Run a mid-green (0.25, 0.45, 0.18)
+ * through it at full strength and it comes out #968b9a — a dead mauve grey
+ * with the green channel now the *smallest* of the three. Grass, trees,
+ * terrain and roofs all converged on the same pastel violet, which is exactly
+ * what the first capture pass shows.
+ *
+ * Two things made that fire on every single frame:
+ *
+ *   1. `updateStormIntensity` had no phase gate, so the bus phase — where the
+ *      player is *definitionally* outside the safe zone, 2 km up and 90 s from
+ *      the circle mattering — drove it straight to full.
+ *   2. Its floor was 0.35 the instant you crossed the wall, so even the mildest
+ *      "you are out" state was a third of the way into a look that destroys hue.
+ *
+ * Both are fixed below and at the call site. This grade is now a tint you look
+ * *through*: green stays green (a mid-green lands #9db490 at the 0.8 cap, still
+ * green-dominant), neutrals go clearly violet (#7c6c88), saturation drops a
+ * little rather than collapsing, and the vignette and grain do most of the
+ * "get out" work because they cost no hue at all.
  */
 const GRADE_STORM: Grade = {
-  exposure: 0.9,
-  filter: [0.99, 0.62, 1.24],
-  contrast: 1.04,
-  scurve: 0.2,
-  offset: 0.014,
-  lift: [0.078, 0.03, 0.118],
-  shadowTint: [1.14, 0.74, 1.36],
-  midTint: [1.1, 0.72, 1.32],
-  highTint: [1.08, 0.8, 1.24],
-  saturation: 0.42,
-  vibrance: 0.04,
+  exposure: 0.95,
+  filter: [1.02, 0.9, 1.1],
+  contrast: 1.06,
+  scurve: 0.22,
+  offset: 0.004,
+  lift: [0.03, 0.014, 0.048],
+  shadowTint: [1.1, 0.92, 1.22],
+  midTint: [1.06, 0.94, 1.16],
+  highTint: [1.04, 0.96, 1.1],
+  saturation: 0.8,
+  vibrance: 0.1,
   bleach: 0.02,
-  vignette: 0.62,
-  grain: 0.055,
+  vignette: 0.55,
+  grain: 0.04,
 };
+
+/**
+ * Ceiling on how far the storm grade is ever allowed to blend in, however deep
+ * past the wall the player is. Standing 400 m into the storm should be
+ * unmistakable and *still legible* — you have to be able to see the person
+ * shooting at you. The screen warp, the grain and the vignette keep ramping
+ * past this; only the hue-destroying part is capped.
+ */
+const STORM_GRADE_MAX = 0.8;
+
+/**
+ * Match phases during which the storm grade is suppressed outright, no matter
+ * what the storm service says about the player's position. On the bus and
+ * under canopy the player is always outside the circle and Fortnite shows no
+ * storm treatment at all — veiling the drop is both wrong and the single most
+ * damaging thing this module can do to a first impression.
+ */
+const NO_STORM_PHASES = new Set(["warmup", "bus", "dropping"]);
 
 /** Below the waterline: everything the water absorbed on the way in. */
 const GRADE_WATER: Grade = {
@@ -328,6 +379,11 @@ function mixGrade(a: Grade, b: Grade, t: number, out: Grade): void {
   out.grain = l(a.grain, b.grain);
 }
 
+/** Overwrite `out` in place. Used by the `dz:fx` grade bypass. */
+function copyGrade(src: Grade, out: Grade): void {
+  mixGrade(src, src, 0, out);
+}
+
 function cloneGrade(g: Grade): Grade {
   return {
     ...g,
@@ -390,8 +446,52 @@ const DOF_REFOCUS_HZ = 12;
 /** A 180° shutter at 30 fps. Scaling to this keeps smear length framerate-independent. */
 const MOTION_SHUTTER = 1 / 60;
 const MOTION_STRENGTH: Record<QualityTier, number> = {
-  low: 0, medium: 0, high: 0.62, ultra: 0.72,
+  low: 0, medium: 0, high: 0.22, ultra: 0.26,
 };
+
+/**
+ * Camera motion blur is **off by default** and must be switched on with
+ * `dz:fx {effect:"motion", enabled:true}`.
+ *
+ * It is the effect with the worst risk/reward ratio in the whole module. At
+ * best it is something you have to look for; at worst — and this is what the
+ * first capture pass produced — it renders the frame illegible. The old
+ * velocity path had no notion of a teleport: it *clamped* the reprojection
+ * vector to a 0.045-uv ceiling rather than rejecting it, so a camera that had
+ * been posed rather than flown (which is exactly what a capture harness does,
+ * and what a respawn, a vehicle exit or a spectator switch does in the game)
+ * produced not "no blur" but the **maximum possible blur**, in whatever
+ * direction the jump happened to point. Every frame after a pose was smeared
+ * by 72 px at 1600 wide.
+ *
+ * Everything below is now guarded — see `MOTION_MAX_*` and the CPU gate in
+ * `renderFrame` — so turning it on is safe. It stays off because a sharp frame
+ * beats a smeared one and a still capture gains nothing from it.
+ */
+const MOTION_DEFAULT_ON = false;
+
+/**
+ * A camera that moved further than this in one frame did not *move*, it was
+ * *placed*. Reject the frame's reprojection entirely rather than blurring
+ * along a vector that describes a cut. 12 m is well past any legitimate
+ * single-frame translation: a sprint is ~8 m/s and even the bus at 60 m/s
+ * covers 3.3 m in a 18 fps frame.
+ */
+const MOTION_MAX_STEP = 12;
+/** Same idea for rotation. ~34°, far past any mouse flick inside one frame. */
+const MOTION_MAX_TURN = 0.6;
+/**
+ * Hard ceiling on the smear, in uv. Was 0.045 — 4.5% of the frame, which at
+ * 1600 px is 72 px of streak and reads as a broken driver. 0.010 is ~16 px:
+ * present when you pan, invisible when you do not.
+ */
+const MOTION_MAX_UV = 0.01;
+/**
+ * Above this raw reprojection length the shader treats the pixel as a
+ * discontinuity — a disocclusion, a depth-buffer miss, or a camera cut the CPU
+ * gate did not catch — and leaves it alone. Belt and braces for the gate.
+ */
+const MOTION_REJECT_UV = 0.2;
 
 const RAY_STRENGTH: Record<QualityTier, number> = {
   low: 0, medium: 0.24, high: 0.3, ultra: 0.34,
@@ -411,6 +511,74 @@ const HIT_SLOTS = 3;
 
 /** Health fraction below which the low-health pulse starts. */
 const LOW_HEALTH = 0.36;
+
+// ---------------------------------------------------------------------------
+// The switchboard
+// ---------------------------------------------------------------------------
+
+/**
+ * Every effect in the chain, independently switchable at runtime via
+ * `dz:fx {effect, enabled}`.
+ *
+ * This exists because of how the first capture pass went. Six frames came back
+ * washed violet and streaked, and answering "which pass did that?" required
+ * reading 2000 lines and reasoning about a shader nobody could step through.
+ * With this, a capture pass can bisect the whole chain from the outside without
+ * a rebuild:
+ *
+ *     world.emit("dz:fx", { effect: "grade",  enabled: false });  // raw ACES
+ *     world.emit("dz:fx", { effect: "motion", enabled: true  });  // opt back in
+ *     world.emit("dz:fx", { effect: "all",    enabled: false });  // scene only
+ *
+ * A switch can only ever turn something *off* that the tier already allows —
+ * enabling `bloom` on the "low" tier does nothing, because the pyramid does not
+ * exist there. `all` is a wildcard that hits every key at once.
+ */
+const FX_EFFECTS = [
+  "bloom",
+  "ao",
+  "dof",
+  "motion",
+  "rays",
+  "chromatic",
+  "sharpen",
+  "grade",
+  "storm",
+  "water",
+  "vignette",
+  "grain",
+  "hits",
+  "lowhealth",
+  "aa",
+] as const;
+
+type FxEffect = (typeof FX_EFFECTS)[number];
+
+function defaultFxState(): Record<FxEffect, boolean> {
+  const out = {} as Record<FxEffect, boolean>;
+  for (const k of FX_EFFECTS) out[k] = true;
+  // The one effect that is opt-in rather than opt-out. See MOTION_DEFAULT_ON.
+  out.motion = MOTION_DEFAULT_ON;
+  return out;
+}
+
+/** The identity grade: what "grade off" means. Straight ACES, nothing else. */
+const GRADE_OFF: Grade = {
+  exposure: 1,
+  filter: [1, 1, 1],
+  contrast: 1,
+  scurve: 0,
+  offset: 0,
+  lift: [0, 0, 0],
+  shadowTint: [1, 1, 1],
+  midTint: [1, 1, 1],
+  highTint: [1, 1, 1],
+  saturation: 1,
+  vibrance: 0,
+  bleach: 0,
+  vignette: 0,
+  grain: 0,
+};
 
 // ---------------------------------------------------------------------------
 // Shared GLSL
@@ -998,25 +1166,43 @@ void main() {
 #endif
 
   // ---- camera motion blur -------------------------------------------------
+  // uMotion is zero unless the effect is explicitly enabled AND the CPU-side
+  // gate in renderFrame agreed this frame's camera delta describes motion
+  // rather than a cut, so the common path costs one compare.
 #ifdef USE_MB
-  {
+  if (uMotion > 0.0) {
     vec4 wp = uInvViewProj * vec4(uv * 2.0 - 1.0, rawZ * 2.0 - 1.0, 1.0);
     wp /= wp.w;
     vec4 pp = uPrevViewProj * wp;
-    vec2 vel = (uv - (pp.xy / pp.w * 0.5 + 0.5)) * uMotion;
-    // Never smear anything inside arm's reach: the viewmodel and the held
-    // pickaxe are rigidly attached to the camera, so their reprojected
-    // velocity is a lie and smearing them looks like a driver bug.
-    vel *= smoothstep(0.6, 3.2, vz);
-    float len = length(vel);
-    if (len > 0.0012) {
-      vel *= min(1.0, 0.045 / len);
-      vec3 acc = color;
-      for (int i = 1; i <= MB_TAPS; i++) {
-        float t = float(i) / float(MB_TAPS + 1) - 0.5;
-        acc += texture2D(tScene, clamp(uv + vel * t, vec2(0.001), vec2(0.999))).rgb;
+    // Guard the perspective divide before it happens. A w at or behind the eye
+    // reprojects to garbage, and garbage here is a full-screen streak.
+    vec2 rawVel = vec2(0.0);
+    if (pp.w > 1e-4) rawVel = uv - (pp.xy / pp.w * 0.5 + 0.5);
+
+    // A teleport is not motion. Reject outright — do NOT clamp, because
+    // clamping a teleport hands back a *maximum-length* velocity pointing
+    // wherever the jump did, which is precisely how a posed camera ends up
+    // producing the most smeared frame the effect can generate.
+    float rawLen = length(rawVel);
+    // Sky pixels sit at the far plane where the reprojection is numerically
+    // meaningless; they also have no parallax worth smearing.
+    bool ok = rawLen < ${MOTION_REJECT_UV.toFixed(3)} && rawZ < 0.99999;
+
+    if (ok) {
+      // Never smear anything inside arm's reach: the viewmodel and the held
+      // pickaxe are rigidly attached to the camera, so their reprojected
+      // velocity is a lie and smearing them looks like a driver bug.
+      vec2 vel = rawVel * uMotion * smoothstep(0.6, 3.2, vz);
+      float len = length(vel);
+      if (len > 0.0012) {
+        vel *= min(1.0, ${MOTION_MAX_UV.toFixed(4)} / len);
+        vec3 acc = color;
+        for (int i = 1; i <= MB_TAPS; i++) {
+          float t = float(i) / float(MB_TAPS + 1) - 0.5;
+          acc += texture2D(tScene, clamp(uv + vel * t, vec2(0.001), vec2(0.999))).rgb;
+        }
+        color = acc / float(MB_TAPS + 1);
       }
-      color = acc / float(MB_TAPS + 1);
     }
   }
 #endif
@@ -1443,6 +1629,21 @@ function buildPostFx(ctx: WorldCtx): System {
   const invViewProj = new THREE.Matrix4();
   let hasPrev = false;
 
+  /** Runtime effect switchboard, driven by "dz:fx". */
+  const fx = defaultFxState();
+
+  /**
+   * Camera transform as of the *previous* frame, kept so we can tell motion
+   * from a cut. This is deliberately measured off the camera itself rather
+   * than inferred from the reprojection matrices: by the time a bogus delta
+   * has reached the matrices it is already a full-screen streak, and the
+   * matrices cannot distinguish "moved 40 m" from "was placed 40 m away".
+   */
+  const prevCamPos = new THREE.Vector3();
+  const prevCamQuat = new THREE.Quaternion();
+  /** True when this frame's camera delta looks like a pose, not a move. */
+  let cameraCut = true;
+
   /** Latest "dz:sun" snapshot. Sky recomputes this every frame; we only cache
    *  it, so a sky that failed to boot simply means no shafts. */
   const sun = { x: 0.5, y: 0.5, visible: false, strength: 0, daylight: 1 };
@@ -1475,12 +1676,42 @@ function buildPostFx(ctx: WorldCtx): System {
   );
 
   offs.push(
+    ctx.on("dz:fx", (p) => {
+      const e = p as { effect?: string; enabled?: unknown } | undefined;
+      if (!e || typeof e.effect !== "string") return;
+      const on = !!e.enabled;
+      const key = e.effect.trim().toLowerCase();
+      if (key === "all") {
+        for (const k of FX_EFFECTS) fx[k] = on;
+        return;
+      }
+      if ((FX_EFFECTS as readonly string[]).includes(key)) {
+        fx[key as FxEffect] = on;
+        // Turning motion blur on mid-flight must not smear against a stale
+        // matrix from whenever it was last enabled.
+        if (key === "motion" && on) hasPrev = false;
+      }
+    }),
+  );
+
+  offs.push(
     ctx.on("dz:in-storm", (p) => {
       // The storm emits this only on the flip, and carries the intensity it
       // had at that instant. We take the boolean and drive our own ramp — the
       // continuous value comes from the service, polled per frame.
+      //
+      // The phase gate is repeated here and not left to updateStormIntensity:
+      // that poll returns early when the storm or player service is missing,
+      // which would leave a stale `inside:true` from the event latched on with
+      // nothing left to clear it. The overlay defaults off and every path that
+      // can turn it on has to earn it.
       const e = p as { inside?: boolean; intensity?: number } | undefined;
-      stormTarget = e?.inside ? Math.max(0.35, e.intensity ?? 1) : 0;
+      if (!e?.inside || NO_STORM_PHASES.has(ctx.services.match?.phase ?? "")) {
+        stormTarget = 0;
+        return;
+      }
+      stormTarget = THREE.MathUtils.clamp(
+        Math.max(0.35, typeof e.intensity === "number" ? e.intensity : 1), 0, 1);
     }),
   );
 
@@ -1613,6 +1844,23 @@ function buildPostFx(ctx: WorldCtx): System {
     }
     compositeMat.uniforms.uAspect.value = aspect;
     setTexel(compositeMat, width, height);
+
+    // ---- motion vs. a cut ---------------------------------------------------
+    // Measured here, at the top of the frame, off the camera's own transform.
+    // A capture harness poses the camera and renders; so does a respawn, a
+    // spectator switch and stepping out of a vehicle. All four look identical
+    // to a reprojection-based velocity estimator, and all four used to produce
+    // a full-length streak because the old code clamped the resulting vector
+    // instead of throwing it away.
+    camera.getWorldPosition(tmpVec);
+    const moved = tmpVec.distanceTo(prevCamPos);
+    // Quaternion dot → half-angle; 2*acos(|dot|) is the shortest rotation
+    // between the two orientations regardless of which hemisphere they are in.
+    const dot = Math.min(1, Math.abs(camera.quaternion.dot(prevCamQuat)));
+    const turned = 2 * Math.acos(dot);
+    cameraCut = moved > MOTION_MAX_STEP || turned > MOTION_MAX_TURN;
+    prevCamPos.copy(tmpVec);
+    prevCamQuat.copy(camera.quaternion);
   }
 
   /**
@@ -1624,11 +1872,17 @@ function buildPostFx(ctx: WorldCtx): System {
    * over everything because it is the one that has to be unmistakable.
    */
   function updateGrade(dt: number): void {
+    const stormFx = fx.storm ? storm : 0;
+    const waterFx = fx.water ? water : 0;
+
     const daylight = THREE.MathUtils.clamp(ctx.services.sky?.daylight ?? sun.daylight, 0, 1);
     mixGrade(GRADE_DAY, GRADE_DUSK, 1 - daylight, gradeA);
-    mixGrade(gradeA, GRADE_STORM, storm, gradeB);
-    mixGrade(gradeB, GRADE_WATER, water, gradeA);
+    // Capped, not raw: past STORM_GRADE_MAX the storm stops eating hue and
+    // lets the warp, the grain and the vignette carry the message instead.
+    mixGrade(gradeA, GRADE_STORM, stormFx * STORM_GRADE_MAX, gradeB);
+    mixGrade(gradeB, GRADE_WATER, waterFx, gradeA);
     mixGrade(gradeA, GRADE_DOWN, down, grade);
+    if (!fx.grade) copyGrade(GRADE_OFF, grade);
 
     const u = compositeMat.uniforms;
     // Respect whatever the engine has done to exposure; ours multiplies it.
@@ -1649,22 +1903,36 @@ function buildPostFx(ctx: WorldCtx): System {
     u.uBleach.value = grade.bleach;
     // Getting hit closes the iris down; so does aiming, very slightly, which
     // is a cheap way to make ADS feel like it committed to something.
-    u.uVignette.value = grade.vignette + hurt * 0.32 + ads * 0.09;
-    u.uGrain.value = grade.grain * (1 + hurt * 1.4 + storm * 0.6);
-    u.uWater.value = water;
-    u.uStorm.value = storm;
-    u.uHurt.value = hurt;
+    u.uVignette.value = fx.vignette ? grade.vignette + hurt * 0.32 + ads * 0.09 : 0;
+    u.uGrain.value = fx.grain ? grade.grain * (1 + hurt * 1.4 + stormFx * 0.6) : 0;
+    u.uWater.value = waterFx;
+    // The screen warp keeps ramping on the *uncapped* storm value — it costs no
+    // hue, so it can carry the depth information the grade cap gives up.
+    u.uStorm.value = stormFx;
+    u.uHurt.value = fx.vignette ? hurt : 0;
     u.uShake.value = shake;
-    u.uLowHealth.value = lowHealth;
-    u.uAds.value = ads;
+    u.uLowHealth.value = fx.lowhealth ? lowHealth : 0;
+    u.uAds.value = fx.dof ? ads : 0;
     u.uTime.value = elapsed;
+    // A switch can only take away what the tier already granted; it can never
+    // light up a pass whose buffers were never allocated.
+    u.uAO.value = fx.ao && tier.aoTaps > 0 ? (AO_STRENGTH[ctx.quality] ?? 0) : 0;
+    u.uBloom.value = fx.bloom && tier.bloomMips > 0 ? (BLOOM_STRENGTH[ctx.quality] ?? 0) : 0;
+    u.uChromatic.value = fx.chromatic && tier.chromatic ? CHROMATIC : 0;
+    u.uSharpen.value = fx.sharpen && tier.sharpen ? SHARPEN : 0;
 
     // Shutter-correct motion blur: the per-frame reprojection vector is scaled
     // back to a fixed exposure time, so the smear length is the same at 30 fps
     // as at 144 and never becomes a framerate tell.
+    //
+    // Three gates in front of it, and all three have to pass. `cameraCut` is
+    // the one that matters: a posed camera contributes zero this frame rather
+    // than the maximum-length smear the old clamp handed back.
+    const usable = fx.motion && tier.mbTaps > 0 && hasPrev && !cameraCut;
     const strength = MOTION_STRENGTH[ctx.quality] ?? 0;
-    u.uMotion.value =
-      tier.mbTaps > 0 ? strength * Math.min(2.5, MOTION_SHUTTER / Math.max(dt, 1e-4)) : 0;
+    u.uMotion.value = usable
+      ? strength * Math.min(2.5, MOTION_SHUTTER / Math.max(dt, 1e-4))
+      : 0;
   }
 
   /**
@@ -1673,6 +1941,14 @@ function buildPostFx(ctx: WorldCtx): System {
    * the wall should keep getting darker, and only the service knows that.
    */
   function updateStormIntensity(): void {
+    // Phase first. On the bus and under canopy the player is outside the
+    // circle by definition, and veiling the drop in violet — which is what
+    // every frame of the first capture pass did — is both wrong and the worst
+    // possible first impression of the island.
+    if (NO_STORM_PHASES.has(ctx.services.match?.phase ?? "")) {
+      stormTarget = 0;
+      return;
+    }
     const st = ctx.services.storm;
     const pl = ctx.services.player;
     if (!st || !pl) return;
@@ -1738,7 +2014,11 @@ function buildPostFx(ctx: WorldCtx): System {
       // sharp stab-then-vanish that actually communicates "just now".
       const life = 1 - h.age / h.ttl;
       // angle 0 = the shooter is dead ahead, which is the top of the screen.
-      slot.set(Math.sin(h.angle), Math.cos(h.angle), h.strength * life * life);
+      slot.set(
+        Math.sin(h.angle),
+        Math.cos(h.angle),
+        fx.hits ? h.strength * life * life : 0,
+      );
     }
   }
 
@@ -1751,7 +2031,7 @@ function buildPostFx(ctx: WorldCtx): System {
    * not about success.
    */
   function updateShafts(): number {
-    if (!rayMat || !rayMaskMat) return 0;
+    if (!rayMat || !rayMaskMat || !fx.rays) return 0;
     const sky = ctx.services.sky;
 
     let amount = 0;
@@ -1779,7 +2059,7 @@ function buildPostFx(ctx: WorldCtx): System {
     if (sky) (compositeMat.uniforms.uRayTint.value as THREE.Color).copy(sky.sunColor);
     // Underwater there is no dry-air scattering to make a shaft out of, and the
     // storm's own veil already owns the sky it would be marching through.
-    const occluded = (1 - water) * (1 - storm * 0.8);
+    const occluded = (1 - water) * (1 - storm * 0.6);
     return amount * (RAY_STRENGTH[ctx.quality] ?? 0) * occluded;
   }
 
@@ -1880,7 +2160,7 @@ function buildPostFx(ctx: WorldCtx): System {
       // ---- bokeh ------------------------------------------------------------
       // Skipped entirely when not aiming. This is the whole reason DOF is
       // affordable: it costs nothing for the 95% of a match spent not scoped.
-      if (bokehMat && bokehRT && ads > 0.01) {
+      if (bokehMat && bokehRT && fx.dof && ads > 0.01) {
         bokehMat.uniforms.tSrc.value = sceneTex;
         setTexel(bokehMat, bokehRT.width, bokehRT.height);
         draw(bokehMat, bokehRT);
