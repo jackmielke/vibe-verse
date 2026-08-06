@@ -51,6 +51,7 @@ import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
+import dropZeroArt from "@/assets/worlds/drop-zero.jpg";
 import vibeverseArt from "@/assets/worlds/vibeverse-explorer.jpg";
 
 const WORLDS: WorldCard[] = [
@@ -102,7 +103,8 @@ const WORLDS: WorldCard[] = [
     to: "/drop-zero",
     emoji: "🪂",
     name: "Drop Zero",
-    // Art lands once the world captures a frame worth putting on a card.
+    // A real frame out of the running world: the plaza at Neon Heights.
+    art: dropZeroArt,
     blurb:
       "One island, one storm, one hundred rivals. Ride the bus, harvest anything that isn't nailed down, and build faster than they can shoot.",
     featured: true,
