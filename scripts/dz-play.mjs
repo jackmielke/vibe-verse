@@ -612,22 +612,47 @@ await step("bots", "there are living opponents in the world", async () => {
   };
 });
 
+/**
+ * THE STORM DRAINS SHIELD BEFORE IT DRAINS HEALTH, AND THIS BEAT USED TO
+ * WATCH ONLY THE HEALTH BAR.
+ *
+ * It reported "safe=false hp 100 -> 100" and the storm was blamed for it.
+ * Instrumenting `dz:hit` while standing in the wall showed a tick landing
+ * every simulated second, on time and at the right size —
+ * `{amount: 0.504, shield: true}` — and `player.shield` walking 100 -> 97.98
+ * while `player.health` sat at exactly 100, because `applyDamage` in
+ * `player.ts` spends shield first like every other damage source in the game.
+ * `skipToLive` hands the player a full 100 shield, and circle 1 is 0.5 dps, so
+ * the health bar was never going to move for the first two hundred seconds.
+ *
+ * So the beat measures the whole pool — shield + health — which is what
+ * "costs health" has always meant. That is a strictly stronger assertion than
+ * the old one, not a weaker one: it still demands the storm take real damage
+ * off a real player, and it now also demands a bot outside the circle take it
+ * too (bots spawn with no shield, so their health bar is the direct readout,
+ * and bot damage is a separate code path in `applyStormDamage`).
+ */
 await step("storm-damage", "standing outside the circle costs health", async () => {
   /**
    * Circle 1 has a 1250 m radius and the island's land radius is 1155, so
-   * there IS no dry ground outside the first circle — the previous run
-   * searched all 48 bearings, found only sea, and reported a storm bug that
-   * was really a geometry fact. Shrink the circle first, then step out.
+   * there IS no dry ground outside the first circle — an earlier run searched
+   * all 48 bearings, found only sea, and reported a storm bug that was really
+   * a geometry fact. Shrink the circle first, then step out.
+   *
+   * `storm.forceCircle` rather than writing `center`/`radius` by hand: those
+   * two fields are re-derived from the phase table's interpolation endpoints
+   * on every fixed step while the wall is closing, so a raw write is only
+   * safe by luck of timing. `forceCircle` moves the endpoints with them.
    */
   const r = await page.evaluate(`(() => {
     const s = window.__dz.ctx.services;
     const st = s.storm, p = s.player, t = s.terrain;
     if (!st || !p) return "no storm/player";
+    if (!st.forceCircle) return "no storm.forceCircle";
     const V = window.__dz.ctx.camera.position.constructor;
     // Pull the safe zone in around the player's neighbourhood so that dry
     // land outside it actually exists.
-    st.center.set(p.position.x, p.position.y, p.position.z);
-    st.radius = 60;
+    st.forceCircle(new V(p.position.x, 0, p.position.z), 60);
     for (let i = 0; i < 48; i++) {
       const a = (i / 48) * Math.PI * 2;
       const rr = 140;
@@ -640,12 +665,57 @@ await step("storm-damage", "standing outside the circle costs health", async () 
     }
     return "no dry ground even at r=140";
   })()`);
-  const hp0 = (await state()).hp;
-  // Circle 1 is ~1 dps, so this needs seconds of SIMULATION, not wall clock.
+  /** Shield + health: the pool the storm actually eats, in that order. */
+  const pool = () =>
+    page.evaluate(
+      "(() => { const p = window.__dz.ctx.services.player; return +(p.health + p.shield).toFixed(2); })()",
+    );
+  /** The worst-off bot currently outside the forced circle, or null. */
+  const worstBot = () =>
+    page.evaluate(`(() => {
+      const s = window.__dz.ctx.services, st = s.storm;
+      const ts = s.combat?.queryTargets ? s.combat.queryTargets(st.center, 4200) : [];
+      let best = null;
+      for (const t of ts) {
+        if (!t.alive || t.faction !== "bot") continue;
+        const q = t.object.getWorldPosition(new (window.__dz.ctx.camera.position.constructor)());
+        if (st.isSafe(q)) continue;
+        if (!best || t.hp + t.shield < best.v) best = { id: t.id, v: t.hp + t.shield };
+      }
+      return best;
+    })()`);
+
+  const pool0 = await pool();
+  const bot0 = await worstBot();
+  // Circle 1 is 0.5 dps, so this needs seconds of SIMULATION, not wall clock.
   await waitSim(4.0, 300000);
-  const hurt = await until("hp drops", `s.player.health < ${hp0 - 0.5}`, 120000);
+  const hurt = await until(
+    "pool drops",
+    `s.player.health + s.player.shield < ${pool0 - 0.5}`,
+    120000,
+  );
+  const pool1 = await pool();
   const s = await state();
-  return { ok: hurt, detail: `${r}; safe=${s.safe} hp ${hp0} -> ${s.hp}` };
+  // Bots are outside the 60 m circle by construction — the whole island is.
+  // Their pool must fall too, or the storm is only ever hurting the player.
+  const botsHurt = await until(
+    "some bot is losing health to the storm",
+    `(() => {
+      const st = s.storm;
+      const V = e.ctx.camera.position.constructor;
+      return s.combat.queryTargets(st.center, 4200).some((t) =>
+        t.alive && t.faction === "bot" && !st.isSafe(t.object.getWorldPosition(new V())) && t.hp < 100);
+    })()`,
+    120000,
+  );
+  const bot1 = await worstBot();
+  return {
+    ok: hurt && botsHurt,
+    detail:
+      `${r}; safe=${s.safe} hp ${s.hp} shield ${s.shield} ` +
+      `pool ${pool0} -> ${pool1}; worst bot ${bot0 ? bot0.id + " " + bot0.v : "none"}` +
+      ` -> ${bot1 ? bot1.id + " " + bot1.v : "none"}`,
+  };
 });
 
 await step("survive", "returning inside the circle stops the damage", async () => {
@@ -657,10 +727,20 @@ await step("survive", "returning inside the circle stops the damage", async () =
     p.heal ? p.heal(100, 0) : null;
   })()`);
   await waitSim(0.5);
-  const hp0 = (await state()).hp;
+  // Same pool as the beat above, for the same reason: watching health alone
+  // would pass here even if the storm were still eating a shield bar a second.
+  const pool = () =>
+    page.evaluate(
+      "(() => { const p = window.__dz.ctx.services.player; return +(p.health + p.shield).toFixed(2); })()",
+    );
+  const pool0 = await pool();
   await waitSim(2.5);
+  const pool1 = await pool();
   const s = await state();
-  return { ok: s.hp >= hp0 - 0.5, detail: `safe=${s.safe} hp ${hp0} -> ${s.hp}` };
+  return {
+    ok: pool1 >= pool0 - 0.5,
+    detail: `safe=${s.safe} hp ${s.hp} shield ${s.shield} pool ${pool0} -> ${pool1}`,
+  };
 });
 
 await step("clock", "the match clock actually advances", async () => {

@@ -140,6 +140,22 @@ export interface DropZeroStormService extends StormService {
   freeze(on: boolean): void;
   /** A random point inside the *next* circle, on land where we can find it. */
   sampleSafePoint(out?: THREE.Vector3): THREE.Vector3;
+  /**
+   * Move the safe zone somewhere specific, right now. Debug/test only — the
+   * sibling of `match.skipToLive()`, and it exists for the same reason.
+   *
+   * A harness that wants to prove the storm hurts cannot wait out the phase
+   * table (circle 1 alone is 100 s of wait plus 90 s of close, and at
+   * SwiftSHADER's frame rate that is most of an hour), so it shrinks the zone
+   * around the player and steps out. Writing `storm.center`/`storm.radius`
+   * from outside *happens* to work while the wall is parked, but it is a
+   * measurement resting on an implementation detail: the moment the machine is
+   * in its `close` mode it re-derives both from `fromRadius`/`nextRadius`
+   * every fixed step and the write is gone inside 8 ms. This moves ALL of the
+   * state that feeds that interpolation together, so the circle stays where it
+   * was put no matter which mode the clock happened to be in.
+   */
+  forceCircle(center: THREE.Vector3, radius: number): void;
 }
 
 /** Payload shape emitted on `dz:storm` every frame. */
@@ -1833,6 +1849,26 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
     sampleSafePoint(out = new THREE.Vector3()): THREE.Vector3 {
       return sampleInCircle(service.nextCenter, service.nextRadius * 0.85, out);
+    },
+
+    forceCircle(center: THREE.Vector3, radius: number): void {
+      const r = Math.max(0, radius);
+      service.center.set(center.x, 0, center.z);
+      service.radius = r;
+      // The interpolation endpoints as well, or a `close` in progress would
+      // lerp straight back out of here on the next fixed step.
+      fromCenter.copy(service.center);
+      fromRadius = r;
+      // Keep the next circle inside the new one — every consumer (the HUD
+      // arrow, the bots' rotation, the next-circle ring) assumes containment,
+      // and a next circle left out at 850 m would draw a ring on the far side
+      // of the island from a 60 m zone.
+      service.nextCenter.copy(service.center);
+      service.nextRadius = Math.min(service.nextRadius, r * PHASES[Math.min(phaseIndex, PHASES.length - 1)].ratio);
+      // Both ribbons are projected onto the terrain from cached samples; without
+      // this they keep drawing the old footprint until the next 12 Hz resample.
+      nextRingDirty = true;
+      resampleGround();
     },
   };
 
