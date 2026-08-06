@@ -3499,6 +3499,23 @@ export default function City() {
     let peakY = 0; // highest Y reached this air phase, for fall-damage
     let ridingZeppelin = false; // standing on the circling zeppelin's deck
     let zeppelinToastShown = false;
+    let zeppelinPilotToastShown = false;
+    // Take / release the helm. Declared as a function so the keydown
+    // handler above can call it (declarations hoist within the effect).
+    function setZepPilotMode(on: boolean) {
+      if (zepPilotRef.current === on) return;
+      zepPilotRef.current = on;
+      skyIslands.zeppelin.piloted = on;
+      if (!on) skyIslands.zeppelin.control.throttle = 0;
+      setZepMode(on ? "piloting" : ridingZeppelin ? "aboard" : "off");
+      if (on && !zeppelinPilotToastShown) {
+        zeppelinPilotToastShown = true;
+        toast("🎈 You have the helm", {
+          description: "W/S throttle · A/D rudder · Space up · C down · P to let go.",
+        });
+      }
+    }
+    zepHelmRef.current = setZepPilotMode;
     // Cloud Kingdom: launches and cloud-trampoline bounces briefly lift
     // the vertical speed cap so you can actually reach the sky.
     let superBounceUntil = 0;
