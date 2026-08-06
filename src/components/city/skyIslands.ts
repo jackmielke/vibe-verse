@@ -636,7 +636,7 @@ function themeLanternGrove({ island, radius, rand, pulsers, bobbers }: ThemeCtx)
 // hop onto the plank deck along the top of the hull and it carries you.
 // ---------------------------------------------------------------------------
 
-function buildZeppelin(): { group: THREE.Group; update: (now: number) => void; ride: ZeppelinRide } {
+function buildZeppelin(): { group: THREE.Group; update: (now: number, dt: number) => void; ride: ZeppelinRide } {
   const g = new THREE.Group();
   const cream = new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 0.65 });
   const red = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.7 });
