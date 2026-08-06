@@ -268,24 +268,38 @@ try {
  * thirty seconds. Jump, land, and let the match go live before posing.
  */
 if (booted) {
-  await page
-    .evaluate(`(() => {
+  /**
+   * Getting out of the bus is a handshake, not a single call.
+   *
+   * `match.jump()` only does anything once the phase machine has actually
+   * reached `bus` — call it during `warmup` and it is a no-op, which is what
+   * happened on the previous run: every "ground level" shot came back as a
+   * view from the bus, because the player never left it. And while the player
+   * is in the `bus` state their position is driven by the bus, so posing them
+   * is ignored too. So: keep asking until the state changes, then land.
+   */
+  const left = await page
+    .evaluate(`(async () => {
       const e = window.__dz;
-      const m = e?.ctx?.services?.match;
       const p = e?.ctx?.services?.player;
-      const t = e?.ctx?.services?.terrain;
-      if (m && typeof m.jump === "function") m.jump();
-      // Put the player on solid ground near the middle of the island rather
-      // than waiting out a 40-second skydive in software rendering.
-      if (p && t) {
-        const x = 0;
-        const z = 0;
-        p.teleport(new (e.ctx.camera.position.constructor)(x, t.heightAt(x, z) + 2, z));
+      const m = e?.ctx?.services?.match;
+      if (!p || !m) return "no services";
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      for (let i = 0; i < 120; i++) {
+        if (p.state !== "bus") return "left bus in state " + p.state + " after " + i;
+        try { m.jump(); } catch (err) { /* not ready yet */ }
+        await sleep(250);
       }
+      return "still in bus after 30s, phase=" + m.phase;
     })()`)
-    .catch((err) => errors.push(`match skip threw: ${err.message}`));
-  // Let the phase machine settle into `live` before anything is captured.
-  await page.waitForTimeout(8000);
+    .catch((err) => `jump threw: ${err.message}`);
+  if (typeof left === "string" && /still in bus|no services|threw/.test(left)) {
+    errors.push(`drop: ${left}`);
+  } else {
+    console.log(`drop: ${left}`);
+  }
+  // Skydive/glide has to run itself out before a pose will stick.
+  await page.waitForTimeout(10000);
 }
 
 // Let the first frames land: shadows, LOD selection, grass population and any
