@@ -450,26 +450,36 @@ await step("bots", "there are living opponents in the world", async () => {
 });
 
 await step("storm-damage", "standing outside the circle costs health", async () => {
+  /**
+   * Circle 1 has a 1250 m radius and the island's land radius is 1155, so
+   * there IS no dry ground outside the first circle — the previous run
+   * searched all 48 bearings, found only sea, and reported a storm bug that
+   * was really a geometry fact. Shrink the circle first, then step out.
+   */
   const r = await page.evaluate(`(() => {
     const s = window.__dz.ctx.services;
     const st = s.storm, p = s.player, t = s.terrain;
     if (!st || !p) return "no storm/player";
-    // Walk the player out past the wall onto dry ground if we can find any.
+    const V = window.__dz.ctx.camera.position.constructor;
+    // Pull the safe zone in around the player's neighbourhood so that dry
+    // land outside it actually exists.
+    st.center.set(p.position.x, p.position.y, p.position.z);
+    st.radius = 60;
     for (let i = 0; i < 48; i++) {
       const a = (i / 48) * Math.PI * 2;
-      const r = st.radius + 90;
-      const x = st.center.x + Math.cos(a) * r;
-      const z = st.center.z + Math.sin(a) * r;
-      const y = t?.heightAt ? t.heightAt(x, z) : 0;
+      const rr = 140;
+      const x = st.center.x + Math.cos(a) * rr;
+      const z = st.center.z + Math.sin(a) * rr;
       if (t && t.isWater && t.isWater(x, z)) continue;
-      p.teleport(new (window.__dz.ctx.camera.position.constructor)(x, y + 0.5, z));
-      return "outside at " + [x.toFixed(0), z.toFixed(0)].join(",");
+      const y = t?.heightAt ? t.heightAt(x, z) : 0;
+      p.teleport(new V(x, y + 0.5, z));
+      return "shrank zone to r=60, stood at " + [x.toFixed(0), z.toFixed(0)].join(",");
     }
-    return "no dry ground outside the circle";
+    return "no dry ground even at r=140";
   })()`);
   const hp0 = (await state()).hp;
-  // Circle 1 is 1 dps, so this needs seconds of SIMULATION, not of wall clock.
-  await waitSim(3.0, 300000);
+  // Circle 1 is ~1 dps, so this needs seconds of SIMULATION, not wall clock.
+  await waitSim(4.0, 300000);
   const hurt = await until("hp drops", `s.player.health < ${hp0 - 0.5}`, 120000);
   const s = await state();
   return { ok: hurt, detail: `${r}; safe=${s.safe} hp ${hp0} -> ${s.hp}` };
