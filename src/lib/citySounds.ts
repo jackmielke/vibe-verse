@@ -21,6 +21,8 @@ export interface CitySounds {
   fanfare(): void;
   /** A comedy moo for the cow Easter egg. */
   moo(): void;
+  /** Thunder, for GOD MODE storms: a crack, then a long rolling tail. */
+  thunder(): void;
   setMuted(muted: boolean): void;
   dispose(): void;
 }
@@ -110,6 +112,31 @@ export function createCitySounds(): CitySounds | null {
       [0, 2, 4, 7, 9].forEach((s, i) => {
         blip(PENTATONIC[s % 5] * (s >= 5 ? 2 : 1), t + i * 0.14, 0.6, 0.2, "triangle");
       });
+    },
+    thunder() {
+      const t = ctx.currentTime;
+      // Filtered noise, not an oscillator: thunder has no pitch. A short
+      // bright crack rides on top of a long low roll that sweeps down as
+      // it decays, which is what makes it sound distant rather than like
+      // a snare hit.
+      const dur = 2.6;
+      const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(1800, t);
+      lp.frequency.exponentialRampToValueAtTime(160, t + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.5, t + 0.02);   // the crack
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.35);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur); // the roll
+      src.connect(lp).connect(g).connect(master);
+      src.start(t);
+      src.stop(t + dur);
     },
     moo() {
       const t = ctx.currentTime;

@@ -109,6 +109,7 @@ import { createNewsstand } from "@/components/city/newsstand";
 import { createStudioEmbassy } from "@/components/city/studioEmbassy";
 import { createWorldEventFeed, tickerLine } from "@/components/city/worldEventFeed";
 import { createWishConstruction } from "@/components/city/wishConstruction";
+import { createWeather, WEATHERS, type WeatherKind, type WeatherSystem } from "@/components/city/weather";
 import { createLiveDirector } from "@/components/city/liveDirector";
 import {
   createSpawnMesh,
@@ -686,6 +687,18 @@ export default function City() {
     }
   };
   const [dayMode, setDayMode] = useState(false);
+  // GOD MODE — weather over the whole world. Local to you: the day/night
+  // switch is lobby-wide because everyone shares one sky, but the storm
+  // is yours to summon.
+  const [weatherKind, setWeatherKind] = useState<WeatherKind>("clear");
+  const [godPanelOpen, setGodPanelOpen] = useState(false);
+  const weatherRef = useRef<WeatherSystem | null>(null);
+  const setWeatherRef = useRef<((k: WeatherKind) => void) | null>(null);
+  const dayModeRef = useRef(false);
+  // The weather has to re-apply itself whenever the sky changes, and the
+  // sky can change from three places (the button, a peer, the DB), so the
+  // current value is mirrored here rather than threaded through each one.
+  useEffect(() => { dayModeRef.current = dayMode; }, [dayMode]);
   const [muted, setMuted] = useState(false);
   const soundsRef = useRef<CitySounds | null>(null);
   const [charName, setCharName] = useState(initialCharacter);
@@ -2763,8 +2776,31 @@ export default function City() {
       waterUniforms.uFogColor.value.set(day ? "#cfe6f5" : "#05080d");
       waterUniforms.uFogNear.value = day ? 170 : 90;
       waterUniforms.uFogFar.value = day ? 1100 : 520;
+      // GOD MODE layers on top: this function has just reset every handle
+      // to its clear-sky value, so the weather has to re-state itself.
+      weatherRef.current?.applyAtmosphere(day);
     };
     applyModeRef.current = applyMode;
+
+    // ---- GOD MODE: weather over the whole world ------------------------
+    const weather = createWeather({
+      scene,
+      fog: scene.fog as THREE.Fog,
+      ambient,
+      hemi,
+      sun: moonlight,
+      skyUniforms,
+    });
+    scene.add(weather.group);
+    weatherRef.current = weather;
+    weather.onFlash(() => soundsRef.current?.thunder?.());
+    setWeatherRef.current = (next) => {
+      weather.set(next);
+      setWeatherKind(next);
+      // Re-run the day/night pass so the weather tint is rebuilt from a
+      // known-clean base rather than stacked on the previous weather.
+      applyMode(dayModeRef.current);
+    };
     /**
      * Start from ONE coherent state.
      *
@@ -4791,6 +4827,7 @@ export default function City() {
           }
           chaseAnnounced = true;
         }
+        weather.update(dt, player.position);
         const chaseEv = heistChase.update(dt, now, player.position);
         if (chaseEv) {
           setHeistChaseOn(false);
@@ -5329,6 +5366,9 @@ export default function City() {
       postWorldEvent("leave");
       liveDirector?.dispose();
       liveFeed?.dispose();
+      weatherRef.current = null;
+      setWeatherRef.current = null;
+      weather.dispose();
       wishSites.dispose();
       newsstand.dispose();
       studioEmbassy.dispose();
@@ -5848,6 +5888,51 @@ export default function City() {
             >
               {dayMode ? "🌙 Night" : "☀️ Day"}
             </button>
+            {/* GOD MODE — summon weather. Opens a little palette rather
+                than cycling, so you can go straight to the storm. */}
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  setGodPanelOpen((v) => !v);
+                  e.currentTarget.blur();
+                }}
+                className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+                title="God mode — change the weather"
+                data-testid="god-mode"
+              >
+                {weatherKind === "clear"
+                  ? "⚡ God mode"
+                  : `${WEATHERS.find((w) => w.kind === weatherKind)?.emoji} ${
+                      WEATHERS.find((w) => w.kind === weatherKind)?.label
+                    }`}
+              </button>
+              {godPanelOpen && (
+                <div className="glass-panel absolute right-0 top-11 z-20 flex flex-col gap-1 rounded-2xl p-2">
+                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    God mode
+                  </div>
+                  {WEATHERS.map((w) => (
+                    <button
+                      key={w.kind}
+                      onClick={(e) => {
+                        setWeatherRef.current?.(w.kind);
+                        setGodPanelOpen(false);
+                        e.currentTarget.blur();
+                      }}
+                      data-testid={`weather-${w.kind}`}
+                      className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs transition-colors ${
+                        weatherKind === w.kind
+                          ? "bg-primary/25 text-primary"
+                          : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <span>{w.emoji}</span>
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               onClick={(e) => {
                 setEmoteWheelOpen((v) => !v);
