@@ -266,21 +266,30 @@ async function aimBy(dx, dy) {
   aimY += dy;
   await page.mouse.move(aimX, aimY, { steps: 3 });
 }
-async function aimAtBuildableGround(samples = 8) {
-  await page.mouse.move(320, 180, { steps: 2 });
-  aimX = 320;
-  aimY = 180;
-  // Overshoot to the pitch clamp, then come back up: that lands the crosshair
-  // on the ground a couple of metres ahead regardless of where it started.
-  await aimBy(0, 900);
-  await waitSim(0.15);
-  await aimBy(0, -450);
-  await waitSim(0.15);
+async function aimAtBuildableGround(rounds = 2, samples = 8) {
   const legal = () => page.evaluate("window.__dz.ctx.services.build?.canPlace === true");
-  for (let i = 0; i < samples; i++) {
-    if (await legal()) return true;
-    await aimBy(240, i % 2 === 0 ? -70 : 70);
-    await waitSim(0.18);
+  for (let round = 0; round < rounds; round++) {
+    if (round > 0) {
+      // Still nothing. A ramp wants a clear four-metre cube and a POI street
+      // does not have one; a player backs out into the open and looks again,
+      // so do that rather than clicking at the same refused cell forever.
+      await holdSim("KeyS", 1.2);
+      await waitSim(0.2);
+    }
+    await page.mouse.move(320, 180, { steps: 2 });
+    aimX = 320;
+    aimY = 180;
+    // Overshoot to the pitch clamp, then come back up: that lands the crosshair
+    // on the ground a couple of metres ahead regardless of where it started.
+    await aimBy(0, 900);
+    await waitSim(0.15);
+    await aimBy(0, -450);
+    await waitSim(0.15);
+    for (let i = 0; i < samples; i++) {
+      if (await legal()) return true;
+      await aimBy(240, i % 2 === 0 ? -70 : 70);
+      await waitSim(0.18);
+    }
   }
   return await legal();
 }
@@ -510,6 +519,15 @@ await step("build-ramp", "C selects a ramp and it places", async () => {
   const kind = (await state()).buildKind;
   // The wall from the last beat is standing in the old spot, so find a fresh
   // one rather than clicking at an occupied cell four times.
+  //
+  // This one still fails, and `legalAim=false` is the finding, not the excuse:
+  // asked at eight IDENTICAL crosshairs around the drop POI, the build service
+  // reported wall placeable at six of them and ramp and floor at NONE. Wall is
+  // 4 x 0.3 m on a grid line; ramp and floor claim the whole 4 x 4 m cell. So
+  // either a POI street genuinely never has a clear cell — in which case the
+  // beat needs to walk out of town first — or `validate()` is wrong about the
+  // footprint pieces. That is building.ts's question; this beat's job is to
+  // keep asking it loudly.
   const legal = await aimAtBuildableGround();
   const before = (await state()).pieces;
   let after = before;
