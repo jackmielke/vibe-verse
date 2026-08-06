@@ -222,6 +222,36 @@ try {
   errors.push(`engine never signalled ready within ${WAIT}ms`);
 }
 
+/**
+ * Skip the drop and put the match on the ground.
+ *
+ * Every shot in the first two runs was taken during the bus phase, which is
+ * the one phase where the player is deliberately OUTSIDE the safe zone — so
+ * the storm veil was full-screen in all six, and the island underneath was
+ * judged through a purple filter that no real player ever sees for more than
+ * thirty seconds. Jump, land, and let the match go live before posing.
+ */
+if (booted) {
+  await page
+    .evaluate(`(() => {
+      const e = window.__dz;
+      const m = e?.ctx?.services?.match;
+      const p = e?.ctx?.services?.player;
+      const t = e?.ctx?.services?.terrain;
+      if (m && typeof m.jump === "function") m.jump();
+      // Put the player on solid ground near the middle of the island rather
+      // than waiting out a 40-second skydive in software rendering.
+      if (p && t) {
+        const x = 0;
+        const z = 0;
+        p.teleport(new (e.ctx.camera.position.constructor)(x, t.heightAt(x, z) + 2, z));
+      }
+    })()`)
+    .catch((err) => errors.push(`match skip threw: ${err.message}`));
+  // Let the phase machine settle into `live` before anything is captured.
+  await page.waitForTimeout(8000);
+}
+
 // Let the first frames land: shadows, LOD selection, grass population and any
 // lazily-compiled shader all resolve over the first second or two of running.
 await page.waitForTimeout(booted ? 6000 : 2000);

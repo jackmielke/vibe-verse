@@ -865,9 +865,9 @@ vec3 cloudyReflection(vec3 P, vec3 R, vec3 sky) {
   float up = max(R.y, 0.02);
   float t = min((900.0 - (P.y - uSeaLevel)) / up, 26000.0);
   vec2 cp = P.xz + R.xz * t;
-  float patch = texture2D(uFoamMap, cp * 0.00042 + uTime * vec2(0.00035, 0.00021)).b;
+  float patchMask = texture2D(uFoamMap, cp * 0.00042 + uTime * vec2(0.00035, 0.00021)).b;
   float wisp = texture2D(uFoamMap, cp * 0.00135 - uTime * vec2(0.00052, 0.00033)).g;
-  float cover = smoothstep(0.46, 0.78, patch * 0.75 + wisp * 0.35);
+  float cover = smoothstep(0.46, 0.78, patchMask * 0.75 + wisp * 0.35);
   // Only the part of the sky that is actually up gets clouds.
   cover *= smoothstep(0.02, 0.28, R.y);
   vec3 lit = uCloudColor * mix(0.72, 1.25, sat(dot(normalize(vec3(R.x, 0.35, R.z)), uSunDir) * 0.5 + 0.5));
