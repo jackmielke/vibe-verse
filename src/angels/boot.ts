@@ -22,6 +22,7 @@ import { createFleet } from "./play/fleet";
 import { createEffects } from "./entities/effects";
 import { createBlast } from "./entities/blast";
 import { createCourses } from "./play/courses";
+import { createHydro } from "./play/hydro";
 import { createGame } from "./play/game";
 import { createAudio } from "./audio/audio";
 
@@ -42,6 +43,7 @@ const STAGES = [
   { label: "Mixing the smoke oil", factory: createEffects },
   { label: "Fuelling the fireball", factory: createBlast },
   { label: "Hanging the hoops", factory: createCourses },
+  { label: "Warming the turbines", factory: createHydro },
   { label: "Briefing the flight", factory: createGame },
   { label: "Lighting the burners", factory: createAudio },
   { label: "Taking the runway", factory: createCamera },

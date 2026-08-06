@@ -668,6 +668,8 @@ export function createInput(ctx: AngelsCtx): System {
         aim.py = ((1 - easyY) / 2) * h;
         aim.limit = 0.96; // 55°
         aim.active = true;
+        input.steerX = easyX / EDGE_X;
+        input.steerY = easyY / EDGE_Y;
 
         // The throttle looks after itself. Somebody learning to fly has enough
         // to think about without also discovering that an aeroplane falls out
@@ -711,6 +713,8 @@ export function createInput(ctx: AngelsCtx): System {
         if (settings.invertPitch) aim.y = -aim.y;
         aim.limit = Math.PI; // the mouse gets the whole aeroplane
         aim.active = true;
+        input.steerX = aim.x;
+        input.steerY = aim.y;
         // The blend is applied to the *aim offset*, not to a control command:
         // easing in a ring that is already drawn where the cursor is would be
         // a ring that lies about where you are pointing.
@@ -750,6 +754,8 @@ export function createInput(ctx: AngelsCtx): System {
         input.roll = expo(dead(nx), 1.5) * settings.sensitivity;
         // Cursor up means climb, unless the pilot asked for real stick sense.
         input.pitch = expo(dead(settings.invertPitch ? ny : -ny), 1.6) * settings.sensitivity;
+        input.steerX = nx;
+        input.steerY = -ny;
 
         // With pitch on the mouse, W and S are free — and throttle is the
         // control a hand on the keyboard most wants.
@@ -767,6 +773,8 @@ export function createInput(ctx: AngelsCtx): System {
         const dive = settings.invertPitch ? up : down;
         kbPitch = step(kbPitch, climb, dive);
         kbRoll = step(kbRoll, right, left);
+        input.steerX = kbRoll;
+        input.steerY = settings.invertPitch ? -kbPitch : kbPitch;
         input.pitch = kbPitch;
         input.roll = kbRoll;
       }
@@ -1134,6 +1142,8 @@ function buildTouchOverlay(): TouchOverlay {
       const pitchRaw = hooks?.settings.invertPitch ? stickY : -stickY;
       input.pitch = expo(pitchRaw, 1.8) * (hooks?.settings.sensitivity ?? 1);
       input.roll = expo(tilt !== null ? tilt : stickX, 1.6) * (hooks?.settings.sensitivity ?? 1);
+      input.steerX = tilt !== null ? tilt : stickX;
+      input.steerY = -stickY;
       input.yaw = rudder;
       input.brake = brake ? 1 : 0;
       // On the ground the same button is the wheel brake, which is what a

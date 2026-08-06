@@ -41,6 +41,18 @@ export interface AngelsInput {
   /** 0 .. 1 wheel brakes. */
   wheelBrake: number;
 
+  /**
+   * The raw two-axis intent, whatever device and whatever scheme produced it.
+   *
+   * `pitch` and `roll` are *aeroplane* commands — one asks for G, the other for
+   * a roll rate, and in the pursuit schemes neither is written at all because
+   * the ring is doing the flying. Anything that is not an aeroplane needs the
+   * plain "which way is the player pushing", so every scheme fills these in as
+   * well: -1..1, right and up positive.
+   */
+  steerX: number;
+  steerY: number;
+
   /** Free-look offsets in radians, for the padlock/cockpit cameras. */
   lookX: number;
   lookY: number;
@@ -70,6 +82,8 @@ export function makeInput(): AngelsInput {
     throttle: 0.75,
     brake: 0,
     wheelBrake: 0,
+    steerX: 0,
+    steerY: 0,
     lookX: 0,
     lookY: 0,
     looking: false,

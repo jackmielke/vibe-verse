@@ -39,6 +39,18 @@ const HYDRO_COLORS = [0xe8332a, 0xf5c518, 0x1f6fd0, 0xf07020, 0x22a06b, 0xd8d8dc
 export interface LifeService {
   /** Metres from this point to the nearest hydroplane. Used by the Easter eggs. */
   nearestHydro(x: number, z: number): number;
+  /**
+   * The AI boats, as course progress.
+   *
+   * `t` is where each one is round the oval, 0..1, and `laps` is how many times
+   * it has been round. Published so the race can score against the boats that
+   * were already out there rather than spawning a second set of them — they
+   * are running the right course at the right speed, and one field of
+   * hydroplanes on a lake is enough.
+   */
+  readonly hydros: ReadonlyArray<{ t: number; laps: number; speed: number }>;
+  /** Slow the AI field down or speed it up, 0.7..1.15. Sets the race up. */
+  setHydroPace(pace: number): void;
 }
 
 export function createLife(ctx: AngelsCtx): System {
@@ -255,9 +267,18 @@ export function createLife(ctx: AngelsCtx): System {
     /** Metres per unit of t. */
     routeLength: number;
     yOffset: number;
+    /** Set on the racing hydros; the race reads it to score against them. */
+    progress?: { t: number; laps: number; speed: number };
   }
 
   const craft: Craft[] = [];
+
+  // Declared here rather than beside the service, because the hydro loop below
+  // pushes into it — and a `const` below that loop is still in its temporal
+  // dead zone when it runs, which takes the whole life system down at boot.
+  // Exactly the same trap that ate the fleet system a while back.
+  const hydroCraft: Array<{ t: number; laps: number; speed: number }> = [];
+  let hydroPace = 1;
 
   /**
    * The rooster tail.
@@ -332,6 +353,11 @@ export function createLife(ctx: AngelsCtx): System {
       route: oval,
       routeLength: ovalLength,
       yOffset: 0.1,
+      progress: (() => {
+        const p = { t: i / counts.hydros, laps: 0, speed: 0 };
+        hydroCraft.push(p);
+        return p;
+      })(),
     });
   }
 
@@ -366,6 +392,10 @@ export function createLife(ctx: AngelsCtx): System {
   }
 
   const service: LifeService = {
+    hydros: hydroCraft,
+    setHydroPace(p) {
+      hydroPace = THREE.MathUtils.clamp(p, 0.7, 1.15);
+    },
     nearestHydro(x, z) {
       let best = Infinity;
       for (const c of craft) {
@@ -383,7 +413,13 @@ export function createLife(ctx: AngelsCtx): System {
   return {
     update(dt) {
       for (const c of craft) {
-        c.t = (c.t + (c.speed * dt) / c.routeLength) % 1;
+        const before = c.t;
+        c.t = (c.t + (c.speed * (c.progress ? hydroPace : 1) * dt) / c.routeLength) % 1;
+        if (c.progress) {
+          if (c.t < before) c.progress.laps++;
+          c.progress.t = c.t;
+          c.progress.speed = c.speed * hydroPace;
+        }
         c.route(c.t, _pos);
         // Heading comes from sampling a little further along the route, which
         // works for any parametric path without needing its derivative.

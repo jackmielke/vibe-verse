@@ -816,8 +816,15 @@ export function createFleet(ctx: AngelsCtx): System {
   };
   ctx.services.fleet = service;
 
+  /** True while the hydroplane race owns the world. */
+  const racing = () => (ctx.services.hydro as { active: boolean } | undefined)?.active === true;
+
   return {
     fixedUpdate(dt) {
+      // The race swaps the vehicle. Leaving six jets flying themselves round
+      // Seattle underneath it is six jets that will eventually fly into
+      // something and fire a crash event at a player who is in a boat.
+      if (racing()) return;
       const player = all[0];
       const input = ctx.input;
 
@@ -919,6 +926,7 @@ export function createFleet(ctx: AngelsCtx): System {
     },
 
     update(dt, c) {
+      if (racing()) return;
       // Nothing on the jet answers while it is a fireball, except the one key
       // that means "get me back in the air".
       if (wreck.active) {
@@ -943,6 +951,11 @@ export function createFleet(ctx: AngelsCtx): System {
     },
 
     lateUpdate(_dt, c) {
+      if (racing()) {
+        group.visible = false;
+        return;
+      }
+      group.visible = true;
       for (let i = 0; i < all.length; i++) {
         const a = all[i];
         if ((i > wingmanCount && i > 0) || (i === 0 && wreck.active)) {

@@ -55,8 +55,12 @@ world/
 entities/
   jet.ts           the parametric airframe builder and its livery
   effects.ts       smoke oil, wingtip vapour, contrails, the vapour cone
+hydro/
+  boat.ts          the hydroplane. No Three.js in here either.
+  boat.test.ts     14 assertions an unlimited driver would recognise
 play/
   fleet.ts         you, five wingmen, and the formation controller
+  hydro.ts         the race: the course, the laps, the rooster tail
   courses.ts       six ring courses along real routes
   game.ts          modes, scoring, radio, and twenty Seattle Easter eggs
 audio/audio.ts     four-voice engine, airflow, one-shots — all synthesised
@@ -237,7 +241,105 @@ one control that is the airbrake in the air and the brakes on the ground, which
 is what the phone's BRK button always was. They are never both useful at once,
 and it freed the biggest key on the keyboard for the one that matters most.
 
-## Seafair is the point## Seafair is the point
+## The other half of Seafair
+
+Seafair is a boat race that grew an air show, and the boats have been out there
+running the real course since the first version of this world. **Race a
+hydroplane** in the hangar puts you in the seventh one.
+
+`hydro/boat.ts` is the model, and it has no Three.js in it for the same reason
+the flight model does not — it is arithmetic and it is tested as arithmetic,
+fourteen assertions covering the four things that make a hydroplane a
+hydroplane rather than a boat with a big engine:
+
+- **A drag cliff.** An unlimited rides on two sponson tips and a propeller with
+  about a square metre of hull in the water. Below planing speed it is dragging
+  a hull through a lake; above it the drag more than halves. Getting on the
+  plane is an event you can feel, and it is why the first ten seconds of a start
+  are nothing like the rest of a lap.
+- **It steers on the water, not on the hull.** The rudder works in the
+  propeller's wash, so authority scales with how much water is going past —
+  nothing at all when stopped, best in the middle of the range, and falling away
+  at the top end where a real unlimited needs most of the lake to change
+  direction.
+- **It leans *out* of the corner.** The outboard sponson carries the load. Roll
+  it inward and it reads as a motorcycle, which is exactly wrong.
+- **It can blow over.** The hull is a wing in ground effect: get the nose up at
+  speed, over somebody else's rooster tail, and the air underneath wins and the
+  boat goes over backwards. It is the signature accident of the class and the
+  reason passing is frightening. The HUD warns you as the lift builds, because
+  an accident you can hear coming and back off from is racing, and one that
+  arrives out of nowhere is a dice roll.
+
+The lift coefficient is set so that flat out in clean air sits at about 0.6 of
+the way to a blowover — uncomfortable, visible on the warning, survivable. Rough
+water is what takes it over the top, which puts the danger where the racing is
+instead of making the throttle itself the enemy.
+
+Two pieces of reuse do most of the work. The race does not spawn its own field:
+`world/life.ts` was already driving six boats round the right oval at the right
+speed, so it publishes their course progress and the race scores against them —
+one field of hydroplanes on a lake is enough. And a blowover emits
+`angels:crash`, which means the fireball, the camera shake, the slow motion, the
+boom and the white flash all arrive without `play/hydro.ts` knowing any of them
+exist. That is what the event bus is for, and it is why a boat going over
+backwards looked as expensive as a jet hitting the Space Needle on the first
+attempt.
+
+Scoring is by progress *since the flag*, not by absolute position round the
+oval — the AI boats have been circulating since the world booted, so absolute
+position would mean starting sixth of seven for no reason anybody could see.
+
+## Seafair is the point## The other half of Seafair
+
+Seafair is a boat race that grew an air show, and the boats have been out there
+running the real course since the first version of this world. **Race a
+hydroplane** in the hangar puts you in the seventh one.
+
+`hydro/boat.ts` is the model, and it has no Three.js in it for the same reason
+the flight model does not — it is arithmetic and it is tested as arithmetic,
+fourteen assertions covering the four things that make a hydroplane a
+hydroplane rather than a boat with a big engine:
+
+- **A drag cliff.** An unlimited rides on two sponson tips and a propeller with
+  about a square metre of hull in the water. Below planing speed it is dragging
+  a hull through a lake; above it the drag more than halves. Getting on the
+  plane is an event you can feel, and it is why the first ten seconds of a start
+  are nothing like the rest of a lap.
+- **It steers on the water, not on the hull.** The rudder works in the
+  propeller's wash, so authority scales with how much water is going past —
+  nothing at all when stopped, best in the middle of the range, and falling away
+  at the top end where a real unlimited needs most of the lake to change
+  direction.
+- **It leans *out* of the corner.** The outboard sponson carries the load. Roll
+  it inward and it reads as a motorcycle, which is exactly wrong.
+- **It can blow over.** The hull is a wing in ground effect: get the nose up at
+  speed, over somebody else's rooster tail, and the air underneath wins and the
+  boat goes over backwards. It is the signature accident of the class and the
+  reason passing is frightening. The HUD warns you as the lift builds, because
+  an accident you can hear coming and back off from is racing, and one that
+  arrives out of nowhere is a dice roll.
+
+The lift coefficient is set so that flat out in clean air sits at about 0.6 of
+the way to a blowover — uncomfortable, visible on the warning, survivable. Rough
+water is what takes it over the top, which puts the danger where the racing is
+instead of making the throttle itself the enemy.
+
+Two pieces of reuse do most of the work. The race does not spawn its own field:
+`world/life.ts` was already driving six boats round the right oval at the right
+speed, so it publishes their course progress and the race scores against them —
+one field of hydroplanes on a lake is enough. And a blowover emits
+`angels:crash`, which means the fireball, the camera shake, the slow motion, the
+boom and the white flash all arrive without `play/hydro.ts` knowing any of them
+exist. That is what the event bus is for, and it is why a boat going over
+backwards looked as expensive as a jet hitting the Space Needle on the first
+attempt.
+
+Scoring is by progress *since the flag*, not by absolute position round the
+oval — the AI boats have been circulating since the world booted, so absolute
+position would mean starting sixth of seven for no reason anybody could see.
+
+## Seafair is the point
 
 The air show was added to a boat race, not the other way round, so the boat
 race is in here: six unlimited hydroplanes running the real course off Stan

@@ -397,7 +397,111 @@ check(
     : `climbed to ${landing.alt} m clean`,
 );
 
-// ---- 9. teardown releases the context -------------------------------------
+// ---- 9. the other half of Seafair ------------------------------------------
+const race = await page.evaluate(() => {
+  const e = window.__angels;
+  const h = e.ctx.services.hydro;
+  e.ctx.services.game.setMode("free");
+  h.start();
+
+  // Steer round the oval by aiming a little further along it — the same
+  // parameterisation the system uses, recomputed here so this is a test of the
+  // course and not of a helper shared with it.
+  const M_LAT = 111182.5;
+  const M_LON = 75128.0;
+  const cX = (-122.262 - -122.3321) * M_LON;
+  const cZ = -(47.568 - 47.6062) * M_LAT;
+  const head = (342 * Math.PI) / 180;
+  const ax = Math.sin(head);
+  const az = -Math.cos(head);
+  const rx = az;
+  const rz = -ax;
+  const drive = (steps) => {
+    for (let i = 0; i < steps; i++) {
+      const s = h.state;
+      const a = ((h.progress.t + 0.05) % 1) * Math.PI * 2;
+      const tx = cX + ax * Math.cos(a) * 1250 + rx * Math.sin(a) * 350;
+      const tz = cZ + az * Math.cos(a) * 1250 + rz * Math.sin(a) * 350;
+      let err = Math.atan2(tx - s.x, -(tz - s.z)) - s.heading;
+      while (err > Math.PI) err -= Math.PI * 2;
+      while (err < -Math.PI) err += Math.PI * 2;
+      e.ctx.input.steerX = Math.max(-1, Math.min(1, err * 2.2));
+      e.ctx.input.steerY = 1;
+      e.step(1 / 120, false);
+    }
+  };
+
+  drive(120 * 20);
+  const running = {
+    mph: Math.round(h.state.speed * 2.23694),
+    planing: h.state.planing,
+    onWater: !h.state.blownOver,
+    field: h.field,
+  };
+  drive(120 * 75);
+  const lapped = { laps: h.laps, best: h.bestLap, place: h.place };
+  return { running, lapped };
+});
+check(
+  "the hydroplane gets up on the plane and goes",
+  race.running.planing > 0.95 && race.running.mph > 150 && race.running.mph < 210,
+  `${race.running.mph} mph, planing ${race.running.planing.toFixed(2)}`,
+);
+check(
+  "and it is racing a field, not driving round on its own",
+  // The field is however many boats the quality tier puts on the lake plus
+  // you, so this asserts "there are opponents", not a magic number.
+  race.running.field >= 5,
+  `${race.running.field} boats`,
+);
+check(
+  "a lap round the Seafair course registers",
+  race.lapped.laps >= 1 && race.lapped.best > 20 && race.lapped.best < 200,
+  `${race.lapped.laps} lap(s), best ${race.lapped.best.toFixed(1)}s, running ${race.lapped.place}${race.lapped.place === 1 ? "st" : "th"}`,
+);
+
+// A blowover is the signature accident of the class, and it goes through the
+// same crash path the jets do — which is the only reason it looks expensive.
+const blowover = await page.evaluate(() => {
+  const e = window.__angels;
+  const h = e.ctx.services.hydro;
+  let crashed = null;
+  const off = e.on("angels:crash", (c) => {
+    crashed = c;
+  });
+  h.restart();
+  // Flat out with the nose well up, which is the state a rooster tail puts you
+  // in and the one the class is famous for not surviving.
+  const s = h.state;
+  s.speed = 92;
+  s.planing = 1;
+  s.pitch = 0.34;
+  s.lift = 0.85;
+  for (let i = 0; i < 120 * 6; i++) {
+    e.ctx.input.steerX = 0;
+    e.ctx.input.steerY = 1;
+    e.step(1 / 120, false);
+    if (h.wreck.active) break;
+  }
+  const wrecked = { over: s.blownOver, wreck: h.wreck.active, cause: crashed && crashed.cause };
+  for (let i = 0; i < 120 * 6; i++) e.step(1 / 120, false);
+  const back = { wreck: h.wreck.active, speed: h.state.speed, over: h.state.blownOver };
+  off();
+  h.stop();
+  return { wrecked, back };
+});
+check(
+  "a blowover wrecks the boat and fires the same crash the jets do",
+  blowover.wrecked.over && blowover.wrecked.wreck && blowover.wrecked.cause === "the water",
+  blowover.wrecked.cause ? `crash: ${blowover.wrecked.cause}` : "no crash event",
+);
+check(
+  "and the boat is handed back on the grid",
+  !blowover.back.wreck && !blowover.back.over,
+  blowover.back.wreck ? "still wrecked" : "back on the water",
+);
+
+// ---- 10. teardown releases the context -------------------------------------
 const torn = await page.evaluate(() => {
   const e = window.__angels;
   const gl = e.ctx.renderer.getContext();

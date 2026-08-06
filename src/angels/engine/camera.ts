@@ -24,6 +24,7 @@
 import * as THREE from "three";
 import type { AngelsCtx, CameraMode, CameraService, System } from "../types";
 import type { FleetService } from "../play/fleet";
+import type { HydroService } from "../play/hydro";
 import { SHOW_CENTRE, latToZ, lonToX } from "../world/geo";
 
 const ORDER: CameraMode[] = ["chase", "cockpit", "wing", "tower", "cinematic"];
@@ -60,6 +61,8 @@ export function createCamera(ctx: AngelsCtx): System {
    * so the camera is still being thrown around while the fireball is climbing.
    */
   let crashShake = 0;
+  /** Whether the boat rig has been struck yet. Same job as `wreckPosed`. */
+  let boatPosed = false;
 
   /** Ground under a point, so the wreck cam never ends up inside a hill. */
   const groundNear = (c: AngelsCtx, p: THREE.Vector3): number => {
@@ -155,6 +158,62 @@ export function createCamera(ctx: AngelsCtx): System {
         cam.position.copy(posed.position);
         cam.lookAt(posed.lookAt);
         return;
+      }
+
+      // ---- the boat ---------------------------------------------------------
+      // Low and close, because that is the shot: a hydroplane is thrilling at
+      // eye level and unremarkable from anywhere a jet would be watched from.
+      // The rooster tail fills the frame behind it, which is the whole point.
+      const hydro = c.services.hydro as HydroService | undefined;
+      if (hydro?.active) {
+        const s2 = hydro.state;
+        // Stiffer than any of the aeroplane rigs. A lagged camera reads as
+        // weight behind a jet; behind a boat doing a hundred and eighty it
+        // simply falls off the back.
+        const lag = s2.blownOver ? 2.0 : 9.0;
+        // Back, up and a little to one side. The first version sat directly
+        // astern at four metres, which put the camera *inside* the rooster
+        // tail — a thirty-metre curtain of water between the lens and the boat,
+        // so the shot was a white cone with a grey speck in it. Offsetting it
+        // is also just the shot: every photograph of an unlimited ever taken is
+        // from three-quarters behind, high enough to see the tail arc away.
+        _right.crossVectors(hydro.forward, _up.set(0, 1, 0)).normalize();
+        // Close. An unlimited is nine metres long, and the standoff that frames
+        // a jet nicely leaves a boat as a grey speck — doubly so once the lag
+        // adds the best part of twenty metres of its own at racing speed.
+        _desired
+          .copy(hydro.position)
+          .addScaledVector(hydro.forward, -23 - s2.speed * 0.05)
+          .addScaledVector(_right, 12)
+          // High enough to be *over* the rooster tail rather than inside it.
+          // The tail is eight metres of water thrown up behind the transom and
+          // a camera at deck height is looking straight through the middle of
+          // it; this is the shot every televised heat is covered from, for the
+          // same reason.
+          .setY(hydro.position.y + 9 + s2.speed * 0.03);
+        _look.copy(hydro.position).addScaledVector(hydro.forward, 14);
+        _look.y += 1.2;
+        if (!boatPosed) {
+          boatPosed = true;
+          smoothPos.copy(_desired);
+          smoothLook.copy(_look);
+        }
+        const k = 1 - Math.exp(-lag * dt);
+        smoothPos.lerp(_desired, k);
+        smoothLook.lerp(_look, Math.min(1, k * 1.5));
+        cam.position.copy(smoothPos);
+        cam.up.set(0, 1, 0);
+        cam.lookAt(smoothLook);
+        applyShake(c, dt);
+        if (Math.abs(cam.fov - 74) > 0.05) {
+          cam.fov += (74 - cam.fov) * Math.min(1, dt * 5);
+          cam.updateProjectionMatrix();
+        }
+        return;
+      }
+      if (boatPosed) {
+        boatPosed = false;
+        initialised = false;
       }
 
       // ---- the wreck cam ----------------------------------------------------

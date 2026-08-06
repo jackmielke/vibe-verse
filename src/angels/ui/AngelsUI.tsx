@@ -24,6 +24,7 @@ import { Link } from "react-router-dom";
 import type { Engine } from "../engine/core";
 import { HANGAR, type JetId } from "../flight/aircraft";
 import type { FleetService, SpawnPoint } from "../play/fleet";
+import type { HydroService } from "../play/hydro";
 import type { CourseService } from "../play/courses";
 import type { GameService, RadioMessage, Achievement } from "../play/game";
 import type { InputService, ControlScheme } from "../engine/input";
@@ -32,6 +33,7 @@ import type { AssistLevel } from "../flight/dynamics";
 import type { CameraMode } from "../types";
 import { isShotMode } from "../engine/core";
 import FlightHUD from "./FlightHUD";
+import BoatHUD from "./BoatHUD";
 import ControlsCard, { HELP_SEEN_KEY } from "./Controls";
 
 import superhornetArt from "@/assets/angels/jets/superhornet.jpg";
@@ -171,6 +173,8 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
   const [thumbs, setThumbs] = useState(false);
   const [wreck, setWreck] = useState<{ cause: string; speed: number } | null>(null);
   const [hint, setHint] = useState(false);
+  const [racing, setRacing] = useState(false);
+  const [result, setResult] = useState<{ place: number; time: number; best: number } | null>(null);
 
   const services = engine.ctx.services;
   const courses = services.courses as CourseService | undefined;
@@ -227,6 +231,13 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
         const c = engine.ctx.services.courses as CourseService | undefined;
         setHoopProgress({ done: 0, total: id && c ? c.hoops.length : 0 });
       }),
+      engine.on("angels:hydro", (on: boolean) => {
+        setRacing(on);
+        if (on) setResult(null);
+      }),
+      engine.on("angels:hydrofinish", (r: { place: number; time: number; best: number }) =>
+        setResult(r),
+      ),
       engine.on("angels:crash", (e: { cause: string; speed: number }) => setWreck(e)),
       engine.on("angels:respawn", () => setWreck(null)),
       engine.on("angels:camera", (m: CameraMode) => setCamera(m)),
@@ -329,7 +340,28 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
     (services.input as InputService | undefined)?.setSetting("controlScheme", v);
   }
 
+  /**
+   * The other half of Seafair.
+   *
+   * A separate entry point rather than a game mode, because it swaps the
+   * vehicle, the camera and the HUD — three of the four things a mode normally
+   * leaves alone. Everything the jets own is left exactly where it was, so
+   * coming back out is one call.
+   */
+  function race() {
+    (services.audio as { unlock(): void } | undefined)?.unlock();
+    (services.hydro as HydroService | undefined)?.start();
+    setPanel(null);
+    setScreen("flying");
+  }
+
+  function leaveRace() {
+    (services.hydro as HydroService | undefined)?.stop();
+    setScreen("hangar");
+  }
+
   function launch(mode: "free" | "course" | "demo", course?: string) {
+    (services.hydro as HydroService | undefined)?.stop();
     const fleet = services.fleet as FleetService | undefined;
     const g = services.game as GameService | undefined;
     (services.audio as { unlock(): void } | undefined)?.unlock();
@@ -410,7 +442,8 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
           rebooting. It goes away entirely for a crash: a velocity vector and a
           G reading laid over your own fireball is the game insisting the jet
           is still flying. */}
-      <FlightHUD engine={engine} visible={screen === "flying" && !wreck} />
+      <FlightHUD engine={engine} visible={screen === "flying" && !wreck && !racing} />
+      <BoatHUD engine={engine} visible={screen === "flying" && !wreck && racing} />
 
       {/* ---- the first-flight strip -------------------------------------- */}
       {/* Three keys, on screen, for the first minute. The controls card
@@ -427,12 +460,55 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
             className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 px-4 py-2"
             style={{ background: "rgba(4,10,24,0.72)", backdropFilter: "blur(6px)" }}
           >
-            <span className="text-[12.5px] leading-none text-white/85">{HINT[thumbs ? "touch" : scheme]}</span>
+            <span className="text-[12.5px] leading-none text-white/85">
+              {racing
+                ? thumbs
+                  ? "Left thumb steers · right thumb is the throttle · watch the rooster tails"
+                  : "← → steer · ↑ opens the throttle, ↓ closes it · R restarts"
+                : HINT[thumbs ? "touch" : scheme]}
+            </span>
             <button
               onClick={dismissHint}
               className="rounded-full bg-white/10 px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-widest text-white/60 transition hover:bg-white/20 hover:text-white"
             >
               Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ---- the flag ------------------------------------------------------ */}
+      {result && screen === "flying" && (
+        <div
+          data-angels-hud="result"
+          className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4"
+          style={{ top: "max(96px, calc(env(safe-area-inset-top) + 88px))" }}
+        >
+          <div
+            className="pointer-events-auto w-full max-w-xs overflow-hidden rounded-2xl border border-amber-300/30 text-center"
+            style={{ background: "rgba(8,14,30,0.92)", backdropFilter: "blur(4px)" }}
+          >
+            <div className="px-5 pb-3 pt-4">
+              <p className="font-mono text-[9.5px] uppercase tracking-[0.42em] text-amber-300/70">
+                Chequered flag
+              </p>
+              <p className="mt-1 text-3xl font-black tracking-tight text-amber-200">
+                {result.place === 1
+                  ? "Won it"
+                  : `${result.place}${["", "st", "nd", "rd"][result.place] ?? "th"}`}
+              </p>
+              <p className="mt-1 font-mono text-[12px] text-sky-100/60">
+                {result.time.toFixed(1)}s · best lap {result.best.toFixed(1)}s
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setResult(null);
+                (services.hydro as HydroService | undefined)?.restart();
+              }}
+              className="w-full bg-gradient-to-b from-amber-300 to-amber-500 py-2.5 text-[13px] font-black uppercase tracking-[0.24em] text-slate-900 transition hover:brightness-110"
+            >
+              Run it again
             </button>
           </div>
         </div>
@@ -722,6 +798,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
                 Ring courses
               </PanelLink>
               <PanelLink onClick={() => launch("demo")}>Fly the demo</PanelLink>
+              <PanelLink onClick={race}>Race a hydroplane</PanelLink>
               <PanelLink
                 active={panel === "options"}
                 onClick={() => setPanel(panel === "options" ? null : "options")}
@@ -945,7 +1022,8 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
               </button>
               <button
                 onClick={() => {
-                  (services.fleet as FleetService | undefined)?.respawn(start);
+                  if (racing) (services.hydro as HydroService | undefined)?.restart();
+                  else (services.fleet as FleetService | undefined)?.respawn(start);
                   setScreen("flying");
                 }}
                 className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-bold uppercase tracking-widest text-white/70 transition hover:bg-white/10"
@@ -963,7 +1041,7 @@ export default function AngelsUI({ engine, ready, progress }: Props) {
 
             <div className="mt-3 flex items-center justify-between">
               <button
-                onClick={() => setScreen("hangar")}
+                onClick={racing ? leaveRace : () => setScreen("hangar")}
                 className="font-mono text-[11px] uppercase tracking-widest text-sky-200/60 transition hover:text-sky-200"
               >
                 ← Hangar
