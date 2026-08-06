@@ -6856,6 +6856,19 @@ export default function City() {
               🎮 Play {nearGamePrompt.name} <span className="text-amber-300">· earn ✦</span>
             </button>
           )}
+          {zepMode !== "off" && (
+            <button
+              onClick={(e) => {
+                zepHelmRef.current?.(zepMode !== "piloting");
+                e.currentTarget.blur();
+              }}
+              className={`glass-panel rounded-full px-5 py-2.5 text-sm ${
+                zepMode === "piloting" ? "text-amber-300" : "text-primary animate-pulse"
+              }`}
+            >
+              {zepMode === "piloting" ? "🎈 Let go of the helm · P" : "🎈 Take the helm · P"}
+            </button>
+          )}
           {(hud.nearZip || hud.riding) && (
             <button
               onClick={(e) => {
