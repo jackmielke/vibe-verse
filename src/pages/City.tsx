@@ -1841,8 +1841,11 @@ export default function City() {
     const heistChase = buildHeistChase();
     scene.add(heistChase.group);
     const CHASE_REWARD = 25;
-    const CHASE_PERIOD_MS = 240_000;
-    let chaseNextAt = performance.now() + 75_000;
+    // A heist is a treat, not a metronome. At four minutes it read as
+    // nagging — this is a quarter-hour apart, and the timer only runs
+    // while you are actually in the city (see the tick below).
+    const CHASE_PERIOD_MS = 900_000;
+    let chaseNextAt = performance.now() + 240_000;
     let chaseAnnounced = false;
 
     // The iridescent $VIBE emblem — the exact GLB the /coin page spins —
@@ -2960,7 +2963,7 @@ export default function City() {
     // Non-null only while Flux is equipped; the frame loop drives it
     // instead of the animation mixer.
     let procPilot: ProceduralPilot | null = null;
-    const loadPilot = (url: string) => {
+    const loadPilot = (url: string, designId?: string) => {
       const gen = ++pilotGen;
       if (pilotModel) {
         modelHolder.remove(pilotModel);
@@ -2987,7 +2990,7 @@ export default function City() {
       // No URL means the procedural pilot — nothing to fetch, it's built
       // on the spot.
       if (!url) {
-        procPilot = buildProceduralPilot();
+        procPilot = buildProceduralPilot(undefined, designId);
         pilotModel = procPilot.group;
         modelHolder.add(procPilot.group);
         return;
@@ -3035,11 +3038,13 @@ export default function City() {
     };
     loadPilotRef.current = (name) => {
       const c = CHARACTERS.find((x) => x.name === name);
-      if (c) loadPilot(c.url);
+      // `name` here IS the catalog id (see the CHARACTERS map above), which
+      // is what selects the procedural design.
+      if (c) loadPilot(c.url, c.name);
     };
     {
       const start = CHARACTERS.find((c) => c.name === charRef.current) ?? CHARACTERS[0];
-      if (start) loadPilot(start.url);
+      if (start) loadPilot(start.url, start.name);
     }
 
     // ---- Avatar portal hologram preview --------------------------------
@@ -4771,7 +4776,20 @@ export default function City() {
       // THE GETAWAY: launch the chase on schedule, drive the lap, and
       // settle the outcome (rammed → loot recovered, timer → escaped).
       {
-        if (!heistChase.isActive() && now >= chaseNextAt) {
+        // The heist happens on the CITY streets, so it only starts when
+        // you are actually down there to see it. Announcing a car chase
+        // to someone standing on the moon is just a popup.
+        const p = player.position;
+        const inCity =
+          p.y < 40 &&
+          Math.hypot(p.x, p.z) < 220 &&
+          Math.hypot(p.x - ISLAND_X, p.z - ISLAND_Z) > 90;
+        if (!inCity) {
+          // Hold the timer while you're away rather than letting it come
+          // due elsewhere and fire the moment you land back downtown.
+          chaseNextAt = Math.max(chaseNextAt, now + 45_000);
+        }
+        if (inCity && !heistChase.isActive() && now >= chaseNextAt) {
           heistChase.start(now);
           setHeistChaseOn(true);
           if (enteredRef.current) {

@@ -59,7 +59,7 @@ function PreviewModel({
     // from primitives and animated in code. Build it and let it walk;
     // a still pose would sell none of what makes it different.
     if (!character.url) {
-      const p = buildProceduralPilot();
+      const p = buildProceduralPilot(undefined, character.id);
       procRef.current = p;
       const size = new THREE.Vector3();
       new THREE.Box3().setFromObject(p.group).getSize(size);

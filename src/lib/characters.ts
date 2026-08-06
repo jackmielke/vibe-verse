@@ -93,6 +93,28 @@ export const CHARACTERS: CharSpec[] = [
     blurb: "Built from code, not a model file. Animated head to toe.",
     accent: "#73ffb8",
   },
+  // The rest of the code-built cast. Same rig, same gait solver, same
+  // springs — a different design table entry each. See PILOT_DESIGNS.
+  {
+    id: "webslinger", url: "", label: "Webslinger", emoji: "🕷️",
+    blurb: "Red-and-blue wall-crawler. Big lenses, quick feet, no model file.",
+    accent: "#f2f6ff",
+  },
+  {
+    id: "nightcape", url: "", label: "Nightcape", emoji: "🦇",
+    blurb: "Cowl, ears, and a cape that swings through every turn.",
+    accent: "#ffd75e",
+  },
+  {
+    id: "whiskers", url: "", label: "Whiskers", emoji: "🐈",
+    blurb: "An orange menace. The tail whips when you corner.",
+    accent: "#8bf07a",
+  },
+  {
+    id: "emberwing", url: "", label: "Emberwing", emoji: "🐉",
+    blurb: "Horns, spiked tail, and wings that spread when you leave the ground.",
+    accent: "#ff8a3d",
+  },
   { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
   { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
   ...Object.entries(QUATERNIUS_URLS)

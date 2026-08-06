@@ -99,8 +99,8 @@ function fitAndAnchor(
   return size;
 }
 
-function proceduralRig(opts: Required<RigOptions>): CharacterRig {
-  const pilot: ProceduralPilot = buildProceduralPilot();
+function proceduralRig(opts: Required<RigOptions>, designId?: string): CharacterRig {
+  const pilot: ProceduralPilot = buildProceduralPilot(undefined, designId);
   // Wrap it so fitting can scale the wrapper without fighting the
   // squash-and-stretch the rig applies to its own root every frame.
   const holder = new THREE.Group();
@@ -140,7 +140,7 @@ function proceduralRig(opts: Required<RigOptions>): CharacterRig {
 const sharedLoader = new GLTFLoader();
 
 export function loadCharacterRig(
-  spec: { url: string },
+  spec: { url: string; id?: string },
   options: RigOptions = {},
 ): Promise<CharacterRig> {
   const opts: Required<RigOptions> = {
@@ -151,8 +151,9 @@ export function loadCharacterRig(
     walkSpeed: options.walkSpeed ?? 4.2,
   };
 
-  // No URL means there is no file to fetch — build it here instead.
-  if (!spec.url) return Promise.resolve(proceduralRig(opts));
+  // No URL means there is no file to fetch — build it here instead. The
+  // id selects which design of the shared rig to assemble.
+  if (!spec.url) return Promise.resolve(proceduralRig(opts, spec.id));
 
   return sharedLoader.loadAsync(spec.url).then((gltf) => {
     const object = gltf.scene;

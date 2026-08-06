@@ -54,6 +54,64 @@ export interface ProceduralPilot {
   dispose(): void;
 }
 
+/**
+ * A design is a *skin* over the one rig below: palette, what grows out of
+ * the crown, what trails off the back, and which facial hardware the head
+ * wears. Everything else — the gait solver, the banking, the squash, the
+ * springs — is shared, so a new character is a table entry rather than a
+ * new animation system, and it can never skate its feet or pop a blend.
+ */
+export interface PilotDesign {
+  shell: number;      // limbs + torso
+  plate: number;      // joints, boots, yoke
+  accent: string;     // emissive: eyes, trim, core
+  cloth: number;      // scarf / cape / tail membrane
+  /** What sits on the crown. */
+  crown: "fins" | "cat-ears" | "bat-ears" | "horns" | "none";
+  /** What trails off the body, using the same spring chain. */
+  trail: "scarf" | "cape" | "tail" | "none";
+  /** Face hardware. */
+  face: "visor" | "lenses" | "muzzle";
+  /** Big eyes read as a mask; small ones read as a machine. */
+  eyeScale: number;
+  /** Chest emblem plate (bat-style). */
+  emblem?: boolean;
+  /** Membrane wings off the shoulder blades. */
+  wings?: boolean;
+  /** Suit piping — thin lines over the torso, spider-suit style. */
+  piping?: boolean;
+  /** Body scale, for the ones that aren't human-shaped. */
+  chunk?: number;
+}
+
+export const PILOT_DESIGNS: Record<string, PilotDesign> = {
+  flux: {
+    shell: 0x4d5a80, plate: 0x9fb0d4, accent: "#73ffb8", cloth: 0x73ffb8,
+    crown: "fins", trail: "scarf", face: "visor", eyeScale: 1,
+  },
+  // Red-and-blue wall-crawler: the silhouette is all in the lenses.
+  webslinger: {
+    shell: 0xc8202e, plate: 0x1d3fa8, accent: "#f2f6ff", cloth: 0xc8202e,
+    crown: "none", trail: "none", face: "lenses", eyeScale: 2.35, piping: true,
+  },
+  // Cowl, ears, and a cape that actually swings — the cape is the character.
+  nightcape: {
+    shell: 0x2a2f3d, plate: 0x171a24, accent: "#ffd75e", cloth: 0x1b1f2b,
+    crown: "bat-ears", trail: "cape", face: "lenses", eyeScale: 1.5, emblem: true,
+  },
+  // Orange tabby with a tail that whips through every turn.
+  whiskers: {
+    shell: 0xe08a3c, plate: 0xf7e2c2, accent: "#8bf07a", cloth: 0xe08a3c,
+    crown: "cat-ears", trail: "tail", face: "muzzle", eyeScale: 1.75, chunk: 1.04,
+  },
+  // Wings that spread when you leave the ground, horns, and a heavy tail.
+  emberwing: {
+    shell: 0x2f7d57, plate: 0xd9a441, accent: "#ff8a3d", cloth: 0x1f5c3e,
+    crown: "horns", trail: "tail", face: "muzzle", eyeScale: 1.5,
+    wings: true, chunk: 1.08,
+  },
+};
+
 /** Critically-ish damped spring toward a target. Returns the new velocity. */
 function spring(cur: number, target: number, vel: number, stiffness: number, damping: number, dt: number) {
   return vel + ((target - cur) * stiffness - vel * damping) * dt;
@@ -63,7 +121,12 @@ function spring(cur: number, target: number, vel: number, stiffness: number, dam
 const approach = (cur: number, target: number, rate: number, dt: number) =>
   cur + (target - cur) * (1 - Math.exp(-rate * dt));
 
-export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
+export function buildProceduralPilot(
+  accent?: string,
+  designId = "flux",
+): ProceduralPilot {
+  const design = PILOT_DESIGNS[designId] ?? PILOT_DESIGNS.flux;
+  accent = accent ?? design.accent;
   const group = new THREE.Group();
 
   // ---- Materials ----------------------------------------------------
@@ -76,10 +139,10 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
   // midtones, with a genuinely light plate so the joints separate from
   // the limbs at chase-camera distance.
   const shell = new THREE.MeshStandardMaterial({
-    color: 0x4d5a80, roughness: 0.6, metalness: 0.15, flatShading: true,
+    color: design.shell, roughness: 0.6, metalness: 0.15, flatShading: true,
   });
   const plate = new THREE.MeshStandardMaterial({
-    color: 0x9fb0d4, roughness: 0.45, metalness: 0.25, flatShading: true,
+    color: design.plate, roughness: 0.45, metalness: 0.25, flatShading: true,
   });
   const glow = new THREE.MeshStandardMaterial({
     color: new THREE.Color(accent), emissive: new THREE.Color(accent),
@@ -92,8 +155,12 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
     roughness: 0.25, metalness: 0.4,
   });
   const cloth = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(accent), emissive: new THREE.Color(accent),
-    emissiveIntensity: 0.7, roughness: 0.85, metalness: 0, side: THREE.DoubleSide,
+    color: new THREE.Color(design.cloth),
+    emissive: new THREE.Color(design.cloth),
+    // Flux's scarf glows; a bat's cape and a cat's tail are fabric and fur,
+    // and reading them as neon would undo the whole silhouette.
+    emissiveIntensity: designId === "flux" ? 0.7 : 0.06,
+    roughness: 0.85, metalness: 0, side: THREE.DoubleSide,
   });
   const materials = [shell, plate, glow, dark, cloth];
   const geometries: THREE.BufferGeometry[] = [];
@@ -133,9 +200,12 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
   chestMesh.scale.set(1.12, 1, 0.82);
   torso.add(chestMesh);
   // Chest core — a slow pulse that doubles as a "you are here" marker.
+  // Flux's reactor. A cat does not have one, and on the others it read as
+  // a sticker: they get an emblem, piping, or bare chest instead.
   const core = mesh(new THREE.IcosahedronGeometry(0.062, 0), glow);
   core.position.set(0, 0.32, 0.17);
-  torso.add(core);
+  core.visible = designId === "flux";
+  if (core.visible) torso.add(core);
   // Shoulder yoke.
   const yoke = mesh(new THREE.BoxGeometry(0.46, 0.09, 0.2), plate);
   yoke.position.y = 0.5;
@@ -154,27 +224,93 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
   // Wraparound visor, with the eyes standing PROUD of the glass. The
   // first cut sank them inside it, which from the front produced a
   // featureless dark blob — the character had no face at all.
-  const visor = mesh(new THREE.CapsuleGeometry(0.132, 0.085, 3, 14), dark);
-  visor.position.set(0, 0.155, 0.05);
-  visor.scale.set(1.02, 0.55, 1.0);
-  head.add(visor);
+  if (design.face === "visor") {
+    const visor = mesh(new THREE.CapsuleGeometry(0.132, 0.085, 3, 14), dark);
+    visor.position.set(0, 0.155, 0.05);
+    visor.scale.set(1.02, 0.55, 1.0);
+    head.add(visor);
+  } else if (design.face === "muzzle") {
+    // A snout turns a helmet into an animal: it's the one addition that
+    // changes the read of the silhouette from the back of the room.
+    const snout = mesh(new THREE.BoxGeometry(0.115, 0.085, 0.12), shell);
+    snout.position.set(0, 0.125, 0.15);
+    head.add(snout);
+    const nose = mesh(new THREE.BoxGeometry(0.05, 0.035, 0.035), dark);
+    nose.position.set(0, 0.145, 0.212);
+    head.add(nose);
+    // Jaw, slightly lighter, so the mouth line reads.
+    const jaw = mesh(new THREE.BoxGeometry(0.098, 0.03, 0.1), plate);
+    jaw.position.set(0, 0.093, 0.155);
+    head.add(jaw);
+    if (designId === "whiskers") {
+      const whiskerGeo = track(new THREE.CylinderGeometry(0.004, 0.002, 0.17, 4));
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const w = new THREE.Mesh(whiskerGeo, plate);
+          w.position.set(side * 0.055, 0.128 + i * 0.016, 0.185);
+          w.rotation.z = side * (Math.PI / 2 - 0.25);
+          w.rotation.y = side * (0.25 - i * 0.22);
+          head.add(w);
+        }
+      }
+    }
+  }
   // Eye slits rather than dots: a horizontal bar keeps its shape at the
   // distance the chase camera actually sits at, where a dot is one pixel.
-  const eyeGeo = track(new THREE.BoxGeometry(0.052, 0.026, 0.03));
+  const es = design.eyeScale;
+  // Lenses are the whole identity for a masked character, so they get real
+  // geometry — a teardrop plate with a dark rim — rather than a bright bar.
+  const eyeGeo = track(
+    design.face === "lenses"
+      ? new THREE.SphereGeometry(0.055, 10, 8)
+      : new THREE.BoxGeometry(0.052, 0.026, 0.03),
+  );
   const eyes: THREE.Mesh[] = [];
   for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, glow);
-    eye.position.set(side * 0.058, 0.163, 0.166);
-    eye.rotation.z = side * -0.16; // a slight scowl, so it has an attitude
+    if (design.face === "lenses") {
+      // Angular lenses, wide-set and tilted into a scowl. Spheres read as
+      // goggles; these are squashed hard on Y and Z so they sit ON the
+      // mask as teardrops, with a black outline that separates them from
+      // a bright suit.
+      // A cowl wants slits, not lenses: on a dark suit a round eye reads as
+      // an owl. Squash it almost flat and let the tilt do the glaring.
+      const slit = designId === "nightcape";
+      eye.position.set(side * (slit ? 0.072 : 0.082), 0.174, slit ? 0.118 : 0.108);
+      eye.scale.set(es * (slit ? 0.95 : 1.02), es * (slit ? 0.16 : 0.5), es * 0.34);
+      eye.rotation.z = side * (slit ? -0.42 : -0.42);
+      const rim = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.055, 10, 8)),
+        // A true black outline — the shared `dark` carries the accent in
+        // its emissive, which glowed straight through the lens.
+        new THREE.MeshStandardMaterial({ color: 0x0a0c12, roughness: 0.5, metalness: 0.1 }),
+      );
+      materials.push(rim.material as THREE.Material);
+      rim.castShadow = true;
+      rim.position.copy(eye.position);
+      rim.position.z -= 0.014;
+      rim.scale.set(eye.scale.x * 1.22, eye.scale.y * 1.5, eye.scale.z * 0.9);
+      rim.rotation.z = eye.rotation.z;
+      head.add(rim);
+    } else if (design.face === "muzzle") {
+      eye.position.set(side * 0.062, 0.185, 0.128);
+      eye.scale.set(es, es * 0.9, es);
+      eye.rotation.z = side * -0.2;
+    } else {
+      eye.position.set(side * 0.058, 0.163, 0.166);
+      eye.rotation.z = side * -0.16; // a slight scowl, so it has an attitude
+    }
     head.add(eye);
     eyes.push(eye);
   }
   // Chin light — catches the underside of the visor and gives the head a
   // second point of interest from below, which is where the camera is
   // whenever you're jumping.
-  const chin = mesh(new THREE.BoxGeometry(0.1, 0.014, 0.02), glow);
-  chin.position.set(0, 0.098, 0.14);
-  head.add(chin);
+  if (design.face === "visor") {
+    const chin = mesh(new THREE.BoxGeometry(0.1, 0.014, 0.02), glow);
+    chin.position.set(0, 0.098, 0.14);
+    head.add(chin);
+  }
 
   // Crest — three tapering fins with independent spring lag. This is the
   // single loudest piece of secondary motion; it sells acceleration.
@@ -182,7 +318,38 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
   // end — stacking merged them into one thin antenna, which read as a
   // stray wire rather than as part of the character.
   const crestJoints: THREE.Group[] = [];
-  {
+  if (design.crown === "cat-ears" || design.crown === "bat-ears" || design.crown === "horns") {
+    // Ears and horns hang off their own joints so they inherit the crest
+    // spring: they lag on acceleration and flick on hard turns, which is
+    // most of what makes an animal head look alive.
+    const bat = design.crown === "bat-ears";
+    const horn = design.crown === "horns";
+    for (const side of [-1, 1]) {
+      const j = new THREE.Group();
+      j.position.set(side * (horn ? 0.085 : 0.075), 0.235, horn ? -0.02 : 0);
+      head.add(j);
+      const len = bat ? 0.19 : horn ? 0.27 : 0.13;
+      const ear = mesh(
+        new THREE.ConeGeometry(bat ? 0.042 : horn ? 0.062 : 0.055, len, horn ? 5 : 4),
+        horn ? plate : shell, // horns in the gold, so they read as horn not hide
+      );
+      ear.position.y = len / 2;
+      ear.scale.z = bat ? 0.55 : 0.72;
+      if (horn) ear.rotation.x = -0.5; // sweep them back over the skull
+      // Bat ears stand tall and slightly back; cat ears splay; horns sweep back.
+      j.rotation.z = side * (bat ? 0.16 : horn ? 0.34 : 0.3);
+      j.rotation.x = bat ? -0.1 : horn ? 0.55 : -0.05;
+      j.add(ear);
+      if (!horn) {
+        // Inner ear, in the accent — a cat without pink ears is a fox.
+        const inner = mesh(new THREE.ConeGeometry(bat ? 0.024 : 0.033, len * 0.66, 4), glow);
+        inner.position.set(0, len * 0.42, bat ? 0.012 : 0.02);
+        inner.scale.z = 0.5;
+        j.add(inner);
+      }
+      crestJoints.push(j);
+    }
+  } else if (design.crown === "fins") {
     let parent: THREE.Object3D = head;
     for (let i = 0; i < 3; i++) {
       const j = new THREE.Group();
@@ -264,7 +431,7 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
   // centred scarf whole, so the one piece of secondary motion you'd see
   // most often was invisible exactly when the pack was equipped.
   const scarfJoints: THREE.Group[] = [];
-  {
+  if (design.trail === "scarf") {
     let parent: THREE.Object3D = torso;
     const SEGS = 6;
     for (let i = 0; i < SEGS; i++) {
@@ -285,6 +452,135 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
     collar.rotation.x = Math.PI / 2;
     collar.scale.set(1, 0.8, 1);
     torso.add(collar);
+  } else if (design.trail === "cape") {
+    // A full cape off both shoulders. Same chain as the scarf, but wide
+    // and centred: it billows on acceleration and sweeps through turns,
+    // which is the entire reason to wear one.
+    let parent: THREE.Object3D = torso;
+    const SEGS = 5;
+    for (let i = 0; i < SEGS; i++) {
+      const j = new THREE.Group();
+      j.position.set(0, i === 0 ? 0.52 : -0.21, i === 0 ? -0.11 : 0);
+      parent.add(j);
+      // Widens slightly then tapers — a trapezoid reads as cloth, a
+      // rectangle reads as a plank.
+      const w = 0.44 + Math.sin((i / SEGS) * Math.PI) * 0.2 - i * 0.02;
+      const panel = new THREE.Mesh(track(new THREE.PlaneGeometry(w, 0.225)), cloth);
+      panel.position.y = -0.112;
+      j.add(panel);
+      scarfJoints.push(j);
+      parent = j;
+    }
+    // Shoulder mantle so the cape has a visible anchor.
+    const mantle = mesh(new THREE.CylinderGeometry(0.235, 0.2, 0.1, 10, 1, true), cloth);
+    mantle.position.set(0, 0.5, -0.02);
+    torso.add(mantle);
+  } else if (design.trail === "tail") {
+    // A tail is the same chain again, but it grows from the base of the
+    // spine and is solid rather than cloth — so it swings with weight.
+    const dragon = designId === "emberwing";
+    let parent: THREE.Object3D = hips;
+    const SEGS = 7;
+    for (let i = 0; i < SEGS; i++) {
+      const j = new THREE.Group();
+      j.position.set(0, i === 0 ? 0.02 : 0, i === 0 ? -0.15 : -(dragon ? 0.17 : 0.145));
+      if (i === 0) j.rotation.x = dragon ? 0.35 : -0.55; // cats carry it up
+      parent.add(j);
+      const r = (dragon ? 0.075 : 0.055) * (1 - i / (SEGS + 1.5));
+      const seg = mesh(
+        new THREE.CylinderGeometry(r, r * 0.86, dragon ? 0.17 : 0.145, 7),
+        shell,
+      );
+      seg.rotation.x = Math.PI / 2;
+      seg.position.z = -(dragon ? 0.085 : 0.072);
+      j.add(seg);
+      if (dragon && i > 1) {
+        // Dorsal spikes down the back half of the tail.
+        const spike = mesh(new THREE.ConeGeometry(0.028, 0.07, 4), plate);
+        spike.position.set(0, r + 0.02, -0.085);
+        spike.rotation.x = -0.4;
+        j.add(spike);
+      }
+      if (!dragon && i === SEGS - 1) {
+        // White tip — it's what your eye tracks when the tail whips.
+        const tip = mesh(new THREE.SphereGeometry(r * 1.25, 8, 6), plate);
+        tip.position.z = -0.15;
+        j.add(tip);
+      }
+      scarfJoints.push(j);
+      parent = j;
+    }
+  }
+
+  // Chest emblem — a flattened plate the eye locks onto immediately.
+  if (design.emblem) {
+    const wing = track(new THREE.ConeGeometry(0.085, 0.13, 3));
+    for (const side of [-1, 1]) {
+      const half = new THREE.Mesh(wing, glow);
+      half.position.set(side * 0.052, 0.33, 0.175);
+      half.rotation.z = side * (Math.PI / 2) * 0.92;
+      half.scale.set(0.62, 1, 0.24);
+      torso.add(half);
+    }
+    const body = mesh(new THREE.SphereGeometry(0.045, 8, 6), glow);
+    body.position.set(0, 0.335, 0.178);
+    body.scale.set(0.55, 0.85, 0.25);
+    torso.add(body);
+  }
+
+  // Suit piping — thin dark lines fanning over the chest. Cheap, and it
+  // turns a flat red torso into a *suit*.
+  if (design.piping) {
+    const line = track(new THREE.BoxGeometry(0.006, 0.3, 0.006));
+    for (let i = -2; i <= 2; i++) {
+      const l = new THREE.Mesh(line, dark);
+      l.position.set(i * 0.055, 0.3, 0.155);
+      l.rotation.z = i * 0.12;
+      l.rotation.x = -0.25;
+      torso.add(l);
+    }
+    for (let i = 0; i < 3; i++) {
+      const ring = mesh(new THREE.TorusGeometry(0.09 + i * 0.05, 0.005, 4, 14, Math.PI), dark);
+      ring.position.set(0, 0.34 - i * 0.02, 0.15 - i * 0.01);
+      ring.rotation.x = -0.25 + i * 0.05;
+      torso.add(ring);
+    }
+  }
+
+  // Wings — membranes on their own joints, folded when grounded and
+  // spread when airborne, with a beat driven by vertical speed.
+  const wingJoints: THREE.Group[] = [];
+  if (design.wings) {
+    const membrane = new THREE.MeshStandardMaterial({
+      color: design.cloth, roughness: 0.9, metalness: 0,
+      side: THREE.DoubleSide, flatShading: true,
+    });
+    materials.push(membrane);
+    for (const side of [-1, 1]) {
+      const j = new THREE.Group();
+      j.position.set(side * 0.18, 0.46, -0.1);
+      torso.add(j);
+      // Leading-edge bone out to the tip, with finger struts.
+      const bone = mesh(new THREE.CylinderGeometry(0.026, 0.012, 0.62, 5), plate);
+      bone.rotation.z = side * -Math.PI / 2;
+      bone.position.set(side * 0.31, 0.04, 0);
+      j.add(bone);
+      // One big membrane behind the bone rather than three little flags —
+      // a wing is a surface, and the earlier fan read as loose sticks.
+      const web = new THREE.Mesh(track(new THREE.PlaneGeometry(0.62, 0.5)), membrane);
+      web.position.set(side * 0.3, -0.19, -0.05);
+      web.rotation.y = side * 0.22;
+      web.rotation.x = 0.1;
+      j.add(web);
+      // Finger struts fanning down the trailing edge, so it reads as bat-wing.
+      for (let i = 0; i < 3; i++) {
+        const strut = mesh(new THREE.CylinderGeometry(0.011, 0.006, 0.38 - i * 0.06, 4), plate);
+        strut.position.set(side * (0.14 + i * 0.16), -0.17, -0.03);
+        strut.rotation.z = side * (0.5 - i * 0.16);
+        j.add(strut);
+      }
+      wingJoints.push(j);
+    }
   }
 
   group.add(root);
@@ -512,6 +808,20 @@ export function buildProceduralPilot(accent = "#73ffb8"): ProceduralPilot {
       scarfJoints[i].rotation.y = THREE.MathUtils.clamp(-f.yawRate * 0.06 * (i + 1), -0.4, 0.4);
       // Keep the shoulder sweep the rig was built with; bank on top of it.
       scarfJoints[i].rotation.z = scarfRestZ[i] - bank * (0.2 + i * 0.12);
+    }
+
+    // ---- Wings ---------------------------------------------------------
+    // Folded on the ground, spread in the air, and beating harder the
+    // faster you're climbing — so leaving the ground reads as taking off.
+    for (let i = 0; i < wingJoints.length; i++) {
+      const side = i === 0 ? -1 : 1;
+      const spread = f.grounded ? 0.1 : 1;
+      const beat = Math.sin(t * (f.grounded ? 1.6 : 7 + Math.min(smoothSpeed, 8))) *
+        (f.grounded ? 0.06 : 0.42);
+      const j = wingJoints[i];
+      j.rotation.z = approach(j.rotation.z, side * (0.25 + spread * 0.85) + beat * side, 9, dt);
+      j.rotation.y = approach(j.rotation.y, side * (f.grounded ? 0.75 : 0.15), 8, dt);
+      j.rotation.x = approach(j.rotation.x, -bank * 0.3 + (f.grounded ? 0.1 : -0.15), 8, dt);
     }
   };
 
