@@ -569,7 +569,7 @@ function bakeSeabed(ctx: WorldCtx, size: number, seaLevel: number, half: number)
     }
   }
 
-  const make = (data: Uint8Array): THREE.DataTexture => {
+  const make = (data: Uint8Array<ArrayBuffer>): THREE.DataTexture => {
     const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.minFilter = THREE.LinearFilter;
