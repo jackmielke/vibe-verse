@@ -1,28 +1,17 @@
 /**
- * GlobalNav — top nav with World chips (left/center) + Vibe Profile (right).
+ * GlobalNav — 🌐 Worlds pill (top-left) + wallet/Vibe Profile pill (top-right).
  *
- * The chip row shows: 🌐 Worlds (opens the full picker) + a fixed set of
- * primary destinations + ⋯ More (everything else). Keep the order stable so
- * the nav feels like a map instead of a recents list.
- *
- * The Vibe Profile button sits in its OWN pill at top-right, with the
- * same height/glass treatment as the nav row so they line up perfectly
- * across the top edge.
+ * The old center chip row of primary destinations is gone: it was a permanent
+ * banner across the top of every world. The Worlds pill goes to /game and the
+ * WorldPicker still covers the full list.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import WorldPicker from "@/components/WorldPicker";
 import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
 import VibeCoinChip from "@/components/VibeCoinChip";
-import { WORLDS, type WorldEntry } from "@/worlds/registry";
 import { VibeMark } from "@/components/HomeButton";
 
-/**
- * Every hoppable destination, and the order of the chip row, both come from
- * `src/worlds/registry.ts`. The nav used to keep its own list, which is how it
- * ended up offering Vibe Star but not Vibe Golf or Vibe Kart.
- */
-type Destination = WorldEntry;
 
 export default function GlobalNav() {
   const location = useLocation();
