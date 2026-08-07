@@ -26,6 +26,7 @@ import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshnes
 import { passportProgress } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeWink from "@/components/VibeWink";
+import { WorldChangesPortal } from "@/components/WorldChanges";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 
 /** Filter tabs. `all` is not a kind, so it is spelled out here. */
@@ -76,7 +77,15 @@ function DrawnPanel({ accent }: { accent: string }) {
  * only have to be scannable, so they share one aspect ratio and one height
  * (`auto-rows-fr` on the grid, image fixed, body flexed).
  */
-function Card({ world, index }: { world: WorldEntry; index: number }) {
+function Card({
+  world,
+  index,
+  onHistory,
+}: {
+  world: WorldEntry;
+  index: number;
+  onHistory: (w: WorldEntry) => void;
+}) {
   const art = artFor(world.key);
   const iso = updatedAt(world.key);
   const updated = sinceLabel(iso);
@@ -143,12 +152,22 @@ function Card({ world, index }: { world: WorldEntry; index: number }) {
               {world.source}
             </p>
             {updated && (
-              <p
-                title={exact ? `Last updated ${exact}` : undefined}
-                className="ml-auto shrink-0 font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/55"
+              /* The date answers "when" and raises "what". Tapping it says
+                 what. It sits inside the card's <Link>, so the navigation has
+                 to be stopped by hand — otherwise opening the history also
+                 opens the world behind it. */
+              <button
+                type="button"
+                title={exact ? `Last updated ${exact} — tap to see what changed` : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onHistory(world);
+                }}
+                className="ml-auto shrink-0 rounded font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/55 underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
               >
                 {updated}
-              </p>
+              </button>
             )}
           </div>
         </div>
@@ -165,6 +184,7 @@ export default function Game() {
      meet the best door first. "Recent" answers the other question people
      actually have about a collection this size: what is still being worked on? */
   const [sort, setSort] = useState<"featured" | "recent">("featured");
+  const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
      render to draw one line of text is not worth a subscription. */
@@ -351,7 +371,7 @@ export default function Game() {
             entire job of this page. */}
         <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {shown.map((w, i) => (
-            <Card key={w.key} world={w} index={i} />
+            <Card key={w.key} world={w} index={i} onHistory={setHistory} />
           ))}
         </div>
 
@@ -373,6 +393,8 @@ export default function Game() {
           .
         </footer>
       </div>
+
+      <WorldChangesPortal world={history} onClose={() => setHistory(null)} />
     </div>
   );
 }

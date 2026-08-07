@@ -10,9 +10,17 @@ pull request, no waiting for review — `main` deploys, and the point is to be
 able to open a link and demo it a minute later. Commit to `main` and push.
 
 The one thing that buys: **`main` is always live**, so verify before pushing,
-not after. `npm run build` at minimum; for anything with a canvas in it, drive
-the route in a real browser and look at the frame. A world that builds and
-renders a black screen is a broken demo, and the build will not tell you.
+not after. `npm run typecheck && npm run build` at minimum; for anything with a
+canvas in it, drive the route in a real browser and look at the frame. A world
+that builds and renders a black screen is a broken demo, and the build will not
+tell you.
+
+**`npm run typecheck`, never bare `tsc --noEmit`.** The root `tsconfig.json` is
+a solution-style config — `"files": []` plus project references — so `tsc
+--noEmit` against it compiles *nothing* and exits 0 no matter what is broken.
+And `vite build` strips types with esbuild without checking them. So a file
+referencing an undefined variable passes both, ships, and white-screens the
+route. That is not hypothetical; it went out that way once.
 
 ## Adding a world
 

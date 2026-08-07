@@ -52,6 +52,10 @@ function timeAgo(iso: string | null): string {
 export default function VibeCoinChip() {
   const { balance, display, ledger, stale, refresh } = useVibecoin();
   const [open, setOpen] = useState(false);
+  /* Read when the panel opens rather than once at mount: somebody can link a
+     wallet on `/wallet` and come straight back to this chip, and a value
+     captured at mount would still say "Create a Vibe Wallet". */
+  const [payout, setPayout] = useState<string | null>(null);
   const [pop, setPop] = useState<number | null>(null);
   const location = useLocation();
 
@@ -96,7 +100,10 @@ export default function VibeCoinChip() {
       <button
         onClick={() => {
           setOpen((v) => !v);
-          if (!open) void refresh();
+          if (!open) {
+            void refresh();
+            setPayout(readPayoutAddress());
+          }
         }}
         aria-expanded={open}
         aria-label={`${VIBECOIN_NAME} balance: ${display}`}

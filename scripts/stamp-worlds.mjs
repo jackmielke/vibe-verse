@@ -31,6 +31,10 @@ import { pathToFileURL } from "node:url";
 
 const ROOT = resolve(process.argv[2] ?? ".");
 const OUT = join(ROOT, "src/worlds/updated.ts");
+const CHANGES_OUT = join(ROOT, "src/worlds/changes.ts");
+const REPO_URL = "https://github.com/jackmielke/vibe-verse";
+/** How many recent commits each world remembers. */
+const CHANGE_COUNT = 6;
 
 /** Load the registry by bundling it — parsing TypeScript with a regex drifts. */
 async function loadWorlds() {
@@ -64,18 +68,36 @@ function pathsOf(source) {
     .filter((s) => s && existsSync(join(ROOT, s)));
 }
 
-/** Committer date of the newest commit touching any of these paths. */
-function lastTouched(paths) {
-  if (!paths.length) return null;
+/**
+ * The last few commits that touched any of these paths.
+ *
+ * Read from git at build time rather than fetched from GitHub at runtime, for
+ * the same reasons the dates are: the browser has no git, an API call would put
+ * a rate-limited third party between a card and a tooltip, and the answer would
+ * be wrong with the network down. Six is enough to say what has been happening
+ * without becoming a changelog nobody scrolls.
+ *
+ * NUL separators because commit subjects in this repo contain every other
+ * punctuation mark there is, em dashes and colons included.
+ */
+function recentCommits(paths) {
+  if (!paths.length) return [];
   try {
     const out = execFileSync(
       "git",
-      ["log", "-1", "--format=%cI", "--", ...paths],
+      ["log", `-${CHANGE_COUNT}`, "--format=%h%x00%cI%x00%s", "--", ...paths],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    ).trim();
-    return out || null;
+    );
+    return out
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [sha, iso, ...rest] = line.split("\0");
+        return { sha, iso, subject: rest.join("\0") };
+      })
+      .filter((c) => c.sha && c.iso);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -100,14 +122,18 @@ if (!worlds.length) {
 
 const previous = readExisting();
 const stamps = {};
+const changes = {};
 const missing = [];
 const kept = [];
 
 for (const w of worlds) {
-  const iso = lastTouched(pathsOf(w.source));
-  if (iso) {
-    stamps[w.key] = iso;
+  const log = recentCommits(pathsOf(w.source));
+  if (log.length) {
+    stamps[w.key] = log[0].iso;
+    changes[w.key] = log;
   } else if (previous[w.key]) {
+    // Shallow clone: keep the committed date, and leave the changelog to the
+    // committed file rather than blanking it.
     stamps[w.key] = previous[w.key];
     kept.push(w.key);
   } else {
@@ -137,6 +163,54 @@ ${rows}
 };
 `,
 );
+
+/* Only rewrite the changelog when git actually answered. In a shallow clone
+   `changes` comes back empty for everything, and overwriting a good file with
+   an empty one is the silent-erasure failure the dates already guard against. */
+if (Object.keys(changes).length) {
+  const blocks = Object.entries(changes)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, list]) => {
+      const rows = list
+        .map(
+          (c) =>
+            `    { sha: ${JSON.stringify(c.sha)}, iso: ${JSON.stringify(c.iso)}, ` +
+            `subject: ${JSON.stringify(c.subject)} },`,
+        )
+        .join("\n");
+      return `  ${JSON.stringify(k)}: [\n${rows}\n  ],`;
+    })
+    .join("\n");
+
+  writeFileSync(
+    CHANGES_OUT,
+    `/**
+ * What changed in each world lately — GENERATED, do not edit by hand.
+ *
+ * Regenerate with \`npm run stamp\`. The last ${CHANGE_COUNT} commits touching each
+ * world's \`source\` paths, so a card can answer "what actually changed?" without
+ * calling GitHub from the browser.
+ *
+ * Kept apart from \`updated.ts\` on purpose: every card reads a date, almost
+ * nobody opens the history, and this file is twenty times the size.
+ */
+export interface WorldChange {
+  /** Short hash — links to the commit on GitHub. */
+  sha: string;
+  iso: string;
+  /** The commit subject line, verbatim. */
+  subject: string;
+}
+
+export const REPO_URL = ${JSON.stringify(REPO_URL)};
+
+export const WORLD_CHANGES: Record<string, WorldChange[]> = {
+${blocks}
+};
+`,
+  );
+  console.log(`stamp-worlds: wrote history for ${Object.keys(changes).length} worlds to src/worlds/changes.ts`);
+}
 
 console.log(`stamp-worlds: wrote ${Object.keys(stamps).length} dates to src/worlds/updated.ts`);
 if (kept.length) {
