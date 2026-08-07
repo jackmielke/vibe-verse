@@ -131,6 +131,7 @@ uniform vec3 uSun;        // unit, in view space
 uniform vec3 uSunTint;
 uniform vec3 c0,c1,c2,c3,c4,cPolar,cWater;
 uniform float uSea, uVeg, uRelief, uCraters, uNight, uSeed, uIce;
+uniform float uCloudCover, uCloudScale, uTime, uCloudRot;
 uniform vec3 uLamp;
 
 void main(){
@@ -198,6 +199,33 @@ void main(){
     lit += uSunTint * spec * 1.6;
   }
 
+  /* Cloud shadows.
+   *
+   * The same field the cloud shell uses, sampled a short way along the sun
+   * direction so the shadow falls where a shadow would. It is the one cue that
+   * ties the two shells together — without it the deck reads as a decal
+   * hovering over an unrelated surface, and the eye notices even if it cannot
+   * say why. */
+  if (uCloudCover > 0.01) {
+    /* The deck turns faster than the ground, so the shadow has to be sampled
+       in the *deck's* frame: rotate into it by the accumulated difference
+       before offsetting toward the sun. Sampling in the body's own frame is
+       what the first version did, and the shadows slowly walked away from the
+       clouds casting them over about a minute — which is worse than having no
+       shadows at all, because the eye tracks the mismatch. */
+    vec3 lp = vPos;
+    float cs = cos(uCloudRot), sn = sin(uCloudRot);
+    lp = vec3(lp.x * cs - lp.z * sn, lp.y, lp.x * sn + lp.z * cs);
+    vec3 sp = uSun;
+    sp = vec3(sp.x * cs - sp.z * sn, sp.y, sp.x * sn + sp.z * cs);
+    vec3 cp = normalize(lp + sp * 0.045) * uCloudScale + vec3(uSeed * 0.7);
+    float ca = fbm(cp + vec3(uTime * 0.004, 0.0, 0.0), 4, 0.5, 2.2) * 0.5 + 0.5;
+    float cb = fbm(cp * 1.9 - vec3(uTime * 0.007, 0.0, 0.0), 3, 0.55, 2.1) * 0.5 + 0.5;
+    float cm = ca * 0.65 + cb * 0.35;
+    float edge = 1.0 - uCloudCover;
+    lit *= 1.0 - smoothstep(edge, edge + 0.18, cm) * 0.45 * day;
+  }
+
   // Night side. Same noise field as the land, thresholded hard, so lights sit
   // where land is and cluster where the terrain is interesting.
   if (uNight > 0.01 && !water) {
@@ -258,17 +286,55 @@ varying vec3 vNrm;
 varying vec3 vView;
 uniform vec3 uColor, uSun;
 uniform float uDensity;
+
+/* An atmosphere, rather than a rim light.
+ *
+ * The first version was one Fresnel term times a day/night ramp, and it gave
+ * every world the same even hoop of colour whichever way the star was. Three
+ * things are missing from that and all three are cheap:
+ *
+ * **Phase.** Air scatters far more light forward than sideways. The Rayleigh
+ * phase function is 0.75(1 + cos²θ) and putting it in is what makes the limb
+ * blaze when you are looking toward the star and go quiet when you are not —
+ * the single strongest cue that there is *gas* out there rather than a decal.
+ *
+ * **Sunset.** Along the terminator the light has travelled through many times
+ * more air, so the short wavelengths are gone and what is left is orange. That
+ * band is the most recognisable thing about a planet seen from orbit and it
+ * costs one exponential.
+ *
+ * **Depth.** The shell is drawn back-faces-only, so the fragment's own grazing
+ * angle is a fair proxy for how much air the ray crossed. Squaring it puts the
+ * density where the atmosphere actually is instead of spreading it evenly.
+ */
 void main(){
-  // Back faces, so the normal points away: flip it to get the shell's outward
-  // normal and the Fresnel comes out the right way round.
+  // Back faces, so the interpolated normal points away: flip it to get the
+  // shell's outward normal and the Fresnel comes out the right way round.
   vec3 N = normalize(-vNrm);
-  float fres = pow(1.0 - max(dot(N, vView), 0.0), 2.6);
+  vec3 V = normalize(vView);
+
+  float grazing = 1.0 - max(dot(N, V), 0.0);
+  float depth = grazing * grazing * grazing;
+
   float ndl = dot(N, uSun);
-  // The limb is brightest where the sun is behind the planet's edge — that is
-  // the forward-scattering rim you see from the ISS at orbital sunrise.
-  float day = smoothstep(-0.55, 0.42, ndl);
-  float glow = fres * day * uDensity;
-  gl_FragColor = vec4(uColor * glow, glow);
+  float day = smoothstep(-0.32, 0.30, ndl);
+
+  // Rayleigh phase on the angle between the view ray and the star.
+  float mu = clamp(dot(-V, uSun), -1.0, 1.0);
+  float phase = 0.75 * (1.0 + mu * mu);
+
+  // The terminator band: warm where the ray is grazing the day/night line.
+  float sunset = exp(-abs(ndl) * 5.5);
+  vec3 tint = mix(uColor, uColor * vec3(2.1, 0.82, 0.36), sunset * 0.85);
+
+  float glow = depth * day * phase * uDensity * 1.25;
+
+  // A wash across the whole lit disc, not just the limb — real air lightens
+  // the day side toward the edge and without it the planet's surface meets
+  // space at a hard line.
+  glow += grazing * day * uDensity * 0.10;
+
+  gl_FragColor = vec4(tint * glow, glow);
 }
 `;
 
@@ -309,6 +375,10 @@ export function createPlanet(spec: PlanetSpec, seedKey: string, segments = 96): 
     uLamp: { value: C(spec.lamp ?? 0xffd08a) },
     uSeed: { value: seed },
     uIce: { value: spec.kind === "ice" ? 1 : spec.kind === "desert" || spec.kind === "volcanic" ? 0.15 : 0.55 },
+    uCloudCover: { value: spec.clouds?.cover ?? 0 },
+    uCloudScale: { value: spec.clouds?.scale ?? 1 },
+    uCloudRot: { value: 0 },
+    uTime: { value: 0 },
   };
   const bodyMat = new THREE.ShaderMaterial({
     uniforms: bodyUniforms,
@@ -421,10 +491,12 @@ export function createPlanet(spec: PlanetSpec, seedKey: string, segments = 96): 
     },
     update(dt) {
       t += dt;
+      bodyUniforms.uTime.value = t;
       body.rotation.y += dt * 0.012;
       if (clouds && cloudMat) {
         clouds.rotation.y += dt * 0.019;
         cloudMat.uniforms.uTime.value = t;
+        bodyUniforms.uCloudRot.value = clouds.rotation.y - body.rotation.y;
       }
       for (const m of moons) {
         const a = m.phase + t * m.speed * 0.1;

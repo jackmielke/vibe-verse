@@ -37,8 +37,9 @@ Here the payoff is a *person*.
 | --- | --- |
 | `galaxy/` | the chart: twelve systems, real astronomy, authored planets |
 | `crew/` | sixteen people — three officers and thirteen strangers — and the channel to them |
+| `gfx/` | the HDR post chain, and the baked surfacing every material in the world uses |
 | `space/` | the planet shader, the star, the starfield, the ship, warp |
-| `surface/` | terrain, the architecture kits, the bodies, walking, weather |
+| `surface/` | terrain, scatter, the architecture kits, the bodies, walking, weather |
 | `ui/` | LCARS, and it is the controls rather than a skin over them |
 | `game.ts` | the state machine, the clock, and the only module that knows both scenes exist |
 
@@ -103,6 +104,47 @@ The live brain is `supabase/functions/trek-comms`, one function for all sixteen
 because the persona travels with the request. Adding a seventeenth character is
 a client-side edit and no redeploy.
 
+## How it is rendered
+
+The world shipped once looking like coloured shapes on a coloured plane, and
+closing that gap turned out to be four specific things rather than a general
+lack of polish.
+
+**An HDR chain** (`gfx/post.ts`). Half-float target → depth-reconstructed SSAO
+→ a prefiltered dual-filter bloom → one composite doing chromatic aberration,
+radial blur at warp, grain, vignette, AgX and dither → FXAA. Every pass is
+hand-written because they have to *agree*: bloom added after tonemapping is a
+white smear and AO applied after is grey paint, so the whole frame stays in
+linear light up to a single curve at the very end. Three's own tone mapping is
+off for the same reason.
+
+AgX needed a **look**. Base AgX is famously flat and nobody ships it neutral —
+without one, a cloud deck at linear (0.82, 0.67, 0.28) leaves the curve at sRGB
+(194, 185, 153), because the log encode compresses a 3:1 channel ratio into
+0.05 of normalised range. Every world came out pale cream and no amount of
+exposure brought the colour back. The look is applied in the sigmoid's own
+space, which is where slope/power/saturation is actually defined.
+
+**Baked surfacing** (`gfx/surfacing.ts`). Six material families baked once at
+boot into mipmapped albedo/normal/ORM maps, sampled triplanar from position.
+Baked and not computed because analytic detail in a shader aliases and cannot
+be prefiltered — MSAA antialiases coverage, not shading. Triplanar because
+every prop is a primitive and a primitive's UVs are 0-1 per face regardless of
+size, so a 2 m tile stretches over a pillar and crams into a pebble. World
+space for anything bolted down; **object space for anything that moves**, or
+the plating swims across the hull as the ship flies.
+
+**IBL from each world's own sky.** A `HemisphereLight` is two colours lerped by
+`normal.y`; it cannot put a warm bounce on one wall and a cold one on the pillar
+beside it, so a red world lit that way is uniformly red whatever the textures
+are doing. A PMREM probe of the actual sky dome can, and gives every metal
+something to reflect.
+
+**Scatter** (`surface/scatter.ts`). Three instanced bands of rock — gravel,
+cobbles, boulders — because an empty ground plane has no scale. A fist-sized
+rock in the foreground is what tells you the hill is two hundred metres off and
+the person between them is a person.
+
 ## Five things that were got wrong once and are now load-bearing
 
 - **Standard orbit is a composition constant, not a physical one.** At 1.9
@@ -130,6 +172,24 @@ a client-side edit and no redeploy.
   click to the canvas, so engaging it on the title card made the whole LCARS
   rail unclickable. Lock is opt-in by clicking the viewport, every panel
   releases it, and looking around without it is a drag with the button held.
+
+And five more from the rendering pass, every one of which failed silently:
+
+- **The bloom upsample read and wrote the same attachment.** Undefined, and in
+  practice it fed back — every planet in the game rendered as a white disc.
+  Additive blending is correct and a fetch cheaper.
+- **The nebula and the star's halo had `depthTest: false`**, so an additive
+  sprite a quarter of the sky wide painted straight over the planet. Invisible
+  while the frame was being written without an sRGB encode; a purple haze the
+  moment it was not.
+- **MSAA plus a depth *texture* does not resolve depth on WebGL2.** The colour
+  blits, the depth does not, and the occlusion pass reads an empty buffer and
+  returns 1.0 everywhere. No MSAA on any tier now.
+- **A key light at azimuth 180 renders every world as cut-outs** — see above,
+  and it is the same lesson twice.
+- **`LatheGeometry` winds from profile order.** A robe written top-down comes
+  out inside-out, and back-face culled that means you see through it to the
+  legs.
 
 ## Playing it headless
 

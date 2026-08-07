@@ -82,9 +82,12 @@ export function createNpc(character: Character, at: THREE.Vector3, facing = 0): 
   // clay. Cloth gets the woven bake. Both are the same triplanar path
   // everything else in the world uses, so a person is lit by the same probe as
   // the pillar behind them.
-  const skin = keep(surfaced({ color: look.skin, family: "organic", tile: 0.16, bump: 0.5, roughness: 0.78, macro: 0.05 }));
-  const cloth = keep(surfaced({ color: look.cloth, family: "cloth", tile: 0.3, bump: 0.9, macro: 0.08 }));
-  const trim = keep(surfaced({ color: look.trim, family: "metal", tile: 0.22, roughness: 0.55, metalness: 0.7, macro: 0.05 }));
+  // Object space, not world: a limb that rotates drags a world-space
+  // projection across itself, and cloth that slides over a swinging arm reads
+  // as a bug because it is one.
+  const skin = keep(surfaced({ color: look.skin, family: "organic", tile: 0.16, bump: 0.5, roughness: 0.78, macro: 0.05, space: "object" }));
+  const cloth = keep(surfaced({ color: look.cloth, family: "cloth", tile: 0.3, bump: 0.9, macro: 0.08, space: "object" }));
+  const trim = keep(surfaced({ color: look.trim, family: "metal", tile: 0.22, roughness: 0.55, metalness: 0.7, macro: 0.05, space: "object" }));
   const hair = keep(new THREE.MeshStandardMaterial({ color: look.hair ?? 0x1a1a1a, roughness: 0.62 }));
   const dark = keep(new THREE.MeshStandardMaterial({ color: 0x120e0c, roughness: 0.28 }));
   const wet = keep(new THREE.MeshStandardMaterial({ color: 0xf4f2ee, roughness: 0.08, metalness: 0.0 }));

@@ -248,12 +248,12 @@ export function createSpaceScene(canvasAspect: number): SpaceScene {
       // bottom half. Move either one alone and you lose the ship off the top
       // or the planet off the bottom.
       lookTilt = damp(lookTilt, orbitLock ? 1 : 0, 3.2, dt);
-      const back = 9 + Math.abs(throttle) * 5 + warp * 8;
+      const back = 7.4 + Math.abs(throttle) * 5 + warp * 8;
       tmpV.copy(pos).addScaledVector(fwd, -back);
-      tmpV.addScaledVector(up.set(0, 1, 0).applyQuaternion(rot), 2.8 + 5.2 * lookTilt);
+      tmpV.addScaledVector(up.set(0, 1, 0).applyQuaternion(rot), 2.4 + 4.4 * lookTilt);
       camPos.lerp(tmpV, 1 - Math.exp(-7 * dt));
       camLook.copy(pos).addScaledVector(fwd, 26);
-      if (lookTilt > 0.001) camLook.addScaledVector(pos.clone().normalize(), -23 * lookTilt);
+      if (lookTilt > 0.001) camLook.addScaledVector(pos.clone().normalize(), -20 * lookTilt);
     } else {
       // From the bridge: on the saucer's centreline, just ahead of the dome.
       tmpV.copy(pos).addScaledVector(fwd, -0.55);

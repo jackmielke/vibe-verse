@@ -354,6 +354,19 @@ export interface SurfacedOptions {
   /** Extra colour variation keyed off world position, at a much larger scale
    *  than the tile. Stops a whole plaza of pillars being one shade. */
   macro?: number;
+  /**
+   * Which frame the triplanar samples in.
+   *
+   * `world` is right for anything bolted to the ground — a pillar, a boulder,
+   * the terrain — because it makes the grain continuous across abutting
+   * objects and independent of how each was placed.
+   *
+   * `object` is mandatory for anything that *moves*. A world-space projection
+   * on a starship makes the hull plating swim across the hull as she flies,
+   * and on a character it slides over the arm every time the arm swings. Both
+   * look like a bug because they are one.
+   */
+  space?: "world" | "object";
 }
 
 /**
@@ -385,6 +398,7 @@ export function surfaced(opts: SurfacedOptions, size = 512): THREE.MeshStandardM
     uBump: { value: opts.bump ?? 1 },
     uMacro: { value: opts.macro ?? 0.11 },
   };
+  const objectSpace = opts.space === "object";
   mat.userData.triplanar = uniforms;
 
   mat.onBeforeCompile = (shader) => {
@@ -399,9 +413,13 @@ export function surfaced(opts: SurfacedOptions, size = 512): THREE.MeshStandardM
       )
       .replace(
         "#include <worldpos_vertex>",
-        `#include <worldpos_vertex>
-         vTriPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-         vTriNrm = normalize(mat3(modelMatrix) * objectNormal);`,
+        objectSpace
+          ? `#include <worldpos_vertex>
+             vTriPos = transformed;
+             vTriNrm = normalize(objectNormal);`
+          : `#include <worldpos_vertex>
+             vTriPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+             vTriNrm = normalize(mat3(modelMatrix) * objectNormal);`,
       );
 
     shader.fragmentShader = shader.fragmentShader
@@ -484,7 +502,7 @@ export function surfaced(opts: SurfacedOptions, size = 512): THREE.MeshStandardM
 
   // Two materials with different patches must not share a compiled program.
   mat.customProgramCacheKey = () =>
-    `snw-tri:${opts.family}:${tile.toFixed(3)}:${(opts.bump ?? 1).toFixed(2)}:${(opts.macro ?? 0.11).toFixed(2)}`;
+    `snw-tri:${opts.family}:${tile.toFixed(3)}:${(opts.bump ?? 1).toFixed(2)}:${(opts.macro ?? 0.11).toFixed(2)}:${opts.space ?? "world"}`;
 
   return mat;
 }
