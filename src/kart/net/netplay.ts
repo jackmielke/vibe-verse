@@ -20,6 +20,9 @@ import * as THREE from "three";
 import { supabase } from "@/integrations/supabase/client";
 import type { KartCtx, PhysicsService, RacerState, System } from "../types";
 
+/** `destroyRacer` is the model system's own extra, not part of the contract. */
+type ModelsMaybe = { destroyRacer?(racerId: number): void } | undefined;
+
 export interface KartNetConfig {
   /** Room code — everyone typing the same one races together. */
   room: string;
@@ -68,14 +71,35 @@ export default function createNetplay(config: KartNetConfig) {
       config: { broadcast: { self: false }, presence: { key: config.peerId } },
     });
 
+    /**
+     * Put a peer's kart in the livery they chose in the lobby.
+     *
+     * `spawn` on an existing id is the physics system's own restart path, so
+     * the racer object survives it; dropping the rig makes the model system
+     * rebuild it in the new colours. Best effort throughout — a peer in the
+     * wrong paint still races fine, and a peer with no kart does not.
+     */
+    function dress(racer: RacerState, name: string, characterId?: string | null): void {
+      const phys = physics();
+      racer.name = name;
+      if (!phys || !characterId || characterId === racer.characterId) return;
+      const slot = phys.racers.findIndex((r) => r.id === racer.id);
+      try {
+        phys.spawn({ id: racer.id, name, characterId, isPlayer: false, slot: Math.max(0, slot) });
+        (ctx.services.models as ModelsMaybe)?.destroyRacer?.(racer.id);
+      } catch (err) {
+        console.error("[Vibe Kart/net] could not dress a peer's kart:", err);
+      }
+    }
+
     /** Hand a newly seen peer the free AI slot with the lowest id. */
-    function claimSlot(peerId: string, name: string): RemoteSlot | null {
+    function claimSlot(peerId: string, name: string, characterId?: string | null): RemoteSlot | null {
       const phys = physics();
       if (!phys) return null;
       const taken = new Set([...slots.values()].map((s) => s.racer.id));
       const free = phys.racers.find((r) => !r.isPlayer && !taken.has(r.id));
       if (!free) return null;
-      free.name = name;
+      dress(free, name, characterId);
       (free as RacerState & { remote?: boolean }).remote = true;
       const slot: RemoteSlot = {
         peer: { peerId, name, racerId: free.id, lastSeen: ctx.elapsed },
@@ -99,16 +123,19 @@ export default function createNetplay(config: KartNetConfig) {
       const p = payload as {
         peerId: string;
         name: string;
+        characterId?: string | null;
         pos: [number, number, number];
         quat: [number, number, number, number];
         speed: number;
       };
       if (!p || p.peerId === config.peerId) return;
-      const slot = slots.get(p.peerId) ?? claimSlot(p.peerId, p.name || "Racer");
+      const slot = slots.get(p.peerId) ?? claimSlot(p.peerId, p.name || "Racer", p.characterId);
       if (!slot) return;
       slot.peer.lastSeen = ctx.elapsed;
       slot.peer.name = p.name || slot.peer.name;
-      slot.racer.name = slot.peer.name;
+      // Re-read every packet, not just the first: between two races in the same
+      // room a peer can go back to the lobby and pick a different racer.
+      dress(slot.racer, slot.peer.name, p.characterId);
       slot.target.set(p.pos[0], p.pos[1], p.pos[2]);
       slot.targetQuat.set(p.quat[0], p.quat[1], p.quat[2], p.quat[3]);
       slot.speed = p.speed;
@@ -142,6 +169,10 @@ export default function createNetplay(config: KartNetConfig) {
               payload: {
                 peerId: config.peerId,
                 name: config.name,
+                // Physics is the authority on what you are driving — reading it
+                // rather than a captured config means a racer swapped between
+                // races reaches the others without reopening the channel.
+                characterId: me.characterId,
                 pos: [me.position.x, me.position.y, me.position.z],
                 quat: [me.quaternion.x, me.quaternion.y, me.quaternion.z, me.quaternion.w],
                 speed: me.speed,

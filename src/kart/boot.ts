@@ -26,7 +26,6 @@ import createAudio from "./audio";
 import createCamera from "./engine/camera";
 import createPostFx from "./postfx";
 import createMinimap from "./ui/minimap";
-import createNetplay from "./net/netplay";
 
 export interface KartBootResult {
   engine: KartEngine;
@@ -62,12 +61,11 @@ export async function bootKart(
     engine.renderOverride = typeof fn === "function" ? (fn as (dt: number) => void) : null;
   }) as (p: never) => void);
 
-  // Multiplayer is one extra system on the end: it only ever reads physics
-  // and writes remote poses, so a room that fails to connect costs the ghosts
-  // and nothing else.
-  const stages = opts.net
-    ? [...STAGES, { label: "Opening the pit lane", factory: createNetplay(opts.net) }]
-    : [...STAGES];
+  // Multiplayer is *not* booted here. It is one extra system that only reads
+  // physics and writes remote poses, and the UI bolts it on with `engine.add`
+  // the moment a room's race starts — so a session that never opens the
+  // multiplayer menu never opens a socket. See `ui/KartUI.tsx`.
+  const stages = [...STAGES];
 
   for (let i = 0; i < stages.length; i++) {
     const stage = stages[i];

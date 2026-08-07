@@ -22,6 +22,9 @@ interface ResultsProps {
   onAgain(): void;
   onSelect(): void;
   onTitle(): void;
+  /** In a room "again" is a group decision, so it goes back to the lobby and
+   *  the ready-up cycle rather than restarting this client on its own. */
+  multiplayer?: boolean;
 }
 
 interface Row extends Standing {
@@ -30,7 +33,7 @@ interface Row extends Standing {
   points: number;
 }
 
-export function ResultsScreen({ onAgain, onSelect, onTitle }: ResultsProps) {
+export function ResultsScreen({ onAgain, onSelect, onTitle, multiplayer }: ResultsProps) {
   const rt = useRuntime();
 
   const rows = useMemo<Row[]>(() => {
@@ -130,13 +133,15 @@ export function ResultsScreen({ onAgain, onSelect, onTitle }: ResultsProps) {
 
         <div className="vk-row" style={{ marginTop: "1vmin" }}>
           <button type="button" className="vk-btn vk-btn--gold vk-btn--wide" onClick={onAgain}>
-            Race again
+            {multiplayer ? "Back to lobby" : "Race again"}
           </button>
-          <button type="button" className="vk-btn" onClick={onSelect}>
-            Change racer
-          </button>
+          {multiplayer ? null : (
+            <button type="button" className="vk-btn" onClick={onSelect}>
+              Change racer
+            </button>
+          )}
           <button type="button" className="vk-btn vk-btn--ghost" onClick={onTitle}>
-            Title
+            {multiplayer ? "Leave room" : "Title"}
           </button>
         </div>
       </div>

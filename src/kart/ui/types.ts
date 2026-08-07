@@ -27,8 +27,18 @@
 import type * as THREE from "three";
 import type { MinimapService } from "../types";
 
-/** Which of the five screens is in front of the player. */
-export type UiScreen = "loading" | "title" | "select" | "race" | "paused" | "results";
+/** Which screen is in front of the player. `mpjoin`/`mplobby` are the two
+ *  multiplayer detours between the title and the same `select` → `race` path
+ *  single player takes. */
+export type UiScreen =
+  | "loading"
+  | "title"
+  | "mpjoin"
+  | "mplobby"
+  | "select"
+  | "race"
+  | "paused"
+  | "results";
 
 export interface KartUiService {
   readonly screen: UiScreen;

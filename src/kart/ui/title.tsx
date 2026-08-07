@@ -24,10 +24,11 @@ const SCENIC_HOLD = 8.5;
 interface TitleProps {
   settings: KartSettings;
   patch(next: Partial<KartSettings>): void;
-  onStart(): void;
+  onSingle(): void;
+  onMultiplayer(): void;
 }
 
-export function TitleScreen({ settings, patch, onStart }: TitleProps) {
+export function TitleScreen({ settings, patch, onSingle, onMultiplayer }: TitleProps) {
   const rt = useRuntime();
   const hold = useRef(0);
   const mark = useRef(0);
@@ -64,21 +65,26 @@ export function TitleScreen({ settings, patch, onStart }: TitleProps) {
     camera.scenicTo(mark.current);
   });
 
-  // Any key starts, which is what a title screen is for.
+  /**
+   * The title used to start on *any* key, which was right when there was one
+   * way in. There are two now, and "press any key" would silently pick one of
+   * them — so Enter and Space take the single-player door, M takes the other,
+   * and every other key does nothing rather than the wrong thing.
+   */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "Escape" || e.key === "Tab") return;
-      // Reload, devtools, media keys: the browser's, not the game's.
-      if (/^F\d/.test(e.key) || e.key === "ContextMenu" || e.key.startsWith("Audio") || e.key.startsWith("Media")) {
-        return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onSingle();
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        onMultiplayer();
       }
-      e.preventDefault();
-      onStart();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onStart]);
+  }, [onSingle, onMultiplayer]);
 
   const track = rt.ctx.services.track as TrackView | undefined;
   const race = rt.ctx.services.race as RaceView | undefined;
@@ -108,16 +114,31 @@ export function TitleScreen({ settings, patch, onStart }: TitleProps) {
           <span style={{ width: "8vmin" }} className="vk-check" />
         </div>
 
-        <button
-          type="button"
-          className="vk-btn vk-btn--gold vk-btn--wide vk-anim-rise"
-          style={{ marginTop: "1.4vmin", fontSize: "2.4vmin", padding: "1.8vmin 4vmin", animationDelay: "0.3s" }}
-          onClick={onStart}
+        <div
+          className="vk-row vk-anim-rise"
+          style={{ marginTop: "1.4vmin", flexWrap: "wrap", justifyContent: "center", animationDelay: "0.3s" }}
         >
-          <span className="vk-press" style={{ animation: "none", letterSpacing: "0.22em" }}>
-            Press Start
-          </span>
-        </button>
+          <button
+            type="button"
+            className="vk-btn vk-btn--gold vk-btn--wide"
+            style={{ fontSize: "2.4vmin", padding: "1.8vmin 4vmin" }}
+            onClick={onSingle}
+          >
+            <span style={{ letterSpacing: "0.22em" }}>Single Player</span>
+          </button>
+          <button
+            type="button"
+            className="vk-btn vk-btn--wide"
+            style={{ fontSize: "2.4vmin", padding: "1.8vmin 4vmin" }}
+            onClick={onMultiplayer}
+          >
+            <span style={{ letterSpacing: "0.22em" }}>Multiplayer</span>
+          </button>
+        </div>
+
+        <div className="vk-label vk-anim-fade" style={{ marginTop: "-0.6vmin" }}>
+          Race up to five friends on a room code
+        </div>
 
         <div className="vk-settings vk-anim-rise" style={{ animationDelay: "0.42s" }}>
           <Seg

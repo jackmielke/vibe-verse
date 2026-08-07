@@ -21,9 +21,12 @@ interface PauseProps {
   onResume(): void;
   onRestart(): void;
   onSelect(): void;
+  /** In a room, the two exits are different: a solo restart would desync the
+   *  field, and "change racer" means going back to the lobby to do it. */
+  multiplayer?: boolean;
 }
 
-export function PauseScreen({ settings, patch, onResume, onRestart, onSelect }: PauseProps) {
+export function PauseScreen({ settings, patch, onResume, onRestart, onSelect, multiplayer }: PauseProps) {
   const rt = useRuntime();
   const track = rt.ctx.services.track as TrackView | undefined;
 
@@ -56,11 +59,13 @@ export function PauseScreen({ settings, patch, onResume, onRestart, onSelect }: 
             <button type="button" className="vk-btn vk-btn--gold" onClick={onResume}>
               Resume
             </button>
-            <button type="button" className="vk-btn" onClick={onRestart}>
-              Restart race
-            </button>
+            {multiplayer ? null : (
+              <button type="button" className="vk-btn" onClick={onRestart}>
+                Restart race
+              </button>
+            )}
             <button type="button" className="vk-btn vk-btn--ghost" onClick={onSelect}>
-              Change racer
+              {multiplayer ? "Back to lobby" : "Change racer"}
             </button>
             <a className="vk-btn vk-btn--ghost" href="/" style={{ textDecoration: "none" }}>
               Quit to vibeverse

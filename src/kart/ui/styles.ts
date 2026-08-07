@@ -477,6 +477,48 @@ export const UI_CSS = String.raw`
 .vk-foot a { color: rgba(255, 247, 230, 0.6); text-decoration: none; pointer-events: auto; }
 .vk-foot a:hover { color: var(--vk-gold); }
 
+/* Multiplayer — join panel and lobby ---------------------------------------
+   The lobby is a list of *people*, so it is laid out like a roster and not
+   like the character grid: fixed-width rows that do not reflow when somebody
+   picks a kart, because a row that jumps as a name lands is a row you lose. */
+.vk-input {
+  width: 100%; margin-top: 0.7vmin; padding: 1.1vmin 1.6vmin;
+  border-radius: 1.2vmin; border: 0.24vmin solid rgba(255, 255, 255, 0.18);
+  background: rgba(6, 12, 22, 0.66); color: var(--vk-cream);
+  font: inherit; font-size: 2vmin; font-weight: 800; letter-spacing: 0.04em;
+  outline: none;
+}
+.vk-input:focus { border-color: var(--vk-gold); box-shadow: 0 0 1.6vmin rgba(255, 190, 40, 0.35); }
+.vk-input--code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 2.8vmin; letter-spacing: 0.42em; text-align: center; }
+
+.vk-mp-join { width: min(52vmin, 88vw); padding: 2.6vmin; }
+.vk-mp-code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 5.4vmin; font-weight: 900; letter-spacing: 0.34em; color: var(--vk-gold);
+  margin: 0.2vmin 0 0.9vmin; }
+
+.vk-mp-roster { width: min(62vmin, 92vw); padding: 1.6vmin; display: flex; flex-direction: column; gap: 0.9vmin; }
+.vk-mp-row {
+  display: flex; align-items: center; gap: 1.4vmin; padding: 0.9vmin 1.2vmin;
+  border-radius: 1.3vmin; background: rgba(6, 12, 22, 0.5);
+  border: 0.24vmin solid rgba(255, 255, 255, 0.1);
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.vk-mp-row[data-ready="1"] { border-color: rgba(94, 234, 152, 0.75); background: rgba(14, 44, 30, 0.55); }
+.vk-mp-face { width: 5vmin; height: 5vmin; flex: 0 0 auto; border-radius: 1vmin; overflow: hidden;
+  background: rgba(255, 255, 255, 0.07); display: grid; place-items: center; }
+.vk-mp-face svg { width: 100%; height: 100%; display: block; }
+.vk-mp-face-q { font-size: 2.4vmin; font-weight: 900; color: rgba(255, 247, 230, 0.35); }
+.vk-mp-who { display: flex; flex-direction: column; gap: 0.25vmin; min-width: 0; }
+.vk-mp-name { font-size: 2vmin; font-weight: 900; letter-spacing: 0.03em; }
+.vk-mp-kart { font-size: 1.35vmin; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 247, 230, 0.55); }
+.vk-mp-state { margin-left: auto; font-size: 1.35vmin; font-weight: 900; letter-spacing: 0.18em;
+  text-transform: uppercase; color: rgba(255, 247, 230, 0.5); white-space: nowrap; }
+.vk-mp-row[data-ready="1"] .vk-mp-state { color: #7ef0a8; }
+
+.vk-mp-go { display: flex; flex-direction: column; align-items: center; gap: 0.4vmin; }
+.vk-mp-go .vk-num { font-size: 13vmin; font-weight: 900; line-height: 1; color: var(--vk-gold);
+  text-shadow: 0 0.8vmin 2.4vmin rgba(0, 0, 0, 0.6); }
+
 /* Character select --------------------------------------------------------- */
 .vk-roster { display: flex; gap: 1.4vmin; align-items: stretch; justify-content: center; flex-wrap: wrap; max-width: 96vw; }
 .vk-card {

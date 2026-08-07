@@ -58,7 +58,6 @@ export const WORLD_ART: Record<string, string> = {
   "i-spy": iSpyArt,
   "strange-new-worlds": strangeNewWorldsArt,
   kart: kartArt,
-  "kart-mp": kartArt,
   trek: trekArt,
   city: cityArt,
   "edm-town": edmTownArt,

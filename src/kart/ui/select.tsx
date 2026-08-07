@@ -41,6 +41,8 @@ function Pips({ value }: { value: number }) {
 interface SelectProps {
   onConfirm(characterId: string): void;
   onBack(): void;
+  /** "Start race" solo; in a room, confirming takes you back to the roster. */
+  confirmLabel?: string;
 }
 
 /**
@@ -54,7 +56,7 @@ const COARSE_POINTER =
     ? window.matchMedia("(pointer: coarse)").matches
     : false;
 
-export function SelectScreen({ onConfirm, onBack }: SelectProps) {
+export function SelectScreen({ onConfirm, onBack, confirmLabel = "Start race" }: SelectProps) {
   const rt = useRuntime();
   const models = rt.ctx.services.models as ModelsView | undefined;
   const roster: CharacterPreset[] = models?.roster ?? [];
@@ -145,7 +147,7 @@ export function SelectScreen({ onConfirm, onBack }: SelectProps) {
         <div style={{ textAlign: "center" }}>
           <div className="vk-title-head vk-ink-edge">Choose your racer</div>
           <div className="vk-sub" style={{ marginTop: "0.6vmin" }}>
-            {COARSE_POINTER ? "Tap a racer · tap again to race" : "← → to browse · Enter to race"}
+            {COARSE_POINTER ? "Tap a racer · tap again to confirm" : "← → to browse · Enter to confirm"}
           </div>
         </div>
 
@@ -227,7 +229,7 @@ export function SelectScreen({ onConfirm, onBack }: SelectProps) {
             style={{ fontSize: "2.2vmin" }}
             onClick={() => pick(chosen?.id ?? "")}
           >
-            Start race
+            {confirmLabel}
           </button>
         </div>
       </div>

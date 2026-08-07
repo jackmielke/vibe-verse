@@ -20,8 +20,6 @@ export interface KartEngineOptions {
   canvas: HTMLCanvasElement;
   quality?: KartQuality;
   seed?: number;
-  /** Present only in a multiplayer room — see `net/netplay.ts`. */
-  net?: { room: string; peerId: string; name: string };
 }
 
 export function detectKartQuality(): KartQuality {
@@ -123,6 +121,23 @@ export class KartEngine {
     }
     this.systems.push(sys);
     return sys;
+  }
+
+  /**
+   * Take a system back off. Only netplay uses this — the multiplayer layer is
+   * bolted on when a room's race starts and has to come off when the player
+   * leaves the room, or its ghosts keep driving karts in the next single-player
+   * race. Everything `boot.ts` adds stays for the life of the engine.
+   */
+  remove(sys: System | null | undefined): void {
+    if (!sys) return;
+    const at = this.systems.indexOf(sys);
+    if (at >= 0) this.systems.splice(at, 1);
+    try {
+      sys.dispose?.();
+    } catch (err) {
+      console.error("[Vibe Kart] a system threw while being removed:", err);
+    }
   }
 
   emit(event: string, payload?: unknown): void {

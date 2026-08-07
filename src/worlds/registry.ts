@@ -46,7 +46,6 @@ const ORDER: string[] = [
   "vibeverse",
   "strange-new-worlds",
   "i-spy",
-  "kart-mp",
   "edm-town",
   "ski",
   "home-alone",
@@ -369,30 +368,20 @@ const WORLDS_RAW: WorldEntry[] = [
   {
     key: "kart",
     route: "/kart",
+    /* `/kart-mp` was a second card for the same racetrack, and the choice it
+       asked you to make — solo or with friends — is one the title screen is
+       better placed to ask. Kept as an alias so old links still land. */
+    aliases: ["/kart-mp"],
     name: "Vibe Kart",
     emoji: "🏁",
     kind: "game",
     blurb:
-      "Arcade kart racing — drift for mini-turbos, sling shells, and take the hairpin shortcut.",
-    status: "New — one circuit, eight racers",
+      "Arcade kart racing — drift for mini-turbos, sling shells, and take the hairpin shortcut. Race the CPU field, or share a room code and put up to five friends on the grid.",
+    status: "Playable — single player and six-kart rooms",
     accent: "#ffcc22",
     featured: true,
     source: "src/kart",
     nav: true,
-    passport: true,
-    chromeless: true,
-  },
-  {
-    key: "kart-mp",
-    route: "/kart-mp",
-    name: "Vibe Kart · Multiplayer",
-    emoji: "🏎️",
-    kind: "game",
-    blurb:
-      "Race the same circuit with your friends — share a room code, fill the grid, drop the flag.",
-    status: "New — room-code lobbies",
-    accent: "#ffcc22",
-    source: "src/kart/net",
     passport: true,
     chromeless: true,
   },

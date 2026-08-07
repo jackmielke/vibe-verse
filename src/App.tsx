@@ -60,7 +60,6 @@ const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 /* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
-const VibeKartMultiplayer = lazy(() => import("./pages/VibeKartMultiplayer.tsx"));
 /* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
    at boot. Lazy for the same reason: nobody who never works a night shift
    should carry the pizzeria around in the hub's entry chunk. */
@@ -298,24 +297,21 @@ const App = () => (
           ))}
           {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
           <Route path="/golf" element={<VibeGolf />} />
-          {/* Vibe Kart — arcade kart racing: drift, mini-turbos, shells. */}
-          <Route
-            path="/kart"
-            element={
-              <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
-                <VibeKart />
-              </Suspense>
-            }
-          />
-          {/* Vibe Kart · Multiplayer — lobby + room-coded races. */}
-          <Route
-            path="/kart-mp"
-            element={
-              <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
-                <VibeKartMultiplayer />
-              </Suspense>
-            }
-          />
+          {/* Vibe Kart — arcade kart racing: drift, mini-turbos, shells.
+              Single player and multiplayer are the same route: the title screen
+              picks, and `?room=CODE` is an invite straight into a lobby.
+              `/kart-mp` was the old multiplayer world and still answers. */}
+          {["/kart", "/kart-mp"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
+                  <VibeKart />
+                </Suspense>
+              }
+            />
+          ))}
           {/* BLUE ANGELS — Seafair over Lake Washington. You fly number 1 and
               the other five fly your wing, over a real Seattle. */}
           {["/blue-angels", "/angels", "/seafair-show"].map((path) => (

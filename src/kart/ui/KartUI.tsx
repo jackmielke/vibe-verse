@@ -28,8 +28,18 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isShotMode, type KartEngine } from "../engine/core";
+import createNetplay from "../net/netplay";
+import {
+  makePeerId,
+  normalizeRoomCode,
+  randomRacerName,
+  randomRoomCode,
+  useKartLobby,
+} from "../net/lobby";
+import type { System } from "../types";
 import { RaceHud } from "./hud";
 import { KartLogo } from "./logo";
+import { JoinScreen, LobbyScreen } from "./multiplayer";
 import { PauseScreen } from "./pause";
 import { ResultsScreen } from "./results";
 import { RuntimeProvider, type UiRuntime } from "./runtime";
@@ -44,12 +54,22 @@ export interface KartUIProps {
   engine: KartEngine;
   ready: boolean;
   progress: { stage: string; fraction: number };
+  /** Room code off an invite link — jumps straight past the join panel. */
+  initialRoom?: string | null;
+  /** Keeps `?room=` on the URL in step with the room actually joined. */
+  onRoomChange?(room: string | null): void;
 }
 
 /** How long the engine pump may go quiet before the rAF fallback takes over. */
 const PUMP_TIMEOUT_MS = 250;
 
-export default function KartUI({ engine, ready, progress }: KartUIProps) {
+export default function KartUI({
+  engine,
+  ready,
+  progress,
+  initialRoom = null,
+  onRoomChange,
+}: KartUIProps) {
   const ctx = engine.ctx;
   const shot = useMemo(() => isShotMode(), []);
 
@@ -58,6 +78,30 @@ export default function KartUI({ engine, ready, progress }: KartUIProps) {
   screenRef.current = screen;
 
   const [settings, setSettings] = useState<KartSettings>(loadSettings);
+
+  // -- multiplayer session --------------------------------------------------
+  // The lobby lives up here rather than inside the lobby screen because it has
+  // to outlive it: presence must keep flowing while the player is on the grid,
+  // or the room forgets them the moment the race starts.
+  const peerId = useMemo(makePeerId, []);
+  const [racerName, setRacerName] = useState(
+    () => localStorage.getItem("kart:name") || randomRacerName(),
+  );
+  const [draftCode, setDraftCode] = useState(
+    () => normalizeRoomCode(initialRoom ?? "") || randomRoomCode(),
+  );
+  const [room, setRoom] = useState<string | null>(() => normalizeRoomCode(initialRoom ?? "") || null);
+  /** Whatever the select screen last confirmed — shown in the lobby roster. */
+  const [characterId, setCharacterId] = useState<string | null>(null);
+  const lobby = useKartLobby({ code: room, peerId, name: racerName, characterId });
+  const netSystem = useRef<System | null>(null);
+  const attaching = useRef(false);
+
+  useEffect(() => {
+    localStorage.setItem("kart:name", racerName.trim() || "Racer");
+  }, [racerName]);
+
+  useEffect(() => onRoomChange?.(room), [onRoomChange, room]);
 
   // -- the frame bus --------------------------------------------------------
   const subs = useRef(new Set<(dt: number) => void>());
@@ -218,29 +262,83 @@ export default function KartUI({ engine, ready, progress }: KartUIProps) {
    * the rig makes the model system rebuild it in the new livery on the next
    * pose. Both are optional: without them you simply race the default grid.
    */
-  const confirmCharacter = useCallback(
-    (characterId: string) => {
+  const applyCharacter = useCallback(
+    (id: string) => {
+      setCharacterId(id || null);
       const physics = ctx.services.physics as PhysicsView | undefined;
       const models = ctx.services.models as ModelsView | undefined;
       const player = physics?.player;
-      if (physics && player && characterId && player.characterId !== characterId) {
+      if (physics && player && id && player.characterId !== id) {
         const slot = Math.max(0, physics.racers.findIndex((r) => r.id === player.id));
         try {
-          physics.spawn({ id: player.id, name: player.name, characterId, isPlayer: true, slot });
+          physics.spawn({ id: player.id, name: player.name, characterId: id, isPlayer: true, slot });
           models?.destroyRacer?.(player.id);
         } catch (err) {
           console.error("[Vibe Kart/ui] could not swap the player's kart:", err);
         }
       }
-      startRace();
     },
-    [ctx, startRace],
+    [ctx],
+  );
+
+  /**
+   * You are already driving something when you walk into the lobby — physics
+   * put you on the grid at boot. Seeding from it means the roster shows your
+   * actual kart rather than telling you to go and pick the one you have.
+   */
+  useEffect(() => {
+    if (!room || characterId) return;
+    const player = (ctx.services.physics as PhysicsView | undefined)?.player;
+    if (player?.characterId) setCharacterId(player.characterId);
+  }, [ctx, room, characterId]);
+
+  /** Take the multiplayer layer off the engine — see `KartEngine.remove`. */
+  const detachNet = useCallback(() => {
+    if (!netSystem.current) return;
+    engine.remove(netSystem.current);
+    netSystem.current = null;
+  }, [engine]);
+
+  /**
+   * Back to the roster, still in the room. Everything that leaves a race but
+   * keeps the room goes through here, because `returnToLobby` is what clears
+   * the ready flag — without it the host would see a full house of ready
+   * racers and immediately count the next race down on top of this one.
+   */
+  const backToLobby = useCallback(() => {
+    const race = ctx.services.race as RaceView | undefined;
+    race?.setPaused?.(false);
+    (ctx.services.audio as AudioView | undefined)?.music?.("menu");
+    (ctx.services.camera as CameraView | undefined)?.setMode?.("scenic", { snap: true });
+    lobby.returnToLobby();
+    setScreen("mplobby");
+  }, [ctx, lobby]);
+
+  const leaveRoom = useCallback(() => {
+    detachNet();
+    lobby.returnToLobby();
+    setRoom(null);
+    (ctx.services.audio as AudioView | undefined)?.music?.("menu");
+    setScreen("title");
+  }, [ctx, detachNet, lobby]);
+
+  const confirmCharacter = useCallback(
+    (id: string) => {
+      applyCharacter(id);
+      if (room) backToLobby();
+      else startRace();
+    },
+    [applyCharacter, backToLobby, room, startRace],
   );
 
   const toTitle = useCallback(() => {
+    if (room) {
+      leaveRoom();
+      return;
+    }
     (ctx.services.audio as AudioView | undefined)?.music?.("menu");
     setScreen("title");
-  }, [ctx]);
+  }, [ctx, leaveRoom, room]);
 
   const toSelect = useCallback(() => {
     const race = ctx.services.race as RaceView | undefined;
@@ -256,6 +354,51 @@ export default function KartUI({ engine, ready, progress }: KartUIProps) {
     }
     setScreen("race");
   }, [ctx]);
+
+  // -- multiplayer transitions ----------------------------------------------
+  const joinRoom = useCallback(() => {
+    const clean = normalizeRoomCode(draftCode) || randomRoomCode();
+    setDraftCode(clean);
+    setRoom(clean);
+    setScreen("mplobby");
+  }, [draftCode]);
+
+  /**
+   * The flag, for everybody at once.
+   *
+   * The lobby says when — this only has to be ready for it. Netplay is bolted
+   * on here rather than at boot so a single-player session never opens a
+   * socket, and it is attached once per room: leaving takes it back off.
+   */
+  useEffect(() => {
+    if (!room || lobby.phase !== "racing") return;
+    if (screenRef.current !== "mplobby" && screenRef.current !== "mpjoin") return;
+    let cancelled = false;
+
+    (async () => {
+      if (!netSystem.current && !attaching.current) {
+        attaching.current = true;
+        try {
+          netSystem.current = await engine.add(
+            createNetplay({ room, peerId, name: racerName.trim() || "Racer" }),
+          );
+        } catch (err) {
+          // A room that will not connect still races — against the CPU field.
+          console.error("[Vibe Kart/ui] netplay failed to attach:", err);
+        }
+        attaching.current = false;
+      }
+      if (!cancelled) startRace();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [room, lobby.phase, engine, peerId, racerName, startRace]);
+
+  // Leaving the world entirely: the engine disposes its own systems, but the
+  // ref would outlive a room change.
+  useEffect(() => detachNet, [detachNet]);
 
   // -------------------------------------------------------------------------
   return (
@@ -315,10 +458,43 @@ export default function KartUI({ engine, ready, progress }: KartUIProps) {
         ) : null}
 
         {ready && screen === "title" ? (
-          <TitleScreen settings={settings} patch={patch} onStart={() => setScreen("select")} />
+          <TitleScreen
+            settings={settings}
+            patch={patch}
+            onSingle={() => {
+              if (room) leaveRoom();
+              setScreen("select");
+            }}
+            onMultiplayer={() => setScreen(room ? "mplobby" : "mpjoin")}
+          />
         ) : null}
 
-        {ready && screen === "select" ? <SelectScreen onConfirm={confirmCharacter} onBack={toTitle} /> : null}
+        {ready && screen === "mpjoin" ? (
+          <JoinScreen
+            name={racerName}
+            code={draftCode}
+            onName={setRacerName}
+            onCode={setDraftCode}
+            onJoin={joinRoom}
+            onBack={() => setScreen("title")}
+          />
+        ) : null}
+
+        {ready && screen === "mplobby" ? (
+          <LobbyScreen
+            lobby={lobby}
+            onChooseRacer={() => setScreen("select")}
+            onLeave={leaveRoom}
+          />
+        ) : null}
+
+        {ready && screen === "select" ? (
+          <SelectScreen
+            onConfirm={confirmCharacter}
+            onBack={() => (room ? setScreen("mplobby") : setScreen("title"))}
+            confirmLabel={room ? "Back to lobby" : "Start race"}
+          />
+        ) : null}
 
         {ready && screen === "paused" ? (
           <PauseScreen
@@ -326,12 +502,18 @@ export default function KartUI({ engine, ready, progress }: KartUIProps) {
             patch={patch}
             onResume={resume}
             onRestart={restartRace}
-            onSelect={toSelect}
+            onSelect={room ? backToLobby : toSelect}
+            multiplayer={!!room}
           />
         ) : null}
 
         {ready && screen === "results" ? (
-          <ResultsScreen onAgain={restartRace} onSelect={toSelect} onTitle={toTitle} />
+          <ResultsScreen
+            onAgain={room ? backToLobby : restartRace}
+            onSelect={toSelect}
+            onTitle={toTitle}
+            multiplayer={!!room}
+          />
         ) : null}
       </div>
     </RuntimeProvider>
