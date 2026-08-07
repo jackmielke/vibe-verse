@@ -118,6 +118,7 @@ people are meant to come back to.
 | Tips to agents | any | `tip` |
 | Cosmetics (the shop) | 25–400 | `cosmetic` |
 | ORBIT round buy-in | set per round | `round_stake` |
+| Rock-paper-scissors ante | 25 | `rps_ante` |
 
 The round stake is a *move*, not a burn: it goes to `system/round` and comes
 straight back out as `round_win` (or `round_refund` if nobody scored). What goes
@@ -256,6 +257,58 @@ were sent. `vibe_invites` likewise has no read policy — the code is the secret
 **Claiming works as a guest.** A sign-in wall in front of a gift is how you lose
 eight of the ten people you invited. The account and the wallet are offered
 after, framed as ways to keep what they now have.
+
+### The island table
+
+Walk up to the half-round table on the Vibe Island plaza and play one hand of
+rock-paper-scissors against the house for 25 ✦. It is the smallest possible
+complete bet — no lobby, no opponent to find, ten seconds start to finish — and
+it exists to prove the shape works before anything larger is built on it.
+
+**Dead fair, and that is a decision.** A win returns 2× the ante, a tie returns
+the ante, a loss returns nothing. Over decided hands the expected return is
+exactly the stake. There is no rake, and ties push rather than going to the
+house — the usual quiet way this game is rigged is to keep the tie, which is
+about a 33% edge on a game people read as 50/50.
+
+**The house holds a real float.** `agent/rps-house`, seeded at 50,000 ✦. Two
+constraints on `vibe_balances` force this shape and are easy to trip over:
+`owner_kind` is CHECKed to `('user','agent')`, so there is no `system` wallet —
+which is why the arcade's take is an effective burn rather than a pot anyone
+could spend — and `balance >= 0`, so the house has to hold money before it can
+lose any. `rps_open` refuses to deal when the float cannot cover a win, which is
+the honest version of the same limit.
+
+#### Why a commitment, and what it proves
+
+A house that picks its throw *after* seeing yours never loses, and from the
+outside that is indistinguishable from luck. So a hand is two round trips with a
+commitment between them:
+
+1. `rps_open` — the server picks a throw and a random nonce, stores both, takes
+   the ante, and returns **only** `sha256("<throw>:<nonce>")`.
+2. You throw, having seen that hash and nothing else.
+3. `rps_throw` — the server resolves, pays, and reveals its throw and nonce.
+
+The browser then re-hashes the reveal and compares it to the commitment it was
+handed in step 1 (`verifyCommit` in `src/rps/rps.ts`). A house that swapped its
+throw would publish a hash that no longer matches, and the result panel says so
+on screen. That is a check the player watches happen rather than a promise in a
+FAQ — which is the whole reason the hash is on the table at all.
+
+The throw itself comes from `crypto.getRandomValues` with rejection sampling,
+not `Math.random`: 256 does not divide evenly into 3, and the naive modulo would
+quietly bias the house toward rock.
+
+#### What it does not claim
+
+The ante is 25 ✦, not "a dollar". Ledger Vibecoin and $VIBE are different
+objects with no rate between them (§1), so no dollar figure appears anywhere on
+the table. Every hand does record the live $VIBE price at the moment it was
+played, in `vibe_rps_rounds.vibe_price_usd`, together with the player's payout
+address if they have linked one — so that if a rate is ever set, the whole
+history can be priced. Reconstructing that from a chart afterwards is not
+possible; recording it now costs two columns.
 
 ### Issuing codes
 

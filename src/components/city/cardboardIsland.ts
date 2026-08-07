@@ -75,6 +75,8 @@ export interface IslandWorld {
   avatarStage: THREE.Group;
   /** Esmeralda Jump arcade cabinet — walk up to launch the game. */
   arcade: THREE.Vector3;
+  /** The rock-paper-scissors table — walk up to bet Vibecoin against the house. */
+  rpsTable: THREE.Vector3;
   /** The God Orb in the sky — click it to wish something into the world. */
   divineSphere: THREE.Group;
   /** Cardboard TV (community photo gallery) — walk up to open the holo-gallery. */
@@ -1237,6 +1239,8 @@ export function buildCardboardIsland(opts: {
   swing.add(swingPivot);
   group.add(swing);
   let currentSwingAngle = 0;
+  /** Set when the rock-paper-scissors table is built, below. */
+  let rpsAnimate: ((t: number) => void) | null = null;
 
   // ---- Jerry's Plaza ----------------------------------------------------
   // A real cardboard plaza built AROUND Jerry — modeled after the kids'
@@ -2404,6 +2408,117 @@ export function buildCardboardIsland(opts: {
   }
   group.add(arcadeGroup);
 
+  // ------------------------------------------------------------------
+  // The rock-paper-scissors table — one hand against the house, staked in
+  // Vibecoin. Sits next to the arcade cabinet because the SE corner is where
+  // the island keeps the things that cost money, and because "walk past the
+  // machine, sit at the table" is a nicer sentence than either alone.
+  // ------------------------------------------------------------------
+  const RPS_X = 21;
+  const RPS_Z = 31.5;
+  const rpsGroup = new THREE.Group();
+  rpsGroup.position.set(RPS_X, 0, RPS_Z);
+  rpsGroup.rotation.y = Math.PI / 7;
+  {
+    const feltMat = new THREE.MeshStandardMaterial({
+      color: "#0d4a3c",
+      roughness: 0.92,
+      metalness: 0.02,
+    });
+    const trimMat = new THREE.MeshStandardMaterial({
+      color: "#c2a24a",
+      roughness: 0.42,
+      metalness: 0.65,
+    });
+    const legMat = new THREE.MeshStandardMaterial({ color: "#3a2a1c", roughness: 0.8 });
+
+    // A half-round dealer's table: flat edge to the house, curve to the player.
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.14, 36, 1, false, 0, Math.PI), feltMat);
+    top.position.y = 0.94;
+    top.castShadow = true;
+    top.receiveShadow = true;
+    rpsGroup.add(top);
+
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.07, 10, 36, Math.PI), trimMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 1.0;
+    rpsGroup.add(rim);
+
+    // The straight edge needs its own lip or the table reads as a broken disc.
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.14, 0.14), trimMat);
+    lip.position.set(0, 1.0, 0);
+    rpsGroup.add(lip);
+
+    for (const [lx, lz] of [[-1.0, 0.55], [1.0, 0.55], [0, 1.25]] as const) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.94, 10), legMat);
+      leg.position.set(lx, 0.47, lz);
+      leg.castShadow = true;
+      rpsGroup.add(leg);
+    }
+
+    // Three carved tokens laid on the felt — the whole game, readable from
+    // across the plaza without a sign explaining it.
+    const tokenMat = new THREE.MeshStandardMaterial({
+      color: "#f2ead6",
+      roughness: 0.55,
+      emissive: new THREE.Color("#7dffd4"),
+      emissiveIntensity: 0.12,
+    });
+    const tokens: THREE.Mesh[] = [];
+    // rock: a squat stone. paper: a flat slab. scissors: a thin cross.
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.19), tokenMat);
+    rock.position.set(-0.62, 1.06, 0.72);
+    const paper = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.03, 0.46), tokenMat);
+    paper.position.set(0, 1.03, 0.82);
+    paper.rotation.y = 0.3;
+    const sciA = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.07), tokenMat);
+    const sciB = sciA.clone();
+    sciA.rotation.y = 0.5;
+    sciB.rotation.y = -0.5;
+    const scissors = new THREE.Group();
+    scissors.add(sciA, sciB);
+    scissors.position.set(0.62, 1.05, 0.72);
+    rpsGroup.add(rock, paper, scissors);
+    tokens.push(rock, paper);
+
+    // A sealed-envelope motif floating over the table: the house's throw,
+    // decided and hashed before anybody sits down. Bobs so it reads as live.
+    const seal = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.28, 0.05),
+      new THREE.MeshStandardMaterial({
+        color: "#0b1220",
+        emissive: new THREE.Color("#7dffd4"),
+        emissiveIntensity: 0.9,
+        roughness: 0.4,
+      }),
+    );
+    seal.position.set(0, 1.72, 0.1);
+    rpsGroup.add(seal);
+
+    const halo2 = new THREE.Mesh(
+      new THREE.CircleGeometry(1.9, 32),
+      new THREE.MeshBasicMaterial({
+        color: "#7dffd4",
+        transparent: true,
+        opacity: 0.16,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    halo2.rotation.x = -Math.PI / 2;
+    halo2.position.y = 0.02;
+    rpsGroup.add(halo2);
+
+    rpsAnimate = (t: number) => {
+      seal.position.y = 1.72 + Math.sin(t * 1.6) * 0.06;
+      seal.rotation.y = t * 0.7;
+      for (let i = 0; i < tokens.length; i++) {
+        tokens[i].rotation.y = t * (0.3 + i * 0.12);
+      }
+    };
+  }
+  group.add(rpsGroup);
+
 
 
 
@@ -3102,6 +3217,7 @@ export function buildCardboardIsland(opts: {
     group,
     update(dt, now) {
       for (const fn of craftAnims) fn(dt, now);
+      rpsAnimate?.(now * 0.001);
       spinners[0].rotation.z += dt * 1.1; // windmill
       const beamMesh = spinners[1] as THREE.Mesh;
       (beamMesh.material as THREE.MeshBasicMaterial).opacity =
@@ -3227,6 +3343,7 @@ export function buildCardboardIsland(opts: {
     avatarPortal: new THREE.Vector3(centerX + AVATAR_X, topY + AVATAR_Y, centerZ + AVATAR_Z),
     avatarStage,
     arcade: new THREE.Vector3(centerX + ARCADE_X, topY, centerZ + ARCADE_Z),
+    rpsTable: new THREE.Vector3(centerX + RPS_X, topY, centerZ + RPS_Z),
     tv: new THREE.Vector3(centerX + TV_X, topY, centerZ + TV_Z),
     divineSphere,
     setSnackMenu(gems, owned, justBought) {

@@ -97,6 +97,7 @@ import { useWardrobe } from "@/hooks/use-wardrobe";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
 import { ArcadeModal } from "@/components/city/ArcadeModal";
+import RockPaperScissors, { RpsDevHook } from "@/components/city/RockPaperScissors";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
@@ -765,6 +766,8 @@ export default function City() {
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
   const [nearArcade, setNearArcade] = useState(false);
+  const [nearRps, setNearRps] = useState(false);
+  const [rpsOpen, setRpsOpen] = useState(false);
   const [arcadeOpen, setArcadeOpen] = useState(false);
   const [nearTv, setNearTv] = useState(false);
   // VIBE FM boomboxes — walking up shows the tune-in prompt; walking
@@ -3640,6 +3643,7 @@ export default function City() {
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
       setNearArcade(player.position.distanceTo(island.arcade) < 4);
+      setNearRps(player.position.distanceTo(island.rpsTable) < 4);
       setNearTv(player.position.distanceTo(island.tv) < 5.5);
       setNearRadio(
         player.position.distanceTo(radioAnchors[0]) < 4.5 ||
@@ -6485,6 +6489,8 @@ export default function City() {
       )}
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
+      <RockPaperScissors open={rpsOpen} onClose={() => setRpsOpen(false)} />
+      <RpsDevHook onOpen={() => setRpsOpen(true)} />
       <PhotoGalleryModal
         open={galleryOpen}
         photos={galleryPhotos}
@@ -6977,6 +6983,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-fuchsia-100 border border-fuchsia-300/50 shadow-[0_0_24px_rgba(232,121,249,0.55)] bg-fuchsia-950/30 backdrop-blur-md hover:bg-fuchsia-500/15 transition-colors"
             >
               🕹️ Play Esmeralda Jump
+            </button>
+          )}
+          {nearRps && !rpsOpen && (
+            <button
+              onClick={(e) => {
+                setRpsOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-emerald-100 border border-emerald-300/50 shadow-[0_0_24px_rgba(125,255,212,0.55)] bg-emerald-950/30 backdrop-blur-md hover:bg-emerald-400/15 transition-colors"
+            >
+              ✊ Bet against the house
             </button>
           )}
           {nearRadio && (

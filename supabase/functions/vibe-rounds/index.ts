@@ -54,6 +54,41 @@ const ROUND_MAX_SCORE = 300;
  *  rate, from `src/orbit/orbit.ts`. Anything quicker did not happen. */
 const MIN_MS_PER_GATE = 300;
 
+// ---- the rock-paper-scissors table --------------------------------------
+
+/** What a hand costs. Mirrored in `src/rps/rps.ts` for the label; this wins. */
+const RPS_STAKE = 25;
+/**
+ * The wallet the table plays out of — a real balance row holding a real float.
+ *
+ * `agent`, not `system`: `vibe_balances.owner_kind` is CHECKed to
+ * ('user','agent'), which is why the arcade's take is an effective burn rather
+ * than a pot. The house is different — it pays 2× on a win, so it has to be
+ * able to hold money, and `balance >= 0` means it has to hold some *before* it
+ * can lose any. Seeded by migration; see `vibe_rps_house_bankroll`.
+ */
+const RPS_HOUSE_KIND = "agent";
+const RPS_HOUSE = "rps-house";
+/**
+ * Dead fair, and it is worth writing down why.
+ *
+ * A win returns 2× the stake — your coin back plus the house's. A tie returns
+ * the stake. A loss returns nothing. Over decided hands that is exactly break
+ * even, and ties are pushes rather than a silent house edge, which is the usual
+ * way this game is quietly rigged. There is no rake. The table exists because
+ * betting against somebody is fun, not because it should earn.
+ */
+const RPS_PAYOUT = { win: 2, push: 1, lose: 0 } as const;
+
+const THROWS = ["rock", "paper", "scissors"] as const;
+type Throw = (typeof THROWS)[number];
+
+/** GeckoTerminal's pool view — the same source `/coin` shows the community. */
+const VIBE_POOL =
+  "https://api.geckoterminal.com/api/v2/networks/base/pools/0xc3ad498815597f1e6f71d3cb1166856e947efb46";
+/** Long enough that a busy table is not a scraper, short enough to be true. */
+const PRICE_TTL_MS = 10 * 60_000;
+
 type Supa = ReturnType<typeof createClient>;
 
 Deno.serve(async (req) => {
@@ -73,6 +108,9 @@ Deno.serve(async (req) => {
       case "round_score":   return ok(await roundScore(supabase, body));
       case "invite_peek":   return ok(await invitePeek(supabase, body));
       case "invite_claim":  return ok(await inviteClaim(supabase, body));
+      case "rps_table":     return ok(await rpsTable(supabase, body));
+      case "rps_open":      return ok(await rpsOpen(supabase, body));
+      case "rps_throw":     return ok(await rpsThrow(supabase, body));
       default: return json({ error: `unknown action: ${action}` }, 400);
     }
   } catch (e) {
@@ -368,5 +406,257 @@ async function inviteClaim(supabase: Supa, b: any) {
     granted: amount,
     balance: balance + amount,
     remaining: Math.max(0, Number(inv.max_claims) - (count ?? 0)),
+  };
+}
+
+// ---- rock-paper-scissors, against the house ------------------------------
+//
+// The only interesting problem in this game is trust. Everything else is a
+// three-way comparison; the part that takes design is proving the house did
+// not look at your throw first.
+//
+// A hand is two round trips with a commitment between them:
+//
+//   rps_open   → the server picks a throw and a random nonce, stores both,
+//                debits the stake, and returns ONLY sha256(throw:nonce).
+//   rps_throw  → you send your throw. The server resolves, pays, and reveals
+//                its throw and nonce.
+//
+// The browser then re-hashes the reveal and checks it against the commitment
+// it was given before it moved. A house that swapped its throw would publish a
+// hash that no longer matches, and anybody could see it. That is what makes
+// this worth betting on rather than merely a random number the server asserts.
+//
+// The other half is ordering: the row is inserted BEFORE the debit, and a
+// partial unique index allows one unsettled hand per player. A double-tapped
+// button loses on the index while the money is still in the player's wallet.
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function randomThrow(): Throw {
+  // crypto.getRandomValues, not Math.random: this picks who keeps the money.
+  // Rejection-sample so 256 does not divide unevenly into 3 and quietly bias
+  // the house toward rock.
+  const buf = new Uint8Array(1);
+  for (;;) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < 255) return THROWS[buf[0] % 3];
+  }
+}
+
+function randomNonce(): string {
+  const buf = new Uint8Array(16);
+  crypto.getRandomValues(buf);
+  return [...buf].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Who wins, from the player's side. */
+function resolve(player: Throw, house: Throw): "win" | "lose" | "push" {
+  if (player === house) return "push";
+  const beats: Record<Throw, Throw> = { rock: "scissors", paper: "rock", scissors: "paper" };
+  return beats[player] === house ? "win" : "lose";
+}
+
+/**
+ * The live $VIBE price, cached.
+ *
+ * Recorded on every hand so the history can be priced later. It is NOT what
+ * sizes the stake — ledger Vibecoin and $VIBE are different objects and there
+ * is deliberately no peg between them (see docs/VIBECOIN.md §1). This is an
+ * audit trail, not an exchange rate.
+ *
+ * Returns null rather than throwing: the table must keep dealing when
+ * GeckoTerminal is down.
+ */
+async function vibePriceUsd(supabase: Supa): Promise<number | null> {
+  const { data: cached } = await supabase.from("vibe_price_cache")
+    .select("price_usd, fetched_at").eq("symbol", "VIBE").maybeSingle();
+  if (cached && Date.now() - new Date(cached.fetched_at as string).getTime() < PRICE_TTL_MS) {
+    return Number(cached.price_usd);
+  }
+  try {
+    const res = await fetch(VIBE_POOL, { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(String(res.status));
+    const json = await res.json();
+    const raw = json?.data?.attributes?.base_token_price_usd;
+    const price = typeof raw === "string" ? parseFloat(raw) : Number(raw);
+    if (!Number.isFinite(price) || price <= 0) throw new Error("no price");
+    await supabase.from("vibe_price_cache").upsert({
+      symbol: "VIBE", price_usd: price, fetched_at: new Date().toISOString(),
+    });
+    return price;
+  } catch {
+    // A stale cached price beats no price; a missing one beats a wrong one.
+    return cached ? Number(cached.price_usd) : null;
+  }
+}
+
+/** What the table costs and how the player has done at it. */
+async function rpsTable(supabase: Supa, b: any) {
+  const ownerRef = String(b.ownerRef ?? "");
+  const price = await vibePriceUsd(supabase);
+
+  const { data: open } = await supabase.from("vibe_rps_rounds")
+    .select("id, commit_hash, stake, opened_at")
+    .eq("owner_ref", ownerRef).is("settled_at", null).maybeSingle();
+
+  const { data: history } = await supabase.from("vibe_rps_rounds")
+    .select("outcome, player_throw, house_throw, stake, payout, settled_at")
+    .eq("owner_ref", ownerRef)
+    .not("settled_at", "is", null)
+    .order("settled_at", { ascending: false })
+    .limit(12);
+
+  const record = { win: 0, lose: 0, push: 0 };
+  for (const h of history ?? []) {
+    const o = String(h.outcome) as keyof typeof record;
+    if (o in record) record[o] += 1;
+  }
+
+  return {
+    stake: RPS_STAKE,
+    vibePriceUsd: price,
+    open: open ?? null,
+    history: history ?? [],
+    record,
+  };
+}
+
+/**
+ * Deal a hand: commit, take the stake, publish the hash.
+ *
+ * Idempotent by the partial unique index — walking away and coming back finds
+ * the same unsettled hand rather than paying for a second one.
+ */
+async function rpsOpen(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "user");
+  const ownerRef = String(b.ownerRef ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+
+  const { data: existing } = await supabase.from("vibe_rps_rounds")
+    .select("id, commit_hash, stake")
+    .eq("owner_ref", ownerRef).is("settled_at", null).maybeSingle();
+  if (existing) {
+    return {
+      handId: existing.id,
+      commit: existing.commit_hash,
+      stake: Number(existing.stake),
+      resumed: true,
+    };
+  }
+
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef);
+  if (balance < RPS_STAKE) {
+    throw new Error(`not enough vibe (have ${balance}, need ${RPS_STAKE})`);
+  }
+
+  /* The table has to be able to lose before it is allowed to deal. Net exposure
+     is one stake — the ante comes in at open and at most 2x goes out at settle —
+     and `vibe_balances.balance >= 0` means an underfunded house would fail on
+     the payout, after the player had already thrown. Refusing here is the
+     honest version of the same limit. */
+  const float = await ensureWallet(supabase, RPS_HOUSE_KIND, RPS_HOUSE);
+  if (float < RPS_STAKE) throw new Error("the table is out of chips — come back later");
+
+  const houseThrow = randomThrow();
+  const nonce = randomNonce();
+  const commit = await sha256Hex(`${houseThrow}:${nonce}`);
+  const price = await vibePriceUsd(supabase);
+
+  // The row FIRST. The partial unique index is the lock, and losing this race
+  // has to happen while the stake is still in the player's wallet.
+  const { data: row, error: dupe } = await supabase.from("vibe_rps_rounds").insert({
+    owner_kind: ownerKind, owner_ref: ownerRef,
+    commit_hash: commit, house_throw: houseThrow, nonce,
+    stake: RPS_STAKE, vibe_price_usd: price,
+    payout_address: b.payoutAddress ? String(b.payoutAddress).slice(0, 64) : null,
+  }).select("id").maybeSingle();
+  if (dupe || !row) {
+    // Somebody else won the insert — hand back whatever is on the table now.
+    const { data: now } = await supabase.from("vibe_rps_rounds")
+      .select("id, commit_hash, stake")
+      .eq("owner_ref", ownerRef).is("settled_at", null).maybeSingle();
+    if (!now) throw new Error("could not open a hand — try again");
+    return { handId: now.id, commit: now.commit_hash, stake: Number(now.stake), resumed: true };
+  }
+
+  await setBalance(supabase, ownerKind, ownerRef, balance - RPS_STAKE);
+  const houseBal = await ensureWallet(supabase, RPS_HOUSE_KIND, RPS_HOUSE);
+  await setBalance(supabase, RPS_HOUSE_KIND, RPS_HOUSE, houseBal + RPS_STAKE);
+  await supabase.from("vibe_ledger").insert({
+    from_kind: ownerKind, from_ref: ownerRef,
+    to_kind: RPS_HOUSE_KIND, to_ref: RPS_HOUSE,
+    amount: RPS_STAKE, reason: "rps_ante", memo: "rock paper scissors",
+  });
+
+  return {
+    handId: row.id,
+    commit,
+    stake: RPS_STAKE,
+    balance: balance - RPS_STAKE,
+    vibePriceUsd: price,
+    resumed: false,
+  };
+}
+
+/** Throw, resolve, pay, and reveal — in that order. */
+async function rpsThrow(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "user");
+  const ownerRef = String(b.ownerRef ?? "");
+  const handId = String(b.handId ?? "");
+  const playerThrow = String(b.playerThrow ?? "") as Throw;
+  if (!ownerRef || !handId) throw new Error("hand and player required");
+  if (!THROWS.includes(playerThrow)) throw new Error("throw rock, paper or scissors");
+
+  const { data: hand } = await supabase.from("vibe_rps_rounds")
+    .select("*").eq("id", handId).eq("owner_ref", ownerRef).maybeSingle();
+  if (!hand) throw new Error("that hand is not yours");
+  if (hand.settled_at) throw new Error("that hand has already been played");
+
+  const houseThrow = String(hand.house_throw) as Throw;
+  const outcome = resolve(playerThrow, houseThrow);
+  const stake = Number(hand.stake);
+  const payout = stake * RPS_PAYOUT[outcome];
+
+  // Settle the row first, filtered on still-unsettled. Two tabs throwing at
+  // once cannot both be paid: the second update matches no row.
+  const { data: claimed } = await supabase.from("vibe_rps_rounds").update({
+    player_throw: playerThrow,
+    outcome,
+    payout,
+    settled_at: new Date().toISOString(),
+  }).eq("id", handId).is("settled_at", null).select("id").maybeSingle();
+  if (!claimed) throw new Error("that hand has already been played");
+
+  if (payout > 0) {
+    const houseBal = await ensureWallet(supabase, RPS_HOUSE_KIND, RPS_HOUSE);
+    await setBalance(supabase, RPS_HOUSE_KIND, RPS_HOUSE, houseBal - payout);
+    const bal = await ensureWallet(supabase, ownerKind, ownerRef);
+    await setBalance(supabase, ownerKind, ownerRef, bal + payout);
+    await supabase.from("vibe_ledger").insert({
+      from_kind: RPS_HOUSE_KIND, from_ref: RPS_HOUSE,
+      to_kind: ownerKind,  to_ref: ownerRef,
+      amount: payout,
+      reason: outcome === "push" ? "rps_push" : "rps_win",
+      memo: `${playerThrow} vs ${houseThrow}`,
+    });
+  }
+
+  const { data: after } = await supabase.from("vibe_balances")
+    .select("balance").eq("owner_kind", ownerKind).eq("owner_ref", ownerRef).maybeSingle();
+
+  return {
+    outcome,
+    playerThrow,
+    houseThrow,
+    payout,
+    stake,
+    balance: after ? Number(after.balance) : null,
+    // The reveal. The browser re-hashes these and checks them against the
+    // commitment it was handed before it threw.
+    reveal: { throw: houseThrow, nonce: String(hand.nonce), commit: String(hand.commit_hash) },
   };
 }
