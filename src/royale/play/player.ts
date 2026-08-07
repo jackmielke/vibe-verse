@@ -696,7 +696,7 @@ function bakeSurface(id: SurfaceId, size: number): SurfaceMaps {
     }
   }
 
-  const mk = (data: Uint8Array, srgb: boolean): THREE.DataTexture => {
+  const mk = (data: Uint8Array<ArrayBuffer>, srgb: boolean): THREE.DataTexture => {
     const t = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.wrapS = THREE.RepeatWrapping;
