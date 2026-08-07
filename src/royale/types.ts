@@ -517,6 +517,15 @@ export interface WorldCtx {
   elapsed: number;
   /** Quality tier — systems should scale their cost off this. */
   quality: QualityTier;
+  /**
+   * Which game this is. `classic` is Drop Zero — bullets, health, a purple
+   * storm. `water` is SOAKED — soakers, dryness, and the Downpour.
+   *
+   * One engine, one island, one set of 22 systems. The difference is a lookup
+   * into `mode/water.ts` rather than a fork, because two battle royales would
+   * mean every bug fixed twice and every art pass done twice.
+   */
+  mode: GameMode;
   /** Deterministic RNG so the world regenerates identically. */
   rng: () => number;
   /** Shadow map resolution for this tier. */
@@ -526,6 +535,8 @@ export interface WorldCtx {
 }
 
 export type QualityTier = "low" | "medium" | "high" | "ultra";
+
+export type GameMode = "classic" | "water";
 
 /** A subsystem instance. All hooks are optional. */
 export interface System {

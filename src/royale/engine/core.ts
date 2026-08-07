@@ -16,12 +16,14 @@
  *    drops rather than after.
  */
 import * as THREE from "three";
-import type { InputState, QualityTier, System, SystemFactory, WorldCtx } from "../types";
+import type { GameMode, InputState, QualityTier, System, SystemFactory, WorldCtx } from "../types";
 import { makeRng } from "../types";
 
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
   quality?: QualityTier;
+  /** `water` boots SOAKED instead of Drop Zero. See WorldCtx.mode. */
+  mode?: GameMode;
   seed?: number;
 }
 
@@ -132,6 +134,7 @@ export class Engine {
       input: makeInputState(),
       elapsed: 0,
       quality,
+      mode: opts.mode ?? "classic",
       rng: makeRng(opts.seed ?? 0xd309ce0),
       shadowMapSize: SHADOW_MAP_SIZE[quality],
       emit: (event, payload) => this.emit(event, payload),
