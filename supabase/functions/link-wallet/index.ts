@@ -23,7 +23,8 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { verifyMessage, getAddress, isAddress } from "npm:viem@2";
+import { createPublicClient, http, getAddress, isAddress } from "npm:viem@2";
+import { base } from "npm:viem@2/chains";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +38,15 @@ const DEFAULT_COMMUNITY = "4202857f-13fd-4407-8906-3f8ffe63e510";
 // Don't accept signatures older than this — protects against
 // replay-after-leak. Signatures must be issued within the last hour.
 const MAX_AGE_MS = 60 * 60 * 1000;
+
+/* Base mainnet, for signature verification only — this function never sends a
+ * transaction and holds no key. It reads the chain to ask a smart contract
+ * whether it considers a signature its own. `BASE_RPC_URL` overrides the public
+ * endpoint if it ever rate-limits us. */
+const publicClient = createPublicClient({
+  chain: base,
+  transport: http(Deno.env.get("BASE_RPC_URL") || undefined),
+});
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -89,11 +99,25 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Verify the signature cryptographically. viem's verifyMessage
-  // handles both EOA personal_sign and ERC-1271 smart-wallet sigs.
+  /* Verify the signature.
+   *
+   * This MUST be the client action rather than the bare `verifyMessage`
+   * utility, and the difference is not cosmetic. The utility exported from
+   * viem's root is one line — `isAddressEqual(address, recoverMessageAddress())`
+   * — which is plain ecrecover and only ever true for an EOA. A Base Account is
+   * an ERC-4337 smart contract, so its signatures are ERC-1271 once deployed
+   * and ERC-6492-wrapped while still counterfactual, and ecrecover rejects both.
+   * Every passkey wallet would have been turned away at the door with
+   * "signature did not verify".
+   *
+   * `publicClient.verifyMessage` routes through `verifyHash`, which tries EOA
+   * recovery first and falls back to calling the chain — so one code path
+   * covers MetaMask, a deployed Base Account, and a Base Account that has never
+   * transacted. It costs one RPC round trip, which is the right price.
+   */
   let ok = false;
   try {
-    ok = await verifyMessage({
+    ok = await publicClient.verifyMessage({
       address,
       message,
       signature: signature as `0x${string}`,

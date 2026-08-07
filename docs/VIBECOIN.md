@@ -441,6 +441,51 @@ automatic bridge. `VibeWalletConnect` is built for exactly that shape: it
 collects a *proven* address and nothing else, and the app still never sends a
 transaction.
 
+### The Vibe Wallet
+
+Two doors, because there are two kinds of visitor.
+
+**A Vibe Wallet** is a [Base Account](https://docs.base.org/base-account/overview/what-is-base-account)
+— an ERC-4337 smart account created with a passkey. Face ID or a fingerprint,
+no seed phrase, and recovery already handled by iCloud Keychain or the Google
+password manager. It is the user's account rather than ours: the same passkey
+signs into every other Base app, which is the difference between a wallet and a
+points balance in a costume.
+
+**A wallet you already have** is discovered over **EIP-6963**, not
+`window.ethereum`. That matters more than it sounds. For years every extension
+overwrote that one global, so a browser with MetaMask *and* Rabby gave you
+whichever loaded last and no way to reach the other — the user taps one wallet
+and a different one opens. EIP-6963 has wallets announce themselves with a name
+and an icon, so the list is what is actually installed.
+
+#### The trap in verifying a smart-account signature
+
+A Base Account is a contract, so what it signs is an **ERC-1271** signature —
+or, before the account has ever transacted and therefore been deployed, an
+**ERC-6492**-wrapped one. Neither is an ECDSA signature over the message, and
+`ecrecover` rejects both.
+
+viem exports two functions called `verifyMessage`. The one from the package
+root is a one-liner — recover an address, compare it — and is EOA-only. The one
+on a client can call the chain. Swapping the second for the first *looks* like a
+tidy-up: it deletes an import and an RPC round trip. It also turns away every
+passkey wallet with "signature did not verify", and the code left behind looks
+simpler than what it replaced. `link-wallet` uses the client version against
+Base mainnet, and `wallets.test.ts` fails if that ever changes back.
+
+#### Gas is the real accessibility problem
+
+A new wallet holds no ETH. It can *receive* $VIBE — the sender pays — but the
+first time its owner wants to move anything, they need gas they do not have and
+would not know how to buy. That, not wallet creation, is where a first-time user
+gives up, and it is invisible until somebody tries.
+
+Smart accounts can have that sponsored. Set `VITE_BASE_PAYMASTER_URL` to a
+Coinbase Developer Platform paymaster endpoint and the app pays instead. It is
+deliberately a slot rather than a dependency: nothing in the vibeverse needs an
+onchain transaction today, so everything works with it unset.
+
 **Is the ledger's owner key the same thing as the payout address?** No, and
 this is the sharp edge. A balance is keyed by `auth.uid` or a guest id;
 `link-wallet` writes a row keyed by `wallet_address`. Nothing joins the two —
