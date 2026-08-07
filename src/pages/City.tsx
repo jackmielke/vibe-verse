@@ -3333,6 +3333,23 @@ export default function City() {
         camPitch = THREE.MathUtils.clamp(pitch, 0.06, 1.25);
         camYaw = yaw;
       };
+
+      /**
+       * Stand somewhere, in island-local coordinates.
+       *
+       * `__cityCam` orbits the *player*, so posing it while the player is at
+       * spawn photographs spawn from a new angle — which is how a screenshot
+       * of "the new plaza" turned out to be a picture of Jerry's Plaza. The
+       * anchors in `cardboardIsland.ts` are all local offsets, so this takes
+       * the same numbers you would read there.
+       */
+      (window as unknown as Record<string, unknown>).__cityGoto = (
+        x: number,
+        z: number,
+      ) => {
+        arrivalStart = 0;
+        player.position.set(ISLAND_X + x, ISLAND_TOP + 1.2, ISLAND_Z + z);
+      };
     }
     // VR-only: stable "body yaw" the dolly is parked behind. This is
     // intentionally decoupled from the headset rotation so turning your

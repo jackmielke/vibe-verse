@@ -1686,8 +1686,8 @@ export function buildCardboardIsland(opts: {
   // ---- Cardboard TV: the island photo gallery ---------------------------
   // Town plan: the TV sits on the east ring by the spring pool, part
   // of the SE hangout corner (it used to crowd the plaza lawn).
-  const TV_X = 30;
-  const TV_Z = 22;
+  const TV_X = 31;
+  const TV_Z = 24;
   const tv = new THREE.Group();
   tv.position.set(TV_X, 0, TV_Z);
   tv.rotation.y = Math.atan2(0 - TV_X, 0 - TV_Z); // screen faces the plaza center
@@ -1746,8 +1746,8 @@ export function buildCardboardIsland(opts: {
   // the back-island side; proximity opens the shop dialog in /city.
   // Sits just to the right of SnackFae (from a player approaching the counter)
   // so you can see both at once when you walk up to grab a snack.
-  const SHOP_X = 5;
-  const SHOP_Z = 35;
+  const SHOP_X = 8;
+  const SHOP_Z = 34;
   {
     const shopGroup = new THREE.Group();
     shopGroup.position.set(SHOP_X, 0, SHOP_Z);
@@ -1976,8 +1976,8 @@ export function buildCardboardIsland(opts: {
   // from the plaza. (It once sat at TJ-roof height — y=9 — which left
   // it hovering in the sky after the town re-plan and out of reach of
   // its own walk-up radius. It lives on the ground now.)
-  const AVATAR_X = -34;
-  const AVATAR_Z = 10;
+  const AVATAR_X = 28;
+  const AVATAR_Z = 31;
   const AVATAR_Y = 0;
   const avatarPortalGroup = new THREE.Group();
   avatarPortalGroup.position.set(AVATAR_X, AVATAR_Y, AVATAR_Z);
@@ -2284,8 +2284,8 @@ export function buildCardboardIsland(opts: {
   // (which lives in its own Lovable project) in a fullscreen modal.
   // ------------------------------------------------------------------
   // Town plan: the arcade joins the SE hangout corner with SnackFe.
-  const ARCADE_X = 26;
-  const ARCADE_Z = 28;
+  const ARCADE_X = 22;
+  const ARCADE_Z = 37;
   const arcadeGroup = new THREE.Group();
   arcadeGroup.position.set(ARCADE_X, 0, ARCADE_Z);
   arcadeGroup.rotation.y = -Math.PI / 5;
@@ -2414,8 +2414,8 @@ export function buildCardboardIsland(opts: {
   // the island keeps the things that cost money, and because "walk past the
   // machine, sit at the table" is a nicer sentence than either alone.
   // ------------------------------------------------------------------
-  const RPS_X = 21;
-  const RPS_Z = 31.5;
+  const RPS_X = 13;
+  const RPS_Z = 38;
   const rpsGroup = new THREE.Group();
   rpsGroup.position.set(RPS_X, 0, RPS_Z);
   rpsGroup.rotation.y = Math.PI / 7;
@@ -2529,6 +2529,26 @@ export function buildCardboardIsland(opts: {
   // A sleek modern micro-cafe with alternating mint/magenta string lights
   // along the front awning. Walk up to it to order a snack.
   // Town plan: pushed out to the SE ring so the mid-lawn stays open.
+  /* ---- THE PLAZA -----------------------------------------------------
+   *
+   * Everything that costs or gives Vibecoin lives in one south-east corner,
+   * in a rough arc around SnackFe, so a visitor can see the whole economy from
+   * one spot instead of running the island to find it.
+   *
+   *              SnackFe (16,33)          ← the back of the plaza
+   *                    ·
+   *   shop (8,34)   RPS (13,38)   arcade (22,37)   avatar portal (28,31)
+   *                                                      TV (31,24) ↘
+   *
+   * The character portal used to be at x = -34 — the far west shore, sixty
+   * units and a jetpack ride from the shop it dresses you for. It was one of
+   * the four things people actually use and the only one nowhere near the
+   * others.
+   *
+   * Spacing is ~6–9 units: close enough to read every sign from the middle,
+   * far enough that the kiosks do not clip. If you add a stall, keep it in the
+   * arc and keep it that far from its neighbours.
+   */
   const SNACK_X = 16;
   const SNACK_Z = 33;
   const SNACK_W = 9;

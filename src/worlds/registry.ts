@@ -669,6 +669,19 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "wallet",
+    route: "/wallet",
+    name: "The Vibe Wallet",
+    emoji: "🔐",
+    kind: "tool",
+    blurb:
+      "Where a real $VIBE drop would be sent. Make a wallet with Face ID, or link one you already have — you sign a sentence, never a transaction.",
+    status: "Open — passkey or bring your own",
+    accent: "#8fb4ff",
+    source: "src/pages/VibeWallet.tsx",
+    passport: true,
+  },
+  {
     key: "shop",
     route: "/shop",
     name: "The Vibe Shop",

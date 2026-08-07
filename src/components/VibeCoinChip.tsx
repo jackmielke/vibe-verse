@@ -20,9 +20,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { Wallet } from "lucide-react";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 import { VIBECOIN_NAME, formatVibecoin } from "@/lib/vibecoin";
+import { readPayoutAddress } from "@/components/VibeWalletConnect";
+import { shortAddress } from "@/lib/vibe-wallet";
 
 /** Human labels for the `reason` column, which is written for machines. */
 const REASON_LABEL: Record<string, string> = {
@@ -180,6 +183,22 @@ export default function VibeCoinChip() {
                 🕹️ Win more
               </Link>
             </div>
+
+            {/* The wallet used to live only on `/join/:code`, which meant the
+                one person most likely to want it — somebody already looking at
+                their balance — had no way to find it. */}
+            <Link
+              to="/wallet"
+              className="flex items-center gap-2 border-t border-border/40 px-3.5 py-2.5 transition-colors hover:bg-white/[0.04]"
+            >
+              <Wallet className="h-3.5 w-3.5 shrink-0 text-[#8fb4ff]" />
+              <span className="font-heading text-[9.5px] font-bold uppercase tracking-wider text-[#8fb4ff]">
+                {payout ? "Payout wallet linked" : "Create a Vibe Wallet"}
+              </span>
+              <span className="ml-auto truncate font-mono text-[9.5px] text-muted-foreground/60">
+                {payout ? shortAddress(payout as `0x${string}`) : "for a real $VIBE drop"}
+              </span>
+            </Link>
 
             <div className="max-h-56 overflow-y-auto border-t border-border/40">
               {ledger.length === 0 ? (
