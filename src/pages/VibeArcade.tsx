@@ -45,6 +45,8 @@ import {
   type ArcadeSettlement,
 } from "@/lib/vibecoin";
 import { CABINETS, topPrize, type Cabinet, type CabinetRun } from "@/arcade/cabinets";
+import { SHOP_CHARACTERS } from "@/lib/characterShop";
+import { findCharacter } from "@/lib/characters";
 import { createArcadeSounds, type ArcadeSounds } from "@/arcade/sounds";
 
 /** Personal bests, per cabinet. localStorage, because a high score is not
@@ -349,8 +351,34 @@ export default function VibeArcade() {
           </p>
         )}
 
+        {/* ---- The character shop ----
+            Above the cabinets on purpose. The machines are what you do here;
+            the character is what you leave with, and it is the only thing on
+            this page that follows you into another world. */}
+        <Link
+          to="/arcade/characters"
+          className="group mt-8 flex items-center gap-3.5 overflow-hidden rounded-2xl border border-border/50 bg-black/45 px-4 py-3.5 backdrop-blur-sm transition-colors hover:bg-black/60"
+          style={{ boxShadow: "inset 0 0 0 1px hsl(280 90% 62% / 0.18), 0 0 40px hsl(280 90% 62% / 0.08)" }}
+        >
+          <span className="text-2xl leading-none" aria-hidden>
+            {SHOP_CHARACTERS.map((c) => findCharacter(c.id).emoji).join("")}
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-heading text-sm font-black uppercase tracking-wider text-[#e2b7ff]">
+              Character shop
+            </h2>
+            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+              Six originals you can only get here. Spend what you win, wear it
+              in Vibe Island.
+            </p>
+          </div>
+          <span className="shrink-0 font-heading text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">
+            Open →
+          </span>
+        </Link>
+
         {/* ---- The floor ---- */}
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {CABINETS.map((c, i) => {
             const affordable = balance == null || balance >= c.cost;
             const best = bests[c.key];

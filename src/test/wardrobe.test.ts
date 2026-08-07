@@ -58,8 +58,13 @@ describe("cosmetic prices", () => {
   it("parses a catalog out of the edge function at all", () => {
     // Guards the parser itself: a regex that silently matches nothing would
     // make every assertion below vacuously pass.
-    expect(Object.keys(server).sort()).toEqual(["flame", "hat", "jetpack"]);
-    for (const kind of Object.keys(server)) {
+    //
+    // `character` is a fourth group in the same object but it is not a
+    // cosmetic — it follows the opposite rule about unlisted ids and is
+    // checked by `characterShop.test.ts`. Asserted as present rather than
+    // ignored, so deleting it from the server fails a test somewhere.
+    expect(Object.keys(server).sort()).toEqual(["character", "flame", "hat", "jetpack"]);
+    for (const kind of ["hat", "flame", "jetpack"]) {
       expect(Object.keys(server[kind]).length).toBeGreaterThan(3);
     }
   });

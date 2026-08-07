@@ -18,6 +18,7 @@ import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import VibeGo from "./pages/VibeGo.tsx";
 import VibeArcade from "./pages/VibeArcade.tsx";
+import ArcadeCharacters from "./pages/ArcadeCharacters.tsx";
 import VibeShop from "./pages/VibeShop.tsx";
 import VibeWallet from "./pages/VibeWallet.tsx";
 import Orbit from "./pages/Orbit.tsx";
@@ -178,6 +179,7 @@ const App = () => (
               earned. Three coin-operated cabinets; the insert debits the real
               ledger and the payout is settled server-side. */}
           <Route path="/arcade" element={<VibeArcade />} />
+          <Route path="/arcade/characters" element={<ArcadeCharacters />} />
           {/* THE VIBE SHOP — the other half of the arcade. Coins won there buy
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}

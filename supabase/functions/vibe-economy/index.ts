@@ -23,7 +23,7 @@
 //   arcade_allowance { ownerKind, ownerRef }              -> tops a near-broke wallet up, once per UTC day
 //   wardrobe       { ownerKind, ownerRef }                -> what you own and what you're wearing
 //   buy_cosmetic   { ownerKind, ownerRef, kind, id }      -> spends the CATALOG price, grants the item
-//   set_loadout    { ownerKind, ownerRef, hat?, flame?, jetpack? }
+//   set_loadout    { ownerKind, ownerRef, hat?, flame?, jetpack?, character? }
 //                                                         -> equips things you actually own
 //   claim_guest    { guestRef }                           -> one-way merge of a guest wallet into
 //                                                            the signed-in caller's account
@@ -627,6 +627,25 @@ const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
     gold:   { price: 260, title: "Gold Pack" },
     none:   { price: 0,   title: "Return Pack" },
   },
+  // The arcade's character shop. Six code-built designs that did not exist
+  // before it did — see src/lib/characterShop.ts for why nothing from the
+  // free roster has a price on it.
+  //
+  // This group breaks the rule the other three follow, deliberately. For hats
+  // an id that is absent is an ERROR; for characters an id that is absent is
+  // FREE. There are sixty-odd free characters behind an `import.meta.glob`
+  // over a folder of GLBs, and a copy of that list here would be a second
+  // place to forget one — a new character would then be unequippable until
+  // somebody redeployed this file. So: in this table means you must own it.
+  // `pickCharacter` in setLoadout is the one place that rule is applied.
+  character: {
+    pixel:    { price: 150, title: "Pixel" },
+    bumble:   { price: 150, title: "Bumble" },
+    sable:    { price: 300, title: "Sable" },
+    chrome:   { price: 300, title: "Chrome" },
+    grimlock: { price: 600, title: "Grimlock" },
+    aurora:   { price: 600, title: "Aurora" },
+  },
 };
 
 /** `hat:crown`. Namespaced because "violet" is both a flame and a jetpack. */
@@ -646,11 +665,14 @@ async function ownedKeys(supabase: Supa, kind: string, ref: string): Promise<str
 
 async function loadoutOf(supabase: Supa, kind: string, ref: string) {
   const { data } = await supabase.from("vibe_loadout")
-    .select("hat, flame, jetpack").eq("owner_kind", kind).eq("owner_ref", ref).maybeSingle();
+    .select("hat, flame, jetpack, char_id").eq("owner_kind", kind).eq("owner_ref", ref).maybeSingle();
   return {
     hat: String(data?.hat ?? "none"),
     flame: String(data?.flame ?? "mint"),
     jetpack: String(data?.jetpack ?? "stock"),
+    // `char_id` in the column, `character` on the wire — CHARACTER is a SQL
+    // keyword, and the client should still see the word it means.
+    character: String(data?.char_id ?? "vibey"),
   };
 }
 
@@ -734,14 +756,36 @@ async function setLoadout(supabase: Supa, b: any) {
     return id;
   };
 
+  // Characters invert the rule: absent from the priced table means FREE, not
+  // unknown. See the comment on COSMETICS.character. The id still has to be
+  // something that could plausibly be a character — it goes into a text column
+  // and comes back out into a URL-ish lookup, and "anything at all" is not a
+  // shape worth storing.
+  const pickCharacter = (want: unknown, fallback: string): string => {
+    if (want == null) return fallback;
+    const id = String(want);
+    if (!/^[A-Za-z0-9_-]{1,48}$/.test(id)) throw new Error("not a character id");
+    const spec = COSMETICS.character[id];
+    if (spec && spec.price > 0 && !owned.has(itemKey("character", id))) {
+      throw new Error(`you do not own ${spec.title}`);
+    }
+    return id;
+  };
+
   const next = {
     hat: pick("hat", b.hat, current.hat),
     flame: pick("flame", b.flame, current.flame),
     jetpack: pick("jetpack", b.jetpack, current.jetpack),
+    character: pickCharacter(b.character, current.character),
   };
 
   const { error } = await supabase.from("vibe_loadout").upsert(
-    { owner_kind: ownerKind, owner_ref: ownerRef, ...next, updated_at: new Date().toISOString() },
+    {
+      owner_kind: ownerKind, owner_ref: ownerRef,
+      hat: next.hat, flame: next.flame, jetpack: next.jetpack,
+      char_id: next.character,
+      updated_at: new Date().toISOString(),
+    },
     { onConflict: "owner_kind,owner_ref" },
   );
   if (error) throw new Error(error.message);
@@ -821,7 +865,14 @@ async function claimGuest(supabase: Supa, req: Request, b: any) {
   if (!existingLook) {
     const guestLook = await loadoutOf(supabase, "user", guestRef);
     await supabase.from("vibe_loadout").upsert(
-      { owner_kind: "user", owner_ref: accountRef, ...guestLook },
+      {
+        owner_kind: "user", owner_ref: accountRef,
+        hat: guestLook.hat, flame: guestLook.flame, jetpack: guestLook.jetpack,
+        // Spelled out rather than spread: `loadoutOf` returns `character` and
+        // the column is `char_id`, and a spread would post a column that does
+        // not exist and fail the whole merge at the last step.
+        char_id: guestLook.character,
+      },
       { onConflict: "owner_kind,owner_ref" },
     );
   }

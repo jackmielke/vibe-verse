@@ -116,7 +116,12 @@ function PreviewModel({
       mixerRef.current?.stopAllAction();
       mixerRef.current = null;
     };
-  }, [character.url, character.scale, character.yOffset, onFit]);
+    /* `character.id` is in here for a reason that is easy to delete by
+       accident: every code-built character has an empty `url`, so keying the
+       rebuild on the url alone meant flipping between them showed the FIRST
+       one forever. The picker looked like it was working — the name, the
+       blurb and the accent all changed — and the model underneath never did. */
+  }, [character.id, character.url, character.scale, character.yOffset, onFit]);
 
   useFrame((state, dt) => {
     if (mixerRef.current) mixerRef.current.update(Math.min(dt, 0.05));
@@ -173,10 +178,11 @@ export function CharacterPreview({
     return { targetY: h / 2, distance: Math.max(distV, distH, 1.2) };
   }, [size, character.previewTarget, character.previewDistance]);
 
-  // Reset fit on character swap so the next model auto-frames itself.
+  // Reset fit on character swap so the next model auto-frames itself. By id,
+  // not url — see the note in PreviewModel about empty urls.
   useEffect(() => {
     setSize(null);
-  }, [character.url]);
+  }, [character.id]);
 
   return (
     <Canvas

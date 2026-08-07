@@ -67,7 +67,7 @@ export interface PilotDesign {
   accent: string;     // emissive: eyes, trim, core
   cloth: number;      // scarf / cape / tail membrane
   /** What sits on the crown. */
-  crown: "fins" | "cat-ears" | "bat-ears" | "horns" | "none";
+  crown: "fins" | "cat-ears" | "bat-ears" | "horns" | "antennae" | "ring" | "none";
   /** What trails off the body, using the same spring chain. */
   trail: "scarf" | "cape" | "tail" | "none";
   /** Face hardware. */
@@ -82,12 +82,19 @@ export interface PilotDesign {
   piping?: boolean;
   /** Body scale, for the ones that aren't human-shaped. */
   chunk?: number;
+  /** A glowing chest reactor. Flux's, originally — now anyone's. */
+  core?: boolean;
+  /** Cloth that emits rather than absorbs. 0–1; fabric wants ~0.06. */
+  clothGlow?: number;
+  /** A thicker, spiked tail that swings with weight, rather than a cat's. */
+  heavyTail?: boolean;
 }
 
 export const PILOT_DESIGNS: Record<string, PilotDesign> = {
   flux: {
     shell: 0x4d5a80, plate: 0x9fb0d4, accent: "#73ffb8", cloth: 0x73ffb8,
     crown: "fins", trail: "scarf", face: "visor", eyeScale: 1,
+    core: true, clothGlow: 0.7,
   },
   // Red-and-blue wall-crawler: the silhouette is all in the lenses.
   webslinger: {
@@ -108,7 +115,53 @@ export const PILOT_DESIGNS: Record<string, PilotDesign> = {
   emberwing: {
     shell: 0x2f7d57, plate: 0xd9a441, accent: "#ff8a3d", cloth: 0x1f5c3e,
     crown: "horns", trail: "tail", face: "muzzle", eyeScale: 1.5,
-    wings: true, chunk: 1.08,
+    wings: true, chunk: 1.08, heavyTail: true,
+  },
+
+  // ---- The originals ------------------------------------------------
+  //
+  // Six designs that exist only here — no model file, nothing licensed, no
+  // download. They are the stock of the arcade's character shop, and the
+  // reason the shop can sell anything at all: every GLB in the roster is
+  // already free in the Character Portal, so putting a price on one would be
+  // taking something away rather than adding something. These are new.
+  //
+  // Each one is a silhouette first and a palette second. If two of them read
+  // the same in a doorway at thirty metres, one of them is not worth 300.
+
+  // Halo ring, cape, wings. Reads as light — the one you buy to be seen.
+  aurora: {
+    shell: 0xdfe9f7, plate: 0xfdfdff, accent: "#7df0ff", cloth: 0x8fd8ff,
+    crown: "ring", trail: "cape", face: "visor", eyeScale: 1.1,
+    wings: true, core: true, clothGlow: 0.45,
+  },
+  // Horns, heavy cape, a magenta emblem burning on a black chest.
+  grimlock: {
+    shell: 0x1b1725, plate: 0x3a2f4d, accent: "#ff4fd8", cloth: 0x120f19,
+    crown: "horns", trail: "cape", face: "visor", eyeScale: 1.2, emblem: true,
+  },
+  // Small, round, enormous lenses. The mascot of the whole place.
+  pixel: {
+    shell: 0xff6fae, plate: 0xfff0f6, accent: "#fff27a", cloth: 0xff9ec9,
+    crown: "cat-ears", trail: "scarf", face: "lenses", eyeScale: 2.6, chunk: 0.82,
+  },
+  // Mirror plating with a burnt-orange visor. The accent started white, which
+  // is the one colour a chrome body cannot show you: the visor, the fins and
+  // the tail spikes all disappeared into the plating and it read as a blank.
+  chrome: {
+    shell: 0x8f9aa8, plate: 0xf2f6fb, accent: "#ff7a3d", cloth: 0x8f9aa8,
+    crown: "fins", trail: "tail", face: "visor", eyeScale: 0.9, heavyTail: true,
+  },
+  // Antennae and a striped, chunky body. The only insect on the floor.
+  bumble: {
+    shell: 0xf2b829, plate: 0x241f14, accent: "#fff6c2", cloth: 0x241f14,
+    crown: "antennae", trail: "none", face: "lenses", eyeScale: 2.1,
+    chunk: 1.1, piping: true,
+  },
+  // Bat ears over a muzzle, with a long tail — nocturnal, not heroic.
+  sable: {
+    shell: 0x232a3b, plate: 0xc9a86a, accent: "#c9a86a", cloth: 0x1a1f2c,
+    crown: "bat-ears", trail: "tail", face: "muzzle", eyeScale: 1.6, chunk: 1.03,
   },
 };
 
@@ -127,6 +180,7 @@ export function buildProceduralPilot(
 ): ProceduralPilot {
   const design = PILOT_DESIGNS[designId] ?? PILOT_DESIGNS.flux;
   accent = accent ?? design.accent;
+  const chunk = design.chunk ?? 1;
   const group = new THREE.Group();
 
   // ---- Materials ----------------------------------------------------
@@ -158,8 +212,9 @@ export function buildProceduralPilot(
     color: new THREE.Color(design.cloth),
     emissive: new THREE.Color(design.cloth),
     // Flux's scarf glows; a bat's cape and a cat's tail are fabric and fur,
-    // and reading them as neon would undo the whole silhouette.
-    emissiveIntensity: designId === "flux" ? 0.7 : 0.06,
+    // and reading them as neon would undo the whole silhouette. A knob
+    // rather than an id check, so a new design can pick without editing this.
+    emissiveIntensity: design.clothGlow ?? 0.06,
     roughness: 0.85, metalness: 0, side: THREE.DoubleSide,
   });
   const materials = [shell, plate, glow, dark, cloth];
@@ -204,7 +259,7 @@ export function buildProceduralPilot(
   // a sticker: they get an emblem, piping, or bare chest instead.
   const core = mesh(new THREE.IcosahedronGeometry(0.062, 0), glow);
   core.position.set(0, 0.32, 0.17);
-  core.visible = designId === "flux";
+  core.visible = design.core ?? false;
   if (core.visible) torso.add(core);
   // Shoulder yoke.
   const yoke = mesh(new THREE.BoxGeometry(0.46, 0.09, 0.2), plate);
@@ -368,6 +423,35 @@ export function buildProceduralPilot(
       crestJoints.push(j);
       parent = j;
     }
+  } else if (design.crown === "antennae") {
+    // Two thin stalks with a glowing bulb on the end. On the crest spring
+    // they bob a beat behind the head, which is the entire read: nothing
+    // else in the roster has a piece that light and that slow.
+    for (const side of [-1, 1]) {
+      const j = new THREE.Group();
+      j.position.set(side * 0.055, 0.235, 0.01);
+      head.add(j);
+      j.rotation.z = side * 0.42;
+      j.rotation.x = -0.14;
+      const stalk = mesh(new THREE.CylinderGeometry(0.009, 0.013, 0.2, 5), plate);
+      stalk.position.y = 0.1;
+      j.add(stalk);
+      const bulb = mesh(new THREE.SphereGeometry(0.032, 8, 6), glow);
+      bulb.position.y = 0.21;
+      j.add(bulb);
+      crestJoints.push(j);
+    }
+  } else if (design.crown === "ring") {
+    // A halo that is not attached to anything. It sits on a crest joint so
+    // it lags through turns and settles a moment after you stop — a ring
+    // welded to the skull reads as a hat, and this has to read as light.
+    const j = new THREE.Group();
+    j.position.set(0, 0.34, 0);
+    head.add(j);
+    const ring = mesh(new THREE.TorusGeometry(0.115, 0.016, 8, 24), glow);
+    ring.rotation.x = Math.PI / 2 - 0.22; // tilted, so it is never a flat line
+    j.add(ring);
+    crestJoints.push(j);
   }
 
   // Arms: shoulder → elbow → hand.
@@ -481,7 +565,7 @@ export function buildProceduralPilot(
   } else if (design.trail === "tail") {
     // A tail is the same chain again, but it grows from the base of the
     // spine and is solid rather than cloth — so it swings with weight.
-    const dragon = designId === "emberwing";
+    const dragon = design.heavyTail ?? false;
     let parent: THREE.Object3D = hips;
     const SEGS = 7;
     for (let i = 0; i < SEGS; i++) {
@@ -600,7 +684,28 @@ export function buildProceduralPilot(
   let prevGrounded = true;
   let airTime = 0;
   // Crest/scarf springs: angle + velocity per joint.
+  /**
+   * Which way a negative `drag` swings this character's trail.
+   *
+   * The crest grows UP off the head and the cloth hangs DOWN off the
+   * shoulders, so one x-rotation means opposite things to them: on the crest
+   * a negative angle tips it backward (right), and on a cape it swings the
+   * hem *forward, across the chest* (wrong — and that is exactly what the
+   * cape had been doing since it was written, most visibly on Nightcape).
+   *
+   * A tail is neither: it grows BACK along -Z, so the same rotation is a lift
+   * rather than a sweep, and the sign it already had — dropping under speed —
+   * is fine. Hence a per-trail sign rather than a blanket flip.
+   */
+  const trailSign = design.trail === "tail" ? 1 : -1;
+
   const crestA = crestJoints.map(() => 0), crestV = crestJoints.map(() => 0);
+  /* The pose each crest piece was BUILT in — cat ears splayed, horns swept
+     back, antennae angled out. The animation below writes rotation.x and .z
+     outright, so without this it flattened every one of them to zero on the
+     first frame and a cat's ears stood up in a single straight line. Base
+     plus animation, not animation instead of it. */
+  const crestBase = crestJoints.map((j) => ({ x: j.rotation.x, z: j.rotation.z }));
   const scarfA = scarfJoints.map(() => 0), scarfV = scarfJoints.map(() => 0);
   // Rest pose the scarf was built in — the bank is applied on top of it,
   // not instead of it.
@@ -647,7 +752,16 @@ export function buildProceduralPilot(
     squashV = spring(squash, 1, squashV, 210, 16, dt);
     squash += squashV * dt;
     // Volume-preserving-ish: what the body loses in height it gains in width.
-    root.scale.set(1 + (1 - squash) * 0.55, squash, 1 + (1 - squash) * 0.55);
+    // `chunk` rides along here rather than being set once at build time: this
+    // line writes root.scale outright every frame, so a build-time scale was
+    // silently thrown away on the first update — which is why the knob had
+    // been declared and had no effect on anything. Root's origin is between
+    // the feet, so scaling about it keeps them planted.
+    root.scale.set(
+      chunk * (1 + (1 - squash) * 0.55),
+      chunk * squash,
+      chunk * (1 + (1 - squash) * 0.55),
+    );
 
     // ---- Bank + lean ---------------------------------------------------
     // Bank comes from yaw rate (lean into the corner), lean from
@@ -793,8 +907,8 @@ export function buildProceduralPilot(
       const target = drag * (0.55 + i * 0.3) + airLift * (0.5 + i * 0.4) + Math.sin(t * 3.1 + i) * 0.02;
       crestV[i] = spring(crestA[i], target, crestV[i], 150 - i * 30, 11, dt);
       crestA[i] += crestV[i] * dt;
-      crestJoints[i].rotation.x = crestA[i];
-      crestJoints[i].rotation.z = -bank * (0.3 + i * 0.2);
+      crestJoints[i].rotation.x = crestBase[i].x + crestA[i];
+      crestJoints[i].rotation.z = crestBase[i].z - bank * (0.3 + i * 0.2);
     }
     for (let i = 0; i < scarfJoints.length; i++) {
       // Each segment chases the one above it, which is what produces the
@@ -802,8 +916,8 @@ export function buildProceduralPilot(
       const upstream = i === 0 ? 0 : scarfA[i - 1];
       const target =
         upstream * 0.55 +
-        drag * (0.9 + i * 0.22) +
-        airLift * (0.6 + i * 0.3) +
+        drag * trailSign * (0.9 + i * 0.22) +
+        airLift * trailSign * (0.6 + i * 0.3) +
         Math.sin(t * (2.4 + i * 0.37) + i) * (0.035 + smoothSpeed * 0.006);
       scarfV[i] = spring(scarfA[i], target, scarfV[i], 120 - i * 14, 9.5, dt);
       scarfA[i] += scarfV[i] * dt;

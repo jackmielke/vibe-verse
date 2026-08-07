@@ -115,6 +115,41 @@ export const CHARACTERS: CharSpec[] = [
     blurb: "Horns, spiked tail, and wings that spread when you leave the ground.",
     accent: "#ff8a3d",
   },
+  // The originals — same rig, same table, but these six are the arcade's
+  // stock and have a price on them. See `src/lib/characterShop.ts`, which is
+  // the authority on which of these you have to buy; this list is only the
+  // roster, and anything that renders a character has to be able to find them
+  // here whether or not the player owns one yet.
+  {
+    id: "aurora", url: "", label: "Aurora", emoji: "🌌",
+    blurb: "A halo that lags through every turn, a cape, and wings that open in the air.",
+    accent: "#7df0ff",
+  },
+  {
+    id: "grimlock", url: "", label: "Grimlock", emoji: "😈",
+    blurb: "Horns and a heavy cape over a black chest with a magenta emblem burning on it.",
+    accent: "#ff4fd8",
+  },
+  {
+    id: "pixel", url: "", label: "Pixel", emoji: "🩷",
+    blurb: "Short, hot pink, cat-eared, and mostly lenses. The mascot of the place.",
+    accent: "#fff27a",
+  },
+  {
+    id: "chrome", url: "", label: "Chrome", emoji: "🪞",
+    blurb: "Mirror plating, a burnt-orange visor, and a metal tail with weight in it.",
+    accent: "#ff7a3d",
+  },
+  {
+    id: "bumble", url: "", label: "Bumble", emoji: "🐝",
+    blurb: "Amber and black, with antennae that bob a beat behind the head.",
+    accent: "#fff6c2",
+  },
+  {
+    id: "sable", url: "", label: "Sable", emoji: "🦇",
+    blurb: "Bat ears over a muzzle, and a long tail. Nocturnal rather than heroic.",
+    accent: "#c9a86a",
+  },
   { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
   { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
   ...Object.entries(QUATERNIUS_URLS)

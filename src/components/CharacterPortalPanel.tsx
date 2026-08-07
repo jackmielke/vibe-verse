@@ -9,13 +9,26 @@
  * /profile — the whole VibeVerse.
  */
 import { useMemo, useState } from "react";
-import { Sparkles, Shuffle, ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Sparkles, Shuffle, ArrowRight, Lock } from "lucide-react";
 import { useActiveCharacter } from "@/hooks/use-active-character";
+import { useWardrobe } from "@/hooks/use-wardrobe";
+import { itemKey } from "@/lib/wardrobe";
+import { isForSale, characterPrice } from "@/lib/characterShop";
+import { VIBECOIN_GLYPH } from "@/lib/vibecoin";
 import type { CharSpec } from "@/lib/characters";
 
 export default function CharacterPortalPanel() {
   const { charId, setCharId, character, all } = useActiveCharacter();
+  const { owned } = useWardrobe();
   const [query, setQuery] = useState("");
+
+  /* The arcade's six are shown here rather than hidden, and locked rather
+     than filtered out. A shop nobody can see is a shop nobody visits, and the
+     honest version of "you cannot have this" is a padlock and a price — not a
+     roster that quietly has six holes in it. */
+  const locked = (c: CharSpec) =>
+    isForSale(c.id) && !owned.includes(itemKey("character", c.id));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -29,7 +42,9 @@ export default function CharacterPortalPanel() {
   }, [all, query]);
 
   const pickRandom = () => {
-    const pool = filtered.length > 0 ? filtered : all;
+    // Never roll something they would then have to buy — a random button that
+    // lands on a padlock two times in ten is a broken button.
+    const pool = (filtered.length > 0 ? filtered : all).filter((c) => !locked(c));
     const next = pool[Math.floor(Math.random() * pool.length)];
     if (next) setCharId(next.id);
   };
@@ -100,6 +115,25 @@ export default function CharacterPortalPanel() {
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
         {filtered.map((c) => {
           const active = c.id === charId;
+          const isLocked = locked(c);
+          if (isLocked) {
+            return (
+              <Link
+                key={c.id}
+                to="/arcade/characters"
+                title={`${c.label} — ${characterPrice(c.id)} ${VIBECOIN_GLYPH} in the arcade`}
+                className="relative aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 border border-amber-300/30 bg-amber-300/[0.06] text-lg transition-all hover:border-amber-300/60 hover:bg-amber-300/10"
+              >
+                <span className="opacity-45" aria-hidden>
+                  {c.emoji ?? "🧍"}
+                </span>
+                <span className="text-[8px] font-medium truncate w-full text-center px-0.5 text-amber-300/80 tabular-nums">
+                  {characterPrice(c.id)} {VIBECOIN_GLYPH}
+                </span>
+                <Lock className="absolute right-1 top-1 w-2.5 h-2.5 text-amber-300/70" />
+              </Link>
+            );
+          }
           return (
             <button
               key={c.id}
@@ -136,7 +170,12 @@ export default function CharacterPortalPanel() {
 
       <p className="text-[10px] text-muted-foreground/80 leading-relaxed">
         Your character follows you everywhere in the VibeVerse — /city, /lobby, /profile,
-        and even into the arcade. Pick anytime, no wallet required.
+        and even into the arcade. Pick anytime, no wallet required. The six with a
+        padlock are the arcade's own:{" "}
+        <Link to="/arcade/characters" className="text-amber-300/90 hover:underline">
+          see them move
+        </Link>
+        .
       </p>
     </div>
   );

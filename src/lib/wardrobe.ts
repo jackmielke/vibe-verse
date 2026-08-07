@@ -34,16 +34,34 @@ import { currentOwner, refreshVibecoin } from "@/lib/vibecoin";
 
 export type CosmeticKind = "hat" | "flame" | "jetpack";
 
+/**
+ * Everything the shop can sell. A character is not a cosmetic in the sense the
+ * 3D code means it — you cannot extrude one out of `cosmetics.ts` — but it is
+ * bought, owned and equipped through exactly the same three server actions, so
+ * it shares the plumbing and not the geometry.
+ */
+export type ShopKind = CosmeticKind | "character";
+
 export interface Loadout {
   hat: string;
   flame: string;
   jetpack: string;
+  /** A `CharSpec.id`. Free unless it is listed in `characterShop.ts`. */
+  character: string;
 }
 
-export const DEFAULT_LOADOUT: Loadout = { hat: "none", flame: "mint", jetpack: "stock" };
+export const DEFAULT_LOADOUT: Loadout = {
+  hat: "none",
+  flame: "mint",
+  jetpack: "stock",
+  // Matches the fallback in `use-active-character` and the column default in
+  // the migration. All three have to agree, or a fresh wallet flickers between
+  // two characters as the server answer lands.
+  character: "vibey",
+};
 
 /** `hat:crown` — namespaced because "violet" is both a flame and a jetpack. */
-export const itemKey = (kind: CosmeticKind, id: string) => `${kind}:${id}`;
+export const itemKey = (kind: ShopKind, id: string) => `${kind}:${id}`;
 
 // ---------------------------------------------------------------------------
 // Local cache
@@ -57,6 +75,7 @@ const LEGACY = {
   jetpack: "city.jetpack",
   unlocked: "city.unlockedHats",
   adopted: "vibe.wardrobe.adopted",
+  character: "lobby.character",
 };
 
 interface Cached {
@@ -98,6 +117,10 @@ function adoptLegacy(): Cached {
       hat: localStorage.getItem(LEGACY.hat) || DEFAULT_LOADOUT.hat,
       flame: localStorage.getItem(LEGACY.flame) || DEFAULT_LOADOUT.flame,
       jetpack: localStorage.getItem(LEGACY.jetpack) || DEFAULT_LOADOUT.jetpack,
+      // The character has its own long-standing key, and `use-active-character`
+      // is the one that reads it. Adopted here too so a cached loadout agrees
+      // with what is actually on screen from the first frame.
+      character: localStorage.getItem(LEGACY.character) || DEFAULT_LOADOUT.character,
     };
     localStorage.setItem(LEGACY.adopted, "1");
   } catch {
@@ -180,7 +203,7 @@ export async function refreshWardrobe(): Promise<WardrobeState> {
 }
 
 /** Do you own this? Anything priced 0 is stock issue and always yours. */
-export function owns(kind: CosmeticKind, id: string, price: number): boolean {
+export function owns(kind: ShopKind, id: string, price: number): boolean {
   return price <= 0 || state.owned.includes(itemKey(kind, id));
 }
 
@@ -190,7 +213,7 @@ export function owns(kind: CosmeticKind, id: string, price: number): boolean {
  * alternative is a button that looks like it worked.
  */
 export async function buyCosmetic(
-  kind: CosmeticKind,
+  kind: ShopKind,
   id: string,
 ): Promise<{ title: string; price: number }> {
   const owner = await currentOwner();
