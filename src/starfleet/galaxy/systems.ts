@@ -224,7 +224,7 @@ const SYSTEMS_RAW: TrekSystem[] = [
     surface: {
       kit: "presidio",
       site: "Starfleet Command, San Francisco",
-      fog: { color: 0xd8e6ec, density: 0.0032 },
+      fog: { color: 0xd8e6ec, density: 0.0016 },
       sky: { horizon: 0xd8e6ec, zenith: 0x2f6ba8 },
       sun: { elevation: 26, azimuth: 318, color: 0xffd9ac, intensity: 1.25 },
       ground: 0x6f7a58,
@@ -569,7 +569,7 @@ const SYSTEMS_RAW: TrekSystem[] = [
     surface: {
       kit: "risa-beach",
       site: "Suraya Bay — the resort shelf",
-      fog: { color: 0xffe8c4, density: 0.0012 },
+      fog: { color: 0xffe8c4, density: 0.00055 },
       sky: { horizon: 0xffe8c4, zenith: 0x0e6fb4 },
       sun: { elevation: 32, azimuth: 324, color: 0xfff0cf, intensity: 1.5 },
       ground: 0xe6d8a8,

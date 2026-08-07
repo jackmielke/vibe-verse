@@ -35,6 +35,7 @@
 import * as THREE from "three";
 import { makeRng } from "../types";
 import { surfaced, type SurfaceFamily } from "../gfx/surfacing";
+import type { SeaSpec } from "./water";
 import type { KitName } from "../galaxy/systems";
 
 export type PropKind =
@@ -77,6 +78,14 @@ export interface KitSpec {
   metal: number;
   /** Emissive accent — braziers, lamps, pools, banners. */
   glow: number;
+  /** Standing water, where the catalogue entry says there is some. Four of the
+   *  eleven landable worlds describe an ocean, a bay or a river and all four
+   *  rendered as dry ground until this existed. */
+  sea?: SeaSpec;
+  /** Which way the ground falls away toward that water. Without it the sea is
+   *  buried: the terrain around a beam-in site is a bowl centred on zero, and a
+   *  waterline a metre down never surfaces. */
+  shore?: { dir: [number, number]; start: number; drop: number; span?: number };
   /** Loose ground cover. `density` 0 leaves the ground bare — which only ever
    *  suits a floor somebody swept. */
   scatter?: { color: number; density: number; accent?: { color: number; family: SurfaceFamily; density: number } };
@@ -90,6 +99,8 @@ export const KITS: Record<KitName, KitSpec> = {
     terrain: { relief: 2.4, scale: 0.012, tint: 0x55663f, rock: 0.12 },
     ground: "organic",
     face: "rock",
+    sea: { level: -3.4, shallow: 0x2d5f6e, deep: 0x08182a, falloff: 8, chop: 0.62 },
+    shore: { dir: [-0.55, -0.84], start: 9, drop: 17, span: 70 },
     stone: 0xdfe4e0,
     metal: 0x8f9aa4,
     glow: 0x8fd6ff,
@@ -159,6 +170,8 @@ export const KITS: Record<KitName, KitSpec> = {
     terrain: { relief: 5.0, scale: 0.011, tint: 0x6d6238, rock: 0.28 },
     ground: "organic",
     face: "rock",
+    sea: { level: -3.0, shallow: 0x3f7a62, deep: 0x0d2a26, falloff: 6, chop: 0.4 },
+    shore: { dir: [0.6, -0.8], start: 11, drop: 15, span: 62 },
     stone: 0xded5bc,
     metal: 0xd8c06a,
     glow: 0xffd28a,
@@ -183,6 +196,7 @@ export const KITS: Record<KitName, KitSpec> = {
     terrain: { relief: 1.6, scale: 0.02, tint: 0x363629, rock: 0.1 },
     ground: "rock",
     face: "metal",
+    sea: { level: -0.7, shallow: 0x4a5148, deep: 0x22291f, falloff: 2.2, chop: 0.85 },
     stone: 0x8a8272,
     metal: 0xc9a227,
     glow: 0xffd24a,
@@ -205,19 +219,22 @@ export const KITS: Record<KitName, KitSpec> = {
     terrain: { relief: 2.2, scale: 0.014, tint: 0xc2a86e, rock: 0.05 },
     ground: "sand",
     face: "rock",
+    sea: { level: -1.8, shallow: 0x3fd4d0, deep: 0x05384f, falloff: 7, chop: 0.3 },
+    shore: { dir: [0, -1], start: 5, drop: 13, span: 62 },
     stone: 0xf2e6c8,
     metal: 0x2fd6c3,
     glow: 0x6ff0e0,
     scatter: { color: 0x7e7155, density: 0.4, accent: { color: 0xe8e0cc, family: "rock", density: 0.35 } },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.0 },
-      { kind: "dome", at: [-14, -30], scale: 1.4 },
-      { kind: "dome", at: [22, -38], scale: 1.1 },
+      { kind: "dome", at: [-34, -14], scale: 1.5 },
+      { kind: "dome", at: [31, -22], scale: 1.15 },
+      { kind: "dome", at: [-16, 34], scale: 1.0 },
       { kind: "arch", ring: 20, count: 6, scale: 1.2, faceIn: true },
-      { kind: "palm", scatter: 46, min: 22, max: 150, scale: 1.5, vary: 0.55 },
+      { kind: "palm", scatter: 54, min: 18, max: 130, scale: 1.5, vary: 0.55 },
       { kind: "stall", ring: 34, count: 6, scale: 0.9, faceIn: true },
       { kind: "banner", ring: 12, count: 5, scale: 0.9, color: 0x2fd6c3 },
-      { kind: "statue", at: [0, -14], scale: 1.3 },
+      { kind: "statue", at: [-19, -6], scale: 1.3 },
     ],
   },
 
@@ -376,6 +393,10 @@ export function buildKit(
   name: KitName,
   seed: number,
   heightAt: (x: number, z: number) => number,
+  /** Anything the grammar wants to place below this is simply not placed.
+   *  Rules know about rings and rows; they do not know where the coast is, and
+   *  a colonnade wading into Suraya Bay is worse than a shorter colonnade. */
+  seaLevel?: number,
 ): BuiltKit {
   const spec = KITS[name] ?? KITS["dead-world"];
   const rng = makeRng(seed);
@@ -400,6 +421,7 @@ export function buildKit(
 
   function place(kind: PropKind, x: number, z: number, s: number, rot: number, color?: number): void {
     const y = heightAt(x, z);
+    if (seaLevel !== undefined && y < seaLevel + 0.25) return;
     const node = makeProp(kind, s, spec, { stone, metal, dark, leaf }, glowMat, color, rng);
     if (!node) return;
     node.position.set(x, y, z);
@@ -668,14 +690,43 @@ function makeProp(
       break;
     }
     case "statue": {
+      /* A robed figure, not a capsule with a ball on it.
+       *
+       * The first version was exactly that and on Risa it rendered as a
+       * four-metre teal bowling pin standing in the middle of the resort. A
+       * lathe with a hem, a waist and shoulders reads as a person at a glance
+       * for the same reason the characters' torsos do — the silhouette is the
+       * whole thing at this distance. */
       const h = 5.4 * s;
-      const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.4 * s, 1.2 * s, 2.4 * s), m.stone);
-      plinth.position.y = 0.6 * s;
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.62 * s, h * 0.5, 4, 10), m.metal);
-      body.position.y = 1.2 * s + h * 0.42;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.5 * s, 12, 10), m.metal);
-      head.position.y = 1.2 * s + h * 0.82;
-      g.add(plinth, body, head);
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.6 * s, 1.0 * s, 2.6 * s), m.stone);
+      plinth.position.y = 0.5 * s;
+      const step = new THREE.Mesh(new THREE.BoxGeometry(3.1 * s, 0.3 * s, 3.1 * s), m.stone);
+      step.position.y = 0.15 * s;
+
+      const figure: THREE.Vector2[] = [
+        new THREE.Vector2(1.02 * s, 0),
+        new THREE.Vector2(0.96 * s, 0.16 * s),
+        new THREE.Vector2(0.72 * s, h * 0.30),
+        new THREE.Vector2(0.5 * s, h * 0.52),
+        new THREE.Vector2(0.56 * s, h * 0.62),
+        new THREE.Vector2(0.62 * s, h * 0.72),
+        new THREE.Vector2(0.28 * s, h * 0.79),
+        new THREE.Vector2(0.34 * s, h * 0.84),
+        new THREE.Vector2(0.0, h * 0.9),
+      ];
+      const body = new THREE.Mesh(new THREE.LatheGeometry(figure, 20), m.metal);
+      body.position.y = 1.0 * s;
+
+      // Arms, folded across. Two boxes, and they break the rotational symmetry
+      // a lathe otherwise leaves — which is what stops it reading as a vase.
+      for (const side of [-1, 1]) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22 * s, 0.9 * s, 0.3 * s), m.metal);
+        arm.position.set(side * 0.56 * s, 1.0 * s + h * 0.58, 0.16 * s);
+        arm.rotation.x = -0.5;
+        arm.rotation.z = side * 0.18;
+        g.add(arm);
+      }
+      g.add(step, plinth, body);
       break;
     }
     case "pool": {

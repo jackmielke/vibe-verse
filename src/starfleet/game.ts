@@ -505,7 +505,12 @@ export function createGame(opts: GameOptions): Game {
       // should not be dark.
       post.render(space.scene, space.camera, { warp: state.warpK, exposure: tune.space, ao: false, debug: tune.debug });
     } else {
-      post.render(surface.scene, surface.camera, { exposure: tune.surface, ao: true, debug: tune.debug });
+      post.render(surface.scene, surface.camera, {
+        exposure: tune.surface,
+        ao: true,
+        debug: tune.debug,
+        atmosphere: surface.atmosphere(),
+      });
     }
   }
 

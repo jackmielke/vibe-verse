@@ -33,8 +33,10 @@ import { SURFACE_FAR, SURFACE_NEAR, clamp, damp, hashString, makeRng, type Input
 import type { SurfaceSpec, TrekSystem } from "../galaxy/systems";
 import { KITS, buildKit, type BuiltKit } from "./kits";
 import { surfaced } from "../gfx/surfacing";
+import type { Atmosphere } from "../gfx/post";
 import { createNpc, type Npc } from "./npc";
 import { createScatter, type Scatter } from "./scatter";
+import { createWater, type Water } from "./water";
 import { characterByKey, type Character } from "../crew/characters";
 
 const EYE = 1.68;
@@ -45,6 +47,9 @@ const WORLD_R = 300;
 export interface SurfaceScene {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
+  /** What the post pass needs to build this world's aerial perspective.
+   *  Null until an away team is actually on a surface. */
+  atmosphere(): Atmosphere | null;
   /** The person you can talk to, if you are close enough to. */
   nearby(): Npc | null;
   enter(system: TrekSystem): void;
@@ -82,11 +87,16 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     height: (x: number, z: number) => number;
     weather: Weather | null;
     scatter: Scatter | null;
+    water: Water | null;
     spec: SurfaceSpec;
     flickers: THREE.Object3D[];
     sun: THREE.DirectionalLight;
     sunDir: THREE.Vector3;
+    sea: { level: number } | null;
   } | null = null;
+
+  /** Last position the away team was standing on dry ground. */
+  const lastDry = new THREE.Vector3();
 
   const pos = new THREE.Vector3(0, 0, 10);
   let yaw = Math.PI;
@@ -94,6 +104,7 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
   let vy = 0;
   let bob = 0;
   let near: Npc | null = null;
+  let air: Atmosphere | null = null;
   let t = 0;
 
   function teardown(): void {
@@ -102,6 +113,7 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     built.extras.forEach((e) => e.dispose());
     built.kit.dispose();
     built.scatter?.dispose();
+    built.water?.dispose();
     built.weather?.dispose();
     built.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -117,6 +129,7 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     envRT = null;
     built = null;
     near = null;
+    air = null;
   }
 
   function enter(system: TrekSystem): void {
@@ -129,7 +142,14 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     scene.add(root);
 
     /* --- height field ------------------------------------------------------ */
-    const height = makeHeightField(kitSpec.terrain.relief, kitSpec.terrain.scale, seed);
+    const height = makeHeightField(
+      kitSpec.terrain.relief,
+      kitSpec.terrain.scale,
+      seed,
+      kitSpec.shore,
+      kitSpec.sea ? 6 : 14,
+      kitSpec.sea ? 10 : 22,
+    );
 
     /* --- terrain ----------------------------------------------------------- */
     const SEG = 150;
@@ -175,8 +195,15 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     ground.receiveShadow = true;
     root.add(ground);
 
-    /* --- sky, fog, light ---------------------------------------------------- */
-    scene.fog = new THREE.FogExp2(spec.fog.color, spec.fog.density);
+    /* --- sky, light ---------------------------------------------------------- */
+    /* No `scene.fog`.
+     *
+     * The haze is done once in the post composite off the depth buffer — see
+     * `gfx/post.ts` — which buys height falloff and inscattering that a
+     * per-material FogExp2 cannot express. Leaving three's fog on as well
+     * double-hazes everything and the two disagree about the colour at the
+     * horizon, which shows up as a band. */
+    scene.fog = null;
     scene.background = new THREE.Color(spec.sky.horizon);
 
     const sky = new THREE.Mesh(
@@ -330,7 +357,7 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     }
 
     /* --- structures --------------------------------------------------------- */
-    const kit = buildKit(spec.kit, seed, height);
+    const kit = buildKit(spec.kit, seed, height, kitSpec.sea?.level);
     kit.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -400,9 +427,37 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
       root.add(scatter.group);
     }
 
+    /* --- standing water ------------------------------------------------------ */
+    let water: Water | null = null;
+    if (kitSpec.sea) {
+      water = createWater({
+        sea: kitSpec.sea,
+        height,
+        span: SPAN,
+        sunDir,
+        sunColor: spec.sun.color,
+        skyColor: spec.sky.zenith,
+        horizonColor: spec.sky.horizon,
+      });
+      root.add(water.mesh);
+    }
+
     const weather = spec.weather && spec.weather !== "none" ? createWeather(spec.weather, root) : null;
 
-    built = { root, kit, npc, extras, height, weather, spec, flickers, sun, sunDir, scatter };
+    built = { root, kit, npc, extras, height, weather, spec, flickers, sun, sunDir, scatter, water, sea: kitSpec.sea ?? null };
+
+    /* Density is per metre, and the registry's old FogExp2 numbers were tuned
+       for a squared falloff — so they are re-based here rather than reused. A
+       clear desert is about 1/1200 m; Ferenginar in the rain is six times that.
+       Scale height is low on the thin-aired worlds and high on the soupy ones. */
+    air = {
+      color: new THREE.Color(spec.fog.color),
+      density: spec.fog.density * 0.62,
+      height: 60 + 22000 * spec.fog.density,
+      sunDir: sunDir.clone(),
+      sunColor: new THREE.Color(spec.sun.color),
+      inscatter: 0.9 + spec.sun.intensity * 0.5,
+    };
 
     // Put the captain on the pad, facing whoever is waiting.
     //
@@ -416,6 +471,7 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     // transporter pad looking at it edge-on is both wrong and, from eye
     // height, a wall of glowing ring across the bottom of the frame.
     pos.set(0, height(0, 0) + EYE, 0);
+    lastDry.set(0, 0, 0);
     yaw = 0;
     pitch = -0.04;
     vy = 0;
@@ -475,6 +531,26 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
       pos.z *= WORLD_R / rad;
     }
 
+    // The waterline is a wall, not a swimming pool. An away team that can walk
+    // to the bottom of Suraya Bay and stand there looking up is funnier than it
+    // is convincing.
+    const kitSea = built.sea;
+    if (kitSea && height(pos.x, pos.z) < kitSea.level - 0.35) {
+      const bx = Math.atan2(pos.z, pos.x);
+      for (let i = 0; i < 12; i++) {
+        const back = 0.6 * (i + 1);
+        const nx = pos.x - Math.cos(bx) * 0 + (lastDry.x - pos.x) * (back / 7);
+        const nz = pos.z + (lastDry.z - pos.z) * (back / 7);
+        if (height(nx, nz) >= kitSea.level - 0.3) {
+          pos.x = nx;
+          pos.z = nz;
+          break;
+        }
+      }
+    } else {
+      lastDry.set(pos.x, 0, pos.z);
+    }
+
     const ground = height(pos.x, pos.z) + EYE;
     vy -= 9.81 * spec.gravity * dt;
     pos.y += vy * dt;
@@ -513,12 +589,14 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
     built.sun.position.copy(built.sunDir).multiplyScalar(600).add(built.sun.target.position);
     built.sun.target.updateMatrixWorld();
 
+    built.water?.update(dt, camera);
     built.weather?.update(dt, camera.position);
   }
 
   return {
     scene,
     camera,
+    atmosphere: () => air,
     nearby: () => near,
     enter,
     leave: teardown,
@@ -535,6 +613,10 @@ export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRendere
 /* -------------------------------------------------------------------------- */
 
 const fract = (x: number) => x - Math.floor(x);
+const smooth01 = (x: number) => {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+};
 
 /**
  * Value-noise fbm, seeded, plus a flat disc at the origin.
@@ -543,7 +625,16 @@ const fract = (x: number) => x - Math.floor(x);
  * vertex on a 150² grid *and* per prop *and* once per frame under the player's
  * feet, and the visible difference at this scale is nil.
  */
-function makeHeightField(relief: number, scale: number, seed: number): (x: number, z: number) => number {
+export function makeHeightField(
+  relief: number,
+  scale: number,
+  seed: number,
+  shore?: { dir: [number, number]; start: number; drop: number; span?: number },
+  /** Radius of the levelled beam-in pad, and how far the level blends out.
+   *  Small on a coast — see the note on the shore. */
+  flatR = 14,
+  flatBlend = 22,
+): (x: number, z: number) => number {
   const s = seed >>> 0;
   const hash = (xi: number, zi: number): number => {
     let h = (xi * 374761393 + zi * 668265263 + s) | 0;
@@ -575,33 +666,88 @@ function makeHeightField(relief: number, scale: number, seed: number): (x: numbe
       freq *= 2.13;
     }
     let h = (sum / norm) * relief * 2;
+    const d = Math.hypot(x, z);
+
+    /* The shore, computed first, because it has to *win*.
+     *
+     * A sea level alone does not give you a coast: the terrain around a
+     * beam-in site is a bowl of noise centred on zero, so a waterline a metre
+     * and a half down is buried and Suraya Bay renders as a damp patch you
+     * cannot find. Past `start` metres in one direction the ground ramps down —
+     * smoothstepped, so there is a beach rather than a cliff, with the noise
+     * still riding on top so the waterline stays ragged.
+     *
+     * `shoreK` then *suppresses the distant hills below*. That order is the
+     * whole fix: on the first attempt the two ran independently, the far ridge
+     * added up to nineteen metres of relief and the shore subtracted twelve, so
+     * the coast came out as a range of hills with a slight dip in it and no
+     * water anywhere. A coast is where the country stops.
+     *
+     * The drops are large — fifteen to thirty metres — and that is a geometry
+     * fact rather than a stylistic one. A flat sea seen from a 1.7 m eye height
+     * occupies a *sliver*: the horizon is four kilometres off and a waterline
+     * eighty metres away sits one degree below it, so the whole bay renders as
+     * a four-pixel band you cannot find. Every beam-in site with water is
+     * therefore on a shelf above it — the resort terrace on Risa, the Presidio
+     * bluff on Earth, the Kendra terraces over the river — which is both what
+     * the catalogue entries already said and the only way the water is visible
+     * at all. */
+    let shoreK = 0;
+    if (shore) {
+      const len = Math.hypot(shore.dir[0], shore.dir[1]) || 1;
+      const along = (x * shore.dir[0] + z * shore.dir[1]) / len;
+      /* A bay, not a tilted world.
+       *
+       * Projecting onto the shore direction alone drops *everything* on that
+       * side of the origin, which on Risa put the entire resort under water —
+       * the arches, both domes and half the palms simply stopped being placed.
+       * Restricting the drop to a sector around the bearing gives a bay with
+       * headlands either side of it, which is both what a resort is built on
+       * and what leaves somewhere to put the buildings. */
+      const cos = d > 0.001 ? along / d : 1;
+      const sector = smooth01((cos - 0.1) / 0.55);
+      const k = Math.min(1, Math.max(0, (along - shore.start) / (shore.span ?? 110))) * sector;
+      shoreK = k * k * (3 - 2 * k);
+      /* Calm the noise *first*, then drop.
+       *
+       * The other order multiplies the drop by the same factor, so a 36 m
+       * shelf attenuated by 0.45 bottoms out at 16 m — which happened to be
+       * exactly the sea level, and the bay rendered as four centimetres of
+       * water that the alpha ramp then discarded entirely. The attenuation is
+       * meant to smooth the sea bed, not to undo the coast. */
+      h *= 1 - shoreK * 0.55;
+      h -= shore.drop * shoreK;
+    }
 
     /* Distant relief.
      *
      * The player is walled in at 300 m but the mesh runs to 450, and a
      * perfectly flat band between the two is a horizon with nothing on it —
-     * which is what says "this is a plane" more loudly than anything else in
-     * the frame. Past 220 m the relief ramps up hard and gains a much longer
-     * wavelength, so the away team is always standing in a bowl with country
-     * around it rather than on a disc. It costs one extra noise fetch per
-     * vertex and it is the cheapest sense of place in the file. */
-    const d = Math.hypot(x, z);
-    const far = Math.min(1, Math.max(0, (d - 190) / 170));
+     * which says "this is a plane" more loudly than anything else in frame.
+     * Past 190 m the relief ramps up hard and gains a longer wavelength, so the
+     * away team is always standing in a bowl with country around it.
+     *
+     * Wavelength matters more than amplitude: the first pass used 0.28× the
+     * base frequency, which on Vulcan is a six-hundred-metre wavelength — less
+     * than one cycle inside the visible ring, so it raised the far ground
+     * smoothly and produced exactly the flat horizon it was added to fix. */
+    const far = Math.min(1, Math.max(0, (d - 190) / 170)) * (1 - shoreK);
     if (far > 0) {
-      /* Wavelength matters more than amplitude here. The first pass used a
-         frequency of 0.28× the base, which on Vulcan is a six-hundred-metre
-         wavelength — less than one cycle fits inside the visible ring, so it
-         raised the whole far ground by a smooth amount and produced exactly
-         the flat horizon it was added to fix. 1.1× is about a hundred and
-         forty metres: four or five ridges across the view, which is what a
-         range of hills looks like. */
       const ridge = 1 - Math.abs(noise(x * scale * 1.1, z * scale * 1.1) * 2 - 1);
       h += Math.pow(ridge, 1.7) * relief * 8.5 * far * far;
       h += (noise(x * scale * 2.6, z * scale * 2.6) - 0.5) * relief * 3.0 * far;
     }
 
-    // Level the beam-in site, and blend out over 22 m so the join is not a step.
-    const flat = 1 - Math.min(1, Math.max(0, (d - 14) / 22));
+    /* Level the beam-in site, and blend the level out so the join is not a step.
+     *
+     * The radius has to shrink on a coast, and the reason is pure sightlines.
+     * A standing eye is 1.68 m up; to see water three metres below, the ray
+     * leaves at about 10°, and *any* level ground further out than about ten
+     * metres is above that ray and hides everything beyond it. Risa's bay was
+     * rendering as a 30-pixel strip at the horizon for exactly this reason —
+     * not because the water was missing, but because a 14 m level pad was
+     * standing in front of it. */
+    const flat = 1 - Math.min(1, Math.max(0, (d - flatR) / flatBlend));
     return h * (1 - flat * flat);
   };
 }

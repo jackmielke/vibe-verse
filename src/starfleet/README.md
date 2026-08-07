@@ -145,6 +145,30 @@ cobbles, boulders — because an empty ground plane has no scale. A fist-sized
 rock in the foreground is what tells you the hill is two hundred metres off and
 the person between them is a person.
 
+**Aerial perspective**, also from the depth buffer, also in the composite.
+three's `FogExp2` is a distance lerp toward one colour and gets you haze and
+nothing else. This has density that falls off with altitude, so distant hills
+sit *in* the landscape rather than being painted over it; and Henyey-Greenstein
+inscattering toward the star, so looking into a low sun through dust is the
+strongest depth cue a desert has instead of looking exactly like looking away
+from it. Pixels with no geometry are skipped, so the sky and the stars come
+through untouched.
+
+**Water** (`surface/water.ts`). Four worlds describe an ocean, a bay or a river
+in their catalogue entry and all four rendered as dry ground. Fresnel does most
+of the work — a mirror at grazing, a window at your feet — with a sun glint
+tight enough to be a shape, three wave scales crossing, and a shoreline driven
+by *depth* rather than an edge, which needs the terrain height field baked into
+a texture so the waterline cannot disagree with the beach.
+
+The hard part was not the shader. Getting a bay to be *visible* is geometry: a
+standing eye is 1.68 m up, so to see water three metres down the ray leaves at
+about ten degrees, and any level ground beyond about ten metres is above that
+ray and hides everything past it. Risa's bay rendered as a thirty-pixel strip
+at the horizon for exactly that reason — not because the water was missing, but
+because a 14 m levelled beam-in pad was standing in front of it. Coasts get a
+6 m pad and a shore that starts five metres out.
+
 ## Five things that were got wrong once and are now load-bearing
 
 - **Standard orbit is a composition constant, not a physical one.** At 1.9

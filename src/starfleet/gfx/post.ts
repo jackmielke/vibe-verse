@@ -249,9 +249,43 @@ void main(){
 const COMPOSITE_FRAG = /* glsl */ `
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D tSrc, tBloom, tAO;
+uniform sampler2D tSrc, tBloom, tAO, tDepth;
 uniform float uExposure, uBloom, uAO, uCA, uGrain, uVignette, uTime, uWarp;
 uniform vec2 uTexel;
+
+/* Atmospherics, done here rather than per-material.
+ *
+ * three's FogExp2 is a distance lerp toward one colour, evaluated in every
+ * material that opts into it. That gets you haze and nothing else: no height
+ * falloff, so the air is as thick at the top of a mountain as at its foot; and
+ * no inscattering, so looking straight into the star through forty kilometres
+ * of atmosphere looks exactly like looking away from it.
+ *
+ * The depth buffer is already here for the occlusion pass, so all three of the
+ * things that make distance read can be done once, for every surface in the
+ * frame, in the pass that is already running:
+ *
+ *   **Height falloff.** Density decays exponentially with altitude, which is
+ *   what air does. It is the difference between distant hills sitting *in* the
+ *   landscape and being painted over it.
+ *
+ *   **Inscattering.** The haze is not one colour — it takes the star's colour
+ *   in the direction of the star, on a Henyey-Greenstein lobe. Looking toward
+ *   a low sun through dust is the strongest depth cue a desert has, and it is
+ *   free once the depth is in hand.
+ *
+ *   **Sky agreement.** Fog tends to the horizon colour, so the far terrain
+ *   dissolves into the sky it meets instead of into a differently coloured
+ *   wall. Pixels with no geometry are skipped entirely, so the sky dome and
+ *   the stars come through untouched.
+ */
+uniform vec3 uFogColor, uSunColorV, uSunDirV, uViewUp;
+uniform float uFogDensity, uFogHeight, uCamY, uInscatter, uAspectF, uTanHalfF;
+
+vec3 viewPosF(vec2 uv, float z){
+  vec2 ndc = uv * 2.0 - 1.0;
+  return vec3(ndc.x * uAspectF * uTanHalfF * z, ndc.y * uTanHalfF * z, -z);
+}
 
 /* AgX, in full.
  *
@@ -381,6 +415,35 @@ void main(){
 
   float ao = mix(1.0, texture2D(tAO, vUv).r, uAO);
   col *= ao;
+
+  if (uFogDensity > 0.0) {
+    float z = texture2D(tDepth, vUv).r;
+    // Zero means sky. Fogging the sky toward the fog colour would flatten the
+    // whole dome into one value and take the stars with it.
+    if (z > 0.0) {
+      vec3 P = viewPosF(vUv, z);
+      float dist = length(P);
+      // Altitude of this fragment, from the camera's own height plus however
+      // far up the view-space "up" axis it sits.
+      float worldY = uCamY + dot(P, uViewUp);
+      float hFall = exp(-max(worldY, -20.0) / uFogHeight);
+      float camFall = exp(-max(uCamY, -20.0) / uFogHeight);
+      // Average the density along the ray rather than sampling it at one end,
+      // or looking down from a ridge fogs the valley by the ridge's thin air.
+      float density = uFogDensity * (hFall + camFall) * 0.5;
+      float f = 1.0 - exp(-density * dist);
+
+      // Henyey-Greenstein, g = 0.72: a tight forward lobe, which is what dust
+      // and water droplets actually do.
+      vec3 ray = normalize(P);
+      float mu = dot(ray, uSunDirV);
+      const float g = 0.72;
+      float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5) * 0.079577;
+      vec3 haze = mix(uFogColor, uSunColorV, clamp(hg * uInscatter, 0.0, 0.85));
+
+      col = mix(col, haze, clamp(f, 0.0, 1.0));
+    }
+  }
   col += texture2D(tBloom, vUv).rgb * uBloom;
   col *= uExposure;
 
@@ -445,9 +508,24 @@ void main(){
 /** Debug views. `0` is the finished frame; the rest show one buffer raw. */
 export type PostDebug = 0 | 1 | 2 | 3;
 
+/** Aerial perspective. Absent means no atmosphere — which is right in orbit. */
+export interface Atmosphere {
+  color: THREE.Color | number;
+  /** Per metre. 0.0015 is a clear day; 0.006 is Ferenginar. */
+  density: number;
+  /** Scale height in metres. Small values hug the ground. */
+  height: number;
+  /** Unit vector toward the star, world space. */
+  sunDir: THREE.Vector3;
+  sunColor: THREE.Color | number;
+  /** How much the haze takes the star's colour on the forward lobe. */
+  inscatter?: number;
+}
+
 export interface PostOptions {
   /** 1 = ambient occlusion, 2 = bloom, 3 = linear depth. */
   debug?: PostDebug;
+  atmosphere?: Atmosphere | null;
   /** 0-1, drives radial blur and chromatic aberration during a jump. */
   warp?: number;
   /** Scene-wide exposure multiplier, applied before the tone curve. */
@@ -592,6 +670,17 @@ export function createPost(renderer: THREE.WebGLRenderer, quality: Quality): Pos
     uTime: { value: 0 },
     uWarp: { value: 0 },
     uTexel: { value: new THREE.Vector2() },
+    tDepth: { value: lin.texture },
+    uFogColor: { value: new THREE.Color(0x808080) },
+    uSunColorV: { value: new THREE.Color(0xffffff) },
+    uSunDirV: { value: new THREE.Vector3(0, 1, 0) },
+    uViewUp: { value: new THREE.Vector3(0, 1, 0) },
+    uFogDensity: { value: 0 },
+    uFogHeight: { value: 120 },
+    uCamY: { value: 0 },
+    uInscatter: { value: 1 },
+    uAspectF: { value: 1 },
+    uTanHalfF: { value: 0.5 },
   });
   const mDebug = mat(
     `precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform float uScale;
@@ -651,6 +740,10 @@ export function createPost(renderer: THREE.WebGLRenderer, quality: Quality): Pos
     t += 1 / 60;
     const warp = opts.warp ?? 0;
     const wantAO = tier.ao && (opts.ao ?? true);
+    const air = opts.atmosphere ?? null;
+    // The linear-depth buffer feeds both occlusion and the haze, so it has to
+    // be built if either wants it.
+    const wantDepth = wantAO || !!air;
 
     try {
       /* 1 — the frame, in HDR */
@@ -658,12 +751,13 @@ export function createPost(renderer: THREE.WebGLRenderer, quality: Quality): Pos
       renderer.clear();
       renderer.render(sceneIn, camera);
 
-      /* 2 — AO */
-      if (wantAO) {
+      /* 2 — linear depth, then AO */
+      if (wantDepth) {
         mLin.uniforms.uNear.value = camera.near;
         mLin.uniforms.uFar.value = camera.far;
         blit(mLin, lin);
-
+      }
+      if (wantAO) {
         mAO.uniforms.uAspect.value = camera.aspect;
         mAO.uniforms.uTanHalfFov.value = Math.tan(((camera.fov * Math.PI) / 180) / 2);
         mAO.uniforms.uTime.value = t;
@@ -712,6 +806,30 @@ export function createPost(renderer: THREE.WebGLRenderer, quality: Quality): Pos
       }
 
       /* 4 — composite */
+      /* atmospherics */
+      if (air) {
+        (mComp.uniforms.uFogColor.value as THREE.Color).set(air.color);
+        (mComp.uniforms.uSunColorV.value as THREE.Color).set(air.sunColor);
+        // Into view space, because the haze is evaluated against a view-space
+        // ray reconstructed from depth.
+        (mComp.uniforms.uSunDirV.value as THREE.Vector3)
+          .copy(air.sunDir)
+          .transformDirection(camera.matrixWorldInverse)
+          .normalize();
+        (mComp.uniforms.uViewUp.value as THREE.Vector3)
+          .set(0, 1, 0)
+          .transformDirection(camera.matrixWorldInverse)
+          .normalize();
+        mComp.uniforms.uFogDensity.value = air.density;
+        mComp.uniforms.uFogHeight.value = air.height;
+        mComp.uniforms.uCamY.value = camera.position.y;
+        mComp.uniforms.uInscatter.value = air.inscatter ?? 1;
+        mComp.uniforms.uAspectF.value = camera.aspect;
+        mComp.uniforms.uTanHalfF.value = Math.tan(((camera.fov * Math.PI) / 180) / 2);
+      } else {
+        mComp.uniforms.uFogDensity.value = 0;
+      }
+
       mComp.uniforms.uExposure.value = opts.exposure ?? 1.0;
       mComp.uniforms.uWarp.value = warp;
       mComp.uniforms.uTime.value = t;
