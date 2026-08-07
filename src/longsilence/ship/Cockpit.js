@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 22;
+export const PASSPORT_ROWS = 24;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1203,9 +1203,12 @@ function drawArchivePassport(g, v, ctx) {
      truncation on a completion panel is the worst kind of bug, because the
      panel's entire job is to tell you what you have not done yet.
 
+     Then Strange New Worlds made twenty-three and it is twenty-four.
+
      The archive canvas is 768 × ~486, so the band this divides is 214 px. At
-     twenty-two stamps that is eleven rows at a 21 px pitch with 12 px names —
-     legible, and about two worlds short of where it stops being.
+     twenty-four stamps that is twelve rows at a 19.5 px pitch with 11.5 px
+     names — legible, and now about one world short of where it stops being.
+     The next raise needs a third column rather than another two rows.
 
      So the rows now shrink to fit instead of falling off the bottom. TOP to
      BOTTOM is the band that is genuinely free between the progress bar and the
@@ -1219,7 +1222,7 @@ function drawArchivePassport(g, v, ctx) {
   const shown = rows.slice(0, PASSPORT_ROWS);
   const nRows = Math.max(1, Math.ceil(shown.length / 2));
   const pitch = Math.min(30, (BOTTOM - TOP) / Math.max(nRows - 1, 1));
-  const nameSize = pitch >= 28 ? 13.5 : 12;
+  const nameSize = pitch >= 28 ? 13.5 : pitch >= 21 ? 12 : 11.5;
   shown.forEach((r, i) => {
     const col = i % 2, row = Math.floor(i / 2);
     const x = 26 + col * (colW + 12);

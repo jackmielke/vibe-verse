@@ -79,6 +79,10 @@ const Airplane = lazy(() => import("./pages/Airplane.tsx"));
    procedural planet. Lazy for the same reason as the rest: nobody who never
    takes the centre seat should carry the Enterprise in the hub's entry chunk. */
 const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
+/* STRANGE NEW WORLDS carries twelve authored planets, a warp drive and a
+   walkable surface for each of them, plus everyone who lives on them. Lazy for
+   the same reason as the rest. */
+const StrangeNewWorlds = lazy(() => import("./pages/StrangeNewWorlds.tsx"));
 /* HOME ALONE builds 671 Lincoln Avenue — three storeys, sixteen rooms and the
    block it stands on — out of procedural textures at boot. Lazy for the same
    reason as the rest: nobody who never rings that doorbell should carry the
@@ -364,6 +368,21 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <StarTrek />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* STRANGE NEW WORLDS — the other half of Star Trek. Twelve real
+              systems on a real chart, a fold from one to the next, orbit, a
+              sensor sweep, and then the transporter puts you down in front of
+              somebody who will talk back. */}
+          {["/strange-new-worlds", "/snw", "/starfleet"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                  <StrangeNewWorlds />
                 </Suspense>
               }
             />

@@ -89,6 +89,23 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "strange-new-worlds",
+    route: "/strange-new-worlds",
+    aliases: ["/snw", "/starfleet"],
+    name: "Strange New Worlds",
+    emoji: "🛸",
+    kind: "game",
+    blurb:
+      "The other half of Star Trek — the half where nobody shoots. Twelve real systems on a real chart, warp between them at the real warp scale, make orbit, run the sensors, then beam down and talk to whoever is waiting. Vulcan, Qo'noS, Bajor, Risa, Talos IV, and Wolf 359 where the fleet is still lying.",
+    status: "Playable — twelve worlds, everyone on them talks back",
+    accent: "#ff9c00",
+    featured: true,
+    source: "src/starfleet",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "i-spy",
     route: "/i-spy",
     aliases: ["/ispy", "/geometry-dash"],
@@ -673,6 +690,7 @@ const WORLDS_RAW: WorldEntry[] = [
  * a world that vanishes from here just falls to the tail, nothing breaks.
  */
 const ORDER: string[] = [
+  "strange-new-worlds",
   "island",
   "arcade",
   "blue-angels",

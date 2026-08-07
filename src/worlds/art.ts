@@ -38,6 +38,7 @@ import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import homeAloneArt from "@/assets/worlds/home-alone.jpg";
 import iSpyArt from "@/assets/worlds/i-spy.jpg";
+import strangeNewWorldsArt from "@/assets/worlds/strange-new-worlds.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import runArt from "@/assets/worlds/run.jpg";
 import trekArt from "@/assets/worlds/final-frontier.jpg";
@@ -51,6 +52,7 @@ export const WORLD_ART: Record<string, string> = {
   "home-alone": homeAloneArt,
   run: runArt,
   "i-spy": iSpyArt,
+  "strange-new-worlds": strangeNewWorldsArt,
   kart: kartArt,
   "kart-mp": kartArt,
   trek: trekArt,
