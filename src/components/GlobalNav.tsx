@@ -118,94 +118,11 @@ export default function GlobalNav() {
         </div>
       </div>
 
-      <nav
-        className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
-        aria-label="Primary destinations"
-      >
-        <div className="relative pointer-events-auto">
-          <div
-            className="glass-panel rounded-full border border-border/60 px-1.5 py-1 flex items-center gap-1"
-            style={{
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-            }}
-          >
-            {visible.map((d) => {
-              const active = isActive(d);
-              return (
-                <Link
-                  key={d.key}
-                  to={d.route}
-                  className={chipClass(active)}
-                  title={d.blurb}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <span className="text-sm leading-none">{d.emoji}</span>
-                  <span className={labelClass}>{d.name}</span>
-                  {active && (
-                    <span
-                      className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
-                      aria-hidden
-                    />
-                  )}
-                </Link>
-              );
-            })}
+      {/* The world chip row used to live here. It was a permanent banner
+          across the top of every world; the 🌐 Worlds pill (left) and the
+          full picker cover the same ground without covering the view. */}
+      <WorldPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
 
-            <button
-              onClick={() => {
-                setMoreOpen((v) => !v);
-                setPickerOpen(false);
-              }}
-              className={chipClass(moreOpen || overflow.some(isActive))}
-              title="More worlds"
-              aria-expanded={moreOpen}
-            >
-              <span className="text-sm leading-none">⋯</span>
-            </button>
-          </div>
-
-          {moreOpen && (
-            <div className="absolute top-full right-0 mt-2 glass-panel rounded-2xl border border-border/60 p-1.5 flex flex-col gap-0.5 min-w-[12rem]">
-              {overflow.map((d) => {
-                const active = isActive(d);
-                return (
-                  <Link
-                    key={d.key}
-                    to={d.route}
-                    className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-colors ${
-                      active
-                        ? "bg-primary/25 text-primary"
-                        : "text-foreground/80 hover:text-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    <span>{d.emoji}</span>
-                    <span className="font-heading font-semibold tracking-wider uppercase text-[10.5px]">
-                      {d.name}
-                    </span>
-                  </Link>
-                );
-              })}
-              <button
-                onClick={() => {
-                  setPickerOpen(true);
-                  setMoreOpen(false);
-                }}
-                className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-primary hover:bg-primary/10 transition-colors mt-0.5 border-t border-border/40 pt-2"
-              >
-                <span>🌐</span>
-                <span className="font-heading font-semibold tracking-wider uppercase text-[10.5px]">
-                  See all worlds
-                </span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="pointer-events-auto">
-          <WorldPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
-        </div>
-      </nav>
 
       {/* Wallet + Vibe Profile — one pill, top-right, height-matched to the
           nav row. The balance shares the profile's pill rather than taking a
