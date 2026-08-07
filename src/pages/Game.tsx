@@ -27,6 +27,7 @@ import { passportProgress } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeWink from "@/components/VibeWink";
 import { WorldChangesPortal } from "@/components/WorldChanges";
+import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 
 /** Filter tabs. `all` is not a kind, so it is spelled out here. */
@@ -273,18 +274,12 @@ export default function Game() {
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10.5px] sm:mt-5 sm:gap-2 sm:text-[11px]">
-            <Link
-              to="/terminal"
-              className="rounded-full bg-primary px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.03] sm:px-4 sm:py-2"
-            >
-              🛫 Start at the Terminal
-            </Link>
-            <Link
-              to="/lobby-3d"
-              className="rounded-full border border-border/60 px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground sm:px-4 sm:py-2"
-            >
-              🪐 The 3D hub
-            </Link>
+            {/* "Start at the Terminal" and "The 3D hub" used to lead here —
+                two buttons nobody pressed, pointing at two surfaces nobody
+                used, occupying the most valuable row on the front door. The
+                paper below answers the same question ("what is going on in
+                here?") and is different every day. Both routes still exist and
+                are still in the world list; they just do not open the page. */}
             {/* The currency, on the front door. The balance is already in the
                 corner on every page, but the corner does not say what it is
                 for — this chip is the one that tells a first-time visitor the
@@ -303,6 +298,8 @@ export default function Game() {
             </span>
           </div>
         </motion.header>
+
+        <TodaysPaper />
 
         {/* Filters + search. The tabs scroll horizontally on a phone rather
             than wrapping to a second row and pushing the grid further down. */}
