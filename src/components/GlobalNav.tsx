@@ -24,59 +24,25 @@ import { VibeMark } from "@/components/HomeButton";
  */
 type Destination = WorldEntry;
 
-const ALL_WORLDS: Destination[] = WORLDS.filter((w) => w.nav);
-
-const VISIBLE = 5;
-
 export default function GlobalNav() {
   const location = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // /start is the first sixty seconds of the VibeVerse — Vibey hosts it
   // full-bleed, so the world chips and profile pill stay out of frame.
   const onboarding = location.pathname === "/start";
-  // Globetrotter is a full-bleed game — world chips floating over the
-  // satellite view break the immersion, and the game carries its own
+  // Globetrotter is a full-bleed game — chrome floating over the
+  // satellite view breaks the immersion, and the game carries its own
   // exit affordance in the HUD.
   const fullBleedGame = ["/globetrotter", "/geo"].includes(location.pathname);
   // ?embed=1 — another site is framing us as a broadcast (the studio's
   // VIBE TV tunes into /live). Pure picture, no chrome.
   const embedded = new URLSearchParams(location.search).get("embed") === "1";
 
-  // Collapse the dropdown / picker on any navigation.
+  // Collapse the picker on any navigation.
   useEffect(() => {
-    setMoreOpen(false);
     setPickerOpen(false);
   }, [location.pathname, location.search]);
-
-  const visible = useMemo<Destination[]>(() => {
-    return ALL_WORLDS.slice(0, VISIBLE);
-  }, []);
-
-  const overflow = useMemo<Destination[]>(
-    () => ALL_WORLDS.filter((w) => !visible.some((v) => v.key === w.key)),
-    [visible]
-  );
-
-  const isActive = (d: Destination) => {
-    const [path, query] = d.route.split("?");
-    const pathHit =
-      location.pathname === path || Boolean(d.aliases?.includes(location.pathname));
-    if (!pathHit) return false;
-    if (path === "/city") {
-      const spawnOf = (s: string | undefined) =>
-        s?.includes("spawn=moon")
-          ? "moon"
-          : s?.includes("spawn=island")
-            ? "island"
-            : s?.includes("spawn=ski")
-              ? "ski"
-              : "city";
-      return spawnOf(query) === spawnOf(location.search);
-    }
-    return true;
-  };
 
   const chipClass = (active: boolean) =>
     `group relative flex items-center gap-1.5 rounded-full px-2 sm:px-2.5 py-1.5 transition-all ${
@@ -87,6 +53,7 @@ export default function GlobalNav() {
 
   const labelClass =
     "text-[10.5px] font-heading font-semibold tracking-wider uppercase leading-none hidden sm:inline";
+
 
   if (onboarding || embedded || fullBleedGame) return null;
 
