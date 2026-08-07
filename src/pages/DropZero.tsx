@@ -29,6 +29,11 @@ const CONTROLS: [string, string][] = [
   ["Esc", "pause"],
 ];
 
+/** Water mode renames the two controls whose meaning actually changed. */
+const WATER_CONTROLS: [string, string][] = CONTROLS.map(([k, a]) =>
+  k === "Mouse" ? [k, "look / soak"] : k === "R" ? [k, "pump tank"] : [k, a],
+) as [string, string][];
+
 export default function DropZero() {
   // Passport: every world records that you were here. See lib/passport.ts.
   useWorldStamp("/drop-zero", "Drop Zero");
@@ -56,6 +61,24 @@ export default function DropZero() {
    * capture that is not representative of the shipped experience is worse
    * than no capture, because it sends you fixing the wrong renderer.
    */
+  /**
+   * Which game this route boots. WATER BY DEFAULT.
+   *
+   * Drop Zero and Soaked are the same 22 systems with `ctx.mode` flipped, and
+   * the water fight is the one people actually want to play — soakers,
+   * balloons, the glue gun, and last one dry wins. So /drop-zero opens the
+   * water game like everything else, and `?mode=classic` is the way back to
+   * the original bullets-and-health build for anyone who wants it.
+   */
+  const mode = (() => {
+    if (typeof window === "undefined") return "water" as const;
+    return new URLSearchParams(window.location.search).get("mode") === "classic"
+      ? ("classic" as const)
+      : ("water" as const);
+  })();
+
+  const water = mode === "water";
+
   const forcedQuality = (() => {
     if (typeof window === "undefined") return null;
     const q = new URLSearchParams(window.location.search).get("q");
@@ -70,7 +93,7 @@ export default function DropZero() {
     (async () => {
       try {
         const { engine: eng } = await boot(
-          { canvas, quality: forcedQuality ?? detectQuality() },
+          { canvas, quality: forcedQuality ?? detectQuality(), mode },
           (stage, fraction) => {
             if (!cancelled) setProgress({ stage, fraction });
           },
@@ -103,7 +126,7 @@ export default function DropZero() {
       engineRef.current?.dispose();
       engineRef.current = null;
     };
-  }, [shotMode, forcedQuality]);
+  }, [shotMode, forcedQuality, mode]);
 
   const enter = useCallback(() => {
     canvasRef.current?.requestPointerLock?.();
@@ -124,11 +147,12 @@ export default function DropZero() {
             The Vibeverse presents
           </p>
           <h1 className="mt-3 bg-gradient-to-b from-white via-sky-200 to-indigo-400 bg-clip-text text-6xl font-black tracking-tight text-transparent drop-shadow-[0_2px_28px_rgba(99,102,241,0.45)] sm:text-8xl">
-            DROP ZERO
+            {water ? "SOAKED" : "DROP ZERO"}
           </h1>
           <p className="mt-2 max-w-md text-center text-sm text-indigo-100/70">
-            One island. One storm. Harvest anything, build faster than they can
-            shoot, and be the last one breathing when the circle closes.
+            {water
+              ? "One island. One downpour. Soakers, water balloons and a glue gun — harvest, build, and be the last one dry when the rain closes in."
+              : "One island. One storm. Harvest anything, build faster than they can shoot, and be the last one breathing when the circle closes."}
           </p>
 
           {!ready ? (
@@ -149,10 +173,10 @@ export default function DropZero() {
                 onClick={enter}
                 className="mt-10 rounded-full bg-gradient-to-r from-sky-400 to-violet-500 px-10 py-3 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-[0_0_44px_rgba(129,140,248,0.5)] transition hover:brightness-110"
               >
-                Drop in
+                {water ? "Get soaked" : "Drop in"}
               </button>
               <div className="mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 font-mono text-[11px] text-indigo-100/50 sm:grid-cols-3">
-                {CONTROLS.map(([key, action]) => (
+                {(water ? WATER_CONTROLS : CONTROLS).map(([key, action]) => (
                   <span key={key}>
                     <b className="text-sky-200/80">{key}</b> {action}
                   </span>
