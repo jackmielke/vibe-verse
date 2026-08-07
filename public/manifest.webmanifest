@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "VibeVerse",
-  "short_name": "VibeVerse",
+  "name": "The Vibe Verse",
+  "short_name": "Vibe Verse",
   "description": "A hub of worlds you can walk, fly, drive and shoot your way through — all in one browser tab.",
   "start_url": "/game?src=pwa",
   "scope": "/",
