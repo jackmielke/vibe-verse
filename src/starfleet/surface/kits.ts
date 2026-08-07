@@ -392,8 +392,8 @@ export function buildKit(
   const leaf = surfaced({ color: 0x4d7a3c, family: "organic", tile: 0.9, macro: 0.22 });
   const owned: THREE.Material[] = [stone, metal, dark, leaf];
 
-  const glowMat = (c: number) => {
-    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(1.7) });
+  const glowMat = (c: number, k = 1.7) => {
+    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(k) });
     owned.push(m);
     return m;
   };
@@ -491,7 +491,7 @@ function makeProp(
   s: number,
   spec: KitSpec,
   m: Mats,
-  glow: (c: number) => THREE.Material,
+  glow: (c: number, k?: number) => THREE.Material,
   color: number | undefined,
   rng: () => number,
 ): THREE.Object3D | null {
@@ -500,11 +500,31 @@ function makeProp(
 
   switch (kind) {
     case "pillar": {
+      /* Entasis, a base and a capital.
+       *
+       * A 12-sided cylinder with a box on top is unmistakably a primitive at
+       * any distance you can read the facets from, and the facets are visible
+       * from about six metres. A lathed profile with the slight outward swell
+       * every classical column has, plus a torus at the foot and a moulding
+       * under the capital, is the same three seconds of work and stops the
+       * whole colonnade reading as clip art. */
       const h = 6 * s;
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * s, 0.75 * s, h, 12), m.stone);
-      shaft.position.y = h / 2;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(2.0 * s, 0.5 * s, 2.0 * s), m.stone);
-      cap.position.y = h + 0.2 * s;
+      const prof: THREE.Vector2[] = [
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(0.86 * s, 0),
+        new THREE.Vector2(0.84 * s, 0.1 * s),
+        new THREE.Vector2(0.7 * s, 0.22 * s),
+        new THREE.Vector2(0.72 * s, h * 0.24),
+        new THREE.Vector2(0.68 * s, h * 0.55),
+        new THREE.Vector2(0.58 * s, h * 0.88),
+        new THREE.Vector2(0.62 * s, h * 0.94),
+        new THREE.Vector2(0.86 * s, h),
+        new THREE.Vector2(0.86 * s, h + 0.16 * s),
+        new THREE.Vector2(0, h + 0.16 * s),
+      ];
+      const shaft = new THREE.Mesh(new THREE.LatheGeometry(prof, 22), m.stone);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(2.0 * s, 0.42 * s, 2.0 * s), m.stone);
+      cap.position.y = h + 0.37 * s;
       g.add(shaft, cap);
       break;
     }
@@ -527,7 +547,7 @@ function makeProp(
       const r = 6 * s;
       const base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.06, 3 * s, 24), m.stone);
       base.position.y = 1.5 * s;
-      const shell = new THREE.Mesh(new THREE.SphereGeometry(r, 26, 14, 0, Math.PI * 2, 0, Math.PI / 2), m.stone);
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(r, 40, 22, 0, Math.PI * 2, 0, Math.PI / 2), m.stone);
       shell.position.y = 3 * s;
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.5 * s, 10, 8), glow(G));
       light.position.y = 3 * s + r;
@@ -536,9 +556,9 @@ function makeProp(
     }
     case "tower": {
       const h = 22 * s;
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4 * s, 4.4 * s, h, 14), m.stone);
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4 * s, 4.4 * s, h, 26), m.stone);
       body.position.y = h / 2;
-      const crown = new THREE.Mesh(new THREE.CylinderGeometry(3.2 * s, 2.2 * s, 3 * s, 14), m.metal);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(3.2 * s, 2.2 * s, 3 * s, 26), m.metal);
       crown.position.y = h + 1.2 * s;
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.9 * s, 12, 10), glow(G));
       lamp.position.y = h + 3.6 * s;
@@ -546,14 +566,20 @@ function makeProp(
       break;
     }
     case "wall": {
-      const w = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 3.2 * s, 1.1 * s), m.stone);
+      // A course, a coping stone that oversails it, and a plinth. Three boxes
+      // rather than one, and the two extra are what read as masonry.
+      const w = new THREE.Mesh(new THREE.BoxGeometry(7.2 * s, 2.9 * s, 1.05 * s), m.stone);
       w.position.y = 1.6 * s;
-      g.add(w);
+      const coping = new THREE.Mesh(new THREE.BoxGeometry(7.4 * s, 0.26 * s, 1.34 * s), m.stone);
+      coping.position.y = 3.15 * s;
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(7.3 * s, 0.34 * s, 1.28 * s), m.stone);
+      plinth.position.y = 0.17 * s;
+      g.add(w, coping, plinth);
       break;
     }
     case "spire": {
       const h = 9 * s * (0.7 + rng() * 0.7);
-      const sp = new THREE.Mesh(new THREE.ConeGeometry(1.5 * s, h, 7), m.stone);
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(1.5 * s, h, 9), m.stone);
       sp.position.y = h / 2;
       sp.rotation.z = (rng() - 0.5) * 0.22;
       g.add(sp);
@@ -574,11 +600,14 @@ function makeProp(
       // thicker than both, or the whole thing reads as a mushroom — which is
       // exactly what six of them around a Vulcan sanctum looked like on the
       // first pass. Flame is a cone, not a sphere, for the same reason.
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.3 * s, 0.46 * s, 2.1 * s, 8), m.metal);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.3 * s, 0.46 * s, 2.1 * s, 16), m.metal);
       post.position.y = 1.05 * s;
-      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.0 * s, 0.42 * s, 0.62 * s, 14), m.metal);
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.0 * s, 0.42 * s, 0.62 * s, 22), m.metal);
       bowl.position.y = 2.4 * s;
-      const fire = new THREE.Mesh(new THREE.ConeGeometry(0.62 * s, 1.5 * s, 9), glow(G));
+      // Bright enough to cross the bloom threshold. A flame that does not
+      // bloom is a painted cone, and the bloom is the only reason it reads as
+      // a light source rather than as an orange shape.
+      const fire = new THREE.Mesh(new THREE.ConeGeometry(0.58 * s, 1.6 * s, 12), glow(G, 4.5));
       fire.position.y = 3.3 * s;
       fire.name = "flicker";
       g.add(post, bowl, fire);
