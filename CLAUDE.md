@@ -29,6 +29,9 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
     top of a crosshair otherwise. Aliases are covered automatically.
   - `passport: true` **and** a `useWorldStamp` call in the page, together. A
     test fails if only one of the two is there.
+  - `source` is not decoration — `npm run stamp` reads it to work out when the
+    world last changed, and that date is on every card. Point it at the code,
+    and run `npm run stamp` before you push.
 - Card art that is a real capture from the running world
   (`node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg`, then a
   line in `src/worlds/art.ts`). A world whose capture only ever produces a

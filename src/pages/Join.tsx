@@ -20,6 +20,7 @@ import { Link, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import VibeCoinMark from "@/components/VibeCoinMark";
+import VibeWink from "@/components/VibeWink";
 import VibeWalletConnect from "@/components/VibeWalletConnect";
 import VibeAuthDialog from "@/components/vibe-auth/VibeAuthDialog";
 import { useVibecoin } from "@/hooks/use-vibecoin";
@@ -105,7 +106,13 @@ export default function Join() {
           transition={{ duration: 0.55 }}
           className="text-center"
         >
-          <p className="font-heading text-[9px] font-bold uppercase tracking-[0.44em] text-[#8fb4ff]">
+          {/* The wink, at the top of the one page every guest sees first. It
+              was written months ago and imported by nothing — an emblem that
+              only exists in the source is not a brand. */}
+          <div className="flex justify-center">
+            <VibeWink size={112} speed={0.85} />
+          </div>
+          <p className="mt-1 font-heading text-[9px] font-bold uppercase tracking-[0.44em] text-[#8fb4ff]">
             You have been invited
           </p>
           <h1

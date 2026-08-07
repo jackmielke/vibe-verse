@@ -23,6 +23,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { WORLDS, featuredFirst, type WorldEntry } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
+import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 
 export default function WorldPicker({
   open,
@@ -155,8 +156,18 @@ export default function WorldPicker({
                     )}
                   </div>
                   <div className="p-3">
-                    <div className="font-heading font-semibold text-sm">
-                      {w.emoji} {w.name}
+                    <div className="flex items-baseline gap-2">
+                      <div className="font-heading font-semibold text-sm">
+                        {w.emoji} {w.name}
+                      </div>
+                      {sinceLabel(updatedAt(w.key)) && (
+                        <span
+                          title={exactLabel(updatedAt(w.key)) ?? undefined}
+                          className="ml-auto shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/50"
+                        >
+                          {sinceLabel(updatedAt(w.key))}
+                        </span>
+                      )}
                     </div>
                     {/* Featured worlds always explain themselves. Hiding the
                         blurb on small screens meant a card could say only "The

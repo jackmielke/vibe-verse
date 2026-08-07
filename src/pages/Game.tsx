@@ -22,8 +22,10 @@ import {
   type WorldKind,
 } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
+import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
+import VibeWink from "@/components/VibeWink";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 
 /** Filter tabs. `all` is not a kind, so it is spelled out here. */
@@ -76,6 +78,9 @@ function DrawnPanel({ accent }: { accent: string }) {
  */
 function Card({ world, index }: { world: WorldEntry; index: number }) {
   const art = artFor(world.key);
+  const iso = updatedAt(world.key);
+  const updated = sinceLabel(iso);
+  const exact = exactLabel(iso);
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -129,10 +134,23 @@ function Card({ world, index }: { world: WorldEntry; index: number }) {
           <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground sm:line-clamp-3 sm:text-[11.5px]">
             {world.blurb}
           </p>
-          {/* Where the code lives. Useful on a laptop, noise on a phone. */}
-          <p className="mt-auto pt-2 hidden font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/45 sm:block">
-            {world.source}
-          </p>
+          {/* Where the code lives, and when it last moved. The path is a laptop
+              luxury; the date earns its place on a phone too — in a collection
+              this size, "still being worked on" is most of what you want to
+              know before clicking. */}
+          <div className="mt-auto flex items-baseline gap-2 pt-2">
+            <p className="hidden min-w-0 flex-1 truncate font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/45 sm:block">
+              {world.source}
+            </p>
+            {updated && (
+              <p
+                title={exact ? `Last updated ${exact}` : undefined}
+                className="ml-auto shrink-0 font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/55"
+              >
+                {updated}
+              </p>
+            )}
+          </div>
         </div>
       </Link>
     </motion.div>
@@ -142,6 +160,11 @@ function Card({ world, index }: { world: WorldEntry; index: number }) {
 export default function Game() {
   const [tab, setTab] = useState<WorldKind | "all">("all");
   const [query, setQuery] = useState("");
+  /* Two orders, and neither is a ranking. "Featured" is the hand-tuned order in
+     the registry — the one to open on, because someone arriving cold should
+     meet the best door first. "Recent" answers the other question people
+     actually have about a collection this size: what is still being worked on? */
+  const [sort, setSort] = useState<"featured" | "recent">("featured");
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
      render to draw one line of text is not worth a subscription. */
@@ -159,8 +182,10 @@ export default function Game() {
           `${w.name} ${w.blurb} ${w.status ?? ""} ${w.source}`.toLowerCase().includes(q),
         )
       : base;
-    return featuredFirst(hit);
-  }, [tab, query]);
+    return sort === "recent"
+      ? [...hit].sort((a, b) => byFreshest(a.key, b.key))
+      : featuredFirst(hit);
+  }, [tab, query, sort]);
 
   const counts = useMemo(
     () => ({
@@ -193,19 +218,37 @@ export default function Game() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <p className="font-heading text-[9px] font-bold uppercase tracking-[0.36em] text-muted-foreground sm:text-[10px] sm:tracking-[0.42em]">
-            Every builder grows the universe
-          </p>
-          <h1 className="mt-1 font-heading text-3xl font-black tracking-tight sm:mt-2 sm:text-6xl">
-            <span className="text-gradient-mint">VIBEVERSE</span>
-          </h1>
+          {/* A lockup, not wallpaper. The wink first sat behind the top-right
+              corner at 70% opacity, where a spinning glass object is edge-on
+              often enough to read as a scratch on the screen. Beside the
+              wordmark it is doing the job a mark is for. Phones lose it — at
+              390 px the headline is the brand. */}
+          <div className="flex items-center gap-4 sm:gap-6">
+            <div className="hidden shrink-0 sm:block" aria-hidden>
+              <VibeWink size={96} speed={0.7} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-heading text-[9px] font-bold uppercase tracking-[0.36em] text-muted-foreground sm:text-[10px] sm:tracking-[0.42em]">
+                Every builder grows the universe
+              </p>
+              <h1 className="mt-1 font-heading text-3xl font-black tracking-tight sm:mt-2 sm:text-6xl">
+                <span className="text-gradient-mint">VIBEVERSE</span>
+              </h1>
+            </div>
+          </div>
+          {/* Not "by Jack Mielke and friends" any more. The point of the place
+              is that anybody can add a door to it, and a byline quietly says
+              the opposite — the eyebrow above already names the invitation. */}
           <p className="mt-1.5 font-heading text-[13px] font-semibold leading-snug text-foreground/85 sm:mt-2 sm:text-base">
-            A massive collection of AI-coded games by Jack Mielke and friends.
+            A massive collection of AI-coded games.
           </p>
           {/* The full pitch is desktop-only; the phone gets the one-line
               version in the row of chips below. */}
           <p className="mt-3 hidden max-w-xl text-sm leading-relaxed text-muted-foreground sm:block">
-            {counts.playable} worlds and games, all in one browser tab. No install, no
+            {/* The total, not the playable count — this sentence sits directly
+                above a grid of every door, and saying 36 over 45 cards reads
+                as a miscount. The chip below carries the "how many work" nuance. */}
+            {WORLDS.length} worlds and games, all in one browser tab. No install, no
             account, no launcher — pick a card and you are in it in a few seconds.
           </p>
 
@@ -278,9 +321,31 @@ export default function Game() {
           </div>
         </div>
 
-        <p className="mt-2.5 text-[10.5px] text-muted-foreground/70 sm:mt-3 sm:text-[11px]">
-          {TABS.find((t) => t.id === tab)?.hint} · {shown.length} shown
-        </p>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
+          <p className="text-[10.5px] text-muted-foreground/70 sm:text-[11px]">
+            {TABS.find((t) => t.id === tab)?.hint} · {shown.length} shown
+          </p>
+          <div className="ml-auto flex items-center gap-1">
+            {(
+              [
+                ["featured", "Featured"],
+                ["recent", "Recently updated"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setSort(id)}
+                className={`rounded-full px-2.5 py-1 font-heading text-[9.5px] font-semibold uppercase tracking-wider transition-colors ${
+                  sort === id
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground/60 hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Two across on a phone, always. Seeing several games at once is the
             entire job of this page. */}
