@@ -32,7 +32,9 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Check, Copy, ExternalLink, Fuel, Star, Trash2, Wallet } from "lucide-react";
 import VibeCoinMark from "@/components/VibeCoinMark";
+import VibeArc from "@/components/VibeArc";
 import VibeWalletConnect from "@/components/VibeWalletConnect";
+import VibeTestDrop from "@/components/VibeTestDrop";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { useWalletBook, type WalletRow } from "@/hooks/use-wallet-book";
@@ -51,6 +53,21 @@ function amount(n: number | null, unit: string): string {
   if (n < 0.0001) return `<0.0001 ${unit}`;
   if (n >= 1000) return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${unit}`;
   return `${n.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${unit}`;
+}
+
+/**
+ * Dollars, honestly.
+ *
+ * $VIBE trades around $0.00015, so a holding worth real money is a number with
+ * a lot of zeros in front of it. Rounding to two decimals turns "$0.004" into
+ * "$0.00" and tells somebody holding twenty-odd dollars of token that they
+ * hold nothing — so small amounts keep going until they say something.
+ */
+function usd(n: number | null): string {
+  if (n == null) return "—";
+  if (n === 0) return "$0.00";
+  if (n < 0.01) return `$${n.toPrecision(2)}`;
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function WalletCard({ row, onRefresh }: { row: WalletRow; onRefresh: () => void }) {
@@ -129,6 +146,9 @@ function WalletCard({ row, onRefresh }: { row: WalletRow; onRefresh: () => void 
           <dd className="mt-0.5 font-heading text-sm font-black tabular-nums text-[#8fb4ff]">
             {amount(row.vibe, "")}
           </dd>
+          <dd className="mt-0.5 font-heading text-[9.5px] font-bold tabular-nums text-muted-foreground">
+            {usd(row.usd)}
+          </dd>
         </div>
         <div className="rounded-xl border border-border/40 bg-black/30 px-3 py-2">
           <dt className="font-heading text-[7.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
@@ -192,7 +212,7 @@ export default function VibeWallet() {
   useWorldStamp("/wallet", "The Vibe Wallet");
   const { balance } = useVibecoin();
   const { isGuest, displayName } = useVibeIdentity();
-  const { rows, refresh } = useWalletBook();
+  const { rows, payout, price, totalUsd, stale, refresh } = useWalletBook();
 
   const totalVibe = rows.reduce((t, r) => t + (r.vibe ?? 0), 0);
   const anyGas = rows.some((r) => r.canPayGas);
@@ -215,7 +235,13 @@ export default function VibeWallet() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <p className="text-center font-heading text-[9px] font-bold uppercase tracking-[0.42em] text-[#8fb4ff]">
+          {/* The same arch that spins on /coin. It is the mark of the token,
+              and this is the other page about the token — having one of them
+              wear it and the other not made them look like different products. */}
+          <div className="flex justify-center">
+            <VibeArc size={150} rotateSeconds={30} />
+          </div>
+          <p className="mt-1 text-center font-heading text-[9px] font-bold uppercase tracking-[0.42em] text-[#8fb4ff]">
             Your wallet
           </p>
           <h1
@@ -244,12 +270,32 @@ export default function VibeWallet() {
             </div>
 
             <div className="rounded-2xl border border-[#8fb4ff]/30 bg-[#8fb4ff]/[0.06] p-4">
-              <p className="font-heading text-2xl font-black tabular-nums text-[#8fb4ff]">
-                {rows.length === 0 ? "$VIBE" : amount(totalVibe, "")}
-              </p>
+              <div className="flex items-baseline gap-2">
+                <p className="font-heading text-2xl font-black tabular-nums text-[#8fb4ff]">
+                  {rows.length === 0 ? "$VIBE" : amount(totalVibe, "")}
+                </p>
+                {rows.length > 0 && totalUsd != null && (
+                  <p className="font-heading text-sm font-black tabular-nums text-foreground/70">
+                    {usd(totalUsd)}
+                  </p>
+                )}
+              </div>
               <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                 $VIBE · a real token on Base
               </p>
+              {/* The price, so the dollar figures above are checkable rather
+                  than something the page just asserts. */}
+              {price && (
+                <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">
+                  ${price.usd.toPrecision(3)} each
+                  {price.change24h != null && (
+                    <span className={price.change24h >= 0 ? "text-[#7dffd4]" : "text-rose-300/80"}>
+                      {" "}
+                      {price.change24h >= 0 ? "▲" : "▼"} {Math.abs(price.change24h).toFixed(1)}%
+                    </span>
+                  )}
+                </p>
+              )}
               <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
                 Separate, real, and held in your own wallet. This app reads it
                 and has never sent a transaction.{" "}
@@ -258,6 +304,12 @@ export default function VibeWallet() {
                 </Link>
                 .
               </p>
+              {stale && (
+                <p className="mt-2 text-[10.5px] leading-snug text-amber-300/80">
+                  Could not reach Base just now — these are the last figures we
+                  had, not zeroes.
+                </p>
+              )}
             </div>
           </div>
 
@@ -274,6 +326,10 @@ export default function VibeWallet() {
               </div>
             </div>
           )}
+
+          {/* Directly under the list, because it is about the wallet marked
+              "drops go here" — the claim that panel makes, made testable. */}
+          <VibeTestDrop address={payout?.address ?? null} />
 
           <div className="mt-4">
             <VibeWalletConnect

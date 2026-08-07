@@ -254,6 +254,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "wallet": [
+    { sha: "d077e3c", iso: "2026-08-07T21:08:40+00:00", subject: "Wallet: hold more than one, and show what is actually in them" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
   ],
   "world-builder": [

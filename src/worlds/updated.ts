@@ -52,6 +52,6 @@ export const WORLD_UPDATED: Record<string, string> = {
   "vibestar": "2026-08-07T20:52:32+00:00",
   "vibeverse": "2026-08-07T06:58:26+00:00",
   "village": "2026-07-21T19:47:13+00:00",
-  "wallet": "2026-08-07T19:24:56+00:00",
+  "wallet": "2026-08-07T21:08:40+00:00",
   "world-builder": "2026-07-21T19:47:13+00:00",
 };
