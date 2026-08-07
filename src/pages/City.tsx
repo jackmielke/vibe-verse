@@ -93,6 +93,7 @@ import {
   saveEquippedJetpack,
 } from "@/components/city/cosmetics";
 import { setActiveCharacter } from "@/hooks/use-active-character";
+import { useWardrobe } from "@/hooks/use-wardrobe";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
 import { ArcadeModal } from "@/components/city/ArcadeModal";
@@ -815,6 +816,22 @@ export default function City() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const authUserIdRef = useRef<string | null>(null);
   const spawnsApiRef = useRef<{ setAll: (rows: IslandSpawnRow[]) => void } | null>(null);
+
+  /**
+   * What you own, for the in-world cosmetics picker.
+   *
+   * Cosmetics used to be free and this picker handed them out; now they are
+   * bought with Vibecoin at /shop and recorded against the wallet, so the
+   * picker has to respect that or the shop is decorative. Unowned items stay
+   * visible with their price on them — seeing the crown you cannot afford is
+   * the point of a shop window.
+   */
+  const wardrobe = useWardrobe();
+  const ownsCosmetic = useCallback(
+    (kind: "hat" | "flame" | "jetpack", id: string, price: number) =>
+      price <= 0 || wardrobe.owned.includes(`${kind}:${id}`),
+    [wardrobe.owned],
+  );
 
   const [equippedHat, setEquippedHat] = useState<string>(() => {
     if (typeof window === "undefined") return "none";
@@ -6286,15 +6303,17 @@ export default function City() {
                 <div className="grid grid-cols-4 gap-2">
                   {HAT_CATALOG.map((h) => {
                     const eq = equippedHat === h.id;
+                    const ownsIt = ownsCosmetic("hat", h.id, h.price);
                     return (
                       <button
                         key={h.id}
                         onClick={() => {
+                          if (!ownsIt) return;
                           setEquippedHat(h.id);
                           saveEquippedHat(h.id);
                           applyHatRef.current?.(h.id);
                         }}
-                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 hover:-translate-y-0.5 ${
+                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 ${ownsIt ? "hover:-translate-y-0.5" : "opacity-40 cursor-not-allowed"} ${
                           eq
                             ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
                             : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
@@ -6308,7 +6327,7 @@ export default function City() {
                         <span className="text-2xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{h.emoji}</span>
                         <span className="text-[10px] text-center leading-tight">{h.name}</span>
                         <span className="text-[9px] font-mono text-amber-300/80">
-                          {h.price === 0 ? "free" : `${h.price} 🪙`}
+                          {ownsIt ? (h.price === 0 ? "free" : "owned") : `🔒 ${h.price} ✦`}
                         </span>
                       </button>
                     );
@@ -6327,15 +6346,17 @@ export default function City() {
                 <div className="grid grid-cols-3 gap-2">
                   {FLAME_CATALOG.map((f) => {
                     const eq = equippedFlame === f.id;
+                    const ownsIt = ownsCosmetic("flame", f.id, f.price);
                     return (
                       <button
                         key={f.id}
                         onClick={() => {
+                          if (!ownsIt) return;
                           setEquippedFlame(f.id);
                           saveEquippedFlame(f.id);
                           applyFlameRef.current?.(f.id);
                         }}
-                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 hover:-translate-y-0.5 ${
+                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 ${ownsIt ? "hover:-translate-y-0.5" : "opacity-40 cursor-not-allowed"} ${
                           eq
                             ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
                             : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
@@ -6353,7 +6374,7 @@ export default function City() {
                         />
                         <span className="text-[10px] text-center leading-tight">{f.name}</span>
                         <span className="text-[9px] font-mono text-amber-300/80">
-                          {f.price === 0 ? "free" : `${f.price} 🪙`}
+                          {ownsIt ? (f.price === 0 ? "free" : "owned") : `🔒 ${f.price} ✦`}
                         </span>
                       </button>
                     );
@@ -6372,17 +6393,19 @@ export default function City() {
                 <div className="grid grid-cols-4 gap-2">
                   {JETPACK_CATALOG.map((j) => {
                     const eq = equippedJetpack === j.id;
+                    const ownsIt = ownsCosmetic("jetpack", j.id, j.price);
                     const returned = !j.equipped;
                     return (
                       <button
                         key={j.id}
                         onClick={() => {
+                          if (!ownsIt) return;
                           setEquippedJetpack(j.id);
                           saveEquippedJetpack(j.id);
                           applyJetpackRef.current?.(j.id);
                           setFallDamageEnabled(!j.equipped);
                         }}
-                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 hover:-translate-y-0.5 ${
+                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 ${ownsIt ? "hover:-translate-y-0.5" : "opacity-40 cursor-not-allowed"} ${
                           eq
                             ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
                             : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
@@ -6410,7 +6433,13 @@ export default function City() {
                         )}
                         <span className="text-[10px] text-center leading-tight">{j.name}</span>
                         <span className="text-[9px] font-mono text-amber-300/80">
-                          {j.price === 0 ? (returned ? "return" : "free") : `${j.price} 🪙`}
+                          {ownsIt
+                            ? j.price === 0
+                              ? returned
+                                ? "return"
+                                : "free"
+                              : "owned"
+                            : `🔒 ${j.price} ✦`}
                         </span>
                       </button>
                     );

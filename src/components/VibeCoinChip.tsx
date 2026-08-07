@@ -163,17 +163,21 @@ export default function VibeCoinChip() {
             </div>
 
             <div className="flex gap-1.5 px-3.5 py-2.5">
+              {/* Spend before win: the shop is where the number acquires a
+                  point, and the arcade is how you get more of it. A popover
+                  that only offered "go gamble" made the balance feel like a
+                  score again. */}
               <Link
-                to="/arcade"
+                to="/shop"
                 className="flex-1 rounded-xl bg-primary px-2 py-2 text-center font-heading text-[9.5px] font-bold uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.02]"
               >
-                🕹️ Spend it
+                🛍️ Spend it
               </Link>
               <Link
-                to="/coin"
+                to="/arcade"
                 className="flex-1 rounded-xl border border-border/60 px-2 py-2 text-center font-heading text-[9.5px] font-bold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
               >
-                ◎ $VIBE
+                🕹️ Win more
               </Link>
             </div>
 

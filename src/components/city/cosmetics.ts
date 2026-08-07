@@ -8,6 +8,8 @@
  * sticky across sessions. The shop in /city is where you change them.
  */
 import * as THREE from "three";
+import { HAT_ITEMS, FLAME_ITEMS, JETPACK_ITEMS } from "@/lib/cosmeticCatalog";
+import { equip } from "@/lib/wardrobe";
 
 export interface HatDef {
   id: string;
@@ -216,17 +218,30 @@ function buildStickerHat(): THREE.Group {
   return g;
 }
 
-export const HAT_CATALOG: HatDef[] = [
-  { id: "none",       name: "No Hat",       emoji: "🙅", price: 0,   build: () => new THREE.Group() },
-  { id: "cap",        name: "Mint Cap",     emoji: "🧢", price: 25,  build: buildCap },
-  { id: "beanie",     name: "Pom Beanie",   emoji: "🤠", price: 35,  build: buildBeanie },
-  { id: "tophat",     name: "Top Hat",      emoji: "🎩", price: 75,  build: buildTopHat },
-  { id: "party",      name: "Party Cone",   emoji: "🥳", price: 60,  build: buildPartyHat },
-  { id: "propeller",  name: "Propeller",    emoji: "🚁", price: 90,  build: buildPropeller },
-  { id: "crown",      name: "Crown",        emoji: "👑", price: 250, build: buildCrown },
-  { id: "halo",       name: "Halo",         emoji: "😇", price: 400, build: buildHalo },
-  { id: "sticker",    name: "Holo Sticker", emoji: "✨", price: 0,   build: buildStickerHat },
-];
+/**
+ * Hats, with their geometry attached.
+ *
+ * The list itself now lives in `@/lib/cosmeticCatalog` — ids, names and prices
+ * are data the shop needs without a 3D engine, and money that is written down
+ * twice drifts. This file's job is the half that genuinely needs Three: which
+ * builder draws each one.
+ */
+const HAT_BUILDERS: Record<string, () => THREE.Group> = {
+  none: () => new THREE.Group(),
+  cap: buildCap,
+  beanie: buildBeanie,
+  tophat: buildTopHat,
+  party: buildPartyHat,
+  propeller: buildPropeller,
+  crown: buildCrown,
+  halo: buildHalo,
+  sticker: buildStickerHat,
+};
+
+export const HAT_CATALOG: HatDef[] = HAT_ITEMS.map((i) => ({
+  ...i,
+  build: HAT_BUILDERS[i.id] ?? (() => new THREE.Group()),
+}));
 
 // ---- Unlocks (cosmetics earned via on-chain purchases) ------------------
 const UNLOCK_STORAGE = "city.unlockedHats";
@@ -252,25 +267,23 @@ export function unlockHat(id: string, account?: string | null) {
   } catch { /* ignore quota */ }
 }
 
-export const FLAME_CATALOG: FlameDef[] = [
-  { id: "mint",   name: "Mint Stock",   emoji: "🌿", price: 0,   color: "#7dfce0", core: "#7dfce0" },
-  { id: "fire",   name: "Fire Boost",   emoji: "🔥", price: 50,  color: "#ff8a3d", core: "#ffd166" },
-  { id: "violet", name: "Violet Pulse", emoji: "💜", price: 80,  color: "#c084fc", core: "#f0abfc" },
-  { id: "magma",  name: "Magma Roar",   emoji: "🌋", price: 120, color: "#e85d75", core: "#ffd166" },
-  { id: "ion",    name: "Ion Cyan",     emoji: "⚡", price: 150, color: "#5db8e8", core: "#baffe9" },
-  { id: "rainbow",name: "Rainbow",      emoji: "🌈", price: 300, color: "#ffffff", core: "#ffffff" }, // animated upstream
-];
+export const FLAME_CATALOG: FlameDef[] = FLAME_ITEMS;
 
-export const JETPACK_CATALOG: JetpackDef[] = [
-  { id: "stock",   name: "Stock Pack",   emoji: "🎒", price: 0,   equipped: true,  body: "#1d2733", trim: "#2dd4a8" },
-  { id: "sunset",  name: "Sunset Pack",  emoji: "🌅", price: 80,  equipped: true,  body: "#3a1f2b", trim: "#ff8a3d" },
-  { id: "violet",  name: "Violet Pack",  emoji: "💜", price: 110, equipped: true,  body: "#2a1a44", trim: "#c084fc" },
-  { id: "ion",     name: "Ion Pack",     emoji: "⚡", price: 140, equipped: true,  body: "#0f2530", trim: "#5db8e8" },
-  { id: "magma",   name: "Magma Pack",   emoji: "🌋", price: 180, equipped: true,  body: "#2d1414", trim: "#e85d75" },
-  { id: "gold",    name: "Gold Pack",    emoji: "✨", price: 260, equipped: true,  body: "#2a220a", trim: "#ffd166" },
-  { id: "none",    name: "Return Pack",  emoji: "🚫", price: 0,   equipped: false, body: "#000000", trim: "#000000" },
-];
+export const JETPACK_CATALOG: JetpackDef[] = JETPACK_ITEMS;
 
+/**
+ * Equipping, from anywhere.
+ *
+ * These three used to be the whole persistence story: a localStorage write and
+ * nothing else. Now that a hat can be *owned* they forward to the wardrobe,
+ * which records the change against the wallet and re-checks that you actually
+ * bought the thing — so City's in-world picker and the shop at /shop end up
+ * telling the same story without City having to know the ledger exists.
+ *
+ * Fire-and-forget on purpose: putting a hat on should not wait on a network
+ * round trip, and `equip()` rolls its own optimistic state back if the server
+ * says no.
+ */
 export function loadEquippedHat(): string {
   if (typeof window === "undefined") return "none";
   return localStorage.getItem(HAT_STORAGE) || "none";
@@ -278,6 +291,7 @@ export function loadEquippedHat(): string {
 
 export function saveEquippedHat(id: string) {
   try { localStorage.setItem(HAT_STORAGE, id); } catch { /* ignore quota */ }
+  void equip({ hat: id });
 }
 
 export function loadEquippedFlame(): string {
@@ -287,6 +301,7 @@ export function loadEquippedFlame(): string {
 
 export function saveEquippedFlame(id: string) {
   try { localStorage.setItem(FLAME_STORAGE, id); } catch { /* ignore quota */ }
+  void equip({ flame: id });
 }
 
 export function loadEquippedJetpack(): string {
@@ -296,4 +311,5 @@ export function loadEquippedJetpack(): string {
 
 export function saveEquippedJetpack(id: string) {
   try { localStorage.setItem(JETPACK_STORAGE, id); } catch { /* ignore quota */ }
+  void equip({ jetpack: id });
 }

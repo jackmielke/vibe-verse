@@ -623,6 +623,20 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "shop",
+    route: "/shop",
+    name: "The Vibe Shop",
+    emoji: "🛍️",
+    kind: "tool",
+    blurb:
+      "Spend Vibecoin on hats, jetpacks and flames. What you buy is tied to your wallet, so it follows you to any device.",
+    status: "Open — twenty-two items",
+    accent: "#7dffd4",
+    source: "src/pages/VibeShop.tsx",
+    nav: true,
+    passport: true,
+  },
+  {
     key: "times",
     route: "/times",
     name: "The Vibe Times",

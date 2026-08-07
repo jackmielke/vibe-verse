@@ -21,6 +21,12 @@
 //   arcade_settle  { ownerKind, ownerRef, playId, game, score }
 //                                                         -> pays out that ONE play, once, clamped + daily-capped
 //   arcade_allowance { ownerKind, ownerRef }              -> tops a near-broke wallet up, once per UTC day
+//   wardrobe       { ownerKind, ownerRef }                -> what you own and what you're wearing
+//   buy_cosmetic   { ownerKind, ownerRef, kind, id }      -> spends the CATALOG price, grants the item
+//   set_loadout    { ownerKind, ownerRef, hat?, flame?, jetpack? }
+//                                                         -> equips things you actually own
+//   claim_guest    { guestRef }                           -> one-way merge of a guest wallet into
+//                                                            the signed-in caller's account
 //
 // fromKind/ownerKind ∈ {"user","agent"}.  ownerRef is a uuid for signed-in
 // users + agents and a stable guest-id string for anonymous visitors.
@@ -60,6 +66,10 @@ Deno.serve(async (req) => {
       case "arcade_insert":  return ok(await arcadeInsert(supabase, body));
       case "arcade_settle":  return ok(await arcadeSettle(supabase, body));
       case "arcade_allowance": return ok(await arcadeAllowance(supabase, body));
+      case "wardrobe":       return ok(await getWardrobe(supabase, body));
+      case "buy_cosmetic":   return ok(await buyCosmetic(supabase, body));
+      case "set_loadout":    return ok(await setLoadout(supabase, body));
+      case "claim_guest":    return ok(await claimGuest(supabase, req, body));
       default: return json({ error: `unknown action: ${action}` }, 400);
     }
   } catch (e) {
@@ -558,4 +568,262 @@ async function arcadeAllowance(supabase: Supa, b: any) {
     amount: granted, reason: "arcade_allowance", memo: "daily allowance",
   });
   return { granted, balance: ALLOWANCE_TARGET, nextAt: null };
+}
+
+// ---- the wardrobe -------------------------------------------------------
+//
+// Hats, jetpack flames and jetpack shells. They already existed, they already
+// had prices printed on them, and nothing had ever charged one — the catalog
+// said "currently free during early access" and unlocks were an array in
+// localStorage. So the only currency SINK the vibeverse had was switched off,
+// and the only thing resembling a personal possession evaporated when you
+// cleared your browser or opened the app on a different device.
+//
+// So ownership moves here. Three rules:
+//
+//   * THE PRICE IS THE SERVER'S. `COSMETICS` below is the authority and the
+//     client's copy exists to draw a shelf label. A browser cannot name its
+//     own price any more than it can name its own arcade payout.
+//   * ONE OF EACH. The unique index on (owner_kind, owner_ref, item_key) is
+//     the lock, not a check-then-insert — a double-tapped buy button is a race
+//     and a race that charges twice is the worst kind.
+//   * FREE IS OWNED. Anything priced 0 is stock issue: never bought, never
+//     stored, always equippable. Otherwise every wallet starts with three rows
+//     recording that it owns nothing in particular.
+
+interface CosmeticSpec { price: number; title: string }
+
+const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
+  hat: {
+    none:      { price: 0,   title: "No Hat" },
+    cap:       { price: 25,  title: "Mint Cap" },
+    beanie:    { price: 35,  title: "Pom Beanie" },
+    party:     { price: 60,  title: "Party Cone" },
+    tophat:    { price: 75,  title: "Top Hat" },
+    propeller: { price: 90,  title: "Propeller" },
+    crown:     { price: 250, title: "Crown" },
+    halo:      { price: 400, title: "Halo" },
+    sticker:   { price: 0,   title: "Holo Sticker" },
+  },
+  flame: {
+    mint:    { price: 0,   title: "Mint Stock" },
+    fire:    { price: 50,  title: "Fire Boost" },
+    violet:  { price: 80,  title: "Violet Pulse" },
+    magma:   { price: 120, title: "Magma Roar" },
+    ion:     { price: 150, title: "Ion Cyan" },
+    rainbow: { price: 300, title: "Rainbow" },
+  },
+  jetpack: {
+    stock:  { price: 0,   title: "Stock Pack" },
+    sunset: { price: 80,  title: "Sunset Pack" },
+    violet: { price: 110, title: "Violet Pack" },
+    ion:    { price: 140, title: "Ion Pack" },
+    magma:  { price: 180, title: "Magma Pack" },
+    gold:   { price: 260, title: "Gold Pack" },
+    none:   { price: 0,   title: "Return Pack" },
+  },
+};
+
+/** `hat:crown`. Namespaced because "violet" is both a flame and a jetpack. */
+const itemKey = (kind: string, id: string) => `${kind}:${id}`;
+
+function cosmeticSpec(kind: string, id: string): CosmeticSpec {
+  const spec = COSMETICS[kind]?.[id];
+  if (!spec) throw new Error(`no such cosmetic: ${kind}/${id}`);
+  return spec;
+}
+
+async function ownedKeys(supabase: Supa, kind: string, ref: string): Promise<string[]> {
+  const { data } = await supabase.from("vibe_inventory")
+    .select("item_key").eq("owner_kind", kind).eq("owner_ref", ref);
+  return (data ?? []).map((r: any) => String(r.item_key));
+}
+
+async function loadoutOf(supabase: Supa, kind: string, ref: string) {
+  const { data } = await supabase.from("vibe_loadout")
+    .select("hat, flame, jetpack").eq("owner_kind", kind).eq("owner_ref", ref).maybeSingle();
+  return {
+    hat: String(data?.hat ?? "none"),
+    flame: String(data?.flame ?? "mint"),
+    jetpack: String(data?.jetpack ?? "stock"),
+  };
+}
+
+async function getWardrobe(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  if (!ownerKind || !ownerRef) throw new Error("owner kind/ref required");
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef);
+  return {
+    owned: await ownedKeys(supabase, ownerKind, ownerRef),
+    loadout: await loadoutOf(supabase, ownerKind, ownerRef),
+    balance,
+  };
+}
+
+async function buyCosmetic(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  const kind = String(b.kind ?? "");
+  const id = String(b.id ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+  const spec = cosmeticSpec(kind, id);
+  if (spec.price <= 0) throw new Error("that one is stock issue — you already have it");
+
+  const key = itemKey(kind, id);
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef);
+  if (balance < spec.price) {
+    throw new Error(`not enough vibe (have ${balance}, need ${spec.price})`);
+  }
+
+  // Claim the item FIRST. The unique index is what makes a double-tap safe:
+  // the second insert loses, and losing before any money moves is the only
+  // ordering where a race cannot charge someone twice.
+  const { error: dupe } = await supabase.from("vibe_inventory").insert({
+    owner_kind: ownerKind, owner_ref: ownerRef,
+    item_key: key, item_title: spec.title, cosmetic_key: id,
+  });
+  if (dupe) throw new Error("you already own that one");
+
+  const { error: debit } = await supabase.from("vibe_balances")
+    .update({ balance: balance - spec.price, updated_at: new Date().toISOString() })
+    .eq("owner_kind", ownerKind).eq("owner_ref", ownerRef);
+  if (debit) {
+    // Hand it back rather than leave them owning something they were not
+    // charged for — the inventory row is only real once it is paid for.
+    await supabase.from("vibe_inventory").delete()
+      .eq("owner_kind", ownerKind).eq("owner_ref", ownerRef).eq("item_key", key);
+    throw new Error(debit.message);
+  }
+
+  await supabase.from("vibe_ledger").insert({
+    from_kind: ownerKind, from_ref: ownerRef,
+    to_kind: "system",    to_ref: "shop",
+    amount: spec.price, reason: "cosmetic", memo: spec.title,
+  });
+
+  return {
+    balance: balance - spec.price,
+    owned: await ownedKeys(supabase, ownerKind, ownerRef),
+    bought: { kind, id, title: spec.title, price: spec.price },
+  };
+}
+
+async function setLoadout(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+
+  const current = await loadoutOf(supabase, ownerKind, ownerRef);
+  const owned = new Set(await ownedKeys(supabase, ownerKind, ownerRef));
+
+  // Equipping is checked against ownership too, not just buying. Otherwise the
+  // shop is a formality: anyone can put a crown on by posting `set_loadout`.
+  const pick = (kind: string, want: unknown, fallback: string): string => {
+    if (want == null) return fallback;
+    const id = String(want);
+    const spec = cosmeticSpec(kind, id);
+    if (spec.price > 0 && !owned.has(itemKey(kind, id))) {
+      throw new Error(`you do not own the ${spec.title}`);
+    }
+    return id;
+  };
+
+  const next = {
+    hat: pick("hat", b.hat, current.hat),
+    flame: pick("flame", b.flame, current.flame),
+    jetpack: pick("jetpack", b.jetpack, current.jetpack),
+  };
+
+  const { error } = await supabase.from("vibe_loadout").upsert(
+    { owner_kind: ownerKind, owner_ref: ownerRef, ...next, updated_at: new Date().toISOString() },
+    { onConflict: "owner_kind,owner_ref" },
+  );
+  if (error) throw new Error(error.message);
+  return { loadout: next };
+}
+
+// ---- guest → account -----------------------------------------------------
+//
+// The break this closes: the ledger is keyed by a browser-local guest id OR an
+// auth id, never both, so signing in used to move you to a brand new empty
+// wallet while your coins sat on the old key forever. Nothing merged them
+// because nothing could — there was no moment at which the app knew both keys
+// belonged to one person. Signing in is that moment.
+//
+// One way, once. The guest wallet is drained rather than deleted, and the
+// `vibe_guest_claims` row — keyed by the guest ref — is what stops it being
+// claimed a second time, by this account or any other. Inserting that row
+// FIRST makes the lock a primary-key violation instead of a select-then-insert,
+// so two tabs racing the same merge cannot both win and double the balance.
+//
+// The caller's identity comes from their JWT, NOT from the request body. Every
+// other action in this file trusts a client-supplied ownerRef, which is fine
+// when the worst case is paying for your own arcade run; here the worst case is
+// naming somebody else's account as the destination for a wallet you drained.
+async function claimGuest(supabase: Supa, req: Request, b: any) {
+  const guestRef = String(b.guestRef ?? "");
+  if (!guestRef) throw new Error("guestRef required");
+
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { data: auth } = await supabase.auth.getUser(token);
+  const accountRef = auth?.user?.id;
+  if (!accountRef) throw new Error("sign in first");
+  if (accountRef === guestRef) throw new Error("that is already your account");
+
+  const guestBalance = await balanceOf(supabase, "user", guestRef);
+
+  // The lock. Taken before any money moves, so a failure here means nothing
+  // has happened yet.
+  const { error: locked } = await supabase.from("vibe_guest_claims").insert({
+    guest_ref: guestRef, account_ref: accountRef, amount: guestBalance,
+  });
+  if (locked) throw new Error("that guest wallet has already been claimed");
+
+  const accountBalance = await ensureWallet(supabase, "user", accountRef);
+  if (guestBalance > 0) {
+    await setBalance(supabase, "user", guestRef, 0);
+    await setBalance(supabase, "user", accountRef, accountBalance + guestBalance);
+    // Only when something actually moved: vibe_ledger CHECKs amount > 0, and
+    // an empty guest wallet is the ordinary case rather than an error.
+    await supabase.from("vibe_ledger").insert({
+      from_kind: "user", from_ref: guestRef,
+      to_kind: "user",   to_ref: accountRef,
+      amount: guestBalance, reason: "guest_claim", memo: "brought a guest wallet across",
+    });
+  }
+
+  // Inventory moves item by item, skipping anything the account already owns —
+  // a bulk update would trip the unique index and abort the whole merge over
+  // one duplicate hat.
+  const guestItems = await ownedKeys(supabase, "user", guestRef);
+  const accountItems = new Set(await ownedKeys(supabase, "user", accountRef));
+  let moved = 0;
+  for (const key of guestItems) {
+    if (accountItems.has(key)) continue;
+    const { error } = await supabase.from("vibe_inventory")
+      .update({ owner_ref: accountRef })
+      .eq("owner_kind", "user").eq("owner_ref", guestRef).eq("item_key", key);
+    if (!error) moved += 1;
+  }
+  await supabase.from("vibe_guest_claims")
+    .update({ items_moved: moved }).eq("guest_ref", guestRef);
+
+  // The look comes across only if the account has never set one, so signing in
+  // on a borrowed laptop cannot restyle an established character.
+  const { data: existingLook } = await supabase.from("vibe_loadout")
+    .select("owner_ref").eq("owner_kind", "user").eq("owner_ref", accountRef).maybeSingle();
+  if (!existingLook) {
+    const guestLook = await loadoutOf(supabase, "user", guestRef);
+    await supabase.from("vibe_loadout").upsert(
+      { owner_kind: "user", owner_ref: accountRef, ...guestLook },
+      { onConflict: "owner_kind,owner_ref" },
+    );
+  }
+
+  return {
+    claimed: guestBalance,
+    itemsMoved: moved,
+    balance: accountBalance + guestBalance,
+  };
 }

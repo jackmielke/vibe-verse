@@ -18,6 +18,7 @@ import Museum from "./pages/Museum.tsx";
 import VibeHub from "./pages/VibeHub.tsx";
 import VibeGo from "./pages/VibeGo.tsx";
 import VibeArcade from "./pages/VibeArcade.tsx";
+import VibeShop from "./pages/VibeShop.tsx";
 import StartFlow from "./pages/StartFlow.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
@@ -175,6 +176,10 @@ const App = () => (
               earned. Three coin-operated cabinets; the insert debits the real
               ledger and the payout is settled server-side. */}
           <Route path="/arcade" element={<VibeArcade />} />
+          {/* THE VIBE SHOP — the other half of the arcade. Coins won there buy
+              something here that is recorded against your wallet rather than
+              your browser, so it survives a cleared history and a new device. */}
+          <Route path="/shop" element={<VibeShop />} />
           {/* VIBE GO — Pokémon-GO-style real-world catching, PWA-first. */}
           <Route path="/go" element={<VibeGo />} />
           {/* First-time onboarding: name → character → email-or-guest. */}
