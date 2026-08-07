@@ -623,6 +623,21 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "orbit",
+    route: "/orbit",
+    name: "Orbit",
+    emoji: "🛰️",
+    kind: "game",
+    blurb:
+      "Hold to climb out of the gravity well, let go to fall back in, thread the gates. Stake Vibecoin into the round — everyone flies the same sky and the best run takes the pot.",
+    status: "Playable — free flight, or staked",
+    accent: "#8fb4ff",
+    featured: true,
+    source: "src/orbit/orbit.ts",
+    nav: true,
+    passport: true,
+  },
+  {
     key: "shop",
     route: "/shop",
     name: "The Vibe Shop",

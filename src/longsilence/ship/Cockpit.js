@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 24;
+export const PASSPORT_ROWS = 30;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1191,7 +1191,10 @@ function drawArchivePassport(g, v, ctx) {
   g.fill(26, 158, bw, 4, '#12313f', 1);
   if (pr.total) g.fill(26, 158, Math.round(bw * (pr.visited / pr.total)), 4, '#8fe4ff', 0.95);
 
-  const colW = (w - 64) / 2;
+  /* Two columns up to twenty-four stamps, three beyond. Splitting late keeps
+     the panel calm while the list is short — three columns of four looks like a
+     spreadsheet — and stops it shrinking the type to nothing once it is long. */
+  const COL_GAP = 12;
   /* The row pitch is computed, not fixed, and that is the whole point.
 
      This cap was raised three times for the same reason. It was ten when
@@ -1203,12 +1206,11 @@ function drawArchivePassport(g, v, ctx) {
      truncation on a completion panel is the worst kind of bug, because the
      panel's entire job is to tell you what you have not done yet.
 
-     Then Strange New Worlds made twenty-three and it is twenty-four.
-
-     The archive canvas is 768 × ~486, so the band this divides is 214 px. At
-     twenty-four stamps that is twelve rows at a 19.5 px pitch with 11.5 px
-     names — legible, and now about one world short of where it stops being.
-     The next raise needs a third column rather than another two rows.
+     Then Strange New Worlds made twenty-three, and ORBIT made twenty-five —
+     which is where the note left by the last raise ("the next one needs a third
+     column rather than another two rows") came due. It has one now, and the
+     panel got *roomier* rather than tighter: twenty-five stamps across three
+     columns is nine rows at a 26 px pitch, where twelve rows was 19.5.
 
      So the rows now shrink to fit instead of falling off the bottom. TOP to
      BOTTOM is the band that is genuinely free between the progress bar and the
@@ -1220,12 +1222,14 @@ function drawArchivePassport(g, v, ctx) {
   const TOP = 196;
   const BOTTOM = h - 76;
   const shown = rows.slice(0, PASSPORT_ROWS);
-  const nRows = Math.max(1, Math.ceil(shown.length / 2));
+  const cols = shown.length > 24 ? 3 : 2;
+  const colW = (w - 52 - COL_GAP * (cols - 1)) / cols;
+  const nRows = Math.max(1, Math.ceil(shown.length / cols));
   const pitch = Math.min(30, (BOTTOM - TOP) / Math.max(nRows - 1, 1));
   const nameSize = pitch >= 28 ? 13.5 : pitch >= 21 ? 12 : 11.5;
   shown.forEach((r, i) => {
-    const col = i % 2, row = Math.floor(i / 2);
-    const x = 26 + col * (colW + 12);
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = 26 + col * (colW + COL_GAP);
     const yy = TOP + row * pitch;
     if (r.visited) {
       /* A stamped row breathes; an unvisited one is flat. The pulse is offset

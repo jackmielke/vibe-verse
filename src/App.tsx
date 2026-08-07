@@ -19,6 +19,8 @@ import VibeHub from "./pages/VibeHub.tsx";
 import VibeGo from "./pages/VibeGo.tsx";
 import VibeArcade from "./pages/VibeArcade.tsx";
 import VibeShop from "./pages/VibeShop.tsx";
+import Orbit from "./pages/Orbit.tsx";
+import Join from "./pages/Join.tsx";
 import StartFlow from "./pages/StartFlow.tsx";
 import FruitNinja from "./pages/FruitNinja.tsx";
 import Hub from "./pages/Hub.tsx";
@@ -180,6 +182,12 @@ const App = () => (
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}
           <Route path="/shop" element={<VibeShop />} />
+          {/* ORBIT — the staked game. One button, one shared seed per round,
+              one pot. See src/orbit/orbit.ts for why it is built the way it is. */}
+          <Route path="/orbit" element={<Orbit />} />
+          {/* The front door of an event: /join/<code> hands somebody Vibecoin
+              before it asks them for anything. */}
+          <Route path="/join/:code" element={<Join />} />
           {/* VIBE GO — Pokémon-GO-style real-world catching, PWA-first. */}
           <Route path="/go" element={<VibeGo />} />
           {/* First-time onboarding: name → character → email-or-guest. */}

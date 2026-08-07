@@ -28,6 +28,11 @@
 //   claim_guest    { guestRef }                           -> one-way merge of a guest wallet into
 //                                                            the signed-in caller's account
 //
+// Staked rounds and invite codes live in the sibling `vibe-rounds` function.
+// They were briefly here and moved out: this file is already a thousand lines,
+// every deploy re-uploads all of it, and "the pot" shares nothing with "the
+// agent shop" but a table name.
+//
 // fromKind/ownerKind ∈ {"user","agent"}.  ownerRef is a uuid for signed-in
 // users + agents and a stable guest-id string for anonymous visitors.
 
@@ -827,3 +832,4 @@ async function claimGuest(supabase: Supa, req: Request, b: any) {
     balance: accountBalance + guestBalance,
   };
 }
+

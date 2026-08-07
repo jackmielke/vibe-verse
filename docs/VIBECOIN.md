@@ -94,6 +94,12 @@ server-side in `vibe-economy`.
 | Sky-island mini-games (Vibe City) | up to 120/run | 3 rewarded runs per game per day | `game_reward` |
 | Arcade payouts | see paytables | 400/day total | `arcade_win` |
 | Daily allowance | tops you up to 30 | Once a day, only if you are under 30 | `arcade_allowance` |
+| Invite links | set per code | Once per person, capped per code | `invite` |
+
+Invite grants are the one faucet an operator opens by hand, and the only one
+that can mint an arbitrary amount. That is deliberate — "the first ten people
+through this link get 250" is a party, not an economy — but it means the codes
+are the thing to be careful with. See §5.
 
 The allowance exists because the alternative is a dead end: spend your hundred,
 lose every run, and the arcade becomes a room full of machines you can never
@@ -110,6 +116,13 @@ people are meant to come back to.
 | Agent services (Vibe City) | 5–19 | `service` |
 | Agent items | 20–50 | `item` |
 | Tips to agents | any | `tip` |
+| Cosmetics (the shop) | 25–400 | `cosmetic` |
+| ORBIT round buy-in | set per round | `round_stake` |
+
+The round stake is a *move*, not a burn: it goes to `system/round` and comes
+straight back out as `round_win` (or `round_refund` if nobody scored). What goes
+into a pot is exactly what comes out of it, so a round cannot inflate the
+currency however popular it gets — see §5.
 
 Before the arcade, **there were no sinks that took coin out of circulation** —
 agent purchases move it to the agent's wallet, they do not burn it. The arcade
@@ -170,7 +183,108 @@ a test instead of a payroll.
 
 ---
 
-## 5. The MCP arcade — Jack's friend's proposal, worked through
+## 5. Rounds and invites — the party
+
+The arcade is a machine you play alone. A round is the other thing a currency
+needs: a reason for two people to care about the same number at the same time.
+
+Both live in **`vibe-rounds`**, a sibling edge function to `vibe-economy`. They
+write the same balances through the same rules; the split is purely that
+`vibe-economy` is a thousand lines of agent shops and wardrobe, every deploy
+re-uploads all of it, and the pot shares nothing with Jerry's haiku stand but a
+table name.
+
+### The shape of a round
+
+Everyone stakes the same amount into one pot, everyone flies the **same seeded
+run** of ORBIT, and the best score takes the lot. A pool rather than a duel,
+because for a party of ten a pool needs no matchmaking, no lobby, no presence
+and no disconnect handling — latecomers just join, and the leaderboard is the
+whole social object. One person can test the entire thing in two browser tabs.
+
+Three properties make it worth betting on:
+
+- **One sky.** The seed is per round, so everyone attempts the identical gate
+  layout. A wager on a game where the obstacles differ is a raffle. ORBIT runs
+  on a fixed 1/120 s timestep for the same reason — a player on a 144 Hz screen
+  must not get a different game from one on a laptop.
+- **The seed is not yours until you have paid.** `vibe_rounds` has no RLS read
+  policy at all; the seed comes back from `round_enter`, and from
+  `round_current` only once you are in. Otherwise you could practise the exact
+  layout before deciding whether to stake on it, which is the one cheat that
+  would make the whole thing pointless.
+- **The pot is the stakes.** Nothing is minted. `settleDueRounds` pays the pot
+  to the top scorer, or refunds every stake if nobody scored — a house that
+  wins when the game breaks is not a good look for a party.
+
+Settlement is idempotent by the status flip: the update that marks a round
+settled is filtered on `status = 'open'`, so two callers racing cannot both pay.
+It runs opportunistically inside `round_current`, so results appear without a
+cron and without anybody having to trigger them.
+
+### What stops a made-up score
+
+Scores are client-reported, same as the arcade — this is a party game, not an
+exchange, and the page says so in words. Two things narrow it:
+
+- A hard ceiling (`ROUND_MAX_SCORE`).
+- A **floor on the clock**: `round_score` takes `durationMs` and caps the
+  accepted score at `durationMs / MIN_MS_PER_GATE`, where that constant is the
+  narrowest gate spacing divided by the top angular rate in `src/orbit/orbit.ts`.
+  A run cannot have cleared more gates than there was time for. It turns "post
+  any number" into "post any number and sit there for it", which is about the
+  right amount of rigour for play money.
+
+The write itself is a single `update … set best_score = greatest(best_score, …)`
+inside `vibe_round_record_score()`, not a read-then-write in the function. Two
+tabs finishing at once would otherwise both read the old best and the worse run,
+landing second, would clobber the better one.
+
+### Invite links
+
+A code, a grant, and a cap — `/join/:code`. The only interesting part is that
+the cap is enforced per **person** rather than per click, which is why
+`vibe_invite_claims` has `(code, owner_ref)` as its primary key and the insert
+*is* the lock. After taking the claim the count is re-read and the slot handed
+back if the cap filled underneath, so a stampede cannot over-issue.
+
+`invite_peek` is unauthenticated and thin on purpose: the landing page has to
+say "250 ✦, six left" before anyone signs in, and it must not become an oracle
+that tells a stranger anything they could not already read off the link they
+were sent. `vibe_invites` likewise has no read policy — the code is the secret.
+
+**Claiming works as a guest.** A sign-in wall in front of a gift is how you lose
+eight of the ten people you invited. The account and the wallet are offered
+after, framed as ways to keep what they now have.
+
+### Issuing codes
+
+There is no admin UI; codes are rows.
+
+```sql
+insert into vibe_invites (code, grant_amount, max_claims, note, expires_at)
+values ('ORBIT-A1', 250, 1, 'Opening Night', now() + interval '14 days');
+```
+
+One code per person with `max_claims = 1` is the version to prefer for a small
+event: a shared code with a cap of ten is one screenshot away from being claimed
+by ten strangers, and you cannot tell afterwards who was who.
+
+### Opening a round
+
+```sql
+insert into vibe_rounds (game, title, seed, stake, closes_at)
+values ('orbit', 'Opening Night', 'orbit-opening-night-01', 25,
+        now() + interval '7 days');
+```
+
+`round_current` picks the open round closing soonest, so overlapping rounds are
+technically possible but only one is ever live to the client. Pick a seed nobody
+can guess — it is the layout everybody is betting on.
+
+---
+
+## 6. The MCP arcade — Jack's friend's proposal, worked through
 
 The pitch, as received:
 
@@ -254,20 +368,33 @@ a token that needs a game.
 
 ---
 
-## 6. Open decisions
+## 7. Open decisions
 
 These are real forks, listed so they get decided rather than defaulted into.
 
-**Do guest and account wallets ever merge?** Today they do not. The cleanest
-answer is probably a one-time, one-way claim: signing in offers "bring your
-guest balance across", once, and burns the guest wallet. Needs a UI and a
-server action that cannot be replayed.
+**~~Do guest and account wallets ever merge?~~ Decided: yes, once, one way.**
+`claim_guest` moves a guest balance into the signed-in caller's account and
+records the guest ref in `vibe_guest_claims`, whose primary key makes a replay
+a constraint violation rather than a second payout. Claiming an *empty* guest
+wallet is the common case and had to be handled specially — `vibe_ledger` has
+`CHECK (amount > 0)`, so there is nothing to write there, which is the other
+reason the claim needed its own table.
 
 **Does the ledger ever touch $VIBE?** The tempting version is a seasonal
 airdrop: top arcade earners get a real distribution. It is also the version
 that turns every payout bug into a financial one. If it happens it should be a
 manual, reviewed, off-cycle transfer against a published snapshot — never an
-automatic bridge.
+automatic bridge. `VibeWalletConnect` is built for exactly that shape: it
+collects a *proven* address and nothing else, and the app still never sends a
+transaction.
+
+**Is the ledger's owner key the same thing as the payout address?** No, and
+this is the sharp edge. A balance is keyed by `auth.uid` or a guest id;
+`link-wallet` writes a row keyed by `wallet_address`. Nothing joins the two —
+which is precisely the query an airdrop needs ("balance, by address"). Until
+something does, a distribution has to be assembled by hand. Fixing it properly
+means one identity with an optional address hanging off it, not three tables
+that each think they are the user.
 
 **What happens to `arcade_play` coin?** It currently goes to
 `system/arcade`, which is a real wallet nobody spends from — an effective burn.
@@ -281,7 +408,7 @@ is probably wrong.
 
 ---
 
-## 7. Quick reference
+## 8. Quick reference
 
 ```ts
 import { useVibecoin } from "@/hooks/use-vibecoin";
