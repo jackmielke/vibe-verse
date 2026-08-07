@@ -35,6 +35,28 @@
  * the backpack are all lighter than the surface around them; the crotch, the
  * armpits, the inside of the collar and the underside of every part are
  * darker. Uniform albedo is what plastic looks like.
+ *
+ * ## SOAKED (`ctx.mode === "water"`)
+ *
+ * The same capsule, the same drop, the same camera — one seam. In water mode
+ * this module additionally owns:
+ *
+ *  - **Dryness instead of health.** `service.health` *is* dryness and
+ *    `service.shield` *is* the poncho; incoming damage is routed through
+ *    `applySoak` from `mode/water.ts` instead of the flat shield-then-health
+ *    subtraction. Doing it this way rather than adding a parallel pair of
+ *    numbers is what lets the storm, combat, the bots and the HUD keep calling
+ *    exactly what they called before and still mean the right thing.
+ *  - **Drying.** `dryStep` every fixed step, gated on the same conditions the
+ *    table describes: no drying in the Downpour, in the sea or in a puddle;
+ *    faster sprinting (wind) and faster under a roof.
+ *  - **Slipping.** Ground friction is multiplied by
+ *    `wetness.frictionAt(x, z)`, so sprinting onto a puddle slides you.
+ *  - **Glue.** Strand coupling, the two-body pull, the slow, and the stumble.
+ *  - **The wire.** `net.publishPose` every frame, and a wet footprint trail.
+ *
+ * Nobody is hurt here and nothing dies. At zero dryness you slump, squelch and
+ * are out — which is why the beat is called SOAKED and not "eliminated".
  */
 import * as THREE from "three";
 import type {
@@ -47,6 +69,27 @@ import type {
   SystemFactory,
   WorldCtx,
 } from "../types";
+import {
+  DOWNPOUR,
+  DRYNESS,
+  GLUE,
+  WATER,
+  applySoak,
+  downpourSoak,
+  drynessBand,
+  dryStep,
+  glueAccel,
+  glueSlow,
+  stumbleChance,
+  struggleStep,
+  type DrynessBand,
+  type GlueAnchorKind,
+  type GlueBreakReason,
+} from "../mode/water";
+// Type-only, but it is also what pulls `net` onto `WorldServices` — the
+// augmentation lives beside the transport rather than in the shared contract,
+// because the shared contract predates multiplayer and ships without it.
+import type { NetService } from "../net/types";
 
 // ---------------------------------------------------------------- tuning
 
@@ -111,6 +154,73 @@ const SLIDE_ACCEL = 21;
 /** Fall speed below which landing is free. Above it, damage ramps. */
 const FALL_SAFE = -22;
 const FALL_DAMAGE_PER_MS = 3.6;
+
+// ---- SOAKED -------------------------------------------------------------
+// Everything below is water-mode only. Numbers that describe the *rules* live
+// in `mode/water.ts` and are imported; the numbers here describe how this
+// particular body reacts to them, which is nobody else's business.
+
+/**
+ * How much of a puddle's friction loss also costs you acceleration.
+ *
+ * Friction alone gives you a long slide, but with full acceleration you can
+ * still steer out of it instantly and it never reads as slipping. Halving the
+ * *authority* as well is what turns a slide into a moment of comedy you have
+ * to ride out — and 0.5 rather than 0 is what keeps it recoverable.
+ */
+const SLIP_ACCEL_SHARE = 0.5;
+/** Sliding this fast on wet ground starts throwing spray and a skid sound. */
+const SLIP_SPEED = 6.4;
+
+/** Seconds between shelter probes. A raycast per fixed step is 120 Hz of waste. */
+const SHELTER_PERIOD = 0.3;
+/** How far up we look for a roof. A built floor overhead counts; the sky does not. */
+const SHELTER_REACH = 7;
+
+/** Wetness under the feet above which you count as standing in water. */
+const PUDDLE_WET = 0.3;
+
+/** Chest height on the capsule — where a glue strand attaches. */
+const GLUE_CHEST_Y = 1.15;
+/**
+ * Fraction of the strand's pull that is allowed to act vertically.
+ *
+ * A full 3D pull toward someone standing above you yanks you off the ground
+ * and the tether turns into a grappling hook, which is a different (and much
+ * less funny) game. Mostly-horizontal keeps it a tug-of-war.
+ */
+const GLUE_VERTICAL_SHARE = 0.25;
+/** Beyond this the far end has clearly gone — drop the strand rather than snap it. */
+const GLUE_LOST_DIST = 90;
+
+/** Initial tumble speed when you go down. Enough to sell it, not enough to launch. */
+const STUMBLE_LAUNCH = 2.6;
+const STUMBLE_POP = 2.2;
+/** How fast the body spins while face-down, radians/second. */
+const STUMBLE_SPIN = 5.5;
+
+/** Simulated seconds between wet-trail prints. `wetness.track` rate-limits too. */
+const TRACK_PERIOD = 0.22;
+
+/** Drip pool size. One InstancedMesh, one draw call, hard cap. */
+const DRIP_COUNT = 72;
+/** Droplets per second shed at fully soaked. Scales down with dryness. */
+const DRIP_RATE = 14;
+const DRIP_GRAVITY = -18;
+/** Droplet dimensions — a stretched teardrop reads as water, a sphere as a pea. */
+const DRIP_RADIUS = 0.019;
+const DRIP_STRETCH = 2.1;
+
+/**
+ * The Downpour fallback window.
+ *
+ * `storm.applyStormDamage` already calls `player.damage`, and in water mode
+ * that lands on `applySoak` — so the rain is normally applied for us. This
+ * module only takes over if nothing storm-shaped has soaked us for this long
+ * while we are stood outside the wall, which covers a storm build that hands
+ * the rate over instead of applying it. Belt and braces, never both at once.
+ */
+const DOWNPOUR_HANDOFF = DOWNPOUR.tickInterval * 2.5;
 
 // ---- drop sequence ------------------------------------------------------
 
@@ -1683,6 +1793,35 @@ interface HudPayload {
   z: number;
   yaw: number;
   pitch: number;
+
+  // ---- SOAKED. Present in both modes; meaningless (and inert) in classic,
+  // so a HUD can read them unconditionally and branch on `water`.
+  /** True when this is SOAKED and the fields below mean something. */
+  water: boolean;
+  /** 0..100. The same number as `health`, named for what it is. */
+  dryness: number;
+  /** 0..100. The same number as `shield`. */
+  poncho: number;
+  /** Band key for the bar colour and the callout label. */
+  band: DrynessBand;
+  /** 0..1 how wet you look — drives drips, gloss and the shiver. */
+  wet: number;
+  /** Ground friction multiplier underfoot, 0..1. Below 1 you are on water. */
+  slip: number;
+  /** True while at least one glue strand is attached to us. */
+  glued: boolean;
+  /** Who the nearest strand is stuck to, for "GLUED TO {name}". */
+  gluedTo: string | null;
+  /** 0..1 struggle progress; at 1 the strand peels off. */
+  struggle: number;
+  /** True while face-down from a stumble. */
+  stumbling: boolean;
+  /** True once dryness has hit zero. */
+  soaked: boolean;
+  /** True while stood outside the Downpour's safe zone. */
+  inDownpour: boolean;
+  /** True while something is actually drying us off. */
+  drying: boolean;
 }
 
 // ---------------------------------------------------------------- system
@@ -1709,11 +1848,58 @@ export interface DropZeroPlayerService extends PlayerService {
    * ground-level system without flying the ninety-second drop first.
    */
   placeOnGround(p: THREE.Vector3): void;
+
+  // ------------------------------------------------------------- SOAKED
+  // These exist in both modes. In `classic` they read off health/shield and
+  // the mutators are no-ops, so a caller never has to ask what mode it is.
+
+  /** 0..100. Aliases `health`, because in SOAKED that is what health is. */
+  readonly dryness: number;
+  /** 0..100. Aliases `shield`. */
+  readonly poncho: number;
+  readonly maxDryness: number;
+  readonly maxPoncho: number;
+  /** Coarse band, for callouts and bar colour. */
+  readonly drynessBand: DrynessBand;
+  /** 0..1 — 1 is dripping. What the drips, gloss and shiver are driven from. */
+  readonly wetness: number;
+  /** True once dryness has reached zero. Out, not dead. */
+  readonly soakedOut: boolean;
+  /** True while any glue strand is attached. */
+  readonly glued: boolean;
+  /** True while face-down mid-stumble — no firing, no building. */
+  readonly stumbling: boolean;
+  /** Squad id published with every pose. Same string = do not soak each other. */
+  team: string | null;
+
+  /**
+   * Take water. Routed through `WATER.dryness`'s poncho maths, so a poncho
+   * eats it at a discount and a little always bleeds through. No-op in
+   * classic — call `damage` there.
+   */
+  soak(amount: number, from?: THREE.Vector3, source?: DamageSource): void;
+  /** Towel off. `dryness`/`poncho` are amounts to add, each clamped to its max. */
+  dryOff(dryness: number, poncho: number): void;
+  /**
+   * Glue this player to something. `id` is a net peer id, a bot's
+   * `DamageTarget.id`, or anything for a world anchor; `point` is where the
+   * blob landed. Both ends of a player-to-player strand are expected to call
+   * this on their own client — the pull is symmetric and nobody arbitrates.
+   */
+  glueTo(id: string | null, kind: GlueAnchorKind, point: THREE.Vector3, duration?: number): void;
+  /** Release a strand by far-end id, or every strand when `id` is omitted. */
+  unglue(id?: string | null, reason?: GlueBreakReason): void;
 }
 
 const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   const camera = ctx.camera;
   const BASE_FOV = camera.fov;
+
+  /**
+   * The seam. Read once: the mode cannot change inside a match, and a hundred
+   * string comparisons a second in the hot path is a hundred too many.
+   */
+  const water = ctx.mode === "water";
 
   const position = new THREE.Vector3(0, 200, 0);
   const velocity = new THREE.Vector3();
@@ -1788,12 +1974,84 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     get controllable() {
       if (!ctx.input.locked) return false;
       if (service.state === "dead") return false;
+      // Face-down in a puddle is not a state you drive, shoot or build from.
+      // Look still works (that is gated separately, on `locked`), so the
+      // camera keeps running and you watch yourself get up.
+      if (stumbleTimer > 0) return false;
       const phase = ctx.services.match?.phase;
       if (!phase) return true; // standalone / match failed to boot — let them play
       return phase === "warmup" || phase === "bus" || phase === "dropping" || phase === "live";
     },
+
+    // ---------------------------------------------------------- SOAKED
+    get dryness() {
+      return service.health;
+    },
+    get poncho() {
+      return service.shield;
+    },
+    get maxDryness() {
+      return service.maxHealth;
+    },
+    get maxPoncho() {
+      return service.maxShield;
+    },
+    get drynessBand() {
+      return drynessBand(service.health).key;
+    },
+    get wetness() {
+      return clamp01(1 - service.health / Math.max(1e-3, service.maxHealth));
+    },
+    get soakedOut() {
+      return water && service.health <= 0;
+    },
+    get glued() {
+      return activeStrands() > 0;
+    },
+    get stumbling() {
+      return stumbleTimer > 0;
+    },
+    get team() {
+      return team;
+    },
+    set team(t: string | null) {
+      team = t || null;
+    },
+    soak(amount, from, source) {
+      if (!water) return;
+      applyDamage(amount, from, source);
+    },
+    dryOff(dry, pon) {
+      if (service.state === "dead") return;
+      if (dry > 0) {
+        service.health = Math.min(service.maxHealth, service.health + dry);
+        // A towel is a soak of its own kind: it resets the drying delay so a
+        // player cannot chain "towel, wait one second, free natural drying".
+        sinceSoak = 0;
+      }
+      if (pon > 0) service.shield = Math.min(service.maxShield, service.shield + pon);
+      ctx.emit("dz:heal", { hp: dry, shield: pon });
+    },
+    glueTo(id, kind, point, duration) {
+      linkGlue(id, kind, point, duration ?? GLUE.duration);
+    },
+    unglue(id, reason) {
+      breakGlue(id ?? null, reason ?? "expired");
+    },
   };
   ctx.services.player = service;
+
+  if (water) {
+    // Dryness and poncho are the same two numbers under different names, so
+    // their ceilings come from the water table rather than from 100/100
+    // happening to agree with it.
+    service.maxHealth = DRYNESS.max;
+    service.health = DRYNESS.max;
+    service.maxShield = DRYNESS.ponchoMax;
+    // You start with no poncho: it is a looted item, and starting behind the
+    // blue bar is what makes finding one feel like finding something.
+    service.shield = 0;
+  }
 
   // ---- movement state ----------------------------------------------------
   let grounded = false;
@@ -1845,6 +2103,89 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   let downTimer = 0;
   const DOWN_TIME = 45;
 
+  // ---- SOAKED state ------------------------------------------------------
+
+  /** Squad id. Published with every pose; peers on it are not soakable. */
+  let team: string | null = null;
+  /** Simulated seconds since the last drop of water landed on us. */
+  let sinceSoak = DRYNESS.dryDelay;
+  /** `ctx.elapsed` of the last storm-sourced soak — the Downpour handoff check. */
+  let lastStormSoak = -Infinity;
+  /** Ground friction multiplier under the feet, from `wetness.frictionAt`. */
+  let slip = 1;
+  /** Cached shelter answer, refreshed every `SHELTER_PERIOD` simulated seconds. */
+  let sheltered = false;
+  let shelterTimer = 0;
+  /** True while stood outside the safe zone. Blocks all drying. */
+  let inDownpour = false;
+  /** True while something (air, a blower, a towel) is actually drying us. */
+  let drying = false;
+  /** Smoothed 0..1 look-wetness — drives gloss, drips and the shiver. */
+  let wetLook = 0;
+  /** Simulated-second accumulators for the trail and the drips. */
+  let trackTimer = 0;
+  let dripAccum = 0;
+  /** Set once we hit zero dryness, so the SOAKED beat fires exactly once. */
+  let soakedOut = false;
+
+  /** Face-down timer and its immunity window, both in simulated seconds. */
+  let stumbleTimer = 0;
+  let stumbleCooldown = 0;
+  /** Body roll accumulated through the tumble, radians. */
+  let stumbleRoll = 0;
+  /**
+   * Struggle input, buffered in `update` and consumed by the next fixed step.
+   * `input.pressed` is refilled per frame and a frame may run six steps, so
+   * reading it inside `fixed` would count one press up to six times.
+   */
+  let strugglePressed = false;
+  /** Cooldown on the skid cue, so a wet floor does not squeal every step. */
+  let skidTimer = 0;
+
+  /**
+   * One glue strand, from our chest to something else.
+   *
+   * Both ends of a player-to-player strand run one of these on their own
+   * client and neither is authoritative — the pull is symmetric by
+   * construction, which is what makes deliberately dragging a glued teammate
+   * out of the Downpour work without a single packet of negotiation.
+   */
+  interface GlueLink {
+    /** Far-end id: a net peer id, a `DamageTarget.id`, or "" for a world anchor. */
+    id: string;
+    kind: GlueAnchorKind;
+    /** World anchor, for ground/build strands and as the last known player point. */
+    point: THREE.Vector3;
+    /** Resolved actor for a bot far end, when combat could find one. */
+    target: DamageTarget | null;
+    /** Simulated seconds left before it lets go on its own. */
+    life: number;
+    /** Seconds spent stretched past `maxLength`. */
+    over: number;
+    /** 0..1 struggle progress. */
+    struggle: number;
+    active: boolean;
+  }
+
+  const strands: GlueLink[] = [];
+  for (let i = 0; i < GLUE.maxStrands; i++) {
+    strands.push({
+      id: "",
+      kind: "ground",
+      point: new THREE.Vector3(),
+      target: null,
+      life: 0,
+      over: 0,
+      struggle: 0,
+      active: false,
+    });
+  }
+  const activeStrands = (): number => {
+    let n = 0;
+    for (const s of strands) if (s.active) n++;
+    return n;
+  };
+
   // ---- scratch -----------------------------------------------------------
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
@@ -1880,6 +2221,19 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     z: 0,
     yaw: 0,
     pitch: 0,
+    water,
+    dryness: 100,
+    poncho: 0,
+    band: "bone-dry",
+    wet: 0,
+    slip: 1,
+    glued: false,
+    gluedTo: null,
+    struggle: 0,
+    stumbling: false,
+    soaked: false,
+    inDownpour: false,
+    drying: false,
   };
 
   // ---- character ---------------------------------------------------------
@@ -1903,19 +2257,41 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     let remaining = amount;
     let tookShield = false;
-    if (service.shield > 0) {
-      const absorbed = Math.min(service.shield, remaining);
-      service.shield -= absorbed;
-      remaining -= absorbed;
-      tookShield = true;
-    }
-    if (service.state === "down") {
-      // While downed there is no shield and the bleed-out clock takes the hit
-      // directly — finishing someone should be fast.
-      downTimer = Math.max(0, downTimer - amount * 0.6);
-      remaining = 0;
-    } else if (remaining > 0) {
-      service.health = Math.max(0, service.health - remaining);
+
+    if (water) {
+      /**
+       * SOAKED: the poncho eats water at a discount and a little always bleeds
+       * through, so a fully-ponchoed player still visibly gets wetter. All of
+       * that lives in `applySoak` — this is the one place that calls it, which
+       * is why every other system can keep calling plain `damage()`.
+       */
+      sinceSoak = 0;
+      if (source?.by === "storm" || source?.weapon === "storm") lastStormSoak = ctx.elapsed;
+      if (service.state === "down") {
+        downTimer = Math.max(0, downTimer - amount * 0.6);
+        remaining = 0;
+      } else {
+        const r = applySoak(service.health, service.shield, amount);
+        tookShield = r.absorbedByPoncho > 0.001;
+        remaining = r.toDryness;
+        service.health = r.dryness;
+        service.shield = r.poncho;
+      }
+    } else {
+      if (service.shield > 0) {
+        const absorbed = Math.min(service.shield, remaining);
+        service.shield -= absorbed;
+        remaining -= absorbed;
+        tookShield = true;
+      }
+      if (service.state === "down") {
+        // While downed there is no shield and the bleed-out clock takes the hit
+        // directly — finishing someone should be fast.
+        downTimer = Math.max(0, downTimer - amount * 0.6);
+        remaining = 0;
+      } else if (remaining > 0) {
+        service.health = Math.max(0, service.health - remaining);
+      }
     }
 
     // Directional indicator: the bearing to the shooter, expressed relative to
@@ -1931,9 +2307,21 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     hitPayload.lethal = service.health <= 0;
     ctx.emit("dz:hit", hitPayload);
 
-    ctx.services.audio?.play(tookShield && remaining <= 0 ? "shield-hit" : "hurt", {
-      volume: clamp(0.3 + amount / 120, 0.3, 0.9),
-    });
+    if (water) {
+      // Nothing here hurts. A hit is a splat on a poncho or a faceful of cold
+      // water, and the cue is the same one the world uses for water landing on
+      // anything else — that consistency is most of why the mode reads as play.
+      ctx.services.audio?.play(tookShield && remaining <= 0.5 ? "poncho-splat" : "splash-body", {
+        volume: clamp(0.3 + amount / 120, 0.3, 0.9),
+        position,
+      });
+      // A drenching leaves standing water where you were standing.
+      ctx.services.wetness?.splash(position, clamp(0.5 + amount * 0.012, 0.5, 1.8), amount * 0.08);
+    } else {
+      ctx.services.audio?.play(tookShield && remaining <= 0 ? "shield-hit" : "hurt", {
+        volume: clamp(0.3 + amount / 120, 0.3, 0.9),
+      });
+    }
     // A hit shoves the view: small, fast, and it decays inside a third of a
     // second. Any bigger and it fights the player's aim instead of informing.
     fireKickPitch += clamp(amount * 0.0016, 0, 0.05);
@@ -1949,8 +2337,43 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     service.state = "down";
     downTimer = DOWN_TIME;
     velocity.set(0, velocity.y, 0);
-    ctx.emit("dz:down", { by: source?.name ?? source?.by ?? "the storm" });
-    ctx.services.audio?.play("down", { volume: 0.8 });
+    if (water) enterSoaked(source);
+    else {
+      ctx.emit("dz:down", { by: source?.name ?? source?.by ?? "the storm" });
+      ctx.services.audio?.play("down", { volume: 0.8 });
+    }
+  }
+
+  /**
+   * Zero dryness. Not a death — a slump and a squelch.
+   *
+   * Everything about this beat is comedy: the strands all let go at once, a
+   * bucket of standing water arrives under you, the body flops into the down
+   * pose and the squelch plays. The `down` state underneath is the same one
+   * classic uses, so a squadmate towelling you off is the existing revive path
+   * and not a second machine.
+   */
+  function enterSoaked(source?: DamageSource): void {
+    if (soakedOut) return;
+    soakedOut = true;
+    service.health = 0;
+    const by = source?.name ?? source?.by ?? WATER.strings.stormName;
+
+    // Whoever you were glued to is free — nobody stays tethered to a puddle.
+    breakGlue(null, "eliminated");
+
+    ctx.services.audio?.play("squelch", { volume: 0.85, position });
+    ctx.services.audio?.play(WATER.balloon.soundBurst, { volume: 0.5, position });
+    // A generous puddle exactly where you went down, so the spot reads from
+    // across the street and anyone who walks through it slips.
+    ctx.services.wetness?.splash(position, 2.4, 14);
+    ctx.services.vfx?.impact(position, up, "water");
+
+    // Kept on `dz:down` so the HUD's existing knock/revive plumbing fires;
+    // `dz:soaked` is the one the water HUD reads for the banner.
+    ctx.emit("dz:down", { by, soaked: true });
+    ctx.emit("dz:soaked", { by, x: position.x, y: position.y, z: position.z });
+    ctx.services.net?.send("soaked", { by, x: position.x, y: position.y, z: position.z });
   }
 
   function enterDead(source?: DamageSource): void {
@@ -2103,9 +2526,21 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   }
 
   function footstep(scale: number): void {
+    // A soaked player prints a trail. This runs before the audio bail-out on
+    // purpose: the trail is gameplay — bots hunt on it — and losing it because
+    // the audio system failed to boot would be a silent, unfindable bug.
+    if (water) printTrack();
+
     const audio = ctx.services.audio;
     if (!audio) return;
-    const mat = inWater ? "water" : ctx.services.terrain?.materialAt(position.x, position.z) ?? "dirt";
+    // Standing water under the boot sounds like water whatever the terrain
+    // underneath it says — that splat is how you hear someone crossing a
+    // puddle before you see them.
+    const onPuddle = water && slip < 0.86;
+    const mat =
+      inWater || onPuddle
+        ? "water"
+        : ctx.services.terrain?.materialAt(position.x, position.z) ?? "dirt";
     const def = FOOTSTEP[mat] ?? FOOTSTEP.dirt;
     stepToggle ^= 1;
     audio.play(def.name, {
@@ -2117,6 +2552,637 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       rate: def.rate * (stepToggle ? 1.0 : 0.94) * (0.96 + Math.random() * 0.08),
       maxDistance: 24,
     });
+  }
+
+  // ---- SOAKED: dryness, slip, tracks -------------------------------------
+
+  /** Stable id for anything that identifies this player over the wire. */
+  const selfId = (): string => ctx.services.net?.selfId ?? "player";
+
+  /**
+   * Print a wet footprint. `wetness.track` rate-limits per stride internally
+   * and ignores anything below its own threshold, so a dry player calling this
+   * every step costs a compare and nothing else.
+   */
+  function printTrack(): void {
+    const w = ctx.services.wetness;
+    if (!w) return;
+    w.track(selfId(), position, service.wetness);
+  }
+
+  /** Is there a roof over us? One ray, cached — see `SHELTER_PERIOD`. */
+  function refreshShelter(): void {
+    const collision = ctx.services.collision;
+    if (!collision) {
+      sheltered = false;
+      return;
+    }
+    tmp.set(position.x, position.y + eyeHeight, position.z);
+    tmp2.set(0, 1, 0);
+    sheltered = !!collision.raycast(tmp, tmp2, SHELTER_REACH);
+  }
+
+  /**
+   * One step of the water body: friction underfoot, the Downpour, drying.
+   *
+   * Called from `fixed` before anything reads `slip`, and unconditionally —
+   * dryness keeps ticking on the bus, in the dive and while downed, because a
+   * timer that stops in some states is a timer players cannot reason about.
+   */
+  function waterStepBegin(dt: number): void {
+    sinceSoak += dt;
+    if (stumbleCooldown > 0) stumbleCooldown = Math.max(0, stumbleCooldown - dt);
+    // The stumble clock lives here rather than in the locomotion branch so it
+    // cannot be frozen by walking into the sea mid-tumble and taking the swim
+    // path, which returns long before the ground code runs.
+    if (stumbleTimer > 0) {
+      stumbleTimer = Math.max(0, stumbleTimer - dt);
+      if (stumbleTimer === 0) {
+        ctx.emit("dz:stumble-up", null);
+        ctx.services.audio?.play("land", { volume: 0.4, position });
+      }
+    }
+
+    // --- friction underfoot -------------------------------------------------
+    const wet = ctx.services.wetness;
+    slip = wet ? clamp(wet.frictionAt(position.x, position.z), 0.05, 1) : 1;
+
+    // --- the Downpour -------------------------------------------------------
+    const storm = ctx.services.storm;
+    const airborne = dropStage === "bus" || dropStage === "skydive" || dropStage === "glide";
+    inDownpour = !!storm && !airborne && !storm.isSafe(position);
+    if (inDownpour && service.state !== "dead" && service.state !== "down") {
+      /**
+       * The storm normally applies this for us — `storm.applyStormDamage`
+       * calls `player.damage`, which in water mode is `applySoak`. This branch
+       * only fires when nothing storm-shaped has landed on us for a couple of
+       * ticks, i.e. when the storm has handed the rate over rather than
+       * applying it. Never both: `applyDamage` stamps `lastStormSoak`.
+       */
+      if (ctx.elapsed - lastStormSoak > DOWNPOUR_HANDOFF) {
+        const circle = storm.circle || 1;
+        applyDamage(downpourSoak(circle) * dt, undefined, {
+          by: "storm",
+          name: WATER.strings.stormName,
+          weapon: "storm",
+        });
+      }
+      // Wind in the wall. Small — it is a nudge that tells you which way out
+      // is downwind, not a shove that takes the rotation out of your hands.
+      tmp.subVectors(storm!.center, position);
+      tmp.y = 0;
+      if (tmp.lengthSq() > 1e-6) {
+        tmp.normalize();
+        velocity.x -= tmp.x * DOWNPOUR.wind * dt;
+        velocity.z -= tmp.z * DOWNPOUR.wind * dt;
+      }
+    }
+
+    // Nothing dries a body that is already out. Without this the natural dry
+    // rate would tick a downed player back over zero five seconds after they
+    // went down and stand them straight back up, which is not a revive — it is
+    // the down state failing to mean anything.
+    if (service.state === "dead" || service.state === "down") return;
+
+    // --- drying -------------------------------------------------------------
+    shelterTimer -= dt;
+    if (shelterTimer <= 0) {
+      shelterTimer = SHELTER_PERIOD;
+      refreshShelter();
+    }
+    const standingInWater =
+      inWater || slip < 1 - PUDDLE_WET || !!ctx.services.terrain?.isWater(position.x, position.z);
+    const before = service.health;
+    service.health = dryStep(
+      service.health,
+      {
+        sinceSoak,
+        inRain: inDownpour || standingInWater,
+        sprinting: runBlend > 0.5,
+        sheltered,
+      },
+      dt,
+    );
+    // A drying station beats the weather: it is contested ground and it has to
+    // be worth crossing the map for, so its rate is added on top rather than
+    // folded into the multiplier stack.
+    const station = ctx.services.wetness?.dryingRateAt(position) ?? 0;
+    if (station > 0 && !inDownpour) {
+      service.health = Math.min(DRYNESS.dryCap, service.health + station * dt);
+    }
+    drying = service.health > before + 1e-6;
+
+    // Catch-all: dryness can reach zero without a `damage()` call ever having
+    // been made (a Downpour tick the storm owns, a scripted soak). `down` and
+    // `dead` already returned above, so this can only fire on a live body.
+    if (service.health <= 0 && !soakedOut) enterDown();
+  }
+
+  // ---- SOAKED: glue ------------------------------------------------------
+
+  /**
+   * Attach a strand. Called for BOTH ends of a player-to-player link — once
+   * locally when our own glue gun sticks, once from the wire when somebody
+   * else's sticks to us — which is what makes the pull symmetric without a
+   * single line of negotiation.
+   */
+  function linkGlue(
+    id: string | null,
+    kind: GlueAnchorKind,
+    point: THREE.Vector3,
+    duration = GLUE.duration,
+  ): void {
+    // Nothing sticks to a puddle. A soaked or dead body drops every strand and
+    // refuses new ones, which is also what stops a strand outliving its owner.
+    if (!water || service.state === "dead" || service.state === "down") return;
+    const key = id ?? "";
+    // Re-gluing the same pair refreshes the strand rather than stacking two.
+    let link = strands.find((s) => s.active && s.id === key && s.kind === kind);
+    if (!link) link = strands.find((s) => !s.active);
+    if (!link) {
+      // Past `maxStrands` the oldest gives way. A player wrapped in six ropes
+      // is not stuck, they are deleted, and this mode never removes control.
+      link = strands.reduce((a, b) => (b.life < a.life ? b : a), strands[0]);
+    }
+    link.id = key;
+    link.kind = kind;
+    link.point.copy(point);
+    link.target = null;
+    link.life = clamp(duration, 0.2, 60);
+    link.over = 0;
+    link.struggle = 0;
+    link.active = true;
+
+    // Bots and ghosts are `DamageTarget`s; resolving one now means the strand
+    // tracks a moving body instead of the spot the blob happened to land.
+    if (kind === "player" && key) {
+      const found = ctx.services.combat?.queryTargets(point, 6) ?? [];
+      for (const t of found) {
+        if (t.id === key) {
+          link.target = t;
+          break;
+        }
+      }
+    }
+    ctx.emit("dz:glued", { to: key || null, kind, duration: link.life });
+    ctx.services.audio?.play(GLUE.soundStick, { position: point, volume: 0.7, maxDistance: 120 });
+  }
+
+  /** Release one strand (by far-end id) or all of them. */
+  function breakGlue(id: string | null, reason: GlueBreakReason): void {
+    let any = false;
+    for (const s of strands) {
+      if (!s.active) continue;
+      if (id !== null && s.id !== id) continue;
+      s.active = false;
+      s.target = null;
+      s.struggle = 0;
+      any = true;
+      ctx.emit("dz:glue-break", { from: selfId(), to: s.id || null, reason });
+      ctx.services.net?.send("glue", { from: selfId(), to: s.id || undefined, broken: true });
+    }
+    if (any && reason !== "eliminated") {
+      ctx.services.audio?.play(GLUE.soundSnap, { volume: 0.55, position });
+    }
+  }
+
+  const _glueEnd = new THREE.Vector3();
+  const _glueChest = new THREE.Vector3();
+  const _gluePull = new THREE.Vector3();
+
+  /** Where the far end of a strand is right now. False when it is gone. */
+  function resolveGlueEnd(link: GlueLink, out: THREE.Vector3): boolean {
+    if (link.kind !== "player") {
+      out.copy(link.point);
+      return true;
+    }
+    // A live actor (a bot, or a ghost registered with combat) wins: the strand
+    // should track the body, not the spot the blob landed on it.
+    if (link.target) {
+      if (!link.target.alive) return false;
+      link.target.object.getWorldPosition(out);
+      out.y += link.target.height * 0.55;
+      link.point.copy(out);
+      return true;
+    }
+    const peer = ctx.services.net?.peers.get(link.id);
+    if (peer) {
+      if (!peer.posed || peer.dry <= 0) return false;
+      out.set(peer.x, peer.y + GLUE_CHEST_Y, peer.z);
+      link.point.copy(out);
+      return true;
+    }
+    // Neither resolved this step. Coast on the last known point — a peer whose
+    // packet is late must not snap the strand — but give up once the gap is
+    // absurd, which is what a peer that quietly left looks like.
+    out.copy(link.point);
+    return true;
+  }
+
+  /**
+   * Simulate every strand and return the movement multiplier they impose.
+   *
+   * The pull is applied to OUR velocity only. The other end applies its own,
+   * from its own client, off its own copy of this function — that is the whole
+   * protocol, and it is why dragging a glued teammate out of the Downpour
+   * works: they feel the same acceleration toward you that you feel toward
+   * them, and the two of you sort out who is stronger by running.
+   */
+  function glueFixed(dt: number, pressed: boolean): number {
+    let slow = 1;
+    const speed = Math.hypot(velocity.x, velocity.z);
+
+    for (const link of strands) {
+      if (!link.active) continue;
+      link.life -= dt;
+      if (link.life <= 0) {
+        breakGlue(link.id, "expired");
+        continue;
+      }
+      if (!resolveGlueEnd(link, _glueEnd)) {
+        breakGlue(link.id, "eliminated");
+        continue;
+      }
+
+      _glueChest.set(position.x, position.y + GLUE_CHEST_Y, position.z);
+      _gluePull.subVectors(_glueEnd, _glueChest);
+      const dist = _gluePull.length();
+      if (dist > GLUE_LOST_DIST) {
+        breakGlue(link.id, "stretched");
+        continue;
+      }
+
+      if (link.kind === "player") {
+        slow = Math.min(slow, glueSlow(dist));
+
+        const accel = glueAccel(dist);
+        if (accel > 0 && dist > 1e-4) {
+          _gluePull.divideScalar(dist);
+          velocity.x += _gluePull.x * accel * dt;
+          velocity.z += _gluePull.z * accel * dt;
+          // Mostly horizontal on purpose: a full 3D pull toward somebody on a
+          // roof turns the glue gun into a grappling hook.
+          velocity.y += _gluePull.y * accel * GLUE_VERTICAL_SHARE * dt;
+        }
+
+        // Past max length the strand is on borrowed time.
+        if (dist > GLUE.maxLength) {
+          link.over += dt;
+          if (link.over >= GLUE.snapHold) {
+            breakGlue(link.id, "stretched");
+            continue;
+          }
+        } else {
+          link.over = 0;
+        }
+
+        // Move fast while stretched and you go over. Poisson-ish, off simulated
+        // dt, so the same tether feels the same at 30 fps and at 240.
+        if (grounded && stumbleTimer <= 0 && stumbleCooldown <= 0) {
+          if (ctx.rng() < stumbleChance(speed, dist, dt)) enterStumble();
+        }
+      } else {
+        // Ground/build anchor: no pull, just a leash you can walk the radius of.
+        if (dist > GLUE.anchorRadius) {
+          const pullBack = Math.min(GLUE.maxPull, (dist - GLUE.anchorRadius) * GLUE.pullPerMetre);
+          _gluePull.divideScalar(dist || 1);
+          velocity.x += _gluePull.x * pullBack * dt;
+          velocity.z += _gluePull.z * pullBack * dt;
+        }
+        slow = Math.min(slow, GLUE.anchorSlow);
+      }
+
+      link.struggle = struggleStep(link.struggle, pressed, dt);
+      if (link.struggle >= 1) {
+        breakGlue(link.id, "struggled");
+        continue;
+      }
+    }
+    return slow;
+  }
+
+  // ---- SOAKED: the stumble -----------------------------------------------
+
+  /**
+   * Go down. A real tumble you get up from — never a stun.
+   *
+   * `controllable` is false for `GLUE.fallTime`, which is what takes firing and
+   * building away; movement input stops with it, the body flops into the down
+   * pose and rolls, and then you stand back up with a cooldown so a single
+   * strand cannot chain-stumble you into oblivion.
+   */
+  function enterStumble(): void {
+    if (stumbleTimer > 0) return;
+    stumbleTimer = GLUE.fallTime;
+    stumbleCooldown = GLUE.fallTime + GLUE.fallCooldown;
+    stumbleRoll = 0;
+
+    // Keep the momentum that put you here, add a small pop, and let the tumble
+    // carry you a metre or two — stopping dead reads as a hitch, not a fall.
+    const sp = Math.hypot(velocity.x, velocity.z);
+    if (sp > 1e-3) {
+      velocity.x = (velocity.x / sp) * Math.min(sp, STUMBLE_LAUNCH);
+      velocity.z = (velocity.z / sp) * Math.min(sp, STUMBLE_LAUNCH);
+    }
+    velocity.y = Math.max(velocity.y, STUMBLE_POP);
+
+    applyDamage(GLUE.fallSoak, undefined, { by: "world", name: WATER.strings.stumbled });
+    ctx.services.audio?.play(GLUE.soundStumble, { volume: 0.75, position });
+    ctx.services.wetness?.splash(position, 1.1, 3);
+    ctx.emit("dz:stumble", { x: position.x, y: position.y, z: position.z });
+  }
+
+  // ---- SOAKED: the wire --------------------------------------------------
+
+  /**
+   * What we call our movement state on the wire.
+   *
+   * `NetPose.state` is a plain string precisely so this can say things the
+   * engine's `PlayerState` union has never heard of. `service.state` stays a
+   * legal `PlayerState` for every local consumer.
+   */
+  function netState(): string {
+    if (service.state === "dead") return "soaked";
+    if (soakedOut || service.state === "down") return "soaked";
+    if (stumbleTimer > 0) return "stumble";
+    if (activeStrands() > 0) return "glued";
+    return service.state;
+  }
+
+  function publishPose(): void {
+    const net = ctx.services.net as NetService | undefined;
+    if (!net) return;
+    // The transport rate-limits and change-gates; calling it every frame is
+    // the documented usage and is cheaper than us keeping a second clock.
+    net.publishPose({
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      yaw,
+      pitch,
+      state: netState(),
+      dry: service.health,
+      team: team ?? undefined,
+    });
+  }
+
+  /**
+   * Inbound glue. Two shapes reach us:
+   *
+   *  - `dz:glue`, emitted locally by our own weapon when its blob sticks. We
+   *    are the near end, so we feel the pull too.
+   *  - net `glue`, from a peer whose blob stuck to US.
+   *
+   * Both are parsed with the same tolerance the ghost renderer uses, because
+   * the payload shape lives in the weapon module and is not ours to pin down.
+   */
+  interface GlueWire {
+    from?: unknown;
+    to?: unknown;
+    target?: unknown;
+    id?: unknown;
+    anchor?: unknown;
+    x?: number;
+    y?: number;
+    z?: number;
+    duration?: number;
+    broken?: boolean;
+  }
+
+  const _glueAt = new THREE.Vector3();
+
+  function asId(v: unknown): string | null {
+    return typeof v === "string" && v.length > 0 ? v : null;
+  }
+
+  /** Nearest peer to a point, within `range`. Null when nobody is close. */
+  function peerNear(point: THREE.Vector3, range: number): string | null {
+    const peers = ctx.services.net?.peers;
+    if (!peers) return null;
+    let best: string | null = null;
+    let bestSq = range * range;
+    for (const [id, pr] of peers) {
+      if (!pr.posed) continue;
+      const dx = pr.x - point.x;
+      const dy = pr.y + GLUE_CHEST_Y - point.y;
+      const dz = pr.z - point.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < bestSq) {
+        bestSq = d2;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  function onGlueEvent(payload: unknown, fromWire: string | null): void {
+    if (!water) return;
+    const p = (payload ?? {}) as GlueWire;
+    const me = selfId();
+    const from = asId(p.from) ?? fromWire;
+    let to = asId(p.to) ?? asId(p.target) ?? asId(p.id);
+
+    const hasPoint = Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
+    if (hasPoint) _glueAt.set(p.x as number, p.y as number, p.z as number);
+
+    /**
+     * Fill in a far end the shooter could not name.
+     *
+     * A glue blob that sticks to a remote player resolves to a `DamageTarget`
+     * only if something registered one for that peer — and nothing is required
+     * to. Rather than let the strand silently not exist, fall back to geometry:
+     * a blob that landed within a body's width of somebody landed *on* them.
+     * The radius is deliberately tight, so gluing the floor beside a player
+     * still reads as gluing the floor.
+     */
+    const STICK_RADIUS = RADIUS + 0.6;
+    if (!to && hasPoint && from !== me) {
+      _glueChest.set(position.x, position.y + GLUE_CHEST_Y, position.z);
+      if (_glueChest.distanceTo(_glueAt) <= STICK_RADIUS) to = me;
+    }
+    if (!to && hasPoint && from === me) to = peerNear(_glueAt, STICK_RADIUS);
+
+    // Which end are we? Our own gun fired it (`from === me`) → the far end is
+    // `to`. Somebody glued us (`to === me` or the local target id) → the far
+    // end is them.
+    let other: string | null = null;
+    if (from === me) other = to;
+    else if (to === me || to === damageTarget.id) other = from;
+    else return;
+
+    if (p.broken) {
+      breakGlue(other ?? "", "expired");
+      return;
+    }
+    // A named far end is always a body, whatever the sender called the anchor:
+    // the sender says "ground" when *it* could not resolve a target, and we may
+    // have resolved one it could not see.
+    const kind: GlueAnchorKind = other ? "player" : p.anchor === "build" ? "build" : "ground";
+    _glueAt.set(
+      Number.isFinite(p.x) ? (p.x as number) : position.x,
+      Number.isFinite(p.y) ? (p.y as number) : position.y + GLUE_CHEST_Y,
+      Number.isFinite(p.z) ? (p.z as number) : position.z,
+    );
+    if (kind !== "player") {
+      /**
+       * A static anchor is a leash of `anchorRadius`, so it only makes sense
+       * within arm's reach. Honouring one that landed fifty metres away would
+       * reel the player across the map — a grappling hook, which is exactly
+       * the thing this weapon is tuned never to be.
+       */
+      _glueChest.set(position.x, position.y + GLUE_CHEST_Y, position.z);
+      if (_glueChest.distanceTo(_glueAt) > GLUE.maxLength) return;
+    }
+    linkGlue(other, kind, _glueAt, Number.isFinite(p.duration) ? (p.duration as number) : GLUE.duration);
+  }
+
+  /**
+   * Knockback from a soaking. `weapons` says how hard and in which direction;
+   * whoever owns the movement — us — decides what that does to a body. Getting
+   * shoved off your own ramp tower by a Firehose is the best thing in the mode
+   * and it lives in these six lines.
+   */
+  function onSoakPush(payload: unknown): void {
+    // Deliberately NOT gated on `controllable`: being shoved further along the
+    // floor while you are already face-down is the funniest possible outcome
+    // and there is no reason to protect anyone from it.
+    if (!water || service.state === "dead") return;
+    const p = (payload ?? {}) as { id?: string; px?: number; py?: number; pz?: number };
+    if (p.id !== damageTarget.id) return;
+    if (Number.isFinite(p.px)) velocity.x += p.px as number;
+    if (Number.isFinite(p.py)) velocity.y += p.py as number;
+    if (Number.isFinite(p.pz)) velocity.z += p.pz as number;
+  }
+
+  // ---- SOAKED: drips ------------------------------------------------------
+
+  /**
+   * Water shed off a soaked body.
+   *
+   * One `InstancedMesh` of stretched droplets, one draw call, a hard cap of
+   * `DRIP_COUNT`. They are transparent and nearly smooth so the environment map
+   * does the sparkling, they fall under real gravity, and they hand their water
+   * to the wetness field when they land — so standing around dripping actually
+   * makes the floor under you slippery.
+   */
+  interface Drip {
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
+    life: number;
+  }
+
+  let dripMesh: THREE.InstancedMesh | null = null;
+  let dripGeo: THREE.BufferGeometry | null = null;
+  let dripMat: THREE.MeshStandardMaterial | null = null;
+  const drips: Drip[] = [];
+  let dripCursor = 0;
+  const _dripM = new THREE.Matrix4();
+  const _dripQ = new THREE.Quaternion();
+  const _dripP = new THREE.Vector3();
+  const _dripS = new THREE.Vector3();
+  const _dripUp = new THREE.Vector3(0, 1, 0);
+  const _dripDir = new THREE.Vector3();
+
+  function ensureDrips(): boolean {
+    if (dripMesh) return true;
+    if (!water) return false;
+    try {
+      dripGeo = new THREE.SphereGeometry(DRIP_RADIUS, 6, 4);
+      dripMat = new THREE.MeshStandardMaterial({
+        color: 0xdff4ff,
+        // Water reads through gloss and refraction, never through blue paint:
+        // a near-zero roughness with the sky probe behind it is what makes a
+        // droplet catch the sun instead of looking like a painted bead.
+        roughness: 0.04,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        envMap: ctx.services.materials?.env ?? null,
+        envMapIntensity: 2.2,
+      });
+      dripMesh = new THREE.InstancedMesh(dripGeo, dripMat, DRIP_COUNT);
+      dripMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      dripMesh.frustumCulled = false;
+      dripMesh.castShadow = false;
+      dripMesh.receiveShadow = false;
+      dripMesh.renderOrder = 3;
+      for (let i = 0; i < DRIP_COUNT; i++) {
+        drips.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0 });
+        // Park unused instances at zero scale rather than at the origin, where
+        // they would render as a permanent puddle of beads under the map.
+        _dripM.makeScale(0, 0, 0);
+        dripMesh.setMatrixAt(i, _dripM);
+      }
+      ctx.scene.add(dripMesh);
+      return true;
+    } catch (err) {
+      console.warn("[SOAKED] drip pool failed to build:", err);
+      dripMesh = null;
+      return false;
+    }
+  }
+
+  function spawnDrip(): void {
+    if (!dripMesh) return;
+    const d = drips[dripCursor];
+    dripCursor = (dripCursor + 1) % DRIP_COUNT;
+    // `Math.random`, not `ctx.rng`: the shared stream is the one worldgen and
+    // the stumble roll draw from, and burning fifteen draws a second on
+    // cosmetics would make every gameplay roll downstream of how wet you look.
+    const a = Math.random() * TAU;
+    const r = 0.16 + Math.random() * 0.24;
+    // Shed from anywhere on the silhouette: hem, cuffs, the brim of the head.
+    d.x = position.x + Math.cos(a) * r;
+    d.z = position.z + Math.sin(a) * r;
+    d.y = position.y + 0.35 + Math.random() * 1.35;
+    d.vx = velocity.x * 0.25 + (Math.random() - 0.5) * 0.4;
+    d.vz = velocity.z * 0.25 + (Math.random() - 0.5) * 0.4;
+    d.vy = -0.3 - Math.random() * 0.6;
+    d.life = 1.6;
+  }
+
+  function updateDrips(dt: number): void {
+    if (!dripMesh) return;
+    let live = false;
+    for (let i = 0; i < DRIP_COUNT; i++) {
+      const d = drips[i];
+      if (d.life <= 0) continue;
+      live = true;
+      d.life -= dt;
+      d.vy += DRIP_GRAVITY * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.z += d.vz * dt;
+
+      const floor = terrainY(d.x, d.z);
+      if (d.y <= floor + 0.01 || d.life <= 0) {
+        d.life = 0;
+        // The water has to go somewhere, and where it goes is the floor.
+        ctx.services.wetness?.splash(_dripP.set(d.x, floor, d.z), 0.3, 0.12);
+        _dripM.makeScale(0, 0, 0);
+        dripMesh.setMatrixAt(i, _dripM);
+        continue;
+      }
+      // Stretch along the direction of travel: a falling droplet is a streak,
+      // and a sphere at this size just reads as a floating dot.
+      _dripDir.set(d.vx, d.vy, d.vz);
+      const sp = _dripDir.length();
+      if (sp > 1e-4) _dripDir.divideScalar(sp);
+      else _dripDir.set(0, -1, 0);
+      _dripQ.setFromUnitVectors(_dripUp, _dripDir);
+      const stretch = 1 + Math.min(DRIP_STRETCH, sp * 0.09);
+      _dripS.set(1, stretch, 1);
+      _dripP.set(d.x, d.y, d.z);
+      _dripM.compose(_dripP, _dripQ, _dripS);
+      dripMesh.setMatrixAt(i, _dripM);
+    }
+    dripMesh.visible = live;
+    if (live) dripMesh.instanceMatrix.needsUpdate = true;
   }
 
   // ---- drop sequence -----------------------------------------------------
@@ -2229,6 +3295,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     sinceLanding += dt;
     jumpBuffered = Math.max(0, jumpBuffered - dt);
 
+    // --- SOAKED: dryness, slip, the Downpour --------------------------------
+    // Unconditional and first: `slip` is read by the friction below, and a
+    // drying clock that stops in some states is one players cannot reason
+    // about. Costs one branch in classic.
+    if (water) waterStepBegin(dt);
+
     // --- dead: the body stays put and the camera keeps running -------------
     if (service.state === "dead") {
       velocity.multiplyScalar(Math.exp(-4 * dt));
@@ -2247,8 +3319,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       integrate(dt, CROUCH_HEIGHT);
       if (grounded) velocity.y = 0;
       if (service.health > 0) {
-        // Healed back up (a teammate, a rift, a script) — stand up.
+        // Healed back up (a teammate, a rift, a script) — stand up. In SOAKED
+        // that is a towel: clear the out-flag so the wire stops calling us
+        // soaked and the strands can attach again.
         service.state = "ground";
+        soakedOut = false;
       } else if (downTimer <= 0) {
         enterDead();
       }
@@ -2310,7 +3385,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (wishLen > 1e-4) wish.divideScalar(wish.length() || 1);
 
     // --- crouch -------------------------------------------------------------
-    const wantCrouch = active && input.crouch && !inWater;
+    // A stumble forces the crouched capsule: face-down on the ground is a low
+    // silhouette, and it means you cannot be shot at standing height while you
+    // are down there. `active` is already false, so nothing else is needed to
+    // take control away.
+    const wantCrouch = stumbleTimer > 0 || (active && input.crouch && !inWater);
     if (crouching && !wantCrouch && !canStand()) {
       // Blocked overhead — stay down rather than clipping through a floor.
     } else {
@@ -2334,22 +3413,49 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (mz < -0.2) speed *= BACK_SCALE;
     if (input.aim && !sprinting) speed *= 0.62;
 
+    // --- SOAKED: glue coupling ----------------------------------------------
+    // Before the friction block, because the strand's pull is an acceleration
+    // and has to be damped by the same friction everything else is.
+    if (water) {
+      const pressed = strugglePressed;
+      strugglePressed = false;
+      if (activeStrands() > 0) speed *= glueFixed(dt, pressed);
+    }
+
     // --- slope --------------------------------------------------------------
     const slopeCos = groundNormal.lengthSq() > 0 ? groundNormal.y : 1;
     sliding = grounded && slopeCos < MAX_SLOPE_COS;
 
     if (grounded && !sliding) {
-      // Friction: hard when there is no input, light while steering. Symmetric
-      // damping is what makes a controller feel like it is on ice.
+      /**
+       * Friction: hard when there is no input, light while steering. Symmetric
+       * damping is what makes a controller feel like it is on ice.
+       *
+       * In SOAKED, `slip` (from `wetness.frictionAt`) scales it, and a matched
+       * share comes off the acceleration too — friction alone gives you a long
+       * glide you can still steer out of instantly, which does not read as
+       * slipping at all. Both together are the hilarious, recoverable skid.
+       */
       const sp = Math.hypot(velocity.x, velocity.z);
       if (sp > 1e-3) {
-        const f = wishLen > 0.1 ? FRICTION_MOVE : FRICTION_STOP;
+        const f = (wishLen > 0.1 ? FRICTION_MOVE : FRICTION_STOP) * (water ? slip : 1);
         const drop = Math.max(sp, 3.5) * f * dt;
         const scale = Math.max(0, sp - drop) / sp;
         velocity.x *= scale;
         velocity.z *= scale;
       }
-      accelerate(wish, speed * wishLen, ACCEL_GROUND, dt);
+      const groundAccel = water ? ACCEL_GROUND * lerp(slip, 1, 1 - SLIP_ACCEL_SHARE) : ACCEL_GROUND;
+      // Skid feedback: fast across wet ground throws spray and squeals. Only
+      // while there is real speed, or every puddle chirps at you.
+      if (water && slip < 0.85 && sp > SLIP_SPEED) {
+        skidTimer -= dt;
+        if (skidTimer <= 0) {
+          skidTimer = 0.28;
+          ctx.services.audio?.play("skid", { volume: clamp(sp * 0.05, 0.2, 0.6), position });
+          ctx.services.vfx?.impact(position, groundNormal, "water");
+        }
+      }
+      accelerate(wish, speed * wishLen, groundAccel, dt);
       // A small downward bias keeps the capsule pinned to slopes instead of
       // launching off every crest.
       velocity.y = Math.max(velocity.y, -2.5);
@@ -2418,6 +3524,16 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       }
     } else {
       stepDistance = Math.min(stepDistance, 1.0);
+    }
+
+    // A soaked player standing still still drips a trail. Footsteps print on
+    // stride; this covers the case where there is no stride to print on.
+    if (water && grounded) {
+      trackTimer -= dt;
+      if (trackTimer <= 0) {
+        trackTimer = TRACK_PERIOD;
+        printTrack();
+      }
     }
 
     service.state = crouching
@@ -2816,6 +3932,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     const t = ctx.elapsed;
     if (service.state === "dead" || service.state === "down") {
       add((p) => poseDown(p, t), 1);
+    } else if (water && stumbleTimer > 0) {
+      // Face down. The same slumped pose the down state uses, but rolled
+      // through `stumbleRoll` below so it reads as a tumble you took rather
+      // than a body that was switched off.
+      add((p) => poseDown(p, t), 1);
     } else if (dropStage === "bus") {
       add((p) => poseHang(p, t), 1);
     } else if (dropStage === "skydive") {
@@ -2860,12 +3981,39 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // A hit or a shot shoves the upper body, not just the camera.
     poseOut.rot[J_CHEST * 3] -= fireKick * 1.2;
 
+    // --- SOAKED: the shiver --------------------------------------------------
+    // A drenched player standing still has the shakes. Fast, tiny, and it fades
+    // out as soon as they are moving, because a shiver on a sprinting character
+    // reads as a broken animation rather than as being cold.
+    if (water && wetLook > 0.25) {
+      const still = 1 - clamp01(speed / (WALK_SPEED * 0.6));
+      const amp = (wetLook - 0.25) * 0.055 * still;
+      if (amp > 1e-4) {
+        const sh = Math.sin(t * 41) * amp;
+        poseOut.rot[J_CHEST * 3 + 2] += sh;
+        poseOut.rot[J_SHO_L * 3 + 2] += sh * 1.6;
+        poseOut.rot[J_SHO_R * 3 + 2] -= sh * 1.6;
+        poseOut.rot[J_HEAD * 3 + 2] += Math.sin(t * 37.3) * amp * 0.8;
+      }
+    }
+
     // --- apply -------------------------------------------------------------
     for (let j = 0; j < JOINT_COUNT; j++) {
       rig.joints[j].rotation.set(poseOut.rot[j * 3], poseOut.rot[j * 3 + 1], poseOut.rot[j * 3 + 2]);
     }
+    // The tumble: the body keeps rolling for the first half of the fall, then
+    // holds while you scramble up. Decayed rather than cut so the recovery is
+    // a movement and not a snap back to upright.
+    if (water) {
+      if (stumbleTimer > 0) stumbleRoll += dt * STUMBLE_SPIN * clamp01(stumbleTimer / GLUE.fallTime);
+      else stumbleRoll = approach(stumbleRoll, 0, 6, dt);
+    }
     rig.body.position.set(poseOut.root[0], poseOut.root[1] - landingDip * 0.5, poseOut.root[2]);
-    rig.body.rotation.set(poseOut.root[3], poseOut.root[4], poseOut.root[5] + leanRoll * 0.5);
+    rig.body.rotation.set(
+      poseOut.root[3],
+      poseOut.root[4],
+      poseOut.root[5] + leanRoll * 0.5 + Math.sin(stumbleRoll) * 0.55,
+    );
 
     rig.root.position.set(0, 0, 0);
     rigRoot.position.copy(position);
@@ -2897,6 +4045,73 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
   }
 
+  // ---- SOAKED: the wet look -----------------------------------------------
+
+  /** Base albedo tint of each body material, captured once so we can restore it. */
+  const dryTint: THREE.Color[] = [];
+  const dryEnv: number[] = [];
+  let wetLookApplied = -1;
+
+  /**
+   * Make being wet visible on your own body.
+   *
+   * Water reads through gloss and refraction, never through blue paint — so
+   * the albedo goes DARKER and neutral (a wet shirt is a dark shirt), the
+   * roughness comes down so the sun and the sky probe start showing up in the
+   * surface, and the environment contribution comes up to meet it. Nothing is
+   * tinted toward cyan; the only blue on a soaked player is the sky reflected
+   * in them, which is the honest version of the effect and the readable one.
+   */
+  function updateWetLook(dt: number): void {
+    const targetWet = service.wetness;
+    // Getting wet is instant; drying off is slow. Matching the rates would
+    // make a faceful of water fade in over a second and land on nothing.
+    wetLook = approach(wetLook, targetWet, targetWet > wetLook ? 14 : 1.2, dt);
+
+    if (rig) {
+      if (dryTint.length === 0) {
+        for (const m of rig.materials) {
+          const std = m as THREE.MeshStandardMaterial;
+          dryTint.push(std.color ? std.color.clone() : new THREE.Color(1, 1, 1));
+          dryEnv.push(typeof std.envMapIntensity === "number" ? std.envMapIntensity : 1);
+        }
+      }
+      // Uniform writes are cheap but not free, and this changes slowly.
+      if (Math.abs(wetLook - wetLookApplied) > 0.01) {
+        wetLookApplied = wetLook;
+        for (let i = 0; i < rig.materials.length; i++) {
+          const std = rig.materials[i] as THREE.MeshStandardMaterial;
+          if (!std.color) continue;
+          // 0.55 at fully soaked: dark enough to read across a street, light
+          // enough that the vertex-colour wear detail survives it.
+          const k = 1 - wetLook * 0.45;
+          std.color.copy(dryTint[i]).multiplyScalar(k);
+          // `roughness` multiplies the baked roughness map, so this is a
+          // proportional polish of whatever the surface already was.
+          std.roughness = 1 - wetLook * 0.62;
+          std.envMapIntensity = dryEnv[i] * (1 + wetLook * 1.4);
+        }
+      }
+    }
+
+    // --- drips ---------------------------------------------------------------
+    if (wetLook > 0.08 && service.state !== "dead") {
+      if (ensureDrips()) {
+        // Shedding scales with how wet you are and doubles while you are
+        // actually moving — a run should throw water off you.
+        const moving = clamp01(Math.hypot(velocity.x, velocity.z) / SPRINT_SPEED);
+        dripAccum += DRIP_RATE * wetLook * (0.5 + moving) * dt;
+        let budget = 4;
+        while (dripAccum >= 1 && budget-- > 0) {
+          dripAccum -= 1;
+          spawnDrip();
+        }
+        dripAccum = Math.min(dripAccum, 1);
+      }
+    }
+    updateDrips(dt);
+  }
+
   // ---- per-frame ----------------------------------------------------------
 
   const offRecoil: Array<() => void> = [];
@@ -2912,6 +4127,43 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
         fireKickPitch += clamp(mag * 0.012, 0, 0.05);
       }),
     );
+  }
+
+  // --- SOAKED wiring --------------------------------------------------------
+  // Local events first: `dz:glue` fires when OUR gun sticks (we are the near
+  // end and feel the pull too), `dz:soak` carries the knockback weapons asked
+  // for. Both are no-ops outside water mode.
+  if (water) {
+    offRecoil.push(ctx.on("dz:glue", (p) => onGlueEvent(p, null)));
+    offRecoil.push(
+      ctx.on("dz:glue-break", (p) => {
+        const g = (p ?? {}) as { to?: string; from?: string; reason?: string };
+        // Ours already broke locally; this catches a break announced by the
+        // module that owns the strand's rendering.
+        if (g.from === selfId() && g.to) breakGlue(g.to, "expired");
+      }),
+    );
+    offRecoil.push(ctx.on("dz:soak", onSoakPush));
+    // Squad id, set by the lobby. Same string = teammates = do not soak.
+    offRecoil.push(
+      ctx.on("soaked:team", (p) => {
+        const t = (p ?? {}) as { team?: string };
+        team = typeof t.team === "string" && t.team ? t.team : null;
+      }),
+    );
+  }
+
+  /**
+   * Net subscriptions are late-bound: `net` boots after us in some orders and
+   * may never boot at all. Retried from `update` until it takes, then never
+   * again.
+   */
+  const netOff: Array<() => void> = [];
+  function ensureNetBound(): void {
+    if (!water || netOff.length > 0) return;
+    const net = ctx.services.net;
+    if (!net) return;
+    netOff.push(net.on("glue", (from, payload) => onGlueEvent(payload, from)));
   }
 
   let audioBound = false;
@@ -2938,6 +4190,10 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // correct place to read it and the standard one-frame jump buffer.
     if (input.pressed.has("Space") && service.controllable) jumpBuffered = JUMP_BUFFER;
     jumpHeld = input.jump;
+    // Mashing to peel off glue and hopping are the same key on purpose: the
+    // instinctive reaction to being stuck is to jump, and rewarding it is
+    // better than teaching a second binding nobody will read.
+    if (water && input.pressed.has(GLUE.struggleKey)) strugglePressed = true;
     if (input.pressed.has("KeyF") && input.locked) {
       firstPerson = !firstPerson;
       camInit = false;
@@ -2963,6 +4219,14 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
         if (windLevel > 0.02) audio.ambience("wind", true, windLevel);
         else audio.ambience("wind", false);
       }
+    }
+
+    // --- SOAKED: the wire and the wet look -----------------------------------
+    // Before the animation, because `wetLook` is what the shiver reads.
+    if (water) {
+      ensureNetBound();
+      publishPose();
+      updateWetLook(dt);
     }
 
     updateAnimation(dt);
@@ -2993,6 +4257,31 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     hud.z = position.z;
     hud.yaw = yaw;
     hud.pitch = pitch;
+    if (water) {
+      hud.dryness = service.health;
+      hud.poncho = service.shield;
+      hud.band = drynessBand(service.health).key;
+      hud.wet = wetLook;
+      hud.slip = slip;
+      hud.struggle = 0;
+      hud.gluedTo = null;
+      let glued = false;
+      for (const s of strands) {
+        if (!s.active) continue;
+        glued = true;
+        // Report the strand you are closest to peeling off, so the meter the
+        // HUD draws is the one the mashing is actually moving.
+        if (s.struggle >= hud.struggle) {
+          hud.struggle = s.struggle;
+          hud.gluedTo = s.id || null;
+        }
+      }
+      hud.glued = glued;
+      hud.stumbling = stumbleTimer > 0;
+      hud.soaked = soakedOut;
+      hud.inDownpour = inDownpour;
+      hud.drying = drying;
+    }
     ctx.emit("dz:hud", hud);
   }
 
@@ -3012,10 +4301,25 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     },
     dispose() {
       for (const off of offRecoil) off();
+      for (const off of netOff) off();
+      netOff.length = 0;
       unregisterTarget?.();
       unregisterTarget = null;
       ctx.services.audio?.ambience("wind", false);
       if (ctx.services.player === service) ctx.services.player = undefined;
+
+      // The drip pool is ours: one InstancedMesh, one geometry, one material.
+      // A leaked WebGL resource here breaks the NEXT world a visitor opens.
+      if (dripMesh) {
+        dripMesh.removeFromParent();
+        dripMesh.dispose();
+        dripMesh = null;
+      }
+      dripGeo?.dispose();
+      dripGeo = null;
+      dripMat?.dispose();
+      dripMat = null;
+      drips.length = 0;
 
       rigRoot.removeFromParent();
       if (rig) {

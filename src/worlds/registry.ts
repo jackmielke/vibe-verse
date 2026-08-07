@@ -198,6 +198,23 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "soaked",
+    route: "/soaked",
+    aliases: ["/water-fight", "/soak"],
+    name: "Soaked",
+    emoji: "💦",
+    kind: "game",
+    blurb:
+      "The same island as Drop Zero, in swim shorts. Ten soakers, water balloons, a glue gun that sticks two people together — grab a room code, text it to a friend, and be the last one dry.",
+    status: "Playable — multiplayer water fight",
+    accent: "#38bdf8",
+    featured: true,
+    source: "src/royale (mode: water)",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "blue-angels",
     route: "/blue-angels",
     aliases: ["/angels", "/seafair-show"],

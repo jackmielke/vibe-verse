@@ -34,13 +34,39 @@
  * belongs in the live model and a painter. If it changes when the *player
  * does something*, it can be React state.
  *
- * Everything is `pointer-events-none` except the buttons on the end cards.
+ * Everything is `pointer-events-none` except the buttons on the end cards
+ * and, in water mode, the chat input.
+ *
+ * ## SOAKED (`engine.ctx.mode === "water"`)
+ *
+ * The same HUD, re-lettered. Health becomes DRYNESS, shield becomes the
+ * PONCHO, the magazine becomes a TANK, "eliminated" becomes "soaked" — and
+ * three panels appear that classic has no use for: the squad list, the chat
+ * box and the room code. Every water label is read from `WATER.strings`;
+ * there are no water literals in this file, so re-wording the mode is a
+ * one-table edit and not a grep.
+ *
+ * The mode flag is the only branch. `classic` renders byte-for-byte what it
+ * rendered before — every water addition is behind `water &&`, and every
+ * shared panel takes `water` as a prop and returns early on the classic path.
+ *
+ * Two documented exceptions to "engine events only":
+ *
+ *  - `engine.ctx.mode`, which is a boot-time constant rather than a service.
+ *  - `engine.ctx.services.net`, for the squad list and chat. Peer poses move
+ *    every frame, so routing them through events would mean an event per
+ *    peer per frame. It is null-checked everywhere and the panels simply do
+ *    not render when the transport never booted.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Engine } from "../engine/core";
 import { RARITY_COLOR, type Rarity } from "../types";
+import { WATER, drynessBand, fmt } from "../mode/water";
+// Type-only, but it also carries the module augmentation that puts `net` on
+// `WorldServices` — without this import `ctx.services.net` does not typecheck.
+import type { ChatLine, PeerState } from "../net/types";
 
 /* ------------------------------------------------------------------------ *
  * Small utilities
@@ -114,6 +140,88 @@ const MAT_STYLE: Record<"wood" | "stone" | "metal", MaterialStyle> = {
   wood: { label: "Wood", bright: "#d79a56", deep: "#79451e" },
   stone: { label: "Stone", bright: "#cdd3d8", deep: "#6c747b" },
   metal: { label: "Metal", bright: "#9fd8f5", deep: "#4d6f85" },
+};
+
+/* ------------------------------------------------------------------------ *
+ * SOAKED palette
+ *
+ * Everything here is derived from `mode/water.ts` rather than picked by eye,
+ * so the bar, the map ring and the built wall in the world are all the same
+ * blue. The one thing invented locally is the *plate*: SOAKED's overlay sits
+ * on a sunnier render than Drop Zero's, so the panels lighten and pick up a
+ * cyan rim instead of the cold near-black.
+ * ------------------------------------------------------------------------ */
+
+const W = WATER.strings;
+const DOWN = WATER.downpour.palette;
+
+const W_INK = "rgba(8,26,44,0.62)";
+const W_INK_SOLID = "rgba(8,26,44,0.88)";
+const W_EDGE = "rgba(186,236,255,0.26)";
+const W_BEVEL =
+  "inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 12px rgba(0,24,44,0.45)";
+
+/** The water plate. Same job as `plate`, one shade brighter and cyan-rimmed. */
+const wPlate: CSSProperties = {
+  background: W_INK,
+  border: `1px solid ${W_EDGE}`,
+  boxShadow: W_BEVEL,
+  backdropFilter: "blur(3px)",
+};
+
+/** Pick the plate for the mode. Saves a ternary at twenty call sites. */
+const modePlate = (water: boolean): CSSProperties => (water ? wPlate : plate);
+
+/**
+ * Squad colours. Bright beach-towel hues, deliberately far apart in hue so
+ * three names in a list are told apart at a glance and by the same colour on
+ * the map. Assigned by hashing a stable key, so a teammate keeps their colour
+ * for the whole match without anyone having to allocate one.
+ */
+const TEAM_COLORS = [0x5ecfff, 0xffe45e, 0xff5fa2, 0x8affc1, 0xff9f43, 0xc08aff];
+
+/**
+ * Mix a colour toward white until it clears a luminance floor.
+ *
+ * The dryness bands run from cream down to a deep blue, which is exactly
+ * right for a *fill* and unreadable as *text* on a dark plate. Every band
+ * label goes through this, so "SOAKED THROUGH" stays legible without the
+ * band table having to carry a second, UI-only colour.
+ */
+function lift(c: number, min = 0.66): number {
+  const r = (c >> 16) & 255;
+  const g = (c >> 8) & 255;
+  const b = c & 255;
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  if (lum >= min) return c;
+  const t = (min - lum) / (1 - lum);
+  const m = (v: number): number => Math.round(v + (255 - v) * t);
+  return (m(r) << 16) | (m(g) << 8) | m(b);
+}
+
+function teamColor(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return TEAM_COLORS[h % TEAM_COLORS.length];
+}
+
+/** Material chip styling for water, mirrored straight off `WATER.materials`. */
+const W_MAT_STYLE: Record<"wood" | "stone" | "metal", MaterialStyle> = {
+  wood: {
+    label: W.materials.wood,
+    bright: hex(WATER.materials.wood.accent),
+    deep: hex(WATER.materials.wood.color),
+  },
+  stone: {
+    label: W.materials.stone,
+    bright: hex(WATER.materials.stone.accent),
+    deep: hex(WATER.materials.stone.color),
+  },
+  metal: {
+    label: W.materials.metal,
+    bright: hex(WATER.materials.metal.accent),
+    deep: hex(WATER.materials.metal.color),
+  },
 };
 
 /* ------------------------------------------------------------------------ *
@@ -231,6 +339,31 @@ interface Live {
   mapCenterZ: number;
   /** Rolling clock the minimap uses for dashes and pulses. */
   t: number;
+
+  // ---- SOAKED -----------------------------------------------------------
+  /**
+   * Dryness and poncho, 0..max. These default to `health`/`shield` because
+   * the water player rides the same `PlayerService` and publishes the same
+   * `dz:hud` payload — the explicit `dry`/`poncho` fields are an override for
+   * a system that wants to report them separately, not a requirement.
+   */
+  dry: number;
+  dryMax: number;
+  poncho: number;
+  ponchoMax: number;
+  ghostDry: number;
+  ghostPoncho: number;
+  ghostHoldD: number;
+  ghostHoldP: number;
+  /** True while natural drying is actually ticking up. */
+  drying: boolean;
+  /** True while standing in the Downpour, in the sea, or in a puddle. */
+  tooWetToDry: boolean;
+  /** A refillable water source is in reach. */
+  nearWater: boolean;
+  /** Glue strand state, for the struggle prompt. */
+  gluedTo: string;
+  struggle: number;
 }
 
 function makeLive(): Live {
@@ -326,6 +459,20 @@ function makeLive(): Live {
     mapCenterX: 0,
     mapCenterZ: 0,
     t: 0,
+
+    dry: WATER.dryness.max,
+    dryMax: WATER.dryness.max,
+    poncho: 0,
+    ponchoMax: WATER.dryness.ponchoMax,
+    ghostDry: WATER.dryness.max,
+    ghostPoncho: 0,
+    ghostHoldD: 0,
+    ghostHoldP: 0,
+    drying: false,
+    tooWetToDry: false,
+    nearWater: false,
+    gluedTo: "",
+    struggle: 0,
   };
 }
 
@@ -355,6 +502,23 @@ function stepLive(l: Live, dt: number): void {
     if (l.ghostHoldS > 0) l.ghostHoldS -= dt;
     else l.ghostShield = Math.max(l.shield, l.ghostShield - dt * GHOST_RATE * l.maxShield);
   } else l.ghostShield = l.shield;
+
+  // The dryness pair runs the same catch-up. It is stepped unconditionally
+  // rather than behind a mode check because it costs eight comparisons and a
+  // mode branch in the hot loop would cost about the same.
+  if (l.ghostDry > l.dry) {
+    if (l.ghostHoldD > 0) l.ghostHoldD -= dt;
+    else l.ghostDry = Math.max(l.dry, l.ghostDry - dt * GHOST_RATE * l.dryMax);
+  } else {
+    // Caught up (or drying back off). Re-prime the hold here rather than
+    // tracking a `prevDry`, so the next soak still gets its full pause.
+    l.ghostDry = l.dry;
+    l.ghostHoldD = GHOST_HOLD;
+  }
+  if (l.ghostPoncho > l.poncho) {
+    if (l.ghostHoldP > 0) l.ghostHoldP -= dt;
+    else l.ghostPoncho = Math.max(l.poncho, l.ghostPoncho - dt * GHOST_RATE * l.ponchoMax);
+  } else l.ghostPoncho = l.poncho;
 
   // Firing bloom decays faster than it builds so the crosshair snaps shut the
   // instant you stop — a slow close reads as input lag.
@@ -531,10 +695,21 @@ const emptySlots = (): SlotMeta[] => {
  * Root
  * ------------------------------------------------------------------------ */
 
+/** A squadmate as the panel needs them — identity only; numbers are painted. */
+interface SquadMate {
+  id: string;
+  name: string;
+  agent: boolean;
+  color: number;
+}
+
 export default function HUD({ engine, locked }: { engine: Engine; locked: boolean }) {
   const live = useRef<Live>(makeLive());
   const clock = useMemo(() => new HudClock(), []);
   const nextId = useRef(1);
+
+  /** SOAKED or Drop Zero. Fixed at boot, so it is safe to read once. */
+  const water = engine.ctx.mode === "water";
 
   const [slots, setSlots] = useState<SlotMeta[]>(emptySlots);
   const [phase, setPhase] = useState("warmup");
@@ -551,6 +726,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
   const [canRestart, setCanRestart] = useState(false);
   const [needsReload, setNeedsReload] = useState(false);
   const [map, setMap] = useState<MapModel | null>(null);
+
 
   /* ---- the frame loop -------------------------------------------------- */
 
@@ -591,6 +767,9 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
     const l = live.current;
     const offs: (() => void)[] = [];
     const on = (event: string, fn: (p: unknown) => void) => offs.push(engine.on(event, fn));
+    // Read once here rather than closing over the render-scope `water`, so
+    // this effect keeps `[engine]` as its only dependency.
+    const isWater = engine.ctx.mode === "water";
 
     // Signatures let a payload that fires every frame drive React state only
     // when the part React cares about actually changed.
@@ -601,6 +780,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
     let stormSig = false;
     let promptSig = "";
     let consumeSig = "";
+    let glueSig = false;
     let lastPickup = { name: "", at: 0 };
 
     on("dz:hud", (p) => {
@@ -624,6 +804,16 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
         stateSig = s;
         setPlayerState(s);
       }
+      // Water vitals. Defaulting off health/shield means the dryness meter is
+      // live the moment SOAKED boots, whether or not the player system has
+      // started publishing the water-specific fields yet.
+      l.dry = num(d.dry, l.health);
+      l.dryMax = Math.max(1, num(d.maxDry, l.maxHealth));
+      l.poncho = num(d.poncho, l.shield);
+      l.ponchoMax = Math.max(1, num(d.maxPoncho, l.maxShield));
+      l.drying = bool(d.drying);
+      l.tooWetToDry = bool(d.tooWetToDry) || bool(d.inRain);
+      l.nearWater = bool(d.nearWater);
     });
 
     on("dz:inventory", (p) => {
@@ -767,19 +957,32 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
     on("dz:storm-phase", (p) => {
       const d = rec(p);
       const circle = Math.round(num(d.circle, 1));
+      const closing = bool(d.closing);
       l.stormTimerMax = 1;
-      pushToast(
-        bool(d.closing) ? "The storm is closing" : `Zone ${circle} incoming`,
-        bool(d.closing) ? `Zone ${circle}` : "Move to the safe area",
-        "urgent",
-      );
+      if (isWater) {
+        pushToast(
+          closing ? W.stormWarn : `${W.stormName} ${circle}`,
+          closing ? `${W.stormName} ${circle}` : W.stormSafe,
+          "urgent",
+        );
+      } else {
+        pushToast(
+          closing ? "The storm is closing" : `Zone ${circle} incoming`,
+          closing ? `Zone ${circle}` : "Move to the safe area",
+          "urgent",
+        );
+      }
     });
 
     on("dz:storm-warn", (p) => {
       const d = rec(p);
       const seconds = Math.round(num(d.seconds));
       if (seconds > 0 && seconds <= 30) {
-        pushToast(`Storm closes in ${seconds}s`, "", "urgent");
+        pushToast(
+          isWater ? fmt(W.stormClosing, { t: `${seconds}s` }) : `Storm closes in ${seconds}s`,
+          "",
+          "urgent",
+        );
       }
     });
 
@@ -864,7 +1067,19 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       });
       if (byPlayer && !onPlayer) {
         l.eliminations += 1;
-        pushToast(`${victim} eliminated`, `${l.eliminations} elimination${l.eliminations === 1 ? "" : "s"}`, "elim");
+        if (isWater) {
+          pushToast(
+            fmt(W.eliminatedFeed, { by: "You", name: victim }),
+            `${l.eliminations} ${W.elimsLabel}`,
+            "elim",
+          );
+        } else {
+          pushToast(
+            `${victim} eliminated`,
+            `${l.eliminations} elimination${l.eliminations === 1 ? "" : "s"}`,
+            "elim",
+          );
+        }
       }
     });
 
@@ -967,6 +1182,26 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       setMap(buildMapModel(num(d.worldSize, 1500), pads));
     });
 
+    // ---- SOAKED ---------------------------------------------------------
+    // Dormant in classic: `dz:glue` is never emitted there, so the prompt
+    // never mounts and this handler never runs.
+    on("dz:glue", (p) => {
+      const d = rec(p);
+      const active = bool(d.active);
+      l.gluedTo = active ? str(d.name, "?") : "";
+      l.struggle = clamp01(num(d.struggle, num(d.progress)));
+      // `dz:glue` may well fire every frame while the strand is live; only
+      // the edge into "glued" is worth a toast.
+      if (active !== glueSig) {
+        glueSig = active;
+        if (active) pushToast(W.glued, fmt(W.gluePrompt, { key: WATER.glue.struggleKey }), "urgent");
+      }
+    });
+
+    on("dz:stumble", () => {
+      if (isWater) pushToast(W.stumbled, "", "urgent");
+    });
+
     function pushToast(text: string, sub: string, tone: "info" | "urgent" | "elim"): void {
       setToasts((t) => {
         const next = t.slice(-2);
@@ -1006,40 +1241,67 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
           headline is the single cheapest-looking thing a BR can do. */}
       {locked && !ending && (
         <div className="pointer-events-none absolute inset-0 z-20 select-none font-body text-white">
-          <Vignettes clock={clock} live={live} />
+          <Vignettes clock={clock} live={live} water={water} />
           <Crosshair clock={clock} live={live} />
-          <HitMarker clock={clock} live={live} />
-          <DamageArcs arcs={arcs} />
+          <HitMarker clock={clock} live={live} water={water} />
+          <DamageArcs arcs={arcs} water={water} />
           <AnimatePresence>{scoped && <ScopeOverlay key="scope" />}</AnimatePresence>
 
           <div className="absolute bottom-6 left-6 flex flex-col gap-2">
-            <Vitals clock={clock} live={live} />
+            {water ? (
+              <DrynessMeter clock={clock} live={live} />
+            ) : (
+              <Vitals clock={clock} live={live} />
+            )}
           </div>
 
           <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2">
             <ConsumeBar clock={clock} live={live} consume={consume} />
-            <MaterialsRow clock={clock} live={live} />
-            <InventoryBar clock={clock} live={live} slots={slots} />
+            {water && <TankStatus clock={clock} live={live} slots={slots} />}
+            <MaterialsRow clock={clock} live={live} water={water} />
+            <InventoryBar clock={clock} live={live} slots={slots} water={water} />
           </div>
 
           <div className="absolute right-6 top-5 flex w-[236px] flex-col items-stretch gap-2">
-            <Minimap clock={clock} live={live} map={map} />
-            <StormPanel clock={clock} live={live} />
-            <AliveBlock clock={clock} live={live} />
-            <KillFeed feed={feed} />
+            <Minimap clock={clock} live={live} map={map} water={water} />
+            <StormPanel clock={clock} live={live} water={water} />
+            <AliveBlock clock={clock} live={live} water={water} />
+            <KillFeed feed={feed} water={water} />
           </div>
 
-          <ToastStack toasts={toasts} />
+          {/* Clear of the app's HomeButton, which is pinned at left-3 top-3
+              and is 40 px tall — the one piece of global chrome a chromeless
+              world still gets. */}
+          {water && (
+            <div className="absolute left-6 top-[58px] flex w-[228px] flex-col items-stretch gap-2">
+              <RoomCode engine={engine} />
+              <SquadPanel clock={clock} live={live} engine={engine} />
+            </div>
+          )}
+
+          <ToastStack toasts={toasts} water={water} />
           <PickupLog pickups={pickups} />
           <InteractPrompt clock={clock} live={live} prompt={prompt} />
+          {water && <GluePrompt clock={clock} live={live} />}
           {dropping && <DropOverlay clock={clock} live={live} phase={phase} playerState={playerState} />}
-          <StormBanner inStorm={inStorm} clock={clock} live={live} />
+          <StormBanner inStorm={inStorm} clock={clock} live={live} water={water} />
         </div>
       )}
 
+      {/* Chat lives OUTSIDE the `locked` gate on purpose. The page unmounts
+          the rest of the HUD the moment pointer lock drops, and a chat box
+          that vanishes when you look away from the game is not a chat box. */}
+      {water && !ending && <ChatPanel engine={engine} />}
+
       <AnimatePresence>
         {ending && (
-          <EndCard key={ending.kind} ending={ending} canRestart={canRestart} onRestart={restart} />
+          <EndCard
+            key={ending.kind}
+            ending={ending}
+            canRestart={canRestart}
+            onRestart={restart}
+            water={water}
+          />
         )}
       </AnimatePresence>
     </>
@@ -1218,6 +1480,216 @@ function Vitals({ clock, live }: PanelProps) {
 }
 
 /* ------------------------------------------------------------------------ *
+ * SOAKED — dryness + poncho
+ *
+ * The health bar, restated. Three things make it a *water* bar rather than a
+ * recoloured one:
+ *
+ *  - It is bright. Dryness is the good state, so a full bar is warm sand and
+ *    sunlight; getting wet drags it down through the `DRYNESS_BANDS` blues.
+ *    The colour is read from the band, never picked here.
+ *  - It drips. Under half a bar, droplets start running off the bottom edge
+ *    and the whole plate picks up a cyan glow that quickens as you go. That
+ *    is the urgency signal — not a red vignette. Nobody is dying.
+ *  - It says what you *are*. "DAMP", "DRENCHED", "SOAKED THROUGH" is a squad
+ *    callout you can shout at Claude, which is the point of naming the bands.
+ * ------------------------------------------------------------------------ */
+
+/** Droplets running off the bottom of the bar. Phase-offset so they scatter. */
+const DRIPS = [0.12, 0.28, 0.41, 0.56, 0.68, 0.83, 0.94];
+
+function DrynessMeter({ clock, live }: PanelProps) {
+  const dFill = useRef<HTMLDivElement | null>(null);
+  const dGhost = useRef<HTMLDivElement | null>(null);
+  const pFill = useRef<HTMLDivElement | null>(null);
+  const pGhost = useRef<HTMLDivElement | null>(null);
+  const dNum = useRef<HTMLSpanElement | null>(null);
+  const pNum = useRef<HTMLSpanElement | null>(null);
+  const bandLabel = useRef<HTMLSpanElement | null>(null);
+  const ponchoRow = useRef<HTMLDivElement | null>(null);
+  const wetGlow = useRef<HTMLDivElement | null>(null);
+  const dryPill = useRef<HTMLDivElement | null>(null);
+  const dryPillText = useRef<HTMLSpanElement | null>(null);
+  const drips = useRef<(HTMLDivElement | null)[]>([]);
+
+  const wStore = useRef<number[]>([-1, -1, -1, -1]);
+  const tStore = useRef<string[]>(["", "", "", ""]);
+  const oStore = useRef<number[]>([-1, -1, -1]);
+  const lastBand = useRef("");
+
+  usePainter(clock, () => {
+    const l = live.current;
+    const pct = clamp01(l.dry / l.dryMax) * 100;
+    const band = drynessBand(pct);
+
+    setWidth(dFill.current, pct, wStore.current, 0);
+    setWidth(dGhost.current, clamp01(l.ghostDry / l.dryMax) * 100, wStore.current, 1);
+    setWidth(pFill.current, clamp01(l.poncho / l.ponchoMax) * 100, wStore.current, 2);
+    setWidth(pGhost.current, clamp01(l.ghostPoncho / l.ponchoMax) * 100, wStore.current, 3);
+    setText(dNum.current, `${Math.ceil(l.dry)}`, tStore.current, 0);
+    setText(pNum.current, `${Math.ceil(l.poncho)}`, tStore.current, 1);
+    setText(bandLabel.current, W.bands[band.key], tStore.current, 2);
+    setOpacity(ponchoRow.current, l.poncho > 0 ? 1 : 0.34, oStore.current, 0);
+
+    if (lastBand.current !== band.key) {
+      lastBand.current = band.key;
+      const fill = dFill.current;
+      if (fill) {
+        // Band colour drives the bar; the lighter stop is the same hue lifted
+        // toward white, which is what gives it the wet-highlight look.
+        fill.style.backgroundImage = `linear-gradient(180deg, ${rgba(band.color, 1)}, ${rgba(band.color, 0.72)} 55%, rgba(255,255,255,0.22))`;
+        fill.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.65), 0 0 12px ${rgba(band.color, 0.6)}`;
+      }
+      const lbl = bandLabel.current;
+      if (lbl) lbl.style.color = hex(lift(band.color));
+    }
+
+    // Urgency: a cyan breathing glow from "wet" downward, quickening as the
+    // bar empties. Funny-tense, not grim — this is the "you're about to lose
+    // a water fight" feeling, not a death rattle.
+    const wet = clamp01(1 - pct / 55);
+    const beat = 0.55 + 0.45 * Math.sin(l.t * (4 + wet * 7));
+    setOpacity(wetGlow.current, wet * beat * 0.9, oStore.current, 1);
+
+    // Drips. Each one falls, fades, and restarts on its own phase; the whole
+    // set is off while you are dry so it stays information, not decoration.
+    for (let i = 0; i < DRIPS.length; i++) {
+      const el = drips.current[i];
+      if (!el) continue;
+      if (wet <= 0.02) {
+        if (el.style.opacity !== "0") el.style.opacity = "0";
+        continue;
+      }
+      const speed = 0.7 + wet * 0.8;
+      const u = (l.t * speed + DRIPS[i] * 3.1) % 1;
+      el.style.opacity = `${(1 - u) * wet * 0.95}`;
+      el.style.transform = `translate(-50%, ${u * 16}px) scaleY(${1 + u * 0.9})`;
+    }
+
+    // Drying status. Two states worth showing and one worth staying quiet
+    // about: a full bar needs no caption.
+    const showDry = l.tooWetToDry || l.drying || pct >= 99.5;
+    setOpacity(dryPill.current, showDry ? 1 : 0, oStore.current, 2);
+    if (showDry) {
+      setText(
+        dryPillText.current,
+        l.tooWetToDry ? W.dryingBlocked : pct >= 99.5 ? W.fullyDry : W.dryingOff,
+        tStore.current,
+        3,
+      );
+      const t = dryPillText.current;
+      if (t) t.style.color = l.tooWetToDry ? hex(DOWN.rain) : "#ffe9a8";
+    }
+  });
+
+  return (
+    <div className="relative w-[320px]">
+      <div
+        ref={wetGlow}
+        className="pointer-events-none absolute -inset-3 rounded-lg opacity-0"
+        style={{
+          boxShadow: `0 0 30px 8px ${rgba(DOWN.wall, 0.42)}`,
+          background: `${rgba(DOWN.rain, 0.07)}`,
+        }}
+      />
+
+      {/* Drying status */}
+      <div ref={dryPill} className="mb-1.5 flex w-fit items-center gap-1.5 rounded-[3px] px-2 py-0.5 opacity-0" style={wPlate}>
+        <svg viewBox="0 0 16 16" className="h-3 w-3">
+          <path d="M8 1.6c2.6 3 4.4 5.1 4.4 7.2A4.4 4.4 0 0 1 8 13.2 4.4 4.4 0 0 1 3.6 8.8c0-2.1 1.8-4.2 4.4-7.2z" fill={hex(DOWN.rain)} />
+          <path d="M6.4 4.6c-1 1.4-1.6 2.6-1.6 3.6" stroke="rgba(255,255,255,0.8)" strokeWidth="1" fill="none" strokeLinecap="round" />
+        </svg>
+        <span
+          ref={dryPillText}
+          className="font-heading text-[9px] font-black uppercase tracking-[0.22em] text-amber-100"
+        >
+          {W.dryingOff}
+        </span>
+      </div>
+
+      {/* Poncho — the shield, worn on top */}
+      <div ref={ponchoRow} className="mb-1.5 flex items-center gap-2">
+        <div
+          className="flex h-[15px] w-[46px] items-center justify-end rounded-[3px] px-1.5 font-heading text-[12px] font-black tabular-nums"
+          style={{ ...wPlate, color: "#eafaff" }}
+        >
+          <span ref={pNum}>0</span>
+        </div>
+        <div
+          className="relative h-[15px] flex-1 overflow-hidden rounded-[3px]"
+          style={{ background: "rgba(2,18,32,0.6)", border: `1px solid ${W_EDGE}`, boxShadow: W_BEVEL }}
+        >
+          <div ref={pGhost} className="absolute inset-y-0 left-0 w-0" style={{ background: "rgba(214,246,255,0.4)" }} />
+          <div
+            ref={pFill}
+            className="absolute inset-y-0 left-0 w-0"
+            style={{
+              // Translucent, glossy, faintly striped — a plastic poncho, not
+              // a second health bar. It reads as something you are wearing.
+              backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.85), ${rgba(0x9be8ff, 0.75)} 52%, ${rgba(0x4fc3f7, 0.8)})`,
+              boxShadow: `inset 0 1px 0 rgba(255,255,255,0.75), 0 0 10px ${rgba(0x7fd7ff, 0.5)}`,
+            }}
+          />
+          <div className="absolute inset-0" style={tickOverlay(20)} />
+          <div className="absolute inset-0" style={barGloss} />
+        </div>
+        <span className="w-[54px] text-[8px] font-bold uppercase tracking-[0.14em] text-sky-100/45">
+          {W.ponchoLabel}
+        </span>
+      </div>
+
+      {/* Dryness */}
+      <div className="flex items-center gap-2">
+        <div
+          className="flex h-[22px] w-[46px] items-center justify-end rounded-[3px] px-1.5 font-heading text-[16px] font-black tabular-nums"
+          style={{ ...wPlate, color: "#fff8e6" }}
+        >
+          <span ref={dNum}>100</span>
+        </div>
+        <div className="relative flex-1">
+          <div
+            className="relative h-[22px] overflow-hidden rounded-[3px]"
+            style={{ background: "rgba(2,18,32,0.62)", border: `1px solid ${W_EDGE}`, boxShadow: W_BEVEL }}
+          >
+            <div ref={dGhost} className="absolute inset-y-0 left-0 w-0" style={{ background: "rgba(255,244,214,0.45)" }} />
+            <div ref={dFill} className="absolute inset-y-0 left-0 w-0" />
+            <div className="absolute inset-0" style={tickOverlay(20)} />
+            <div className="absolute inset-0" style={barGloss} />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8.5px] font-bold uppercase tracking-[0.24em] text-black/45">
+              {W.drynessLabel}
+            </span>
+          </div>
+          {/* Drips hang off the bottom edge of the bar itself. */}
+          <div className="pointer-events-none absolute inset-x-0 top-full h-5 overflow-hidden">
+            {DRIPS.map((d, i) => (
+              <div
+                key={d}
+                ref={(el) => {
+                  drips.current[i] = el;
+                }}
+                className="absolute top-0 h-[5px] w-[3px] rounded-full opacity-0 will-change-transform"
+                style={{
+                  left: `${d * 100}%`,
+                  background: `linear-gradient(180deg, ${rgba(0xdff4ff, 0.95)}, ${rgba(0x4fc3f7, 0.35)})`,
+                  boxShadow: `0 0 4px ${rgba(0x9be8ff, 0.7)}`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <span
+          ref={bandLabel}
+          className="w-[54px] font-heading text-[8px] font-black uppercase leading-[1.1] tracking-[0.05em]"
+          style={{ color: hex(lift(WATER.bands[0].color)), textShadow: "0 1px 4px rgba(0,0,0,0.95)" }}
+        >
+          {W.bands["bone-dry"]}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------ *
  * Materials
  * ------------------------------------------------------------------------ */
 
@@ -1264,8 +1736,59 @@ const MAT_ICON: Record<"wood" | "stone" | "metal", () => ReactElement> = {
   metal: MetalIcon,
 };
 
-function MaterialsRow({ clock, live }: PanelProps) {
+/* ---- SOAKED build materials: pool noodles, deck planks, corrugated tarp -- */
+
+function NoodleIcon() {
+  const c = WATER.materials.wood;
+  return (
+    <svg viewBox="0 0 16 16" className="h-[15px] w-[15px]">
+      <rect x="1" y="3.4" width="14" height="4" rx="2" fill={hex(c.color)} />
+      <rect x="1" y="3.4" width="14" height="1.4" rx="0.7" fill={hex(c.accent)} />
+      <circle cx="14.1" cy="5.4" r="1.1" fill="#8a4a12" />
+      <rect x="1" y="8.8" width="14" height="4" rx="2" fill="#f07a2b" />
+      <rect x="1" y="8.8" width="14" height="1.3" rx="0.65" fill={hex(c.accent)} opacity="0.8" />
+      <circle cx="2.2" cy="10.8" r="1.1" fill="#8a4a12" />
+    </svg>
+  );
+}
+
+function PlankIcon() {
+  const c = WATER.materials.stone;
+  return (
+    <svg viewBox="0 0 16 16" className="h-[15px] w-[15px]">
+      <rect x="1" y="3" width="14" height="3.6" rx="0.7" fill={hex(c.color)} />
+      <rect x="1" y="3" width="14" height="1" rx="0.5" fill={hex(c.accent)} />
+      <rect x="1" y="7.4" width="14" height="3.6" rx="0.7" fill="#c4ab7e" />
+      <rect x="1" y="7.4" width="14" height="1" rx="0.5" fill={hex(c.accent)} opacity="0.75" />
+      <rect x="1" y="11.8" width="14" height="2.4" rx="0.7" fill="#a98f63" />
+      <circle cx="3.2" cy="4.8" r="0.5" fill="#6f5a37" />
+      <circle cx="12.6" cy="9.2" r="0.5" fill="#6f5a37" />
+    </svg>
+  );
+}
+
+function TarpIcon() {
+  const c = WATER.materials.metal;
+  return (
+    <svg viewBox="0 0 16 16" className="h-[15px] w-[15px]">
+      <path d="M1.4 4.4c1.6-1.2 3.2 1.2 4.8 0s3.2 1.2 4.8 0 2.4-.6 3.6.2v7.4c-1.2-.8-2-1-3.6.2s-3.2-1.2-4.8 0-3.2 1.2-4.8 0z" fill={hex(c.color)} />
+      <path d="M1.4 4.4c1.6-1.2 3.2 1.2 4.8 0s3.2 1.2 4.8 0 2.4-.6 3.6.2v1.6c-1.2-.8-2-1-3.6.2s-3.2-1.2-4.8 0-3.2 1.2-4.8 0z" fill={hex(c.accent)} />
+      <circle cx="2.4" cy="5.6" r="0.7" fill="#2b6478" />
+      <circle cx="13.6" cy="6.2" r="0.7" fill="#2b6478" />
+    </svg>
+  );
+}
+
+const W_MAT_ICON: Record<"wood" | "stone" | "metal", () => ReactElement> = {
+  wood: NoodleIcon,
+  stone: PlankIcon,
+  metal: TarpIcon,
+};
+
+function MaterialsRow({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const kinds = ["wood", "stone", "metal"] as const;
+  const style0 = water ? W_MAT_STYLE : MAT_STYLE;
+  const icons = water ? W_MAT_ICON : MAT_ICON;
   const chips = useRef<(HTMLDivElement | null)[]>([]);
   const nums = useRef<(HTMLSpanElement | null)[]>([]);
   const gains = useRef<(HTMLSpanElement | null)[]>([]);
@@ -1283,8 +1806,9 @@ function MaterialsRow({ clock, live }: PanelProps) {
         // A tick-up punches the chip 8% larger and lights its rim. Short, and
         // on the pickaxe's rhythm, so harvesting feels like it pays out.
         chip.style.transform = f > 0 ? `scale(${1 + f * 0.09})` : "";
+        const bevel = water ? W_BEVEL : BEVEL;
         chip.style.boxShadow =
-          f > 0 ? `${BEVEL}, 0 0 ${8 + f * 16}px ${rgba(parseInt(MAT_STYLE[k].bright.slice(1), 16), f * 0.7)}` : BEVEL;
+          f > 0 ? `${bevel}, 0 0 ${8 + f * 16}px ${rgba(parseInt(style0[k].bright.slice(1), 16), f * 0.7)}` : bevel;
       }
       const g = gains.current[i];
       const gain = l.gain[k];
@@ -1304,8 +1828,8 @@ function MaterialsRow({ clock, live }: PanelProps) {
   return (
     <div className="flex items-end gap-1.5">
       {kinds.map((k, i) => {
-        const Icon = MAT_ICON[k];
-        const style = MAT_STYLE[k];
+        const Icon = icons[k];
+        const style = style0[k];
         return (
           <div
             key={k}
@@ -1314,8 +1838,8 @@ function MaterialsRow({ clock, live }: PanelProps) {
             }}
             className="relative flex h-[26px] w-[74px] items-center gap-1.5 rounded-[3px] px-1.5 transition-none"
             style={{
-              ...plate,
-              backgroundImage: `linear-gradient(180deg, ${rgba(parseInt(style.deep.slice(1), 16), 0.55)}, rgba(4,7,14,0.75))`,
+              ...modePlate(water),
+              backgroundImage: `linear-gradient(180deg, ${rgba(parseInt(style.deep.slice(1), 16), 0.55)}, ${water ? "rgba(6,26,44,0.72)" : "rgba(4,7,14,0.75)"})`,
               transformOrigin: "50% 100%",
             }}
           >
@@ -1390,13 +1914,20 @@ function SlotGlyph({ kind }: { kind: string }) {
   );
 }
 
-function InventoryBar({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }) {
+function InventoryBar({
+  clock,
+  live,
+  slots,
+  water = false,
+}: PanelProps & { slots: SlotMeta[]; water?: boolean }) {
   const mags = useRef<(HTMLSpanElement | null)[]>([]);
   const reserves = useRef<(HTMLSpanElement | null)[]>([]);
   const counts = useRef<(HTMLSpanElement | null)[]>([]);
   const progress = useRef<(HTMLDivElement | null)[]>([]);
+  const tanks = useRef<(HTMLDivElement | null)[]>([]);
   const tStore = useRef<string[]>([]);
   const wStore = useRef<number[]>([]);
+  const hStore = useRef<number[]>([]);
 
   usePainter(clock, () => {
     const l = live.current;
@@ -1405,6 +1936,20 @@ function InventoryBar({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }
       setText(mags.current[i], `${a.ammo}`, tStore.current, i);
       setText(reserves.current[i], `${a.reserve}`, tStore.current, 6 + i);
       setText(counts.current[i], a.count > 1 ? `x${a.count}` : "", tStore.current, 12 + i);
+
+      // SOAKED: the slot itself is the tank. Water fills it from the bottom,
+      // so a glance across the bar tells you which gun still has a shot in it
+      // without reading a single number.
+      const tank = tanks.current[i];
+      if (tank) {
+        const level = a.magSize > 0 ? clamp01(a.ammo / a.magSize) : 0;
+        const q = Math.round(level * 400) / 4;
+        if (q !== hStore.current[i]) {
+          hStore.current[i] = q;
+          tank.style.height = `${q}%`;
+          tank.style.opacity = level > 0 ? "1" : "0";
+        }
+      }
       // One bar does double duty: reload on the active weapon, equip delay on
       // whatever slot is coming up. They can never overlap.
       const bar = progress.current[i];
@@ -1441,6 +1986,24 @@ function InventoryBar({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }
                 backdropFilter: "blur(3px)",
               }}
             >
+              {/* Tank water level (SOAKED only) — behind the item art. */}
+              {water && s.isWeapon && (
+                <div
+                  ref={(el) => {
+                    tanks.current[s.index] = el;
+                  }}
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-0 opacity-0"
+                  style={{
+                    background: `linear-gradient(180deg, ${rgba(0x9be8ff, 0.72)}, ${rgba(0x2f9fe0, 0.6)})`,
+                    // The bright meniscus is what makes it read as a *level*
+                    // rather than as a coloured slot, and it is the part that
+                    // has to survive the name plate's gradient at the bottom.
+                    borderTop: `2px solid ${rgba(0xf2fbff, 0.95)}`,
+                    boxShadow: `0 -5px 14px ${rgba(0x4fc3f7, 0.65)} inset, 0 0 8px ${rgba(0x9be8ff, 0.55)}`,
+                  }}
+                />
+              )}
+
               {/* Slot key */}
               <span className="absolute left-1 top-0.5 font-heading text-[9px] font-black text-white/45">
                 {s.index + 1}
@@ -1466,7 +2029,12 @@ function InventoryBar({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }
                 <div
                   className="absolute inset-x-0 bottom-0 truncate px-1 pb-[2px] pt-[3px] text-center text-[8px] font-bold uppercase tracking-[0.04em]"
                   style={{
-                    background: "linear-gradient(180deg, rgba(4,7,14,0), rgba(4,7,14,0.9) 55%)",
+                    // Lighter and later in water mode so the tank level under
+                    // it stays visible; the name still reads because it keeps
+                    // its own shadow.
+                    background: water
+                      ? "linear-gradient(180deg, rgba(4,18,32,0), rgba(4,18,32,0.72) 68%)"
+                      : "linear-gradient(180deg, rgba(4,7,14,0), rgba(4,7,14,0.9) 55%)",
                     color: rgba(c, 1),
                     textShadow: "0 1px 2px rgba(0,0,0,0.9)",
                   }}
@@ -1494,7 +2062,9 @@ function InventoryBar({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }
               />
             </div>
 
-            {/* Ammo, under the slot: mag big, reserve small — the shooter read */}
+            {/* Ammo, under the slot: mag big, reserve small — the shooter read.
+                In SOAKED there is no reserve; a tank is topped up, not swapped,
+                so the second number would always be a lie. */}
             <div className="mt-1 flex h-[15px] items-baseline justify-center gap-1">
               {showAmmo && (
                 <>
@@ -1505,13 +2075,21 @@ function InventoryBar({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }
                     className="font-heading text-[15px] font-black leading-none tabular-nums text-white"
                     style={{ textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
                   />
-                  <span className="text-[9px] font-bold leading-none text-white/35">/</span>
-                  <span
-                    ref={(el) => {
-                      reserves.current[s.index] = el;
-                    }}
-                    className="text-[10px] font-bold leading-none tabular-nums text-white/55"
-                  />
+                  {water ? (
+                    <span className="text-[8px] font-bold uppercase leading-none tracking-[0.14em] text-sky-200/55">
+                      {W.tankLabel}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[9px] font-bold leading-none text-white/35">/</span>
+                      <span
+                        ref={(el) => {
+                          reserves.current[s.index] = el;
+                        }}
+                        className="text-[10px] font-bold leading-none tabular-nums text-white/55"
+                      />
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -1561,12 +2139,614 @@ function ConsumeBar({ clock, live, consume }: PanelProps & { consume: { name: st
 }
 
 /* ------------------------------------------------------------------------ *
+ * SOAKED — tank readout
+ *
+ * The magazine counter, restated. It reads as a water level rather than a
+ * number pair because that is what it is: the tank is topped up continuously
+ * (see `refillRate` in mode/water.ts), so "how full am I" is the question and
+ * "how many mags do I have left" is not a question at all.
+ * ------------------------------------------------------------------------ */
+
+function TankStatus({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }) {
+  const fill = useRef<HTMLDivElement | null>(null);
+  const refill = useRef<HTMLDivElement | null>(null);
+  const status = useRef<HTMLSpanElement | null>(null);
+  const numText = useRef<HTMLSpanElement | null>(null);
+  const wStore = useRef<number[]>([-1, -1]);
+  const tStore = useRef<string[]>(["", ""]);
+
+  const active = slots.find((s) => s.active);
+  const index = active?.index ?? 0;
+  const isWeapon = active?.isWeapon === true;
+
+  usePainter(clock, () => {
+    if (!isWeapon) return;
+    const l = live.current;
+    const a = l.slotAmmo[index];
+    const level = a.magSize > 0 ? clamp01(a.ammo / a.magSize) : 0;
+    setWidth(fill.current, level * 100, wStore.current, 0);
+    setWidth(refill.current, l.reloading ? l.reloadProgress * 100 : 0, wStore.current, 1);
+    setText(numText.current, `${a.ammo}`, tStore.current, 0);
+    // Priority: what you can do about it beats what is wrong with it. A
+    // source in reach is always the more useful thing to say.
+    const text = l.nearWater
+      ? W.dunkPrompt
+      : l.reloading
+        ? W.refilling
+        : a.ammo <= 0
+          ? W.tankEmpty
+          : "";
+    setText(status.current, text, tStore.current, 1);
+    const el = status.current;
+    if (el) {
+      el.style.color = l.nearWater ? "#bff7c8" : l.reloading ? "#cdeef8" : a.ammo <= 0 ? "#ffc9a8" : "transparent";
+      // Empty and no source nearby is the one genuinely bad state, so that is
+      // the only one that pulses.
+      el.style.opacity = `${a.ammo <= 0 && !l.nearWater && !l.reloading ? 0.6 + 0.4 * Math.sin(l.t * 7) : 1}`;
+    }
+  });
+
+  if (!isWeapon) return null;
+
+  return (
+    <div className="w-[224px] rounded-[3px] px-2 py-1" style={wPlate}>
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[8.5px] font-bold uppercase tracking-[0.24em] text-sky-100/55">
+          {W.tankLabel}
+        </span>
+        <span ref={status} className="text-[8.5px] font-black uppercase tracking-[0.16em]" />
+        <span
+          ref={numText}
+          className="font-heading text-[13px] font-black tabular-nums text-white"
+          style={{ textShadow: "0 1px 3px rgba(0,0,0,0.85)" }}
+        >
+          0
+        </span>
+      </div>
+      <div
+        className="relative h-[9px] overflow-hidden rounded-full"
+        style={{ background: "rgba(2,18,32,0.66)", border: `1px solid ${W_EDGE}` }}
+      >
+        <div
+          ref={fill}
+          className="absolute inset-y-0 left-0 w-0 rounded-full"
+          style={{
+            backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.6), ${rgba(0x4fc3f7, 0.95)} 45%, ${rgba(0x2f9fe0, 1)})`,
+            boxShadow: `0 0 10px ${rgba(0x7fd7ff, 0.6)}`,
+          }}
+        />
+        {/* The refill sweep rides over the level so a partial top-up reads as
+            water arriving rather than as a second, competing bar. */}
+        <div
+          ref={refill}
+          className="absolute inset-y-0 left-0 w-0"
+          style={{ background: "rgba(223,244,255,0.32)" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------ *
+ * SOAKED — multiplayer panels
+ *
+ * The three things a water fight with friends needs that a solo BR does not:
+ * a code you can read out loud, a list of who is on your side and how wet
+ * they are, and a way to talk to them. Claude, the AI teammate, is a peer
+ * like any other — it shows up in the squad list and it talks in the chat,
+ * because the moment it needs its own panel it stops feeling like a teammate.
+ *
+ * All three read `ctx.services.net` directly (see the file header). The
+ * transport is optional by design: absent or offline, `RoomCode` and
+ * `SquadPanel` render nothing and `ChatPanel` still echoes your own lines,
+ * which is exactly what `net.chat()` promises offline.
+ * ------------------------------------------------------------------------ */
+
+function RoomCode({ engine }: { engine: Engine }) {
+  const [net, setNet] = useState({ code: "", online: false, peers: 0 });
+
+  useEffect(() => {
+    const off = engine.on("soaked:net", (p) => {
+      const d = rec(p);
+      setNet({
+        code: str(d.roomCode),
+        online: bool(d.online),
+        peers: Math.round(num(d.peers)),
+      });
+    });
+    // `soaked:net` only fires on change, so seed from the service in case the
+    // room was already joined (a `?room=` link) before this panel mounted.
+    const s = engine.ctx.services.net;
+    if (s?.roomCode) setNet({ code: s.roomCode, online: s.online, peers: s.peers.size });
+    return off;
+  }, [engine]);
+
+  // Solo is the default and needs no chrome. The code only appears once there
+  // is actually a room to share.
+  if (!net.code) return null;
+
+  return (
+    <div className="flex items-center gap-2 self-start rounded-[3px] px-2 py-1" style={wPlate}>
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{
+          background: net.online ? "#8affc1" : "#ff9f43",
+          boxShadow: `0 0 6px ${net.online ? "rgba(138,255,193,0.9)" : "rgba(255,159,67,0.9)"}`,
+        }}
+      />
+      <span className="text-[8px] font-bold uppercase tracking-[0.24em] text-sky-100/45">room</span>
+      <span
+        className="font-heading text-[12px] font-black tracking-[0.12em] text-white"
+        style={{ textShadow: "0 1px 3px rgba(0,0,0,0.85)" }}
+      >
+        {net.code}
+      </span>
+      <span className="ml-auto font-heading text-[10px] font-black tabular-nums text-sky-200/70">
+        {net.peers + 1}
+      </span>
+    </div>
+  );
+}
+
+/** One row's mutable DOM handles, so the painter never touches React. */
+interface SquadRow {
+  bar: HTMLDivElement | null;
+  dist: HTMLSpanElement | null;
+  arrow: HTMLDivElement | null;
+  band: HTMLSpanElement | null;
+  root: HTMLDivElement | null;
+}
+
+/** Roster refresh cadence. Names and joins are not worth a per-frame rebuild. */
+const SQUAD_POLL = 0.25;
+/** Rows shown. A squad is three; the fourth slot is slack, not a design. */
+const SQUAD_MAX = 4;
+
+function SquadPanel({ clock, live, engine }: PanelProps & { engine: Engine }) {
+  const [mates, setMates] = useState<SquadMate[]>([]);
+  const matesRef = useRef<SquadMate[]>(mates);
+  matesRef.current = mates;
+  const rows = useRef<SquadRow[]>([]);
+  const acc = useRef(SQUAD_POLL);
+  const sig = useRef("");
+  const tStore = useRef<string[]>([]);
+  const wStore = useRef<number[]>([]);
+  /**
+   * Our own squad id, when anything has told us one. Until then every peer is
+   * treated as a teammate — which is right for the case this panel exists to
+   * serve, three friends and Claude in a private room.
+   */
+  const myTeam = useRef<string | null>(null);
+
+  useEffect(() => {
+    const off = engine.on("soaked:net", (p) => {
+      const t = str(rec(p).team);
+      if (t) myTeam.current = t;
+    });
+    return off;
+  }, [engine]);
+
+  usePainter(clock, (dt) => {
+    const net = engine.ctx.services.net;
+    const l = live.current;
+
+    acc.current += dt;
+    if (acc.current >= SQUAD_POLL) {
+      acc.current = 0;
+      const next: SquadMate[] = [];
+      if (net) {
+        const team = myTeam.current;
+        for (const p of net.peers.values()) {
+          if (team && p.team && p.team !== team) continue;
+          // Keyed on the peer id, not the team: everyone in a squad shares a
+          // team string, and three teammates in the same colour is a list you
+          // have to read instead of glance at.
+          next.push({ id: p.id, name: p.name, agent: p.agent, color: teamColor(p.id) });
+        }
+        // Humans first, then the AI: a stable order matters more than a clever
+        // one, because you learn where each name sits and stop reading them.
+        next.sort((a, b) => (a.agent ? 1 : 0) - (b.agent ? 1 : 0) || a.name.localeCompare(b.name));
+        next.length = Math.min(next.length, SQUAD_MAX);
+      }
+      const s = next.map((m) => `${m.id}:${m.name}:${m.agent ? 1 : 0}`).join("|");
+      if (s !== sig.current) {
+        sig.current = s;
+        setMates(next);
+      }
+    }
+
+    if (!net) return;
+    const list = matesRef.current;
+    // Look basis: forward is (-sin yaw, -cos yaw) in this engine, so right is
+    // (cos yaw, -sin yaw). The arrow turns clockwise for a teammate on your
+    // right, which is the only convention anyone reads correctly.
+    const fx = -Math.sin(l.yaw);
+    const fz = -Math.cos(l.yaw);
+    const rx = Math.cos(l.yaw);
+    const rz = -Math.sin(l.yaw);
+
+    for (let i = 0; i < list.length; i++) {
+      const row = rows.current[i];
+      const peer = net.peers.get(list[i].id) as PeerState | undefined;
+      if (!row) continue;
+      if (!peer) {
+        if (row.root) row.root.style.opacity = "0.35";
+        continue;
+      }
+      const band = drynessBand(peer.dry);
+      setWidth(row.bar, clamp01(peer.dry / 100) * 100, wStore.current, i);
+      const bar = row.bar;
+      if (bar) bar.style.background = hex(band.color);
+      setText(row.band, W.bands[band.key], tStore.current, i);
+      const lbl = row.band;
+      if (lbl) lbl.style.color = hex(lift(band.color));
+
+      if (!peer.posed) {
+        setText(row.dist, "—", tStore.current, SQUAD_MAX + i);
+        if (row.arrow) row.arrow.style.opacity = "0";
+      } else {
+        const dx = peer.x - l.x;
+        const dz = peer.z - l.z;
+        const d = Math.hypot(dx, dz);
+        setText(
+          row.dist,
+          d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${Math.round(d)}m`,
+          tStore.current,
+          SQUAD_MAX + i,
+        );
+        const a = (Math.atan2(dx * rx + dz * rz, dx * fx + dz * fz) * 180) / Math.PI;
+        if (row.arrow) {
+          row.arrow.style.opacity = "1";
+          row.arrow.style.transform = `rotate(${a.toFixed(1)}deg)`;
+        }
+      }
+      // A soaked-out teammate greys out rather than disappearing — you still
+      // want to know they were there and roughly where they went down.
+      if (row.root) row.root.style.opacity = peer.dry <= 0 ? "0.4" : "1";
+    }
+  });
+
+  if (mates.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1 rounded-[4px] px-1.5 py-1.5" style={wPlate}>
+      <span className="px-0.5 text-[8px] font-bold uppercase tracking-[0.28em] text-sky-100/45">
+        {W.squadName}
+      </span>
+      {mates.map((m, i) => (
+        <div
+          key={m.id}
+          ref={(el) => {
+            rows.current[i] = { ...(rows.current[i] ?? ({} as SquadRow)), root: el };
+          }}
+          className="flex items-center gap-1.5 overflow-hidden rounded-[3px] px-1 py-[3px]"
+          style={{ background: rgba(m.color, 0.1), borderLeft: `2px solid ${hex(m.color)}` }}
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+            <div className="flex min-w-0 items-baseline gap-1">
+              <span
+                className="truncate text-[10px] font-bold leading-none"
+                style={{ color: hex(m.color), textShadow: "0 1px 2px rgba(0,0,0,0.85)" }}
+              >
+                {m.name}
+              </span>
+              {m.agent && (
+                // Claude. Badged, not hidden: knowing which teammate is the AI
+                // changes how you talk to it, and pretending otherwise would
+                // be the one dishonest pixel on this HUD.
+                <span
+                  className="shrink-0 rounded-[2px] px-[3px] py-[1px] text-[7px] font-black uppercase leading-none tracking-[0.14em]"
+                  style={{ background: rgba(0xd8f36b, 0.22), color: "#eaffb0" }}
+                >
+                  AI
+                </span>
+              )}
+              <span
+                ref={(el) => {
+                  rows.current[i] = { ...(rows.current[i] ?? ({} as SquadRow)), band: el };
+                }}
+                className="ml-auto max-w-[78px] shrink-0 truncate text-[7px] font-black uppercase leading-none tracking-[0.08em]"
+              />
+            </div>
+            <div className="h-[4px] overflow-hidden rounded-full" style={{ background: "rgba(2,18,32,0.7)" }}>
+              <div
+                ref={(el) => {
+                  rows.current[i] = { ...(rows.current[i] ?? ({} as SquadRow)), bar: el };
+                }}
+                className="h-full w-0"
+              />
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-center gap-[2px]">
+            <div
+              ref={(el) => {
+                rows.current[i] = { ...(rows.current[i] ?? ({} as SquadRow)), arrow: el };
+              }}
+              className="h-3 w-3 opacity-0 will-change-transform"
+            >
+              <svg viewBox="0 0 12 12" className="h-3 w-3">
+                <path d="M6 1 10 10 6 8 2 10z" fill={hex(m.color)} stroke="rgba(0,0,0,0.7)" strokeWidth="0.7" />
+              </svg>
+            </div>
+            <span
+              ref={(el) => {
+                rows.current[i] = { ...(rows.current[i] ?? ({} as SquadRow)), dist: el };
+              }}
+              className="font-heading text-[8px] font-black tabular-nums leading-none text-white/70"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The glue strand prompt. Always mounted, painted to zero opacity when there
+ * is no strand — a strand lands and breaks several times a minute and none of
+ * that should cost a React render.
+ */
+function GluePrompt({ clock, live }: PanelProps) {
+  const root = useRef<HTMLDivElement | null>(null);
+  const who = useRef<HTMLSpanElement | null>(null);
+  const bar = useRef<HTMLDivElement | null>(null);
+  const tStore = useRef<string[]>([""]);
+  const wStore = useRef<number[]>([-1]);
+  const oStore = useRef<number[]>([-1]);
+
+  usePainter(clock, () => {
+    const l = live.current;
+    const on = l.gluedTo !== "";
+    setOpacity(root.current, on ? 1 : 0, oStore.current, 0);
+    if (!on) return;
+    setText(who.current, fmt(W.gluedTo, { name: l.gluedTo }), tStore.current, 0);
+    setWidth(bar.current, l.struggle * 100, wStore.current, 0);
+    const el = root.current;
+    if (el) el.style.transform = `translateX(${Math.sin(l.t * 26) * (1 - l.struggle) * 2.5}px)`;
+  });
+
+  return (
+    <div
+      ref={root}
+      className="absolute inset-x-0 bottom-[32%] flex justify-center opacity-0 will-change-transform"
+    >
+      <div
+        className="flex flex-col items-center gap-1 rounded-[4px] px-4 py-1.5"
+        style={{ ...wPlate, background: "rgba(46,58,10,0.8)", borderColor: rgba(WATER.glue.color, 0.6) }}
+      >
+        <span
+          ref={who}
+          className="font-heading text-[13px] font-black uppercase tracking-[0.18em]"
+          style={{ color: hex(WATER.glue.glowColor), textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}
+        />
+        <div className="h-[4px] w-[180px] overflow-hidden rounded-full bg-black/60">
+          <div
+            ref={bar}
+            className="h-full w-0"
+            style={{ backgroundImage: `linear-gradient(90deg, ${hex(WATER.glue.color)}, #ffffff)` }}
+          />
+        </div>
+        <span className="text-[8.5px] font-bold uppercase tracking-[0.22em] text-lime-100/70">
+          {fmt(W.gluePrompt, { key: WATER.glue.struggleKey })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Chat.
+ *
+ * This is how you talk to Claude mid-match, so the bar for "usable" is higher
+ * than for a cosmetic log. Three things it has to get right:
+ *
+ *  - **It never eats the crosshair.** Bottom-left, above the dryness meter,
+ *    and only the input is `pointer-events-auto`.
+ *  - **It survives losing pointer lock.** The page unmounts the rest of the
+ *    HUD when the pointer unlocks; this panel is rendered outside that gate.
+ *  - **Typing must not play the game.** The engine's key handler is on
+ *    `window` and does *not* check the lock, so a keystroke that reaches it
+ *    while you type "on my left" walks you off a roof. Every key event is
+ *    stopped at the input, and while the box is open a capture-phase shield
+ *    swallows mouse look, fire and wheel so the match is genuinely paused for
+ *    you rather than merely unread.
+ *
+ * On pointer lock: the honest version of "release it while typing" would be
+ * `exitPointerLock()`, and that is what this did first. It is wrong here —
+ * unlocking raises the page's pause veil over the very box you are typing
+ * into. So the lock is left alone and control is released instead, which is
+ * indistinguishable from the player's side; and if the lock has been lost by
+ * then (Escape, or a click), closing the box asks for it back.
+ */
+const CHAT_LINES = 6;
+
+function ChatPanel({ engine }: { engine: Engine }) {
+  const [lines, setLines] = useState<ChatLine[]>([]);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const openRef = useRef(false);
+  openRef.current = open;
+
+  useEffect(() => {
+    const off = engine.on("soaked:chat", (p) => {
+      const d = rec(p);
+      const body = str(d.text);
+      if (!body) return;
+      const line: ChatLine = {
+        id: str(d.id, `${str(d.from)}-${body.length}-${num(d.t).toFixed(3)}`),
+        from: str(d.from),
+        name: str(d.name, "player"),
+        text: body,
+        t: num(d.t),
+        self: bool(d.self),
+        agent: bool(d.agent),
+      };
+      setLines((prev) => [...prev.slice(-(CHAT_LINES * 4)), line]);
+    });
+    // Seed from the backlog: a player who joined before the HUD mounted, or
+    // reopened it, should not lose what Claude already said.
+    const s = engine.ctx.services.net;
+    if (s && s.messages.length > 0) setLines(s.messages.slice(-CHAT_LINES * 4));
+    return off;
+  }, [engine]);
+
+  const close = useCallback(
+    (restoreLock: boolean) => {
+      setOpen(false);
+      setText("");
+      inputRef.current?.blur();
+      if (!restoreLock) return;
+      const canvas = engine.ctx.renderer.domElement;
+      if (document.pointerLockElement === canvas) return;
+      try {
+        // Chromium returns a promise here and rejects it if the lock was
+        // released too recently. Losing the lock is survivable; an unhandled
+        // rejection in the console is noise.
+        const r = canvas.requestPointerLock?.() as unknown;
+        if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => {});
+      } catch {
+        /* no lock available — the player can click back in. */
+      }
+    },
+    [engine],
+  );
+
+  // Enter opens the box. It is not bound to anything in `input.ts`, so this
+  // costs the game nothing; while the box is open the input's own handler owns
+  // the key and this listener never sees it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (openRef.current) return;
+      if (e.code !== "Enter" && e.code !== "NumpadEnter") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      setOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  // The mouse shield. Capture phase on `window`, so it fires before the
+  // engine's own listeners and before the event reaches anything else. Only
+  // while the pointer is actually locked: if it is not, the cursor is real and
+  // the player may well be trying to click into this box.
+  useEffect(() => {
+    if (!open) return;
+    const swallow = (e: Event) => {
+      if (!document.pointerLockElement) return;
+      e.stopPropagation();
+    };
+    const kinds = ["mousedown", "mouseup", "mousemove", "wheel", "contextmenu"] as const;
+    for (const k of kinds) window.addEventListener(k, swallow, true);
+    return () => {
+      for (const k of kinds) window.removeEventListener(k, swallow, true);
+    };
+  }, [open]);
+
+  const submit = useCallback(() => {
+    const body = text.trim();
+    // Offline is not an error: `net.chat()` echoes locally either way, and a
+    // player talking to nobody still sees their own words.
+    if (body) engine.ctx.services.net?.chat(body);
+    close(true);
+  }, [text, engine, close]);
+
+  const visible = lines.slice(-CHAT_LINES);
+  if (visible.length === 0 && !open) return null;
+
+  return (
+    <div className="pointer-events-none absolute bottom-[124px] left-6 z-[35] w-[336px] select-none font-body">
+      <div className="flex flex-col gap-[3px]" style={{ opacity: open ? 1 : 0.78 }}>
+        {visible.map((line) => (
+          <div
+            key={line.id}
+            className="flex w-fit max-w-full items-baseline gap-1.5 rounded-[3px] px-1.5 py-[2px]"
+            // Opaque enough to read against open sea, which is the brightest,
+            // busiest thing this corner ever sits on.
+            style={{ background: "rgba(4,20,36,0.72)", backdropFilter: "blur(2px)" }}
+          >
+            <span
+              className="shrink-0 text-[10px] font-black leading-tight"
+              style={{
+                color: line.self ? "#ffffff" : line.agent ? hex(WATER.glue.color) : hex(teamColor(line.from)),
+                textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+              }}
+            >
+              {line.name}
+            </span>
+            <span
+              className="min-w-0 break-words text-[10.5px] leading-tight text-white/95"
+              style={{ textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+            >
+              {line.text}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {open && (
+        <div
+          className="mt-1 flex items-center gap-2 rounded-[3px] px-2 py-1"
+          style={{ ...wPlate, background: W_INK_SOLID }}
+        >
+          <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.24em] text-sky-100/50">
+            {W.squadName}
+          </span>
+          <input
+            ref={inputRef}
+            value={text}
+            maxLength={200}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="say something…"
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => {
+              // Refuse to quietly become a dead box: if focus wanders while
+              // the player is mid-sentence, take it straight back.
+              if (openRef.current) requestAnimationFrame(() => inputRef.current?.focus());
+            }}
+            onKeyUp={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              // The single most important line in this component: without it
+              // "was" is a W, an A and an S, and you have just walked into the
+              // Downpour explaining that you are in the Downpour.
+              e.stopPropagation();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                close(true);
+              }
+            }}
+            className="pointer-events-auto min-w-0 flex-1 bg-transparent text-[11px] text-white outline-none placeholder:text-white/25"
+          />
+          <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.18em] text-white/25">
+            enter
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------ *
  * Minimap
  * ------------------------------------------------------------------------ */
 
 const MAP_SIZE = 236;
 
-function Minimap({ clock, live, map }: PanelProps & { map: MapModel | null }) {
+function Minimap({
+  clock,
+  live,
+  map,
+  water = false,
+}: PanelProps & { map: MapModel | null; water?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const compass = useRef<HTMLDivElement | null>(null);
   const acc = useRef(0);
@@ -1599,7 +2779,7 @@ function Minimap({ clock, live, map }: PanelProps & { map: MapModel | null }) {
     if (!cv) return;
     const g = cv.getContext("2d");
     if (!g) return;
-    drawMinimap(g, l, map, MAP_SIZE);
+    drawMinimap(g, l, map, MAP_SIZE, water);
   });
 
   return (
@@ -1607,7 +2787,7 @@ function Minimap({ clock, live, map }: PanelProps & { map: MapModel | null }) {
       {/* Compass strip */}
       <div
         className="relative mb-1 h-[16px] overflow-hidden rounded-[3px]"
-        style={{ ...plate, background: "rgba(6,10,20,0.66)" }}
+        style={{ ...modePlate(water), background: water ? "rgba(8,26,44,0.66)" : "rgba(6,10,20,0.66)" }}
       >
         <div ref={compass} className="absolute left-1/2 top-0 flex h-full items-center will-change-transform">
           {COMPASS_MARKS.map((m) => (
@@ -1636,7 +2816,7 @@ function Minimap({ clock, live, map }: PanelProps & { map: MapModel | null }) {
       {/* The map */}
       <div
         className="relative overflow-hidden rounded-[5px]"
-        style={{ ...plate, width: MAP_SIZE, height: MAP_SIZE, padding: 0 }}
+        style={{ ...modePlate(water), width: MAP_SIZE, height: MAP_SIZE, padding: 0 }}
       >
         <canvas ref={canvasRef} style={{ width: MAP_SIZE, height: MAP_SIZE, display: "block" }} />
         {/* Inner shading + corner ticks: the frame is what makes a canvas read
@@ -1681,7 +2861,7 @@ const COMPASS_MARKS = (() => {
  * Storm timer + alive count
  * ------------------------------------------------------------------------ */
 
-function StormPanel({ clock, live }: PanelProps) {
+function StormPanel({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const circleText = useRef<HTMLSpanElement | null>(null);
   const timerText = useRef<HTMLSpanElement | null>(null);
   const label = useRef<HTMLSpanElement | null>(null);
@@ -1690,37 +2870,56 @@ function StormPanel({ clock, live }: PanelProps) {
   const tStore = useRef<string[]>(["", "", ""]);
   const wStore = useRef<number[]>([-1]);
 
+  const beadColor = water ? DOWN.wall : 0xa45cf0;
+
   usePainter(clock, () => {
     const l = live.current;
-    setText(circleText.current, `Zone ${l.circle}`, tStore.current, 0);
+    setText(
+      circleText.current,
+      water ? `${W.stormName} ${l.circle}` : `Zone ${l.circle}`,
+      tStore.current,
+      0,
+    );
     setText(timerText.current, clockText(l.stormTimer), tStore.current, 1);
-    setText(label.current, l.closing ? "Zone closing" : "Zone moving in", tStore.current, 2);
+    setText(
+      label.current,
+      water
+        ? l.closing
+          ? W.stormWarn
+          : W.stormSafe
+        : l.closing
+          ? "Zone closing"
+          : "Zone moving in",
+      tStore.current,
+      2,
+    );
     setWidth(bar.current, (1 - clamp01(l.stormTimer / Math.max(1, l.stormTimerMax))) * 100, wStore.current, 0);
     const t = label.current;
-    if (t) t.style.color = l.closing ? "#ff8a8a" : "rgba(255,255,255,0.6)";
+    if (t) t.style.color = l.closing ? (water ? hex(DOWN.rim) : "#ff8a8a") : "rgba(255,255,255,0.6)";
     const d = dot.current;
     if (d) {
       // The bead pulses only while the wall is actually moving — a permanently
       // animated element stops carrying information.
       const pulse = l.closing ? 0.6 + 0.4 * Math.sin(l.t * 6.2) : 0.85;
       d.style.opacity = `${pulse}`;
-      d.style.boxShadow = `0 0 ${l.closing ? 12 : 6}px ${rgba(0xa45cf0, 0.9)}`;
+      d.style.boxShadow = `0 0 ${l.closing ? 12 : 6}px ${rgba(beadColor, 0.9)}`;
     }
   });
 
   return (
-    <div className="rounded-[4px] px-2 py-1.5" style={plate}>
+    <div className="rounded-[4px] px-2 py-1.5" style={modePlate(water)}>
       <div className="flex items-center gap-2">
         <div
           ref={dot}
           className="h-2.5 w-2.5 rounded-full"
-          style={{ background: STORM_PURPLE, border: "1px solid rgba(255,255,255,0.5)" }}
+          style={{ background: water ? hex(DOWN.wall) : STORM_PURPLE, border: "1px solid rgba(255,255,255,0.5)" }}
         />
         <span
           ref={circleText}
-          className="font-heading text-[11px] font-black uppercase tracking-[0.16em] text-violet-200"
+          className="font-heading text-[11px] font-black uppercase tracking-[0.16em]"
+          style={{ color: water ? hex(DOWN.rim) : "#ddd6fe" }}
         >
-          Zone 1
+          {water ? W.stormName : "Zone 1"}
         </span>
         <span
           ref={timerText}
@@ -1734,17 +2933,21 @@ function StormPanel({ clock, live }: PanelProps) {
         <div
           ref={bar}
           className="h-full w-0"
-          style={{ backgroundImage: `linear-gradient(90deg, ${STORM_PURPLE}, #e0a8ff)` }}
+          style={{
+            backgroundImage: water
+              ? `linear-gradient(90deg, ${hex(DOWN.wall)}, ${hex(DOWN.rim)})`
+              : `linear-gradient(90deg, ${STORM_PURPLE}, #e0a8ff)`,
+          }}
         />
       </div>
       <span ref={label} className="mt-1 block text-[9px] font-bold uppercase tracking-[0.2em] text-white/60">
-        Zone moving in
+        {water ? W.stormSafe : "Zone moving in"}
       </span>
     </div>
   );
 }
 
-function AliveBlock({ clock, live }: PanelProps) {
+function AliveBlock({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const aliveNum = useRef<HTMLSpanElement | null>(null);
   const elimNum = useRef<HTMLSpanElement | null>(null);
   const tStore = useRef<string[]>(["", ""]);
@@ -1756,7 +2959,7 @@ function AliveBlock({ clock, live }: PanelProps) {
 
   return (
     <div className="flex items-stretch gap-1.5">
-      <div className="flex flex-1 items-center gap-2 rounded-[4px] px-2 py-1" style={plate}>
+      <div className="flex flex-1 items-center gap-2 rounded-[4px] px-2 py-1" style={modePlate(water)}>
         <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 opacity-80">
           <circle cx="8" cy="4.6" r="2.9" fill="#dbe6f0" />
           <path d="M2.6 14c0-3 2.4-5.2 5.4-5.2S13.4 11 13.4 14z" fill="#dbe6f0" />
@@ -1764,15 +2967,29 @@ function AliveBlock({ clock, live }: PanelProps) {
         <span ref={aliveNum} className="font-heading text-[19px] font-black leading-none tabular-nums text-white">
           100
         </span>
-        <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/45">alive</span>
+        <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/45">
+          {water ? W.aliveLabel : "alive"}
+        </span>
       </div>
-      <div className="flex items-center gap-1.5 rounded-[4px] px-2 py-1" style={plate}>
-        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5">
-          <path d="M3 2.4 7.2 8 3 13.6h2.4L13 3.6V2.4z" fill="#ffd479" />
-          <path d="M13 13.6 8.8 8l1.4-1.9L13 10.2z" fill="#ffd479" />
-        </svg>
-        <span ref={elimNum} className="font-heading text-[15px] font-black leading-none tabular-nums text-amber-200">
-          0
+      <div className="flex items-center gap-1.5 rounded-[4px] px-2 py-1" style={modePlate(water)}>
+        {water ? (
+          // A droplet, not a chevron: the counter is soakings, and the icon
+          // has to agree with the word or the block reads as two counters.
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5">
+            <path d="M8 1.6c2.6 3 4.4 5.1 4.4 7.2A4.4 4.4 0 0 1 8 13.2 4.4 4.4 0 0 1 3.6 8.8c0-2.1 1.8-4.2 4.4-7.2z" fill="#8fe0ff" />
+            <path d="M6.4 4.8c-.9 1.3-1.5 2.5-1.5 3.5" stroke="rgba(255,255,255,0.85)" strokeWidth="1" fill="none" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5">
+            <path d="M3 2.4 7.2 8 3 13.6h2.4L13 3.6V2.4z" fill="#ffd479" />
+            <path d="M13 13.6 8.8 8l1.4-1.9L13 10.2z" fill="#ffd479" />
+          </svg>
+        )}
+        <span
+          className="font-heading text-[15px] font-black leading-none tabular-nums"
+          style={{ color: water ? "#bfeaff" : "#fde68a" }}
+        >
+          <span ref={elimNum}>0</span>
         </span>
       </div>
     </div>
@@ -1783,7 +3000,16 @@ function AliveBlock({ clock, live }: PanelProps) {
  * Feeds
  * ------------------------------------------------------------------------ */
 
-function KillFeed({ feed }: { feed: FeedEntry[] }) {
+/**
+ * The elimination feed. In SOAKED nobody is eliminated — they are SOAKED, and
+ * the line says so in words rather than leaving a gun icon to imply it. The
+ * verb comes out of `eliminatedFeed` so the whole feed re-words from one table
+ * entry.
+ */
+function KillFeed({ feed, water = false }: { feed: FeedEntry[]; water?: boolean }) {
+  // "{by} soaked {name}" → "soaked". Split once here rather than formatting a
+  // whole sentence, because the two names need their own colours.
+  const verb = water ? (/\}\s*(.+?)\s*\{/.exec(W.eliminatedFeed)?.[1] ?? "soaked") : "";
   return (
     <ul className="flex flex-col items-end gap-1">
       <AnimatePresence initial={false}>
@@ -1797,26 +3023,45 @@ function KillFeed({ feed }: { feed: FeedEntry[] }) {
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
             className="flex max-w-[236px] items-center gap-1.5 rounded-[3px] px-1.5 py-[3px] text-[10px] font-bold"
             style={{
-              ...plate,
-              background: e.byPlayer
-                ? "rgba(58,42,10,0.78)"
-                : e.onPlayer
-                  ? "rgba(70,12,12,0.78)"
-                  : INK,
+              ...modePlate(water),
+              background: water
+                ? e.byPlayer
+                  ? "rgba(10,64,92,0.8)"
+                  : e.onPlayer
+                    ? "rgba(16,44,88,0.8)"
+                    : W_INK
+                : e.byPlayer
+                  ? "rgba(58,42,10,0.78)"
+                  : e.onPlayer
+                    ? "rgba(70,12,12,0.78)"
+                    : INK,
             }}
           >
-            <span className={e.byPlayer ? "text-amber-200" : "text-white/80"}>{e.killer}</span>
-            <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 opacity-70">
-              {e.environmental ? (
-                <circle cx="8" cy="8" r="5" fill={STORM_PURPLE} />
-              ) : (
-                <>
-                  <rect x="2" y="7" width="11" height="2" rx="0.8" fill="#dfe7ee" />
-                  <rect x="5" y="9" width="3" height="4" rx="1" fill="#9fb0bd" />
-                </>
-              )}
-            </svg>
-            <span className={e.onPlayer ? "text-red-300" : "text-white/55"}>{e.victim}</span>
+            <span className={e.byPlayer ? (water ? "text-cyan-200" : "text-amber-200") : "text-white/80"}>
+              {e.killer}
+            </span>
+            {water ? (
+              <span
+                className="shrink-0 text-[9px] font-black uppercase tracking-[0.12em]"
+                style={{ color: e.environmental ? hex(DOWN.rim) : "#9be8ff" }}
+              >
+                {verb}
+              </span>
+            ) : (
+              <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 opacity-70">
+                {e.environmental ? (
+                  <circle cx="8" cy="8" r="5" fill={STORM_PURPLE} />
+                ) : (
+                  <>
+                    <rect x="2" y="7" width="11" height="2" rx="0.8" fill="#dfe7ee" />
+                    <rect x="5" y="9" width="3" height="4" rx="1" fill="#9fb0bd" />
+                  </>
+                )}
+              </svg>
+            )}
+            <span className={e.onPlayer ? (water ? "text-sky-200" : "text-red-300") : "text-white/55"}>
+              {e.victim}
+            </span>
           </motion.li>
         ))}
       </AnimatePresence>
@@ -1824,7 +3069,7 @@ function KillFeed({ feed }: { feed: FeedEntry[] }) {
   );
 }
 
-function ToastStack({ toasts }: { toasts: ToastEntry[] }) {
+function ToastStack({ toasts, water = false }: { toasts: ToastEntry[]; water?: boolean }) {
   return (
     <div className="absolute inset-x-0 top-[16%] flex flex-col items-center gap-1.5">
       <AnimatePresence initial={false}>
@@ -1838,21 +3083,45 @@ function ToastStack({ toasts }: { toasts: ToastEntry[] }) {
             transition={{ type: "spring", stiffness: 520, damping: 30 }}
             className="flex flex-col items-center rounded-[4px] px-4 py-1.5"
             style={{
-              ...plate,
-              background:
-                t.tone === "elim"
+              ...modePlate(water),
+              background: water
+                ? t.tone === "elim"
+                  ? "rgba(10,64,92,0.84)"
+                  : t.tone === "urgent"
+                    ? "rgba(14,46,80,0.84)"
+                    : W_INK_SOLID
+                : t.tone === "elim"
                   ? "rgba(52,36,6,0.8)"
                   : t.tone === "urgent"
                     ? "rgba(46,12,52,0.8)"
                     : INK_SOLID,
-              borderColor:
-                t.tone === "elim" ? "rgba(255,206,110,0.5)" : t.tone === "urgent" ? "rgba(200,120,255,0.45)" : EDGE,
+              borderColor: water
+                ? t.tone === "elim"
+                  ? "rgba(155,232,255,0.55)"
+                  : t.tone === "urgent"
+                    ? rgba(DOWN.rim, 0.5)
+                    : W_EDGE
+                : t.tone === "elim"
+                  ? "rgba(255,206,110,0.5)"
+                  : t.tone === "urgent"
+                    ? "rgba(200,120,255,0.45)"
+                    : EDGE,
             }}
           >
             <span
               className="font-heading text-[15px] font-black uppercase tracking-[0.08em]"
               style={{
-                color: t.tone === "elim" ? "#ffd479" : t.tone === "urgent" ? "#e5b8ff" : "#fff",
+                color: water
+                  ? t.tone === "elim"
+                    ? "#9be8ff"
+                    : t.tone === "urgent"
+                      ? hex(DOWN.rim)
+                      : "#fff"
+                  : t.tone === "elim"
+                    ? "#ffd479"
+                    : t.tone === "urgent"
+                      ? "#e5b8ff"
+                      : "#fff",
                 textShadow: "0 2px 8px rgba(0,0,0,0.8)",
               }}
             >
@@ -2072,7 +3341,7 @@ function Crosshair({ clock, live }: PanelProps) {
   );
 }
 
-function HitMarker({ clock, live }: PanelProps) {
+function HitMarker({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const root = useRef<HTMLDivElement | null>(null);
   const lines = useRef<(HTMLDivElement | null)[]>([]);
   const ringRef = useRef<HTMLDivElement | null>(null);
@@ -2090,7 +3359,19 @@ function HitMarker({ clock, live }: PanelProps) {
     const t = 1 - l.hitT;
     el.style.opacity = `${clamp01(l.hitT * 1.6)}`;
     el.style.transform = `translate(-50%,-50%) scale(${lerp(1.45, 1, Math.min(1, t * 3))})`;
-    const color = l.hitKind === "elim" ? "#ff4d4d" : l.hitKind === "shield" ? "#8ad4ff" : "#ffffff";
+    // A confirmed soaking is cyan rather than red: the marker still spikes on
+    // the kill, it just does not claim you shot someone.
+    const color = water
+      ? l.hitKind === "elim"
+        ? "#5ecfff"
+        : l.hitKind === "shield"
+          ? "#ffe45e"
+          : "#ffffff"
+      : l.hitKind === "elim"
+        ? "#ff4d4d"
+        : l.hitKind === "shield"
+          ? "#8ad4ff"
+          : "#ffffff";
     for (const line of lines.current) if (line) line.style.background = color;
     const r = ringRef.current;
     if (r) r.style.opacity = l.hitHead ? `${clamp01(l.hitT)}` : "0";
@@ -2132,7 +3413,10 @@ function HitMarker({ clock, live }: PanelProps) {
   );
 }
 
-function DamageArcs({ arcs }: { arcs: DamageArc[] }) {
+function DamageArcs({ arcs, water = false }: { arcs: DamageArc[]; water?: boolean }) {
+  const near = water ? "rgba(155,232,255,0.95)" : "rgba(255,70,70,0.95)";
+  const far = water ? "rgba(79,195,247,0.15)" : "rgba(255,70,70,0.15)";
+  const glow = water ? "drop-shadow(0 0 6px rgba(120,215,255,0.65))" : "drop-shadow(0 0 6px rgba(255,40,40,0.55))";
   return (
     <div className="absolute inset-0 flex items-center justify-center">
       <AnimatePresence>
@@ -2154,8 +3438,8 @@ function DamageArcs({ arcs }: { arcs: DamageArc[] }) {
             <svg width="420" height="420" viewBox="0 0 420 420" className="block">
               <defs>
                 <linearGradient id={`dmg${a.id}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(255,70,70,0.95)" />
-                  <stop offset="100%" stopColor="rgba(255,70,70,0.15)" />
+                  <stop offset="0%" stopColor={near} />
+                  <stop offset="100%" stopColor={far} />
                 </linearGradient>
               </defs>
               <path
@@ -2166,7 +3450,7 @@ function DamageArcs({ arcs }: { arcs: DamageArc[] }) {
                 // reading as a *direction*, so it caps early.
                 strokeWidth={Math.min(9, 4 + a.amount * 0.11)}
                 strokeLinecap="round"
-                style={{ filter: "drop-shadow(0 0 6px rgba(255,40,40,0.55))" }}
+                style={{ filter: glow }}
               />
             </svg>
           </motion.div>
@@ -2240,7 +3524,7 @@ function ScopeOverlay() {
  * Full-screen states
  * ------------------------------------------------------------------------ */
 
-function Vignettes({ clock, live }: PanelProps) {
+function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const storm = useRef<HTMLDivElement | null>(null);
   const low = useRef<HTMLDivElement | null>(null);
   const flash = useRef<HTMLDivElement | null>(null);
@@ -2252,9 +3536,14 @@ function Vignettes({ clock, live }: PanelProps) {
     setOpacity(storm.current, l.stormVeil, oStore.current, 0);
     // Low health is a heartbeat, not a constant tint: it has to be noticeable
     // in peripheral vision while you are looking at someone else's crosshair.
-    const lowT = clamp01(1 - l.health / (l.maxHealth * 0.35));
+    // In SOAKED the same channel carries "nearly soaked", and it is dialled
+    // back hard — the bar drips and glows for that; the screen should not also
+    // close in on you, because getting wet is not dying.
+    const lowT = water
+      ? clamp01(1 - l.dry / (l.dryMax * 0.3)) * 0.5
+      : clamp01(1 - l.health / (l.maxHealth * 0.35));
     setOpacity(low.current, lowT * (0.45 + 0.55 * (0.5 + 0.5 * Math.sin(l.t * 6.5))), oStore.current, 1);
-    setOpacity(flash.current, l.damageFlash * 0.55, oStore.current, 2);
+    setOpacity(flash.current, l.damageFlash * (water ? 0.7 : 0.55), oStore.current, 2);
     setOpacity(heal.current, l.healFlash * 0.3, oStore.current, 3);
   });
 
@@ -2264,36 +3553,70 @@ function Vignettes({ clock, live }: PanelProps) {
         ref={storm}
         className="absolute inset-0 opacity-0"
         style={{
-          boxShadow: "inset 0 0 140px 40px rgba(150,60,220,0.55), inset 0 0 40px rgba(80,20,140,0.6)",
+          boxShadow: water
+            ? `inset 0 0 150px 45px ${rgba(DOWN.vignette, 0.5)}, inset 0 0 45px ${rgba(DOWN.wall, 0.55)}`
+            : "inset 0 0 140px 40px rgba(150,60,220,0.55), inset 0 0 40px rgba(80,20,140,0.6)",
         }}
       />
       <div
         ref={low}
         className="absolute inset-0 opacity-0"
-        style={{ boxShadow: "inset 0 0 160px 30px rgba(200,20,20,0.6)" }}
+        style={{
+          boxShadow: water
+            ? `inset 0 0 170px 34px ${rgba(0x2a5f96, 0.55)}`
+            : "inset 0 0 160px 30px rgba(200,20,20,0.6)",
+        }}
       />
       <div
         ref={flash}
         className="absolute inset-0 opacity-0"
-        style={{ background: "radial-gradient(circle at 50% 50%, rgba(255,60,60,0) 35%, rgba(255,40,40,0.45))" }}
+        style={{
+          // Getting hit is a splash across the lens: a bright rim of water
+          // rather than a red wash. It flashes *lighter*, which is the whole
+          // tonal difference between the two modes in one property.
+          background: water
+            ? `radial-gradient(circle at 50% 50%, rgba(223,244,255,0) 30%, ${rgba(0xdff4ff, 0.34)} 76%, ${rgba(0x4fc3f7, 0.5)})`
+            : "radial-gradient(circle at 50% 50%, rgba(255,60,60,0) 35%, rgba(255,40,40,0.45))",
+        }}
       />
       <div
         ref={heal}
         className="absolute inset-0 opacity-0"
-        style={{ boxShadow: "inset 0 0 120px 20px rgba(90,220,140,0.5)" }}
+        style={{
+          boxShadow: water
+            ? "inset 0 0 120px 20px rgba(255,233,168,0.55)"
+            : "inset 0 0 120px 20px rgba(90,220,140,0.5)",
+        }}
       />
     </>
   );
 }
 
-function StormBanner({ inStorm, clock, live }: PanelProps & { inStorm: boolean }) {
+function StormBanner({
+  inStorm,
+  clock,
+  live,
+  water = false,
+}: PanelProps & { inStorm: boolean; water?: boolean }) {
   const dps = useRef<HTMLSpanElement | null>(null);
   const dist = useRef<HTMLSpanElement | null>(null);
   const tStore = useRef<string[]>(["", ""]);
   usePainter(clock, () => {
     const l = live.current;
-    setText(dps.current, `-${l.dps.toFixed(0)} hp/s`, tStore.current, 0);
-    setText(dist.current, `${Math.max(0, Math.round(l.distToSafe))} m to safety`, tStore.current, 1);
+    setText(
+      dps.current,
+      water ? `-${l.dps.toFixed(1)} ${W.drynessLabel.toLowerCase()}/s` : `-${l.dps.toFixed(0)} hp/s`,
+      tStore.current,
+      0,
+    );
+    setText(
+      dist.current,
+      water
+        ? `${Math.max(0, Math.round(l.distToSafe))} m to ${W.stormSafe.toLowerCase()}`
+        : `${Math.max(0, Math.round(l.distToSafe))} m to safety`,
+      tStore.current,
+      1,
+    );
   });
 
   return (
@@ -2307,12 +3630,23 @@ function StormBanner({ inStorm, clock, live }: PanelProps & { inStorm: boolean }
         >
           <div
             className="flex items-center gap-3 rounded-[4px] px-4 py-1.5"
-            style={{ ...plate, background: "rgba(46,12,66,0.82)", borderColor: "rgba(200,120,255,0.5)" }}
+            style={{
+              ...modePlate(water),
+              background: water ? "rgba(12,44,74,0.86)" : "rgba(46,12,66,0.82)",
+              borderColor: water ? rgba(DOWN.rim, 0.55) : "rgba(200,120,255,0.5)",
+            }}
           >
-            <span className="font-heading text-[13px] font-black uppercase tracking-[0.22em] text-violet-100">
-              You are in the storm
+            <span
+              className="font-heading text-[13px] font-black uppercase tracking-[0.22em]"
+              style={{ color: water ? hex(DOWN.mist) : "#ede9fe" }}
+            >
+              {water ? W.stormIn : "You are in the storm"}
             </span>
-            <span ref={dps} className="font-heading text-[12px] font-black tabular-nums text-red-300" />
+            <span
+              ref={dps}
+              className="font-heading text-[12px] font-black tabular-nums"
+              style={{ color: water ? hex(DOWN.rain) : "#fca5a5" }}
+            />
             <span ref={dist} className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/55" />
           </div>
         </motion.div>
@@ -2468,10 +3802,12 @@ function EndCard({
   ending,
   canRestart,
   onRestart,
+  water = false,
 }: {
   ending: Ending;
   canRestart: boolean;
   onRestart: () => void;
+  water?: boolean;
 }) {
   const victory = ending.kind === "victory";
   return (
@@ -2482,9 +3818,16 @@ function EndCard({
       transition={{ duration: 0.5 }}
       className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center overflow-hidden font-body"
       style={{
-        background: victory
-          ? "radial-gradient(circle at 50% 38%, rgba(52,32,8,0.82), rgba(3,4,10,0.95) 62%)"
-          : "radial-gradient(circle at 50% 40%, rgba(30,8,10,0.86), rgba(2,3,8,0.96) 65%)",
+        background: water
+          ? // Sunny, not solemn: the water end cards keep a lit sky at the top
+            // of the frame instead of closing to black, because losing a water
+            // fight is funny and winning one is a pool party.
+            victory
+            ? "radial-gradient(circle at 50% 34%, rgba(96,198,236,0.6), rgba(20,74,116,0.9) 46%, rgba(5,22,42,0.95) 72%)"
+            : "radial-gradient(circle at 50% 36%, rgba(52,126,170,0.6), rgba(14,52,90,0.9) 48%, rgba(4,16,32,0.96) 74%)"
+          : victory
+            ? "radial-gradient(circle at 50% 38%, rgba(52,32,8,0.82), rgba(3,4,10,0.95) 62%)"
+            : "radial-gradient(circle at 50% 40%, rgba(30,8,10,0.86), rgba(2,3,8,0.96) 65%)",
       }}
     >
       {victory && (
@@ -2494,8 +3837,9 @@ function EndCard({
           animate={{ rotate: 360 }}
           transition={{ repeat: Infinity, duration: 90, ease: "linear" }}
           style={{
-            background:
-              "conic-gradient(from 0deg, rgba(255,205,110,0.55) 0deg, rgba(255,205,110,0) 12deg, rgba(255,205,110,0) 30deg, rgba(255,205,110,0.4) 42deg, rgba(255,205,110,0) 60deg)",
+            background: water
+              ? "conic-gradient(from 0deg, rgba(155,232,255,0.55) 0deg, rgba(155,232,255,0) 12deg, rgba(155,232,255,0) 30deg, rgba(255,228,94,0.4) 42deg, rgba(155,232,255,0) 60deg)"
+              : "conic-gradient(from 0deg, rgba(255,205,110,0.55) 0deg, rgba(255,205,110,0) 12deg, rgba(255,205,110,0) 30deg, rgba(255,205,110,0.4) 42deg, rgba(255,205,110,0) 60deg)",
             maskImage: "radial-gradient(circle, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 65%)",
             WebkitMaskImage: "radial-gradient(circle, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 65%)",
           }}
@@ -2510,41 +3854,74 @@ function EndCard({
       >
         {victory ? (
           <>
-            <span className="text-[11px] font-bold uppercase tracking-[0.55em] text-amber-200/70">
+            <span
+              className="text-[11px] font-bold uppercase tracking-[0.55em]"
+              style={{ color: water ? "rgba(155,232,255,0.7)" : "rgba(253,230,138,0.7)" }}
+            >
               #1 of {ending.lobby}
             </span>
             <h1
               className="mt-2 font-heading text-6xl font-black uppercase leading-[0.95] tracking-tight sm:text-8xl"
               style={{
-                backgroundImage: "linear-gradient(180deg,#fff7dd 8%,#ffd479 46%,#e08a1e 100%)",
+                backgroundImage: water
+                  ? "linear-gradient(180deg,#ffffff 8%,#bff0ff 44%,#3aa9e8 100%)"
+                  : "linear-gradient(180deg,#fff7dd 8%,#ffd479 46%,#e08a1e 100%)",
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",
-                filter: "drop-shadow(0 6px 34px rgba(255,190,80,0.45))",
+                filter: water
+                  ? "drop-shadow(0 6px 34px rgba(120,215,255,0.5))"
+                  : "drop-shadow(0 6px 34px rgba(255,190,80,0.45))",
               }}
             >
-              Victory
-              <br />
-              Royale
+              {water ? (
+                W.victory
+              ) : (
+                <>
+                  Victory
+                  <br />
+                  Royale
+                </>
+              )}
             </h1>
+            {water && (
+              <p className="mt-3 text-sm text-sky-100/60">{W.victorySub}</p>
+            )}
           </>
         ) : (
           <>
-            <span className="text-[11px] font-bold uppercase tracking-[0.55em] text-red-200/60">Eliminated</span>
+            <span
+              className="text-[11px] font-bold uppercase tracking-[0.55em]"
+              style={{ color: water ? "rgba(155,232,255,0.62)" : "rgba(254,202,202,0.6)" }}
+            >
+              {water ? W.eliminated : "Eliminated"}
+            </span>
             <h1
-              className="mt-1 font-heading text-7xl font-black leading-none tabular-nums tracking-tight sm:text-8xl"
+              className="mt-1 font-heading text-7xl font-black uppercase leading-none tabular-nums tracking-tight sm:text-8xl"
               style={{
-                backgroundImage: "linear-gradient(180deg,#ffffff 10%,#ff9d9d 60%,#b02020 100%)",
+                backgroundImage: water
+                  ? "linear-gradient(180deg,#ffffff 10%,#9be8ff 58%,#2a5f96 100%)"
+                  : "linear-gradient(180deg,#ffffff 10%,#ff9d9d 60%,#b02020 100%)",
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",
-                filter: "drop-shadow(0 6px 30px rgba(255,60,60,0.35))",
+                filter: water
+                  ? "drop-shadow(0 6px 30px rgba(90,182,232,0.4))"
+                  : "drop-shadow(0 6px 30px rgba(255,60,60,0.35))",
               }}
             >
-              #{ending.placement}
+              {water ? fmt(W.placement, { n: ending.placement }) : `#${ending.placement}`}
             </h1>
             <p className="mt-2 text-sm text-white/60">
-              Taken out by <span className="font-bold text-white/90">{ending.killer}</span>
+              {water ? (
+                <span className="font-bold text-white/90">
+                  {fmt(W.eliminatedBy, { by: ending.killer })}
+                </span>
+              ) : (
+                <>
+                  Taken out by <span className="font-bold text-white/90">{ending.killer}</span>
+                </>
+              )}
               {ending.weapon ? <span className="text-white/40"> · {ending.weapon}</span> : null}
             </p>
           </>
@@ -2552,17 +3929,20 @@ function EndCard({
 
         <div
           className="mt-8 flex items-center gap-8 rounded-[6px] px-8 py-4"
-          style={{ ...plate, background: "rgba(6,10,20,0.66)" }}
+          style={{ ...modePlate(water), background: water ? "rgba(8,26,44,0.66)" : "rgba(6,10,20,0.66)" }}
         >
-          <Stat label="Eliminations" value={`${ending.eliminations}`} />
+          <Stat label={water ? W.elimsLabel : "Eliminations"} value={`${ending.eliminations}`} />
           <div className="h-9 w-px bg-white/10" />
           {victory ? (
             <Stat label="Placement" value={`#${ending.placement}`} />
           ) : (
-            <Stat label="Outlived" value={`${Math.max(0, ending.lobby - ending.placement)}`} />
+            <Stat
+              label={water ? "Out-dried" : "Outlived"}
+              value={`${Math.max(0, ending.lobby - ending.placement)}`}
+            />
           )}
           <div className="h-9 w-px bg-white/10" />
-          <Stat label="Time survived" value={clockText(ending.matchTime)} />
+          <Stat label={water ? "Time dry" : "Time survived"} value={clockText(ending.matchTime)} />
         </div>
 
         <div className="mt-8 flex items-center gap-3">
@@ -2576,13 +3956,17 @@ function EndCard({
             whileTap={canRestart ? { scale: 0.97 } : undefined}
             className="pointer-events-auto rounded-full px-9 py-3 font-heading text-[13px] font-black uppercase tracking-[0.24em] text-slate-900 disabled:cursor-default"
             style={{
-              backgroundImage: victory
-                ? "linear-gradient(180deg,#ffe7a8,#f5b942)"
-                : "linear-gradient(180deg,#dbe9f5,#8fb4d0)",
+              backgroundImage: water
+                ? victory
+                  ? "linear-gradient(180deg,#e8fbff,#5ecfff)"
+                  : "linear-gradient(180deg,#dbe9f5,#8fb4d0)"
+                : victory
+                  ? "linear-gradient(180deg,#ffe7a8,#f5b942)"
+                  : "linear-gradient(180deg,#dbe9f5,#8fb4d0)",
               boxShadow: "0 10px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.7)",
             }}
           >
-            Drop again
+            {water ? "Get wet again" : "Drop again"}
           </motion.button>
           <a
             href="/"
@@ -2670,11 +4054,20 @@ function coastAt(model: MapModel, a: number): number {
   return lerp(r0, r1, f);
 }
 
-const hatchCache = new WeakMap<CanvasRenderingContext2D, CanvasPattern | null>();
+const hatchCache = new WeakMap<CanvasRenderingContext2D, Map<string, CanvasPattern | null>>();
 
-/** Diagonal hatch inside the storm — the texture is what stops it reading flat. */
-function stormHatch(g: CanvasRenderingContext2D): CanvasPattern | null {
-  const cached = hatchCache.get(g);
+/**
+ * Diagonal hatch inside the storm — the texture is what stops it reading flat.
+ * Keyed by colour as well as context so the Downpour's rain streaks and the
+ * classic storm's violet can coexist without rebuilding a pattern per frame.
+ */
+function stormHatch(g: CanvasRenderingContext2D, stroke: string): CanvasPattern | null {
+  let byColor = hatchCache.get(g);
+  if (!byColor) {
+    byColor = new Map();
+    hatchCache.set(g, byColor);
+  }
+  const cached = byColor.get(stroke);
   if (cached !== undefined) return cached;
   let pattern: CanvasPattern | null = null;
   const c = document.createElement("canvas");
@@ -2682,7 +4075,7 @@ function stormHatch(g: CanvasRenderingContext2D): CanvasPattern | null {
   c.height = 8;
   const h = c.getContext("2d");
   if (h) {
-    h.strokeStyle = "rgba(232,190,255,0.20)";
+    h.strokeStyle = stroke;
     h.lineWidth = 1;
     h.beginPath();
     h.moveTo(-2, 6);
@@ -2692,7 +4085,7 @@ function stormHatch(g: CanvasRenderingContext2D): CanvasPattern | null {
     h.stroke();
     pattern = g.createPattern(c, "repeat");
   }
-  hatchCache.set(g, pattern);
+  byColor.set(stroke, pattern);
   return pattern;
 }
 
@@ -2715,6 +4108,7 @@ function drawMinimap(
   l: Live,
   model: MapModel | null,
   size: number,
+  water = false,
 ): void {
   const half = size / 2;
   const s = size / (2 * Math.max(60, l.mapView));
@@ -2826,18 +4220,18 @@ function drawMinimap(
     outside.rect(0, 0, size, size);
     outside.moveTo(scx + sr, scy);
     outside.arc(scx, scy, sr, 0, TAU);
-    g.fillStyle = "rgba(122,40,196,0.36)";
+    g.fillStyle = water ? rgba(DOWN.wall, 0.34) : "rgba(122,40,196,0.36)";
     g.fill(outside, "evenodd");
-    const hatch = stormHatch(g);
+    const hatch = stormHatch(g, water ? rgba(DOWN.rain, 0.26) : "rgba(232,190,255,0.20)");
     if (hatch) {
       g.fillStyle = hatch;
       g.fill(outside, "evenodd");
     }
 
     g.save();
-    g.strokeStyle = "rgba(244,220,255,0.95)";
+    g.strokeStyle = water ? rgba(DOWN.rim, 0.95) : "rgba(244,220,255,0.95)";
     g.lineWidth = 1.6;
-    g.shadowColor = "rgba(190,110,255,0.95)";
+    g.shadowColor = water ? rgba(DOWN.wall, 0.95) : "rgba(190,110,255,0.95)";
     g.shadowBlur = 8;
     g.beginPath();
     g.arc(scx, scy, sr, 0, TAU);
@@ -2850,7 +4244,7 @@ function drawMinimap(
     g.save();
     g.setLineDash([5, 4]);
     g.lineDashOffset = -l.t * 10;
-    g.strokeStyle = "rgba(255,255,255,0.8)";
+    g.strokeStyle = water ? rgba(DOWN.nextRing, 0.9) : "rgba(255,255,255,0.8)";
     g.lineWidth = 1.2;
     g.beginPath();
     g.arc(px(l.nextX), py(l.nextZ), l.nextRadius * s, 0, TAU);

@@ -38,6 +38,9 @@ import createLoot from "./play/loot";
 import createStorm from "./play/storm";
 import createMatch from "./play/match";
 import createBots from "./play/bots";
+import createNetSystem from "./net/net";
+import createWetness from "./play/wetness";
+import createGhostsSystem from "./net/ghosts";
 
 export interface BootResult {
   engine: Engine;
@@ -48,6 +51,7 @@ export type BootProgress = (stage: string, fraction: number) => void;
 /** Ordered boot list. The single source of truth for load order. */
 const STAGES = [
   { label: "Calibrating optics", factory: createInput },
+  { label: "Opening the channel", factory: createNetSystem },
   { label: "Weaving materials", factory: createMaterials },
   { label: "Raising the sun", factory: createSky },
   { label: "Setting the bounds", factory: createCollision },
@@ -56,11 +60,13 @@ const STAGES = [
   { label: "Building the districts", factory: createPois },
   { label: "Scattering the props", factory: createProps },
   { label: "Planting the treeline", factory: createVegetation },
+  { label: "Filling the puddles", factory: createWetness },
   { label: "Loading effects", factory: createVfx },
   { label: "Arming combat", factory: createCombat },
   { label: "Mixing audio", factory: createAudio },
   { label: "Issuing loadout", factory: createInventory },
   { label: "Boarding the bus", factory: createPlayer },
+  { label: "Dressing the rivals", factory: createGhostsSystem },
   { label: "Pouring concrete", factory: createBuilding },
   { label: "Racking the guns", factory: createWeapons },
   { label: "Seeding the chests", factory: createLoot },

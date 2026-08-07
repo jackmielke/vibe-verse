@@ -63,6 +63,38 @@
  * worth fighting over), `audio` (one-shot stingers). Every one of them can be
  * absent and the storm still runs.
  *
+ * ── SOAKED: the same machine, wearing THE DOWNPOUR ────────────────────────
+ * `ctx.mode === "water"` is the only seam. Everything below the phase table —
+ * the clock, the circle selection, the ground rings, the fog swap, the
+ * `dz:storm` / `dz:in-storm` contract — is shared, because a second storm
+ * system would mean every timing bug fixed twice. What the mode changes is
+ * material, not machinery:
+ *
+ *  - The wall's two detail channels (`hex`, `streak`) are rebound in the
+ *    fragment shader, under `#ifdef DZ_WATER`, to a falling curtain of rain,
+ *    a sheet behind it and spray at its base — reusing the SAME composite,
+ *    the same 140–520 m streak falloff and the same range height cap, so the
+ *    fix that stopped bolts painting the sky covers the rain for free.
+ *  - A rainbow: one dot product against the antisolar direction, narrow,
+ *    daylight-gated, so it arcs across the side of the wall the sun is
+ *    behind you for and nowhere else. No lightning — this is July, not a
+ *    thunderstorm.
+ *  - Cool blues and whites everywhere violet used to be, and a WARM preview
+ *    ring, because in SOAKED the safe zone is the DRY ZONE and "sunshine
+ *    breaking through" is the one thing on the ground that must not be
+ *    mistaken for more water.
+ *  - Damage becomes soak: `player.soak()` against `WATER.downpour`'s
+ *    per-circle rates rather than `player.damage()` against `PHASES[].dps`.
+ *  - The wall wets the island it crosses. Twice a second while it is moving,
+ *    a few points on the footprint go to `wetness.splash()`, so the map
+ *    visibly remembers where the rain has been and the ground it crossed is
+ *    slippery afterwards.
+ *
+ * In `classic` every one of those is compiled out or branched around: three
+ * unused uniform declarations aside, the purple wall preprocesses to the same
+ * shader it has always been, and nothing on this page runs that did not run
+ * before it.
+ *
  * Convention: +X east, +Z south, +Y up. 1 unit = 1 metre.
  */
 import * as THREE from "three";
@@ -79,6 +111,7 @@ import type {
   TerrainService,
   WorldCtx,
 } from "../types";
+import { WATER, downpourSoak } from "../mode/water";
 
 /* ------------------------------------------------------------------------ *
  * Contract shims
@@ -88,19 +121,42 @@ import type {
  * is read structurally, optionally, with a fallback for when it is missing.
  * ------------------------------------------------------------------------ */
 
-/** The bits of the player we touch. `damage` is the only one we need. */
+/**
+ * The bits of the player we touch. `damage` is the only one classic needs;
+ * `soak` is SOAKED's equivalent and is optional because the storm must still
+ * run against a player system that predates it.
+ */
 interface PlayerLike {
   position: THREE.Vector3;
   yaw: number;
   health: number;
   readonly controllable?: boolean;
   damage(amount: number, from: THREE.Vector3 | undefined, source: DamageSource): void;
+  /** SOAKED: take water. Routed through the poncho maths by the player. */
+  soak?(amount: number, from?: THREE.Vector3, source?: DamageSource): void;
 }
 
 /** Audio's one-shot surface — every method optional. */
 interface AudioLike {
   play?(name: string, opts?: { position?: THREE.Vector3; volume?: number; rate?: number }): void;
   readonly ready?: boolean;
+}
+
+/**
+ * The wetness system's one entry point we care about: where the rain landed.
+ * Read structurally so this module still compiles and runs in a build that
+ * has no wetness system at all (classic never calls it).
+ */
+interface WetnessLike {
+  splash?(point: THREE.Vector3, radius: number, amount: number): void;
+}
+
+/** Just enough of the sky to aim a rainbow. */
+interface SkyLike {
+  /** Unit vector pointing AT the sun. */
+  sunDirection?: THREE.Vector3;
+  /** 0..1, 1 = full daylight. */
+  daylight?: number;
 }
 
 /** What the storm may reach for. */
@@ -111,6 +167,8 @@ interface StormServices {
   match?: MatchService;
   player?: PlayerLike;
   audio?: AudioLike;
+  sky?: SkyLike;
+  wetness?: WetnessLike;
   pois?: Poi[];
   storm?: StormService;
 }
@@ -325,6 +383,52 @@ const PARTICLE_LIFE = 1.7;
 
 const TWO_PI = Math.PI * 2;
 
+/* ------------------------------------------------------------- the downpour */
+
+/**
+ * SOAKED's numbers. Palette, opacity, soak rates and cue names all come from
+ * `WATER.downpour` — this file owns none of them, so the mode can be retuned
+ * in one table. What lives here is only what is specific to *this* system's
+ * rendering of them.
+ */
+const DOWNPOUR = WATER.downpour;
+
+/**
+ * Interior fog inside the Downpour. Denser than the storm's 0.0055 — rain
+ * genuinely takes your visibility, and losing the far treeline is most of
+ * what makes being caught out feel urgent — but nowhere near a wipe: at
+ * 0.0085 the building you are sprinting to is still a building at 150 m.
+ */
+const DOWNPOUR_FOG_DENSITY = 0.0085;
+
+/**
+ * How far the interior fog is allowed to pull toward the mode's tint. Higher
+ * than classic's 0.62 because a grey-blue rain haze *should* take the island's
+ * colour with it; violet never should.
+ */
+const DOWNPOUR_FOG_TINT = 0.75;
+
+/**
+ * Puddle laying, all in SIMULATED seconds.
+ *
+ * The wall crossing a hillside leaves it wet. This is the whole trick: a few
+ * `wetness.splash()` calls per tick on the moving footprint, which the puddle
+ * pool merges into a continuous band as the wall sweeps. Rates are deliberately
+ * modest — the pool is a capped ring buffer that evicts the smallest puddle, so
+ * painting the far side of the island at speed would evict the water the player
+ * is standing in.
+ */
+const RAIN_TRAIL_INTERVAL = 0.45;
+/** Splashes laid per tick while the wall is moving. */
+const RAIN_TRAIL_SPLASHES = 3;
+const RAIN_TRAIL_RADIUS = 3.0;
+/** In `wetness` units: a burst balloon is ~9, so this is a good soaking. */
+const RAIN_TRAIL_AMOUNT = 6.5;
+/** Radius around the player that rain pools in while they are caught in it. */
+const RAIN_POOL_SPREAD = 12;
+const RAIN_POOL_RADIUS = 1.5;
+const RAIN_POOL_AMOUNT = 2.2;
+
 /* ------------------------------------------------------------------------ *
  * Quality tiers
  * ------------------------------------------------------------------------ */
@@ -533,6 +637,9 @@ uniform float uHexRepeatV;
 uniform vec3 uDeep;          // the body colour, deep indigo
 uniform vec3 uMid;           // violet, where the energy sits
 uniform vec3 uHot;           // near-white, only at the peaks
+uniform vec3 uMist;          // SOAKED only: the pale mist at the contact line
+uniform vec3 uSunDir;        // SOAKED only: unit vector pointing AT the sun
+uniform float uDaylight;     // SOAKED only: 0..1, gates the rainbow
 uniform float uOpacity;
 uniform float uIntensity;    // rises while the wall is moving
 uniform float uCharge;       // 0..1 pre-close warning charge
@@ -573,6 +680,84 @@ void main() {
   float turb = dzFbm3(nuv + vec3(uTime * 0.020, uTime * 0.013, -uTime * 0.085));
   float slow = dzNoise3(vec3(ring * S * 0.30, h * 0.0030) + vec3(0.0, 0.0, -uTime * 0.055));
 
+#ifdef DZ_WATER
+  // ---- THE DOWNPOUR -------------------------------------------------------
+  // Same two channels, different weather. "hex" is whatever continuous sheet
+  // the wall is made of and "streak" is whatever moves through it, so binding
+  // rain to them puts the Downpour through the SAME composite, the same
+  // 140-520 m streak falloff and the same range height cap as the storm —
+  // rather than growing a parallel one that drifts out of tune with it.
+  //
+  // Everything here FALLS. The phase advances with +uTime on the same axis
+  // the height feeds, so a feature holds its argument by dropping through h;
+  // the classic bolt does the opposite by construction and climbs. Speeds are
+  // in cycles/second against a cycle height of 1/0.052 = 19 m, i.e. the near
+  // layer travels about 18 m/s and the fine one about 13 — fast enough to
+  // read as heavy rain, slow enough that individual streaks are legible.
+  float rainScale = max(uHexRepeatU * 1.10, 2.0);
+
+  float colR = dzNoise3(vec3(ring * rainScale, 5.31));
+  // The phase offset is sampled at a much FINER angular scale than the speed.
+  // Taking both from the same coarse seed makes the offset vary smoothly with
+  // the column, and a smoothly varying phase is a travelling wave: the first
+  // build drew chevrons marching across the wall like an op-art print. Speed
+  // stays coarse, so neighbouring streaks still fall together in gusts.
+  float phaseA = dzNoise3(vec3(ring * rainScale * 3.70, 0.91));
+  float fA = fract(h * 0.052 + uTime * (0.85 + 0.75 * colR) + phaseA * 11.0);
+  // Raised cosines again, and for the same reason the bolts are: a sawtooth
+  // snapping in one pixel draws a wavy horizontal line across the whole wall.
+  float dropA = pow(0.5 - 0.5 * cos(6.28318530718 * fA), 7.0);
+
+  float colR2 = dzNoise3(vec3(ring * rainScale * 2.30, 1.77));
+  float phaseB = dzNoise3(vec3(ring * rainScale * 7.90, 4.13));
+  float fB = fract(h * 0.115 + uTime * (1.45 + 0.90 * colR2) + phaseB * 13.0);
+  float dropB = pow(0.5 - 0.5 * cos(6.28318530718 * fB), 11.0);
+
+  // Both layers are angular detail on a cylinder, which means the further
+  // away a column is the more of it lands inside one pixel. The fine layer is
+  // 2.8 m wide and turns to static by a hundred metres; the coarse one is
+  // 6.4 m and lasts about three times as far. Fading each out where it stops
+  // resolving is the same lesson the bolts taught: what survives at range has
+  // to be the SHEET, or a wall of rain reads as television snow.
+  dropB *= 1.0 - smoothstep(40.0, 170.0, vDistXZ);
+  dropA *= 1.0 - smoothstep(90.0, 330.0, vDistXZ);
+
+  // The sheet the individual streaks ride on. A downpour is a volume of
+  // water first and a set of droplets second; without this the wall reads as
+  // scratches on glass rather than as weather you cannot see through.
+  float sheet = dzFbm3(vec3(ring * S * 0.85, h * 0.016) + vec3(0.0, 0.0, uTime * 0.55));
+  // Spray where the rain hits the island, and a wider mist hanging over it.
+  float sprayN = dzFbm3(vec3(ring * S * 1.90, h * 0.050) + vec3(0.0, 0.0, -uTime * 0.42));
+  float spray = exp(-h * 0.075) * (0.45 + 1.05 * sprayN);
+  float mist = exp(-h * 0.020) * (0.35 + 0.65 * slow);
+
+  // Both channels are deliberately scaled to land in the same range the
+  // storm's do, because the composite below weights them with numbers tuned
+  // against those ranges. Rain that peaks twice as high does not read as
+  // twice as wet — it reads as a white rectangle, which is what the first
+  // pass of this shader was: "energy" ran past 1.5 across the whole base band
+  // and the premultiplied surplus blew the frame out from eighty metres away.
+  float hex = (0.34 + 0.50 * sheet) * (0.78 + 0.38 * mist);
+  float streak = (dropA * 0.85 + dropB * 0.60) * (0.35 + 0.90 * sheet);
+  // Individual streaks go the way the bolts do — a rain streak a kilometre
+  // away is a scratch on the lens for exactly the same reason.
+  streak *= 1.0 - smoothstep(140.0, 520.0, vDistXZ);
+  // The spray at the base does NOT: it is a mass, not a line, and a wall of
+  // rain seen from across the island should still be standing in its own
+  // white surf. Kept low — unlike a bolt this term is CONTINUOUS across the
+  // whole contact band, so it costs three times what its peak suggests.
+  streak += spray * 0.26;
+
+  // The shared composite already adds 0.55 of pure contact glow over the
+  // first ~20 m, and our spray sits in exactly that band. Damping both
+  // channels by the same profile stops the base being paid for twice — left
+  // undamped it welds a white bar along the horizon that is brighter than the
+  // sun and hides the one thing the player is looking for down there, which is
+  // where the wall actually meets the ground.
+  float baseDamp = 1.0 - 0.42 * exp(-h * 0.055);
+  hex *= baseDamp;
+  streak *= baseDamp;
+#else
   // ---- hex lattice --------------------------------------------------------
   // Two copies of the same seamless tile at 1x and 0.5x, scrolling upward at
   // different rates. The offsets are pure translation so the tiling stays
@@ -618,6 +803,7 @@ void main() {
   // lattice, the body and the rim, which is what a distant storm wall is
   // supposed to be: a soft coloured band on the horizon.
   streak *= 1.0 - smoothstep(140.0, 520.0, vDistXZ);
+#endif
 
   // ---- fresnel ------------------------------------------------------------
   // The cylinder normal is purely radial, so this is exact without a normal
@@ -703,9 +889,40 @@ void main() {
 
   vec3 col = mix(uDeep, uMid, clamp(energy * 0.90, 0.0, 1.0));
   col = mix(col, uHot, clamp(streak * 0.80 + fres * 0.26 + pow(energy, 2.4) * 0.35, 0.0, 1.0));
+#ifdef DZ_WATER
+  // The contact line is spray, and spray is white. Pushed harder than the
+  // storm's magenta because this is the band that has to separate a wall of
+  // water from the sea behind it.
+  col = mix(col, uMist, contact * 0.30);
+
+  // ---- rainbow ------------------------------------------------------------
+  // A real bow sits ~42 degrees off the ANTISOLAR point, and the fragment
+  // already has everything that needs: the view ray against the direction
+  // away from the sun. cos(42 deg) = 0.743, so the arc lands mid-band.
+  //
+  // This is the whole reason it reads as sunlight through water rather than
+  // as a decal: it only appears on the part of the wall the sun is behind you
+  // for, it moves as you turn, and it is gone at dusk. It is also the only
+  // colour in this mode that is not blue or white, which is exactly how much
+  // of it there should be.
+  float bow = dot(normalize(-vViewDir), -uSunDir);
+  float bowT = (bow - 0.685) / 0.105;
+  float bowMask = smoothstep(0.0, 0.22, bowT) * (1.0 - smoothstep(0.72, 1.0, bowT));
+  // Only where there is water to refract and light to do it with, and only
+  // where the curtain is dense — a bow across a thin patch is a bug.
+  bowMask *= uDaylight * clamp(0.25 + 0.75 * hex, 0.0, 1.4) * body;
+  // Gated by the SAME vertical profile as everything else. Skipping this is
+  // exactly the bug the storm already had once: light emitted above the fade
+  // is light with no coverage under it, and it paints the sky on its own.
+  bowMask *= topFade * bottomFade;
+  vec3 spectrum = 0.5 + 0.5 * cos(6.28318530718 * (vec3(0.0, 0.33, 0.66) + bowT * 0.85));
+  col = mix(col, spectrum, clamp(bowMask * 0.80, 0.0, 0.62));
+  energy += bowMask * 0.38;
+#else
   // Contact keeps a warmer magenta so the base does not go the same blue as
   // the sky it is standing in front of.
   col = mix(col, vec3(0.92, 0.46, 1.0), contact * 0.28);
+#endif
 
   // ---- aerial perspective -------------------------------------------------
   // An honest mix now that this is a real alpha blend: the far side of a
@@ -1448,6 +1665,12 @@ class StreakField {
  *    the layer that tells you the wall is *right there*.
  *  - **sub**   — two detuned low sines with a slow tremolo, felt more than
  *    heard, ducked hard when you are safe so it never muddies a firefight.
+ *
+ * SOAKED runs the same three voices with the balance moved up the spectrum:
+ * rain is mostly a broadband hiss with a rumble under it, where a storm is
+ * mostly rumble with a hiss on top. Same graph, different noise colour, filter
+ * frequencies and gains — a second audio class for the same three voices would
+ * be two places to fix a click.
  */
 class StormAudio {
   private acx: AudioContext | null = null;
@@ -1461,6 +1684,9 @@ class StormAudio {
   private oscillators: OscillatorNode[] = [];
   private noise: AudioBuffer | null = null;
   private failed = false;
+
+  /** `true` in SOAKED: the Downpour rather than the storm. */
+  constructor(private readonly rain: boolean = false) {}
 
   /** Safe to call every frame; only the first call after a gesture does work. */
   ensure(): void {
@@ -1487,10 +1713,15 @@ class StormAudio {
       const buf = acx.createBuffer(1, len, acx.sampleRate);
       const data = buf.getChannelData(0);
       let last = 0;
+      // Rain is a much lighter integration — closer to pink than to brown —
+      // because the sound of rain is thousands of tiny impacts and brown noise
+      // has none of them left in it.
+      const lean = this.rain ? 0.14 : 0.021;
+      const gain = this.rain ? 1.15 : 3.4;
       for (let i = 0; i < len; i++) {
         const white = Math.random() * 2 - 1;
-        last = (last + 0.021 * white) / 1.021;
-        data[i] = last * 3.4;
+        last = (last + lean * white) / (1 + lean);
+        data[i] = last * gain;
       }
       // Crossfade the tail into the head so the 3 s loop has no seam.
       const fade = Math.floor(acx.sampleRate * 0.12);
@@ -1503,7 +1734,7 @@ class StormAudio {
       // ---- roar
       const roarFilter = acx.createBiquadFilter();
       roarFilter.type = "lowpass";
-      roarFilter.frequency.value = 220;
+      roarFilter.frequency.value = this.rain ? 520 : 220;
       roarFilter.Q.value = 0.9;
       const roarGain = acx.createGain();
       roarGain.gain.value = 0;
@@ -1516,8 +1747,9 @@ class StormAudio {
       // ---- hiss
       const hissFilter = acx.createBiquadFilter();
       hissFilter.type = "bandpass";
-      hissFilter.frequency.value = 1650;
-      hissFilter.Q.value = 1.4;
+      // Wider and higher for rain: a broad shhh, not a resonant howl.
+      hissFilter.frequency.value = this.rain ? 3100 : 1650;
+      hissFilter.Q.value = this.rain ? 0.55 : 1.4;
       const hissGain = acx.createGain();
       hissGain.gain.value = 0;
       hissFilter.connect(hissGain);
@@ -1599,15 +1831,32 @@ class StormAudio {
 
     // setTargetAtTime rather than ramps: crossing the wall should swell, and
     // a linear ramp to a new value every frame is audibly stepped.
-    this.roarGain.gain.setTargetAtTime(0.26 * n + 0.42 * i, t, 0.25);
-    this.hissGain.gain.setTargetAtTime(0.035 * n * n + 0.11 * i, t, 0.18);
-    this.subGain.gain.setTargetAtTime(0.10 * n + 0.26 * i, t, 0.35);
+    if (this.rain) {
+      // The hiss carries it and the sub only underpins it — a downpour heard
+      // from thirty metres away is the sound of water on leaves, and the
+      // rumble is what you feel once you are standing in it.
+      this.roarGain.gain.setTargetAtTime(0.20 * n + 0.30 * i, t, 0.25);
+      this.hissGain.gain.setTargetAtTime(0.12 * n + 0.30 * i, t, 0.18);
+      this.subGain.gain.setTargetAtTime(0.04 * n + 0.13 * i, t, 0.35);
+    } else {
+      this.roarGain.gain.setTargetAtTime(0.26 * n + 0.42 * i, t, 0.25);
+      this.hissGain.gain.setTargetAtTime(0.035 * n * n + 0.11 * i, t, 0.18);
+      this.subGain.gain.setTargetAtTime(0.10 * n + 0.26 * i, t, 0.35);
+    }
 
     if (this.roarFilter) {
-      this.roarFilter.frequency.setTargetAtTime(160 + 520 * n + 700 * i, t, 0.3);
+      this.roarFilter.frequency.setTargetAtTime(
+        this.rain ? 420 + 700 * n + 900 * i : 160 + 520 * n + 700 * i,
+        t,
+        0.3,
+      );
     }
     if (this.hissFilter) {
-      this.hissFilter.frequency.setTargetAtTime(1250 + 900 * n + 500 * i, t, 0.3);
+      this.hissFilter.frequency.setTargetAtTime(
+        this.rain ? 2400 + 1400 * n + 900 * i : 1250 + 900 * n + 500 * i,
+        t,
+        0.3,
+      );
     }
   }
 
@@ -1673,6 +1922,14 @@ class StormAudio {
     const acx = this.acx;
     if (!acx) return;
     const t0 = acx.currentTime + 0.01;
+    if (this.rain) {
+      // The opposite gesture: a rush that RISES and opens, the sound of rain
+      // arriving rather than of something bearing down on you.
+      this.tone(146, t0, 1.6, "triangle", 0.05, 2.1);
+      this.tone(96, t0 + 0.05, 1.8, "sine", 0.07, 1.6);
+      this.noiseBurst(t0, 1.8, 420, 0.5, 0.13, 2600);
+      return;
+    }
     this.tone(220, t0, 1.5, "sawtooth", 0.055, 0.34);
     this.tone(110, t0 + 0.05, 1.9, "sine", 0.09, 0.5);
     this.noiseBurst(t0, 1.7, 900, 0.7, 0.10, 180);
@@ -1732,6 +1989,12 @@ class StormAudio {
 
 /** Attributed to the storm in the kill feed and the death card. */
 const STORM_SOURCE: DamageSource = { by: "storm", name: "the storm", weapon: "storm" };
+/** The same, for SOAKED. Nobody is hurt by it; they are rained on. */
+const DOWNPOUR_SOURCE: DamageSource = {
+  by: "storm",
+  name: DOWNPOUR.name.toLowerCase(),
+  weapon: "downpour",
+};
 
 /** States the player is in where storm damage would be nonsense. */
 const NO_DAMAGE_STATES = new Set(["bus", "skydive", "glide", "dead"]);
@@ -1754,6 +2017,33 @@ function closeEase(t: number): number {
 const createStorm: SystemFactory = (ctx: WorldCtx): System => {
   const services = ctx.services as StormServices;
   const tier = TIERS[ctx.quality] ?? TIERS.high;
+  /**
+   * The seam. Read once at boot: the mode cannot change inside a match, and
+   * a string compare in the fixed step is a string compare 120 times a second.
+   */
+  const water = ctx.mode === "water";
+  const pal = DOWNPOUR.palette;
+  /** Cue names, resolved once. Unknown names are a no-op in `AudioService`. */
+  const CUE = water
+    ? {
+        close: "downpour-close",
+        warn: DOWNPOUR.soundWarn,
+        enter: DOWNPOUR.soundEnter,
+        exit: "downpour-exit",
+      }
+    : { close: "storm-close", warn: "storm-warn", enter: "storm-enter", exit: "storm-exit" };
+  /**
+   * Soak/damage per second for a 0-based phase index.
+   *
+   * SOAKED runs hotter than DROP ZERO on purpose and the numbers live in
+   * `WATER.downpour.soakPerSecond`, not here: dryness comes BACK at 3.2/s, so
+   * a rate that would be merciless against health is merely expensive against
+   * a bar that refills the moment you get under a roof.
+   */
+  const phaseDps = (index: number): number =>
+    water ? downpourSoak(index + 1) : PHASES[index].dps;
+  /** Soak/damage lands in whole ticks this often. */
+  const damageTick = water ? DOWNPOUR.tickInterval : DAMAGE_TICK;
   // Own RNG stream. Pulling from `ctx.rng` directly would make the circle
   // sequence depend on how many numbers every other system happened to draw
   // before us, and the storm is the one thing a player will want to be able
@@ -1793,8 +2083,12 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
   let inStormPrimed = false;
 
   const tmpA = new THREE.Vector3();
+  /** Second scratch, for the puddles the Downpour leaves behind it. */
+  const tmpB = new THREE.Vector3();
   /** Scratch for the sky's live fog colour, read before we blend over it. */
   const tmpColor = new THREE.Color();
+  /** Simulated seconds since the last band of puddles was laid down. */
+  let rainTrailAcc = 0;
 
   // --------------------------------------------------------------- service
 
@@ -1806,7 +2100,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
     timer: OPENING_GRACE,
     closing: false,
     circle: 1,
-    dps: PHASES[0].dps,
+    dps: phaseDps(0),
     phaseCount: PHASES.length,
 
     isSafe(point: THREE.Vector3): boolean {
@@ -2027,12 +2321,32 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
     // Three points on one hue ramp. The wall is never two colours at once by
     // accident: deep is the body, mid is where the energy lives, hot is only
     // ever reached by a bolt or a grazing edge.
-    uDeep: { value: new THREE.Color(0x2a1160) },
-    uMid: { value: new THREE.Color(0x7b3fe4) },
-    uHot: { value: new THREE.Color(0xdcc4ff) },
+    //
+    // SOAKED walks the same ramp in cool blues: the deep is the tint the sky
+    // goes inside the rain, the mid is the wall proper, and the hot is the
+    // lit rim. Note what is NOT here — no colour is "blue paint". The wall is
+    // legible because of density, rim and motion; the hue only says which
+    // mode it is.
+    //
+    // The two scalars matter as much as the hues. `WATER.downpour.palette` is
+    // authored for UI and particles, where a colour is seen ON ITS OWN; this
+    // ramp is summed, squared and added to the frame, so it has to have the
+    // same VALUE STRUCTURE the storm's does — a dark body, a mid, a bright
+    // rim. Feeding the palette in at full brightness made every term white
+    // and turned the wall into a lit slab at any range under a hundred metres.
+    uDeep: { value: new THREE.Color(water ? pal.skyTint : 0x2a1160).multiplyScalar(water ? 0.45 : 1) },
+    uMid: { value: new THREE.Color(water ? pal.wall : 0x7b3fe4).multiplyScalar(water ? 0.62 : 1) },
+    uHot: { value: new THREE.Color(water ? pal.rim : 0xdcc4ff) },
+    uMist: { value: new THREE.Color(pal.mist) },
+    // Overwritten from the sky every frame in water mode; a sane default so
+    // the rainbow is not a NaN on a build with no sky service.
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uDaylight: { value: 1 },
     // Deliberately low. The wall reads as a wall through density of detail and
     // a hot rim, never through paint — see the coverage block in WALL_FRAG.
-    uOpacity: { value: 0.34 },
+    // Rain gets a little more of it: a curtain of water occludes more than an
+    // energy field does, and `WATER.downpour.wallOpacity` is where that lives.
+    uOpacity: { value: water ? DOWNPOUR.wallOpacity : 0.34 },
     uIntensity: { value: 1 },
     uCharge: { value: 0 },
     uInside: { value: 1 },
@@ -2042,7 +2356,11 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
   const wallMaterial = new THREE.ShaderMaterial({
     uniforms: wallUniforms,
-    defines: { OCTAVES: tier.octaves },
+    // A compile-time switch, not a uniform branch. The mode is fixed for the
+    // life of the match, so classic compiles the exact shader it compiled
+    // yesterday — no extra texture fetches, no dead noise octaves, and no way
+    // for a stray uniform write to put rain on the purple wall.
+    defines: water ? { OCTAVES: tier.octaves, DZ_WATER: 1 } : { OCTAVES: tier.octaves },
     vertexShader: WALL_VERT,
     fragmentShader: WALL_FRAG,
     // You look at it from outside for the whole first act of a match.
@@ -2084,8 +2402,13 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
    * distance because at range the wall itself is doing the talking.
    */
   const currentRing = new GroundRing(tier.ringSegments, {
-    core: 0xe7d3ff,
-    edge: 0x7b3fe4,
+    // In SOAKED this pool of light is the surf line where the rain hits the
+    // island. It is ADDITIVE and it is 22 m wide, so it takes the rim blue
+    // rather than the spray white: white here lands on top of the wall's own
+    // contact glow and the two together bleach the ground the player is
+    // trying to read.
+    core: water ? pal.rim : 0xe7d3ff,
+    edge: water ? 0x3f88ad : 0x7b3fe4,
     dashes: 96,
     dashSpeed: 0.045,
     pulse: 0.35,
@@ -2099,13 +2422,21 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
    * thing on the ground that must never be mistaken for the thing that is
    * about to hurt you, and hue is the only channel that survives being
    * glimpsed at 400 m through haze.
+   *
+   * That argument gets *stronger* in SOAKED, and it flips the temperature.
+   * The whole world inside the Downpour is blue, so a cool preview ring would
+   * be camouflage; the safe zone is the DRY ZONE and it reads as sunshine
+   * breaking through cloud — warm, low-contrast against nothing else on the
+   * island, and the only warm thing on screen while it is raining. It also
+   * breathes slower than the storm's, because it is somewhere to go rather
+   * than something coming.
    */
   const nextRing = new GroundRing(tier.ringSegments, {
-    core: 0xffffff,
-    edge: 0x63d9ff,
+    core: water ? 0xfffdf0 : 0xffffff,
+    edge: water ? pal.nextRing : 0x63d9ff,
     dashes: 64,
-    dashSpeed: -0.075,
-    pulse: 0.7,
+    dashSpeed: water ? -0.05 : -0.075,
+    pulse: water ? 0.5 : 0.7,
     width: RING_WIDTH * 1.6,
     // A 11 m band 900 m away is a pixel and a half. Widening with distance is
     // a lie the eye reads as perspective, and it is what keeps the next
@@ -2121,6 +2452,18 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
   const streaks = tier.particles > 0 ? new StreakField(tier.particles, rng) : null;
   if (streaks) ctx.scene.add(streaks.mesh);
+  if (streaks && water) {
+    // Same field, re-dressed as rain: shorter, thinner, paler drops. The wind
+    // vector (set per frame, below) is what actually turns them vertical —
+    // these quads always billboard along it, so pointing it at the ground is
+    // the whole difference between a blizzard swirling past you and rain
+    // falling on you.
+    const u = streaks.material.uniforms;
+    (u.uColorA.value as THREE.Color).setHex(pal.rain);
+    (u.uColorB.value as THREE.Color).setHex(pal.mist);
+    u.uLength.value = DOWNPOUR.streakLength;
+    u.uWidth.value = 0.055;
+  }
 
   // ------------------------------------------------------------------ veil
 
@@ -2133,8 +2476,16 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       uniforms: {
         uTime: { value: 0 },
         uIntensity: { value: 0 },
-        uTint: { value: new THREE.Color(0x7a3fd6) },
-        uEdge: { value: new THREE.Color(0x2d1350) },
+        // SOAKED's veil is the rain on the lens: a cool wash at the edges,
+        // deepening to the tint the sky takes inside the Downpour. Same
+        // dialled-back alpha ceiling — being caught out has to feel bad, not
+        // look like a broken colour filter.
+        uTint: { value: new THREE.Color(water ? pal.vignette : 0x7a3fd6) },
+        uEdge: {
+          value: water
+            ? new THREE.Color(pal.skyTint).multiplyScalar(0.55)
+            : new THREE.Color(0x2d1350),
+        },
         uAspect: { value: ctx.camera.aspect || 1 },
       },
       defines: { OCTAVES: Math.min(tier.octaves, 3) },
@@ -2165,14 +2516,17 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
    * `hostFog.color` is a live read of what the sky would be showing and the
    * blend never snaps when we hand the scene back.
    */
-  const stormFog = new THREE.FogExp2(STORM_FOG_COLOR, STORM_FOG_DENSITY);
-  const stormFogColor = new THREE.Color(STORM_FOG_COLOR);
+  const interiorFogColor = water ? pal.skyTint : STORM_FOG_COLOR;
+  const interiorFogDensity = water ? DOWNPOUR_FOG_DENSITY : STORM_FOG_DENSITY;
+  const interiorFogTint = water ? DOWNPOUR_FOG_TINT : 0.62;
+  const stormFog = new THREE.FogExp2(interiorFogColor, interiorFogDensity);
+  const stormFogColor = new THREE.Color(interiorFogColor);
   let hostFog: THREE.FogBase | null = null;
   let fogInstalled = false;
 
   // ----------------------------------------------------------------- audio
 
-  const audio = new StormAudio();
+  const audio = new StormAudio(water);
   const offLock = ctx.on("dz:lock", (locked) => {
     if (locked) audio.resume();
   });
@@ -2222,7 +2576,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
     fromCenter.copy(service.center);
     fromRadius = service.radius;
     audio.closeSweep();
-    services.audio?.play?.("storm-close", { volume: 0.7 });
+    services.audio?.play?.(CUE.close, { volume: 0.7 });
     ctx.emit("dz:storm-phase", { circle: service.circle, closing: true, dps: service.dps });
   }
 
@@ -2247,7 +2601,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
     mode = "wait";
     service.circle = phaseIndex + 1;
-    service.dps = PHASES[phaseIndex].dps;
+    service.dps = phaseDps(phaseIndex);
     service.timer = PHASES[phaseIndex].wait;
     pipCursor = 0;
     pickNextCircle(phaseIndex);
@@ -2262,8 +2616,82 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       pipCursor++;
       const urgency = 1 - seconds / WARN_PIPS[0];
       audio.warn(urgency);
-      services.audio?.play?.("storm-warn", { volume: 0.35 + 0.3 * urgency });
+      services.audio?.play?.(CUE.warn, { volume: 0.35 + 0.3 * urgency });
       ctx.emit("dz:storm-warn", { seconds, circle: service.circle });
+    }
+  }
+
+  /**
+   * SOAKED: leave the island wet where the rain has been.
+   *
+   * The wall crossing a hillside should not be a thing that happened and then
+   * un-happened. `wetness` merges splashes into nearby puddles, so a handful
+   * of points laid on the moving footprint every tick come out the other side
+   * as a continuous slick band tracking the wall inward — visible, and
+   * genuinely slippery, long after the wall has gone past.
+   *
+   * Two economies to respect, and they are why the rates are what they are:
+   * the puddle pool is capped and evicts the SMALLEST puddle when it fills,
+   * so water laid on the far side of the island is water taken away from
+   * where the player is standing. Hence the bias toward the player's own arc
+   * of the circle, with one fully random sample so the rest of the map is not
+   * bone dry when they get there.
+   *
+   * Everything here is timed off the `dt` handed to `fixed()`, which is
+   * simulated seconds. A wall-clock timer would lay one puddle per minute of
+   * capture under SwiftSHADER and none at all in a real browser.
+   */
+  function paintRainTrail(dt: number): void {
+    const wet = services.wetness;
+    if (!wet || typeof wet.splash !== "function") return;
+
+    rainTrailAcc += dt;
+    if (rainTrailAcc < RAIN_TRAIL_INTERVAL) return;
+    rainTrailAcc = 0;
+    if (!matchLive()) return;
+
+    const terrain = services.terrain;
+    const player = services.player;
+
+    /** Splash on the ground at an XZ, unless that ground is already sea. */
+    const wetGround = (x: number, z: number, radius: number, amount: number): void => {
+      if (terrain) {
+        if (terrain.isWater(x, z)) return; // the sea does not need the help
+        tmpB.set(x, terrain.heightAt(x, z), z);
+      } else {
+        tmpB.set(x, 0, z);
+      }
+      wet.splash?.(tmpB, radius, amount);
+    };
+
+    if (mode === "close" && service.radius > 3) {
+      const base = player
+        ? Math.atan2(player.position.z - service.center.z, player.position.x - service.center.x)
+        : rng() * TWO_PI;
+      for (let i = 0; i < RAIN_TRAIL_SPLASHES; i++) {
+        const a =
+          i === RAIN_TRAIL_SPLASHES - 1 ? rng() * TWO_PI : base + (rng() - 0.5) * 1.8;
+        wetGround(
+          service.center.x + Math.cos(a) * service.radius,
+          service.center.z + Math.sin(a) * service.radius,
+          RAIN_TRAIL_RADIUS,
+          RAIN_TRAIL_AMOUNT,
+        );
+      }
+    }
+
+    // Standing in it pools water around you too. `intensity` is only ever
+    // nonzero when the player is genuinely caught out and playing (it carries
+    // `matchLive()` and the bus/dive states), so this needs no gate of its own.
+    if (player && intensity > 0.3) {
+      const a = rng() * TWO_PI;
+      const r = 3 + rng() * (RAIN_POOL_SPREAD - 3);
+      wetGround(
+        player.position.x + Math.cos(a) * r,
+        player.position.z + Math.sin(a) * r,
+        RAIN_POOL_RADIUS,
+        RAIN_POOL_AMOUNT,
+      );
     }
   }
 
@@ -2282,7 +2710,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
     phaseCount: PHASES.length,
     timer: OPENING_GRACE,
     closing: false,
-    dps: PHASES[0].dps,
+    dps: phaseDps(0),
     radius: START_RADIUS,
     nextRadius: service.nextRadius,
     centerX: START_CENTER_X,
@@ -2308,13 +2736,23 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
   function applyStormDamage(amount: number): void {
     if (amount <= 0) return;
 
+    const source = water ? DOWNPOUR_SOURCE : STORM_SOURCE;
     const player = services.player;
     if (player) {
       const state = (player as unknown as { state?: string }).state ?? "ground";
       // Being "outside the circle" while strapped into the bus at 800 m is
       // not being caught in the storm.
       if (!NO_DAMAGE_STATES.has(state) && !service.isSafe(player.position)) {
-        player.damage(amount, undefined, STORM_SOURCE);
+        // In SOAKED this comes off dryness, not health, and it goes through
+        // the player's own poncho maths — a ponchoed player standing in the
+        // rain should be spending the poncho, not the bar underneath it.
+        // Falling back to `damage` matters: `soak` is read structurally and
+        // a player system that predates the mode simply will not have it.
+        if (water && typeof player.soak === "function") {
+          player.soak(amount, undefined, source);
+        } else {
+          player.damage(amount, undefined, source);
+        }
       }
     }
 
@@ -2328,7 +2766,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       if (!t.alive || t.faction !== "bot") continue;
       t.object.getWorldPosition(tmpA);
       if (service.isSafe(tmpA)) continue;
-      t.onDamage(amount, tmpA.clone(), STORM_SOURCE, false);
+      t.onDamage(amount, tmpA.clone(), source, false);
     }
   }
 
@@ -2381,11 +2819,16 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
       // ---- damage ---------------------------------------------------------
       damageAcc += dt;
-      if (damageAcc >= DAMAGE_TICK) {
+      if (damageAcc >= damageTick) {
         const elapsed = damageAcc;
         damageAcc = 0;
         if (matchLive()) applyStormDamage(service.dps * elapsed);
       }
+
+      // ---- puddles --------------------------------------------------------
+      // Placement, and it changes world state the player can slip on, so it
+      // belongs in the fixed step with the rest of the physics.
+      if (water) paintRainTrail(dt);
     },
 
     update(dt, c) {
@@ -2403,6 +2846,17 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       // one every few metres of radius, which shifts the pattern by a third
       // of a degree — far below the threshold where a jump is visible.
       wallUniforms.uHexRepeatU.value = Math.max(6, Math.round((TWO_PI * r) / HEX_WORLD_SIZE));
+
+      // The rainbow is aimed off the live sun, so it swings round the wall as
+      // the day turns and is gone by dusk. Read lazily and null-checked like
+      // everything else: no sky service means a fixed overhead sun, which is
+      // wrong but never black.
+      if (water) {
+        const sky = cc.sky;
+        if (sky?.sunDirection) (wallUniforms.uSunDir.value as THREE.Vector3).copy(sky.sunDirection);
+        wallUniforms.uDaylight.value =
+          typeof sky?.daylight === "number" ? clamp01(sky.daylight) : 1;
+      }
 
       // The island is entirely safe until the match goes live. There is no
       // wall on it, no footprint ring, no veil, no streaks — Fortnite shows
@@ -2464,7 +2918,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
         inStormPrimed = true;
         const payload: InStormEvent = { inside: inStorm, intensity, dps: service.dps };
         c.emit("dz:in-storm", payload);
-        if (flipped) cc.audio?.play?.(inStorm ? "storm-enter" : "storm-exit", { volume: 0.55 });
+        if (flipped) cc.audio?.play?.(inStorm ? CUE.enter : CUE.exit, { volume: 0.55 });
       }
 
       // ---- ground re-projection -------------------------------------------
@@ -2512,8 +2966,8 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
         // Capped short of a full replacement: the fog keeps a good half of the
         // sky's own hue even at full intensity, so the horizon inside the
         // storm still belongs to this island rather than to a purple void.
-        stormFog.color.copy(baseColor).lerp(stormFogColor, clamp01(intensity * 0.62));
-        stormFog.density = THREE.MathUtils.lerp(baseDensity, STORM_FOG_DENSITY, intensity);
+        stormFog.color.copy(baseColor).lerp(stormFogColor, clamp01(intensity * interiorFogTint));
+        stormFog.density = THREE.MathUtils.lerp(baseDensity, interiorFogDensity, intensity);
       } else if (fogInstalled) {
         fogInstalled = false;
         if (c.scene.fog === stormFog) c.scene.fog = hostFog;
@@ -2580,11 +3034,25 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
           // Slow rotation so the storm never settles into one direction.
           const swirl = Math.sin(c.elapsed * 0.09) * 0.35;
           const wind = u.uWind.value as THREE.Vector3;
-          wind.set(
-            -oz * 24 + ox * (6 + swirl * 8),
-            -5 - 3 * intensity,
-            ox * 24 + oz * (6 + swirl * 8),
-          );
+          if (water) {
+            // Rain is gravity with a bit of weather on it, so the vector is
+            // mostly DOWN — the quads billboard along it, so this is what
+            // turns the blizzard into a downpour — with a gentle gust that
+            // drifts and a light outward push off the circle. 26 m/s reads as
+            // heavy without smearing each drop into a line.
+            const gust = DOWNPOUR.wind * (1 + swirl);
+            wind.set(
+              ox * gust * 1.6 - oz * gust,
+              -26 - 8 * intensity,
+              oz * gust * 1.6 + ox * gust,
+            );
+          } else {
+            wind.set(
+              -oz * 24 + ox * (6 + swirl * 8),
+              -5 - 3 * intensity,
+              ox * 24 + oz * (6 + swirl * 8),
+            );
+          }
         }
       }
 
