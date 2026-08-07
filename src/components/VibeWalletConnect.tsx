@@ -34,19 +34,22 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { buildLinkMessage, shortAddress, type Address } from "@/lib/vibe-wallet";
 import { canUsePasskeys, connectBaseAccount, signWithBaseAccount } from "@/lib/baseAccount";
-import { discoverWallets, requestAccount, type DiscoveredWallet } from "@/lib/wallets";
+import {
+  authorizedAccount,
+  discoverWallets,
+  requestAccount,
+  type DiscoveredWallet,
+} from "@/lib/wallets";
+import { addWallet, getWalletBook, payoutWallet } from "@/lib/walletBook";
 
-/** The address we last registered, so the UI can show it without a key. */
-const ADDR_STORAGE = "vibe.payoutAddress.v1";
-/** How that address was proven, purely so the card can say so later. */
-const KIND_STORAGE = "vibe.payoutKind.v1";
-
+/**
+ * The payout address, for callers that only need the one string.
+ *
+ * Reads through the book, which keeps the legacy `vibe.payoutAddress.v1` key
+ * in step — so this keeps working for anything that has not been moved over.
+ */
 export function readPayoutAddress(): string | null {
-  try {
-    return localStorage.getItem(ADDR_STORAGE);
-  } catch {
-    return null;
-  }
+  return payoutWallet()?.address ?? null;
 }
 
 /** Register a proven address against the community roster. */
@@ -56,31 +59,39 @@ async function registerAddress(
   signature: string,
   displayName?: string,
   kind?: string,
+  label?: string,
 ) {
   const { data, error } = await supabase.functions.invoke("link-wallet", {
     body: { address, message, signature, display_name: displayName ?? null },
   });
   if (error) throw new Error(error.message);
   if (data?.error) throw new Error(String(data.error));
-  try {
-    localStorage.setItem(ADDR_STORAGE, address);
-    if (kind) localStorage.setItem(KIND_STORAGE, kind);
-  } catch {
-    /* storage off — the server still has it, which is the copy that matters */
-  }
+  addWallet({ address, kind: kind ?? "injected", label });
   return data;
 }
 
 export default function VibeWalletConnect({
   displayName,
   onLinked,
+  /**
+   * Whether to collapse into "payout address set" once one exists.
+   *
+   * True on `/join`, where the card is a one-off step and a person who has
+   * done it wants to see that they have. False on `/wallet`, where the list of
+   * wallets is drawn above this and the card's whole job is *adding another* —
+   * collapsing there is what made a second wallet unreachable.
+   */
+  showLinkedState = true,
 }: {
   displayName?: string;
   onLinked?: (address: string) => void;
+  showLinkedState?: boolean;
 }) {
   const [address, setAddress] = useState<string | null>(readPayoutAddress);
   const [busy, setBusy] = useState<string | null>(null);
   const [installed, setInstalled] = useState<DiscoveredWallet[]>([]);
+  /** rdns → the account that wallet has already granted this site. */
+  const [known, setKnown] = useState<Record<string, Address>>({});
   const [showOthers, setShowOthers] = useState(false);
   const [passkeysOk, setPasskeysOk] = useState(true);
 
@@ -88,6 +99,32 @@ export default function VibeWalletConnect({
     setPasskeysOk(canUsePasskeys());
     return discoverWallets(setInstalled);
   }, []);
+
+  /* Ask every discovered wallet, without prompting, whether it has already
+     authorised this site. Somebody who connected MetaMask here before should
+     be offered *that* wallet by name and address, rather than having to go
+     looking for it behind "I already have a wallet". */
+  useEffect(() => {
+    let live = true;
+    void Promise.all(
+      installed.map(async (w) => [w.id, await authorizedAccount(w.provider)] as const),
+    ).then((pairs) => {
+      if (!live) return;
+      const next: Record<string, Address> = {};
+      const booked = new Set(
+        getWalletBook().wallets.map((b) => b.address.toLowerCase()),
+      );
+      for (const [id, addr] of pairs) {
+        // Only worth surfacing if it is not already in the book — otherwise
+        // the page offers to link something it is already showing.
+        if (addr && !booked.has(addr.toLowerCase())) next[id] = addr;
+      }
+      setKnown(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, [installed, address]);
 
   const finish = useCallback(
     (addr: Address) => {
@@ -107,7 +144,7 @@ export default function VibeWalletConnect({
       const addr = await connectBaseAccount();
       const message = buildLinkMessage({ address: addr, community: "the Vibeverse" });
       const signature = await signWithBaseAccount(addr, message);
-      await registerAddress(addr, message, signature, displayName, "base");
+      await registerAddress(addr, message, signature, displayName, "base", "Vibe Wallet");
       finish(addr);
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
@@ -130,7 +167,7 @@ export default function VibeWalletConnect({
         method: "personal_sign",
         params: [message, addr],
       })) as string;
-      await registerAddress(addr, message, signature, displayName, w.id);
+      await registerAddress(addr, message, signature, displayName, w.id, w.name);
       finish(addr);
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
@@ -142,8 +179,13 @@ export default function VibeWalletConnect({
     }
   };
 
+  /* Wallets that have already granted this site an account. These jump the
+     queue: they are one signature away, and they are the answer to "I already
+     have a wallet, why are you asking me to make one". */
+  const ready = installed.filter((w) => known[w.id]);
+
   // ---- already linked ----------------------------------------------------
-  if (address) {
+  if (address && showLinkedState) {
     return (
       <div className="rounded-2xl border border-[#7dffd4]/30 bg-[#7dffd4]/[0.06] p-4">
         <div className="flex items-center gap-2.5">
@@ -172,13 +214,44 @@ export default function VibeWalletConnect({
       <div className="flex items-center gap-2">
         <Wallet className="h-4 w-4 shrink-0 text-[#8fb4ff]" />
         <p className="font-heading text-[11px] font-black uppercase tracking-wider text-[#8fb4ff]">
-          Where should your $VIBE go?
+          {address ? "Add another wallet" : "Where should your $VIBE go?"}
         </p>
       </div>
       <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
         Optional, and not needed to play — the game runs on Vibecoin, which you
         already have. This is only the address a real $VIBE drop would be sent to.
       </p>
+
+      {/* The fast path: a wallet that has already authorised this site, named
+          and with the address it would link, so there is nothing to work out. */}
+      {ready.length > 0 && (
+        <div className="mt-3.5 flex flex-col gap-2">
+          {ready.map((w) => (
+            <button
+              key={w.id}
+              onClick={() => void useInstalled(w)}
+              disabled={busy != null}
+              className="flex items-center gap-2.5 rounded-xl border border-[#7dffd4]/40 bg-[#7dffd4]/[0.07] px-3 py-2.5 text-left transition-colors enabled:hover:bg-[#7dffd4]/[0.12] disabled:opacity-50"
+            >
+              {busy === w.id ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : w.icon ? (
+                <img src={w.icon} alt="" className="h-4 w-4 shrink-0 rounded" />
+              ) : (
+                <Wallet className="h-4 w-4 shrink-0 text-[#7dffd4]" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block font-heading text-[10.5px] font-black uppercase tracking-wider text-[#7dffd4]">
+                  Link your {w.name}
+                </span>
+                <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">
+                  {shortAddress(known[w.id])} · already connected here
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3.5 flex flex-col gap-2">
         <button

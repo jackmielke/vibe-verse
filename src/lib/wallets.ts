@@ -101,3 +101,26 @@ export async function requestAccount(provider: Eip1193Provider): Promise<Address
   if (!accounts?.length) throw new Error("that wallet returned no accounts");
   return accounts[0] as Address;
 }
+
+/**
+ * The account this wallet has *already* authorised for this site, if any.
+ *
+ * `eth_accounts` never prompts — it answers from what the user granted on some
+ * previous visit, and returns an empty list otherwise. That distinction is the
+ * whole value of it: somebody who connected MetaMask here months ago should be
+ * greeted with "link 0x1234…, the one you already use", not with a generic
+ * invitation to go and make a wallet they already have three of.
+ *
+ * Resolves to null on any error. A wallet that dislikes being asked quietly is
+ * not a problem worth showing anybody.
+ */
+export async function authorizedAccount(
+  provider: Eip1193Provider,
+): Promise<Address | null> {
+  try {
+    const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+    return accounts?.length ? (accounts[0] as Address) : null;
+  } catch {
+    return null;
+  }
+}

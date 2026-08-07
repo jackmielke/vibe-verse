@@ -25,6 +25,7 @@ import VibeCoinMark from "@/components/VibeCoinMark";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 import { VIBECOIN_NAME, formatVibecoin } from "@/lib/vibecoin";
 import { readPayoutAddress } from "@/components/VibeWalletConnect";
+import { getWalletBook } from "@/lib/walletBook";
 import { shortAddress } from "@/lib/vibe-wallet";
 
 /** Human labels for the `reason` column, which is written for machines. */
@@ -54,8 +55,9 @@ export default function VibeCoinChip() {
   const [open, setOpen] = useState(false);
   /* Read when the panel opens rather than once at mount: somebody can link a
      wallet on `/wallet` and come straight back to this chip, and a value
-     captured at mount would still say "Create a Vibe Wallet". */
+     captured at mount would still say "Set up a wallet". */
   const [payout, setPayout] = useState<string | null>(null);
+  const [walletCount, setWalletCount] = useState(0);
   const [pop, setPop] = useState<number | null>(null);
   const location = useLocation();
 
@@ -103,6 +105,7 @@ export default function VibeCoinChip() {
           if (!open) {
             void refresh();
             setPayout(readPayoutAddress());
+            setWalletCount(getWalletBook().wallets.length);
           }
         }}
         aria-expanded={open}
@@ -193,17 +196,26 @@ export default function VibeCoinChip() {
 
             {/* The wallet used to live only on `/join/:code`, which meant the
                 one person most likely to want it — somebody already looking at
-                their balance — had no way to find it. */}
+                their balance — had no way to find it.
+
+                It says "wallets", plural, and counts them: the old copy read
+                "Create a Vibe Wallet" to anybody who had not linked one, which
+                is exactly the wrong thing to say to somebody who already owns
+                two and would rather connect one of those. */}
             <Link
               to="/wallet"
               className="flex items-center gap-2 border-t border-border/40 px-3.5 py-2.5 transition-colors hover:bg-white/[0.04]"
             >
               <Wallet className="h-3.5 w-3.5 shrink-0 text-[#8fb4ff]" />
               <span className="font-heading text-[9.5px] font-bold uppercase tracking-wider text-[#8fb4ff]">
-                {payout ? "Payout wallet linked" : "Create a Vibe Wallet"}
+                {payout
+                  ? walletCount > 1
+                    ? `Your ${walletCount} wallets`
+                    : "Your wallet"
+                  : "Connect a wallet"}
               </span>
               <span className="ml-auto truncate font-mono text-[9.5px] text-muted-foreground/60">
-                {payout ? shortAddress(payout as `0x${string}`) : "for a real $VIBE drop"}
+                {payout ? shortAddress(payout as `0x${string}`) : "yours, or make one"}
               </span>
             </Link>
 

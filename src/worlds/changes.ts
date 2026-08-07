@@ -29,6 +29,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
   ],
   "arcade": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "blue-angels": [
@@ -43,12 +44,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "city": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
     { sha: "fb6c351", iso: "2026-08-06T18:37:46+00:00", subject: "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world" },
     { sha: "8ccde25", iso: "2026-08-06T18:17:30+00:00", subject: "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid" },
-    { sha: "40b7fe5", iso: "2026-08-06T17:58:10+00:00", subject: "Changes" },
   ],
   "coin": [
     { sha: "8e09d54", iso: "2026-07-21T20:57:42+00:00", subject: "Changes" },
@@ -117,18 +118,19 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
     { sha: "fb6c351", iso: "2026-08-06T18:37:46+00:00", subject: "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world" },
     { sha: "8ccde25", iso: "2026-08-06T18:17:30+00:00", subject: "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid" },
-    { sha: "60c3828", iso: "2026-08-06T17:58:10+00:00", subject: "Changes" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
     { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "island-explorer": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e6d6df5", iso: "2026-08-06T17:19:43+00:00", subject: "🦇 Four new code-built characters, and the heist stops nagging" },
     { sha: "262ce61", iso: "2026-08-01T19:03:01+00:00", subject: "The character picker was rendering everyone as a silhouette" },
     { sha: "d8bd9f9", iso: "2026-08-01T19:03:00+00:00", subject: "Flux: a pilot with no model file, animated from its own motion" },
@@ -147,12 +149,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "moon": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
     { sha: "fb6c351", iso: "2026-08-06T18:37:46+00:00", subject: "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world" },
     { sha: "8ccde25", iso: "2026-08-06T18:17:30+00:00", subject: "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid" },
-    { sha: "60c3828", iso: "2026-08-06T17:58:10+00:00", subject: "Changes" },
   ],
   "museum": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
@@ -193,12 +195,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
     { sha: "fb6c351", iso: "2026-08-06T18:37:46+00:00", subject: "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world" },
     { sha: "8ccde25", iso: "2026-08-06T18:17:30+00:00", subject: "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid" },
-    { sha: "60c3828", iso: "2026-08-06T17:58:10+00:00", subject: "Changes" },
   ],
   "space": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
@@ -233,12 +235,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
     { sha: "fb6c351", iso: "2026-08-06T18:37:46+00:00", subject: "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world" },
     { sha: "8ccde25", iso: "2026-08-06T18:17:30+00:00", subject: "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid" },
-    { sha: "60c3828", iso: "2026-08-06T17:58:10+00:00", subject: "Changes" },
   ],
   "vibeverse": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
