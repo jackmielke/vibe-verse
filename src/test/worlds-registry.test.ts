@@ -128,3 +128,47 @@ describe("the Terminal's gates", () => {
     }
   });
 });
+
+/**
+ * The running order at the top of `registry.ts` is the knob people actually
+ * reach for, and it is a list of loose strings — so a renamed key does not
+ * error, it silently drops that world to the bottom of every surface in the
+ * app. That is a hard thing to notice and an easy thing to check.
+ */
+describe("the running order", () => {
+  const registrySource = readFileSync(join(SRC, "worlds/registry.ts"), "utf8");
+  const order = [
+    ...registrySource
+      .slice(registrySource.indexOf("const ORDER: string[] = ["))
+      .slice(0, registrySource.slice(registrySource.indexOf("const ORDER")).indexOf("];"))
+      .matchAll(/"([a-z0-9-]+)"/g),
+  ].map((m) => m[1]);
+
+  it("was found at all", () => {
+    expect(order.length).toBeGreaterThan(10);
+  });
+
+  it("names only worlds that exist", () => {
+    const keys = new Set(WORLDS.map((w) => w.key));
+    const ghosts = order.filter((k) => !keys.has(k));
+    expect(ghosts, `ORDER lists keys no world has: ${ghosts.join(", ")}`).toEqual([]);
+  });
+
+  it("names each world at most once", () => {
+    const seen = new Set<string>();
+    const dupes = order.filter((k) => (seen.has(k) ? true : (seen.add(k), false)));
+    expect(dupes).toEqual([]);
+  });
+
+  it("actually drives what WORLDS returns", () => {
+    // The first few keys of ORDER must be the first few worlds, in that order.
+    expect(WORLDS.slice(0, order.length).map((w) => w.key).slice(0, 4))
+      .toEqual(order.slice(0, 4));
+  });
+
+  it("opens on Vibe Island", () => {
+    // Not arbitrary: it is the gentlest door, it works on a phone, and it is
+    // the one to put in front of somebody who has never been here.
+    expect(WORLDS[0].key).toBe("island");
+  });
+});

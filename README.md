@@ -1,8 +1,8 @@
 # The VibeVerse
 
-**A massive collection of AI-coded games by Jack Mielke and friends.**
+**A massive collection of AI-coded games, where every builder grows the universe.**
 
-Thirty-odd worlds and games, every one of them vibe-coded, all served from one
+Forty-odd worlds and games, every one of them vibe-coded, all served from one
 website. No install, no account, no launcher, no store page — open a link and
 you are inside a world a few seconds later. Live at
 [myvibeverse.com](https://myvibeverse.com).
@@ -15,7 +15,7 @@ Healdsburg map, which is where the whole thing started.
 
 Nobody planned this as a portfolio. Each world was its own spontaneous weekend
 project, built fast because the tools got fast, and they ended up in one repo
-because a hub of thirty games is more fun than thirty abandoned tabs.
+because a hub of forty games is more fun than forty abandoned tabs.
 
 **Start at [/game](https://myvibeverse.com/game)** — every world and game on
 one page.

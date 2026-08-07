@@ -17,6 +17,48 @@
  * megabyte of card art into its chunk. Art lives next door in `art.ts`.
  */
 
+// ---------------------------------------------------------------------------
+// THE RUNNING ORDER — edit this to change what leads
+// ---------------------------------------------------------------------------
+
+/**
+ * The order everything is shown in: nav, hub carousel, picker, `/game`.
+ *
+ * **This is the one thing to edit when you want to promote or bury a world.**
+ * It lives at the top of the file on purpose — it used to sit seven hundred
+ * lines down under the entries, which is a strange place to keep the knob
+ * people reach for most.
+ *
+ * Keys only, best first. A world missing from this list is not broken; it just
+ * falls in behind, in the order it happens to be declared. So a new world
+ * appears at the bottom until somebody decides it has earned a place, which is
+ * the right default.
+ */
+const ORDER: string[] = [
+  "island",              // the front door — magical, gentle, works on a phone
+  "orbit",               // the one you can bet on
+  "arcade",              // and the one that pays out
+  "shop",                // …which is what you spend it in
+  "blue-angels",
+  "kart",
+  "fnaf",
+  "city",
+  "vibeverse",
+  "strange-new-worlds",
+  "i-spy",
+  "kart-mp",
+  "edm-town",
+  "ski",
+  "home-alone",
+  "trek",
+  "run",
+  "sf",
+  "garden",
+  "coin",
+  "golf",
+  "evolve",
+];
+
 /**
  * What kind of thing this is, which is what `/game` groups by.
  *
@@ -709,36 +751,6 @@ const WORLDS_RAW: WorldEntry[] = [
     source: "src/pages/About.tsx",
     nav: true,
   },
-];
-
-/**
- * Hand-picked top of the list.
- *
- * The order people see everywhere (nav, hub, picker, /game) is this array
- * first, then whatever is left in the order it is declared above. Keys only —
- * a world that vanishes from here just falls to the tail, nothing breaks.
- */
-const ORDER: string[] = [
-  "strange-new-worlds",
-  "island",
-  "arcade",
-  "blue-angels",
-  "fnaf",
-  "kart",
-  "vibeverse",
-  "i-spy",
-  "kart-mp",
-  "city",
-  "edm-town",
-  "ski",
-  "home-alone",
-  "trek",
-  "run",
-  "sf",
-  "garden",
-  "coin",
-  "golf",
-  "evolve",
 ];
 
 const rank = (w: WorldEntry): number => {
