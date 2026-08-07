@@ -40,6 +40,7 @@ import {
   type Bus,
   type Input,
   type Mode,
+  type Quality,
 } from "./types";
 import {
   MAX_WARP,
@@ -55,6 +56,7 @@ import { characterByKey, type Character } from "./crew/characters";
 import { createSpaceScene, type SpaceScene } from "./space/scene";
 import { createSurfaceScene, type SurfaceScene } from "./surface/scene";
 import { createAudio, type Audio } from "./audio";
+import { createPost, type Post } from "./gfx/post";
 
 export type Phase = "idle" | "warping" | "beaming";
 
@@ -111,6 +113,8 @@ export interface Game {
   toggleOrbit(): void;
   toggleView(): void;
   requestPointerLock(): void;
+  /** Exposure and post toggles, for the capture harness. Not a game control. */
+  tune: { space: number; surface: number; post: boolean; debug: 0 | 1 | 2 | 3 };
   /** Called whenever a panel opens — a locked pointer sends every click to the
    *  canvas, which makes the whole LCARS rail unclickable. */
   releasePointerLock(): void;
@@ -120,7 +124,33 @@ export interface Game {
 export interface GameOptions {
   canvas: HTMLCanvasElement;
   captain?: string;
+  /** Overrides the auto-detect. `?q=low` in the URL does the same. */
+  quality?: Quality;
   onEnterWorld?: (route: string) => void;
+}
+
+/**
+ * What this machine can afford.
+ *
+ * The post chain is the expensive part and it is the part that tiers: `ultra`
+ * runs full-resolution AO and a six-level bloom, `low` runs neither. Read from
+ * `?q=` first so the screenshot harness and anyone debugging can pin it.
+ */
+export function detectQuality(): Quality {
+  if (typeof window === "undefined") return "high";
+  try {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q === "low" || q === "medium" || q === "high" || q === "ultra") return q;
+  } catch {
+    /* no search params */
+  }
+  const mem = (navigator as { deviceMemory?: number }).deviceMemory ?? 8;
+  const cores = navigator.hardwareConcurrency ?? 8;
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (mem <= 2 || cores <= 2) return "low";
+  if (mobile || mem <= 4) return "medium";
+  if (cores >= 8 && mem >= 8) return "ultra";
+  return "high";
 }
 
 /** Compression: six seconds of animation stands in for the real crossing. */
@@ -138,8 +168,14 @@ export function createGame(opts: GameOptions): Game {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.18;
+  /* No tone mapping here, and none in the material chunks either.
+   *
+   * The whole frame stays in linear light all the way to `gfx/post.ts`, which
+   * owns the single AgX curve at the end of the chain. Leaving three's
+   * ACESFilmic on would tonemap *before* bloom and AO were composited, which
+   * turns bloom into a white smear and AO into grey paint — the two passes
+   * that are doing the most work would be the two doing it wrongly. */
+  renderer.toneMapping = THREE.NoToneMapping;
   /* Shadows, on the surface only.
    *
    * The single biggest step from "coloured shapes on a coloured plane" to
@@ -150,9 +186,16 @@ export function createGame(opts: GameOptions): Game {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+  const quality: Quality = opts.quality ?? detectQuality();
+  const post: Post = createPost(renderer, quality);
+  {
+    const dpr = renderer.getPixelRatio();
+    post.setSize((canvas.clientWidth || window.innerWidth) * dpr, (canvas.clientHeight || window.innerHeight) * dpr);
+  }
+
   const aspect = (canvas.clientWidth || 1) / (canvas.clientHeight || 1);
   const space: SpaceScene = createSpaceScene(aspect);
-  const surface: SurfaceScene = createSurfaceScene(aspect);
+  const surface: SurfaceScene = createSurfaceScene(aspect, renderer);
   const audio = createAudio();
   const input = createInput(canvas);
   const bus = createBus();
@@ -445,15 +488,33 @@ export function createGame(opts: GameOptions): Game {
     }
   }
 
+  /** Tuning hooks. The screenshot harness drives these; nothing else reads them. */
+  const tune = { space: 1.0, surface: 0.9, post: true, debug: 0 as 0 | 1 | 2 | 3 };
+  (renderer as unknown as { __snwTune: typeof tune }).__snwTune = tune;
+
   function render(): void {
-    if (state.mode === "space") renderer.render(space.scene, space.camera);
-    else renderer.render(surface.scene, surface.camera);
+    if (!tune.post) {
+      renderer.setRenderTarget(null);
+      renderer.render(state.mode === "space" ? space.scene : surface.scene,
+        state.mode === "space" ? space.camera : surface.camera);
+      return;
+    }
+    if (state.mode === "space") {
+      // No AO in orbit: there is one convex body in the frame and it occludes
+      // nothing, so the pass would cost three targets to darken a limb that
+      // should not be dark.
+      post.render(space.scene, space.camera, { warp: state.warpK, exposure: tune.space, ao: false, debug: tune.debug });
+    } else {
+      post.render(surface.scene, surface.camera, { exposure: tune.surface, ao: true, debug: tune.debug });
+    }
   }
 
   function resize(): void {
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
     renderer.setSize(w, h, false);
+    const dpr = renderer.getPixelRatio();
+    post.setSize(w * dpr, h * dpr);
     const a = w / Math.max(1, h);
     space.camera.aspect = a;
     space.camera.updateProjectionMatrix();
@@ -504,6 +565,7 @@ export function createGame(opts: GameOptions): Game {
       audio.dispose();
       space.dispose();
       surface.dispose();
+      post.dispose();
       renderer.dispose();
       // Explicitly drop the context. Without this, three or four visits
       // exhaust the browser's limit and the *next* world a visitor opens
@@ -511,6 +573,8 @@ export function createGame(opts: GameOptions): Game {
       renderer.forceContextLoss?.();
     },
     resize,
+    /** Exposed for the screenshot harness only — see tools/snw-drive.mjs. */
+    tune,
     setCourse,
     setWarpFactor(w) {
       state.warpFactor = Math.max(1, Math.min(MAX_WARP, Math.round(w * 10) / 10));

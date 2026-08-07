@@ -149,7 +149,6 @@ export function createStar(cls: StarClass, kelvin: number, azimuth = 0.9): Star 
       color: tint.clone().lerp(new THREE.Color(0xffffff), 0.55),
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      depthTest: false,
     }),
   );
   core.scale.setScalar(560 * size);
@@ -161,7 +160,6 @@ export function createStar(cls: StarClass, kelvin: number, azimuth = 0.9): Star 
       color: tint,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      depthTest: false,
       opacity: 0.55,
     }),
   );
@@ -244,7 +242,6 @@ export function createNebula(accent: number, seed: number): { group: THREE.Group
         color: c,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        depthTest: false,
         opacity: 0.5,
         rotation: rng() * Math.PI * 2,
       }),
@@ -260,6 +257,15 @@ export function createNebula(accent: number, seed: number): { group: THREE.Group
     group.add(sp);
   }
   group.frustumCulled = false;
+  // Behind everything, and *depth tested*.
+  //
+  // These shipped with depthTest off, which on an additive sprite the size of
+  // a quarter of the sky means it paints straight over the planet. It was
+  // invisible while the frame was being written to the canvas without an sRGB
+  // encode — dark enough to read as a faint tint — and the moment the HDR
+  // pipeline encoded the frame correctly it became a purple haze washing out
+  // every world in the game. Same for the star's halo, below.
+  group.renderOrder = -10;
 
   return {
     group,

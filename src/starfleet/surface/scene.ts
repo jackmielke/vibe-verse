@@ -32,7 +32,9 @@ import * as THREE from "three";
 import { SURFACE_FAR, SURFACE_NEAR, clamp, damp, hashString, makeRng, type Input } from "../types";
 import type { SurfaceSpec, TrekSystem } from "../galaxy/systems";
 import { KITS, buildKit, type BuiltKit } from "./kits";
+import { surfaced } from "../gfx/surfacing";
 import { createNpc, type Npc } from "./npc";
+import { createScatter, type Scatter } from "./scatter";
 import { characterByKey, type Character } from "../crew/characters";
 
 const EYE = 1.68;
@@ -52,9 +54,25 @@ export interface SurfaceScene {
   dispose(): void;
 }
 
-export function createSurfaceScene(aspect: number): SurfaceScene {
+export function createSurfaceScene(aspect: number, renderer?: THREE.WebGLRenderer): SurfaceScene {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(72, aspect, SURFACE_NEAR, SURFACE_FAR);
+
+  /* Image-based lighting, built from each world's own sky.
+   *
+   * This is what stopped every surface being one hue. A `HemisphereLight` is
+   * two colours lerped by the y component of the normal; it cannot put a warm
+   * bounce on a west-facing wall and a cold one on the east face of the pillar
+   * beside it, so a red world lit that way comes out uniformly red and reads
+   * as a flat-shaded diorama no matter what the textures are doing.
+   *
+   * A PMREM probe of the actual sky dome does exactly that, and it also gives
+   * every metal in the scene something to reflect. It is rendered once per
+   * arrival, from the same sky shader the player is looking at, so the ambient
+   * can never disagree with the horizon. */
+  const pmrem = renderer ? new THREE.PMREMGenerator(renderer) : null;
+  pmrem?.compileEquirectangularShader();
+  let envRT: THREE.WebGLRenderTarget | null = null;
 
   let built: {
     root: THREE.Group;
@@ -63,6 +81,7 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
     extras: Npc[];
     height: (x: number, z: number) => number;
     weather: Weather | null;
+    scatter: Scatter | null;
     spec: SurfaceSpec;
     flickers: THREE.Object3D[];
     sun: THREE.DirectionalLight;
@@ -82,6 +101,7 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
     built.npc?.dispose();
     built.extras.forEach((e) => e.dispose());
     built.kit.dispose();
+    built.scatter?.dispose();
     built.weather?.dispose();
     built.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -92,6 +112,9 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
     });
     scene.remove(built.root);
     scene.clear();
+    scene.environment = null;
+    envRT?.dispose();
+    envRT = null;
     built = null;
     near = null;
   }
@@ -135,10 +158,20 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
     p.needsUpdate = true;
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const ground = new THREE.Mesh(
-      geo,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.98, metalness: 0.0 }),
-    );
+    /* The ground carries the same baked, triplanar surfacing as everything
+       standing on it, with `vertexColors` doing the large-scale variation the
+       height ramp computed above. A 900 m plane of one flat colour is the
+       single largest object in frame and was the loudest thing saying "this is
+       a mesh, not a place". */
+    const groundMat = surfaced({
+      color: 0xffffff,
+      family: kitSpec.ground ?? "rock",
+      tile: kitSpec.ground === "sand" ? 1.5 : 2.0,
+      bump: 1.0,
+      macro: 0.16,
+    });
+    groundMat.vertexColors = true;
+    const ground = new THREE.Mesh(geo, groundMat);
     ground.receiveShadow = true;
     root.add(ground);
 
@@ -207,13 +240,15 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
      * sky, an ambient floor for the fog, and a bounce from the anti-sun
      * direction tinted the colour of the dirt. Together they lift the shaded
      * faces to something you can read the shape of without touching the key. */
-    root.add(new THREE.HemisphereLight(spec.sky.zenith, kitSpec.terrain.tint, 1.0));
-    root.add(new THREE.AmbientLight(spec.fog.color, 0.55));
-    // The bounce comes from behind the beam-in point rather than from the
-    // anti-sun direction. Anti-sun is a guess that depends on where the key
-    // happens to be; behind the away team is where the player is looking from,
-    // every time, on every world.
-    const bounce = new THREE.DirectionalLight(kitSpec.terrain.tint, 0.45);
+    /* The probe does the ambient now, so what is left here is a *trim*: a
+       small hemisphere to keep the darkest faces from going to pure black, and
+       a soft bounce from behind the beam-in point so the side of everything
+       the player is looking at is never a silhouette. Both were carrying the
+       whole ambient load before the probe existed and both were far too
+       strong for it — a flat 0.55 ambient in the fog's colour is precisely
+       what made every world monochrome. */
+    root.add(new THREE.HemisphereLight(spec.sky.zenith, kitSpec.terrain.tint, 0.28));
+    const bounce = new THREE.DirectionalLight(kitSpec.terrain.tint, 0.3);
     bounce.position.set(60, 90, 300);
     root.add(bounce);
 
@@ -249,6 +284,49 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
       body.position.set(Math.cos(bel) * Math.sin(baz), Math.sin(bel), Math.cos(bel) * Math.cos(baz)).multiplyScalar(2400);
       body.scale.setScalar(900 * b.size);
       root.add(body);
+    }
+
+    /* --- the light probe ----------------------------------------------------- */
+    if (pmrem) {
+      envRT?.dispose();
+      // A throwaway scene holding only what the sky contributes: the dome, the
+      // sun's disc, and a ground plane in the terrain's own colour so the
+      // bounce from below is the colour of the actual dirt.
+      const probe = new THREE.Scene();
+      const domeMat = (sky.material as THREE.ShaderMaterial).clone();
+      domeMat.side = THREE.BackSide;
+      domeMat.depthWrite = false;
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(60, 24, 16), domeMat);
+      probe.add(dome);
+      const bounce2 = new THREE.Mesh(
+        new THREE.CircleGeometry(58, 24),
+        new THREE.MeshBasicMaterial({ color: kitSpec.terrain.tint, side: THREE.DoubleSide }),
+      );
+      bounce2.rotation.x = Math.PI / 2;
+      bounce2.position.y = -1;
+      probe.add(bounce2);
+      const sunDisc = new THREE.Mesh(
+        new THREE.SphereGeometry(2.4, 12, 10),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(spec.sun.color).multiplyScalar(spec.sun.intensity * 6),
+        }),
+      );
+      sunDisc.position.copy(sunDir).multiplyScalar(50);
+      probe.add(sunDisc);
+
+      try {
+        envRT = pmrem.fromScene(probe, 0.04, 0.1, 200);
+        scene.environment = envRT.texture;
+      } catch (err) {
+        console.error("[SNW] light probe failed; falling back to hemisphere only", err);
+        scene.environment = null;
+      }
+      dome.geometry.dispose();
+      domeMat.dispose();
+      bounce2.geometry.dispose();
+      (bounce2.material as THREE.Material).dispose();
+      sunDisc.geometry.dispose();
+      (sunDisc.material as THREE.Material).dispose();
     }
 
     /* --- structures --------------------------------------------------------- */
@@ -308,9 +386,23 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
       }
     }
 
+    /* --- loose ground cover -------------------------------------------------- */
+    let scatter: Scatter | null = null;
+    if (kitSpec.scatter) {
+      scatter = createScatter({
+        height,
+        color: kitSpec.scatter.color,
+        family: kitSpec.ground ?? "rock",
+        seed,
+        density: kitSpec.scatter.density,
+        accent: kitSpec.scatter.accent,
+      });
+      root.add(scatter.group);
+    }
+
     const weather = spec.weather && spec.weather !== "none" ? createWeather(spec.weather, root) : null;
 
-    built = { root, kit, npc, extras, height, weather, spec, flickers, sun, sunDir };
+    built = { root, kit, npc, extras, height, weather, spec, flickers, sun, sunDir, scatter };
 
     // Put the captain on the pad, facing whoever is waiting.
     //
@@ -435,6 +527,7 @@ export function createSurfaceScene(aspect: number): SurfaceScene {
     dispose() {
       teardown();
       scene.fog = null;
+      pmrem?.dispose();
     },
   };
 }
@@ -481,9 +574,33 @@ function makeHeightField(relief: number, scale: number, seed: number): (x: numbe
       amp *= 0.5;
       freq *= 2.13;
     }
-    const h = (sum / norm) * relief * 2;
-    // Level the beam-in site, and blend out over 22 m so the join is not a step.
+    let h = (sum / norm) * relief * 2;
+
+    /* Distant relief.
+     *
+     * The player is walled in at 300 m but the mesh runs to 450, and a
+     * perfectly flat band between the two is a horizon with nothing on it —
+     * which is what says "this is a plane" more loudly than anything else in
+     * the frame. Past 220 m the relief ramps up hard and gains a much longer
+     * wavelength, so the away team is always standing in a bowl with country
+     * around it rather than on a disc. It costs one extra noise fetch per
+     * vertex and it is the cheapest sense of place in the file. */
     const d = Math.hypot(x, z);
+    const far = Math.min(1, Math.max(0, (d - 190) / 170));
+    if (far > 0) {
+      /* Wavelength matters more than amplitude here. The first pass used a
+         frequency of 0.28× the base, which on Vulcan is a six-hundred-metre
+         wavelength — less than one cycle fits inside the visible ring, so it
+         raised the whole far ground by a smooth amount and produced exactly
+         the flat horizon it was added to fix. 1.1× is about a hundred and
+         forty metres: four or five ridges across the view, which is what a
+         range of hills looks like. */
+      const ridge = 1 - Math.abs(noise(x * scale * 1.1, z * scale * 1.1) * 2 - 1);
+      h += Math.pow(ridge, 1.7) * relief * 8.5 * far * far;
+      h += (noise(x * scale * 2.6, z * scale * 2.6) - 0.5) * relief * 3.0 * far;
+    }
+
+    // Level the beam-in site, and blend out over 22 m so the join is not a step.
     const flat = 1 - Math.min(1, Math.max(0, (d - 14) / 22));
     return h * (1 - flat * flat);
   };

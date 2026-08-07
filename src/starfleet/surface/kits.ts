@@ -34,6 +34,7 @@
  */
 import * as THREE from "three";
 import { makeRng } from "../types";
+import { surfaced, type SurfaceFamily } from "../gfx/surfacing";
 import type { KitName } from "../galaxy/systems";
 
 export type PropKind =
@@ -68,11 +69,17 @@ export type Rule =
 export interface KitSpec {
   /** Terrain: how rough, and at what wavelength. `relief` 0 is a floor. */
   terrain: { relief: number; scale: number; tint: number; rock: number };
+  /** Which baked surface the ground and the stonework are dressed in. */
+  ground?: SurfaceFamily;
+  face?: SurfaceFamily;
   /** Structure colours: the two the kit's props default to. */
   stone: number;
   metal: number;
   /** Emissive accent — braziers, lamps, pools, banners. */
   glow: number;
+  /** Loose ground cover. `density` 0 leaves the ground bare — which only ever
+   *  suits a floor somebody swept. */
+  scatter?: { color: number; density: number; accent?: { color: number; family: SurfaceFamily; density: number } };
   rules: Rule[];
 }
 
@@ -81,9 +88,12 @@ export const KITS: Record<KitName, KitSpec> = {
      green, and the only kit in the game with a lawn. */
   presidio: {
     terrain: { relief: 2.4, scale: 0.012, tint: 0x55663f, rock: 0.12 },
+    ground: "organic",
+    face: "rock",
     stone: 0xdfe4e0,
     metal: 0x8f9aa4,
     glow: 0x8fd6ff,
+    scatter: { color: 0x535346, density: 0.35, accent: { color: 0x4f7a3a, family: "organic", density: 0.8 } },
     rules: [
       { kind: "tower", at: [0, -46], scale: 3.4 },
       { kind: "dome", at: [0, -46], scale: 1.5 },
@@ -99,9 +109,12 @@ export const KITS: Record<KitName, KitSpec> = {
      rules, and the thing that sells it is that everything is on an axis. */
   seleya: {
     terrain: { relief: 9.0, scale: 0.006, tint: 0x8c4020, rock: 0.75 },
-    stone: 0xd9a878,
-    metal: 0xe8c078,
+    ground: "sand",
+    face: "rock",
+    stone: 0xcdb49a,
+    metal: 0xe0bf86,
     glow: 0xffb04a,
+    scatter: { color: 0x5c3721, density: 1.15 },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.1 },
       { kind: "arch", at: [0, -30], scale: 2.6 },
@@ -120,9 +133,12 @@ export const KITS: Record<KitName, KitSpec> = {
      Nothing is centred, everything is a spike, and the only light is fire. */
   "first-city": {
     terrain: { relief: 7.0, scale: 0.009, tint: 0x2b3020, rock: 0.6 },
-    stone: 0x6d7050,
+    ground: "rock",
+    face: "rock",
+    stone: 0x77786a,
     metal: 0xb09030,
     glow: 0xff6a28,
+    scatter: { color: 0x24281e, density: 1.0, accent: { color: 0x2a2a24, family: "rock", density: 0.5 } },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.1 },
       { kind: "tower", at: [-6, -40], scale: 4.6 },
@@ -141,9 +157,12 @@ export const KITS: Record<KitName, KitSpec> = {
      kit whose largest structure is smaller than its trees. */
   kendra: {
     terrain: { relief: 5.0, scale: 0.011, tint: 0x6d6238, rock: 0.28 },
-    stone: 0xe4d0a4,
+    ground: "organic",
+    face: "rock",
+    stone: 0xded5bc,
     metal: 0xd8c06a,
     glow: 0xffd28a,
+    scatter: { color: 0x524931, density: 0.55, accent: { color: 0x5c7a3c, family: "organic", density: 0.7 } },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.0 },
       { kind: "dome", at: [0, -34], scale: 1.9 },
@@ -162,9 +181,12 @@ export const KITS: Record<KitName, KitSpec> = {
      signage — the only kit where the small props outnumber the large ones. */
   "ferengi-market": {
     terrain: { relief: 1.6, scale: 0.02, tint: 0x363629, rock: 0.1 },
+    ground: "rock",
+    face: "metal",
     stone: 0x8a8272,
     metal: 0xc9a227,
     glow: 0xffd24a,
+    scatter: { color: 0x292a22, density: 0.5 },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.0 },
       { kind: "tower", at: [0, -58], scale: 5.6 },
@@ -181,9 +203,12 @@ export const KITS: Record<KitName, KitSpec> = {
   /* Risa. Sand, pavilions, palms and the sea. Almost nothing is vertical. */
   "risa-beach": {
     terrain: { relief: 2.2, scale: 0.014, tint: 0xc2a86e, rock: 0.05 },
+    ground: "sand",
+    face: "rock",
     stone: 0xf2e6c8,
     metal: 0x2fd6c3,
     glow: 0x6ff0e0,
+    scatter: { color: 0x7e7155, density: 0.4, accent: { color: 0xe8e0cc, family: "rock", density: 0.35 } },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.0 },
       { kind: "dome", at: [-14, -30], scale: 1.4 },
@@ -200,9 +225,12 @@ export const KITS: Record<KitName, KitSpec> = {
      organic anywhere in it. */
   "andoria-ice": {
     terrain: { relief: 6.5, scale: 0.008, tint: 0x6d90ab, rock: 0.5 },
+    ground: "ice",
+    face: "ice",
     stone: 0xd6e8f4,
     metal: 0x8fb4cc,
     glow: 0x63c8ff,
+    scatter: { color: 0x647681, density: 0.9 },
     rules: [
       { kind: "spire", ring: 30, count: 10, scale: 4.2 },
       { kind: "spire", ring: 58, count: 14, scale: 5.6 },
@@ -219,9 +247,12 @@ export const KITS: Record<KitName, KitSpec> = {
      comfortable, on a strict grid. The repetition is the characterisation. */
   "cardassia-plaza": {
     terrain: { relief: 1.2, scale: 0.02, tint: 0x6f5730, rock: 0.15 },
-    stone: 0xc0ac82,
+    ground: "sand",
+    face: "rock",
+    stone: 0xb8b0a0,
     metal: 0xb0762e,
     glow: 0xffb45a,
+    scatter: { color: 0x544933, density: 0.6 },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.1 },
       { kind: "tower", at: [0, -54], scale: 4.2 },
@@ -240,9 +271,12 @@ export const KITS: Record<KitName, KitSpec> = {
      axis, and everything a shade of green a Vulcan would never choose. */
   "romulan-forum": {
     terrain: { relief: 3.6, scale: 0.01, tint: 0x3a4a2e, rock: 0.3 },
-    stone: 0xa8b48c,
+    ground: "organic",
+    face: "rock",
+    stone: 0xa9b0a2,
     metal: 0x9aa050,
     glow: 0x8fffb0,
+    scatter: { color: 0x333925, density: 0.7, accent: { color: 0x3f6a34, family: "organic", density: 0.9 } },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.1 },
       { kind: "arch", at: [0, -40], scale: 3.0 },
@@ -261,9 +295,12 @@ export const KITS: Record<KitName, KitSpec> = {
      the kit comes up out of the floor. */
   "trill-caves": {
     terrain: { relief: 3.0, scale: 0.014, tint: 0x1d2130, rock: 0.55 },
+    ground: "rock",
+    face: "rock",
     stone: 0x565d78,
     metal: 0x8f7ce0,
     glow: 0x9f8cff,
+    scatter: { color: 0x1c1f2a, density: 1.1 },
     rules: [
       { kind: "pool", at: [0, -12], scale: 2.6 },
       { kind: "pool", at: [-22, -30], scale: 1.8 },
@@ -280,9 +317,12 @@ export const KITS: Record<KitName, KitSpec> = {
      whose people stopped building anything a very long time ago. */
   "talos-surface": {
     terrain: { relief: 8.0, scale: 0.007, tint: 0x3e2c40, rock: 0.7 },
-    stone: 0x9d84a8,
+    ground: "rock",
+    face: "rock",
+    stone: 0x9a93a4,
     metal: 0x9a7ab0,
     glow: 0xd07aff,
+    scatter: { color: 0x362939, density: 1.2 },
     rules: [
       { kind: "beacon", at: [0, 0], scale: 1.0 },
       { kind: "monolith", at: [0, -24], scale: 3.2 },
@@ -299,9 +339,12 @@ export const KITS: Record<KitName, KitSpec> = {
      able to take a surface down. */
   "dead-world": {
     terrain: { relief: 7.0, scale: 0.009, tint: 0x40352a, rock: 0.8 },
+    ground: "sand",
+    face: "rock",
     stone: 0xa4998a,
     metal: 0x7a7268,
     glow: 0xff8a4a,
+    scatter: { color: 0x373026, density: 1.2 },
     rules: [
       { kind: "wreck", at: [8, -20], scale: 2.4 },
       { kind: "wreck", at: [-24, -38], scale: 1.6 },
@@ -339,10 +382,14 @@ export function buildKit(
   const group = new THREE.Group();
   const blockers: { x: number; z: number; r: number }[] = [];
 
-  const stone = new THREE.MeshStandardMaterial({ color: spec.stone, roughness: 0.92, metalness: 0.02 });
-  const metal = new THREE.MeshStandardMaterial({ color: spec.metal, roughness: 0.45, metalness: 0.6 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.9 });
-  const leaf = new THREE.MeshStandardMaterial({ color: 0x3f6a34, roughness: 1 });
+  /* Everything below is surfaced rather than coloured: a baked, mipmapped,
+     triplanar-sampled map set per family, tinted by the kit's own palette.
+     See `gfx/surfacing.ts` for why the detail is baked and not computed. */
+  const face = spec.face ?? "rock";
+  const stone = surfaced({ color: spec.stone, family: face, macro: 0.13 });
+  const metal = surfaced({ color: spec.metal, family: "metal", tile: 1.4, roughness: 0.9, metalness: 0.9 });
+  const dark = surfaced({ color: 0x33322e, family: face, tile: 1.1, macro: 0.1 });
+  const leaf = surfaced({ color: 0x4d7a3c, family: "organic", tile: 0.9, macro: 0.22 });
   const owned: THREE.Material[] = [stone, metal, dark, leaf];
 
   const glowMat = (c: number) => {
@@ -645,15 +692,19 @@ function makeProp(
       // camera at eye height — at the old size the ring wrapped round the
       // bottom of the frame as a glowing band rather than reading as a disc
       // on the floor.
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.4 * s, 2.6 * s, 0.2 * s, 28), m.metal);
-      pad.position.y = 0.1 * s;
+      // Set into the ground rather than standing on it, and small: the away
+      // team materialises in the middle of this, so at eye height its near
+      // edge is a couple of metres away and every extra centimetre of radius
+      // is another band across the bottom of the frame.
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.9 * s, 2.1 * s, 0.16 * s, 32), m.metal);
+      pad.position.y = 0.02 * s;
       // Half brightness: the away team is standing *inside* this one, and at
       // eye height a full-strength ring is a light bar across the bottom of
       // the frame rather than a marking on the floor.
-      const dim = new THREE.Color(spec.glow).multiplyScalar(0.4).getHex();
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(2.2 * s, 0.1 * s, 8, 30), glow(dim));
+      const dim = new THREE.Color(spec.glow).multiplyScalar(0.28).getHex();
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.75 * s, 0.07 * s, 8, 36), glow(dim));
       ring.rotation.x = Math.PI / 2;
-      ring.position.y = 0.22 * s;
+      ring.position.y = 0.11 * s;
       ring.name = "flicker";
       g.add(pad, ring);
       break;
