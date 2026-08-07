@@ -3997,6 +3997,30 @@ export type Database = {
         }
         Relationships: []
       }
+      vibe_guest_claims: {
+        Row: {
+          account_ref: string
+          amount: number
+          claimed_at: string
+          guest_ref: string
+          items_moved: number
+        }
+        Insert: {
+          account_ref: string
+          amount?: number
+          claimed_at?: string
+          guest_ref: string
+          items_moved?: number
+        }
+        Update: {
+          account_ref?: string
+          amount?: number
+          claimed_at?: string
+          guest_ref?: string
+          items_moved?: number
+        }
+        Relationships: []
+      }
       vibe_inventory: {
         Row: {
           acquired_at: string
@@ -4071,6 +4095,33 @@ export type Database = {
           reason?: string
           to_kind?: string | null
           to_ref?: string | null
+        }
+        Relationships: []
+      }
+      vibe_loadout: {
+        Row: {
+          flame: string
+          hat: string
+          jetpack: string
+          owner_kind: string
+          owner_ref: string
+          updated_at: string
+        }
+        Insert: {
+          flame?: string
+          hat?: string
+          jetpack?: string
+          owner_kind: string
+          owner_ref: string
+          updated_at?: string
+        }
+        Update: {
+          flame?: string
+          hat?: string
+          jetpack?: string
+          owner_kind?: string
+          owner_ref?: string
+          updated_at?: string
         }
         Relationships: []
       }
