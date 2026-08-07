@@ -4,8 +4,8 @@
  * also carries a magic link for people who prefer tapping it. Password
  * mode is hidden behind a toggle; wallet/Google are marked coming soon.
  */
-import { useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import VibeArc from "@/components/VibeArc";
+import { OTP_LENGTH, normalizeOtp, shouldAutoSubmit } from "@/lib/otp";
 
 interface Props {
   open: boolean;
@@ -70,29 +71,53 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
   };
 
   // Paste the 6-digit code from the email — no app-switching needed.
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = code.replace(/\D/g, "");
-    if (token.length < 6) {
-      toast.error("Enter the 6-digit code from the email");
-      return;
-    }
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: "email",
-      });
-      if (error) throw error;
-      toast.success("Welcome to the Vibe ✨");
-      handleClose(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "That code didn't match — try again");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleVerifyCode = useCallback(
+    async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const token = normalizeOtp(code);
+      if (token.length < OTP_LENGTH) {
+        toast.error("Enter the 6-digit code from the email");
+        return;
+      }
+      setLoading(true);
+      try {
+        const { error } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "email",
+        });
+        if (error) throw error;
+        toast.success("Welcome to the Vibe ✨");
+        handleClose(false);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "That code didn't match — try again");
+      } finally {
+        setLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [code, email],
+  );
+
+  /**
+   * Submit the moment six digits are in the box.
+   *
+   * This is the half of "it autofills" that people actually mean. iOS offers
+   * the code above the keyboard, one tap drops it in — and without this you
+   * then have to find and press a button, which is most of the friction the
+   * autofill was supposed to remove. Six digits is an unambiguous signal; there
+   * is nothing else the user could be about to type.
+   *
+   * `tried` guards the loop: a wrong code would otherwise re-submit on every
+   * render while the field still holds six characters. It resets as soon as
+   * they edit, so a corrected code goes through on its own too.
+   */
+  const tried = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shouldAutoSubmit({ code, lastTried: tried.current, sent, loading })) return;
+    tried.current = normalizeOtp(code);
+    void handleVerifyCode();
+  }, [code, sent, loading, handleVerifyCode]);
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,13 +175,17 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <VibeArc size={140} rotateSeconds={28} />
           </div>
 
-          <h2
+          {/* Radix's own Title/Description, not a bare h2 and p. Without them
+              the dialog opens silently for a screen reader — no announcement of
+              what it is or what it wants — and this is the one dialog everybody
+              has to get through. Same styling, correct semantics. */}
+          <DialogTitle
             className="text-center text-2xl font-bold tracking-tight"
             style={{ fontFamily: "'Sora', system-ui, sans-serif" }}
           >
             Welcome to the Vibe
-          </h2>
-          <p className="text-center text-sm text-white/60 mt-1">
+          </DialogTitle>
+          <DialogDescription className="text-center text-sm text-white/60 mt-1">
             {mode === "magic"
               ? sent
                 ? "Enter the 6-digit code we emailed you"
@@ -164,7 +193,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
               : isSignUp
               ? "Create an account with a password"
               : "Sign in with your password"}
-          </p>
+          </DialogDescription>
 
           {mode === "magic" ? (
             sent ? (
@@ -178,14 +207,19 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                   autoFocus
                   inputMode="numeric"
                   autoComplete="one-time-code"
+                  /* One input, never six boxes: split single-character fields
+                     look tidy and defeat one-time-code autofill completely.
+                     `type` stays text — `number` breaks it too. */
+                  name="one-time-code"
+                  maxLength={6}
                   placeholder="123456"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onChange={(e) => setCode(normalizeOtp(e.target.value))}
                   className="bg-transparent border-white/15 rounded-xl h-14 text-center text-2xl tracking-[0.5em] font-mono placeholder:text-white/20 placeholder:tracking-[0.5em]"
                 />
                 <Button
                   type="submit"
-                  disabled={loading || code.length < 6}
+                  disabled={loading || code.length < OTP_LENGTH}
                   className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90 disabled:opacity-40"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enter the Vibe"}

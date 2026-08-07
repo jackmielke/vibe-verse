@@ -9,16 +9,39 @@
 
   To apply: Supabase dashboard → Authentication → Emails → Magic Link →
   paste this into the message body → Save. Same project, one save, no deploy.
+  **Set the Subject line too** — see README.md, it is the difference between
+  reading the code off a notification and going hunting for it.
 
   The variable that matters is {{ .Token }}. Supabase's stock Magic Link
   template contains only {{ .ConfirmationURL }}, and `signInWithOtp` + a
   `verifyOtp({ type: "email" })` box — which is what VibeAuthDialog does, and
   is the nicer flow — then has nothing to verify against.
 
-  Both are included on purpose. The code is the primary path because it keeps
-  you in the tab you started in, which matters most on a phone; the link is
-  there for anyone who would rather tap once. Either one signs you in.
+  ## Everything here is arranged so the code never has to be hunted for
+
+  Three places it appears, in the order somebody actually encounters them:
+
+    1. The SUBJECT (set in the dashboard, not here) — shows in the phone's
+       notification banner. Most of the time you never open the mail at all.
+    2. The PREHEADER below — the hidden line every client shows next to the
+       subject in the inbox list. Same code, second chance.
+    3. The body, immediately, under the words "verification code".
+
+  That last phrasing is not decoration. iOS 17+ and macOS Sonoma+ detect codes
+  in Mail and offer them above the keyboard for any input marked
+  `autocomplete="one-time-code"` — which `VibeAuthDialog` sets. Apple has never
+  documented the heuristics for *email* codes (only the SMS format), so the
+  reliable move is to look like every other verification email: the word "code"
+  next to a short run of digits, high in the message.
+
+  Do not put spaces between the digits to make them prettier. The wide look
+  comes from CSS letter-spacing, which leaves the text itself as six contiguous
+  characters — "123456" parses, "1 2 3 4 5 6" does not.
 -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0;">
+  Your Vibeverse verification code is {{ .Token }}
+</div>
+
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
        style="background:#05070d;padding:40px 16px;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;">
   <tr>
@@ -26,34 +49,43 @@
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="max-width:440px;background:#0b1220;border:1px solid rgba(255,255,255,0.08);border-radius:20px;">
         <tr>
-          <td style="padding:32px 32px 8px;text-align:center;">
+          <td style="padding:30px 32px 0;text-align:center;">
             <div style="font-size:11px;font-weight:700;letter-spacing:0.34em;text-transform:uppercase;color:#8fb4ff;">
               The Vibeverse
             </div>
-            <h1 style="margin:12px 0 0;font-size:24px;font-weight:800;color:#eafff8;letter-spacing:-0.01em;">
-              Welcome to the Vibe
-            </h1>
-            <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:rgba(255,255,255,0.62);">
-              Here is your sign-in code. Type it into the tab you left open.
-            </p>
           </td>
         </tr>
 
+        <!-- The code, as high as it can go. Everything friendly comes after. -->
         <tr>
-          <td style="padding:24px 32px 4px;">
+          <td style="padding:22px 32px 4px;">
+            <p style="margin:0 0 10px;font-size:13px;line-height:1.5;color:rgba(255,255,255,0.72);text-align:center;">
+              Your verification code
+            </p>
             <div style="background:#03050c;border:1px solid rgba(125,255,212,0.3);border-radius:14px;padding:20px;text-align:center;">
               <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;font-weight:700;letter-spacing:0.34em;color:#7dffd4;">
                 {{ .Token }}
               </div>
             </div>
             <p style="margin:12px 0 0;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.4);text-align:center;">
-              The code is good for one hour and can be used once.
+              Good for one hour, and can be used once.
             </p>
           </td>
         </tr>
 
         <tr>
-          <td style="padding:20px 32px 32px;text-align:center;">
+          <td style="padding:18px 32px 0;text-align:center;">
+            <h1 style="margin:0;font-size:20px;font-weight:800;color:#eafff8;letter-spacing:-0.01em;">
+              Welcome to the Vibe
+            </h1>
+            <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:rgba(255,255,255,0.62);">
+              Type that into the tab you left open, and you are in.
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:20px 32px 30px;text-align:center;">
             <p style="margin:0 0 12px;font-size:12px;color:rgba(255,255,255,0.4);">
               Or, if you would rather just tap something:
             </p>
