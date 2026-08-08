@@ -439,7 +439,7 @@ VOICE: a proper newspaper that happens to cover a place where the moon is landab
 THE PAPER LIKES THIS PLACE. It is a local paper in a small town it is fond of, not a critic and not a coroner. A quiet week is charming, not sad: the joke is the deadpan gap between how enormous the log is and how little happened, never "nobody is here and nothing matters". Tease named residents the way a village paper teases the mayor, warmly and briefly, and never twice in one issue. Never end an issue on a bleak note.
 
 THE ONE RULE: you may only write what is in the brief.
-- In-world claims (headlines, gossip, weather) come from the build record and the world's own logged events. No invented residents, quotes, encounters or numbers.
+- In-world claims (headlines, gossip, weather) come from what_got_built and the world's own logged events. No invented residents, quotes, encounters or numbers.
 - Every outside-world dispatch must be about an item that is IN the brief's dispatch list, and must carry that item's exact url. Never write a url that is not in the brief. Never report an outside event the brief does not contain.
 - If a section has no material, return it empty. A short honest issue beats a padded one.
 - The forecast section is the only place you may invent, and it is understood to be nonsense.
@@ -459,11 +459,11 @@ Return ONE raw JSON object, no markdown fences, exactly this shape:
 
 FIELD RULES
 - motto: the strapline under the masthead. Six words or fewer, lowercase, different every day, drawn from the day's actual material.
-- headlines: 3 to 5 stories about the VibeVerse itself, from the build record and the world log. The first is the lead and runs 90 to 150 words; the rest run 50 to 90. HEADLINES IN CAPITALS. Report changes as things that HAPPENED TO THE WORLD, not as software changes: "the moon stopped throwing people into the sky" beats "fixed collision bug". If the build record is thin, lead with the world's own life instead: who arrived, who greeted whom, what moved through the economy.
+- headlines: 3 to 5 stories about the VibeVerse itself, from what_got_built and the world log. The first is the lead and runs 90 to 150 words; the rest run 50 to 90. HEADLINES IN CAPITALS. Report changes as things that HAPPENED TO THE WORLD, not as software changes: "the moon stopped throwing people into the sky" beats "fixed collision bug". If little was built, lead with the world's own life instead: who arrived, who greeted whom, what moved through the economy.
 - dispatches: 5 to 7 items from outside the sky. This is the wire desk, and it is why anyone reads a paper twice. Spread it across the desks: two or three AI and tech stories, at least one real sports result or story, at least one from culture (music, film, games), and one bit of history only if it is a delight. 40 to 80 words each. Write them as a newspaper in a fictional sky would write about the real world: report the fact straight, then let one clause connect it to life in here. Never sneer, never boost. If an AI story is genuinely a big deal, say so plainly. Skip anything with a death toll, a disaster or a war in it: this is a fun paper and there are other papers for that.
 - numbers: when you use a figure from computed_stats or the_world, describe it exactly as it is labelled. vibe_moved is everything that moved through the economy, not one resident's pay. Do not turn a total into an average or a person.
 - gossip: the society column, 60 to 120 words, strictly from the encounter log, the graffiti wall, arrivals and departures. Real names, real counts. This is where the paper is funniest because the log is genuinely absurd.
-- weather: sky and world conditions, 40 to 80 words, from the build record. Playful, physical, specific.
+- weather: sky and world conditions, 40 to 80 words, drawn from what changed in the worlds themselves. Playful, physical, specific.
 - vibey_says: Vibey's signed column, 50 to 90 words, first person, warm and a little strange. If Vibey's overnight journal is in the brief, draw on what it actually wrote. This is the one place the paper is allowed to be sincere. Connect something from outside the sky to something inside it.
 - forecast: exactly 3 short playful predictions for the day ahead, 12 to 25 words each, label is 1 to 3 words. Clearly jokes. This is the horoscope column and everyone knows it.
 - quote: one line worth pinning up, with an honest attribution to where it came from in the brief (a commit, the log, a resident, a dispatch).`;
@@ -651,13 +651,22 @@ Deno.serve(async (req) => {
       previous_issue: prev ? { issue: prev.issue, date: prev.edition_date } : null,
       previous_motto: prev?.payload?.motto ?? null,
       previous_headlines: (prev?.payload?.headlines ?? []).map((h: { headline: string }) => h.headline),
-      build_record: { source: build.source, commits: build.commits },
+      // Deliberately just the commits, with no word about where they came
+      // from. Told that the build log was missing, the model reported it —
+      // in the weather column, as though a quiet week were a fault. It
+      // cannot mention plumbing it was never shown.
+      what_got_built: build.commits,
       the_world: world,
       dispatches_available: dispatches,
       computed_stats: stats,
       instructions:
         "Write today's issue from this brief only. Do not repeat a previous headline. " +
-        "Every dispatch url must appear verbatim in dispatches_available.",
+        "Every dispatch url must appear verbatim in dispatches_available." +
+        (build.commits.length
+          ? ""
+          : " Nothing was built in this window: nobody moved the furniture. That is an ordinary quiet week," +
+            " not an absence to report. Lead with the world's own life and say nothing about there being" +
+            " no changes to report."),
     });
 
     const draft = await compose(openrouterKey, briefText);
