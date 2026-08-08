@@ -29,6 +29,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
   ],
   "arcade": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
@@ -47,18 +48,20 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "city": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
-    { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "coin": [
+    { sha: "3660216", iso: "2026-08-08T21:22:22+00:00", subject: "Changes" },
+    { sha: "af46f50", iso: "2026-08-08T21:22:17+00:00", subject: "Changes" },
+    { sha: "1f98cf2", iso: "2026-08-08T21:22:11+00:00", subject: "Changes" },
     { sha: "230d0ed", iso: "2026-08-08T20:25:18+00:00", subject: "One page about the currency, told as three steps" },
     { sha: "8e09d54", iso: "2026-07-21T20:57:42+00:00", subject: "Changes" },
     { sha: "7842a72", iso: "2026-07-21T20:57:37+00:00", subject: "Changes" },
-    { sha: "4e906e1", iso: "2026-07-21T20:57:30+00:00", subject: "Changes" },
   ],
   "companions": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
@@ -122,12 +125,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
-    { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -153,12 +156,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "moon": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
-    { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "museum": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
@@ -196,15 +199,16 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "shop": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
-    { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "soaked": [
     { sha: "e9f4060", iso: "2026-08-08T20:06:42+00:00", subject: "Cover art for Soaked, from the water build" },
@@ -218,6 +222,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "strange-new-worlds": [
+    { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
     { sha: "c396353", iso: "2026-08-07T06:25:08+00:00", subject: "Air you can see through, and water on the worlds that have some" },
     { sha: "cd1d2ae", iso: "2026-08-07T05:14:27+00:00", subject: "The Odyssey gets a hull, and the planets get an atmosphere" },
     { sha: "296027a", iso: "2026-08-07T04:56:34+00:00", subject: "People you can stand in front of, and columns that are not clip art" },
@@ -249,12 +254,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
-    { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "vibeverse": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
