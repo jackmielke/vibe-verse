@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-08T19:51:52.027Z",
+  "generated_at": "2026-08-08T20:02:27.489Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "9f11b0da",
+      "date": "2026-08-08",
+      "subject": "One game, one card: Soaked leads, Drop Zero becomes the classic build",
+      "lede": "/drop-zero boots water now, so its card was advertising a game nobody gets by default — 'build faster than they can shoot' when the guns are full of water. It becomes 'Drop Zero (classic)' at ?mode=classic, unfeatured and out of the nav: the same engine with ctx.mode flipped is one world, and a variant should stay reachable without competing for attention.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "080df65e",
+      "date": "2026-08-08",
+      "subject": "mobile-shot: check whether a page actually fits a phone",
+      "lede": "The desktop capture harness says nothing about whether a layout FITS. This opens a route in a real iPhone context — touch enabled, coarse pointer, correct DPR, which matters because without them you are testing a narrow desktop rather than a phone — screenshots the full page, and lists every element wider than the viewport with its tag, classes and text.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "03ecbfda",
+      "date": "2026-08-08",
+      "subject": "Re-stamp after the merge",
+      "lede": "The Vibe Times and the city-family worlds picked up commits while BLOB was being built, so their dates were a day stale the moment the branches came together.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "0833372f",
       "date": "2026-08-08",
@@ -1026,30 +1050,6 @@
       "lede": "CHECKPOINTS MOVE TO PRACTICE MODE, which is where Geometry Dash puts them and where they belong: a normal attempt is the whole level or nothing. The toggle is now PRACTICE rather than PURIST and it defaults off, so the default experience is the original bargain. Two rules come with it, both the original's and both right — coins do not count in practice, because a run with checkpoints in it is not a run; and the banne",
       "places": [],
       "files": 7
-    },
-    {
-      "sha": "d3d3f485",
-      "date": "2026-08-02",
-      "subject": "A silicon lifeform does not have deflector screens",
-      "lede": "The creature was being given a shield bubble at spawn, because everything that is not a planet killer or a freighter was. It showed on the viewscreen as a faint sphere around it — which is a *vessel* signifier, in the one episode where reading it as a vessel is the entire mistake the player is being invited to make. The set was quietly arguing against the episode.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "ceafd63f",
-      "date": "2026-08-02",
-      "subject": "Let go of the trigger between episodes",
-      "lede": "A sequential playthrough lost The Devil in the Dark having fired nothing at all — and won it every time it was run on its own. The difference was the previous episode: `firePhasers` is *held* state rather than an edge, and it survives an episode boundary, so a captain still holding the button when one episode ends opens fire the instant the next one acquires a target. Merely untidy in five of these episodes. Fatal in",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "2eed69db",
-      "date": "2026-08-02",
-      "subject": "The bridge talks to itself on a quiet watch",
-      "lede": "Half of TOS is two people needling each other between the things that explode. A crew that only speaks when a shield is failing is a set of instruments with names, so when the episode is running, the ship is off alert, nothing hostile is inside 9,000 km and nobody has said anything that mattered for thirty-two seconds, two of them talk to each other about nothing much.",
-      "places": [],
-      "files": 3
     }
   ]
 }

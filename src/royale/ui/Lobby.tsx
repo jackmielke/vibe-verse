@@ -87,7 +87,16 @@ function squadLabel(id: string | null): string {
 
 // ---------------------------------------------------------------- controls
 
-/** Bindings, straight off `engine/input.ts`, worded for a water fight. */
+/**
+ * Bindings, straight off `engine/input.ts`, worded for a water fight.
+ *
+ * Two lists, because there are two input schemes and showing the wrong one is
+ * worse than showing none: a phone player reading "WASD move" concludes the
+ * game is not for them and closes the tab. Which list renders is decided by
+ * `(pointer: coarse)` — the *same* query `input.ts` uses to decide whether to
+ * bind its touch handlers at all, so the help can never describe controls the
+ * engine did not actually wire up.
+ */
 const CONTROLS: readonly [string, string][] = [
   ["WASD", "move"],
   ["Shift", "sprint"],
@@ -103,6 +112,27 @@ const CONTROLS: readonly [string, string][] = [
   ["1–6", "loadout"],
   ["Esc", "pause"],
 ];
+
+/** The twin-stick scheme in `input.ts`: left half moves, right half aims. */
+const TOUCH_CONTROLS: readonly [string, string][] = [
+  ["Left thumb", "drag to move"],
+  ["Right thumb", "drag to look"],
+  ["Tap right", "spray"],
+];
+
+/**
+ * True on a phone or tablet. Read once, at module scope, because it decides
+ * layout copy rather than layout *size* — a hover-capable window that gets
+ * narrow is still a mouse, and re-querying on resize would flip the help text
+ * out from under someone dragging a desktop window about.
+ */
+function isCoarsePointer(): boolean {
+  try {
+    return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------- storage
 
@@ -352,6 +382,8 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
   }, [name, net, onDropIn, room, team]);
 
   const selfColor = squadColor(team);
+  const coarse = useMemo(isCoarsePointer, []);
+  const controls = coarse ? TOUCH_CONTROLS : CONTROLS;
 
   return (
     <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain">
@@ -371,49 +403,83 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
         }}
       />
 
-      <div className="relative flex min-h-full flex-col items-center px-4 py-8 sm:px-6">
+      {/*
+        Safe areas are applied as padding here rather than on the scroll
+        container, so the notch and the home-indicator swipe bar push the
+        *content* in while the sky gradient still bleeds under both. `max()`
+        keeps the ordinary 1rem gutter on a phone with no insets at all.
+      */}
+      <div
+        className="relative flex min-h-full flex-col items-center"
+        style={{
+          paddingLeft: "max(1rem, env(safe-area-inset-left))",
+          paddingRight: "max(1rem, env(safe-area-inset-right))",
+          paddingTop: "calc(1.5rem + env(safe-area-inset-top))",
+          paddingBottom: "calc(2rem + env(safe-area-inset-bottom))",
+        }}
+      >
         {/* ---------------------------------------------------- title ---- */}
-        <p className="text-[10px] font-semibold uppercase tracking-[0.5em] text-[#0b6a94]/80">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#0b6a94]/80 sm:tracking-[0.5em]">
           The Vibeverse presents
         </p>
+        {/*
+          `clamp` rather than a breakpoint: the word has to be the biggest
+          thing on the screen at every width, and a 360 px Android is below
+          every breakpoint Tailwind has, so `text-6xl` there is a fixed 60 px
+          in a 296 px card — it fits by luck, not by construction.
+        */}
         <h1
-          className="mt-2 text-6xl font-black italic tracking-tight text-[#04456b] drop-shadow-[0_3px_0_rgba(255,255,255,0.9)] sm:text-8xl"
-          style={{ letterSpacing: "-0.02em" }}
+          className="mt-2 font-black italic tracking-tight text-[#04456b] drop-shadow-[0_3px_0_rgba(255,255,255,0.9)]"
+          style={{ fontSize: "clamp(3rem, 17vw, 6rem)", letterSpacing: "-0.02em" }}
         >
           {WATER.strings.modeName}
         </h1>
-        <p className="mt-1 text-base font-bold uppercase tracking-[0.28em] text-[#0b6a94] sm:text-lg">
+        <p className="mt-1 text-center text-sm font-bold uppercase tracking-[0.18em] text-[#0b6a94] sm:text-lg sm:tracking-[0.28em]">
           {WATER.strings.modeTagline}
         </p>
-        <p className="mt-3 max-w-xl text-center text-sm text-[#0a5677]/85">
+        <p className="mt-3 max-w-xl text-balance text-center text-sm text-[#0a5677]/85">
           Ten soakers, a pocket full of water balloons and a glue gun that sticks two
           people together at the ankles. Nobody gets hurt — they get drenched.
         </p>
 
-        <div className="mt-7 grid w-full max-w-4xl gap-4 md:grid-cols-2">
-          {/* ------------------------------------------------ the room --- */}
-          <section className="rounded-3xl bg-white/60 p-5 shadow-[0_18px_50px_-24px_rgba(3,90,140,0.75)] ring-1 ring-white/80 backdrop-blur-md">
+        <div className="mt-6 grid w-full max-w-4xl gap-4 sm:mt-7 md:grid-cols-2">
+          {/* ------------------------------------------------ the room ---
+              `min-w-0` is load-bearing, not tidying. A grid item defaults to
+              `min-width: auto`, so the column is floored at the item's
+              *min-content* width — and a bare `<input>` carries a ~220 px
+              intrinsic size that no amount of `w-full` reduces. That floor
+              measured 411 px inside a 358 px column, which is exactly the
+              sideways scroll this screen shipped with on a phone. */}
+          <section className="min-w-0 rounded-3xl bg-white/60 p-4 shadow-[0_18px_50px_-24px_rgba(3,90,140,0.75)] ring-1 ring-white/80 backdrop-blur-md sm:p-5">
             <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#0b6a94]">
               The room
             </h2>
 
             {room ? (
               <>
-                <div className="mt-3 select-all break-all text-center font-mono text-3xl font-black tracking-[0.12em] text-[#04456b] sm:text-4xl">
+                {/* The code is the product: tapping it copies, so the target
+                    is the whole 44 px-plus slab and not just the word next to
+                    it. `break-all` because a long code must wrap rather than
+                    widen the card. */}
+                <button
+                  onClick={() => copy(room, "code")}
+                  aria-label={`Copy room code ${room}`}
+                  className="mt-3 block w-full break-all rounded-2xl bg-white/70 px-3 py-3 text-center font-mono text-[clamp(1.75rem,9vw,2.5rem)] font-black leading-tight tracking-[0.1em] text-[#04456b] ring-1 ring-sky-300/60 transition active:scale-[0.99]"
+                >
                   {room}
-                </div>
-                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                </button>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <button
                     onClick={() => copy(room, "code")}
-                    className="rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-5 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-sky-500/30 transition hover:brightness-110"
+                    className="flex min-h-[44px] w-full items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-4 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-sky-500/30 transition hover:brightness-110"
                   >
-                    {copied === "code" ? "copied!" : "copy code"}
+                    {copied === "code" ? "✓ copied!" : "copy code"}
                   </button>
                   <button
                     onClick={() => copy(shareLink, "link")}
-                    className="rounded-full bg-white/80 px-5 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-[#0b6a94] ring-1 ring-sky-300/70 transition hover:bg-white"
+                    className="flex min-h-[44px] w-full items-center justify-center rounded-full bg-white/80 px-4 text-[11px] font-black uppercase tracking-[0.2em] text-[#0b6a94] ring-1 ring-sky-300/70 transition hover:bg-white"
                   >
-                    {copied === "link" ? "copied!" : "copy invite link"}
+                    {copied === "link" ? "✓ copied!" : "copy invite link"}
                   </button>
                 </div>
                 <p className="mt-2 text-center text-[11px] text-[#0a5677]/70">
@@ -427,7 +493,10 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
               </p>
             )}
 
-            <div className="mt-4 flex gap-2">
+            {/* Input on its own row, buttons under it. Three things abreast
+                needed 371 px of min-content; on a 360 px Android that put
+                CREATE entirely off-screen. */}
+            <div className="mt-4">
               <input
                 value={codeInput}
                 onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
@@ -438,22 +507,28 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
                 aria-label="Room code"
                 spellCheck={false}
                 autoComplete="off"
-                className="min-w-0 flex-1 rounded-xl bg-white/85 px-3 py-2 font-mono text-sm font-bold uppercase tracking-widest text-[#04456b] placeholder:text-[#0b6a94]/35 ring-1 ring-sky-300/70 outline-none focus:ring-2 focus:ring-sky-500"
+                autoCapitalize="characters"
+                /* `size={1}` drops the element's intrinsic width to near
+                   nothing so it can never be the thing that sets a floor. */
+                size={1}
+                className="block min-h-[44px] w-full min-w-0 rounded-xl bg-white/85 px-3 py-2 text-center font-mono text-base font-bold uppercase tracking-[0.15em] text-[#04456b] placeholder:text-[#0b6a94]/35 ring-1 ring-sky-300/70 outline-none focus:ring-2 focus:ring-sky-500"
               />
-              <button
-                onClick={() => void doJoin(codeInput)}
-                disabled={joining}
-                className="rounded-xl bg-[#04456b] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white transition hover:bg-[#065f88] disabled:opacity-50"
-              >
-                join
-              </button>
-              <button
-                onClick={create}
-                disabled={joining}
-                className="rounded-xl bg-white/80 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#0b6a94] ring-1 ring-sky-300/70 transition hover:bg-white disabled:opacity-50"
-              >
-                create
-              </button>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => void doJoin(codeInput)}
+                  disabled={joining}
+                  className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl bg-[#04456b] px-3 text-[11px] font-black uppercase tracking-[0.18em] text-white transition hover:bg-[#065f88] disabled:opacity-50"
+                >
+                  join
+                </button>
+                <button
+                  onClick={create}
+                  disabled={joining}
+                  className="flex min-h-[44px] min-w-0 items-center justify-center rounded-xl bg-white/80 px-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#0b6a94] ring-1 ring-sky-300/70 transition hover:bg-white disabled:opacity-50"
+                >
+                  create
+                </button>
+              </div>
             </div>
 
             {hint && <p className="mt-2 text-[11px] font-semibold text-orange-700">{hint}</p>}
@@ -479,23 +554,29 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
             <div className="mt-4 border-t border-sky-300/50 pt-3">
               <button
                 onClick={() => setShowInvite((v) => !v)}
-                className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-400 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-fuchsia-500/25 transition hover:brightness-110"
+                aria-expanded={showInvite}
+                className="flex min-h-[44px] w-full items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-400 px-3 text-center text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-fuchsia-500/25 transition hover:brightness-110"
               >
                 🤖 invite Claude to the squad
               </button>
               {showInvite && (
-                <div className="mt-2">
+                <div className="mt-2 min-w-0">
                   <p className="text-[11px] text-[#0a5677]/80">
                     Claude joins as a real player. Run this in the repo:
                   </p>
-                  <code className="mt-1 block select-all overflow-x-auto whitespace-pre rounded-lg bg-[#04314b] px-3 py-2 font-mono text-[10.5px] text-cyan-100">
+                  {/* A shell one-liner is ~90 unbreakable characters. It gets
+                      its own scroll box — `max-w-full` plus `min-w-0` so the
+                      box, not the card, is what the string overflows. Copy is
+                      what anyone actually wants from it, so that button is
+                      full width and sits right underneath. */}
+                  <code className="mt-1 block max-w-full min-w-0 select-all overflow-x-auto whitespace-pre rounded-lg bg-[#04314b] px-3 py-2 font-mono text-[10.5px] text-cyan-100">
                     {claudeCmd}
                   </code>
                   <button
                     onClick={() => copy(claudeCmd, "cmd")}
-                    className="mt-2 rounded-full bg-white/80 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-[#0b6a94] ring-1 ring-sky-300/70 transition hover:bg-white"
+                    className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-full bg-white/80 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-[#0b6a94] ring-1 ring-sky-300/70 transition hover:bg-white"
                   >
-                    {copied === "cmd" ? "copied!" : "copy command"}
+                    {copied === "cmd" ? "✓ copied!" : "copy command"}
                   </button>
                   {!room && (
                     <p className="mt-1 text-[10.5px] font-semibold text-orange-700">
@@ -508,7 +589,7 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
           </section>
 
           {/* ------------------------------------------------- you + squad */}
-          <section className="rounded-3xl bg-white/60 p-5 shadow-[0_18px_50px_-24px_rgba(3,90,140,0.75)] ring-1 ring-white/80 backdrop-blur-md">
+          <section className="min-w-0 rounded-3xl bg-white/60 p-4 shadow-[0_18px_50px_-24px_rgba(3,90,140,0.75)] ring-1 ring-white/80 backdrop-blur-md sm:p-5">
             <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#0b6a94]">
               You
             </h2>
@@ -521,13 +602,18 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
               placeholder="your name"
               aria-label="Display name"
               maxLength={20}
-              className="mt-2 w-full rounded-xl bg-white/85 px-3 py-2 text-sm font-bold text-[#04456b] placeholder:text-[#0b6a94]/35 ring-1 ring-sky-300/70 outline-none focus:ring-2 focus:ring-sky-500"
+              size={1}
+              className="mt-2 block min-h-[44px] w-full min-w-0 rounded-xl bg-white/85 px-3 py-2 text-sm font-bold text-[#04456b] placeholder:text-[#0b6a94]/35 ring-1 ring-sky-300/70 outline-none focus:ring-2 focus:ring-sky-500"
             />
 
             <h3 className="mt-4 text-[11px] font-black uppercase tracking-[0.3em] text-[#0b6a94]">
               Squad
             </h3>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            {/* One per row until there is room for two. At 360 px a 2-up grid
+                leaves ~86 px of text box, which truncates CANNONBALLS and
+                FLAMINGOS to nonsense; full-width rows read cleanly and are
+                better thumb targets besides. */}
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {SQUADS.map((s) => {
                 const active = s.id === team;
                 return (
@@ -535,7 +621,7 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
                     key={s.id}
                     onClick={() => setTeam(s.id)}
                     aria-pressed={active}
-                    className={`flex items-center gap-2 rounded-xl px-3 py-2 text-left text-[11px] font-black uppercase tracking-[0.12em] transition ${
+                    className={`flex min-h-[44px] min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-[11px] font-black uppercase tracking-[0.12em] transition ${
                       active
                         ? "bg-white text-[#04456b] shadow-md ring-2 ring-[#04456b]"
                         : "bg-white/45 text-[#0b6a94]/80 ring-1 ring-sky-300/50 hover:bg-white/75"
@@ -610,7 +696,7 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
         {/* ------------------------------------------------- drop in ----- */}
         <div className="mt-7 flex w-full max-w-4xl flex-col items-center">
           {!ready ? (
-            <div className="w-72">
+            <div className="w-full max-w-xs">
               <div className="h-1.5 overflow-hidden rounded-full bg-white/60">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-amber-300 to-orange-400 transition-[width] duration-300"
@@ -624,18 +710,26 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
           ) : (
             <button
               onClick={enter}
-              className="rounded-full bg-gradient-to-r from-amber-300 via-orange-400 to-rose-400 px-12 py-3.5 text-sm font-black uppercase tracking-[0.28em] text-[#04314b] shadow-[0_12px_36px_-6px_rgba(251,146,60,0.7)] transition hover:brightness-110 active:scale-[0.98]"
+              className="flex min-h-[56px] w-full max-w-sm items-center justify-center rounded-full bg-gradient-to-r from-amber-300 via-orange-400 to-rose-400 px-8 text-sm font-black uppercase tracking-[0.28em] text-[#04314b] shadow-[0_12px_36px_-6px_rgba(251,146,60,0.7)] transition hover:brightness-110 active:scale-[0.98]"
             >
               Drop in
             </button>
           )}
-          <p className="mt-2 text-[10.5px] uppercase tracking-[0.2em] text-[#0a5677]/60">
-            click to lock the pointer — that's what turns the controls on
+          <p className="mt-2 max-w-sm text-balance px-2 text-center text-[10.5px] uppercase tracking-[0.2em] text-[#0a5677]/60">
+            {coarse
+              ? "tap to drop in — then two thumbs on the screen"
+              : "click to lock the pointer — that's what turns the controls on"}
           </p>
 
-          <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-1 font-mono text-[11px] text-[#0a5677]/75 sm:grid-cols-3">
-            {CONTROLS.map(([key, action]) => (
-              <span key={key}>
+          <div
+            className={`mt-5 w-full max-w-md px-2 font-mono text-[11px] text-[#0a5677]/75 sm:max-w-2xl ${
+              coarse
+                ? "flex flex-wrap justify-center gap-x-5 gap-y-1"
+                : "grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3"
+            }`}
+          >
+            {controls.map(([key, action]) => (
+              <span key={key} className="min-w-0 break-words">
                 <b className="text-[#04456b]">{key}</b> {action}
               </span>
             ))}

@@ -15,8 +15,74 @@
  * Left ctrl is crouch and is deliberately NOT bound to KeyC — that would
  * fight the ramp key, and misfiring a ramp when you meant to crouch is the
  * kind of thing that loses a fight.
+ *
+ * ## Touch
+ *
+ * On a coarse-pointer device the canvas itself is a twin stick — left half
+ * moves, right half looks, a tap on the right fires — and everything the
+ * keyboard has that a thumb cannot reach (build pieces, edit, rotate,
+ * inventory slots, jump, sprint, interact) comes from the on-screen layer in
+ * `ui/TouchControls.tsx`. That layer is loaded lazily and only when
+ * `(pointer: coarse)` matches, so desktop never downloads it, never mounts it
+ * and never pays a listener for it.
+ *
+ * The two talk through `TouchDriver` below rather than by importing each
+ * other's internals: the UI asks for a virtual press and this file writes the
+ * same `ctx.input` fields the keyboard writes, so no gameplay system has to
+ * know a finger was involved.
  */
 import type { BuildKind, InputState, System, SystemFactory } from "../types";
+
+/** Boolean input flags a virtual button is allowed to hold down. */
+export type TouchFlag = "fire" | "jump" | "sprint" | "crouch" | "aim" | "reload" | "interact";
+
+/** Where the move thumbstick is right now, in viewport pixels. */
+export interface StickState {
+  active: boolean;
+  /** Where the thumb first landed — the stick's base is drawn here. */
+  baseX: number;
+  baseY: number;
+  /** Where the thumb is now. */
+  x: number;
+  y: number;
+  /** Pixel distance that reads as full deflection. */
+  radius: number;
+}
+
+/**
+ * The surface `ui/TouchControls.tsx` drives. Every method writes exactly what
+ * the equivalent key writes, so `buildKind`, `pressed`, `fire`, `jump`,
+ * `slot`, `rotate` and `interact` mean the same thing to every system whether
+ * they came from a keyboard or a thumb.
+ */
+export interface TouchDriver {
+  /** Hold or release a flag. Buttons that repeat (fire) use this, not a tap. */
+  setFlag(flag: TouchFlag, on: boolean): void;
+  /**
+   * Edge-triggered key press — lands in `input.pressed`, which the engine
+   * clears at the end of the frame, exactly like a real `keydown`.
+   */
+  press(code: string): void;
+  /** Select a build piece, or `null` to leave build mode. */
+  setBuildKind(kind: BuildKind | null): void;
+  /** 1..6. Mirrors the digit keys, including their exit from build mode. */
+  selectSlot(slot: number): void;
+  /** Q — rotate the build preview. Consumed once per frame. */
+  rotate(): void;
+  /** Subscribe to the move stick. Returns an unsubscribe. */
+  onStick(fn: (s: StickState) => void): () => void;
+  /** Subscribe to touch-session engage/release. Returns an unsubscribe. */
+  onEngage(fn: (on: boolean) => void): () => void;
+  /** True while the touch session owns the controls. */
+  readonly engaged: boolean;
+  engage(): void;
+  release(): void;
+}
+
+/** Pixel deflection that counts as a full stick push. */
+const STICK_MAX = 70;
+/** Dead zone before the stick reads at all, in pixels. */
+const STICK_DEAD = 8;
 
 /** Keys that map straight onto boolean input flags. */
 const KEY_FLAGS: Record<string, keyof InputState> = {
@@ -43,6 +109,8 @@ export interface InputSystem extends System {
   setSensitivity(v: number): void;
   /** Sensitivity multiplier applied while aiming down sights. */
   setAimScale(v: number): void;
+  /** Virtual input for the on-screen touch layer. Present on every device. */
+  readonly touch: TouchDriver;
 }
 
 const createInput: SystemFactory = (ctx) => {
@@ -58,7 +126,103 @@ const createInput: SystemFactory = (ctx) => {
     { kind: "move" | "look"; startX: number; startY: number; x: number; y: number; moved: boolean }
   >();
 
-  const isTouch = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+  const isTouch =
+    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
+
+  /** True once the player has entered the match with a finger. See `engage`. */
+  let touchEngaged = false;
+  const stickListeners = new Set<(s: StickState) => void>();
+  const engageListeners = new Set<(on: boolean) => void>();
+
+  /**
+   * Drop every held control. Called whenever the lock is lost, so the player
+   * does not run off on their own while the pause menu is up.
+   */
+  const clearHeld = () => {
+    down.clear();
+    input.fire = false;
+    input.aim = false;
+    input.jump = false;
+    input.sprint = false;
+    input.crouch = false;
+    input.reload = false;
+    input.interact = false;
+    input.moveX = 0;
+    input.moveZ = 0;
+  };
+
+  /**
+   * Single writer for the lock flag, because there are now two ways to hold
+   * the controls: the pointer lock on desktop and a touch session on a phone.
+   */
+  const setLocked = (next: boolean) => {
+    if (next === locked) return;
+    locked = next;
+    input.locked = next;
+    ctx.emit("dz:lock", next);
+    if (!next) clearHeld();
+  };
+
+  /**
+   * Ungate touch play.
+   *
+   * `player.controllable` is false unless `input.locked` is true, and a phone
+   * has no Pointer Lock API to give — so on a coarse-pointer device the lock
+   * flag would never flip and the player would stand there watching a HUD
+   * they cannot move. `locked` does not actually mean "the pointer is
+   * captured"; it means *the player has the controls*, which is why every
+   * system reads it as a gate rather than reading `document.pointerLockElement`
+   * itself. A live touch session satisfies that meaning exactly, so it sets
+   * the same flag and emits the same `dz:lock` event, and nothing downstream
+   * needs a second concept.
+   */
+  const engageTouch = () => {
+    if (!isTouch || touchEngaged) return;
+    touchEngaged = true;
+    setLocked(true);
+    for (const fn of [...engageListeners]) fn(true);
+  };
+
+  const releaseTouch = () => {
+    if (!touchEngaged) return;
+    touchEngaged = false;
+    touches.clear();
+    setLocked(false);
+    for (const fn of [...engageListeners]) fn(false);
+  };
+
+  /**
+   * The page enters the match by calling `canvas.requestPointerLock()` — that
+   * one call is what "the player pressed DROP IN" means everywhere in this
+   * codebase. On a phone it is either missing or a no-op, so on coarse-pointer
+   * devices the method is replaced with the touch equivalent. Swapping it here
+   * rather than asking every page to learn about touch keeps the entry point
+   * singular; the original is restored in `dispose()`.
+   */
+  if (isTouch) {
+    (canvas as unknown as Record<string, unknown>).requestPointerLock = () => {
+      engageTouch();
+    };
+  }
+
+  /** Publish the move stick so the on-screen thumbstick can draw itself. */
+  const emitStick = () => {
+    if (stickListeners.size === 0) return;
+    let state: StickState = { active: false, baseX: 0, baseY: 0, x: 0, y: 0, radius: STICK_MAX };
+    for (const t of touches.values()) {
+      if (t.kind !== "move") continue;
+      state = {
+        active: true,
+        baseX: t.startX,
+        baseY: t.startY,
+        x: t.x,
+        y: t.y,
+        radius: STICK_MAX,
+      };
+      break;
+    }
+    for (const fn of [...stickListeners]) fn(state);
+  };
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.repeat) return;
@@ -120,36 +284,15 @@ const createInput: SystemFactory = (ctx) => {
   };
 
   const onLockChange = () => {
-    locked = document.pointerLockElement === canvas;
-    input.locked = locked;
-    ctx.emit("dz:lock", locked);
-    if (!locked) {
-      // Drop every held key so the player doesn't run off on their own while
-      // the pause menu is up.
-      down.clear();
-      input.fire = false;
-      input.aim = false;
-      input.jump = false;
-      input.sprint = false;
-      input.crouch = false;
-      input.reload = false;
-      input.interact = false;
-      input.moveX = 0;
-      input.moveZ = 0;
-    }
+    // A touch session holds the controls in its own right, so losing the
+    // (never-granted) pointer lock must not take them away.
+    setLocked(document.pointerLockElement === canvas || touchEngaged);
   };
 
   // A backgrounded tab stops sending keyup, so a held W survives the switch
   // and the player is still sprinting when they come back.
   const onBlur = () => {
-    down.clear();
-    input.fire = false;
-    input.aim = false;
-    input.jump = false;
-    input.sprint = false;
-    input.crouch = false;
-    input.moveX = 0;
-    input.moveZ = 0;
+    clearHeld();
   };
 
   const onContext = (e: Event) => e.preventDefault();
@@ -165,6 +308,7 @@ const createInput: SystemFactory = (ctx) => {
       y: e.clientY,
       moved: false,
     });
+    if (kind === "move") emitStick();
   };
 
   const onPointerMove = (e: PointerEvent) => {
@@ -177,6 +321,7 @@ const createInput: SystemFactory = (ctx) => {
     if (Math.hypot(e.clientX - t.startX, e.clientY - t.startY) > 12) t.moved = true;
     t.x = e.clientX;
     t.y = e.clientY;
+    if (t.kind === "move") emitStick();
   };
 
   const onPointerUp = (e: PointerEvent) => {
@@ -191,6 +336,7 @@ const createInput: SystemFactory = (ctx) => {
       }, 120);
     }
     touches.delete(e.pointerId);
+    if (t.kind === "move") emitStick();
   };
 
   window.addEventListener("keydown", onKeyDown);
@@ -209,12 +355,78 @@ const createInput: SystemFactory = (ctx) => {
     canvas.addEventListener("pointercancel", onPointerUp);
   }
 
+  /**
+   * The virtual keyboard the on-screen layer types on. Every method here has
+   * exactly one job: write the field a key would have written. No gameplay
+   * logic lives on this side of the line.
+   */
+  const touchDriver: TouchDriver = {
+    setFlag(flag, on) {
+      (input as unknown as Record<string, boolean>)[flag] = on;
+    },
+    press(code) {
+      input.pressed.add(code);
+    },
+    setBuildKind(kind) {
+      input.buildKind = kind;
+    },
+    selectSlot(slot) {
+      input.slot = slot;
+      // Same rule as the digit keys: picking a weapon leaves build mode.
+      input.buildKind = null;
+    },
+    rotate() {
+      input.rotate = true;
+    },
+    onStick(fn) {
+      stickListeners.add(fn);
+      return () => {
+        stickListeners.delete(fn);
+      };
+    },
+    onEngage(fn) {
+      engageListeners.add(fn);
+      return () => {
+        engageListeners.delete(fn);
+      };
+    },
+    get engaged() {
+      return touchEngaged;
+    },
+    engage: engageTouch,
+    release: releaseTouch,
+  };
+
+  /**
+   * The control layer is a React island mounted from here rather than from the
+   * page, so a world that boots this engine gets thumb controls without having
+   * to know they exist. The import is dynamic and guarded: on a mouse the
+   * chunk is never fetched.
+   */
+  let unmountTouchUi: (() => void) | null = null;
+  let disposed = false;
+  if (isTouch) {
+    void import("../ui/TouchControls")
+      .then((mod) => {
+        if (disposed) return;
+        unmountTouchUi = mod.mountTouchControls(ctx, touchDriver);
+      })
+      .catch((err) => {
+        // A missing control layer must not take the match down with it — the
+        // canvas twin-stick still works.
+        console.error("[Drop Zero] touch controls failed to load", err);
+      });
+  }
+
   const sys: InputSystem = {
     name: "input",
+    touch: touchDriver,
     get locked() {
       return locked;
     },
     requestLock() {
+      // On a phone this is the touch swap installed above; on desktop it is
+      // the real thing.
       canvas.requestPointerLock?.();
     },
     setSensitivity(v: number) {
@@ -236,11 +448,9 @@ const createInput: SystemFactory = (ctx) => {
         if (t.kind !== "move") continue;
         const dx = t.x - t.startX;
         const dy = t.y - t.startY;
-        const dead = 8;
-        const max = 70;
-        if (Math.hypot(dx, dy) > dead) {
-          mx = Math.max(-1, Math.min(1, dx / max));
-          mz = Math.max(-1, Math.min(1, -dy / max));
+        if (Math.hypot(dx, dy) > STICK_DEAD) {
+          mx = Math.max(-1, Math.min(1, dx / STICK_MAX));
+          mz = Math.max(-1, Math.min(1, -dy / STICK_MAX));
         }
       }
 
@@ -254,6 +464,14 @@ const createInput: SystemFactory = (ctx) => {
       input.moveZ = mz;
     },
     dispose() {
+      disposed = true;
+      unmountTouchUi?.();
+      unmountTouchUi = null;
+      stickListeners.clear();
+      engageListeners.clear();
+      // Hand the canvas its own method back; the override is an own property
+      // shadowing the prototype, so deleting it restores the native one.
+      if (isTouch) Reflect.deleteProperty(canvas, "requestPointerLock");
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("mousemove", onMouseMove);
