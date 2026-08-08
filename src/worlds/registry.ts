@@ -36,6 +36,7 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "soaked",              // …and then the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -183,25 +184,26 @@ const WORLDS_RAW: WorldEntry[] = [
   },
   {
     key: "drop-zero",
-    route: "/drop-zero",
+    route: "/drop-zero?mode=classic",
     aliases: ["/royale", "/br"],
-    name: "Drop Zero",
+    name: "Drop Zero (classic)",
     emoji: "🪂",
     kind: "game",
     blurb:
-      "One island, one storm, one hundred rivals. Ride the bus, harvest anything that isn't nailed down, and build faster than they can shoot.",
-    status: "Playable — battle royale",
+      "The original: bullets, health bars and a purple storm. The same island Soaked is played on, from before anyone filled the guns with water.",
+    status: "Playable — the pre-water build",
     accent: "#818cf8",
-    featured: true,
+    /* Deliberately not featured and not in the nav. It is the same engine with
+       ctx.mode flipped, and one game deserves one card — this entry exists so
+       the older build stays reachable, not so it competes for attention. */
     source: "src/royale",
-    nav: true,
-    passport: true,
     chromeless: true,
   },
   {
     key: "soaked",
     route: "/soaked",
     aliases: ["/water-fight", "/soak"],
+    nav: true,
     name: "Soaked",
     emoji: "💦",
     kind: "game",

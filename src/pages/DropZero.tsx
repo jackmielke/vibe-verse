@@ -36,7 +36,11 @@ const WATER_CONTROLS: [string, string][] = CONTROLS.map(([k, a]) =>
 
 export default function DropZero() {
   // Passport: every world records that you were here. See lib/passport.ts.
-  useWorldStamp("/drop-zero", "Drop Zero");
+  /* This route boots SOAKED by default, so it stamps Soaked's passport entry.
+     `?mode=classic` still plays the original build, but the classic mode is a
+     variant of one world rather than a second world, and giving a variant its
+     own stamp would make the passport count the same island twice. */
+  useWorldStamp("/soaked", "Soaked");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
