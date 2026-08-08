@@ -301,7 +301,7 @@ export function surfaceMaps(family: SurfaceFamily, size = 512): SurfaceMaps {
     }
   }
 
-  const tex = (data: Uint8Array, srgb: boolean): THREE.DataTexture => {
+  const tex = (data: Uint8Array<ArrayBuffer>, srgb: boolean): THREE.DataTexture => {
     const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
     t.wrapS = THREE.RepeatWrapping;
     t.wrapT = THREE.RepeatWrapping;
