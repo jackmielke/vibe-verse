@@ -1,7 +1,45 @@
 {
-  "generated_at": "2026-08-08T05:13:39.025Z",
+  "generated_at": "2026-08-08T19:51:52.027Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "0833372f",
+      "date": "2026-08-08",
+      "subject": "Stamp BLOB, and repair the dates a shallow clone had flattened",
+      "lede": "`npm run stamp` gives the new world its date. It also corrects a dozen others: this checkout was shallow, so `git log -- <path>` for anything older than the clone boundary returned the boundary commit instead of nothing, and a previous run had written that one timestamp across every world whose code had not been touched recently. The script guards against a path resolving to *nothing*; it cannot tell that a path reso",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "9423a4a4",
+      "date": "2026-08-08",
+      "subject": "BLOB: agar.io in the vibeverse — one dish, twenty-four rivals",
+      "lede": "A new world at /blob (and /agar, /agario, /cells, because that is what people type). You are a cell: everything smaller is food, everything bigger is a problem, and the only real decision is whether to spend half of yourself catching something that is running away.",
+      "places": [],
+      "files": 18
+    },
+    {
+      "sha": "2c085f0c",
+      "date": "2026-08-08",
+      "subject": "Don't tell the paper where its own copy comes from",
+      "lede": "Issue №3 printed \"the build log went missing for a week\" in the weather column, twice, as though a quiet week were a fault. The brief was handing the model the *source* of the build record alongside the commits, and a rule saying not to mention the machinery did not stop it — a thing in the brief is a thing the writer will reach for.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "480cd7dc",
+      "date": "2026-08-08",
+      "subject": "📰 The Vibe Times prints itself every morning, with a wire desk",
+      "lede": "The paper's masthead has claimed since July that it was written nightly. It wasn't: issue №1 shipped in July and sat on the front door into August, because writing it was a thing someone had to remember to do.",
+      "places": [
+        "Vibe Island",
+        "this newspaper",
+        "the machinery underneath"
+      ],
+      "files": 14
+    },
     {
       "sha": "e4089f40",
       "date": "2026-08-08",
@@ -491,22 +529,527 @@
       "date": "2026-08-06",
       "subject": "Eleven levels, one per corner of the vibeverse",
       "lede": "Ten new levels, and the interesting part is that they are different games rather than different paint.",
+      "places": [],
+      "files": 12
+    },
+    {
+      "sha": "e6d6df50",
+      "date": "2026-08-06",
+      "subject": "🦇 Four new code-built characters, and the heist stops nagging",
+      "lede": "THE CAST. Flux proved a character can be assembled from primitives and animated entirely from its own motion — no model file, no clips, no skating feet. That rig is now a design table, so a new character is an entry rather than a new animation system, and every one of them inherits the whole solver: stride that grows with speed, banking into turns, landing squash, breathing idle, blinks, and spring-driven secondary m",
       "places": [
         "Vibe Island",
-        "Vibe Golf",
-        "the second island",
-        "Vibe Kart",
-        "the character roster",
+        "the character roster"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "bd3d6dc2",
+      "date": "2026-08-06",
+      "subject": "Shrink the zone before testing storm damage",
+      "lede": "The beat searched 48 bearings for dry ground outside the circle and found only sea, then reported a storm bug. Circle 1 has a 1250 m radius and the island's land radius is 1155 — there is no dry ground outside the first circle. That is a geometry fact, not a failure. Pull the safe zone in around the player first, then step out of it.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "cdab416e",
+      "date": "2026-08-06",
+      "subject": "Measure the playtest in simulated seconds, not wall seconds",
+      "lede": "The first honest playtest called walk, jump, harvest and building broken. They were not. core.ts clamps dt to 1/15 and runs at most six fixed steps a frame, so at SwiftSHADER's fraction of a frame per second the simulation advances about 400x slower than the clock on the wall — the storm timer moved 0.05s in twenty. Holding W for four real seconds bought about a centimetre.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "49b75949",
+      "date": "2026-08-06",
+      "subject": "Take the pointer before playing: input is gated on it",
+      "lede": "player.controllable is false whenever ctx.input.locked is false, and input.locked is only ever set by the pointerlockchange handler. The one thing that calls requestPointerLock is the 'Drop in' button on the entry veil, which ?shot=1 deliberately does not render — so nothing ever asked for the pointer.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "cef0b828",
+      "date": "2026-08-06",
+      "subject": "Move Drop Zero up the landing grid, and a harness that actually plays it",
+      "lede": "dz-shot proves the world renders; it says nothing about whether the game plays, because it poses a frozen player and takes a picture. Every system below the scenery — building, weapons, harvesting, loot, bots, the storm, the match phases — has never once been exercised. dz-play drives real input and asserts on the engine's own state after each beat, screenshots the failures, and keeps going so one broken system does ",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "1355381c",
+      "date": "2026-08-06",
+      "subject": "Card art for Drop Zero, from the running world",
+      "lede": "The plaza at Neon Heights, captured live at high quality with the match in its playing state — not key art, and not the spawn frame.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "b9c8361f",
+      "date": "2026-08-06",
+      "subject": "Stop the storm wall painting bolts across every ground frame",
+      "lede": "WALL_FRAG's streak term had no range falloff, and the vertical profile gated cover but not energy — so above the geometric top fade the wall stopped occluding while still emitting, and the additive surplus drew world-vertical bolts across the open sky. At zone 1 the wall is always on the horizon, so that was the sky of essentially every ground shot in the game.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "3d6f51d8",
+      "date": "2026-08-06",
+      "subject": "Lift the shadows off black, and give the facades something to say",
+      "lede": "Shadowed ground was reading near-black with a heavy blue cast because the hemisphere fill was a two-point lerp between zenith and horizon — a 6:1-blue, green-deficient colour that no albedo could warm. It is now a cosine-weighted quadrature of the dome's own diffuse irradiance, plus an explicit warm bounce standing in for the sunlit walls a hemisphere light cannot see. The shadowed plaza goes from RGB 24.9,38.4,60.9 ",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "88a451f4",
+      "date": "2026-08-06",
+      "subject": "The ground was black because tinted() multiplies, and it was authored to replace",
+      "lede": "materials.tinted() multiplies its tint into an already-painted plate, in linear space. The district apron was asphalt (0.027 linear) times 0x4a4c50 (0.07) = 0.0019 albedo — darker than any real material. Every ground tint in pois.ts was written as if the tint replaced the base colour rather than compounding with it. Aprons, sidewalks, kerbs, crossings and markings now use documented near-white paving constants, and N",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "9c4cb916",
+      "date": "2026-08-06",
+      "subject": "Race a hydroplane",
+      "lede": "Seafair is a boat race that grew an air show. The boats have been out on the lake since the first version of this world, running the real course at the real speed, and being unable to be one of them was the obvious hole in it.",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "2e9d760d",
+      "date": "2026-08-06",
+      "subject": "Ground truth for captures, and a sky that is actually blue",
+      "lede": "match.fixed() held the phase machine at the title screen until ctx.input.locked. A headless capture never locks the pointer, so the phase stayed 'warmup' forever, the bus re-parked the player at 120 Hz, and match.jump() — which requires phase 'bus' — was a no-op. Every frame reviewed in this project has been a battle-bus frame. New match.skipToLive() and player.placeOnGround() make live ground state a first-class cal",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "544acf60",
+      "date": "2026-08-06",
+      "subject": "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in",
+      "lede": "The ledger has worked for months and no visitor could tell. You could earn ninety coins on a floating island and the only evidence was a toast that faded in four seconds — there was nowhere in the app that said \"this place has money in it, and you have some\". And everything that touched the balance only ever paid *out*, so the number could only inflate. A number that only goes up is a score, not a currency.",
+      "places": [
         "The Long Silence",
-        "Five Nights at Vibey's",
-        "the Memory Garden",
         "the Arcade",
-        "this newspaper",
-        "Seafair",
-        "San Francisco",
         "the machinery underneath"
       ],
-      "files": 1349
+      "files": 18
+    },
+    {
+      "sha": "ecff667a",
+      "date": "2026-08-06",
+      "subject": "Left turns left, and the crash hits like one",
+      "lede": "Two things.",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "2adf1f2d",
+      "date": "2026-08-06",
+      "subject": "Leaving the bus is a handshake, not a single call",
+      "lede": "match.jump() is a no-op until the phase machine actually reaches 'bus', and the previous run called it during warmup — so every 'ground level' shot came back as a view from the bus. While the player is in the bus state their position is bus-driven, so posing them was ignored too. Keep asking until the state changes, then land.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "3dd19ae1",
+      "date": "2026-08-06",
+      "subject": "Pose the player, not the camera — the harness was measuring itself",
+      "lede": "Third design of this function and the first correct one.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "ee25e613",
+      "date": "2026-08-06",
+      "subject": "The terrain was never white — it was never drawn",
+      "lede": "The white sheet was the ocean plane showing through where the island should have been. Terrain culled itself: frustumCulled was off and refreshLod decided visibility from a frustum built in lateUpdate out of ctx.camera. The capture harness re-poses the camera in renderOverride, which runs after lateUpdate, so every chunk answered against a camera pointing somewhere else and all 121 hid themselves.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "2d86978f",
+      "date": "2026-08-06",
+      "subject": "Give the capture room to render the full shader path",
+      "lede": "Playwright's 30s screenshot default is not enough: compositing a 1600x900 frame of a 3 km island through a software rasteriser on the non-cheap path takes minutes, and the timeout threw away the entire run.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "29b434d6",
+      "date": "2026-08-06",
+      "subject": "Force the shipped quality tier when capturing",
+      "lede": "detectQuality reads deviceMemory and core count, and this container has no GPU, so every capture so far ran at medium — which takes terrain's cheap shader path. Every frame I have reviewed was the low-end renderer, not the one a visitor with a real GPU gets. A capture that misrepresents the shipped experience is worse than no capture: it sends you fixing the wrong thing.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "44dfd69f",
+      "date": "2026-08-06",
+      "subject": "Add dz-probe: ask the running world about its own materials",
+      "lede": "A screenshot tells you a surface is wrong. It does not tell you whether the albedo map is missing, black, or merely unlit — and the terrain is currently rendering pure white while every other surface in the frame is correct, which is what a null map on a standard material looks like.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "a37fe5a7",
+      "date": "2026-08-06",
+      "subject": "Visual fix pass: vegetation, colour grade, motion blur, storm wall",
+      "lede": "Four bugs, four real root causes.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "5da1ef9e",
+      "date": "2026-08-06",
+      "subject": "Post-processing: continued fix-pass edits",
+      "lede": "Checkpoint while the visual fix agents are still writing.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "68fb4695",
+      "date": "2026-08-06",
+      "subject": "Post-processing: motion blur and colour grade pass",
+      "lede": "Work in progress from the visual fix pass — the frame compiles clean and the remaining three fixes are still landing.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d6546f71",
+      "date": "2026-08-06",
+      "subject": "Fix the water shader's reserved word, and land the player before shooting",
+      "lede": "'patch' is reserved in GLSL ES, so the whole water fragment shader failed to compile and the ocean never rendered its reflection path.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "d9c79df5",
+      "date": "2026-08-06",
+      "subject": "Stop tracking capture output",
+      "lede": "shots/ is scratch from dz-shot.mjs — five megabytes of PNG per run that a git add -A swept in. The world's card art is a deliberate, separate act.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "2d1ce256",
+      "date": "2026-08-06",
+      "subject": "Pose the shot camera in renderOverride, where it survives",
+      "lede": "Setting camera.position from outside does nothing: the player system owns the camera and rewrites it in lateUpdate, after any value the harness can poke in. The first run produced three byte-identical screenshots of the battle bus for exactly that reason. renderOverride is called last, so a pose installed there lands after the rig has had its say.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "37a0f275",
+      "date": "2026-08-06",
+      "subject": "Close the two contract gaps the system authors worked around",
+      "lede": "RayHit now carries the collider's owner straight through. piece and target are the two owners collision recognises; everything else had no way home. Vegetation needs it to tell which tree a pickaxe just felled — without it a harvested trunk leaves its canopy standing in the air.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "e04e0bb8",
+      "date": "2026-08-05",
+      "subject": "📸 Gallery photography pass: four worlds get honest card art",
+      "lede": "The cards were selling the worlds short, and one was lying outright: the Moon card was islandArt — the moon has never once been the moon. Reshot in-engine off the clean canvas (no DOM chrome, which is what made the old captures look like screenshots of a UI instead of photographs of a place), each framed like a postcard:",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "e40dae5c",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "33556545",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d82b885b",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "c7bef680",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "7c5ba5e0",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "26997dd0",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d6c34722",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "f288bf82",
+      "date": "2026-08-05",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "c1b97346",
+      "date": "2026-08-04",
+      "subject": "Drop Zero: the play, effect and interface layers",
+      "lede": "The remaining thirteen systems: vegetation, player, building, weapons, inventory, loot, storm, match, bots, vfx, combat, audio, postfx and the HUD. Zero tsc errors across all 22 modules, and the route builds as a 965 kB lazy chunk so the hub pays nothing for it.",
+      "places": [],
+      "files": 18
+    },
+    {
+      "sha": "04da790e",
+      "date": "2026-08-04",
+      "subject": "Point where you want to go",
+      "lede": "\"It is very unclear how we are supposed to pull up\" is not a request for a longer key list. It is a sign that the key list was the wrong answer.",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "dbac9dba",
+      "date": "2026-08-04",
+      "subject": "Three ways to play",
+      "lede": "Difficulty modes, and the interesting part is what made them hard to add.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "4ddca297",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "9d9fab41",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "218b8f34",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "10c85339",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Kart"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "2dd76057",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Kart"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "ff173129",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Kart"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "c1bf1089",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Kart"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "05f01ed4",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Kart",
+        "San Francisco"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "58e6deab",
+      "date": "2026-08-04",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Kart"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "a9f13889",
+      "date": "2026-08-03",
+      "subject": "Fix envHandle type so the environment probe's texture is reachable",
+      "lede": "buildEnvironment returns {texture, dispose} but the handle was declared as {dispose} only, so the assignment that feeds scene.environment did not typecheck. Without it every metal and glass surface renders flat grey.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "29b3b62b",
+      "date": "2026-08-02",
+      "subject": "Every spike is a real spike",
+      "lede": "Painted spikes are gone from this level entirely. They were the whole mechanic — rows drawn pixel-for-pixel like the lethal ones and harmless — and removing them means this stops being a tribute to the original's idea and becomes a straight Geometry Dash level. That is the call the owner made, and made clearly. It is done in full rather than halfway.",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "ee1f96cf",
+      "date": "2026-08-02",
+      "subject": "Nothing is spawned. It is drawn.",
+      "lede": "There is no random number generator left in this game, anywhere, and getting there took three attempts at the same problem.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "7512e1f9",
+      "date": "2026-08-02",
+      "subject": "Start on the Space Needle, and blow up when you hit it",
+      "lede": "Two things, and they turned out to be the same thing: the world needed something solid in it.",
+      "places": [],
+      "files": 15
+    },
+    {
+      "sha": "e4d3ea3e",
+      "date": "2026-08-02",
+      "subject": "Fix a typecheck error in the space game's impact test",
+      "lede": "`harness`'s parameter type was inferred from its default argument, which is a planet — and a planet is the only body kind with a `planet` field, so every station and craft passed to it was a type error. `tsc -p tsconfig.app.json` has been failing on this; a broken typecheck on main hides everyone else's errors too.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "04452764",
+      "date": "2026-08-02",
+      "subject": "Home Alone: infinite bricks",
+      "lede": "The roof of the brownstone from Lost in New York, imported wholesale into Winnetka. Space, or the 🧱 pad on a phone. It earns its place because it is the one thing in either film that is pure uncomplicated wish fulfilment: no setup, no clock, no plan — a boy with a brick and a man who deserves it.",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "b9cee400",
+      "date": "2026-08-02",
+      "subject": "Nothing floats but the gears",
+      "lede": "CLEANED UP. Decoy geometry now has to be standing on something. Spikes stand on the floor or on a plinth that reaches the floor; hanging rows hang from a ceiling that exists, or from a girder put there for exactly that purpose. A spike in mid-air is not something a level contains, and a screen of them reads as a rendering bug rather than as a lie. The one exception is the sawblade, because a sawblade hanging in mid-a",
+      "places": [],
+      "files": 11
+    },
+    {
+      "sha": "0ab21791",
+      "date": "2026-08-02",
+      "subject": "Home Alone: nobody is made of boxes any more",
+      "lede": "Limbs are tapered cylinders with a ball at every joint. This is the single biggest step from \"assembled out of blocks\" to \"a person\" — a forearm 15% narrower at the wrist than at the elbow reads as anatomy at a glance, where two boxes of equal width read as furniture however good the texture on them is. Hands and feet are squashed spheres, because a cube on the end of an arm is the most obviously wrong thing a charac",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "349d5c1c",
+      "date": "2026-08-02",
+      "subject": "On a desktop, the cursor is the stick",
+      "lede": "Nobody could work out how to fly it. Two things were wrong.",
+      "places": [],
+      "files": 12
+    },
+    {
+      "sha": "d6c8aeea",
+      "date": "2026-08-02",
+      "subject": "Home Alone: the controls were lying about which way is forward",
+      "lede": "Both axes of the movement basis were negated. Pushing the stick forward walked him *at* the camera and pushing right strafed him left, which on a thumb reads as \"sometimes it goes backwards\" — and the playtest passed it for weeks because it only ever checked that he moved at all. A magnitude test cannot see a sign error. Six new checks can, and the basis is now written out in the comment so the next person does not h",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "3503cdaa",
+      "date": "2026-08-02",
+      "subject": "One way home, in the same corner of every world",
+      "lede": "Thirty worlds, each its own engine, and the only thing they all agreed on was that there was no way out of them. Fullscreen worlds hide the global nav on purpose — it would sit on a crosshair — so the exit was whatever that world's author happened to build, if anything. On a phone there is no address bar to retype into, so several of them were a dead end.",
+      "places": [
+        "Vibe Kart",
+        "San Francisco"
+      ],
+      "files": 11
+    },
+    {
+      "sha": "d823084e",
+      "date": "2026-08-02",
+      "subject": "A score written for the level, and checkpoints where they belong",
+      "lede": "CHECKPOINTS MOVE TO PRACTICE MODE, which is where Geometry Dash puts them and where they belong: a normal attempt is the whole level or nothing. The toggle is now PRACTICE rather than PURIST and it defaults off, so the default experience is the original bargain. Two rules come with it, both the original's and both right — coins do not count in practice, because a run with checkpoints in it is not a run; and the banne",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "d3d3f485",
+      "date": "2026-08-02",
+      "subject": "A silicon lifeform does not have deflector screens",
+      "lede": "The creature was being given a shield bubble at spawn, because everything that is not a planet killer or a freighter was. It showed on the viewscreen as a faint sphere around it — which is a *vessel* signifier, in the one episode where reading it as a vessel is the entire mistake the player is being invited to make. The set was quietly arguing against the episode.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "ceafd63f",
+      "date": "2026-08-02",
+      "subject": "Let go of the trigger between episodes",
+      "lede": "A sequential playthrough lost The Devil in the Dark having fired nothing at all — and won it every time it was run on its own. The difference was the previous episode: `firePhasers` is *held* state rather than an edge, and it survives an episode boundary, so a captain still holding the button when one episode ends opens fire the instant the next one acquires a target. Merely untidy in five of these episodes. Fatal in",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "2eed69db",
+      "date": "2026-08-02",
+      "subject": "The bridge talks to itself on a quiet watch",
+      "lede": "Half of TOS is two people needling each other between the things that explode. A crew that only speaks when a shield is failing is a set of instruments with names, so when the episode is running, the ship is off alert, nothing hostile is inside 9,000 km and nobody has said anything that mattered for thirty-two seconds, two of them talk to each other about nothing much.",
+      "places": [],
+      "files": 3
     }
   ]
 }
