@@ -84,6 +84,7 @@ export default function VibeHub() {
   const { isGuest, displayName } = useVibeIdentity();
   const { rows, totalUsd } = useWalletBook();
   const [authOpen, setAuthOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const totalVibe = rows.reduce((t, r) => t + (r.vibe ?? 0), 0);
 
