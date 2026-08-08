@@ -178,18 +178,24 @@ function Card({
 }
 
 export default function Game() {
-  const [tab, setTab] = useState<WorldKind | "all">("all");
   const [query, setQuery] = useState("");
-  /* Two orders, and neither is a ranking. "Featured" is the hand-tuned order in
-     the registry — the one to open on, because someone arriving cold should
-     meet the best door first. "Recent" answers the other question people
-     actually have about a collection this size: what is still being worked on? */
-  const [sort, setSort] = useState<"featured" | "recent">("featured");
+  /* Three orders, and none of them is a ranking. "Recently played" is the one
+     a returning visitor wants — the doors they already opened, most recent
+     first. "Featured" is the hand-tuned registry order for someone arriving
+     cold. "Recent" answers what is still being worked on. */
+  const [sort, setSort] = useState<"played" | "featured" | "recent">("featured");
   const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
      render to draw one line of text is not worth a subscription. */
   const progress = useMemo(() => passportProgress(), []);
+  /** route → last arrival, from the passport. Empty for a first-time visitor. */
+  const lastPlayed = useMemo(() => {
+    const stamps = readPassport().stamps;
+    const map: Record<string, number> = {};
+    for (const s of Object.values(stamps)) map[s.route] = s.last;
+    return map;
+  }, []);
 
   /* The wallet, for the chip below the headline. Shares the nav's fetch — see
      `use-vibecoin`, which reference-counts a single request per page. */
@@ -197,16 +203,23 @@ export default function Game() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = tab === "all" ? WORLDS : WORLDS.filter((w) => w.kind === tab);
+    const base = WORLDS;
     const hit = q
       ? base.filter((w) =>
           `${w.name} ${w.blurb} ${w.status ?? ""} ${w.source}`.toLowerCase().includes(q),
         )
       : base;
-    return sort === "recent"
-      ? [...hit].sort((a, b) => byFreshest(a.key, b.key))
-      : featuredFirst(hit);
-  }, [tab, query, sort]);
+    if (sort === "recent") return [...hit].sort((a, b) => byFreshest(a.key, b.key));
+    if (sort === "played") {
+      /* Worlds you have been in, newest visit first; everything else keeps the
+         featured order behind them, so this never looks like an empty page. */
+      const featured = featuredFirst(hit);
+      return [...featured].sort(
+        (a, b) => (lastPlayed[b.route] ?? 0) - (lastPlayed[a.route] ?? 0),
+      );
+    }
+    return featuredFirst(hit);
+  }, [query, sort, lastPlayed]);
 
   const counts = useMemo(
     () => ({
