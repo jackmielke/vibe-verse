@@ -2,6 +2,12 @@
 /**
  * vibe-times-brief — gather the facts for the next issue of The Vibe Times.
  *
+ * The paper prints itself now: the `vibe-times` edge function writes an issue
+ * every morning from the same two sources this reads, plus the wire from
+ * outside the sky (see docs/vibe-times.md). This stays for writing an issue
+ * by hand from a local checkout, and because it is where the shape of the
+ * brief was worked out.
+ *
  * The paper's masthead has always claimed it was "written nightly by the
  * autonomous build loop". It wasn't: issue №1 shipped in July and sat
  * there. This is the half of that loop that can be made deterministic —

@@ -66,7 +66,8 @@ with screenshots.
 ### And the rest of the app
 
 `/game` (the index) · `/` (the 3D hub) · `/lobby` (~60 characters and vehicles) ·
-`/character-select` · `/times` (a newspaper written nightly by the loop) ·
+`/character-select` · `/times` (a daily newspaper, [written by an edge
+function](docs/vibe-times.md)) ·
 `/coin` ($VIBE) · `/companions` (hatch an agent) · `/world-builder` ·
 `/submit-world` · `/about`
 
