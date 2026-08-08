@@ -209,7 +209,13 @@ const WORLDS_RAW: WorldEntry[] = [
     status: "Playable — multiplayer water fight",
     accent: "#38bdf8",
     featured: true,
-    source: "src/royale (mode: water)",
+    /* Soaked and Drop Zero are the same engine in two modes, so they share a
+       source path and will show the same date. The parenthetical that was here
+       — "src/royale (mode: water)" — read fine to a human and broke the
+       stamper, which passes this straight to `git log -- <path>`: no such path,
+       no commits, no date, and a failing test. If the two ever need separate
+       dates, the answer is separate directories, not an annotation. */
+    source: "src/royale",
     nav: true,
     passport: true,
     chromeless: true,

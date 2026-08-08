@@ -60,12 +60,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "drop-zero": [
+    { sha: "9b3fdc3", iso: "2026-08-07T23:08:53+00:00", subject: "SOAKED: the water-gun battle royale, wired up and playable" },
     { sha: "c9d20de", iso: "2026-08-07T05:35:53+00:00", subject: "One engine, two games: add the mode seam" },
     { sha: "d0b65ec", iso: "2026-08-07T03:41:18+00:00", subject: "Changes" },
     { sha: "ae5a8a6", iso: "2026-08-06T20:01:34+00:00", subject: "Storm damage works; the beat was reading the wrong bar" },
     { sha: "d276d76", iso: "2026-08-06T19:17:34+00:00", subject: "Floors and ramps were unbuildable on every street in every town" },
     { sha: "64c148c", iso: "2026-08-06T18:39:27+00:00", subject: "Bot nameplates never compiled: one include, declared twice" },
-    { sha: "49837a3", iso: "2026-08-06T18:35:48+00:00", subject: "Loot: a held E can no longer be swallowed by the target it is waiting for" },
   ],
   "edm-town": [
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
@@ -202,6 +202,14 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fb6c351", iso: "2026-08-06T18:37:46+00:00", subject: "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world" },
     { sha: "8ccde25", iso: "2026-08-06T18:17:30+00:00", subject: "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid" },
   ],
+  "soaked": [
+    { sha: "9b3fdc3", iso: "2026-08-07T23:08:53+00:00", subject: "SOAKED: the water-gun battle royale, wired up and playable" },
+    { sha: "c9d20de", iso: "2026-08-07T05:35:53+00:00", subject: "One engine, two games: add the mode seam" },
+    { sha: "d0b65ec", iso: "2026-08-07T03:41:18+00:00", subject: "Changes" },
+    { sha: "ae5a8a6", iso: "2026-08-06T20:01:34+00:00", subject: "Storm damage works; the beat was reading the wrong bar" },
+    { sha: "d276d76", iso: "2026-08-06T19:17:34+00:00", subject: "Floors and ramps were unbuildable on every street in every town" },
+    { sha: "64c148c", iso: "2026-08-06T18:39:27+00:00", subject: "Bot nameplates never compiled: one include, declared twice" },
+  ],
   "space": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
@@ -254,6 +262,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "wallet": [
+    { sha: "f84666c", iso: "2026-08-07T23:53:45+00:00", subject: "Wallet: real balances in dollars, the spinning arc, and a test drop" },
     { sha: "d077e3c", iso: "2026-08-07T21:08:40+00:00", subject: "Wallet: hold more than one, and show what is actually in them" },
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
   ],
