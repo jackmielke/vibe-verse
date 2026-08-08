@@ -1,9 +1,11 @@
 /**
  * The plaza newsstand — today's front page of The Vibe Times, in-world.
- * Reads the same public/vibe-times.json the /times page prints, so the
- * loop's nightly issue shows up here automatically. Walk up to read.
+ * Reads the same issue the /times page prints (live from the presses, or
+ * the committed copy if they are unreachable), so each morning's edition
+ * shows up here on its own. Walk up to read.
  */
 import * as THREE from "three";
+import { loadCurrentIssue } from "@/lib/vibeTimes";
 
 export interface Newsstand {
   group: THREE.Group;
@@ -48,6 +50,7 @@ export function createNewsstand(opts: { position: THREE.Vector3; rotationY?: num
   const draw = (issue: {
     issue?: number;
     date?: string;
+    motto?: string;
     headlines?: { emoji: string; headline: string }[];
   } | null) => {
     const ctx = canvas.getContext("2d");
@@ -59,7 +62,9 @@ export function createNewsstand(opts: { position: THREE.Vector3; rotationY?: num
     ctx.font = "bold 64px Georgia, serif";
     ctx.fillText("The Vibe Times", canvas.width / 2, 88);
     ctx.font = "italic 24px Georgia, serif";
-    ctx.fillText("all the news that fits the sky", canvas.width / 2, 126);
+    // The motto is written fresh for each edition; the old one is the
+    // fallback for the frame drawn before the paper has arrived.
+    ctx.fillText(issue?.motto ?? "all the news that fits the sky", canvas.width / 2, 126);
     ctx.strokeStyle = "#2a2118";
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(40, 150); ctx.lineTo(600, 150); ctx.stroke();
@@ -92,8 +97,7 @@ export function createNewsstand(opts: { position: THREE.Vector3; rotationY?: num
   };
 
   draw(null);
-  fetch("/vibe-times.json")
-    .then((r) => r.json())
+  loadCurrentIssue()
     .then(draw)
     .catch(() => {});
 

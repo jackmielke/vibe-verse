@@ -14,3 +14,13 @@ verify_jwt = false
 # message bodies, or payloads.
 [functions.world-pulse]
 verify_jwt = false
+
+# The Vibe Times is read by three surfaces that are not Supabase clients:
+# the /times page, the front-door strip, and a canvas texture on the
+# newsstand in the plaza. They fetch it as a plain GET with no headers.
+# The POST that writes an issue is left open on purpose — the day is
+# claimed with a unique constraint before the model is called, so extra
+# pokes are free — and only a caller holding the service-role key can
+# force a rewrite.
+[functions.vibe-times]
+verify_jwt = false

@@ -7,25 +7,20 @@
  * because it is *different every time* and it is about the place rather than
  * about navigating it.
  *
- * Written nightly by the loop out of what actually got built, and read to you
- * by Vibey. It is genuinely the most alive thing on the page.
+ * Written every morning by the presses out of what actually got built, what
+ * happened in the world, and what came over the wire from outside it. It is
+ * genuinely the most alive thing on the page.
  *
  * Deliberately small: a lead headline, two more, one line of weather. This is a
- * teaser for `/times`, not the paper. And it fetches a static JSON with no
+ * teaser for `/times`, not the paper. It asks `loadCurrentIssue` for the live
+ * edition and takes the committed copy if the presses are unreachable, with no
  * loading state above the fold — if it is slow or missing, the strip is simply
  * not there rather than a spinner on the front door.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-
-interface Issue {
-  issue: number;
-  date: string;
-  motto: string;
-  headlines: { emoji: string; headline: string; body: string }[];
-  weather?: string;
-}
+import { loadCurrentIssue, type Issue } from "@/lib/vibeTimes";
 
 /** Whole days between an issue date and today, UTC. */
 function daysOld(iso: string): number {
@@ -60,10 +55,9 @@ export default function TodaysPaper() {
 
   useEffect(() => {
     let live = true;
-    fetch("/vibe-times.json")
-      .then((r) => (r.ok ? r.json() : null))
+    loadCurrentIssue()
       .then((d) => {
-        if (live && d?.headlines?.length) setIssue(d);
+        if (live && d) setIssue(d);
       })
       .catch(() => {
         /* No paper today. The page is fine without it. */

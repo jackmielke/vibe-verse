@@ -742,7 +742,8 @@ const WORLDS_RAW: WorldEntry[] = [
     name: "The Vibe Times",
     emoji: "📰",
     kind: "tool",
-    blurb: "The world's own newspaper, written nightly by the loop out of what happened.",
+    blurb:
+      "The world's own newspaper. A new issue every morning: what got built, who greeted whom, and the wire from outside the sky.",
     accent: "#e7e5e4",
     source: "src/pages/VibeTimes.tsx",
     nav: true,

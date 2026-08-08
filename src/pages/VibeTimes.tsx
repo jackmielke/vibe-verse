@@ -1,29 +1,41 @@
 /**
  * The Vibe Times — the world's own newspaper.
  *
- * Written from what ACTUALLY happened: the build record (this repo's own
- * commits, which are the world's construction history) and the live world
- * (residents arriving, leaving, walking up to each other). The daily loop
- * is the journalist and this page is the printing press —
- * `tools/vibe-times-brief.mjs` gathers the facts,
- * `.claude/skills/vibe-times/SKILL.md` is the style guide.
+ * Written from what ACTUALLY happened, in three parts: the build record
+ * (this repo's own commits, which are the world's construction history),
+ * the live world (residents arriving, leaving, walking up to each other,
+ * VIBE moving around), and — since the presses started running themselves
+ * — the actual internet outside the sky, on the wire desk.
  *
- * The current issue is public/vibe-times.json; everything older is in
- * public/vibe-times-archive.json, newest first. The plaza newsstand reads
- * the current issue, which is why that file keeps its name and shape.
+ * The `vibe-times` edge function writes an issue every morning and stores
+ * it in Supabase; `src/lib/vibeTimes.ts` reads it and falls back to the
+ * committed public/vibe-times.json when the presses are unreachable. Back
+ * issues come down with the same request.
+ *
+ * Older issues predate the wire desk and simply do not have those fields,
+ * so every section below the fold renders only when there is something in
+ * it. That is also what keeps a thin news day from printing empty boxes.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { loadPaper, type Dispatch, type Issue } from "@/lib/vibeTimes";
 
-interface Issue {
-  issue: number;
-  date: string;
-  motto: string;
-  headlines: { emoji: string; headline: string; body: string }[];
-  gossip: string;
-  weather: string;
-  quote: { text: string; author: string };
-  stats: Record<string, number | string>;
+/** What each wire item gets called above its headline. */
+const DESKS: Record<string, string> = {
+  ai: "The AI Desk",
+  tech: "The Tech Desk",
+  sports: "The Sports Desk",
+  culture: "The Culture Desk",
+  history: "From the Archives",
+};
+
+/** "https://www.theverge.com/…" → "theverge.com", for the credit line. */
+function host(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 /** "2026-08-01" → "Saturday, 1 August 2026", in a newspaper's voice. */
@@ -50,16 +62,21 @@ export default function VibeTimes() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetch("/vibe-times.json")
-      .then((r) => r.json())
-      .then(setCurrent)
-      .catch(() => setError(true));
-    // Back issues are a nice-to-have: a missing or malformed archive
-    // must never stop today's paper from printing.
-    fetch("/vibe-times-archive.json")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => setArchive(Array.isArray(rows) ? rows : []))
-      .catch(() => setArchive([]));
+    let live = true;
+    loadPaper()
+      .then((paper) => {
+        if (!live) return;
+        if (!paper.current) {
+          setError(true);
+          return;
+        }
+        setCurrent(paper.current);
+        setArchive(paper.archive);
+      })
+      .catch(() => live && setError(true));
+    return () => {
+      live = false;
+    };
   }, []);
 
   const issues = useMemo(
@@ -83,6 +100,9 @@ export default function VibeTimes() {
   const [lead, ...rest] = issue.headlines;
   const isBackIssue = issue.issue !== current.issue;
   const age = daysOld(current.date);
+  const wire = issue.dispatches ?? [];
+  const forecast = issue.forecast ?? [];
+  const sources = issue.sources ?? [];
 
   return (
     // The global nav floats over the top of the page, and it was sitting
@@ -171,6 +191,39 @@ export default function VibeTimes() {
           ))}
         </section>
 
+        {/* The wire. Everything here happened outside the sky, and every
+            item carries the link the paper read it from — the function
+            drops any dispatch whose url it did not fetch itself. */}
+        {wire.length > 0 && (
+          <section className="mt-8">
+            <div className="border-y-4 border-double border-[#2a2118] py-2 text-center">
+              <h3 className="text-sm font-bold uppercase tracking-[0.35em]">📡 The Wire · from outside the sky</h3>
+            </div>
+            <div className="mt-5 grid gap-6 sm:grid-cols-2">
+              {wire.map((d: Dispatch) => (
+                <article key={d.url + d.headline} className="border-b border-[#2a2118]/20 pb-5">
+                  <p className="text-[10px] uppercase tracking-[0.25em] opacity-60">
+                    {DESKS[d.desk] ?? "The Wire"}
+                  </p>
+                  <h4 className="mt-1 text-lg font-bold leading-snug">
+                    {d.emoji} {d.headline}
+                  </h4>
+                  <p className="mt-2 text-justify text-sm leading-relaxed">{d.body}</p>
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="mt-2 inline-block text-[11px] uppercase tracking-widest underline decoration-dotted underline-offset-2 opacity-70 hover:opacity-100"
+                  >
+                    {d.source}
+                    {host(d.url) ? ` · ${host(d.url)}` : ""} ↗
+                  </a>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Columns row: gossip / weather */}
         <section className="mt-6 grid gap-6 sm:grid-cols-2">
           <div className="border border-[#2a2118]/40 p-4">
@@ -190,6 +243,38 @@ export default function VibeTimes() {
           </div>
         </section>
 
+        {/* Vibey's column and the forecast. The forecast is the only part
+            of the paper allowed to make things up, and it says so. */}
+        {(issue.vibey_says || forecast.length > 0) && (
+          <section className="mt-6 grid gap-6 sm:grid-cols-2">
+            {issue.vibey_says && (
+              <div className="border-l-4 border-[#2a2118] bg-[#2a2118]/[0.03] p-4">
+                <h4 className="text-sm font-bold uppercase tracking-[0.25em]">🤖 Vibey Says</h4>
+                <p className="mt-2 text-[15px] leading-relaxed">{issue.vibey_says}</p>
+                <p className="mt-2 text-[11px] uppercase tracking-widest opacity-60">
+                  — Vibey, editor-in-chief, writing from the asteroid
+                </p>
+              </div>
+            )}
+            {forecast.length > 0 && (
+              <div className="border border-dashed border-[#2a2118]/50 p-4">
+                <h4 className="text-center text-sm font-bold uppercase tracking-[0.25em]">🔮 The Vibe Forecast</h4>
+                <ul className="mt-2 space-y-2">
+                  {forecast.map((f) => (
+                    <li key={f.label + f.text} className="text-sm leading-relaxed">
+                      <span aria-hidden>{f.emoji}</span>{" "}
+                      <span className="font-bold uppercase tracking-wide">{f.label}:</span> {f.text}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-center text-[10px] uppercase tracking-widest opacity-50">
+                  entertainment only · the forecast has never once been right
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Quote of the day */}
         <section className="mt-8 text-center">
           <p className="text-2xl italic">“{issue.quote.text}”</p>
@@ -197,10 +282,27 @@ export default function VibeTimes() {
         </section>
 
         <footer className="mt-10 border-t-4 border-double border-[#2a2118] pt-4 text-center text-xs uppercase tracking-widest">
-          <p>reported from the build record and the world's own event stream</p>
-          <p className="mt-1 normal-case tracking-normal opacity-70">
-            Every claim in this paper traces to a commit or a logged event. Nothing here is invented.
+          <p>
+            reported from the build record, the world's own event stream
+            {wire.length > 0 ? ", and the wire" : ""}
           </p>
+          <p className="mt-1 normal-case tracking-normal opacity-70">
+            Every claim about this world traces to a commit or a logged event. Every story from outside
+            it links to where the paper read it. Only the forecast is invented.
+          </p>
+          {sources.length > 0 && (
+            <p className="mt-2 normal-case tracking-normal opacity-70">
+              Today's wire:{" "}
+              {sources.map((s, i) => (
+                <span key={s.label}>
+                  {i > 0 && ", "}
+                  <a href={s.url} target="_blank" rel="noreferrer noopener" className="underline">
+                    {s.label}
+                  </a>
+                </span>
+              ))}
+            </p>
+          )}
           <p className="mt-2">
             <Link to="/city?spawn=island" className="underline">visit the island</Link>
             <span className="mx-2">·</span>
