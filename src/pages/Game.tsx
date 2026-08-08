@@ -19,25 +19,15 @@ import {
   WORLDS,
   featuredFirst,
   type WorldEntry,
-  type WorldKind,
 } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
 import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
-import { passportProgress } from "@/lib/passport";
+import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeWink from "@/components/VibeWink";
 import { WorldChangesPortal } from "@/components/WorldChanges";
 import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
-
-/** Filter tabs. `all` is not a kind, so it is spelled out here. */
-const TABS: { id: WorldKind | "all"; label: string; hint: string }[] = [
-  { id: "all", label: "Everything", hint: "every door in the vibeverse" },
-  { id: "game", label: "Games", hint: "a goal, a score, or something shooting back" },
-  { id: "world", label: "Worlds", hint: "places to walk, fly and drive around" },
-  { id: "hangout", label: "Hangouts", hint: "somewhere to be, with other people" },
-  { id: "tool", label: "The App", hint: "the parts that are not the fiction" },
-];
 
 /**
  * The panel a card falls back to when a world has no honest capture yet.
@@ -178,18 +168,24 @@ function Card({
 }
 
 export default function Game() {
-  const [tab, setTab] = useState<WorldKind | "all">("all");
   const [query, setQuery] = useState("");
-  /* Two orders, and neither is a ranking. "Featured" is the hand-tuned order in
-     the registry — the one to open on, because someone arriving cold should
-     meet the best door first. "Recent" answers the other question people
-     actually have about a collection this size: what is still being worked on? */
-  const [sort, setSort] = useState<"featured" | "recent">("featured");
+  /* Three orders, and none of them is a ranking. "Recently played" is the one
+     a returning visitor wants — the doors they already opened, most recent
+     first. "Featured" is the hand-tuned registry order for someone arriving
+     cold. "Recent" answers what is still being worked on. */
+  const [sort, setSort] = useState<"played" | "featured" | "recent">("featured");
   const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
      render to draw one line of text is not worth a subscription. */
   const progress = useMemo(() => passportProgress(), []);
+  /** route → last arrival, from the passport. Empty for a first-time visitor. */
+  const lastPlayed = useMemo(() => {
+    const stamps = readPassport().stamps;
+    const map: Record<string, number> = {};
+    for (const st of Object.values(stamps) as Stamp[]) map[st.route] = st.last;
+    return map;
+  }, []);
 
   /* The wallet, for the chip below the headline. Shares the nav's fetch — see
      `use-vibecoin`, which reference-counts a single request per page. */
@@ -197,16 +193,23 @@ export default function Game() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = tab === "all" ? WORLDS : WORLDS.filter((w) => w.kind === tab);
+    const base = WORLDS;
     const hit = q
       ? base.filter((w) =>
           `${w.name} ${w.blurb} ${w.status ?? ""} ${w.source}`.toLowerCase().includes(q),
         )
       : base;
-    return sort === "recent"
-      ? [...hit].sort((a, b) => byFreshest(a.key, b.key))
-      : featuredFirst(hit);
-  }, [tab, query, sort]);
+    if (sort === "recent") return [...hit].sort((a, b) => byFreshest(a.key, b.key));
+    if (sort === "played") {
+      /* Worlds you have been in, newest visit first; everything else keeps the
+         featured order behind them, so this never looks like an empty page. */
+      const featured = featuredFirst(hit);
+      return [...featured].sort(
+        (a, b) => (lastPlayed[b.route] ?? 0) - (lastPlayed[a.route] ?? 0),
+      );
+    }
+    return featuredFirst(hit);
+  }, [query, sort, lastPlayed]);
 
   const counts = useMemo(
     () => ({
@@ -301,50 +304,25 @@ export default function Game() {
 
         <TodaysPaper />
 
-        {/* Filters + search. The tabs scroll horizontally on a phone rather
-            than wrapping to a second row and pushing the grid further down. */}
+        {/* Search only. The kind tabs (Everything / Games / Worlds / Hangouts)
+            were four buttons that mostly reproduced what the cards already say,
+            and on a phone they ate the row above the grid. Search covers the
+            same job in less space. */}
         <div className="sticky top-0 z-10 -mx-3 mt-5 bg-background/85 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="order-2 flex items-center gap-2 overflow-x-auto sm:order-1 sm:contents [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TABS.map((t) => {
-              const active = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  title={t.hint}
-                  className={`shrink-0 rounded-full px-3 py-1.5 font-heading text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
-                    active
-                      ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.3)]"
-                      : "text-foreground/60 hover:bg-muted/50 hover:text-foreground"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-            </div>
-            {/* On a phone this sits above the tabs instead of after them. As the
-                last item of a horizontally-scrolling row it was simply off the
-                right-hand edge of the screen, which is a search box nobody can
-                find. */}
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${WORLDS.length} worlds…`}
-              className="order-1 w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:order-2 sm:ml-auto sm:w-52 sm:px-4"
-            />
-          </div>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Search ${WORLDS.length} worlds…`}
+            className="w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:ml-auto sm:w-52 sm:px-4"
+          />
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
-          <p className="text-[10.5px] text-muted-foreground/70 sm:text-[11px]">
-            {TABS.find((t) => t.id === tab)?.hint} · {shown.length} shown
-          </p>
           <div className="ml-auto flex items-center gap-1">
             {(
               [
+                ["played", "Recently played"],
                 ["featured", "Featured"],
                 ["recent", "Recently updated"],
               ] as const

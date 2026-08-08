@@ -317,10 +317,10 @@ export default function VibeCoinPanel() {
         <p className="text-[10px] font-heading font-semibold tracking-widest uppercase text-muted-foreground">
           Calculator
         </p>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <label className="flex flex-col gap-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+          <label className="flex min-w-0 flex-col gap-1">
             <span className="text-[9px] uppercase tracking-widest text-muted-foreground">USD</span>
-            <div className="flex items-center gap-1 rounded-md bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
+            <div className="flex min-w-0 items-center gap-1 rounded-md bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
               <span className="text-muted-foreground text-sm">$</span>
               <input
                 inputMode="decimal"
@@ -330,7 +330,7 @@ export default function VibeCoinPanel() {
                   setUsdInput(e.target.value);
                 }}
                 placeholder="0"
-                className="bg-transparent outline-none flex-1 text-sm font-mono"
+                className="w-full min-w-0 flex-1 bg-transparent outline-none text-sm font-mono"
               />
             </div>
           </label>
@@ -350,9 +350,9 @@ export default function VibeCoinPanel() {
           >
             ⇌
           </button>
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 flex-col gap-1">
             <span className="text-[9px] uppercase tracking-widest text-muted-foreground">$VIBE</span>
-            <div className="flex items-center gap-1 rounded-md bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
+            <div className="flex min-w-0 items-center gap-1 rounded-md bg-background/60 border border-border/60 focus-within:border-primary/60 px-2 py-1.5">
               <input
                 inputMode="decimal"
                 value={vibeInput}
@@ -361,11 +361,11 @@ export default function VibeCoinPanel() {
                   setVibeInput(e.target.value);
                 }}
                 placeholder="0"
-                className="bg-transparent outline-none flex-1 text-sm font-mono"
+                className="w-full min-w-0 flex-1 bg-transparent outline-none text-sm font-mono truncate"
               />
             </div>
             {abbrevTokens(vibeInput) && (
-              <span className="text-[10px] text-primary/90 font-medium tabular-nums">
+              <span className="truncate text-[10px] text-primary/90 font-medium tabular-nums">
                 ≈ {abbrevTokens(vibeInput)} $VIBE
               </span>
             )}
