@@ -20,7 +20,6 @@ import VibeGo from "./pages/VibeGo.tsx";
 import VibeArcade from "./pages/VibeArcade.tsx";
 import ArcadeCharacters from "./pages/ArcadeCharacters.tsx";
 import VibeShop from "./pages/VibeShop.tsx";
-import VibeWallet from "./pages/VibeWallet.tsx";
 import Orbit from "./pages/Orbit.tsx";
 import Join from "./pages/Join.tsx";
 import StartFlow from "./pages/StartFlow.tsx";
@@ -178,8 +177,13 @@ const App = () => (
           {/* Fractal Museum. */}
           <Route path="/museum" element={<Museum />} />
           {/* COIN Hub — wallet login, community holders, market. */}
+          {/* One page about the currency, on three URLs. /wallet used to be
+              a second page saying overlapping things; it is an alias now
+              rather than a redirect, so an old link lands on content instead
+              of on a flash of somewhere else. */}
           <Route path="/coin" element={<VibeHub />} />
-          <Route path="/vibe" element={<Navigate to="/coin" replace />} />
+          <Route path="/vibe" element={<VibeHub />} />
+          <Route path="/wallet" element={<VibeHub />} />
           {/* VIBE ARCADE — the first place Vibecoin is spent rather than
               earned. Three coin-operated cabinets; the insert debits the real
               ledger and the payout is settled server-side. */}
@@ -189,7 +193,6 @@ const App = () => (
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}
           <Route path="/shop" element={<VibeShop />} />
-          <Route path="/wallet" element={<VibeWallet />} />
           {/* ORBIT — the staked game. One button, one shared seed per round,
               one pot. See src/orbit/orbit.ts for why it is built the way it is. */}
           <Route path="/orbit" element={<Orbit />} />

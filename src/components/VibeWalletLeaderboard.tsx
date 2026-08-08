@@ -68,7 +68,13 @@ export default function VibeWalletLeaderboard({
         .limit(maxRows);
       if (cancelled) return;
       if (err) {
-        setError(err.message);
+        /* Not `err.message`. Postgrest and the fetch layer hand back things
+           like "TypeError: Failed to fetch", which landed verbatim in a red
+           box on the currency page and read like the site was broken rather
+           than like a list was briefly unavailable. The real message is worth
+           having, so it goes to the console for whoever is debugging. */
+        console.warn("[leaderboard]", err.message);
+        setError("Could not load the holder list just now.");
         setMembers([]);
         return;
       }

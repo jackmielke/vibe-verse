@@ -672,14 +672,16 @@ const WORLDS_RAW: WorldEntry[] = [
   {
     key: "coin",
     route: "/coin",
-    aliases: ["/vibe"],
+    aliases: ["/vibe", "/wallet"],
     name: "Vibe Coin",
     emoji: "🪙",
     kind: "tool",
-    blurb: "$VIBE — the community currency hub, holders, and market.",
+    blurb:
+      "Our community currency, on one page: make an account, earn Vibecoin playing, and claim it as a real token when you have enough to care about.",
     accent: "#fcd34d",
     source: "src/pages/VibeHub.tsx",
     nav: true,
+    passport: true,
   },
   {
     key: "arcade",
@@ -708,19 +710,6 @@ const WORLDS_RAW: WorldEntry[] = [
     featured: true,
     source: "src/orbit/orbit.ts",
     nav: true,
-    passport: true,
-  },
-  {
-    key: "wallet",
-    route: "/wallet",
-    name: "The Vibe Wallet",
-    emoji: "🔐",
-    kind: "tool",
-    blurb:
-      "Where a real $VIBE drop would be sent. Make a wallet with Face ID, or link one you already have — you sign a sentence, never a transaction.",
-    status: "Open — passkey or bring your own",
-    accent: "#8fb4ff",
-    source: "src/pages/VibeWallet.tsx",
     passport: true,
   },
   {

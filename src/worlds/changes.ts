@@ -301,11 +301,6 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e24af18", iso: "2026-05-14T04:26:51+00:00", subject: "Changes" },
     { sha: "2cffbb4", iso: "2026-05-14T01:31:28+00:00", subject: "Changes" },
   ],
-  "wallet": [
-    { sha: "f84666c", iso: "2026-08-07T23:53:45+00:00", subject: "Wallet: real balances in dollars, the spinning arc, and a test drop" },
-    { sha: "d077e3c", iso: "2026-08-07T21:08:40+00:00", subject: "Wallet: hold more than one, and show what is actually in them" },
-    { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
-  ],
   "world-builder": [
     { sha: "e2a757a", iso: "2026-06-16T22:42:01+00:00", subject: "Changes" },
     { sha: "1979a51", iso: "2026-06-16T22:41:55+00:00", subject: "Changes" },
