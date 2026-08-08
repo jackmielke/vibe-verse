@@ -203,7 +203,6 @@ const WORLDS_RAW: WorldEntry[] = [
     key: "soaked",
     route: "/soaked",
     aliases: ["/water-fight", "/soak"],
-    nav: true,
     name: "Soaked",
     emoji: "💦",
     kind: "game",
