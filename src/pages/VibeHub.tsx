@@ -31,7 +31,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, LogIn, Sparkles } from "lucide-react";
+import { Check, Copy, LogIn, Sparkles } from "lucide-react";
+import { VIBE_TOKEN_ADDRESS } from "@/lib/vibe-wallet";
 import VibeArc from "@/components/VibeArc";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
