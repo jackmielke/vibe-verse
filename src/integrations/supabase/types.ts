@@ -3997,6 +3997,36 @@ export type Database = {
         }
         Relationships: []
       }
+      vibe_drops: {
+        Row: {
+          address: string
+          amount_wei: number
+          created_at: string
+          error: string | null
+          sent_at: string | null
+          status: string
+          tx_hash: string | null
+        }
+        Insert: {
+          address: string
+          amount_wei: number
+          created_at?: string
+          error?: string | null
+          sent_at?: string | null
+          status?: string
+          tx_hash?: string | null
+        }
+        Update: {
+          address?: string
+          amount_wei?: number
+          created_at?: string
+          error?: string | null
+          sent_at?: string | null
+          status?: string
+          tx_hash?: string | null
+        }
+        Relationships: []
+      }
       vibe_guest_claims: {
         Row: {
           account_ref: string
@@ -4062,6 +4092,65 @@ export type Database = {
           },
         ]
       }
+      vibe_invite_claims: {
+        Row: {
+          amount: number
+          claimed_at: string
+          code: string
+          owner_ref: string
+        }
+        Insert: {
+          amount?: number
+          claimed_at?: string
+          code: string
+          owner_ref: string
+        }
+        Update: {
+          amount?: number
+          claimed_at?: string
+          code?: string
+          owner_ref?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_invite_claims_code_fkey"
+            columns: ["code"]
+            isOneToOne: false
+            referencedRelation: "vibe_invites"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      vibe_invites: {
+        Row: {
+          claims: number
+          code: string
+          created_at: string
+          expires_at: string | null
+          grant_amount: number
+          max_claims: number
+          note: string | null
+        }
+        Insert: {
+          claims?: number
+          code: string
+          created_at?: string
+          expires_at?: string | null
+          grant_amount?: number
+          max_claims?: number
+          note?: string | null
+        }
+        Update: {
+          claims?: number
+          code?: string
+          created_at?: string
+          expires_at?: string | null
+          grant_amount?: number
+          max_claims?: number
+          note?: string | null
+        }
+        Relationships: []
+      }
       vibe_ledger: {
         Row: {
           amount: number
@@ -4100,6 +4189,7 @@ export type Database = {
       }
       vibe_loadout: {
         Row: {
+          char_id: string
           flame: string
           hat: string
           jetpack: string
@@ -4108,6 +4198,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          char_id?: string
           flame?: string
           hat?: string
           jetpack?: string
@@ -4116,12 +4207,207 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          char_id?: string
           flame?: string
           hat?: string
           jetpack?: string
           owner_kind?: string
           owner_ref?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      vibe_price_cache: {
+        Row: {
+          fetched_at: string
+          price_usd: number
+          symbol: string
+        }
+        Insert: {
+          fetched_at?: string
+          price_usd: number
+          symbol: string
+        }
+        Update: {
+          fetched_at?: string
+          price_usd?: number
+          symbol?: string
+        }
+        Relationships: []
+      }
+      vibe_round_entries: {
+        Row: {
+          best_score: number
+          display_name: string | null
+          entered_at: string
+          owner_kind: string
+          owner_ref: string
+          plays: number
+          round_id: string
+          staked: number
+          updated_at: string
+        }
+        Insert: {
+          best_score?: number
+          display_name?: string | null
+          entered_at?: string
+          owner_kind?: string
+          owner_ref: string
+          plays?: number
+          round_id: string
+          staked?: number
+          updated_at?: string
+        }
+        Update: {
+          best_score?: number
+          display_name?: string | null
+          entered_at?: string
+          owner_kind?: string
+          owner_ref?: string
+          plays?: number
+          round_id?: string
+          staked?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_round_entries_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "vibe_rounds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vibe_rounds: {
+        Row: {
+          closes_at: string
+          game: string
+          id: string
+          opens_at: string
+          payout: number | null
+          seed: string
+          settled_at: string | null
+          stake: number
+          status: string
+          title: string
+          winner_ref: string | null
+        }
+        Insert: {
+          closes_at: string
+          game?: string
+          id?: string
+          opens_at?: string
+          payout?: number | null
+          seed: string
+          settled_at?: string | null
+          stake?: number
+          status?: string
+          title?: string
+          winner_ref?: string | null
+        }
+        Update: {
+          closes_at?: string
+          game?: string
+          id?: string
+          opens_at?: string
+          payout?: number | null
+          seed?: string
+          settled_at?: string | null
+          stake?: number
+          status?: string
+          title?: string
+          winner_ref?: string | null
+        }
+        Relationships: []
+      }
+      vibe_rps_rounds: {
+        Row: {
+          commit_hash: string
+          house_throw: string
+          id: string
+          nonce: string
+          opened_at: string
+          outcome: string | null
+          owner_kind: string
+          owner_ref: string
+          payout: number
+          payout_address: string | null
+          player_throw: string | null
+          settled_at: string | null
+          stake: number
+          vibe_price_usd: number | null
+        }
+        Insert: {
+          commit_hash: string
+          house_throw: string
+          id?: string
+          nonce: string
+          opened_at?: string
+          outcome?: string | null
+          owner_kind?: string
+          owner_ref: string
+          payout?: number
+          payout_address?: string | null
+          player_throw?: string | null
+          settled_at?: string | null
+          stake: number
+          vibe_price_usd?: number | null
+        }
+        Update: {
+          commit_hash?: string
+          house_throw?: string
+          id?: string
+          nonce?: string
+          opened_at?: string
+          outcome?: string | null
+          owner_kind?: string
+          owner_ref?: string
+          payout?: number
+          payout_address?: string | null
+          player_throw?: string | null
+          settled_at?: string | null
+          stake?: number
+          vibe_price_usd?: number | null
+        }
+        Relationships: []
+      }
+      vibe_times_issues: {
+        Row: {
+          created_at: string
+          edition_date: string
+          id: number
+          issue: number
+          model: string | null
+          note: string | null
+          payload: Json
+          published_at: string | null
+          sources: Json
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          edition_date: string
+          id?: never
+          issue: number
+          model?: string | null
+          note?: string | null
+          payload?: Json
+          published_at?: string | null
+          sources?: Json
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          edition_date?: string
+          id?: never
+          issue?: number
+          model?: string | null
+          note?: string | null
+          payload?: Json
+          published_at?: string | null
+          sources?: Json
+          status?: string
         }
         Relationships: []
       }
@@ -5461,6 +5747,13 @@ export type Database = {
           is_valid: boolean
           rate_limit: number
           scopes: Database["public"]["Enums"]["api_scope"][]
+        }[]
+      }
+      vibe_round_record_score: {
+        Args: { p_owner_ref: string; p_round_id: string; p_score: number }
+        Returns: {
+          best_score: number
+          plays: number
         }[]
       }
       viewer_shares_community_with_user: {
