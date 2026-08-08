@@ -108,13 +108,32 @@ export default function VibeHub() {
           <div className="flex justify-center">
             <VibeArc size={170} rotateSeconds={30} />
           </div>
-          <div className="mt-1 flex justify-center">
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">
               <Sparkles className="h-3 w-3 text-primary" />
               <span className="font-heading text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
                 $VIBE on Base
               </span>
             </span>
+            {/* The contract, one tap away from the headline. People ask for it
+                before they read anything else on this page. */}
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(VIBE_TOKEN_ADDRESS)
+                  .then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                  })
+                  .catch(() => { /* clipboard blocked — nothing useful to do */ });
+              }}
+              title={VIBE_TOKEN_ADDRESS}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-2.5 py-1 font-heading text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+            >
+              {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy address"}
+            </button>
           </div>
           <h1 className="mt-3.5 text-center font-heading text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">
             Our community currency.
