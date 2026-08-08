@@ -22,7 +22,7 @@ import { resolve as resolvePath } from "node:path";
 import { webcrypto } from "node:crypto";
 import {
   RPS_PAYOUT,
-  RPS_STAKE,
+  RPS_DEFAULT_STAKE,
   THROWS,
   outcomeLine,
   resolve,
@@ -96,8 +96,8 @@ describe("rock paper scissors — the house has no edge", () => {
     let returned = 0;
     for (const p of THROWS) {
       for (const h of THROWS) {
-        staked += RPS_STAKE;
-        returned += RPS_STAKE * RPS_PAYOUT[resolve(p, h)];
+        staked += RPS_DEFAULT_STAKE;
+        returned += RPS_DEFAULT_STAKE * RPS_PAYOUT[resolve(p, h)];
       }
     }
     expect(returned).toBe(staked);
@@ -116,10 +116,33 @@ describe("rock paper scissors — the house has no edge", () => {
 });
 
 describe("rock paper scissors — client and server agree", () => {
-  it("charges the same ante the button advertises", () => {
-    const m = FN.match(/const\s+RPS_STAKE\s*=\s*(\d+)/);
-    expect(m, "RPS_STAKE is missing from vibe-rounds").toBeTruthy();
-    expect(Number(m![1])).toBe(RPS_STAKE);
+  it("opens the picker on the same default the server would use", () => {
+    const m = FN.match(/const\s+RPS_DEFAULT_STAKE\s*=\s*(\d+)/);
+    expect(m, "RPS_DEFAULT_STAKE is missing from vibe-rounds").toBeTruthy();
+    expect(Number(m![1])).toBe(RPS_DEFAULT_STAKE);
+  });
+
+  it("bounds the stake on the server, where the client cannot reach it", () => {
+    /* The player names the stake now, which moves a number out of a constant
+       and into a request body. If these bounds ever disappear, a hand for a
+       hundred million becomes a valid request — and the check that the house
+       can cover it is the only thing standing between that and a drained
+       bankroll. */
+    const lo = FN.match(/const\s+RPS_MIN_STAKE\s*=\s*(\d+)/);
+    const hi = FN.match(/const\s+RPS_MAX_STAKE\s*=\s*(\d+)/);
+    expect(lo, "RPS_MIN_STAKE is missing from vibe-rounds").toBeTruthy();
+    expect(hi, "RPS_MAX_STAKE is missing from vibe-rounds").toBeTruthy();
+    expect(Number(lo![1])).toBeGreaterThan(0);
+    expect(Number(hi![1])).toBeGreaterThan(Number(lo![1]));
+    // And the stake actually goes through the cleaner rather than the body.
+    expect(FN).toMatch(/const stake = cleanStake\(b\.stake/);
+    expect(FN).toMatch(/if \(n < RPS_MIN_STAKE\)/);
+    expect(FN).toMatch(/if \(n > RPS_MAX_STAKE\)/);
+  });
+
+  it("still refuses to deal a hand the house could not pay out", () => {
+    // Net exposure is one stake: the ante comes in, at most 2x goes out.
+    expect(FN).toMatch(/if \(float < stake\)/);
   });
 
   it("pays the same multipliers the modal promises", () => {

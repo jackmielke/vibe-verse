@@ -48,8 +48,13 @@ export function resolve(player: Throw, house: Throw): Outcome {
  * Only ever used to draw a label before you commit — the edge function decides
  * what is actually charged and paid, and `rps.test.ts` asserts the two agree by
  * reading the function's own source.
+ *
+ * The stake used to be this one number. It is now something the player names
+ * inside bounds the server owns, so this is the value the picker opens on and
+ * the one the island table still plays for — not a limit. `rps_table` returns
+ * the live bounds; nothing should hard-code them here.
  */
-export const RPS_STAKE = 25;
+export const RPS_DEFAULT_STAKE = 25;
 export const RPS_PAYOUT: Record<Outcome, number> = { win: 2, push: 1, lose: 0 };
 
 export const THROW_EMOJI: Record<Throw, string> = {

@@ -20,7 +20,11 @@ async function call<T>(action: string, payload: Record<string, unknown> = {}): P
 }
 
 export interface TableState {
+  /** What the picker opens on. */
   stake: number;
+  /** The bounds the server will accept. Mirrored from `vibe-rounds`. */
+  minStake: number;
+  maxStake: number;
   /** Live $VIBE, for the audit line. Null when the price feed is down. */
   vibePriceUsd: number | null;
   /** A hand already paid for and not yet thrown — you get it back, not a new one. */
@@ -57,12 +61,18 @@ export interface OpenHand {
  * Throws — "you could not cover the ante" and "the table is out of chips" are
  * both things the player has to be told in words rather than left guessing at.
  */
-export async function openHand(payoutAddress?: string | null): Promise<OpenHand> {
+export async function openHand(
+  opts: { stake?: number; payoutAddress?: string | null } = {},
+): Promise<OpenHand> {
   const owner = await currentOwner();
   const r = await call<OpenHand>("rps_open", {
     ownerKind: owner.kind,
     ownerRef: owner.ref,
-    payoutAddress: payoutAddress ?? null,
+    /* Omitted rather than defaulted here: the server owns both the default and
+       the bounds, and a second copy of "25" in the browser is a second thing
+       to forget when it changes. */
+    stake: opts.stake,
+    payoutAddress: opts.payoutAddress ?? null,
   });
   void refreshVibecoin();
   return r;

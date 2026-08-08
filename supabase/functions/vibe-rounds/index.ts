@@ -56,8 +56,34 @@ const MIN_MS_PER_GATE = 300;
 
 // ---- the rock-paper-scissors table --------------------------------------
 
-/** What a hand costs. Mirrored in `src/rps/rps.ts` for the label; this wins. */
-const RPS_STAKE = 25;
+/**
+ * What a hand can cost.
+ *
+ * The stake used to be a fixed 25 and the player is now allowed to name it,
+ * which moves one number from a constant into a request body — so it is
+ * bounded here, on the server, and nowhere else.
+ *
+ * The ceiling is not arbitrary. Net exposure on a hand is exactly one stake:
+ * the ante comes in at open, and at most 2× goes back out at settle. So the
+ * house must hold `stake` before it deals, and a stake larger than the float
+ * is a hand the table cannot honour. Capping well under the bankroll means one
+ * big hand cannot leave the table unable to deal the next one.
+ *
+ * The floor exists so a hand is always worth animating.
+ */
+const RPS_MIN_STAKE = 5;
+const RPS_MAX_STAKE = 500;
+/** What the picker opens on, and what the island table still plays for. */
+const RPS_DEFAULT_STAKE = 25;
+
+/** A stake the client named, made safe. Integer, in range, or an error. */
+function cleanStake(v: unknown): number {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n)) return RPS_DEFAULT_STAKE;
+  if (n < RPS_MIN_STAKE) throw new Error(`the smallest hand is ${RPS_MIN_STAKE}`);
+  if (n > RPS_MAX_STAKE) throw new Error(`the biggest hand is ${RPS_MAX_STAKE}`);
+  return n;
+}
 /**
  * The wallet the table plays out of — a real balance row holding a real float.
  *
@@ -517,7 +543,9 @@ async function rpsTable(supabase: Supa, b: any) {
   }
 
   return {
-    stake: RPS_STAKE,
+    stake: RPS_DEFAULT_STAKE,
+    minStake: RPS_MIN_STAKE,
+    maxStake: RPS_MAX_STAKE,
     vibePriceUsd: price,
     open: open ?? null,
     history: history ?? [],
@@ -548,9 +576,10 @@ async function rpsOpen(supabase: Supa, b: any) {
     };
   }
 
+  const stake = cleanStake(b.stake ?? RPS_DEFAULT_STAKE);
   const balance = await ensureWallet(supabase, ownerKind, ownerRef);
-  if (balance < RPS_STAKE) {
-    throw new Error(`not enough vibe (have ${balance}, need ${RPS_STAKE})`);
+  if (balance < stake) {
+    throw new Error(`not enough vibe (have ${balance}, need ${stake})`);
   }
 
   /* The table has to be able to lose before it is allowed to deal. Net exposure
@@ -559,7 +588,9 @@ async function rpsOpen(supabase: Supa, b: any) {
      the payout, after the player had already thrown. Refusing here is the
      honest version of the same limit. */
   const float = await ensureWallet(supabase, RPS_HOUSE_KIND, RPS_HOUSE);
-  if (float < RPS_STAKE) throw new Error("the table is out of chips — come back later");
+  if (float < stake) {
+    throw new Error(`the table cannot cover that one — try ${Math.max(RPS_MIN_STAKE, Math.floor(float))} or less`);
+  }
 
   const houseThrow = randomThrow();
   const nonce = randomNonce();
@@ -571,7 +602,7 @@ async function rpsOpen(supabase: Supa, b: any) {
   const { data: row, error: dupe } = await supabase.from("vibe_rps_rounds").insert({
     owner_kind: ownerKind, owner_ref: ownerRef,
     commit_hash: commit, house_throw: houseThrow, nonce,
-    stake: RPS_STAKE, vibe_price_usd: price,
+    stake, vibe_price_usd: price,
     payout_address: b.payoutAddress ? String(b.payoutAddress).slice(0, 64) : null,
   }).select("id").maybeSingle();
   if (dupe || !row) {
@@ -583,20 +614,20 @@ async function rpsOpen(supabase: Supa, b: any) {
     return { handId: now.id, commit: now.commit_hash, stake: Number(now.stake), resumed: true };
   }
 
-  await setBalance(supabase, ownerKind, ownerRef, balance - RPS_STAKE);
+  await setBalance(supabase, ownerKind, ownerRef, balance - stake);
   const houseBal = await ensureWallet(supabase, RPS_HOUSE_KIND, RPS_HOUSE);
-  await setBalance(supabase, RPS_HOUSE_KIND, RPS_HOUSE, houseBal + RPS_STAKE);
+  await setBalance(supabase, RPS_HOUSE_KIND, RPS_HOUSE, houseBal + stake);
   await supabase.from("vibe_ledger").insert({
     from_kind: ownerKind, from_ref: ownerRef,
     to_kind: RPS_HOUSE_KIND, to_ref: RPS_HOUSE,
-    amount: RPS_STAKE, reason: "rps_ante", memo: "rock paper scissors",
+    amount: stake, reason: "rps_ante", memo: "rock paper scissors",
   });
 
   return {
     handId: row.id,
     commit,
-    stake: RPS_STAKE,
-    balance: balance - RPS_STAKE,
+    stake,
+    balance: balance - stake,
     vibePriceUsd: price,
     resumed: false,
   };

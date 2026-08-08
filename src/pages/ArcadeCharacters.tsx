@@ -33,6 +33,7 @@ import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, Lock } from "lucide-react";
+import ItemShelves from "@/components/shop/ItemShelves";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import { CharacterPreview } from "@/island/CharacterPreview";
 import type { CharacterOption } from "@/island/characters";
@@ -88,6 +89,10 @@ export default function ArcadeCharacters() {
   const { owned, refresh: refreshWardrobe } = useWardrobe();
   const { charId, setCharId } = useActiveCharacter();
 
+  /* Two tabs, because "the shop" was two different shops on two pages: six
+     characters here and the hats over on /shop, with nothing telling you the
+     other existed. Characters lead — they are the thing worth looking at. */
+  const [tab, setTab] = useState<"characters" | "items">("characters");
   const [index, setIndex] = useState(0);
   const [buying, setBuying] = useState<string | null>(null);
   /* Which way the last flip went, so the card slides in from the side you
@@ -193,7 +198,9 @@ export default function ArcadeCharacters() {
 
         <header className="mt-5 text-center">
           <p className="font-heading text-[9px] font-bold uppercase tracking-[0.34em] text-[#7dffd4]/70 sm:text-[10px]">
-            Six originals · built here, sold here
+            {tab === "characters"
+              ? "Six originals · built here, sold here"
+              : "Hats, flames and jetpacks · yours on every device"}
           </p>
           <h1
             className="mt-2 font-heading text-3xl font-black tracking-tight sm:text-5xl"
@@ -203,15 +210,39 @@ export default function ArcadeCharacters() {
                 "0 0 12px hsl(160 90% 60% / 0.85), 0 0 38px hsl(280 90% 62% / 0.45)",
             }}
           >
-            CHARACTER SHOP
+            THE SHOP
           </h1>
           <p className="mx-auto mt-3 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
-            Buy one with the Vibecoin you won downstairs, and wear it everywhere
-            — Vibe Island, the hub, the lobby. Nothing here was taken off the
-            free shelf to make room; these six did not exist before the shop did.
+            {tab === "characters"
+              ? "Buy one with the Vibecoin you won downstairs, and wear it everywhere — Vibe Island, the hub, the lobby. Nothing here was taken off the free shelf to make room; these six did not exist before the shop did."
+              : "Everything else you can put on. Bought against your wallet rather than your browser, so it survives a cleared history and a new phone."}
           </p>
         </header>
 
+        {/* ---- The tabs ---- */}
+        <div className="mx-auto mt-6 flex max-w-xs gap-1 rounded-full border border-border/50 bg-black/40 p-1">
+          {(["characters", "items"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              aria-pressed={tab === t}
+              className={`flex-1 rounded-full px-3 py-2 font-heading text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                tab === t
+                  ? "bg-white text-black"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t === "characters" ? "🧑‍🚀 Characters" : "🎩 Items"}
+            </button>
+          ))}
+        </div>
+
+        {tab === "items" ? (
+          <div className="mt-4">
+            <ItemShelves />
+          </div>
+        ) : (
+        <>
         {/* ---- The stage ---- */}
         <div className="relative mt-7">
           <div
@@ -389,6 +420,8 @@ export default function ArcadeCharacters() {
             );
           })}
         </div>
+        </>
+        )}
 
         <footer className="mt-12 border-t border-border/40 pt-6 text-[11px] leading-relaxed text-muted-foreground">
           Sixty-odd more characters are free and always will be — pick one in the{" "}

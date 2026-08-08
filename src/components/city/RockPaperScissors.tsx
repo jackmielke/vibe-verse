@@ -28,7 +28,7 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
 import { VIBECOIN_GLYPH } from "@/lib/vibecoin";
 import { fetchTable, openHand, throwHand, type HandResult, type TableState } from "@/lib/rpsTable";
 import {
-  RPS_STAKE,
+  RPS_DEFAULT_STAKE,
   THROWS,
   THROW_EMOJI,
   THROW_LABEL,
@@ -144,7 +144,7 @@ export default function RockPaperScissors({
       const msg = String((e as Error)?.message ?? e);
       toast.error("Could not deal", {
         description: /not enough/i.test(msg)
-          ? `A hand costs ${RPS_STAKE} ${VIBECOIN_GLYPH}. Win some in the arcade first.`
+          ? `A hand costs ${RPS_DEFAULT_STAKE} ${VIBECOIN_GLYPH}. Win some in the arcade first.`
           : msg,
       });
     } finally {
@@ -203,7 +203,7 @@ export default function RockPaperScissors({
 
   if (!open) return null;
 
-  const stake = table?.stake ?? RPS_STAKE;
+  const stake = table?.stake ?? RPS_DEFAULT_STAKE;
   const canAfford = balance == null || balance >= stake;
   const tone = result ? OUTCOME_TONE[result.outcome] : null;
 
