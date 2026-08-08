@@ -36,6 +36,7 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "blob",                // …and the one you can explain in four words
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
   "shop",                // …which is what you spend it in
@@ -216,6 +217,23 @@ const WORLDS_RAW: WorldEntry[] = [
        no commits, no date, and a failing test. If the two ever need separate
        dates, the answer is separate directories, not an annotation. */
     source: "src/royale",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "blob",
+    route: "/blob",
+    aliases: ["/agar", "/agario", "/cells"],
+    name: "BLOB",
+    emoji: "🫧",
+    kind: "game",
+    blurb:
+      "The petri dish. Hoover up pellets, run from anything bigger than you, and split to catch what runs — twenty-four rivals, one dish, and a leaderboard you can watch your own name climb.",
+    status: "Playable — phone and desktop, two modes",
+    accent: "#5ef0a8",
+    featured: true,
+    source: "src/blob",
     nav: true,
     passport: true,
     chromeless: true,

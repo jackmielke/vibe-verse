@@ -93,6 +93,10 @@ const StrangeNewWorlds = lazy(() => import("./pages/StrangeNewWorlds.tsx"));
    reason as the rest: nobody who never rings that doorbell should carry the
    house around in the hub's entry chunk. */
 const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
+/* BLOB is 2D canvas with no Three in it, but it carries a whole simulation,
+   a bot brain and a renderer, and nobody who never opens the dish should carry
+   those around in the hub's entry chunk either. */
+const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
 /* RUN, VIBEY, RUN carries six chapters' worth of world builders — an Alabama
    road, a stadium, a jungle, a gym, the gulf and the whole of America. Lazy
    for the same reason as the rest. */
@@ -354,6 +358,20 @@ const App = () => (
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
                   <ISpy />
+                </Suspense>
+              }
+            />
+          ))}
+          {/* BLOB — the petri dish. Eat pellets, dodge anything bigger, split
+              to catch what runs. Twenty-four bots, one dish, phone or desktop.
+              /agar and /agario answer because that is what people type. */}
+          {["/blob", "/agar", "/agario", "/cells"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#060b14]" />}>
+                  <BlobWorld />
                 </Suspense>
               }
             />
