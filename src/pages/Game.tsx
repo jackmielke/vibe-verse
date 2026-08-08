@@ -19,25 +19,15 @@ import {
   WORLDS,
   featuredFirst,
   type WorldEntry,
-  type WorldKind,
 } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
 import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
-import { passportProgress } from "@/lib/passport";
+import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeWink from "@/components/VibeWink";
 import { WorldChangesPortal } from "@/components/WorldChanges";
 import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
-
-/** Filter tabs. `all` is not a kind, so it is spelled out here. */
-const TABS: { id: WorldKind | "all"; label: string; hint: string }[] = [
-  { id: "all", label: "Everything", hint: "every door in the vibeverse" },
-  { id: "game", label: "Games", hint: "a goal, a score, or something shooting back" },
-  { id: "world", label: "Worlds", hint: "places to walk, fly and drive around" },
-  { id: "hangout", label: "Hangouts", hint: "somewhere to be, with other people" },
-  { id: "tool", label: "The App", hint: "the parts that are not the fiction" },
-];
 
 /**
  * The panel a card falls back to when a world has no honest capture yet.
@@ -193,7 +183,7 @@ export default function Game() {
   const lastPlayed = useMemo(() => {
     const stamps = readPassport().stamps;
     const map: Record<string, number> = {};
-    for (const s of Object.values(stamps)) map[s.route] = s.last;
+    for (const st of Object.values(stamps) as Stamp[]) map[st.route] = st.last;
     return map;
   }, []);
 
