@@ -5,7 +5,7 @@
  * shows up here on its own. Walk up to read.
  */
 import * as THREE from "three";
-import { loadCurrentIssue } from "@/lib/vibeTimes";
+import { loadCurrentIssue, printedAt } from "@/lib/vibeTimes";
 
 export interface Newsstand {
   group: THREE.Group;
@@ -51,6 +51,7 @@ export function createNewsstand(opts: { position: THREE.Vector3; rotationY?: num
     issue?: number;
     date?: string;
     motto?: string;
+    printed_at?: string;
     headlines?: { emoji: string; headline: string }[];
   } | null) => {
     const ctx = canvas.getContext("2d");
@@ -69,7 +70,13 @@ export function createNewsstand(opts: { position: THREE.Vector3; rotationY?: num
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(40, 150); ctx.lineTo(600, 150); ctx.stroke();
     ctx.font = "20px Georgia, serif";
-    ctx.fillText(`Issue №${issue?.issue ?? "—"} · ${issue?.date ?? ""}`, canvas.width / 2, 184);
+    // Papers on a stand carry the hour they were printed. So does this one,
+    // in the clock of whoever is standing in front of it.
+    const at = printedAt(issue?.printed_at);
+    const line = [`Issue №${issue?.issue ?? "—"}`, issue?.date ?? "", at ? `printed ${at}` : ""]
+      .filter(Boolean)
+      .join(" · ");
+    ctx.fillText(line, canvas.width / 2, 184);
 
     ctx.textAlign = "left";
     const heads = (issue?.headlines ?? []).slice(0, 4);

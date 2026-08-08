@@ -714,9 +714,15 @@ Deno.serve(async (req) => {
       .filter((f: { text: string }) => f.text)
       .slice(0, 4);
 
+    const printedAt = new Date().toISOString();
     const payload = {
       issue: nextIssue,
       date: today,
+      // The moment this edition came off the presses, in UTC. It goes in
+      // the payload rather than being read off published_at because the
+      // page renders it in the reader's own clock, and a static fallback
+      // issue has no row to read a timestamp from.
+      printed_at: printedAt,
       motto: str(draft.motto, 90) || "all the news that fits the sky",
       headlines,
       dispatches: wire,
@@ -742,7 +748,7 @@ Deno.serve(async (req) => {
         sources: dispatches.slice(0, 120),
         model: MODEL,
         status: "published",
-        published_at: new Date().toISOString(),
+        published_at: printedAt,
         note: `${build.source} · ${dispatches.length} dispatches available · ${dropped} unlinked dropped`,
       })
       .eq("edition_date", today);

@@ -20,7 +20,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { loadCurrentIssue, type Issue } from "@/lib/vibeTimes";
+import { loadCurrentIssue, printedAt, type Issue } from "@/lib/vibeTimes";
 
 /** Whole days between an issue date and today, UTC. */
 function daysOld(iso: string): number {
@@ -33,16 +33,21 @@ function daysOld(iso: string): number {
 /**
  * The dateline, told honestly.
  *
- * The paper is written by a nightly loop, and a loop that has not run for a
- * week should not have its issue announced as "today's". Saying "Tuesday's
+ * The paper comes out every morning, and a press that has not run for a week
+ * should not have its issue announced as "today's". Saying "Tuesday's
  * edition" when it is Sunday costs nothing and keeps the one surface that
  * claims to be current from quietly lying.
+ *
+ * Today's and yesterday's editions also carry the hour they were printed —
+ * on a surface that says "today", the time is what makes it feel live.
+ * Older ones don't: the exact minute of a fortnight-old paper is noise.
  */
-function dateline(iso: string): string {
-  const age = daysOld(iso);
-  if (age === 0) return "Today's edition";
-  if (age === 1) return "Yesterday's edition";
-  const d = new Date(`${iso}T12:00:00Z`);
+function dateline(issue: Issue): string {
+  const age = daysOld(issue.date);
+  const at = printedAt(issue.printed_at);
+  if (age === 0) return at ? `Today's edition, ${at}` : "Today's edition";
+  if (age === 1) return at ? `Yesterday's edition, ${at}` : "Yesterday's edition";
+  const d = new Date(`${issue.date}T12:00:00Z`);
   if (Number.isNaN(d.getTime())) return "Latest edition";
   if (age < 7) {
     return `${d.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" })}'s edition`;
@@ -88,7 +93,7 @@ export default function TodaysPaper() {
             The Vibe Times
           </p>
           <p className="mt-0.5 text-[10px] text-muted-foreground/70">
-            {dateline(issue.date)} · brought to you by Vibey
+            {dateline(issue)} · brought to you by Vibey
           </p>
         </div>
         <Link
