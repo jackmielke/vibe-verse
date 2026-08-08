@@ -301,50 +301,25 @@ export default function Game() {
 
         <TodaysPaper />
 
-        {/* Filters + search. The tabs scroll horizontally on a phone rather
-            than wrapping to a second row and pushing the grid further down. */}
+        {/* Search only. The kind tabs (Everything / Games / Worlds / Hangouts)
+            were four buttons that mostly reproduced what the cards already say,
+            and on a phone they ate the row above the grid. Search covers the
+            same job in less space. */}
         <div className="sticky top-0 z-10 -mx-3 mt-5 bg-background/85 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="order-2 flex items-center gap-2 overflow-x-auto sm:order-1 sm:contents [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TABS.map((t) => {
-              const active = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  title={t.hint}
-                  className={`shrink-0 rounded-full px-3 py-1.5 font-heading text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
-                    active
-                      ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.3)]"
-                      : "text-foreground/60 hover:bg-muted/50 hover:text-foreground"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-            </div>
-            {/* On a phone this sits above the tabs instead of after them. As the
-                last item of a horizontally-scrolling row it was simply off the
-                right-hand edge of the screen, which is a search box nobody can
-                find. */}
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${WORLDS.length} worlds…`}
-              className="order-1 w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:order-2 sm:ml-auto sm:w-52 sm:px-4"
-            />
-          </div>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Search ${WORLDS.length} worlds…`}
+            className="w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:ml-auto sm:w-52 sm:px-4"
+          />
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
-          <p className="text-[10.5px] text-muted-foreground/70 sm:text-[11px]">
-            {TABS.find((t) => t.id === tab)?.hint} · {shown.length} shown
-          </p>
           <div className="ml-auto flex items-center gap-1">
             {(
               [
+                ["played", "Recently played"],
                 ["featured", "Featured"],
                 ["recent", "Recently updated"],
               ] as const
