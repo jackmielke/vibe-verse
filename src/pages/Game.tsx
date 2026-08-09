@@ -173,7 +173,7 @@ export default function Game() {
      a returning visitor wants — the doors they already opened, most recent
      first. "Featured" is the hand-tuned registry order for someone arriving
      cold. "Recent" answers what is still being worked on. */
-  const [sort, setSort] = useState<"played" | "featured" | "recent">("featured");
+  const [sort, setSort] = useState<"played" | "featured" | "recent">("played");
   const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
