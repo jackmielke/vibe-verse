@@ -35,7 +35,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Check, Copy, ExternalLink, Fuel, Star, Trash2, Wallet } from "lucide-react";
+import { Check, Copy, ExternalLink, Fuel, RefreshCw, Star, Trash2, Wallet } from "lucide-react";
 import VibeWink from "@/components/VibeWink";
 import VibeWalletConnect from "@/components/VibeWalletConnect";
 import VibeTestDrop from "@/components/VibeTestDrop";
@@ -226,7 +226,7 @@ export default function VibeWalletSection({
 }: {
   displayName?: string;
 }) {
-  const { rows, payout, refresh } = useWalletBook();
+  const { rows, payout, loading, refresh } = useWalletBook();
 
   const anyGas = rows.some((r) => r.canPayGas);
 
@@ -235,9 +235,23 @@ export default function VibeWalletSection({
           {/* ---- The list ---- */}
           {rows.length > 0 && (
             <div className="mt-6">
-              <p className="font-heading text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-                {rows.length === 1 ? "Your wallet" : `Your ${rows.length} wallets`}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-heading text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+                  {rows.length === 1 ? "Your wallet" : `Your ${rows.length} wallets`}
+                </p>
+                {/* These are on-chain figures read once when the page opened,
+                    so they go stale the moment anything moves — including a
+                    transfer you made in another app thirty seconds ago. There
+                    was no way to ask again short of reloading the page. */}
+                <button
+                  onClick={refresh}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 font-heading text-[9px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+                  {loading ? "Reading Base" : "Refresh"}
+                </button>
+              </div>
               <div className="mt-2.5 flex flex-col gap-2.5">
                 {rows.map((r) => (
                   <WalletCard key={r.address} row={r} onRefresh={refresh} />
@@ -248,7 +262,7 @@ export default function VibeWalletSection({
 
           {/* Directly under the list, because it is about the wallet marked
               "drops go here" — the claim that panel makes, made testable. */}
-          <VibeTestDrop address={payout?.address ?? null} />
+          <VibeTestDrop address={payout?.address ?? null} onSent={refresh} />
 
           <div className="mt-4">
             <VibeWalletConnect

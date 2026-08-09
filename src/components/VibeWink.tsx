@@ -13,13 +13,18 @@
  * ✦ (`VibeCoinMark`) means the ledger balance you earn by playing.** So when
  * you claim, the number you claim into wears the proper logo.
  *
- * ## It does not spin any more
+ * ## It holds still
  *
- * It used to rotate about its Y axis inside a `perspective`, which is a fine
- * effect on a hero and a bad one on a mark: turning edge-on, a flat PNG
- * squashes to nothing and springs back, and what you actually see is the logo
- * pulsing wider and narrower next to a word. `spin` is opt-in now. The bob
- * stays — a slow vertical float reads as alive without distorting anything.
+ * It used to do two things at once and neither of them helped. It rotated
+ * about its Y axis inside a `perspective`, so a flat PNG passing edge-on
+ * squashed to nothing and sprang back — the logo appeared to pulse wider and
+ * narrower beside the word it was labelling. And it bobbed up and down on a
+ * five-second loop, which is charming exactly once and then is a thing moving
+ * in the corner of your eye on every page in the app.
+ *
+ * Both are opt-in now and nothing opts in. A logo's job is to sit still and be
+ * recognised; if a surface genuinely wants motion it can ask for it, and it
+ * should have to be a decision rather than the default everywhere.
  */
 import type { CSSProperties } from "react";
 import winkGlass from "@/assets/brand/vibe-wink-glass.png.asset.json";
@@ -27,14 +32,15 @@ import winkGlass from "@/assets/brand/vibe-wink-glass.png.asset.json";
 interface Props {
   /** Pixel size of the emblem. Default 220. */
   size?: number;
-  /** Bob speed multiplier, and rotation speed when `spin` is on. */
+  /** Animation speed multiplier, when `spin` or `bob` is on. */
   speed?: number;
   /**
-   * Turn about the Y axis. Off by default — see the note above about a flat
-   * mark squashing as it passes edge-on. Worth it on a big hero, never worth
-   * it beside a number.
+   * Turn about the Y axis. Off by default — a flat mark squashes to nothing as
+   * it passes edge-on. Worth it on a big hero, never worth it beside a number.
    */
   spin?: boolean;
+  /** Float gently up and down. Off by default; see the note above. */
+  bob?: boolean;
   /** Phase offset in seconds so multiple wink copies don't sync. */
   phase?: number;
   className?: string;
@@ -45,6 +51,7 @@ export default function VibeWink({
   size = 220,
   speed = 1,
   spin = false,
+  bob = false,
   phase = 0,
   className = "",
   style,
@@ -58,9 +65,11 @@ export default function VibeWink({
         width: size,
         height: size,
         position: "relative",
-        animation: `vibe-wink-bob ${bobDur} ease-in-out infinite`,
-        animationDelay: `${phase}s`,
-        perspective: "800px",
+        animation: bob ? `vibe-wink-bob ${bobDur} ease-in-out infinite` : undefined,
+        animationDelay: bob ? `${phase}s` : undefined,
+        /* Only when something is actually turning. A `perspective` on a static
+           element costs a compositor layer for nothing. */
+        perspective: spin ? "800px" : undefined,
         ...style,
       }}
       aria-hidden="true"

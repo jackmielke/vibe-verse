@@ -56,12 +56,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
   "coin": [
+    { sha: "f2719fe", iso: "2026-08-09T05:43:43+00:00", subject: "The wink stops spinning, and starts meaning \"real\"" },
     { sha: "3660216", iso: "2026-08-08T21:22:22+00:00", subject: "Changes" },
     { sha: "af46f50", iso: "2026-08-08T21:22:17+00:00", subject: "Changes" },
     { sha: "1f98cf2", iso: "2026-08-08T21:22:11+00:00", subject: "Changes" },
     { sha: "230d0ed", iso: "2026-08-08T20:25:18+00:00", subject: "One page about the currency, told as three steps" },
     { sha: "8e09d54", iso: "2026-07-21T20:57:42+00:00", subject: "Changes" },
-    { sha: "7842a72", iso: "2026-07-21T20:57:37+00:00", subject: "Changes" },
   ],
   "companions": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },

@@ -53,7 +53,19 @@ async function call<T>(action: string, address?: string): Promise<T> {
   return data.data as T;
 }
 
-export default function VibeTestDrop({ address }: { address: string | null }) {
+export default function VibeTestDrop({
+  address,
+  onSent,
+}: {
+  address: string | null;
+  /**
+   * A drop landed. The wallet list above is showing balances read before it
+   * happened, so it has to go and look again — otherwise the card says "1,000
+   * $VIBE was sent to this wallet" directly beneath a row still reading the
+   * old number, and the only way to see it arrive is a manual reload.
+   */
+  onSent?: () => void;
+}) {
   const [status, setStatus] = useState<DropStatus | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -81,6 +93,13 @@ export default function VibeTestDrop({ address }: { address: string | null }) {
         description: "A real transaction on Base. It lands in a few seconds.",
       });
       setStatus((s) => (s ? { ...s, claimed: true, txHash: r.txHash } : s));
+      /* Twice, deliberately. Base confirms in about two seconds, but the RPC
+         we read through can still answer from a block that predates the
+         transfer — so ask once immediately for the responsive case and again
+         a few seconds later for the true one. Cheap, and it is the difference
+         between a number that moves on its own and a page you have to reload. */
+      onSent?.();
+      window.setTimeout(() => onSent?.(), 4000);
     } catch (e) {
       toast.error("The drop did not go", {
         description: String((e as Error)?.message ?? e),
@@ -89,7 +108,7 @@ export default function VibeTestDrop({ address }: { address: string | null }) {
     } finally {
       setSending(false);
     }
-  }, [address, load]);
+  }, [address, load, onSent]);
 
   if (!address || !status) return null;
 
