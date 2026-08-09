@@ -54,3 +54,39 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
 Vendoring someone else's game? See `src/longsilence/README.md` — it documents
 the four changes that took a standalone site and made it a route, and why each
 one was necessary.
+
+## Somebody else's game, without vendoring it
+
+Everything above is for a world that lives in this repository. There is a
+second door — **the portal**, `src/portal/` — for a game hosted somewhere
+else, by somebody else, that still pays out Vibey Coins and still sits inside
+the vibeverse's chrome. Nothing above applies to it: no page, no registry
+entry, no art, no lazy import. It is one row in `vibe_portal_games` and it
+appears on the arcade shelf.
+
+Reach for the portal whenever the game is not yours to maintain. Vendoring
+means you own their bugs forever and they cannot ship an update without you;
+that was the right trade exactly once.
+
+The rule the whole thing rests on, and the reason it is safe to say yes to a
+stranger: **a game never mints, it spends an allowance we hold.** It asks for
+an amount and gets the smallest of that and four budgets. So approving a game
+is deciding what it is worth per day — a number in a column — rather than
+reading its source and hoping.
+
+- The four ceilings and the wallet credit are one Postgres statement,
+  `vibe_portal_award`, holding a lock on the session row. Do not move that
+  arithmetic back into the edge function; it was there first, and eight
+  concurrent asks against a 60-coin budget paid 96.
+- The session id is the only capability that can move money. It is minted by
+  `vibe-portal open`, lives in a closure in `src/portal/host.ts`, and is
+  **never posted into the frame**. `src/test/portalHost.test.ts` asserts that,
+  and asserts that a game supplying its own id is ignored.
+- `origin: 'self'` means the game is served from our domain and is therefore
+  *inside* the fence — it can read our localStorage like any script we ship.
+  Only ever use it for a game in this repository.
+- `public/vibeverse.js` is the whole SDK and is a public contract the moment
+  anybody embeds it. Add to it; do not rename or re-shape what is there.
+- `public/games/coin-drop/` is the reference game. It goes through the same
+  sandbox, bridge and budgets as anybody else's, so it is the honest test: if
+  it works, the path works.
