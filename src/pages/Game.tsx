@@ -173,7 +173,7 @@ export default function Game() {
      a returning visitor wants — the doors they already opened, most recent
      first. "Featured" is the hand-tuned registry order for someone arriving
      cold. "Recent" answers what is still being worked on. */
-  const [sort, setSort] = useState<"played" | "featured" | "recent">("featured");
+  const [sort, setSort] = useState<"played" | "featured" | "recent">("played");
   const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
@@ -297,18 +297,16 @@ export default function Game() {
               <span className="opacity-70">Vibecoin</span>
             </Link>
             <span className="rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground sm:py-2">
-              {counts.playable} playable · passport {progress.visited}/{progress.total}
+              passport {progress.visited}/{progress.total}
             </span>
           </div>
         </motion.header>
 
         <TodaysPaper />
 
-        {/* Search only. The kind tabs (Everything / Games / Worlds / Hangouts)
-            were four buttons that mostly reproduced what the cards already say,
-            and on a phone they ate the row above the grid. Search covers the
+        {/* Search only. Search covers the
             same job in less space. */}
-        <div className="sticky top-0 z-10 -mx-3 mt-5 bg-background/85 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
+        <div className="sticky top-0 z-10 -mx-3 mt-5 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
           <input
             type="search"
             value={query}
@@ -320,11 +318,14 @@ export default function Game() {
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
           <div className="ml-auto flex items-center gap-1">
+            <span className="mr-2 font-heading text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+              Recently played
+            </span>
             {(
               [
-                ["played", "Recently played"],
+                ["played", "Played"],
                 ["featured", "Featured"],
-                ["recent", "Recently updated"],
+                ["recent", "Recent"],
               ] as const
             ).map(([id, label]) => (
               <button

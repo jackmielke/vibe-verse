@@ -13,7 +13,7 @@
  * So: one page, at `/coin`, answering to `/vibe` and `/wallet` too. It is a
  * story rather than a dashboard, and the story is the actual product:
  *
- *   1. **Make a Vibey account.** An email and a six-digit code. This is the
+ *   1. **MAKE A VIBE ACCOUNT.** An email and a six-digit code. This is the
  *      thing that has to be easy, because everything below it is worthless if
  *      nobody gets past it.
  *   2. **Earn Vibecoin.** Playing games. No wallet, no crypto, no decisions.
@@ -113,7 +113,7 @@ export default function VibeHub() {
           </div>
           <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">
-              <Sparkles className="h-3 w-3 text-primary" />
+              <Sparkles className="h-2.5 w-2.5 text-primary" />
               <span className="font-heading text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
                 $VIBE on Base
               </span>
@@ -134,7 +134,7 @@ export default function VibeHub() {
               title={VIBE_TOKEN_ADDRESS}
               className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-2.5 py-1 font-heading text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
             >
-              {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+              {copied ? <Check className="h-2.5 w-2.5 text-primary" /> : <Copy className="h-2.5 w-2.5" />}
               {copied ? "Copied" : "Copy address"}
             </button>
           </div>
@@ -192,7 +192,7 @@ export default function VibeHub() {
           </div>
 
           {/* ---- 1. The account ---- */}
-          <Step n={1} title="Make a Vibey account" done={!isGuest}>
+          <Step n={1} title="MAKE A VIBE ACCOUNT" done={!isGuest}>
             {isGuest ? (
               <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
                 <p className="text-[11.5px] leading-relaxed text-muted-foreground">
