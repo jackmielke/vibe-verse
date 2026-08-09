@@ -205,7 +205,7 @@ export default function VibeHub() {
                   className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-3 font-heading text-[10.5px] font-black uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.02]"
                 >
                   <LogIn className="h-3.5 w-3.5" />
-                  Create your Vibey account
+                  Create your Vibe account
                 </button>
                 <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground/70">
                   You can keep playing without one. Everything you have earned
