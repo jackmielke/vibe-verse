@@ -113,7 +113,7 @@ export default function VibeHub() {
           </div>
           <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">
-              <Sparkles className="h-3 w-3 text-primary" />
+              <Sparkles className="h-2.5 w-2.5 text-primary" />
               <span className="font-heading text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
                 $VIBE on Base
               </span>
@@ -134,7 +134,7 @@ export default function VibeHub() {
               title={VIBE_TOKEN_ADDRESS}
               className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-2.5 py-1 font-heading text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
             >
-              {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+              {copied ? <Check className="h-2.5 w-2.5 text-primary" /> : <Copy className="h-2.5 w-2.5" />}
               {copied ? "Copied" : "Copy address"}
             </button>
           </div>
