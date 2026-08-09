@@ -48,7 +48,7 @@
  * FLAGS
  *   --room CODE      lobby to join (required; case/punctuation insensitive)
  *   --name NAME      display name                        [Claude]
- *   --team TEAM      squad id — same string = same squad [blue]
+ *   --team TEAM      riptide|dolphin|cannonball|flamingo [riptide]
  *   --url URL        Supabase URL      [$VITE_SUPABASE_URL or .env]
  *   --key KEY        Supabase anon key [$VITE_SUPABASE_PUBLISHABLE_KEY or .env]
  *   --follow-dist M  how far behind a teammate to hold   [6]
@@ -177,7 +177,7 @@ if (args.help || args.h) {
       "",
       "    --room CODE      lobby to join (required)",
       "    --name NAME      display name                        [Claude]",
-      "    --team TEAM      squad id — same string = same squad [blue]",
+      "    --team TEAM      riptide|dolphin|cannonball|flamingo [riptide]",
       "    --url URL        Supabase URL      [VITE_SUPABASE_URL / .env]",
       "    --key KEY        Supabase anon key [VITE_SUPABASE_PUBLISHABLE_KEY / .env]",
       "    --follow-dist M  how far behind a teammate to hold   [6]",
@@ -300,7 +300,39 @@ if (!ROOM) {
 }
 
 const NAME = String(args.name || "Claude").slice(0, 24);
-const TEAM = String(args.team || "blue").slice(0, 24);
+/**
+ * The four squads the lobby offers, by id. The picker in
+ * `src/royale/ui/Lobby.tsx` writes exactly these into the presence payload.
+ */
+const SQUADS = ["riptide", "dolphin", "cannonball", "flamingo"];
+
+/**
+ * Fold a squad name to something two people typing from memory will agree on.
+ *
+ * Teammates are matched by string, and an unrecognised string does not fail
+ * loudly — it just means the bot treats you as a rival and never follows you,
+ * which looks like a broken bot rather than a typo. "Dolphins" and "dolphin"
+ * are the same squad to a human, so make them the same squad here: lowercase,
+ * trim, and drop a trailing plural.
+ */
+const foldTeam = (t) => {
+  const s = String(t ?? "").trim().toLowerCase();
+  if (!s) return "";
+  const singular = s.endsWith("s") ? s.slice(0, -1) : s;
+  return SQUADS.includes(singular) ? singular : s;
+};
+
+/* Default to the squad the lobby itself defaults to. The old default was
+   "blue", which is not one of the four squads at all — so running the command
+   without --team put the bot on nobody's team and it shadowed strangers. */
+const TEAM = foldTeam(args.team || SQUADS[0]).slice(0, 24);
+if (args.team && !SQUADS.includes(TEAM)) {
+  log.warn(
+    `"${args.team}" is not one of the lobby's squads (${SQUADS.join(", ")}). ` +
+      `Joining as "${TEAM}" anyway — but you will only squad up with someone ` +
+      `who picked the same string, so check the invite button in the lobby.`,
+  );
+}
 const FOLLOW_DIST = Math.max(2.5, Number(args["follow-dist"]) || 6);
 const TIMESCALE = Number(args.timescale) > 0 ? Number(args.timescale) : 1;
 const SELF_ID = `s-claude-${Math.random().toString(36).slice(2, 8)}`;
@@ -415,7 +447,7 @@ function squadmates() {
   for (const p of peers.values()) {
     if (p.agent || !p.posed) continue;
     if (p.dry <= 0) continue; // already out — don't shadow a spectator
-    if (TEAM && p.team && p.team !== TEAM) continue;
+    if (TEAM && p.team && foldTeam(p.team) !== TEAM) continue;
     out.push(p);
   }
   out.sort((a, b) => dist2(me.x, me.z, a.x, a.z) - dist2(me.x, me.z, b.x, b.z));
@@ -427,7 +459,7 @@ function livingPeers(sameTeam) {
   const out = [];
   for (const p of peers.values()) {
     if (!p.posed || p.dry <= 0) continue;
-    const mate = !!TEAM && p.team === TEAM;
+    const mate = !!TEAM && foldTeam(p.team) === TEAM;
     if (sameTeam === undefined || mate === sameTeam) out.push(p);
   }
   return out;
@@ -692,7 +724,7 @@ function onEvent(w) {
       const { x, y, z } = payload;
       if (![x, z].every(Number.isFinite)) return;
       const dMe = Math.hypot(me.x - x, me.z - z, (me.y - (y ?? me.y)) * 0.5);
-      const mate = !!TEAM && from?.team === TEAM;
+      const mate = !!TEAM && foldTeam(from?.team) === TEAM;
       if (!mate && dMe < SPLASH_RADIUS && me.dry > 0) {
         const soak = Number.isFinite(payload.amount) ? payload.amount : SPLASH_SOAK;
         me.dry = clamp(me.dry - soak, 0, 100);
@@ -716,7 +748,7 @@ function onEvent(w) {
       const ox = payload.x ?? payload.ox;
       const oz = payload.z ?? payload.oz;
       if (![ox, oz].every(Number.isFinite)) return;
-      if (TEAM && from?.team === TEAM) return;
+      if (TEAM && foldTeam(from?.team) === TEAM) return;
       maybeCallout(ox, oz, from);
       return;
     }
@@ -741,7 +773,7 @@ function onEvent(w) {
       if (p) p.dry = 0;
       const name = p?.name ?? payload.name ?? who;
       log.event(`${name} is soaked`);
-      const mate = !!TEAM && p?.team === TEAM;
+      const mate = !!TEAM && foldTeam(p?.team) === TEAM;
       if (mate) void consider({ kind: "teammate-soaked", who: name }, true);
       // Nobody publishes a "victory" event, so infer it: our squad is still
       // dry and there is nobody left who isn't on it.
