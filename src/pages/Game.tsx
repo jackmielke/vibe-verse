@@ -297,18 +297,16 @@ export default function Game() {
               <span className="opacity-70">Vibecoin</span>
             </Link>
             <span className="rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground sm:py-2">
-              {counts.playable} playable · passport {progress.visited}/{progress.total}
+              passport {progress.visited}/{progress.total}
             </span>
           </div>
         </motion.header>
 
         <TodaysPaper />
 
-        {/* Search only. The kind tabs (Everything / Games / Worlds / Hangouts)
-            were four buttons that mostly reproduced what the cards already say,
-            and on a phone they ate the row above the grid. Search covers the
+        {/* Search only. Search covers the
             same job in less space. */}
-        <div className="sticky top-0 z-10 -mx-3 mt-5 bg-background/85 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
+        <div className="sticky top-0 z-10 -mx-3 mt-5 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
           <input
             type="search"
             value={query}
