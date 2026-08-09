@@ -738,7 +738,7 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
 
         <Link
           to="/"
-          className="mt-8 text-[11px] uppercase tracking-[0.3em] text-[#0a5677]/55 transition hover:text-[#04456b]"
+          className="mt-6 flex min-h-[44px] items-center px-4 text-center text-[11px] uppercase tracking-[0.3em] text-[#0a5677]/55 transition hover:text-[#04456b]"
         >
           ← back to the vibeverse
         </Link>

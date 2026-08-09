@@ -90,8 +90,10 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { makeRng } from "../types";
+import { WATER } from "../mode/water";
 import type {
   DamageSource,
+  GameMode,
   MatchPhase,
   MatchService,
   MaterialsService,
@@ -754,12 +756,143 @@ function grimeStreaks(
   g.restore();
 }
 
+/* ------------------------------------------------------------------------ *
+ * The livery
+ *
+ * One engine, two games — and the bus is the single most photographed object
+ * in either of them, so it is the one place where "the mode is a data lookup"
+ * has to be visibly true. Everything that differs between the DROP ZERO bus
+ * and the SOAKED bus lives in this one record: the words on the flanks, the
+ * paint, the balloon gores, and whether the pool furniture gets bolted on.
+ *
+ * The water strings are READ FROM `WATER.strings`, never retyped here. That
+ * table is the mode's vocabulary; a second copy of the game's own name is
+ * exactly how a bus ends up still saying DROP ZERO six weeks after the game
+ * was renamed, which is what it was doing.
+ * ------------------------------------------------------------------------ */
+
+interface BusSkin {
+  /** The big wordmark on the flanks, and (mirrored) on the belly. */
+  wordmark: string;
+  /** The small line under it. Shouted, because it is 1.4 m tall on a bus. */
+  tagline: string;
+  /** The belly's own sub-line, for the people hanging off the rail. */
+  bellyTag: string;
+  /** Destination board, two lines. */
+  board: string;
+  boardSub: string;
+  /** Route roundel digits. */
+  roundel: string;
+  /** Base paint, as an RGB triple the mottle ramp multiplies. */
+  paint: readonly [number, number, number];
+  /** Ambient floor in the paint's own hue, so the shadowed side is not black. */
+  paintFloor: number;
+  /** Livery panel gradient, top → bottom. */
+  panel: readonly [string, string, string];
+  /** The chevron flash and its highlight. */
+  flash: string;
+  flashAlt: string;
+  /** Ink for seams and drop shadows; paper for the wordmark itself. */
+  ink: string;
+  paper: string;
+  /** Belly plate base colour. */
+  belly: readonly [number, number, number];
+  /** Balloon gore colours, repeated around the envelope. */
+  gores: readonly string[];
+  /** Envelope's ambient fill — the underside of a lit canopy, not a cave. */
+  balloonFill: number;
+  /** Glass tint and how much of the cabin it hides. */
+  glass: number;
+  glassOpacity: number;
+  /** Interior fill, so the windows read as a lit cabin rather than a hole. */
+  cabin: number;
+  cabinFill: number;
+  /** Bolt on the rings, the tank, the towels and the slide. */
+  poolParty: boolean;
+}
+
 /**
- * The bus's painted panel albedo, tiled across the hull. Deep saturated blue
- * with panel seams, rivets, a scuffed lower band and sun-bleached streaks on
- * the horizontal surfaces. Tiles at 2 m.
+ * DROP ZERO: cobalt municipal transit, the original. Every number here is
+ * lifted unchanged from what the bakes used to hard-code, so classic mode
+ * renders exactly the bus it always did.
  */
-function bakeHullAlbedo(rng: () => number): { tex: THREE.CanvasTexture; height: HTMLCanvasElement } | null {
+const CLASSIC_SKIN: BusSkin = {
+  wordmark: "DROP ZERO",
+  tagline: "ISLAND SERVICE · NON-STOP · NO REFUNDS",
+  bellyTag: "MIND THE DROP",
+  board: "THE ISLAND",
+  boardSub: "ONE WAY",
+  roundel: "01",
+  paint: [50, 106, 188],
+  paintFloor: 0x0a1a33,
+  panel: ["#1f4c96", "#173d7e", "#102c5e"],
+  flash: "#f2a93b",
+  flashAlt: "#e0f0ff",
+  ink: "rgba(6,14,30,0.5)",
+  paper: "#f4f9ff",
+  belly: [96, 106, 124],
+  gores: ["#e9f1fb", "#2a63c0", "#e9f1fb", "#f2a93b"],
+  balloonFill: 0x2a3450,
+  glass: 0x16243c,
+  glassOpacity: 0.88,
+  cabin: 0x0e1118,
+  cabinFill: 0x000000,
+  poolParty: false,
+};
+
+/**
+ * SOAKED: the pool-party bus. Turquoise hull, coral flash, a beach-ball
+ * envelope in the water-balloon palette, and enough vinyl furniture that the
+ * silhouette says "summer" before the wordmark is legible.
+ *
+ * The gores are `WATER.balloon.colors` — the same five skins the balloons you
+ * throw are tinted with — because the envelope reading as a giant beach ball
+ * of the ammunition is the joke, and it stays in step if that palette moves.
+ */
+const WATER_SKIN: BusSkin = {
+  wordmark: WATER.strings.modeName,
+  tagline: WATER.strings.modeTagline.toUpperCase(),
+  bellyTag: WATER.strings.victory,
+  board: "THE ISLAND",
+  boardSub: "BRING A TOWEL",
+  roundel: "H2O",
+  // Pool turquoise. Brighter and far less saturated in blue than the cobalt:
+  // under the same warm key this reads as chlorinated water rather than as
+  // navy, which is the entire point of the reskin.
+  paint: [58, 186, 214],
+  paintFloor: 0x0d3f52,
+  panel: ["#2fc6de", "#16a2c4", "#0d7396"],
+  // Coral against turquoise, with a sunshine highlight. Complementary, so the
+  // flash still reads as speed from 300 m the way the amber one did.
+  flash: "#ff7a4d",
+  flashAlt: "#ffe45e",
+  ink: "rgba(6,38,52,0.5)",
+  paper: "#f2fdff",
+  belly: [104, 150, 168],
+  gores: ["#ffffff", "#5ecfff", "#ff5fa2", "#ffe45e", "#8affc1", "#c08aff"],
+  balloonFill: 0x2e5a72,
+  // Lighter, bluer glass held at lower opacity: "windows you can see through"
+  // is a stated requirement, and 0.88 of near-black is a mirror.
+  glass: 0x2f7f9e,
+  glassOpacity: 0.55,
+  cabin: 0x1d3f52,
+  cabinFill: 0x2b6d88,
+  poolParty: true,
+};
+
+function busSkin(mode: GameMode): BusSkin {
+  return mode === "water" ? WATER_SKIN : CLASSIC_SKIN;
+}
+
+/**
+ * The bus's painted panel albedo, tiled across the hull. Panel seams, rivets,
+ * a scuffed lower band and sun-bleached streaks on the horizontal surfaces,
+ * over whatever base coat the skin asks for. Tiles at 2 m.
+ */
+function bakeHullAlbedo(
+  rng: () => number,
+  skin: BusSkin,
+): { tex: THREE.CanvasTexture; height: HTMLCanvasElement } | null {
   const S = 512;
   const cv = canvas2d(S);
   const hv = canvas2d(S);
@@ -769,12 +902,13 @@ function bakeHullAlbedo(rng: () => number): { tex: THREE.CanvasTexture; height: 
 
   // Base coat, mottled — a flat fill is the fastest way to make paint read as
   // plastic, and the mottle survives all the way down to a 4-pixel-wide bus.
+  const [pr, pg, pb] = skin.paint;
   paintField(g, S, noise, (v) => {
     const t = 0.72 + v * 0.36;
-    // Bright saturated cobalt, not navy. Under ACES with a warm key this
-    // lands about where Fortnite's bus does; anything darker turns to a
-    // silhouette the moment the sun goes behind the balloon.
-    return [Math.round(50 * t), Math.round(106 * t), Math.round(188 * t)];
+    // Bright and saturated, never dark. Under ACES with a warm key this lands
+    // about where Fortnite's bus does; anything darker turns to a silhouette
+    // the moment the sun goes behind the balloon.
+    return [Math.round(pr * t), Math.round(pg * t), Math.round(pb * t)];
   });
 
   // Panel seams. Uneven spacing: a perfect grid reads as wallpaper.
@@ -903,7 +1037,7 @@ function bakeMetal(rng: () => number): {
  * This is the one texture with actual typography, so it gets the wordmark,
  * the route number, a chevron flash and the same wear as everything else.
  */
-function bakeLivery(rng: () => number): THREE.CanvasTexture | null {
+function bakeLivery(rng: () => number, skin: BusSkin): THREE.CanvasTexture | null {
   const W = 2048;
   const H = 512;
   const cv = canvas2d(W, H);
@@ -911,9 +1045,9 @@ function bakeLivery(rng: () => number): THREE.CanvasTexture | null {
   const { g } = cv;
 
   const base = g.createLinearGradient(0, 0, 0, H);
-  base.addColorStop(0, "#1f4c96");
-  base.addColorStop(0.55, "#173d7e");
-  base.addColorStop(1, "#102c5e");
+  base.addColorStop(0, skin.panel[0]);
+  base.addColorStop(0.55, skin.panel[1]);
+  base.addColorStop(1, skin.panel[2]);
   g.fillStyle = base;
   g.fillRect(0, 0, W, H);
 
@@ -926,7 +1060,7 @@ function bakeLivery(rng: () => number): THREE.CanvasTexture | null {
   g.lineTo(W * 0.78, H * 0.2);
   g.lineTo(W * 0.16, H * 0.98);
   g.closePath();
-  g.fillStyle = "#f2a93b";
+  g.fillStyle = skin.flash;
   g.fill();
   g.beginPath();
   g.moveTo(W * 0.68, H * 0.98);
@@ -934,39 +1068,42 @@ function bakeLivery(rng: () => number): THREE.CanvasTexture | null {
   g.lineTo(W, H * 0.62);
   g.lineTo(W * 0.8, H * 0.98);
   g.closePath();
-  g.fillStyle = "#e0f0ff";
+  g.fillStyle = skin.flashAlt;
   g.fill();
   g.restore();
 
-  // Wordmark.
+  // Wordmark. Sized to the longest word so a short name (SOAKED) fills the
+  // same panel a long one (DROP ZERO) did — a 176 px cap height tuned for
+  // nine characters leaves six of them floating in the middle of a 15 m panel.
   g.save();
-  g.font = "900 176px 'Arial Black', system-ui, sans-serif";
   g.textBaseline = "middle";
   g.textAlign = "left";
-  g.fillStyle = "rgba(6,14,30,0.5)";
-  g.fillText("DROP ZERO", 130, H * 0.42 + 8);
-  g.fillStyle = "#f4f9ff";
-  g.fillText("DROP ZERO", 124, H * 0.42);
+  const cap = skin.wordmark.length >= 9 ? 176 : 232;
+  g.font = `900 ${cap}px 'Arial Black', system-ui, sans-serif`;
+  g.fillStyle = skin.ink;
+  g.fillText(skin.wordmark, 130, H * 0.42 + 8);
+  g.fillStyle = skin.paper;
+  g.fillText(skin.wordmark, 124, H * 0.42);
   g.font = "600 54px system-ui, sans-serif";
-  g.fillStyle = "rgba(210,232,255,0.72)";
-  g.fillText("ISLAND SERVICE · NON-STOP · NO REFUNDS", 130, H * 0.72);
+  g.fillStyle = "rgba(236,250,255,0.78)";
+  g.fillText(skin.tagline, 130, H * 0.74);
   g.restore();
 
   // Route roundel at the rear end of the panel.
   g.save();
   g.translate(W * 0.9, H * 0.34);
-  g.fillStyle = "#0d1d3c";
+  g.fillStyle = "rgba(8,26,44,0.85)";
   g.beginPath();
   g.arc(0, 0, 96, 0, Math.PI * 2);
   g.fill();
-  g.strokeStyle = "#f2a93b";
+  g.strokeStyle = skin.flash;
   g.lineWidth = 10;
   g.stroke();
-  g.font = "900 108px 'Arial Black', system-ui, sans-serif";
+  g.font = `900 ${skin.roundel.length > 2 ? 84 : 108}px 'Arial Black', system-ui, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillStyle = "#ffd479";
-  g.fillText("01", 0, 6);
+  g.fillStyle = skin.flashAlt;
+  g.fillText(skin.roundel, 0, 6);
   g.restore();
 
   // Panel seams over the paint, then the same wear the hull gets so the decal
@@ -994,17 +1131,18 @@ function bakeLivery(rng: () => number): THREE.CanvasTexture | null {
  * walkway grip, a service hatch, running-light strips, lashing points and the
  * wordmark for the people hanging off the rails.
  */
-function bakeBelly(rng: () => number): THREE.CanvasTexture | null {
+function bakeBelly(rng: () => number, skin: BusSkin): THREE.CanvasTexture | null {
   const S = 1024;
   const cv = canvas2d(S);
   if (!cv) return null;
   const { g } = cv;
   const noise = fbmField(S, rng, 4, 7);
+  const [br, bg, bb] = skin.belly;
   paintField(g, S, noise, (v) => {
     const t = 0.7 + v * 0.4;
     // Light enough to still read detail when it is the shadowed side of the
     // vehicle, which — for the whole bus ride — it always is.
-    return [Math.round(96 * t), Math.round(106 * t), Math.round(124 * t)];
+    return [Math.round(br * t), Math.round(bg * t), Math.round(bb * t)];
   });
 
   // Floor plates with a raised diamond-grip centre.
@@ -1057,16 +1195,16 @@ function bakeBelly(rng: () => number): THREE.CanvasTexture | null {
   g.save();
   g.translate(S * 0.62, S * 0.5);
   g.scale(-1, 1);
-  g.font = "900 112px 'Arial Black', system-ui, sans-serif";
+  g.font = `900 ${skin.wordmark.length >= 9 ? 112 : 148}px 'Arial Black', system-ui, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.fillStyle = "rgba(8,12,20,0.55)";
-  g.fillText("DROP ZERO", 5, 5);
-  g.fillStyle = "rgba(226,238,255,0.82)";
-  g.fillText("DROP ZERO", 0, 0);
+  g.fillText(skin.wordmark, 5, 5);
+  g.fillStyle = "rgba(226,244,255,0.86)";
+  g.fillText(skin.wordmark, 0, 0);
   g.font = "700 34px system-ui, sans-serif";
-  g.fillStyle = "rgba(242,169,59,0.8)";
-  g.fillText("MIND THE DROP", 0, 74);
+  g.fillStyle = skin.flash;
+  g.fillText(skin.bellyTag, 0, 92);
   g.restore();
 
   grimeStreaks(g, S, S, rng, 46, 0.42);
@@ -1081,7 +1219,7 @@ function bakeBelly(rng: () => number): THREE.CanvasTexture | null {
  * bottom of each gore so the lathe reads as cloth under tension rather than
  * as a smooth solid of revolution.
  */
-function bakeBalloon(rng: () => number): {
+function bakeBalloon(rng: () => number, skin: BusSkin): {
   albedo: THREE.CanvasTexture;
   rough: THREE.CanvasTexture;
   height: HTMLCanvasElement;
@@ -1095,7 +1233,7 @@ function bakeBalloon(rng: () => number): {
 
   const GORES = 16;
   const gw = W / GORES;
-  const palette = ["#e9f1fb", "#2a63c0", "#e9f1fb", "#f2a93b"];
+  const palette = skin.gores;
   for (let i = 0; i < GORES; i++) {
     const x = i * gw;
     av.g.fillStyle = palette[i % palette.length];
@@ -1198,7 +1336,7 @@ function bakeBalloon(rng: () => number): {
 }
 
 /** The lit destination board over the windshield. Pure emissive. */
-function bakeDestination(): THREE.CanvasTexture | null {
+function bakeDestination(skin: BusSkin): THREE.CanvasTexture | null {
   const W = 1024;
   const H = 256;
   const cv = canvas2d(W, H);
@@ -1211,16 +1349,104 @@ function bakeDestination(): THREE.CanvasTexture | null {
   g.font = "900 132px 'Arial Black', system-ui, sans-serif";
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillStyle = "#ffb43a";
-  g.fillText("THE ISLAND", W / 2, H / 2 - 6);
+  g.fillStyle = skin.poolParty ? "#5ee0ff" : "#ffb43a";
+  g.fillText(skin.board, W / 2, H / 2 - 6);
   g.font = "700 40px system-ui, sans-serif";
-  g.fillStyle = "#ff8c1a";
-  g.fillText("ONE WAY", W / 2, H - 44);
+  g.fillStyle = skin.poolParty ? "#39c6ec" : "#ff8c1a";
+  g.fillText(skin.boardSub, W / 2, H - 44);
   g.globalCompositeOperation = "destination-out";
   g.fillStyle = "#000";
   for (let y = 0; y < H; y += 6) g.fillRect(0, y + 4, W, 2);
   for (let x = 0; x < W; x += 6) g.fillRect(x + 4, 0, 2, H);
   g.globalCompositeOperation = "source-over";
+  const t = toTexture(cv.c, true);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+/**
+ * Glossy pool vinyl, for the rings, the slide and the tank bands.
+ *
+ * Bands rather than a flat colour, and box-projected at ~1.7 m so that two
+ * rings bolted a metre apart land on different bands and come out different
+ * colours. One texture, one material, one draw call, a rack of mismatched
+ * inflatables — which is what a pool bus should look like. Reuses
+ * `WATER.balloon.colors` for the same reason the envelope does.
+ */
+function bakeVinyl(rng: () => number): {
+  albedo: THREE.CanvasTexture;
+  rough: THREE.CanvasTexture;
+} | null {
+  const S = 256;
+  const av = canvas2d(S);
+  const rv = canvas2d(S);
+  if (!av || !rv) return null;
+  const bands = ["#ff5fa2", "#ffffff", "#5ecfff", "#ffe45e", "#ffffff", "#8affc1", "#ff8a4d"];
+  const bh = S / bands.length;
+  for (let i = 0; i < bands.length; i++) {
+    av.g.fillStyle = bands[i];
+    av.g.fillRect(0, i * bh, S, bh + 1);
+    // A soft roll across each band: inflatable vinyl is a tube, and a flat
+    // fill on a torus reads as painted plastic pipe.
+    const roll = av.g.createLinearGradient(0, i * bh, 0, (i + 1) * bh);
+    roll.addColorStop(0, "rgba(10,30,44,0.3)");
+    roll.addColorStop(0.4, "rgba(255,255,255,0.22)");
+    roll.addColorStop(1, "rgba(10,30,44,0.3)");
+    av.g.fillStyle = roll;
+    av.g.fillRect(0, i * bh, S, bh + 1);
+    // Welded seam between bands.
+    av.g.fillStyle = "rgba(255,255,255,0.35)";
+    av.g.fillRect(0, i * bh - 1.5, S, 3);
+  }
+  // Roughness: vinyl is glossy and *evenly* glossy, so the variation has to
+  // come from smudges and fingerprints rather than from the form.
+  const noise = fbmField(S, rng, 3, 7);
+  paintField(rv.g, S, noise, (v) => {
+    const r = Math.round((0.11 + v * 0.22) * 255);
+    return [r, r, r];
+  });
+  for (let i = 0; i < bands.length; i++) {
+    rv.g.fillStyle = "rgba(210,210,210,0.5)";
+    rv.g.fillRect(0, i * bh - 2, S, 4);
+  }
+  return { albedo: toTexture(av.c, true), rough: toTexture(rv.c, false) };
+}
+
+/**
+ * Beach towels: fat horizontal stripes with a fringed end, mapped 0..1 onto a
+ * hanging quad. Deliberately loud — a towel over the rail is a silhouette
+ * detail first and a texture second.
+ */
+function bakeTowel(rng: () => number): THREE.CanvasTexture | null {
+  const W = 256;
+  const H = 512;
+  const cv = canvas2d(W, H);
+  if (!cv) return null;
+  const { g } = cv;
+  const sets = [
+    ["#ff5fa2", "#ffe45e", "#ffffff"],
+    ["#5ecfff", "#ffffff", "#ff8a4d"],
+    ["#8affc1", "#ffffff", "#c08aff"],
+  ];
+  const pick = sets[Math.floor(rng() * sets.length)];
+  g.fillStyle = pick[2];
+  g.fillRect(0, 0, W, H);
+  // Four bands down the length. The towel hangs, so the stripes run across it.
+  for (let i = 0; i < 8; i++) {
+    g.fillStyle = pick[i % 2];
+    g.fillRect(0, 34 + i * 58, W, i % 3 === 0 ? 30 : 16);
+  }
+  // Terry nap: fine noise at low contrast, or it reads as painted card.
+  g.save();
+  g.globalAlpha = 0.16;
+  for (let i = 0; i < 1400; i++) {
+    g.fillStyle = rng() > 0.5 ? "#ffffff" : "#000000";
+    g.fillRect(rng() * W, rng() * H, 2, 2);
+  }
+  g.restore();
+  // Fringe at the bottom edge.
+  g.fillStyle = "rgba(255,255,255,0.75)";
+  for (let x = 0; x < W; x += 7) g.fillRect(x, H - 18, 3, 18);
   const t = toTexture(cv.c, true);
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
@@ -1320,6 +1546,20 @@ interface BusModel {
   sway: THREE.Object3D;
   /** The envelope, which breathes on its own phase. */
   balloon: THREE.Object3D;
+  /**
+   * The two side doors. Slid open along −Z when the drop window opens, which
+   * is the bus's one piece of state the player can read without a HUD.
+   */
+  doors: THREE.Object3D[];
+  /**
+   * Everyone still on board, hanging off the rails, as one instanced mesh.
+   * `showRiders(n)` hides them from the front of the bus backwards as the
+   * lobby leaves, so the crowd visibly thins out around you.
+   */
+  riders: THREE.InstancedMesh | null;
+  riderSlots: { x: number; y: number; z: number; phase: number }[];
+  /** Towels over the roof rail, so there is something soft in the silhouette. */
+  towels: THREE.Object3D[];
   rotors: THREE.Object3D[];
   /** Burner flame cone; scaled and faded on a flicker. */
   flame: THREE.Object3D | null;
@@ -1335,6 +1575,7 @@ interface BusModel {
 
 function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
   const quality = ctx.quality;
+  const skin = busSkin(ctx.mode);
   const bevel = BEVEL[quality];
   const geometries: Geo[] = [];
   const materials: THREE.Material[] = [];
@@ -1349,16 +1590,23 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
 
   // ---- materials ---------------------------------------------------------
 
-  const hullBake = bakeHullAlbedo(rng);
+  const hullBake = bakeHullAlbedo(rng, skin);
   const hullRough = bakeHullRoughness(rng);
   const hullNormal = hullBake ? normalFromHeight(hullBake.height, 2.6) : null;
   const metal = bakeMetal(rng);
-  const liveryTex = bakeLivery(rng);
-  const bellyTex = bakeBelly(rng);
-  const balloonBake = bakeBalloon(rng);
+  const liveryTex = bakeLivery(rng, skin);
+  const bellyTex = bakeBelly(rng, skin);
+  const balloonBake = bakeBalloon(rng, skin);
   const balloonNormal = balloonBake ? normalFromHeight(balloonBake.height, 1.7) : null;
-  const boardTex = bakeDestination();
-  const glowTex = bakeGlow("rgba(255,255,255,1)", "rgba(255,196,110,0.85)");
+  const boardTex = bakeDestination(skin);
+  // Warm amber for the transit bus, cool aqua for the pool bus: the glow
+  // sprites are the only light source on the model and a warm burner over a
+  // turquoise hull is the one thing that would still read as Drop Zero.
+  const glowTex = skin.poolParty
+    ? bakeGlow("rgba(255,255,255,1)", "rgba(140,236,255,0.85)")
+    : bakeGlow("rgba(255,255,255,1)", "rgba(255,196,110,0.85)");
+  const vinyl = skin.poolParty ? bakeVinyl(rng) : null;
+  const towelTex = skin.poolParty ? bakeTowel(rng) : null;
 
   for (const t of [
     hullBake?.tex,
@@ -1373,6 +1621,9 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
     balloonNormal,
     boardTex,
     glowTex,
+    vinyl?.albedo,
+    vinyl?.rough,
+    towelTex,
   ]) {
     if (t) textures.push(t);
   }
@@ -1399,7 +1650,7 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
       // its own sake: the bus is backlit against the sky for most of its
       // life, and without an ambient floor the shadowed side crushes to pure
       // black, which is the flattest thing a stylised vehicle can do.
-      emissive: new THREE.Color(0x0a1a33),
+      emissive: new THREE.Color(skin.paintFloor),
       emissiveIntensity: 1,
       fog: true,
     }),
@@ -1481,21 +1732,31 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
 
   const glassMat = track(
     new THREE.MeshStandardMaterial({
-      color: 0x16243c,
+      color: skin.glass,
       metalness: 0.55,
       roughness: 0.07,
       envMap: env,
       envMapIntensity: 1.6,
       transparent: true,
-      opacity: 0.88,
+      opacity: skin.glassOpacity,
       fog: true,
     }),
   );
 
-  // Blocks the view straight through both window bands. Without it the bus is
-  // visibly hollow from every three-quarter angle.
+  // Blocks the view straight *through* both window bands — without it the bus
+  // is visibly hollow from every three-quarter angle — but it is lit from
+  // inside, so what you see through the glass is a cabin rather than a hole.
+  // A black interior behind bright glass is why the windows used to read as
+  // painted-on panels instead of as windows.
   const cabinMat = track(
-    new THREE.MeshStandardMaterial({ color: 0x0e1118, roughness: 0.94, metalness: 0.05, fog: true }),
+    new THREE.MeshStandardMaterial({
+      color: skin.cabin,
+      roughness: 0.94,
+      metalness: 0.05,
+      emissive: new THREE.Color(skin.cabinFill),
+      emissiveIntensity: skin.cabinFill ? 0.6 : 0,
+      fog: true,
+    }),
   );
 
   const rubberMat = track(
@@ -1521,7 +1782,7 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
       // Thin fabric with a burner under it and the sun above it: the inside
       // of the envelope is never black, and the player is looking straight up
       // into it for the whole bus ride.
-      emissive: new THREE.Color(0x2a3450),
+      emissive: new THREE.Color(skin.balloonFill),
       emissiveIntensity: 0.85,
       side: THREE.DoubleSide,
       envMap: env,
@@ -1529,6 +1790,64 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
       fog: true,
     }),
   );
+
+  /**
+   * Pool furniture. Two materials, both null in classic mode, both baked into
+   * a single merged mesh each so the whole reskin costs three draw calls: the
+   * vinyl (rings, slide, tank bands), the towels, and the water in the tank.
+   */
+  const vinylMat = vinyl
+    ? track(
+        new THREE.MeshStandardMaterial({
+          map: vinyl.albedo,
+          roughnessMap: vinyl.rough,
+          color: 0xffffff,
+          metalness: 0.02,
+          roughness: 1,
+          envMap: env,
+          envMapIntensity: 1.25,
+          // Inflatables are the brightest thing on the vehicle and they hang
+          // on the shadowed flank. Without a fill they go grey and the whole
+          // pool-party read collapses into "blue bus with grey donuts".
+          emissive: new THREE.Color(0x2b5c70),
+          emissiveIntensity: 0.5,
+          fog: true,
+        }),
+      )
+    : null;
+
+  const towelMat = towelTex
+    ? track(
+        new THREE.MeshStandardMaterial({
+          map: towelTex,
+          color: 0xffffff,
+          roughness: 0.95,
+          metalness: 0,
+          emissive: new THREE.Color(0x3d6b80),
+          emissiveIntensity: 0.4,
+          side: THREE.DoubleSide,
+          fog: true,
+        }),
+      )
+    : null;
+
+  /** What is in the tank. Emissive, because backlit water is not grey. */
+  const waterMat = skin.poolParty
+    ? track(
+        new THREE.MeshStandardMaterial({
+          color: 0x2ea8d8,
+          metalness: 0.1,
+          roughness: 0.12,
+          envMap: env,
+          envMapIntensity: 1.4,
+          transparent: true,
+          opacity: 0.78,
+          emissive: new THREE.Color(0x1d7fa8),
+          emissiveIntensity: 0.9,
+          fog: true,
+        }),
+      )
+    : null;
 
   const lampMat = track(
     new THREE.MeshStandardMaterial({
@@ -1599,6 +1918,7 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
   const lampParts: Geo[] = [];
   const tailParts: Geo[] = [];
   const rubberParts: Geo[] = [];
+  const vinylParts: Geo[] = [];
 
   const { halfW, floorY, waistY, browY, shoulderY, roofY, halfL } = HULL;
 

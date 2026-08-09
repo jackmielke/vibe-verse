@@ -272,6 +272,62 @@ const FOV_DIVE = 30;
 
 const PITCH_LIMIT = Math.PI / 2 - 0.035;
 
+// ---- the bus orbit rig ---------------------------------------------------
+//
+// Riding the bus is not a first-person moment and it is not a third-person
+// moment either: the subject of the shot is the BUS, with the island laid out
+// under it. So while `state === "bus"` the arm hangs off the bus rather than
+// off the rider's head, and looking around orbits it. Every battle royale
+// opens on this shot for a reason — it is the one everybody screenshots.
+//
+// Before this existed the arm was the ordinary 4.1 m ground rig anchored to a
+// rider parked 2.35 m under a 21 m hull, which put the camera inside the
+// fuselage for most of the yaw circle. The photo that started this was a
+// frame full of blue panelling.
+
+/** Where the orbit pivot sits above the bus's own origin (its rail line).
+ *  Roughly the middle of hull + balloon, so both fit the frame with room for
+ *  the island underneath. */
+const BUS_PIVOT_RISE = 9;
+/** Arm limits, metres from the pivot. The minimum is a wide-but-tight shot of
+ *  the whole rig; the maximum is the bus as a toy over the island. */
+const BUS_ARM_MIN = 26;
+const BUS_ARM_MAX = 110;
+/** The frame the game opens on: far enough that hull, balloon and a good slab
+ *  of island all read at once. */
+const BUS_ARM_DEFAULT = 46;
+/** Three-quarter rear: this much yaw off "straight behind", toward the side
+ *  the rider hangs from, so the bus reads in perspective and you can see
+ *  yourself on the rail. */
+const BUS_ARM_AZIMUTH = 0.45;
+/** Looking down this much at the pivot, which puts the camera above the bus
+ *  and the island in the lower half of the frame. */
+const BUS_ARM_PITCH = -0.13;
+/**
+ * The keep-out ellipsoid, in bus-local metres about the pivot: lateral,
+ * vertical, and along the route. It has to CONTAIN the whole rig — hull
+ * (halfW 3, halfL 10.8, roof 5.45), balloon (radius 11, crown 25 m up) and
+ * the rider hanging below — because the arm is only ever allowed to end
+ * outside it. Sized from `match.ts`'s own HULL block and balloon profile.
+ */
+const BUS_KEEPOUT_X = 14;
+const BUS_KEEPOUT_Y = 19;
+const BUS_KEEPOUT_Z = 17;
+/** Clearance outside that surface, so the near plane never grazes the hull. */
+const BUS_KEEPOUT_PAD = 3;
+/** Per wheel notch / per pinch. Multiplicative, because a fixed step is
+ *  glacial at the far end of the range and violent at the near end. */
+const BUS_ZOOM_STEP = 0.12;
+
+/**
+ * Canopy clearance. The wing sits ~3.6 m over the rig's feet and spans 3.7 m,
+ * so a short arm at a steep down-pitch can put the camera inside it. This is
+ * the radius the arm has to clear during the dive and the glide.
+ */
+const SELF_KEEPOUT_R = 2.6;
+/** Height of that sphere's centre above the drop pivot. */
+const SELF_KEEPOUT_Y = 2.5;
+
 // ---- character ----------------------------------------------------------
 
 /** Hip height in rig space. Every joint offset below is relative to this. */
@@ -299,6 +355,33 @@ function angleDelta(from: number, to: number): number {
   if (d < -Math.PI) d += TAU;
   return d;
 }
+
+/**
+ * Distance from the centre of an axis-aligned ellipsoid to its surface along
+ * the unit direction `(ux, uy, uz)` — i.e. the shortest arm that is provably
+ * *outside* the volume in that direction.
+ *
+ * Solving it rather than testing-and-nudging matters: the test-and-nudge
+ * version wobbles as the orbit sweeps, and the whole point of the bus rig is
+ * that the arm can never end up inside the hull no matter where it is pointed.
+ */
+function ellipsoidReach(
+  ux: number, uy: number, uz: number,
+  rx: number, ry: number, rz: number,
+): number {
+  const k = Math.hypot(ux / rx, uy / ry, uz / rz);
+  return k > 1e-6 ? 1 / k : 0;
+}
+
+/**
+ * How far the player has zoomed the bus camera, remembered for the session.
+ *
+ * Module scope on purpose: "remember it" means across matches and across
+ * re-entering the world, and a visitor who pulled the camera wide once should
+ * not have to do it again on the next drop. It is one number and it is clamped
+ * on every read, so nothing downstream can be broken by a stale value.
+ */
+let busArmSession = BUS_ARM_DEFAULT;
 
 // ---------------------------------------------------------------- geometry
 //
@@ -2091,6 +2174,15 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   const camGoal = new THREE.Vector3();
   const camPos = new THREE.Vector3();
   let camInit = false;
+  /** Set when the rig has moved somewhere the smoothing must not travel to —
+   *  boarding the bus, and stepping off it. Without it the arm spends a second
+   *  flying between the bus and the diver, through the hull. */
+  let camSnap = false;
+  /** True while the arm is orbiting the bus rather than tracking the player. */
+  let onBus = false;
+  const busPivot = new THREE.Vector3();
+  const busDir = new THREE.Vector3();
+  const busRight = new THREE.Vector3();
 
   // ---- animation state ---------------------------------------------------
   let bodyYaw = 0;
@@ -3743,6 +3835,62 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   function updateCamera(dt: number): void {
     const input = ctx.input;
     const collision = ctx.services.collision;
+    const match = ctx.services.match;
+
+    // --- what is the subject of this shot? ---------------------------------
+    // On the bus it is the BUS. The arm hangs off the vehicle and the look
+    // input orbits it; everywhere else the arm hangs off the player and the
+    // look input turns their head. See the note by the BUS_ constants.
+    const wasOnBus = onBus;
+    onBus = dropStage === "bus" && !!match;
+    if (onBus && match) {
+      // Sample the route rather than reading `match.busPosition`: the bus mesh
+      // is placed from `busAt(busT)` in the MATCH's update and the player
+      // system updates first, so `busPosition` is a frame stale — which at the
+      // bus's 100 m/s is seven metres, a third of the hull, of framing error.
+      // `busT` is written in `fixed`, so this agrees with the mesh exactly.
+      match.busAt(match.busT, busPivot);
+      busPivot.y += BUS_PIVOT_RISE;
+      busDir.subVectors(match.busTo, match.busFrom);
+      busDir.y = 0;
+      if (busDir.lengthSq() > 1e-6) busDir.normalize();
+      else busDir.set(0, 0, -1);
+      // The hull's own right-hand side, which is the side the rider hangs off.
+      busRight.set(-busDir.z, 0, busDir.x);
+
+      if (!wasOnBus) {
+        // The frame the game opens on. Composed, not incidental: three-quarter
+        // rear, slightly high, hull and balloon against the sky with the
+        // island under them. `+BUS_ARM_AZIMUTH` on the route heading swings the
+        // arm around to the bus's right, so the rider is in shot too.
+        yaw = Math.atan2(-busDir.x, -busDir.z) + BUS_ARM_AZIMUTH;
+        if (yaw > Math.PI) yaw -= TAU;
+        pitch = BUS_ARM_PITCH;
+        service.yaw = yaw;
+        service.pitch = pitch;
+        armCurrent = clamp(busArmSession, BUS_ARM_MIN, BUS_ARM_MAX);
+        camSnap = true;
+      }
+
+      // Zoom. The wheel is the desktop control and a two-finger pinch is the
+      // touch one; both drive the same remembered number. Multiplicative,
+      // because one metre per notch is nothing at 110 m and a lurch at 26.
+      if (input.wheel !== 0) {
+        busArmSession = clamp(
+          busArmSession * (1 + input.wheel * BUS_ZOOM_STEP),
+          BUS_ARM_MIN,
+          BUS_ARM_MAX,
+        );
+      }
+      if (pinchScale !== 1) {
+        busArmSession = clamp(busArmSession * pinchScale, BUS_ARM_MIN, BUS_ARM_MAX);
+      }
+    } else if (wasOnBus) {
+      // Stepping off: the subject changes from the bus to the diver, tens of
+      // metres away. Smoothing across that gap flies the lens through the hull.
+      camSnap = true;
+    }
+    pinchScale = 1;
 
     // Pivot. X/Z track exactly — lag there reads as input latency — but Y is
     // smoothed, which is what hides stair steps and the step-up lift.
@@ -3751,9 +3899,13 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       camPivot.set(position.x, pivotY, position.z);
       camInit = true;
     }
-    camPivot.x = position.x;
-    camPivot.z = position.z;
-    camPivot.y = approach(camPivot.y, pivotY, dropStage === "landed" ? 16 : 8, dt);
+    if (onBus) {
+      camPivot.copy(busPivot);
+    } else {
+      camPivot.x = position.x;
+      camPivot.z = position.z;
+      camPivot.y = approach(camPivot.y, pivotY, dropStage === "landed" ? 16 : 8, dt);
+    }
 
     const speed = Math.hypot(velocity.x, velocity.z);
     const aiming = input.aim && service.controllable && dropStage === "landed";
@@ -3763,7 +3915,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // shoulder, which is the only way iron sights read in third person.
     let armTarget = ARM_LENGTH;
     let shoulderTarget = ARM_SHOULDER;
-    if (dropStage === "skydive") {
+    if (onBus) {
+      armTarget = clamp(busArmSession, BUS_ARM_MIN, BUS_ARM_MAX);
+      // No shoulder offset: the bus is the subject and it belongs centred.
+      shoulderTarget = 0;
+    } else if (dropStage === "skydive") {
       armTarget = ARM_LENGTH_DIVE;
       shoulderTarget = 0.1;
     } else if (dropStage === "glide") {

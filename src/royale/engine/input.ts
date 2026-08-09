@@ -59,6 +59,17 @@ export interface TouchDriver {
   /** Hold or release a flag. Buttons that repeat (fire) use this, not a tap. */
   setFlag(flag: TouchFlag, on: boolean): void;
   /**
+   * Hold a flag until the simulation has actually seen it, then drop it — a
+   * tap that means "do this once".
+   *
+   * A `setTimeout` release is the obvious version and it is wrong: the
+   * simulation only samples `ctx.input` when a frame runs, so on a phone
+   * dropping to 12 fps a 90 ms pulse can begin and end between two frames and
+   * the shot simply never happens. This one is released by the engine's own
+   * clock instead — see the `fixed`/`update` pair below.
+   */
+  pulse(flag: TouchFlag): void;
+  /**
    * Edge-triggered key press — lands in `input.pressed`, which the engine
    * clears at the end of the frame, exactly like a real `keydown`.
    */
@@ -133,6 +144,9 @@ const createInput: SystemFactory = (ctx) => {
   let touchEngaged = false;
   const stickListeners = new Set<(s: StickState) => void>();
   const engageListeners = new Set<(on: boolean) => void>();
+  /** Flags held by `TouchDriver.pulse`, and how many fixed steps saw them. */
+  const pulsed = new Set<TouchFlag>();
+  let pulseSteps = 0;
 
   /**
    * Drop every held control. Called whenever the lock is lost, so the player
@@ -149,6 +163,8 @@ const createInput: SystemFactory = (ctx) => {
     input.interact = false;
     input.moveX = 0;
     input.moveZ = 0;
+    pulsed.clear();
+    pulseSteps = 0;
   };
 
   /**
@@ -363,6 +379,12 @@ const createInput: SystemFactory = (ctx) => {
   const touchDriver: TouchDriver = {
     setFlag(flag, on) {
       (input as unknown as Record<string, boolean>)[flag] = on;
+      if (!on) pulsed.delete(flag);
+    },
+    pulse(flag) {
+      (input as unknown as Record<string, boolean>)[flag] = true;
+      pulsed.add(flag);
+      pulseSteps = 0;
     },
     press(code) {
       input.pressed.add(code);
@@ -435,7 +457,23 @@ const createInput: SystemFactory = (ctx) => {
     setAimScale(v: number) {
       aimScale = v;
     },
+    /**
+     * Counts the simulation steps a virtual pulse has been visible for. The
+     * engine runs every `fixed` before any `update`, so a flag raised between
+     * frames is guaranteed to have been sampled by the time this frame's
+     * `update` releases it — and a frame that happened to run zero steps
+     * carries the pulse over to the next one instead of eating it.
+     */
+    fixed() {
+      if (pulsed.size > 0) pulseSteps++;
+    },
     update() {
+      if (pulsed.size > 0 && pulseSteps > 0) {
+        for (const flag of pulsed) (input as unknown as Record<string, boolean>)[flag] = false;
+        pulsed.clear();
+        pulseSteps = 0;
+      }
+
       // Keyboard axes. Touch move-stick overrides when active.
       let mx = 0;
       let mz = 0;

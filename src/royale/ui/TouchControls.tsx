@@ -117,7 +117,6 @@ interface Skin {
   plateOn: string;
   edge: string;
   edgeOn: string;
-  accent: string;
   text: string;
 }
 
@@ -126,7 +125,6 @@ const CLASSIC_SKIN: Skin = {
   plateOn: "rgba(150,120,255,0.42)",
   edge: "rgba(255,255,255,0.28)",
   edgeOn: "rgba(214,196,255,0.95)",
-  accent: "#c4b5fd",
   text: "rgba(255,255,255,0.94)",
 };
 
@@ -135,7 +133,6 @@ const WATER_SKIN: Skin = {
   plateOn: "rgba(56,189,248,0.42)",
   edge: "rgba(186,236,255,0.34)",
   edgeOn: "rgba(186,236,255,0.95)",
-  accent: "#7dd3fc",
   text: "rgba(255,255,255,0.95)",
 };
 
@@ -254,6 +251,8 @@ function Pad({
         letterSpacing: "0.06em",
         lineHeight: 1,
         backdropFilter: "blur(3px)",
+        overflow: "hidden",
+        padding: "0 4px",
         transform: held ? "scale(0.94)" : "none",
         transition: "transform 90ms ease, background 120ms ease",
         ...style,
@@ -262,7 +261,19 @@ function Pad({
       {icon}
       {label ? <span>{label}</span> : null}
       {sub ? (
-        <span style={{ fontSize: 8, opacity: 0.6, fontWeight: 600 }}>{sub}</span>
+        <span
+          style={{
+            fontSize: 8,
+            opacity: 0.6,
+            fontWeight: 600,
+            maxWidth: "100%",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {sub}
+        </span>
       ) : null}
     </button>
   );
@@ -321,16 +332,6 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
 
   const baseRef = useRef<HTMLDivElement | null>(null);
   const knobRef = useRef<HTMLDivElement | null>(null);
-  /** Every timer this component starts, so none outlives it. */
-  const timers = useRef<number[]>([]);
-
-  useEffect(
-    () => () => {
-      for (const id of timers.current) window.clearTimeout(id);
-      timers.current = [];
-    },
-    [],
-  );
 
   /* ---- engine subscriptions -------------------------------------------- */
 
@@ -434,12 +435,12 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
 
   /* ---- actions ---------------------------------------------------------- */
 
-  /** A one-frame trigger pull. Used where a tap means "do it once". */
-  const pulseFire = useCallback(() => {
-    driver.setFlag("fire", true);
-    const id = window.setTimeout(() => driver.setFlag("fire", false), 90);
-    timers.current.push(id);
-  }, [driver]);
+  /**
+   * A one-frame trigger pull. `driver.pulse` holds it until the simulation has
+   * actually stepped, so a phone running at 12 fps still places the piece — a
+   * timed release would let the pulse fall between two frames.
+   */
+  const pulseFire = useCallback(() => driver.pulse("fire"), [driver]);
 
   const hold = useCallback(
     (flag: Parameters<TouchDriver["setFlag"]>[0]) => ({
@@ -524,8 +525,6 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
           top: 0,
           width: 132,
           height: 132,
-          marginLeft: -66,
-          marginTop: -66,
           borderRadius: 9999,
           border: `2px solid ${skin.edge}`,
           background: skin.plate,
@@ -591,7 +590,15 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
         {building ? (
           <>
             <div style={{ display: "flex", gap: 8 }}>
-              <Pad skin={skin} label="MAT" sub={matLabel} size={50} onDown={() => driver.press("KeyT")} />
+              <Pad
+                skin={skin}
+                label="MAT"
+                sub={matLabel}
+                size={50}
+                width={74}
+                round={false}
+                onDown={() => driver.press("KeyT")}
+              />
               <Pad skin={skin} label="ROT" size={50} onDown={() => driver.rotate()} />
               <Pad skin={skin} label="EDIT" size={50} on={build.editing} onDown={() => driver.press("KeyG")} />
             </div>
