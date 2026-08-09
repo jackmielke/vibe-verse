@@ -216,7 +216,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
-  "soaked": [
+  "splash-royale": [
     { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
     { sha: "a1c3906", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },

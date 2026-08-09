@@ -1,5 +1,5 @@
 /**
- * SOAKED — the lobby.
+ * SPLASH ROYALE — the lobby.
  *
  * The entry veil for the water fight, and the thing that makes it a *party*
  * rather than a single-player demo: you create a room, you get a code like

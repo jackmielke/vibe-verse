@@ -801,7 +801,7 @@ function grimeStreaks(
  * One engine, two games — and the bus is the single most photographed object
  * in either of them, so it is the one place where "the mode is a data lookup"
  * has to be visibly true. Everything that differs between the DROP ZERO bus
- * and the SOAKED bus lives in this one record: the words on the flanks, the
+ * and the SPLASH ROYALE bus lives in this one record: the words on the flanks, the
  * paint, the balloon gores, and whether the pool furniture gets bolted on.
  *
  * The water strings are READ FROM `WATER.strings`, never retyped here. That
@@ -880,7 +880,7 @@ const CLASSIC_SKIN: BusSkin = {
 };
 
 /**
- * SOAKED: the pool-party bus. Turquoise hull, coral flash, a beach-ball
+ * SPLASH ROYALE: the pool-party bus. Turquoise hull, coral flash, a beach-ball
  * envelope in the water-balloon palette, and enough vinyl furniture that the
  * silhouette says "summer" before the wordmark is legible.
  *
@@ -1629,16 +1629,11 @@ interface BusModel {
 }
 
 function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
-  /* `BusModel` promises four things the builder does not make yet: sliding
-     doors, an instanced crowd of riders and its slots, and the roof towels.
-     Only the towels are actually built below — the rest are declared here so
-     the returned object satisfies its own type instead of failing to compile,
-     and they are honestly empty rather than absent. Filling them in is the
-     remaining half of that feature; nothing reads them today. */
-  const doors: THREE.Object3D[] = [];
-  const riders: THREE.InstancedMesh | null = null;
-  const riderSlots: { x: number; y: number; z: number; phase: number }[] = [];
-  const towels: THREE.Object3D[] = [];
+  /* The doors, riders, rider slots and towels this returns are all built
+     further down. They were briefly stubbed empty here by a parallel branch
+     that had not seen the real implementations; a rebase then kept both, which
+     is how four `const` declarations ended up doubled. If you are adding to
+     BusModel, build the thing rather than declaring it twice. */
 
   const quality = ctx.quality;
   const skin = busSkin(ctx.mode);

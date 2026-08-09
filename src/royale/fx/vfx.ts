@@ -115,7 +115,7 @@ import { RARITY_COLOR } from "../types";
 import { WATER } from "../mode/water";
 
 // ---------------------------------------------------------------------------
-// SOAKED — the extended service
+// SPLASH ROYALE — the extended service
 //
 // `VfxService` in types.ts is Drop Zero's contract and stays exactly that.
 // Water adds seven calls on top of it, published on the SAME object, so a
@@ -196,7 +196,7 @@ export interface DryingShimmerOpts {
   strength?: number;
 }
 
-/** Everything SOAKED adds to `VfxService`. */
+/** Everything SPLASH ROYALE adds to `VfxService`. */
 export interface WaterVfxService {
   /** Water hitting something. Replaces `impact()` wholesale in water mode. */
   splash(point: THREE.Vector3, normal: THREE.Vector3, opts?: SplashOpts): void;
@@ -275,7 +275,7 @@ const BUDGETS: Record<QualityTier, VfxBudget> = {
 /** Damage numbers wider than this are clamped; 9999 is well past any weapon. */
 const MAX_DIGITS = 4;
 /**
- * Glyph slots reserved per number. SOAKED appends a droplet glyph after the
+ * Glyph slots reserved per number. SPLASH ROYALE appends a droplet glyph after the
  * digits ("18💧"), so the pool has to be one wider than the digit count. Drop
  * Zero never spends the extra slot; it costs eight floats of buffer per number.
  */
@@ -327,7 +327,7 @@ const RAMP = {
   /** Steam / light water vapour — near-white, high alpha, quick out. */
   steam: 23,
 
-  // --- SOAKED ---------------------------------------------------------------
+  // --- SPLASH ROYALE ---------------------------------------------------------------
   // Water reads through TRANSPARENCY and SPARKLE, never as blue paint, so
   // every row below is authored near white with only a breath of cyan in it.
   // The moment a droplet ramp goes properly blue it stops looking like water
@@ -837,7 +837,7 @@ const DAMAGE_HEADSHOT = 0xffc23d;
 const NUMERAL_OUTLINE = new THREE.Color(0x0a0b0d);
 
 // ---------------------------------------------------------------------------
-// SOAKED — soak numbers
+// SPLASH ROYALE — soak numbers
 //
 // Same three-way split as damage numbers, restated in water. The rule the
 // classic palette obeys still holds: exactly one warm colour, and it belongs
@@ -853,7 +853,7 @@ const SOAK_OUTLINE = new THREE.Color(0x061a26);
 const NUMERAL_DROPLET = 14;
 
 // ---------------------------------------------------------------------------
-// SOAKED — splash recipes
+// SPLASH ROYALE — splash recipes
 //
 // Splash replaces the whole impact family in water mode. Same principle as
 // IMPACTS above: the surface has to be legible from the splash alone, because
@@ -1540,9 +1540,9 @@ function makeDecalAtlas(edge: number, rng: () => number, splat: boolean): THREE.
     });
   }
 
-  // --- Blood, or in SOAKED, water splats -------------------------------------
+  // --- Blood, or in SPLASH ROYALE, water splats -------------------------------------
   //
-  // Nothing bleeds in SOAKED, so these two cells are dead weight there — and a
+  // Nothing bleeds in SPLASH ROYALE, so these two cells are dead weight there — and a
   // wet patch has nowhere else to live, because every other cell in the atlas
   // carries either radial cracks or a hard dark core and both of those read as
   // damage rather than as damp. Rather than grow the atlas past 4x4 (which the
@@ -2276,7 +2276,7 @@ void main() {
 `;
 
 // ---------------------------------------------------------------------------
-// SOAKED — glue strand
+// SPLASH ROYALE — glue strand
 //
 // The one effect in this file that is not a particle. A strand connects two
 // things that are both moving, so its shape has to be rebuilt every frame on
@@ -3909,7 +3909,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   const liveBeams: THREE.Object3D[] = [];
 
   // =========================================================================
-  // SOAKED — glue strands
+  // SPLASH ROYALE — glue strands
   //
   // A small fixed pool, built at boot ONLY in water mode: the material is a
   // tenth ShaderMaterial and a program that only ever compiles on the first
@@ -4345,7 +4345,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
    *   7. a brief point light, camera trauma and a white screen pop
    */
   function doExplosion(point: THREE.Vector3, scale = 1): void {
-    // In SOAKED there is no combustion anywhere on the island. Everything that
+    // In SPLASH ROYALE there is no combustion anywhere on the island. Everything that
     // used to detonate bursts instead, at the same authored scale, so callers
     // that already pass a sensible blast size need no changes at all.
     if (water) {
@@ -5109,7 +5109,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   }
 
   // =========================================================================
-  // SOAKED — the water recipes
+  // SPLASH ROYALE — the water recipes
   //
   // The whole look of this game is water, so this is the loudest section in
   // the file. Three rules govern everything below, and every one of them is a
@@ -5760,7 +5760,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   /**
    * Mist in place of smoke. Same staggered-delay plume, near-white and cool,
    * drifting rather than billowing. Grey smoke on a sunny block party map is
-   * the fastest way to make SOAKED look like Drop Zero with a filter on it.
+   * the fastest way to make SPLASH ROYALE look like Drop Zero with a filter on it.
    */
   function doWaterMist(point: THREE.Vector3, amount = 1): void {
     const a = THREE.MathUtils.clamp(amount, 0.1, 6);

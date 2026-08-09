@@ -22,7 +22,7 @@ import { makeRng } from "../types";
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
   quality?: QualityTier;
-  /** `water` boots SOAKED instead of Drop Zero. See WorldCtx.mode. */
+  /** `water` boots SPLASH ROYALE instead of Drop Zero. See WorldCtx.mode. */
   mode?: GameMode;
   seed?: number;
 }

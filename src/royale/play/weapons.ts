@@ -2777,7 +2777,7 @@ interface Projectile {
 
 // ---------------------------------------------------------------- water
 //
-// SOAKED. Everything from here to the end of this block is inert in `classic`
+// SPLASH ROYALE. Everything from here to the end of this block is inert in `classic`
 // — none of it is constructed, none of it is stepped, and `ctx.mode` is read
 // once into a const so the branch is a single boolean test rather than a
 // string compare in the hot path.
@@ -2993,7 +2993,7 @@ export interface WeaponsService {
   readonly reloading: boolean;
   readonly firing: boolean;
 
-  // ---- SOAKED ----------------------------------------------------------
+  // ---- SPLASH ROYALE ----------------------------------------------------------
   /**
    * The water gun a def id re-skins, or null in `classic`. Accepts either
    * spelling of the id — a water id or the archetype it rides on.
@@ -3030,7 +3030,7 @@ export interface WeaponHudPayload {
   scoped: boolean;
   ads: number;
 
-  // ---- SOAKED. Absent in `classic`; a HUD that ignores them is still correct.
+  // ---- SPLASH ROYALE. Absent in `classic`; a HUD that ignores them is still correct.
   /** True when this payload describes a soaker rather than a gun. */
   water?: boolean;
   /** Tank units left and capacity. Mirrors `ammo`/`magSize` for a water HUD. */
@@ -3094,7 +3094,7 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
   /**
    * The mode seam. Read once: `/drop-zero` is live and its loop is verified,
    * so every water behaviour in this file sits behind this boolean and classic
-   * takes the exact code path it took before SOAKED existed.
+   * takes the exact code path it took before SPLASH ROYALE existed.
    */
   const isWater = ctx.mode === "water";
 
@@ -3476,7 +3476,7 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
   }
 
   // ---- water ------------------------------------------------------------
-  // Three InstancedMeshes and two pools, and only in SOAKED: `classic` never
+  // Three InstancedMeshes and two pools, and only in SPLASH ROYALE: `classic` never
   // allocates a byte of this. Water reads through transparency, a very low
   // roughness and the environment map — never as blue paint — so the same
   // material serves a stream slug, a splash droplet and a thrown balloon, and
@@ -3770,7 +3770,7 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
     if (player.state === "dead" || player.state === "down") return true;
     if (player.state === "bus" || player.state === "skydive" || player.state === "glide") return true;
     if (ctx.services.build?.selected || ctx.input.buildKind) return true;
-    // In SOAKED a fistful of water balloons is a live weapon even though there
+    // In SPLASH ROYALE a fistful of water balloons is a live weapon even though there
     // is no gun entry behind it. Classic has no throwables and is unchanged.
     if (isWater && balloonItem) return false;
     return !entry;
@@ -3974,7 +3974,7 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
     const hadShield = target.shield > 0;
     const wasAlive = target.alive && target.hp > 0;
 
-    // Nobody gets hurt in SOAKED, so a faceful is worth far less than a
+    // Nobody gets hurt in SPLASH ROYALE, so a faceful is worth far less than a
     // headshot is. Combat will apply its own default multiplier to a weapon id
     // it does not know; undo it and apply the water table's instead.
     if (impact === "water" && headshot && combat) {
@@ -5367,7 +5367,7 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
   /**
    * The tank, not the magazine.
    *
-   * Two ways to get water back, and they are the reason SOAKED has a map loop
+   * Two ways to get water back, and they are the reason SPLASH ROYALE has a map loop
    * at all:
    *
    *  - **Pump (R).** Draws on the water you are carrying, at `refillRate` a

@@ -25,7 +25,7 @@ import ninjaArt from "@/assets/worlds/ninja.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import dropZeroArt from "@/assets/worlds/drop-zero.jpg";
-import soakedArt from "@/assets/worlds/soaked.jpg";
+import splashRoyaleArt from "@/assets/worlds/splash-royale.jpg";
 import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
@@ -78,7 +78,7 @@ export const WORLD_ART: Record<string, string> = {
   sf: sanFranciscoArt,
   "san-palmas": sanPalmasArt,
   "drop-zero": dropZeroArt,
-  soaked: soakedArt,
+  "splash-royale": splashRoyaleArt,
   ski: skiArt,
   space: spaceArt,
   terminal: terminalArt,

@@ -1,5 +1,5 @@
 /**
- * SOAKED — multiplayer transport over Supabase Realtime.
+ * SPLASH ROYALE — multiplayer transport over Supabase Realtime.
  *
  * The battle-royale twin of `src/components/city/multiplayer.ts`, which has
  * been carrying Vibe City in production for months: one channel per room,
@@ -243,7 +243,7 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
       try {
         fn(from, payload);
       } catch (err) {
-        console.warn(`[SOAKED net] handler for "${kind}" threw:`, err);
+        console.warn(`[SPLASH ROYALE net] handler for "${kind}" threw:`, err);
       }
     }
   };
@@ -355,14 +355,14 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
         // instead of at module scope where it would take the route down.
         ({ supabase } = await import("@/integrations/supabase/client"));
       } catch (err) {
-        console.warn("[SOAKED net] Supabase unavailable; playing solo.", err);
+        console.warn("[SPLASH ROYALE net] Supabase unavailable; playing solo.", err);
         announce();
         return false;
       }
       if (disposed || token !== joinToken) return false;
 
       try {
-        const ch = supabase.channel(`soaked-${wanted}`, {
+        const ch = supabase.channel(`splash-${wanted}`, {
           config: {
             presence: { key: selfId },
             broadcast: { self: false, ack: false },
@@ -427,7 +427,7 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
         announce();
         return connected;
       } catch (err) {
-        console.warn("[SOAKED net] could not join room; playing solo.", err);
+        console.warn("[SPLASH ROYALE net] could not join room; playing solo.", err);
         teardownChannel();
         announce();
         return false;

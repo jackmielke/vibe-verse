@@ -36,7 +36,7 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
-  "soaked",              // …and then the water fight, which is the one you send to a friend
+  "splash-royale",       // …and then the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -190,7 +190,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🪂",
     kind: "game",
     blurb:
-      "The original: bullets, health bars and a purple storm. The same island Soaked is played on, from before anyone filled the guns with water.",
+      "The original: bullets, health bars and a purple storm. The same island Splash Royale is played on, from before anyone filled the guns with water.",
     status: "Playable — the pre-water build",
     accent: "#818cf8",
     /* Deliberately not featured and not in the nav. It is the same engine with
@@ -200,10 +200,12 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
-    key: "soaked",
-    route: "/soaked",
-    aliases: ["/water-fight", "/soak"],
-    name: "Soaked",
+    key: "splash-royale",
+    route: "/splash-royale",
+    /* /soaked was the name for about a day. It stays an alias because links
+       were already shared, and a dead link is a worse cost than a stale word. */
+    aliases: ["/splash", "/soaked", "/water-fight", "/soak"],
+    name: "Splash Royale",
     emoji: "💦",
     kind: "game",
     blurb:

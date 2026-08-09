@@ -37,7 +37,7 @@
  * Everything is `pointer-events-none` except the buttons on the end cards
  * and, in water mode, the chat input.
  *
- * ## SOAKED (`engine.ctx.mode === "water"`)
+ * ## SPLASH ROYALE (`engine.ctx.mode === "water"`)
  *
  * The same HUD, re-lettered. Health becomes DRYNESS, shield becomes the
  * PONCHO, the magazine becomes a TANK, "eliminated" becomes "soaked" — and
@@ -143,11 +143,11 @@ const MAT_STYLE: Record<"wood" | "stone" | "metal", MaterialStyle> = {
 };
 
 /* ------------------------------------------------------------------------ *
- * SOAKED palette
+ * SPLASH ROYALE palette
  *
  * Everything here is derived from `mode/water.ts` rather than picked by eye,
  * so the bar, the map ring and the built wall in the world are all the same
- * blue. The one thing invented locally is the *plate*: SOAKED's overlay sits
+ * blue. The one thing invented locally is the *plate*: SPLASH ROYALE's overlay sits
  * on a sunnier render than Drop Zero's, so the panels lighten and pick up a
  * cyan rim instead of the cold near-black.
  * ------------------------------------------------------------------------ */
@@ -340,7 +340,7 @@ interface Live {
   /** Rolling clock the minimap uses for dashes and pulses. */
   t: number;
 
-  // ---- SOAKED -----------------------------------------------------------
+  // ---- SPLASH ROYALE -----------------------------------------------------------
   /**
    * Dryness and poncho, 0..max. These default to `health`/`shield` because
    * the water player rides the same `PlayerService` and publishes the same
@@ -708,7 +708,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
   const clock = useMemo(() => new HudClock(), []);
   const nextId = useRef(1);
 
-  /** SOAKED or Drop Zero. Fixed at boot, so it is safe to read once. */
+  /** SPLASH ROYALE or Drop Zero. Fixed at boot, so it is safe to read once. */
   const water = engine.ctx.mode === "water";
 
   const [slots, setSlots] = useState<SlotMeta[]>(emptySlots);
@@ -805,7 +805,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
         setPlayerState(s);
       }
       // Water vitals. Defaulting off health/shield means the dryness meter is
-      // live the moment SOAKED boots, whether or not the player system has
+      // live the moment SPLASH ROYALE boots, whether or not the player system has
       // started publishing the water-specific fields yet.
       l.dry = num(d.dry, l.health);
       l.dryMax = Math.max(1, num(d.maxDry, l.maxHealth));
@@ -1182,7 +1182,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       setMap(buildMapModel(num(d.worldSize, 1500), pads));
     });
 
-    // ---- SOAKED ---------------------------------------------------------
+    // ---- SPLASH ROYALE ---------------------------------------------------------
     // Dormant in classic: `dz:glue` is never emitted there, so the prompt
     // never mounts and this handler never runs.
     on("dz:glue", (p) => {
@@ -1480,7 +1480,7 @@ function Vitals({ clock, live }: PanelProps) {
 }
 
 /* ------------------------------------------------------------------------ *
- * SOAKED — dryness + poncho
+ * SPLASH ROYALE — dryness + poncho
  *
  * The health bar, restated. Three things make it a *water* bar rather than a
  * recoloured one:
@@ -1736,7 +1736,7 @@ const MAT_ICON: Record<"wood" | "stone" | "metal", () => ReactElement> = {
   metal: MetalIcon,
 };
 
-/* ---- SOAKED build materials: pool noodles, deck planks, corrugated tarp -- */
+/* ---- SPLASH ROYALE build materials: pool noodles, deck planks, corrugated tarp -- */
 
 function NoodleIcon() {
   const c = WATER.materials.wood;
@@ -1937,7 +1937,7 @@ function InventoryBar({
       setText(reserves.current[i], `${a.reserve}`, tStore.current, 6 + i);
       setText(counts.current[i], a.count > 1 ? `x${a.count}` : "", tStore.current, 12 + i);
 
-      // SOAKED: the slot itself is the tank. Water fills it from the bottom,
+      // SPLASH ROYALE: the slot itself is the tank. Water fills it from the bottom,
       // so a glance across the bar tells you which gun still has a shot in it
       // without reading a single number.
       const tank = tanks.current[i];
@@ -1986,7 +1986,7 @@ function InventoryBar({
                 backdropFilter: "blur(3px)",
               }}
             >
-              {/* Tank water level (SOAKED only) — behind the item art. */}
+              {/* Tank water level (SPLASH ROYALE only) — behind the item art. */}
               {water && s.isWeapon && (
                 <div
                   ref={(el) => {
@@ -2063,7 +2063,7 @@ function InventoryBar({
             </div>
 
             {/* Ammo, under the slot: mag big, reserve small — the shooter read.
-                In SOAKED there is no reserve; a tank is topped up, not swapped,
+                In SPLASH ROYALE there is no reserve; a tank is topped up, not swapped,
                 so the second number would always be a lie. */}
             <div className="mt-1 flex h-[15px] items-baseline justify-center gap-1">
               {showAmmo && (
@@ -2139,7 +2139,7 @@ function ConsumeBar({ clock, live, consume }: PanelProps & { consume: { name: st
 }
 
 /* ------------------------------------------------------------------------ *
- * SOAKED — tank readout
+ * SPLASH ROYALE — tank readout
  *
  * The magazine counter, restated. It reads as a water level rather than a
  * number pair because that is what it is: the tank is topped up continuously
@@ -2228,7 +2228,7 @@ function TankStatus({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }) 
 }
 
 /* ------------------------------------------------------------------------ *
- * SOAKED — multiplayer panels
+ * SPLASH ROYALE — multiplayer panels
  *
  * The three things a water fight with friends needs that a solo BR does not:
  * a code you can read out loud, a list of who is on your side and how wet
@@ -3001,7 +3001,7 @@ function AliveBlock({ clock, live, water = false }: PanelProps & { water?: boole
  * ------------------------------------------------------------------------ */
 
 /**
- * The elimination feed. In SOAKED nobody is eliminated — they are SOAKED, and
+ * The elimination feed. In SPLASH ROYALE nobody is eliminated — they are SOAKED, and
  * the line says so in words rather than leaving a gun icon to imply it. The
  * verb comes out of `eliminatedFeed` so the whole feed re-words from one table
  * entry.
@@ -3536,7 +3536,7 @@ function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolea
     setOpacity(storm.current, l.stormVeil, oStore.current, 0);
     // Low health is a heartbeat, not a constant tint: it has to be noticeable
     // in peripheral vision while you are looking at someone else's crosshair.
-    // In SOAKED the same channel carries "nearly soaked", and it is dialled
+    // In SPLASH ROYALE the same channel carries "nearly soaked", and it is dialled
     // back hard — the bar drips and glows for that; the screen should not also
     // close in on you, because getting wet is not dying.
     const lowT = water

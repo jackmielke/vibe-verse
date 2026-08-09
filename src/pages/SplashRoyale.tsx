@@ -24,9 +24,9 @@ import Lobby from "@/royale/ui/Lobby";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
-export default function Soaked() {
+export default function SplashRoyale() {
   // Passport: every world records that you were here. See lib/passport.ts.
-  useWorldStamp("/soaked", "Soaked");
+  useWorldStamp("/splash-royale", "Splash Royale");
 
   const { displayName } = useVibeIdentity();
 

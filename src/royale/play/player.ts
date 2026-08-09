@@ -36,7 +36,7 @@
  * armpits, the inside of the collar and the underside of every part are
  * darker. Uniform albedo is what plastic looks like.
  *
- * ## SOAKED (`ctx.mode === "water"`)
+ * ## SPLASH ROYALE (`ctx.mode === "water"`)
  *
  * The same capsule, the same drop, the same camera — one seam. In water mode
  * this module additionally owns:
@@ -56,7 +56,7 @@
  *  - **The wire.** `net.publishPose` every frame, and a wet footprint trail.
  *
  * Nobody is hurt here and nothing dies. At zero dryness you slump, squelch and
- * are out — which is why the beat is called SOAKED and not "eliminated".
+ * are out — which is why the beat is called SPLASH ROYALE and not "eliminated".
  */
 import * as THREE from "three";
 import type {
@@ -158,7 +158,7 @@ const SLIDE_ACCEL = 21;
 const FALL_SAFE = -22;
 const FALL_DAMAGE_PER_MS = 3.6;
 
-// ---- SOAKED -------------------------------------------------------------
+// ---- SPLASH ROYALE -------------------------------------------------------------
 // Everything below is water-mode only. Numbers that describe the *rules* live
 // in `mode/water.ts` and are imported; the numbers here describe how this
 // particular body reacts to them, which is nobody else's business.
@@ -1903,9 +1903,9 @@ interface HudPayload {
   yaw: number;
   pitch: number;
 
-  // ---- SOAKED. Present in both modes; meaningless (and inert) in classic,
+  // ---- SPLASH ROYALE. Present in both modes; meaningless (and inert) in classic,
   // so a HUD can read them unconditionally and branch on `water`.
-  /** True when this is SOAKED and the fields below mean something. */
+  /** True when this is SPLASH ROYALE and the fields below mean something. */
   water: boolean;
   /** 0..100. The same number as `health`, named for what it is. */
   dryness: number;
@@ -1958,11 +1958,11 @@ export interface DropZeroPlayerService extends PlayerService {
    */
   placeOnGround(p: THREE.Vector3): void;
 
-  // ------------------------------------------------------------- SOAKED
+  // ------------------------------------------------------------- SPLASH ROYALE
   // These exist in both modes. In `classic` they read off health/shield and
   // the mutators are no-ops, so a caller never has to ask what mode it is.
 
-  /** 0..100. Aliases `health`, because in SOAKED that is what health is. */
+  /** 0..100. Aliases `health`, because in SPLASH ROYALE that is what health is. */
   readonly dryness: number;
   /** 0..100. Aliases `shield`. */
   readonly poncho: number;
@@ -2092,7 +2092,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       return phase === "warmup" || phase === "bus" || phase === "dropping" || phase === "live";
     },
 
-    // ---------------------------------------------------------- SOAKED
+    // ---------------------------------------------------------- SPLASH ROYALE
     get dryness() {
       return service.health;
     },
@@ -2225,14 +2225,17 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   const busDir = new THREE.Vector3(0, 0, -1);
   const busRight = new THREE.Vector3(1, 0, 0);
   /**
-   * Pinch-to-zoom, accumulated between frames and consumed by the camera.
+   * Pinch span, the other half of the touch zoom whose scale is declared above.
    *
    * `InputState` has a wheel and no pinch, and input.ts belongs to somebody
    * else, so the two fingers are read here. Passive listeners on `window`, no
    * `preventDefault`, and only ever consulted while riding the bus — the touch
    * driver's twin-stick keeps every gesture it already owns.
+   *
+   * `pinchScale` itself is declared with the bus camera state further up. Two
+   * parallel branches each added one and a rebase kept both, which is how this
+   * file briefly had the same `let` twice.
    */
-  let pinchScale = 1;
   let pinchSpan = 0;
 
   // ---- animation state ---------------------------------------------------
@@ -2246,7 +2249,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   let downTimer = 0;
   const DOWN_TIME = 45;
 
-  // ---- SOAKED state ------------------------------------------------------
+  // ---- SPLASH ROYALE state ------------------------------------------------------
 
   /** Squad id. Published with every pose; peers on it are not soakable. */
   let team: string | null = null;
@@ -2268,7 +2271,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   /** Simulated-second accumulators for the trail and the drips. */
   let trackTimer = 0;
   let dripAccum = 0;
-  /** Set once we hit zero dryness, so the SOAKED beat fires exactly once. */
+  /** Set once we hit zero dryness, so the SPLASH ROYALE beat fires exactly once. */
   let soakedOut = false;
 
   /** Face-down timer and its immunity window, both in simulated seconds. */
@@ -2403,7 +2406,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     if (water) {
       /**
-       * SOAKED: the poncho eats water at a discount and a little always bleeds
+       * SPLASH ROYALE: the poncho eats water at a discount and a little always bleeds
        * through, so a fully-ponchoed player still visibly gets wetter. All of
        * that lives in `applySoak` — this is the one place that calls it, which
        * is why every other system can keep calling plain `damage()`.
@@ -2697,7 +2700,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     });
   }
 
-  // ---- SOAKED: dryness, slip, tracks -------------------------------------
+  // ---- SPLASH ROYALE: dryness, slip, tracks -------------------------------------
 
   /** Stable id for anything that identifies this player over the wire. */
   const selfId = (): string => ctx.services.net?.selfId ?? "player";
@@ -2821,7 +2824,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (service.health <= 0 && !soakedOut) enterDown();
   }
 
-  // ---- SOAKED: glue ------------------------------------------------------
+  // ---- SPLASH ROYALE: glue ------------------------------------------------------
 
   /**
    * Attach a strand. Called for BOTH ends of a player-to-player link — once
@@ -3004,7 +3007,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     return slow;
   }
 
-  // ---- SOAKED: the stumble -----------------------------------------------
+  // ---- SPLASH ROYALE: the stumble -----------------------------------------------
 
   /**
    * Go down. A real tumble you get up from — never a stun.
@@ -3035,7 +3038,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     ctx.emit("dz:stumble", { x: position.x, y: position.y, z: position.z });
   }
 
-  // ---- SOAKED: the wire --------------------------------------------------
+  // ---- SPLASH ROYALE: the wire --------------------------------------------------
 
   /**
    * What we call our movement state on the wire.
@@ -3197,7 +3200,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (Number.isFinite(p.pz)) velocity.z += p.pz as number;
   }
 
-  // ---- SOAKED: drips ------------------------------------------------------
+  // ---- SPLASH ROYALE: drips ------------------------------------------------------
 
   /**
    * Water shed off a soaked body.
@@ -3264,7 +3267,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       ctx.scene.add(dripMesh);
       return true;
     } catch (err) {
-      console.warn("[SOAKED] drip pool failed to build:", err);
+      console.warn("[SPLASH ROYALE] drip pool failed to build:", err);
       dripMesh = null;
       return false;
     }
@@ -3438,7 +3441,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     sinceLanding += dt;
     jumpBuffered = Math.max(0, jumpBuffered - dt);
 
-    // --- SOAKED: dryness, slip, the Downpour --------------------------------
+    // --- SPLASH ROYALE: dryness, slip, the Downpour --------------------------------
     // Unconditional and first: `slip` is read by the friction below, and a
     // drying clock that stops in some states is one players cannot reason
     // about. Costs one branch in classic.
@@ -3462,7 +3465,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       integrate(dt, CROUCH_HEIGHT);
       if (grounded) velocity.y = 0;
       if (service.health > 0) {
-        // Healed back up (a teammate, a rift, a script) — stand up. In SOAKED
+        // Healed back up (a teammate, a rift, a script) — stand up. In SPLASH ROYALE
         // that is a towel: clear the out-flag so the wire stops calling us
         // soaked and the strands can attach again.
         service.state = "ground";
@@ -3556,7 +3559,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (mz < -0.2) speed *= BACK_SCALE;
     if (input.aim && !sprinting) speed *= 0.62;
 
-    // --- SOAKED: glue coupling ----------------------------------------------
+    // --- SPLASH ROYALE: glue coupling ----------------------------------------------
     // Before the friction block, because the strand's pull is an acceleration
     // and has to be damped by the same friction everything else is.
     if (water) {
@@ -3574,7 +3577,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
        * Friction: hard when there is no input, light while steering. Symmetric
        * damping is what makes a controller feel like it is on ice.
        *
-       * In SOAKED, `slip` (from `wetness.frictionAt`) scales it, and a matched
+       * In SPLASH ROYALE, `slip` (from `wetness.frictionAt`) scales it, and a matched
        * share comes off the acceleration too — friction alone gives you a long
        * glide you can still steer out of instantly, which does not read as
        * slipping at all. Both together are the hilarious, recoverable skid.
@@ -4259,7 +4262,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // A hit or a shot shoves the upper body, not just the camera.
     poseOut.rot[J_CHEST * 3] -= fireKick * 1.2;
 
-    // --- SOAKED: the shiver --------------------------------------------------
+    // --- SPLASH ROYALE: the shiver --------------------------------------------------
     // A drenched player standing still has the shakes. Fast, tiny, and it fades
     // out as soon as they are moving, because a shiver on a sprinting character
     // reads as a broken animation rather than as being cold.
@@ -4323,7 +4326,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
   }
 
-  // ---- SOAKED: the wet look -----------------------------------------------
+  // ---- SPLASH ROYALE: the wet look -----------------------------------------------
 
   /** Base albedo tint of each body material, captured once so we can restore it. */
   const dryTint: THREE.Color[] = [];
@@ -4434,7 +4437,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     window.addEventListener("touchcancel", onPinchEnd, { passive: true });
   }
 
-  // --- SOAKED wiring --------------------------------------------------------
+  // --- SPLASH ROYALE wiring --------------------------------------------------------
   // Local events first: `dz:glue` fires when OUR gun sticks (we are the near
   // end and feel the pull too), `dz:soak` carries the knockback weapons asked
   // for. Both are no-ops outside water mode.
@@ -4526,7 +4529,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       }
     }
 
-    // --- SOAKED: the wire and the wet look -----------------------------------
+    // --- SPLASH ROYALE: the wire and the wet look -----------------------------------
     // Before the animation, because `wetLook` is what the shiver reads.
     if (water) {
       ensureNetBound();

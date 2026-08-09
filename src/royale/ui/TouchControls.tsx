@@ -1,5 +1,5 @@
 /**
- * DROP ZERO / SOAKED — the on-screen touch controls.
+ * DROP ZERO / SPLASH ROYALE — the on-screen touch controls.
  *
  * A battle royale whose whole identity is *building* cannot ship a phone
  * build with a move stick and a fire tap. `engine/input.ts` already turns the
@@ -108,7 +108,7 @@ const asKind = (v: unknown): BuildKind | null => {
  * Palette
  *
  * Same reasoning as the HUD's: this sits on a saturated outdoor render and
- * needs its own dark plate rather than a Tailwind token. SOAKED lightens it
+ * needs its own dark plate rather than a Tailwind token. SPLASH ROYALE lightens it
  * and goes cyan, Drop Zero stays cold and near-black.
  * ------------------------------------------------------------------------ */
 

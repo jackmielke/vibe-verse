@@ -1,5 +1,5 @@
 /**
- * SOAKED — remote player rendering ("ghosts").
+ * SPLASH ROYALE — remote player rendering ("ghosts").
  *
  * `net.ts` gets other people's positions into this browser. This file is the
  * reason you can see them. Without it multiplayer is a chat log with a
@@ -168,7 +168,7 @@ function hashString(s: string): number {
  * The states a peer can publish, folded into the handful of poses the rig
  * actually knows how to strike.
  *
- * `NetPose.state` is a free string on purpose (see `net/types.ts`) — SOAKED
+ * `NetPose.state` is a free string on purpose (see `net/types.ts`) — SPLASH ROYALE
  * adds states DROP ZERO never had, and more will arrive. Anything unknown
  * lands on "ground", which is a walk cycle, which is never a T-pose. That
  * fallback is the entire reason this is a lookup and not a switch.

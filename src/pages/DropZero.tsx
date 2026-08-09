@@ -36,11 +36,11 @@ const WATER_CONTROLS: [string, string][] = CONTROLS.map(([k, a]) =>
 
 export default function DropZero() {
   // Passport: every world records that you were here. See lib/passport.ts.
-  /* This route boots SOAKED by default, so it stamps Soaked's passport entry.
+  /* This route boots SPLASH ROYALE by default, so it stamps its passport entry.
      `?mode=classic` still plays the original build, but the classic mode is a
      variant of one world rather than a second world, and giving a variant its
      own stamp would make the passport count the same island twice. */
-  useWorldStamp("/soaked", "Soaked");
+  useWorldStamp("/splash-royale", "Splash Royale");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -151,7 +151,7 @@ export default function DropZero() {
             The Vibeverse presents
           </p>
           <h1 className="mt-3 bg-gradient-to-b from-white via-sky-200 to-indigo-400 bg-clip-text text-6xl font-black tracking-tight text-transparent drop-shadow-[0_2px_28px_rgba(99,102,241,0.45)] sm:text-8xl">
-            {water ? "SOAKED" : "DROP ZERO"}
+            {water ? "SPLASH ROYALE" : "DROP ZERO"}
           </h1>
           <p className="mt-2 max-w-md text-center text-sm text-indigo-100/70">
             {water

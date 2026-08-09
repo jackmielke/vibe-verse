@@ -1,5 +1,5 @@
 /**
- * SOAKED — multiplayer transport contract.
+ * SPLASH ROYALE — multiplayer transport contract.
  *
  * This lives here rather than in `royale/types.ts` because the battle-royale
  * engine contract predates the water fight and is shared with the shipped,
@@ -60,7 +60,7 @@ export interface NetPose {
   pitch: number;
   /**
    * Movement state. Kept as a plain string rather than the engine's
-   * `PlayerState` union: SOAKED adds states (`stumble`, `glued`) that the
+   * `PlayerState` union: SPLASH ROYALE adds states (`stumble`, `glued`) that the
    * DROP ZERO contract does not know about, and a transport should not be
    * the thing that blocks a new one.
    */

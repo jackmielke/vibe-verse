@@ -61,7 +61,7 @@ const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
    system, weapons and bots, ~65k lines. Lazy for the same reason as the rest:
    nobody who never drops in should carry an island in the hub's entry chunk. */
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
-const Soaked = lazy(() => import("./pages/Soaked.tsx"));
+const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
 /* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
 /* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
@@ -310,13 +310,13 @@ const App = () => (
           {/* SOAKED — the water-gun cut of Drop Zero. Same island, same 22
               systems, `mode: "water"`. Multiplayer: a room code in the URL
               (?room=SPLASH-4B2) drops a friend straight into your match. */}
-          {["/soaked", "/water-fight", "/soak"].map((path) => (
+          {["/splash-royale", "/splash", "/soaked", "/water-fight", "/soak"].map((path) => (
             <Route
               key={path}
               path={path}
               element={
                 <Suspense fallback={<div className="fixed inset-0 bg-[#3fb8ee]" />}>
-                  <Soaked />
+                  <SplashRoyale />
                 </Suspense>
               }
             />

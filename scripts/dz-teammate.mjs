@@ -24,7 +24,7 @@
  *    own. Point it at a room code and it is in the match.
  *
  * WIRE PROTOCOL — mirrored from src/royale/net/net.ts. Keep in sync.
- *   channel   `soaked-<NORMALISED-ROOM-CODE>`
+ *   channel   `splash-<NORMALISED-ROOM-CODE>`
  *   presence  key = our peer id, meta = { name, team, agent }
  *   broadcast "pose" → { i, x, y, z, a(yaw), p(pitch), s(state), d(dry),
  *                        t(team), n(name), g(1 when an agent) }
@@ -835,7 +835,7 @@ async function connect() {
     realtime: { params: { eventsPerSecond: 24 } },
   });
 
-  channel = supabase.channel(`soaked-${ROOM}`, {
+  channel = supabase.channel(`splash-${ROOM}`, {
     config: {
       presence: { key: SELF_ID },
       broadcast: { self: false, ack: false },
