@@ -13,7 +13,7 @@
  * So: one page, at `/coin`, answering to `/vibe` and `/wallet` too. It is a
  * story rather than a dashboard, and the story is the actual product:
  *
- *   1. **Make a Vibey account.** An email and a six-digit code. This is the
+ *   1. **MAKE A VIBE VERSE ACCOUNT.** An email and a six-digit code. This is the
  *      thing that has to be easy, because everything below it is worthless if
  *      nobody gets past it.
  *   2. **Earn Vibecoin.** Playing games. No wallet, no crypto, no decisions.
@@ -192,7 +192,7 @@ export default function VibeHub() {
           </div>
 
           {/* ---- 1. The account ---- */}
-          <Step n={1} title="Make a Vibey account" done={!isGuest}>
+          <Step n={1} title="MAKE A VIBE VERSE ACCOUNT" done={!isGuest}>
             {isGuest ? (
               <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
                 <p className="text-[11.5px] leading-relaxed text-muted-foreground">
