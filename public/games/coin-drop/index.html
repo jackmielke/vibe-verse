@@ -120,8 +120,9 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Step 1 of 4: load the SDK. Same-origin here; a third-party game would
-     point at https://thevibeverse.xyz/vibeverse.js -->
+<!-- Step 1 of 4: load the SDK. A relative path works here because this game is
+     served by the vibeverse itself; a game hosted anywhere else points at the
+     absolute URL, which the /build page prints with the right host in it. -->
 <script src="/vibeverse.js"></script>
 <script>
 (function () {

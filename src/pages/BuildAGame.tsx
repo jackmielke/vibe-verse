@@ -21,7 +21,16 @@ import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { listPortalGames, type PortalGameListing } from "@/portal/api";
 import { VIBECOIN_GLYPH, VIBECOIN_NAME } from "@/lib/vibecoin";
 
-const SNIPPET = `<script src="https://thevibeverse.xyz/vibeverse.js"></script>
+/**
+ * The snippet, with the SDK's real URL in it.
+ *
+ * Derived from wherever this page is being served rather than typed in as a
+ * constant. The first cut hard-coded a domain that did not exist, which makes
+ * the one thing on the page somebody is guaranteed to copy the one thing that
+ * cannot work — and nothing in a build or a test would ever have caught it.
+ */
+function snippet(origin: string): string {
+  return `<script src="${origin}/vibeverse.js"></script>
 <script>
   // 1. say hello — tells you what a coin is called and what you can pay
   const vibe = await Vibeverse.ready();
@@ -35,6 +44,7 @@ const SNIPPET = `<script src="https://thevibeverse.xyz/vibeverse.js"></script>
   // 4. a way out, if you want one of your own
   Vibeverse.exit();
 </script>`;
+}
 
 function Copyable({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -73,6 +83,7 @@ function Rule({ title, children }: { title: string; children: React.ReactNode })
 export default function BuildAGame() {
   useWorldStamp("/build", "The Portal");
   const [games, setGames] = useState<PortalGameListing[] | null>(null);
+  const code = snippet(window.location.origin);
 
   useEffect(() => {
     let live = true;
@@ -115,7 +126,7 @@ export default function BuildAGame() {
             The whole API
           </h2>
           <div className="mt-3">
-            <Copyable text={SNIPPET} />
+            <Copyable text={code} />
           </div>
           <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
             That is all of it. No build step, no npm install, no key, no

@@ -2,9 +2,11 @@
  * vibeverse.js — put your game in the Vibeverse and let it pay its players.
  *
  * One file. No build step, no dependency, no account, no key. Drop it next to
- * your game, add one script tag, and call three functions:
+ * your game, add one script tag, and call three functions. (The `/build` page
+ * on the vibeverse prints this snippet with the right host already in it —
+ * copy it from there rather than from here.)
  *
- *     <script src="https://thevibeverse.xyz/vibeverse.js"></script>
+ *     <script src="https://<the-vibeverse>/vibeverse.js"></script>
  *     <script>
  *       const vibe = await Vibeverse.ready();
  *       // …your game…
