@@ -20,10 +20,14 @@ export const REPO_URL = "https://github.com/jackmielke/vibe-verse";
 
 export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "about": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "2565fa3", iso: "2026-05-10T17:24:25-07:00", subject: "Mobile: push page chrome below the global nav strip" },
+    { sha: "6c1cfa1", iso: "2026-05-08T23:21:56-07:00", subject: "Hover labels actually hidden + closer fly-in + 3D About page" },
   ],
   "agent-lobby": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "1dae49a", iso: "2026-06-21T02:08:47+00:00", subject: "Changes" },
+    { sha: "433a560", iso: "2026-06-21T02:08:42+00:00", subject: "Changes" },
+    { sha: "ba2e953", iso: "2026-06-18T04:29:51+00:00", subject: "Point /world at the live vibe-world backend; drop redundant agent-lobby" },
+    { sha: "809331d", iso: "2026-06-18T03:33:59+00:00", subject: "Add Agent Lobby — an always-on world agents can join over HTTP" },
   ],
   "airplane": [
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
@@ -47,7 +51,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "5d2184a", iso: "2026-08-02T03:38:24+00:00", subject: "There was no way into the game on a phone" },
   ],
   "characters": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "991bdec", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
+    { sha: "d9cd716", iso: "2026-07-02T19:19:25+00:00", subject: "Vibe karts, cleaner clouds, VibeVerse marquee, saved character" },
+    { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
@@ -58,30 +64,32 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
   "coin": [
+    { sha: "bad92a2", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
+    { sha: "d7e7287", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
+    { sha: "cf59d39", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
+    { sha: "d6a41e1", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
     { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "6a03371", iso: "2026-08-09T06:21:36+00:00", subject: "Changes" },
-    { sha: "ef0da06", iso: "2026-08-09T06:15:30+00:00", subject: "Changes" },
-    { sha: "72220d1", iso: "2026-08-09T06:15:21+00:00", subject: "Changes" },
-    { sha: "093f8c0", iso: "2026-08-09T06:14:50+00:00", subject: "Changes" },
-    { sha: "f2719fe", iso: "2026-08-09T05:43:43+00:00", subject: "The wink stops spinning, and starts meaning \"real\"" },
   ],
   "companions": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "eef5ac5", iso: "2026-07-13T09:47:28+00:00", subject: "✨ Agent Lab: hatched companions gently bob (feel alive)" },
+    { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
   "drop-zero": [
+    { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
+    { sha: "7fef527", iso: "2026-08-09T16:01:45+00:00", subject: "Checkpoint: the water death pass, mid-flight but green" },
+    { sha: "76b6afe", iso: "2026-08-09T15:37:16+00:00", subject: "SPLASH ROYALE, and a repair to a rebase that broke main" },
+    { sha: "375e5d6", iso: "2026-08-09T08:12:36+00:00", subject: "The battle bus is worth looking at now" },
     { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
-    { sha: "a1c3906", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
-    { sha: "e9f4060", iso: "2026-08-08T20:06:42+00:00", subject: "Cover art for Soaked, from the water build" },
-    { sha: "9b3fdc3", iso: "2026-08-07T23:08:53+00:00", subject: "SOAKED: the water-gun battle royale, wired up and playable" },
-    { sha: "c9d20de", iso: "2026-08-07T05:35:53+00:00", subject: "One engine, two games: add the mode seam" },
   ],
   "edm-town": [
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "c02b5ca", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
   ],
   "evolve": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
+    { sha: "aa74eae", iso: "2026-06-12T00:17:23+00:00", subject: "Evolve world (genesis-bloom-evolve) + voice conversations with Vibey" },
   ],
   "fnaf": [
     { sha: "757ca68", iso: "2026-08-02T05:26:54+00:00", subject: "Take the intercom back out" },
@@ -94,13 +102,17 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "garden": [
     { sha: "1bf8d5a", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "9c12ce6", iso: "2026-05-14T04:34:55+00:00", subject: "Changes" },
+    { sha: "cc0a14b", iso: "2026-05-14T04:34:45+00:00", subject: "Changes" },
+    { sha: "a761af7", iso: "2026-05-14T04:34:27+00:00", subject: "Changes" },
+    { sha: "8f21d79", iso: "2026-05-14T03:26:15+00:00", subject: "Changes" },
   ],
   "globetrotter": [
     { sha: "550ec4e", iso: "2026-07-27T04:50:37+00:00", subject: "🌍 Globetrotter — the world, inside the world" },
   ],
   "go": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "0ebad2b", iso: "2026-07-04T19:35:41+00:00", subject: "VIBE FM retro deck, Cloud Kingdom physics fix, VIBE GO gets AR + avatar" },
+    { sha: "28f6b29", iso: "2026-07-04T18:30:13+00:00", subject: "VIBE GO — catch the VibeVerse in the real world (/go)" },
   ],
   "golf": [
     { sha: "d21c8ab", iso: "2026-07-30T23:34:15+00:00", subject: "Merge origin/main into the golf branch" },
@@ -143,7 +155,8 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e6d6df5", iso: "2026-08-06T17:19:43+00:00", subject: "🦇 Four new code-built characters, and the heist stops nagging" },
     { sha: "262ce61", iso: "2026-08-01T19:03:01+00:00", subject: "The character picker was rendering everyone as a silhouette" },
     { sha: "d8bd9f9", iso: "2026-08-01T19:03:00+00:00", subject: "Flux: a pilot with no model file, animated from its own motion" },
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "cab33d8", iso: "2026-07-03T05:12:25+00:00", subject: "Shared world physics, clickable mini emblem, de-glitched ground + signs" },
+    { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "kart": [
     { sha: "26a8a93", iso: "2026-08-07T16:36:48+00:00", subject: "🏁 One Vibe Kart, and a lobby that starts the race for you" },
@@ -155,7 +168,11 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   ],
   "lobby": [
     { sha: "1bf8d5a", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "991bdec", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
+    { sha: "a7f3709", iso: "2026-06-24T21:06:00+00:00", subject: "Changes" },
+    { sha: "fd40c52", iso: "2026-06-24T21:05:53+00:00", subject: "Changes" },
+    { sha: "21f5a45", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
+    { sha: "3931acd", iso: "2026-06-24T21:05:38+00:00", subject: "Changes" },
   ],
   "moon": [
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
@@ -166,10 +183,16 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
   "museum": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
+    { sha: "c5f68f3", iso: "2026-05-14T04:35:33+00:00", subject: "Changes" },
+    { sha: "e35b0e5", iso: "2026-05-14T04:35:24+00:00", subject: "Changes" },
+    { sha: "f9feeb9", iso: "2026-05-14T04:35:09+00:00", subject: "Changes" },
+    { sha: "44a693c", iso: "2026-05-14T02:56:14+00:00", subject: "Changes" },
+    { sha: "1020159", iso: "2026-05-14T02:41:35+00:00", subject: "Changes" },
   ],
   "ninja": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "4232250", iso: "2026-06-12T02:52:26+00:00", subject: "Changes" },
+    { sha: "efe0b65", iso: "2026-06-12T02:00:05+00:00", subject: "Changes" },
   ],
   "orbit": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
@@ -216,16 +239,21 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e1a1fad", iso: "2026-08-07T19:24:56+00:00", subject: "🏝️ One plaza on Vibe Island, and a wallet you can actually find" },
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
+  "space": [
+    { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
+    { sha: "4dcdc8d", iso: "2026-05-14T04:34:10+00:00", subject: "Changes" },
+    { sha: "1217c56", iso: "2026-05-14T04:33:57+00:00", subject: "Changes" },
+    { sha: "c89a83e", iso: "2026-05-14T04:33:49+00:00", subject: "Changes" },
+    { sha: "45648c1", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
+    { sha: "d577da6", iso: "2026-05-14T04:33:23+00:00", subject: "Changes" },
+  ],
   "splash-royale": [
+    { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
+    { sha: "7fef527", iso: "2026-08-09T16:01:45+00:00", subject: "Checkpoint: the water death pass, mid-flight but green" },
+    { sha: "76b6afe", iso: "2026-08-09T15:37:16+00:00", subject: "SPLASH ROYALE, and a repair to a rebase that broke main" },
+    { sha: "375e5d6", iso: "2026-08-09T08:12:36+00:00", subject: "The battle bus is worth looking at now" },
     { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
-    { sha: "a1c3906", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
-    { sha: "e9f4060", iso: "2026-08-08T20:06:42+00:00", subject: "Cover art for Soaked, from the water build" },
-    { sha: "9b3fdc3", iso: "2026-08-07T23:08:53+00:00", subject: "SOAKED: the water-gun battle royale, wired up and playable" },
-    { sha: "c9d20de", iso: "2026-08-07T05:35:53+00:00", subject: "One engine, two games: add the mode seam" },
-  ],
-  "space": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
@@ -236,7 +264,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "99439c8", iso: "2026-08-07T01:20:45+00:00", subject: "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back" },
   ],
   "submit-world": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "1a0094c", iso: "2026-06-15T22:23:49+00:00", subject: "Changes" },
   ],
   "terminal": [
     { sha: "d6c3472", iso: "2026-08-05T22:37:49+00:00", subject: "Changes" },
@@ -249,7 +277,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "cacc859", iso: "2026-08-02T00:00:17+00:00", subject: "The Vibe Times starts actually coming out" },
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "2e13693", iso: "2026-07-18T02:43:29+00:00", subject: "📰 The Vibe Times — the world writes its own newspaper" },
   ],
   "trek": [
     { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },
@@ -276,9 +304,19 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "77ca812", iso: "2026-08-02T06:51:59+00:00", subject: "Fly it with one hand on the mouse, and hit something hard enough to matter" },
   ],
   "village": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
+    { sha: "fbc3fe0", iso: "2026-06-12T00:01:16+00:00", subject: "World picker: choose your world after the splash" },
+    { sha: "7e79b7a", iso: "2026-05-21T20:24:01+00:00", subject: "Changes" },
+    { sha: "e2e9568", iso: "2026-05-18T03:22:24+00:00", subject: "Changes" },
+    { sha: "e24af18", iso: "2026-05-14T04:26:51+00:00", subject: "Changes" },
+    { sha: "2cffbb4", iso: "2026-05-14T01:31:28+00:00", subject: "Changes" },
   ],
   "world-builder": [
-    { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
+    { sha: "e2a757a", iso: "2026-06-16T22:42:01+00:00", subject: "Changes" },
+    { sha: "1979a51", iso: "2026-06-16T22:41:55+00:00", subject: "Changes" },
+    { sha: "b337919", iso: "2026-06-16T22:41:50+00:00", subject: "Changes" },
+    { sha: "7fd383f", iso: "2026-06-16T22:41:39+00:00", subject: "Changes" },
+    { sha: "029cfdb", iso: "2026-06-16T22:41:15+00:00", subject: "Changes" },
+    { sha: "4213468", iso: "2026-06-16T22:41:06+00:00", subject: "Changes" },
   ],
 };
