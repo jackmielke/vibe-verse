@@ -35,6 +35,7 @@ import { Check, Copy, LogIn, Sparkles } from "lucide-react";
 import { VIBE_TOKEN_ADDRESS } from "@/lib/vibe-wallet";
 import VibeArc from "@/components/VibeArc";
 import VibeCoinMark from "@/components/VibeCoinMark";
+import VibeWink from "@/components/VibeWink";
 import VibeCoinPanel from "@/components/VibeCoinPanel";
 import VibeWalletSection from "@/components/VibeWalletSection";
 import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
@@ -165,7 +166,10 @@ export default function VibeHub() {
             </div>
 
             <div className="rounded-2xl border border-[#8fb4ff]/30 bg-[#8fb4ff]/[0.06] p-4">
+              {/* The wink, not the ✦ — this card is the real token, and the
+                  two marks are how you tell the two coins apart at a glance. */}
               <div className="flex items-baseline gap-2">
+                <VibeWink size={26} className="shrink-0 self-center" />
                 <p className="font-heading text-2xl font-black tabular-nums text-[#8fb4ff]">
                   {rows.length === 0
                     ? "$VIBE"

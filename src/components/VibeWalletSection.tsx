@@ -36,7 +36,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Check, Copy, ExternalLink, Fuel, Star, Trash2, Wallet } from "lucide-react";
-import VibeCoinMark from "@/components/VibeCoinMark";
+import VibeWink from "@/components/VibeWink";
 import VibeWalletConnect from "@/components/VibeWalletConnect";
 import VibeTestDrop from "@/components/VibeTestDrop";
 import { useVibecoin } from "@/hooks/use-vibecoin";
@@ -142,7 +142,9 @@ function WalletCard({ row, onRefresh }: { row: WalletRow; onRefresh: () => void 
       {/* What is actually in it, on Base. */}
       <dl className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-xl border border-border/40 bg-black/30 px-3 py-2">
-          <dt className="font-heading text-[7.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+          <dt className="flex items-center gap-1 font-heading text-[7.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+            {/* The wink marks the real token everywhere it is counted. */}
+            <VibeWink size={11} className="shrink-0" />
             $VIBE
           </dt>
           <dd className="mt-0.5 font-heading text-sm font-black tabular-nums text-[#8fb4ff]">
