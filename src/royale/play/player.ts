@@ -2510,10 +2510,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     ctx.services.audio?.play("squelch", { volume: 0.85, position });
     ctx.services.audio?.play(WATER.balloon.soundBurst, { volume: 0.5, position });
-    // A generous puddle exactly where you went down, so the spot reads from
-    // across the street and anyone who walks through it slips.
-    ctx.services.wetness?.splash(position, 2.4, 14);
-    ctx.services.vfx?.impact(position, up, "water");
+    /* The burst does the puddle and the impact itself, and better — six layers
+       on six clocks, droplet lives solved so they land rather than fading in
+       mid-air, and its own `wetness.splash`. Calling those here as well waters
+       the same spot twice and stacks two impacts in one frame. */
+    ctx.services.vfx?.soakBurst(position, 1);
 
     // Kept on `dz:down` so the HUD's existing knock/revive plumbing fires;
     // `dz:soaked` is the one the water HUD reads for the banner.

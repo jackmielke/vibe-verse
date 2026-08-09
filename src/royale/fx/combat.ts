@@ -1014,6 +1014,17 @@ const createCombat: SystemFactory = (ctx: WorldCtx): System => {
     target.hp = 0;
     target.shield = 0;
 
+    /* Every elimination in the water game bursts. This is the one place every
+       death is filed — bots, the storm, a balloon, a fall — so it is the one
+       place the burst belongs, rather than at each of the callers that can end
+       a life. The victim's capsule centre, not their feet: water thrown from
+       ankle height reads as a puddle rather than as somebody going out. */
+    if (ctx.mode === "water") {
+      const at = target.object.position.clone();
+      at.y += target.height * 0.5;
+      ctx.services.vfx?.soakBurst(at, 1);
+    }
+
     // Credit goes to whoever has the live claim, which is normally the source
     // of the killing blow but is not when the storm or a fall finished someone
     // a player had already broken.

@@ -12,13 +12,26 @@
  *    (SwiftSHADER; `core.ts` clamps dt to 1/15 and takes six fixed steps at
  *    most) while a composite takes minutes, so a screenshot lands at an
  *    unknown particle age — one frame old, or long over, and which one you got
- *    is a coin flip. The fix is to freeze the clock instead of chasing it:
- *    poll `ctx.elapsed` — never wall clock — until the age we want, then
- *    `engine.stop()`. That halts `ctx.elapsed`, which pins the vfx layer's
- *    `uTime` uniform, and since every particle integrates its own position
- *    from `uTime - spawn` in the vertex shader, a frozen `uTime` is a frozen,
- *    fully-posed burst. We then keep rendering it on our own rAF loop, so the
- *    canvas holds an identical valid frame however long Playwright takes.
+ *    is a coin flip.
+ *
+ *    Two ways of pinning the moment were tried here and BOTH are traps, which
+ *    is worth writing down because each produces a completely convincing
+ *    photograph of a broken effect:
+ *
+ *      `engine.stop()` + our own `renderer.render()` rAF — bypasses the
+ *      engine's `renderOverride`, so the frame is composed without the postfx
+ *      pass, and the ground-hugging half of a water effect vanishes from the
+ *      capture while opaque meshes (debris, the puddle) survive.
+ *
+ *      Pinning `ctx.elapsed` behind a no-op setter — the engine keeps
+ *      composing, but every system that integrates against elapsed (sky,
+ *      exposure) sits on a frozen input and the whole frame comes back
+ *      mis-graded: crimson brick, neon grass.
+ *
+ *    So: do not touch the engine. RE-FIRE the effect on a simulated-time
+ *    cadence instead, and let the capture land wherever it lands — there is
+ *    always fresh water in the air, the frame is composed exactly the way it
+ *    ships, and what you are looking at is what a player would see.
  *
  * 2. THE HARNESS ITSELF. Thirteen "bugs" in this world turned out to be the
  *    measurement rather than the game, so a lone capture of a new effect
@@ -175,89 +188,65 @@ const fired = await page
     const control = place(-1);   // balloonBurst: the known-good reference
     const subject = place(+1);   // soakBurst: what is on trial
 
+    // Where each burst lands ON SCREEN, in top-left pixel coordinates, so the
+    // capture can be cropped and measured afterwards with dz-crop. Reading the
+    // framebuffer here instead is a trap: with preserveDrawingBuffer off,
+    // gl.readPixels is only valid inside the same task as the draw that filled
+    // it, and the engine's draws happen in its own rAF — so anything we read
+    // from a task of ours is either stale or blank. Measure the PNG.
     const gl = ctx.renderer.getContext();
     const w = gl.drawingBufferWidth;
     const h = gl.drawingBufferHeight;
+    const cssW = ctx.renderer.domElement.clientWidth || w;
     const boxOf = (p) => {
       const q = p.clone().project(cam);
-      const sx = Math.round((q.x * 0.5 + 0.5) * w);
-      // readPixels is bottom-up; keep everything in GL space.
-      const sy = Math.round((q.y * 0.5 + 0.5) * h);
-      const r = Math.round(Math.min(w, h) * 0.24);
-      const x0 = Math.max(0, sx - r), x1 = Math.min(w, sx + r);
-      const y0 = Math.max(0, sy - r), y1 = Math.min(h, sy + r);
-      return { x0, y0, bw: Math.max(1, x1 - x0), bh: Math.max(1, y1 - y0), sx, sy };
+      const scale = cssW / w;
+      return {
+        x: Math.round((q.x * 0.5 + 0.5) * w * scale),
+        y: Math.round((1 - (q.y * 0.5 + 0.5)) * h * scale),
+      };
     };
     const boxes = { control: boxOf(control), subject: boxOf(subject) };
-
-    const grab = (b) => {
-      const px = new Uint8Array(b.bw * b.bh * 4);
-      gl.readPixels(b.x0, b.y0, b.bw, b.bh, gl.RGBA, gl.UNSIGNED_BYTE, px);
-      return px;
-    };
-    const render = () => ctx.renderer.render(ctx.scene, ctx.camera);
-
-    // Baseline. Render first so the buffer we read is the one we just drew:
-    // with preserveDrawingBuffer off, readPixels is only valid inside the
-    // same task as the draw that filled it.
-    render();
-    const base = { control: grab(boxes.control), subject: grab(boxes.subject) };
 
     const wet = ctx.services.wetness;
     const puddlesBefore = wet ? wet.puddleCount : null;
 
     const t0 = ctx.elapsed;
-    vfx.balloonBurst(control);
-    vfx.soakBurst(subject, 1.2);
-    const puddlesAfter = wet ? wet.puddleCount : null;
 
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // Re-fire on a SIMULATED-time cadence, forever, so whenever Playwright
+    // finishes compositing there is water in the air of a useful age. The
+    // cadence is deliberately shorter than the effect's own life, so a frame
+    // also catches the tail of the previous burst hanging in the air, which
+    // is what a real elimination looks like a beat later.
+    let fires = 0;
+    let last = ctx.elapsed - age;
+    const pump = () => {
+      if (ctx.elapsed - last >= age) {
+        last = ctx.elapsed;
+        fires++;
+        vfx.balloonBurst(control);
+        vfx.soakBurst(subject, 1.2);
+      }
+      e.__dzPump = requestAnimationFrame(pump);
+    };
+    pump();
+    // Let a few cycles run so the scene settles into its steady state.
     let waited = 0;
-    while (ctx.elapsed - t0 < age && waited < 900) { await sleep(100); waited++; }
-    out.frozenAtAge = +(ctx.elapsed - t0).toFixed(3);
+    while (ctx.elapsed - t0 < age * 6 && waited < 900) { await sleep(100); waited++; }
+    out.cadence = age;
+    out.fires = fires;
+    out.simSecondsRun = +(ctx.elapsed - t0).toFixed(3);
     out.wallPolls = waited;
     out.drawCalls = ctx.renderer.info.render.calls;
-
-    // Freeze, then take the "after" read from a render we control.
-    e.stop();
-    render();
-    const after = { control: grab(boxes.control), subject: grab(boxes.subject) };
-
-    const stat = (a, b) => {
-      let moved = 0, warm = 0, cool = 0, brighter = 0, n = a.length / 4;
-      let dr = 0, dg = 0, db = 0;
-      for (let i = 0; i < a.length; i += 4) {
-        const d0 = b[i] - a[i], d1 = b[i + 1] - a[i + 1], d2 = b[i + 2] - a[i + 2];
-        if (Math.abs(d0) + Math.abs(d1) + Math.abs(d2) > 24) {
-          moved++;
-          dr += d0; dg += d1; db += d2;
-          if (d2 > d0 + 6) cool++;
-          if (d0 > d2 + 6) warm++;
-          if (d0 + d1 + d2 > 0) brighter++;
-        }
-      }
-      return {
-        pixels: n,
-        movedPct: +((moved / n) * 100).toFixed(2),
-        meanDelta: moved ? [Math.round(dr / moved), Math.round(dg / moved), Math.round(db / moved)] : [0, 0, 0],
-        coolPctOfMoved: moved ? +((cool / moved) * 100).toFixed(1) : 0,
-        warmPctOfMoved: moved ? +((warm / moved) * 100).toFixed(1) : 0,
-        brighterPctOfMoved: moved ? +((brighter / moved) * 100).toFixed(1) : 0,
-      };
-    };
-
-    // Hand the render loop over so the canvas stays valid for the capture.
-    const loop = () => { render(); e.__dzHold = requestAnimationFrame(loop); };
-    loop();
 
     return Object.assign(out, {
       controlAt: [+control.x.toFixed(1), +control.y.toFixed(1), +control.z.toFixed(1)],
       subjectAt: [+subject.x.toFixed(1), +subject.y.toFixed(1), +subject.z.toFixed(1)],
       buffer: [w, h],
-      boxes,
-      puddlesBefore, puddlesAfter,
-      control: stat(base.control, after.control),
-      subject: stat(base.subject, after.subject),
+      screen: boxes,
+      puddlesBefore, puddlesAfter: wet ? wet.puddleCount : null,
     });
   })(${AGE})`)
   .catch((err) => ({ error: "evaluate threw: " + err.message }));

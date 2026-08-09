@@ -89,6 +89,16 @@
  * Camera motion blur is the one effect that starts **off**; it has to be asked
  * for. The reasoning is on MOTION_DEFAULT_ON.
  *
+ * ## SPLASH ROYALE (`ctx.mode === "water"`)
+ *
+ * Nobody in SPLASH ROYALE gets hurt, so nothing on this lens is allowed to be
+ * red. The chain does not change — same passes, same order, same buffers — only
+ * what three of them are coloured with, plus two branches that exist nowhere
+ * else: `runnel`, the lens getting drenched when YOU are soaked out, and
+ * `wetlens`, the beaded, refracting rim as you run out of dry. Both compile out
+ * of the classic shader entirely, both are on the `dz:fx` switchboard, and the
+ * expensive halves of both are off on `low`. See the block above LOW_HEALTH.
+ *
  * Nothing in here is allowed to be fatal. The whole build is wrapped, every
  * frame is wrapped, and a throw at any point hands rendering straight back to
  * the forward path — losing the grade should cost you the grade, not the game.
