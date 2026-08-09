@@ -92,6 +92,14 @@ function start(): void {
   };
 }
 
+function stop(): void {
+  mounted = Math.max(0, mounted - 1);
+  if (mounted === 0) {
+    teardown?.();
+    teardown = null;
+  }
+}
+
 
 export interface UseVibecoin extends VibecoinState {
   /** Balance formatted for a chip — compact above 10K, `—` before first load. */
