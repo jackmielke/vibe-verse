@@ -19,6 +19,8 @@ import VibeHub from "./pages/VibeHub.tsx";
 import VibeGo from "./pages/VibeGo.tsx";
 import VibeArcade from "./pages/VibeArcade.tsx";
 import ArcadeCharacters from "./pages/ArcadeCharacters.tsx";
+import PortalPlay from "./pages/PortalPlay.tsx";
+import BuildAGame from "./pages/BuildAGame.tsx";
 import VibeShop from "./pages/VibeShop.tsx";
 import Orbit from "./pages/Orbit.tsx";
 import Join from "./pages/Join.tsx";
@@ -127,6 +129,12 @@ const AppChrome = () => {
     return pathname === "/live" ? null : <HomeButton />;
   }
 
+  /* `/play/:slug` frames somebody else's game and draws its own bar across the
+     top — title, author, what it has paid, and the way back. A second exit
+     floating over a stranger's canvas would be one too many, and the route is
+     dynamic so the registry's route-set cannot express it. */
+  if (pathname.startsWith("/play/")) return null;
+
   return (
     <>
       <GlobalNav />
@@ -189,6 +197,12 @@ const App = () => (
               ledger and the payout is settled server-side. */}
           <Route path="/arcade" element={<VibeArcade />} />
           <Route path="/arcade/characters" element={<ArcadeCharacters />} />
+
+          {/* The portal: games hosted somewhere else, paying real Vibey Coins.
+              `/build` is the page you send somebody who wants in. */}
+          <Route path="/play/:slug" element={<PortalPlay />} />
+          <Route path="/build" element={<BuildAGame />} />
+          <Route path="/build-a-game" element={<BuildAGame />} />
           {/* THE VIBE SHOP — the other half of the arcade. Coins won there buy
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}

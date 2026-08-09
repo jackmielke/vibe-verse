@@ -713,6 +713,21 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "portal",
+    route: "/build",
+    aliases: ["/build-a-game"],
+    name: "The Portal",
+    emoji: "🚪",
+    kind: "tool",
+    blurb:
+      "The door for games nobody here wrote. Yours stays on your domain, in your repo, under your name — add four lines of JavaScript and it can pay the people who play it in Vibey Coins. It runs sandboxed, on an allowance, and it is never told who the player is.",
+    status: "Open — one game in, room for yours",
+    accent: "#8fb4ff",
+    source: "src/portal",
+    nav: true,
+    passport: true,
+  },
+  {
     key: "shop",
     route: "/shop",
     name: "The Vibe Shop",

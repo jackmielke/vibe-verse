@@ -29,6 +29,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
   ],
   "arcade": [
+    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
@@ -56,23 +57,23 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
   "coin": [
+    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "6a03371", iso: "2026-08-09T06:21:36+00:00", subject: "Changes" },
     { sha: "ef0da06", iso: "2026-08-09T06:15:30+00:00", subject: "Changes" },
     { sha: "72220d1", iso: "2026-08-09T06:15:21+00:00", subject: "Changes" },
     { sha: "093f8c0", iso: "2026-08-09T06:14:50+00:00", subject: "Changes" },
     { sha: "f2719fe", iso: "2026-08-09T05:43:43+00:00", subject: "The wink stops spinning, and starts meaning \"real\"" },
-    { sha: "3660216", iso: "2026-08-08T21:22:22+00:00", subject: "Changes" },
   ],
   "companions": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },
   ],
   "drop-zero": [
+    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
     { sha: "a1c3906", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
     { sha: "e9f4060", iso: "2026-08-08T20:06:42+00:00", subject: "Cover art for Soaked, from the water build" },
     { sha: "9b3fdc3", iso: "2026-08-07T23:08:53+00:00", subject: "SOAKED: the water-gun battle royale, wired up and playable" },
     { sha: "c9d20de", iso: "2026-08-07T05:35:53+00:00", subject: "One engine, two games: add the mode seam" },
-    { sha: "d0b65ec", iso: "2026-08-07T03:41:18+00:00", subject: "Changes" },
   ],
   "edm-town": [
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
@@ -199,6 +200,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "shop": [
+    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
@@ -211,12 +213,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "be974df", iso: "2026-08-07T16:23:46+00:00", subject: "✊ A table on the island: one hand against the house, provably fair" },
   ],
   "soaked": [
+    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
     { sha: "a1c3906", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
     { sha: "e9f4060", iso: "2026-08-08T20:06:42+00:00", subject: "Cover art for Soaked, from the water build" },
     { sha: "9b3fdc3", iso: "2026-08-07T23:08:53+00:00", subject: "SOAKED: the water-gun battle royale, wired up and playable" },
     { sha: "c9d20de", iso: "2026-08-07T05:35:53+00:00", subject: "One engine, two games: add the mode seam" },
-    { sha: "d0b65ec", iso: "2026-08-07T03:41:18+00:00", subject: "Changes" },
   ],
   "space": [
     { sha: "2dc55e6", iso: "2026-07-21T19:47:13+00:00", subject: "Added cloud platform hopping" },

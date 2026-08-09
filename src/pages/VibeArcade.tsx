@@ -47,6 +47,7 @@ import {
 } from "@/lib/vibecoin";
 import { CABINETS, topPrize, type Cabinet, type CabinetRun } from "@/arcade/cabinets";
 import RpsArena from "@/components/arcade/RpsArena";
+import PortalShelf from "@/components/arcade/PortalShelf";
 import { SHOP_CHARACTERS } from "@/lib/characterShop";
 import { findCharacter } from "@/lib/characters";
 import { createArcadeSounds, type ArcadeSounds } from "@/arcade/sounds";
@@ -474,6 +475,13 @@ export default function VibeArcade() {
             );
           })}
         </div>
+
+        {/* ---- The portal ----
+            Below the cabinets because it is newer and thinner, not because it
+            matters less: every cabinet above costs Jack a code review and a
+            deploy, and this row is the only part of the arcade that can grow
+            while he is asleep. */}
+        <PortalShelf />
 
         <footer className="mt-14 border-t border-border/40 pt-6 text-[11px] leading-relaxed text-muted-foreground">
           Every insert and every payout is a row in the shared ledger — tap the coin
