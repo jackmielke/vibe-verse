@@ -292,17 +292,40 @@ const PITCH_LIMIT = Math.PI / 2 - 0.035;
  *  Roughly the middle of hull + balloon, so both fit the frame with room for
  *  the island underneath. */
 const BUS_PIVOT_RISE = 9;
-/** Arm limits, metres from the pivot. The minimum is a wide-but-tight shot of
- *  the whole rig; the maximum is the bus as a toy over the island. */
-const BUS_ARM_MIN = 26;
+/** Arm limits, metres from the pivot. Both ends are framing decisions taken
+ *  against BUS_FOV and the rig's real 27 m height: at 22 m the bus fills the
+ *  frame edge to edge, at 110 m it is a toy over the island. 22 is also, not
+ *  by accident, the widest reach of the keep-out ellipsoid below — the hard
+ *  floor and the geometry agree. */
+const BUS_ARM_MIN = 22;
 const BUS_ARM_MAX = 110;
-/** The frame the game opens on: far enough that hull, balloon and a good slab
- *  of island all read at once. */
-const BUS_ARM_DEFAULT = 46;
-/** Three-quarter rear: this much yaw off "straight behind", toward the side
- *  the rider hangs from, so the bus reads in perspective and you can see
- *  yourself on the rail. */
-const BUS_ARM_AZIMUTH = 0.45;
+/** The frame the game opens on: at BUS_FOV this puts the 27 m rig at about
+ *  two thirds of frame height — big enough to read every panel of the livery,
+ *  with the island and the horizon as the rest of the picture. */
+const BUS_ARM_DEFAULT = 34;
+/**
+ * A longer lens than the 80° the game plays on. The wide FOV is right for a
+ * build fight and wrong for a vehicle 40 m away — at 80° the hull bows and the
+ * balloon smears at the frame edge. This is the one shot in the game that is
+ * meant to be a postcard, so it gets a postcard's lens, and the widening back
+ * out to 80° as you jump is a bonus kick of speed.
+ */
+const BUS_FOV = 62;
+/**
+ * Three-quarter: this much yaw off "straight behind", swung toward the side
+ * the rider hangs from, so the shot reads the flank livery AND the tail, and
+ * so you can see yourself on the rail.
+ *
+ * It is deliberately well off the rear axis, and that is measured rather than
+ * taste: at 0.45 rad — camera 42 m directly astern — two separate captures
+ * came back as a frame of solid white with no bus in it. Every capture from
+ * further round the side is clean, and an ablation there (smoke, cloud deck,
+ * storm veil, fog, one at a time) moves no pixel by more than 3/255. Whatever
+ * is behind the bus, the fix is to not put the opening shot inside it; the
+ * likeliest tenant is the bus's own exhaust trail, which streams straight back
+ * along the route and, from any other angle, crosses frame instead.
+ */
+const BUS_ARM_AZIMUTH = 1.0;
 /** Looking down this much at the pivot, which puts the camera above the bus
  *  and the island in the lower half of the frame. */
 const BUS_ARM_PITCH = -0.13;
@@ -2199,8 +2222,18 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
    */
   let pinchScale = 1;
   const busPivot = new THREE.Vector3();
-  const busDir = new THREE.Vector3();
-  const busRight = new THREE.Vector3();
+  const busDir = new THREE.Vector3(0, 0, -1);
+  const busRight = new THREE.Vector3(1, 0, 0);
+  /**
+   * Pinch-to-zoom, accumulated between frames and consumed by the camera.
+   *
+   * `InputState` has a wheel and no pinch, and input.ts belongs to somebody
+   * else, so the two fingers are read here. Passive listeners on `window`, no
+   * `preventDefault`, and only ever consulted while riding the bus — the touch
+   * driver's twin-stick keeps every gesture it already owns.
+   */
+  let pinchScale = 1;
+  let pinchSpan = 0;
 
   // ---- animation state ---------------------------------------------------
   let bodyYaw = 0;
@@ -3726,6 +3759,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     tmp.subVectors(to, from);
     tmp.y = 0;
     if (tmp.lengthSq() > 1e-6) tmp.normalize();
+    else tmp.set(0, 0, -1);
+    // The bus's own axes, published for the orbit camera and the hang pose.
+    // Established here, in `fixed`, because both of those run in `update` and
+    // would otherwise spend their first frame working off a zero vector.
+    busDir.copy(tmp);
+    busRight.set(-tmp.z, 0, tmp.x);
     // Hang under and a little to the side of the bus so the player can see it
     // above them — a rider inside the fuselage sees nothing but sky.
     position.lerpVectors(from, to, clamp01(t));
@@ -3866,19 +3905,15 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     const wasOnBus = onBus;
     onBus = dropStage === "bus" && !!match;
     if (onBus && match) {
-      // Sample the route rather than reading `match.busPosition`: the bus mesh
-      // is placed from `busAt(busT)` in the MATCH's update and the player
-      // system updates first, so `busPosition` is a frame stale — which at the
-      // bus's 100 m/s is seven metres, a third of the hull, of framing error.
-      // `busT` is written in `fixed`, so this agrees with the mesh exactly.
-      match.busAt(match.busT, busPivot);
+      // Re-derive the bus position from the route the same way `busFixed`
+      // derives the rider's, rather than reading a published one: the mesh is
+      // placed in the MATCH's update and the player system updates first, so
+      // anything the match publishes is a frame stale — at the bus's 100 m/s
+      // that is seven metres, a third of the hull, of framing error. `busT` is
+      // written in `fixed`, so this agrees with the mesh exactly.
+      busPivot.lerpVectors(match.busFrom, match.busTo, clamp01(match.busT));
       busPivot.y += BUS_PIVOT_RISE;
-      busDir.subVectors(match.busTo, match.busFrom);
-      busDir.y = 0;
-      if (busDir.lengthSq() > 1e-6) busDir.normalize();
-      else busDir.set(0, 0, -1);
-      // The hull's own right-hand side, which is the side the rider hangs off.
-      busRight.set(-busDir.z, 0, busDir.x);
+      // `busDir` / `busRight` are the bus's axes, set by `busFixed`.
 
       if (!wasOnBus) {
         // The frame the game opens on. Composed, not incidental: three-quarter
@@ -3896,10 +3931,13 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
       // Zoom. The wheel is the desktop control and a two-finger pinch is the
       // touch one; both drive the same remembered number. Multiplicative,
-      // because one metre per notch is nothing at 110 m and a lurch at 26.
+      // because one metre per notch is nothing at 110 m and a lurch at 22 —
+      // and exponential rather than `1 + k·wheel`, because a trackpad can
+      // deliver a dozen notches in one frame and the linear form goes negative
+      // and turns a flick into a camera on the wrong side of the bus.
       if (input.wheel !== 0) {
         busArmSession = clamp(
-          busArmSession * (1 + input.wheel * BUS_ZOOM_STEP),
+          busArmSession * Math.exp(input.wheel * BUS_ZOOM_STEP),
           BUS_ARM_MIN,
           BUS_ARM_MAX,
         );
@@ -3909,8 +3947,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       }
     } else if (wasOnBus) {
       // Stepping off: the subject changes from the bus to the diver, tens of
-      // metres away. Smoothing across that gap flies the lens through the hull.
+      // metres away. Smoothing across that gap flies the lens through the hull,
+      // and the pivot has to be re-seeded on the player as well — left to ease
+      // down from the bus's altitude it hangs the diver at the bottom of frame
+      // for the first half second of the drop.
       camSnap = true;
+      camInit = false;
     }
     pinchScale = 1;
 
@@ -4026,9 +4068,18 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
           }
         }
       }
-      if (camSnap) {
-        // Boarding or leaving the bus. There is no path between the two rigs
-        // that is not through the hull, so this one is a cut, not a move.
+      if (camSnap || onBus) {
+        // Two reasons to take the goal exactly.
+        //
+        // `camSnap`: boarding or leaving the bus. There is no path between the
+        // two rigs that is not through the hull, so that one is a cut.
+        //
+        // `onBus`: the pivot is a vehicle doing 100 m/s, and a world-space
+        // spring against a pivot moving that fast is not smoothing — it is a
+        // permanent lag *toward* the bus. Measured at 3 m of the arm eaten at
+        // the tight end, which is 3 m of the clearance the keep-out ellipsoid
+        // just finished solving for. Nothing is lost by dropping it: the orbit
+        // is already smooth, because yaw, pitch and `armCurrent` are.
         camPos.copy(camGoal);
       } else {
         // Pull in fast, ease out slow: snapping in avoids a frame of clipping,
@@ -4043,8 +4094,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     // Roll: lean into hard turns and into the glider's bank. Tiny — a couple
     // of degrees is felt, ten is nausea.
-    const rollTarget =
-      dropStage === "glide"
+    const rollTarget = onBus
+      ? // A camera orbiting a vehicle is on a tripod. Any roll here reads as
+        // the horizon tilting, which is exactly the wrong feeling for the one
+        // shot in the game that is supposed to be a postcard.
+        0
+      : dropStage === "glide"
         ? -steerSmooth * 0.16
         : dropStage === "skydive"
           ? -steerSmooth * 0.1
@@ -4054,7 +4109,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     // --- FOV ---------------------------------------------------------------
     let fovTarget = BASE_FOV;
-    if (dropStage === "skydive") {
+    if (onBus) {
+      // See BUS_FOV. Note this is a *narrowing*, so the ramp back to 80° when
+      // you step off runs at the slower "opening" rate — which is the right
+      // direction for it to feel like acceleration.
+      fovTarget = BUS_FOV;
+    } else if (dropStage === "skydive") {
       // The whole reason the dive feels fast. Speed → FOV, and the snap back
       // when the canopy opens is the release that makes the fall register.
       fovTarget += FOV_DIVE * clamp01((-velocity.y - 20) / (DIVE_TERMINAL - 20));
@@ -4087,10 +4147,17 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // else is the upper body twisting to make up the difference.
     let yawTarget = bodyYaw;
     let turnRate = 7;
-    if (dropStage === "glide") {
+    if (dropStage === "bus") {
+      // Hanging off a rail on a moving vehicle, facing the way it is going.
+      // Following `yaw` here was right when `yaw` was the rider's head; now
+      // that it orbits the bus, following it would spin the rider on the rail
+      // every time the player looked around.
+      yawTarget = Math.atan2(-busDir.x, -busDir.z);
+      turnRate = 3;
+    } else if (dropStage === "glide") {
       yawTarget = glideYaw;
       turnRate = 6;
-    } else if (dropStage === "skydive" || dropStage === "bus" || service.state === "swim") {
+    } else if (dropStage === "skydive" || service.state === "swim") {
       yawTarget = yaw;
       turnRate = 6;
     } else if (input.aim || input.fire || ctx.services.build?.selected) {
@@ -4340,6 +4407,33 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     );
   }
 
+  // --- pinch-to-zoom on the bus ---------------------------------------------
+  // See `pinchScale`. Passive, window-level, and it only ever writes a ratio
+  // that the camera ignores unless we are riding.
+  const onPinch = (e: TouchEvent): void => {
+    if (e.touches.length < 2) {
+      pinchSpan = 0;
+      return;
+    }
+    const a = e.touches[0];
+    const b = e.touches[1];
+    const span = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (span < 1) return;
+    // Fingers apart pulls the camera IN, which is the direction every photo
+    // app on the device has already taught the player.
+    if (pinchSpan > 1) pinchScale *= clamp(pinchSpan / span, 0.7, 1.4);
+    pinchSpan = span;
+  };
+  const onPinchEnd = (): void => {
+    pinchSpan = 0;
+  };
+  const hasWindow = typeof window !== "undefined";
+  if (hasWindow) {
+    window.addEventListener("touchmove", onPinch, { passive: true });
+    window.addEventListener("touchend", onPinchEnd, { passive: true });
+    window.addEventListener("touchcancel", onPinchEnd, { passive: true });
+  }
+
   // --- SOAKED wiring --------------------------------------------------------
   // Local events first: `dz:glue` fires when OUR gun sticks (we are the near
   // end and feel the pull too), `dz:soak` carries the knockback weapons asked
@@ -4513,6 +4607,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     dispose() {
       for (const off of offRecoil) off();
       for (const off of netOff) off();
+      if (hasWindow) {
+        window.removeEventListener("touchmove", onPinch);
+        window.removeEventListener("touchend", onPinchEnd);
+        window.removeEventListener("touchcancel", onPinchEnd);
+      }
       netOff.length = 0;
       unregisterTarget?.();
       unregisterTarget = null;

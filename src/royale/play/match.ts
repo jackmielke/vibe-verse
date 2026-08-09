@@ -288,6 +288,45 @@ const FORCE_JUMP_T = 0.985;
 /** Below this the jump is refused — nobody wants to land in the sea at t=0.02. */
 const JUMP_OPENS_T = 0.055;
 
+/**
+ * The establishing beat at the top of the bus phase.
+ *
+ * The cinematic already ends *on* the bus, and the old code then cut the
+ * camera straight to the rider's own view — four metres under the belly, with
+ * no way to pull back. Which is how the bus ended up being a thing you ride
+ * inside a blue box rather than a thing you look at: the only frames in which
+ * the whole vehicle was ever visible belonged to a cinematic that was over.
+ *
+ * So the bus phase *opens* with three and a half seconds of exterior orbit,
+ * broadside, far enough out that the hull, the balloon and the lobby hanging
+ * off the rails are all in one frame — and only then hands the camera down to
+ * the rail. It is the establishing shot the set piece never had.
+ */
+const BUS_HERO_TIME = 3.5;
+/**
+ * Orbit radius at the start and end of that beat, in metres.
+ *
+ * `IN` is not a free parameter: it is the distance the *cinematic* already
+ * ends at (34 m abeam, 22 m astern → 40.5 m), so the bus phase picks the shot
+ * up exactly where the fly-over put it down and the two reads as one
+ * continuous move instead of a cut. `OUT` is where the reveal lands — far
+ * enough that all 27 m of hull-plus-envelope clears a 46° frame with margin.
+ */
+const BUS_HERO_IN = 41;
+const BUS_HERO_OUT = 58;
+
+/**
+ * The jump. A short third-person beat as the player falls away from the bus,
+ * with the bus receding above them, before the camera is handed back for the
+ * dive. Deliberately under a second and a half: this is punctuation, not a
+ * cutscene, and anything longer is a thing players learn to resent.
+ */
+const JUMP_BEAT_TIME = 1.35;
+
+/** Seconds for a door to swing its full arc, and how far it swings. */
+const DOOR_TIME = 1.1;
+const DOOR_ARC = 1.35;
+
 /** Dropping ends when the player lands, or after this many seconds regardless. */
 const DROP_TIMEOUT = 40;
 
@@ -1072,26 +1111,42 @@ function bakeLivery(rng: () => number, skin: BusSkin): THREE.CanvasTexture | nul
   g.fill();
   g.restore();
 
-  // Wordmark. Sized to the longest word so a short name (SOAKED) fills the
-  // same panel a long one (DROP ZERO) did — a 176 px cap height tuned for
-  // nine characters leaves six of them floating in the middle of a 15 m panel.
+  /*
+   * Wordmark.
+   *
+   * Two constraints set the layout, and the first one is not obvious:
+   *
+   *  - **The doors eat both ends of this panel.** A door leaf spans 2.2 m of a
+   *    15.4 m flank, and the panel is mirrored between the two sides, so the
+   *    leaf covers u 0.02..0.16 on one flank and u 0.84..0.98 on the other.
+   *    Anything drawn in either band is hidden on exactly one side of the bus.
+   *    The first capture of this pass came back reading "OAKED", with the S
+   *    behind the left-hand door, which is the sort of thing that is invisible
+   *    in the bake and unmissable in a screenshot. So `SAFE_L`/`SAFE_R`.
+   *  - **Short names must not float.** A cap height tuned for nine characters
+   *    leaves six of them adrift in the middle of a 15 m panel, so the size is
+   *    chosen off the length.
+   */
+  const SAFE_L = W * 0.185;
+  const SAFE_R = W * 0.82;
   g.save();
   g.textBaseline = "middle";
   g.textAlign = "left";
-  const cap = skin.wordmark.length >= 9 ? 176 : 232;
+  const cap = skin.wordmark.length >= 9 ? 150 : 200;
   g.font = `900 ${cap}px 'Arial Black', system-ui, sans-serif`;
   g.fillStyle = skin.ink;
-  g.fillText(skin.wordmark, 130, H * 0.42 + 8);
+  g.fillText(skin.wordmark, SAFE_L + 6, H * 0.4 + 8);
   g.fillStyle = skin.paper;
-  g.fillText(skin.wordmark, 124, H * 0.42);
-  g.font = "600 54px system-ui, sans-serif";
+  g.fillText(skin.wordmark, SAFE_L, H * 0.4);
+  g.font = "600 48px system-ui, sans-serif";
   g.fillStyle = "rgba(236,250,255,0.78)";
-  g.fillText(skin.tagline, 130, H * 0.74);
+  g.fillText(skin.tagline, SAFE_L, H * 0.72);
   g.restore();
 
   // Route roundel at the rear end of the panel.
   g.save();
-  g.translate(W * 0.9, H * 0.34);
+  // Roundel, inside the same door-safe band as the wordmark.
+  g.translate(SAFE_R - 100, H * 0.34);
   g.fillStyle = "rgba(8,26,44,0.85)";
   g.beginPath();
   g.arc(0, 0, 96, 0, Math.PI * 2);
@@ -1842,19 +1897,30 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
       )
     : null;
 
-  /** What is in the tank. Emissive, because backlit water is not grey. */
+  /**
+   * What is in the tank.
+   *
+   * The first pass had this at opacity 0.78 with roughness 0.12 and no
+   * guaranteed env map, and the drum photographed as a black barrel: a
+   * near-mirror with nothing to mirror is black, and at 0.78 the back wall was
+   * culled so there was nothing behind it either. So: mostly opaque, rougher,
+   * double-sided, and carrying enough of its own light to read as water in
+   * shadow. It is a 5 m drum on the roofline of the most photographed object
+   * in the game — it does not get to be subtle.
+   */
   const waterMat = skin.poolParty
     ? track(
         new THREE.MeshStandardMaterial({
-          color: 0x2ea8d8,
-          metalness: 0.1,
-          roughness: 0.12,
+          color: 0x46c8ec,
+          metalness: 0.08,
+          roughness: 0.3,
           envMap: env,
-          envMapIntensity: 1.4,
+          envMapIntensity: 1.2,
           transparent: true,
-          opacity: 0.78,
-          emissive: new THREE.Color(0x1d7fa8),
-          emissiveIntensity: 0.9,
+          opacity: 0.93,
+          side: THREE.DoubleSide,
+          emissive: new THREE.Color(0x2b9ac6),
+          emissiveIntensity: 1.35,
           fog: true,
         }),
       )
@@ -1930,6 +1996,8 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
   const tailParts: Geo[] = [];
   const rubberParts: Geo[] = [];
   const vinylParts: Geo[] = [];
+  const doors: THREE.Object3D[] = [];
+  const towels: THREE.Object3D[] = [];
 
   const { halfW, floorY, waistY, browY, shoulderY, roofY, halfL } = HULL;
 
@@ -2052,6 +2120,125 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
     // Boarding step, worn to bare metal — the classic contact-point detail.
     trimParts.push(put(bevelBox(0.5, 0.1, 1.4, bevel * 0.6), sx * (halfW - 0.1), floorY - 0.06, -6.4));
   }
+
+  /* ---- the doors ---------------------------------------------------------
+   *
+   * A coach door per side, hinged on its forward edge and swung outward when
+   * the drop window opens. This is the only piece of match state the player
+   * can read off the *world* rather than off the HUD, and it is worth the two
+   * draw calls: "the doors are open" is a far more immediate signal that you
+   * may jump than a number in a corner, and it is legible from outside the bus
+   * in a way the HUD never is.
+   *
+   * The hinge is the group origin and the leaf hangs off it in +Z, so opening
+   * is one `rotation.y` — a slide would need the leaf to also clear the hull.
+   */
+  const DOOR_HINGE_Z = -7.4;
+  const DOOR_LEN = 2.2;
+  for (const sx of [-1, 1]) {
+    const leafParts: Geo[] = [];
+    const h = browY - floorY - 0.13;
+    leafParts.push(put(bevelBox(0.13, h, DOOR_LEN, bevel, 0.12), 0, 0, DOOR_LEN / 2));
+    // A window in it, and a rail top and bottom, so the leaf is not a slab.
+    leafParts.push(put(bevelBox(0.17, 0.16, DOOR_LEN + 0.05, bevel * 0.6), sx * 0.04, h / 2 - 0.1, DOOR_LEN / 2));
+    leafParts.push(put(bevelBox(0.17, 0.16, DOOR_LEN + 0.05, bevel * 0.6), sx * 0.04, -h / 2 + 0.1, DOOR_LEN / 2));
+    leafParts.push(put(bevelBox(0.17, 0.2, DOOR_LEN + 0.05, bevel * 0.6), sx * 0.04, 0.42, DOOR_LEN / 2));
+    const geo = boxProjectUv(mergeParts(leafParts), 1.6);
+    const leaf = new THREE.Mesh(geo, hullMat);
+    leaf.castShadow = false;
+    const hinge = new THREE.Object3D();
+    hinge.name = `dz-bus-door-${sx > 0 ? "r" : "l"}`;
+    // 22 cm proud of the flank. Not styling: the gutter lip reaches 3.12 and
+    // the waist trim 3.09, and a plug door hung any tighter than this either
+    // z-fights the livery panel (which carries a −2 polygon offset and would
+    // win) or grows a trim strip through its own skin.
+    hinge.position.set(sx * (halfW + 0.22), (floorY + browY) / 2 + 0.02, DOOR_HINGE_Z);
+    hinge.userData.side = sx;
+    hinge.add(leaf);
+    sway.add(hinge);
+    geometries.push(geo);
+    doors.push(hinge);
+    // Grab handle by the opening, on the hull rather than on the leaf.
+    trimParts.push(put(tube(0.05, 0.05, 1.5, 6), sx * (halfW + 0.11), 2.5, DOOR_HINGE_Z + DOOR_LEN + 0.25));
+  }
+
+  /* ---- the other ninety-nine --------------------------------------------
+   *
+   * A lobby you are told has a hundred people in it and that visibly contains
+   * nobody is the fastest way to make the bus ride feel like a menu. So the
+   * rails are occupied: one instanced mesh of riders hanging exactly where
+   * `player.ts` hangs the player, thinning out over the run as the drop
+   * schedule fires. You watch the bus empty around you, which is the whole
+   * texture of the first thirty seconds of a battle royale.
+   *
+   * Instanced and merged: thirteen riders for one draw call.
+   */
+  const riderParts: Geo[] = [];
+  riderParts.push(new THREE.CapsuleGeometry(0.24, 0.66, 3, 8));
+  riderParts.push(put(new THREE.SphereGeometry(0.19, 8, 6), 0, 0.62, 0));
+  for (const sx of [-1, 1]) {
+    // Arms up to the rail. `riderSlots` puts the origin 1.435 m below the rail
+    // so the hands land ON it — a rider whose hands stop short of the bar is
+    // the single most obvious thing wrong with a crowd like this.
+    riderParts.push(put(tube(0.055, 0.055, 1.15, 6), sx * 0.2, 0.86, 0));
+    riderParts.push(put(tube(0.08, 0.065, 0.78, 6), sx * 0.12, -0.72, 0));
+  }
+  // A slung pack, so the silhouette from below is not a plain sausage.
+  riderParts.push(put(bevelBox(0.36, 0.42, 0.22, bevel * 0.5), 0, 0.02, -0.26));
+  const riderGeo = boxProjectUv(mergeParts(riderParts), 1.2);
+  const riderMat = track(
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.78,
+      metalness: 0.06,
+      // Same reasoning as the canopies: these hang under the vehicle, in its
+      // shadow, seen from below against a bright sky. With no fill they are
+      // black cut-outs and the rail reads as a row of bats.
+      emissive: new THREE.Color(skin.poolParty ? 0x7fb8cc : 0x8fa8c4),
+      emissiveIntensity: 0.3,
+      fog: true,
+    }),
+  );
+  const RIDER_PALETTE = skin.poolParty
+    ? [0xff5fa2, 0x5ecfff, 0xffe45e, 0x8affc1, 0xc08aff, 0xff8a4d, 0xf4f9ff]
+    : [0x39435c, 0x4c5a78, 0x6b5a4a, 0x2f4a3e, 0x5a3f52, 0x3c4c5c, 0x585048];
+  const riderSlots: { x: number; y: number; z: number; phase: number }[] = [];
+  const RAIL_Y = floorY - 0.16;
+  for (const sx of [-1, 1]) {
+    for (const z of [-7.2, -4.4, -1.6, 0, 2.4, 5.6, 8.4]) {
+      // Never at the player's own strap: two bodies in one place is worse
+      // than an empty hook.
+      if (sx > 0 && z === 0) continue;
+      riderSlots.push({ x: sx * 1.5, y: RAIL_Y - 1.435, z, phase: rng() * Math.PI * 2 });
+    }
+  }
+  // Shuffle, so the bus does not empty tidily from one end. Fisher–Yates on
+  // the match's own stream, which is re-seeded every play.
+  for (let i = riderSlots.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [riderSlots[i], riderSlots[j]] = [riderSlots[j], riderSlots[i]];
+  }
+  const riders = new THREE.InstancedMesh(riderGeo, riderMat, riderSlots.length);
+  riders.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  riders.castShadow = false;
+  riders.frustumCulled = false;
+  const riderColor = new THREE.Color();
+  const riderPose = new THREE.Object3D();
+  for (let i = 0; i < riderSlots.length; i++) {
+    riderColor.setHex(RIDER_PALETTE[i % RIDER_PALETTE.length]);
+    riders.setColorAt(i, riderColor);
+    // Seed the matrices here rather than leaving them identity: `update` fixes
+    // them on the first frame, but the bus is built during boot and the loader
+    // can render before that frame, which would put thirteen bodies in a heap
+    // at the model's origin for one visible frame.
+    riderPose.position.set(riderSlots[i].x, riderSlots[i].y, riderSlots[i].z);
+    riderPose.updateMatrix();
+    riders.setMatrixAt(i, riderPose.matrix);
+  }
+  if (riders.instanceColor) riders.instanceColor.needsUpdate = true;
+  riders.instanceMatrix.needsUpdate = true;
+  sway.add(riders);
+  geometries.push(riderGeo);
 
   // ---- bumpers, lamps, grille -------------------------------------------
   for (const sz of [-1, 1]) {
@@ -2185,10 +2372,14 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
   if (skin.poolParty) {
     // Rings, lashed flat to the roof rack. Different radii on purpose: a rack
     // of identical donuts reads as a manufactured part, not as luggage.
+    // Placed around the crates and the tank rather than on top of them: the
+    // rack already carries two crates (z −5.9..−0.65) and a 4.9 m drum
+    // (z 0.45..5.35), and a ring through either of those is the sort of thing
+    // that only shows up in a screenshot.
     for (const [x, z, r] of [
-      [-1.15, -6.6, 1.1],
-      [1.25, 3.1, 0.95],
-      [-1.35, 6.9, 1.2],
+      [-1.15, -8.4, 1.1],
+      [1.5, -4.4, 0.95],
+      [-1.35, 7.0, 1.2],
     ] as const) {
       vinylParts.push(put(new THREE.TorusGeometry(r, 0.31, 8, 18), x, roofY + 0.78, z, Math.PI / 2));
     }
@@ -2198,22 +2389,28 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
       [roofY + 1.25, 1.05],
       [roofY + 1.05, 0.8],
     ] as const) {
-      vinylParts.push(put(new THREE.TorusGeometry(r, 0.28, 8, 16), 0.9, y, halfL - 3.4, 0, 0, 0.22));
+      vinylParts.push(put(new THREE.TorusGeometry(r, 0.28, 8, 16), 0.9, y, halfL - 2.3, 0, 0, 0.22));
     }
     // Two more hung outboard of the belly rails, at the player's own eye
     // height. These are the ones that are in frame for the whole ride.
+    // z 2.0 and −3.1 are both clear of the three wheel stations (−7.1, 5.4,
+    // 7.4); a ring hung over a wheel intersects it, since the tyre reaches
+    // y −0.23 and the ring's own outer radius reaches y +0.13.
     for (const [sx, z] of [
       [1, -3.1],
-      [-1, 4.3],
+      [-1, 2.0],
     ] as const) {
+      // Centre 1.6 m under the belly line so the ring's own 1.13 m outer
+      // radius still clears it — hung any higher and the top of the ring is
+      // buried inside the floor plate.
       vinylParts.push(
-        put(new THREE.TorusGeometry(0.86, 0.27, 8, 16), sx * 2.55, floorY - 1.0, z, 0, Math.PI / 2),
+        put(new THREE.TorusGeometry(0.86, 0.27, 8, 16), sx * 2.55, floorY - 1.6, z, 0, Math.PI / 2),
       );
       // The line it hangs on.
       darkParts.push(
         strut(
-          new THREE.Vector3(sx * 2.5, floorY - 0.14, z),
-          new THREE.Vector3(sx * 2.55, floorY - 0.16, z),
+          new THREE.Vector3(sx * 2.55, floorY - 0.05, z),
+          new THREE.Vector3(sx * 2.55, floorY - 0.47, z),
           0.03,
           4,
         ),
@@ -2239,10 +2436,21 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
       vinylParts.push(put(new THREE.TorusGeometry(1.15, 0.09, 6, 18), 0, tankY, tankZ + dz));
     }
     trimParts.push(put(tube(0.3, 0.34, 0.34, 10), 0, tankY + 1.2, tankZ - 1.5));
+    // Feed hose, in two runs. The direct line from the tank's rear cap to the
+    // back deck passes *through* the roof cap (which reaches y 5.45 out to
+    // z ±10.25), so it goes over the deck first and only then down the tail.
     vinylParts.push(
       strut(
-        new THREE.Vector3(0.7, tankY - 0.6, tankZ + 2.5),
-        new THREE.Vector3(1.9, waistY + 0.5, halfL + 0.2),
+        new THREE.Vector3(0.85, tankY - 0.2, tankZ + 2.5),
+        new THREE.Vector3(0.85, roofY + 0.3, halfL + 0.75),
+        0.1,
+        6,
+      ),
+    );
+    vinylParts.push(
+      strut(
+        new THREE.Vector3(0.85, roofY + 0.3, halfL + 0.75),
+        new THREE.Vector3(1.85, floorY + 0.6, halfL + 1.2),
         0.1,
         6,
       ),
@@ -2475,6 +2683,8 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
   addMerged(lampParts, lampMat, 1, false);
   addMerged(tailParts, tailLampMat, 1, false);
   addMerged(rubberParts, rubberMat, 0.8, false);
+  // 1.7 m so two rings hung a metre apart land on different colour bands.
+  if (vinylMat) addMerged(vinylParts, vinylMat, 1.7, true);
 
   return {
     root,
@@ -2681,8 +2891,15 @@ const TRAIL_POINTS = 9;
 
 interface Crowd {
   root: THREE.Object3D;
-  /** Release a diver at the bus's current position, heading for `target`. */
-  release(from: THREE.Vector3, target: THREE.Vector3, groundY: number): void;
+  /**
+   * Release a diver at the bus's current position, heading for `target`.
+   *
+   * `away` is the bus's right — the side the rails are on. Passing it makes
+   * the exit read as somebody letting go of a rail rather than as a body
+   * materialising inside the vehicle, which matters entirely because the
+   * player is standing on that rail watching it happen.
+   */
+  release(from: THREE.Vector3, target: THREE.Vector3, groundY: number, away?: THREE.Vector3): void;
   update(dt: number): void;
   readonly airborne: number;
   dispose(): void;
@@ -2793,7 +3010,7 @@ function makeCrowd(count: number, rng: () => number): Crowd {
 
   return {
     root,
-    release(from, target, groundY) {
+    release(from, target, groundY, away) {
       const d = divers[next];
       next = (next + 1) % count;
       d.stage = "freefall";
@@ -2803,6 +3020,15 @@ function makeCrowd(count: number, rng: () => number): Crowd {
       d.pos.y += (rng() * 2 - 1) * 1.5;
       d.pos.z += (rng() * 2 - 1) * 5;
       d.vel.set((rng() * 2 - 1) * 8, -6, (rng() * 2 - 1) * 8);
+      if (away) {
+        // Start outboard of the hull and drifting further out, so the first
+        // half-second of the exit is a body clearing the rail rather than one
+        // falling through the floor. 3.4 m clears `halfW`; the −2.4 m puts
+        // them below the belly plate, which is where a rail is.
+        d.pos.addScaledVector(away, 3.4 + rng() * 2.5);
+        d.pos.y -= 2.4;
+        d.vel.addScaledVector(away, 4 + rng() * 3);
+      }
       d.target.copy(target);
       d.target.x += (rng() * 2 - 1) * 60;
       d.target.z += (rng() * 2 - 1) * 60;
@@ -3011,6 +3237,8 @@ interface FixedSystem extends System {
 
 const createMatch: SystemFactory = (ctx: WorldCtx): System => {
   const services = ctx.services as MatchServices;
+  /** Words and paint for whichever game this is. See `BusSkin`. */
+  const skin = busSkin(ctx.mode);
 
   /**
    * A *fresh* stream, not `ctx.rng`. `ctx.rng` is the world seed and must
@@ -3057,6 +3285,18 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
   let restartOffered = false;
   let hornedIn = false;
   let hornedOut = false;
+  /** 0 shut, 1 fully swung. Cosmetic; `doorsOpen` is the state it chases. */
+  let doorSwing = 0;
+  let doorsOpen = false;
+  /** Countdown on the exterior establishing orbit at the top of the bus phase. */
+  let busHeroT = 0;
+  /** Countdown on the third-person beat that punctuates the jump. */
+  let jumpBeatT = 0;
+  /** How many of the lobby have physically let go of the bus. */
+  let departed = 0;
+  /** Nearest POI to the bus's current ground track, for the HUD's drop hint. */
+  let overhead = "";
+  let overheadDist = 0;
   let realAliveCache = LOBBY;
   let realAliveTimer = 0;
   let victoryAngle = 0;
@@ -3082,6 +3322,8 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
   const cineQuat = new THREE.Quaternion();
   const cineMatrix = new THREE.Matrix4();
   const UP = new THREE.Vector3(0, 1, 0);
+  /** Scratch transform for the rider instances. */
+  const riderDummy = new THREE.Object3D();
   let cineFov = 52;
 
   function busAt(t: number, out?: THREE.Vector3): THREE.Vector3 {
@@ -3327,7 +3569,18 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     });
   }
 
-  /** Reused per-frame payload — the bus panel updates every frame. */
+  /**
+   * Reused per-frame payload — the bus panel updates every frame.
+   *
+   * The first eleven fields are what the HUD has always read. Everything below
+   * them is the drop *decision* made legible: where the flight line starts and
+   * ends (the HUD used to reconstruct it by extrapolating two samples of the
+   * bus position, which cannot produce a line until the bus has already flown
+   * a twentieth of the route), when the doors open and when you are thrown
+   * out, what the bus is over right now, and how much of the lobby is still
+   * hanging on beside you. The bus phase exists so a player can choose a
+   * landing spot; none of that choice was reaching the interface.
+   */
   const busEvent = {
     phase: "warmup" as MatchPhase,
     t: 0,
@@ -3340,7 +3593,96 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     alive: LOBBY,
     warmup: 0,
     warmupTotal: WARMUP_TIME,
+    /** The flight line, in world XZ. Both ends are out over open water. */
+    fromX: busFrom.x,
+    fromZ: busFrom.z,
+    toX: busTo.x,
+    toZ: busTo.z,
+    /** Route progress at which the doors open and at which you are pushed. */
+    opensAt: JUMP_OPENS_T,
+    forcedAt: FORCE_JUMP_T,
+    doorsOpen: false,
+    /** Metres above the ground directly below, which is what a diver cares about. */
+    altitude: BUS_ALTITUDE,
+    /** Nearest POI to the point under the bus, and how far off the line it is. */
+    over: "",
+    overDist: 0,
+    /** Of the lobby, how many have jumped and how many are still on the rail. */
+    departed: 0,
+    onBoard: LOBBY,
   };
+
+  /**
+   * Publish the flight line, once per phase that cares.
+   *
+   * The bus phase exists for exactly one decision — where to land — and that
+   * decision is only makeable if you can see the line and what is under it.
+   * The minimap could previously only *infer* the route, by taking two samples
+   * of the bus position and extrapolating, which means it has nothing to draw
+   * until the bus is already 5% of the way across the island: the first and
+   * most valuable seconds of the choice were spent looking at an empty map.
+   *
+   * So the route is stated, not inferred, along with every POI the line passes
+   * near and how far off it each one sits. `chord` is where along the route
+   * each POI is closest, which is what a "drop here" marker keys off.
+   */
+  function emitRoute(): void {
+    const near: {
+      name: string;
+      tier: string;
+      x: number;
+      z: number;
+      /** Route progress 0..1 at closest approach. */
+      chord: number;
+      /** Metres from the flight line at that point. */
+      offset: number;
+    }[] = [];
+    for (const p of services.pois ?? []) {
+      tmpA.subVectors(p.center, busFrom);
+      const along = tmpA.dot(routeDir);
+      const chord = clamp01(along / routeLength);
+      busAt(chord, tmpB);
+      near.push({
+        name: p.name,
+        tier: p.tier,
+        x: p.center.x,
+        z: p.center.z,
+        chord,
+        offset: Math.round(Math.hypot(p.center.x - tmpB.x, p.center.z - tmpB.z)),
+      });
+    }
+    near.sort((a, b) => a.chord - b.chord);
+    ctx.emit("dz:bus-route", {
+      fromX: busFrom.x,
+      fromZ: busFrom.z,
+      toX: busTo.x,
+      toZ: busTo.z,
+      altitude: BUS_ALTITUDE,
+      duration: BUS_DURATION,
+      opensAt: JUMP_OPENS_T,
+      forcedAt: FORCE_JUMP_T,
+      pois: near,
+    });
+  }
+
+  /**
+   * What the bus is passing over right now. Recomputed on the update tick
+   * rather than cached per POI, because the answer is a function of the bus's
+   * position and there are only a dozen POIs to check.
+   */
+  function refreshOverhead(): void {
+    let best = "";
+    let bestD = Infinity;
+    for (const p of services.pois ?? []) {
+      const d = Math.hypot(p.center.x - busPosition.x, p.center.z - busPosition.z);
+      if (d < bestD) {
+        bestD = d;
+        best = p.name;
+      }
+    }
+    overhead = best;
+    overheadDist = Number.isFinite(bestD) ? Math.round(bestD) : 0;
+  }
 
   function announce(text: string, tone: "info" | "urgent" = "info"): void {
     ctx.emit("dz:announce", { text, tone, alive: service.alive });
@@ -3507,6 +3849,7 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     if (jumped) return;
     if (phase !== "bus") return;
     jumped = true;
+    jumpBeatT = JUMP_BEAT_TIME;
     ctx.emit("dz:jump", { t: service.busT, x: busPosition.x, y: busPosition.y, z: busPosition.z });
     sfx("bus-release", 0.8);
     setPhase("dropping");
@@ -3529,11 +3872,12 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
         music("drop-in", 0.55);
         bed("bus-engine", true, 0.28);
         ctx.emit("dz:warmup", {
-          title: "DROP ZERO",
-          subtitle: "100 drop. 1 walks out.",
+          title: skin.wordmark,
+          subtitle: skin.poolParty ? WATER.strings.modeTagline : "100 drop. 1 walks out.",
           duration: WARMUP_TIME,
           skippable: true,
         });
+        emitRoute();
       },
       fixed(dt) {
         warmupT += dt;
@@ -3558,15 +3902,37 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       enter() {
         service.busT = 0;
         routeU = 0;
-        cineTarget = 0;
+        // Hold the camera outside for the establishing orbit, then let go.
+        // See `BUS_HERO_TIME`: this beat is the answer to "you can never see
+        // the bus", and it costs three and a half of the thirty-five seconds
+        // the phase already had.
+        busHeroT = BUS_HERO_TIME;
+        cineTarget = 1;
         bed("bus-engine", true, 0.45);
-        announce("Drop when ready", "info");
+        emitRoute();
+        announce("Pick your drop", "info");
       },
       fixed(dt) {
         routeU += dt / BUS_DURATION;
         service.busT = clamp01(routeU);
         parkPlayerOnBus();
         releaseDrops();
+        if (busHeroT > 0) {
+          busHeroT -= dt;
+          if (busHeroT <= 0) {
+            busHeroT = 0;
+            cineTarget = 0;
+          }
+        }
+        // The doors are the drop window made physical: they swing at exactly
+        // the progress `canJump` starts returning true, so "may I jump yet" is
+        // answerable by looking sideways instead of at the HUD.
+        if (!doorsOpen && service.busT >= JUMP_OPENS_T) {
+          doorsOpen = true;
+          sfx("bus-release", 0.55, 0.7);
+          announce("Doors open", "info");
+          emitMatch("doors");
+        }
         if (!hornedIn && service.busT > 0.03) {
           hornedIn = true;
           sfx("bus-horn", 0.85, 1);
@@ -3582,6 +3948,8 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
           // being carried past the island is not a strategy.
           announce("End of the line", "urgent");
           jumped = true;
+          jumpBeatT = JUMP_BEAT_TIME;
+          sfx("bus-release", 0.8);
           ctx.emit("dz:jump", {
             t: service.busT,
             forced: true,
@@ -3597,12 +3965,25 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     dropping: {
       enter() {
         dropTimer = 0;
-        cineTarget = 0;
+        // A jump with no camera on it is a state change. Take the camera for
+        // `JUMP_BEAT_TIME` so the player sees themselves come off the rail and
+        // the bus climb away above them, then hand it straight back for the
+        // dive — `HANDOFF_TIME` is the fastest release the blend has, which is
+        // the right asymmetry here.
+        cineTarget = jumpBeatT > 0 ? 1 : 0;
+        cineFov = 68;
         bed("bus-engine", false);
         music("drop", 0.5);
       },
       fixed(dt) {
         dropTimer += dt;
+        if (jumpBeatT > 0) {
+          jumpBeatT -= dt;
+          if (jumpBeatT <= 0) {
+            jumpBeatT = 0;
+            cineTarget = 0;
+          }
+        }
         // The bus keeps going and keeps dropping people after you leave.
         routeU += dt / BUS_DURATION;
         service.busT = clamp01(routeU);
@@ -3935,10 +4316,22 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     // concluded the player had been dropped inside the wall. Nothing consumes
     // `dz:bot-drop`, so suppressing the announcement costs nothing.
     for (const d of drops) {
-      if (!d.released && d.t <= service.busT) d.released = true;
+      if (!d.released && d.t <= service.busT) {
+        d.released = true;
+        departed++;
+      }
     }
+    // The bus is thirty seconds into its run in the fiction we just skipped,
+    // so its doors are open and most of its rail is empty. Set the cosmetic
+    // state to match rather than leaving a shut, fully loaded bus overhead.
+    doorsOpen = true;
+    doorSwing = 1;
     // The cinematic camera has to be fully released or the hand-off spends
-    // HANDOFF_TIME seconds lerping in from the fly-over path.
+    // HANDOFF_TIME seconds lerping in from the fly-over path. Both timed
+    // camera beats are cancelled outright for the same reason: neither has a
+    // subject once the player is standing in a town.
+    busHeroT = 0;
+    jumpBeatT = 0;
     cineTarget = 0;
     cineWeight = 0;
 
@@ -3989,7 +4382,13 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     for (const d of drops) {
       if (d.released || d.t > service.busT) continue;
       d.released = true;
+      departed++;
       busAt(d.t, tmpA);
+      // Somebody letting go three metres away is an event, so it gets a cue —
+      // but only while the player is still on the rail to hear it, and only
+      // for departures the bus has *just* made rather than for the thirty
+      // `skipToLive` retires in one step.
+      if (phase === "bus" && !jumped) sfx("bus-release", 0.22, 1.15 + rng() * 0.2);
       ctx.emit("dz:bot-drop", {
         id: d.id,
         t: d.t,
@@ -4000,6 +4399,8 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
         toX: d.target.x,
         toY: d.target.y,
         toZ: d.target.z,
+        /** How many of the planned departures are still on board after this one. */
+        remaining: drops.length - departed,
       });
       let groundY = d.target.y;
       try {
@@ -4007,7 +4408,7 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       } catch {
         /* keep the planned height */
       }
-      crowd.release(tmpA, d.target, groundY);
+      crowd.release(tmpA, d.target, groundY, routeRight);
     }
   }
 
@@ -4036,6 +4437,59 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
 
   /** Where the camera wants to be this frame, when the match owns it. */
   function solveCine(dt: number): void {
+    /* ---- the establishing orbit ------------------------------------------
+     *
+     * Broadside on the bus, swinging from a rear quarter round to abeam while
+     * pulling out from `BUS_HERO_IN` to `BUS_HERO_OUT`. Neither distance is
+     * arbitrary: the vehicle spans about 27 m from the riders' feet to the
+     * crown of the envelope, so at 58 m and 46° a full-height frame has real
+     * margin at both ends, and the frame the player complained about — the
+     * inside of a blue box — is not reachable from anywhere on this path.
+     *
+     * The orbit continues while `cineWeight` is still bleeding out, which is
+     * why the test is on the timer having *run*, not on it being non-zero.
+     */
+    if (phase === "bus" && (busHeroT > 0 || cineWeight > 0.001)) {
+      const u = easeInOut(1 - clamp01(busHeroT / BUS_HERO_TIME));
+      // 2.145 rad is atan2(34, −22): the bearing the fly-over's closing shot
+      // ends on. Starting anywhere else here is a visible cut.
+      const theta = lerp(2.145, 1.5, u);
+      const dist = lerp(BUS_HERO_IN, BUS_HERO_OUT, u);
+      cinePos
+        .copy(busPosition)
+        .addScaledVector(routeDir, Math.cos(theta) * dist)
+        .addScaledVector(routeRight, Math.sin(theta) * dist);
+      cinePos.y += lerp(13, 19, u);
+      // Tilt up onto the middle of the *whole* set piece as it pulls out —
+      // hull plus envelope, not the rail line. The rail is the model's origin,
+      // and framing on it puts twenty metres of balloon out of shot.
+      cineLook.copy(busPosition);
+      cineLook.y += lerp(5, 10, u);
+      cineFov = damp(cineFov, 46, 2, dt);
+      return;
+    }
+
+    /* ---- the jump beat --------------------------------------------------- */
+    if (phase === "dropping" && (jumpBeatT > 0 || (cineWeight > 0.001 && dropTimer < JUMP_BEAT_TIME + 0.6))) {
+      const u = easeInOut(1 - clamp01(jumpBeatT / JUMP_BEAT_TIME));
+      const anchor = services.player?.position ?? busPosition;
+      cinePos
+        .copy(anchor)
+        .addScaledVector(routeRight, lerp(7, 14, u))
+        .addScaledVector(routeDir, lerp(-4, -9, u));
+      cinePos.y += lerp(2.5, 7.5, u);
+      // Start the look between the diver and the bus so both are in frame at
+      // the instant of release, then settle onto the diver as the bus climbs
+      // out of shot on its own.
+      cineLook.copy(anchor);
+      cineLook.y += 1.2;
+      cineLook.lerp(busPosition, 0.38 * (1 - u));
+      // A hard wide-to-normal pull. The FOV move is doing as much of the work
+      // here as the position move is.
+      cineFov = damp(cineFov, 54, 2.6, dt);
+      return;
+    }
+
     if (phase === "warmup" || (phase === "bus" && cineWeight > 0.001)) {
       buildFlyover();
       const dur = WARMUP_TIME;
@@ -4168,6 +4622,59 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       const breathe = 1 + Math.sin(t * 0.8) * 0.007;
       bus.balloon.scale.set(breathe, 2 - breathe, breathe);
 
+      // Doors. One shared swing for both leaves, mirrored by the side sign
+      // baked into `userData` at build time.
+      const wantSwing = doorsOpen ? 1 : 0;
+      if (Math.abs(doorSwing - wantSwing) > 0.0005) {
+        doorSwing = clamp01(doorSwing + Math.sign(wantSwing - doorSwing) * (dt / DOOR_TIME));
+      }
+      // Written every frame rather than only while the swing is moving:
+      // `skipToLive` sets `doorSwing` to 1 outright, and a guard on "is it
+      // still animating" would leave those leaves shut on the model while the
+      // state said open.
+      const swung = easeInOut(doorSwing) * DOOR_ARC;
+      for (const d of bus.doors) {
+        d.rotation.y = (d.userData.side as number) * swung;
+      }
+
+      // Everyone still hanging on. The rail empties in step with the drop
+      // schedule, so the count on the HUD and the bodies beside you agree.
+      if (bus.riders) {
+        const slots = bus.riderSlots;
+        const planned = drops.length || 1;
+        const left = phase === "warmup"
+          ? slots.length
+          : Math.round(slots.length * clamp01(1 - departed / planned));
+        for (let i = 0; i < slots.length; i++) {
+          const s = slots[i];
+          if (i >= left) {
+            // Scale to nothing rather than moving them away: an instance parked
+            // at −10000 still costs the same matrix upload, and this one also
+            // has to survive being scaled back up if a drop is ever un-fired.
+            riderDummy.position.set(s.x, s.y, s.z);
+            riderDummy.scale.setScalar(0.0001);
+            riderDummy.rotation.set(0, 0, 0);
+          } else {
+            // A slow pendulum per rider, on its own phase, plus a little yaw.
+            // Thirteen bodies swinging in unison is a chorus line.
+            const sw = Math.sin(t * 0.9 + s.phase);
+            riderDummy.position.set(s.x + sw * 0.05, s.y + Math.sin(t * 1.7 + s.phase) * 0.03, s.z);
+            riderDummy.rotation.set(0, Math.sin(t * 0.4 + s.phase) * 0.5, sw * 0.09, "YXZ");
+            riderDummy.scale.setScalar(1);
+          }
+          riderDummy.updateMatrix();
+          bus.riders.setMatrixAt(i, riderDummy.matrix);
+        }
+        bus.riders.instanceMatrix.needsUpdate = true;
+      }
+
+      // Towels: a lazy flap on the slipstream, each on its own phase.
+      for (let i = 0; i < bus.towels.length; i++) {
+        const tw = bus.towels[i];
+        tw.rotation.z = Math.sin(t * 1.35 + i * 1.9) * 0.12;
+        tw.rotation.x = Math.sin(t * 0.9 + i) * 0.07;
+      }
+
       for (let i = 0; i < bus.rotors.length; i++) {
         // Opposite directions, slightly different rates: counter-rotating
         // fans, and no visible strobe beat between the two.
@@ -4238,7 +4745,32 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     busEvent.jumped = jumped;
     busEvent.alive = service.alive;
     busEvent.warmup = phase === "warmup" ? warmupT : WARMUP_TIME;
-    if (phase === "warmup" || phase === "bus" || phase === "dropping") ctx.emit("dz:bus", busEvent);
+    busEvent.doorsOpen = doorsOpen;
+    busEvent.departed = departed;
+    // Scaled off the *planned* departures, not counted off them: only 64 of
+    // the 99 rivals are ever given a drop plan (the rest are a number on the
+    // drain curve), so a raw subtraction leaves 35 people permanently aboard a
+    // bus that has finished its run.
+    busEvent.onBoard = Math.max(
+      0,
+      Math.round((LOBBY - 1) * clamp01(1 - departed / (drops.length || 1))),
+    );
+    if (phase === "warmup" || phase === "bus" || phase === "dropping") {
+      refreshOverhead();
+      busEvent.over = overhead;
+      busEvent.overDist = overheadDist;
+      // Height above what is actually under the bus, not above sea level: on
+      // the way over a 300 m ridge those are different numbers and only one of
+      // them tells a diver how long they have.
+      let ground = 0;
+      try {
+        ground = services.terrain?.heightAt(busPosition.x, busPosition.z) ?? 0;
+      } catch {
+        ground = 0;
+      }
+      busEvent.altitude = Math.round(busPosition.y - ground);
+      ctx.emit("dz:bus", busEvent);
+    }
   }
 
   function lateUpdate(): void {
@@ -4290,6 +4822,10 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
 
       if (bus) {
         bus.root.removeFromParent();
+        // The rider crowd is an InstancedMesh: its geometry and material are
+        // already in the tracked lists, but the instance buffers are not and
+        // leak with the GL context if it is not disposed by name.
+        bus.riders?.dispose();
         for (const g of bus.geometries) g.dispose();
         for (const m of bus.materials) m.dispose();
         // The bus owns these textures — they were baked here, so they are
