@@ -318,11 +318,14 @@ export default function Game() {
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
           <div className="ml-auto flex items-center gap-1">
+            <span className="mr-2 font-heading text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+              Recently played
+            </span>
             {(
               [
-                ["played", "Recently played"],
+                ["played", "Played"],
                 ["featured", "Featured"],
-                ["recent", "Recently updated"],
+                ["recent", "Recent"],
               ] as const
             ).map(([id, label]) => (
               <button
