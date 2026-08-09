@@ -269,7 +269,7 @@ export default function VibeHub() {
           </Step>
 
           {/* ---- 3. Claiming it ---- */}
-          <Step n={3} title="Claim them as real Vibecoin" done={rows.length > 0}>
+          <Step n={isGuest ? 3 : 2} title="Claim them as real Vibecoin" done={rows.length > 0}>
             <p className="mb-3 text-[11.5px] leading-relaxed text-muted-foreground">
               Last on purpose. Connect a wallet you already have, or make one
               with Face ID in a single tap — either way you sign a sentence,
