@@ -214,9 +214,12 @@ export default function VibeHub() {
             </div>
           </div>
 
-          {/* ---- 1. The account ---- */}
-          <Step n={1} title="MAKE A VIBE ACCOUNT" done={!isGuest}>
-            {isGuest ? (
+          {/* ---- 1. The account ----
+              Once you are signed in this step has nothing left to say, so it
+              disappears rather than sitting there confirming your own name.
+              The steps below renumber to match. */}
+          {isGuest && (
+            <Step n={1} title="MAKE A VIBE ACCOUNT" done={false}>
               <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
                 <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                   An email and a six-digit code — no password, nothing to
@@ -236,21 +239,12 @@ export default function VibeHub() {
                   merged, once, automatically.
                 </p>
               </div>
-            ) : (
-              <div className="rounded-2xl border border-[#7dffd4]/30 bg-[#7dffd4]/[0.06] p-4">
-                <p className="font-heading text-[11px] font-black uppercase tracking-wider text-[#7dffd4]">
-                  Signed in{displayName ? ` as ${displayName}` : ""}
-                </p>
-                <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Your Vibey Coins are on your account now, not in this browser. They
-                  are there on any device you sign in from.
-                </p>
-              </div>
-            )}
-          </Step>
+            </Step>
+          )}
 
           {/* ---- 2. Earning it ---- */}
-          <Step n={2} title="Earn some Vibey Coins" done={(balance ?? 0) > 100}>
+          <Step n={isGuest ? 2 : 1} title="Earn some Vibey Coins" done={(balance ?? 0) > 100}>
+
             <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
               <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                 Everyone starts with 100. The cabinets in the arcade pay out,
