@@ -150,16 +150,38 @@ export default function VibeHub() {
 
           {/* ---- The one distinction everything else rests on ---- */}
           <div className="mt-7 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-[#7dffd4]/30 bg-[#7dffd4]/[0.06] p-4">
-              <div className="flex items-center gap-2">
+            <div className="relative overflow-hidden rounded-2xl border border-[#7dffd4]/30 bg-[#7dffd4]/[0.06] p-4">
+              {/* A sync in flight gets a sweep across the card rather than a
+                  spinner off to the side — the thing you are waiting on is the
+                  number, so the number is what should look alive. */}
+              {loading && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 animate-[vibe-sweep_1.15s_linear_infinite]"
+                  style={{
+                    background:
+                      "linear-gradient(100deg, transparent 20%, rgba(125,255,212,0.16) 50%, transparent 80%)",
+                  }}
+                />
+              )}
+              <div className="relative flex items-center gap-2">
                 <VibeCoinMark size={26} />
-                <span className="font-heading text-2xl font-black tabular-nums text-[#7dffd4]">
-                  {balance == null ? "—" : formatVibecoin(balance, { compact: false })}
-                </span>
+                {balance == null && loading ? (
+                  <span className="h-7 w-24 animate-pulse rounded-md bg-[#7dffd4]/20" />
+                ) : (
+                  <span
+                    className={`font-heading text-2xl font-black tabular-nums text-[#7dffd4] transition-opacity ${
+                      loading ? "opacity-60" : "opacity-100"
+                    }`}
+                  >
+                    {balance == null ? "—" : formatVibecoin(balance, { compact: false })}
+                  </span>
+                )}
               </div>
-              <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                {VIBECOIN_NAME} {VIBECOIN_GLYPH}
+              <p className="relative mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                {loading ? "Waiting on the vibe…" : `${VIBECOIN_NAME} ${VIBECOIN_GLYPH}`}
               </p>
+
               <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
                 What you earn in the worlds. Buys characters, plays cabinets,
                 stakes rounds. Yours the moment you arrive, no account needed.
