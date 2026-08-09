@@ -82,7 +82,7 @@ function Step({
 
 export default function VibeHub() {
   useWorldStamp("/coin", "Vibe Coin");
-  const { balance } = useVibecoin();
+  const { balance, loading } = useVibecoin();
   const { isGuest, displayName } = useVibeIdentity();
   const { rows, totalUsd } = useWalletBook();
   const [authOpen, setAuthOpen] = useState(false);
