@@ -98,6 +98,7 @@
 import * as THREE from "three";
 import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
+import { WATER } from "../mode/water";
 import type { QualityTier, System, SystemFactory, WorldCtx } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -365,6 +366,34 @@ const GRADE_DOWN: Grade = {
   grain: 0.06,
 };
 
+/**
+ * SPLASH ROYALE's replacement for GRADE_DOWN.
+ *
+ * Same slot in the chain, opposite message. Being soaked out is not dying: the
+ * frame goes *brighter*, cooler and a little washed — the look of a photograph
+ * taken through a wet window on a sunny day — instead of draining to grey with
+ * the blood pushed back in. Saturation falls to 0.62 rather than 0.32 (the
+ * island stays an island), the vignette closes to 0.5 rather than 0.72, and the
+ * bleach goes *up*, which is what sells "there is water on the lens" without
+ * spending a single pixel on hue.
+ */
+const GRADE_SOAKED: Grade = {
+  exposure: 1.04,
+  filter: [0.82, 0.98, 1.14],
+  contrast: 1.03,
+  scurve: 0.18,
+  offset: 0.012,
+  lift: [0.012, 0.03, 0.052],
+  shadowTint: [0.84, 1.0, 1.2],
+  midTint: [0.88, 1.0, 1.14],
+  highTint: [0.94, 1.02, 1.1],
+  saturation: 0.62,
+  vibrance: 0.14,
+  bleach: 0.14,
+  vignette: 0.5,
+  grain: 0.02,
+};
+
 function mixGrade(a: Grade, b: Grade, t: number, out: Grade): void {
   const l = (x: number, y: number) => x + (y - x) * t;
   const l3 = (
@@ -526,6 +555,64 @@ const HIT_SLOTS = 3;
 const LOW_HEALTH = 0.36;
 
 // ---------------------------------------------------------------------------
+// SPLASH ROYALE — the same three screen effects, restated in water
+//
+// Drop Zero's lens speaks the language of a shooter: blood in the corners, a
+// red wedge in the bearing of whoever shot you, a dark red breath at the edge
+// when you are nearly dead. In a game whose entire promise is that NOBODY GETS
+// HURT, every one of those is a lie. The passes stay exactly where they are —
+// same shader, same slots, same cost — and only their colour changes, which is
+// why all three are uniforms below rather than literals in the fragment.
+//
+// Every water colour is read out of `mode/water.ts` rather than picked here, so
+// the wedge at the edge of the frame is the same blue as the Downpour's rim in
+// the world and the pulse is the same blue as the DRENCHED band on the bar.
+// ---------------------------------------------------------------------------
+
+const DOWN_PALETTE = WATER.downpour.palette;
+
+/** `0x4c9fe0` → `[0.298, 0.624, 0.878]`, in the same space the classic literals
+ *  beside it were picked in (display-referred, post-grade, pre-sRGB). */
+function rgbOf(hex: number): [number, number, number] {
+  return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+}
+
+/** A *multiply* tint of the same hue, scaled so its brightest channel is `peak`.
+ *  The hurt vignette multiplies rather than mixes, so it needs a gain triple and
+ *  not a colour — this keeps that gain honest to the palette it came from. */
+function gainOf(hex: number, peak: number): [number, number, number] {
+  const c = rgbOf(hex);
+  const m = Math.max(c[0], c[1], c[2]) || 1;
+  return [(c[0] / m) * peak, (c[1] / m) * peak, (c[2] / m) * peak];
+}
+
+/** Corners on taking a hit. Classic pulls blood; water pulls the Downpour's own
+ *  blue at exactly the same weight, so the effect reads identically strong. */
+const HURT_TINT_CLASSIC: [number, number, number] = [1.4, 0.28, 0.24];
+const HURT_TINT_WATER = gainOf(DOWN_PALETTE.wall, 1.4);
+
+/** The directional wedge. Water takes the bright rim colour where the Downpour
+ *  meets the ground — the brightest, most obviously *wet* value in the table. */
+const HIT_TINT_CLASSIC: [number, number, number] = [1.0, 0.14, 0.1];
+const HIT_TINT_WATER = rgbOf(DOWN_PALETTE.rim);
+
+/** The edge breath. Water uses the DRENCHED band, which is the colour the
+ *  dryness bar is showing at the same instant — one warning, one colour. */
+const LOW_TINT_CLASSIC: [number, number, number] = [0.62, 0.03, 0.03];
+const LOW_TINT_WATER = rgbOf(
+  WATER.bands.find((b) => b.key === "drenched")?.color ?? 0x4c9fe0,
+);
+
+/**
+ * Simulated seconds the soak-out runnel takes to sheet down the lens and clear.
+ *
+ * SIMULATED, not wall clock: this container runs the sim ~400x slower than real
+ * time under SwiftSHADER, and a drench timed off `performance.now()` would be
+ * over before the first frame of it ever rendered.
+ */
+const RUNNEL_TIME = 2.6;
+
+// ---------------------------------------------------------------------------
 // The switchboard
 // ---------------------------------------------------------------------------
 
@@ -563,6 +650,11 @@ const FX_EFFECTS = [
   "hits",
   "lowhealth",
   "aa",
+  // SPLASH ROYALE only. Both compile out of the shader entirely in classic, but
+  // they are switchable for the same reason everything else here is: when a
+  // capture comes back wrong, bisecting from the outside beats reading GLSL.
+  "runnel",
+  "wetlens",
 ] as const;
 
 type FxEffect = (typeof FX_EFFECTS)[number];
@@ -975,6 +1067,10 @@ interface CompositeFlags {
   rays: boolean;
   chromatic: boolean;
   sharpen: boolean;
+  /** SPLASH ROYALE: compile the wet-lens branches in at all. */
+  wet: boolean;
+  /** …and the per-rivulet refraction, which is the part `low` does without. */
+  wetRich: boolean;
 }
 
 function buildCompositeFragment(f: CompositeFlags): string {
@@ -1013,6 +1109,13 @@ uniform float uLowHealth;  // 0..1 ramp below LOW_HEALTH
 uniform vec3  uHit[${HIT_SLOTS}];  // xy = screen direction, z = strength
 uniform float uChromatic;
 
+// The three feedback colours. Uniforms rather than literals so SPLASH ROYALE can
+// restate the whole language of the lens without a second shader variant; the
+// classic values are pushed in unchanged, so classic's frame is untouched.
+uniform vec3  uHurtTint;   // multiplied into the corners on taking a hit
+uniform vec3  uHitTint;    // the directional wedge
+uniform vec3  uLowTint;    // the edge breath as the bar empties
+
 // --- grade ----------------------------------------------------------------
 uniform float uExposure;
 uniform vec3  uFilter;
@@ -1036,7 +1139,14 @@ ${def("USE_DOF", f.dof)}
 ${def("USE_RAYS", f.rays)}
 ${def("USE_CA", f.chromatic)}
 ${def("USE_SHARPEN", f.sharpen)}
+${def("USE_WET", f.wet)}
+${def("USE_WET_RICH", f.wetRich)}
 ${f.mbTaps > 0 ? `#define USE_MB\n#define MB_TAPS ${Math.round(f.mbTaps)}` : "// no USE_MB"}
+
+#ifdef USE_WET
+uniform float uRunnel;   // 0..1, your own soaking, sheeting down the glass
+uniform float uWetEdge;  // 0..1, beading at the rim as you get closer to soaked
+#endif
 
 ${LUMA_CHUNK}
 ${HASH_CHUNK}
@@ -1119,8 +1229,75 @@ vec3 grade(vec3 c) {
   return clamp(c, 0.0, 1.0);
 }
 
+#ifdef USE_WET
+/**
+ * SPLASH ROYALE — the lens drench.
+ *
+ * Entirely procedural: no extra buffer, no extra tap, one evaluation per pixel
+ * folded into the composite that was already running. \`.xy\` is a refraction
+ * offset in uv and \`.z\` is how much water is sitting on that pixel.
+ *
+ * \`amount\` runs 1 → 0 over RUNNEL_TIME as the drench drains. Two layers:
+ *
+ *  - a **sheet** whose top edge falls off the bottom of the frame, which is
+ *    what a windscreen actually does when it stops being rained on; and
+ *  - **rivulets**, one per column, each with its own width, speed and head, so
+ *    the frame never clears as a single flat wipe.
+ *
+ * The offset is what makes it read as water rather than as a blue overlay: a
+ * rivulet is a cylindrical lens, so it bends the image across its own width
+ * (the \`f * width\` term) and drags it along the direction it is running.
+ */
+vec3 wetSheet(vec2 uv, float amount, float time) {
+  float drain = 1.0 - amount;
+  // Wet BELOW a top edge that starts above the frame and falls out of the
+  // bottom of it. uv.y is 0 at the bottom, so the clearing runs top-down.
+  float top = 1.3 - drain * 1.65;
+  float sheet = amount * smoothstep(0.0, -0.26, uv.y - top);
+#ifdef USE_WET_RICH
+  float x = uv.x * 8.0;
+  float seed = hash12(vec2(floor(x), 17.0));
+  float f = fract(x) - 0.5;
+  float width = exp(-f * f * (16.0 + seed * 40.0));
+  // The head is the lowest point of the rivulet; the body trails above it and
+  // thins out, so each column reads as one drop with a tail rather than a bar.
+  float head = 1.4 - fract(time * (0.45 + seed * 0.55) + seed) * 1.8;
+  float dy = uv.y - head;
+  float body = smoothstep(0.0, 0.2, dy) * (1.0 - smoothstep(0.5, 1.05, dy));
+  float wet = clamp(sheet * 0.7 + body * width * amount, 0.0, 1.4);
+  return vec3(f * width * 0.055 * amount, -wet * 0.03, wet);
+#else
+  // "low": the sheet alone, no refraction and no per-column work. It still
+  // says "you got drenched", which is the part that is feedback.
+  return vec3(0.0, 0.0, sheet * 0.8);
+#endif
+}
+#endif
+
 void main() {
   vec2 uv = vUv;
+
+#ifdef USE_WET
+  // ---- the wet lens (SPLASH ROYALE only) ----------------------------------
+  // Both of these MOVE the image rather than tinting it, which is why they can
+  // be this strong without costing a single degree of hue.
+  float wetRad = length(vUv - 0.5) * 1.4142;
+  vec3 sheet = vec3(0.0);
+  if (uRunnel > 0.0) {
+    sheet = wetSheet(vUv, uRunnel, uTime);
+    uv += sheet.xy;
+  }
+#ifdef USE_WET_RICH
+  if (uWetEdge > 0.0) {
+    // Beading, at the rim only. The centre third of the frame stays clean for
+    // exactly the reason the pulse never touches it: an effect that hides the
+    // person soaking you is a bug, however pretty it is.
+    float ring = pow(smoothstep(0.46, 1.12, wetRad), 2.0);
+    uv += vec2(sin(vUv.y * 38.0 + uTime * 1.3), cos(vUv.x * 31.0 - uTime * 1.05))
+        * 0.0026 * ring * uWetEdge;
+  }
+#endif
+#endif
 
   // ---- screen-space distortion -------------------------------------------
   // Underwater: the whole frame breathes on two out-of-phase sines, which is
@@ -1280,8 +1457,10 @@ void main() {
   float vig = 1.0 - uVignette * vigMask;
   color *= vig;
 
-  // Taking a hit pulls blood into the corners; the storm pulls violet.
-  color = mix(color, color * vec3(1.4, 0.28, 0.24), uHurt * vigMask * 1.1);
+  // Taking a hit pulls blood into the corners; the storm pulls violet. In
+  // SPLASH ROYALE uHurtTint is the Downpour's blue at the same gain, so the
+  // corners go cold and wet instead of bloody.
+  color = mix(color, color * uHurtTint, uHurt * vigMask * 1.1);
 
   // Directional hit indicators. A soft angular wedge at the frame edge in the
   // bearing of the shooter — the one piece of screen feedback that changes
@@ -1292,21 +1471,40 @@ void main() {
       vec3 h = uHit[i];
       if (h.z <= 0.0) continue;
       float cone = smoothstep(0.35, 0.94, dot(dir, h.xy));
-      color = mix(color, vec3(1.0, 0.14, 0.1),
-                  cone * vigMask * h.z * 0.62);
+#ifdef USE_WET_RICH
+      // Break the wedge up so it reads as water THROWN at you from that
+      // bearing rather than as a wound opening at the edge of the frame. The
+      // hash re-rolls a few times a second, which is what makes it sparkle.
+      cone *= 0.7 + 0.6 * hash12(floor(vUv * 190.0) + floor(uTime * 16.0));
+#endif
+      color = mix(color, uHitTint, cone * vigMask * h.z * 0.62);
     }
   }
 
-  // Low health: a slow red breath at the very edge that speeds up as it gets
-  // worse. Never touches the centre third of the frame — a HUD effect that
-  // obscures the target it is warning you about is a bug.
+  // Low health: a slow breath at the very edge that speeds up as it gets worse.
+  // Never touches the centre third of the frame — a HUD effect that obscures
+  // the target it is warning you about is a bug. Classic breathes dark red;
+  // SPLASH ROYALE breathes the DRENCHED blue, and the beading above is already
+  // refracting the same rim, so the two land as one "you are soaked" event.
   if (uLowHealth > 0.0) {
     float rate = 3.0 + 7.0 * uLowHealth;
     float pulse = 0.5 + 0.5 * sin(uTime * rate);
     float edge = pow(smoothstep(0.55, 1.15, rad), 2.0);
-    color = mix(color, vec3(0.62, 0.03, 0.03),
-                edge * uLowHealth * (0.15 + 0.26 * pulse));
+    color = mix(color, uLowTint, edge * uLowHealth * (0.15 + 0.26 * pulse));
   }
+
+#ifdef USE_WET
+  // The drench itself, painted after the grade so the water sits ON the image
+  // rather than being graded as part of it. Water on glass scatters: it LIFTS
+  // and cools what is behind it, and the second term is the specular rim where
+  // a rivulet catches the sky. Nothing here goes dark — this is the player's
+  // own soaking and it is supposed to be funny.
+  if (uRunnel > 0.0) {
+    float w = clamp(sheet.z, 0.0, 1.0);
+    color = mix(color, vec3(0.74, 0.9, 1.0), w * 0.42);
+    color += vec3(0.06, 0.12, 0.16) * w * w;
+  }
+#endif
 
   color = linearToSRGB(color);
 
@@ -1343,6 +1541,15 @@ const createPostFx: SystemFactory = (ctx) => {
 
 function buildPostFx(ctx: WorldCtx): System {
   const tier = TIERS[ctx.quality] ?? TIERS.high;
+  /**
+   * SPLASH ROYALE. The only branch in this module, and it changes three
+   * uniforms, one grade and two compiled-in branches — never a pass, never a
+   * buffer, never an order. Classic gets the same shader it always had with the
+   * same numbers in it.
+   */
+  const waterMode = ctx.mode === "water";
+  /** The rivulet refraction and the wedge sparkle. `low` ships neither. */
+  const wetRich = waterMode && ctx.quality !== "low";
   const renderer = ctx.renderer;
   const scene = ctx.scene;
   const camera = ctx.camera;
@@ -1527,6 +1734,8 @@ function buildPostFx(ctx: WorldCtx): System {
       rays: tier.raySamples > 0,
       chromatic: tier.chromatic,
       sharpen: tier.sharpen,
+      wet: waterMode,
+      wetRich,
     }),
     {
       tScene: { value: null },
@@ -1557,6 +1766,19 @@ function buildPostFx(ctx: WorldCtx): System {
       uLowHealth: { value: 0 },
       uHit: { value: hitSlots },
       uChromatic: { value: tier.chromatic ? CHROMATIC : 0 },
+      uHurtTint: {
+        value: new THREE.Vector3(...(waterMode ? HURT_TINT_WATER : HURT_TINT_CLASSIC)),
+      },
+      uHitTint: {
+        value: new THREE.Vector3(...(waterMode ? HIT_TINT_WATER : HIT_TINT_CLASSIC)),
+      },
+      uLowTint: {
+        value: new THREE.Vector3(...(waterMode ? LOW_TINT_WATER : LOW_TINT_CLASSIC)),
+      },
+      // Declared in classic too and simply never sampled: the shader compiles
+      // both branches out, and three skips a uniform the program does not have.
+      uRunnel: { value: 0 },
+      uWetEdge: { value: 0 },
       uExposure: { value: 1 },
       uFilter: { value: new THREE.Vector3(1, 1, 1) },
       uContrast: { value: GRADE_DAY.contrast },
@@ -1624,6 +1846,8 @@ function buildPostFx(ctx: WorldCtx): System {
   let shake = 0;
   /** 0..1 ramp below LOW_HEALTH, driven by the HUD payload. */
   let lowHealth = 0;
+  /** 1 → 0 over RUNNEL_TIME after your own soaking. Water mode only. */
+  let runnel = 0;
   let focus = 60;
   let focusTimer = 0;
   let broken = false;
@@ -1739,10 +1963,20 @@ function buildPostFx(ctx: WorldCtx): System {
 
   offs.push(
     ctx.on("dz:hud", (p) => {
-      const h = p as { health?: number; maxHealth?: number; down?: number } | undefined;
+      const h = p as
+        | { health?: number; maxHealth?: number; down?: number; dry?: number; maxDry?: number }
+        | undefined;
       if (!h) return;
-      const max = h.maxHealth && h.maxHealth > 0 ? h.maxHealth : 100;
-      const frac = THREE.MathUtils.clamp((h.health ?? max) / max, 0, 1);
+      // In SPLASH ROYALE the bar is DRYNESS. The water player rides the same
+      // service and usually publishes it as `health` too, so this is a
+      // preference and not a requirement — same fallback the HUD uses.
+      const max = waterMode
+        ? (h.maxDry && h.maxDry > 0 ? h.maxDry : h.maxHealth && h.maxHealth > 0 ? h.maxHealth : 100)
+        : h.maxHealth && h.maxHealth > 0
+          ? h.maxHealth
+          : 100;
+      const level = waterMode ? (h.dry ?? h.health ?? max) : (h.health ?? max);
+      const frac = THREE.MathUtils.clamp(level / max, 0, 1);
       // Ramps in over the last third of the health bar and reaches full only
       // at literally-one-more-bullet. A pulse that starts at 60% is noise.
       lowHealth = 1 - THREE.MathUtils.smoothstep(frac, 0.06, LOW_HEALTH);
@@ -1806,6 +2040,10 @@ function buildPostFx(ctx: WorldCtx): System {
     ctx.on("dz:death", () => {
       downTarget = 1;
       lowHealth = 1;
+      // Your own soaking, on your own lens: the camera gets drenched and then
+      // drains. Water mode only — in classic this is a death, and the grade
+      // takeover is the thing that is supposed to say so.
+      if (waterMode) runnel = 1;
     }),
   );
   offs.push(
@@ -1820,6 +2058,7 @@ function buildPostFx(ctx: WorldCtx): System {
       downTarget = 0;
       lowHealth = 0;
       stormTarget = 0;
+      runnel = 0;
     }),
   );
 
@@ -1894,7 +2133,10 @@ function buildPostFx(ctx: WorldCtx): System {
     // lets the warp, the grain and the vignette carry the message instead.
     mixGrade(gradeA, GRADE_STORM, stormFx * STORM_GRADE_MAX, gradeB);
     mixGrade(gradeB, GRADE_WATER, waterFx, gradeA);
-    mixGrade(gradeA, GRADE_DOWN, down, grade);
+    // The dying grade, or its water counterpart. Same slot, same blend, and the
+    // one place a red literal would otherwise survive the re-theme: GRADE_DOWN
+    // is explicitly "desaturate toward monochrome with the blood pushed in".
+    mixGrade(gradeA, waterMode ? GRADE_SOAKED : GRADE_DOWN, down, grade);
     if (!fx.grade) copyGrade(GRADE_OFF, grade);
 
     const u = compositeMat.uniforms;
@@ -1925,6 +2167,12 @@ function buildPostFx(ctx: WorldCtx): System {
     u.uHurt.value = fx.vignette ? hurt : 0;
     u.uShake.value = shake;
     u.uLowHealth.value = fx.lowhealth ? lowHealth : 0;
+    // The wet lens. Both are ignored by the classic program, which has neither
+    // uniform, so there is no cost to writing them unconditionally.
+    u.uRunnel.value = fx.runnel ? runnel : 0;
+    // The beading rides the same ramp as the pulse rather than a second one:
+    // going blue at the edge and going wet at the edge are one event.
+    u.uWetEdge.value = fx.wetlens ? lowHealth : 0;
     u.uAds.value = fx.dof ? ads : 0;
     u.uTime.value = elapsed;
     // A switch can only take away what the tier already granted; it can never
@@ -2096,6 +2344,8 @@ function buildPostFx(ctx: WorldCtx): System {
       down = ease(down, downTarget, 4.5);
       hurt = Math.max(0, hurt - clampedDt * 1.4);
       shake = Math.max(0, shake - clampedDt * 1.9);
+      // Simulated seconds, off the same clamped dt everything else here uses.
+      runnel = Math.max(0, runnel - clampedDt / RUNNEL_TIME);
 
       updateCameraUniforms();
       updateHits(clampedDt);

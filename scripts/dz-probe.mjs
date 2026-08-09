@@ -2,18 +2,40 @@
 /**
  * dz-probe — ask the running world about itself.
  *
- * Currently pointed at the shadow pipeline: it poses the world exactly the way
- * `dz-shot aerial` does (by driving the PLAYER, never the camera — see the long
- * note in dz-shot.mjs about why bypassing the engine measures the harness), then
- * dumps the key light, its cascade, and a readback of the shadow map itself.
+ * CURRENTLY POINTED AT: the SPLASH ROYALE elimination burst, `vfx.soakBurst()`,
+ * measured AGAINST the shipped `vfx.balloonBurst()` in the same frame.
  *
- * The readback is the decisive bit. three renders directional shadows with a
- * MeshDepthMaterial at RGBADepthPacking into a plain RGBA8 target, so an
- * untouched texel is (255,255,255,255) — the far plane. Any texel below that is
- * a caster that actually rasterised. "Are there shadows?" stops being a matter
- * of squinting at a 1600x900 png.
+ * Two things make a naive "fire it and screenshot" useless here, and this file
+ * is shaped around both.
  *
- * Usage: node scripts/dz-probe.mjs
+ * 1. TIME. The simulation runs a few hundred times slower than wall clock
+ *    (SwiftSHADER; `core.ts` clamps dt to 1/15 and takes six fixed steps at
+ *    most) while a composite takes minutes, so a screenshot lands at an
+ *    unknown particle age — one frame old, or long over, and which one you got
+ *    is a coin flip. The fix is to freeze the clock instead of chasing it:
+ *    poll `ctx.elapsed` — never wall clock — until the age we want, then
+ *    `engine.stop()`. That halts `ctx.elapsed`, which pins the vfx layer's
+ *    `uTime` uniform, and since every particle integrates its own position
+ *    from `uTime - spawn` in the vertex shader, a frozen `uTime` is a frozen,
+ *    fully-posed burst. We then keep rendering it on our own rAF loop, so the
+ *    canvas holds an identical valid frame however long Playwright takes.
+ *
+ * 2. THE HARNESS ITSELF. Thirteen "bugs" in this world turned out to be the
+ *    measurement rather than the game, so a lone capture of a new effect
+ *    proves nothing: if it comes out empty, that is equally consistent with a
+ *    broken effect and with a probe that posed, timed or framed it wrong. So
+ *    every run fires a KNOWN-GOOD effect — `balloonBurst`, which ships and is
+ *    verified — at a second point in the SAME frame, and reports both. If the
+ *    control is empty too, the fault is in here.
+ *
+ * The readback is the part that decides it. After freezing we `gl.readPixels`
+ * a box around each burst, before and after, and print how many pixels moved,
+ * which way, and how warm they are — because "is the crown there" and "is any
+ * of this red" are not answerable by eye at two metres across a 900 px street.
+ *
+ * Usage:
+ *   node scripts/dz-probe.mjs [age] [out.png]
+ *   DZ_PROBE_AGE=0.28 node scripts/dz-probe.mjs
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -21,6 +43,11 @@ import { existsSync } from "node:fs";
 
 const PORT = Number(process.env.DZ_PORT ?? 5178);
 const BASE = `http://127.0.0.1:${PORT}`;
+/** Simulated seconds after the burst to freeze at. */
+const AGE = Number(process.argv[2] ?? process.env.DZ_PROBE_AGE ?? 0.3);
+const SHOT = process.argv[3] ?? process.env.DZ_PROBE_SHOT ?? "shots/soak-burst.png";
+const W = Number(process.env.DZ_PROBE_W ?? 900);
+const H = Number(process.env.DZ_PROBE_H ?? 540);
 
 async function up(url, ms) {
   const t0 = Date.now();
@@ -60,7 +87,7 @@ const browser = await chromium.launch({
     "--js-flags=--max-old-space-size=4096",
   ],
 });
-const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+const page = await browser.newPage({ viewport: { width: W, height: H } });
 const logs = [];
 page.on("console", (m) => logs.push(`${m.type()}: ${m.text().slice(0, 300)}`));
 page.on("pageerror", (e) => logs.push(`PAGEERROR: ${e.message.slice(0, 300)}`));
@@ -68,30 +95,6 @@ page.on("pageerror", (e) => logs.push(`PAGEERROR: ${e.message.slice(0, 300)}`));
 await page.goto(`${BASE}/drop-zero?shot=1&q=high`, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForFunction("window.__dzReady === true", null, { timeout: 60000 }).catch(() => {});
 
-/**
- * Put the match ON THE GROUND AND LIVE, with `match.skipToLive()`.
- *
- * This is the fourth thing this probe tried and the only one that works, and
- * the reason is worth writing down because it is the same class of mistake the
- * capture harness has made three times now.
- *
- * `match.jump()` only fires a request that the phase machine services, and the
- * phase machine is held at the title screen until the pointer locks — which a
- * headless page never does. So `jump()` is a no-op, `player.state` never
- * becomes "bus", the "wait until we leave the bus" loop exits on its first
- * iteration believing it succeeded, and the world stays in the warm-up
- * fly-over forever. Every frame captured that way is a bus frame, which is why
- * the HUD in shots/ says "BATTLE BUS 0:35".
- *
- * That also produces a completely convincing false "shadows are broken": while
- * the fly-over runs, match.ts calls sky.focus(cineLook) every fixed step, so
- * the shadow cascade is pinned wherever the cinematic happens to be aimed —
- * repeatedly, in measurement, 2 km out over open water with a seabed 60 m
- * below it. An empty shadow map is the correct output for that input.
- *
- * `skipToLive()` exists for exactly this case; match.ts says so in its own
- * comment. It starts the machine by hand and fast-forwards the warm-up and bus.
- */
 const live = await page
   .evaluate(`(async () => {
     const e = window.__dz;
@@ -106,7 +109,7 @@ const live = await page
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     for (let i = 0; i < 60; i++) {
       await sleep(250);
-      if (m.phase === "live") return "live after " + i + " ticks, player=" + e.ctx.services.player?.state;
+      if (m.phase === "live") return "live after " + i + " ticks, mode=" + e.ctx.mode;
     }
     return "phase stuck at " + m.phase;
   })()`)
@@ -114,7 +117,6 @@ const live = await page
 console.log("live:", live);
 await page.waitForTimeout(8000);
 
-/** Pose: ground level in the landmark POI — where a cast shadow must be obvious. */
 const posed = await page.evaluate(`(() => {
   const e = window.__dz;
   if (!e) return "no engine";
@@ -134,173 +136,138 @@ const posed = await page.evaluate(`(() => {
     p.teleport(new V(gx, y, gz));
     p.velocity.set(0, 0, 0);
     p.yaw = Math.atan2(-(cx - gx), -(cz - gz));
-    p.pitch = 0;
+    p.pitch = -0.06;
   };
   apply();
   e.__dzPin = setInterval(apply, 8);
-  return { poi: t ? t.name ?? "(unnamed)" : "NONE", want: [gx, +y.toFixed(1), gz] };
+  return { poi: t ? t.name ?? "(unnamed)" : "NONE", stand: [+gx.toFixed(1), +y.toFixed(1), +gz.toFixed(1)] };
 })()`);
 console.log("posed:", JSON.stringify(posed));
-await page.waitForTimeout(30000);
-// The frame itself, because a shadow-map texel count is evidence and a picture
-// is proof, and this file has been wrong about the difference before.
-// DZ_PROBE_SHOT=0 skips it — a full 1600x900 SwiftSHADER composite is minutes.
-if (process.env.DZ_PROBE_SHOT !== "0") {
-  const shot = process.env.DZ_PROBE_SHOT || "shots/probe.png";
-  await page.screenshot({ path: shot, timeout: 600000, animations: "disabled" });
-  console.log("wrote", shot);
-}
+await page.waitForTimeout(25000);
 
-const report = await page.evaluate(`(() => {
-  const e = window.__dz;
-  if (!e) return { error: "no engine" };
-  const out = {};
-  const renderer = e.ctx.renderer;
-  const sky = e.ctx.services.sky;
-  const v3 = (v) => v ? [ +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2) ] : null;
+const fired = await page
+  .evaluate(`(async (age) => {
+    const e = window.__dz;
+    if (!e) return { error: "no engine" };
+    const ctx = e.ctx;
+    const vfx = ctx.services.vfx;
+    if (!vfx) return { error: "no vfx service" };
+    const out = { mode: ctx.mode, quality: ctx.quality };
+    out.hasSoakBurst = typeof vfx.soakBurst === "function";
+    out.hasBalloonBurst = typeof vfx.balloonBurst === "function";
+    if (!out.hasSoakBurst) return Object.assign(out, { error: "vfx.soakBurst missing" });
 
-  out.renderer = {
-    shadowEnabled: renderer.shadowMap.enabled,
-    autoUpdate: renderer.shadowMap.autoUpdate,
-    needsUpdate: renderer.shadowMap.needsUpdate,
-    type: renderer.shadowMap.type,
-    toneMapping: renderer.toneMapping,
-    exposure: renderer.toneMappingExposure,
-    outputColorSpace: renderer.outputColorSpace,
-  };
-  out.cam = v3(e.ctx.camera.position);
-  out.quality = e.ctx.quality;
-  const pl = e.ctx.services.player;
-  out.player = pl ? { state: pl.state, pos: v3(pl.position) } : null;
+    const cam = ctx.services.player?.camera ?? ctx.camera;
+    out.camIsPlayerCam = cam === ctx.camera;
+    const V = ctx.camera.position.constructor;
+    const fwd = new V();
+    cam.getWorldDirection(fwd);
+    fwd.y = 0; fwd.normalize();
+    // Right-hand side vector in the ground plane.
+    const right = new V(-fwd.z, 0, fwd.x);
 
-  if (!sky) return Object.assign(out, { error: "no sky service" });
-  const key = sky.sun;
-  const sh = key.shadow;
-  const sc = sh.camera;
-  sc.updateMatrixWorld();
-  out.sky = {
-    time: +sky.time.toFixed(4),
-    sunDir: v3(sky.sunDirection),
-    sunElevationDeg: +(Math.asin(sky.sunDirection.y) * 180 / Math.PI).toFixed(2),
-    daylight: +sky.daylight.toFixed(3),
-    sunColor: "#" + sky.sunColor.getHexString(),
-    horizonColor: "#" + sky.horizonColor.getHexString(),
-    zenithColor: "#" + sky.zenithColor.getHexString(),
-    fogColor: e.ctx.scene.fog ? "#" + e.ctx.scene.fog.color.getHexString() : null,
-    fogDensity: e.ctx.scene.fog ? e.ctx.scene.fog.density : null,
-  };
-  out.key = {
-    castShadow: key.castShadow,
-    visible: key.visible,
-    intensity: +key.intensity.toFixed(3),
-    position: v3(key.position),
-    target: v3(key.target.position),
-    inScene: !!key.parent,
-    targetInScene: !!key.target.parent,
-  };
-  out.shadowCam = {
-    worldPos: v3(sc.getWorldPosition(new (e.ctx.camera.position.constructor)())),
-    left: sc.left, right: sc.right, top: sc.top, bottom: sc.bottom,
-    near: sc.near, far: sc.far,
-    bias: sh.bias, normalBias: sh.normalBias,
-    mapSize: [sh.mapSize.x, sh.mapSize.y],
-    hasMap: !!sh.map,
-    mapDims: sh.map ? [sh.map.width, sh.map.height] : null,
-  };
+    const place = (side) => {
+      const x = cam.position.x + fwd.x * 8 + right.x * side * 3.2;
+      const z = cam.position.z + fwd.z * 8 + right.z * side * 3.2;
+      const y = (ctx.services.terrain?.heightAt?.(x, z) ?? 0) + 1.0;
+      return new V(x, y, z);
+    };
+    const control = place(-1);   // balloonBurst: the known-good reference
+    const subject = place(+1);   // soakBurst: what is on trial
 
-  // How far along the light ray from the shadow camera does the ground sit?
-  const t = e.ctx.services.terrain;
-  const tgt = key.target.position;
-  out.shadowCam.groundYUnderCentre = t ? +t.heightAt(tgt.x, tgt.z).toFixed(2) : null;
-  out.shadowCam.distToCentre = +key.position.distanceTo(tgt).toFixed(1);
+    const gl = ctx.renderer.getContext();
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    const boxOf = (p) => {
+      const q = p.clone().project(cam);
+      const sx = Math.round((q.x * 0.5 + 0.5) * w);
+      // readPixels is bottom-up; keep everything in GL space.
+      const sy = Math.round((q.y * 0.5 + 0.5) * h);
+      const r = Math.round(Math.min(w, h) * 0.24);
+      const x0 = Math.max(0, sx - r), x1 = Math.min(w, sx + r);
+      const y0 = Math.max(0, sy - r), y1 = Math.min(h, sy + r);
+      return { x0, y0, bw: Math.max(1, x1 - x0), bh: Math.max(1, y1 - y0), sx, sy };
+    };
+    const boxes = { control: boxOf(control), subject: boxOf(subject) };
 
-  // Census: shadow casters whose centre falls inside the cascade footprint.
-  let casters = 0, castersInside = 0, receivers = 0;
-  const V = e.ctx.camera.position.constructor;
-  const p = new V();
-  const R = sc.right;
-  e.ctx.scene.traverse((o) => {
-    if (!o.isMesh && !o.isInstancedMesh) return;
-    if (o.receiveShadow) receivers++;
-    if (!o.castShadow || !o.visible) return;
-    casters++;
-    o.getWorldPosition(p);
-    if (Math.abs(p.x - tgt.x) < R + 200 && Math.abs(p.z - tgt.z) < R + 200) castersInside++;
-  });
-  out.census = { casters, castersInside, receivers };
+    const grab = (b) => {
+      const px = new Uint8Array(b.bw * b.bh * 4);
+      gl.readPixels(b.x0, b.y0, b.bw, b.bh, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px;
+    };
+    const render = () => ctx.renderer.render(ctx.scene, ctx.camera);
 
-  // ---- The other half: does anything RECEIVE what the map wrote? ----------
-  // A written shadow map proves the depth pass ran. It says nothing about the
-  // lit pass. Any receiving material must have compiled with USE_SHADOWMAP and
-  // must actually call getShadowMask() — if the world's materials were built
-  // before the light existed, or a custom onBeforeCompile dropped the lights
-  // chunk, the map is written every frame and read by nobody.
-  out.receivers = [];
-  const gl = renderer.getContext();
-  const seen = new Set();
-  e.ctx.scene.traverse((o) => {
-    if (!o.receiveShadow || !o.visible || out.receivers.length >= 4) return;
-    const m = Array.isArray(o.material) ? o.material[0] : o.material;
-    if (!m || seen.has(m.uuid)) return;
-    seen.add(m.uuid);
-    const rec = { mesh: o.name || "(anon)", mat: m.type, matName: m.name || null };
-    try {
-      const prog = renderer.properties.get(m).currentProgram;
-      if (!prog) { rec.program = "NOT COMPILED (never drawn)"; }
-      else {
-        const fs = gl.getShaderSource(prog.fragmentShader);
-        // NB: this whole evaluate body is a JS template literal, so every
-        // backslash has to survive one round of string escaping first.
-        rec.useShadowMap = /#define USE_SHADOWMAP/.test(fs);
-        rec.callsGetShadowMask = fs.indexOf("getShadowMask") >= 0;
-        rec.hasDirLightShadow = fs.indexOf("directionalLightShadows[") >= 0;
-        rec.numDirLightShadows = (fs.match(/NUM_DIR_LIGHT_SHADOWS[^0-9]*([0-9]+)/) || [])[1] ?? null;
-        rec.shadowMapType = (fs.match(/SHADOWMAP_TYPE_[A-Z_]+/) || [])[0] ?? null;
-        rec.shadowUniformBound = !!prog.getUniforms().map.directionalShadowMap;
-      }
-    } catch (err) { rec.err = String(err).slice(0, 160); }
-    out.receivers.push(rec);
-  });
+    // Baseline. Render first so the buffer we read is the one we just drew:
+    // with preserveDrawingBuffer off, readPixels is only valid inside the
+    // same task as the draw that filled it.
+    render();
+    const base = { control: grab(boxes.control), subject: grab(boxes.subject) };
 
-  // ---- The decisive test: read the shadow map back. -----------------------
-  // RGBADepthPacking, so an untouched texel is (255,255,255,255).
-  if (sh.map) {
-    const w = sh.map.width, h = sh.map.height;
-    const q = Math.floor(w / 4);
-    const rects = [
-      [q, q, q * 2, q * 2, "centre-half"],
-      [0, 0, q, q, "corner-lo"],
-      [w - q, h - q, q, q, "corner-hi"],
-    ];
-    out.shadowMapSamples = [];
-    for (const [x, y, rw, rh, name] of rects) {
-      try {
-        const buf = new Uint8Array(rw * rh * 4);
-        renderer.readRenderTargetPixels(sh.map, x, y, rw, rh, buf);
-        let written = 0, minR = 255, sum = 0;
-        for (let i = 0; i < rw * rh; i++) {
-          const r = buf[i*4];
-          sum += r;
-          if (r < minR) minR = r;
-          if (r < 254) written++;
+    const wet = ctx.services.wetness;
+    const puddlesBefore = wet ? wet.puddleCount : null;
+
+    const t0 = ctx.elapsed;
+    vfx.balloonBurst(control);
+    vfx.soakBurst(subject, 1.2);
+    const puddlesAfter = wet ? wet.puddleCount : null;
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let waited = 0;
+    while (ctx.elapsed - t0 < age && waited < 900) { await sleep(100); waited++; }
+    out.frozenAtAge = +(ctx.elapsed - t0).toFixed(3);
+    out.wallPolls = waited;
+    out.drawCalls = ctx.renderer.info.render.calls;
+
+    // Freeze, then take the "after" read from a render we control.
+    e.stop();
+    render();
+    const after = { control: grab(boxes.control), subject: grab(boxes.subject) };
+
+    const stat = (a, b) => {
+      let moved = 0, warm = 0, cool = 0, brighter = 0, n = a.length / 4;
+      let dr = 0, dg = 0, db = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        const d0 = b[i] - a[i], d1 = b[i + 1] - a[i + 1], d2 = b[i + 2] - a[i + 2];
+        if (Math.abs(d0) + Math.abs(d1) + Math.abs(d2) > 24) {
+          moved++;
+          dr += d0; dg += d1; db += d2;
+          if (d2 > d0 + 6) cool++;
+          if (d0 > d2 + 6) warm++;
+          if (d0 + d1 + d2 > 0) brighter++;
         }
-        out.shadowMapSamples.push({
-          name, texels: rw*rh, writtenTexels: written,
-          pctWritten: +(100 * written / (rw*rh)).toFixed(2),
-          minR, meanR: +(sum / (rw*rh)).toFixed(1),
-        });
-      } catch (err) {
-        out.shadowMapSamples.push({ name, err: String(err).slice(0, 160) });
       }
-    }
-  }
-  return out;
-})()`);
+      return {
+        pixels: n,
+        movedPct: +((moved / n) * 100).toFixed(2),
+        meanDelta: moved ? [Math.round(dr / moved), Math.round(dg / moved), Math.round(db / moved)] : [0, 0, 0],
+        coolPctOfMoved: moved ? +((cool / moved) * 100).toFixed(1) : 0,
+        warmPctOfMoved: moved ? +((warm / moved) * 100).toFixed(1) : 0,
+        brighterPctOfMoved: moved ? +((brighter / moved) * 100).toFixed(1) : 0,
+      };
+    };
 
-console.log(JSON.stringify(report, null, 1));
-const interesting = logs.filter((l) => /dz-dbg|shadow|shader|PAGEERROR|error/i.test(l));
-console.log("logs total:", logs.length, "matched:", interesting.length);
-if (interesting.length) console.log("\n--- console ---\n" + interesting.slice(-30).join("\n"));
+    // Hand the render loop over so the canvas stays valid for the capture.
+    const loop = () => { render(); e.__dzHold = requestAnimationFrame(loop); };
+    loop();
+
+    return Object.assign(out, {
+      controlAt: [+control.x.toFixed(1), +control.y.toFixed(1), +control.z.toFixed(1)],
+      subjectAt: [+subject.x.toFixed(1), +subject.y.toFixed(1), +subject.z.toFixed(1)],
+      buffer: [w, h],
+      boxes,
+      puddlesBefore, puddlesAfter,
+      control: stat(base.control, after.control),
+      subject: stat(base.subject, after.subject),
+    });
+  })(${AGE})`)
+  .catch((err) => ({ error: "evaluate threw: " + err.message }));
+console.log("fired:", JSON.stringify(fired, null, 2));
+
+await page.waitForTimeout(4000);
+await page.screenshot({ path: SHOT, timeout: 900000, animations: "disabled" });
+console.log("wrote", SHOT);
+
+if (logs.length) console.log("logs:\n" + logs.slice(-25).join("\n"));
 
 await browser.close();
 if (server) server.kill();
