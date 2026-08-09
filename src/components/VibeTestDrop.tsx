@@ -180,15 +180,33 @@ export default function VibeTestDrop({
           <button
             onClick={() => void send()}
             disabled={sending}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8fb4ff] px-3 py-2.5 font-heading text-[10.5px] font-black uppercase tracking-wider text-black transition-transform enabled:hover:scale-[1.02] disabled:opacity-50"
+            className="relative mt-3 flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#8fb4ff] px-3 py-2.5 font-heading text-[10.5px] font-black uppercase tracking-wider text-black transition-transform enabled:hover:scale-[1.02] disabled:opacity-90"
           >
-            {sending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5" />
+            {/* Pressing this waits on a real transaction. A greyed-out button
+                looks broken for those seconds; a sweep looks like something is
+                happening, which is the truth. */}
+            {sending && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 animate-[vibe-sweep_1.15s_linear_infinite]"
+                style={{
+                  background:
+                    "linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.65) 50%, transparent 80%)",
+                }}
+              />
             )}
-            Send {amount} $VIBE to this wallet
+            <span className="relative flex items-center gap-2">
+              {sending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              {sending
+                ? `Waiting on the vibe… ${amount} $VIBE incoming`
+                : `Send ${amount} $VIBE to this wallet`}
+            </span>
           </button>
+
           {status.dropsToday != null && status.dropsPerDay != null && (
             <p className="mt-1.5 text-center text-[10px] text-muted-foreground/60">
               {status.dropsPerDay - status.dropsToday} of today's{" "}
