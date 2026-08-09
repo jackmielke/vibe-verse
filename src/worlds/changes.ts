@@ -29,6 +29,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
   ],
   "arcade": [
+    { sha: "88a1264", iso: "2026-08-09T07:49:03+00:00", subject: "The portal: other people's games, paying real Vibey Coins" },
     { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
@@ -172,6 +173,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   ],
   "orbit": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
+  ],
+  "portal": [
+    { sha: "88a1264", iso: "2026-08-09T07:49:03+00:00", subject: "The portal: other people's games, paying real Vibey Coins" },
   ],
   "run": [
     { sha: "1109f8c", iso: "2026-08-02T07:24:16+00:00", subject: "A whole life, at a run" },
