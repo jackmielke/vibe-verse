@@ -4217,6 +4217,104 @@ export type Database = {
         }
         Relationships: []
       }
+      vibe_portal_games: {
+        Row: {
+          active: boolean
+          author: string | null
+          author_url: string | null
+          created_at: string
+          daily_budget: number
+          embed_url: string
+          max_award: number
+          note: string | null
+          origin: string
+          player_daily: number
+          session_budget: number
+          slug: string
+          tagline: string | null
+          title: string
+        }
+        Insert: {
+          active?: boolean
+          author?: string | null
+          author_url?: string | null
+          created_at?: string
+          daily_budget?: number
+          embed_url: string
+          max_award?: number
+          note?: string | null
+          origin: string
+          player_daily?: number
+          session_budget?: number
+          slug: string
+          tagline?: string | null
+          title: string
+        }
+        Update: {
+          active?: boolean
+          author?: string | null
+          author_url?: string | null
+          created_at?: string
+          daily_budget?: number
+          embed_url?: string
+          max_award?: number
+          note?: string | null
+          origin?: string
+          player_daily?: number
+          session_budget?: number
+          slug?: string
+          tagline?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      vibe_portal_sessions: {
+        Row: {
+          awarded: number
+          awards: number
+          closed_at: string | null
+          day: string
+          id: string
+          last_award_at: string | null
+          opened_at: string
+          owner_kind: string
+          owner_ref: string
+          slug: string
+        }
+        Insert: {
+          awarded?: number
+          awards?: number
+          closed_at?: string | null
+          day?: string
+          id?: string
+          last_award_at?: string | null
+          opened_at?: string
+          owner_kind?: string
+          owner_ref: string
+          slug: string
+        }
+        Update: {
+          awarded?: number
+          awards?: number
+          closed_at?: string | null
+          day?: string
+          id?: string
+          last_award_at?: string | null
+          opened_at?: string
+          owner_kind?: string
+          owner_ref?: string
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_portal_sessions_slug_fkey"
+            columns: ["slug"]
+            isOneToOne: false
+            referencedRelation: "vibe_portal_games"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
       vibe_price_cache: {
         Row: {
           fetched_at: string
@@ -5548,6 +5646,7 @@ export type Database = {
       }
     }
     Functions: {
+      _portal_call: { Args: { body: Json }; Returns: Json }
       admin_auto_merge_telegram_username_duplicates: {
         Args: { dry_run?: boolean }
         Returns: {
@@ -5748,6 +5847,10 @@ export type Database = {
           rate_limit: number
           scopes: Database["public"]["Enums"]["api_scope"][]
         }[]
+      }
+      vibe_portal_award: {
+        Args: { p_amount: number; p_reason?: string; p_session: string }
+        Returns: Json
       }
       vibe_round_record_score: {
         Args: { p_owner_ref: string; p_round_id: string; p_score: number }
