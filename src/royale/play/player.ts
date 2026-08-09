@@ -3950,7 +3950,31 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
     const bobAmp = (firstPerson ? 0.055 : 0.016) * clamp01(speed / SPRINT_SPEED) * (grounded ? 1 : 0);
 
-    if (firstPerson) {
+    // --- keep the lens out of solid things it is looking AT -----------------
+    // The world raycast below handles walls. This handles the two objects the
+    // arm is orbiting, which no world collider knows about: the bus, and our
+    // own canopy. Both are solved for the shortest arm that is provably
+    // outside the volume, along the look axis, so the subject stays centred
+    // while the arm grows — a sideways nudge would swing the framing instead.
+    let armMin = 0;
+    if (onBus) {
+      // Direction pivot → camera, resolved into the bus's own axes.
+      const ax = -(tmp.x * busRight.x + tmp.z * busRight.z);
+      const ay = -tmp.y;
+      const az = -(tmp.x * busDir.x + tmp.z * busDir.z);
+      armMin =
+        ellipsoidReach(ax, ay, az, BUS_KEEPOUT_X, BUS_KEEPOUT_Y, BUS_KEEPOUT_Z) + BUS_KEEPOUT_PAD;
+    } else if (dropStage === "skydive" || dropStage === "glide") {
+      // Our own wing, as a sphere over the drop pivot. Solving it rather than
+      // trusting the tuned arm means a later change to ARM_LENGTH_DIVE cannot
+      // quietly park the lens inside the cloth.
+      const h = SELF_KEEPOUT_Y;
+      const disc = h * h * tmp.y * tmp.y - h * h + SELF_KEEPOUT_R * SELF_KEEPOUT_R;
+      if (disc > 0) armMin = Math.max(0, -h * tmp.y + Math.sqrt(disc));
+    }
+    const armUsed = Math.max(armCurrent, armMin);
+
+    if (firstPerson && !onBus) {
       camPos.set(
         camPivot.x + right.x * bobAmp * 0.6 * Math.cos(bobPhase),
         camPivot.y + Math.sin(bobPhase * 2) * bobAmp - landingDip - fireKick * 0.3,
@@ -3960,14 +3984,16 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       camGoal.copy(camPivot)
         .addScaledVector(right, shoulderCurrent)
         .addScaledVector(up, ARM_RISE + Math.sin(bobPhase * 2) * bobAmp)
-        .addScaledVector(tmp, -armCurrent - fireKick * 0.9);
+        .addScaledVector(tmp, -armUsed - fireKick * 0.9);
       camGoal.y -= landingDip;
 
       // Spring-arm collision. One ray from the pivot to the goal; if it hits,
       // pull the camera in short of the surface. Without this every wall you
       // back into puts the camera inside the geometry and you see the sky
       // through the world — the single most obvious third-person bug there is.
-      if (collision) {
+      // Skipped on the bus: the only thing within 600 m is the bus itself, and
+      // the ellipsoid above is what keeps us off it.
+      if (collision && !onBus) {
         tmp2.subVectors(camGoal, camPivot);
         const dist = tmp2.length();
         if (dist > 1e-3) {
@@ -3978,11 +4004,18 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
           }
         }
       }
-      // Pull in fast, ease out slow: snapping in avoids a frame of clipping,
-      // easing out avoids the camera lurching every time you clear a corner.
-      const pullIn = camPos.distanceToSquared(camPivot) > camGoal.distanceToSquared(camPivot);
-      camPos.lerp(camGoal, 1 - Math.exp(-(pullIn ? 26 : 11) * dt));
+      if (camSnap) {
+        // Boarding or leaving the bus. There is no path between the two rigs
+        // that is not through the hull, so this one is a cut, not a move.
+        camPos.copy(camGoal);
+      } else {
+        // Pull in fast, ease out slow: snapping in avoids a frame of clipping,
+        // easing out avoids the camera lurching every time you clear a corner.
+        const pullIn = camPos.distanceToSquared(camPivot) > camGoal.distanceToSquared(camPivot);
+        camPos.lerp(camGoal, 1 - Math.exp(-(pullIn ? 26 : 11) * dt));
+      }
     }
+    camSnap = false;
 
     camera.position.copy(camPos);
 

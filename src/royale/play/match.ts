@@ -2144,13 +2144,143 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
   for (let i = 0; i < 5; i++) {
     trimParts.push(put(tubeX(0.06, 0.06, 4.2, 8), 0, roofY + 0.42, -7.2 + i * 3.6));
   }
-  // Lashed cargo: three crates and a tarp, at three sizes and three angles.
+  // Lashed cargo. The transit bus carries crates and a tarp; the pool bus
+  // carries the tank, and its rings go where the tarp was.
   hullParts.push(put(bevelBox(1.9, 0.9, 2.6, bevel, 0.12), -0.6, roofY + 0.95, -4.6, 0, 0.09));
   hullParts.push(put(bevelBox(1.4, 0.7, 1.5, bevel, 0.1), 0.9, roofY + 0.85, -1.4, 0, -0.16));
-  darkParts.push(put(bevelBox(3.5, 0.62, 4.4, bevel, 0.42), 0, roofY + 0.82, 3.4, 0, 0.04));
+  if (!skin.poolParty) {
+    darkParts.push(put(bevelBox(3.5, 0.62, 4.4, bevel, 0.42), 0, roofY + 0.82, 3.4, 0, 0.04));
+  }
   for (const z of [-4.6, 3.4]) {
     for (const sx of [-1, 1]) {
       darkParts.push(put(bevelBox(0.09, 1.1, 0.14, bevel * 0.4), sx * 1.1, roofY + 0.85, z));
+    }
+  }
+
+  /* ---- the pool party ----------------------------------------------------
+   *
+   * Water mode only. Everything here is either vinyl or towel, both of which
+   * merge into one mesh apiece, so the whole reskin is three extra draw calls
+   * and no extra texture bakes in classic.
+   *
+   * Placement rule: nothing may sit on the livery panel (y 0.94 .. 2.30 on the
+   * flanks) — the wordmark is the reason the bus has a flank — and nothing may
+   * intrude on the player's own strap at local (+1.5, ·, 0). Everything else
+   * is fair game, and the pieces are deliberately biased low and outboard so
+   * they are in frame from where the player actually hangs.
+   */
+  const tankZ = 2.9;
+  const tankY = roofY + 1.35;
+  if (skin.poolParty) {
+    // Rings, lashed flat to the roof rack. Different radii on purpose: a rack
+    // of identical donuts reads as a manufactured part, not as luggage.
+    for (const [x, z, r] of [
+      [-1.15, -6.6, 1.1],
+      [1.25, 3.1, 0.95],
+      [-1.35, 6.9, 1.2],
+    ] as const) {
+      vinylParts.push(put(new THREE.TorusGeometry(r, 0.31, 8, 18), x, roofY + 0.78, z, Math.PI / 2));
+    }
+    // A stack of two leaning on the tail fin, upright — the one place on the
+    // roof where a vertical circle reads against the sky.
+    for (const [y, r] of [
+      [roofY + 1.25, 1.05],
+      [roofY + 1.05, 0.8],
+    ] as const) {
+      vinylParts.push(put(new THREE.TorusGeometry(r, 0.28, 8, 16), 0.9, y, halfL - 3.4, 0, 0, 0.22));
+    }
+    // Two more hung outboard of the belly rails, at the player's own eye
+    // height. These are the ones that are in frame for the whole ride.
+    for (const [sx, z] of [
+      [1, -3.1],
+      [-1, 4.3],
+    ] as const) {
+      vinylParts.push(
+        put(new THREE.TorusGeometry(0.86, 0.27, 8, 16), sx * 2.55, floorY - 1.0, z, 0, Math.PI / 2),
+      );
+      // The line it hangs on.
+      darkParts.push(
+        strut(
+          new THREE.Vector3(sx * 2.5, floorY - 0.14, z),
+          new THREE.Vector3(sx * 2.55, floorY - 0.16, z),
+          0.03,
+          4,
+        ),
+      );
+    }
+    // One over the nose, where a bus would carry a spare wheel.
+    vinylParts.push(put(new THREE.TorusGeometry(0.78, 0.26, 8, 16), 0, 2.55, -halfL - 0.5));
+
+    // ---- the water tank --------------------------------------------------
+    // Deliberately the tallest thing on the roof after the fin: from 600 m the
+    // bus reads as a hull, a drum and a beach ball, which is a three-shape
+    // silhouette rather than a brick.
+    const tankGeo = boxProjectUv(put(tubeZ(1.12, 1.12, 4.9, 16), 0, tankY, tankZ), 2);
+    const tank = new THREE.Mesh(tankGeo, waterMat ?? hullMat);
+    tank.castShadow = quality !== "low";
+    sway.add(tank);
+    geometries.push(tankGeo);
+    // Caps, hoops, a filler and the feed hose down to the rear deck.
+    for (const sz of [-1, 1]) {
+      vinylParts.push(put(tubeZ(1.18, 1.18, 0.26, 16), 0, tankY, tankZ + sz * 2.45));
+    }
+    for (const dz of [-1.5, 0, 1.5]) {
+      vinylParts.push(put(new THREE.TorusGeometry(1.15, 0.09, 6, 18), 0, tankY, tankZ + dz));
+    }
+    trimParts.push(put(tube(0.3, 0.34, 0.34, 10), 0, tankY + 1.2, tankZ - 1.5));
+    vinylParts.push(
+      strut(
+        new THREE.Vector3(0.7, tankY - 0.6, tankZ + 2.5),
+        new THREE.Vector3(1.9, waistY + 0.5, halfL + 0.2),
+        0.1,
+        6,
+      ),
+    );
+    // Cradles, so the drum is sitting on something.
+    for (const dz of [-1.7, 1.7]) {
+      trimParts.push(put(bevelBox(2.7, 0.9, 0.24, bevel * 0.7), 0, roofY + 0.72, tankZ + dz));
+    }
+
+    // ---- the slide -------------------------------------------------------
+    // A quarter-pipe off the right rear quarter, curving down and away. Nine
+    // segments on a 5.2 m radius: enough that the silhouette is a curve and
+    // not a staircase, cheap enough to be four hundred triangles.
+    const SLIDE_R = 5.2;
+    const SLIDE_N = 9;
+    const slideX = 1.85;
+    for (let i = 0; i < SLIDE_N; i++) {
+      const a = ((i + 0.5) / SLIDE_N) * 1.5;
+      const z = halfL + 0.5 + Math.sin(a) * SLIDE_R;
+      const y = floorY - 0.3 - (1 - Math.cos(a)) * SLIDE_R;
+      // rotateX(a) tilts the segment's +Z axis to (0, −sin a, cos a), which is
+      // exactly the tangent of the arc it sits on.
+      vinylParts.push(put(bevelBox(2.3, 0.18, 1.5, bevel * 0.6), slideX, y, z, a));
+      for (const sx of [-1, 1]) {
+        vinylParts.push(put(bevelBox(0.2, 0.66, 1.5, bevel * 0.5), slideX + sx * 1.15, y + 0.32, z, a));
+      }
+    }
+    // The lip at the bottom, and a ring around the exit.
+    const endA = 1.5;
+    const endZ = halfL + 0.5 + Math.sin(endA) * SLIDE_R;
+    const endY = floorY - 0.3 - (1 - Math.cos(endA)) * SLIDE_R;
+    vinylParts.push(put(new THREE.TorusGeometry(1.25, 0.3, 8, 18), slideX, endY - 0.5, endZ, endA));
+
+    // ---- towels ----------------------------------------------------------
+    // Individual meshes rather than a merged one: they are the only soft thing
+    // on the vehicle and a towel that does not move is a painted plank.
+    if (towelMat) {
+      for (const sx of [-1, 1]) {
+        for (const z of [-5.2, -0.4, 5.4]) {
+          const geo = new THREE.PlaneGeometry(1.15, 1.6, 3, 4);
+          geo.rotateY((sx * Math.PI) / 2);
+          const towel = new THREE.Mesh(geo, towelMat);
+          towel.position.set(sx * 2.2, roofY - 0.34, z);
+          towel.castShadow = false;
+          sway.add(towel);
+          geometries.push(geo);
+          towels.push(towel);
+        }
+      }
     }
   }
 
