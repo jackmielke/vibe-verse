@@ -86,6 +86,18 @@ export interface WorldEntry {
   status?: string;
   /** Signal colour: card chrome, hub sphere tint, gradient panel. */
   accent: string;
+  /**
+   * What the screen is painted while this world's chunk is still downloading.
+   *
+   * Every route in the app is `lazy()`, so there is always a moment between
+   * the tap and the first frame. `App`'s one Suspense fallback fills it with
+   * this colour, and worlds that leave it unset get the app's near-black —
+   * which is the right answer for nearly all of them, because that is what
+   * their own loading screen opens on. Set it only when a world does *not*
+   * open on black: Splash Royale comes up sky blue, and a black flash first
+   * reads as a stutter.
+   */
+  backdrop?: string;
   /** Leads the picker and gets the wide card treatment. */
   featured?: boolean;
   /** Where the code lives, so the list is also a map of the repo. */
@@ -212,6 +224,9 @@ const WORLDS_RAW: WorldEntry[] = [
       "The same island as Drop Zero, in swim shorts. Ten soakers, water balloons, a glue gun that sticks two people together — grab a room code, text it to a friend, and be the last one dry.",
     status: "Playable — multiplayer water fight",
     accent: "#38bdf8",
+    /* The one world that does not open on black. It comes up under an open
+       sky, so that is what the loading frame paints. */
+    backdrop: "#3fb8ee",
     featured: true,
     /* Soaked and Drop Zero are the same engine in two modes, so they share a
        source path and will show the same date. The parenthetical that was here
@@ -286,6 +301,8 @@ const WORLDS_RAW: WorldEntry[] = [
       "671 Lincoln Avenue at Christmas — lights on the eaves, a tree in the window, and two men outside who think it is empty. Walk the house, light it up, arm eight traps, then shout from the top of the stairs and see who comes.",
     status: "Playable — five levels, plus free roam",
     accent: "#e0b64a",
+    /* A winter night, not a void — the house's own opening frame. */
+    backdrop: "#0d1524",
     featured: true,
     source: "src/homealone",
     nav: true,

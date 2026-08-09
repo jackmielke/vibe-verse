@@ -179,6 +179,18 @@ export function payoutWallet(): BookedWallet | null {
   return book.wallets.find((w) => w.address.toLowerCase() === book.payout) ?? null;
 }
 
+/**
+ * The payout address, for callers that only need the one string.
+ *
+ * Lives here rather than in `VibeWalletConnect`, where it used to: the coin
+ * chip in the global nav imports it, and importing one accessor out of that
+ * component pulled the whole Base Account SDK — 500 kB of passkey machinery —
+ * into the bundle every page of the app downloads.
+ */
+export function readPayoutAddress(): string | null {
+  return payoutWallet()?.address ?? null;
+}
+
 export const hasWallets = (): boolean => book.wallets.length > 0;
 
 /**

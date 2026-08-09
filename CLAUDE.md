@@ -15,6 +15,12 @@ canvas in it, drive the route in a real browser and look at the frame. A world
 that builds and renders a black screen is a broken demo, and the build will not
 tell you.
 
+`npm run smoke` is the blunt instrument for that last part: it opens every
+route in a real Chromium and reports which ones rendered nothing. It takes a
+few minutes, it will not tell you a world looks *wrong*, and it is the fastest
+way to find out that one of fifty routes stopped existing. `npm run smoke --
+/sf /kart` for just the ones you touched.
+
 **`npm run typecheck`, never bare `tsc --noEmit`.** The root `tsconfig.json` is
 a solution-style config — `"files": []` plus project references — so `tsc
 --noEmit` against it compiles *nothing* and exits 0 no matter what is broken.
@@ -29,6 +35,13 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
 - A thin page in `src/pages/`, lazy-loaded from `src/App.tsx`, that owns the
   menus and mounts a container the engine renders into. Everything that moves
   lives in its own directory under `src/`.
+  - **`lazy()`, not a plain import — always, however small the page looks.**
+    Thirty routes were once imported eagerly, each of them small on the day it
+    was added, and the sum was a 7.4 MB entry chunk: everybody who opened the
+    grid of cards downloaded San Palmas, Vibe Golf, Vibe City and mapbox-gl
+    before it painted. There is one `<Suspense>` around the whole router, so
+    there is nothing to wire up; set `backdrop` in the registry if your world
+    does not open on black.
 - **One entry in `src/worlds/registry.ts`.** That is the whole list — the nav,
   the picker, `/game`, the hub carousel and the passport are all views of it, so
   a world added there shows up in all of them at once. Do not start a seventh

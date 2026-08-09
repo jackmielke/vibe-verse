@@ -24,9 +24,13 @@ import { Wallet } from "lucide-react";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 import { VIBECOIN_NAME, formatVibecoin } from "@/lib/vibecoin";
-import { readPayoutAddress } from "@/components/VibeWalletConnect";
-import { getWalletBook } from "@/lib/walletBook";
-import { shortAddress } from "@/lib/vibe-wallet";
+/* Both of these used to come from heavier neighbours — `readPayoutAddress`
+   from `VibeWalletConnect` and `shortAddress` from `vibe-wallet` — and this
+   chip is in the global nav, so those two imports put the Base Account SDK and
+   a viem public client in the chunk every page downloads. They are the same
+   functions; they just live somewhere that costs nothing now. */
+import { getWalletBook, readPayoutAddress } from "@/lib/walletBook";
+import { shortAddress } from "@/lib/address";
 
 /** Human labels for the `reason` column, which is written for machines. */
 const REASON_LABEL: Record<string, string> = {

@@ -4,103 +4,89 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
-import Unit7Playground from "./pages/Unit7Playground.tsx";
-import Lobby from "./pages/Lobby.tsx";
-import About from "./pages/About.tsx";
-import SpotifyCallback from "./pages/SpotifyCallback.tsx";
-import MemoryGarden from "./pages/MemoryGarden.tsx";
-import City from "./pages/City.tsx";
-import Evolve from "./pages/Evolve.tsx";
-import Bestiary from "./pages/Bestiary.tsx";
-import Museum from "./pages/Museum.tsx";
-import VibeHub from "./pages/VibeHub.tsx";
-import VibeGo from "./pages/VibeGo.tsx";
-import VibeArcade from "./pages/VibeArcade.tsx";
-import ArcadeCharacters from "./pages/ArcadeCharacters.tsx";
-import PortalPlay from "./pages/PortalPlay.tsx";
-import BuildAGame from "./pages/BuildAGame.tsx";
-import VibeShop from "./pages/VibeShop.tsx";
-import Orbit from "./pages/Orbit.tsx";
-import Join from "./pages/Join.tsx";
-import StartFlow from "./pages/StartFlow.tsx";
-import FruitNinja from "./pages/FruitNinja.tsx";
-import Hub from "./pages/Hub.tsx";
-import HubV2 from "./pages/HubV2.tsx";
-import SubmitWorld from "./pages/SubmitWorld.tsx";
-import WorldBuilder from "./pages/WorldBuilder.tsx";
-import EdmTown from "./pages/EdmTown.tsx";
-import AdminWorlds from "./pages/AdminWorlds.tsx";
-import AgentLobby from "./pages/AgentLobby.tsx";
-import VibeProfile from "./pages/VibeProfile.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import HomeButton from "./components/HomeButton.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
 import { VibeIdentityProvider } from "./hooks/use-vibe-identity.tsx";
-import IslandExplorer from "./pages/IslandExplorer.tsx";
-import Globetrotter from "./pages/Globetrotter.tsx";
-import CharacterSelect from "./pages/CharacterSelect.tsx";
-import Companions from "./pages/Companions.tsx";
-import VibeTimes from "./pages/VibeTimes.tsx";
-import SanFrancisco from "./pages/SanFrancisco.tsx";
-import SanPalmas from "./pages/SanPalmas.tsx";
-import VibeGolf from "./pages/VibeGolf.tsx";
-import VibeIsland2 from "./pages/VibeIsland2.tsx";
-import Terminal from "./pages/Terminal.tsx";
+import { CHROMELESS_ROUTES, worldByRoute } from "./worlds/registry.ts";
+
+/* The landing grid and the 404 are the two pages that must not wait on a
+   second round trip: one is what most visits open on, and the other is what a
+   broken link lands on. Everything else in this file is lazy. */
 import Game from "./pages/Game.tsx";
-import { CHROMELESS_ROUTES } from "./worlds/registry.ts";
+import NotFound from "./pages/NotFound.tsx";
 
-
+/**
+ * ## Every route below is lazy, and that is the point
+ *
+ * This app is ~45 destinations sharing one bundle, and each of the big ones is
+ * a game engine. Statically importing them meant the entry chunk was 7.4 MB
+ * (2.26 MB gzipped) — the whole of San Palmas, Vibe Golf, Vibe City, mapbox-gl
+ * and two copies of the wallet SDK downloaded before the grid of cards at `/`
+ * could paint, on a phone, over conference wifi, by somebody who was going to
+ * tap one card.
+ *
+ * So the rule here is now unconditional: **a route is `lazy()`, always.** Not
+ * "if it is over a few hundred kB" — that judgement call is what left thirty
+ * eager routes behind, because each one looked small on the day it was added
+ * and nobody re-measured the sum. A page that really is small costs one extra
+ * request when somebody opens it; a page that turns out to be big costs every
+ * visitor who never opens it at all, and that is the expensive mistake.
+ *
+ * The two exceptions above are deliberate and should stay at two.
+ */
+const Index = lazy(() => import("./pages/Index.tsx"));
+const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
+const Lobby = lazy(() => import("./pages/Lobby.tsx"));
+const About = lazy(() => import("./pages/About.tsx"));
+const SpotifyCallback = lazy(() => import("./pages/SpotifyCallback.tsx"));
+const MemoryGarden = lazy(() => import("./pages/MemoryGarden.tsx"));
+const City = lazy(() => import("./pages/City.tsx"));
+const Evolve = lazy(() => import("./pages/Evolve.tsx"));
+const Bestiary = lazy(() => import("./pages/Bestiary.tsx"));
+const Museum = lazy(() => import("./pages/Museum.tsx"));
+const VibeHub = lazy(() => import("./pages/VibeHub.tsx"));
+const VibeGo = lazy(() => import("./pages/VibeGo.tsx"));
+const VibeArcade = lazy(() => import("./pages/VibeArcade.tsx"));
+const ArcadeCharacters = lazy(() => import("./pages/ArcadeCharacters.tsx"));
+const PortalPlay = lazy(() => import("./pages/PortalPlay.tsx"));
+const BuildAGame = lazy(() => import("./pages/BuildAGame.tsx"));
+const VibeShop = lazy(() => import("./pages/VibeShop.tsx"));
+const Orbit = lazy(() => import("./pages/Orbit.tsx"));
+const Join = lazy(() => import("./pages/Join.tsx"));
+const StartFlow = lazy(() => import("./pages/StartFlow.tsx"));
+const FruitNinja = lazy(() => import("./pages/FruitNinja.tsx"));
+const Hub = lazy(() => import("./pages/Hub.tsx"));
+const HubV2 = lazy(() => import("./pages/HubV2.tsx"));
+const SubmitWorld = lazy(() => import("./pages/SubmitWorld.tsx"));
+const WorldBuilder = lazy(() => import("./pages/WorldBuilder.tsx"));
+const EdmTown = lazy(() => import("./pages/EdmTown.tsx"));
+const AdminWorlds = lazy(() => import("./pages/AdminWorlds.tsx"));
+const AgentLobby = lazy(() => import("./pages/AgentLobby.tsx"));
+const VibeProfile = lazy(() => import("./pages/VibeProfile.tsx"));
+const IslandExplorer = lazy(() => import("./pages/IslandExplorer.tsx"));
+const Globetrotter = lazy(() => import("./pages/Globetrotter.tsx"));
+const CharacterSelect = lazy(() => import("./pages/CharacterSelect.tsx"));
+const Companions = lazy(() => import("./pages/Companions.tsx"));
+const VibeTimes = lazy(() => import("./pages/VibeTimes.tsx"));
+const SanFrancisco = lazy(() => import("./pages/SanFrancisco.tsx"));
+const SanPalmas = lazy(() => import("./pages/SanPalmas.tsx"));
+const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
+const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
+const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
-/* THE VIBEVERSE brings its own build of Three and ~2 MB of shaders. It is lazy
-   for the same reason Seafair is: nobody who never flies there should pay for
-   it in the hub's entry chunk. */
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
-/* DROP ZERO is the biggest world in the building — its own terrain, build
-   system, weapons and bots, ~65k lines. Lazy for the same reason as the rest:
-   nobody who never drops in should carry an island in the hub's entry chunk. */
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
-/* Vibe Kart is a 660 kB chunk of racetrack, and the same argument applies. */
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
-/* FIVE NIGHTS AT VIBEY'S builds a whole restaurant out of procedural textures
-   at boot. Lazy for the same reason: nobody who never works a night shift
-   should carry the pizzeria around in the hub's entry chunk. */
 const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
-/* BLUE ANGELS builds all of Seattle at boot — a 44 km height field, eleven
-   thousand buildings and Mount Rainier. Lazy for the same reason as the rest:
-   nobody who never flies it should carry the city in the hub's entry chunk. */
 const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
-/* I SPY is a 2D canvas game with no Three in it at all, but it carries a
-   1,400-object level and a solver, and nobody who never plays it should
-   carry those around in the hub's entry chunk either. */
 const ISpy = lazy(() => import("./pages/ISpy.tsx"));
-/* AIRPLANE! builds a 707 flight deck, a thunderstorm and the whole of Chicago
-   at boot. Lazy for the same reason as the rest: nobody who never flies 209
-   should carry a light field of three million street lamps around in the hub's
-   entry chunk. */
 const Airplane = lazy(() => import("./pages/Airplane.tsx"));
-/* THE FINAL FRONTIER carries a whole starship bridge, five hulls and a
-   procedural planet. Lazy for the same reason as the rest: nobody who never
-   takes the centre seat should carry the Enterprise in the hub's entry chunk. */
 const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
-/* STRANGE NEW WORLDS carries twelve authored planets, a warp drive and a
-   walkable surface for each of them, plus everyone who lives on them. Lazy for
-   the same reason as the rest. */
 const StrangeNewWorlds = lazy(() => import("./pages/StrangeNewWorlds.tsx"));
-/* HOME ALONE builds 671 Lincoln Avenue — three storeys, sixteen rooms and the
-   block it stands on — out of procedural textures at boot. Lazy for the same
-   reason as the rest: nobody who never rings that doorbell should carry the
-   house around in the hub's entry chunk. */
 const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
-/* BLOB is 2D canvas with no Three in it, but it carries a whole simulation,
-   a bot brain and a renderer, and nobody who never opens the dish should carry
-   those around in the hub's entry chunk either. */
 const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
-/* RUN, VIBEY, RUN carries six chapters' worth of world builders — an Alabama
-   road, a stadium, a jungle, a gym, the gulf and the whole of America. Lazy
-   for the same reason as the rest. */
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 
 const queryClient = new QueryClient();
@@ -143,6 +129,31 @@ const AppChrome = () => {
   );
 };
 
+/** The near-black the app sits on. Anything not opted out of it gets this. */
+const DEFAULT_BACKDROP = "#05060f";
+
+/**
+ * What you look at while a world's chunk is in flight.
+ *
+ * A flash of white between tapping a card and a world booting reads as a bug,
+ * so the fallback paints the colour that world is about to paint — its
+ * `backdrop` in the registry, which is the same one list everything else is a
+ * view of. Worlds that never set one get the app's own near-black, which is
+ * right for almost all of them; Splash Royale sets sky blue because that is
+ * what it opens on and black would be a stutter.
+ *
+ * It is deliberately silent — no spinner, no "Loading…". These chunks arrive
+ * in a few hundred milliseconds on anything but the worst connection, and a
+ * spinner that appears and vanishes that fast is worse than nothing. The
+ * worlds themselves own the real loading screens, because they are the ones
+ * that take seconds.
+ */
+const RouteFallback = () => {
+  const { pathname } = useLocation();
+  const backdrop = worldByRoute(pathname)?.backdrop ?? DEFAULT_BACKDROP;
+  return <div className="fixed inset-0" style={{ background: backdrop }} />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -153,6 +164,10 @@ const App = () => (
           {/* Global nav + VIBE FM where there is room for them, and the one
               way home everywhere else. */}
           <AppChrome />
+          {/* One Suspense for the whole router. There used to be fifteen of
+              them, one per lazy world, each with its own hand-typed hex — and
+              the moment every route went lazy that would have been forty. */}
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
           {/* The grid of every world is the landing page. It is the clearest
               way to see what exists in one glance, and one tap gets you in.
@@ -270,70 +285,31 @@ const App = () => (
           <Route path="/fps" element={<SanPalmas />} />
           {/* SEAFAIR 2117 — future Seattle during Seafair. Hydros, Blue Angels,
               and aliens holding the Space Needle. */}
-          <Route
-            path="/seafair"
-            element={
-              <Suspense fallback={<div className="fixed inset-0 bg-[#04080f]" />}>
-                <Seafair />
-              </Suspense>
-            }
-          />
+          <Route path="/seafair" element={<Seafair />} />
           {/* THE VIBEVERSE — the hub seen from orbit. Fly the survey vessel VIBEY
               through a procedural galaxy where three of the stars are real
               destinations, and land on one to walk into it. /long-silence stays
               wired up: it was the route before the remix and links exist.
               Desktop and a real GPU. */}
           {["/vibeverse", "/explorer", "/long-silence"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <VibeverseExplorer />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<VibeverseExplorer />} />
           ))}
           {/* DROP ZERO — battle royale. Bus, island, storm, and the build loop.
               /royale and /br are aliases; the world calls itself Drop Zero. */}
           {["/drop-zero", "/royale", "/br"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#05060f]" />}>
-                  <DropZero />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<DropZero />} />
           ))}
           {/* SOAKED — the water-gun cut of Drop Zero. Same island, same 22
               systems, `mode: "water"`. Multiplayer: a room code in the URL
               (?room=SPLASH-4B2) drops a friend straight into your match. */}
           {["/splash-royale", "/splash", "/soaked", "/water-fight", "/soak"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#3fb8ee]" />}>
-                  <SplashRoyale />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<SplashRoyale />} />
           ))}
           {/* FIVE NIGHTS AT VIBEY'S — midnight to 6 AM, two doors, one battery.
               Four animatronics walk a real twelve-room building; the security
               cameras are cameras standing in it. */}
           {["/fnaf", "/five-nights"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <FiveNights />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<FiveNights />} />
           ))}
           {/* Vibe Golf — physics golf with portals, jetpacks and silly balls. */}
           <Route path="/golf" element={<VibeGolf />} />
@@ -342,131 +318,60 @@ const App = () => (
               picks, and `?room=CODE` is an invite straight into a lobby.
               `/kart-mp` was the old multiplayer world and still answers. */}
           {["/kart", "/kart-mp"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#07101c]" />}>
-                  <VibeKart />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<VibeKart />} />
           ))}
           {/* BLUE ANGELS — Seafair over Lake Washington. You fly number 1 and
               the other five fly your wing, over a real Seattle. */}
           {["/blue-angels", "/angels", "/seafair-show"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#040a18]" />}>
-                  <BlueAngels />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<BlueAngels />} />
           ))}
           {/* I SPY — the Geometry Dash level, in 2D, in the vibeverse. One
               button, sixty seconds, and a screen full of spikes that are not
               there. */}
           {["/i-spy", "/ispy", "/geometry-dash"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <ISpy />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<ISpy />} />
           ))}
           {/* BLOB — the petri dish. Eat pellets, dodge anything bigger, split
               to catch what runs. Twenty-four bots, one dish, phone or desktop.
               /agar and /agario answer because that is what people type. */}
           {["/blob", "/agar", "/agario", "/cells"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#060b14]" />}>
-                  <BlobWorld />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<BlobWorld />} />
           ))}
           {/* HOME ALONE — 671 Lincoln Avenue at Christmas. Walk an empty
               house, light it up, arm eight traps, then survive the two men who
               came for it. First of the films-as-worlds. */}
           {["/home-alone", "/kevin"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#0d1524]" />}>
-                  <HomeAlone />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<HomeAlone />} />
           ))}
           {/* AIRPLANE! — Trans American 209, LAX to Chicago. The crew had the
               fish. You are in the left seat of a 707 in a thunderstorm, and
               there are 187 people behind you. */}
           {["/airplane", "/flight-209", "/209"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <Airplane />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<Airplane />} />
           ))}
           {/* THE FINAL FRONTIER — you are the captain of a Constitution-class
               starship, and the main viewscreen is a live render of the space
               your ship is actually flying through. Five episodes. */}
           {["/trek", "/star-trek", "/final-frontier"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <StarTrek />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<StarTrek />} />
           ))}
           {/* STRANGE NEW WORLDS — the other half of Star Trek. Twelve real
               systems on a real chart, a fold from one to the next, orbit, a
               sensor sweep, and then the transporter puts you down in front of
               somebody who will talk back. */}
           {["/strange-new-worlds", "/snw", "/starfleet"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
-                  <StrangeNewWorlds />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<StrangeNewWorlds />} />
           ))}
           {/* RUN, VIBEY, RUN — a whole life, at a run. Six chapters: the road
               out of Greenbow, a kickoff return, the treeline, a ping-pong
               match, the shrimp boat, and then across America. */}
           {["/run", "/gump", "/forrest"].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense fallback={<div className="fixed inset-0 bg-[#0b0d10]" />}>
-                  <RunVibeyRun />
-                </Suspense>
-              }
-            />
+            <Route key={path} path={path} element={<RunVibeyRun />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
         </VibeIdentityProvider>
       </BrowserRouter>
     </TooltipProvider>

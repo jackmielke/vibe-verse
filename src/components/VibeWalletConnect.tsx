@@ -40,17 +40,18 @@ import {
   requestAccount,
   type DiscoveredWallet,
 } from "@/lib/wallets";
-import { addWallet, getWalletBook, payoutWallet } from "@/lib/walletBook";
+import { addWallet, getWalletBook, readPayoutAddress } from "@/lib/walletBook";
 
 /**
  * The payout address, for callers that only need the one string.
  *
  * Reads through the book, which keeps the legacy `vibe.payoutAddress.v1` key
  * in step — so this keeps working for anything that has not been moved over.
+ * It is defined in `lib/walletBook.ts` now and re-exported here so old imports
+ * keep resolving; import it from the book, not from this component, or you
+ * take the Base Account SDK with it.
  */
-export function readPayoutAddress(): string | null {
-  return payoutWallet()?.address ?? null;
-}
+export { readPayoutAddress };
 
 /** Register a proven address against the community roster. */
 async function registerAddress(

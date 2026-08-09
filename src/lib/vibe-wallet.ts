@@ -324,11 +324,15 @@ export function formatVibe(amount: bigint | number, opts: { compact?: boolean } 
   });
 }
 
-/** Truncate a hex address for display, e.g. 0x7255…a7d1. */
-export function shortAddress(addr: string): string {
-  if (!addr || addr.length < 10) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
+/**
+ * Truncate a hex address for display, e.g. 0x7255…a7d1.
+ *
+ * It lives in `lib/address.ts` now — it is pure string work and importing it
+ * from here dragged viem into the chunk of anything that only wanted to print
+ * an address. Re-exported so the call sites that already talk to a chain do
+ * not have to import from two places.
+ */
+export { shortAddress } from "@/lib/address";
 
 // ----------------------------------------------------------------------
 // Transactions
