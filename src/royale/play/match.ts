@@ -1574,6 +1574,17 @@ interface BusModel {
 }
 
 function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
+  /* `BusModel` promises four things the builder does not make yet: sliding
+     doors, an instanced crowd of riders and its slots, and the roof towels.
+     Only the towels are actually built below — the rest are declared here so
+     the returned object satisfies its own type instead of failing to compile,
+     and they are honestly empty rather than absent. Filling them in is the
+     remaining half of that feature; nothing reads them today. */
+  const doors: THREE.Object3D[] = [];
+  const riders: THREE.InstancedMesh | null = null;
+  const riderSlots: { x: number; y: number; z: number; phase: number }[] = [];
+  const towels: THREE.Object3D[] = [];
+
   const quality = ctx.quality;
   const skin = busSkin(ctx.mode);
   const bevel = BEVEL[quality];
@@ -2469,6 +2480,10 @@ function buildBus(ctx: WorldCtx, rng: () => number): BusModel {
     root,
     sway,
     balloon: balloonGroup,
+    doors,
+    riders,
+    riderSlots,
+    towels,
     rotors,
     flame,
     flameMat,

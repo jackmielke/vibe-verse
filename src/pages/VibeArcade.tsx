@@ -37,6 +37,7 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import {
   VIBECOIN_GLYPH,
+  VIBECOIN_NAME,
   applyLocalDelta,
   arcadeAllowance,
   arcadeInsert,
@@ -314,8 +315,8 @@ export default function VibeArcade() {
             VIBE ARCADE
           </h1>
           <p className="mx-auto mt-3 max-w-lg text-[13px] leading-relaxed text-muted-foreground sm:text-sm">
-            Every cabinet costs {VIBECOIN_GLYPH} to play and pays {VIBECOIN_GLYPH} if
-            you are good at it. The coin comes out of the same balance you earn in
+            Every cabinet costs Vibey Coins to play and pays them back if you are
+            good at it. The coin comes out of the same balance you earn in
             the worlds — watch the number in the corner while you play.
           </p>
         </motion.header>
@@ -328,7 +329,7 @@ export default function VibeArcade() {
               {balance == null ? "—" : formatVibecoin(balance, { compact: false })}
             </div>
             <div className="mt-1 font-heading text-[8.5px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-              Your Vibecoin
+              Your {VIBECOIN_NAME}
             </div>
           </div>
           {broke && (

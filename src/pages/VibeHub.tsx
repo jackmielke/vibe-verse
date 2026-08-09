@@ -16,7 +16,8 @@
  *   1. **MAKE A VIBE ACCOUNT.** An email and a six-digit code. This is the
  *      thing that has to be easy, because everything below it is worthless if
  *      nobody gets past it.
- *   2. **Earn Vibecoin.** Playing games. No wallet, no crypto, no decisions.
+ *   2. **Earn Vibey Coins.** Playing games. No wallet, no crypto, none
+ *      of the decisions.
  *   3. **Claim it for real.** When you have enough to care about, connect a
  *      wallet — or make one with Face ID in one tap — and a real token can
  *      find you.
@@ -44,7 +45,7 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { useWalletBook } from "@/hooks/use-wallet-book";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
-import { VIBECOIN_GLYPH, formatVibecoin } from "@/lib/vibecoin";
+import { VIBECOIN_GLYPH, VIBECOIN_NAME, formatVibecoin } from "@/lib/vibecoin";
 
 /** A numbered step, so the page reads as a sequence and not as four cards. */
 function Step({
@@ -142,9 +143,9 @@ export default function VibeHub() {
             Our community currency.
           </h1>
           <p className="mx-auto mt-3.5 max-w-md text-center text-[13px] leading-relaxed text-foreground/75">
-            Earn it by playing, spend it in the arcade, and claim it as a real
-            token when you have enough to care about. No wallet needed to
-            start — an email is the whole sign-up.
+            Earn Vibey Coins by playing, spend them in the arcade, and claim them as
+            real Vibecoin when you have enough to care about. No wallet needed
+            to start — an email is the whole sign-up.
           </p>
 
           {/* ---- The one distinction everything else rests on ---- */}
@@ -157,7 +158,7 @@ export default function VibeHub() {
                 </span>
               </div>
               <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                Vibecoin {VIBECOIN_GLYPH}
+                {VIBECOIN_NAME} {VIBECOIN_GLYPH}
               </p>
               <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
                 What you earn in the worlds. Buys characters, plays cabinets,
@@ -182,7 +183,7 @@ export default function VibeHub() {
                 )}
               </div>
               <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                $VIBE · a real token
+                Vibecoin · $VIBE on Base
               </p>
               <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
                 Lives on Base, in a wallet you control. This app reads it and
@@ -197,7 +198,7 @@ export default function VibeHub() {
               <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
                 <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                   An email and a six-digit code — no password, nothing to
-                  download. It is what makes your Vibecoin follow you from your
+                  download. It is what makes your Vibey Coins follow you from your
                   laptop to your phone instead of living in one browser.
                 </p>
                 <button
@@ -219,15 +220,15 @@ export default function VibeHub() {
                   Signed in{displayName ? ` as ${displayName}` : ""}
                 </p>
                 <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Your Vibecoin is on your account now, not in this browser. It
-                  is there on any device you sign in from.
+                  Your Vibey Coins are on your account now, not in this browser. They
+                  are there on any device you sign in from.
                 </p>
               </div>
             )}
           </Step>
 
           {/* ---- 2. Earning it ---- */}
-          <Step n={2} title="Earn some Vibecoin" done={(balance ?? 0) > 100}>
+          <Step n={2} title="Earn some Vibey Coins" done={(balance ?? 0) > 100}>
             <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
               <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                 Everyone starts with 100. The cabinets in the arcade pay out,
@@ -252,7 +253,7 @@ export default function VibeHub() {
           </Step>
 
           {/* ---- 3. Claiming it ---- */}
-          <Step n={3} title="Claim it for real $VIBE" done={rows.length > 0}>
+          <Step n={3} title="Claim them as real Vibecoin" done={rows.length > 0}>
             <p className="mb-3 text-[11.5px] leading-relaxed text-muted-foreground">
               Last on purpose. Connect a wallet you already have, or make one
               with Face ID in a single tap — either way you sign a sentence,

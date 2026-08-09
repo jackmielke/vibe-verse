@@ -214,7 +214,7 @@ export default function ArcadeCharacters() {
           </h1>
           <p className="mx-auto mt-3 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
             {tab === "characters"
-              ? "Buy one with the Vibecoin you won downstairs, and wear it everywhere — Vibe Island, the hub, the lobby. Nothing here was taken off the free shelf to make room; these six did not exist before the shop did."
+              ? "Buy one with the Vibey Coins you won downstairs, and wear it everywhere — Vibe Island, the hub, the lobby. Nothing here was taken off the free shelf to make room; these six did not exist before the shop did."
               : "Everything else you can put on. Bought against your wallet rather than your browser, so it survives a cleared history and a new phone."}
           </p>
         </header>

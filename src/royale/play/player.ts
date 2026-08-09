@@ -90,6 +90,9 @@ import {
 // augmentation lives beside the transport rather than in the shared contract,
 // because the shared contract predates multiplayer and ships without it.
 import type { NetService } from "../net/types";
+/* Type-only. Drop Zero's match service carries the bus route sampler the
+   camera needs; the shared `MatchService` on `ctx.services` does not. */
+import type { DropZeroMatchService } from "./match";
 
 // ---------------------------------------------------------------- tuning
 
@@ -2180,6 +2183,21 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   let camSnap = false;
   /** True while the arm is orbiting the bus rather than tracking the player. */
   let onBus = false;
+  /**
+   * Two-finger pinch zoom, as a multiplier consumed once per frame.
+   *
+   * The reader was written before the writer and this was never declared, so
+   * `pinchScale` referred to nothing: three lines below reference it, and the
+   * one that runs on EVERY frame — `pinchScale = 1` after the bus block — is an
+   * assignment to an undeclared name. Under a module (`"use strict"`, which
+   * every ESM file is) that throws a ReferenceError, which means the frame loop
+   * died on its first tick and the world was a black screen.
+   *
+   * It typechecks and runs now, and holds 1 until something writes a pinch into
+   * it — so the wheel path is unaffected and touch zoom is a producer away
+   * rather than a rewrite.
+   */
+  let pinchScale = 1;
   const busPivot = new THREE.Vector3();
   const busDir = new THREE.Vector3();
   const busRight = new THREE.Vector3();
@@ -3835,7 +3853,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   function updateCamera(dt: number): void {
     const input = ctx.input;
     const collision = ctx.services.collision;
-    const match = ctx.services.match;
+    /* Drop Zero's own service, not the shared `MatchService` — the bus camera
+       samples the route through `busAt`, which is on the extended interface.
+       `ctx.services.match` is typed as the shared contract, so without this
+       the call below did not compile. */
+    const match = ctx.services.match as DropZeroMatchService | undefined;
 
     // --- what is the subject of this shot? ---------------------------------
     // On the bus it is the BUS. The arm hangs off the vehicle and the look

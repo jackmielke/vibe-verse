@@ -327,7 +327,7 @@ export default function VibeWalletSection({
               </li>
               <li>
                 <span className="text-foreground/85">It does not move anything.</span>{" "}
-                Not your $VIBE, not your ETH, not your Vibecoin.
+                Not your Vibecoin, not your ETH, not your Vibey Coins.
               </li>
               <li>
                 <span className="text-foreground/85">It is not needed to play.</span>{" "}

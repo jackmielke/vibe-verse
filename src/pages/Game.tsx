@@ -289,7 +289,7 @@ export default function Game() {
                 vibeverse has money in it and points at where to spend it. */}
             <Link
               to="/arcade"
-              title="Vibecoin — the currency of the vibeverse. Earn it in the worlds, spend it in the arcade."
+              title="Vibey Coins — the play currency of the vibeverse. Earn them in the worlds, spend them in the arcade."
               className="flex items-center gap-1.5 rounded-full border border-[#7dffd4]/35 bg-[#7dffd4]/[0.07] px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-[#7dffd4] transition-colors hover:border-[#7dffd4]/60 sm:px-4 sm:py-2"
             >
               <VibeCoinMark size={13} />

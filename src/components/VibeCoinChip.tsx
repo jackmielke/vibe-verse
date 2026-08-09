@@ -1,5 +1,5 @@
 /**
- * The Vibecoin chip — the currency, made visible.
+ * The Vibey Coin chip — the play currency, made visible.
  *
  * The vibeverse has had a working ledger for months and no visitor could tell.
  * You could earn ninety coins on a floating island and the only evidence was a

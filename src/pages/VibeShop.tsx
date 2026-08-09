@@ -1,5 +1,5 @@
 /**
- * /shop — the first place Vibecoin buys something you keep.
+ * /shop — the first place Vibey Coins buy something you keep.
  *
  * The arcade proved coins could be spent; it could not prove they were worth
  * having, because everything you won there went straight back into the same
@@ -75,7 +75,7 @@ export default function VibeShop() {
             The <span className="text-gradient-mint">Vibe Shop</span>
           </h1>
           <p className="mt-2.5 max-w-xl text-[13px] leading-relaxed text-muted-foreground sm:text-sm">
-            Everything here is bought with the same Vibecoin you earn in the worlds
+            Everything here is bought with the same Vibey Coins you earn in the worlds
             and win in the arcade. What you buy is recorded against your wallet, not
             your browser — clear your history, open it on your phone, it is still
             yours.
