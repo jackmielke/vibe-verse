@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-10T23:13:16.169Z",
+  "generated_at": "2026-08-10T23:23:00.026Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "001ad5ef",
+      "date": "2026-08-10",
+      "subject": "Stamp Neon 2048 into the world dates",
+      "lede": "`npm run stamp` reads each world's `source` path out of the registry and dates the card from its last commit, so a world is not dated until the code it points at exists. Which means this is always a second commit.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "79f1ff93",
+      "date": "2026-08-10",
+      "subject": "Add Neon 2048 — the sliding-tile game in BLOB's colours",
+      "lede": "A quick one you can finish a round of at a bus stop, and the first world here with no canvas in it: sixteen numbers is a thing the browser is already good at, and doing it in DOM keeps the digits crisp at the size a phone actually is. Everything that moves is a CSS transform, so it still runs on the compositor and nothing schedules a frame.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "8ac9a422",
+      "date": "2026-08-10",
+      "subject": "Re-stamp after merging main",
+      "lede": "BLOB and the portal picked up commits while the branches were apart.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "b041970e",
       "date": "2026-08-10",
@@ -1008,32 +1032,6 @@
       "lede": "Instrumenting dz:hit outside the zone showed a tick landing every simulated second, correctly sized — {amount: 0.504, shield: true} — with shield walking 100 -> 97.98 while health sat at exactly 100. skipToLive grants a full shield and applyDamage spends it first, like every other damage source, so the beat was watching a number that would not have moved for 200 seconds.",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "d276d76c",
-      "date": "2026-08-06",
-      "subject": "Floors and ramps were unbuildable on every street in every town",
-      "lede": "volumeClear() and isAnchored() contradicted each other about the ground. A wall's collider starts exactly on the lattice plane, but a floor's whole 0.25 m slab sits below it — the walking surface is the plane — and a ramp's staircase underhangs by half the wall thickness. Every POI has a solid apron whose top face IS that grid plane, so the very box isAnchored found as support was counted by volumeClear as an obstruc",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "64c148c4",
-      "date": "2026-08-06",
-      "subject": "Bot nameplates never compiled: one include, declared twice",
-      "lede": "three r160 prepends <colorspace_pars_fragment> to every non-raw ShaderMaterial, so PLATE_FRAG including it again declared LinearSRGBToLinearDisplayP3 twice and the whole fragment shader failed to compile — the nameplates over every bot rendered as nothing at all. This is the 'function already has a body' error the playtest surfaced during the harvest beat.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "fb6c3510",
-      "date": "2026-08-06",
-      "subject": "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world",
-      "lede": "A chip next to the day/night switch opens a little palette: Clear, Rain, Snow, Storm. The day/night toggle is lobby-wide because everyone shares one sky; the weather is yours, because being the only person standing in a thunderstorm is funnier.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 3
     }
   ]
 }
