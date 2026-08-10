@@ -33,6 +33,7 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
 import { useWardrobe } from "@/hooks/use-wardrobe";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import ItemShelves from "@/components/shop/ItemShelves";
+import CharacterShelf from "@/components/shop/CharacterShelf";
 import { VIBECOIN_GLYPH, formatVibecoin } from "@/lib/vibecoin";
 import { buyCosmetic, equip, itemKey, type CosmeticKind } from "@/lib/wardrobe";
 import {
@@ -100,6 +101,11 @@ export default function VibeShop() {
             🕹️ Win more
           </Link>
         </div>
+
+        {/* Characters first. They are the most expensive thing here and the
+            only thing here somebody actually pictures when they think about
+            spending — a shop that opens on hats buries its own headline. */}
+        <CharacterShelf />
 
         <ItemShelves />
 

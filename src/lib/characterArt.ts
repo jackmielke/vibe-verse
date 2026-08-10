@@ -35,6 +35,37 @@ import ovoidArt from "@/assets/characters/ovoid.png";
 import scrapArt from "@/assets/characters/scrap.png";
 import sproutArt from "@/assets/characters/sprout.png";
 import tuxedoArt from "@/assets/characters/tuxedo.png";
+/* The wide cast. */
+import boltArt from "@/assets/characters/bolt.png";
+import pipArt from "@/assets/characters/pip.png";
+import giltArt from "@/assets/characters/gilt.png";
+import sentryArt from "@/assets/characters/sentry.png";
+import wardenArt from "@/assets/characters/warden.png";
+import bountyArt from "@/assets/characters/bounty.png";
+import brambleArt from "@/assets/characters/bramble.png";
+import elderArt from "@/assets/characters/elder.png";
+import gonkArt from "@/assets/characters/gonk.png";
+import medicArt from "@/assets/characters/medic.png";
+import magnateArt from "@/assets/characters/magnate.png";
+import bulwarkArt from "@/assets/characters/bulwark.png";
+import emeraldArt from "@/assets/characters/emerald.png";
+import voltaicArt from "@/assets/characters/voltaic.png";
+import seraphArt from "@/assets/characters/seraph.png";
+import vantablackArt from "@/assets/characters/vantablack.png";
+import crimsonArt from "@/assets/characters/crimson.png";
+import stingerArt from "@/assets/characters/stinger.png";
+import titanArt from "@/assets/characters/titan.png";
+import phaseArt from "@/assets/characters/phase.png";
+import cinderArt from "@/assets/characters/cinder.png";
+import frostbiteArt from "@/assets/characters/frostbite.png";
+import mothlingArt from "@/assets/characters/mothling.png";
+import jellyArt from "@/assets/characters/jelly.png";
+import prickleArt from "@/assets/characters/prickle.png";
+import toadstoolArt from "@/assets/characters/toadstool.png";
+import origamiArt from "@/assets/characters/origami.png";
+import ridgebackArt from "@/assets/characters/ridgeback.png";
+import striderArt from "@/assets/characters/strider.png";
+import haulerArt from "@/assets/characters/hauler.png";
 
 export const CHARACTER_ART: Record<string, string> = {
   aurora: auroraArt,
@@ -51,6 +82,36 @@ export const CHARACTER_ART: Record<string, string> = {
   scrap: scrapArt,
   sprout: sproutArt,
   tuxedo: tuxedoArt,
+  bolt: boltArt,
+  pip: pipArt,
+  gilt: giltArt,
+  sentry: sentryArt,
+  warden: wardenArt,
+  bounty: bountyArt,
+  bramble: brambleArt,
+  elder: elderArt,
+  gonk: gonkArt,
+  medic: medicArt,
+  magnate: magnateArt,
+  bulwark: bulwarkArt,
+  emerald: emeraldArt,
+  voltaic: voltaicArt,
+  seraph: seraphArt,
+  vantablack: vantablackArt,
+  crimson: crimsonArt,
+  stinger: stingerArt,
+  titan: titanArt,
+  phase: phaseArt,
+  cinder: cinderArt,
+  frostbite: frostbiteArt,
+  mothling: mothlingArt,
+  jelly: jellyArt,
+  prickle: prickleArt,
+  toadstool: toadstoolArt,
+  origami: origamiArt,
+  ridgeback: ridgebackArt,
+  strider: striderArt,
+  hauler: haulerArt,
 };
 
 /**

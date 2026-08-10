@@ -99,7 +99,33 @@ export interface PilotDesign {
    * - `waddle` — stubby legs set wide, no arms. Rocks side to side rather than
    *              striding; the roll IS the walk.
    */
-  plan?: "biped" | "hover" | "tread" | "waddle";
+  plan?: "biped" | "hover" | "tread" | "waddle" | "astromech" | "rollerball" | "quad";
+  /**
+   * Mirror plating instead of paint.
+   *
+   * One material property, and it changes what a design is *made of* rather
+   * than what colour it is — which is the difference between a gold robot and
+   * a robot painted yellow, and it is the whole read of an armoured character.
+   */
+  chrome?: boolean;
+  /** A hemisphere instead of a skull. The astromech head. */
+  dome?: boolean;
+  /** A full helmet with a T-slot cut into it. Nobody's face is visible. */
+  bucket?: boolean;
+  /** An armoured faceplate: hard cheeks, a jaw, and two lit slits. */
+  faceplate?: boolean;
+  /** One wide scanning bar where the eyes would be. */
+  barEye?: boolean;
+  /** Shoulder armour, which is most of what makes a silhouette read as heavy. */
+  pauldrons?: boolean;
+  /** A pack between the shoulder blades with two nozzles under it. */
+  jetpack?: boolean;
+  /** A shaggy ruff at the shoulders and hips — the outline goes soft. */
+  fur?: boolean;
+  /** Two tusks off the jaw. Wants a muzzle to hang from. */
+  tusks?: boolean;
+  /** Lit bands round the limbs, in the accent. */
+  glowRings?: boolean;
   /**
    * Inflatable: vinyl instead of panels.
    *
@@ -270,6 +296,206 @@ export const PILOT_DESIGNS: Record<string, PilotDesign> = {
     roundEyes: true, plan: "waddle", chunk: 1.0,
   },
 
+  // ---- The wide cast ---------------------------------------------------
+  //
+  // Thirty, built from the parts above rather than one at a time. That is the
+  // whole argument for a table: `bucket` is forty lines of geometry written
+  // once, and it is the difference between a soldier and a hero on six
+  // different characters that share nothing else.
+  //
+  // On the obvious question: these are *archetypes*, not anybody's characters.
+  // An astromech, a protocol droid, a faceless trooper, an armoured flyer with
+  // a lit chest are shapes that predate every film they remind you of, and the
+  // repo has done this since Nightcape and Webslinger — evoke the silhouette,
+  // give it its own name, and do not copy a design or a trademark. If one of
+  // these ever needs the actual name to work, it is not finished.
+
+  // -- Droids ------------------------------------------------------------
+  // Rocks on two rigid struts and a centre foot. Cannot walk, and knows it.
+  bolt: {
+    shell: 0xf0f2f5, plate: 0xdde3ec, accent: "#2f9bff", cloth: 0xdde3ec,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    plan: "astromech", dome: true, chunk: 0.98,
+  },
+  // A ball that is also the wheel, under a head that never touches it.
+  pip: {
+    shell: 0xfaf6ee, plate: 0xff8f3c, accent: "#ff8f3c", cloth: 0xff8f3c,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    plan: "rollerball", dome: true, chunk: 1,
+  },
+  // Gold, and *gold* rather than yellow — the whole point of `chrome`.
+  gilt: {
+    shell: 0xd9a441, plate: 0xf0c96a, accent: "#fff0b8", cloth: 0xd9a441,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    chrome: true, faceplate: true, glowRings: true,
+  },
+  // No face at all. The armour is the character.
+  sentry: {
+    shell: 0xeef1f6, plate: 0xdae0ea, accent: "#5b7fb0", cloth: 0x3a4150,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    bucket: true, pauldrons: true,
+  },
+  // The same helmet, black, with a floor-length cape and a lit chest.
+  warden: {
+    shell: 0x14151b, plate: 0x22242e, accent: "#ff2d3f", cloth: 0x0d0e12,
+    crown: "none", trail: "cape", face: "visor", eyeScale: 1,
+    bucket: true, pauldrons: true, core: true,
+  },
+  // Beskar-bright, one pauldron's worth of scuff, and a pack on the back.
+  bounty: {
+    shell: 0x9aa6b4, plate: 0xd7dee8, accent: "#4ad6a0", cloth: 0x3d5568,
+    crown: "none", trail: "cape", face: "visor", eyeScale: 1,
+    chrome: true, bucket: true, pauldrons: true, jetpack: true,
+  },
+  // Fur is a silhouette problem at this poly count, so it is spikes.
+  bramble: {
+    shell: 0x7a5230, plate: 0x4a3220, accent: "#ffd36a", cloth: 0x4a3220,
+    crown: "none", trail: "none", face: "muzzle", eyeScale: 1.5,
+    roundEyes: true, fur: true, tusks: true, chunk: 1.16,
+  },
+  // Small, robed, enormous ears. Old rather than cute.
+  elder: {
+    shell: 0x8fae6a, plate: 0xcfd8b8, accent: "#ffe9a8", cloth: 0x6b5a3e,
+    crown: "cat-ears", trail: "cape", face: "muzzle", eyeScale: 1.5,
+    roundEyes: true, chunk: 0.7,
+  },
+  // A walking box with no head whatsoever. The joke is that it is finished.
+  gonk: {
+    shell: 0x6d7a5a, plate: 0x4c5640, accent: "#ffb03a", cloth: 0x4c5640,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    boxy: true, barEye: true, chunk: 0.9,
+  },
+  // Thin, clinical, one sweeping eye and nothing else.
+  medic: {
+    shell: 0xe8eef4, plate: 0xb9c6d4, accent: "#5ff2c8", cloth: 0xb9c6d4,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    dome: true, barEye: true, glowRings: true, chunk: 0.96,
+  },
+
+  // -- Armour ------------------------------------------------------------
+  // Red and gold, a lit chest, and a pack. Flight, implied.
+  magnate: {
+    shell: 0xc02233, plate: 0xe8b545, accent: "#7ee8ff", cloth: 0xc02233,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    chrome: true, faceplate: true, core: true, jetpack: true, pauldrons: true,
+  },
+  // The shield read: heavy blue, a white emblem, nothing lit.
+  bulwark: {
+    shell: 0x1f4fa8, plate: 0xeef3fa, accent: "#f4f7fb", cloth: 0x1f4fa8,
+    crown: "none", trail: "none", face: "lenses", eyeScale: 1.6,
+    emblem: true, pauldrons: true, chunk: 1.08,
+  },
+  // Nothing worn at all — the body IS the armour, and it is enormous.
+  emerald: {
+    shell: 0x3f9e4d, plate: 0x2c6f38, accent: "#d6ff8a", cloth: 0x2f5d3a,
+    crown: "none", trail: "none", face: "muzzle", eyeScale: 1.5,
+    chunk: 1.3, tusks: true,
+  },
+  // Storm colours, a cape, and rings that read as charge.
+  voltaic: {
+    shell: 0x2a3550, plate: 0x9fb6e0, accent: "#ffe14a", cloth: 0x1c2740,
+    crown: "fins", trail: "cape", face: "visor", eyeScale: 1.1,
+    glowRings: true, core: true, clothGlow: 0.3,
+  },
+  // Wings, a halo and a lit core: the one that is trying to be seen.
+  seraph: {
+    shell: 0xf3ead8, plate: 0xffffff, accent: "#ffcf5e", cloth: 0xffe9b0,
+    crown: "ring", trail: "cape", face: "visor", eyeScale: 1,
+    faceplate: true, wings: true, core: true, chrome: true, clothGlow: 0.5,
+  },
+  // Matte black, piping, lenses. Reads as somebody who does not want to be.
+  vantablack: {
+    shell: 0x101218, plate: 0x1b1e27, accent: "#5b6b86", cloth: 0x101218,
+    crown: "none", trail: "none", face: "lenses", eyeScale: 1.9,
+    piping: true, visorGlow: 0.05,
+  },
+  // A long cloak and a floating body. The sorcerer shape.
+  crimson: {
+    shell: 0x8a1f2e, plate: 0xd4a04a, accent: "#ffb95e", cloth: 0x9e2434,
+    crown: "none", trail: "cape", face: "visor", eyeScale: 1.2,
+    plan: "hover", core: true, clothGlow: 0.22,
+  },
+  // Small, winged, antennae. Quick rather than strong.
+  stinger: {
+    shell: 0xffc93c, plate: 0x2a2418, accent: "#ffe98a", cloth: 0x2a2418,
+    crown: "antennae", trail: "none", face: "lenses", eyeScale: 2.2,
+    wings: true, piping: true, chunk: 0.8,
+  },
+  // Pauldrons, rings, and enough chunk to change the doorway.
+  titan: {
+    shell: 0x6b7280, plate: 0x2f3540, accent: "#ff7a3d", cloth: 0x2f3540,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    faceplate: true, pauldrons: true, glowRings: true, chunk: 1.28,
+  },
+  // Chrome and seamless, with one sweeping eye. Unsettling on purpose.
+  phase: {
+    shell: 0xc9d3de, plate: 0xeef3f8, accent: "#b46bff", cloth: 0xc9d3de,
+    crown: "none", trail: "none", face: "visor", eyeScale: 1,
+    chrome: true, soft: true, barEye: true,
+  },
+
+  // -- Everything else ----------------------------------------------------
+  // Lit from the inside, horned, and heavy at the back.
+  cinder: {
+    shell: 0x2b1410, plate: 0x51231a, accent: "#ff5a1e", cloth: 0x3a1a12,
+    crown: "horns", trail: "tail", face: "muzzle", eyeScale: 1.5,
+    heavyTail: true, glowRings: true, core: true, chunk: 1.12,
+  },
+  // Pale, spiked, and cold enough that the accent is the only warm thing.
+  frostbite: {
+    shell: 0xd7ecf7, plate: 0xa8cfe4, accent: "#6ff0ff", cloth: 0xbfe2f2,
+    crown: "fins", trail: "cape", face: "visor", eyeScale: 1.1,
+    glowRings: true, clothGlow: 0.35,
+  },
+  // Fuzzy, winged, and mostly eyes. The gentlest thing on the shelf.
+  mothling: {
+    shell: 0xd8c7a8, plate: 0x8a7a5e, accent: "#ffe9a0", cloth: 0xb9a684,
+    crown: "antennae", trail: "none", face: "lenses", eyeScale: 2.6,
+    wings: true, fur: true, chunk: 0.92,
+  },
+  // Floats, glows, has no bones at all.
+  jelly: {
+    shell: 0xb98cff, plate: 0xe4d2ff, accent: "#8affea", cloth: 0xb98cff,
+    crown: "none", trail: "none", face: "dots", eyeScale: 1.2,
+    plan: "hover", soft: true, core: true, chunk: 1.04,
+  },
+  // Boxy, green, and spiked along the crown. Do not hug.
+  prickle: {
+    shell: 0x4f8f4a, plate: 0x3a6b38, accent: "#ffe27a", cloth: 0x3a6b38,
+    crown: "horns", trail: "none", face: "dots", eyeScale: 1.3,
+    boxy: true, chunk: 0.95,
+  },
+  // A cap, a soft body, and legs too short for any of it.
+  toadstool: {
+    shell: 0xf4e6d2, plate: 0xc4443c, accent: "#ffd9c2", cloth: 0xc4443c,
+    crown: "cap", trail: "none", face: "dots", eyeScale: 1.4,
+    plan: "waddle", soft: true, chunk: 0.95,
+  },
+  // Hard facets, paper colours, and wings that fold flat.
+  origami: {
+    shell: 0xf6f1e4, plate: 0xe05a4a, accent: "#e05a4a", cloth: 0xf6f1e4,
+    crown: "fins", trail: "none", face: "dots", eyeScale: 1,
+    wings: true, chunk: 0.96,
+  },
+  // Four legs, a long body, and a head out front. Not a person on all fours.
+  ridgeback: {
+    shell: 0x8a6a4a, plate: 0x5d452e, accent: "#ffc46a", cloth: 0x5d452e,
+    crown: "cat-ears", trail: "tail", face: "muzzle", eyeScale: 1.6,
+    roundEyes: true, plan: "quad", chunk: 1.02,
+  },
+  // The same four legs, built out of plate and light instead of fur.
+  strider: {
+    shell: 0x39414f, plate: 0x1f242e, accent: "#5ff2c8", cloth: 0x1f242e,
+    crown: "none", trail: "tail", face: "visor", eyeScale: 1,
+    plan: "quad", barEye: true, glowRings: true, heavyTail: true,
+  },
+  // A crate on tracks that is all cargo and no manners.
+  hauler: {
+    shell: 0xb4552c, plate: 0x3c3a38, accent: "#ffd166", cloth: 0x3c3a38,
+    crown: "none", trail: "none", face: "binocular", eyeScale: 1,
+    plan: "tread", boxy: true, pauldrons: true, chunk: 1.06,
+  },
+
   // ---- The originals ------------------------------------------------
   //
   // Six designs that exist only here — no model file, nothing licensed, no
@@ -378,16 +604,32 @@ export function buildProceduralPilot(
      roughness so the whole body is one soft falloff. The geometry does the
      rest — see `soft` at each limb, where the segments overlap instead of
      meeting at a joint sphere. */
+  /**
+   * On `chrome`, and why it is not metalness 1.
+   *
+   * A physically-correct metal is *only* its reflections — it has no diffuse
+   * colour at all — so at metalness 0.95 with no environment map to reflect,
+   * every one of these rendered near-black with a couple of specular streaks
+   * on it. Gold went brown, a mirror body went to a dark blob, and a radiant
+   * white one came out charcoal. That is the material behaving correctly in a
+   * scene that cannot support it: worlds here light with directional lights
+   * and a hemisphere, and most of them ship no envmap.
+   *
+   * So this is deliberately *cheated* metal. Enough metalness to get a tight
+   * bright highlight and a hard falloff, enough diffuse left to keep the hue
+   * the design asked for. It reads as polished under lights that exist rather
+   * than as correct under lights that do not.
+   */
   const shell = new THREE.MeshStandardMaterial({
     color: design.shell,
-    roughness: design.soft ? 0.95 : 0.6,
-    metalness: design.soft ? 0.02 : 0.15,
+    roughness: design.chrome ? 0.22 : design.soft ? 0.95 : 0.6,
+    metalness: design.chrome ? 0.55 : design.soft ? 0.02 : 0.15,
     flatShading: !design.soft,
   });
   const plate = new THREE.MeshStandardMaterial({
     color: design.plate,
-    roughness: design.soft ? 0.9 : 0.45,
-    metalness: design.soft ? 0.02 : 0.25,
+    roughness: design.chrome ? 0.26 : design.soft ? 0.9 : 0.45,
+    metalness: design.chrome ? 0.5 : design.soft ? 0.02 : 0.25,
     flatShading: !design.soft,
   });
   const glow = new THREE.MeshStandardMaterial({
@@ -447,7 +689,14 @@ export function buildProceduralPilot(
    * own base: two 0.35 m legs put the hips at 0.78, a pair of stubby ones at
    * 0.34, a tracked bogie at 0.55, and a hoverer floats with clear air under it.
    */
-  const HIP_Y = plan === "waddle" ? 0.39 : plan === "tread" ? 0.39 : plan === "hover" ? 0.92 : 0.78;
+  const HIP_Y =
+    plan === "waddle" ? 0.39 :
+    plan === "tread" ? 0.39 :
+    plan === "hover" ? 0.92 :
+    plan === "astromech" ? 0.53 :
+    plan === "rollerball" ? 0.42 :
+    plan === "quad" ? 0.54 :
+    0.78;
   const root = new THREE.Group();       // squash/stretch + bob live here
   group.add(root);
 
@@ -459,7 +708,9 @@ export function buildProceduralPilot(
      rig read as assembled. Both are exactly wrong on a body with no seams and
      on a body that is one egg from chin to knee, so those two skip them —
      otherwise you get a balloon with a plank through its hips. */
-  const rigid = !design.soft && plan !== "waddle";
+  const rigid =
+    !design.soft && plan !== "waddle" && plan !== "rollerball" &&
+    plan !== "astromech" && plan !== "quad";
   if (rigid) {
     const pelvis = mesh(new THREE.BoxGeometry(0.34, 0.18, 0.24), plate);
     pelvis.position.y = 0.02;
@@ -484,7 +735,16 @@ export function buildProceduralPilot(
   if (design.boxy) chestMesh.scale.set(1, 1, 1);
   else if (design.soft) chestMesh.scale.set(1.42, 1.18, 1.34);
   else if (plan === "waddle") chestMesh.scale.set(1.5, 1.3, 1.24);
+  /* A barrel: as deep as it is wide, so it has no front. That is the astromech
+     read — a body with no shoulders to square at you. */
+  else if (plan === "astromech") chestMesh.scale.set(1.3, 1.05, 1.3);
+  /* A quadruped's body runs front-to-back, not side to side. This one scale is
+     the difference between an animal and a person on all fours. */
+  else if (plan === "quad") chestMesh.scale.set(1.0, 0.92, 1.95);
   else chestMesh.scale.set(1.12, 1, 0.82);
+  /* The rollerball has no torso. The ball is the body, and a capsule inside it
+     is geometry nobody will ever see. */
+  chestMesh.visible = plan !== "rollerball";
   torso.add(chestMesh);
 
   /* The white front of a two-tone animal. A squashed capsule laid ON the chest
@@ -536,7 +796,12 @@ export function buildProceduralPilot(
    * line is bit-for-bit unmoved.
    */
   const chestTop = 0.29 + (design.boxy ? 0.23 : 0.33) * chestMesh.scale.y;
-  neck.position.y = chestTop - 0.07;
+  neck.position.y =
+    /* The ball is the body, so the head sits on top of the ball rather than on
+       a chest that is not rendered. A quadruped's head goes on the FRONT of
+       its body, which is the other half of what makes it read as an animal. */
+    plan === "rollerball" ? 0.42 : chestTop - 0.07;
+  if (plan === "quad") neck.position.z = 0.5;
   torso.add(neck);
   /**
    * A stalk, for a head that is not sitting on its shoulders.
@@ -578,6 +843,17 @@ export function buildProceduralPilot(
     nose.position.set(0, 0.145, 0.212);
     head.add(nose);
     // Jaw, slightly lighter, so the mouth line reads.
+    /* Two tusks off the lower jaw. One addition, and a friendly snout becomes
+       something you would not want to meet — it is the only piece in the table
+       that changes a character's temperament rather than its species. */
+    if (design.tusks) {
+      for (const side of [-1, 1]) {
+        const tusk = mesh(new THREE.ConeGeometry(0.022, 0.11, 6), plate);
+        tusk.position.set(side * 0.052, 0.135, 0.175);
+        tusk.rotation.set(0.35, 0, side * 0.22);
+        head.add(tusk);
+      }
+    }
     const jaw = mesh(new THREE.BoxGeometry(0.098, 0.03, 0.1), plate);
     jaw.position.set(0, 0.093, 0.155);
     head.add(jaw);
@@ -603,6 +879,117 @@ export function buildProceduralPilot(
    * which is where a chase camera actually sits. Built here rather than as a
    * `crown` because it replaces the skull rather than sitting on it.
    */
+  /**
+   * A dome instead of a skull.
+   *
+   * The astromech read, and it is entirely in the shape: a hemisphere has no
+   * front, so a dome-headed character is looking wherever its one eye happens
+   * to be pointed, and turning the dome is the only expression it needs. Three
+   * radial panel lines stop it reading as a plain bowl.
+   */
+  if (design.dome) {
+    skull.visible = false;
+    /* Big. The first cut used a 0.165 cap, which on a barrel body scaled 1.3
+       reads as a bottle cap rather than a head — the body swallowed it and the
+       character had no face at any distance. An astromech's dome is as wide as
+       its shoulders, and that ratio is the entire silhouette. */
+    const cap = mesh(new THREE.SphereGeometry(0.27, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), plate);
+    cap.position.y = 0.03;
+    cap.scale.set(1, 0.86, 1);
+    head.add(cap);
+    // The eye: one big lens, off to the front, plus a smaller lamp beside it.
+    const lens = mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 16), dark);
+    lens.rotation.x = Math.PI / 2;
+    lens.position.set(0, 0.12, 0.21);
+    head.add(lens);
+    const pupil = mesh(new THREE.CircleGeometry(0.048, 16), glow);
+    pupil.position.set(0, 0.12, 0.222);
+    head.add(pupil);
+    const lamp = mesh(new THREE.SphereGeometry(0.026, 8, 6), glow);
+    lamp.position.set(0.12, 0.15, 0.185);
+    head.add(lamp);
+    for (let i = 0; i < 4; i++) {
+      const band = mesh(new THREE.BoxGeometry(0.01, 0.14, 0.27), shell);
+      band.position.y = 0.09;
+      band.rotation.y = (i / 4) * Math.PI * 2 + 0.5;
+      head.add(band);
+    }
+  }
+
+  /**
+   * A bucket helmet with a T cut into it.
+   *
+   * The most efficient shape in character design: it removes the face
+   * entirely, so the whole read moves to the helmet's outline and the T. It
+   * also means the character has no expression at all, which is exactly why
+   * every faceless soldier ever drawn wears one.
+   */
+  if (design.bucket) {
+    skull.visible = false;
+    const helm = mesh(new THREE.CapsuleGeometry(0.155, 0.09, 4, 14), plate);
+    helm.position.y = 0.16;
+    helm.scale.set(1, 1.0, 1.06);
+    head.add(helm);
+    // Brow ridge and cheeks in the shell colour, so the T is what is left.
+    const brow = mesh(new THREE.BoxGeometry(0.24, 0.055, 0.1), shell);
+    brow.position.set(0, 0.215, 0.115);
+    brow.rotation.x = -0.12;
+    head.add(brow);
+    for (const side of [-1, 1]) {
+      const cheek = mesh(new THREE.BoxGeometry(0.07, 0.14, 0.1), shell);
+      cheek.position.set(side * 0.09, 0.14, 0.105);
+      head.add(cheek);
+    }
+    // The slot itself: a wide bar and a narrow stem, both dark.
+    const bar = mesh(new THREE.BoxGeometry(0.13, 0.042, 0.05), dark);
+    bar.position.set(0, 0.175, 0.15);
+    head.add(bar);
+    const stem = mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), dark);
+    stem.position.set(0, 0.12, 0.15);
+    head.add(stem);
+  }
+
+  /**
+   * An armoured faceplate — the one that reads as a hero rather than a soldier.
+   *
+   * Same trick as the bucket and the opposite result, which is worth noting:
+   * a helmet with a *jaw* and two lit slits gets read as a face wearing armour,
+   * where a helmet with a slot gets read as armour with nobody in it. The
+   * difference is about four primitives.
+   */
+  if (design.faceplate) {
+    skull.visible = false;
+    const mask = mesh(new THREE.CapsuleGeometry(0.15, 0.08, 4, 14), plate);
+    mask.position.y = 0.16;
+    mask.scale.set(1, 1, 1.02);
+    head.add(mask);
+    // Hard cheekbones and a jaw, which is what stops it being a bucket.
+    const jaw = mesh(new THREE.BoxGeometry(0.15, 0.075, 0.13), plate);
+    jaw.position.set(0, 0.085, 0.09);
+    head.add(jaw);
+    const mouth = mesh(new THREE.BoxGeometry(0.1, 0.018, 0.03), dark);
+    mouth.position.set(0, 0.086, 0.155);
+    head.add(mouth);
+    for (const side of [-1, 1]) {
+      const slit = mesh(new THREE.BoxGeometry(0.06, 0.028, 0.03), glow);
+      slit.position.set(side * 0.06, 0.175, 0.142);
+      slit.rotation.z = side * -0.13;
+      head.add(slit);
+    }
+  }
+
+  /** One scanning bar. No eyes at all, and it sweeps in the idle. */
+  let scanBar: THREE.Mesh | null = null;
+  if (design.barEye) {
+    if (!design.dome && !design.bucket && !design.faceplate) skull.visible = true;
+    const slot = mesh(new THREE.BoxGeometry(0.23, 0.05, 0.04), dark);
+    slot.position.set(0, 0.16, 0.135);
+    head.add(slot);
+    scanBar = mesh(new THREE.BoxGeometry(0.05, 0.032, 0.03), glow);
+    scanBar.position.set(0, 0.16, 0.152);
+    head.add(scanBar);
+  }
+
   if (design.face === "binocular") {
     skull.visible = false;
     const bar = mesh(new THREE.BoxGeometry(0.2, 0.045, 0.06), plate);
@@ -695,9 +1082,15 @@ export function buildProceduralPilot(
     head.add(beak);
   }
   const eyes: THREE.Mesh[] = [];
+  /* Anything that replaced the skull brought its own eyes with it — barrels, a
+     dome lens, a T-slot, lit slits, a scanning bar. Letting the generic pair
+     through as well is two extra eyes floating in front of a helmet, which is
+     exactly what happened the first time. */
+  const ownsItsEyes =
+    design.face === "binocular" || !!design.dome || !!design.bucket ||
+    !!design.faceplate || !!design.barEye;
   for (const side of [-1, 1]) {
-    // The barrels above already carry this character's lenses.
-    if (design.face === "binocular") break;
+    if (ownsItsEyes) break;
     const eye = new THREE.Mesh(eyeGeo, eyeball ?? glow);
     if (design.face === "lenses") {
       // Angular lenses, wide-set and tilted into a scowl. Spheres read as
@@ -1019,7 +1412,7 @@ export function buildProceduralPilot(
       // No elbow group of its own — the update treats a flipper as one bone.
       arms.push({ shoulder, elbow: shoulder, side });
     }
-  } else {
+  } else if (plan !== "astromech" && plan !== "rollerball" && plan !== "quad") {
     for (const side of [-1, 1]) {
       const shoulder = new THREE.Group();
       shoulder.position.set(side * 0.245, 0.48, 0);
@@ -1045,6 +1438,20 @@ export function buildProceduralPilot(
           : mesh(new THREE.SphereGeometry(0.052, 8, 6), plate),
       );
       elbow.add(limb(0.24, design.soft ? 0.082 : 0.05, design.soft ? 0.072 : 0.042, shell));
+
+      /* Lit bands round the limbs. Cheap, and the only decoration in the table
+         that reads at silhouette distance on a dark character — it draws the
+         arm swing as two moving lines when the body itself is a black shape. */
+      if (design.glowRings) {
+        const upper = mesh(new THREE.TorusGeometry(0.062, 0.011, 6, 14), glow);
+        upper.position.y = -0.18;
+        upper.rotation.x = Math.PI / 2;
+        shoulder.add(upper);
+        const fore = mesh(new THREE.TorusGeometry(0.05, 0.01, 6, 14), glow);
+        fore.position.y = -0.13;
+        fore.rotation.x = Math.PI / 2;
+        elbow.add(fore);
+      }
 
       const hand = mesh(
         design.soft
@@ -1072,6 +1479,12 @@ export function buildProceduralPilot(
   const legs: Leg[] = [];
   /** Rolling parts, for the tracked plan. Spun at real ground speed. */
   const wheels: THREE.Mesh[] = [];
+  /** The astromech's two side struts, which rock rather than stride. */
+  const legStruts: THREE.Group[] = [];
+  /** Its centre foot, which lifts on the rock. */
+  let centreFoot: THREE.Group | null = null;
+  /** The rollerball's body, which is also its wheel. */
+  let rollBall: THREE.Mesh | null = null;
   if (plan === "tread") {
     /**
      * A tracked base instead of legs.
@@ -1121,6 +1534,109 @@ export function buildProceduralPilot(
         const cleat = mesh(new THREE.BoxGeometry(0.165, 0.035, 0.055), shell);
         cleat.position.set(0, -0.155, i * 0.095);
         track_.add(cleat);
+      }
+    }
+  } else if (plan === "astromech") {
+    /**
+     * Two legs on the outside of a barrel, and a foot in the middle.
+     *
+     * The point of this plan is that it has no hips and no knees: the legs are
+     * rigid struts bolted to the sides of the body, so it cannot walk — it
+     * *rocks*, pivoting over one foot and then the other, and the centre strut
+     * is what keeps it from falling over while it does. Which is why the body
+     * language reads as a machine improvising rather than a person walking.
+     */
+    for (const side of [-1, 1]) {
+      const strut = new THREE.Group();
+      strut.position.set(side * 0.22, 0.06, 0);
+      hips.add(strut);
+      const shoulderCap = mesh(new THREE.SphereGeometry(0.075, 10, 8), plate);
+      strut.add(shoulderCap);
+      const leg = mesh(new THREE.BoxGeometry(0.12, 0.36, 0.16), plate);
+      leg.position.y = -0.2;
+      strut.add(leg);
+      const shin = mesh(new THREE.BoxGeometry(0.1, 0.16, 0.13), shell);
+      shin.position.y = -0.44;
+      strut.add(shin);
+      const foot = mesh(new THREE.BoxGeometry(0.15, 0.09, 0.32), plate);
+      foot.position.set(0, -0.53, 0.03);
+      strut.add(foot);
+      const skid = mesh(new THREE.BoxGeometry(0.155, 0.03, 0.33), glow);
+      skid.position.set(0, -0.575, 0.03);
+      strut.add(skid);
+      legStruts.push(strut);
+    }
+    // The third leg, shorter and further forward, that makes the tripod work.
+    const centre = new THREE.Group();
+    centre.position.set(0, 0.02, 0.1);
+    hips.add(centre);
+    const post = mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 8), plate);
+    post.position.y = -0.24;
+    centre.add(post);
+    const pad = mesh(new THREE.BoxGeometry(0.14, 0.08, 0.24), shell);
+    pad.position.y = -0.5;
+    centre.add(pad);
+    centreFoot = centre;
+  } else if (plan === "rollerball") {
+    /**
+     * A ball, with a head that never touches it.
+     *
+     * The body IS the wheel — it spins forward at real ground speed and rolls
+     * with the bank — and the head rides on top on nothing at all, staying
+     * upright while the thing under it turns over. Nothing else in the table
+     * moves like this, because nothing else has a part that spins freely under
+     * a part that does not.
+     */
+    const ball = mesh(new THREE.SphereGeometry(0.42, 20, 16), shell);
+    hips.add(ball);
+    /* Panel bands ON the surface, not inside it.
+       The first pass put three shrinking rings at increasing heights, which
+       described a cone through the middle of the sphere — all of it buried,
+       and the ball rendered as a blank white egg that gave no sign it was
+       turning. A latitude band's radius is sqrt(r² − y²); anything else is
+       geometry nobody sees. */
+    const R = 0.42;
+    for (const y of [-0.19, 0, 0.19]) {
+      const r = Math.sqrt(R * R - y * y);
+      const ring = mesh(new THREE.TorusGeometry(r, 0.022, 8, 24), plate);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      ball.add(ring);
+    }
+    // Three lit discs around the equator, so the spin is unmistakable.
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const dot = mesh(new THREE.CircleGeometry(0.085, 14), glow);
+      dot.position.set(Math.sin(a) * R * 0.99, 0.08, Math.cos(a) * R * 0.99);
+      dot.rotation.y = a;
+      ball.add(dot);
+    }
+    rollBall = ball;
+  } else if (plan === "quad") {
+    /* Four legs on one stride, diagonally paired — front-left with rear-right,
+       the trot every four-legged animal defaults to. The rig's own solver does
+       the work; all this changes is where the hips are and how many there are. */
+    for (const side of [-1, 1]) {
+      for (const end of [-1, 1]) {
+        const hip = new THREE.Group();
+        hip.position.set(side * 0.17, -0.02, end * 0.24);
+        hips.add(hip);
+        hip.add(mesh(new THREE.SphereGeometry(0.062, 8, 6), plate));
+        hip.add(limb(0.24, 0.058, 0.045, shell));
+        const knee = new THREE.Group();
+        knee.position.y = -0.24;
+        hip.add(knee);
+        knee.add(mesh(new THREE.SphereGeometry(0.048, 8, 6), plate));
+        knee.add(limb(0.22, 0.045, 0.036, shell));
+        const foot = new THREE.Group();
+        foot.position.y = -0.22;
+        knee.add(foot);
+        const paw = mesh(new THREE.BoxGeometry(0.1, 0.06, 0.15), plate);
+        paw.position.set(0, -0.03, 0.02);
+        foot.add(paw);
+        /* Diagonal pairs share a phase: side*end is +1 for two of the four
+           legs and -1 for the other two, which is the trot for free. */
+        legs.push({ hip, knee, foot, side: side * end });
       }
     }
   } else if (plan !== "hover") {
@@ -1287,6 +1803,68 @@ export function buildProceduralPilot(
       ring.position.set(0, 0.34 - i * 0.02, 0.15 - i * 0.01);
       ring.rotation.x = -0.25 + i * 0.05;
       torso.add(ring);
+    }
+  }
+
+  /* Shoulder armour. Two curved caps sitting proud of the shoulders, which is
+     most of what makes any silhouette read as heavy: the widest point of the
+     body moves from the hips to the shoulders and the whole outline inverts. */
+  if (design.pauldrons) {
+    for (const side of [-1, 1]) {
+      const pad = mesh(new THREE.SphereGeometry(0.135, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), plate);
+      pad.position.set(side * 0.25, 0.5, 0);
+      pad.rotation.z = side * 0.32;
+      pad.scale.set(1, 0.85, 1.05);
+      torso.add(pad);
+      const trim = mesh(new THREE.TorusGeometry(0.115, 0.012, 6, 16), glow);
+      trim.position.set(side * 0.25, 0.46, 0);
+      trim.rotation.x = Math.PI / 2;
+      trim.rotation.y = side * 0.3;
+      torso.add(trim);
+    }
+  }
+
+  /* A pack, and two nozzles under it. Purely a back detail, and back details
+     matter more here than anywhere else: the chase camera spends most of its
+     life looking at exactly this. */
+  if (design.jetpack) {
+    const pack = mesh(new THREE.BoxGeometry(0.26, 0.3, 0.13), plate);
+    pack.position.set(0, 0.38, -0.19);
+    torso.add(pack);
+    for (const side of [-1, 1]) {
+      const tank = mesh(new THREE.CapsuleGeometry(0.055, 0.18, 4, 10), shell);
+      tank.position.set(side * 0.085, 0.4, -0.24);
+      torso.add(tank);
+      const nozzle = mesh(new THREE.CylinderGeometry(0.045, 0.03, 0.08, 8), dark);
+      nozzle.position.set(side * 0.085, 0.24, -0.23);
+      torso.add(nozzle);
+      const flame = mesh(new THREE.SphereGeometry(0.032, 8, 6), glow);
+      flame.position.set(side * 0.085, 0.2, -0.23);
+      torso.add(flame);
+    }
+  }
+
+  /* A ruff at the shoulders and the hips. Fur is not a texture problem here —
+     at this poly count it is a *silhouette* problem, so it is spikes around the
+     outline rather than anything on the surface. */
+  if (design.fur) {
+    const tuft = track(new THREE.ConeGeometry(0.055, 0.19, 5));
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const f = new THREE.Mesh(tuft, shell);
+      f.castShadow = true;
+      f.position.set(Math.sin(a) * 0.23, 0.44 + Math.cos(a * 3) * 0.03, Math.cos(a) * 0.18);
+      f.rotation.set(Math.cos(a) * 0.8, a, -Math.sin(a) * 0.8);
+      torso.add(f);
+    }
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const f = new THREE.Mesh(tuft, shell);
+      f.castShadow = true;
+      f.scale.setScalar(0.8);
+      f.position.set(Math.sin(a) * 0.2, 0.13, Math.cos(a) * 0.16);
+      f.rotation.set(Math.cos(a) * 0.6 + 2.4, a, -Math.sin(a) * 0.6);
+      torso.add(f);
     }
   }
 
@@ -1471,6 +2049,48 @@ export function buildProceduralPilot(
       hips.rotation.z = bank * 0.5;
       hips.rotation.y = 0;
       hips.rotation.x = lean * 0.75 + THREE.MathUtils.clamp(accel * 0.008, -0.16, 0.2);
+    } else if (plan === "astromech") {
+      /* It cannot walk — the legs are rigid struts with no knee in them. So it
+         rocks: the body tips onto one strut, the other lifts, and the centre
+         foot picks up as it goes. Standing still it settles level and hums,
+         which is the whole personality. */
+      const rock = moving ? Math.sin(stridePhase * 0.6) : 0;
+      hips.position.set(rock * 0.045 * swing, HIP_Y + Math.abs(rock) * 0.02 * swing, 0);
+      hips.rotation.z = bank * 0.4 + rock * 0.2 * swing;
+      hips.rotation.y = 0;
+      hips.rotation.x = lean * 0.5;
+      for (let i = 0; i < legStruts.length; i++) {
+        const s = legStruts[i];
+        const dir = i === 0 ? 1 : -1;
+        s.rotation.z = -rock * 0.18 * swing * dir;
+        s.position.y = 0.06 + Math.max(0, rock * dir) * 0.05 * swing;
+      }
+      // The centre foot retracts at speed and drops when it stops.
+      if (centreFoot) centreFoot.position.y = 0.02 - (moving ? 0 : 0.0) + gait * 0.09;
+    } else if (plan === "rollerball") {
+      /* The body is the wheel. It spins at real ground speed about its own
+         centre, and the head — parented above rather than to it — is left
+         upright, which is the trick the whole design rests on. */
+      if (rollBall) {
+        rollBall.rotation.x += dt * f.speed * 2.4;
+        rollBall.rotation.z = -bank * 0.6;
+      }
+      hips.position.set(0, HIP_Y, 0);
+      hips.rotation.z = bank * 0.7;
+      hips.rotation.y = 0;
+      hips.rotation.x = 0;
+      // The head leans into the direction of travel, the way a rider would.
+      torso.position.y = 0;
+      torso.rotation.z = -bank * 0.5;
+    } else if (plan === "quad") {
+      /* A trot. The diagonal pairs already share a phase from how the legs were
+         built, so the body only has to do the rest: less roll than a biped,
+         more pitch, and a bob at twice the stride because four feet land
+         twice as often. */
+      hips.position.set(0, HIP_Y + (moving ? Math.sin(stridePhase * 2) * 0.028 * swing : breathe), 0);
+      hips.rotation.z = bank * 0.6 + (moving ? Math.sin(stridePhase) * 0.06 * swing : 0);
+      hips.rotation.y = moving ? Math.sin(stridePhase) * 0.05 * swing : 0;
+      hips.rotation.x = lean * 0.4 + (moving ? Math.sin(stridePhase * 2) * 0.05 * swing : 0);
     } else if (plan === "waddle") {
       /* The roll IS the walk. Legs this short cannot cover ground, so the
          body throws its weight side to side and the feet follow — which is
@@ -1531,6 +2151,9 @@ export function buildProceduralPilot(
         leg.hip.rotation.z = approach(leg.hip.rotation.z, leg.side * 0.045, 6, dt);
       }
     }
+
+    // A single eye sweeping its slot. Slow, and never quite reaching the end.
+    if (scanBar) scanBar.position.x = Math.sin(t * 1.6) * 0.075;
 
     // ---- Detached hands ----------------------------------------------------
     /* They have no shoulder, so they cannot swing — they LAG. Each one is a
