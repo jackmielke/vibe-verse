@@ -37,6 +37,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "blob": [
+    { sha: "64140cc", iso: "2026-08-10T23:09:13+00:00", subject: "BLOB: a phone sets a course, and a room code shares the dish" },
     { sha: "9423a4a", iso: "2026-08-08T05:45:14+00:00", subject: "BLOB: agar.io in the vibeverse — one dish, twenty-four rivals" },
   ],
   "blue-angels": [
