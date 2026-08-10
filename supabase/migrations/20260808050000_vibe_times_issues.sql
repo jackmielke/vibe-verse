@@ -46,9 +46,16 @@ create policy "published issues are public"
 -- No key in the header because the function does not need one — a POST
 -- with today's issue already written is a no-op, so the worst a stranger
 -- can do by calling it is nothing at all.
+--
+-- It runs hourly until 20:00 UTC for the same reason. Every poke after the
+-- one that writes the issue costs a single indexed row read, so the cheap
+-- thing to do is keep asking until a day has an edition, rather than fire
+-- once and let a bad minute at 13:00 cost the whole day. The window ends
+-- at 20:00 so an edition is never written during the previous evening in
+-- California, which is what a midnight-UTC schedule would do.
 select cron.schedule(
   'vibe-times-daily',
-  '0 13 * * *',
+  '0 13-20 * * *',
   $cron$
   select net.http_post(
     url := 'https://efdqqnubowgwsnwvlalp.supabase.co/functions/v1/vibe-times',

@@ -1,6 +1,6 @@
 # The Vibe Times
 
-A new issue every morning at 13:00 UTC, written by an edge function, read at
+A new issue every morning from 13:00 UTC, written by an edge function, read at
 [`/times`](https://myvibeverse.com/times).
 
 The paper used to be written by hand. That is why issue №1 shipped in July and
@@ -9,9 +9,34 @@ nightly. The presses run themselves now.
 
 ## What writes it
 
-`supabase/functions/vibe-times/index.ts`, poked once a day by a pg_cron job
-(`vibe-times-daily`). One issue per calendar day, stored as a row in
-`public.vibe_times_issues`.
+`supabase/functions/vibe-times/index.ts`, poked by a pg_cron job
+(`vibe-times-daily`) every hour from 13:00 to 20:00 UTC. One issue per
+calendar day, stored as a row in `public.vibe_times_issues`.
+
+The hourly schedule is not eight editions, it is one edition and seven
+chances to notice it did not get written. A poke arriving after today's issue
+exists costs a single indexed row read and returns `{skipped: true}`, so the
+cheap thing is to keep asking. What it buys: a failed run, an OpenRouter
+blip, or a killed invocation costs an hour rather than a day. A run that dies
+without cleaning up leaves a `writing` claim behind, and any poke twenty
+minutes later takes that claim over rather than politely standing down.
+
+## Is it working?
+
+```sql
+-- did the cron fire, and did it succeed?
+select status, start_time, return_message from cron.job_run_details
+where jobid = (select jobid from cron.job where jobname = 'vibe-times-daily')
+order by start_time desc limit 10;
+
+-- one row per day, all published, note says what each was written from
+select issue, edition_date, status, note, published_at
+from public.vibe_times_issues order by issue desc limit 7;
+```
+
+A `note` reading `build-log.json (missing)` means the site had not deployed
+`/build-log.json` when that issue was written, so it went out without the
+build record. A gap in `edition_date` means a day genuinely got skipped.
 
 It reads three worlds and hands all of it to Claude Sonnet as **data**:
 
