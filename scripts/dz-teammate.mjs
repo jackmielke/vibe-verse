@@ -473,18 +473,29 @@ function peer(id) {
   return p;
 }
 
-/** Humans on our squad, sorted nearest first. Agents are excluded so two
- *  copies of this bot in one lobby never end up orbiting each other. */
+/**
+ * Humans on our squad, sorted nearest first. Agents are excluded so two copies
+ * of this bot in one lobby never end up orbiting each other.
+ *
+ * Soaked squadmates sort behind living ones rather than out of the list.
+ * Skipping them outright was right in spirit — do not shadow a spectator while
+ * a teammate is still playing — and wrong the moment nobody is playing: a
+ * client sitting on the end card keeps publishing poses at `dry: 0`, so after
+ * one finished match the bot saw `peers 1`, found no living squadmate, and
+ * stood in a field forever. Following someone who is out beats following no
+ * one, and the instant they respawn dry they sort back to the front.
+ */
 function squadmates() {
+  const living = [];
   const out = [];
   for (const p of peers.values()) {
     if (p.agent || !p.posed) continue;
-    if (p.dry <= 0) continue; // already out — don't shadow a spectator
     if (TEAM && p.team && foldTeam(p.team) !== TEAM) continue;
-    out.push(p);
+    (p.dry > 0 ? living : out).push(p);
   }
-  out.sort((a, b) => dist2(me.x, me.z, a.x, a.z) - dist2(me.x, me.z, b.x, b.z));
-  return out;
+  const list = living.length > 0 ? living : out;
+  list.sort((a, b) => dist2(me.x, me.z, a.x, a.z) - dist2(me.x, me.z, b.x, b.z));
+  return list;
 }
 
 /** Anyone at all, for callouts and win detection. */
@@ -1253,6 +1264,17 @@ if (SELFTEST) {
     Math.abs(me.x) <= ISLAND_HALF && Math.abs(me.z) <= ISLAND_HALF,
     `${q(me.x)}, ${q(me.z)}`,
   );
+
+  // A squadmate sitting on the end card publishes poses at `dry: 0`. That used
+  // to drop them out of `squadmates()` entirely, so after one finished match
+  // the bot reported `peers 1, following —` and stood still for the rest of the
+  // session. Following someone who is out beats following nobody.
+  onPose({ i: JACK, x: 200, y: 0, z: -60, a: 0, p: 0, s: "ground", d: 0, t: TEAM, n: "Jack" });
+  tick(step);
+  check("still follows a soaked squadmate", leaderId === JACK, leaderId ?? "(nobody)");
+  onPose({ i: JACK, x: 200, y: 0, z: -60, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+  tick(step);
+  check("re-acquires them when they dry off", leaderId === JACK, leaderId ?? "(nobody)");
 
   // The downpour: a zone far away should pull it off the follow slot.
   zone = { x: -300, z: -300, r: 60 };
