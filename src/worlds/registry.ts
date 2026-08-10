@@ -257,6 +257,22 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "2048",
+    route: "/2048",
+    aliases: ["/twenty48", "/merge"],
+    name: "Neon 2048",
+    emoji: "🔢",
+    kind: "game",
+    blurb:
+      "2048, painted out of the petri dish — every tile a lit cell on BLOB's dark water, climbing the colour wheel as it doubles. Swipe or arrow, one undo, and the tile you are playing for is the only green on the board.",
+    status: "Playable — phone and desktop, 4×4 and 5×5",
+    accent: "#4de2ff",
+    source: "src/twenty48",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "blue-angels",
     route: "/blue-angels",
     aliases: ["/angels", "/seafair-show"],
