@@ -19,6 +19,14 @@ export interface PortalGame {
   /** The one origin allowed to talk to us, or `self` for a game in this repo. */
   origin: string;
   maxAward: number;
+  /**
+   * Does the game include `vibeverse.js`?
+   *
+   * Not a permission — a game without it is welcome and playable, it simply
+   * never asks for anything, so its budget is never spent. The play page reads
+   * this to avoid promising a player coins that are not coming.
+   */
+  usesSdk?: boolean;
 }
 
 export interface PortalGameListing extends PortalGame {
@@ -79,6 +87,155 @@ export function closePortalSession(
   sessionId: string,
 ): Promise<{ awarded: number; awards: number }> {
   return call("close", { sessionId });
+}
+
+// ---------------------------------------------------------------------------
+// The submission desk — `vibe-portal-submit`, a different function
+// ---------------------------------------------------------------------------
+//
+// Split from `vibe-portal` because they have nothing in common but a table.
+// One is called by every player of every game and must stay small and fast;
+// the other is called a few times a week, talks to GitHub, and copies files
+// around. Putting the slow, chatty half behind the same entry point as the
+// award path would mean a bad afternoon at GitHub could make paying a player
+// slow, which is exactly backwards.
+
+export type SubmissionStatus = "pending" | "approved" | "rejected" | "failed";
+
+export interface PortalSubmission {
+  id: string;
+  submitted_url: string;
+  kind: "github" | "hosted";
+  slug: string | null;
+  title: string | null;
+  tagline: string | null;
+  author: string | null;
+  author_url: string | null;
+  repo: string | null;
+  repo_ref: string | null;
+  repo_sha: string | null;
+  entry_path: string | null;
+  license: string | null;
+  file_count: number | null;
+  total_bytes: number | null;
+  embed_url: string | null;
+  origin: string | null;
+  uses_sdk: boolean;
+  status: SubmissionStatus;
+  status_note: string | null;
+  max_award: number | null;
+  session_budget: number | null;
+  player_daily: number | null;
+  daily_budget: number | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface SubmitResult {
+  submission: PortalSubmission;
+  /** The mirrored (or hosted) URL, playable before anybody approves anything. */
+  preview?: string;
+  failed?: boolean;
+  alreadyKnown?: boolean;
+  note?: string;
+  mirror?: { uploaded: number; bytes: number; failed: { path: string; why: string }[] };
+}
+
+/** A row in the admin queue's second list: games already in the arcade. */
+export interface PortalGameAdminRow {
+  slug: string;
+  title: string;
+  active: boolean;
+  source_kind: "manual" | "hosted" | "github";
+  repo: string | null;
+  repo_ref: string | null;
+  repo_sha: string | null;
+  mirrored_at: string | null;
+  uses_sdk: boolean;
+  max_award: number;
+  daily_budget: number;
+}
+
+async function callSubmit<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  const { data, error } = await supabase.functions.invoke("vibe-portal-submit", {
+    // `action` last, so a payload can never overwrite the envelope's own key.
+    // It is the belt to `decision`'s braces: naming the fields apart is the
+    // fix, and this makes the whole class of mistake impossible rather than
+    // merely absent today.
+    body: { ...payload, action },
+  });
+  // A non-2xx from an edge function arrives as a FunctionsHttpError whose
+  // message is the useless "Edge Function returned a non-2xx status code".
+  // The message we actually want — "there is no HTML page in that repository"
+  // — is in the body, so it is dug out here rather than in three call sites.
+  if (error) {
+    const body = await readFunctionError(error);
+    throw new Error(body ?? error.message);
+  }
+  if (!data?.ok) throw new Error(data?.error ?? "vibe-portal-submit error");
+  return data.data as T;
+}
+
+async function readFunctionError(error: unknown): Promise<string | null> {
+  const res = (error as { context?: Response })?.context;
+  if (!res || typeof res.json !== "function") return null;
+  try {
+    const body = await res.json();
+    return typeof body?.error === "string" ? body.error : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Offer a game. One field: a repo link or a deployed link. */
+export function submitPortalGame(url: string, label?: string): Promise<SubmitResult> {
+  return callSubmit("submit", { url, label });
+}
+
+export function myPortalSubmissions(): Promise<{ submissions: PortalSubmission[] }> {
+  return callSubmit("mine");
+}
+
+export function portalQueue(
+  status: SubmissionStatus | "all" = "pending",
+): Promise<{ submissions: PortalSubmission[]; games: PortalGameAdminRow[] }> {
+  return callSubmit("queue", { status });
+}
+
+/**
+ * Approve or reject.
+ *
+ * The verdict travels as `decision`, not as `action`, and that is not a style
+ * choice: `callSubmit` puts the envelope's action into the same object, so a
+ * payload with its own `action` key silently overwrites it and the function
+ * receives `action: "approve"` — an unknown action — instead of `review`. It
+ * did exactly that until a browser test clicked the button and nothing
+ * happened.
+ */
+export function reviewPortalSubmission(
+  id: string,
+  decision: "approve" | "reject",
+  extra: {
+    note?: string;
+    maxAward?: number;
+    sessionBudget?: number;
+    playerDaily?: number;
+    dailyBudget?: number;
+  } = {},
+): Promise<{ submission: PortalSubmission; route?: string }> {
+  return callSubmit("review", { id, decision, ...extra });
+}
+
+/** Re-pin a mirrored game to whatever its branch points at now. */
+export function resyncPortalGame(slug: string): Promise<{
+  changed: boolean;
+  from?: string;
+  sha: string;
+  uploaded?: number;
+  usesSdk?: boolean;
+  note?: string;
+}> {
+  return callSubmit("resync", { slug });
 }
 
 /**

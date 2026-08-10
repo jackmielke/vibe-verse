@@ -110,3 +110,59 @@ reading its source and hoping.
 - `public/games/coin-drop/` is the reference game. It goes through the same
   sandbox, bridge and budgets as anybody else's, so it is the honest test: if
   it works, the path works.
+
+### How a game gets in: `/submit-game`
+
+Nobody hand-writes a `vibe_portal_games` row any more. Somebody pastes one link
+into `/submit-game` and `vibe-portal-submit` works out the rest. There are two
+doors behind that one field and the difference matters:
+
+- **A deployed URL** (`https://their-game.lovable.app`) is framed where it
+  stands. Nothing is copied, so their deploys are live the moment they ship.
+- **A GitHub repository** has its static files copied — at one pinned commit —
+  into the public `portal-games` bucket, and the copy is what gets framed.
+
+The repository door exists because **`raw.githubusercontent.com` serves
+everything as `text/plain`**. You cannot frame a repo; the browser shows the
+player the source code. Somebody has to serve real content types, so we do. The
+pin is the other half: `owner/repo@sha` is a fixed set of bytes a person
+approved, and a new commit goes live when somebody presses **Resync** on
+`/admin/games`, never on its own. A webhook here would be a bug, not a feature —
+it is the one property the pin exists to prevent.
+
+Reach for the repository door for a game with no build step. Anything built —
+React, Vite, most Lovable projects — should use the deployed URL, and
+`auditEntry` says so in as many words when it finds an `index.html` loading
+`/src/main.tsx`. That message is load-bearing: the alternative is a black
+rectangle and a shrug.
+
+- **The mirror bucket is a different origin from the app, and that is the whole
+  security story.** Our Supabase session lives in localStorage on the *app's*
+  origin, so a mirrored game gets the same nothing an itch.io game gets. What
+  mirrored games do share is that origin with each other — high scores, in
+  practice. Never serve a submitted game from our own domain; that is what
+  `origin: 'self'` means and it is only ever correct for a game in this repo.
+- **All the decisions are pure functions in
+  `supabase/functions/vibe-portal-submit/github.ts`**, tested against the real
+  file list of a real stranger's repository in `src/test/portalSubmit.test.ts`.
+  Path safety, the extension allowlist, the size caps and the entry audit live
+  there. Put new rules there too — the byte-moving half (`mirror.ts`) should
+  stay boring.
+- **Mirroring happens at submit time, not at approval.** So a submitter gets a
+  playable link in about a minute, they are the first to notice if the fonts did
+  not copy, and approving is a status flip a reviewer makes about a game they
+  have actually played.
+- **A payload key called `action` will silently eat the envelope's.**
+  `callSubmit(action, payload)` merges both into one body; the review verdict is
+  therefore `decision`, and `action` is spread last so it cannot be overwritten.
+  Approve buttons that do nothing at all is how that one presented.
+- Approval is still a person, and should stay one. The budgets bound what a game
+  can *cost*; they say nothing about whether it is a game. Nothing in a daily
+  coin ceiling stops somebody framing a hate site.
+
+**A game without `vibeverse.js` is welcome.** It is playable, it simply never
+asks for anything, and both the play page and the card say "just for fun"
+instead of promising coins. `PortalPlay` therefore must never gate the frame on
+the SDK handshake — it did once, and every SDK-less game ran perfectly
+underneath a spinner that never went away. Nothing in a build or a test catches
+that; you have to open the route and look.

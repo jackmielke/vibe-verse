@@ -175,12 +175,27 @@ export default function BuildAGame() {
             Getting listed
           </h2>
           <p className="mt-3 text-[13.5px] leading-relaxed text-muted-foreground">
-            Send Jack a link to the game. He plays it, and if it is real it gets
-            a row: a slug, the URL, the one origin allowed to talk to us, and
-            four numbers that bound what it can cost. Those numbers are the
-            reason this can be open — approving a game is deciding what it is
-            worth per day, not deciding whether to trust you.
+            <Link to="/submit-game" className="text-[#7dffd4] hover:underline">
+              Paste your link into the form
+            </Link>
+            . A deployed URL gets framed where it stands; an open-source
+            repository gets its static files copied at one exact commit, so it
+            works even if you delete the repo tomorrow. Either way it is playable
+            within about a minute, on a link only you and a reviewer have.
           </p>
+          <p className="mt-3 text-[13.5px] leading-relaxed text-muted-foreground">
+            Then a person plays it and gives it a row: a slug, the URL, the one
+            origin allowed to talk to us, and four numbers that bound what it can
+            cost. Those numbers are the reason this can be open — approving a
+            game is deciding what it is worth per day, not deciding whether to
+            trust you.
+          </p>
+          <Link
+            to="/submit-game"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#7dffd4] px-5 py-3 font-heading text-[11px] font-bold uppercase tracking-wider text-[#04121c]"
+          >
+            Submit a game
+          </Link>
         </section>
 
         <section className="mt-12">

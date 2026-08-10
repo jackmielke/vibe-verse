@@ -57,12 +57,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
+    { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
+    { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
-    { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
-    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
   ],
   "coin": [
     { sha: "bad92a2", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
@@ -77,12 +77,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
   "drop-zero": [
+    { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
+    { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
+    { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
+    { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
     { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
     { sha: "7fef527", iso: "2026-08-09T16:01:45+00:00", subject: "Checkpoint: the water death pass, mid-flight but green" },
-    { sha: "76b6afe", iso: "2026-08-09T15:37:16+00:00", subject: "SPLASH ROYALE, and a repair to a rebase that broke main" },
-    { sha: "375e5d6", iso: "2026-08-09T08:12:36+00:00", subject: "The battle bus is worth looking at now" },
-    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
-    { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
   ],
   "edm-town": [
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
@@ -140,12 +140,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
+    { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
-    { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
-    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -179,12 +179,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
+    { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
+    { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
-    { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
-    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
   ],
   "museum": [
     { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -205,6 +205,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7c30fbb", iso: "2026-08-10T03:06:30+00:00", subject: "The passport is a book now, not a fraction" },
   ],
   "portal": [
+    { sha: "6b406c1", iso: "2026-08-10T07:08:04+00:00", subject: "Anybody can hand the arcade a game now" },
     { sha: "88a1264", iso: "2026-08-09T07:49:03+00:00", subject: "The portal: other people's games, paying real Vibey Coins" },
   ],
   "run": [
@@ -234,17 +235,18 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "shop": [
+    { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
+    { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
-    { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
-    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
   ],
   "space": [
     { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
@@ -255,12 +257,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "d577da6", iso: "2026-05-14T04:33:23+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
+    { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
+    { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
+    { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
     { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
     { sha: "7fef527", iso: "2026-08-09T16:01:45+00:00", subject: "Checkpoint: the water death pass, mid-flight but green" },
-    { sha: "76b6afe", iso: "2026-08-09T15:37:16+00:00", subject: "SPLASH ROYALE, and a repair to a rebase that broke main" },
-    { sha: "375e5d6", iso: "2026-08-09T08:12:36+00:00", subject: "The battle bus is worth looking at now" },
-    { sha: "bc6bf8c", iso: "2026-08-09T06:54:22+00:00", subject: "main did not compile, and the play coin gets its own name" },
-    { sha: "0883aac", iso: "2026-08-09T06:31:09+00:00", subject: "SOAKED on a phone: nothing clipped, and thumbs can play it" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
@@ -295,12 +297,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
+    { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
-    { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
-    { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
   ],
   "vibeverse": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },

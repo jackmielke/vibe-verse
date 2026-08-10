@@ -88,6 +88,10 @@ interface Game {
   player_daily: number;
   daily_budget: number;
   active: boolean;
+  /* Whether the game references vibeverse.js. Informational, and the reason
+     the play page can say "just for fun" instead of promising coins a game
+     with no SDK will never pay. */
+  uses_sdk: boolean;
 }
 
 /** Today in UTC as a `date` literal. The sessions table stores the same thing,
@@ -148,6 +152,7 @@ async function listGames(supabase: Supa) {
       embedUrl: g.embed_url,
       origin: g.origin,
       maxAward: g.max_award,
+      usesSdk: !!g.uses_sdk,
       sessionBudget: g.session_budget,
       playerDaily: g.player_daily,
       dailyBudget: g.daily_budget,
@@ -196,6 +201,7 @@ async function openSession(supabase: Supa, b: any) {
       embedUrl: game.embed_url,
       origin: game.origin,
       maxAward: game.max_award,
+      usesSdk: !!game.uses_sdk,
     },
     headroom: Math.min(game.session_budget, playerLeft, gameLeft),
     remainingToday: gameLeft,

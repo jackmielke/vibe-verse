@@ -49,6 +49,23 @@ export default function PortalPlay() {
   const [earned, setEarned] = useState(0);
   const [headroom, setHeadroom] = useState<number | null>(null);
 
+  /* Whether the cover has come off, which is NOT the same question as whether
+     the game said hello.
+
+     It used to be the same question, and that was a real bug with a long fuse:
+     the cover was drawn whenever `vibeverse:ready` had not arrived, so a game
+     that does not include `vibeverse.js` — which is most games somebody else
+     wrote, and every game that arrives through `/submit-game` before its author
+     has read `/build` — ran perfectly underneath a spinner that never went
+     away. It could be heard and not seen. Nothing in a build or a test catches
+     that; you have to open the route and look at it.
+
+     So the cover now comes off on the first of three things: the handshake, the
+     frame's own load event plus a beat for a handshake that is coming, or a
+     hard ceiling for a frame whose load never fires at all. */
+  const [frameLoaded, setFrameLoaded] = useState(false);
+  const [uncovered, setUncovered] = useState(false);
+
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   /* The session id, again, in a ref: the bridge is started from an effect that
      must not re-run when a payout arrives and moves state. */
@@ -63,6 +80,8 @@ export default function PortalPlay() {
     setError(null);
     setReady(false);
     setEarned(0);
+    setFrameLoaded(false);
+    setUncovered(false);
 
     void (async () => {
       try {
@@ -94,6 +113,41 @@ export default function PortalPlay() {
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
   }, []);
+
+  // --- taking the cover off -------------------------------------------------
+  //
+  // The grace period after `load` exists so a game that DOES use the SDK is not
+  // shown a flash of half-drawn canvas before its own splash screen — the
+  // handshake is one postMessage and lands well inside it. The ceiling exists
+  // because `load` is not guaranteed: a frame whose document never finishes,
+  // or a network that stalls on one font, would otherwise sit covered forever,
+  // which is the bug this whole block replaces.
+  // Two timers rather than one whose length depends on `frameLoaded`, because
+  // that version had a hole: the frame element survives a re-opened session
+  // with its `src` unchanged, so it does not fire `load` a second time, and the
+  // cover would sit for the full no-load ceiling over a game that had been
+  // running for a while. These are independent — whichever fires first wins,
+  // and the ceiling is a ceiling no matter what the frame does.
+  useEffect(() => {
+    if (!session || ready) return;
+    const hard = window.setTimeout(() => setUncovered(true), 4000);
+    return () => window.clearTimeout(hard);
+  }, [session, ready]);
+
+  useEffect(() => {
+    if (!frameLoaded || ready) return;
+    const soft = window.setTimeout(() => setUncovered(true), 900);
+    return () => window.clearTimeout(soft);
+  }, [frameLoaded, ready]);
+
+  useEffect(() => {
+    if (ready) setUncovered(true);
+  }, [ready]);
+
+  /* The game is up and has never said a word to us, so it cannot pay. Worth
+     saying out loud in the bar: a coin counter reading "100 left today" above
+     a game that will never award anything is a small lie told repeatedly. */
+  const silent = uncovered && !ready;
 
   // --- the bridge -----------------------------------------------------------
   useEffect(() => {
@@ -167,7 +221,7 @@ export default function PortalPlay() {
               <VibeCoinMark size={14} />+{earned}
             </div>
             <div className="mt-0.5 text-[9px] leading-none text-muted-foreground">
-              {headroom == null ? " " : `${headroom} left today`}
+              {silent ? "just for fun" : headroom == null ? " " : `${headroom} left today`}
             </div>
           </div>
         </div>
@@ -199,12 +253,16 @@ export default function PortalPlay() {
                    business knowing which page in the vibeverse sent the
                    player, and several of those routes are unlisted. */
                 referrerPolicy="no-referrer"
+                onLoad={() => setFrameLoaded(true)}
                 className="h-full w-full border-0 bg-black"
               />
             )}
-            {/* The frame is black until the game says hello, and a black
-                rectangle with no explanation reads as broken. */}
-            {!ready && (
+            {/* The frame is black while it is still arriving, and a black
+                rectangle with no explanation reads as broken — so this covers
+                it. What it must never do is outlast the game underneath: see
+                `uncovered` above for the three ways it comes off, only one of
+                which is the game saying hello. */}
+            {!uncovered && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#05080f]">
                 <Loader2 className="h-5 w-5 animate-spin text-[#7dffd4]" />
                 <p className="font-heading text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -220,8 +278,14 @@ export default function PortalPlay() {
                         It is never told who you are.{" "}
                       </>
                     )}
-                    It can pay you up to {game.maxAward} {VIBECOIN_GLYPH} at a time, out of an
-                    allowance the vibeverse holds.
+                    {game.usesSdk === false ? (
+                      <>This one is here just for fun — it does not pay coins.</>
+                    ) : (
+                      <>
+                        It can pay you up to {game.maxAward} {VIBECOIN_GLYPH} at a time, out of an
+                        allowance the vibeverse holds.
+                      </>
+                    )}
                   </p>
                 )}
               </div>

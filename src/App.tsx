@@ -51,6 +51,8 @@ const VibeArcade = lazy(() => import("./pages/VibeArcade.tsx"));
 const ArcadeCharacters = lazy(() => import("./pages/ArcadeCharacters.tsx"));
 const PortalPlay = lazy(() => import("./pages/PortalPlay.tsx"));
 const BuildAGame = lazy(() => import("./pages/BuildAGame.tsx"));
+const SubmitGame = lazy(() => import("./pages/SubmitGame.tsx"));
+const AdminGames = lazy(() => import("./pages/AdminGames.tsx"));
 const VibeShop = lazy(() => import("./pages/VibeShop.tsx"));
 const ShopCosmos = lazy(() => import("./pages/ShopCosmos.tsx"));
 const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
@@ -221,6 +223,12 @@ const App = () => (
           <Route path="/play/:slug" element={<PortalPlay />} />
           <Route path="/build" element={<BuildAGame />} />
           <Route path="/build-a-game" element={<BuildAGame />} />
+          {/* One field: a repo link or a deployed link. `/submit-world` is a
+              different, older thing — it lists a world in the hub. This puts a
+              playable game on the arcade shelf. */}
+          <Route path="/submit-game" element={<SubmitGame />} />
+          <Route path="/submit-a-game" element={<SubmitGame />} />
+          <Route path="/admin/games" element={<AdminGames />} />
           {/* THE VIBE SHOP — the other half of the arcade. Coins won there buy
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}
