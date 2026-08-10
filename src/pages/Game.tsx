@@ -319,7 +319,7 @@ export default function Game() {
               is that anybody can add a door to it, and a byline quietly says
               the opposite — the eyebrow above already names the invitation. */}
           <p className="mt-1.5 font-heading text-[13px] font-semibold leading-snug text-foreground/85 sm:mt-2 sm:text-base">
-            A massive collection of AI-coded games.
+            A massive collection of AI-coded games ;)
           </p>
           {/* The full pitch is desktop-only; the phone gets the one-line
               version in the row of chips below. */}
