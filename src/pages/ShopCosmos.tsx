@@ -382,6 +382,9 @@ export default function ShopCosmos() {
           <Link to="/arcade" className="text-primary hover:underline">
             Win more in the arcade
           </Link>
+          <Link to="/arcade/characters" className="hover:text-foreground hover:underline">
+            Try one on
+          </Link>
           <Link to="/shop" className="hover:text-foreground hover:underline">
             The other shop layout
           </Link>

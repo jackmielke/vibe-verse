@@ -151,6 +151,16 @@ export const CHARACTERS: CharSpec[] = [
     accent: "#c9a86a",
   },
   {
+    id: "eddie", url: "", label: "Eddie", emoji: "🤖",
+    blurb: "Your friendly Edge Esmeralda assistant. Brass, teal, antennae, and a reactor that never stops humming.",
+    accent: "#8fe9ff",
+  },
+  {
+    id: "vibe-police", url: "", label: "Vibe Police", emoji: "🚨",
+    blurb: "A corgi in uniform who has seen enough vibes for one day. NO MORE VIBES.",
+    accent: "#ffc94a",
+  },
+  {
     id: "space-rex", url: "", label: "Space Rex", emoji: "🦖",
     blurb: "A green dinosaur in a white suit under a glass bubble. Dressed for somewhere else.",
     accent: "#b57bff",

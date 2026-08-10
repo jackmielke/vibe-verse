@@ -48,6 +48,16 @@ export interface PilotFrame {
 export interface ProceduralPilot {
   /** Feet at local y = 0, facing +Z, ~1.8m tall. */
   group: THREE.Group;
+  /**
+   * The head joint, for anything that has to ride it.
+   *
+   * Exposed so a hat can be parented to the skull rather than to the root:
+   * mounted on the root it stays dead level while the head bobs, leans and
+   * glances underneath it, which reads as a hat floating a centimetre above
+   * somebody rather than a hat on somebody. Crown y is about 0.30 in this
+   * group's local space.
+   */
+  head: THREE.Group;
   update(dt: number, frame: PilotFrame): void;
   /** Re-tint the emissive accents (visor, crest, scarf, chest core). */
   setAccent(hex: string): void;
@@ -67,7 +77,7 @@ export interface PilotDesign {
   accent: string;     // emissive: eyes, trim, core
   cloth: number;      // scarf / cape / tail membrane
   /** What sits on the crown. */
-  crown: "fins" | "cat-ears" | "bat-ears" | "horns" | "antennae" | "ring" | "none";
+  crown: "fins" | "cat-ears" | "bat-ears" | "horns" | "antennae" | "ring" | "cap" | "none";
   /** What trails off the body, using the same spring chain. */
   trail: "scarf" | "cape" | "tail" | "none";
   /** Face hardware. */
@@ -193,6 +203,22 @@ export const PILOT_DESIGNS: Record<string, PilotDesign> = {
   sable: {
     shell: 0x232a3b, plate: 0xc9a86a, accent: "#c9a86a", cloth: 0x1a1f2c,
     crown: "bat-ears", trail: "tail", face: "muzzle", eyeScale: 1.6, chunk: 1.03,
+  },
+  // A round brass-and-teal robot on a permanent low hover. Antennae, a lens
+  // for a face, and a reactor — the friendliest silhouette on the shelf, and
+  // the only one built out of curves rather than corners.
+  eddie: {
+    shell: 0x3f9aa2, plate: 0xd8b263, accent: "#8fe9ff", cloth: 0x3f9aa2,
+    crown: "antennae", trail: "none", face: "lenses", eyeScale: 1.85,
+    core: true, chunk: 0.94,
+  },
+  // A corgi in uniform, unimpressed. The cap and the muzzle do the work; the
+  // navy is `suit` rather than `shell` so the ears, the legs and the tail stay
+  // corgi-coloured under it.
+  "vibe-police": {
+    shell: 0xdb8b3f, plate: 0x2e3f66, accent: "#ffc94a", cloth: 0xc97f36,
+    crown: "cap", trail: "tail", face: "muzzle", eyeScale: 1.7,
+    roundEyes: true, suit: true, emblem: true, chunk: 1.02,
   },
   // A green dinosaur in a white suit under a glass bubble. The only one on the
   // shelf that is somewhere else — the other six are all dressed for Vibe
@@ -367,7 +393,14 @@ export function buildProceduralPilot(
   const es = design.eyeScale;
   // Lenses are the whole identity for a masked character, so they get real
   // geometry — a teardrop plate with a dark rim — rather than a bright bar.
-  const round = design.face === "lenses" || design.roundEyes;
+  // `roundEyes` is a MUZZLE option. Lenses are already round and already have
+  // their own placement, rim and scale; letting the flag through there swapped
+  // the glowing lens for the dark eyeball material and gave Eddie two black
+  // blobs covering his whole face. Narrowed here rather than left to the
+  // caller, because "silently produces a different character" is not a thing a
+  // design table should be able to do.
+  const roundMuzzle = design.face === "muzzle" && !!design.roundEyes;
+  const round = design.face === "lenses" || roundMuzzle;
   const eyeGeo = track(
     round
       ? new THREE.SphereGeometry(0.055, 10, 8)
@@ -381,7 +414,7 @@ export function buildProceduralPilot(
    * on. This is the eyeball; the glow becomes a speck parented to it, so it
    * squashes with the blink for free.
    */
-  const eyeball = design.roundEyes
+  const eyeball = roundMuzzle
     ? new THREE.MeshStandardMaterial({ color: 0x14121c, roughness: 0.28, metalness: 0.05 })
     : null;
   if (eyeball) materials.push(eyeball);
@@ -530,6 +563,60 @@ export function buildProceduralPilot(
       j.add(bulb);
       crestJoints.push(j);
     }
+  } else if (design.crown === "cap") {
+    // A peaked cap, on a crest joint like everything else up here so it lags
+    // a beat behind a hard turn. A cap welded to the skull is the difference
+    // between a character wearing one and a character modelled with one.
+    const j = new THREE.Group();
+    j.position.set(0, 0.235, 0.01);
+    j.rotation.x = -0.12;
+    head.add(j);
+    // A cap is navy all the way through. `dark` carries the accent in its
+    // emissive — right for a visor, wrong here, where it gave a gold-badged
+    // officer a gold peak.
+    const capDark = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(design.plate).multiplyScalar(0.55),
+      roughness: 0.55, metalness: 0.1, flatShading: true,
+    });
+    extraMaterials.push(capDark);
+    // Ears out from under it, when there is an animal under the cap. A dog in
+    // a police hat with no ears is a mannequin in a police hat.
+    if (design.face === "muzzle") {
+      for (const side of [-1, 1]) {
+        const ear = mesh(new THREE.ConeGeometry(0.082, 0.26, 4), shell);
+        ear.position.set(side * 0.142, 0.09, -0.02);
+        ear.rotation.z = side * 0.42;
+        ear.rotation.x = -0.12;
+        ear.scale.z = 0.62;
+        j.add(ear);
+        const inner = mesh(new THREE.ConeGeometry(0.046, 0.16, 4), plate);
+        inner.position.set(side * 0.15, 0.1, 0.014);
+        inner.rotation.z = side * 0.42;
+        inner.rotation.x = -0.12;
+        inner.scale.z = 0.45;
+        j.add(inner);
+      }
+    }
+    // Crown, band, peak, star. Four pieces is the fewest that still reads as
+    // police rather than as a baseball cap.
+    const crown = mesh(new THREE.CylinderGeometry(0.155, 0.145, 0.085, 12), plate);
+    crown.position.y = 0.055;
+    j.add(crown);
+    const lid = mesh(new THREE.CylinderGeometry(0.163, 0.163, 0.016, 12), plate);
+    lid.position.y = 0.1;
+    j.add(lid);
+    const band = mesh(new THREE.CylinderGeometry(0.152, 0.152, 0.032, 12), capDark);
+    band.position.y = 0.012;
+    j.add(band);
+    const peak = mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.014, 12, 1, false, -0.8, 1.6), capDark);
+    peak.position.set(0, 0.006, 0.075);
+    peak.scale.set(1, 1, 1.5);
+    j.add(peak);
+    const star = mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.012, 5), glow);
+    star.rotation.x = Math.PI / 2 - 0.2;
+    star.position.set(0, 0.055, 0.148);
+    j.add(star);
+    crestJoints.push(j);
   } else if (design.crown === "ring") {
     // A halo that is not attached to anything. It sits on a crest joint so
     // it lags through turns and settles a moment after you stop — a ring
@@ -1084,6 +1171,7 @@ export function buildProceduralPilot(
 
   return {
     group,
+    head,
     update,
     setAccent(hex: string) {
       const c = new THREE.Color(hex);

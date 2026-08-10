@@ -1,7 +1,28 @@
 {
-  "generated_at": "2026-08-10T01:56:17.284Z",
+  "generated_at": "2026-08-10T02:50:10.184Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "39f14024",
+      "date": "2026-08-10",
+      "subject": "A second storefront, and the writing that says why any of it exists",
+      "lede": "Two things, and they arrived together because they belong together.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "56590fb9",
+      "date": "2026-08-10",
+      "subject": "The shop window shows the characters instead of naming them",
+      "lede": "The arcade's shop card was six emoji in a row next to \"Six originals you can only get here\". It described the stock accurately and sold none of it, because a shop window's job is to show you the thing and an emoji is a label for one.",
+      "places": [
+        "Vibe Island",
+        "the character roster",
+        "the Arcade",
+        "the machinery underneath"
+      ],
+      "files": 25
+    },
     {
       "sha": "03fbb0f7",
       "date": "2026-08-10",
@@ -1027,22 +1048,6 @@
       "lede": "The first honest playtest called walk, jump, harvest and building broken. They were not. core.ts clamps dt to 1/15 and runs at most six fixed steps a frame, so at SwiftSHADER's fraction of a frame per second the simulation advances about 400x slower than the clock on the wall — the storm timer moved 0.05s in twenty. Holding W for four real seconds bought about a centimetre.",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "49b75949",
-      "date": "2026-08-06",
-      "subject": "Take the pointer before playing: input is gated on it",
-      "lede": "player.controllable is false whenever ctx.input.locked is false, and input.locked is only ever set by the pointerlockchange handler. The one thing that calls requestPointerLock is the 'Drop in' button on the entry veil, which ?shot=1 deliberately does not render — so nothing ever asked for the pointer.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cef0b828",
-      "date": "2026-08-06",
-      "subject": "Move Drop Zero up the landing grid, and a harness that actually plays it",
-      "lede": "dz-shot proves the world renders; it says nothing about whether the game plays, because it poses a frozen player and takes a picture. Every system below the scenery — building, weapons, harvesting, loot, bots, the storm, the match phases — has never once been exercised. dz-play drives real input and asserts on the engine's own state after each beat, screenshots the failures, and keeps going so one broken system does ",
-      "places": [],
-      "files": 2
     }
   ]
 }

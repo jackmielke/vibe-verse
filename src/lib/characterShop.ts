@@ -109,6 +109,20 @@ export const SHOP_CHARACTERS: ShopCharacter[] = [
     pitch: "A halo that trails a beat behind, and wings that open when you leave the ground.",
   },
   {
+    id: "eddie",
+    price: 200,
+    tier: "epic",
+    title: "Eddie",
+    pitch: "Brass and teal, antennae that bob a beat late, and a reactor in the chest.",
+  },
+  {
+    id: "vibe-police",
+    price: 350,
+    tier: "epic",
+    title: "Vibe Police",
+    pitch: "A corgi in uniform, unimpressed by all of this. Cap, badge, and a tail that disagrees with the face.",
+  },
+  {
     id: "space-rex",
     price: 450,
     tier: "epic",

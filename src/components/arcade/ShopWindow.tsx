@@ -68,7 +68,11 @@ export default function ShopWindow() {
                 transition={{ delay: i * 0.05, duration: 0.35 }}
               >
                 <Link
-                  to="/arcade/characters"
+                  /* `?c=` — the whole point of tapping THIS card rather than
+                     the "Open →" link. Without it the shop opened on the
+                     cheapest character every time, so tapping Space Rex
+                     landed you on Pixel. */
+                  to={`/arcade/characters?c=${c.id}`}
                   aria-label={`${c.title} — ${c.price} Vibey Coins`}
                   className="group relative flex w-[9.5rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-black/45 backdrop-blur-sm transition-transform hover:-translate-y-0.5"
                   style={{ boxShadow: `inset 0 0 0 1px ${tier.color}22` }}

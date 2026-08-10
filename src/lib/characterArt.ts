@@ -20,19 +20,23 @@
 import auroraArt from "@/assets/characters/aurora.png";
 import bumbleArt from "@/assets/characters/bumble.png";
 import chromeArt from "@/assets/characters/chrome.png";
+import eddieArt from "@/assets/characters/eddie.png";
 import grimlockArt from "@/assets/characters/grimlock.png";
 import pixelArt from "@/assets/characters/pixel.png";
 import sableArt from "@/assets/characters/sable.png";
 import spaceRexArt from "@/assets/characters/space-rex.png";
+import vibePoliceArt from "@/assets/characters/vibe-police.png";
 
 export const CHARACTER_ART: Record<string, string> = {
   aurora: auroraArt,
   bumble: bumbleArt,
   chrome: chromeArt,
+  eddie: eddieArt,
   grimlock: grimlockArt,
   pixel: pixelArt,
   sable: sableArt,
   "space-rex": spaceRexArt,
+  "vibe-police": vibePoliceArt,
 };
 
 /**
