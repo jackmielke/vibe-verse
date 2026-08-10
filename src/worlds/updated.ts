@@ -9,6 +9,7 @@
  * fetched, and why a build in a shallow clone will not erase it.
  */
 export const WORLD_UPDATED: Record<string, string> = {
+  "2048": "2026-08-10T23:18:12+00:00",
   "about": "2026-05-10T17:24:25-07:00",
   "agent-lobby": "2026-06-21T02:08:47+00:00",
   "airplane": "2026-08-02T07:13:32+00:00",

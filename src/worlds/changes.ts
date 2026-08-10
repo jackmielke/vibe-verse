@@ -19,6 +19,9 @@ export interface WorldChange {
 export const REPO_URL = "https://github.com/jackmielke/vibe-verse";
 
 export const WORLD_CHANGES: Record<string, WorldChange[]> = {
+  "2048": [
+    { sha: "79f1ff9", iso: "2026-08-10T23:18:12+00:00", subject: "Add Neon 2048 — the sliding-tile game in BLOB's colours" },
+  ],
   "about": [
     { sha: "2565fa3", iso: "2026-05-10T17:24:25-07:00", subject: "Mobile: push page chrome below the global nav strip" },
     { sha: "6c1cfa1", iso: "2026-05-08T23:21:56-07:00", subject: "Hover labels actually hidden + closer fly-in + 3D About page" },
