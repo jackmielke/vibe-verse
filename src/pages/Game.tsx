@@ -11,17 +11,20 @@
  * added to the registry appears here, in the nav, in the picker and in the
  * passport at the same moment, which is the entire reason the registry exists.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { Search, X } from "lucide-react";
+import { PLAYABLE, WORLDS, type WorldEntry } from "@/worlds/registry";
 import {
-  PLAYABLE,
-  WORLDS,
-  featuredFirst,
-  type WorldEntry,
-} from "@/worlds/registry";
+  SORT_TABS,
+  initialSort,
+  rememberSort,
+  sortWorlds,
+  type WorldSort,
+} from "@/worlds/sorting";
 import { artFor } from "@/worlds/art";
-import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
+import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeWink from "@/components/VibeWink";
@@ -167,13 +170,60 @@ function Card({
   );
 }
 
+/**
+ * Featured / Updated / Played.
+ *
+ * One pill with a highlight that slides between the options, rather than three
+ * loose buttons under a caption reading "Recently played" that stayed put
+ * whichever one you pressed — it described the first tab, so on the other two
+ * the page carried a heading that contradicted the order it was in.
+ */
+function SortTabs({
+  sort,
+  onChange,
+  tabs,
+}: {
+  sort: WorldSort;
+  onChange: (s: WorldSort) => void;
+  tabs: typeof SORT_TABS;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Order the worlds"
+      /* `self-start` so the pill hugs its two or three words on a phone. In a
+         column flex it otherwise stretches the full width and reads as a bar
+         with the labels stranded at one end of it. */
+      className="flex shrink-0 self-start items-center gap-0.5 rounded-full border border-border/50 bg-background/50 p-0.5 sm:self-auto"
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={sort === t.id}
+          title={t.hint}
+          onClick={() => onChange(t.id)}
+          className={`relative rounded-full px-3 py-1.5 font-heading text-[10px] font-bold uppercase tracking-wider transition-colors sm:px-3.5 ${
+            sort === t.id ? "text-primary" : "text-muted-foreground/60 hover:text-foreground"
+          }`}
+        >
+          {sort === t.id && (
+            <motion.span
+              layoutId="sort-pill"
+              transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              className="absolute inset-0 rounded-full bg-primary/15"
+              aria-hidden
+            />
+          )}
+          <span className="relative">{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Game() {
   const [query, setQuery] = useState("");
-  /* Three orders, and none of them is a ranking. "Recently played" is the one
-     a returning visitor wants — the doors they already opened, most recent
-     first. "Featured" is the hand-tuned registry order for someone arriving
-     cold. "Recent" answers what is still being worked on. */
-  const [sort, setSort] = useState<"played" | "featured" | "recent">("played");
   const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
@@ -186,6 +236,21 @@ export default function Game() {
     for (const st of Object.values(stamps) as Stamp[]) map[st.route] = st.last;
     return map;
   }, []);
+  const hasPlays = Object.keys(lastPlayed).length > 0;
+
+  /* Featured for anyone arriving cold; whatever they last chose for anyone who
+     has chosen. "Played" is not offered until there is something in it — a tab
+     that can only ever show you the same order under a different name is a
+     control that teaches you not to trust the controls. */
+  const [sort, setSort] = useState<WorldSort>(() => initialSort(hasPlays));
+  const tabs = useMemo(
+    () => SORT_TABS.filter((t) => t.id !== "played" || hasPlays),
+    [hasPlays],
+  );
+  const chooseSort = useCallback((s: WorldSort) => {
+    setSort(s);
+    rememberSort(s);
+  }, []);
 
   /* The wallet, for the chip below the headline. Shares the nav's fetch — see
      `use-vibecoin`, which reference-counts a single request per page. */
@@ -193,22 +258,12 @@ export default function Game() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = WORLDS;
     const hit = q
-      ? base.filter((w) =>
+      ? WORLDS.filter((w) =>
           `${w.name} ${w.blurb} ${w.status ?? ""} ${w.source}`.toLowerCase().includes(q),
         )
-      : base;
-    if (sort === "recent") return [...hit].sort((a, b) => byFreshest(a.key, b.key));
-    if (sort === "played") {
-      /* Worlds you have been in, newest visit first; everything else keeps the
-         featured order behind them, so this never looks like an empty page. */
-      const featured = featuredFirst(hit);
-      return [...featured].sort(
-        (a, b) => (lastPlayed[b.route] ?? 0) - (lastPlayed[a.route] ?? 0),
-      );
-    }
-    return featuredFirst(hit);
+      : WORLDS;
+    return sortWorlds(hit, sort, lastPlayed);
   }, [query, sort, lastPlayed]);
 
   const counts = useMemo(
@@ -304,48 +359,53 @@ export default function Game() {
 
         <TodaysPaper />
 
-        {/* Search only. Search covers the
-            same job in less space. */}
-        <div className="sticky top-0 z-10 -mx-3 mt-5 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Search ${WORLDS.length} worlds…`}
-            className="w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:ml-auto sm:w-52 sm:px-4"
-          />
-        </div>
+        {/* One bar: how the list is ordered on the left, how to narrow it on
+            the right. It used to be two stacked rows — a right-aligned search
+            field, then a right-aligned caption and three loose buttons — which
+            read as three separate controls that happened to be near each other.
+            The count only appears while a search is narrowing something, where
+            it answers a question somebody is actually asking. */}
+        <div className="sticky top-0 z-10 -mx-3 mt-5 flex flex-col gap-2 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-3">
+          <SortTabs sort={sort} onChange={chooseSort} tabs={tabs} />
 
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
-          <div className="ml-auto flex items-center gap-1">
-            <span className="mr-2 font-heading text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
-              Recently played
-            </span>
-            {(
-              [
-                ["played", "Played"],
-                ["featured", "Featured"],
-                ["recent", "Recent"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => setSort(id)}
-                className={`rounded-full px-2.5 py-1 font-heading text-[9.5px] font-semibold uppercase tracking-wider transition-colors ${
-                  sort === id
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground/60 hover:bg-muted/50 hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex min-w-0 items-center gap-2 sm:justify-end">
+            {query.trim() && (
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/50">
+                {shown.length}/{WORLDS.length}
+              </span>
+            )}
+            <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label={`Search ${WORLDS.length} worlds`}
+                placeholder="Search worlds…"
+                /* `appearance-none` kills WebKit's own round clear button,
+                   which draws itself on top of ours and in the wrong grey. */
+                className="w-full appearance-none rounded-full border border-border/50 bg-background/50 py-1.5 pl-8 pr-8 text-xs placeholder:text-muted-foreground/50 focus:border-primary/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground/50 transition-colors hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Two across on a phone, always. Seeing several games at once is the
             entire job of this page. */}
-        <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-1 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {shown.map((w, i) => (
             <Card key={w.key} world={w} index={i} onHistory={setHistory} />
           ))}

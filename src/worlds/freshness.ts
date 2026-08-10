@@ -53,6 +53,51 @@ export function exactLabel(iso: string | null | undefined): string | null {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
+/** The clock, in the reader's own timezone and their own 12/24-hour habit. */
+const clock = (d: Date): string =>
+  d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+/**
+ * The same moment, for a *log* rather than a card.
+ *
+ * `sinceLabel` is deliberately coarse, which is right on a card: one date, one
+ * glance, and "19 days ago" is a number nobody does anything with. It is wrong
+ * in the changelog, where four entries in a row all read "today" and the list
+ * stops being a sequence — you cannot tell which came first, or whether "today"
+ * meant this morning or four minutes ago.
+ *
+ * So here the clock is always shown. Recent entries keep the relative word,
+ * because "yesterday at 09:04" is easier to place than a date; past a week the
+ * word stops helping and the actual date is shorter and more precise.
+ *
+ * `now` is injectable so the tests do not depend on what day it is.
+ */
+export function changeLabel(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const then = d.getTime();
+  if (!Number.isFinite(then)) return null;
+
+  const ms = now - then;
+  const at = clock(d);
+  /* Same guard as sinceLabel: a commit stamped slightly ahead of this clock is
+     "just now", not "in -3 hours". */
+  if (ms < 22 * HOUR) return `today at ${at}`;
+  if (ms < 2 * DAY) return `yesterday at ${at}`;
+  if (ms < WEEK) return `${Math.round(ms / DAY)} days ago at ${at}`;
+
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  const date = d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+  return `${date} at ${at}`;
+}
+
 /** Newest first. Used by `/game`'s "recently updated" sort. */
 export function byFreshest(aKey: string, bKey: string): number {
   const a = updatedAt(aKey);

@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-09T20:39:59.347Z",
+  "generated_at": "2026-08-10T01:11:55.994Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "d3761bda",
+      "date": "2026-08-10",
+      "subject": "The branch rule outranks CLAUDE.md, so put the permission it wants in CLAUDE.md",
+      "lede": "Web sessions arrive with a `claude/<slug>` development branch in their config and an instruction never to push elsewhere without explicit permission. That outranks this file, so every session read \"push straight to main\", could not act on it, and stopped to ask — which is the one thing the push-to-main rule exists to avoid.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "be0e7c1c",
+      "date": "2026-08-09",
+      "subject": "Twelve world cards were lying about their dates, and the stamper could not tell",
+      "lede": "`npm run stamp` guards against a shallow clone by keeping the committed date whenever `git log` for a world's `source` comes back empty. That covers `--depth=1`. It does not cover the case that actually happens, which is worse for being quieter: a clone deep enough to have *some* history presents its graft boundary as the commit that created every file in the tree. So `git log -- src/pages/About.tsx` answers, confide",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "16323128",
+      "date": "2026-08-09",
+      "subject": "The first page was 47 MB. It is now 1 MB.",
+      "lede": "Opening the grid of cards at `/` downloaded a 7.4 MB JavaScript bundle (2.26 MB gzipped) and then, separately, a 40 MB GLB — on every route, on a phone, before anything painted. Nothing here got smaller; four things stopped being downloaded by people who were never going to look at them.",
+      "places": [],
+      "files": 17
+    },
     {
       "sha": "0edd3c2a",
       "date": "2026-08-09",
@@ -1017,30 +1041,6 @@
       "date": "2026-08-06",
       "subject": "Card art for Drop Zero, from the running world",
       "lede": "The plaza at Neon Heights, captured live at high quality with the match in its playing state — not key art, and not the spawn frame.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "b9c8361f",
-      "date": "2026-08-06",
-      "subject": "Stop the storm wall painting bolts across every ground frame",
-      "lede": "WALL_FRAG's streak term had no range falloff, and the vertical profile gated cover but not energy — so above the geometric top fade the wall stopped occluding while still emitting, and the additive surplus drew world-vertical bolts across the open sky. At zone 1 the wall is always on the horizon, so that was the sky of essentially every ground shot in the game.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3d6f51d8",
-      "date": "2026-08-06",
-      "subject": "Lift the shadows off black, and give the facades something to say",
-      "lede": "Shadowed ground was reading near-black with a heavy blue cast because the hemisphere fill was a two-point lerp between zenith and horizon — a 6:1-blue, green-deficient colour that no albedo could warm. It is now a cosine-weighted quadrature of the dome's own diffuse irradiance, plus an explicit warm bounce standing in for the sunlit walls a hemisphere light cannot see. The shadowed plaza goes from RGB 24.9,38.4,60.9 ",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "88a451f4",
-      "date": "2026-08-06",
-      "subject": "The ground was black because tinted() multiplies, and it was authored to replace",
-      "lede": "materials.tinted() multiplies its tint into an already-painted plate, in linear space. The district apron was asphalt (0.027 linear) times 0x4a4c50 (0.07) = 0.0019 albedo — darker than any real material. Every ground tint in pois.ts was written as if the tint replaced the base colour rather than compounding with it. Aprons, sidewalks, kerbs, crossings and markings now use documented near-white paving constants, and N",
       "places": [],
       "files": 2
     }
