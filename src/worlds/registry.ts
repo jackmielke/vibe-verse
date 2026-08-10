@@ -732,6 +732,21 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "passport",
+    route: "/passport",
+    aliases: ["/stamps"],
+    name: "The Passport",
+    emoji: "🛂",
+    kind: "tool",
+    blurb:
+      "One badge for every world in here, lit if you have been and locked if you have not. Go back to a place often enough and its stamp gains rings. One of them has no page at all and has to be earned on the ground.",
+    status: "Open — twenty-eight stamps to collect",
+    accent: "#8fb4ff",
+    source: "src/pages/Passport.tsx",
+    /* No `passport: true`. It is the book — a page in itself would be a
+       stamp for having checked your stamps. */
+  },
+  {
     key: "manifesto",
     route: "/manifesto",
     aliases: ["/future"],
@@ -893,11 +908,40 @@ export const CHROMELESS_ROUTES: string[] = WORLDS.filter((w) => w.chromeless).fl
 );
 
 /** Worlds that stamp the passport, plus the one you have to earn. */
-export const PASSPORT_ROUTES: { route: string; name: string; emoji: string }[] = [
+export interface PassportRoute {
+  route: string;
+  name: string;
+  emoji: string;
+  /** The world's signal colour. The passport page tints each badge with it. */
+  accent: string;
+  kind: WorldKind;
+  /** One line, for the back of the badge. */
+  blurb: string;
+  /**
+   * True for the one stamp you cannot navigate to. Redline has no page — it is
+   * earned by holding the landing site — so a passport page must not offer it
+   * as a link, and it deserves to be marked as the only stamp of its kind.
+   */
+  earned?: boolean;
+}
+
+export const PASSPORT_ROUTES: PassportRoute[] = [
   ...WORLDS.filter((w) => w.passport).map((w) => ({
     route: w.route,
     name: w.name,
     emoji: w.emoji,
+    accent: w.accent,
+    kind: w.kind,
+    blurb: w.blurb,
   })),
-  { route: CONTESTED.stampRoute, name: CONTESTED.name, emoji: CONTESTED.emoji },
+  {
+    route: CONTESTED.stampRoute,
+    name: CONTESTED.name,
+    emoji: CONTESTED.emoji,
+    accent: "#ff5c5c",
+    kind: "game" as WorldKind,
+    blurb:
+      "A planet inside the ship's own galaxy, with no page and no link. The only stamp in the book you have to earn: clear the landing site of hostiles, on the ground, once.",
+    earned: true,
+  },
 ];

@@ -351,9 +351,18 @@ export default function Game() {
               <span className="tabular-nums">{coin.display}</span>
               <span className="opacity-70">Vibecoin</span>
             </Link>
-            <span className="rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground sm:py-2">
-              passport {progress.visited}/{progress.total}
-            </span>
+            {/* Was a grey span for months: the one record spanning every
+                world in here, rendered as five words you could not click. */}
+            <Link
+              to="/passport"
+              title="Your passport — a badge for every world, and what is left to find."
+              className="flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground transition-colors hover:border-[#8fb4ff]/60 hover:text-[#8fb4ff] sm:py-2"
+            >
+              <span>passport</span>
+              <span className="tabular-nums">
+                {progress.visited}/{progress.total}
+              </span>
+            </Link>
           </div>
         </motion.header>
 

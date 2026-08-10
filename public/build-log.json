@@ -1,7 +1,27 @@
 {
-  "generated_at": "2026-08-10T02:50:10.184Z",
+  "generated_at": "2026-08-10T03:02:35.003Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "2e670f82",
+      "date": "2026-08-10",
+      "subject": "Stamp the registry after the character shelf grew",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "e506684a",
+      "date": "2026-08-10",
+      "subject": "Tapping a character opens that character, and you can dress it",
+      "lede": "Four things, all from watching the page get used.",
+      "places": [
+        "Vibe Island",
+        "the character roster",
+        "the machinery underneath"
+      ],
+      "files": 14
+    },
     {
       "sha": "39f14024",
       "date": "2026-08-10",
@@ -1032,22 +1052,6 @@
         "the character roster"
       ],
       "files": 5
-    },
-    {
-      "sha": "bd3d6dc2",
-      "date": "2026-08-06",
-      "subject": "Shrink the zone before testing storm damage",
-      "lede": "The beat searched 48 bearings for dry ground outside the circle and found only sea, then reported a storm bug. Circle 1 has a 1250 m radius and the island's land radius is 1155 — there is no dry ground outside the first circle. That is a geometry fact, not a failure. Pull the safe zone in around the player first, then step out of it.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cdab416e",
-      "date": "2026-08-06",
-      "subject": "Measure the playtest in simulated seconds, not wall seconds",
-      "lede": "The first honest playtest called walk, jump, harvest and building broken. They were not. core.ts clamps dt to 1/15 and runs at most six fixed steps a frame, so at SwiftSHADER's fraction of a frame per second the simulation advances about 400x slower than the clock on the wall — the storm timer moved 0.05s in twenty. Holding W for four real seconds bought about a centimetre.",
-      "places": [],
-      "files": 1
     }
   ]
 }

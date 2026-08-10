@@ -54,6 +54,7 @@ const BuildAGame = lazy(() => import("./pages/BuildAGame.tsx"));
 const VibeShop = lazy(() => import("./pages/VibeShop.tsx"));
 const ShopCosmos = lazy(() => import("./pages/ShopCosmos.tsx"));
 const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
+const Passport = lazy(() => import("./pages/Passport.tsx"));
 const Orbit = lazy(() => import("./pages/Orbit.tsx"));
 const Join = lazy(() => import("./pages/Join.tsx"));
 const StartFlow = lazy(() => import("./pages/StartFlow.tsx"));
@@ -233,6 +234,10 @@ const App = () => (
 
           {/* Why any of this exists. The page to send somebody first. */}
           <Route path="/manifesto" element={<Manifesto />} />
+
+          {/* The one record that spans every world. */}
+          <Route path="/passport" element={<Passport />} />
+          <Route path="/stamps" element={<Navigate to="/passport" replace />} />
           <Route path="/future" element={<Navigate to="/manifesto" replace />} />
           {/* ORBIT — the staked game. One button, one shared seed per round,
               one pot. See src/orbit/orbit.ts for why it is built the way it is. */}
