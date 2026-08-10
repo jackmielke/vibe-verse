@@ -201,6 +201,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "orbit": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
   ],
+  "passport": [
+    { sha: "7c30fbb", iso: "2026-08-10T03:06:30+00:00", subject: "The passport is a book now, not a fraction" },
+  ],
   "portal": [
     { sha: "88a1264", iso: "2026-08-09T07:49:03+00:00", subject: "The portal: other people's games, paying real Vibey Coins" },
   ],
