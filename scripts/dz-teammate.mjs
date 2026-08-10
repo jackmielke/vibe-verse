@@ -464,6 +464,8 @@ let announcedOut = false;
 /** Crude pathing state — see STUCK_WINDOW. */
 let anchor = { x: 0, z: 0, t: 0 };
 let detourUntil = -1;
+/** Where we were standing when the lobby emptied, so idling stays put. */
+let idleHome = null;
 /** Gun state: what is left in the tank, when we last pulled, who we are on. */
 let tank = GUN_TANK;
 let lastShotAt = -Infinity;
@@ -1044,14 +1046,21 @@ function desiredPoint() {
 
   const mates = squadmates();
   if (mates.length === 0) {
-    // Nobody visible. Drift gently around where we are so we don't read as a
-    // frozen mannequin, and stay well inside the island.
+    // Nobody visible. Shift our weight around one spot so we don't read as a
+    // frozen mannequin — but around a *remembered* spot, not around wherever
+    // we happen to be standing.
+    //
+    // This used to offset from `me.x`/`me.z`, which made the target move with
+    // us: a random walk with no way home. An empty lobby wandered 63 m in ten
+    // minutes and would have kept going until it hit the fence.
+    if (!idleHome) idleHome = { x: me.x, z: me.z };
     return {
-      x: me.x + Math.cos(sim * 0.23) * 2.2,
-      z: me.z + Math.sin(sim * 0.19) * 2.2,
+      x: idleHome.x + Math.cos(sim * 0.23) * 2.2,
+      z: idleHome.z + Math.sin(sim * 0.19) * 2.2,
       urgent: false,
     };
   }
+  idleHome = null;
 
   const lead = mates[0];
   if (lead.id !== leaderId) {
@@ -1501,6 +1510,22 @@ if (SELFTEST) {
   const dryBefore = me.dry;
   onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
   check("gets wetter when splashed", me.dry < dryBefore, `${Math.round(dryBefore)}% → ${Math.round(me.dry)}%`);
+
+  // An empty lobby must not walk off. The idle wobble is meant to keep the
+  // bot from looking frozen, not to relocate it.
+  {
+    peers.clear();
+    leaderId = null;
+    idleHome = null;
+    const startX = me.x;
+    const startZ = me.z;
+    for (let i = 0; i < 240 * TICK_HZ; i++) {
+      sim += step;
+      tick(step);
+    }
+    const drift = dist2(me.x, me.z, startX, startZ);
+    check("stays put with nobody to follow", drift < 6, `${drift.toFixed(1)} m in 4 min`);
+  }
 
   // The gun. A rival inside GUN_RANGE gets shot at; a squadmate never does.
   {
