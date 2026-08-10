@@ -1135,13 +1135,25 @@ function tick(dt) {
   // notice we have stopped making progress, and try going around. Two seconds
   // of consistent sidestep clears most walls and rock faces; if it doesn't,
   // the next window picks a fresh side.
+  //
+  // Only while we are actually trying to get somewhere. A bot idling in an
+  // empty lobby cannot be stuck: it is orbiting a remembered spot at about
+  // 0.5 m/s, which covers ~0.7 m in the 1.4 s window — under STUCK_DIST —
+  // while the wobble target sits a metre or two off. That is every condition
+  // for "stuck" met by a bot doing exactly what it was told, and it logged a
+  // detour every few seconds into an empty room all night.
+  const purposeful = !!leaderId || !!zone;
   const moved = dist2(me.x, me.z, anchor.x, anchor.z);
-  if (sim - anchor.t > STUCK_WINDOW) {
+  if (purposeful && sim - anchor.t > STUCK_WINDOW) {
     if (d > SLOT_DEADZONE && moved < STUCK_DIST && sim > detourUntil) {
       detourUntil = sim + DETOUR_TIME;
       detourSign = Math.random() < 0.5 ? -1 : 1;
       log.move("stuck — taking a detour");
     }
+    anchor = { x: me.x, z: me.z, t: sim };
+  } else if (!purposeful) {
+    // Keep the anchor fresh while idle, or the first real goal after a quiet
+    // spell is measured against where we were standing minutes ago.
     anchor = { x: me.x, z: me.z, t: sim };
   }
   if (sim < detourUntil && d > 0.001) {
@@ -1519,12 +1531,19 @@ if (SELFTEST) {
     idleHome = null;
     const startX = me.x;
     const startZ = me.z;
+    let idleDetours = 0;
+    const realMove = log.move;
+    log.move = (m) => {
+      if (String(m).includes("stuck")) idleDetours++;
+    };
     for (let i = 0; i < 240 * TICK_HZ; i++) {
       sim += step;
       tick(step);
     }
+    log.move = realMove;
     const drift = dist2(me.x, me.z, startX, startZ);
     check("stays put with nobody to follow", drift < 6, `${drift.toFixed(1)} m in 4 min`);
+    check("does not cry stuck while idling", idleDetours === 0, `${idleDetours} detour(s) in 4 min`);
   }
 
   // The gun. A rival inside GUN_RANGE gets shot at; a squadmate never does.
