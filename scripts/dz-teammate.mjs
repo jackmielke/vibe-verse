@@ -786,6 +786,31 @@ function onEvent(w) {
       return;
     }
 
+    case "hit": {
+      // Addressed water. `splash` is scenery we work out for ourselves from
+      // proximity; this one names us, and it is how a human's soaker actually
+      // costs us dryness now that ghosts are real damage targets.
+      if (payload.to !== SELF_ID) return;
+      if (me.dry <= 0) return;
+      const mate = !!TEAM && foldTeam(from?.team) === TEAM;
+      if (mate) return; // same squad can't soak us; the shooter should not have sent it
+      const raw = Number.isFinite(payload.amount) ? payload.amount : SPLASH_SOAK;
+      if (!(raw > 0)) return;
+      // Same ceiling the browser applies to an inbound hit: no single packet
+      // takes more than a quarter of us.
+      const soak = Math.min(raw, 25);
+      me.dry = clamp(me.dry - soak, 0, 100);
+      lastSoakedAt = sim;
+      log.event(`hit by ${who} for ${Math.round(soak)} — ${Math.round(me.dry)}% dry`);
+      if (me.dry <= 0 && !announcedOut) {
+        announcedOut = true;
+        me.state = "down";
+        sendEvent("soaked", { id: SELF_ID, name: NAME, by: w.i });
+        void consider({ kind: "self-soaked" }, true);
+      }
+      return;
+    }
+
     case "shot": {
       // Tracers give the shooter's position away, which is exactly what a
       // callout is. Only interesting when it is near one of ours.
@@ -1333,6 +1358,24 @@ if (SELFTEST) {
   const dryBefore = me.dry;
   onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
   check("gets wetter when splashed", me.dry < dryBefore, `${Math.round(dryBefore)}% → ${Math.round(me.dry)}%`);
+
+  // Addressed water — the `hit` a human's soaker sends once ghosts are real
+  // damage targets. Unlike `splash` it does not care where we are standing,
+  // and it must be ignored unless it names us.
+  const beforeHit = me.dry;
+  onEvent({ i: RIVAL, k: "hit", p: { to: "somebody-else", amount: 20 } });
+  check("ignores a hit meant for someone else", me.dry === beforeHit, `${Math.round(me.dry)}%`);
+  onEvent({ i: RIVAL, k: "hit", p: { to: SELF_ID, amount: 20 } });
+  check("takes an addressed hit", me.dry === beforeHit - 20, `${Math.round(beforeHit)}% → ${Math.round(me.dry)}%`);
+  const beforeCap = me.dry;
+  onEvent({ i: RIVAL, k: "hit", p: { to: SELF_ID, amount: 999 } });
+  check("caps a single hit at 25", me.dry === beforeCap - 25, `${Math.round(beforeCap)}% → ${Math.round(me.dry)}%`);
+  // A squadmate's hit is refused here as well as at the shooter, because one
+  // bad client should not be able to soak its own team.
+  onPose({ i: "s-mate-test", x: me.x + 2, y: 0, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Mate" });
+  const beforeMate = me.dry;
+  onEvent({ i: "s-mate-test", k: "hit", p: { to: SELF_ID, amount: 20 } });
+  check("refuses friendly fire", me.dry === beforeMate, `${Math.round(me.dry)}%`);
   for (let i = 0; i < 20; i++) onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
   drive(3);
   check("bows out at 0% dry", me.dry === 0 && me.state === "down", `${me.dry}% / ${me.state}`);

@@ -328,6 +328,9 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
     get roomCode() {
       return roomCode;
     },
+    get selfTeam() {
+      return profile.team ?? null;
+    },
     selfId,
     peers,
     messages,

@@ -113,7 +113,25 @@ export default function SplashRoyale() {
     return () => {
       cancelled = true;
       window.removeEventListener("resize", onResize);
-      engineRef.current?.dispose();
+      const eng = engineRef.current;
+      if (eng && shotMode) {
+        // Take the globals back down with the engine that published them.
+        //
+        // In development React mounts twice, so two engines boot and the first
+        // is disposed — but it had already written `__dz`/`__soaked`, and
+        // nothing ever cleared them. A harness (or a probe) that picked those
+        // up got a dead engine: services all present, `net` still reporting
+        // online, and `elapsed` frozen at 0 forever. It looks exactly like a
+        // world where nothing happens, which is a miserable thing to debug.
+        //
+        // Guarded on identity so the surviving engine's handles are never the
+        // ones cleared.
+        const w = window as unknown as Record<string, unknown>;
+        if (w.__dz === eng) w.__dz = undefined;
+        if (w.__soaked === eng) w.__soaked = undefined;
+        if (w.__dz === undefined && w.__soaked === undefined) w.__dzReady = false;
+      }
+      eng?.dispose();
       engineRef.current = null;
     };
   }, [shotMode, forcedQuality]);

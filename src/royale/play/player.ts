@@ -4473,7 +4473,54 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     const net = ctx.services.net;
     if (!net) return;
     netOff.push(net.on("glue", (from, payload) => onGlueEvent(payload, from)));
+    netOff.push(net.on("hit", (from, payload) => onHitEvent(payload, from)));
   }
+
+  /**
+   * Somebody else's water landed on us.
+   *
+   * The shooter resolves the hit against our ghost on their machine and sends
+   * it here addressed to us; we decide what it cost. That split is the whole
+   * design — there is no server, so the alternative is trusting a packet to
+   * set our dryness directly, and the alternative to *that* is no player-vs-
+   * player water at all, which is what this game shipped with.
+   *
+   * Everything below is a guard against a payload we did not author: wrong
+   * recipient, absent or non-finite amount, an amount large enough to be a
+   * one-shot. `soak()` handles the rest — poncho first, dryness after, and it
+   * files the elimination and the `soaked` broadcast on its own if this is the
+   * one that empties us.
+   */
+  function onHitEvent(payload: unknown, from: string): void {
+    if (!water) return;
+    const p = (payload ?? {}) as {
+      to?: string;
+      amount?: number;
+      x?: number;
+      y?: number;
+      z?: number;
+    };
+    const net = ctx.services.net;
+    if (!net || p.to !== net.selfId) return;
+    if (soakedOut || service.state === "dead" || service.state === "down") return;
+
+    const raw = typeof p.amount === "number" && Number.isFinite(p.amount) ? p.amount : 0;
+    if (!(raw > 0)) return;
+    // A single packet may never take more than a quarter of a full player.
+    // Not cheat-proof — nothing client-authoritative is — but it keeps a bad
+    // or malformed sender from ending someone's match in one frame.
+    const amount = Math.min(raw, DRYNESS.max * 0.25);
+
+    const peer = net.peers.get(from);
+    const point =
+      Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)
+        ? netHitPoint.set(p.x as number, p.y as number, p.z as number)
+        : undefined;
+
+    service.soak(amount, point, { name: peer?.name ?? "someone", by: from });
+  }
+
+  const netHitPoint = new THREE.Vector3();
 
   let audioBound = false;
 
