@@ -6515,6 +6515,20 @@ export default function City() {
         photos={galleryPhotos}
         onClose={() => setGalleryOpen(false)}
       />
+      {avatarDashOpen && (
+        <CharacterDashboardModal
+          activeId={charName}
+          onPick={(id) => {
+            const i = CHARACTERS.findIndex((c) => c.name === id);
+            if (i >= 0) setAvatarPreviewIdx(i);
+            setCharName(id);
+            charRef.current = id;
+            setActiveCharacter(id);
+            loadPilotRef.current?.(id);
+          }}
+          onClose={() => setAvatarDashOpen(false)}
+        />
+      )}
 
 
 
