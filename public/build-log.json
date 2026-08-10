@@ -1,7 +1,81 @@
 {
-  "generated_at": "2026-08-10T03:02:35.003Z",
+  "generated_at": "2026-08-10T05:13:22.517Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "18bc6e85",
+      "date": "2026-08-09",
+      "subject": "A voice in the booth calls the match",
+      "lede": "Eliminations, a squadmate going out, the Downpour closing, the win — read aloud by ElevenLabs over the same engine events the HUD already draws from.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "46842359",
+      "date": "2026-08-09",
+      "subject": "The teammate can shoot back",
+      "lede": "It has spent every match so far as a very loyal 4 m of scenery: it followed, it called out, it talked, and it could not take a single point of dryness off anyone. Now that ghosts are real damage targets and `hit` carries damage, it has the same soaker everyone else does.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e3f87669",
+      "date": "2026-08-09",
+      "subject": "Players can finally soak each other",
+      "lede": "SPLASH ROYALE shipped without player-versus-player water. Not throttled, not buggy — absent. No client ever sent a shot, `shot` and `splash` existed in the protocol and were never emitted by a weapon, ghosts were never registered as damage targets, and the two systems that did consume `splash` used it for a decal and some particles. Two people in a lobby could see each other, chat, glue each other's ankles and announ",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "7916b80d",
+      "date": "2026-08-09",
+      "subject": "The teammate went deaf after the first finished match",
+      "lede": "Watched live tonight, three times: jack joins, the log says \"jack is on the field (dolphin)\", and the next status line reads `peers 1, following —`. The bot could see him and would not follow him.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "8a0487a5",
+      "date": "2026-08-09",
+      "subject": "The end card says Play again",
+      "lede": "\"Get wet again\" is a joke that only lands once, and the button it is on is the one you press when you want another match — not the one you press to be told what the mode is called. Jack asked for the plain word.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "14933f63",
+      "date": "2026-08-09",
+      "subject": "The teammate could not reach a squad that was still on the bus",
+      "lede": "Tonight's match, from the bot's log: spawned beside Jack, then \"stuck — taking a detour\" every three seconds for six minutes, pinned at x -1230, 866 m away, until the match ended. Jack never saw it. Two bugs stacked.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e0e80524",
+      "date": "2026-08-09",
+      "subject": "Escape gives the mouse back instead of throwing you out",
+      "lede": "Escape is the only way a browser hands the cursor back, and the lobby veil was keyed on pointer lock alone. That conflated \"has not joined yet\" with \"has joined and wants their mouse\", so every player who pressed it got the full entry screen — room code, roster, drop-in button — slammed over a match that was still running underneath. It read as being kicked to the lobby. Nothing had stopped.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "0e3e6531",
+      "date": "2026-08-10",
+      "subject": "Stamp the registry for the passport page",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "7c30fbba",
+      "date": "2026-08-10",
+      "subject": "The passport is a book now, not a fraction",
+      "lede": "It has existed for months as five grey words on the landing page — \"passport 18/28\" — not a link, with no way to see what the other ten were. It was the only record in here that spans every world, and the only way to read it was as a ratio.",
+      "places": [],
+      "files": 6
+    },
     {
       "sha": "2e670f82",
       "date": "2026-08-10",
@@ -967,91 +1041,6 @@
         "Vibe Island"
       ],
       "files": 1
-    },
-    {
-      "sha": "3b237b4b",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "60c3828e",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "a6683be7",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "a36513bc",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "bc53c692",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "dc7d96fe",
-      "date": "2026-08-06",
-      "subject": "Loot: let a held interact sweep a pile, and name the containers",
-      "lede": "A floor item is a tap, but holding the key must still sweep a spill — walking into a chest's scatter with E down is how people actually collect loot. A quarter-second repeat in nearest-first order keeps that a sweep rather than a vacuum, so you can see what you took and let go before the fifth thing fills your last slot.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "df506138",
-      "date": "2026-08-06",
-      "subject": "SOAKED foundations: multiplayer, the water rules, and a teammate who talks",
-      "lede": "Three pieces, none of which touch the single-player game that is already live.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "a409687e",
-      "date": "2026-08-06",
-      "subject": "Eleven levels, one per corner of the vibeverse",
-      "lede": "Ten new levels, and the interesting part is that they are different games rather than different paint.",
-      "places": [],
-      "files": 12
-    },
-    {
-      "sha": "e6d6df50",
-      "date": "2026-08-06",
-      "subject": "🦇 Four new code-built characters, and the heist stops nagging",
-      "lede": "THE CAST. Flux proved a character can be assembled from primitives and animated entirely from its own motion — no model file, no clips, no skating feet. That rig is now a design table, so a new character is an entry rather than a new animation system, and every one of them inherits the whole solver: stride that grows with speed, banking into turns, landing squash, breathing idle, blinks, and spring-driven secondary m",
-      "places": [
-        "Vibe Island",
-        "the character roster"
-      ],
-      "files": 5
     }
   ]
 }

@@ -26,6 +26,15 @@ import pixelArt from "@/assets/characters/pixel.png";
 import sableArt from "@/assets/characters/sable.png";
 import spaceRexArt from "@/assets/characters/space-rex.png";
 import vibePoliceArt from "@/assets/characters/vibe-police.png";
+/* The body-plan five. Free rather than stock, but they still want portraits:
+   the picker and the profile draw the same tile the shelf does, and a
+   character with no photograph falls back to a drawn panel that says nothing
+   about what makes it different. */
+import marshmallowArt from "@/assets/characters/marshmallow.png";
+import ovoidArt from "@/assets/characters/ovoid.png";
+import scrapArt from "@/assets/characters/scrap.png";
+import sproutArt from "@/assets/characters/sprout.png";
+import tuxedoArt from "@/assets/characters/tuxedo.png";
 
 export const CHARACTER_ART: Record<string, string> = {
   aurora: auroraArt,
@@ -37,6 +46,11 @@ export const CHARACTER_ART: Record<string, string> = {
   sable: sableArt,
   "space-rex": spaceRexArt,
   "vibe-police": vibePoliceArt,
+  marshmallow: marshmallowArt,
+  ovoid: ovoidArt,
+  scrap: scrapArt,
+  sprout: sproutArt,
+  tuxedo: tuxedoArt,
 };
 
 /**

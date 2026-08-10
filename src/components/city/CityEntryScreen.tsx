@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { CharacterPreview } from "@/island/CharacterPreview";
 import type { CharacterOption } from "@/island/characters";
 import { generateCharacterName } from "@/lib/character-naming";
+import { characterArt } from "@/lib/characterArt";
 import { ArrowRight, Check, Copy, Dices, Shuffle } from "lucide-react";
 import loginBg from "@/assets/island-explorer/new-login-bg.jpg";
 
@@ -324,6 +325,7 @@ export default function CityEntryScreen({
             {featuredOptions.map((c) => {
               const isPicked = c.id === picked;
               const accent = ((c as unknown as { vibeAccent?: string })?.vibeAccent ?? "#7dd3fc");
+              const art = characterArt(c.id);
               return (
                 <button
                   key={c.id}
@@ -342,18 +344,53 @@ export default function CityEntryScreen({
                       background: `linear-gradient(145deg, ${accent}40, rgba(255,255,255,0.22))`,
                     }}
                   >
-                    <div className="flex h-full flex-col items-center justify-center px-5 text-center">
-                      <div
-                        className="mb-3 h-14 w-14 rounded-full border border-white/45 bg-white/18 shadow-lg"
-                        style={{ boxShadow: `0 0 38px ${accent}55` }}
-                      />
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/78">
-                        {isPicked ? "Current" : "Select"}
+                    {/* The portrait, where one exists.
+                        Every tile used to be a coloured disc — the same empty
+                        ring for all seventy-odd characters, so the grid told
+                        you nothing except their names and you had to click
+                        each one to find out what it looked like. The renders
+                        already existed; this page simply never drew them. The
+                        ring stays as the fallback for the GLB roster, which
+                        has no portrait to show. */}
+                    {art ? (
+                      /* A column, not two absolutes stacked on each other: the
+                         first cut floated the caption over the picture and it
+                         landed across the character's feet. The portrait takes
+                         whatever height is left after the label has had its
+                         line, so a tall rig and a squat one both sit on the
+                         same baseline. */
+                      <div className="flex h-full flex-col">
+                        <div className="min-h-0 flex-1 pt-2">
+                          <img
+                            src={art}
+                            alt=""
+                            loading="lazy"
+                            className="mx-auto h-full w-auto object-contain drop-shadow-[0_10px_22px_rgba(6,14,30,0.45)] transition-transform duration-300 group-hover:scale-[1.07]"
+                          />
+                        </div>
+                        <div className="relative z-10 px-3 pb-2 text-center">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/85 drop-shadow">
+                            {isPicked ? "Current" : "Select"}
+                          </div>
+                          <div className="truncate text-lg font-light leading-tight tracking-[-0.04em] text-white drop-shadow">
+                            {c.name}
+                          </div>
+                        </div>
                       </div>
-                      <div className="mt-1 line-clamp-2 text-2xl font-light tracking-[-0.04em] text-white">
-                        {c.name}
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center px-5 text-center">
+                        <div
+                          className="mb-3 h-14 w-14 rounded-full border border-white/45 bg-white/18 shadow-lg"
+                          style={{ boxShadow: `0 0 38px ${accent}55` }}
+                        />
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/78">
+                          {isPicked ? "Current" : "Select"}
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-2xl font-light tracking-[-0.04em] text-white">
+                          {c.name}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-sky-950/22 to-transparent" />
                   </div>
                   <div className="mt-3 flex items-start justify-between gap-3">

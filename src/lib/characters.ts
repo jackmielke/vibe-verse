@@ -115,6 +115,35 @@ export const CHARACTERS: CharSpec[] = [
     blurb: "Horns, spiked tail, and wings that spread when you leave the ground.",
     accent: "#ff8a3d",
   },
+  // The body-plan five. Everything else on this list — code-built or GLB —
+  // is a biped, so these are the first characters here that are recognisable
+  // by how they move rather than by what colour they are. Free, not stock:
+  // see `characterShop.ts` for why the shelf is deliberately small.
+  {
+    id: "marshmallow", url: "", label: "Marshmallow", emoji: "🤍",
+    blurb: "Inflated, not built. No seams, no joints, no visor — two dots and the bar between them.",
+    accent: "#cfd6e6",
+  },
+  {
+    id: "scrap", url: "", label: "Scrap", emoji: "🔭",
+    blurb: "A crate on tracks with binoculars for a head. The wheels turn at the speed you are actually going.",
+    accent: "#9be8ff",
+  },
+  {
+    id: "ovoid", url: "", label: "Ovoid", emoji: "🥚",
+    blurb: "No legs, no arms, no seam. Floats, banks like an aircraft, and its hands trail half a beat behind it.",
+    accent: "#3fa9ff",
+  },
+  {
+    id: "tuxedo", url: "", label: "Tuxedo", emoji: "🐧",
+    blurb: "Squat and wide, with legs too short to stride — so the walk is a roll, and the roll is the joke.",
+    accent: "#ffa53d",
+  },
+  {
+    id: "sprout", url: "", label: "Sprout", emoji: "🌱",
+    blurb: "Moss and bark on the same stubby body plan. Waddles, and the tail keeps swinging after it stops.",
+    accent: "#ffe27a",
+  },
   // The originals — same rig, same table, but these six are the arcade's
   // stock and have a price on them. See `src/lib/characterShop.ts`, which is
   // the authority on which of these you have to buy; this list is only the
