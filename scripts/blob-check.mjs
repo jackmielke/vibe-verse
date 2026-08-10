@@ -4,20 +4,20 @@
  *
  * `npm run build` will happily ship a world that renders a black rectangle, and
  * the unit tests only prove the rules are right, not that anything reached a
- * canvas. So this boots the route, presses play, drives the mouse around the
- * dish for a few seconds, splits a couple of times, and then reports three
- * things nothing else can tell you:
+ * canvas. So this boots the route, presses play, drives it for a few seconds,
+ * splits a couple of times, and reports the things nothing else can tell you:
  *
  *   - console errors and page exceptions (a white screen has a reason)
  *   - whether the frame has any colour in it at all (a black canvas is a bug
  *     that builds, typechecks and passes tests)
- *   - the live status the engine is publishing: mass, rank, fps
+ *   - the live status the engine is publishing: mass, rank, leaderboard
+ *   - on a phone, whether letting go of the glass leaves you still moving
  *
- * Usage: node scripts/blob-check.mjs [route] [out.jpg]
+ * Usage: node scripts/blob-check.mjs [route] [out.jpg] [--phone]
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 const route = process.argv[2] ?? "/blob";
 const out = process.argv[3] ?? "blob-check.jpg";
@@ -69,47 +69,100 @@ page.on("console", (m) => {
 });
 page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
 // Name the URL. "ERR_CONNECTION_RESET" on its own could be this world or it
-// could be the radio calling a third party the sandbox cannot reach.
-page.on("requestfailed", (r) => problems.push(`requestfailed: ${r.url()} — ${r.failure()?.errorText}`));
+// could be the fonts, which this sandbox blocks on every route in the app.
+page.on("requestfailed", (r) =>
+  problems.push(`requestfailed: ${r.url()} — ${r.failure()?.errorText}`),
+);
 
-await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded" });
+// `?probe` exposes the engine so this script can read where the blob actually
+// is. It does *not* hand over the controls — driving them is the point.
+await page.goto(`${BASE}${route}${route.includes("?") ? "&" : "?"}probe`, {
+  waitUntil: "domcontentloaded",
+});
 await page.waitForSelector("canvas", { timeout: 30000 });
 await page.waitForTimeout(1500);
 
 // Title screen first — that is what a visitor sees before anything else.
 await page.screenshot({ path: out.replace(/\.jpg$/, "-title.jpg"), type: "jpeg", quality: 82 });
 
-// Press play, however this device would.
-const playButton = page.getByRole("button", { name: /^play$/i });
-if (await playButton.count()) await playButton.first().click();
-await page.waitForTimeout(600);
-
-// Drive. A circle around the middle of the screen is enough to make the camera
-// move, eat pellets, and put the player next to somebody.
-//
-// On a phone that has to be a *dragged* touch, not a tap: the control is a
-// joystick whose origin is wherever your thumb landed, so a tap followed by
-// mouse moves leaves the player standing perfectly still while the dish comes
-// to eat it. `page.touchscreen` only taps, so this goes through CDP.
 const cx = viewport.width / 2;
 const cy = viewport.height / 2;
+// `page.touchscreen` only taps, and this needs a *dragged* touch: the control
+// is a joystick whose origin is wherever the thumb landed. So, CDP.
 const cdp = phone ? await page.context().newCDPSession(page) : null;
-const touch = async (type, x, y) =>
+const touch = (type, x, y) =>
   cdp.send("Input.dispatchTouchEvent", {
     type,
     touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
   });
-if (phone) await touch("touchStart", cx, cy);
-for (let i = 0; i < 110; i++) {
-  const a = (i / 110) * Math.PI * 4;
+const probe = () =>
+  page.evaluate(() => {
+    const e = window.__blob;
+    if (!e?.probe) return null;
+    const p = e.probe();
+    return { x: Math.round(p.x), y: Math.round(p.y), cells: p.cells, power: p.course.power };
+  });
+
+const playButton = page.getByRole("button", { name: /^play$/i });
+if (await playButton.count()) await playButton.first().click();
+await page.waitForTimeout(600);
+
+/**
+ * The coast check, and it runs first — while the blob is definitely alive.
+ *
+ * The phone control sets a *course*: flick a direction, let go, and you keep
+ * going. That is the one thing about this world a screenshot cannot show and a
+ * unit test cannot fully prove — `course.ts` covers the maths, but only a real
+ * browser can tell you the maths is wired to the pointer events.
+ *
+ * Ordering is not incidental. Run after the roam below and it samples a blob
+ * that has usually been eaten by then, and a dead player's centroid reads as
+ * the middle of the dish forever — which looks exactly like a broken control.
+ */
+let coast = null;
+if (phone) {
+  await touch("touchStart", cx, cy);
+  for (let i = 1; i <= 10; i++) {
+    await touch("touchMove", cx + i * 9, cy);
+    await page.waitForTimeout(30);
+  }
+  await touch("touchEnd", 0, 0);
+  const samples = [];
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(250);
+    const s = await probe();
+    if (s) samples.push(s);
+  }
+  const alive = samples.filter((s) => s.cells > 0);
+  coast = {
+    from: samples[0],
+    to: samples[samples.length - 1],
+    // Still under way a second and a half after the finger left the glass...
+    keptGoing: alive.length > 1 && alive[alive.length - 1].x - alive[0].x > 120,
+    // ...and still holding the course it was given.
+    heldCourse: alive.length > 0 && alive[alive.length - 1].power > 0,
+    // If it died mid-check the two flags above mean nothing. Say so rather than
+    // reporting a failure that is really a bad sample.
+    survived: samples.length > 0 && alive.length === samples.length,
+  };
+}
+
+// Then roam, for the screenshot and to shake out anything that only breaks once
+// there are other blobs about.
+for (let i = 0; i < 100; i++) {
+  const a = (i / 100) * Math.PI * 4;
   const x = cx + Math.cos(a) * viewport.width * 0.28;
   const y = cy + Math.sin(a) * viewport.height * 0.18;
-  if (phone) await touch("touchMove", x, y);
-  else await page.mouse.move(x, y);
-  if (!phone && (i === 40 || i === 70)) await page.keyboard.press("Space");
-  if (phone && (i === 45 || i === 80)) {
-    const split = page.getByRole("button", { name: /split/i });
-    if (await split.count()) await split.first().dispatchEvent("pointerdown");
+  if (phone) {
+    if (i === 0) await touch("touchStart", cx, cy);
+    await touch("touchMove", x, y);
+    if (i === 45 || i === 80) {
+      const split = page.getByRole("button", { name: /split/i });
+      if (await split.count()) await split.first().dispatchEvent("pointerdown");
+    }
+  } else {
+    await page.mouse.move(x, y);
+    if (i === 40 || i === 70) await page.keyboard.press("Space");
   }
   await page.waitForTimeout(55);
 }
@@ -122,10 +175,10 @@ await page.screenshot({ path: out, type: "jpeg", quality: 82 });
 const frame = await page.evaluate(() => {
   const canvas = document.querySelector("canvas");
   if (!canvas) return { ok: false, why: "no canvas" };
-  const probe = document.createElement("canvas");
-  probe.width = 80;
-  probe.height = 50;
-  const g = probe.getContext("2d");
+  const scratch = document.createElement("canvas");
+  scratch.width = 80;
+  scratch.height = 50;
+  const g = scratch.getContext("2d");
   g.drawImage(canvas, 0, 0, 80, 50);
   const d = g.getImageData(0, 0, 80, 50).data;
   let lit = 0;
@@ -156,7 +209,7 @@ const status = await page.evaluate(() => {
   };
 });
 
-console.log(JSON.stringify({ route, phone, frame, status, problems }, null, 2));
+console.log(JSON.stringify({ route, phone, frame, status, coast, problems }, null, 2));
 console.log(`wrote ${out}`);
 
 await browser.close();

@@ -229,8 +229,8 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🫧",
     kind: "game",
     blurb:
-      "The petri dish. Hoover up pellets, run from anything bigger than you, and split to catch what runs — twenty-four rivals, one dish, and a leaderboard you can watch your own name climb.",
-    status: "Playable — phone and desktop, two modes",
+      "The petri dish. Hoover up pellets, run from anything bigger than you, and split to catch what runs — twenty-four rivals, one dish, and a leaderboard you can watch your own name climb. Grab a room code, text it to a friend, and share the dish.",
+    status: "Playable — phone and desktop, rooms with friends",
     accent: "#5ef0a8",
     featured: true,
     source: "src/blob",

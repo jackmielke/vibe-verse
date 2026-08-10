@@ -33,6 +33,8 @@ import {
   type ModeId,
   type SkillId,
 } from "./config";
+import { aimForCourse, steerCourse, STOPPED, type Course } from "./course";
+import { BlobNet, makePeerId, normalizeRoomCode, seedForRoom } from "./net/session";
 import { Renderer } from "./render";
 import { BlobSim } from "./sim";
 import type { Standing } from "./types";
@@ -71,6 +73,14 @@ export interface BlobStatus {
   /** True once the player has touched the screen: the page swaps the control
    *  hints for buttons rather than guessing from the user agent. */
   touch: boolean;
+  /** Room code you are in, or null when playing alone. */
+  room: string | null;
+  /** Joining, joined, or tried and could not reach anybody. */
+  netState: "off" | "joining" | "online" | "failed";
+  /** People in the room, you included. */
+  players: number;
+  /** Whether this client is the one simulating the bots. */
+  host: boolean;
 }
 
 export interface EngineOptions {
@@ -128,8 +138,15 @@ export class BlobEngine {
   // --- input state ---------------------------------------------------------
   /** Cursor in css pixels, or null when a pointer has never moved. */
   private mouse: { x: number; y: number } | null = null;
-  private stick = { ox: 0, oy: 0, x: 0, y: 0, active: false, id: -1 };
+  private stick = { ox: 0, oy: 0, x: 0, y: 0, active: false, id: -1, moved: false };
   private usingTouch = false;
+  /**
+   * The course a phone player is on — see `course.ts`.
+   *
+   * It outlives the finger that set it, which is the whole point. A tap with no
+   * drag is the brake.
+   */
+  private drift: Course = STOPPED;
   private keys = new Set<string>();
   private ejectHeldSince = 0;
 
@@ -146,6 +163,15 @@ export class BlobEngine {
   /** Sim time the current round's clock started. Blitz's three minutes begin
    *  when you press play, not when the title screen started simulating. */
   private roundStartedAt = 0;
+
+  // --- the room ------------------------------------------------------------
+  private net: BlobNet | null = null;
+  private room: string | null = null;
+  private netState: BlobStatus["netState"] = "off";
+  private readonly peerId = makePeerId();
+  /** Bumped on every join/leave so a slow handshake that resolves after the
+   *  player has moved on cannot install itself over the newer one. */
+  private joinToken = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -233,7 +259,88 @@ export class BlobEngine {
         you.cells.some((c) => c.mass >= MIN_SPLIT_MASS),
       canEject: you.alive && you.cells.some((c) => c.mass >= 40),
       touch: this.usingTouch,
+      room: this.room,
+      netState: this.netState,
+      players: this.net ? this.net.size : 1,
+      host: !this.net || this.net.isHost,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // The room
+  // -------------------------------------------------------------------------
+
+  /**
+   * Join a room, or leave the one you are in by passing null.
+   *
+   * The dish is rebuilt on the way in, because a room shares its seed: the
+   * pellets and the viruses have to be in the same places on every screen or
+   * two people are playing different games. Everything else — your name, the
+   * mode, the skill — survives.
+   */
+  async joinRoom(code: string | null): Promise<boolean> {
+    /* Leave first, *then* take the token. The other order looks identical and
+       is not: `leaveRoom` bumps the counter itself, so a token taken before it
+       never matches afterwards, every join bailed out at the guard below, and
+       the panel sat on "joining…" forever without a single error anywhere. */
+    this.leaveRoom();
+    const token = ++this.joinToken;
+    const room = code ? normalizeRoomCode(code) : null;
+    if (!room) {
+      this.rebuild();
+      this.publish(true);
+      return false;
+    }
+
+    this.room = room;
+    this.netState = "joining";
+    /* A room plays one way, and the page greys the pickers out to say so.
+       The roster has to match — bots are addressed by player id, and a client
+       that chose Chill would have sixteen where the host has twenty-four — and
+       a shared Blitz clock would need a synchronised start nobody has asked
+       for yet. Free for All on Standard is what a room is. */
+    this.mode = "ffa";
+    this.skill = "standard";
+    this.best = readBest(this.mode);
+    this.publish(true);
+
+    // Dynamic, so a visitor who never opens a room never downloads a socket.
+    const { connectRoom } = await import("./net/supabase");
+    const transport = await connectRoom(room);
+    if (token !== this.joinToken) {
+      // They typed another code, or left, while the handshake was in flight.
+      transport?.close();
+      return false;
+    }
+    if (!transport) {
+      this.netState = "failed";
+      this.room = null;
+      this.publish(true);
+      return false;
+    }
+
+    this.rebuild(seedForRoom(room));
+    this.net = new BlobNet({
+      transport,
+      room,
+      peerId: this.peerId,
+      identity: () => ({ name: this.playerName, hue: this.sim.you.hue }),
+    });
+    this.netState = "online";
+    this.publish(true);
+    return true;
+  }
+
+  leaveRoom(): void {
+    this.joinToken++;
+    if (this.net) {
+      this.net.dispose();
+      this.net = null;
+      this.sim.setBotsRemote(false);
+      this.sim.virusesFromWire = false;
+    }
+    this.room = null;
+    this.netState = "off";
   }
 
   // -------------------------------------------------------------------------
@@ -291,8 +398,15 @@ export class BlobEngine {
 
   /** New dish, same engine. Cheaper and less jarring than tearing the canvas
    *  down, and it keeps the title screen's live background alive throughout. */
-  private rebuild(): void {
-    this.sim = new BlobSim({ mode: this.mode, skill: this.skill, name: this.playerName });
+  private rebuild(seed?: number): void {
+    // In a room the seed is the room: everyone has to lay out the same pellets
+    // and the same viruses, including after a "play again".
+    const s = seed ?? (this.room ? seedForRoom(this.room) : undefined);
+    this.sim = new BlobSim({ mode: this.mode, skill: this.skill, name: this.playerName, seed: s });
+    if (this.net) {
+      this.sim.setBotsRemote(!this.net.isHost);
+      this.sim.virusesFromWire = !this.net.isHost;
+    }
     this.phase = "attract";
     this.feed = [];
     this.runPeak = 0;
@@ -319,6 +433,26 @@ export class BlobEngine {
     this.renderer.resize();
   }
 
+  /**
+   * Where the player actually is, for the capture and check scripts.
+   *
+   * `scripts/blob-check.mjs` uses this to prove the phone control keeps you
+   * moving after your thumb leaves the glass, which is a thing no screenshot
+   * and no unit test can show: the maths is covered in `course.ts`, but only a
+   * real browser can tell you the maths is wired to the pointer events.
+   */
+  probe(): { x: number; y: number; mass: number; cells: number; course: Course } {
+    const you = this.sim.you;
+    const c = this.sim.centroid(you);
+    return {
+      x: c.x,
+      y: c.y,
+      mass: this.sim.massOf(you),
+      cells: you.cells.length,
+      course: this.drift,
+    };
+  }
+
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
@@ -331,6 +465,7 @@ export class BlobEngine {
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
     this.listeners.clear();
+    this.leaveRoom();
     this.renderer.dispose();
     this.audio.dispose();
   }
@@ -364,7 +499,7 @@ export class BlobEngine {
       // On a phone held one-handed, a fixed stick is either out of reach or in
       // the way, and which one depends on the hand.
       if (!this.stick.active) {
-        this.stick = { ox: x, oy: y, x, y, active: true, id: e.pointerId };
+        this.stick = { ox: x, oy: y, x, y, active: true, id: e.pointerId, moved: false };
         this.canvas.setPointerCapture?.(e.pointerId);
       }
       this.publish(true);
@@ -374,10 +509,13 @@ export class BlobEngine {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
-    if (e.pointerId === this.stick.id) {
-      this.stick.active = false;
-      this.stick.id = -1;
-    }
+    if (e.pointerId !== this.stick.id) return;
+    this.stick.active = false;
+    this.stick.id = -1;
+    // Lifting off holds the course. A tap that never became a drag is the one
+    // way to ask for a full stop — otherwise there is no brake at all, and
+    // "nudge yourself still next to a virus" is a real thing to want to do.
+    if (!this.stick.moved) this.drift = STOPPED;
   };
 
   /** Right-click is a split on desktop, and the menu it would otherwise open
@@ -443,6 +581,11 @@ export class BlobEngine {
         steps++;
       }
       if (steps === 6) this.acc = 0;
+      /* Networking sits between the sim and the drain on purpose: it reads the
+         same event list the effects read, before that list is cleared, so the
+         thing that decides a cell was eaten and the thing that puts it on the
+         wire are never two different pieces of bookkeeping. */
+      this.net?.pump(this.sim, 0);
       this.drain();
       if (this.phase === "playing") {
         const mass = this.sim.massOf(this.sim.you);
@@ -477,26 +620,19 @@ export class BlobEngine {
       }
       return;
     }
-    if (this.stick.active) {
-      const dx = this.stick.x - this.stick.ox;
-      const dy = this.stick.y - this.stick.oy;
-      const d = Math.hypot(dx, dy);
-      const c = this.sim.centroid(you);
-      if (d < 6) {
-        // A thumb that has not moved means "stop", not "drift north".
-        this.sim.setAim(0, c.x, c.y);
-        return;
-      }
-      // Deflection is throttle: a small push is a slow crawl, which is what
-      // makes threading a gap on a phone possible at all.
-      const k = Math.min(1, d / 62);
-      const reach = 40 + 520 * k;
-      this.sim.setAim(0, c.x + (dx / d) * reach, c.y + (dy / d) * reach);
-      return;
-    }
     if (this.usingTouch) {
+      if (this.stick.active) {
+        const next = steerCourse(
+          this.drift,
+          this.stick.x - this.stick.ox,
+          this.stick.y - this.stick.oy,
+        );
+        if (next !== this.drift) this.stick.moved = true;
+        this.drift = next;
+      }
       const c = this.sim.centroid(you);
-      this.sim.setAim(0, c.x, c.y);
+      const aim = aimForCourse(this.drift, c.x, c.y);
+      this.sim.setAim(0, aim.x, aim.y);
       return;
     }
     if (!this.mouse) return;
@@ -542,6 +678,9 @@ export class BlobEngine {
           if (e.by === 0) this.audio.eject();
           break;
         case "pop": {
+          // Everybody has to drop the same virus, or one client keeps rendering
+          // a mine that is no longer there.
+          if (this.sim.owns(e.by)) this.net?.reportPop(e.virus);
           const hue = this.sim.players[e.by]?.hue ?? 120;
           this.renderer.ring(e.x, e.y, 130, 90);
           this.renderer.burst(e.x, e.y, hue, 22, 260);
@@ -624,6 +763,7 @@ export class BlobEngine {
       span,
       dt,
       stick: this.usingTouch ? this.stick : null,
+      heading: this.usingTouch && you.alive ? this.drift : null,
       dimmed: this.phase !== "playing",
     });
   }

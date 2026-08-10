@@ -72,6 +72,9 @@ export interface SimOptions {
 
 /** Sim time a bot waits before climbing back into the dish. */
 const BOT_RESPAWN = 2.6;
+/** A remote cell that moved further than this between packets was not moving —
+ *  it respawned, or it was flung by a split. Snap rather than slide. */
+const TELEPORT_DIST = 420;
 /** Seconds you cannot re-swallow your own ejected mass. Without it, W is a
  *  no-op: the pellet leaves your edge and walks straight back in. */
 const EJECT_IMMUNITY = 0.55;
@@ -100,6 +103,8 @@ export class BlobSim {
   private foodDebt = 0;
   private scratchA: (Cell | Food | Pellet)[] = [];
   private allCells: Cell[] = [];
+  /** Viruses created since the host last broadcast. See `takeSpawnedViruses`. */
+  private spawnedViruses: [number, number, number][] = [];
 
   constructor(opts: SimOptions = {}) {
     this.mode = MODES[opts.mode ?? "ffa"];
@@ -173,6 +178,205 @@ export class BlobSim {
     return this.rng.next();
   }
 
+  /**
+   * Whether this client is the one that decides what a player does.
+   *
+   * Every rule that *changes* a player — moving, eating, splitting, merging,
+   * rotting — is gated on this. Offline it is true for everybody and the sim
+   * behaves exactly as it always did; in a room it is false for your friends
+   * and, unless you are the host, for the bots as well.
+   */
+  owns(id: number): boolean {
+    const p = this.players[id];
+    return !!p && !p.remote;
+  }
+
+  // -------------------------------------------------------------------------
+  // Seats for other people
+  // -------------------------------------------------------------------------
+
+  /**
+   * Add a player driven by somebody else's client, and hand back its id.
+   *
+   * Appended rather than seated in a reserved block: the roster is already a
+   * plain array indexed by id, the leaderboard sorts by mass, and the eat rules
+   * do not care who is a person. A friend arriving is simply one more player.
+   */
+  addRemotePlayer(peerId: string, name: string, hue: number): number {
+    const id = this.players.length;
+    this.players.push({
+      id,
+      name,
+      hue,
+      isBot: false,
+      remote: true,
+      peerId,
+      cells: [],
+      aimX: WORLD / 2,
+      aimY: WORLD / 2,
+      peak: 0,
+      kills: 0,
+      diedAt: -1,
+      alive: false,
+    });
+    return id;
+  }
+
+  /** A friend closed the tab. Their blob goes with them. */
+  dropPlayer(id: number): void {
+    const p = this.players[id];
+    if (!p) return;
+    p.cells.length = 0;
+    p.alive = false;
+    p.peerId = undefined;
+    p.diedAt = this.time;
+  }
+
+  playerByPeer(peerId: string): Player | undefined {
+    return this.players.find((p) => p.peerId === peerId);
+  }
+
+  /**
+   * Hand every bot over to the host's client, or take them back.
+   *
+   * Bots are the reason a room needs a host at all. Simulated independently on
+   * each client they diverge within seconds — same seed, but split decisions
+   * land on different ticks — and then you watch a friend get eaten by a blob
+   * that, on your screen, is somewhere else entirely. One client runs them and
+   * the rest read the wire.
+   */
+  setBotsRemote(remote: boolean): void {
+    for (const p of this.players) {
+      if (!p.isBot) continue;
+      p.remote = remote;
+      if (remote) {
+        // Freeze rather than clear: the next packet overwrites these anyway,
+        // and clearing would blink every bot out of the dish for a frame.
+        for (const c of p.cells) {
+          c.vx = 0;
+          c.vy = 0;
+        }
+      }
+    }
+  }
+
+  /**
+   * Replace a remote player's cells with what their client just told us.
+   *
+   * `px`/`py` keep their previous values so the renderer interpolates towards
+   * the new position instead of teleporting — a packet is a destination, not a
+   * jump. Cells are matched by id so a blob keeps its wobble across updates.
+   */
+  writeCells(
+    id: number,
+    wire: readonly { id: number; x: number; y: number; mass: number }[],
+  ): void {
+    const p = this.players[id];
+    if (!p) return;
+    const existing = new Map(p.cells.map((c) => [c.id, c]));
+    const next: Cell[] = [];
+    for (const w of wire) {
+      const had = existing.get(w.id);
+      if (had) {
+        had.tx = w.x;
+        had.ty = w.y;
+        // A jump this far is a respawn or a split lunge, not movement. Easing
+        // towards it would slide a blob across the dish over half a second.
+        if (Math.hypot(w.x - had.x, w.y - had.y) > TELEPORT_DIST) {
+          had.x = w.x;
+          had.y = w.y;
+          had.px = w.x;
+          had.py = w.y;
+        }
+        this.setMass(had, w.mass);
+        next.push(had);
+      } else {
+        const c = this.makeCellDetached(p, w.id, w.x, w.y, w.mass);
+        next.push(c);
+      }
+    }
+    p.cells = next;
+    if (next.length) {
+      if (!p.alive) p.diedAt = -1;
+      p.alive = true;
+      const m = this.massOf(p);
+      if (m > p.peak) p.peak = m;
+    } else if (p.alive) {
+      p.alive = false;
+      p.diedAt = this.time;
+    }
+  }
+
+  /** A cell that already has an id, because the client that owns it chose one. */
+  private makeCellDetached(p: Player, id: number, x: number, y: number, mass: number): Cell {
+    const c: Cell = {
+      id,
+      owner: p.id,
+      x,
+      y,
+      px: x,
+      py: y,
+      tx: x,
+      ty: y,
+      vx: 0,
+      vy: 0,
+      mass,
+      r: radiusOf(mass),
+      mergeAt: 0,
+      bornAt: this.time,
+    };
+    p.cells.push(c);
+    return c;
+  }
+
+  /** Somebody else's client says it ate these cells of ours. Sender authority:
+   *  the eater decides, because only one of the two can be right and the eater
+   *  is the one whose screen the bite happened on. */
+  killCells(id: number, cellIds: readonly number[]): void {
+    const p = this.players[id];
+    if (!p || !p.cells.length) return;
+    const gone = new Set(cellIds);
+    const before = p.cells.length;
+    const mass = this.massOf(p);
+    p.cells = p.cells.filter((c) => !gone.has(c.id));
+    if (p.cells.length === before) return;
+    if (p.cells.length === 0 && p.alive) {
+      p.alive = false;
+      p.diedAt = this.time;
+      this.events.push({ type: "death", id: p.id, name: p.name, mass });
+    }
+  }
+
+  /** Remove a virus somebody else popped, so the dish agrees about the board. */
+  removeVirus(virusId: number): void {
+    const i = this.viruses.findIndex((v) => v.id === virusId);
+    if (i >= 0) this.viruses.splice(i, 1);
+  }
+
+  /** Add a virus the host spawned, with the host's id so pops can name it. */
+  addVirusAt(id: number, x: number, y: number): void {
+    if (this.viruses.some((v) => v.id === id)) return;
+    this.viruses.push({
+      id,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      mass: VIRUS_MASS,
+      fed: 0,
+      feedAngle: 0,
+      spin: this.rng.range(0, Math.PI * 2),
+    });
+  }
+
+  /**
+   * Stop inventing viruses locally.
+   *
+   * On a client, a virus that grows back after a pop would be a virus nobody
+   * else can see. The host restocks and says so.
+   */
+  virusesFromWire = false;
+
   // -------------------------------------------------------------------------
   // The player's handle on the world
   // -------------------------------------------------------------------------
@@ -197,7 +401,7 @@ export class BlobSim {
    */
   requestSplit(id: number): void {
     const p = this.players[id];
-    if (!p || !p.alive) return;
+    if (!p || !p.alive || p.remote) return;
     const candidates = [...p.cells].sort((a, b) => b.mass - a.mass);
     for (const c of candidates) {
       if (p.cells.length >= MAX_CELLS) break;
@@ -210,7 +414,7 @@ export class BlobSim {
   /** Spit a pellet from every cell that can afford one. */
   requestEject(id: number): void {
     const p = this.players[id];
-    if (!p || !p.alive) return;
+    if (!p || !p.alive || p.remote) return;
     for (const c of p.cells) {
       if (c.mass < EJECT_COST + MIN_SPLIT_MASS * 0.5) continue;
       const a = this.aimAngle(p, c);
@@ -301,7 +505,7 @@ export class BlobSim {
     // 1. Bots decide. They think about seven times a second; running a brain at
     //    60 Hz costs thirty times as much and looks identical.
     for (const p of this.players) {
-      if (!p.isBot || !p.alive || !p.brain) continue;
+      if (!p.isBot || !p.alive || !p.brain || p.remote) continue;
       if (this.time >= p.brain.nextThink) {
         p.brain.nextThink = this.time + 0.1 + this.rng.next() * 0.06;
         think(this, p);
@@ -354,6 +558,22 @@ export class BlobSim {
   private moveCells(dt: number): void {
     const damp = Math.exp(-BOOST_DAMP * dt);
     for (const p of this.players) {
+      /* A remote blob's motion arrives in packets, twelve a second against
+         sixty frames. Snapping to each one steps it across the dish; easing
+         towards it turns the same data into smooth movement, at the cost of
+         being an interpolation behind. That is the right trade — a friend who
+         is 80 ms in the past is invisible, a friend who teleports is not. */
+      if (p.remote) {
+        const k = 1 - Math.exp(-14 * dt);
+        for (const c of p.cells) {
+          c.px = c.x;
+          c.py = c.y;
+          if (c.tx === undefined || c.ty === undefined) continue;
+          c.x += (c.tx - c.x) * k;
+          c.y += (c.ty - c.y) * k;
+        }
+        continue;
+      }
       for (const c of p.cells) {
         c.px = c.x;
         c.py = c.y;
@@ -439,6 +659,7 @@ export class BlobSim {
     const near = this.scratchA as Food[];
     const eaten = new Set<Food>();
     for (const c of this.allCells) {
+      if (!this.owns(c.owner)) continue;
       this.foodGrid.query(c.x, c.y, c.r, near);
       for (let i = 0; i < near.length; i++) {
         const f = near[i];
@@ -461,6 +682,7 @@ export class BlobSim {
     const near = this.scratchA as Pellet[];
     const eaten = new Set<Pellet>();
     for (const c of this.allCells) {
+      if (!this.owns(c.owner)) continue;
       this.pelletGrid.query(c.x, c.y, c.r, near);
       for (let i = 0; i < near.length; i++) {
         const p = near[i];
@@ -494,6 +716,12 @@ export class BlobSim {
     const near = this.scratchA as Cell[];
     for (const a of order) {
       if (dead.has(a)) continue;
+      /* The eater must be ours. Both sides of a bite compute the same result
+         from slightly different positions, so if both applied it the two
+         clients would disagree about who survived — and a player watching
+         themselves die on someone else's screen only is the worst bug this
+         game could have. The eater's client decides and says so. */
+      if (!this.owns(a.owner)) continue;
       this.cellGrid.query(a.x, a.y, a.r, near);
       for (let i = 0; i < near.length; i++) {
         const b = near[i];
@@ -513,6 +741,8 @@ export class BlobSim {
           mass: b.mass,
           hue: victim ? victim.hue : 0,
           by: a.owner,
+          victim: b.owner,
+          cell: b.id,
         });
       }
     }
@@ -598,8 +828,14 @@ export class BlobSim {
           // what makes feeding a virus into a crowd a weapon rather than litter.
           const dxs = Math.cos(v.feedAngle);
           const dys = Math.sin(v.feedAngle);
+          const shotId = this.nextId++;
+          this.spawnedViruses.push([
+            shotId,
+            Math.round(v.x + dxs * (vr + 6)),
+            Math.round(v.y + dys * (vr + 6)),
+          ]);
           this.viruses.push({
-            id: this.nextId++,
+            id: shotId,
             x: v.x + dxs * (vr + 6),
             y: v.y + dys * (vr + 6),
             vx: dxs * VIRUS_SHOT_SPEED,
@@ -622,6 +858,7 @@ export class BlobSim {
       const vr = radiusOf(v.mass);
       for (const c of this.allCells) {
         if (popped.has(v)) break;
+        if (!this.owns(c.owner)) continue;
         if (c.mass < v.mass * EAT_RATIO) continue;
         const dx = v.x - c.x;
         const dy = v.y - c.y;
@@ -634,7 +871,11 @@ export class BlobSim {
     if (popped.size) {
       this.viruses = this.viruses.filter((v) => !popped.has(v));
       // The dish keeps its virus count: one bursts here, one grows over there.
-      while (this.viruses.length < VIRUS_TARGET) this.addVirus();
+      // Unless somebody else is keeping the board — then a virus we invented
+      // would be one only we can see.
+      if (!this.virusesFromWire) {
+        while (this.viruses.length < VIRUS_TARGET) this.addVirus();
+      }
     }
   }
 
@@ -650,7 +891,13 @@ export class BlobSim {
     const room = MAX_CELLS - p.cells.length;
     this.setMass(c, c.mass + v.mass * 0.5);
     const pieces = Math.min(room, Math.floor(c.mass / MIN_SPLIT_MASS) - 1, 9);
-    if (pieces <= 0) return;
+    if (pieces <= 0) {
+      // At the cell cap you simply swallow it — but it is still gone, and every
+      // other client has to hear about that or they keep rendering a virus that
+      // is not there.
+      this.events.push({ type: "pop", x: c.x, y: c.y, by: p.id, pieces: 1, virus: v.id });
+      return;
+    }
 
     const share = c.mass / (pieces + 1);
     const base = this.rng.range(0, Math.PI * 2);
@@ -664,7 +911,7 @@ export class BlobSim {
     }
     this.setMass(c, share);
     c.mergeAt = this.time + mergeDelay(share);
-    this.events.push({ type: "pop", x: c.x, y: c.y, by: p.id, pieces: pieces + 1 });
+    this.events.push({ type: "pop", x: c.x, y: c.y, by: p.id, pieces: pieces + 1, virus: v.id });
   }
 
   // -------------------------------------------------------------------------
@@ -673,6 +920,7 @@ export class BlobSim {
 
   private mergeAndSeparate(): void {
     for (const p of this.players) {
+      if (p.remote) continue;
       const cells = p.cells;
       if (cells.length < 2) continue;
       const merged = new Set<Cell>();
@@ -747,6 +995,7 @@ export class BlobSim {
 
   private decay(dt: number): void {
     for (const p of this.players) {
+      if (p.remote) continue;
       for (const c of p.cells) {
         if (c.mass <= DECAY_FLOOR) continue;
         const next = Math.max(DECAY_FLOOR, c.mass - c.mass * DECAY_RATE * dt);
@@ -766,7 +1015,7 @@ export class BlobSim {
 
   private respawnBots(): void {
     for (const p of this.players) {
-      if (p.alive || !p.isBot) continue;
+      if (p.alive || !p.isBot || p.remote) continue;
       if (this.time - p.diedAt < BOT_RESPAWN) continue;
       this.spawn(p);
     }
@@ -845,8 +1094,10 @@ export class BlobSim {
 
   private addVirus(): void {
     const spot = this.safeSpot(radiusOf(VIRUS_MASS) * 3);
+    const id = this.nextId++;
+    this.spawnedViruses.push([id, Math.round(spot.x), Math.round(spot.y)]);
     this.viruses.push({
-      id: this.nextId++,
+      id,
       x: spot.x,
       y: spot.y,
       vx: 0,
@@ -856,6 +1107,19 @@ export class BlobSim {
       feedAngle: 0,
       spin: this.rng.range(0, Math.PI * 2),
     });
+  }
+
+  /**
+   * Viruses created since the last call, for the host to broadcast.
+   *
+   * Drained rather than read: every spawn must go out exactly once, and a list
+   * that is only ever appended to would resend the whole match every packet.
+   */
+  takeSpawnedViruses(): [number, number, number][] {
+    if (!this.spawnedViruses.length) return [];
+    const out = this.spawnedViruses;
+    this.spawnedViruses = [];
+    return out;
   }
 
   /** Put a player back in the dish somewhere that is not immediately fatal. */

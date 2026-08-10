@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BlobEngine, MODES, SKILLS, type BlobStatus } from "@/blob/engine";
 import type { ModeId, SkillId } from "@/blob/config";
+import { generateRoomCode, normalizeRoomCode } from "@/blob/net/session";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 const NAME_KEY = "blob:name";
@@ -82,6 +83,11 @@ export default function Blob() {
      card over the frame, no HUD, just the world the way it plays. */
   const shotMode =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).has("shot");
+  /* ?probe — the check script drives the game itself and needs to read where
+     the blob ended up. Unlike ?shot it does not hand the controls to a bot,
+     because what it is checking *is* the controls. */
+  const probeMode =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("probe");
 
   // A phone should see its buttons before it has been touched, and a laptop
   // with a touchscreen should get them the moment a finger lands (the engine
@@ -114,10 +120,14 @@ export default function Blob() {
     window.addEventListener("orientationchange", onResize);
     // Hand the engine to the capture script so world-card art can be a real
     // frame from the running game instead of a drawing of one.
-    if (shotMode) {
+    if (shotMode || probeMode) {
       (window as unknown as Record<string, unknown>).__blob = engine;
-      engine.play();
+      if (shotMode) engine.play();
     }
+    // ?room=CODE is an invite: land straight in the room rather than making
+    // somebody who was sent a link type the code that is already in the link.
+    const invited = new URLSearchParams(window.location.search).get("room");
+    if (invited && !shotMode) void engine.joinRoom(invited);
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
@@ -173,6 +183,55 @@ export default function Blob() {
   const play = useCallback(() => engineRef.current?.play(), []);
   const quit = useCallback(() => engineRef.current?.quit(), []);
 
+  /**
+   * Keep `?room=` in step with the room, so the address bar *is* the invite.
+   *
+   * Lifted straight from Vibe Kart, and for the same reason: the thing people
+   * actually do is send a friend a link, and any flow where they have to read a
+   * code out and have the friend type it is a flow with a step in it that
+   * fails.
+   */
+  const syncRoomUrl = useCallback((room: string | null) => {
+    const url = new URL(window.location.href);
+    if (room) url.searchParams.set("room", room);
+    else url.searchParams.delete("room");
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  const joinRoom = useCallback(
+    async (code: string | null) => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      const ok = await engine.joinRoom(code);
+      syncRoomUrl(ok ? normalizeRoomCode(code || "") : null);
+    },
+    [syncRoomUrl],
+  );
+
+  const [joinCode, setJoinCode] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const host = useCallback(() => void joinRoom(generateRoomCode()), [joinRoom]);
+  const leave = useCallback(() => {
+    engineRef.current?.leaveRoom();
+    engineRef.current?.setMode(mode);
+    syncRoomUrl(null);
+  }, [mode, syncRoomUrl]);
+
+  const copyInvite = useCallback(() => {
+    const url = new URL(window.location.href);
+    void navigator.clipboard?.writeText(url.toString()).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+      },
+      () => {
+        // Clipboard is permission-gated and can simply say no. The code is on
+        // screen either way, which is the fallback.
+      },
+    );
+  }, []);
+
   // Enter from the title screen starts a run, so a keyboard player never has to
   // reach for the mouse. Space is not bound here — it is the split key, and
   // binding it to "play" too means your first act every round is a split.
@@ -191,7 +250,8 @@ export default function Blob() {
 
   const phase = status?.phase ?? "attract";
   const menu = !shotMode && phase !== "playing";
-  const timed = MODES[mode].duration > 0;
+  const timed = MODES[mode].duration > 0 && !status?.room;
+  const inRoom = status?.netState === "joining" || status?.netState === "online";
 
   return (
     <div className="fixed inset-0 select-none overflow-hidden bg-[#060b14]">
@@ -269,8 +329,15 @@ export default function Blob() {
             </div>
           </div>
 
-          {/* Kill feed, under the way home. */}
+          {/* Kill feed, under the way home — with the room above it, because
+              "am I actually playing with anybody" is a question you want
+              answered without leaving the match to check. */}
           <div className="pointer-events-none absolute left-3 top-16 z-20 max-w-[46vw] space-y-1 sm:left-5 sm:top-20">
+            {status.room && (
+              <div className="truncate rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200/90 backdrop-blur">
+                {status.room} · {status.players}
+              </div>
+            )}
             {status.feed.map((f) => (
               <div
                 key={f.id}
@@ -390,12 +457,92 @@ export default function Blob() {
             className="mt-7 w-56 rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-center font-mono text-sm text-white placeholder:text-white/25 focus:border-emerald-300/60 focus:outline-none"
           />
 
+          {/* ── the room ─────────────────────────────────────────────── */}
+          <div className="mt-6 w-full max-w-sm">
+            {inRoom ? (
+              <div className="rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.07] p-3.5 text-center">
+                <div className="font-mono text-[9px] uppercase tracking-[0.35em] text-emerald-300/70">
+                  {status?.netState === "joining" ? "joining…" : "room"}
+                </div>
+                <div className="mt-1 font-mono text-2xl font-black tracking-[0.15em] text-white">
+                  {status?.room}
+                </div>
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
+                  {status?.players === 1
+                    ? "just you so far — send the link"
+                    : `${status?.players} in the dish`}
+                  {status?.host && (status?.players ?? 1) > 1 ? " · you host the bots" : ""}
+                </div>
+                <div className="mt-3 flex justify-center gap-2">
+                  <button
+                    onClick={copyInvite}
+                    className="rounded-full bg-emerald-300 px-5 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-black transition active:scale-95"
+                  >
+                    {copied ? "copied" : "copy invite"}
+                  </button>
+                  <button
+                    onClick={leave}
+                    className="rounded-full border border-white/20 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-white/60 transition hover:text-white"
+                  >
+                    leave
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                {/* Stacked on a phone: three controls on one 390px row left
+                    the code field about eight characters wide, which is not
+                    enough to see the code you are typing into it. */}
+                <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                  <button
+                    onClick={host}
+                    className="flex-1 rounded-full border border-emerald-300/40 bg-emerald-300/10 px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200 transition active:scale-95"
+                  >
+                    play with friends
+                  </button>
+                  <form
+                    className="flex flex-1 items-center gap-1.5"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (joinCode.trim()) void joinRoom(joinCode);
+                    }}
+                  >
+                    <input
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value)}
+                      placeholder="room code"
+                      aria-label="room code"
+                      className="w-full min-w-0 rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-white placeholder:text-white/25 focus:border-emerald-300/60 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!joinCode.trim()}
+                      className="rounded-full border border-white/20 px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-[0.15em] text-white/60 transition hover:text-white disabled:opacity-30"
+                    >
+                      join
+                    </button>
+                  </form>
+                </div>
+                <p className="text-center text-[11px] leading-relaxed text-white/30">
+                  {status?.netState === "failed"
+                    ? "Could not reach that room — playing solo instead."
+                    : "Get a code, text it to a friend, and share one dish."}
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="mt-6 flex flex-col items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-full border border-white/12 p-1">
+            <div
+              className={`flex items-center gap-1.5 rounded-full border border-white/12 p-1 ${
+                inRoom ? "opacity-40" : ""
+              }`}
+            >
               {(Object.keys(MODES) as ModeId[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => pickMode(m)}
+                  disabled={inRoom}
                   className={`rounded-full px-5 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] transition ${
                     mode === m
                       ? "bg-emerald-300/20 text-emerald-200 shadow-[0_0_18px_rgba(94,240,168,0.25)]"
@@ -407,16 +554,23 @@ export default function Blob() {
               ))}
             </div>
             <p className="max-w-xs text-center text-[11px] leading-relaxed text-white/30">
-              {MODES[mode].blurb}
+              {inRoom
+                ? "A room is Free for All on Standard — everyone has to be playing the same dish."
+                : MODES[mode].blurb}
             </p>
           </div>
 
           <div className="mt-5 flex flex-col items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-full border border-white/12 p-1">
+            <div
+              className={`flex items-center gap-1.5 rounded-full border border-white/12 p-1 ${
+                inRoom ? "opacity-40" : ""
+              }`}
+            >
               {(Object.keys(SKILLS) as SkillId[]).map((s) => (
                 <button
                   key={s}
                   onClick={() => pickSkill(s)}
+                  disabled={inRoom}
                   className={`rounded-full px-5 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] transition ${
                     skill === s
                       ? "bg-sky-300/20 text-sky-200 shadow-[0_0_18px_rgba(125,211,252,0.25)]"
@@ -427,9 +581,11 @@ export default function Blob() {
                 </button>
               ))}
             </div>
-            <p className="max-w-xs text-center text-[11px] leading-relaxed text-white/30">
-              {SKILLS[skill].blurb}
-            </p>
+            {!inRoom && (
+              <p className="max-w-xs text-center text-[11px] leading-relaxed text-white/30">
+                {SKILLS[skill].blurb}
+              </p>
+            )}
           </div>
 
           <button
@@ -448,9 +604,9 @@ export default function Blob() {
           <div className="mt-8 grid max-w-lg grid-cols-1 gap-1.5 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-white/35 sm:grid-cols-3">
             {touch ? (
               <>
-                <span>drag anywhere — move</span>
-                <span>split — lunge &amp; eat</span>
-                <span>feed — spit mass</span>
+                <span>drag — set a course</span>
+                <span>tap — stop</span>
+                <span>split / feed — buttons</span>
               </>
             ) : (
               <>

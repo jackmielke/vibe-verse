@@ -69,6 +69,9 @@ export interface DrawOptions {
   dt: number;
   /** Joystick to draw, in css pixels, or null on a pointer device. */
   stick: { ox: number; oy: number; x: number; y: number; active: boolean } | null;
+  /** The course a phone player is coasting on, drawn when no finger is down so
+   *  the heading you set is still visible after you let go. */
+  heading: { dx: number; dy: number; power: number } | null;
   /** Dimmed and desaturated while a menu is over the top. */
   dimmed: boolean;
 }
@@ -277,6 +280,22 @@ export class Renderer {
     this.drawParticles(ctx, toX, toY, scale, dt);
     this.drawVignette(ctx, o.dimmed);
     this.drawMinimap(sim, ctx, o.youId);
+    if (o.heading && o.heading.power > 0 && !(o.stick && o.stick.active)) {
+      // Where the arrow goes is derivable here and nowhere else — it needs the
+      // camera, which lives in this file. The engine would have to be handed a
+      // scale it has no other use for.
+      const you = sim.players[o.youId];
+      let ar = 30;
+      let ax = this.w / 2;
+      let ay = this.h / 2;
+      if (you && you.cells.length) {
+        const c = sim.centroid(you, o.alpha);
+        ax = toX(c.x);
+        ay = toY(c.y);
+        for (const cell of you.cells) ar = Math.max(ar, cell.r * scale);
+      }
+      this.drawHeading(ctx, o.heading, { x: ax, y: ay, r: ar });
+    }
     if (o.stick) this.drawStick(ctx, o.stick);
 
     // Membranes for cells that no longer exist would otherwise accumulate for
@@ -762,6 +781,47 @@ export class Renderer {
       ctx.shadowBlur = 8;
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  /**
+   * The course arrow: a chevron sitting just off the blob's nose.
+   *
+   * On a phone the heading outlives the finger that set it, and a control you
+   * cannot see the state of is a control you do not trust. Two strokes are
+   * enough — it reads as "this way, this fast" and disappears the moment a
+   * thumb comes back down and the stick takes over.
+   */
+  private drawHeading(
+    ctx: CanvasRenderingContext2D,
+    h: { dx: number; dy: number; power: number },
+    at: { x: number; y: number; r: number },
+  ): void {
+    const gap = at.r + 20;
+    const x = at.x + h.dx * gap;
+    const y = at.y + h.dy * gap;
+    const a = Math.atan2(h.dy, h.dx);
+    const size = 9 + h.power * 7;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    ctx.globalAlpha = 0.35 + h.power * 0.45;
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.6, -size * 0.7);
+    ctx.lineTo(size * 0.55, 0);
+    ctx.lineTo(-size * 0.6, size * 0.7);
+    ctx.stroke();
+    // A second, fainter chevron behind it — motion, without an animation.
+    ctx.globalAlpha *= 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-size * 1.25, -size * 0.55);
+    ctx.lineTo(-size * 0.15, 0);
+    ctx.lineTo(-size * 1.25, size * 0.55);
+    ctx.stroke();
     ctx.restore();
   }
 

@@ -27,6 +27,15 @@ export interface Cell {
   mergeAt: number;
   /** Sim time it was born, which the renderer uses to pop it into existence. */
   bornAt: number;
+  /**
+   * Where the wire last said a remote cell is heading.
+   *
+   * Only ever set on cells this client does not own. Packets arrive at 12 Hz
+   * and frames at 60, so writing `x` directly would step a friend's blob across
+   * the dish in visible jumps; the sim eases towards this instead.
+   */
+  tx?: number;
+  ty?: number;
 }
 
 /** A pellet: the food you spend the first thirty seconds hoovering up. */
@@ -95,6 +104,21 @@ export interface Player {
   /** Base hue. Everything about how the blob looks derives from this one number. */
   hue: number;
   isBot: boolean;
+  /**
+   * Somebody else's client owns this player, so this one must not simulate it.
+   *
+   * Set on friends in a room, and on *every bot* when you are not the host —
+   * see `src/blob/net/README` in the net folder. A remote player's cells are
+   * written straight from the wire: they do not move, eat, split, merge or rot
+   * here, because doing any of that locally would fight the packets and produce
+   * two clients that quietly disagree about who is bigger.
+   *
+   * They can still be eaten. That is the one thing that happens *to* them
+   * locally, and only when the cell doing the eating is one this client owns.
+   */
+  remote?: boolean;
+  /** Peer that owns a remote player, for routing kill messages back to them. */
+  peerId?: string;
   cells: Cell[];
   /** World-space point this player is steering towards. */
   aimX: number;
@@ -110,12 +134,24 @@ export interface Player {
 }
 
 export type SimEvent =
-  /** Somebody swallowed a pellet or a blob. `mass` is what it was worth. */
-  | { type: "eat"; x: number; y: number; mass: number; hue: number; by: number }
+  /** Somebody swallowed a pellet or a blob. `mass` is what it was worth.
+   *  `victim`/`cell` are set only when the meal was another player's cell, and
+   *  they are what the multiplayer layer puts on the wire. */
+  | {
+      type: "eat";
+      x: number;
+      y: number;
+      mass: number;
+      hue: number;
+      by: number;
+      victim?: number;
+      cell?: number;
+    }
   | { type: "split"; x: number; y: number; by: number }
   | { type: "eject"; x: number; y: number; by: number }
-  /** A cell hit a virus and came apart. */
-  | { type: "pop"; x: number; y: number; by: number; pieces: number }
+  /** A cell hit a virus and came apart. `virus` is the one that burst, which
+   *  the multiplayer layer broadcasts so every client drops the same one. */
+  | { type: "pop"; x: number; y: number; by: number; pieces: number; virus: number }
   /** One player finished another. */
   | { type: "kill"; killer: string; victim: string; hue: number; victimMass: number }
   /** A player ran out of cells. */

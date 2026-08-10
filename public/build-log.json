@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-08T19:51:52.027Z",
+  "generated_at": "2026-08-10T23:07:16.821Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "03ecbfda",
+      "date": "2026-08-08",
+      "subject": "Re-stamp after the merge",
+      "lede": "The Vibe Times and the city-family worlds picked up commits while BLOB was being built, so their dates were a day stale the moment the branches came together.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "0833372f",
       "date": "2026-08-08",
@@ -1040,14 +1048,6 @@
       "date": "2026-08-02",
       "subject": "Let go of the trigger between episodes",
       "lede": "A sequential playthrough lost The Devil in the Dark having fired nothing at all — and won it every time it was run on its own. The difference was the previous episode: `firePhasers` is *held* state rather than an edge, and it survives an episode boundary, so a captain still holding the button when one episode ends opens fire the instant the next one acquires a target. Merely untidy in five of these episodes. Fatal in",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "2eed69db",
-      "date": "2026-08-02",
-      "subject": "The bridge talks to itself on a quiet watch",
-      "lede": "Half of TOS is two people needling each other between the things that explode. A crew that only speaks when a shield is failing is a set of instruments with names, so when the episode is running, the ship is off alert, nothing hostile is inside 9,000 km and nobody has said anything that mattered for thirty-two seconds, two of them talk to each other about nothing much.",
       "places": [],
       "files": 3
     }

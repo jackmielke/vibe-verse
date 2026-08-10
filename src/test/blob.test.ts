@@ -24,6 +24,7 @@ import {
 } from "@/blob/config";
 import { BlobSim } from "@/blob/sim";
 import { think } from "@/blob/ai";
+import { STOPPED, aimForCourse, steerCourse } from "@/blob/course";
 import { Grid } from "@/blob/spatial";
 import { Rng } from "@/blob/rng";
 import { hueFor, pickNames } from "@/blob/names";
@@ -516,6 +517,54 @@ describe("the bots", () => {
     think(sim, bot);
     expect(bot.brain!.tx).toBeGreaterThan(40);
     expect(bot.brain!.ty).toBeGreaterThan(40);
+  });
+});
+
+describe("the phone control", () => {
+  it("turns a drag into a heading and a throttle", () => {
+    const c = steerCourse(STOPPED, 62, 0);
+    expect(c.dx).toBeCloseTo(1, 6);
+    expect(c.dy).toBeCloseTo(0, 6);
+    expect(c.power).toBeCloseTo(1, 6);
+    expect(steerCourse(STOPPED, 31, 0).power).toBeCloseTo(0.5, 6);
+    // Past full deflection it saturates rather than overshooting.
+    expect(steerCourse(STOPPED, 400, 0).power).toBe(1);
+  });
+
+  it("ignores a thumb that has not really moved", () => {
+    const held = steerCourse(STOPPED, 62, 0);
+    // A digitiser reporting three pixels of jitter must not spin the blob.
+    expect(steerCourse(held, 2, -1)).toBe(held);
+  });
+
+  it("keeps aiming ahead of the blob, so a course persists", () => {
+    const course = steerCourse(STOPPED, 0, 62);
+    const first = aimForCourse(course, 1000, 1000);
+    // The blob travels towards it...
+    const second = aimForCourse(course, 1000, 1200);
+    // ...and the target has moved on by exactly as much, so it never arrives.
+    expect(second.y - first.y).toBeCloseTo(200, 6);
+    expect(first.y).toBeGreaterThan(1000);
+  });
+
+  it("stops dead when the course is stopped", () => {
+    expect(aimForCourse(STOPPED, 500, 700)).toEqual({ x: 500, y: 700 });
+  });
+
+  it("actually moves a cell across the dish, and keeps moving it", () => {
+    const sim = soloSim();
+    const me = sim.you.cells[0];
+    const startX = me.x;
+    const course = steerCourse(STOPPED, 62, 0);
+    // Drive for two seconds the way the engine does: re-aim every tick from
+    // wherever the blob has got to.
+    for (let i = 0; i < 120; i++) {
+      const c = sim.centroid(sim.you);
+      const aim = aimForCourse(course, c.x, c.y);
+      sim.setAim(0, aim.x, aim.y);
+      sim.step(TICK, think);
+    }
+    expect(sim.you.cells[0].x - startX).toBeGreaterThan(400);
   });
 });
 
