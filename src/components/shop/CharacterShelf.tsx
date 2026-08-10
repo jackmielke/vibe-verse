@@ -48,7 +48,27 @@ export default function CharacterShelf() {
       await equip({ character: id });
       toast.success(`${findCharacter(id).label} is yours — and you are wearing it.`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "That purchase did not go through.");
+      const msg = e instanceof Error ? e.message : "";
+      /**
+       * The one failure worth translating.
+       *
+       * Prices live in this repo twice on purpose — once here so the shelf can
+       * print an honest number before you pay, and once in the `vibe-economy`
+       * edge function, which is the copy that actually charges. Adding stock
+       * therefore needs a function deploy as well as a push, and until that
+       * lands the server answers `no such cosmetic: character/bolt`, which
+       * reads to a visitor as "this character is broken" when what it means is
+       * "the till has not been told about it yet".
+       *
+       * Nothing has been charged when this happens — `cosmeticSpec` throws
+       * before any balance is touched — so the honest message is that it is
+       * not on sale yet, and it is safe to try later.
+       */
+      toast.error(
+        /no such cosmetic/i.test(msg)
+          ? `${findCharacter(id).label} is not on sale yet — the shop's till has not been updated. You were not charged.`
+          : msg || "That purchase did not go through.",
+      );
     } finally {
       // Both, either way: a failed buy still wants the true balance back.
       await Promise.all([refreshCoin(), refreshWardrobe()]);
