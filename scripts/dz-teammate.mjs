@@ -116,6 +116,37 @@ const DETOUR_ANGLE = 1.22;
  *  margin so we never wander into the sea. */
 const ISLAND_HALF = 1500 * 0.82;
 
+/**
+ * How far outside the island we are willing to go, given where the leader is.
+ *
+ * The default fence keeps us out of the sea, which is right nearly always and
+ * catastrophically wrong for the one minute that decides the match: the drop
+ * bus starts its run far outside the playable square and hundreds of metres
+ * up. A follower that refuses to leave the island watches the bus fly past.
+ *
+ * So the fence yields to the leader — always far enough out to reach them,
+ * plus a little room to hold a slot beside them, and never tighter than the
+ * island itself. When there is no leader it is exactly the old behaviour.
+ */
+function leaderReach(base) {
+  const lead = peers.get(leaderId);
+  if (!lead || !lead.posed) return base;
+  const need = Math.max(Math.abs(lead.x), Math.abs(lead.z)) + FOLLOW_DIST + SLOT_SIDE;
+  return Math.max(base, need);
+}
+
+/**
+ * Gap past which we stop walking and simply appear beside the squad.
+ *
+ * Set above any distance a real match puts between a follower and its leader
+ * (the island is 3 km corner to corner, and the follow slot is 6 m) so this
+ * only ever fires for the two cases that are genuinely unwalkable: the drop
+ * bus, and a leader who has quick-travelled away. The cooldown keeps it from
+ * becoming a rubber band if someone is hovering right at the threshold.
+ */
+const REJOIN_DIST = 220;
+const REJOIN_COOLDOWN = 6;
+
 /** Dryness: how wet a splash within SPLASH_RADIUS makes us, and how fast we
  *  towel off again while nothing is hitting us. 0% dry = out of the match. */
 const SPLASH_RADIUS = 3.2;
@@ -401,6 +432,8 @@ let announcedOut = false;
 /** Crude pathing state — see STUCK_WINDOW. */
 let anchor = { x: 0, z: 0, t: 0 };
 let detourUntil = -1;
+/** `sim` of the last rejoin, so an unwalkable gap cannot rubber-band us. */
+let lastRejoinAt = -Infinity;
 let detourSign = 1;
 
 /** Rolling chat backlog handed to the reply seam. */
@@ -965,7 +998,40 @@ function tick(dt) {
     return;
   }
 
-  const goal = desiredPoint();
+  // Rejoin. Some gaps cannot be walked, and pretending otherwise is what
+  // "stuck — taking a detour" looks like for six minutes.
+  //
+  // The drop bus starts its run about 2.4 km out. At SPRINT_SPEED that is six
+  // solid minutes of running, by which time the match is decided and the squad
+  // has spent it alone. There is no drop mechanic here — we cannot ride the
+  // bus — so the only honest way to be on the squad's screen when it matters
+  // is to appear beside them, exactly as we already do on the very first pose
+  // we ever see. That placement is legitimate for the same reason it is there:
+  // with no terrain data, a teammate's position is the only ground we know is
+  // standable. This just stops treating it as a one-time event.
+  //
+  // Never while the Downpour is pulling us, though. `goal.urgent` means we are
+  // outside the circle and running for it, and a teammate standing in the rain
+  // is not somewhere to appear — being together is worth less than being dry.
+  let goal = desiredPoint();
+  if (!goal.urgent && sim - lastRejoinAt > REJOIN_COOLDOWN) {
+    const lead = peers.get(leaderId);
+    if (lead && lead.posed && dist2(me.x, me.z, lead.x, lead.z) > REJOIN_DIST) {
+      const gap = dist2(me.x, me.z, lead.x, lead.z);
+      me.x = lead.x - SLOT_SIDE;
+      me.z = lead.z - SLOT_SIDE;
+      me.y = lead.y;
+      me.vx = 0;
+      me.vz = 0;
+      anchor = { x: me.x, z: me.z, t: sim };
+      detourUntil = 0;
+      lastRejoinAt = sim;
+      log.move(`too far to walk (${Math.round(gap)} m) — rejoining ${lead.name}`);
+      // We moved; the slot we were steering for is stale.
+      goal = desiredPoint();
+    }
+  }
+
   let dx = goal.x - me.x;
   let dz = goal.z - me.z;
   let d = Math.hypot(dx, dz);
@@ -1031,9 +1097,18 @@ function tick(dt) {
   me.x += me.vx * dt;
   me.z += me.vz * dt;
 
-  // Stay on the island whatever the steering says.
-  me.x = clamp(me.x, -ISLAND_HALF, ISLAND_HALF);
-  me.z = clamp(me.z, -ISLAND_HALF, ISLAND_HALF);
+  // Stay in the world whatever the steering says — but never let the fence
+  // come between us and the person we are following.
+  //
+  // This clamp used to be unconditional, at 82% of the world half-extent. The
+  // drop bus flies in from well outside it: a leader still on the bus sits at
+  // something like x -2096, y 617, and the bot would sprint to its own edge
+  // and grind against it for the whole flight, several hundred metres short,
+  // logging "stuck — taking a detour" until the match ended. It never arrived,
+  // and from inside the game it simply never showed up.
+  const bound = leaderReach(ISLAND_HALF);
+  me.x = clamp(me.x, -bound, bound);
+  me.z = clamp(me.z, -bound, bound);
 
   // Altitude. We cannot sample the terrain from here, so we adopt the height
   // of whoever we are following — they are standing on ground we can't see,
@@ -1150,6 +1225,34 @@ if (SELFTEST) {
   check("stays on the island", Math.abs(me.x) < ISLAND_HALF && Math.abs(me.z) < ISLAND_HALF);
   check("adopts the teammate's altitude", Math.abs(me.y - jack.y) < 0.5, `y=${q(me.y)}`);
   check("publishes a live movement state", me.state === "ground" || me.state === "sprint", me.state);
+
+  // The drop bus. It flies in from outside the playable square, high up, and
+  // the fence that keeps us out of the sea must not strand us on the island
+  // while our squad is still aboard. Regression: the bot used to pin itself at
+  // ±ISLAND_HALF and grind there for the whole flight, a few hundred metres
+  // short, while the humans wondered where it was.
+  const busX = -2096;
+  const busZ = 1282;
+  for (let i = 0; i < 40 * TICK_HZ; i++) {
+    sim += step;
+    onPose({ i: JACK, x: busX, y: 617, z: busZ, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+    tick(step);
+  }
+  const busGap = dist2(me.x, me.z, busX, busZ);
+  check("follows the squad outside the island", busGap < FOLLOW_DIST + 6, `${busGap.toFixed(1)} m from the bus`);
+  check("climbs to the drop altitude", Math.abs(me.y - 617) < 5, `y=${q(me.y)}`);
+
+  // ...and once they land, the fence is back on and we are not out at sea.
+  for (let i = 0; i < 30 * TICK_HZ; i++) {
+    sim += step;
+    onPose({ i: JACK, x: 120, y: 0, z: -80, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+    tick(step);
+  }
+  check(
+    "comes back inside once the squad lands",
+    Math.abs(me.x) <= ISLAND_HALF && Math.abs(me.z) <= ISLAND_HALF,
+    `${q(me.x)}, ${q(me.z)}`,
+  );
 
   // The downpour: a zone far away should pull it off the follow slot.
   zone = { x: -300, z: -300, r: 60 };
