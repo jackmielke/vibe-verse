@@ -4298,7 +4298,7 @@ function EndCard({
               boxShadow: "0 10px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.7)",
             }}
           >
-            {water ? "Get wet again" : "Drop again"}
+            {water ? "Play again" : "Drop again"}
           </motion.button>
           <a
             href="/"
