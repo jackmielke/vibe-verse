@@ -1,7 +1,63 @@
 {
-  "generated_at": "2026-08-10T06:34:40.513Z",
+  "generated_at": "2026-08-10T07:09:38.661Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "1ece01a5",
+      "date": "2026-08-10",
+      "subject": "Anybody can hand the arcade a game now",
+      "lede": "The portal could always frame somebody else's game; what it could not do was let them ask. Getting in meant knowing Jack and waiting for a migration, and the schema said as much in a comment: \"flip this when the submit form lands.\"",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 15
+    },
+    {
+      "sha": "168ee1ba",
+      "date": "2026-08-10",
+      "subject": "Say \"not on sale yet\" rather than \"no such cosmetic\"",
+      "lede": "Character prices live in this repo twice on purpose: once in `characterShop.ts` so the shelf can print an honest number before you pay, and once in the `vibe-economy` edge function, which is the copy that actually charges. Adding stock therefore needs a function deploy as well as a push — and pushing does not deploy functions here, which I had assumed and checked and had wrong in that order.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "64186e31",
+      "date": "2026-08-10",
+      "subject": "Thirty more characters, and the shop finally sells characters",
+      "lede": "Two things, and the second is the reason the first was worth doing.",
+      "places": [
+        "Vibe Island",
+        "the character roster",
+        "the machinery underneath"
+      ],
+      "files": 38
+    },
+    {
+      "sha": "b0e6602b",
+      "date": "2026-08-10",
+      "subject": "Ask for the morning paper every hour until there is one",
+      "lede": "The presses have not missed a day — issues 3, 4 and 5 came out at 05:32, 13:00 and 06:25 — but the schedule was one shot at 13:00 UTC, and one shot is a design that loses a whole day to a bad minute. A timeout, an OpenRouter blip, a cold start that runs long: nothing retries, and the front door goes on quietly showing yesterday.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "7af6eaef",
+      "date": "2026-08-09",
+      "subject": "An idle teammate stopped insisting it was stuck",
+      "lede": "Fallout from the drift fix, and visible only because the bot sat in an empty lobby for two hours: \"stuck — taking a detour\", every few seconds, all night, with nothing to be stuck on.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "eb1f1244",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "4ec0a9c2",
       "date": "2026-08-10",
@@ -980,66 +1036,6 @@
         "Vibe Island"
       ],
       "files": 6
-    },
-    {
-      "sha": "40b7fe57",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "b7f2a3e0",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "3fbec51c",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "8f099a9e",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "52918ba6",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "e59c57c9",
-      "date": "2026-08-06",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
     }
   ]
 }
