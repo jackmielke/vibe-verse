@@ -41,6 +41,7 @@ import createBots from "./play/bots";
 import createNetSystem from "./net/net";
 import createWetness from "./play/wetness";
 import createGhostsSystem from "./net/ghosts";
+import createCommentarySystem from "./audio/commentary";
 
 export interface BootResult {
   engine: Engine;
@@ -73,6 +74,7 @@ const STAGES = [
   { label: "Charging the storm", factory: createStorm },
   { label: "Counting the drop", factory: createMatch },
   { label: "Deploying rivals", factory: createBots },
+  { label: "Warming up the booth", factory: createCommentarySystem },
   { label: "Grading the image", factory: createPostFx },
 ] as const;
 

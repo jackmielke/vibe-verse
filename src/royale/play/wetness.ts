@@ -1,5 +1,5 @@
 /**
- * SOAKED — wetness.
+ * SPLASH ROYALE — wetness.
  *
  * The mechanic that makes the water mode more than a re-skin of DROP ZERO.
  * Four things live here, and they are all the same idea seen from different

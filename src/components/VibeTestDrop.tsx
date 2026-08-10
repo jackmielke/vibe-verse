@@ -53,7 +53,19 @@ async function call<T>(action: string, address?: string): Promise<T> {
   return data.data as T;
 }
 
-export default function VibeTestDrop({ address }: { address: string | null }) {
+export default function VibeTestDrop({
+  address,
+  onSent,
+}: {
+  address: string | null;
+  /**
+   * A drop landed. The wallet list above is showing balances read before it
+   * happened, so it has to go and look again — otherwise the card says "1,000
+   * $VIBE was sent to this wallet" directly beneath a row still reading the
+   * old number, and the only way to see it arrive is a manual reload.
+   */
+  onSent?: () => void;
+}) {
   const [status, setStatus] = useState<DropStatus | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -81,6 +93,13 @@ export default function VibeTestDrop({ address }: { address: string | null }) {
         description: "A real transaction on Base. It lands in a few seconds.",
       });
       setStatus((s) => (s ? { ...s, claimed: true, txHash: r.txHash } : s));
+      /* Twice, deliberately. Base confirms in about two seconds, but the RPC
+         we read through can still answer from a block that predates the
+         transfer — so ask once immediately for the responsive case and again
+         a few seconds later for the true one. Cheap, and it is the difference
+         between a number that moves on its own and a page you have to reload. */
+      onSent?.();
+      window.setTimeout(() => onSent?.(), 4000);
     } catch (e) {
       toast.error("The drop did not go", {
         description: String((e as Error)?.message ?? e),
@@ -89,7 +108,7 @@ export default function VibeTestDrop({ address }: { address: string | null }) {
     } finally {
       setSending(false);
     }
-  }, [address, load]);
+  }, [address, load, onSent]);
 
   if (!address || !status) return null;
 
@@ -161,15 +180,33 @@ export default function VibeTestDrop({ address }: { address: string | null }) {
           <button
             onClick={() => void send()}
             disabled={sending}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8fb4ff] px-3 py-2.5 font-heading text-[10.5px] font-black uppercase tracking-wider text-black transition-transform enabled:hover:scale-[1.02] disabled:opacity-50"
+            className="relative mt-3 flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#8fb4ff] px-3 py-2.5 font-heading text-[10.5px] font-black uppercase tracking-wider text-black transition-transform enabled:hover:scale-[1.02] disabled:opacity-90"
           >
-            {sending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5" />
+            {/* Pressing this waits on a real transaction. A greyed-out button
+                looks broken for those seconds; a sweep looks like something is
+                happening, which is the truth. */}
+            {sending && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 animate-[vibe-sweep_1.15s_linear_infinite]"
+                style={{
+                  background:
+                    "linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.65) 50%, transparent 80%)",
+                }}
+              />
             )}
-            Send {amount} $VIBE to this wallet
+            <span className="relative flex items-center gap-2">
+              {sending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              {sending
+                ? `Waiting on the vibe… ${amount} $VIBE incoming`
+                : `Send ${amount} $VIBE to this wallet`}
+            </span>
           </button>
+
           {status.dropsToday != null && status.dropsPerDay != null && (
             <p className="mt-1.5 text-center text-[10px] text-muted-foreground/60">
               {status.dropsPerDay - status.dropsToday} of today's{" "}

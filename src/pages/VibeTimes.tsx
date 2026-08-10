@@ -18,7 +18,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { loadPaper, type Dispatch, type Issue } from "@/lib/vibeTimes";
+import { loadPaper, printedAt, type Dispatch, type Issue } from "@/lib/vibeTimes";
 
 /** What each wire item gets called above its headline. */
 const DESKS: Record<string, string> = {
@@ -103,6 +103,7 @@ export default function VibeTimes() {
   const wire = issue.dispatches ?? [];
   const forecast = issue.forecast ?? [];
   const sources = issue.sources ?? [];
+  const printed = printedAt(issue.printed_at);
 
   return (
     // The global nav floats over the top of the page, and it was sitting
@@ -118,7 +119,12 @@ export default function VibeTimes() {
           <p className="mt-1 italic">“{issue.motto}”</p>
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#2a2118] pt-2 text-[10px] uppercase tracking-widest sm:text-xs">
             <span>Issue №{issue.issue}</span>
-            <span className="text-center">{longDate(issue.date)}</span>
+            <span className="text-center">
+              {longDate(issue.date)}
+              {/* The hour it was printed, on the reader's clock. Old issues
+                  were written by hand and do not know theirs. */}
+              {printed && <span className="whitespace-nowrap"> · printed {printed}</span>}
+            </span>
             <span>price: one good vibe</span>
           </div>
         </header>

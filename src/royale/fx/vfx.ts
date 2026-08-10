@@ -94,6 +94,9 @@
  *   listens "dz:hit"    the player took damage — red vignette + a shove
  *   listens "dz:depth"  a THREE.DepthTexture from postfx; enables soft particles
  *   emits   "dz:shake"  so anything else that wants trauma can hear it too
+ *   emits   "dz:soakburst" { x, y, z, scale } — SPLASH ROYALE only: an elimination
+ *           just came apart into water here. The audio system's cue to play
+ *           the elimination sound; nothing visual depends on anyone hearing it.
  *
  * NO EXTERNAL ASSETS: every texture in this file is synthesised at boot,
  * either as a DataTexture from a per-pixel callback or on a 2D canvas.
@@ -115,10 +118,10 @@ import { RARITY_COLOR } from "../types";
 import { WATER } from "../mode/water";
 
 // ---------------------------------------------------------------------------
-// SOAKED — the extended service
+// SPLASH ROYALE — the extended service
 //
 // `VfxService` in types.ts is Drop Zero's contract and stays exactly that.
-// Water adds seven calls on top of it, published on the SAME object, so a
+// Water adds eight calls on top of it, published on the SAME object, so a
 // water system reads them off `ctx.services.vfx` with a type-only import and
 // no runtime coupling at all:
 //
@@ -187,6 +190,19 @@ export interface GlueStrandHandle {
   readonly alive: boolean;
 }
 
+export interface SoakBurstOpts {
+  /** Water colour. Defaults to `WATER.balloon.splashColor`. */
+  color?: number;
+  /** Suppress the audio cue and the `dz:soakburst` event. */
+  silent?: boolean;
+  /**
+   * Suppress the wet patch AND the `wetness.splash()` handover. Pass it for a
+   * burst that did not happen on the ground — a mid-air elimination, or a
+   * replay/spectator flourish that must not edit the live map.
+   */
+  noPuddle?: boolean;
+}
+
 export interface DryingShimmerOpts {
   /** Plume radius at the base, metres. Default 1.1. */
   radius?: number;
@@ -196,7 +212,7 @@ export interface DryingShimmerOpts {
   strength?: number;
 }
 
-/** Everything SOAKED adds to `VfxService`. */
+/** Everything SPLASH ROYALE adds to `VfxService`. */
 export interface WaterVfxService {
   /** Water hitting something. Replaces `impact()` wholesale in water mode. */
   splash(point: THREE.Vector3, normal: THREE.Vector3, opts?: SplashOpts): void;
@@ -204,6 +220,17 @@ export interface WaterVfxService {
   waterStream(from: THREE.Vector3, to: THREE.Vector3, opts?: StreamOpts): void;
   /** The set piece. Replaces `explosion()` in water mode. */
   balloonBurst(point: THREE.Vector3, opts?: BalloonBurstOpts): void;
+  /**
+   * THE ELIMINATION. Somebody ran out of dry and comes apart into water.
+   *
+   * Call it once, at the moment the elimination is filed, with the victim's
+   * body position (roughly capsule centre — about a metre off the deck).
+   * `scale` is 1 for a person; push it up for something bigger. It leaves a
+   * puddle behind and hands that water to `wetness`, so the caller must NOT
+   * also call `wetness.splash()` for the same death or the spot gets watered
+   * twice. Water mode only — in classic it is a no-op.
+   */
+  soakBurst(point: THREE.Vector3, scale?: number, opts?: SoakBurstOpts): void;
   /** Acquire a strand from the pool. Never returns null; may steal the oldest. */
   glueStrand(a: THREE.Vector3, b: THREE.Vector3): GlueStrandHandle;
   /** Floating soak number. `faceful` and `poncho` mirror headshot/shield. */
@@ -275,7 +302,7 @@ const BUDGETS: Record<QualityTier, VfxBudget> = {
 /** Damage numbers wider than this are clamped; 9999 is well past any weapon. */
 const MAX_DIGITS = 4;
 /**
- * Glyph slots reserved per number. SOAKED appends a droplet glyph after the
+ * Glyph slots reserved per number. SPLASH ROYALE appends a droplet glyph after the
  * digits ("18💧"), so the pool has to be one wider than the digit count. Drop
  * Zero never spends the extra slot; it costs eight floats of buffer per number.
  */
@@ -327,7 +354,7 @@ const RAMP = {
   /** Steam / light water vapour — near-white, high alpha, quick out. */
   steam: 23,
 
-  // --- SOAKED ---------------------------------------------------------------
+  // --- SPLASH ROYALE ---------------------------------------------------------------
   // Water reads through TRANSPARENCY and SPARKLE, never as blue paint, so
   // every row below is authored near white with only a breath of cyan in it.
   // The moment a droplet ramp goes properly blue it stops looking like water
@@ -837,23 +864,43 @@ const DAMAGE_HEADSHOT = 0xffc23d;
 const NUMERAL_OUTLINE = new THREE.Color(0x0a0b0d);
 
 // ---------------------------------------------------------------------------
-// SOAKED — soak numbers
+// SPLASH ROYALE — soak numbers
 //
-// Same three-way split as damage numbers, restated in water. The rule the
-// classic palette obeys still holds: exactly one warm colour, and it belongs
-// to the shot you want the player to feel good about. A faceful is that shot.
+// Same three-way split as damage numbers, restated in water — and restated all
+// the way. Classic spends its one warm colour on the headshot, and this table
+// used to copy that: a faceful came out amber. It cannot. The promise of this
+// mode is that nobody gets hurt, and a hot orange number over somebody's head
+// is the loudest thing on screen saying otherwise — it is the same signal
+// every shooter uses for a critical, and the eye reads it as damage before it
+// reads the droplet glyph next to it.
+//
+// So the emphasis moves from hue to luminance and size, and every number in
+// the mode stays in the water half of the wheel:
+//
+//   plain    near-white with a breath of cyan — most numbers, lowest contrast
+//   poncho   the poncho bar's own blue, so the bar and the number agree
+//   faceful  electric cyan, and already 39 % larger with a 1.35x pop — the
+//            only soak number allowed to shout, and it shouts in blue
 // ---------------------------------------------------------------------------
 
 const SOAK_PLAIN = 0xeafaff;
 const SOAK_PONCHO = 0x74cdff;
-const SOAK_FACEFUL = 0xffd166;
+const SOAK_FACEFUL = 0x62f4ff;
 /** A cooler outline: near-black with a drop of deep sea in it. */
 const SOAK_OUTLINE = new THREE.Color(0x061a26);
 /** Atlas cell of the droplet glyph appended to every soak number. */
 const NUMERAL_DROPLET = 14;
 
+/**
+ * The cue `soakBurst()` asks the audio bank for. Sound is another module's
+ * business — `safeAudio` swallows a name the loaded bank does not know — so
+ * the burst also emits `dz:soakburst` with its position and scale, which is
+ * the beat the audio system should build the real elimination sound on.
+ */
+const SOAK_BURST_CUE = "soak-burst";
+
 // ---------------------------------------------------------------------------
-// SOAKED — splash recipes
+// SPLASH ROYALE — splash recipes
 //
 // Splash replaces the whole impact family in water mode. Same principle as
 // IMPACTS above: the surface has to be legible from the splash alone, because
@@ -955,6 +1002,23 @@ const SPLASHES: Record<ImpactMaterial, SplashProfile> = {
     sound: "splash-body",
   },
 };
+
+/**
+ * SPLASH ROYALE — the bow in the soak burst's mist.
+ *
+ * Seven tints walked across the spectrum, sprayed as additive motes on a short
+ * arc through the hanging mist. It is not a refraction model and does not try
+ * to be: sun through suspended water throws a bow, the sky shader already
+ * throws one over the sea, so the game has said this out loud before — and
+ * seven tinted quads buy the whole read.
+ *
+ * Deliberately washed toward white. A saturated seven-colour arc reads as
+ * bunting rather than as light, and the red end of a saturated bow is the one
+ * warm accent this mode has spent the rest of the file removing.
+ */
+const RAINBOW_ARC: readonly number[] = [
+  0xffb4b4, 0xffd2a4, 0xfaf0a8, 0xbcf5b6, 0xa6efff, 0xb2c6ff, 0xd8b6ff,
+];
 
 /**
  * Darkens the surface it lands on rather than tinting it blue — and only just.
@@ -1540,9 +1604,9 @@ function makeDecalAtlas(edge: number, rng: () => number, splat: boolean): THREE.
     });
   }
 
-  // --- Blood, or in SOAKED, water splats -------------------------------------
+  // --- Blood, or in SPLASH ROYALE, water splats -------------------------------------
   //
-  // Nothing bleeds in SOAKED, so these two cells are dead weight there — and a
+  // Nothing bleeds in SPLASH ROYALE, so these two cells are dead weight there — and a
   // wet patch has nowhere else to live, because every other cell in the atlas
   // carries either radial cracks or a hard dark core and both of those read as
   // damage rather than as damp. Rather than grow the atlas past 4x4 (which the
@@ -2276,7 +2340,7 @@ void main() {
 `;
 
 // ---------------------------------------------------------------------------
-// SOAKED — glue strand
+// SPLASH ROYALE — glue strand
 //
 // The one effect in this file that is not a particle. A strand connects two
 // things that are both moving, so its shape has to be rebuilt every frame on
@@ -2894,6 +2958,9 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
     },
     balloonBurst(point, opts): void {
       if (ready) doBalloonBurst(point, opts);
+    },
+    soakBurst(point, scale, opts): void {
+      if (ready) doSoakBurst(point, scale, opts);
     },
     glueStrand(a, b): GlueStrandHandle {
       return ready ? acquireStrand(a, b) : DEAD_STRAND;
@@ -3909,7 +3976,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   const liveBeams: THREE.Object3D[] = [];
 
   // =========================================================================
-  // SOAKED — glue strands
+  // SPLASH ROYALE — glue strands
   //
   // A small fixed pool, built at boot ONLY in water mode: the material is a
   // tenth ShaderMaterial and a program that only ever compiles on the first
@@ -4345,7 +4412,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
    *   7. a brief point light, camera trauma and a white screen pop
    */
   function doExplosion(point: THREE.Vector3, scale = 1): void {
-    // In SOAKED there is no combustion anywhere on the island. Everything that
+    // In SPLASH ROYALE there is no combustion anywhere on the island. Everything that
     // used to detonate bursts instead, at the same authored scale, so callers
     // that already pass a sensible blast size need no changes at all.
     if (water) {
@@ -5109,7 +5176,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   }
 
   // =========================================================================
-  // SOAKED — the water recipes
+  // SPLASH ROYALE — the water recipes
   //
   // The whole look of this game is water, so this is the loudest section in
   // the file. Three rules govern everything below, and every one of them is a
@@ -5138,9 +5205,62 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   const wT2 = new THREE.Vector3();
   const wDir = new THREE.Vector3();
   const wPos = new THREE.Vector3();
+  /**
+   * Soak-burst scratch, kept out of BOTH shared tmp sets. The burst is the
+   * longest recipe in the file and it holds a tint, a ground normal and a
+   * position across ground queries and wet-patch calls; borrowing `tmpVec*`
+   * or `waterTint` would work today and silently break the first time
+   * somebody nests another effect inside it.
+   */
+  const sbNormal = new THREE.Vector3();
+  const sbPos = new THREE.Vector3();
+  const sbTint = new THREE.Color();
+  const sbRainbow = new THREE.Color();
 
   /** Default water colour when a caller does not name one. */
   const WATER_DEFAULT = WATER.balloon.splashColor;
+
+  /**
+   * Exponential-drag displacement factor: the `(1 − e^−kt)/k` the billboard
+   * vertex shader integrates. Anything on the CPU that needs to know where a
+   * particle actually IS has to use this, not `t`.
+   */
+  function dragDamp(t: number, k: number): number {
+    return k > 1e-3 ? (1 - Math.exp(-k * t)) / k : t;
+  }
+
+  /** Drag on a droplet body. Shared so the landing solve agrees with the GPU. */
+  const DROPLET_DRAG = 0.12;
+
+  /**
+   * When does a droplet launched from `y0` at vertical speed `vy` come back
+   * down to `yGround`?
+   *
+   * It is not a parabola. The shader damps velocity exponentially and applies
+   * gravity separately:
+   *
+   *     y(t) = y0 + vy·(1 − e^−kt)/k − ½·g·t²
+   *
+   * which has no closed form. Solving the ballistic version instead — the
+   * obvious shortcut — puts the landing splash several per cent past where the
+   * droplet visibly is, and a crown whose splashes land a beat ahead of its
+   * water is worse than no splashes at all. Twelve bisection steps over a
+   * 2.6 s window resolve it to under a millisecond for a few dozen exp() calls
+   * per elimination. Returns 0 when it never comes down inside the window.
+   */
+  function fallTime(y0: number, vy: number, g: number, k: number, yGround: number): number {
+    const h = (t: number) => y0 + vy * dragDamp(t, k) - 0.5 * g * t * t - yGround;
+    if (h(0) <= 0) return 0;
+    let lo = 0;
+    let hi = 2.6;
+    if (h(hi) > 0) return 0;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (h(mid) > 0) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) * 0.5;
+  }
 
   /** Orthonormal tangent frame on a surface. Both outputs are unit length. */
   function surfaceBasis(n: THREE.Vector3): void {
@@ -5183,7 +5303,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   ): void {
     emitBillboard(bbAlpha, px, py, pz, vx, vy, vz,
       life, size, size * rr(0.5, 0.8), RAMP.waterBody, 1.0,
-      -gravity, 0.12, rr(-5, 5), SPRITE.droplet, 0, tint);
+      -gravity, DROPLET_DRAG, rr(-5, 5), SPRITE.droplet, 0, tint);
     if (!glint) return;
     // Short, narrow and DIM. The sparkle is a specular pin on the droplet, not
     // a tracer: at the brightness this started at, a crown of thirty droplets
@@ -5596,6 +5716,311 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   }
 
   /**
+   * SOAK BURST — the elimination, and the punchline of every fight in the mode.
+   *
+   * Nobody gets hurt in SPLASH ROYALE; they get gloriously drenched. This is the
+   * moment that has to say so, and it is the one effect in the file that is
+   * allowed to be extravagant, because it fires a handful of times a match and
+   * every one of them is somebody's story afterwards.
+   *
+   * Six layers, deliberately on six different clocks — that separation is the
+   * whole trick. A burst whose parts all start together and all end together
+   * reads as one animated sphere no matter how many particles are in it:
+   *
+   *   t=0.00  the pop — a hard white-cyan glint, gone in 80 ms
+   *   t=0.00  the CROWN — droplets thrown wide on real trajectories, each one
+   *           living exactly as long as it takes to come down, and a third of
+   *           them landing in a real little splash where they actually hit
+   *   t=0.00  the RING — a thin fast rim on the deck, a slower spray wall
+   *           behind it, and a very wide faint one still travelling a second
+   *           later: the shape a bucket makes when it hits pavement
+   *   t=0.05  the COLUMN — straight up, and back down. Water is heavy and the
+   *           fall is what sells it, so the column outlives its own rise and
+   *           sheds droplets off the apex on a delay
+   *   t=0.20  the BOW — seven tinted motes in the mist. Cheap, on theme
+   *   t=0.25  the MIST — hangs, drifts on the wind, catches the sun
+   *
+   * And then the part that is not cosmetic at all: a wet patch, and the same
+   * water handed to `wetness` so the spot is genuinely slippery and the map
+   * carries an honest record of where somebody went out.
+   *
+   * Cost: about 130 pooled particles, 11 rings, 4 decals, zero allocations and
+   * zero new draw calls. Every layer is a ring buffer we already own.
+   */
+  function doSoakBurst(point: THREE.Vector3, scale = 1, opts?: SoakBurstOpts): void {
+    // Classic eliminates people with an impact and a body. It has no use for
+    // this and must never accidentally get it.
+    if (!water) return;
+
+    const s = THREE.MathUtils.clamp(scale, 0.35, 4);
+    blastsThisFrame++;
+    const busy = blastsThisFrame > 3 ? 0.3 : blastsThisFrame > 1 ? 0.68 : 1;
+    const q = D * busy;
+    const n = (v: number) => Math.max(1, Math.round(v * q));
+
+    const px = point.x;
+    const py = point.y;
+    const pz = point.z;
+    const tint = sbTint.setHex(opts?.color ?? WATER_DEFAULT, THREE.SRGBColorSpace);
+
+    const gy = groundY(px, pz, py);
+    const gn = groundNormal(px, pz, sbNormal);
+    const nearGround = py - gy < 3.2 * s;
+    // The same gravity a burst balloon throws water at. Reading it out of the
+    // data table rather than picking a number here is what keeps a droplet off
+    // an elimination and a droplet off a balloon falling at the same rate,
+    // which is most of why the mode's water reads as one substance.
+    const g = WATER.balloon.gravity;
+
+    // Culled much further out than a splash is. "Somebody just went out over
+    // there" is information the player wants from across a POI, so the cheap
+    // half of the effect — column, rings, mist — survives to 190 m and only
+    // the per-droplet detail drops.
+    const far = camDistSq(px, py, pz) > 190 * 190;
+
+    // --- 1. The pop ---------------------------------------------------------
+    // Two frames of hard light and nothing else. Its job is to hide the frame
+    // in which a player mesh becomes a cloud of particles.
+    emitBillboard(bbAdd, px, py, pz, 0, 0, 0,
+      0.08, 0.55 * s, 2.4 * s, RAMP.waterGlint, 0.8, 0, 0, rr(-3, 3),
+      SPRITE.flare, 0, tint);
+    emitBillboard(bbAdd, px, py, pz, 0, 0, 0,
+      0.06, 0.35 * s, 4.8 * s, RAMP.wetSheen, 0.5, 0, 0, rr(-3, 3),
+      SPRITE.streakFlare, 0, tint);
+
+    // --- 2. The crown -------------------------------------------------------
+    // Thrown wide and generously, low-to-mid elevation: the vertical part of
+    // the burst is the column's job, and a crown that also goes up merges into
+    // it and the whole thing becomes one blob.
+    //
+    // Every droplet's life is SOLVED rather than picked — `fallTime` says when
+    // it comes down, and that is exactly how long it is allowed to exist. A
+    // crown of droplets that fade out in mid-air is the single most common
+    // reason a water effect reads as blue confetti: real water goes somewhere.
+    // The frame the crown is thrown in has to be the ground's, not the world's:
+    // `crownDir` builds its direction out of whatever tangents `surfaceBasis`
+    // last left behind, so passing `gn` to one and `UNIT_Y` to the other yields
+    // a crown that is neither flat to the hill nor level to the world.
+    surfaceBasis(gn);
+    const crown = far ? 0 : n(30 + 14 * s);
+    let bounced = 0;
+    for (let i = 0; i < crown; i++) {
+      // Stratified azimuth, jittered — an evenly spaced crown reads as a
+      // crown, a purely random one reads as a puff with gaps in it.
+      const az = ((i + rr(0, 0.85)) / crown) * Math.PI * 2;
+      const dir = crownDir(gn, rr(0.1, 0.95), az);
+      const sp = rr(4.5, 15) * Math.pow(s, 0.6);
+      const lift = rr(1.5, 5.5) * s;
+      const x0 = px + dir.x * 0.4 * s;
+      const y0 = py + dir.y * 0.4 * s;
+      const z0 = pz + dir.z * 0.4 * s;
+      const vx = dir.x * sp;
+      const vy = dir.y * sp + lift;
+      const vz = dir.z * sp;
+
+      const t = fallTime(y0, vy, g, DROPLET_DRAG, gy);
+      const life = t > 0.15 ? Math.min(t, 2.2) : rr(0.7, 1.4);
+      droplet(x0, y0, z0, vx, vy, vz, g, life,
+        rr(0.045, 0.15) * Math.pow(s, 0.5), tint, i % 2 === 0);
+
+      // --- ...and the bounce -------------------------------------------------
+      // A third of them land visibly. The ground is re-sampled AT the landing
+      // point and the fall re-solved against it, because a crown thrown 8 m
+      // across sloped terrain lands metres away from where the flat-ground
+      // answer says it does — and a splash floating half a metre off a hillside
+      // is more conspicuous than no splash at all.
+      if (far || i % 3 !== 0 || t <= 0.15 || bounced >= 8) continue;
+      const d0 = dragDamp(t, DROPLET_DRAG);
+      let lx = x0 + vx * d0;
+      let lz = z0 + vz * d0;
+      const ly = groundY(lx, lz, gy);
+      const t2 = fallTime(y0, vy, g, DROPLET_DRAG, ly);
+      if (t2 <= 0.12) continue;
+      const d2 = dragDamp(t2, DROPLET_DRAG);
+      lx = x0 + vx * d2;
+      lz = z0 + vz * d2;
+      bounced++;
+
+      // The hop: a couple of much smaller droplets kicked back up at a
+      // fraction of the impact speed, plus a rim the size of a teacup.
+      for (let k = 0; k < 2; k++) {
+        const ha = rng() * Math.PI * 2;
+        const hs = rr(0.5, 1.8) * Math.pow(s, 0.4);
+        droplet(lx, ly + 0.04, lz,
+          Math.cos(ha) * hs, rr(1.2, 3.2) * Math.pow(s, 0.4), Math.sin(ha) * hs,
+          g, rr(0.22, 0.42), rr(0.02, 0.05) * s, tint, false);
+      }
+      emitRing(ringAdd, lx, ly + 0.02, lz, gn,
+        0.24, 0.02, rr(0.18, 0.34) * s, RAMP.wetSheen, 0.4, 0.9, t2, tint, 1.0);
+    }
+
+    // --- 3. The ring, and the sheet of spray behind it -----------------------
+    if (nearGround) {
+      // Thin, fast and bright: the leading rim, gone in a third of a second.
+      emitRing(ringAdd, px, gy + 0.07, pz, gn,
+        0.34, 0.35 * s, 4.8 * s, RAMP.wetSheen, 0.7, 0.94, 0, tint, 1.2);
+      // Slower and wider behind it. Two speeds is what makes a ring read as
+      // water leaving a surface rather than as one animated circle.
+      emitRing(ringDust, px, gy + 0.05, pz, gn,
+        0.95, 0.6 * s, 6.6 * s, RAMP.waterMist, 0.85, 0.8, 0.03, tint, 0.55);
+      // And one still travelling a second later, very wide and nearly gone —
+      // the part that makes the burst feel bigger than its particle count.
+      emitRing(ringDust, px, gy + 0.03, pz, gn,
+        1.5, 1.4 * s, 9.5 * s, RAMP.waterMist, 0.5, 0.9, 0.16, tint, 0.35);
+
+      // Low sheet running out along the deck. Kept sparse and small on
+      // purpose: a sheet built from a dozen three-metre puffs is not a sheet,
+      // it is a white disc painted on the ground, and it hides the crown.
+      const sheet = n(7 + 4 * s);
+      for (let i = 0; i < sheet; i++) {
+        const a = ((i + rr(0, 0.8)) / sheet) * Math.PI * 2;
+        const sp = rr(6, 16) * Math.pow(s, 0.6);
+        emitBillboard(bbAlpha,
+          px + Math.cos(a) * 0.5 * s, gy + rr(0.06, 0.5) * s, pz + Math.sin(a) * 0.5 * s,
+          Math.cos(a) * sp, rr(0.5, 2.6), Math.sin(a) * sp,
+          rr(0.7, 1.5), 0.25 * s, rr(0.8, 1.9) * s,
+          RAMP.waterMist, 1.0, -1.2, 2.6, rr(-1, 1),
+          i % 3 === 0 ? SPRITE.grit : SPRITE.dust, 0, tint);
+      }
+    }
+
+    // --- 4. The column ------------------------------------------------------
+    // Straight up out of the puddle and back down. Buoyancy is negative `g`,
+    // so these are on the same gravity as everything else in the burst, and
+    // their lives run well past the apex — the FALL is the part that sells the
+    // weight, and a column that gets cut off at the top of its rise reads as
+    // a jet of steam.
+    if (!far) {
+      const base = nearGround ? gy : py;
+      const cols = n(9 + 5 * s);
+      for (let i = 0; i < cols; i++) {
+        const up = rr(6.5, 12.5) * Math.pow(s, 0.55);
+        emitBillboard(bbAlpha,
+          px + rr(-0.24, 0.24) * s, base + rr(0, 0.35), pz + rr(-0.24, 0.24) * s,
+          rr(-0.9, 0.9), up, rr(-0.9, 0.9),
+          // Apex at up/g ≈ 0.45 s; a 1.0-1.6 s life brings it all the way home.
+          rr(1.0, 1.6), 0.3 * s, rr(0.7, 1.3) * s,
+          RAMP.waterBody, 1.0, -g, 0.3, rr(-1, 1),
+          i % 2 === 0 ? SPRITE.smoke2 : SPRITE.droplet, i * 0.012, tint);
+      }
+      // A bright spine up the middle of it for the first moments only.
+      for (let i = 0; i < n(3); i++) {
+        emitStreak(px + rr(-0.12, 0.12) * s, base + 0.1, pz + rr(-0.12, 0.12) * s,
+          rr(-0.4, 0.4), rr(9, 14) * Math.pow(s, 0.55), rr(-0.4, 0.4), 0, -g, 0,
+          rr(0.85, 1.2), 0.075 * s, rr(1.2, 2.2) * s,
+          RAMP.waterGlint, rr(0.8, 1.3), i * 0.03, tint);
+      }
+      // The column coming apart at the top. Delayed to roughly the apex, so
+      // the burst has a visible second beat instead of one long decay.
+      for (let i = 0; i < n(6); i++) {
+        const a = rng() * Math.PI * 2;
+        const out = rr(1.2, 4.5) * Math.pow(s, 0.5);
+        droplet(px, base + rr(2.2, 4.0) * s, pz,
+          Math.cos(a) * out, rr(-0.5, 1.6), Math.sin(a) * out,
+          g, rr(0.5, 1.1), rr(0.04, 0.09) * s, tint, i % 2 === 0);
+      }
+    }
+
+    // --- 5. The bow ---------------------------------------------------------
+    // Seven motes on a short arc through the mist, walked across the spectrum.
+    // Additive over `tintAdd` (a flat white ramp) so the colour is entirely
+    // the per-particle tint, at a brightness low enough that it is a glint in
+    // the spray and never a painted arc.
+    if (!far) {
+      const yaw = rng() * Math.PI * 2;
+      const cx = Math.cos(yaw);
+      const cz = Math.sin(yaw);
+      const R = rr(1.4, 2.0) * s;
+      for (let i = 0; i < RAINBOW_ARC.length; i++) {
+        const f = i / (RAINBOW_ARC.length - 1);
+        // A shallow arc — 25°..155° — so it is a bow over the mist rather
+        // than a full circle sitting on top of the burst.
+        const a = Math.PI * (0.14 + 0.72 * f);
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        sbRainbow.setHex(RAINBOW_ARC[i], THREE.SRGBColorSpace);
+        emitBillboard(bbAdd,
+          px + cx * ca * R, py + 0.5 * s + sa * R, pz + cz * ca * R,
+          cx * ca * 0.35, rr(0.15, 0.5), cz * ca * 0.35,
+          rr(0.5, 0.8), 0.16 * s, 0.3 * s,
+          RAMP.tintAdd, 0.55, 0.2, 1.2, 0, SPRITE.glow,
+          0.2 + i * 0.012, sbRainbow);
+      }
+    }
+
+    // --- 6. Hanging mist ----------------------------------------------------
+    // Arrives last and outlives everything. Low drag lets `uWind` push it, so
+    // it drifts with the rest of the map's air rather than sitting where it
+    // was born.
+    const mist = n(9 + 5 * s);
+    for (let i = 0; i < mist; i++) {
+      scatter(tmpVec2);
+      emitBillboard(bbAlpha,
+        px + tmpVec2.x * 1.1 * s, (nearGround ? gy : py) + rr(0.2, 2.4) * s,
+        pz + tmpVec2.z * 1.1 * s,
+        tmpVec2.x * rr(0.3, 1.5), rr(0.15, 0.9), tmpVec2.z * rr(0.3, 1.5),
+        rr(2.2, 4.2), 1.1 * s, rr(4, 7) * s,
+        RAMP.waterMist, 1.0, -0.25, 1.4, rr(-0.4, 0.4),
+        i % 2 === 0 ? SPRITE.wisp : SPRITE.smoke, 0.25 + i * 0.06, tint);
+    }
+    // Sun on the falling water, on the same delay as the mist.
+    if (!far) {
+      for (let i = 0; i < n(6); i++) {
+        scatter(tmpVec2);
+        emitBillboard(bbAdd,
+          px + tmpVec2.x * s, py + rr(0.2, 2.0) * s, pz + tmpVec2.z * s,
+          tmpVec2.x * rr(1, 3.5), rr(0.4, 2.4), tmpVec2.z * rr(1, 3.5),
+          rr(0.35, 0.8), rr(0.07, 0.16) * s, 0.02,
+          RAMP.waterGlint, rr(0.9, 1.8), -8, 1.3, 0, SPRITE.sparkle,
+          0.18 + i * 0.03, tint);
+      }
+    }
+
+    // --- 7. What the map keeps ----------------------------------------------
+    // The decal is only the stain. `wetness` owns the actual puddle, the slip
+    // and the fact that anyone walking through it comes out wet, so the water
+    // has to be handed over or the burst is a lie the map does not remember.
+    if (nearGround && !opts?.noPuddle) {
+      // Longer-lived than a balloon's: this one is a marker as well as a
+      // puddle, and "somebody went out here" should still be readable a
+      // rotation later.
+      const patchLife = 34;
+      doWetPatch(sbPos.set(px, gy, pz), gn, 2.2 * s * rr(0.9, 1.15), patchLife, 0.62);
+      for (let i = 0; i < n(3); i++) {
+        const a = rng() * Math.PI * 2;
+        const d = rr(0.5, 1.6) * s;
+        const sx = px + Math.cos(a) * d;
+        const sz = pz + Math.sin(a) * d;
+        doWetPatch(sbPos.set(sx, groundY(sx, sz, gy), sz), gn,
+          rr(0.5, 1.1) * s, patchLife * 0.8, 0.44);
+      }
+      // In `wetness` units a burst balloon is ~9. A whole player's worth of
+      // water is comfortably more than that, and the radius is generous so the
+      // slippery patch is something you notice you are standing in.
+      ctx.services.wetness?.splash(sbPos.set(px, gy, pz), 2.6 * s, 16 * s);
+    }
+
+    // --- 8. Player feedback --------------------------------------------------
+    // Cool, brief and small. A soak burst does not emit light, it catches it —
+    // and nobody was hurt, so the screen pop is a faceful of water, never a
+    // concussion.
+    flashLight(px, py + 0.5 * s, pz, 0xcdf1ff, 26 * s * s, 11 * s, 0.2, 0);
+    ctx.emit("dz:shake", { amount: 0.24 + 0.12 * s, point, range: 30 * s });
+    const nearK = Math.max(0, 1 - Math.sqrt(camDistSq(px, py, pz)) / (16 * s));
+    if (nearK > 0.02) {
+      screenFlash(0xe7fbff, Math.min(0.42, 0.38 * nearK * s), 0.15, true, 0.32, 0, 0);
+    }
+
+    if (!opts?.silent) {
+      safeAudio(SOAK_BURST_CUE, point, Math.min(1, 0.65 * s), rr(0.94, 1.08));
+      // The audio system owns the real sound. This is the beat it needs, with
+      // the position and the size, emitted whether or not the cue above
+      // exists in whatever bank happens to be loaded.
+      ctx.emit("dz:soakburst", { x: px, y: py, z: pz, scale: s });
+    }
+  }
+
+  /**
    * SOAK NUMBERS — the same pooled billboard system, restated in water.
    *
    * Everything that made damage numbers readable still applies: the stack, the
@@ -5760,7 +6185,7 @@ const createVfx: SystemFactory = (ctx: WorldCtx): FixedSystem => {
   /**
    * Mist in place of smoke. Same staggered-delay plume, near-white and cool,
    * drifting rather than billowing. Grey smoke on a sunny block party map is
-   * the fastest way to make SOAKED look like Drop Zero with a filter on it.
+   * the fastest way to make SPLASH ROYALE look like Drop Zero with a filter on it.
    */
   function doWaterMist(point: THREE.Vector3, amount = 1): void {
     const a = THREE.MathUtils.clamp(amount, 0.1, 6);

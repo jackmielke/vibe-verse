@@ -1,5 +1,5 @@
 /**
- * Vibecoin — the currency of the vibeverse, in one module.
+ * Vibey Coins — the play currency of the vibeverse, in one module.
  *
  * Before this file, "how many coins does this person have" was answered four
  * different ways. Vibe City kept a number in a ref and mirrored it into
@@ -14,23 +14,27 @@
  * number in the top-right corner ticks up while you are still standing in the
  * world that paid you.
  *
- * ## The two layers, and why they are not the same thing
+ * ## Two coins, two names, and why that matters more than it sounds
  *
- * There are two Vibecoins and it matters which one you mean:
+ * For most of this project both things were called "Vibecoin", which made
+ * every sentence about either of them ambiguous — including in the UI, where
+ * a visitor could not tell whether the number in the corner was money. They
+ * have separate names now:
  *
- *   - **The ledger** (this module). Rows in `vibe_balances` / `vibe_ledger`,
- *     written only by the `vibe-economy` edge function. Everyone has one,
- *     signed in or not, and it starts at 100. This is what you earn in worlds
- *     and spend in the arcade. It is *not* on a blockchain and does not claim
- *     to be.
- *   - **$VIBE on Base** (`src/lib/vibe-wallet.ts`). A real ERC-20 at
- *     `0x7255…a7d1`. You link a wallet on `/coin` and we read it. No
- *     transaction is ever sent from this app.
+ *   - **Vibey Coins** ✦ (this module). Rows in `vibe_balances` /
+ *     `vibe_ledger`, written only by the `vibe-economy` edge function.
+ *     Everyone has some, signed in or not, and it starts at 100. This is what
+ *     you earn in worlds and spend in the arcade. It is *not* on a blockchain
+ *     and does not claim to be. Named after Vibey, who hands them out.
+ *   - **Vibecoin / $VIBE** (`src/lib/vibe-wallet.ts`). A real ERC-20 at
+ *     `0x7255…a7d1`, on Base, in a wallet you control. Marked with the wink
+ *     rather than the ✦ — see `VibeWink`.
  *
- * They are deliberately kept apart. The ledger can be generous, reversible and
- * played with; the token cannot. The bridge between them — earn in the ledger,
- * settle on-chain — is a decision with real money on the other side of it, and
- * it should be made on purpose rather than by an import. See `docs/VIBECOIN.md`.
+ * They are deliberately kept apart. Vibey Coins can be generous, reversible
+ * and played with; the token cannot. The bridge between them — earn the play
+ * coin, claim the real one — is a decision with real money on the other side
+ * of it, and `vibe-drop` is the only thing in the codebase that crosses it.
+ * See `docs/VIBECOIN.md`.
  *
  * ## Offline is a normal state, not an error
  *
@@ -55,7 +59,17 @@ import { supabase } from "@/integrations/supabase/client";
  * different currencies.
  */
 export const VIBECOIN_GLYPH = "✦";
-export const VIBECOIN_NAME = "Vibecoin";
+/**
+ * What the play coin is called, everywhere it is named.
+ *
+ * "Vibey Coins", not "Vibecoin" — the real ERC-20 is Vibecoin, and having one
+ * word for both is how you get a player who thinks the number in the corner
+ * is money, or one who thinks the token is a score. The ✦ marks this one and
+ * the wink marks the token; the names now match the marks.
+ */
+export const VIBECOIN_NAME = "Vibey Coins";
+/** Singular, for "one Vibey Coin" rather than "one Vibey Coins". */
+export const VIBECOIN_NAME_ONE = "Vibey Coin";
 /** Plural-safe short form, for "12 VC" style captions. */
 export const VIBECOIN_SHORT = "VC";
 

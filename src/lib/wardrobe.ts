@@ -220,7 +220,24 @@ export async function buyCosmetic(
   const r = await call<{
     owned: string[];
     bought: { title: string; price: number };
-  }>("buy_cosmetic", { ownerKind: owner.kind, ownerRef: owner.ref, kind, id });
+  }>("buy_cosmetic", { ownerKind: owner.kind, ownerRef: owner.ref, kind, id }).catch(
+    (e: Error) => {
+      /* The one failure a shopper can hit that is nobody's fault but ours:
+         the shelf knows about something the till does not. It happens in the
+         window between a new item landing on `main` and the edge function
+         being redeployed, because those are two different deploys — the app
+         ships on push and the function does not.
+
+         Rewritten here rather than at each call site so every surface tells
+         the same truth, and so the message names the situation instead of
+         echoing `no such cosmetic: character/space-rex` at a person who
+         wanted a dinosaur. */
+      if (/no such cosmetic/i.test(e.message)) {
+        throw new Error("Not on sale yet — the till has not been told about this one.");
+      }
+      throw e;
+    },
+  );
   set({ owned: r.owned ?? state.owned, stale: false });
   void refreshVibecoin(); // the balance in the corner moves with the purchase
   return r.bought;

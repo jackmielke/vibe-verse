@@ -36,7 +36,7 @@
  * armpits, the inside of the collar and the underside of every part are
  * darker. Uniform albedo is what plastic looks like.
  *
- * ## SOAKED (`ctx.mode === "water"`)
+ * ## SPLASH ROYALE (`ctx.mode === "water"`)
  *
  * The same capsule, the same drop, the same camera — one seam. In water mode
  * this module additionally owns:
@@ -56,7 +56,7 @@
  *  - **The wire.** `net.publishPose` every frame, and a wet footprint trail.
  *
  * Nobody is hurt here and nothing dies. At zero dryness you slump, squelch and
- * are out — which is why the beat is called SOAKED and not "eliminated".
+ * are out — which is why the beat is called SPLASH ROYALE and not "eliminated".
  */
 import * as THREE from "three";
 import type {
@@ -90,6 +90,9 @@ import {
 // augmentation lives beside the transport rather than in the shared contract,
 // because the shared contract predates multiplayer and ships without it.
 import type { NetService } from "../net/types";
+/* Type-only. Drop Zero's match service carries the bus route sampler the
+   camera needs; the shared `MatchService` on `ctx.services` does not. */
+import type { DropZeroMatchService } from "./match";
 
 // ---------------------------------------------------------------- tuning
 
@@ -155,7 +158,7 @@ const SLIDE_ACCEL = 21;
 const FALL_SAFE = -22;
 const FALL_DAMAGE_PER_MS = 3.6;
 
-// ---- SOAKED -------------------------------------------------------------
+// ---- SPLASH ROYALE -------------------------------------------------------------
 // Everything below is water-mode only. Numbers that describe the *rules* live
 // in `mode/water.ts` and are imported; the numbers here describe how this
 // particular body reacts to them, which is nobody else's business.
@@ -272,6 +275,85 @@ const FOV_DIVE = 30;
 
 const PITCH_LIMIT = Math.PI / 2 - 0.035;
 
+// ---- the bus orbit rig ---------------------------------------------------
+//
+// Riding the bus is not a first-person moment and it is not a third-person
+// moment either: the subject of the shot is the BUS, with the island laid out
+// under it. So while `state === "bus"` the arm hangs off the bus rather than
+// off the rider's head, and looking around orbits it. Every battle royale
+// opens on this shot for a reason — it is the one everybody screenshots.
+//
+// Before this existed the arm was the ordinary 4.1 m ground rig anchored to a
+// rider parked 2.35 m under a 21 m hull, which put the camera inside the
+// fuselage for most of the yaw circle. The photo that started this was a
+// frame full of blue panelling.
+
+/** Where the orbit pivot sits above the bus's own origin (its rail line).
+ *  Roughly the middle of hull + balloon, so both fit the frame with room for
+ *  the island underneath. */
+const BUS_PIVOT_RISE = 9;
+/** Arm limits, metres from the pivot. Both ends are framing decisions taken
+ *  against BUS_FOV and the rig's real 27 m height: at 22 m the bus fills the
+ *  frame edge to edge, at 110 m it is a toy over the island. 22 is also, not
+ *  by accident, the widest reach of the keep-out ellipsoid below — the hard
+ *  floor and the geometry agree. */
+const BUS_ARM_MIN = 22;
+const BUS_ARM_MAX = 110;
+/** The frame the game opens on: at BUS_FOV this puts the 27 m rig at about
+ *  two thirds of frame height — big enough to read every panel of the livery,
+ *  with the island and the horizon as the rest of the picture. */
+const BUS_ARM_DEFAULT = 34;
+/**
+ * A longer lens than the 80° the game plays on. The wide FOV is right for a
+ * build fight and wrong for a vehicle 40 m away — at 80° the hull bows and the
+ * balloon smears at the frame edge. This is the one shot in the game that is
+ * meant to be a postcard, so it gets a postcard's lens, and the widening back
+ * out to 80° as you jump is a bonus kick of speed.
+ */
+const BUS_FOV = 62;
+/**
+ * Three-quarter: this much yaw off "straight behind", swung toward the side
+ * the rider hangs from, so the shot reads the flank livery AND the tail, and
+ * so you can see yourself on the rail.
+ *
+ * It is deliberately well off the rear axis, and that is measured rather than
+ * taste: at 0.45 rad — camera 42 m directly astern — two separate captures
+ * came back as a frame of solid white with no bus in it. Every capture from
+ * further round the side is clean, and an ablation there (smoke, cloud deck,
+ * storm veil, fog, one at a time) moves no pixel by more than 3/255. Whatever
+ * is behind the bus, the fix is to not put the opening shot inside it; the
+ * likeliest tenant is the bus's own exhaust trail, which streams straight back
+ * along the route and, from any other angle, crosses frame instead.
+ */
+const BUS_ARM_AZIMUTH = 1.0;
+/** Looking down this much at the pivot, which puts the camera above the bus
+ *  and the island in the lower half of the frame. */
+const BUS_ARM_PITCH = -0.13;
+/**
+ * The keep-out ellipsoid, in bus-local metres about the pivot: lateral,
+ * vertical, and along the route. It has to CONTAIN the whole rig — hull
+ * (halfW 3, halfL 10.8, roof 5.45), balloon (radius 11, crown 25 m up) and
+ * the rider hanging below — because the arm is only ever allowed to end
+ * outside it. Sized from `match.ts`'s own HULL block and balloon profile.
+ */
+const BUS_KEEPOUT_X = 14;
+const BUS_KEEPOUT_Y = 19;
+const BUS_KEEPOUT_Z = 17;
+/** Clearance outside that surface, so the near plane never grazes the hull. */
+const BUS_KEEPOUT_PAD = 3;
+/** Per wheel notch / per pinch. Multiplicative, because a fixed step is
+ *  glacial at the far end of the range and violent at the near end. */
+const BUS_ZOOM_STEP = 0.12;
+
+/**
+ * Canopy clearance. The wing sits ~3.6 m over the rig's feet and spans 3.7 m,
+ * so a short arm at a steep down-pitch can put the camera inside it. This is
+ * the radius the arm has to clear during the dive and the glide.
+ */
+const SELF_KEEPOUT_R = 2.6;
+/** Height of that sphere's centre above the drop pivot. */
+const SELF_KEEPOUT_Y = 2.5;
+
 // ---- character ----------------------------------------------------------
 
 /** Hip height in rig space. Every joint offset below is relative to this. */
@@ -299,6 +381,33 @@ function angleDelta(from: number, to: number): number {
   if (d < -Math.PI) d += TAU;
   return d;
 }
+
+/**
+ * Distance from the centre of an axis-aligned ellipsoid to its surface along
+ * the unit direction `(ux, uy, uz)` — i.e. the shortest arm that is provably
+ * *outside* the volume in that direction.
+ *
+ * Solving it rather than testing-and-nudging matters: the test-and-nudge
+ * version wobbles as the orbit sweeps, and the whole point of the bus rig is
+ * that the arm can never end up inside the hull no matter where it is pointed.
+ */
+function ellipsoidReach(
+  ux: number, uy: number, uz: number,
+  rx: number, ry: number, rz: number,
+): number {
+  const k = Math.hypot(ux / rx, uy / ry, uz / rz);
+  return k > 1e-6 ? 1 / k : 0;
+}
+
+/**
+ * How far the player has zoomed the bus camera, remembered for the session.
+ *
+ * Module scope on purpose: "remember it" means across matches and across
+ * re-entering the world, and a visitor who pulled the camera wide once should
+ * not have to do it again on the next drop. It is one number and it is clamped
+ * on every read, so nothing downstream can be broken by a stale value.
+ */
+let busArmSession = BUS_ARM_DEFAULT;
 
 // ---------------------------------------------------------------- geometry
 //
@@ -1794,9 +1903,9 @@ interface HudPayload {
   yaw: number;
   pitch: number;
 
-  // ---- SOAKED. Present in both modes; meaningless (and inert) in classic,
+  // ---- SPLASH ROYALE. Present in both modes; meaningless (and inert) in classic,
   // so a HUD can read them unconditionally and branch on `water`.
-  /** True when this is SOAKED and the fields below mean something. */
+  /** True when this is SPLASH ROYALE and the fields below mean something. */
   water: boolean;
   /** 0..100. The same number as `health`, named for what it is. */
   dryness: number;
@@ -1849,11 +1958,11 @@ export interface DropZeroPlayerService extends PlayerService {
    */
   placeOnGround(p: THREE.Vector3): void;
 
-  // ------------------------------------------------------------- SOAKED
+  // ------------------------------------------------------------- SPLASH ROYALE
   // These exist in both modes. In `classic` they read off health/shield and
   // the mutators are no-ops, so a caller never has to ask what mode it is.
 
-  /** 0..100. Aliases `health`, because in SOAKED that is what health is. */
+  /** 0..100. Aliases `health`, because in SPLASH ROYALE that is what health is. */
   readonly dryness: number;
   /** 0..100. Aliases `shield`. */
   readonly poncho: number;
@@ -1983,7 +2092,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       return phase === "warmup" || phase === "bus" || phase === "dropping" || phase === "live";
     },
 
-    // ---------------------------------------------------------- SOAKED
+    // ---------------------------------------------------------- SPLASH ROYALE
     get dryness() {
       return service.health;
     },
@@ -2091,6 +2200,43 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   const camGoal = new THREE.Vector3();
   const camPos = new THREE.Vector3();
   let camInit = false;
+  /** Set when the rig has moved somewhere the smoothing must not travel to —
+   *  boarding the bus, and stepping off it. Without it the arm spends a second
+   *  flying between the bus and the diver, through the hull. */
+  let camSnap = false;
+  /** True while the arm is orbiting the bus rather than tracking the player. */
+  let onBus = false;
+  /**
+   * Two-finger pinch zoom, as a multiplier consumed once per frame.
+   *
+   * The reader was written before the writer and this was never declared, so
+   * `pinchScale` referred to nothing: three lines below reference it, and the
+   * one that runs on EVERY frame — `pinchScale = 1` after the bus block — is an
+   * assignment to an undeclared name. Under a module (`"use strict"`, which
+   * every ESM file is) that throws a ReferenceError, which means the frame loop
+   * died on its first tick and the world was a black screen.
+   *
+   * It typechecks and runs now, and holds 1 until something writes a pinch into
+   * it — so the wheel path is unaffected and touch zoom is a producer away
+   * rather than a rewrite.
+   */
+  let pinchScale = 1;
+  const busPivot = new THREE.Vector3();
+  const busDir = new THREE.Vector3(0, 0, -1);
+  const busRight = new THREE.Vector3(1, 0, 0);
+  /**
+   * Pinch span, the other half of the touch zoom whose scale is declared above.
+   *
+   * `InputState` has a wheel and no pinch, and input.ts belongs to somebody
+   * else, so the two fingers are read here. Passive listeners on `window`, no
+   * `preventDefault`, and only ever consulted while riding the bus — the touch
+   * driver's twin-stick keeps every gesture it already owns.
+   *
+   * `pinchScale` itself is declared with the bus camera state further up. Two
+   * parallel branches each added one and a rebase kept both, which is how this
+   * file briefly had the same `let` twice.
+   */
+  let pinchSpan = 0;
 
   // ---- animation state ---------------------------------------------------
   let bodyYaw = 0;
@@ -2103,7 +2249,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   let downTimer = 0;
   const DOWN_TIME = 45;
 
-  // ---- SOAKED state ------------------------------------------------------
+  // ---- SPLASH ROYALE state ------------------------------------------------------
 
   /** Squad id. Published with every pose; peers on it are not soakable. */
   let team: string | null = null;
@@ -2125,7 +2271,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   /** Simulated-second accumulators for the trail and the drips. */
   let trackTimer = 0;
   let dripAccum = 0;
-  /** Set once we hit zero dryness, so the SOAKED beat fires exactly once. */
+  /** Set once we hit zero dryness, so the SPLASH ROYALE beat fires exactly once. */
   let soakedOut = false;
 
   /** Face-down timer and its immunity window, both in simulated seconds. */
@@ -2260,7 +2406,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     if (water) {
       /**
-       * SOAKED: the poncho eats water at a discount and a little always bleeds
+       * SPLASH ROYALE: the poncho eats water at a discount and a little always bleeds
        * through, so a fully-ponchoed player still visibly gets wetter. All of
        * that lives in `applySoak` — this is the one place that calls it, which
        * is why every other system can keep calling plain `damage()`.
@@ -2364,10 +2510,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     ctx.services.audio?.play("squelch", { volume: 0.85, position });
     ctx.services.audio?.play(WATER.balloon.soundBurst, { volume: 0.5, position });
-    // A generous puddle exactly where you went down, so the spot reads from
-    // across the street and anyone who walks through it slips.
-    ctx.services.wetness?.splash(position, 2.4, 14);
-    ctx.services.vfx?.impact(position, up, "water");
+    /* The burst does the puddle and the impact itself, and better — six layers
+       on six clocks, droplet lives solved so they land rather than fading in
+       mid-air, and its own `wetness.splash`. Calling those here as well waters
+       the same spot twice and stacks two impacts in one frame. */
+    ctx.services.vfx?.soakBurst(position, 1);
 
     // Kept on `dz:down` so the HUD's existing knock/revive plumbing fires;
     // `dz:soaked` is the one the water HUD reads for the banner.
@@ -2554,7 +2701,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     });
   }
 
-  // ---- SOAKED: dryness, slip, tracks -------------------------------------
+  // ---- SPLASH ROYALE: dryness, slip, tracks -------------------------------------
 
   /** Stable id for anything that identifies this player over the wire. */
   const selfId = (): string => ctx.services.net?.selfId ?? "player";
@@ -2678,7 +2825,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (service.health <= 0 && !soakedOut) enterDown();
   }
 
-  // ---- SOAKED: glue ------------------------------------------------------
+  // ---- SPLASH ROYALE: glue ------------------------------------------------------
 
   /**
    * Attach a strand. Called for BOTH ends of a player-to-player link — once
@@ -2861,7 +3008,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     return slow;
   }
 
-  // ---- SOAKED: the stumble -----------------------------------------------
+  // ---- SPLASH ROYALE: the stumble -----------------------------------------------
 
   /**
    * Go down. A real tumble you get up from — never a stun.
@@ -2892,7 +3039,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     ctx.emit("dz:stumble", { x: position.x, y: position.y, z: position.z });
   }
 
-  // ---- SOAKED: the wire --------------------------------------------------
+  // ---- SPLASH ROYALE: the wire --------------------------------------------------
 
   /**
    * What we call our movement state on the wire.
@@ -3054,7 +3201,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (Number.isFinite(p.pz)) velocity.z += p.pz as number;
   }
 
-  // ---- SOAKED: drips ------------------------------------------------------
+  // ---- SPLASH ROYALE: drips ------------------------------------------------------
 
   /**
    * Water shed off a soaked body.
@@ -3121,7 +3268,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       ctx.scene.add(dripMesh);
       return true;
     } catch (err) {
-      console.warn("[SOAKED] drip pool failed to build:", err);
+      console.warn("[SPLASH ROYALE] drip pool failed to build:", err);
       dripMesh = null;
       return false;
     }
@@ -3295,7 +3442,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     sinceLanding += dt;
     jumpBuffered = Math.max(0, jumpBuffered - dt);
 
-    // --- SOAKED: dryness, slip, the Downpour --------------------------------
+    // --- SPLASH ROYALE: dryness, slip, the Downpour --------------------------------
     // Unconditional and first: `slip` is read by the friction below, and a
     // drying clock that stops in some states is one players cannot reason
     // about. Costs one branch in classic.
@@ -3319,7 +3466,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       integrate(dt, CROUCH_HEIGHT);
       if (grounded) velocity.y = 0;
       if (service.health > 0) {
-        // Healed back up (a teammate, a rift, a script) — stand up. In SOAKED
+        // Healed back up (a teammate, a rift, a script) — stand up. In SPLASH ROYALE
         // that is a towel: clear the out-flag so the wire stops calling us
         // soaked and the strands can attach again.
         service.state = "ground";
@@ -3413,7 +3560,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (mz < -0.2) speed *= BACK_SCALE;
     if (input.aim && !sprinting) speed *= 0.62;
 
-    // --- SOAKED: glue coupling ----------------------------------------------
+    // --- SPLASH ROYALE: glue coupling ----------------------------------------------
     // Before the friction block, because the strand's pull is an acceleration
     // and has to be damped by the same friction everything else is.
     if (water) {
@@ -3431,7 +3578,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
        * Friction: hard when there is no input, light while steering. Symmetric
        * damping is what makes a controller feel like it is on ice.
        *
-       * In SOAKED, `slip` (from `wetness.frictionAt`) scales it, and a matched
+       * In SPLASH ROYALE, `slip` (from `wetness.frictionAt`) scales it, and a matched
        * share comes off the acceleration too — friction alone gives you a long
        * glide you can still steer out of instantly, which does not read as
        * slipping at all. Both together are the hilarious, recoverable skid.
@@ -3616,6 +3763,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     tmp.subVectors(to, from);
     tmp.y = 0;
     if (tmp.lengthSq() > 1e-6) tmp.normalize();
+    else tmp.set(0, 0, -1);
+    // The bus's own axes, published for the orbit camera and the hang pose.
+    // Established here, in `fixed`, because both of those run in `update` and
+    // would otherwise spend their first frame working off a zero vector.
+    busDir.copy(tmp);
+    busRight.set(-tmp.z, 0, tmp.x);
     // Hang under and a little to the side of the bus so the player can see it
     // above them — a rider inside the fuselage sees nothing but sky.
     position.lerpVectors(from, to, clamp01(t));
@@ -3743,6 +3896,69 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   function updateCamera(dt: number): void {
     const input = ctx.input;
     const collision = ctx.services.collision;
+    /* Drop Zero's own service, not the shared `MatchService` — the bus camera
+       samples the route through `busAt`, which is on the extended interface.
+       `ctx.services.match` is typed as the shared contract, so without this
+       the call below did not compile. */
+    const match = ctx.services.match as DropZeroMatchService | undefined;
+
+    // --- what is the subject of this shot? ---------------------------------
+    // On the bus it is the BUS. The arm hangs off the vehicle and the look
+    // input orbits it; everywhere else the arm hangs off the player and the
+    // look input turns their head. See the note by the BUS_ constants.
+    const wasOnBus = onBus;
+    onBus = dropStage === "bus" && !!match;
+    if (onBus && match) {
+      // Re-derive the bus position from the route the same way `busFixed`
+      // derives the rider's, rather than reading a published one: the mesh is
+      // placed in the MATCH's update and the player system updates first, so
+      // anything the match publishes is a frame stale — at the bus's 100 m/s
+      // that is seven metres, a third of the hull, of framing error. `busT` is
+      // written in `fixed`, so this agrees with the mesh exactly.
+      busPivot.lerpVectors(match.busFrom, match.busTo, clamp01(match.busT));
+      busPivot.y += BUS_PIVOT_RISE;
+      // `busDir` / `busRight` are the bus's axes, set by `busFixed`.
+
+      if (!wasOnBus) {
+        // The frame the game opens on. Composed, not incidental: three-quarter
+        // rear, slightly high, hull and balloon against the sky with the
+        // island under them. `+BUS_ARM_AZIMUTH` on the route heading swings the
+        // arm around to the bus's right, so the rider is in shot too.
+        yaw = Math.atan2(-busDir.x, -busDir.z) + BUS_ARM_AZIMUTH;
+        if (yaw > Math.PI) yaw -= TAU;
+        pitch = BUS_ARM_PITCH;
+        service.yaw = yaw;
+        service.pitch = pitch;
+        armCurrent = clamp(busArmSession, BUS_ARM_MIN, BUS_ARM_MAX);
+        camSnap = true;
+      }
+
+      // Zoom. The wheel is the desktop control and a two-finger pinch is the
+      // touch one; both drive the same remembered number. Multiplicative,
+      // because one metre per notch is nothing at 110 m and a lurch at 22 —
+      // and exponential rather than `1 + k·wheel`, because a trackpad can
+      // deliver a dozen notches in one frame and the linear form goes negative
+      // and turns a flick into a camera on the wrong side of the bus.
+      if (input.wheel !== 0) {
+        busArmSession = clamp(
+          busArmSession * Math.exp(input.wheel * BUS_ZOOM_STEP),
+          BUS_ARM_MIN,
+          BUS_ARM_MAX,
+        );
+      }
+      if (pinchScale !== 1) {
+        busArmSession = clamp(busArmSession * pinchScale, BUS_ARM_MIN, BUS_ARM_MAX);
+      }
+    } else if (wasOnBus) {
+      // Stepping off: the subject changes from the bus to the diver, tens of
+      // metres away. Smoothing across that gap flies the lens through the hull,
+      // and the pivot has to be re-seeded on the player as well — left to ease
+      // down from the bus's altitude it hangs the diver at the bottom of frame
+      // for the first half second of the drop.
+      camSnap = true;
+      camInit = false;
+    }
+    pinchScale = 1;
 
     // Pivot. X/Z track exactly — lag there reads as input latency — but Y is
     // smoothed, which is what hides stair steps and the step-up lift.
@@ -3751,9 +3967,13 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       camPivot.set(position.x, pivotY, position.z);
       camInit = true;
     }
-    camPivot.x = position.x;
-    camPivot.z = position.z;
-    camPivot.y = approach(camPivot.y, pivotY, dropStage === "landed" ? 16 : 8, dt);
+    if (onBus) {
+      camPivot.copy(busPivot);
+    } else {
+      camPivot.x = position.x;
+      camPivot.z = position.z;
+      camPivot.y = approach(camPivot.y, pivotY, dropStage === "landed" ? 16 : 8, dt);
+    }
 
     const speed = Math.hypot(velocity.x, velocity.z);
     const aiming = input.aim && service.controllable && dropStage === "landed";
@@ -3763,7 +3983,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // shoulder, which is the only way iron sights read in third person.
     let armTarget = ARM_LENGTH;
     let shoulderTarget = ARM_SHOULDER;
-    if (dropStage === "skydive") {
+    if (onBus) {
+      armTarget = clamp(busArmSession, BUS_ARM_MIN, BUS_ARM_MAX);
+      // No shoulder offset: the bus is the subject and it belongs centred.
+      shoulderTarget = 0;
+    } else if (dropStage === "skydive") {
       armTarget = ARM_LENGTH_DIVE;
       shoulderTarget = 0.1;
     } else if (dropStage === "glide") {
@@ -3794,7 +4018,31 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
     const bobAmp = (firstPerson ? 0.055 : 0.016) * clamp01(speed / SPRINT_SPEED) * (grounded ? 1 : 0);
 
-    if (firstPerson) {
+    // --- keep the lens out of solid things it is looking AT -----------------
+    // The world raycast below handles walls. This handles the two objects the
+    // arm is orbiting, which no world collider knows about: the bus, and our
+    // own canopy. Both are solved for the shortest arm that is provably
+    // outside the volume, along the look axis, so the subject stays centred
+    // while the arm grows — a sideways nudge would swing the framing instead.
+    let armMin = 0;
+    if (onBus) {
+      // Direction pivot → camera, resolved into the bus's own axes.
+      const ax = -(tmp.x * busRight.x + tmp.z * busRight.z);
+      const ay = -tmp.y;
+      const az = -(tmp.x * busDir.x + tmp.z * busDir.z);
+      armMin =
+        ellipsoidReach(ax, ay, az, BUS_KEEPOUT_X, BUS_KEEPOUT_Y, BUS_KEEPOUT_Z) + BUS_KEEPOUT_PAD;
+    } else if (dropStage === "skydive" || dropStage === "glide") {
+      // Our own wing, as a sphere over the drop pivot. Solving it rather than
+      // trusting the tuned arm means a later change to ARM_LENGTH_DIVE cannot
+      // quietly park the lens inside the cloth.
+      const h = SELF_KEEPOUT_Y;
+      const disc = h * h * tmp.y * tmp.y - h * h + SELF_KEEPOUT_R * SELF_KEEPOUT_R;
+      if (disc > 0) armMin = Math.max(0, -h * tmp.y + Math.sqrt(disc));
+    }
+    const armUsed = Math.max(armCurrent, armMin);
+
+    if (firstPerson && !onBus) {
       camPos.set(
         camPivot.x + right.x * bobAmp * 0.6 * Math.cos(bobPhase),
         camPivot.y + Math.sin(bobPhase * 2) * bobAmp - landingDip - fireKick * 0.3,
@@ -3804,14 +4052,16 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       camGoal.copy(camPivot)
         .addScaledVector(right, shoulderCurrent)
         .addScaledVector(up, ARM_RISE + Math.sin(bobPhase * 2) * bobAmp)
-        .addScaledVector(tmp, -armCurrent - fireKick * 0.9);
+        .addScaledVector(tmp, -armUsed - fireKick * 0.9);
       camGoal.y -= landingDip;
 
       // Spring-arm collision. One ray from the pivot to the goal; if it hits,
       // pull the camera in short of the surface. Without this every wall you
       // back into puts the camera inside the geometry and you see the sky
       // through the world — the single most obvious third-person bug there is.
-      if (collision) {
+      // Skipped on the bus: the only thing within 600 m is the bus itself, and
+      // the ellipsoid above is what keeps us off it.
+      if (collision && !onBus) {
         tmp2.subVectors(camGoal, camPivot);
         const dist = tmp2.length();
         if (dist > 1e-3) {
@@ -3822,18 +4072,38 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
           }
         }
       }
-      // Pull in fast, ease out slow: snapping in avoids a frame of clipping,
-      // easing out avoids the camera lurching every time you clear a corner.
-      const pullIn = camPos.distanceToSquared(camPivot) > camGoal.distanceToSquared(camPivot);
-      camPos.lerp(camGoal, 1 - Math.exp(-(pullIn ? 26 : 11) * dt));
+      if (camSnap || onBus) {
+        // Two reasons to take the goal exactly.
+        //
+        // `camSnap`: boarding or leaving the bus. There is no path between the
+        // two rigs that is not through the hull, so that one is a cut.
+        //
+        // `onBus`: the pivot is a vehicle doing 100 m/s, and a world-space
+        // spring against a pivot moving that fast is not smoothing — it is a
+        // permanent lag *toward* the bus. Measured at 3 m of the arm eaten at
+        // the tight end, which is 3 m of the clearance the keep-out ellipsoid
+        // just finished solving for. Nothing is lost by dropping it: the orbit
+        // is already smooth, because yaw, pitch and `armCurrent` are.
+        camPos.copy(camGoal);
+      } else {
+        // Pull in fast, ease out slow: snapping in avoids a frame of clipping,
+        // easing out avoids the camera lurching every time you clear a corner.
+        const pullIn = camPos.distanceToSquared(camPivot) > camGoal.distanceToSquared(camPivot);
+        camPos.lerp(camGoal, 1 - Math.exp(-(pullIn ? 26 : 11) * dt));
+      }
     }
+    camSnap = false;
 
     camera.position.copy(camPos);
 
     // Roll: lean into hard turns and into the glider's bank. Tiny — a couple
     // of degrees is felt, ten is nausea.
-    const rollTarget =
-      dropStage === "glide"
+    const rollTarget = onBus
+      ? // A camera orbiting a vehicle is on a tripod. Any roll here reads as
+        // the horizon tilting, which is exactly the wrong feeling for the one
+        // shot in the game that is supposed to be a postcard.
+        0
+      : dropStage === "glide"
         ? -steerSmooth * 0.16
         : dropStage === "skydive"
           ? -steerSmooth * 0.1
@@ -3843,7 +4113,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
     // --- FOV ---------------------------------------------------------------
     let fovTarget = BASE_FOV;
-    if (dropStage === "skydive") {
+    if (onBus) {
+      // See BUS_FOV. Note this is a *narrowing*, so the ramp back to 80° when
+      // you step off runs at the slower "opening" rate — which is the right
+      // direction for it to feel like acceleration.
+      fovTarget = BUS_FOV;
+    } else if (dropStage === "skydive") {
       // The whole reason the dive feels fast. Speed → FOV, and the snap back
       // when the canopy opens is the release that makes the fall register.
       fovTarget += FOV_DIVE * clamp01((-velocity.y - 20) / (DIVE_TERMINAL - 20));
@@ -3876,10 +4151,17 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // else is the upper body twisting to make up the difference.
     let yawTarget = bodyYaw;
     let turnRate = 7;
-    if (dropStage === "glide") {
+    if (dropStage === "bus") {
+      // Hanging off a rail on a moving vehicle, facing the way it is going.
+      // Following `yaw` here was right when `yaw` was the rider's head; now
+      // that it orbits the bus, following it would spin the rider on the rail
+      // every time the player looked around.
+      yawTarget = Math.atan2(-busDir.x, -busDir.z);
+      turnRate = 3;
+    } else if (dropStage === "glide") {
       yawTarget = glideYaw;
       turnRate = 6;
-    } else if (dropStage === "skydive" || dropStage === "bus" || service.state === "swim") {
+    } else if (dropStage === "skydive" || service.state === "swim") {
       yawTarget = yaw;
       turnRate = 6;
     } else if (input.aim || input.fire || ctx.services.build?.selected) {
@@ -3981,7 +4263,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // A hit or a shot shoves the upper body, not just the camera.
     poseOut.rot[J_CHEST * 3] -= fireKick * 1.2;
 
-    // --- SOAKED: the shiver --------------------------------------------------
+    // --- SPLASH ROYALE: the shiver --------------------------------------------------
     // A drenched player standing still has the shakes. Fast, tiny, and it fades
     // out as soon as they are moving, because a shiver on a sprinting character
     // reads as a broken animation rather than as being cold.
@@ -4045,7 +4327,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
   }
 
-  // ---- SOAKED: the wet look -----------------------------------------------
+  // ---- SPLASH ROYALE: the wet look -----------------------------------------------
 
   /** Base albedo tint of each body material, captured once so we can restore it. */
   const dryTint: THREE.Color[] = [];
@@ -4129,7 +4411,34 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     );
   }
 
-  // --- SOAKED wiring --------------------------------------------------------
+  // --- pinch-to-zoom on the bus ---------------------------------------------
+  // See `pinchScale`. Passive, window-level, and it only ever writes a ratio
+  // that the camera ignores unless we are riding.
+  const onPinch = (e: TouchEvent): void => {
+    if (e.touches.length < 2) {
+      pinchSpan = 0;
+      return;
+    }
+    const a = e.touches[0];
+    const b = e.touches[1];
+    const span = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (span < 1) return;
+    // Fingers apart pulls the camera IN, which is the direction every photo
+    // app on the device has already taught the player.
+    if (pinchSpan > 1) pinchScale *= clamp(pinchSpan / span, 0.7, 1.4);
+    pinchSpan = span;
+  };
+  const onPinchEnd = (): void => {
+    pinchSpan = 0;
+  };
+  const hasWindow = typeof window !== "undefined";
+  if (hasWindow) {
+    window.addEventListener("touchmove", onPinch, { passive: true });
+    window.addEventListener("touchend", onPinchEnd, { passive: true });
+    window.addEventListener("touchcancel", onPinchEnd, { passive: true });
+  }
+
+  // --- SPLASH ROYALE wiring --------------------------------------------------------
   // Local events first: `dz:glue` fires when OUR gun sticks (we are the near
   // end and feel the pull too), `dz:soak` carries the knockback weapons asked
   // for. Both are no-ops outside water mode.
@@ -4164,7 +4473,54 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     const net = ctx.services.net;
     if (!net) return;
     netOff.push(net.on("glue", (from, payload) => onGlueEvent(payload, from)));
+    netOff.push(net.on("hit", (from, payload) => onHitEvent(payload, from)));
   }
+
+  /**
+   * Somebody else's water landed on us.
+   *
+   * The shooter resolves the hit against our ghost on their machine and sends
+   * it here addressed to us; we decide what it cost. That split is the whole
+   * design — there is no server, so the alternative is trusting a packet to
+   * set our dryness directly, and the alternative to *that* is no player-vs-
+   * player water at all, which is what this game shipped with.
+   *
+   * Everything below is a guard against a payload we did not author: wrong
+   * recipient, absent or non-finite amount, an amount large enough to be a
+   * one-shot. `soak()` handles the rest — poncho first, dryness after, and it
+   * files the elimination and the `soaked` broadcast on its own if this is the
+   * one that empties us.
+   */
+  function onHitEvent(payload: unknown, from: string): void {
+    if (!water) return;
+    const p = (payload ?? {}) as {
+      to?: string;
+      amount?: number;
+      x?: number;
+      y?: number;
+      z?: number;
+    };
+    const net = ctx.services.net;
+    if (!net || p.to !== net.selfId) return;
+    if (soakedOut || service.state === "dead" || service.state === "down") return;
+
+    const raw = typeof p.amount === "number" && Number.isFinite(p.amount) ? p.amount : 0;
+    if (!(raw > 0)) return;
+    // A single packet may never take more than a quarter of a full player.
+    // Not cheat-proof — nothing client-authoritative is — but it keeps a bad
+    // or malformed sender from ending someone's match in one frame.
+    const amount = Math.min(raw, DRYNESS.max * 0.25);
+
+    const peer = net.peers.get(from);
+    const point =
+      Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)
+        ? netHitPoint.set(p.x as number, p.y as number, p.z as number)
+        : undefined;
+
+    service.soak(amount, point, { name: peer?.name ?? "someone", by: from });
+  }
+
+  const netHitPoint = new THREE.Vector3();
 
   let audioBound = false;
 
@@ -4221,7 +4577,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       }
     }
 
-    // --- SOAKED: the wire and the wet look -----------------------------------
+    // --- SPLASH ROYALE: the wire and the wet look -----------------------------------
     // Before the animation, because `wetLook` is what the shiver reads.
     if (water) {
       ensureNetBound();
@@ -4302,6 +4658,11 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     dispose() {
       for (const off of offRecoil) off();
       for (const off of netOff) off();
+      if (hasWindow) {
+        window.removeEventListener("touchmove", onPinch);
+        window.removeEventListener("touchend", onPinchEnd);
+        window.removeEventListener("touchcancel", onPinchEnd);
+      }
       netOff.length = 0;
       unregisterTarget?.();
       unregisterTarget = null;

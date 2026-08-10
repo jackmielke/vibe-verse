@@ -252,6 +252,20 @@ export interface VfxService {
   buildBreak(box: THREE.Box3, kind: HarvestKind): void;
   /** Rarity-coloured beam over a loot item. */
   lootBeam(point: THREE.Vector3, rarity: Rarity): THREE.Object3D;
+  /**
+   * The elimination burst: somebody has run out of dry and comes apart into
+   * water. Call it ONCE, where the death is filed, at the victim's capsule
+   * centre — water thrown from ankle height reads as a puddle rather than as
+   * somebody going out.
+   *
+   * It leaves the puddle behind and hands that water to `wetness` itself, so a
+   * caller must not also `wetness.splash()` the same death or the spot gets
+   * watered twice. Water mode only; a no-op in classic.
+   *
+   * Declared optional because the full options type lives in fx/vfx.ts and
+   * this contract is deliberately dependency-free.
+   */
+  soakBurst?(point: THREE.Vector3, scale?: number, opts?: unknown): void;
 }
 
 /** Positional + UI audio. */
@@ -519,7 +533,7 @@ export interface WorldCtx {
   quality: QualityTier;
   /**
    * Which game this is. `classic` is Drop Zero — bullets, health, a purple
-   * storm. `water` is SOAKED — soakers, dryness, and the Downpour.
+   * storm. `water` is SPLASH ROYALE — soakers, dryness, and the Downpour.
    *
    * One engine, one island, one set of 22 systems. The difference is a lookup
    * into `mode/water.ts` rather than a fork, because two battle royales would

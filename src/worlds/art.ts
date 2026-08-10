@@ -25,6 +25,7 @@ import ninjaArt from "@/assets/worlds/ninja.jpg";
 import sanFranciscoArt from "@/assets/worlds/san-francisco.jpg";
 import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import dropZeroArt from "@/assets/worlds/drop-zero.jpg";
+import splashRoyaleArt from "@/assets/worlds/splash-royale.jpg";
 import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
@@ -36,6 +37,8 @@ import airplaneArt from "@/assets/worlds/airplane.jpg";
 import arcadeArt from "@/assets/worlds/arcade.jpg";
 import orbitArt from "@/assets/worlds/orbit.jpg";
 import shopArt from "@/assets/worlds/shop.jpg";
+import portalArt from "@/assets/worlds/portal.jpg";
+import manifestoArt from "@/assets/worlds/manifesto.jpg";
 import blobArt from "@/assets/worlds/blob.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
@@ -51,6 +54,8 @@ export const WORLD_ART: Record<string, string> = {
   arcade: arcadeArt,
   orbit: orbitArt,
   shop: shopArt,
+  portal: portalArt,
+  manifesto: manifestoArt,
   airplane: airplaneArt,
   blob: blobArt,
   "blue-angels": blueAngelsArt,
@@ -75,6 +80,7 @@ export const WORLD_ART: Record<string, string> = {
   sf: sanFranciscoArt,
   "san-palmas": sanPalmasArt,
   "drop-zero": dropZeroArt,
+  "splash-royale": splashRoyaleArt,
   ski: skiArt,
   space: spaceArt,
   terminal: terminalArt,

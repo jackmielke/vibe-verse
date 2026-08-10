@@ -43,6 +43,14 @@
 // unique constraint, and the row is claimed BEFORE the model is called, so
 // a hundred pokes still buy exactly one issue.
 //
+// That is also why the cron pokes it every hour from 13:00 to 20:00 UTC
+// rather than once at 13:00. Every poke after the first is a no-op costing
+// one indexed row read, so the schedule is really "make sure an issue got
+// written this morning, and keep asking until one did". A failed run, a
+// timeout, an OpenRouter blip: the next hour picks it up on its own instead
+// of the day silently going missing. The window stops at 20:00 UTC so an
+// edition is never written in the previous evening, California time.
+//
 // Deploy:
 //   supabase functions deploy vibe-times --no-verify-jwt
 // Env:
@@ -566,14 +574,29 @@ Deno.serve(async (req) => {
 
   const { data: recent } = await sb
     .from("vibe_times_issues")
-    .select("issue,edition_date,payload,status")
+    .select("issue,edition_date,payload,status,created_at")
     .order("issue", { ascending: false })
     .limit(10);
   const rows = recent ?? [];
   const prev = rows.find((r) => r.status === "published" && r.edition_date !== today) ?? null;
   const todays = rows.find((r) => r.edition_date === today) ?? null;
 
-  if (todays && !force) {
+  // A claim that never turned into an issue.
+  //
+  // The claim row is what stops two pokes paying for one edition, which
+  // means a run that dies where it cannot clean up after itself — the
+  // platform killing a slow invocation, say — leaves a 'writing' row that
+  // would turn every later poke that day into a polite no-op, and the day
+  // would be lost. Nothing here takes longer than about two minutes, so a
+  // claim still sitting there after twenty is not in progress, it is dead,
+  // and the next poke takes it over.
+  const STALE_CLAIM_MS = 20 * 60 * 1000;
+  const claimedAt = Date.parse(todays?.created_at ?? "");
+  const stalled =
+    todays?.status === "writing" &&
+    (!Number.isFinite(claimedAt) || now.getTime() - claimedAt > STALE_CLAIM_MS);
+
+  if (todays && !force && !stalled) {
     return json({
       skipped: true,
       reason: todays.status === "published" ? "today's issue is already out" : "an issue is being written",
@@ -583,13 +606,21 @@ Deno.serve(async (req) => {
 
   const nextIssue = todays ? todays.issue : (rows[0]?.issue ?? 0) + 1;
 
-  // Claim the day BEFORE spending anything. The unique constraint on
-  // edition_date is the lock; losing the race is a no-op, not an error.
   if (!todays) {
+    // Claim the day BEFORE spending anything. The unique constraint on
+    // edition_date is the lock; losing the race is a no-op, not an error.
     const { error: claimErr } = await sb
       .from("vibe_times_issues")
       .insert({ issue: nextIssue, edition_date: today, status: "writing" });
     if (claimErr) return json({ skipped: true, reason: "another press already claimed today" });
+  } else if (stalled) {
+    // Re-stamp the claim on takeover, so a poke arriving while THIS run is
+    // working sees a fresh claim rather than the dead one.
+    await sb
+      .from("vibe_times_issues")
+      .update({ created_at: now.toISOString(), note: "retrying after a stalled run" })
+      .eq("edition_date", today)
+      .eq("status", "writing");
   }
 
   const openrouterKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -714,9 +745,15 @@ Deno.serve(async (req) => {
       .filter((f: { text: string }) => f.text)
       .slice(0, 4);
 
+    const printedAt = new Date().toISOString();
     const payload = {
       issue: nextIssue,
       date: today,
+      // The moment this edition came off the presses, in UTC. It goes in
+      // the payload rather than being read off published_at because the
+      // page renders it in the reader's own clock, and a static fallback
+      // issue has no row to read a timestamp from.
+      printed_at: printedAt,
       motto: str(draft.motto, 90) || "all the news that fits the sky",
       headlines,
       dispatches: wire,
@@ -742,7 +779,7 @@ Deno.serve(async (req) => {
         sources: dispatches.slice(0, 120),
         model: MODEL,
         status: "published",
-        published_at: new Date().toISOString(),
+        published_at: printedAt,
         note: `${build.source} · ${dispatches.length} dispatches available · ${dropped} unlinked dropped`,
       })
       .eq("edition_date", today);

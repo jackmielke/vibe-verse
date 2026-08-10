@@ -1,8 +1,8 @@
 /**
- * SOAKED — water mode, as data.
+ * SPLASH ROYALE — water mode, as data.
  *
  * DROP ZERO already has an arsenal, a health bar, three build materials and a
- * purple storm. SOAKED is the same game with every one of those restated in
+ * purple storm. SPLASH ROYALE is the same game with every one of those restated in
  * water-fight terms, and the cheapest way to do that is a lookup table rather
  * than 65k lines of edits. This file IS that table.
  *
@@ -1408,11 +1408,11 @@ export interface WaterStrings {
 }
 
 export const STRINGS: WaterStrings = {
-  modeName: "SOAKED",
+  modeName: "SPLASH ROYALE",
   modeTagline: "Last one dry wins.",
   eliminated: "SOAKED!",
   eliminatedFeed: "{by} soaked {name}",
-  eliminatedBy: "SOAKED BY {by}",
+  eliminatedBy: "SPLASH ROYALE BY {by}",
   knocked: "WATERLOGGED",
   knockedFeed: "{by} drenched {name}",
   revived: "TOWELLED OFF",

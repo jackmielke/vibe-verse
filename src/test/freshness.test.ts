@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { WORLDS } from "@/worlds/registry";
 import { WORLD_UPDATED } from "@/worlds/updated";
-import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
+import { byFreshest, changeLabel, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-08-07T12:00:00Z");
@@ -65,6 +65,38 @@ describe("world freshness", () => {
     expect(sinceLabel("not a date")).toBeNull();
     expect(exactLabel(undefined)).toBeNull();
     expect(updatedAt("no-such-world")).toBeNull();
+  });
+
+  /**
+   * The card's date and the changelog's date answer different questions. The
+   * card wants one coarse word; the log has six entries that all happened
+   * "today" and has to say which came first.
+   */
+  it("puts a clock on every entry in the log", () => {
+    /* Local time, because "time of day" means the reader's day. Asserted as a
+       shape rather than a literal so the suite does not depend on TZ. */
+    expect(changeLabel(ago(0), NOW)).toMatch(/^today at \d{1,2}:\d{2}( ?[ap]m)?$/i);
+    expect(changeLabel(ago(1.5 * DAY), NOW)).toMatch(/^yesterday at /);
+    expect(changeLabel(ago(3 * DAY), NOW)).toMatch(/^3 days ago at /);
+  });
+
+  it("drops the relative word once it stops helping, and keeps the clock", () => {
+    /* "3 weeks ago at 14:32" is a worse way of writing a date than the date. */
+    const older = changeLabel(ago(21 * DAY), NOW);
+    expect(older).not.toMatch(/ago/);
+    expect(older).toMatch(/ at /);
+    // Same year, so no year in it; a different year has to say which.
+    expect(older).not.toMatch(/2026/);
+    expect(changeLabel(ago(500 * DAY), NOW)).toMatch(/2025/);
+  });
+
+  it("never reports a commit stamped ahead of this clock as being in the past", () => {
+    expect(changeLabel(new Date(NOW + 5 * DAY).toISOString(), NOW)).toMatch(/^today at /);
+  });
+
+  it("says nothing rather than something wrong for a missing log date", () => {
+    expect(changeLabel(null)).toBeNull();
+    expect(changeLabel("not a date")).toBeNull();
   });
 
   it("sorts freshest first, and unknowns last", () => {

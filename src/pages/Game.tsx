@@ -11,33 +11,26 @@
  * added to the registry appears here, in the nav, in the picker and in the
  * passport at the same moment, which is the entire reason the registry exists.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { Search, X } from "lucide-react";
+import { PLAYABLE, WORLDS, type WorldEntry } from "@/worlds/registry";
 import {
-  PLAYABLE,
-  WORLDS,
-  featuredFirst,
-  type WorldEntry,
-  type WorldKind,
-} from "@/worlds/registry";
+  SORT_TABS,
+  initialSort,
+  rememberSort,
+  sortWorlds,
+  type WorldSort,
+} from "@/worlds/sorting";
 import { artFor } from "@/worlds/art";
-import { byFreshest, exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
-import { passportProgress } from "@/lib/passport";
+import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
+import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeWink from "@/components/VibeWink";
 import { WorldChangesPortal } from "@/components/WorldChanges";
 import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
-
-/** Filter tabs. `all` is not a kind, so it is spelled out here. */
-const TABS: { id: WorldKind | "all"; label: string; hint: string }[] = [
-  { id: "all", label: "Everything", hint: "every door in the vibeverse" },
-  { id: "game", label: "Games", hint: "a goal, a score, or something shooting back" },
-  { id: "world", label: "Worlds", hint: "places to walk, fly and drive around" },
-  { id: "hangout", label: "Hangouts", hint: "somewhere to be, with other people" },
-  { id: "tool", label: "The App", hint: "the parts that are not the fiction" },
-];
 
 /**
  * The panel a card falls back to when a world has no honest capture yet.
@@ -177,19 +170,87 @@ function Card({
   );
 }
 
+/**
+ * Featured / Updated / Played.
+ *
+ * One pill with a highlight that slides between the options, rather than three
+ * loose buttons under a caption reading "Recently played" that stayed put
+ * whichever one you pressed — it described the first tab, so on the other two
+ * the page carried a heading that contradicted the order it was in.
+ */
+function SortTabs({
+  sort,
+  onChange,
+  tabs,
+}: {
+  sort: WorldSort;
+  onChange: (s: WorldSort) => void;
+  tabs: typeof SORT_TABS;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Order the worlds"
+      /* `self-start` so the pill hugs its two or three words on a phone. In a
+         column flex it otherwise stretches the full width and reads as a bar
+         with the labels stranded at one end of it. */
+      className="flex shrink-0 self-start items-center gap-0.5 rounded-full border border-border/50 bg-background/50 p-0.5 sm:self-auto"
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={sort === t.id}
+          title={t.hint}
+          onClick={() => onChange(t.id)}
+          className={`relative rounded-full px-3 py-1.5 font-heading text-[10px] font-bold uppercase tracking-wider transition-colors sm:px-3.5 ${
+            sort === t.id ? "text-primary" : "text-muted-foreground/60 hover:text-foreground"
+          }`}
+        >
+          {sort === t.id && (
+            <motion.span
+              layoutId="sort-pill"
+              transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              className="absolute inset-0 rounded-full bg-primary/15"
+              aria-hidden
+            />
+          )}
+          <span className="relative">{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Game() {
-  const [tab, setTab] = useState<WorldKind | "all">("all");
   const [query, setQuery] = useState("");
-  /* Two orders, and neither is a ranking. "Featured" is the hand-tuned order in
-     the registry — the one to open on, because someone arriving cold should
-     meet the best door first. "Recent" answers the other question people
-     actually have about a collection this size: what is still being worked on? */
-  const [sort, setSort] = useState<"featured" | "recent">("featured");
   const [history, setHistory] = useState<WorldEntry | null>(null);
 
   /* Read once per mount. The passport is localStorage, and re-reading it every
      render to draw one line of text is not worth a subscription. */
   const progress = useMemo(() => passportProgress(), []);
+  /** route → last arrival, from the passport. Empty for a first-time visitor. */
+  const lastPlayed = useMemo(() => {
+    const stamps = readPassport().stamps;
+    const map: Record<string, number> = {};
+    for (const st of Object.values(stamps) as Stamp[]) map[st.route] = st.last;
+    return map;
+  }, []);
+  const hasPlays = Object.keys(lastPlayed).length > 0;
+
+  /* Featured for anyone arriving cold; whatever they last chose for anyone who
+     has chosen. "Played" is not offered until there is something in it — a tab
+     that can only ever show you the same order under a different name is a
+     control that teaches you not to trust the controls. */
+  const [sort, setSort] = useState<WorldSort>(() => initialSort(hasPlays));
+  const tabs = useMemo(
+    () => SORT_TABS.filter((t) => t.id !== "played" || hasPlays),
+    [hasPlays],
+  );
+  const chooseSort = useCallback((s: WorldSort) => {
+    setSort(s);
+    rememberSort(s);
+  }, []);
 
   /* The wallet, for the chip below the headline. Shares the nav's fetch — see
      `use-vibecoin`, which reference-counts a single request per page. */
@@ -197,16 +258,13 @@ export default function Game() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = tab === "all" ? WORLDS : WORLDS.filter((w) => w.kind === tab);
     const hit = q
-      ? base.filter((w) =>
+      ? WORLDS.filter((w) =>
           `${w.name} ${w.blurb} ${w.status ?? ""} ${w.source}`.toLowerCase().includes(q),
         )
-      : base;
-    return sort === "recent"
-      ? [...hit].sort((a, b) => byFreshest(a.key, b.key))
-      : featuredFirst(hit);
-  }, [tab, query, sort]);
+      : WORLDS;
+    return sortWorlds(hit, sort, lastPlayed);
+  }, [query, sort, lastPlayed]);
 
   const counts = useMemo(
     () => ({
@@ -261,7 +319,7 @@ export default function Game() {
               is that anybody can add a door to it, and a byline quietly says
               the opposite — the eyebrow above already names the invitation. */}
           <p className="mt-1.5 font-heading text-[13px] font-semibold leading-snug text-foreground/85 sm:mt-2 sm:text-base">
-            A massive collection of AI-coded games.
+            A massive collection of AI-coded games ;)
           </p>
           {/* The full pitch is desktop-only; the phone gets the one-line
               version in the row of chips below. */}
@@ -286,87 +344,77 @@ export default function Game() {
                 vibeverse has money in it and points at where to spend it. */}
             <Link
               to="/arcade"
-              title="Vibecoin — the currency of the vibeverse. Earn it in the worlds, spend it in the arcade."
+              title="Vibey Coins — the play currency of the vibeverse. Earn them in the worlds, spend them in the arcade."
               className="flex items-center gap-1.5 rounded-full border border-[#7dffd4]/35 bg-[#7dffd4]/[0.07] px-3 py-1.5 font-heading font-semibold uppercase tracking-wider text-[#7dffd4] transition-colors hover:border-[#7dffd4]/60 sm:px-4 sm:py-2"
             >
               <VibeCoinMark size={13} />
               <span className="tabular-nums">{coin.display}</span>
               <span className="opacity-70">Vibecoin</span>
             </Link>
-            <span className="rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground sm:py-2">
-              {counts.playable} playable · passport {progress.visited}/{progress.total}
-            </span>
+            {/* Was a grey span for months: the one record spanning every
+                world in here, rendered as five words you could not click. */}
+            <Link
+              to="/passport"
+              title="Your passport — a badge for every world, and what is left to find."
+              className="flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-muted-foreground transition-colors hover:border-[#8fb4ff]/60 hover:text-[#8fb4ff] sm:py-2"
+            >
+              <span>passport</span>
+              <span className="tabular-nums">
+                {progress.visited}/{progress.total}
+              </span>
+            </Link>
           </div>
         </motion.header>
 
         <TodaysPaper />
 
-        {/* Filters + search. The tabs scroll horizontally on a phone rather
-            than wrapping to a second row and pushing the grid further down. */}
-        <div className="sticky top-0 z-10 -mx-3 mt-5 bg-background/85 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:px-6 sm:py-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="order-2 flex items-center gap-2 overflow-x-auto sm:order-1 sm:contents [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TABS.map((t) => {
-              const active = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  title={t.hint}
-                  className={`shrink-0 rounded-full px-3 py-1.5 font-heading text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
-                    active
-                      ? "bg-primary/25 text-primary shadow-[0_0_18px_hsl(var(--primary)/0.3)]"
-                      : "text-foreground/60 hover:bg-muted/50 hover:text-foreground"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-            </div>
-            {/* On a phone this sits above the tabs instead of after them. As the
-                last item of a horizontally-scrolling row it was simply off the
-                right-hand edge of the screen, which is a search box nobody can
-                find. */}
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${WORLDS.length} worlds…`}
-              className="order-1 w-full rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:border-primary/60 focus:outline-none sm:order-2 sm:ml-auto sm:w-52 sm:px-4"
-            />
-          </div>
-        </div>
+        {/* One bar: how the list is ordered on the left, how to narrow it on
+            the right. It used to be two stacked rows — a right-aligned search
+            field, then a right-aligned caption and three loose buttons — which
+            read as three separate controls that happened to be near each other.
+            The count only appears while a search is narrowing something, where
+            it answers a question somebody is actually asking. */}
+        <div className="sticky top-0 z-10 -mx-3 mt-5 flex flex-col gap-2 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-3">
+          <SortTabs sort={sort} onChange={chooseSort} tabs={tabs} />
 
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3">
-          <p className="text-[10.5px] text-muted-foreground/70 sm:text-[11px]">
-            {TABS.find((t) => t.id === tab)?.hint} · {shown.length} shown
-          </p>
-          <div className="ml-auto flex items-center gap-1">
-            {(
-              [
-                ["featured", "Featured"],
-                ["recent", "Recently updated"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => setSort(id)}
-                className={`rounded-full px-2.5 py-1 font-heading text-[9.5px] font-semibold uppercase tracking-wider transition-colors ${
-                  sort === id
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground/60 hover:bg-muted/50 hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex min-w-0 items-center gap-2 sm:justify-end">
+            {query.trim() && (
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/50">
+                {shown.length}/{WORLDS.length}
+              </span>
+            )}
+            <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label={`Search ${WORLDS.length} worlds`}
+                placeholder="Search worlds…"
+                /* `appearance-none` kills WebKit's own round clear button,
+                   which draws itself on top of ours and in the wrong grey. */
+                className="w-full appearance-none rounded-full border border-border/50 bg-background/50 py-1.5 pl-8 pr-8 text-xs placeholder:text-muted-foreground/50 focus:border-primary/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground/50 transition-colors hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Two across on a phone, always. Seeing several games at once is the
             entire job of this page. */}
-        <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-1 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {shown.map((w, i) => (
             <Card key={w.key} world={w} index={i} onHistory={setHistory} />
           ))}

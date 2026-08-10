@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coin Drop</title>
+<!--
+  The reference game.
+
+  It exists to be read, not just played. Everything a third-party game has to
+  do is in here once, in about two hundred lines of plain HTML, with no build
+  step and no framework: load the SDK, say hello, play, batch your awards,
+  offer a way out.
+
+  It is also the honest test of the architecture. This file lives in the
+  vibeverse's own `public/` directory, but it is loaded in the same sandboxed
+  frame as a stranger's game, talks over the same postMessage bridge, and is
+  bound by the same budgets. It has no special access. If it works, the path
+  works.
+-->
+<style>
+  :root {
+    --sky-top: #0b1020;
+    --sky-bot: #16233f;
+    --coin:    #ffd76a;
+    --coin-2:  #e0a02c;
+    --rock:    #7c8aa3;
+    --ink:     #eaf1ff;
+    --mint:    #5fe3bd;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--sky-top); color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none; touch-action: none;
+  }
+  #stage { display: block; width: 100%; height: 100%; }
+
+  .hud {
+    position: fixed; inset: 0 0 auto 0;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 16px; pointer-events: none;
+    font-size: 13px; letter-spacing: 0.04em;
+  }
+  .hud b { font-size: 20px; font-weight: 700; }
+  .hud .stat { color: #93a3bd; }
+  .hud .stat i { color: var(--ink); font-style: normal; }
+  .purse {
+    color: var(--coin); margin-left: auto;
+    display: flex; align-items: baseline; gap: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* The ✦ glyph sits small inside its em box, so it needs a size well above
+     the number beside it to read as the same weight. */
+  .purse small { color: var(--coin); font-size: 22px; line-height: 1; opacity: 0.9; }
+
+  .overlay {
+    position: fixed; inset: 0; display: grid; place-content: center;
+    text-align: center; gap: 18px; padding: 24px;
+    background: rgba(7, 11, 22, 0.82); backdrop-filter: blur(6px);
+  }
+  .overlay[hidden] { display: none; }
+  .overlay h1 { margin: 0; font-size: 34px; letter-spacing: -0.02em; }
+  .overlay p  { margin: 0; max-width: 30ch; color: #a7b6cf; line-height: 1.55; font-size: 14px; }
+  .overlay .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 12px 22px; border-radius: 999px; border: 1px solid #2c3852;
+    background: #121b30; color: var(--ink);
+    cursor: pointer; pointer-events: auto; transition: transform 0.12s, background 0.12s;
+  }
+  button:hover  { background: #1a2740; transform: translateY(-1px); }
+  button:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+  button.go { background: var(--mint); border-color: var(--mint); color: #06231c; font-weight: 700; }
+  button.go:hover { background: #7cf0cf; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%);
+    padding: 9px 16px; border-radius: 999px; font-size: 13px;
+    background: rgba(10,16,30,0.9); border: 1px solid #2c3852; color: var(--coin);
+    opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+  }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(-8px); }
+
+  @media (prefers-reduced-motion: reduce) {
+    button, .toast { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div class="hud">
+  <span class="stat"><i id="clock">30</i>s left</span>
+  <span class="stat"><i id="caught">0</i> caught</span>
+  <span class="purse"><b id="purse">0</b><small id="coinName">✦</small></span>
+</div>
+
+<div class="overlay" id="start">
+  <h1>Coin Drop</h1>
+  <p>Catch the coins. Catch three rocks and it's over.<br>
+     What you catch is really yours.</p>
+  <div class="row">
+    <button class="go" id="play">Play</button>
+    <button id="quit">Back to the vibeverse</button>
+  </div>
+  <p id="terms" style="font-size:12px;color:#6f7f99"></p>
+</div>
+
+<div class="overlay" id="over" hidden>
+  <h1 id="overTitle">Nice haul</h1>
+  <p id="overLine"></p>
+  <div class="row">
+    <button class="go" id="again">Again</button>
+    <button id="quit2">Back to the vibeverse</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Step 1 of 4: load the SDK. A relative path works here because this game is
+     served by the vibeverse itself; a game hosted anywhere else points at the
+     absolute URL, which the /build page prints with the right host in it. -->
+<script src="/vibeverse.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var cv = document.getElementById("stage");
+  var ctx = cv.getContext("2d");
+  var $ = function (id) { return document.getElementById(id); };
+
+  var W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+
+  // ---- the vibeverse handshake -------------------------------------------
+  // Step 2 of 4: say hello. Until this resolves we do not know what a coin is
+  // called or what the day's allowance has left, so we do not draw either.
+
+  var purse = 0;          // coins actually paid, confirmed by the vibeverse
+  var pending = 0;        // caught but not yet flushed — see flush()
+  var vibe = { currency: "Vibey Coins", symbol: "✦", maxAward: 0, headroom: 0 };
+
+  Vibeverse.ready().then(function (v) {
+    vibe = v;
+    $("coinName").textContent = v.symbol;
+    $("terms").textContent = Vibeverse.inVibeverse
+      ? "Up to " + v.maxAward + " " + v.symbol + " a round · " + v.headroom + " left for you today"
+      : "Running outside the vibeverse — coins won't be real.";
+  });
+
+  // Step 3 of 4: batch the awards.
+  //
+  // One award per coin would be a network round trip per catch and would burn
+  // the per-session request ceiling in under a minute. So the game keeps its
+  // own count and flushes it once per round. The number that goes on screen is
+  // the one the vibeverse says it paid — never the one we asked for, because
+  // those differ the moment a budget runs low, and a HUD that disagrees with
+  // the wallet is worse than no HUD.
+  function flush(why) {
+    if (pending <= 0) return Promise.resolve();
+    var n = pending; pending = 0;
+    return Vibeverse.award(n, why).then(function (r) {
+      purse += r.amount;
+      $("purse").textContent = purse;
+      if (r.amount > 0) {
+        toast("+" + r.amount + " " + vibe.symbol + (r.capped ? " (that's today's lot)" : ""));
+      } else if (Vibeverse.inVibeverse) {
+        toast("You've earned everything this game had today");
+      }
+      return r;
+    }).catch(function (e) {
+      toast(e.message);
+    });
+  }
+
+  var toastTimer = 0;
+  function toast(text) {
+    var el = $("toast");
+    el.textContent = text;
+    el.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("on"); }, 2200);
+  }
+
+  // ---- the game itself ----------------------------------------------------
+
+  var ROUND = 30;
+  var running = false, t0 = 0, left = ROUND, caught = 0, missed = 0;
+  var items = [], spawnAt = 0;
+  var basket = { x: 0.5, w: 96 };
+
+  function reset() {
+    running = true; t0 = performance.now(); left = ROUND;
+    caught = 0; missed = 0; items = []; spawnAt = 0;
+    basket.x = 0.5;
+    $("caught").textContent = "0";
+    $("clock").textContent = ROUND;
+  }
+
+  function spawn() {
+    // Two in three are coins; the rest are rocks, which is what stops this
+    // being a clicker. Something has to be at stake for catching to mean
+    // anything.
+    var rock = Math.random() < 0.32;
+    items.push({
+      x: 0.08 + Math.random() * 0.84,
+      y: -0.06,
+      v: 0.30 + Math.random() * 0.34,
+      rock: rock,
+      spin: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function step(dt) {
+    left = Math.max(0, ROUND - (performance.now() - t0) / 1000);
+    $("clock").textContent = Math.ceil(left);
+
+    // The field gets busier as the clock runs down. A round that is the same
+    // at second 29 as at second 1 has no shape to it, and the last five
+    // seconds should be the ones you talk about afterwards.
+    spawnAt -= dt;
+    if (spawnAt <= 0) {
+      spawn();
+      var heat = 1 - left / ROUND;
+      spawnAt = (0.46 - heat * 0.24) + Math.random() * 0.26;
+    }
+
+    var catchY = 0.86, half = (basket.w / 2) / W;
+    for (var i = items.length - 1; i >= 0; i--) {
+      var it = items[i];
+      it.y += it.v * dt;
+      it.spin += dt * 4;
+      if (it.y >= catchY && it.y < catchY + it.v * dt + 0.02) {
+        if (Math.abs(it.x - basket.x) < half + 0.03) {
+          items.splice(i, 1);
+          if (it.rock) { missed++; bump(); }
+          else { caught++; pending++; $("caught").textContent = caught; pops.push({ x: it.x, y: catchY, t: 1 }); }
+          continue;
+        }
+      }
+      // A coin that reaches the floor is just a coin you did not get. Only
+      // catching a rock costs a life — the first cut punished misses too, and
+      // a busy field ends the round in five seconds, which reads as broken
+      // rather than hard.
+      if (it.y > 1.1) items.splice(i, 1);
+    }
+    if (left <= 0 || missed >= 3) end();
+  }
+
+  var shake = 0;
+  var pops = [];   // "+1" marks that float off a catch
+  function bump() { shake = 1; }
+
+  function draw() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0b1020"); g.addColorStop(1, "#16233f");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * 9 * shake, (Math.random() - 0.5) * 9 * shake);
+      shake = Math.max(0, shake - 0.06);
+    }
+
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i], x = it.x * W, y = it.y * H;
+      if (it.rock) {
+        ctx.fillStyle = "#7c8aa3";
+        ctx.beginPath();
+        ctx.moveTo(x - 13, y + 9); ctx.lineTo(x - 6, y - 11);
+        ctx.lineTo(x + 10, y - 7); ctx.lineTo(x + 13, y + 10);
+        ctx.closePath(); ctx.fill();
+      } else {
+        var r = 13, sq = Math.abs(Math.cos(it.spin)) * 0.85 + 0.15;
+        ctx.save(); ctx.translate(x, y); ctx.scale(sq, 1);
+        var cg = ctx.createRadialGradient(-4, -4, 2, 0, 0, r);
+        cg.addColorStop(0, "#fff3c4"); cg.addColorStop(1, "#e0a02c");
+        ctx.fillStyle = cg;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // The basket
+    var bx = basket.x * W, by = 0.86 * H, bw = basket.w;
+    ctx.fillStyle = "#5fe3bd";
+    ctx.beginPath();
+    ctx.moveTo(bx - bw / 2, by - 12);
+    ctx.lineTo(bx + bw / 2, by - 12);
+    ctx.lineTo(bx + bw / 2 - 12, by + 16);
+    ctx.lineTo(bx - bw / 2 + 12, by + 16);
+    ctx.closePath(); ctx.fill();
+
+    // Catch marks, floating up off the basket
+    ctx.font = "700 16px ui-monospace, Menlo, monospace";
+    ctx.textAlign = "center";
+    for (var p = pops.length - 1; p >= 0; p--) {
+      var po = pops[p];
+      po.t -= 0.022;
+      if (po.t <= 0) { pops.splice(p, 1); continue; }
+      ctx.globalAlpha = Math.min(1, po.t * 1.6);
+      ctx.fillStyle = "#ffd76a";
+      ctx.fillText("+1", po.x * W, po.y * H - (1 - po.t) * 46);
+    }
+    ctx.globalAlpha = 1;
+
+    // Lives, as three pips
+    for (var k = 0; k < 3; k++) {
+      ctx.fillStyle = k < 3 - missed ? "#5fe3bd" : "#2c3852";
+      ctx.beginPath(); ctx.arc(20 + k * 16, H - 24, 5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  var last = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    var dt = Math.min(0.05, (now - last) / 1000 || 0); last = now;
+    if (running) step(dt);
+    draw();
+  }
+
+  function end() {
+    running = false;
+    var before = purse;
+    flush(caught + " caught in 30s").then(function () {
+      var banked = purse - before;
+      $("overTitle").textContent = missed >= 3 ? "One rock too many" : "Time";
+      // Say what BANKED, not what was caught. Those differ the moment a
+      // ceiling bites, and a game that reports the ask rather than the payment
+      // is the one thing the SDK docs ask you not to do.
+      $("overLine").textContent = !Vibeverse.inVibeverse
+        ? "You caught " + caught + ". Open this inside the vibeverse to keep them."
+        : banked <= 0
+          ? "You caught " + caught + ", but this game has given out everything it had today."
+          : banked < caught
+            ? "You caught " + caught + " and banked " + banked + " " + vibe.symbol +
+              " — that's all it had left for you today."
+            : "You caught " + caught + ". All " + banked + " " + vibe.symbol + " are in your wallet.";
+      $("over").hidden = false;
+    });
+  }
+
+  // ---- input --------------------------------------------------------------
+
+  function aim(clientX) { basket.x = Math.max(0.04, Math.min(0.96, clientX / W)); }
+  window.addEventListener("pointermove", function (e) { aim(e.clientX); });
+  window.addEventListener("pointerdown", function (e) { aim(e.clientX); });
+  window.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowLeft")  basket.x = Math.max(0.04, basket.x - 0.06);
+    if (e.key === "ArrowRight") basket.x = Math.min(0.96, basket.x + 0.06);
+  });
+
+  $("play").onclick  = function () { $("start").hidden = true; reset(); };
+  $("again").onclick = function () { $("over").hidden = true; reset(); };
+
+  // Step 4 of 4: a way out. The vibeverse draws its own too, so this is a
+  // courtesy rather than a requirement — but a game that ends and then just
+  // sits there is a dead end.
+  $("quit").onclick = $("quit2").onclick = function () { Vibeverse.exit(); };
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

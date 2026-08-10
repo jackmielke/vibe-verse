@@ -21,6 +21,16 @@
  * touched five commits ago returns nothing at all. Regenerating there would
  * quietly erase every date. So a path that resolves to nothing keeps whatever
  * the committed file already said, and the script says so loudly.
+ *
+ * That guard is not enough on its own, and this is the interesting part: a
+ * shallow clone deep enough to have *some* history is worse than one with
+ * none. Git presents the graft boundary as the commit that created every file
+ * in the tree, so `git log -- src/pages/About.tsx` answers confidently with the
+ * boundary's date. Nothing looks missing. Every world that has not been touched
+ * inside the shallow window silently adopts the same wrong date, and it is a
+ * plausible-looking recent one, so the diff reads like normal churn. A clone
+ * with 71 of 247 commits flattened thirty worlds' dates onto one afternoon
+ * before anybody noticed. So: in a shallow clone this refuses to write at all.
  */
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -112,6 +122,35 @@ function readExisting() {
   } catch {
     return {};
   }
+}
+
+/**
+ * Is this clone missing history?
+ *
+ * If it is, every date this script would produce is untrustworthy in a way
+ * that looks fine — see the header. Better to fail than to write.
+ */
+function isShallowClone() {
+  try {
+    const out = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim() === "true";
+  } catch {
+    /* Not a git repo, or a git too old to know the flag. Nothing to say. */
+    return false;
+  }
+}
+
+if (isShallowClone()) {
+  console.error(
+    "stamp-worlds: this is a shallow clone, so git will date every untouched\n" +
+      "world to the graft boundary and the dates on every card will be wrong.\n" +
+      "Refusing to write. Run `git fetch --unshallow` first.",
+  );
+  process.exit(1);
 }
 
 const worlds = await loadWorlds();

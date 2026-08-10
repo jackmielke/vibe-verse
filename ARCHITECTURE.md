@@ -256,12 +256,8 @@ arcade's play id, which is the ledger row of its own debit.
 
 Ranked by what it actually costs:
 
-1. **The entry chunk is 6.8 MB (2.07 MB gzip).** Everything not explicitly
-   lazy — City at 7.4k lines, Unit7Playground at 5.3k, MapView at 3.4k,
-   mapbox-gl, three, every world art JPEG — is in the bundle you download to
-   look at the hub. Only Seafair, the Vibeverse, and Vibe Kart are lazy. Making
-   every route `lazy()` is the single highest-leverage change available, and it
-   is mechanical.
+1. ~~**The entry chunk is 6.8 MB (2.07 MB gzip).**~~ **Done — it is 832 kB
+   (256 kB gzip).** See §10.
 2. **Two copies of three.js.** `three@0.160` for the app, plus
    `three-ls` (an alias for `three@0.185`) for the vendored ship. That is the
    price of keeping `longsilence` re-syncable, and it is probably worth paying —
@@ -276,7 +272,7 @@ Ranked by what it actually costs:
 6. **One flaky test.** A muzzle-direction assertion in `src/sf/weapons` fails
    roughly one run in twenty. Pre-existing.
 
-None of these are emergencies. Item 1 is the one a visitor can feel.
+None of these are emergencies, and the one a visitor could feel is fixed.
 
 ---
 
@@ -284,7 +280,7 @@ None of these are emergencies. Item 1 is the one a visitor can feel.
 
 1. `src/<world>/` for everything that moves; `src/pages/<World>.tsx` for the
    shell.
-2. `lazy()` it in `App.tsx` if it is over a few hundred kB.
+2. `lazy()` it in `App.tsx`. Always — see §10.
 3. One entry in `src/worlds/registry.ts`. Set `chromeless: true` if it owns the
    viewport, `passport: true` if you also add `useWorldStamp` to the page.
 4. `node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg`, then add
@@ -293,4 +289,49 @@ None of these are emergencies. Item 1 is the one a visitor can feel.
 5. Dispose everything on unmount.
 6. `npm run build` **and** open the route in a real browser. A world that
    builds and renders a black screen is a broken demo, and the build will not
-   tell you.
+   tell you. `node scripts/route-smoke.mjs /<route>` is the cheap version of
+   that check; it opens the route and reports whether anything appeared.
+
+---
+
+## 10. What the first page weighs, and how it stays that way
+
+Fixed 2026-08-09. The numbers, from `npm run build`:
+
+| | before | after |
+|---|---:|---:|
+| entry chunk | 7,361 kB | **832 kB** |
+| entry chunk, gzipped | 2,256 kB | **256 kB** |
+| modules in it | 1,654 | 574 |
+
+Nothing was deleted and no world got smaller. Three things moved:
+
+1. **Every route in `App.tsx` is `lazy()`.** Thirty of them were not, and the
+   sum of "this one is small enough" was San Palmas, Vibe Golf, Vibe City,
+   Unit7, Island Explorer, Globetrotter and mapbox-gl in the bundle you
+   download to look at a grid of cards. The rule is now unconditional, with two
+   deliberate exceptions — the landing grid and the 404, the two pages that
+   must not wait on a second round trip.
+2. **The nav's coin chip stopped reaching through heavy neighbours.** It wanted
+   two functions: `readPayoutAddress`, which it imported from
+   `VibeWalletConnect` and so brought the whole Base Account SDK with it, and
+   `shortAddress`, four lines of string slicing that lived in `vibe-wallet.ts`
+   next to a viem public client. Both now live somewhere weightless
+   (`lib/walletBook.ts` and `lib/address.ts`), re-exported from where they were
+   so no call site broke. That was ~1.1 MB.
+3. **The login dialog's 3D arch is lazy.** `VibeAuthDialog` hangs off the nav's
+   log in button, and it opens with a decorative WebGL arch — which put all
+   1.4 MB of three.js in the entry chunk of an app where most pages have no
+   3D on them at all. Radix only mounts dialog content when the dialog opens,
+   so the import now fires on the tap that opens it.
+
+Points 2 and 3 are the same bug twice, and it is the one worth watching for:
+**a shared module is only as light as its heaviest import.** Nothing about
+`VibeCoinChip` or a login form suggests three.js or a chain client, which is
+exactly why nobody noticed for months. When you add an import to anything the
+global nav renders, check what comes with it.
+
+`node scripts/route-smoke.mjs` opens every route in a real browser and reports
+whether anything rendered. It exists because lazy routes move failures from
+build time to click time: a bad import in a world used to break the build, and
+now it breaks that world only, for whoever clicks it first.

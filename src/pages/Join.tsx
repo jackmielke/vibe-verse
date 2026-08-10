@@ -152,7 +152,7 @@ export default function Join() {
                   </span>
                 </div>
                 <p className="mt-2 font-heading text-[9px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
-                  Vibecoin · yours
+                  Vibey Coins · yours
                 </p>
                 <p className="mt-3 text-[12.5px] leading-relaxed text-foreground/80">
                   {claimed > 0
@@ -192,7 +192,7 @@ export default function Join() {
                       </span>
                     </div>
                     <p className="mt-2 font-heading text-[9px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
-                      Vibecoin, waiting for you
+                      Vibey Coins, waiting for you
                     </p>
                     {peek.note && (
                       <p className="mt-2.5 text-[12px] text-foreground/70">{peek.note}</p>
@@ -275,7 +275,7 @@ export default function Join() {
           transition={{ delay: 0.5 }}
           className="mt-7 text-center text-[10.5px] leading-relaxed text-muted-foreground/55"
         >
-          Vibecoin is play money that runs across the whole vibeverse. $VIBE is a
+          Vibey Coins are play money that run across the whole vibeverse. Vibecoin ($VIBE) is a
           real token on Base and this app never sends a transaction — linking a
           wallet only tells us where to post a drop.{" "}
           <Link to="/" className="underline underline-offset-2 hover:text-muted-foreground">

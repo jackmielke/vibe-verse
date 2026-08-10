@@ -24,7 +24,7 @@
  *    own. Point it at a room code and it is in the match.
  *
  * WIRE PROTOCOL — mirrored from src/royale/net/net.ts. Keep in sync.
- *   channel   `soaked-<NORMALISED-ROOM-CODE>`
+ *   channel   `splash-<NORMALISED-ROOM-CODE>`
  *   presence  key = our peer id, meta = { name, team, agent }
  *   broadcast "pose" → { i, x, y, z, a(yaw), p(pitch), s(state), d(dry),
  *                        t(team), n(name), g(1 when an agent) }
@@ -48,7 +48,7 @@
  * FLAGS
  *   --room CODE      lobby to join (required; case/punctuation insensitive)
  *   --name NAME      display name                        [Claude]
- *   --team TEAM      squad id — same string = same squad [blue]
+ *   --team TEAM      riptide|dolphin|cannonball|flamingo [riptide]
  *   --url URL        Supabase URL      [$VITE_SUPABASE_URL or .env]
  *   --key KEY        Supabase anon key [$VITE_SUPABASE_PUBLISHABLE_KEY or .env]
  *   --follow-dist M  how far behind a teammate to hold   [6]
@@ -116,6 +116,69 @@ const DETOUR_ANGLE = 1.22;
  *  margin so we never wander into the sea. */
 const ISLAND_HALF = 1500 * 0.82;
 
+/**
+ * How far outside the island we are willing to go, given where the leader is.
+ *
+ * The default fence keeps us out of the sea, which is right nearly always and
+ * catastrophically wrong for the one minute that decides the match: the drop
+ * bus starts its run far outside the playable square and hundreds of metres
+ * up. A follower that refuses to leave the island watches the bus fly past.
+ *
+ * So the fence yields to the leader — always far enough out to reach them,
+ * plus a little room to hold a slot beside them, and never tighter than the
+ * island itself. When there is no leader it is exactly the old behaviour.
+ */
+function leaderReach(base) {
+  const lead = peers.get(leaderId);
+  if (!lead || !lead.posed) return base;
+  const need = Math.max(Math.abs(lead.x), Math.abs(lead.z)) + FOLLOW_DIST + SLOT_SIDE;
+  return Math.max(base, need);
+}
+
+/**
+ * Gap past which we stop walking and simply appear beside the squad.
+ *
+ * Set above any distance a real match puts between a follower and its leader
+ * (the island is 3 km corner to corner, and the follow slot is 6 m) so this
+ * only ever fires for the two cases that are genuinely unwalkable: the drop
+ * bus, and a leader who has quick-travelled away. The cooldown keeps it from
+ * becoming a rubber band if someone is hovering right at the threshold.
+ */
+const REJOIN_DIST = 220;
+const REJOIN_COOLDOWN = 6;
+
+/**
+ * The soaker, modelled on the Super Soaker 9000 in `mode/water.ts`: 12 soak a
+ * shot, a 30-shot tank, 12/s refill after a 0.45 s pause.
+ *
+ * ENGAGEMENT RANGE IS THE HONEST PART. The gun's real range is 220 m and its
+ * damage falloff does not even begin until 45 m — but this process has no
+ * terrain, no collision and no line of sight. It knows where everyone is and
+ * nothing about what is between. Firing at 200 m would mean firing through
+ * hills, through Foundry Flats, and through the island itself.
+ *
+ * 40 m is the compromise: short enough that "we can see each other" is usually
+ * true on open ground, long enough to matter in a fight. It still shoots
+ * through the occasional shed, and that is a real limitation rather than a
+ * tuning value — the fix is line-of-sight data this process does not have.
+ *
+ * ACCURACY exists for the same reason in reverse: the bot has millimetre-exact
+ * knowledge of every position on the wire, so without a miss rate it is a
+ * hitscan laser that never misses a moving target at 40 m. Nobody wants to
+ * play against that, least of all beside it.
+ */
+const GUN_RANGE = 40;
+const GUN_SOAK = 12;
+const GUN_SHOTS_PER_SEC = 3.5;
+const GUN_TANK = 30;
+const GUN_REFILL = 12;
+const GUN_REFILL_DELAY = 0.45;
+/** Hit chance at point blank, falling to this at GUN_RANGE. */
+const GUN_ACC_NEAR = 0.82;
+const GUN_ACC_FAR = 0.38;
+/** Stop shooting at someone we have not had a fresh pose from. */
+const GUN_STALE = 1.5;
+
 /** Dryness: how wet a splash within SPLASH_RADIUS makes us, and how fast we
  *  towel off again while nothing is hitting us. 0% dry = out of the match. */
 const SPLASH_RADIUS = 3.2;
@@ -177,7 +240,7 @@ if (args.help || args.h) {
       "",
       "    --room CODE      lobby to join (required)",
       "    --name NAME      display name                        [Claude]",
-      "    --team TEAM      squad id — same string = same squad [blue]",
+      "    --team TEAM      riptide|dolphin|cannonball|flamingo [riptide]",
       "    --url URL        Supabase URL      [VITE_SUPABASE_URL / .env]",
       "    --key KEY        Supabase anon key [VITE_SUPABASE_PUBLISHABLE_KEY / .env]",
       "    --follow-dist M  how far behind a teammate to hold   [6]",
@@ -300,7 +363,39 @@ if (!ROOM) {
 }
 
 const NAME = String(args.name || "Claude").slice(0, 24);
-const TEAM = String(args.team || "blue").slice(0, 24);
+/**
+ * The four squads the lobby offers, by id. The picker in
+ * `src/royale/ui/Lobby.tsx` writes exactly these into the presence payload.
+ */
+const SQUADS = ["riptide", "dolphin", "cannonball", "flamingo"];
+
+/**
+ * Fold a squad name to something two people typing from memory will agree on.
+ *
+ * Teammates are matched by string, and an unrecognised string does not fail
+ * loudly — it just means the bot treats you as a rival and never follows you,
+ * which looks like a broken bot rather than a typo. "Dolphins" and "dolphin"
+ * are the same squad to a human, so make them the same squad here: lowercase,
+ * trim, and drop a trailing plural.
+ */
+const foldTeam = (t) => {
+  const s = String(t ?? "").trim().toLowerCase();
+  if (!s) return "";
+  const singular = s.endsWith("s") ? s.slice(0, -1) : s;
+  return SQUADS.includes(singular) ? singular : s;
+};
+
+/* Default to the squad the lobby itself defaults to. The old default was
+   "blue", which is not one of the four squads at all — so running the command
+   without --team put the bot on nobody's team and it shadowed strangers. */
+const TEAM = foldTeam(args.team || SQUADS[0]).slice(0, 24);
+if (args.team && !SQUADS.includes(TEAM)) {
+  log.warn(
+    `"${args.team}" is not one of the lobby's squads (${SQUADS.join(", ")}). ` +
+      `Joining as "${TEAM}" anyway — but you will only squad up with someone ` +
+      `who picked the same string, so check the invite button in the lobby.`,
+  );
+}
 const FOLLOW_DIST = Math.max(2.5, Number(args["follow-dist"]) || 6);
 const TIMESCALE = Number(args.timescale) > 0 ? Number(args.timescale) : 1;
 const SELF_ID = `s-claude-${Math.random().toString(36).slice(2, 8)}`;
@@ -369,6 +464,15 @@ let announcedOut = false;
 /** Crude pathing state — see STUCK_WINDOW. */
 let anchor = { x: 0, z: 0, t: 0 };
 let detourUntil = -1;
+/** Where we were standing when the lobby emptied, so idling stays put. */
+let idleHome = null;
+/** Gun state: what is left in the tank, when we last pulled, who we are on. */
+let tank = GUN_TANK;
+let lastShotAt = -Infinity;
+let aimId = null;
+let soakedByUs = 0;
+/** `sim` of the last rejoin, so an unwalkable gap cannot rubber-band us. */
+let lastRejoinAt = -Infinity;
 let detourSign = 1;
 
 /** Rolling chat backlog handed to the reply seam. */
@@ -408,18 +512,29 @@ function peer(id) {
   return p;
 }
 
-/** Humans on our squad, sorted nearest first. Agents are excluded so two
- *  copies of this bot in one lobby never end up orbiting each other. */
+/**
+ * Humans on our squad, sorted nearest first. Agents are excluded so two copies
+ * of this bot in one lobby never end up orbiting each other.
+ *
+ * Soaked squadmates sort behind living ones rather than out of the list.
+ * Skipping them outright was right in spirit — do not shadow a spectator while
+ * a teammate is still playing — and wrong the moment nobody is playing: a
+ * client sitting on the end card keeps publishing poses at `dry: 0`, so after
+ * one finished match the bot saw `peers 1`, found no living squadmate, and
+ * stood in a field forever. Following someone who is out beats following no
+ * one, and the instant they respawn dry they sort back to the front.
+ */
 function squadmates() {
+  const living = [];
   const out = [];
   for (const p of peers.values()) {
     if (p.agent || !p.posed) continue;
-    if (p.dry <= 0) continue; // already out — don't shadow a spectator
-    if (TEAM && p.team && p.team !== TEAM) continue;
-    out.push(p);
+    if (TEAM && p.team && foldTeam(p.team) !== TEAM) continue;
+    (p.dry > 0 ? living : out).push(p);
   }
-  out.sort((a, b) => dist2(me.x, me.z, a.x, a.z) - dist2(me.x, me.z, b.x, b.z));
-  return out;
+  const list = living.length > 0 ? living : out;
+  list.sort((a, b) => dist2(me.x, me.z, a.x, a.z) - dist2(me.x, me.z, b.x, b.z));
+  return list;
 }
 
 /** Anyone at all, for callouts and win detection. */
@@ -427,13 +542,25 @@ function livingPeers(sameTeam) {
   const out = [];
   for (const p of peers.values()) {
     if (!p.posed || p.dry <= 0) continue;
-    const mate = !!TEAM && p.team === TEAM;
+    const mate = !!TEAM && foldTeam(p.team) === TEAM;
     if (sameTeam === undefined || mate === sameTeam) out.push(p);
   }
   return out;
 }
 
+/**
+ * Test seam. `--selftest` runs with no socket, so everything below would be
+ * dropped on the floor and the gun's checks would have nothing to read. The
+ * selftest swaps in a collector; in a real match this stays null and costs a
+ * single null check per event.
+ */
+const wire = { send: null };
+
 function sendEvent(kind, payload) {
+  if (wire.send) {
+    wire.send(kind, payload);
+    return;
+  }
   if (!online || !channel) return;
   void channel
     .send({ type: "broadcast", event: "ev", payload: { i: SELF_ID, k: kind, p: payload } })
@@ -692,7 +819,7 @@ function onEvent(w) {
       const { x, y, z } = payload;
       if (![x, z].every(Number.isFinite)) return;
       const dMe = Math.hypot(me.x - x, me.z - z, (me.y - (y ?? me.y)) * 0.5);
-      const mate = !!TEAM && from?.team === TEAM;
+      const mate = !!TEAM && foldTeam(from?.team) === TEAM;
       if (!mate && dMe < SPLASH_RADIUS && me.dry > 0) {
         const soak = Number.isFinite(payload.amount) ? payload.amount : SPLASH_SOAK;
         me.dry = clamp(me.dry - soak, 0, 100);
@@ -710,13 +837,38 @@ function onEvent(w) {
       return;
     }
 
+    case "hit": {
+      // Addressed water. `splash` is scenery we work out for ourselves from
+      // proximity; this one names us, and it is how a human's soaker actually
+      // costs us dryness now that ghosts are real damage targets.
+      if (payload.to !== SELF_ID) return;
+      if (me.dry <= 0) return;
+      const mate = !!TEAM && foldTeam(from?.team) === TEAM;
+      if (mate) return; // same squad can't soak us; the shooter should not have sent it
+      const raw = Number.isFinite(payload.amount) ? payload.amount : SPLASH_SOAK;
+      if (!(raw > 0)) return;
+      // Same ceiling the browser applies to an inbound hit: no single packet
+      // takes more than a quarter of us.
+      const soak = Math.min(raw, 25);
+      me.dry = clamp(me.dry - soak, 0, 100);
+      lastSoakedAt = sim;
+      log.event(`hit by ${who} for ${Math.round(soak)} — ${Math.round(me.dry)}% dry`);
+      if (me.dry <= 0 && !announcedOut) {
+        announcedOut = true;
+        me.state = "down";
+        sendEvent("soaked", { id: SELF_ID, name: NAME, by: w.i });
+        void consider({ kind: "self-soaked" }, true);
+      }
+      return;
+    }
+
     case "shot": {
       // Tracers give the shooter's position away, which is exactly what a
       // callout is. Only interesting when it is near one of ours.
       const ox = payload.x ?? payload.ox;
       const oz = payload.z ?? payload.oz;
       if (![ox, oz].every(Number.isFinite)) return;
-      if (TEAM && from?.team === TEAM) return;
+      if (TEAM && foldTeam(from?.team) === TEAM) return;
       maybeCallout(ox, oz, from);
       return;
     }
@@ -741,7 +893,7 @@ function onEvent(w) {
       if (p) p.dry = 0;
       const name = p?.name ?? payload.name ?? who;
       log.event(`${name} is soaked`);
-      const mate = !!TEAM && p?.team === TEAM;
+      const mate = !!TEAM && foldTeam(p?.team) === TEAM;
       if (mate) void consider({ kind: "teammate-soaked", who: name }, true);
       // Nobody publishes a "victory" event, so infer it: our squad is still
       // dry and there is nobody left who isn't on it.
@@ -835,7 +987,7 @@ async function connect() {
     realtime: { params: { eventsPerSecond: 24 } },
   });
 
-  channel = supabase.channel(`soaked-${ROOM}`, {
+  channel = supabase.channel(`splash-${ROOM}`, {
     config: {
       presence: { key: SELF_ID },
       broadcast: { self: false, ack: false },
@@ -894,14 +1046,21 @@ function desiredPoint() {
 
   const mates = squadmates();
   if (mates.length === 0) {
-    // Nobody visible. Drift gently around where we are so we don't read as a
-    // frozen mannequin, and stay well inside the island.
+    // Nobody visible. Shift our weight around one spot so we don't read as a
+    // frozen mannequin — but around a *remembered* spot, not around wherever
+    // we happen to be standing.
+    //
+    // This used to offset from `me.x`/`me.z`, which made the target move with
+    // us: a random walk with no way home. An empty lobby wandered 63 m in ten
+    // minutes and would have kept going until it hit the fence.
+    if (!idleHome) idleHome = { x: me.x, z: me.z };
     return {
-      x: me.x + Math.cos(sim * 0.23) * 2.2,
-      z: me.z + Math.sin(sim * 0.19) * 2.2,
+      x: idleHome.x + Math.cos(sim * 0.23) * 2.2,
+      z: idleHome.z + Math.sin(sim * 0.19) * 2.2,
       urgent: false,
     };
   }
+  idleHome = null;
 
   const lead = mates[0];
   if (lead.id !== leaderId) {
@@ -933,7 +1092,40 @@ function tick(dt) {
     return;
   }
 
-  const goal = desiredPoint();
+  // Rejoin. Some gaps cannot be walked, and pretending otherwise is what
+  // "stuck — taking a detour" looks like for six minutes.
+  //
+  // The drop bus starts its run about 2.4 km out. At SPRINT_SPEED that is six
+  // solid minutes of running, by which time the match is decided and the squad
+  // has spent it alone. There is no drop mechanic here — we cannot ride the
+  // bus — so the only honest way to be on the squad's screen when it matters
+  // is to appear beside them, exactly as we already do on the very first pose
+  // we ever see. That placement is legitimate for the same reason it is there:
+  // with no terrain data, a teammate's position is the only ground we know is
+  // standable. This just stops treating it as a one-time event.
+  //
+  // Never while the Downpour is pulling us, though. `goal.urgent` means we are
+  // outside the circle and running for it, and a teammate standing in the rain
+  // is not somewhere to appear — being together is worth less than being dry.
+  let goal = desiredPoint();
+  if (!goal.urgent && sim - lastRejoinAt > REJOIN_COOLDOWN) {
+    const lead = peers.get(leaderId);
+    if (lead && lead.posed && dist2(me.x, me.z, lead.x, lead.z) > REJOIN_DIST) {
+      const gap = dist2(me.x, me.z, lead.x, lead.z);
+      me.x = lead.x - SLOT_SIDE;
+      me.z = lead.z - SLOT_SIDE;
+      me.y = lead.y;
+      me.vx = 0;
+      me.vz = 0;
+      anchor = { x: me.x, z: me.z, t: sim };
+      detourUntil = 0;
+      lastRejoinAt = sim;
+      log.move(`too far to walk (${Math.round(gap)} m) — rejoining ${lead.name}`);
+      // We moved; the slot we were steering for is stale.
+      goal = desiredPoint();
+    }
+  }
+
   let dx = goal.x - me.x;
   let dz = goal.z - me.z;
   let d = Math.hypot(dx, dz);
@@ -943,13 +1135,25 @@ function tick(dt) {
   // notice we have stopped making progress, and try going around. Two seconds
   // of consistent sidestep clears most walls and rock faces; if it doesn't,
   // the next window picks a fresh side.
+  //
+  // Only while we are actually trying to get somewhere. A bot idling in an
+  // empty lobby cannot be stuck: it is orbiting a remembered spot at about
+  // 0.5 m/s, which covers ~0.7 m in the 1.4 s window — under STUCK_DIST —
+  // while the wobble target sits a metre or two off. That is every condition
+  // for "stuck" met by a bot doing exactly what it was told, and it logged a
+  // detour every few seconds into an empty room all night.
+  const purposeful = !!leaderId || !!zone;
   const moved = dist2(me.x, me.z, anchor.x, anchor.z);
-  if (sim - anchor.t > STUCK_WINDOW) {
+  if (purposeful && sim - anchor.t > STUCK_WINDOW) {
     if (d > SLOT_DEADZONE && moved < STUCK_DIST && sim > detourUntil) {
       detourUntil = sim + DETOUR_TIME;
       detourSign = Math.random() < 0.5 ? -1 : 1;
       log.move("stuck — taking a detour");
     }
+    anchor = { x: me.x, z: me.z, t: sim };
+  } else if (!purposeful) {
+    // Keep the anchor fresh while idle, or the first real goal after a quiet
+    // spell is measured against where we were standing minutes ago.
     anchor = { x: me.x, z: me.z, t: sim };
   }
   if (sim < detourUntil && d > 0.001) {
@@ -999,9 +1203,18 @@ function tick(dt) {
   me.x += me.vx * dt;
   me.z += me.vz * dt;
 
-  // Stay on the island whatever the steering says.
-  me.x = clamp(me.x, -ISLAND_HALF, ISLAND_HALF);
-  me.z = clamp(me.z, -ISLAND_HALF, ISLAND_HALF);
+  // Stay in the world whatever the steering says — but never let the fence
+  // come between us and the person we are following.
+  //
+  // This clamp used to be unconditional, at 82% of the world half-extent. The
+  // drop bus flies in from well outside it: a leader still on the bus sits at
+  // something like x -2096, y 617, and the bot would sprint to its own edge
+  // and grind against it for the whole flight, several hundred metres short,
+  // logging "stuck — taking a detour" until the match ended. It never arrived,
+  // and from inside the game it simply never showed up.
+  const bound = leaderReach(ISLAND_HALF);
+  me.x = clamp(me.x, -bound, bound);
+  me.z = clamp(me.z, -bound, bound);
 
   // Altitude. We cannot sample the terrain from here, so we adopt the height
   // of whoever we are following — they are standing on ground we can't see,
@@ -1010,10 +1223,22 @@ function tick(dt) {
   const lead = peers.get(leaderId);
   if (lead) me.y += (lead.y - me.y) * (1 - Math.exp(-Y_LERP * dt));
 
-  // Face where we're going; when parked, face the same way the leader does.
+  // Shoot before we decide which way to face, so the aim wins the argument.
+  const engaging = fireControl(dt);
+
+  // Face what we are shooting; failing that, where we're going; failing that,
+  // whatever the leader is looking at.
   const moving = Math.hypot(me.vx, me.vz);
-  const target = moving > 0.35 ? Math.atan2(me.vx, me.vz) : lead ? lead.yaw : me.yaw;
-  me.yaw = turnToward(me.yaw, target, dt * 5);
+  const target = engaging
+    ? Math.atan2(engaging.x - me.x, engaging.z - me.z)
+    : moving > 0.35
+      ? Math.atan2(me.vx, me.vz)
+      : lead
+        ? lead.yaw
+        : me.yaw;
+  // Snap onto a target faster than we turn while strolling — a bot that takes
+  // a second to face the person soaking it looks broken.
+  me.yaw = turnToward(me.yaw, target, dt * (engaging ? 9 : 5));
 
   me.state = stumbling ? "stumble" : moving > WALK_SPEED * 1.1 ? "sprint" : "ground";
 
@@ -1031,6 +1256,88 @@ function tick(dt) {
       log.net(`lost ${p.name} (timed out)`);
     }
   }
+}
+
+/**
+ * Pick something to shoot, and shoot it.
+ *
+ * Returns the target we are engaging, so the caller can point us at them —
+ * a bot that soaks people while facing the other way reads as a bug even
+ * when the damage is right.
+ *
+ * Three things go on the wire per shot, and they are deliberately different
+ * messages rather than one:
+ *   `shot`   — the tracer, and what other bots read as a callout.
+ *   `hit`    — the damage, addressed to the victim, who decides what it cost.
+ *   `splash` — the wet mark on the ground, at `amount: 0`.
+ *
+ * That last zero matters. `splash` is scenery to a browser, which reads only
+ * its radius and alpha, but a teammate bot still treats a nearby splash as
+ * proximity damage — a fallback from before addressed hits existed. Sending
+ * the default amount would soak the victim twice for one trigger pull.
+ */
+function fireControl(dt) {
+  if (me.dry <= 0 || sim < stumbleUntil) {
+    aimId = null;
+    return null;
+  }
+
+  // Refill first: an empty tank is the only thing that stops us shooting.
+  if (tank < GUN_TANK && sim - lastShotAt >= GUN_REFILL_DELAY) {
+    tank = Math.min(GUN_TANK, tank + GUN_REFILL * dt);
+  }
+
+  // Nearest living rival with a fresh pose. Teammates are not candidates and
+  // never can be — the shooter refuses friendly fire, not the victim.
+  let best = null;
+  let bestD = Infinity;
+  for (const p of peers.values()) {
+    if (p.agent || !p.posed || p.dry <= 0) continue;
+    if (TEAM && p.team && foldTeam(p.team) === TEAM) continue;
+    if (sim - p.lastSeen > GUN_STALE) continue;
+    const d = dist2(me.x, me.z, p.x, p.z);
+    // Vertical separation counts: someone 30 m below us on a cliff is not
+    // 5 m away just because their map pin is.
+    const dy = Math.abs(me.y - p.y);
+    if (d > GUN_RANGE || dy > 12) continue;
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+
+  aimId = best ? best.id : null;
+  if (!best) return null;
+  if (tank < 1) return best;
+  if (sim - lastShotAt < 1 / GUN_SHOTS_PER_SEC) return best;
+
+  lastShotAt = sim;
+  tank -= 1;
+
+  const t = clamp(bestD / GUN_RANGE, 0, 1);
+  const acc = GUN_ACC_NEAR + (GUN_ACC_FAR - GUN_ACC_NEAR) * t;
+  const hit = Math.random() < acc;
+
+  // The tracer leaves whether or not the water lands, because a miss is still
+  // a thing the enemy should hear coming.
+  sendEvent("shot", { x: me.x, y: me.y + 1.4, z: me.z, tx: best.x, ty: best.y + 1.0, tz: best.z });
+
+  if (!hit) return best;
+
+  sendEvent("hit", {
+    to: best.id,
+    amount: GUN_SOAK,
+    x: best.x,
+    y: best.y + 1.0,
+    z: best.z,
+    headshot: false,
+  });
+  sendEvent("splash", { x: best.x, y: best.y, z: best.z, r: 1.1, a: 0.5, amount: 0 });
+
+  // Track what we know we landed. The victim owns the truth and will announce
+  // its own elimination; this is only so the bot can talk about its own match.
+  soakedByUs += GUN_SOAK;
+  return best;
 }
 
 /** Rate-limited, change-gated pose write — the same filter net.ts applies. */
@@ -1119,6 +1426,45 @@ if (SELFTEST) {
   check("adopts the teammate's altitude", Math.abs(me.y - jack.y) < 0.5, `y=${q(me.y)}`);
   check("publishes a live movement state", me.state === "ground" || me.state === "sprint", me.state);
 
+  // The drop bus. It flies in from outside the playable square, high up, and
+  // the fence that keeps us out of the sea must not strand us on the island
+  // while our squad is still aboard. Regression: the bot used to pin itself at
+  // ±ISLAND_HALF and grind there for the whole flight, a few hundred metres
+  // short, while the humans wondered where it was.
+  const busX = -2096;
+  const busZ = 1282;
+  for (let i = 0; i < 40 * TICK_HZ; i++) {
+    sim += step;
+    onPose({ i: JACK, x: busX, y: 617, z: busZ, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+    tick(step);
+  }
+  const busGap = dist2(me.x, me.z, busX, busZ);
+  check("follows the squad outside the island", busGap < FOLLOW_DIST + 6, `${busGap.toFixed(1)} m from the bus`);
+  check("climbs to the drop altitude", Math.abs(me.y - 617) < 5, `y=${q(me.y)}`);
+
+  // ...and once they land, the fence is back on and we are not out at sea.
+  for (let i = 0; i < 30 * TICK_HZ; i++) {
+    sim += step;
+    onPose({ i: JACK, x: 120, y: 0, z: -80, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+    tick(step);
+  }
+  check(
+    "comes back inside once the squad lands",
+    Math.abs(me.x) <= ISLAND_HALF && Math.abs(me.z) <= ISLAND_HALF,
+    `${q(me.x)}, ${q(me.z)}`,
+  );
+
+  // A squadmate sitting on the end card publishes poses at `dry: 0`. That used
+  // to drop them out of `squadmates()` entirely, so after one finished match
+  // the bot reported `peers 1, following —` and stood still for the rest of the
+  // session. Following someone who is out beats following nobody.
+  onPose({ i: JACK, x: 200, y: 0, z: -60, a: 0, p: 0, s: "ground", d: 0, t: TEAM, n: "Jack" });
+  tick(step);
+  check("still follows a soaked squadmate", leaderId === JACK, leaderId ?? "(nobody)");
+  onPose({ i: JACK, x: 200, y: 0, z: -60, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+  tick(step);
+  check("re-acquires them when they dry off", leaderId === JACK, leaderId ?? "(nobody)");
+
   // The downpour: a zone far away should pull it off the follow slot.
   zone = { x: -300, z: -300, r: 60 };
   const beforeZone = dist2(me.x, me.z, zone.x, zone.z);
@@ -1176,6 +1522,96 @@ if (SELFTEST) {
   const dryBefore = me.dry;
   onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
   check("gets wetter when splashed", me.dry < dryBefore, `${Math.round(dryBefore)}% → ${Math.round(me.dry)}%`);
+
+  // An empty lobby must not walk off. The idle wobble is meant to keep the
+  // bot from looking frozen, not to relocate it.
+  {
+    peers.clear();
+    leaderId = null;
+    idleHome = null;
+    const startX = me.x;
+    const startZ = me.z;
+    let idleDetours = 0;
+    const realMove = log.move;
+    log.move = (m) => {
+      if (String(m).includes("stuck")) idleDetours++;
+    };
+    for (let i = 0; i < 240 * TICK_HZ; i++) {
+      sim += step;
+      tick(step);
+    }
+    log.move = realMove;
+    const drift = dist2(me.x, me.z, startX, startZ);
+    check("stays put with nobody to follow", drift < 6, `${drift.toFixed(1)} m in 4 min`);
+    check("does not cry stuck while idling", idleDetours === 0, `${idleDetours} detour(s) in 4 min`);
+  }
+
+  // The gun. A rival inside GUN_RANGE gets shot at; a squadmate never does.
+  {
+    const GUNTGT = "s-gun-test";
+    tank = GUN_TANK;
+    lastShotAt = -Infinity;
+    const fired = [];
+    wire.send = (k, p) => fired.push({ k, p });
+    // The splash test left a rival standing a metre away, which is well
+    // inside GUN_RANGE — leave it there and every check below is really
+    // measuring shots at that one instead of the target it names.
+    peers.delete(RIVAL);
+
+    // Three seconds of trigger time. One tick would make this a coin flip on
+    // GUN_ACC_NEAR; across ~10 shots at 0.82 the odds of landing nothing are
+    // about one in five hundred million.
+    for (let i = 0; i < 3 * TICK_HZ; i++) {
+      // `sim` is what the fire rate is measured against. Without advancing it
+      // the cooldown never expires and this fires exactly once.
+      sim += step;
+      onPose({ i: GUNTGT, x: me.x + 6, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Target" });
+      tick(step);
+    }
+    const hits = fired.filter((f) => f.k === "hit" && f.p.to === GUNTGT);
+    check("shoots a rival in range", hits.length > 0, `${hits.length} hit(s), ${fired.filter((f) => f.k === "shot").length} shot(s)`);
+    check("soaks for the SS9K's 12", hits.every((f) => f.p.amount === GUN_SOAK), `${GUN_SOAK}`);
+    check("marks its own splashes as scenery", fired.filter((f) => f.k === "splash").every((f) => f.p.amount === 0), "amount 0");
+    check("empties and refills its tank", tank < GUN_TANK, `${tank.toFixed(1)}/${GUN_TANK}`);
+
+    // Same squad, same range, no trigger.
+    fired.length = 0;
+    lastShotAt = -Infinity;
+    peers.delete(GUNTGT);
+    onPose({ i: "s-gun-mate", x: me.x + 6, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Mate2" });
+    tick(step);
+    check("never shoots a squadmate", !fired.some((f) => f.k === "hit"), `${fired.filter((f) => f.k === "hit").length} hit(s)`);
+
+    // Out of range, no trigger.
+    fired.length = 0;
+    lastShotAt = -Infinity;
+    peers.delete("s-gun-mate");
+    onPose({ i: "s-gun-far", x: me.x + GUN_RANGE + 40, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Far" });
+    tick(step);
+    check("holds fire out of range", !fired.some((f) => f.k === "hit"), `${fired.filter((f) => f.k === "hit").length} hit(s)`);
+    peers.delete("s-gun-far");
+    wire.send = null;
+    // Put the rival back the way the next checks expect to find it.
+    onPose({ i: RIVAL, x: me.x + 1, y: 0, z: me.z + 1, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Atlas" });
+  }
+
+  // Addressed water — the `hit` a human's soaker sends once ghosts are real
+  // damage targets. Unlike `splash` it does not care where we are standing,
+  // and it must be ignored unless it names us.
+  const beforeHit = me.dry;
+  onEvent({ i: RIVAL, k: "hit", p: { to: "somebody-else", amount: 20 } });
+  check("ignores a hit meant for someone else", me.dry === beforeHit, `${Math.round(me.dry)}%`);
+  onEvent({ i: RIVAL, k: "hit", p: { to: SELF_ID, amount: 20 } });
+  check("takes an addressed hit", me.dry === beforeHit - 20, `${Math.round(beforeHit)}% → ${Math.round(me.dry)}%`);
+  const beforeCap = me.dry;
+  onEvent({ i: RIVAL, k: "hit", p: { to: SELF_ID, amount: 999 } });
+  check("caps a single hit at 25", me.dry === beforeCap - 25, `${Math.round(beforeCap)}% → ${Math.round(me.dry)}%`);
+  // A squadmate's hit is refused here as well as at the shooter, because one
+  // bad client should not be able to soak its own team.
+  onPose({ i: "s-mate-test", x: me.x + 2, y: 0, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Mate" });
+  const beforeMate = me.dry;
+  onEvent({ i: "s-mate-test", k: "hit", p: { to: SELF_ID, amount: 20 } });
+  check("refuses friendly fire", me.dry === beforeMate, `${Math.round(me.dry)}%`);
   for (let i = 0; i < 20; i++) onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
   drive(3);
   check("bows out at 0% dry", me.dry === 0 && me.state === "down", `${me.dry}% / ${me.state}`);

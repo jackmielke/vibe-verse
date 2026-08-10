@@ -20,7 +20,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { loadCurrentIssue, type Issue } from "@/lib/vibeTimes";
+import { loadCurrentIssue, printedAt, type Issue } from "@/lib/vibeTimes";
 
 /** Whole days between an issue date and today, UTC. */
 function daysOld(iso: string): number {
@@ -33,16 +33,21 @@ function daysOld(iso: string): number {
 /**
  * The dateline, told honestly.
  *
- * The paper is written by a nightly loop, and a loop that has not run for a
- * week should not have its issue announced as "today's". Saying "Tuesday's
+ * The paper comes out every morning, and a press that has not run for a week
+ * should not have its issue announced as "today's". Saying "Tuesday's
  * edition" when it is Sunday costs nothing and keeps the one surface that
  * claims to be current from quietly lying.
+ *
+ * Today's and yesterday's editions also carry the hour they were printed —
+ * on a surface that says "today", the time is what makes it feel live.
+ * Older ones don't: the exact minute of a fortnight-old paper is noise.
  */
-function dateline(iso: string): string {
-  const age = daysOld(iso);
-  if (age === 0) return "Today's edition";
-  if (age === 1) return "Yesterday's edition";
-  const d = new Date(`${iso}T12:00:00Z`);
+function dateline(issue: Issue): string {
+  const age = daysOld(issue.date);
+  const at = printedAt(issue.printed_at);
+  if (age === 0) return at ? `Today's edition, ${at}` : "Today's edition";
+  if (age === 1) return at ? `Yesterday's edition, ${at}` : "Yesterday's edition";
+  const d = new Date(`${issue.date}T12:00:00Z`);
   if (Number.isNaN(d.getTime())) return "Latest edition";
   if (age < 7) {
     return `${d.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" })}'s edition`;
@@ -76,65 +81,64 @@ export default function TodaysPaper() {
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.15 }}
-      className="mt-6 overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-[#0e1520] to-[#080c13] sm:mt-8"
+      className="mt-5 overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-[#0e1520] to-[#080c13] sm:mt-6"
       aria-label="The Vibe Times"
     >
-      <div className="flex items-center gap-2.5 border-b border-border/40 px-4 py-2.5">
-        <span className="text-base leading-none" aria-hidden>
-          🤖
+      {/* The masthead is one line now, not two stacked ones, and the weather
+          rides along on it instead of taking a bordered strip of its own. */}
+      <div className="flex items-baseline gap-2 px-3.5 pt-2.5 text-[9.5px]">
+        <span className="font-heading font-black uppercase tracking-[0.22em] text-[#8fb4ff]">
+          The Vibe Times
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-heading text-[9.5px] font-black uppercase tracking-[0.24em] text-[#8fb4ff]">
-            The Vibe Times
-          </p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground/70">
-            {dateline(issue.date)} · brought to you by Vibey
-          </p>
-        </div>
+        <span className="truncate text-muted-foreground/60">{dateline(issue)}</span>
+        {/* The weather is a whole paragraph of it, and on a masthead line it
+            reads as clutter rather than as charm. It gets whatever room is
+            left on a wide screen and nothing at all below that; the full text
+            is on `/times`, where it is the point. */}
+        {issue.weather && (
+          <span className="hidden min-w-0 max-w-[38%] flex-1 truncate italic text-muted-foreground/40 lg:block">
+            {issue.weather}
+          </span>
+        )}
         <Link
           to="/times"
-          className="shrink-0 font-heading text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+          className="ml-auto shrink-0 font-heading font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
         >
           Read it →
         </Link>
       </div>
 
-      <Link to="/times" className="block px-4 py-3.5 transition-colors hover:bg-white/[0.02]">
-        <div className="flex items-start gap-2.5">
-          <span className="text-lg leading-none" aria-hidden>
+      {/* One lead, one line of it, and the other two headlines on a single row.
+          This strip is a teaser for `/times` sitting directly above the grid of
+          worlds, and it was running to a third of a phone screen — every line
+          of it was a game the visitor had to scroll past to see. */}
+      <Link
+        to="/times"
+        className="block px-3.5 pb-2.5 pt-1.5 transition-colors hover:bg-white/[0.02]"
+      >
+        <div className="flex items-baseline gap-2">
+          <span className="shrink-0 text-[13px] leading-none" aria-hidden>
             {lead.emoji}
           </span>
-          <div className="min-w-0">
-            <h2 className="font-heading text-[13.5px] font-black uppercase leading-tight tracking-wide text-foreground sm:text-[15px]">
-              {lead.headline}
-            </h2>
-            <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-muted-foreground">
-              {lead.body}
-            </p>
-          </div>
+          <h2 className="min-w-0 font-heading text-[12.5px] font-black uppercase leading-tight tracking-wide text-foreground sm:text-[13.5px]">
+            {lead.headline}
+          </h2>
         </div>
+        <p className="mt-1 line-clamp-1 pl-[1.3rem] text-[11px] leading-relaxed text-muted-foreground">
+          {lead.body}
+        </p>
 
         {rest.length > 0 && (
-          <ul className="mt-3 space-y-1 border-t border-border/30 pt-2.5">
-            {rest.slice(0, 2).map((h) => (
-              <li key={h.headline} className="flex items-baseline gap-2">
-                <span className="text-[11px] leading-none" aria-hidden>
-                  {h.emoji}
-                </span>
-                <span className="truncate font-heading text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {h.headline}
-                </span>
-              </li>
+          <p className="mt-1.5 flex items-baseline gap-1.5 truncate pl-[1.3rem] font-heading text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground/55">
+            {rest.slice(0, 2).map((h, i) => (
+              <span key={h.headline} className="truncate">
+                {i > 0 && <span className="mr-1.5 opacity-40">·</span>}
+                <span aria-hidden>{h.emoji}</span> {h.headline}
+              </span>
             ))}
-          </ul>
+          </p>
         )}
       </Link>
-
-      {issue.weather && (
-        <p className="border-t border-border/30 px-4 py-2 text-[10.5px] italic text-muted-foreground/60">
-          {issue.weather}
-        </p>
-      )}
     </motion.section>
   );
 }

@@ -40,7 +40,11 @@ function readServerCharacters(): Record<string, { price: number; title: string }
   expect(group, "no `character` group in the edge function's COSMETICS").not.toBeNull();
 
   const out: Record<string, { price: number; title: string }> = {};
-  const itemRe = /(\w+):\s*\{\s*price:\s*(\d+),\s*title:\s*"([^"]*)"\s*\}/g;
+  // Keys may be quoted, because an id with a hyphen in it — `space-rex` — is
+  // not a bare JS identifier. The first version of this regex matched `\w+`
+  // only, so adding that character silently dropped it from the parsed table
+  // and every assertion below went quiet about it rather than failing loudly.
+  const itemRe = /"?([\w-]+)"?:\s*\{\s*price:\s*(\d+),\s*title:\s*"([^"]*)"\s*\}/g;
   for (const m of (group as RegExpExecArray)[1].matchAll(itemRe)) {
     out[m[1]] = { price: Number(m[2]), title: m[3] };
   }

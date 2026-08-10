@@ -29,12 +29,15 @@
  *    money.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, Lock } from "lucide-react";
+import ItemShelves from "@/components/shop/ItemShelves";
+import WearStrip from "@/components/shop/WearStrip";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import { CharacterPreview } from "@/island/CharacterPreview";
+import { DEFAULT_POSE, POSES, type PoseId } from "@/island/previewPose";
 import type { CharacterOption } from "@/island/characters";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 import { useWardrobe } from "@/hooks/use-wardrobe";
@@ -85,11 +88,23 @@ export default function ArcadeCharacters() {
   useWorldStamp("/arcade", "Vibe Arcade");
 
   const { balance, refresh: refreshCoin } = useVibecoin();
-  const { owned, refresh: refreshWardrobe } = useWardrobe();
+  const { owned, loadout, refresh: refreshWardrobe } = useWardrobe();
   const { charId, setCharId } = useActiveCharacter();
 
+  /* Two tabs, because "the shop" was two different shops on two pages: six
+     characters here and the hats over on /shop, with nothing telling you the
+     other existed. Characters lead — they are the thing worth looking at. */
+  const [tab, setTab] = useState<"characters" | "items">("characters");
   const [index, setIndex] = useState(0);
   const [buying, setBuying] = useState<string | null>(null);
+  const [pose, setPose] = useState<PoseId>(DEFAULT_POSE);
+  /* The hat on the stage. Mirrors the loadout but is set locally on tap, so
+     the character puts it on immediately rather than after the server agrees.
+     Seeded once the wardrobe has actually loaded — seeding from the default
+     would overwrite a real hat with "none" a beat after the page opened. */
+  const [wornHat, setWornHat] = useState<string>("none");
+  const [hatSeeded, setHatSeeded] = useState(false);
+  const [params, setParams] = useSearchParams();
   /* Which way the last flip went, so the card slides in from the side you
      came from rather than always from the right. */
   const [dir, setDir] = useState(1);
@@ -103,18 +118,59 @@ export default function ArcadeCharacters() {
     [],
   );
 
+  /* `?c=<id>` — which character to open on.
+     The arcade's shop window links here with the card you tapped, and without
+     this the page always opened on the cheapest one: you tapped Space Rex and
+     landed on Pixel. It is a URL parameter rather than component state
+     because it also has to survive being shared, bookmarked and reloaded. */
+  useEffect(() => {
+    const want = params.get("c");
+    if (!want) return;
+    const i = entries.findIndex((e) => e.shop.id === want);
+    if (i >= 0) setIndex(i);
+    setTab("characters");
+  }, [params, entries]);
+
+  /* …and land at the top of it. A link into a long page inherits whatever
+     scroll position the browser felt like restoring, which is why tapping a
+     character from the arcade dropped you halfway down the shop. */
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
+    if (hatSeeded || !loadout.hat) return;
+    setWornHat(loadout.hat);
+    setHatSeeded(true);
+  }, [loadout.hat, hatSeeded]);
+
   const current = entries[index] ?? entries[0];
   const tier = TIER_STYLE[current.shop.tier];
   const isOwned = owned.includes(itemKey("character", current.shop.id));
   const isWorn = charId === current.shop.id;
   const canAfford = balance != null && balance >= current.shop.price;
 
+  const show = useCallback(
+    (i: number, direction: number) => {
+      setDir(direction);
+      setIndex(i);
+      /* `replace` so flipping through eight characters does not leave eight
+         entries in the back stack between here and the arcade. */
+      setParams({ c: entries[i].shop.id }, { replace: true });
+    },
+    [entries, setParams],
+  );
+
   const flip = useCallback(
     (delta: number) => {
-      setDir(delta);
-      setIndex((i) => (i + delta + entries.length) % entries.length);
+      setIndex((i) => {
+        const next = (i + delta + entries.length) % entries.length;
+        setDir(delta);
+        setParams({ c: entries[next].shop.id }, { replace: true });
+        return next;
+      });
     },
-    [entries.length],
+    [entries, setParams],
   );
 
   useEffect(() => {
@@ -193,7 +249,9 @@ export default function ArcadeCharacters() {
 
         <header className="mt-5 text-center">
           <p className="font-heading text-[9px] font-bold uppercase tracking-[0.34em] text-[#7dffd4]/70 sm:text-[10px]">
-            Six originals · built here, sold here
+            {tab === "characters"
+              ? `${SHOP_CHARACTERS.length} originals · built here, sold here`
+              : "Hats, flames and jetpacks · yours on every device"}
           </p>
           <h1
             className="mt-2 font-heading text-3xl font-black tracking-tight sm:text-5xl"
@@ -203,17 +261,48 @@ export default function ArcadeCharacters() {
                 "0 0 12px hsl(160 90% 60% / 0.85), 0 0 38px hsl(280 90% 62% / 0.45)",
             }}
           >
-            CHARACTER SHOP
+            THE SHOP
           </h1>
           <p className="mx-auto mt-3 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
-            Buy one with the Vibecoin you won downstairs, and wear it everywhere
-            — Vibe Island, the hub, the lobby. Nothing here was taken off the
-            free shelf to make room; these six did not exist before the shop did.
+            {tab === "characters"
+              ? "Buy one with the Vibey Coins you won downstairs, and wear it everywhere — Vibe Island, the hub, the lobby. Nothing here was taken off the free shelf to make room; every one of them was drawn for it."
+              : "Everything else you can put on. Bought against your wallet rather than your browser, so it survives a cleared history and a new phone."}
           </p>
         </header>
 
-        {/* ---- The stage ---- */}
-        <div className="relative mt-7">
+        {/* ---- The tabs ---- */}
+        <div className="mx-auto mt-6 flex max-w-xs gap-1 rounded-full border border-border/50 bg-black/40 p-1">
+          {(["characters", "items"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              aria-pressed={tab === t}
+              className={`flex-1 rounded-full px-3 py-2 font-heading text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                tab === t
+                  ? "bg-white text-black"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t === "characters" ? "🧑‍🚀 Characters" : "🎩 Items"}
+            </button>
+          ))}
+        </div>
+
+        {tab === "items" ? (
+          <div className="mt-4">
+            <ItemShelves />
+          </div>
+        ) : (
+        <>
+        {/* ---- The stage, and everything you can do to it ----
+            Two columns from `lg` up, with the stage sticky in the left one.
+            One column meant the wearables were four hundred pixels below the
+            character they go on, so picking a hat scrolled the character off
+            the screen — which is precisely the thing this page exists to let
+            you see. Stacked on a phone, where there is no second column to
+            put anything in and the scroll is short. */}
+        <div className="mt-7 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
+        <div className="relative lg:sticky lg:top-20">
           <div
             className="relative overflow-hidden rounded-3xl border bg-black/50 backdrop-blur-sm"
             style={{
@@ -237,7 +326,12 @@ export default function ArcadeCharacters() {
               {/* One canvas for the whole shelf. The key is on the wrapper,
                   not the Canvas — remounting the Canvas would take a WebGL
                   context down and bring a new one up on every single flip. */}
-              <CharacterPreview character={current.option} spinning={false} />
+              <CharacterPreview
+                character={current.option}
+                spinning={false}
+                pose={pose}
+                hat={wornHat}
+              />
             </div>
 
             {/* Flip controls, over the stage. Big hit targets: this is the
@@ -276,6 +370,36 @@ export default function ArcadeCharacters() {
             )}
           </div>
 
+          {/* ---- Emotes ----
+              The stage used to jog on the spot at 3.8 m/s, permanently. It
+              showed off the gait solver and it was the wrong thing to look at
+              while deciding whether to spend 600 coins on a face. Now it
+              stands still and turns, and the run is one of six things you can
+              ask for. See `src/island/previewPose.ts` — every pose is written
+              in the rig's own five numbers, not as new animation code. */}
+          <div className="-mx-4 mt-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:overflow-visible sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex w-max gap-1.5 sm:w-auto sm:flex-wrap sm:justify-center">
+              {POSES.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPose(p.id)}
+                  aria-pressed={pose === p.id}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 font-heading text-[9.5px] font-bold uppercase tracking-wider transition-colors ${
+                    pose === p.id
+                      ? "border-white/50 bg-white/10 text-foreground"
+                      : "border-border/50 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span aria-hidden>{p.emoji}</span>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+        <div className="relative">
           {/* ---- The label ---- */}
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -349,6 +473,13 @@ export default function ArcadeCharacters() {
               </p>
             )}
           </div>
+
+          {/* ---- What to put on it ----
+              On this page rather than behind the Items tab, because choosing a
+              hat by reading its name is not choosing a hat. Tapping one puts
+              it on the character beside it. */}
+          <WearStrip wornHat={wornHat} onHatChange={setWornHat} />
+        </div>
         </div>
 
         {/* ---- The shelf ---- */}
@@ -360,10 +491,7 @@ export default function ArcadeCharacters() {
             return (
               <button
                 key={e.shop.id}
-                onClick={() => {
-                  setDir(i > index ? 1 : -1);
-                  setIndex(i);
-                }}
+                onClick={() => show(i, i > index ? 1 : -1)}
                 className={`relative flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 transition-all ${
                   active ? "scale-[1.04] bg-white/[0.06]" : "bg-black/30 hover:bg-white/[0.03]"
                 }`}
@@ -389,6 +517,8 @@ export default function ArcadeCharacters() {
             );
           })}
         </div>
+        </>
+        )}
 
         <footer className="mt-12 border-t border-border/40 pt-6 text-[11px] leading-relaxed text-muted-foreground">
           Sixty-odd more characters are free and always will be — pick one in the{" "}

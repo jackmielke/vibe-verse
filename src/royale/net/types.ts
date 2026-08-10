@@ -1,5 +1,5 @@
 /**
- * SOAKED — multiplayer transport contract.
+ * SPLASH ROYALE — multiplayer transport contract.
  *
  * This lives here rather than in `royale/types.ts` because the battle-royale
  * engine contract predates the water fight and is shared with the shipped,
@@ -26,6 +26,21 @@ export type NetEventKind =
   | "build"
   /** Something was harvested for materials. */
   | "harvest"
+  /**
+   * Water landed on a specific player, sent by the shooter to the victim.
+   *
+   * `splash` is scenery — a decal and some particles, addressed to nobody.
+   * This is the one that costs dryness, and it is the difference between a
+   * lobby where you can see each other and a lobby where you can play each
+   * other. Addressed: the payload carries the victim's peer id and only that
+   * client acts on it.
+   *
+   * Client-authoritative on the victim, deliberately. Nobody can be soaked by
+   * a packet alone — your own client decides what your dryness is, exactly as
+   * it already does for `soaked`. That trades cheat-resistance for having no
+   * server at all, which is the same trade every other event here makes.
+   */
+  | "hit"
   /** A player hit 0% dry and is out. */
   | "soaked"
   /** A downed squadmate was towelled off. */
@@ -43,6 +58,7 @@ export const NET_EVENT_KINDS: readonly NetEventKind[] = [
   "glue",
   "build",
   "harvest",
+  "hit",
   "soaked",
   "revive",
   "emote",
@@ -60,7 +76,7 @@ export interface NetPose {
   pitch: number;
   /**
    * Movement state. Kept as a plain string rather than the engine's
-   * `PlayerState` union: SOAKED adds states (`stumble`, `glued`) that the
+   * `PlayerState` union: SPLASH ROYALE adds states (`stumble`, `glued`) that the
    * DROP ZERO contract does not know about, and a transport should not be
    * the thing that blocks a new one.
    */
@@ -132,6 +148,15 @@ export interface NetService {
   readonly roomCode: string | null;
   /** Stable id for this browser tab, used as the presence key. */
   readonly selfId: string;
+  /**
+   * The squad we joined as, or null when we have no team.
+   *
+   * Needed because friendly fire has to be refused by the *shooter*: a
+   * teammate should never receive a `hit` packet at all, and the only way to
+   * know one is a teammate is to know our own squad. `peers` never contains
+   * us, so without this there is nothing to compare against.
+   */
+  readonly selfTeam: string | null;
   /** Live remote players, already interpolated. Do not mutate. */
   readonly peers: Map<string, PeerState>;
   /** Join (or create) a room. Resolves false when Supabase is unreachable. */

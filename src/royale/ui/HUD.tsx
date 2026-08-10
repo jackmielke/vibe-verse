@@ -37,7 +37,7 @@
  * Everything is `pointer-events-none` except the buttons on the end cards
  * and, in water mode, the chat input.
  *
- * ## SOAKED (`engine.ctx.mode === "water"`)
+ * ## SPLASH ROYALE (`engine.ctx.mode === "water"`)
  *
  * The same HUD, re-lettered. Health becomes DRYNESS, shield becomes the
  * PONCHO, the magazine becomes a TANK, "eliminated" becomes "soaked" — and
@@ -143,17 +143,25 @@ const MAT_STYLE: Record<"wood" | "stone" | "metal", MaterialStyle> = {
 };
 
 /* ------------------------------------------------------------------------ *
- * SOAKED palette
+ * SPLASH ROYALE palette
  *
  * Everything here is derived from `mode/water.ts` rather than picked by eye,
  * so the bar, the map ring and the built wall in the world are all the same
- * blue. The one thing invented locally is the *plate*: SOAKED's overlay sits
+ * blue. The one thing invented locally is the *plate*: SPLASH ROYALE's overlay sits
  * on a sunnier render than Drop Zero's, so the panels lighten and pick up a
  * cyan rim instead of the cold near-black.
  * ------------------------------------------------------------------------ */
 
 const W = WATER.strings;
 const DOWN = WATER.downpour.palette;
+
+/**
+ * The two dryness bands the *screen* effects speak in — the wet rim, the splash
+ * arc, the hit marker. Looked up by key rather than by index so re-ordering
+ * `DRYNESS_BANDS` can never silently repaint the edge of the frame.
+ */
+const BAND_DRENCHED = WATER.bands.find((b) => b.key === "drenched")?.color ?? 0x4c9fe0;
+const BAND_SOAKED = WATER.bands.find((b) => b.key === "soaked")?.color ?? 0x2a5f96;
 
 const W_INK = "rgba(8,26,44,0.62)";
 const W_INK_SOLID = "rgba(8,26,44,0.88)";
@@ -340,7 +348,7 @@ interface Live {
   /** Rolling clock the minimap uses for dashes and pulses. */
   t: number;
 
-  // ---- SOAKED -----------------------------------------------------------
+  // ---- SPLASH ROYALE -----------------------------------------------------------
   /**
    * Dryness and poncho, 0..max. These default to `health`/`shield` because
    * the water player rides the same `PlayerService` and publishes the same
@@ -708,7 +716,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
   const clock = useMemo(() => new HudClock(), []);
   const nextId = useRef(1);
 
-  /** SOAKED or Drop Zero. Fixed at boot, so it is safe to read once. */
+  /** SPLASH ROYALE or Drop Zero. Fixed at boot, so it is safe to read once. */
   const water = engine.ctx.mode === "water";
 
   const [slots, setSlots] = useState<SlotMeta[]>(emptySlots);
@@ -805,7 +813,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
         setPlayerState(s);
       }
       // Water vitals. Defaulting off health/shield means the dryness meter is
-      // live the moment SOAKED boots, whether or not the player system has
+      // live the moment SPLASH ROYALE boots, whether or not the player system has
       // started publishing the water-specific fields yet.
       l.dry = num(d.dry, l.health);
       l.dryMax = Math.max(1, num(d.maxDry, l.maxHealth));
@@ -1182,7 +1190,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       setMap(buildMapModel(num(d.worldSize, 1500), pads));
     });
 
-    // ---- SOAKED ---------------------------------------------------------
+    // ---- SPLASH ROYALE ---------------------------------------------------------
     // Dormant in classic: `dz:glue` is never emitted there, so the prompt
     // never mounts and this handler never runs.
     on("dz:glue", (p) => {
@@ -1245,7 +1253,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
           <Crosshair clock={clock} live={live} />
           <HitMarker clock={clock} live={live} water={water} />
           <DamageArcs arcs={arcs} water={water} />
-          <AnimatePresence>{scoped && <ScopeOverlay key="scope" />}</AnimatePresence>
+          <AnimatePresence>{scoped && <ScopeOverlay key="scope" water={water} />}</AnimatePresence>
 
           <div className="absolute bottom-6 left-6 flex flex-col gap-2">
             {water ? (
@@ -1280,7 +1288,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
           )}
 
           <ToastStack toasts={toasts} water={water} />
-          <PickupLog pickups={pickups} />
+          <PickupLog pickups={pickups} water={water} />
           <InteractPrompt clock={clock} live={live} prompt={prompt} />
           {water && <GluePrompt clock={clock} live={live} />}
           {dropping && <DropOverlay clock={clock} live={live} phase={phase} playerState={playerState} />}
@@ -1480,7 +1488,7 @@ function Vitals({ clock, live }: PanelProps) {
 }
 
 /* ------------------------------------------------------------------------ *
- * SOAKED — dryness + poncho
+ * SPLASH ROYALE — dryness + poncho
  *
  * The health bar, restated. Three things make it a *water* bar rather than a
  * recoloured one:
@@ -1736,7 +1744,7 @@ const MAT_ICON: Record<"wood" | "stone" | "metal", () => ReactElement> = {
   metal: MetalIcon,
 };
 
-/* ---- SOAKED build materials: pool noodles, deck planks, corrugated tarp -- */
+/* ---- SPLASH ROYALE build materials: pool noodles, deck planks, corrugated tarp -- */
 
 function NoodleIcon() {
   const c = WATER.materials.wood;
@@ -1937,7 +1945,7 @@ function InventoryBar({
       setText(reserves.current[i], `${a.reserve}`, tStore.current, 6 + i);
       setText(counts.current[i], a.count > 1 ? `x${a.count}` : "", tStore.current, 12 + i);
 
-      // SOAKED: the slot itself is the tank. Water fills it from the bottom,
+      // SPLASH ROYALE: the slot itself is the tank. Water fills it from the bottom,
       // so a glance across the bar tells you which gun still has a shot in it
       // without reading a single number.
       const tank = tanks.current[i];
@@ -1986,7 +1994,7 @@ function InventoryBar({
                 backdropFilter: "blur(3px)",
               }}
             >
-              {/* Tank water level (SOAKED only) — behind the item art. */}
+              {/* Tank water level (SPLASH ROYALE only) — behind the item art. */}
               {water && s.isWeapon && (
                 <div
                   ref={(el) => {
@@ -2063,7 +2071,7 @@ function InventoryBar({
             </div>
 
             {/* Ammo, under the slot: mag big, reserve small — the shooter read.
-                In SOAKED there is no reserve; a tank is topped up, not swapped,
+                In SPLASH ROYALE there is no reserve; a tank is topped up, not swapped,
                 so the second number would always be a lie. */}
             <div className="mt-1 flex h-[15px] items-baseline justify-center gap-1">
               {showAmmo && (
@@ -2139,7 +2147,7 @@ function ConsumeBar({ clock, live, consume }: PanelProps & { consume: { name: st
 }
 
 /* ------------------------------------------------------------------------ *
- * SOAKED — tank readout
+ * SPLASH ROYALE — tank readout
  *
  * The magazine counter, restated. It reads as a water level rather than a
  * number pair because that is what it is: the tank is topped up continuously
@@ -2228,7 +2236,7 @@ function TankStatus({ clock, live, slots }: PanelProps & { slots: SlotMeta[] }) 
 }
 
 /* ------------------------------------------------------------------------ *
- * SOAKED — multiplayer panels
+ * SPLASH ROYALE — multiplayer panels
  *
  * The three things a water fight with friends needs that a solo BR does not:
  * a code you can read out loud, a list of who is on your side and how wet
@@ -2631,6 +2639,13 @@ function ChatPanel({ engine }: { engine: Engine }) {
     if (open) inputRef.current?.focus();
   }, [open]);
 
+  // Tell the page the box is open. Without this the pause veil — which is
+  // raised by losing the lock — lands on top of the very input you opened
+  // with Escape-then-Enter, and there is no way to type a word.
+  useEffect(() => {
+    engine.emit("soaked:chat-open", open);
+  }, [engine, open]);
+
   // The mouse shield. Capture phase on `window`, so it fires before the
   // engine's own listeners and before the event reaches anything else. Only
   // while the pointer is actually locked: if it is not, the cursor is real and
@@ -3001,7 +3016,7 @@ function AliveBlock({ clock, live, water = false }: PanelProps & { water?: boole
  * ------------------------------------------------------------------------ */
 
 /**
- * The elimination feed. In SOAKED nobody is eliminated — they are SOAKED, and
+ * The elimination feed. In SPLASH ROYALE nobody is eliminated — they are SOAKED, and
  * the line says so in words rather than leaving a gun icon to imply it. The
  * verb comes out of `eliminatedFeed` so the whole feed re-words from one table
  * entry.
@@ -3137,7 +3152,7 @@ function ToastStack({ toasts, water = false }: { toasts: ToastEntry[]; water?: b
   );
 }
 
-function PickupLog({ pickups }: { pickups: PickupEntry[] }) {
+function PickupLog({ pickups, water = false }: { pickups: PickupEntry[]; water?: boolean }) {
   return (
     <div className="absolute inset-x-0 bottom-[16%] flex flex-col items-center gap-1">
       <AnimatePresence initial={false}>
@@ -3151,17 +3166,36 @@ function PickupLog({ pickups }: { pickups: PickupEntry[] }) {
             transition={{ type: "spring", stiffness: 480, damping: 32 }}
             className="flex items-center gap-2 rounded-[3px] px-2.5 py-1"
             style={{
-              ...plate,
-              borderColor: p.bad ? "rgba(255,120,120,0.5)" : rgba(rarityNum(p.rarity), 0.55),
+              ...modePlate(water),
+              // "No room" is the one thing this panel refuses, and classic says
+              // so in red. In water it says so in the SOAKED blue instead: this
+              // mode has no red anywhere, including on the boring lines.
+              borderColor: p.bad
+                ? water
+                  ? rgba(BAND_DRENCHED, 0.55)
+                  : "rgba(255,120,120,0.5)"
+                : rgba(rarityNum(p.rarity), 0.55),
             }}
           >
             <span
               className="h-1.5 w-1.5 rounded-full"
-              style={{ background: p.bad ? "#ff7a7a" : hex(rarityNum(p.rarity)) }}
+              style={{
+                background: p.bad
+                  ? water
+                    ? hex(BAND_SOAKED)
+                    : "#ff7a7a"
+                  : hex(rarityNum(p.rarity)),
+              }}
             />
             <span
               className="text-[11px] font-bold"
-              style={{ color: p.bad ? "#ffb4b4" : hex(rarityNum(p.rarity)) }}
+              style={{
+                color: p.bad
+                  ? water
+                    ? hex(DOWN.rain)
+                    : "#ffb4b4"
+                  : hex(rarityNum(p.rarity)),
+              }}
             >
               {p.bad ? `No room — ${p.name}` : p.name}
             </span>
@@ -3341,10 +3375,14 @@ function Crosshair({ clock, live }: PanelProps) {
   );
 }
 
+/** The elimination splash: eight droplets thrown outward, at mixed radii. */
+const SPLASH_SPOKES = [0, 42, 88, 133, 180, 224, 268, 313];
+
 function HitMarker({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const root = useRef<HTMLDivElement | null>(null);
   const lines = useRef<(HTMLDivElement | null)[]>([]);
   const ringRef = useRef<HTMLDivElement | null>(null);
+  const splash = useRef<SVGSVGElement | null>(null);
 
   usePainter(clock, () => {
     const l = live.current;
@@ -3359,20 +3397,35 @@ function HitMarker({ clock, live, water = false }: PanelProps & { water?: boolea
     const t = 1 - l.hitT;
     el.style.opacity = `${clamp01(l.hitT * 1.6)}`;
     el.style.transform = `translate(-50%,-50%) scale(${lerp(1.45, 1, Math.min(1, t * 3))})`;
-    // A confirmed soaking is cyan rather than red: the marker still spikes on
-    // the kill, it just does not claim you shot someone.
+    // A confirmed soaking is not an X. Classic's cross means "you put a hole in
+    // someone"; here the elimination is a burst of water thrown outward, and
+    // the four arms step aside so the shape itself carries the difference —
+    // colour alone would still read as a shooter's kill marker.
+    const burst = water && l.hitKind === "elim";
     const color = water
       ? l.hitKind === "elim"
-        ? "#5ecfff"
+        ? hex(DOWN.spray)
         : l.hitKind === "shield"
-          ? "#ffe45e"
+          ? hex(WATER.balloon.colors[2])
           : "#ffffff"
       : l.hitKind === "elim"
         ? "#ff4d4d"
         : l.hitKind === "shield"
           ? "#8ad4ff"
           : "#ffffff";
-    for (const line of lines.current) if (line) line.style.background = color;
+    for (const line of lines.current) {
+      if (!line) continue;
+      line.style.background = color;
+      line.style.opacity = burst ? "0" : "1";
+    }
+    const sp = splash.current;
+    if (sp) {
+      sp.style.opacity = burst ? `${clamp01(l.hitT * 1.5)}` : "0";
+      // Expands past its rest size as it fades — a splash keeps going after the
+      // hit lands, which is the whole difference between water and a bullet.
+      sp.style.transform =
+        `translate(-50%,-50%) scale(${lerp(0.5, 1.45, Math.min(1, t * 1.7)).toFixed(3)})`;
+    }
     const r = ringRef.current;
     if (r) r.style.opacity = l.hitHead ? `${clamp01(l.hitT)}` : "0";
   });
@@ -3409,14 +3462,73 @@ function HitMarker({ clock, live, water = false }: PanelProps & { water?: boolea
         className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0"
         style={{ border: "1.5px solid rgba(255,255,255,0.75)" }}
       />
+      {/* The elimination splash. Mounted in both modes and simply never shown
+          in classic — one static subtree costs less than a branch that mounts
+          and unmounts an SVG in the middle of a fight. */}
+      {water && (
+        <svg
+          ref={splash}
+          viewBox="0 0 64 64"
+          className="absolute left-1/2 top-1/2 h-16 w-16 opacity-0 will-change-transform"
+          style={{ filter: `drop-shadow(0 0 5px ${rgba(DOWN.wall, 0.9)})` }}
+        >
+          {/* The crown: a broken ring, the way a drop's rim opens when it lands. */}
+          <circle
+            cx="32"
+            cy="32"
+            r="11"
+            fill="none"
+            stroke={hex(DOWN.rim)}
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeDasharray="9 5"
+            opacity="0.95"
+          />
+          {SPLASH_SPOKES.map((deg, i) => {
+            const a = (deg * Math.PI) / 180;
+            // Alternating throw distances and bead sizes: an even ring of even
+            // dots reads as a UI element, an uneven one reads as water.
+            const rr = i % 2 ? 25 : 20.5;
+            const size = i % 3 === 0 ? 3.1 : 2.2;
+            return (
+              <circle
+                key={deg}
+                cx={(32 + Math.cos(a) * rr).toFixed(2)}
+                cy={(32 + Math.sin(a) * rr).toFixed(2)}
+                r={size}
+                fill={i % 2 ? hex(DOWN.spray) : hex(DOWN.mist)}
+              />
+            );
+          })}
+        </svg>
+      )}
     </div>
   );
 }
 
+/**
+ * Droplets thrown off the splash arc: angle offset from the arc's centre in
+ * radians, radius offset in px from the arc radius, and a bead size. Authored
+ * asymmetrically on purpose — a symmetrical spray reads as a graphic.
+ */
+const ARC_SPRAY: readonly [number, number, number][] = [
+  [-0.29, 13, 2.6],
+  [-0.19, 22, 1.8],
+  [-0.08, 16, 3.2],
+  [0.02, 27, 2.1],
+  [0.12, 14, 2.4],
+  [0.22, 24, 1.7],
+  [0.31, 18, 2.9],
+];
+
 function DamageArcs({ arcs, water = false }: { arcs: DamageArc[]; water?: boolean }) {
-  const near = water ? "rgba(155,232,255,0.95)" : "rgba(255,70,70,0.95)";
-  const far = water ? "rgba(79,195,247,0.15)" : "rgba(255,70,70,0.15)";
-  const glow = water ? "drop-shadow(0 0 6px rgba(120,215,255,0.65))" : "drop-shadow(0 0 6px rgba(255,40,40,0.55))";
+  // Water reads off the Downpour palette rather than a hand-picked cyan, so the
+  // wedge at the edge of the frame is the same blue as the wall in the world.
+  const near = water ? rgba(DOWN.rim, 0.95) : "rgba(255,70,70,0.95)";
+  const far = water ? rgba(DOWN.wall, 0.15) : "rgba(255,70,70,0.15)";
+  const glow = water
+    ? `drop-shadow(0 0 6px ${rgba(BAND_DRENCHED, 0.7)})`
+    : "drop-shadow(0 0 6px rgba(255,40,40,0.55))";
   return (
     <div className="absolute inset-0 flex items-center justify-center">
       <AnimatePresence>
@@ -3452,6 +3564,23 @@ function DamageArcs({ arcs, water = false }: { arcs: DamageArc[]; water?: boolea
                 strokeLinecap="round"
                 style={{ filter: glow }}
               />
+              {/* Spray thrown inward off the arc. This is what turns a wedge
+                  into "someone just threw water at you from over there" — the
+                  arc alone, however blue, still reads as a wound. */}
+              {water &&
+                ARC_SPRAY.map(([da, dr, s]) => {
+                  const ang = -Math.PI / 2 + da;
+                  return (
+                    <circle
+                      key={da}
+                      cx={(210 + Math.cos(ang) * (152 - dr)).toFixed(2)}
+                      cy={(210 + Math.sin(ang) * (152 - dr)).toFixed(2)}
+                      r={s}
+                      fill={rgba(DOWN.spray, 0.85)}
+                      style={{ filter: glow }}
+                    />
+                  );
+                })}
             </svg>
           </motion.div>
         ))}
@@ -3470,7 +3599,7 @@ function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): str
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
 
-function ScopeOverlay() {
+function ScopeOverlay({ water = false }: { water?: boolean }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -3513,7 +3642,15 @@ function ScopeOverlay() {
         {[118, 130, 142, 154].map((y) => (
           <line key={y} x1="94" y1={y} x2="106" y2={y} stroke="rgba(10,12,16,0.8)" strokeWidth="0.7" />
         ))}
-        <circle cx="100" cy="100" r="1.1" fill="rgba(180,20,20,0.9)" />
+        {/* The aiming pip. Every scope in every shooter puts a red dot here;
+            the Hydro Lance puts a blue one, because nothing in SPLASH ROYALE
+            gets to be red — not even two pixels of it. */}
+        <circle
+          cx="100"
+          cy="100"
+          r="1.1"
+          fill={water ? rgba(DOWN.wall, 0.95) : "rgba(180,20,20,0.9)"}
+        />
         <circle cx="100" cy="100" r="46" fill="none" stroke="rgba(10,12,16,0.35)" strokeWidth="0.5" />
       </svg>
     </motion.div>
@@ -3523,6 +3660,194 @@ function ScopeOverlay() {
 /* ------------------------------------------------------------------------ *
  * Full-screen states
  * ------------------------------------------------------------------------ */
+
+/**
+ * Where the water sits on the glass, and where it runs.
+ *
+ * Authored rather than random, and deliberately hugging the frame: the middle
+ * of the screen is where the person soaking you is standing, and a bead parked
+ * over them is a bug however pretty it looks. Each entry carries its own phase
+ * so no two drops ever cling, slip or run together.
+ *
+ * BEADS:    x%, y%, radius px, phase.
+ * RIVULETS: x%, length px, speed, phase.
+ */
+const BEADS: readonly [number, number, number, number][] = [
+  [4, 13, 8, 0.13],
+  [9, 37, 5, 0.61],
+  [3, 62, 10, 0.29],
+  [12, 81, 6, 0.84],
+  [18, 7, 5, 0.72],
+  [24, 93, 4, 0.05],
+  [37, 4, 6, 0.38],
+  [45, 96, 5, 0.66],
+  [63, 5, 4, 0.91],
+  [72, 94, 6, 0.22],
+  [81, 15, 9, 0.11],
+  [88, 39, 5, 0.44],
+  [96, 63, 7, 0.67],
+  [91, 85, 5, 0.33],
+];
+
+const RIVULETS: readonly [number, number, number, number][] = [
+  [3, 96, 0.42, 0.1],
+  [8, 132, 0.3, 0.55],
+  [15, 72, 0.5, 0.83],
+  [26, 62, 0.55, 0.71],
+  [75, 68, 0.5, 0.4],
+  [86, 112, 0.36, 0.27],
+  [93, 82, 0.46, 0.62],
+  [98, 140, 0.28, 0.05],
+];
+
+/**
+ * SPLASH ROYALE — the wet screen.
+ *
+ * Drop Zero answers a nearly-empty health bar with a red edge pulse, which is
+ * the language of bleeding out. Here the same channel has to say "you are
+ * nearly soaked", so it is water ON THE LENS instead: beads clinging to the
+ * glass, rivulets running off the bottom of them, and the frame going blue and
+ * out of focus from the rim inward as you lose the argument. At 10% dry it
+ * should read as a faceful of water, not as a wound.
+ *
+ * Costs nothing while you are dry. Every layer is `opacity: 0` above 60%
+ * dryness and the whole tree short-circuits on the first line of the painter,
+ * so a bone-dry player pays for a handful of composited nodes and no work.
+ *
+ * Like everything else here it animates from ONE painter writing `transform`
+ * and `opacity` on nodes it owns — no React state, no per-drop component, and
+ * no re-render at 120 Hz next to a renderer that wants the whole frame.
+ */
+function WetScreen({ clock, live }: PanelProps) {
+  const root = useRef<HTMLDivElement | null>(null);
+  const glass = useRef<HTMLDivElement | null>(null);
+  const beads = useRef<(HTMLDivElement | null)[]>([]);
+  const rivs = useRef<(HTMLDivElement | null)[]>([]);
+  const oStore = useRef<number[]>([-1, -1]);
+  /** Last blur radius actually written, in whole px — see below. */
+  const lastBlur = useRef(-1);
+
+  usePainter(clock, () => {
+    const l = live.current;
+    const el = root.current;
+    if (!el) return;
+
+    // Soaked-ness, not health. Nothing at all above 60% dry; full by 10%,
+    // which is the number the brief names.
+    const soak = clamp01((0.6 - l.dry / l.dryMax) / 0.5);
+    // A fresh hit throws water at the glass on top of whatever is already
+    // clinging to it, so a single big splash still registers while you are dry.
+    const wet = clamp01(soak + l.damageFlash * 0.5);
+    setOpacity(el, wet > 0.004 ? 1 : 0, oStore.current, 0);
+    if (wet <= 0.004) return;
+
+    const g = glass.current;
+    if (g) {
+      setOpacity(g, wet, oStore.current, 1);
+      // `backdropFilter` is a string, and rebuilding it every frame would
+      // allocate one per frame for no visible gain. Quantised to whole pixels,
+      // it changes about a dozen times over the whole ramp.
+      const px = Math.round(wet * 7);
+      if (px !== lastBlur.current) {
+        lastBlur.current = px;
+        g.style.backdropFilter = `blur(${px}px) saturate(0.82)`;
+      }
+    }
+
+    for (let i = 0; i < BEADS.length; i++) {
+      const b = beads.current[i];
+      if (!b) continue;
+      const ph = BEADS[i][3];
+      // A bead clings, loses its grip, then slides. Per-bead cycles mean the
+      // glass is never busy all at once, which is what stops it reading as an
+      // animated texture rather than as water.
+      const u = (l.t * (0.11 + ph * 0.09) + ph) % 1;
+      const slip = u < 0.74 ? 0 : (u - 0.74) / 0.26;
+      b.style.transform =
+        `translate(-50%,-50%) translateY(${(slip * slip * 30).toFixed(1)}px) ` +
+        `scale(${(0.55 + wet * 0.65).toFixed(2)})`;
+      b.style.opacity = `${(wet * 0.88 * (1 - slip * 0.9)).toFixed(2)}`;
+    }
+
+    for (let i = 0; i < RIVULETS.length; i++) {
+      const r = rivs.current[i];
+      if (!r) continue;
+      const [, , speed, ph] = RIVULETS[i];
+      // Rivulets run faster the wetter you are — the glass stops being able to
+      // hold it, which is the whole feeling the effect is after.
+      const u = (l.t * speed * (0.45 + wet) + ph) % 1;
+      r.style.transform = `translate(-50%, ${(u * 118 - 18).toFixed(1)}vh)`;
+      r.style.opacity = `${(wet * (1 - u) * 0.8).toFixed(2)}`;
+    }
+  });
+
+  return (
+    <div ref={root} className="absolute inset-0 overflow-hidden opacity-0">
+      {/* The rim going blue and soft. `backdrop-filter` does the defocus, the
+          mask keeps it off the centre third, and the wash is the Downpour's
+          own blue so the screen and the world agree about what water is. */}
+      <div
+        ref={glass}
+        className="absolute inset-0 opacity-0"
+        style={{
+          background:
+            `radial-gradient(ellipse at 50% 50%, ${rgba(DOWN.wall, 0)} 40%, ` +
+            `${rgba(DOWN.wall, 0.2)} 76%, ${rgba(DOWN.vignette, 0.44)})`,
+          maskImage:
+            "radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 38%, rgba(0,0,0,1) 84%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 38%, rgba(0,0,0,1) 84%)",
+        }}
+      />
+
+      {RIVULETS.map(([x, len], i) => (
+        <div
+          key={`riv${x}`}
+          ref={(el) => {
+            rivs.current[i] = el;
+          }}
+          className="absolute top-0 w-[3px] rounded-full opacity-0 will-change-transform"
+          style={{
+            left: `${x}%`,
+            height: `${len}px`,
+            background:
+              `linear-gradient(180deg, ${rgba(DOWN.mist, 0)}, ${rgba(DOWN.mist, 0.55)} 60%, ` +
+              `${rgba(DOWN.spray, 0.95)})`,
+            boxShadow: `0 0 6px ${rgba(DOWN.rim, 0.7)}`,
+          }}
+        />
+      ))}
+
+      {BEADS.map(([x, y, r], i) => (
+        <div
+          key={`bead${x}-${y}`}
+          ref={(el) => {
+            beads.current[i] = el;
+          }}
+          className="absolute rounded-full opacity-0 will-change-transform"
+          style={{
+            left: `${x}%`,
+            top: `${y}%`,
+            width: `${r * 2}px`,
+            height: `${r * 2.25}px`,
+            // A drop is a lens, and the centre of a lens is CLEAR — you can see
+            // the world through it. All the colour lives in the specular
+            // highlight and the rim; fill the middle in and it stops being
+            // water and becomes a ball bearing, which is what the first
+            // capture of this looked like.
+            background:
+              `radial-gradient(circle at 34% 26%, rgba(255,255,255,0.9) 0%, ` +
+              `rgba(255,255,255,0.16) 20%, ${rgba(DOWN.mist, 0.12)} 46%, ` +
+              `${rgba(DOWN.wall, 0.24)} 76%, ${rgba(DOWN.rim, 0.5)})`,
+            boxShadow:
+              `inset 0 1px 2px rgba(255,255,255,0.55), ` +
+              `inset 0 -2px 3px ${rgba(DOWN.rim, 0.55)}, 0 2px 4px rgba(0,18,38,0.4)`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolean }) {
   const storm = useRef<HTMLDivElement | null>(null);
@@ -3536,9 +3861,9 @@ function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolea
     setOpacity(storm.current, l.stormVeil, oStore.current, 0);
     // Low health is a heartbeat, not a constant tint: it has to be noticeable
     // in peripheral vision while you are looking at someone else's crosshair.
-    // In SOAKED the same channel carries "nearly soaked", and it is dialled
-    // back hard — the bar drips and glows for that; the screen should not also
-    // close in on you, because getting wet is not dying.
+    // In SPLASH ROYALE the same channel carries "nearly soaked", and it is
+    // dialled back hard — the wet glass above it is doing the work now, and two
+    // full-strength edge treatments stacked would close the frame right down.
     const lowT = water
       ? clamp01(1 - l.dry / (l.dryMax * 0.3)) * 0.5
       : clamp01(1 - l.health / (l.maxHealth * 0.35));
@@ -3562,8 +3887,12 @@ function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolea
         ref={low}
         className="absolute inset-0 opacity-0"
         style={{
+          // The breathing rim. Classic: arterial red. Water: the SOAKED band's
+          // deep blue over the Downpour's rim, so the screen edge, the dryness
+          // bar and the world all name the same colour for "you are done".
           boxShadow: water
-            ? `inset 0 0 170px 34px ${rgba(0x2a5f96, 0.55)}`
+            ? `inset 0 0 170px 34px ${rgba(BAND_SOAKED, 0.5)}, ` +
+              `inset 0 0 60px ${rgba(DOWN.wall, 0.4)}`
             : "inset 0 0 160px 30px rgba(200,20,20,0.6)",
         }}
       />
@@ -3588,6 +3917,9 @@ function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolea
             : "inset 0 0 120px 20px rgba(90,220,140,0.5)",
         }}
       />
+      {/* Last, so the beads sit on top of every wash behind them — water is on
+          the glass, not in the image. */}
+      {water && <WetScreen clock={clock} live={live} />}
     </>
   );
 }
@@ -3966,7 +4298,7 @@ function EndCard({
               boxShadow: "0 10px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.7)",
             }}
           >
-            {water ? "Get wet again" : "Drop again"}
+            {water ? "Play again" : "Drop again"}
           </motion.button>
           <a
             href="/"

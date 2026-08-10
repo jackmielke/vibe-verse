@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "stamp": "node scripts/stamp-worlds.mjs",
+    "smoke": "node scripts/route-smoke.mjs",
     "buildlog": "node tools/build-log.mjs",
     "prebuild": "node tools/build-log.mjs",
     "build": "vite build",

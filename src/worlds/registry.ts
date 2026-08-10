@@ -36,6 +36,7 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "splash-royale",       // …and then the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -85,6 +86,18 @@ export interface WorldEntry {
   status?: string;
   /** Signal colour: card chrome, hub sphere tint, gradient panel. */
   accent: string;
+  /**
+   * What the screen is painted while this world's chunk is still downloading.
+   *
+   * Every route in the app is `lazy()`, so there is always a moment between
+   * the tap and the first frame. `App`'s one Suspense fallback fills it with
+   * this colour, and worlds that leave it unset get the app's near-black —
+   * which is the right answer for nearly all of them, because that is what
+   * their own loading screen opens on. Set it only when a world does *not*
+   * open on black: Splash Royale comes up sky blue, and a black flash first
+   * reads as a stutter.
+   */
+  backdrop?: string;
   /** Leads the picker and gets the wide card treatment. */
   featured?: boolean;
   /** Where the code lives, so the list is also a map of the repo. */
@@ -183,32 +196,37 @@ const WORLDS_RAW: WorldEntry[] = [
   },
   {
     key: "drop-zero",
-    route: "/drop-zero",
+    route: "/drop-zero?mode=classic",
     aliases: ["/royale", "/br"],
-    name: "Drop Zero",
+    name: "Drop Zero (classic)",
     emoji: "🪂",
     kind: "game",
     blurb:
-      "One island, one storm, one hundred rivals. Ride the bus, harvest anything that isn't nailed down, and build faster than they can shoot.",
-    status: "Playable — battle royale",
+      "The original: bullets, health bars and a purple storm. The same island Splash Royale is played on, from before anyone filled the guns with water.",
+    status: "Playable — the pre-water build",
     accent: "#818cf8",
-    featured: true,
+    /* Deliberately not featured and not in the nav. It is the same engine with
+       ctx.mode flipped, and one game deserves one card — this entry exists so
+       the older build stays reachable, not so it competes for attention. */
     source: "src/royale",
-    nav: true,
-    passport: true,
     chromeless: true,
   },
   {
-    key: "soaked",
-    route: "/soaked",
-    aliases: ["/water-fight", "/soak"],
-    name: "Soaked",
+    key: "splash-royale",
+    route: "/splash-royale",
+    /* /soaked was the name for about a day. It stays an alias because links
+       were already shared, and a dead link is a worse cost than a stale word. */
+    aliases: ["/splash", "/soaked", "/water-fight", "/soak"],
+    name: "Splash Royale",
     emoji: "💦",
     kind: "game",
     blurb:
       "The same island as Drop Zero, in swim shorts. Ten soakers, water balloons, a glue gun that sticks two people together — grab a room code, text it to a friend, and be the last one dry.",
     status: "Playable — multiplayer water fight",
     accent: "#38bdf8",
+    /* The one world that does not open on black. It comes up under an open
+       sky, so that is what the loading frame paints. */
+    backdrop: "#3fb8ee",
     featured: true,
     /* Soaked and Drop Zero are the same engine in two modes, so they share a
        source path and will show the same date. The parenthetical that was here
@@ -283,6 +301,8 @@ const WORLDS_RAW: WorldEntry[] = [
       "671 Lincoln Avenue at Christmas — lights on the eaves, a tree in the window, and two men outside who think it is empty. Walk the house, light it up, arm eight traps, then shout from the top of the stairs and see who comes.",
     status: "Playable — five levels, plus free roam",
     accent: "#e0b64a",
+    /* A winter night, not a void — the house's own opening frame. */
+    backdrop: "#0d1524",
     featured: true,
     source: "src/homealone",
     nav: true,
@@ -671,14 +691,16 @@ const WORLDS_RAW: WorldEntry[] = [
   {
     key: "coin",
     route: "/coin",
-    aliases: ["/vibe"],
+    aliases: ["/vibe", "/wallet"],
     name: "Vibe Coin",
     emoji: "🪙",
     kind: "tool",
-    blurb: "$VIBE — the community currency hub, holders, and market.",
+    blurb:
+      "Our community currency, on one page: make an account, earn Vibecoin playing, and claim it as a real token when you have enough to care about.",
     accent: "#fcd34d",
     source: "src/pages/VibeHub.tsx",
     nav: true,
+    passport: true,
   },
   {
     key: "arcade",
@@ -710,16 +732,51 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
-    key: "wallet",
-    route: "/wallet",
-    name: "The Vibe Wallet",
-    emoji: "🔐",
+    key: "passport",
+    route: "/passport",
+    aliases: ["/stamps"],
+    name: "The Passport",
+    emoji: "🛂",
     kind: "tool",
     blurb:
-      "Where a real $VIBE drop would be sent. Make a wallet with Face ID, or link one you already have — you sign a sentence, never a transaction.",
-    status: "Open — passkey or bring your own",
+      "One badge for every world in here, lit if you have been and locked if you have not. Go back to a place often enough and its stamp gains rings. One of them has no page at all and has to be earned on the ground.",
+    status: "Open — twenty-eight stamps to collect",
     accent: "#8fb4ff",
-    source: "src/pages/VibeWallet.tsx",
+    source: "src/pages/Passport.tsx",
+    /* No `passport: true`. It is the book — a page in itself would be a
+       stamp for having checked your stamps. */
+  },
+  {
+    key: "manifesto",
+    route: "/manifesto",
+    aliases: ["/future"],
+    name: "The Arcade of the Future",
+    emoji: "✍️",
+    kind: "tool",
+    blurb:
+      "Why any of this exists. Everyone can build now, because we can finally say what we mean to a computer and have it understood — and with ownership behind it, what you build stays yours. The page to send somebody before they open anything else.",
+    status: "Read it",
+    accent: "#c9a8ff",
+    source: "src/pages/Manifesto.tsx",
+    /* Not in the nav chip row. It is the best page here and the wrong one to
+       put between two games — somebody arrives wanting to play, and a link to
+       a manifesto competing with Splash Royale reads as a lecture. It lives
+       one tap deep, from the shop and from `/game`. */
+    passport: true,
+  },
+  {
+    key: "portal",
+    route: "/build",
+    aliases: ["/build-a-game"],
+    name: "The Portal",
+    emoji: "🚪",
+    kind: "tool",
+    blurb:
+      "The door for games nobody here wrote. Yours stays on your domain, in your repo, under your name — add four lines of JavaScript and it can pay the people who play it in Vibey Coins. It runs sandboxed, on an allowance, and it is never told who the player is.",
+    status: "Open — one game in, room for yours",
+    accent: "#8fb4ff",
+    source: "src/portal",
+    nav: true,
     passport: true,
   },
   {
@@ -851,11 +908,40 @@ export const CHROMELESS_ROUTES: string[] = WORLDS.filter((w) => w.chromeless).fl
 );
 
 /** Worlds that stamp the passport, plus the one you have to earn. */
-export const PASSPORT_ROUTES: { route: string; name: string; emoji: string }[] = [
+export interface PassportRoute {
+  route: string;
+  name: string;
+  emoji: string;
+  /** The world's signal colour. The passport page tints each badge with it. */
+  accent: string;
+  kind: WorldKind;
+  /** One line, for the back of the badge. */
+  blurb: string;
+  /**
+   * True for the one stamp you cannot navigate to. Redline has no page — it is
+   * earned by holding the landing site — so a passport page must not offer it
+   * as a link, and it deserves to be marked as the only stamp of its kind.
+   */
+  earned?: boolean;
+}
+
+export const PASSPORT_ROUTES: PassportRoute[] = [
   ...WORLDS.filter((w) => w.passport).map((w) => ({
     route: w.route,
     name: w.name,
     emoji: w.emoji,
+    accent: w.accent,
+    kind: w.kind,
+    blurb: w.blurb,
   })),
-  { route: CONTESTED.stampRoute, name: CONTESTED.name, emoji: CONTESTED.emoji },
+  {
+    route: CONTESTED.stampRoute,
+    name: CONTESTED.name,
+    emoji: CONTESTED.emoji,
+    accent: "#ff5c5c",
+    kind: "game" as WorldKind,
+    blurb:
+      "A planet inside the ship's own galaxy, with no page and no link. The only stamp in the book you have to earn: clear the landing site of hostiles, on the ground, once.",
+    earned: true,
+  },
 ];

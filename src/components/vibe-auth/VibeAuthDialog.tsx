@@ -4,7 +4,7 @@
  * also carries a magic link for people who prefer tapping it. Password
  * mode is hidden behind a toggle; wallet/Google are marked coming soon.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +12,20 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import VibeArc from "@/components/VibeArc";
 import { OTP_LENGTH, normalizeOtp, shouldAutoSubmit } from "@/lib/otp";
+
+/**
+ * The iridescent arch at the top of this dialog is decoration, and it is a
+ * WebGL canvas — so importing it statically put all 1.4 MB of three.js in the
+ * chunk every page of the app downloads, because this dialog hangs off the log
+ * in button in the global nav. It is lazy, and Radix only mounts the content
+ * when the dialog opens, so the import fires on the tap that opens it and
+ * nowhere else.
+ */
+const VibeArc = lazy(() => import("@/components/VibeArc"));
+
+/** Holds the arch's square while it loads, so nothing below it jumps. */
+const ARC_SIZE = 140;
 
 interface Props {
   open: boolean;
@@ -172,7 +184,9 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
           </button>
 
           <div className="flex justify-center mb-2 -mt-2">
-            <VibeArc size={140} rotateSeconds={28} />
+            <Suspense fallback={<div style={{ width: ARC_SIZE, height: ARC_SIZE }} />}>
+              <VibeArc size={ARC_SIZE} rotateSeconds={28} />
+            </Suspense>
           </div>
 
           {/* Radix's own Title/Description, not a bare h2 and p. Without them

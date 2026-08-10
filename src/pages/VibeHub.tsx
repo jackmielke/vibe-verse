@@ -1,91 +1,294 @@
 /**
- * VibeHub — `/vibe`. The community-currency hub.
+ * `/coin` — the one page about the currency.
  *
- * Branding: Vibe Coin is "our community currency and asset" — the
- * page leads with that promise. The hero ornament is the iridescent
- * "wink" emblem (lightning eyes + smile) rendered as inline SVG with
- * a holographic stroke and a slow 3D-feeling rotation. Three copies
- * float at varying sizes / orbits for depth.
+ * ## Why there is only one now
  *
- * Layout:
- *   - Hero: brand + tagline + drifting wink emblems
- *   - Below: account card + market ticker on the left, holder
- *     leaderboard on the right
+ * There were two, and they disagreed about what they were for. `/coin` led
+ * with "our community currency" and then showed a shop panel, a character
+ * picker and a holder leaderboard — a junk drawer of everything that touched
+ * money. `/wallet` explained the thing properly, in order, and was reachable
+ * only from a popover most people never opened. Two pages about one subject
+ * is how you get a visitor who has read neither.
+ *
+ * So: one page, at `/coin`, answering to `/vibe` and `/wallet` too. It is a
+ * story rather than a dashboard, and the story is the actual product:
+ *
+ *   1. **MAKE A VIBE ACCOUNT.** An email and a six-digit code. This is the
+ *      thing that has to be easy, because everything below it is worthless if
+ *      nobody gets past it.
+ *   2. **Earn Vibey Coins.** Playing games. No wallet, no crypto, none
+ *      of the decisions.
+ *   3. **Claim it for real.** When you have enough to care about, connect a
+ *      wallet — or make one with Face ID in one tap — and a real token can
+ *      find you.
+ *
+ * Step 3 being *last* is the whole design. Every crypto product puts "connect
+ * wallet" first and loses everybody who does not have one; here you can play
+ * for a month before the word wallet appears.
+ *
+ * The shop and character panels moved off this page to `/shop` and
+ * `/characters`, which is where somebody looking for them goes anyway.
  */
-import { Sparkles } from "lucide-react";
-import VibeAccountCard from "@/components/VibeAccountCard";
-import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
-import VibeCoinPanel from "@/components/VibeCoinPanel";
-import VibeShopPanel from "@/components/VibeShopPanel";
-import CharacterPortalPanel from "@/components/CharacterPortalPanel";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Check, Copy, LogIn, Sparkles } from "lucide-react";
+import { VIBE_TOKEN_ADDRESS } from "@/lib/vibe-wallet";
 import VibeArc from "@/components/VibeArc";
+import VibeCoinMark from "@/components/VibeCoinMark";
+import VibeWink from "@/components/VibeWink";
+import VibeCoinPanel from "@/components/VibeCoinPanel";
+import VibeWalletSection from "@/components/VibeWalletSection";
+import VibeWalletLeaderboard from "@/components/VibeWalletLeaderboard";
+import VibeAuthDialog from "@/components/vibe-auth/VibeAuthDialog";
+import { useVibecoin } from "@/hooks/use-vibecoin";
+import { useVibeIdentity } from "@/hooks/use-vibe-identity";
+import { useWalletBook } from "@/hooks/use-wallet-book";
+import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { VIBECOIN_GLYPH, VIBECOIN_NAME, formatVibecoin } from "@/lib/vibecoin";
+
+/** A numbered step, so the page reads as a sequence and not as four cards. */
+function Step({
+  n,
+  title,
+  done,
+  children,
+}: {
+  n: number;
+  title: string;
+  done?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-9">
+      <div className="flex items-center gap-2.5">
+        <span
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-full font-heading text-[11px] font-black ${
+            done
+              ? "bg-[#7dffd4] text-black"
+              : "border border-border/60 text-muted-foreground"
+          }`}
+        >
+          {done ? <Check className="h-3.5 w-3.5" /> : n}
+        </span>
+        <h2 className="font-heading text-[13px] font-black uppercase tracking-[0.14em] text-foreground/90">
+          {title}
+        </h2>
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
 
 export default function VibeHub() {
+  useWorldStamp("/coin", "Vibe Coin");
+  const { balance, loading } = useVibecoin();
+  const { isGuest, displayName } = useVibeIdentity();
+  const { rows, totalUsd } = useWalletBook();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const totalVibe = rows.reduce((t, r) => t + (r.vibe ?? 0), 0);
+
   return (
-    <div className="relative w-full min-h-[100dvh] bg-black overflow-hidden text-foreground">
-      {/* Deep starfield gradient — same family as /space + /lobby so
-          this page reads as part of the same world. */}
+    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#03050c] text-foreground">
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse at top, hsl(216 60% 12%) 0%, hsl(220 50% 4%) 70%, #000 100%)",
+            "radial-gradient(70% 50% at 50% -8%, hsl(150 70% 40% / 0.15), transparent 60%)," +
+            "radial-gradient(55% 45% at 88% 16%, hsl(268 88% 62% / 0.13), transparent 68%)",
         }}
+        aria-hidden
       />
 
-      {/* Single column, top-to-bottom reading order. Tighter max-width
-          (~720px) so each block has a coherent visual rhythm and
-          nothing feels lonely in a half-empty column. */}
-      {/* Extra top padding so the arc has real breathing room below
-          the global nav strip, especially on mobile where the nav
-          eats ~3.5rem at the top. */}
-      <div className="relative z-10 max-w-[720px] mx-auto px-4 md:px-6 pt-28 md:pt-24 pb-10 flex flex-col gap-8">
-        {/* ----- Hero ----- */}
-        <section className="flex flex-col items-center text-center gap-5">
-          {/* Iridescent arc — smaller (~35% smaller than before) and
-              rotating at half speed. Hover to spin it 4× faster. */}
-          <div className="relative" style={{ minHeight: 200 }}>
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                background:
-                  "radial-gradient(circle, hsl(150 80% 60% / 0.10) 0%, transparent 60%)",
-              }}
-            />
-            <VibeArc size={182} rotateSeconds={32} />
+      <div className="relative mx-auto max-w-lg px-5 pb-24 pt-16">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          {/* ---- Hero ---- */}
+          <div className="flex justify-center">
+            <VibeArc size={170} rotateSeconds={30} />
           </div>
-
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/30">
-            <Sparkles className="w-3 h-3 text-primary" />
-            <span className="text-[10px] uppercase tracking-[0.25em] font-heading font-semibold text-primary">
-              $VIBE on Base
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">
+              <Sparkles className="h-2.5 w-2.5 text-primary" />
+              <span className="font-heading text-[9px] font-semibold uppercase tracking-[0.25em] text-primary">
+                $VIBE on Base
+              </span>
             </span>
+            {/* The contract, one tap away from the headline. People ask for it
+                before they read anything else on this page. */}
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(VIBE_TOKEN_ADDRESS)
+                  .then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                  })
+                  .catch(() => { /* clipboard blocked — nothing useful to do */ });
+              }}
+              title={VIBE_TOKEN_ADDRESS}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-2.5 py-1 font-heading text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+            >
+              {copied ? <Check className="h-2.5 w-2.5 text-primary" /> : <Copy className="h-2.5 w-2.5" />}
+              {copied ? "Copied" : "Copy address"}
+            </button>
           </div>
-          <h1 className="font-heading text-4xl md:text-5xl font-bold leading-tight tracking-tight">
+          <h1 className="mt-3.5 text-center font-heading text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">
             Our community currency.
           </h1>
-          <p className="text-base text-foreground/85 max-w-xl leading-relaxed">
-            $VIBE is the asset behind the Edge Esmeralda + Vibe Code Residency
-            community — earned by people who ship things, gifted between
-            builders, and traded for buildathon prizes. Link your address
-            below to show up in the holder list and see your bag live.
+          <p className="mx-auto mt-3.5 max-w-md text-center text-[13px] leading-relaxed text-foreground/75">
+            Earn Vibey Coins by playing, spend them in the arcade, and claim them as
+            real Vibecoin when you have enough to care about. No wallet needed
+            to start — an email is the whole sign-up.
           </p>
-          <p className="text-sm text-muted-foreground max-w-xl leading-relaxed -mt-2">
-            No transactions ever happen from this app. We just read the
-            public blockchain so the community can see who's holding and
-            how the vibe is doing.
-          </p>
-        </section>
 
-        {/* ----- Account + Market + Holders, stacked ----- */}
-        <VibeAccountCard variant="card" />
-        <VibeCoinPanel />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <VibeShopPanel />
-          <CharacterPortalPanel />
-        </div>
-        <VibeWalletLeaderboard defaultVisible={8} maxRows={40} />
+          {/* ---- The one distinction everything else rests on ---- */}
+          <div className="mt-7 grid gap-3 sm:grid-cols-2">
+            <div className="relative overflow-hidden rounded-2xl border border-[#7dffd4]/30 bg-[#7dffd4]/[0.06] p-4">
+              {/* A sync in flight gets a sweep across the card rather than a
+                  spinner off to the side — the thing you are waiting on is the
+                  number, so the number is what should look alive. */}
+              {loading && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 animate-[vibe-sweep_1.15s_linear_infinite]"
+                  style={{
+                    background:
+                      "linear-gradient(100deg, transparent 20%, rgba(125,255,212,0.16) 50%, transparent 80%)",
+                  }}
+                />
+              )}
+              <div className="relative flex items-center gap-2">
+                <VibeCoinMark size={26} />
+                {balance == null && loading ? (
+                  <span className="h-7 w-24 animate-pulse rounded-md bg-[#7dffd4]/20" />
+                ) : (
+                  <span
+                    className={`font-heading text-2xl font-black tabular-nums text-[#7dffd4] transition-opacity ${
+                      loading ? "opacity-60" : "opacity-100"
+                    }`}
+                  >
+                    {balance == null ? "—" : formatVibecoin(balance, { compact: false })}
+                  </span>
+                )}
+              </div>
+              <p className="relative mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                {loading ? "Waiting on the vibe…" : `${VIBECOIN_NAME} ${VIBECOIN_GLYPH}`}
+              </p>
+
+              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+                What you earn in the worlds. Buys characters, plays cabinets,
+                stakes rounds. Yours the moment you arrive, no account needed.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-[#8fb4ff]/30 bg-[#8fb4ff]/[0.06] p-4">
+              {/* The wink, not the ✦ — this card is the real token, and the
+                  two marks are how you tell the two coins apart at a glance. */}
+              <div className="flex items-baseline gap-2">
+                <VibeWink size={26} className="shrink-0 self-center" />
+                <p className="font-heading text-2xl font-black tabular-nums text-[#8fb4ff]">
+                  {rows.length === 0
+                    ? "$VIBE"
+                    : totalVibe.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                {rows.length > 0 && totalUsd != null && (
+                  <p className="font-heading text-sm font-black tabular-nums text-foreground/70">
+                    ${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </p>
+                )}
+              </div>
+              <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                Vibecoin · $VIBE on Base
+              </p>
+              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+                Lives on Base, in a wallet you control. This app reads it and
+                has never sent a transaction from your side.
+              </p>
+            </div>
+          </div>
+
+          {/* ---- 1. The account ----
+              Once you are signed in this step has nothing left to say, so it
+              disappears rather than sitting there confirming your own name.
+              The steps below renumber to match. */}
+          {isGuest && (
+            <Step n={1} title="MAKE A VIBE ACCOUNT" done={false}>
+              <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
+                <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                  An email and a six-digit code — no password, nothing to
+                  download. It is what makes your Vibey Coins follow you from your
+                  laptop to your phone instead of living in one browser.
+                </p>
+                <button
+                  onClick={() => setAuthOpen(true)}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-3 font-heading text-[10.5px] font-black uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.02]"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  Create your Vibe account
+                </button>
+                <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground/70">
+                  You can keep playing without one. Everything you have earned
+                  so far comes with you when you sign in — the guest wallet gets
+                  merged, once, automatically.
+                </p>
+              </div>
+            </Step>
+          )}
+
+          {/* ---- 2. Earning it ---- */}
+          <Step n={isGuest ? 2 : 1} title="Earn some Vibey Coins" done={(balance ?? 0) > 100}>
+
+            <div className="rounded-2xl border border-border/50 bg-black/28 p-4">
+              <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                Everyone starts with 100. The cabinets in the arcade pay out,
+                the sky islands over Vibe Island pay out, and ORBIT pays the
+                whole pot to whoever flies furthest.
+              </p>
+              <div className="mt-3 flex gap-1.5">
+                <Link
+                  to="/arcade"
+                  className="flex-1 rounded-xl bg-primary px-2 py-2.5 text-center font-heading text-[9.5px] font-bold uppercase tracking-wider text-primary-foreground transition-transform hover:scale-[1.02]"
+                >
+                  🕹️ Win some
+                </Link>
+                <Link
+                  to="/arcade/characters"
+                  className="flex-1 rounded-xl border border-border/60 px-2 py-2.5 text-center font-heading text-[9.5px] font-bold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
+                >
+                  🧑‍🚀 Spend it
+                </Link>
+              </div>
+            </div>
+          </Step>
+
+          {/* ---- 3. Claiming it ---- */}
+          <Step n={isGuest ? 3 : 2} title="Claim them as real Vibecoin" done={rows.length > 0}>
+            <p className="mb-3 text-[11.5px] leading-relaxed text-muted-foreground">
+              Last on purpose. Connect a wallet you already have, or make one
+              with Face ID in a single tap — either way you sign a sentence,
+              never a transaction, and nothing moves out of your wallet.
+            </p>
+            <VibeWalletSection displayName={isGuest ? undefined : displayName} />
+          </Step>
+
+          {/* ---- The market, and who is holding ---- */}
+          <div className="mt-10">
+            <VibeCoinPanel />
+          </div>
+          <div className="mt-6">
+            <VibeWalletLeaderboard defaultVisible={8} maxRows={40} />
+          </div>
+        </motion.div>
       </div>
+
+      <VibeAuthDialog open={authOpen} onOpenChange={setAuthOpen} />
     </div>
   );
 }

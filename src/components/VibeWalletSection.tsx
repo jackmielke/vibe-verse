@@ -1,7 +1,12 @@
 /**
- * /wallet — every wallet you have, and what is actually in them.
+ * The wallet half of `/coin` — every wallet you have, and what is in them.
  *
- * ## What this used to be, and why it changed
+ * This was its own page at `/wallet` until the two pages about the currency
+ * were merged into one. It stayed a single component rather than being
+ * inlined because the page is now telling a three-step story — make an
+ * account, earn Vibecoin, claim it for real — and this is step three whole.
+ *
+ * ## What it used to be before that, and why it changed
  *
  * It was a single card that said "payout address set" and then refused to say
  * anything else. One address, no balances, and no way to add a second — so a
@@ -30,15 +35,12 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Check, Copy, ExternalLink, Fuel, Star, Trash2, Wallet } from "lucide-react";
-import VibeCoinMark from "@/components/VibeCoinMark";
-import VibeArc from "@/components/VibeArc";
+import { Check, Copy, ExternalLink, Fuel, RefreshCw, Star, Trash2, Wallet } from "lucide-react";
+import VibeWink from "@/components/VibeWink";
 import VibeWalletConnect from "@/components/VibeWalletConnect";
 import VibeTestDrop from "@/components/VibeTestDrop";
 import { useVibecoin } from "@/hooks/use-vibecoin";
-import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { useWalletBook, type WalletRow } from "@/hooks/use-wallet-book";
-import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { VIBECOIN_GLYPH, formatVibecoin } from "@/lib/vibecoin";
 import { shortAddress } from "@/lib/vibe-wallet";
 import { isVibeWallet, removeWallet, setPayoutWallet } from "@/lib/walletBook";
@@ -140,7 +142,9 @@ function WalletCard({ row, onRefresh }: { row: WalletRow; onRefresh: () => void 
       {/* What is actually in it, on Base. */}
       <dl className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-xl border border-border/40 bg-black/30 px-3 py-2">
-          <dt className="font-heading text-[7.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+          <dt className="flex items-center gap-1 font-heading text-[7.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+            {/* The wink marks the real token everywhere it is counted. */}
+            <VibeWink size={11} className="shrink-0" />
             $VIBE
           </dt>
           <dd className="mt-0.5 font-heading text-sm font-black tabular-nums text-[#8fb4ff]">
@@ -208,117 +212,46 @@ function WalletCard({ row, onRefresh }: { row: WalletRow; onRefresh: () => void 
   );
 }
 
-export default function VibeWallet() {
-  useWorldStamp("/wallet", "The Vibe Wallet");
-  const { balance } = useVibecoin();
-  const { isGuest, displayName } = useVibeIdentity();
-  const { rows, payout, price, totalUsd, stale, refresh } = useWalletBook();
+/**
+ * Step three of the currency story: the wallets you have proved, what is in
+ * them, and the one real transaction that proves the pipe works.
+ *
+ * A section rather than a page — no background, no hero, no min-height. The
+ * page above owns all of that, and the "two kinds of coin" explainer that
+ * used to sit at the top of this file now leads the page instead, because it
+ * is the first thing anybody needs and not a wallet detail.
+ */
+export default function VibeWalletSection({
+  displayName,
+}: {
+  displayName?: string;
+}) {
+  const { rows, payout, loading, refresh } = useWalletBook();
 
-  const totalVibe = rows.reduce((t, r) => t + (r.vibe ?? 0), 0);
   const anyGas = rows.some((r) => r.canPayGas);
 
   return (
-    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#03050c] text-foreground">
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(70% 50% at 50% -10%, hsl(220 92% 58% / 0.18), transparent 62%)," +
-            "radial-gradient(55% 45% at 88% 14%, hsl(268 88% 62% / 0.14), transparent 68%)",
-        }}
-        aria-hidden
-      />
-
-      <div className="relative mx-auto max-w-lg px-5 pb-24 pt-20">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          {/* The same arch that spins on /coin. It is the mark of the token,
-              and this is the other page about the token — having one of them
-              wear it and the other not made them look like different products. */}
-          <div className="flex justify-center">
-            <VibeArc size={150} rotateSeconds={30} />
-          </div>
-          <p className="mt-1 text-center font-heading text-[9px] font-bold uppercase tracking-[0.42em] text-[#8fb4ff]">
-            Your wallet
-          </p>
-          <h1
-            className="mt-2.5 text-center font-heading text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl"
-            style={{ textShadow: "0 0 20px hsl(220 90% 60% / 0.4)" }}
-          >
-            Two kinds of coin
-          </h1>
-
-          {/* The distinction the whole app rests on, said once, at the top. */}
-          <div className="mt-7 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-[#7dffd4]/30 bg-[#7dffd4]/[0.06] p-4">
-              <div className="flex items-center gap-2">
-                <VibeCoinMark size={26} />
-                <span className="font-heading text-2xl font-black tabular-nums text-[#7dffd4]">
-                  {balance == null ? "—" : formatVibecoin(balance, { compact: false })}
-                </span>
-              </div>
-              <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                Vibecoin {VIBECOIN_GLYPH}
-              </p>
-              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
-                The currency of the vibeverse. Buys characters, plays cabinets,
-                stakes rounds. Play money, and yours the moment you arrive.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[#8fb4ff]/30 bg-[#8fb4ff]/[0.06] p-4">
-              <div className="flex items-baseline gap-2">
-                <p className="font-heading text-2xl font-black tabular-nums text-[#8fb4ff]">
-                  {rows.length === 0 ? "$VIBE" : amount(totalVibe, "")}
-                </p>
-                {rows.length > 0 && totalUsd != null && (
-                  <p className="font-heading text-sm font-black tabular-nums text-foreground/70">
-                    {usd(totalUsd)}
-                  </p>
-                )}
-              </div>
-              <p className="mt-1.5 font-heading text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                $VIBE · a real token on Base
-              </p>
-              {/* The price, so the dollar figures above are checkable rather
-                  than something the page just asserts. */}
-              {price && (
-                <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">
-                  ${price.usd.toPrecision(3)} each
-                  {price.change24h != null && (
-                    <span className={price.change24h >= 0 ? "text-[#7dffd4]" : "text-rose-300/80"}>
-                      {" "}
-                      {price.change24h >= 0 ? "▲" : "▼"} {Math.abs(price.change24h).toFixed(1)}%
-                    </span>
-                  )}
-                </p>
-              )}
-              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
-                Separate, real, and held in your own wallet. This app reads it
-                and has never sent a transaction.{" "}
-                <Link to="/coin" className="text-[#8fb4ff] underline underline-offset-2">
-                  See the market
-                </Link>
-                .
-              </p>
-              {stale && (
-                <p className="mt-2 text-[10.5px] leading-snug text-amber-300/80">
-                  Could not reach Base just now — these are the last figures we
-                  had, not zeroes.
-                </p>
-              )}
-            </div>
-          </div>
-
+    <div>
           {/* ---- The list ---- */}
           {rows.length > 0 && (
             <div className="mt-6">
-              <p className="font-heading text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-                {rows.length === 1 ? "Your wallet" : `Your ${rows.length} wallets`}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-heading text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+                  {rows.length === 1 ? "Your wallet" : `Your ${rows.length} wallets`}
+                </p>
+                {/* These are on-chain figures read once when the page opened,
+                    so they go stale the moment anything moves — including a
+                    transfer you made in another app thirty seconds ago. There
+                    was no way to ask again short of reloading the page. */}
+                <button
+                  onClick={refresh}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 font-heading text-[9px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+                  {loading ? "Reading Base" : "Refresh"}
+                </button>
+              </div>
               <div className="mt-2.5 flex flex-col gap-2.5">
                 {rows.map((r) => (
                   <WalletCard key={r.address} row={r} onRefresh={refresh} />
@@ -329,11 +262,11 @@ export default function VibeWallet() {
 
           {/* Directly under the list, because it is about the wallet marked
               "drops go here" — the claim that panel makes, made testable. */}
-          <VibeTestDrop address={payout?.address ?? null} />
+          <VibeTestDrop address={payout?.address ?? null} onSent={refresh} />
 
           <div className="mt-4">
             <VibeWalletConnect
-              displayName={isGuest ? undefined : displayName}
+              displayName={displayName}
               onLinked={refresh}
               showLinkedState={false}
             />
@@ -394,7 +327,7 @@ export default function VibeWallet() {
               </li>
               <li>
                 <span className="text-foreground/85">It does not move anything.</span>{" "}
-                Not your $VIBE, not your ETH, not your Vibecoin.
+                Not your Vibecoin, not your ETH, not your Vibey Coins.
               </li>
               <li>
                 <span className="text-foreground/85">It is not needed to play.</span>{" "}
@@ -407,18 +340,6 @@ export default function VibeWallet() {
               </li>
             </ul>
           </div>
-
-          <p className="mt-6 text-center text-[11px] text-muted-foreground/70">
-            <Link to="/arcade" className="underline underline-offset-2 hover:text-foreground">
-              Go win some Vibecoin
-            </Link>
-            {" · "}
-            <Link to="/arcade/characters" className="underline underline-offset-2 hover:text-foreground">
-              or spend it
-            </Link>
-          </p>
-        </motion.div>
-      </div>
     </div>
   );
 }

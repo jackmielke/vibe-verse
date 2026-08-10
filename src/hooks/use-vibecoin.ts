@@ -41,23 +41,43 @@ function start(): void {
   /* A player earns coins in Vibe City in one tab and looks at the arcade in
      another. Postgres tells us; we do not poll. */
   let channel: ReturnType<typeof supabase.channel> | null = null;
-  void currentOwner().then((owner) => {
-    // The last unmount may have already happened while this promise was in
-    // flight, in which case there is nobody left to tell.
-    if (mounted === 0) return;
-    channel = supabase
-      .channel(`vibecoin:${owner.ref}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "vibe_balances",
-          filter: `owner_ref=eq.${owner.ref}`,
-        },
-        () => void refreshVibecoin(),
-      )
-      .subscribe();
+
+  const bind = () => {
+    void currentOwner().then((owner) => {
+      // The last unmount may have already happened while this promise was in
+      // flight, in which case there is nobody left to tell.
+      if (mounted === 0) return;
+      if (channel) {
+        void supabase.removeChannel(channel);
+        channel = null;
+      }
+      channel = supabase
+        .channel(`vibecoin:${owner.ref}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "vibe_balances",
+            filter: `owner_ref=eq.${owner.ref}`,
+          },
+          () => void refreshVibecoin(),
+        )
+        .subscribe();
+    });
+  };
+
+  bind();
+
+  /* Signing in swaps the wallet under our feet: the guest ref stops being the
+     one that matters and the account ref starts. Waiting for the next focus or
+     the next payout to notice meant a player who had just logged in watched
+     their old number for a minute. Refetch on the spot, and re-point the
+     realtime channel at the new owner. */
+  const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+    if (event === "INITIAL_SESSION") return;
+    void refreshVibecoin();
+    bind();
   });
 
   /* Coming back to the tab is the other moment the number is likely wrong —
@@ -67,6 +87,7 @@ function start(): void {
 
   teardown = () => {
     window.removeEventListener("focus", onFocus);
+    authSub.subscription.unsubscribe();
     if (channel) void supabase.removeChannel(channel);
   };
 }
@@ -78,6 +99,7 @@ function stop(): void {
     teardown = null;
   }
 }
+
 
 export interface UseVibecoin extends VibecoinState {
   /** Balance formatted for a chip — compact above 10K, `—` before first load. */

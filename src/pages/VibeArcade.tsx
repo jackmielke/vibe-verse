@@ -37,6 +37,7 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import {
   VIBECOIN_GLYPH,
+  VIBECOIN_NAME,
   applyLocalDelta,
   arcadeAllowance,
   arcadeInsert,
@@ -45,8 +46,9 @@ import {
   type ArcadeSettlement,
 } from "@/lib/vibecoin";
 import { CABINETS, topPrize, type Cabinet, type CabinetRun } from "@/arcade/cabinets";
-import { SHOP_CHARACTERS } from "@/lib/characterShop";
-import { findCharacter } from "@/lib/characters";
+import RpsArena from "@/components/arcade/RpsArena";
+import PortalShelf from "@/components/arcade/PortalShelf";
+import ShopWindow from "@/components/arcade/ShopWindow";
 import { createArcadeSounds, type ArcadeSounds } from "@/arcade/sounds";
 
 /** Personal bests, per cabinet. localStorage, because a high score is not
@@ -313,8 +315,8 @@ export default function VibeArcade() {
             VIBE ARCADE
           </h1>
           <p className="mx-auto mt-3 max-w-lg text-[13px] leading-relaxed text-muted-foreground sm:text-sm">
-            Every cabinet costs {VIBECOIN_GLYPH} to play and pays {VIBECOIN_GLYPH} if
-            you are good at it. The coin comes out of the same balance you earn in
+            Every cabinet costs Vibey Coins to play and pays them back if you are
+            good at it. The coin comes out of the same balance you earn in
             the worlds — watch the number in the corner while you play.
           </p>
         </motion.header>
@@ -327,7 +329,7 @@ export default function VibeArcade() {
               {balance == null ? "—" : formatVibecoin(balance, { compact: false })}
             </div>
             <div className="mt-1 font-heading text-[8.5px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-              Your Vibecoin
+              Your {VIBECOIN_NAME}
             </div>
           </div>
           {broke && (
@@ -351,31 +353,21 @@ export default function VibeArcade() {
           </p>
         )}
 
-        {/* ---- The character shop ----
+        {/* ---- The headline game ----
+            Rock paper scissors leads the floor because it is the only thing
+            here you play against somebody rather than against a difficulty
+            curve, the only one where you name the wager, and the only one that
+            needs no explaining at all. The cabinets are the deep end; this is
+            the door. */}
+        <div className="mt-8">
+          <RpsArena />
+        </div>
+
+        {/* ---- The shop window ----
             Above the cabinets on purpose. The machines are what you do here;
             the character is what you leave with, and it is the only thing on
             this page that follows you into another world. */}
-        <Link
-          to="/arcade/characters"
-          className="group mt-8 flex items-center gap-3.5 overflow-hidden rounded-2xl border border-border/50 bg-black/45 px-4 py-3.5 backdrop-blur-sm transition-colors hover:bg-black/60"
-          style={{ boxShadow: "inset 0 0 0 1px hsl(280 90% 62% / 0.18), 0 0 40px hsl(280 90% 62% / 0.08)" }}
-        >
-          <span className="text-2xl leading-none" aria-hidden>
-            {SHOP_CHARACTERS.map((c) => findCharacter(c.id).emoji).join("")}
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-heading text-sm font-black uppercase tracking-wider text-[#e2b7ff]">
-              Character shop
-            </h2>
-            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-              Six originals you can only get here. Spend what you win, wear it
-              in Vibe Island.
-            </p>
-          </div>
-          <span className="shrink-0 font-heading text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">
-            Open →
-          </span>
-        </Link>
+        <ShopWindow />
 
         {/* ---- The floor ---- */}
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -462,6 +454,13 @@ export default function VibeArcade() {
             );
           })}
         </div>
+
+        {/* ---- The portal ----
+            Below the cabinets because it is newer and thinner, not because it
+            matters less: every cabinet above costs Jack a code review and a
+            deploy, and this row is the only part of the arcade that can grow
+            while he is asleep. */}
+        <PortalShelf />
 
         <footer className="mt-14 border-t border-border/40 pt-6 text-[11px] leading-relaxed text-muted-foreground">
           Every insert and every payout is a row in the shared ledger — tap the coin

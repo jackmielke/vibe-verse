@@ -16,7 +16,7 @@
  * Adding a world to the passport is `passport: true` in the registry plus one
  * `useWorldStamp` call in its page.
  */
-import { PASSPORT_ROUTES } from "@/worlds/registry";
+import { PASSPORT_ROUTES, type PassportRoute } from "@/worlds/registry";
 
 const KEY = "vibe.passport";
 const VERSION = 1;
@@ -62,8 +62,7 @@ const EMPTY: Passport = { version: VERSION, stamps: {} };
  * passport the only thing in the vibeverse you have to earn rather than visit.
  * See Troopers.js and Game._updateBattle.
  */
-export const PASSPORT_WORLDS: { route: string; name: string; emoji: string }[] =
-  PASSPORT_ROUTES;
+export const PASSPORT_WORLDS: PassportRoute[] = PASSPORT_ROUTES;
 
 /** Read the passport. Never throws: a corrupt entry is an empty passport. */
 export function readPassport(): Passport {
@@ -111,14 +110,48 @@ export function stampPassport(route: string, name: string): Passport {
   return p;
 }
 
+export type PassportRow = Stamp & PassportRoute & { visited: boolean; rank: Rank };
+
+/**
+ * How well you know a place.
+ *
+ * A passport that only records *whether* you went somewhere flattens the
+ * difference between a world you glanced at once and one you keep coming back
+ * to, and those are the two most different things it could be recording. The
+ * thresholds are deliberately low — this is a book of places, not a grind.
+ */
+export type Rank = "unexplored" | "visited" | "regular" | "local";
+
+export const RANKS: Record<Rank, { label: string; at: number }> = {
+  unexplored: { label: "Unexplored", at: 0 },
+  visited: { label: "Stamped", at: 1 },
+  regular: { label: "Regular", at: 4 },
+  local: { label: "Local", at: 12 },
+};
+
+export function rankOf(count: number): Rank {
+  if (count >= RANKS.local.at) return "local";
+  if (count >= RANKS.regular.at) return "regular";
+  if (count >= RANKS.visited.at) return "visited";
+  return "unexplored";
+}
+
 /** Stamps in passport order, with the unvisited worlds included and blank. */
-export function passportRows(): (Stamp & { visited: boolean; emoji: string })[] {
+export function passportRows(): PassportRow[] {
   const p = readPassport();
   return PASSPORT_WORLDS.map((w) => {
     const s = p.stamps[w.route];
-    return s
-      ? { ...s, name: w.name, visited: true, emoji: w.emoji }
-      : { route: w.route, name: w.name, first: 0, last: 0, count: 0, visited: false, emoji: w.emoji };
+    const count = s?.count ?? 0;
+    return {
+      ...w,
+      route: w.route,
+      name: w.name,
+      first: s?.first ?? 0,
+      last: s?.last ?? 0,
+      count,
+      visited: !!s,
+      rank: rankOf(count),
+    };
   });
 }
 

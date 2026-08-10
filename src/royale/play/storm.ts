@@ -63,7 +63,7 @@
  * worth fighting over), `audio` (one-shot stingers). Every one of them can be
  * absent and the storm still runs.
  *
- * ── SOAKED: the same machine, wearing THE DOWNPOUR ────────────────────────
+ * ── SPLASH ROYALE: the same machine, wearing THE DOWNPOUR ────────────────────────
  * `ctx.mode === "water"` is the only seam. Everything below the phase table —
  * the clock, the circle selection, the ground rings, the fog swap, the
  * `dz:storm` / `dz:in-storm` contract — is shared, because a second storm
@@ -80,7 +80,7 @@
  *    behind you for and nowhere else. No lightning — this is July, not a
  *    thunderstorm.
  *  - Cool blues and whites everywhere violet used to be, and a WARM preview
- *    ring, because in SOAKED the safe zone is the DRY ZONE and "sunshine
+ *    ring, because in SPLASH ROYALE the safe zone is the DRY ZONE and "sunshine
  *    breaking through" is the one thing on the ground that must not be
  *    mistaken for more water.
  *  - Damage becomes soak: `player.soak()` against `WATER.downpour`'s
@@ -123,7 +123,7 @@ import { WATER, downpourSoak } from "../mode/water";
 
 /**
  * The bits of the player we touch. `damage` is the only one classic needs;
- * `soak` is SOAKED's equivalent and is optional because the storm must still
+ * `soak` is SPLASH ROYALE's equivalent and is optional because the storm must still
  * run against a player system that predates it.
  */
 interface PlayerLike {
@@ -132,7 +132,7 @@ interface PlayerLike {
   health: number;
   readonly controllable?: boolean;
   damage(amount: number, from: THREE.Vector3 | undefined, source: DamageSource): void;
-  /** SOAKED: take water. Routed through the poncho maths by the player. */
+  /** SPLASH ROYALE: take water. Routed through the poncho maths by the player. */
   soak?(amount: number, from?: THREE.Vector3, source?: DamageSource): void;
 }
 
@@ -386,7 +386,7 @@ const TWO_PI = Math.PI * 2;
 /* ------------------------------------------------------------- the downpour */
 
 /**
- * SOAKED's numbers. Palette, opacity, soak rates and cue names all come from
+ * SPLASH ROYALE's numbers. Palette, opacity, soak rates and cue names all come from
  * `WATER.downpour` — this file owns none of them, so the mode can be retuned
  * in one table. What lives here is only what is specific to *this* system's
  * rendering of them.
@@ -637,9 +637,9 @@ uniform float uHexRepeatV;
 uniform vec3 uDeep;          // the body colour, deep indigo
 uniform vec3 uMid;           // violet, where the energy sits
 uniform vec3 uHot;           // near-white, only at the peaks
-uniform vec3 uMist;          // SOAKED only: the pale mist at the contact line
-uniform vec3 uSunDir;        // SOAKED only: unit vector pointing AT the sun
-uniform float uDaylight;     // SOAKED only: 0..1, gates the rainbow
+uniform vec3 uMist;          // SPLASH ROYALE only: the pale mist at the contact line
+uniform vec3 uSunDir;        // SPLASH ROYALE only: unit vector pointing AT the sun
+uniform float uDaylight;     // SPLASH ROYALE only: 0..1, gates the rainbow
 uniform float uOpacity;
 uniform float uIntensity;    // rises while the wall is moving
 uniform float uCharge;       // 0..1 pre-close warning charge
@@ -1666,7 +1666,7 @@ class StreakField {
  *  - **sub**   — two detuned low sines with a slow tremolo, felt more than
  *    heard, ducked hard when you are safe so it never muddies a firefight.
  *
- * SOAKED runs the same three voices with the balance moved up the spectrum:
+ * SPLASH ROYALE runs the same three voices with the balance moved up the spectrum:
  * rain is mostly a broadband hiss with a rumble under it, where a storm is
  * mostly rumble with a hiss on top. Same graph, different noise colour, filter
  * frequencies and gains — a second audio class for the same three voices would
@@ -1685,7 +1685,7 @@ class StormAudio {
   private noise: AudioBuffer | null = null;
   private failed = false;
 
-  /** `true` in SOAKED: the Downpour rather than the storm. */
+  /** `true` in SPLASH ROYALE: the Downpour rather than the storm. */
   constructor(private readonly rain: boolean = false) {}
 
   /** Safe to call every frame; only the first call after a gesture does work. */
@@ -1989,7 +1989,7 @@ class StormAudio {
 
 /** Attributed to the storm in the kill feed and the death card. */
 const STORM_SOURCE: DamageSource = { by: "storm", name: "the storm", weapon: "storm" };
-/** The same, for SOAKED. Nobody is hurt by it; they are rained on. */
+/** The same, for SPLASH ROYALE. Nobody is hurt by it; they are rained on. */
 const DOWNPOUR_SOURCE: DamageSource = {
   by: "storm",
   name: DOWNPOUR.name.toLowerCase(),
@@ -2035,7 +2035,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
   /**
    * Soak/damage per second for a 0-based phase index.
    *
-   * SOAKED runs hotter than DROP ZERO on purpose and the numbers live in
+   * SPLASH ROYALE runs hotter than DROP ZERO on purpose and the numbers live in
    * `WATER.downpour.soakPerSecond`, not here: dryness comes BACK at 3.2/s, so
    * a rate that would be merciless against health is merely expensive against
    * a bar that refills the moment you get under a roof.
@@ -2322,7 +2322,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
     // accident: deep is the body, mid is where the energy lives, hot is only
     // ever reached by a bolt or a grazing edge.
     //
-    // SOAKED walks the same ramp in cool blues: the deep is the tint the sky
+    // SPLASH ROYALE walks the same ramp in cool blues: the deep is the tint the sky
     // goes inside the rain, the mid is the wall proper, and the hot is the
     // lit rim. Note what is NOT here — no colour is "blue paint". The wall is
     // legible because of density, rim and motion; the hue only says which
@@ -2402,7 +2402,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
    * distance because at range the wall itself is doing the talking.
    */
   const currentRing = new GroundRing(tier.ringSegments, {
-    // In SOAKED this pool of light is the surf line where the rain hits the
+    // In SPLASH ROYALE this pool of light is the surf line where the rain hits the
     // island. It is ADDITIVE and it is 22 m wide, so it takes the rim blue
     // rather than the spray white: white here lands on top of the wall's own
     // contact glow and the two together bleach the ground the player is
@@ -2423,7 +2423,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
    * about to hurt you, and hue is the only channel that survives being
    * glimpsed at 400 m through haze.
    *
-   * That argument gets *stronger* in SOAKED, and it flips the temperature.
+   * That argument gets *stronger* in SPLASH ROYALE, and it flips the temperature.
    * The whole world inside the Downpour is blue, so a cool preview ring would
    * be camouflage; the safe zone is the DRY ZONE and it reads as sunshine
    * breaking through cloud — warm, low-contrast against nothing else on the
@@ -2476,7 +2476,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       uniforms: {
         uTime: { value: 0 },
         uIntensity: { value: 0 },
-        // SOAKED's veil is the rain on the lens: a cool wash at the edges,
+        // SPLASH ROYALE's veil is the rain on the lens: a cool wash at the edges,
         // deepening to the tint the sky takes inside the Downpour. Same
         // dialled-back alpha ceiling — being caught out has to feel bad, not
         // look like a broken colour filter.
@@ -2622,7 +2622,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
   }
 
   /**
-   * SOAKED: leave the island wet where the rain has been.
+   * SPLASH ROYALE: leave the island wet where the rain has been.
    *
    * The wall crossing a hillside should not be a thing that happened and then
    * un-happened. `wetness` merges splashes into nearby puddles, so a handful
@@ -2743,7 +2743,7 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
       // Being "outside the circle" while strapped into the bus at 800 m is
       // not being caught in the storm.
       if (!NO_DAMAGE_STATES.has(state) && !service.isSafe(player.position)) {
-        // In SOAKED this comes off dryness, not health, and it goes through
+        // In SPLASH ROYALE this comes off dryness, not health, and it goes through
         // the player's own poncho maths — a ponchoed player standing in the
         // rain should be spending the poncho, not the bar underneath it.
         // Falling back to `damage` matters: `soak` is read structurally and

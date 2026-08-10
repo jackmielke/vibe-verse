@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ExternalLink, X } from "lucide-react";
-import { exactLabel, sinceLabel } from "@/worlds/freshness";
+import { changeLabel, exactLabel } from "@/worlds/freshness";
 import type { WorldChange } from "@/worlds/changes";
 
 export default function WorldChanges({
@@ -109,11 +109,13 @@ export default function WorldChanges({
                   )}
                   <p className="text-[12.5px] leading-snug text-foreground/90">{c.subject}</p>
                   <div className="mt-1 flex items-center gap-2">
+                    {/* With the clock, not just the day. Six commits that all
+                        said "today" told you nothing about their order. */}
                     <span
                       className="font-mono text-[10px] text-muted-foreground/60"
                       title={exactLabel(c.iso) ?? undefined}
                     >
-                      {sinceLabel(c.iso)}
+                      {changeLabel(c.iso)}
                     </span>
                     <a
                       href={`${data.repo}/commit/${c.sha}`}

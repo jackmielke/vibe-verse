@@ -32,6 +32,8 @@ export interface Dispatch {
 export interface Issue {
   issue: number;
   date: string;
+  /** When this edition came off the presses, ISO/UTC. Missing on old issues. */
+  printed_at?: string;
   motto: string;
   headlines: Headline[];
   gossip: string;
@@ -53,6 +55,23 @@ export interface Paper {
 }
 
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vibe-times`;
+
+/**
+ * The hour an edition was printed, on the reader's own clock — "6:02 am".
+ *
+ * The presses run at 13:00 UTC, which is a different time of day depending
+ * on where you are reading, so the stored timestamp is UTC and the
+ * conversion happens here. Returns null for the issues written by hand,
+ * which have no press time and should simply not claim one.
+ */
+export function printedAt(iso?: string): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  return new Date(t)
+    .toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    .toLowerCase();
+}
 
 function looksLikeIssue(v: unknown): v is Issue {
   const i = v as Issue | null;

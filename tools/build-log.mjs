@@ -15,10 +15,13 @@
  * https://myvibeverse.com/build-log.json.
  *
  * It runs as `prebuild`, so every deploy refreshes it. If git history is
- * unavailable (a shallow CI clone, a tarball), it leaves the committed
- * file alone rather than overwriting a good record with an empty one — a
- * stale build log makes a slightly stale paper, an empty one makes the
- * paper stop reporting on the world entirely.
+ * unavailable or incomplete — a tarball, or the shallow clone most CI does
+ * by default — it leaves the committed file alone rather than overwriting a
+ * good record with a truncated one. That is not hypothetical: a shallow
+ * checkout here could see 62 of the 120 commits in the committed log, and
+ * regenerating would have quietly thrown half the paper's memory away. A
+ * stale build log makes a slightly stale paper; a truncated one makes the
+ * paper forget what it was building last week.
  *
  * Usage:
  *   node tools/build-log.mjs           # write public/build-log.json
@@ -105,6 +108,20 @@ function collect() {
       };
     })
     .filter((c) => c.subject);
+}
+
+/** A shallow clone knows only the tip of the history, and cannot speak for it. */
+function shallow() {
+  try {
+    return sh("git rev-parse --is-shallow-repository") === "true";
+  } catch {
+    return true; // no git at all is at least as untrustworthy
+  }
+}
+
+if (shallow() && existsSync(OUT)) {
+  console.warn("build-log: shallow clone — keeping the committed build-log.json");
+  process.exit(0);
 }
 
 let commits;

@@ -1,5 +1,5 @@
 /**
- * SOAKED — remote player rendering ("ghosts").
+ * SPLASH ROYALE — remote player rendering ("ghosts").
  *
  * `net.ts` gets other people's positions into this browser. This file is the
  * reason you can see them. Without it multiplayer is a chat log with a
@@ -39,7 +39,7 @@
  * would spin like a cartoon. There is not one wall-clock read in this file.
  */
 import * as THREE from "three";
-import { makeRng, type System, type SystemFactory, type WorldCtx } from "../types";
+import { makeRng, type DamageTarget, type System, type SystemFactory, type WorldCtx } from "../types";
 import type { PeerState } from "./types";
 import { DRYNESS, GLUE, WATER_BALLOON, drynessBand } from "../mode/water";
 
@@ -91,6 +91,20 @@ declare module "../types" {
 
 /** Hard ceiling on simultaneously rendered peers. Buffers size off this. */
 const MAX_GHOSTS = 16;
+
+/**
+ * The hit capsule a remote player presents, mirroring the local one in
+ * `play/player.ts` (RADIUS, STAND_HEIGHT, STAND_EYE).
+ *
+ * Deliberately the standing figures rather than anything crouch-aware: the
+ * pose a ghost is *drawn* in comes from a smoothed blend of packets, so a
+ * capsule that chased it would shrink and grow a few frames behind what the
+ * shooter can see. A fixed capsule is honest about that latency instead of
+ * pretending to a precision the wire cannot deliver.
+ */
+const GHOST_RADIUS = 0.4;
+const GHOST_HEIGHT = 1.85;
+const GHOST_HEAD_Y = 1.62;
 
 /** Body proportions, metres, feet at y = 0. Matches the player's 1.85 m. */
 const BODY = {
@@ -168,7 +182,7 @@ function hashString(s: string): number {
  * The states a peer can publish, folded into the handful of poses the rig
  * actually knows how to strike.
  *
- * `NetPose.state` is a free string on purpose (see `net/types.ts`) — SOAKED
+ * `NetPose.state` is a free string on purpose (see `net/types.ts`) — SPLASH ROYALE
  * adds states DROP ZERO never had, and more will arrive. Anything unknown
  * lands on "ground", which is a walk cycle, which is never a T-pose. That
  * fallback is the entire reason this is a lookup and not a switch.
@@ -622,6 +636,18 @@ interface Ghost {
   plateMat: THREE.ShaderMaterial | null;
   nameTex: THREE.CanvasTexture | null;
   nameText: string;
+
+  /**
+   * Standing in for this ghost in the combat system.
+   *
+   * The bodies are drawn from instanced meshes, so there is no per-ghost
+   * `Object3D` to hand `DamageTarget` — and it only ever wants one to call
+   * `getWorldPosition` on. A parentless anchor moved to the ghost's feet each
+   * frame answers that exactly, without putting anything in the scene graph.
+   */
+  anchor: THREE.Object3D;
+  target: DamageTarget | null;
+  unregister: (() => void) | null;
 }
 
 /** Palette resolved per ghost, in LINEAR space — instanceColor is not sRGB. */
@@ -1033,7 +1059,11 @@ export const createGhostsSystem: SystemFactory = (ctx: WorldCtx): System => {
       plateMat: null,
       nameTex: null,
       nameText: "",
+      anchor: new THREE.Object3D(),
+      target: null,
+      unregister: null,
     };
+    registerTarget(g);
     buildPlate(g);
     splashAt(peer.x, peer.y, peer.z, 1.35);
     return g;
@@ -1086,7 +1116,76 @@ export const createGhostsSystem: SystemFactory = (ctx: WorldCtx): System => {
     if (g.plateMat) g.plateMat.uniforms.uMap.value = tex;
   }
 
+  /**
+   * Make a remote player shootable.
+   *
+   * Until this existed, streams passed straight through every human in the
+   * lobby: the local player registered a target, ghosts never did, and nothing
+   * on the wire carried a hit. You could see each other and could not play
+   * each other.
+   *
+   * The victim stays the authority on their own dryness. `onDamage` does not
+   * touch `hp` — it puts the hit on the wire addressed to that peer and lets
+   * their client decide what it cost them, which is the same trust model
+   * `soaked` has always used. `hp` and `alive` are mirrored from their pose
+   * every frame instead, so local aim feedback reads true without this client
+   * ever being the one who decides.
+   */
+  function registerTarget(g: Ghost): void {
+    const combat = ctx.services.combat;
+    if (!combat || typeof combat.registerTarget !== "function") return;
+
+    const target: DamageTarget = {
+      id: g.id,
+      object: g.anchor,
+      radius: GHOST_RADIUS,
+      height: GHOST_HEIGHT,
+      hp: g.peer.dry,
+      shield: 0,
+      headY: GHOST_HEAD_Y,
+      faction: "player",
+      alive: g.peer.dry > 0,
+      onDamage(amount, point, _source, headshot) {
+        const net = ctx.services.net;
+        if (!net || !net.online) return;
+        if (!(amount > 0)) return;
+        // Same squad = you can't soak each other. The lobby promises this in
+        // as many words, and it has to hold here rather than at the victim:
+        // a teammate should never even see the packet.
+        if (sameSquad(g.peer)) return;
+        net.send("hit", {
+          to: g.id,
+          amount,
+          x: point.x,
+          y: point.y,
+          z: point.z,
+          headshot: !!headshot,
+        });
+      },
+    };
+
+    g.target = target;
+    try {
+      g.unregister = combat.registerTarget(target);
+    } catch {
+      // A combat system that refuses a registration is not a reason to stop
+      // drawing people. They simply stay unshootable, as they were before.
+      g.target = null;
+      g.unregister = null;
+    }
+  }
+
+  /** True when this peer rides with us, and so must never take our water. */
+  function sameSquad(peer: PeerState): boolean {
+    const mine = ctx.services.net?.selfTeam;
+    if (!mine || !peer.team) return false;
+    return mine.trim().toLowerCase() === peer.team.trim().toLowerCase();
+  }
+
   function destroyGhost(g: Ghost, flourish: boolean): void {
+    g.unregister?.();
+    g.unregister = null;
+    g.target = null;
     if (flourish) splashAt(g.x, g.y, g.z, 0.9);
     if (g.plate) {
       group?.remove(g.plate);
@@ -1524,6 +1623,18 @@ export const createGhostsSystem: SystemFactory = (ctx: WorldCtx): System => {
         g.z = pz;
         g.yaw = peer.yaw;
         g.pitch = peer.pitch;
+
+        // Keep the hit capsule on the body. `combat` reads this through
+        // `getWorldPosition`, so the anchor has to be moved every frame or a
+        // ghost is shootable only where it first appeared.
+        g.anchor.position.set(px, py, pz);
+        if (g.target) {
+          // Mirrored, never decided here: the victim's own client owns their
+          // dryness and publishes it. `alive` going false is what stops a
+          // spectator from being shot again on the way out.
+          g.target.hp = peer.dry;
+          g.target.alive = peer.dry > 0;
+        }
 
         // Speed is smoothed hard: at a 10 Hz packet rate the raw per-frame
         // delta alternates between "a whole packet" and "nothing at all", and
