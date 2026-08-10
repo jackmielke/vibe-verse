@@ -147,6 +147,38 @@ function leaderReach(base) {
 const REJOIN_DIST = 220;
 const REJOIN_COOLDOWN = 6;
 
+/**
+ * The soaker, modelled on the Super Soaker 9000 in `mode/water.ts`: 12 soak a
+ * shot, a 30-shot tank, 12/s refill after a 0.45 s pause.
+ *
+ * ENGAGEMENT RANGE IS THE HONEST PART. The gun's real range is 220 m and its
+ * damage falloff does not even begin until 45 m — but this process has no
+ * terrain, no collision and no line of sight. It knows where everyone is and
+ * nothing about what is between. Firing at 200 m would mean firing through
+ * hills, through Foundry Flats, and through the island itself.
+ *
+ * 40 m is the compromise: short enough that "we can see each other" is usually
+ * true on open ground, long enough to matter in a fight. It still shoots
+ * through the occasional shed, and that is a real limitation rather than a
+ * tuning value — the fix is line-of-sight data this process does not have.
+ *
+ * ACCURACY exists for the same reason in reverse: the bot has millimetre-exact
+ * knowledge of every position on the wire, so without a miss rate it is a
+ * hitscan laser that never misses a moving target at 40 m. Nobody wants to
+ * play against that, least of all beside it.
+ */
+const GUN_RANGE = 40;
+const GUN_SOAK = 12;
+const GUN_SHOTS_PER_SEC = 3.5;
+const GUN_TANK = 30;
+const GUN_REFILL = 12;
+const GUN_REFILL_DELAY = 0.45;
+/** Hit chance at point blank, falling to this at GUN_RANGE. */
+const GUN_ACC_NEAR = 0.82;
+const GUN_ACC_FAR = 0.38;
+/** Stop shooting at someone we have not had a fresh pose from. */
+const GUN_STALE = 1.5;
+
 /** Dryness: how wet a splash within SPLASH_RADIUS makes us, and how fast we
  *  towel off again while nothing is hitting us. 0% dry = out of the match. */
 const SPLASH_RADIUS = 3.2;
@@ -432,6 +464,11 @@ let announcedOut = false;
 /** Crude pathing state — see STUCK_WINDOW. */
 let anchor = { x: 0, z: 0, t: 0 };
 let detourUntil = -1;
+/** Gun state: what is left in the tank, when we last pulled, who we are on. */
+let tank = GUN_TANK;
+let lastShotAt = -Infinity;
+let aimId = null;
+let soakedByUs = 0;
 /** `sim` of the last rejoin, so an unwalkable gap cannot rubber-band us. */
 let lastRejoinAt = -Infinity;
 let detourSign = 1;
@@ -509,7 +546,19 @@ function livingPeers(sameTeam) {
   return out;
 }
 
+/**
+ * Test seam. `--selftest` runs with no socket, so everything below would be
+ * dropped on the floor and the gun's checks would have nothing to read. The
+ * selftest swaps in a collector; in a real match this stays null and costs a
+ * single null check per event.
+ */
+const wire = { send: null };
+
 function sendEvent(kind, payload) {
+  if (wire.send) {
+    wire.send(kind, payload);
+    return;
+  }
   if (!online || !channel) return;
   void channel
     .send({ type: "broadcast", event: "ev", payload: { i: SELF_ID, k: kind, p: payload } })
@@ -1153,10 +1202,22 @@ function tick(dt) {
   const lead = peers.get(leaderId);
   if (lead) me.y += (lead.y - me.y) * (1 - Math.exp(-Y_LERP * dt));
 
-  // Face where we're going; when parked, face the same way the leader does.
+  // Shoot before we decide which way to face, so the aim wins the argument.
+  const engaging = fireControl(dt);
+
+  // Face what we are shooting; failing that, where we're going; failing that,
+  // whatever the leader is looking at.
   const moving = Math.hypot(me.vx, me.vz);
-  const target = moving > 0.35 ? Math.atan2(me.vx, me.vz) : lead ? lead.yaw : me.yaw;
-  me.yaw = turnToward(me.yaw, target, dt * 5);
+  const target = engaging
+    ? Math.atan2(engaging.x - me.x, engaging.z - me.z)
+    : moving > 0.35
+      ? Math.atan2(me.vx, me.vz)
+      : lead
+        ? lead.yaw
+        : me.yaw;
+  // Snap onto a target faster than we turn while strolling — a bot that takes
+  // a second to face the person soaking it looks broken.
+  me.yaw = turnToward(me.yaw, target, dt * (engaging ? 9 : 5));
 
   me.state = stumbling ? "stumble" : moving > WALK_SPEED * 1.1 ? "sprint" : "ground";
 
@@ -1174,6 +1235,88 @@ function tick(dt) {
       log.net(`lost ${p.name} (timed out)`);
     }
   }
+}
+
+/**
+ * Pick something to shoot, and shoot it.
+ *
+ * Returns the target we are engaging, so the caller can point us at them —
+ * a bot that soaks people while facing the other way reads as a bug even
+ * when the damage is right.
+ *
+ * Three things go on the wire per shot, and they are deliberately different
+ * messages rather than one:
+ *   `shot`   — the tracer, and what other bots read as a callout.
+ *   `hit`    — the damage, addressed to the victim, who decides what it cost.
+ *   `splash` — the wet mark on the ground, at `amount: 0`.
+ *
+ * That last zero matters. `splash` is scenery to a browser, which reads only
+ * its radius and alpha, but a teammate bot still treats a nearby splash as
+ * proximity damage — a fallback from before addressed hits existed. Sending
+ * the default amount would soak the victim twice for one trigger pull.
+ */
+function fireControl(dt) {
+  if (me.dry <= 0 || sim < stumbleUntil) {
+    aimId = null;
+    return null;
+  }
+
+  // Refill first: an empty tank is the only thing that stops us shooting.
+  if (tank < GUN_TANK && sim - lastShotAt >= GUN_REFILL_DELAY) {
+    tank = Math.min(GUN_TANK, tank + GUN_REFILL * dt);
+  }
+
+  // Nearest living rival with a fresh pose. Teammates are not candidates and
+  // never can be — the shooter refuses friendly fire, not the victim.
+  let best = null;
+  let bestD = Infinity;
+  for (const p of peers.values()) {
+    if (p.agent || !p.posed || p.dry <= 0) continue;
+    if (TEAM && p.team && foldTeam(p.team) === TEAM) continue;
+    if (sim - p.lastSeen > GUN_STALE) continue;
+    const d = dist2(me.x, me.z, p.x, p.z);
+    // Vertical separation counts: someone 30 m below us on a cliff is not
+    // 5 m away just because their map pin is.
+    const dy = Math.abs(me.y - p.y);
+    if (d > GUN_RANGE || dy > 12) continue;
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+
+  aimId = best ? best.id : null;
+  if (!best) return null;
+  if (tank < 1) return best;
+  if (sim - lastShotAt < 1 / GUN_SHOTS_PER_SEC) return best;
+
+  lastShotAt = sim;
+  tank -= 1;
+
+  const t = clamp(bestD / GUN_RANGE, 0, 1);
+  const acc = GUN_ACC_NEAR + (GUN_ACC_FAR - GUN_ACC_NEAR) * t;
+  const hit = Math.random() < acc;
+
+  // The tracer leaves whether or not the water lands, because a miss is still
+  // a thing the enemy should hear coming.
+  sendEvent("shot", { x: me.x, y: me.y + 1.4, z: me.z, tx: best.x, ty: best.y + 1.0, tz: best.z });
+
+  if (!hit) return best;
+
+  sendEvent("hit", {
+    to: best.id,
+    amount: GUN_SOAK,
+    x: best.x,
+    y: best.y + 1.0,
+    z: best.z,
+    headshot: false,
+  });
+  sendEvent("splash", { x: best.x, y: best.y, z: best.z, r: 1.1, a: 0.5, amount: 0 });
+
+  // Track what we know we landed. The victim owns the truth and will announce
+  // its own elimination; this is only so the bot can talk about its own match.
+  soakedByUs += GUN_SOAK;
+  return best;
 }
 
 /** Rate-limited, change-gated pose write — the same filter net.ts applies. */
@@ -1358,6 +1501,55 @@ if (SELFTEST) {
   const dryBefore = me.dry;
   onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
   check("gets wetter when splashed", me.dry < dryBefore, `${Math.round(dryBefore)}% → ${Math.round(me.dry)}%`);
+
+  // The gun. A rival inside GUN_RANGE gets shot at; a squadmate never does.
+  {
+    const GUNTGT = "s-gun-test";
+    tank = GUN_TANK;
+    lastShotAt = -Infinity;
+    const fired = [];
+    wire.send = (k, p) => fired.push({ k, p });
+    // The splash test left a rival standing a metre away, which is well
+    // inside GUN_RANGE — leave it there and every check below is really
+    // measuring shots at that one instead of the target it names.
+    peers.delete(RIVAL);
+
+    // Three seconds of trigger time. One tick would make this a coin flip on
+    // GUN_ACC_NEAR; across ~10 shots at 0.82 the odds of landing nothing are
+    // about one in five hundred million.
+    for (let i = 0; i < 3 * TICK_HZ; i++) {
+      // `sim` is what the fire rate is measured against. Without advancing it
+      // the cooldown never expires and this fires exactly once.
+      sim += step;
+      onPose({ i: GUNTGT, x: me.x + 6, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Target" });
+      tick(step);
+    }
+    const hits = fired.filter((f) => f.k === "hit" && f.p.to === GUNTGT);
+    check("shoots a rival in range", hits.length > 0, `${hits.length} hit(s), ${fired.filter((f) => f.k === "shot").length} shot(s)`);
+    check("soaks for the SS9K's 12", hits.every((f) => f.p.amount === GUN_SOAK), `${GUN_SOAK}`);
+    check("marks its own splashes as scenery", fired.filter((f) => f.k === "splash").every((f) => f.p.amount === 0), "amount 0");
+    check("empties and refills its tank", tank < GUN_TANK, `${tank.toFixed(1)}/${GUN_TANK}`);
+
+    // Same squad, same range, no trigger.
+    fired.length = 0;
+    lastShotAt = -Infinity;
+    peers.delete(GUNTGT);
+    onPose({ i: "s-gun-mate", x: me.x + 6, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Mate2" });
+    tick(step);
+    check("never shoots a squadmate", !fired.some((f) => f.k === "hit"), `${fired.filter((f) => f.k === "hit").length} hit(s)`);
+
+    // Out of range, no trigger.
+    fired.length = 0;
+    lastShotAt = -Infinity;
+    peers.delete("s-gun-mate");
+    onPose({ i: "s-gun-far", x: me.x + GUN_RANGE + 40, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Far" });
+    tick(step);
+    check("holds fire out of range", !fired.some((f) => f.k === "hit"), `${fired.filter((f) => f.k === "hit").length} hit(s)`);
+    peers.delete("s-gun-far");
+    wire.send = null;
+    // Put the rival back the way the next checks expect to find it.
+    onPose({ i: RIVAL, x: me.x + 1, y: 0, z: me.z + 1, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Atlas" });
+  }
 
   // Addressed water — the `hit` a human's soaker sends once ghosts are real
   // damage targets. Unlike `splash` it does not care where we are standing,
