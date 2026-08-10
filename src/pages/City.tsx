@@ -99,6 +99,7 @@ import NameEntryModal from "@/components/city/NameEntryModal";
 import { ArcadeModal } from "@/components/city/ArcadeModal";
 import RockPaperScissors, { RpsDevHook } from "@/components/city/RockPaperScissors";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
+import CharacterDashboardModal from "@/components/city/CharacterDashboardModal";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
