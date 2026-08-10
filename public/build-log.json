@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-10T01:11:55.994Z",
+  "generated_at": "2026-08-10T01:56:17.284Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "03fbb0f7",
+      "date": "2026-08-10",
+      "subject": "The front door: one toolbar, a shorter paper, and a clock in the log",
+      "lede": "Four things on `/game`, all of them things you notice in the first three seconds and none of them the worlds themselves.",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "d3761bda",
       "date": "2026-08-10",
@@ -1033,14 +1041,6 @@
       "date": "2026-08-06",
       "subject": "Move Drop Zero up the landing grid, and a harness that actually plays it",
       "lede": "dz-shot proves the world renders; it says nothing about whether the game plays, because it poses a frozen player and takes a picture. Every system below the scenery — building, weapons, harvesting, loot, bots, the storm, the match phases — has never once been exercised. dz-play drives real input and asserts on the engine's own state after each beat, screenshots the failures, and keeps going so one broken system does ",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "1355381c",
-      "date": "2026-08-06",
-      "subject": "Card art for Drop Zero, from the running world",
-      "lede": "The plaza at Neon Heights, captured live at high quality with the match in its playing state — not key art, and not the spawn frame.",
       "places": [],
       "files": 2
     }

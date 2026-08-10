@@ -732,6 +732,24 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "manifesto",
+    route: "/manifesto",
+    aliases: ["/future"],
+    name: "The Arcade of the Future",
+    emoji: "✍️",
+    kind: "tool",
+    blurb:
+      "Why any of this exists. Everyone can build now, because we can finally say what we mean to a computer and have it understood — and with ownership behind it, what you build stays yours. The page to send somebody before they open anything else.",
+    status: "Read it",
+    accent: "#c9a8ff",
+    source: "src/pages/Manifesto.tsx",
+    /* Not in the nav chip row. It is the best page here and the wrong one to
+       put between two games — somebody arrives wanting to play, and a link to
+       a manifesto competing with Splash Royale reads as a lecture. It lives
+       one tap deep, from the shop and from `/game`. */
+    passport: true,
+  },
+  {
     key: "portal",
     route: "/build",
     aliases: ["/build-a-game"],

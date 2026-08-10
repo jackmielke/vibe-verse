@@ -639,12 +639,13 @@ const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
   // somebody redeployed this file. So: in this table means you must own it.
   // `pickCharacter` in setLoadout is the one place that rule is applied.
   character: {
-    pixel:    { price: 150, title: "Pixel" },
-    bumble:   { price: 150, title: "Bumble" },
-    sable:    { price: 300, title: "Sable" },
-    chrome:   { price: 300, title: "Chrome" },
-    grimlock: { price: 600, title: "Grimlock" },
-    aurora:   { price: 600, title: "Aurora" },
+    pixel:        { price: 150, title: "Pixel" },
+    bumble:       { price: 150, title: "Bumble" },
+    sable:        { price: 300, title: "Sable" },
+    chrome:       { price: 300, title: "Chrome" },
+    "space-rex":  { price: 450, title: "Space Rex" },
+    grimlock:     { price: 600, title: "Grimlock" },
+    aurora:       { price: 600, title: "Aurora" },
   },
 };
 

@@ -108,6 +108,13 @@ export const SHOP_CHARACTERS: ShopCharacter[] = [
     title: "Aurora",
     pitch: "A halo that trails a beat behind, and wings that open when you leave the ground.",
   },
+  {
+    id: "space-rex",
+    price: 450,
+    tier: "epic",
+    title: "Space Rex",
+    pitch: "A green dinosaur in a white suit, under a glass bubble with a gleam across it.",
+  },
 ];
 
 /** `character:aurora`. Same namespacing as the hats — see `wardrobe.ts`. */

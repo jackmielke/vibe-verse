@@ -150,6 +150,11 @@ export const CHARACTERS: CharSpec[] = [
     blurb: "Bat ears over a muzzle, and a long tail. Nocturnal rather than heroic.",
     accent: "#c9a86a",
   },
+  {
+    id: "space-rex", url: "", label: "Space Rex", emoji: "🦖",
+    blurb: "A green dinosaur in a white suit under a glass bubble. Dressed for somewhere else.",
+    accent: "#b57bff",
+  },
   { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
   { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
   ...Object.entries(QUATERNIUS_URLS)

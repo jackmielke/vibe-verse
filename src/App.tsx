@@ -52,6 +52,8 @@ const ArcadeCharacters = lazy(() => import("./pages/ArcadeCharacters.tsx"));
 const PortalPlay = lazy(() => import("./pages/PortalPlay.tsx"));
 const BuildAGame = lazy(() => import("./pages/BuildAGame.tsx"));
 const VibeShop = lazy(() => import("./pages/VibeShop.tsx"));
+const ShopCosmos = lazy(() => import("./pages/ShopCosmos.tsx"));
+const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
 const Orbit = lazy(() => import("./pages/Orbit.tsx"));
 const Join = lazy(() => import("./pages/Join.tsx"));
 const StartFlow = lazy(() => import("./pages/StartFlow.tsx"));
@@ -222,6 +224,16 @@ const App = () => (
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}
           <Route path="/shop" element={<VibeShop />} />
+
+          {/* The same stock, in a darker room. A skin over `characterShop.ts`
+              and `CATALOG`, not a second shop — see the note at the top of
+              ShopCosmos for why that distinction is the whole point. */}
+          <Route path="/shop/cosmos" element={<ShopCosmos />} />
+          <Route path="/cosmos" element={<Navigate to="/shop/cosmos" replace />} />
+
+          {/* Why any of this exists. The page to send somebody first. */}
+          <Route path="/manifesto" element={<Manifesto />} />
+          <Route path="/future" element={<Navigate to="/manifesto" replace />} />
           {/* ORBIT — the staked game. One button, one shared seed per round,
               one pot. See src/orbit/orbit.ts for why it is built the way it is. */}
           <Route path="/orbit" element={<Orbit />} />

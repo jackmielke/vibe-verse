@@ -74,6 +74,17 @@ export interface PilotDesign {
   face: "visor" | "lenses" | "muzzle";
   /** Big eyes read as a mask; small ones read as a machine. */
   eyeScale: number;
+  /**
+   * Round eyes with a dark rim, instead of the default slit.
+   *
+   * `face` decides what the head *has* — glass, lenses, a snout. This decides
+   * what the eyes *are*, which is a separate axis that was previously welded
+   * to it: only `lenses` got spheres, so every animal in the roster had to
+   * glare through letterbox slits. That is right for Sable and wrong for a
+   * cartoon dinosaur, and the difference between feral and friendly is
+   * entirely in this one shape.
+   */
+  roundEyes?: boolean;
   /** Chest emblem plate (bat-style). */
   emblem?: boolean;
   /** Membrane wings off the shoulder blades. */
@@ -88,6 +99,26 @@ export interface PilotDesign {
   clothGlow?: number;
   /** A thicker, spiked tail that swings with weight, rather than a cat's. */
   heavyTail?: boolean;
+  /**
+   * A glass bubble over the whole head, with a collar ring under it.
+   *
+   * Every other piece in this table changes what the character *is*; this one
+   * changes where it can be. A helmet reads as vacuum, and vacuum is the only
+   * thing on the shelf that implies somewhere other than Vibe Island — which
+   * is worth a flag of its own rather than being folded into `face`, because
+   * a snout and a bubble are not alternatives. Space Rex has both.
+   */
+  helmet?: boolean;
+  /**
+   * Torso in the plate colour instead of the shell colour — a worn suit over
+   * a body, rather than a body.
+   *
+   * Space Rex is green with white joints, and green joints on a green chest is
+   * a green robot in a fishbowl. Flipping the one biggest surface to the plate
+   * colour is what turns the same rig into something *wearing* a spacesuit,
+   * with the limbs and tail still reading as the animal inside it.
+   */
+  suit?: boolean;
 }
 
 export const PILOT_DESIGNS: Record<string, PilotDesign> = {
@@ -163,6 +194,18 @@ export const PILOT_DESIGNS: Record<string, PilotDesign> = {
     shell: 0x232a3b, plate: 0xc9a86a, accent: "#c9a86a", cloth: 0x1a1f2c,
     crown: "bat-ears", trail: "tail", face: "muzzle", eyeScale: 1.6, chunk: 1.03,
   },
+  // A green dinosaur in a white suit under a glass bubble. The only one on the
+  // shelf that is somewhere else — the other six are all dressed for Vibe
+  // Island, and a helmet is the cheapest way to say "not here".
+  //
+  // The spines run off `accent`, which is what `crown: "fins"` is wired to, so
+  // the violet crest, the eyes and the suit light are one colour by
+  // construction rather than by three numbers that can drift apart.
+  "space-rex": {
+    shell: 0x4fb55f, plate: 0xeef2f8, accent: "#b57bff", cloth: 0x3f9e50,
+    crown: "fins", trail: "tail", face: "muzzle", eyeScale: 2.3, roundEyes: true,
+    core: true, helmet: true, suit: true, chunk: 1.02,
+  },
 };
 
 /** Critically-ish damped spring toward a target. Returns the new velocity. */
@@ -218,6 +261,15 @@ export function buildProceduralPilot(
     roughness: 0.85, metalness: 0, side: THREE.DoubleSide,
   });
   const materials = [shell, plate, glow, dark, cloth];
+  /**
+   * Materials that must be freed but must NOT be re-tinted.
+   *
+   * `materials` above is not a disposal list, it is the set `setAccent`
+   * rewrites — which is why helmet glass cannot go in it, and why it needs
+   * somewhere else to live rather than being left undisposed. Two lists
+   * because there are genuinely two questions.
+   */
+  const extraMaterials: THREE.Material[] = [];
   const geometries: THREE.BufferGeometry[] = [];
 
   const track = <T extends THREE.BufferGeometry>(g: T): T => { geometries.push(g); return g; };
@@ -250,7 +302,7 @@ export function buildProceduralPilot(
 
   const torso = new THREE.Group();      // counter-twist + lean
   hips.add(torso);
-  const chestMesh = mesh(new THREE.CapsuleGeometry(0.2, 0.26, 3, 8), shell);
+  const chestMesh = mesh(new THREE.CapsuleGeometry(0.2, 0.26, 3, 8), design.suit ? plate : shell);
   chestMesh.position.y = 0.29;
   chestMesh.scale.set(1.12, 1, 0.82);
   torso.add(chestMesh);
@@ -315,14 +367,27 @@ export function buildProceduralPilot(
   const es = design.eyeScale;
   // Lenses are the whole identity for a masked character, so they get real
   // geometry — a teardrop plate with a dark rim — rather than a bright bar.
+  const round = design.face === "lenses" || design.roundEyes;
   const eyeGeo = track(
-    design.face === "lenses"
+    round
       ? new THREE.SphereGeometry(0.055, 10, 8)
       : new THREE.BoxGeometry(0.052, 0.026, 0.03),
   );
+  /**
+   * A cartoon eye is a dark ball with a bright speck on it, not a glowing
+   * ball. Lighting the whole sphere in the accent is what made the first pass
+   * read as a lens flare with a black ring round it — the highlight has to be
+   * a *small* fraction of the eye or there is nothing for it to be a highlight
+   * on. This is the eyeball; the glow becomes a speck parented to it, so it
+   * squashes with the blink for free.
+   */
+  const eyeball = design.roundEyes
+    ? new THREE.MeshStandardMaterial({ color: 0x14121c, roughness: 0.28, metalness: 0.05 })
+    : null;
+  if (eyeball) materials.push(eyeball);
   const eyes: THREE.Mesh[] = [];
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(eyeGeo, glow);
+    const eye = new THREE.Mesh(eyeGeo, eyeball ?? glow);
     if (design.face === "lenses") {
       // Angular lenses, wide-set and tilted into a scowl. Spheres read as
       // goggles; these are squashed hard on Y and Z so they sit ON the
@@ -351,9 +416,33 @@ export function buildProceduralPilot(
       rim.rotation.z = eye.rotation.z;
       head.add(rim);
     } else if (design.face === "muzzle") {
-      eye.position.set(side * 0.062, 0.185, 0.128);
-      eye.scale.set(es, es * 0.9, es);
-      eye.rotation.z = side * -0.2;
+      // Separation has to grow with the eye, or a big-eyed animal ends up
+      // with one bar across its face instead of two eyes. The base eye box is
+      // 0.052 wide, so at eyeScale 2.6 each one reaches 0.068 from its own
+      // centre and the fixed 0.062 offset overlapped them by a third. Half the
+      // scaled width plus a fixed gap keeps a clear bridge at any size, and
+      // stays at the hand-tuned 0.062 for everything under about 1.8 — which
+      // is every muzzle that existed before Space Rex.
+      const gap = Math.max(0.062, (0.052 * es) / 2 + 0.021);
+      if (design.roundEyes) {
+        // A cartoon eye is nearly spherical and sits proud of the skull, with
+        // a dark rim behind it doing the work an outline does in 2D. Kept
+        // narrower than the slit's gap because two big circles set as wide as
+        // two bars reads as a frog.
+        eye.position.set(side * Math.max(0.058, 0.022 * es + 0.03), 0.176, 0.124);
+        eye.scale.set(es * 0.72, es * 0.78, es * 0.55);
+        // The speck, up and inboard — the direction the key light comes from
+        // in the shop portraits and in every world's morning sun. Parented to
+        // the eye so it inherits the blink and never slides off.
+        const spark = new THREE.Mesh(track(new THREE.SphereGeometry(0.055, 8, 6)), glow);
+        spark.scale.setScalar(0.34);
+        spark.position.set(-side * 0.016, 0.018, 0.042);
+        eye.add(spark);
+      } else {
+        eye.position.set(side * gap, 0.185, 0.128);
+        eye.scale.set(es, es * 0.9, es);
+        eye.rotation.z = side * -0.2;
+      }
     } else {
       eye.position.set(side * 0.058, 0.163, 0.166);
       eye.rotation.z = side * -0.16; // a slight scowl, so it has an attitude
@@ -452,6 +541,57 @@ export function buildProceduralPilot(
     ring.rotation.x = Math.PI / 2 - 0.22; // tilted, so it is never a flat line
     j.add(ring);
     crestJoints.push(j);
+  }
+
+  // The bubble. Built AFTER the crown on purpose — the crest fins have to be
+  // inside the glass, and a helmet that clips through them reads as a mistake
+  // rather than as a helmet.
+  if (design.helmet) {
+    // Not in `materials`: that array is what `setAccent` re-tints, and glass
+    // taking the accent turns the head into a coloured ball with nothing
+    // visible inside it.
+    const glass = new THREE.MeshStandardMaterial({
+      color: 0xdff0ff,
+      transparent: true,
+      opacity: 0.22,
+      roughness: 0.05,
+      metalness: 0.1,
+      // Front faces only. A double-sided sphere draws the back of the glass
+      // over the face and halves the contrast on the one thing you are meant
+      // to be looking at.
+      side: THREE.FrontSide,
+      // The dome is drawn over the head, and depth-writing transparent
+      // geometry hides whatever is behind it whichever order they sort in.
+      depthWrite: false,
+    });
+    extraMaterials.push(glass);
+    const dome = new THREE.Mesh(track(new THREE.SphereGeometry(0.245, 20, 16)), glass);
+    dome.position.y = 0.175;
+    dome.scale.set(1, 1.06, 1);
+    dome.renderOrder = 2; // after the face, always
+    head.add(dome);
+
+    // A hard specular streak across the top-left of the glass. Without it the
+    // dome is a faint grey wash that reads as fog; one bright arc is what
+    // makes a sphere read as a curved surface with a light on it.
+    const gleamMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.5, side: THREE.FrontSide, depthWrite: false,
+    });
+    extraMaterials.push(gleamMat);
+    const gleam = new THREE.Mesh(
+      track(new THREE.SphereGeometry(0.248, 18, 14, 0.55, 0.62, 0.42, 0.5)),
+      gleamMat,
+    );
+    gleam.position.copy(dome.position);
+    gleam.renderOrder = 3;
+    head.add(gleam);
+
+    // The collar seal, which is what stops the bubble looking like a balloon
+    // resting on the shoulders.
+    const collar = mesh(new THREE.TorusGeometry(0.15, 0.032, 8, 18), plate);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = -0.015;
+    head.add(collar);
   }
 
   // Arms: shoulder → elbow → hand.
@@ -955,7 +1095,9 @@ export function buildProceduralPilot(
     dispose() {
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose();
+      for (const m of extraMaterials) m.dispose();
       geometries.length = 0;
+      extraMaterials.length = 0;
     },
   };
 }
