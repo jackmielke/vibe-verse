@@ -765,6 +765,8 @@ export default function City() {
   const [nearPortal, setNearPortal] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
   const [nearAvatarPortal, setNearAvatarPortal] = useState(false);
+  const [avatarSearch, setAvatarSearch] = useState("");
+  const [avatarDashOpen, setAvatarDashOpen] = useState(false);
   const [nearArcade, setNearArcade] = useState(false);
   const [nearRps, setNearRps] = useState(false);
   const [rpsOpen, setRpsOpen] = useState(false);
