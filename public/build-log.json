@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-10T07:09:38.661Z",
+  "generated_at": "2026-08-10T23:13:16.169Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "b041970e",
+      "date": "2026-08-10",
+      "subject": "Stamp BLOB after the multiplayer work",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01LrHxfRC156y4mpWX17EHrF",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "64140cc0",
+      "date": "2026-08-10",
+      "subject": "BLOB: a phone sets a course, and a room code shares the dish",
+      "lede": "Two things, both asked for.",
+      "places": [],
+      "files": 15
+    },
+    {
+      "sha": "7f744351",
+      "date": "2026-08-10",
+      "subject": "Regenerate the build log for the submission desk",
+      "lede": "`prebuild` writes this from git history, so it lands one commit behind the thing it describes. No hand edits.",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "1ece01a5",
       "date": "2026-08-10",
@@ -1010,32 +1034,6 @@
         "Vibe Island"
       ],
       "files": 3
-    },
-    {
-      "sha": "49837a31",
-      "date": "2026-08-06",
-      "subject": "Loot: a held E can no longer be swallowed by the target it is waiting for",
-      "lede": "The interact edge was global: `prevInteract` latched true on every frame where nothing was in reach, so a press that began before the pickup arrived could never take it. Holding E while running onto a rifle — or while the gun you just knocked out of a chest settles — was silently refused until you let go and pressed again. The edge is now per-target (`takeArmed`), which is what the old rising edge was really trying t",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "edcc62ab",
-      "date": "2026-08-06",
-      "subject": "dz-play: aim the build beats at ground the game will accept",
-      "lede": "build-place was never a builder bug. `aimPoint` puts the ghost at the full 10.5 m range when the look ray hits nothing, so clicking with the camera level in the middle of a POI asked for a wall inside somebody's concrete, `validate()` answered \"blocked\", and four correct refusals read as \"nothing ever gets built\". Instrumenting `collision.overlapBox` found the refusing box was a real slab genuinely intersecting the c",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "8ccde251",
-      "date": "2026-08-06",
-      "subject": "🌆 Vibe City from the air: shadows, massing, rooftops, and a lighting grid",
-      "lede": "Pinch the camera out over Vibe City and what you saw was ninety extruded boxes standing on a painted plate. Nothing cast a shadow, so the towers appeared to hover a little above their own ground. Every roof was one flat colour — and roofs are most of what an aerial frame *is*, so the surface everybody looks at was the least-drawn thing in the scene. And one silhouette repeated at three heights, so the skyline had no ",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
     }
   ]
 }
