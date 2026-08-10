@@ -2639,6 +2639,13 @@ function ChatPanel({ engine }: { engine: Engine }) {
     if (open) inputRef.current?.focus();
   }, [open]);
 
+  // Tell the page the box is open. Without this the pause veil — which is
+  // raised by losing the lock — lands on top of the very input you opened
+  // with Escape-then-Enter, and there is no way to type a word.
+  useEffect(() => {
+    engine.emit("soaked:chat-open", open);
+  }, [engine, open]);
+
   // The mouse shield. Capture phase on `window`, so it fires before the
   // engine's own listeners and before the event reaches anything else. Only
   // while the pointer is actually locked: if it is not, the cursor is real and
