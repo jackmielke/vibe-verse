@@ -7078,6 +7078,39 @@ export default function City() {
                   ▶
                 </button>
               </div>
+
+              {/* Look one up by name, or open the whole roster at once — the
+                  arrows are unusable for sixty bodies. */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={avatarSearch}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAvatarSearch(v);
+                    const q = v.trim().toLowerCase();
+                    if (!q) return;
+                    const i = CHARACTERS.findIndex(
+                      (c) =>
+                        (c.label ?? "").toLowerCase().includes(q) ||
+                        c.name.toLowerCase().replace(/_/g, " ").includes(q),
+                    );
+                    if (i >= 0) setAvatarPreviewIdx(i);
+                  }}
+                  placeholder="Search by name…"
+                  className="glass-panel rounded-full px-4 py-1.5 text-[12px] text-cyan-100 placeholder:text-cyan-300/50 bg-cyan-950/30 border border-cyan-300/30 focus:outline-none focus:border-cyan-300/80 w-48"
+                />
+                <button
+                  onClick={(e) => {
+                    setAvatarDashOpen(true);
+                    e.currentTarget.blur();
+                  }}
+                  className="glass-panel rounded-full px-3.5 py-1.5 text-[12px] text-cyan-100 border border-cyan-300/40 bg-cyan-950/30 hover:bg-cyan-500/15 transition-colors whitespace-nowrap"
+                >
+                  🗂 All {CHARACTERS.length}
+                </button>
+              </div>
+
               <button
                 onClick={(e) => {
                   const c = CHARACTERS[avatarPreviewIdx];
