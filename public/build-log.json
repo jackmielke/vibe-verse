@@ -1,7 +1,33 @@
 {
-  "generated_at": "2026-08-11T07:59:49.162Z",
+  "generated_at": "2026-08-11T14:00:00.785Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "1f832a21",
+      "date": "2026-08-11",
+      "subject": "Vibe Island gets its own card, of the island as it is now",
+      "lede": "The card was a page screenshot of the old flat lawn, with somebody's chat bubble and two name tags burned into it — and it was doing double duty as Island Explorer's card, which is a different world. Vibe Island now has its own frame from `scripts/island-card.mjs`, taken through `__cityDebug.snapshot()` so it is the world and not the HUD, posed from the plaza to take in both shops, the paths, the Dream Tree and the g",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "a7acb4a5",
+      "date": "2026-08-11",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "3d88bbe7",
+      "date": "2026-08-11",
+      "subject": "Gave everybody in the city a body that can actually dance",
+      "lede": "The emote wheel could throw an emoji over your head, which is a label for a feeling rather than a performance of it: press 💃 and a pink sprite bobs above a character standing perfectly still. Nobody was dancing. Now T picks a move at random and the body does it — and pressing T again picks a different one.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 9
+    },
     {
       "sha": "cac360dd",
       "date": "2026-08-11",
@@ -1003,36 +1029,6 @@
       "lede": "A new world at /blob (and /agar, /agario, /cells, because that is what people type). You are a cell: everything smaller is food, everything bigger is a problem, and the only real decision is whether to spend half of yourself catching something that is running away.",
       "places": [],
       "files": 18
-    },
-    {
-      "sha": "2c085f0c",
-      "date": "2026-08-08",
-      "subject": "Don't tell the paper where its own copy comes from",
-      "lede": "Issue №3 printed \"the build log went missing for a week\" in the weather column, twice, as though a quiet week were a fault. The brief was handing the model the *source* of the build record alongside the commits, and a rule saying not to mention the machinery did not stop it — a thing in the brief is a thing the writer will reach for.",
-      "places": [
-        "the machinery underneath"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "480cd7dc",
-      "date": "2026-08-08",
-      "subject": "📰 The Vibe Times prints itself every morning, with a wire desk",
-      "lede": "The paper's masthead has claimed since July that it was written nightly. It wasn't: issue №1 shipped in July and sat on the front door into August, because writing it was a thing someone had to remember to do.",
-      "places": [
-        "Vibe Island",
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 14
-    },
-    {
-      "sha": "e4089f40",
-      "date": "2026-08-08",
-      "subject": "Give Soaked a source path git can actually resolve",
-      "lede": "`source` in the registry is passed straight to `git log -- <path>` by `npm run stamp`, so \"src/royale (mode: water)\" matched no path, produced no commits, and left Soaked as the one world on the grid with no \"updated\" date — and a failing freshness test on main.",
-      "places": [],
-      "files": 3
     }
   ]
 }

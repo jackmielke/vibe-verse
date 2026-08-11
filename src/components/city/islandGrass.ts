@@ -407,15 +407,22 @@ export function buildGrassField(opts: {
   radius: number;
   /** Scale of the rim wobble at a given angle, as a multiplier on radius. */
   rimAt?: (angle: number) => number;
-  /** True where grass must not grow — plaza, shop footprints, paths. */
-  blocked: (x: number, z: number) => boolean;
+  /**
+   * How much grass grows at a point, 0..1. Return 0 for a hard surface — the
+   * plaza pad, a shop's floor — and a fraction where the grass should thin
+   * rather than stop. Paths matter here: real ground cover does not end at a
+   * line, it gets patchier as the ground gets more walked on, and a lawn that
+   * ends dead straight along a footpath is the thing that gives away that it
+   * was placed by a rule.
+   */
+  density: (x: number, z: number) => number;
   /** Target blade count. Clamped to what the sampler can actually place. */
   count: number;
   seed?: number;
   /** Ground height at a point, if the lawn is not flat. Defaults to 0. */
   heightAt?: (x: number, z: number) => number;
 }): GrassField {
-  const { radius, blocked, count, seed = 1337, rimAt, heightAt } = opts;
+  const { radius, density, count, seed = 1337, rimAt, heightAt } = opts;
   const rand = mulberry32(seed);
 
   const geo = bladeGeometry();
@@ -510,7 +517,8 @@ export function buildGrassField(opts: {
     const cr = Math.sqrt(rand()) * rMax;
     const cx = Math.cos(a) * cr;
     const cz = Math.sin(a) * cr;
-    if (blocked(cx, cz)) continue;
+    const d = density(cx, cz);
+    if (d <= 0 || rand() > d) continue;
 
     // Tuft size and character. A patch that is all one height reads as
     // astroturf, so the clump carries its own height and hue bias and the
@@ -519,10 +527,15 @@ export function buildGrassField(opts: {
     // The height distribution is deliberately skewed short (the 1.7 exponent):
     // most of a lawn is stubble with the occasional taller tuft going to seed,
     // and an even spread of heights gives you a wheat field instead.
-    const clumpH = 0.1 + Math.pow(rand(), 1.7) * 0.42;
+    //
+    // Thinner ground also means *shorter* ground: grass at the edge of a path
+    // is trodden and stunted, not full-height and simply rarer. Scaling both
+    // the height and the blades-per-tuft by the density is what turns a
+    // boundary into a verge.
+    const clumpH = (0.1 + Math.pow(rand(), 1.7) * 0.42) * (0.55 + d * 0.45);
     const clumpHue = rand();
     const spread = 0.16 + rand() * 0.34;
-    const n = 8 + Math.floor(rand() * 9);
+    const n = 3 + Math.floor(rand() * 6 + d * 6);
 
     for (let i = 0; i < n && placed < count; i++) {
       const ba = rand() * Math.PI * 2;
@@ -585,11 +598,12 @@ export function buildGrassField(opts: {
 export function buildGroundCover(opts: {
   radius: number;
   rimAt?: (angle: number) => number;
-  blocked: (x: number, z: number) => boolean;
+  /** Same 0..1 predicate the grass field uses. */
+  density: (x: number, z: number) => number;
   count: number;
   seed?: number;
 }): { mesh: THREE.InstancedMesh; dispose(): void } {
-  const { radius, blocked, count, seed = 4242, rimAt } = opts;
+  const { radius, density, count, seed = 4242, rimAt } = opts;
   const rand = mulberry32(seed);
 
   // A little four-petal bloom, drawn once and used for every flower; the
@@ -637,7 +651,8 @@ export function buildGroundCover(opts: {
     const rr = Math.sqrt(rand()) * radius * (rimAt ? rimAt(a) : 1);
     const x = Math.cos(a) * rr;
     const z = Math.sin(a) * rr;
-    if (blocked(x, z)) continue;
+    const d = density(x, z);
+    if (d <= 0 || rand() > d) continue;
     q.setFromEuler(new THREE.Euler(0, rand() * Math.PI * 2, 0));
     pos.set(x, 0.035 + rand() * 0.06, z);
     const s = 0.7 + rand() * 0.8;
