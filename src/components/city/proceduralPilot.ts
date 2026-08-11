@@ -77,7 +77,11 @@ export interface PilotDesign {
   accent: string;     // emissive: eyes, trim, core
   cloth: number;      // scarf / cape / tail membrane
   /** What sits on the crown. */
-  crown: "fins" | "cat-ears" | "bat-ears" | "horns" | "antennae" | "ring" | "cap" | "none";
+  crown:
+    | "fins" | "cat-ears" | "bat-ears" | "horns" | "antennae" | "ring" | "cap"
+    /** Two stalks with an eye on the end of each, which track independently. */
+    | "eyestalks"
+    | "none";
   /** What trails off the body, using the same spring chain. */
   trail: "scarf" | "cape" | "tail" | "none";
   /**
@@ -98,8 +102,21 @@ export interface PilotDesign {
    *              pitches against its own acceleration, and it cannot jump well.
    * - `waddle` — stubby legs set wide, no arms. Rocks side to side rather than
    *              striding; the roll IS the walk.
+   * - `crab`   — eight legs and a carapace that travels *sideways*. The hips
+   *              yaw away from the direction of travel and the torso counters
+   *              it, so the shell scuttles broadside while the eyestalks stay
+   *              pointed where you are going. Nothing else in the table
+   *              separates which way a body faces from which way it moves.
+   * - `arachnid` — eight legs whose knees stand higher than the body, walked
+   *              in two alternating tetrapods. The body barely moves; all of
+   *              the motion is in the legs, which is the read.
+   * - `hopper` — two big reverse-jointed legs and a counterweight tail. It has
+   *              no walk at all: the gait is a hop, and the vertical arc gets
+   *              longer with speed instead of the stride doing.
    */
-  plan?: "biped" | "hover" | "tread" | "waddle" | "astromech" | "rollerball" | "quad";
+  plan?:
+    | "biped" | "hover" | "tread" | "waddle" | "astromech" | "rollerball" | "quad"
+    | "crab" | "arachnid" | "hopper";
   /**
    * Mirror plating instead of paint.
    *
@@ -198,6 +215,21 @@ export interface PilotDesign {
    */
   helmet?: boolean;
   /**
+   * A drawn pattern on the shell, generated into a canvas at build time.
+   *
+   * Every design before this one was flat colour, and flat colour is why a
+   * lineup of them reads as one toy in nine paints: the eye has nothing to
+   * catch on between the silhouette and the accent. A pattern is texture
+   * detail with no texture *file* — a few hundred canvas operations, cached
+   * per (pattern, colour) pair, and zero bytes shipped. It is the cheapest
+   * variety in this whole table.
+   */
+  pattern?: "spots" | "stripes" | "scales" | "hex" | "speckle";
+  /** What the pattern is drawn in. Defaults to a darkened `shell`. */
+  patternColor?: number;
+  /** Two pincers on short arms. Wants the crab plan, or a very odd biped. */
+  claws?: boolean;
+  /**
    * Torso in the plate colour instead of the shell colour — a worn suit over
    * a body, rather than a body.
    *
@@ -210,6 +242,103 @@ export interface PilotDesign {
 }
 
 export const PILOT_DESIGNS: Record<string, PilotDesign> = {
+  /* ------------------------------------------------------------------ *
+   * The eight-legged and the airborne.
+   *
+   * Everything below this block was, underneath the paint, a person: two legs,
+   * two arms, a head at the top. Twenty of them side by side still read as
+   * twenty costumes. These are the first characters here you can identify from
+   * the back, at distance, with the colour turned off — which is the only test
+   * of a silhouette that matters, and it is passed by how a thing *moves*
+   * rather than by what is bolted to it.
+   * ------------------------------------------------------------------ */
+
+  // -- Crabs. They travel sideways; see `plan: "crab"` for why that is a
+  // property of the rig and not a trick played with the camera.
+  pinch: {
+    shell: 0xe2452b, plate: 0xffb098, accent: "#ffe066", cloth: 0xe2452b,
+    crown: "eyestalks", trail: "none", face: "dots", eyeScale: 0.7,
+    plan: "crab", claws: true, pattern: "speckle", chunk: 1.02, visorGlow: 0.1,
+  },
+  hermit: {
+    shell: 0xc9a227, plate: 0xf2e2b0, accent: "#7ce0d0", cloth: 0xc9a227,
+    crown: "eyestalks", trail: "none", face: "dots", eyeScale: 0.7,
+    plan: "crab", claws: true, pattern: "scales", chunk: 0.95, visorGlow: 0.1,
+  },
+  barnacle: {
+    shell: 0x1d3550, plate: 0x2f5c7e, accent: "#3df0ff", cloth: 0x1d3550,
+    crown: "eyestalks", trail: "none", face: "dots", eyeScale: 0.72,
+    plan: "crab", claws: true, chrome: true, glowRings: true, chunk: 1.08,
+    visorGlow: 0.1,
+  },
+
+  // -- Spiders. The body holds still and the legs do everything, which is the
+  // opposite of every other walker here.
+  widow: {
+    shell: 0x131318, plate: 0x2a2a34, accent: "#ff2d4b", cloth: 0x131318,
+    crown: "none", trail: "none", face: "dots", eyeScale: 0.62,
+    plan: "arachnid", emblem: true, chunk: 1.0, visorGlow: 0.5,
+  },
+  harvest: {
+    shell: 0xd9c9a8, plate: 0xf0e6cf, accent: "#ffb84d", cloth: 0xd9c9a8,
+    crown: "none", trail: "none", face: "dots", eyeScale: 0.7,
+    plan: "arachnid", pattern: "speckle", chunk: 0.9, visorGlow: 0.2,
+  },
+
+  // -- Hoppers. No walk at all: the distance comes from the arc.
+  roo: {
+    shell: 0xc98a4b, plate: 0xe8c39a, accent: "#ffdf87", cloth: 0xc98a4b,
+    crown: "cat-ears", trail: "tail", face: "muzzle", eyeScale: 1.5,
+    roundEyes: true, plan: "hopper", heavyTail: true, fur: true, chunk: 1.02,
+  },
+  pogo: {
+    shell: 0x38414f, plate: 0xb9c4d6, accent: "#ffe14d", cloth: 0x38414f,
+    crown: "none", trail: "none", face: "visor", eyeScale: 0.9,
+    plan: "hopper", boxy: true, barEye: true, glowRings: true, chunk: 0.96,
+  },
+  cricket: {
+    shell: 0x5aa832, plate: 0x8fdc5e, accent: "#d9ff5c", cloth: 0x5aa832,
+    crown: "antennae", trail: "none", face: "lenses", eyeScale: 2.1,
+    plan: "hopper", chunk: 0.92, visorGlow: 0.35,
+  },
+
+  // -- The pattern shelf. Same rigs as their neighbours; the difference is a
+  // canvas drawn at build time, which costs nothing to ship.
+  tabby: {
+    shell: 0xd98a3c, plate: 0xf5dfc0, accent: "#8bf07a", cloth: 0xd98a3c,
+    crown: "cat-ears", trail: "tail", face: "muzzle", eyeScale: 1.8,
+    roundEyes: true, plan: "quad", pattern: "stripes", patternColor: 0x8a4a18,
+    chunk: 1.0,
+  },
+  dapple: {
+    shell: 0xf0dcb4, plate: 0xfff3dc, accent: "#ffb35c", cloth: 0xf0dcb4,
+    crown: "horns", trail: "tail", face: "muzzle", eyeScale: 1.6,
+    roundEyes: true, plan: "quad", pattern: "spots", patternColor: 0xa4682a,
+    chunk: 1.04,
+  },
+  basilisk: {
+    shell: 0x2f8f5c, plate: 0x7fe0a8, accent: "#c9ff3d", cloth: 0x2f8f5c,
+    crown: "fins", trail: "tail", face: "muzzle", eyeScale: 1.2,
+    pattern: "scales", heavyTail: true, tusks: true, chunk: 1.05,
+  },
+  hexen: {
+    shell: 0x2b3550, plate: 0x9fb4d8, accent: "#59e0ff", cloth: 0x2b3550,
+    crown: "cap", trail: "none", face: "visor", eyeScale: 0.95,
+    pattern: "hex", patternColor: 0x5a78b0, chrome: true, pauldrons: true,
+    core: true,
+  },
+  grit: {
+    shell: 0x6b6257, plate: 0x9d9184, accent: "#ff8a3d", cloth: 0x6b6257,
+    crown: "none", trail: "none", face: "visor", eyeScale: 0.9,
+    pattern: "speckle", faceplate: true, pauldrons: true, jetpack: true,
+    boxy: true,
+  },
+  monarch: {
+    shell: 0x1b1b22, plate: 0xff9f2e, accent: "#ffcf5c", cloth: 0xff9f2e,
+    crown: "antennae", trail: "none", face: "lenses", eyeScale: 2.0,
+    pattern: "spots", patternColor: 0xff9f2e, wings: true, clothGlow: 0.3,
+    chunk: 0.94,
+  },
   flux: {
     shell: 0x4d5a80, plate: 0x9fb0d4, accent: "#73ffb8", cloth: 0x73ffb8,
     crown: "fins", trail: "scarf", face: "visor", eyeScale: 1,
@@ -580,6 +709,116 @@ function spring(cur: number, target: number, vel: number, stiffness: number, dam
 const approach = (cur: number, target: number, rate: number, dt: number) =>
   cur + (target - cur) * (1 - Math.exp(-rate * dt));
 
+/**
+ * Patterns, drawn into a canvas at build time.
+ *
+ * Every design in the table above is flat colour, and flat colour is why a
+ * lineup of them can read as one toy in twenty paints: between the silhouette
+ * and the accent there is nothing for the eye to catch on. This is texture
+ * detail with no texture *file* — a couple of hundred canvas operations, and
+ * the whole feature adds zero bytes to what a visitor downloads. Against the
+ * ~1.4 MB a rigged model costs, that is the cheapest variety in this codebase.
+ *
+ * Cached by (pattern, colour, size): the shop stands six characters up at once
+ * and the city spawns a crowd, so a design used twice draws its canvas once.
+ * Cached textures are deliberately NOT disposed with the rig that used them —
+ * they belong to the module, and a second Chrome tab's worth of pilots would
+ * otherwise be drawing them again.
+ */
+const patternCache = new Map<string, THREE.CanvasTexture>();
+
+function patternTexture(
+  kind: NonNullable<PilotDesign["pattern"]>,
+  base: number,
+  ink: number,
+): THREE.CanvasTexture | null {
+  /* No document under vitest, and a rig built in Node still has to build. */
+  if (typeof document === "undefined") return null;
+  const key = `${kind}:${base}:${ink}`;
+  const hit = patternCache.get(key);
+  if (hit) return hit;
+
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = S;
+  c.height = S;
+  const g = c.getContext("2d");
+  if (!g) return null;
+  const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
+  g.fillStyle = hex(base);
+  g.fillRect(0, 0, S, S);
+  g.fillStyle = hex(ink);
+  g.strokeStyle = hex(ink);
+
+  /* Everything below wraps at the tile edge on purpose. A pattern with a seam
+     in it is worse than no pattern, because the seam is a straight line and
+     straight lines are the first thing the eye finds on a curved body. */
+  if (kind === "spots") {
+    for (let i = 0; i < 26; i++) {
+      const x = (i * 47) % S, y = (i * 83) % S, r = 5 + ((i * 29) % 8);
+      for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+        g.beginPath();
+        g.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+  } else if (kind === "stripes") {
+    g.lineWidth = 9;
+    for (let i = -S; i < S * 2; i += 26) {
+      g.beginPath();
+      /* A slight wobble, because a tiger is not a barcode. */
+      for (let y = -2; y <= S + 2; y += 8) g.lineTo(i + Math.sin(y * 0.09) * 5, y);
+      g.stroke();
+    }
+  } else if (kind === "scales") {
+    g.lineWidth = 2.4;
+    const R = 13;
+    for (let row = -1; row * R * 0.8 < S + R; row++) {
+      for (let col = -1; col * R * 2 < S + R * 2; col++) {
+        const x = col * R * 2 + (row % 2 ? R : 0);
+        g.beginPath();
+        g.arc(x, row * R * 0.8, R, Math.PI * 0.12, Math.PI * 0.88);
+        g.stroke();
+      }
+    }
+  } else if (kind === "hex") {
+    g.lineWidth = 2;
+    const R = 15;
+    for (let row = -1; row * R * 1.5 < S + R; row++) {
+      for (let col = -1; col * R * 1.74 < S + R * 2; col++) {
+        const x = col * R * 1.74 + (row % 2 ? R * 0.87 : 0);
+        const y = row * R * 1.5;
+        g.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+          g.lineTo(x + Math.cos(a) * R * 0.92, y + Math.sin(a) * R * 0.92);
+        }
+        g.closePath();
+        g.stroke();
+      }
+    }
+  } else {
+    // speckle — fine grit, the one that reads as a material rather than a coat
+    for (let i = 0; i < 900; i++) {
+      const x = (i * 61) % S, y = (i * 137) % S;
+      g.globalAlpha = 0.25 + ((i * 17) % 60) / 140;
+      g.fillRect(x, y, 2, 2);
+    }
+    g.globalAlpha = 1;
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  /* Density is per pattern, and it is the difference between markings and a
+     paint job. Two repeats over a torso makes a stripe as wide as a leg. */
+  const rep = kind === "speckle" ? 5 : kind === "scales" ? 4 : 3;
+  tex.repeat.set(rep, rep);
+  tex.anisotropy = 4;
+  patternCache.set(key, tex);
+  return tex;
+}
+
 export function buildProceduralPilot(
   accent?: string,
   designId = "flux",
@@ -626,6 +865,19 @@ export function buildProceduralPilot(
     metalness: design.chrome ? 0.55 : design.soft ? 0.02 : 0.15,
     flatShading: !design.soft,
   });
+  if (design.pattern) {
+    /* The map multiplies the material colour, so the base has to be white or
+       the pattern comes out as the design colour squared — which on anything
+       dark is a black body with slightly-less-black spots. The hue moves to
+       the texture and the material goes neutral. */
+    const ink = design.patternColor ??
+      new THREE.Color(design.shell).multiplyScalar(0.52).getHex();
+    const map = patternTexture(design.pattern, design.shell, ink);
+    if (map) {
+      shell.map = map;
+      shell.color.set(0xffffff);
+    }
+  }
   const plate = new THREE.MeshStandardMaterial({
     color: design.plate,
     roughness: design.chrome ? 0.26 : design.soft ? 0.9 : 0.45,
@@ -696,6 +948,11 @@ export function buildProceduralPilot(
     plan === "astromech" ? 0.53 :
     plan === "rollerball" ? 0.42 :
     plan === "quad" ? 0.54 :
+    /* Low and wide. A crab's body is a lid over the ground and its knees stand
+       above it, so the waist has to sit under the knees rather than over the
+       feet — which is the opposite of every other plan here. */
+    plan === "crab" ? 0.46 :
+    plan === "arachnid" ? 0.56 :
     0.78;
   const root = new THREE.Group();       // squash/stretch + bob live here
   group.add(root);
@@ -710,7 +967,8 @@ export function buildProceduralPilot(
      otherwise you get a balloon with a plank through its hips. */
   const rigid =
     !design.soft && plan !== "waddle" && plan !== "rollerball" &&
-    plan !== "astromech" && plan !== "quad";
+    plan !== "astromech" && plan !== "quad" &&
+    plan !== "crab" && plan !== "arachnid";
   if (rigid) {
     const pelvis = mesh(new THREE.BoxGeometry(0.34, 0.18, 0.24), plate);
     pelvis.position.y = 0.02;
@@ -741,6 +999,13 @@ export function buildProceduralPilot(
   /* A quadruped's body runs front-to-back, not side to side. This one scale is
      the difference between an animal and a person on all fours. */
   else if (plan === "quad") chestMesh.scale.set(1.0, 0.92, 1.95);
+  /* A carapace: twice as wide as it is tall, flattened to a lid. This one
+     scale is the entire difference between a spider and a crab, and it is why
+     the crab needs no body mesh of its own. */
+  else if (plan === "crab") chestMesh.scale.set(2.15, 0.62, 1.5);
+  /* A spider is the other way round — a small hard front, and the mass behind
+     it in an abdomen built separately below. This is the cephalothorax. */
+  else if (plan === "arachnid") chestMesh.scale.set(1.25, 0.85, 1.15);
   else chestMesh.scale.set(1.12, 1, 0.82);
   /* The rollerball has no torso. The ball is the body, and a capsule inside it
      is geometry nobody will ever see. */
@@ -802,6 +1067,12 @@ export function buildProceduralPilot(
        its body, which is the other half of what makes it read as an animal. */
     plan === "rollerball" ? 0.42 : chestTop - 0.07;
   if (plan === "quad") neck.position.z = 0.5;
+  /* A crab's head is a notch in the front of its shell, not a skull on a neck.
+     Left at the default this rig put a bear's head on a dinner plate — the one
+     thing that stopped the first render reading as a crab at all. So it shrinks
+     and sinks forward until the eyestalks are what is above the carapace. */
+  if (plan === "crab") neck.position.set(0, chestTop - 0.2, 0.26);
+  else if (plan === "arachnid") neck.position.set(0, chestTop - 0.14, 0.2);
   torso.add(neck);
   /**
    * A stalk, for a head that is not sitting on its shoulders.
@@ -820,6 +1091,12 @@ export function buildProceduralPilot(
     neck.add(collar);
   }
   const head = new THREE.Group();
+  /* Small, on the two plans whose body is not a torso. Left at full size this
+     rig put a bear's skull on a dinner plate, which is the single thing that
+     stopped the first crab reading as a crab — what should be above a carapace
+     is a pair of eyestalks, not a face. */
+  if (plan === "crab") head.scale.setScalar(0.62);
+  else if (plan === "arachnid") head.scale.setScalar(0.68);
   neck.add(head);
   const skull = mesh(new THREE.CapsuleGeometry(0.15, 0.1, 3, 10), shell);
   skull.position.y = 0.15;
@@ -1304,6 +1581,34 @@ export function buildProceduralPilot(
     ring.rotation.x = Math.PI / 2 - 0.22; // tilted, so it is never a flat line
     j.add(ring);
     crestJoints.push(j);
+  } else if (design.crown === "eyestalks") {
+    /**
+     * Two stalks with an eye on the end of each.
+     *
+     * They go on the crest chain, which means they are springs: they whip when
+     * the body changes direction and settle a moment after it stops, and the
+     * two are given different stiffness by their order in that chain so they
+     * never move in lockstep. A pair of rigid antennae with balls on would be
+     * the same silhouette and none of the life — and on a crab, whose body
+     * deliberately faces the wrong way, these are the only part of it that
+     * tells you where it is actually looking.
+     */
+    for (const side of [-1, 1]) {
+      const j = new THREE.Group();
+      j.position.set(side * 0.075, 0.13, 0.02);
+      j.rotation.z = side * -0.16;
+      head.add(j);
+      const stalk = mesh(new THREE.CylinderGeometry(0.017, 0.023, 0.19, 6), shell);
+      stalk.position.y = 0.095;
+      j.add(stalk);
+      const ball = mesh(new THREE.SphereGeometry(0.045, 12, 10), plate);
+      ball.position.y = 0.2;
+      j.add(ball);
+      const pupil = mesh(new THREE.SphereGeometry(0.026, 10, 8), glow);
+      pupil.position.set(0, 0.207, 0.026);
+      j.add(pupil);
+      crestJoints.push(j);
+    }
   }
 
   // The bubble. Built AFTER the crown on purpose — the crest fins have to be
@@ -1370,6 +1675,8 @@ export function buildProceduralPilot(
    * which no shoulder-mounted arm can do.
    */
   const floatHands: { pivot: THREE.Group; side: number }[] = [];
+  /** The hinged upper jaw of each pincer, opened and closed by the gait. */
+  const clawJaws: { jaw: THREE.Group; side: number }[] = [];
   if (plan === "hover") {
     /* Something has to hold it up, visibly. Without this the body reads as a
        character standing in a hole rather than one floating above the floor —
@@ -1412,7 +1719,62 @@ export function buildProceduralPilot(
       // No elbow group of its own — the update treats a flipper as one bone.
       arms.push({ shoulder, elbow: shoulder, side });
     }
-  } else if (plan !== "astromech" && plan !== "rollerball" && plan !== "quad") {
+  } else if (design.claws) {
+    /**
+     * Two pincers on short arms, held out in front.
+     *
+     * They are arms as far as the solver is concerned — pushed into `arms` with
+     * a real elbow — so they still swing with the gait and still fly back on a
+     * thrust, for free. What makes them claws is entirely local: the forearm is
+     * short and fat, and the hand is two boxes hinged at the back that open and
+     * close, which the update drives off the same stride phase everything else
+     * uses. A pincer that never opens is a mitten.
+     */
+    for (const side of [-1, 1]) {
+      const shoulder = new THREE.Group();
+      /* Clear of the carapace, which on a crab is 0.86 m across and 0.6 deep —
+         at the default shoulder position both pincers were simply inside the
+         shell and the character had no claws at all in its own portrait. */
+      shoulder.position.set(side * 0.38, 0.24, 0.3);
+      shoulder.rotation.x = -1.15;
+      shoulder.rotation.z = side * 0.5;
+      torso.add(shoulder);
+      shoulder.add(mesh(new THREE.SphereGeometry(0.055, 8, 6), plate));
+      shoulder.add(limb(0.17, 0.05, 0.055, shell));
+
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.17;
+      elbow.rotation.x = 0.75;
+      shoulder.add(elbow);
+      elbow.add(mesh(new THREE.SphereGeometry(0.05, 8, 6), plate));
+      elbow.add(limb(0.15, 0.055, 0.07, shell));
+
+      /* The pincer. Fixed lower jaw, hinged upper one — a claw that opens
+         symmetrically reads as a puppet mouth rather than as a crab. */
+      const wrist = new THREE.Group();
+      wrist.position.y = -0.15;
+      elbow.add(wrist);
+      const fixed = mesh(new THREE.BoxGeometry(0.06, 0.045, 0.16), plate);
+      fixed.position.set(0, -0.03, 0.05);
+      wrist.add(fixed);
+      const jaw = new THREE.Group();
+      jaw.position.set(0, -0.012, -0.01);
+      wrist.add(jaw);
+      const jawMesh = mesh(new THREE.BoxGeometry(0.055, 0.04, 0.15), plate);
+      jawMesh.position.set(0, 0.02, 0.06);
+      jaw.add(jawMesh);
+      const tip = mesh(new THREE.ConeGeometry(0.022, 0.06, 5), glow);
+      tip.rotation.x = Math.PI / 2;
+      tip.position.set(0, 0.02, 0.16);
+      jaw.add(tip);
+      clawJaws.push({ jaw, side });
+
+      arms.push({ shoulder, elbow, side });
+    }
+  } else if (
+    plan !== "astromech" && plan !== "rollerball" && plan !== "quad" &&
+    plan !== "arachnid"
+  ) {
     for (const side of [-1, 1]) {
       const shoulder = new THREE.Group();
       shoulder.position.set(side * 0.245, 0.48, 0);
@@ -1475,8 +1837,32 @@ export function buildProceduralPilot(
   }
 
   // Legs: hip → knee → foot.
-  type Leg = { hip: THREE.Group; knee: THREE.Group; foot: THREE.Group; side: number };
+  type Leg = {
+    hip: THREE.Group; knee: THREE.Group; foot: THREE.Group; side: number;
+    /**
+     * A leg that sticks OUT of the body before it goes down, and therefore
+     * strides by sweeping about the vertical axis rather than swinging about
+     * the hip's X.
+     *
+     * Two axes and a rest pose, because a radial leg cannot be animated by
+     * writing `hip.rotation.x` the way a biped's can: the limb is already
+     * rotated ninety-odd degrees out of the body, so the same write would
+     * paddle it sideways instead of stepping. Keeping the rest pose here means
+     * the gait can be expressed as a *delta* from however the leg was built.
+     */
+    radial?: boolean;
+    restZ?: number;
+    restY?: number;
+    /** Where this leg sits in the gait cycle, 0–1. The whole gait table. */
+    phase?: number;
+  };
   const legs: Leg[] = [];
+  /** Which side the crab is leading with, -1..1. Eased, never snapped. */
+  let crabFacing = 1;
+  /** The crab's current body yaw away from travel. */
+  let hipYaw = 0;
+  /** How far off the floor the hopper is on this frame. */
+  let hopLift = 0;
   /** Rolling parts, for the tracked plan. Spun at real ground speed. */
   const wheels: THREE.Mesh[] = [];
   /** The astromech's two side struts, which rock rather than stride. */
@@ -1638,6 +2024,146 @@ export function buildProceduralPilot(
            legs and -1 for the other two, which is the trot for free. */
         legs.push({ hip, knee, foot, side: side * end });
       }
+    }
+  } else if (plan === "crab" || plan === "arachnid") {
+    /**
+     * Eight legs that leave the body sideways, rise to a knee ABOVE it, and
+     * come straight back down.
+     *
+     * That silhouette is the whole design and it is not achievable by
+     * re-colouring a biped: what a player recognises at thirty metres is the
+     * inverted-V of a leg whose highest point is not its hip. Everything else
+     * in this table hangs its legs downward from a pelvis.
+     *
+     * The geometry is solved rather than eyeballed, because eight legs is
+     * eight chances to end up hovering. Given the angle the femur leaves the
+     * body at, the knee lands at a known height, and the tibia is then exactly
+     * long enough to reach the floor from there — so the rig stands on the
+     * ground by construction at any body height, and `pilotPlans.test.ts` does
+     * not have to catch it after the fact.
+     */
+    const spider = plan === "arachnid";
+    const COUNT = 4;                       // per side
+    const femurAngle = spider ? 2.32 : 2.09;   // from straight-down, outward
+    const femur = spider ? 0.30 : 0.26;
+    /* Where the hip sits inside the body, and therefore how high it is. */
+    const hipY = spider ? -0.02 : -0.03;
+    const kneeY = HIP_Y + hipY + Math.cos(femurAngle - Math.PI) * femur;
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < COUNT; i++) {
+        /* Legs fan slightly fore and aft as well as out, so the four on a side
+           do not read as one thick leg drawn four times. */
+        const along = (i / (COUNT - 1) - 0.5) * (spider ? 0.62 : 0.58);
+        const hip = new THREE.Group();
+        hip.position.set(side * (spider ? 0.15 : 0.2), hipY, along);
+        hip.rotation.z = side * femurAngle;
+        /* Fan: the front pair reach forward, the back pair reach back. This is
+           a rotation about the body's vertical, which is also the axis the
+           stride sweeps on — so the rest angle and the gait share one number. */
+        hip.rotation.y = -along * (spider ? 1.5 : 1.1) * side;
+        hips.add(hip);
+        hip.add(mesh(new THREE.SphereGeometry(spider ? 0.045 : 0.052, 8, 6), plate));
+        hip.add(limb(femur, spider ? 0.036 : 0.045, spider ? 0.028 : 0.034, shell));
+
+        const knee = new THREE.Group();
+        knee.position.y = -femur;
+        /* Undo the femur's tilt exactly, so the tibia hangs true vertical
+           whatever angle the thigh went out at. */
+        knee.rotation.z = -side * femurAngle;
+        hip.add(knee);
+        knee.add(mesh(new THREE.SphereGeometry(spider ? 0.038 : 0.044, 8, 6), plate));
+        /* Long enough to reach the floor from wherever the knee ended up. */
+        const tibia = Math.max(0.12, kneeY - 0.012);
+        knee.add(limb(tibia, spider ? 0.028 : 0.034, spider ? 0.012 : 0.018, shell));
+
+        const foot = new THREE.Group();
+        foot.position.y = -tibia;
+        knee.add(foot);
+        /* A crab plants a point; a spider plants a hook that curls forward. */
+        const tip = mesh(
+          spider
+            ? new THREE.ConeGeometry(0.02, 0.055, 5)
+            : new THREE.BoxGeometry(0.05, 0.026, 0.075),
+          plate,
+        );
+        tip.position.y = -0.012;
+        if (spider) tip.rotation.x = 0.5;
+        foot.add(tip);
+
+        legs.push({
+          hip, knee, foot, side,
+          radial: true,
+          restZ: hip.rotation.z,
+          restY: hip.rotation.y,
+          /* The gait table, and the only difference between how these two
+             walk. A crab runs the two alternating tetrapods you get from
+             (i + side) parity — four feet down at all times, which is why it
+             can be that wide and that low without falling over. A spider
+             ripples the wave down the body instead, back to front, which is
+             the motion people actually find unsettling about them. */
+          phase: spider ? (i / COUNT) * 0.5 + (side > 0 ? 0.5 : 0) : ((i + (side > 0 ? 1 : 0)) % 2) * 0.5,
+        });
+      }
+    }
+    if (spider) {
+      /* The abdomen. Slung off the back and slightly up, which is the mass
+         that makes a spider read as a spider rather than as a bug. */
+      const abdomen = mesh(new THREE.SphereGeometry(0.23, 16, 12), shell);
+      abdomen.scale.set(0.95, 0.86, 1.25);
+      abdomen.position.set(0, 0.1, -0.3);
+      hips.add(abdomen);
+    }
+  } else if (plan === "hopper") {
+    /**
+     * Two big reverse-jointed legs and nothing that resembles a walk.
+     *
+     * Every other grounded plan here answers "how does it cover ground?" with
+     * a stride, and then the whole solver is about not letting the feet skate.
+     * This one answers with a *hop*: the feet are planted or they are in the
+     * air, there is no in-between, and the distance comes from the arc rather
+     * than from the legs reaching. So it is the one plan whose gait is mostly
+     * vertical, and the tail is not decoration — it is the counterweight that
+     * makes the pose read as balanced instead of falling forward.
+     */
+    for (const side of [-1, 1]) {
+      const hip = new THREE.Group();
+      hip.position.set(side * 0.135, -0.04, 0);
+      hips.add(hip);
+      hip.add(mesh(new THREE.SphereGeometry(0.085, 10, 8), plate));
+      /* Thigh forward, shin back: the ankle ends up behind the knee, which is
+         the digitigrade line every good jumper in nature has. */
+      hip.rotation.x = 0.62;
+      const thigh = 0.34;
+      hip.add(limb(thigh, 0.095, 0.075, shell));
+
+      const knee = new THREE.Group();
+      knee.position.y = -thigh;
+      knee.rotation.x = -1.24;
+      hip.add(knee);
+      knee.add(mesh(new THREE.SphereGeometry(0.062, 8, 6), plate));
+      /* Long. Solved rather than chosen: with the thigh at 0.62 rad and the
+         knee folding back 1.24, this is the length that lands the sole exactly
+         on the floor from a 0.78 waist — and a shin longer than its thigh is
+         also precisely what every good jumper in nature has. */
+      const shin = 0.5;
+      knee.add(limb(shin, 0.07, 0.05, shell));
+
+      const foot = new THREE.Group();
+      foot.position.y = -shin;
+      /* Cancel both joints so the sole lies flat on the floor however the leg
+         above it is folded. */
+      foot.rotation.x = 0.62;
+      knee.add(foot);
+      /* A long foot, most of it in front of the ankle. It is the lever the
+         whole hop is pushed off. */
+      const sole = mesh(new THREE.BoxGeometry(0.13, 0.055, 0.34), plate);
+      sole.position.set(0, -0.028, 0.1);
+      foot.add(sole);
+      const toe = mesh(new THREE.BoxGeometry(0.115, 0.03, 0.08), glow);
+      toe.position.set(0, -0.052, 0.24);
+      foot.add(toe);
+
+      legs.push({ hip, knee, foot, side });
     }
   } else if (plan !== "hover") {
     /* Waddle: legs half the length, set wide, with a foot that is nearly all
@@ -2091,6 +2617,57 @@ export function buildProceduralPilot(
       hips.rotation.z = bank * 0.6 + (moving ? Math.sin(stridePhase) * 0.06 * swing : 0);
       hips.rotation.y = moving ? Math.sin(stridePhase) * 0.05 * swing : 0;
       hips.rotation.x = lean * 0.4 + (moving ? Math.sin(stridePhase * 2) * 0.05 * swing : 0);
+    } else if (plan === "crab") {
+      /**
+       * The one body here that does not face where it is going.
+       *
+       * A crab travels broadside. So the hips yaw away from the direction of
+       * travel and the torso below counters it exactly — the shell and the
+       * eight legs scuttle sideways while the eyestalks stay pointed down the
+       * track. Nothing else in this table separates heading from travel, and
+       * it is the whole reason the plan exists: you cannot get this read by
+       * changing a colour or bolting on a part.
+       *
+       * It eases in with speed rather than snapping, because a crab standing
+       * still is just facing you, and it flips to whichever side you last
+       * turned toward, which makes hard changes of direction read as the crab
+       * deciding rather than the rig popping.
+       */
+      crabFacing = approach(crabFacing, f.yawRate > 0.35 ? 1 : f.yawRate < -0.35 ? -1 : crabFacing, 2.4, dt);
+      const sideways = Math.min(smoothSpeed / 2.2, 1) * 1.12 * (crabFacing >= 0 ? 1 : -1);
+      hipYaw = approach(hipYaw, sideways, 5, dt);
+      const skitter = moving ? Math.sin(stridePhase * 2) * 0.02 * swing : 0;
+      hips.position.set(0, HIP_Y + skitter + breathe * 0.5, 0);
+      hips.rotation.y = hipYaw;
+      /* Roll along the direction of travel, which after the yaw is the shell's
+         own long axis: it leans into the scuttle like a tray being carried. */
+      hips.rotation.z = bank * 0.5 + Math.sin(stridePhase) * 0.04 * swing;
+      hips.rotation.x = lean * 0.25;
+    } else if (plan === "arachnid") {
+      /* A spider's body is the still part. All eight legs are working and the
+         thorax barely moves — which is exactly what makes it unsettling, so
+         the numbers here are deliberately an order below every other plan. */
+      hips.position.set(0, HIP_Y + (moving ? Math.sin(stridePhase * 4) * 0.012 * swing : breathe * 0.4), 0);
+      hips.rotation.z = bank * 0.35;
+      hips.rotation.y = moving ? Math.sin(stridePhase * 2) * 0.02 * swing : 0;
+      hips.rotation.x = lean * 0.2;
+    } else if (plan === "hopper") {
+      /**
+       * The gait is the arc, so the body is what carries it.
+       *
+       * `hop` is a half-sine over the stride, gated on actually moving: it
+       * lifts the whole rig off the floor and drops it, and the pitch rides
+       * the same curve a beat ahead so the body tips forward on take-off and
+       * catches itself on the way down. Standing still it settles onto both
+       * feet and breathes, because a hopper that idles by hopping is a pogo
+       * stick and reads as broken.
+       */
+      hopLift = moving ? Math.max(0, Math.sin(stridePhase)) * Math.min(smoothSpeed / 5, 1) * 0.34 : 0;
+      hips.position.set(0, HIP_Y + hopLift + (moving ? 0 : breathe), 0);
+      hips.rotation.z = bank * 0.55;
+      hips.rotation.y = 0;
+      /* Tuck forward at the top of the arc, straighten on the way down. */
+      hips.rotation.x = lean * 0.5 + (moving ? Math.cos(stridePhase) * 0.16 * swing : 0);
     } else if (plan === "waddle") {
       /* The roll IS the walk. Legs this short cannot cover ground, so the
          body throws its weight side to side and the feet follow — which is
@@ -2109,13 +2686,72 @@ export function buildProceduralPilot(
     }
 
     // Torso counter-twists against the hips — the thing that separates a
-    // walk from a shuffle.
-    torso.rotation.y = moving ? -Math.sin(stridePhase) * 0.3 * swing : 0;
+    // walk from a shuffle. On the crab it does one more job: it subtracts the
+    // hips' scuttle yaw exactly, which is what keeps the head — and therefore
+    // the eyestalks — looking down the direction of travel while the shell
+    // underneath them is turned side-on to it.
+    torso.rotation.y =
+      (plan === "crab" ? -hipYaw : 0) +
+      (moving ? -Math.sin(stridePhase) * (plan === "crab" ? 0.08 : 0.3) * swing : 0);
     torso.rotation.x = lean * 0.5 + (moving ? 0 : Math.sin(t * 1.35) * 0.01);
     torso.rotation.z = -bank * 0.35;
 
     // ---- Legs -----------------------------------------------------------
     for (const leg of legs) {
+      /**
+       * A radial leg does not swing, it sweeps.
+       *
+       * The stride is expressed as a duty cycle rather than a sine, which is
+       * the actual difference between how a hexapod walks and how a person
+       * does: for most of the cycle the foot is planted and travelling
+       * *backwards* relative to the body at exactly ground speed — that is
+       * what stops eight feet skating — and for the short remainder it lifts
+       * and returns. Sine everywhere would give every foot equal time in the
+       * air, which is a swimming motion, and with eight of them it looks like
+       * the character is treading water.
+       */
+      if (leg.radial) {
+        const STANCE = 0.62;                       // fraction of cycle planted
+        const cyc = ((stridePhase / (Math.PI * 2)) + (leg.phase ?? 0)) % 1;
+        const swinging = cyc > STANCE;
+        // -1 at the front of the stance, +1 at the back of it.
+        const along = swinging
+          ? -Math.cos(((cyc - STANCE) / (1 - STANCE)) * Math.PI)
+          : (cyc / STANCE) * 2 - 1;
+        const reach = 0.34 * swing;
+        leg.hip.rotation.y = approach(
+          leg.hip.rotation.y,
+          (leg.restY ?? 0) - along * reach * leg.side,
+          18, dt,
+        );
+        /* Lift is a single hump over the swing window only. A planted foot
+           that rises even slightly is the thing that reads as skating. */
+        const lift = swinging
+          ? Math.sin(((cyc - STANCE) / (1 - STANCE)) * Math.PI) * 0.34 * swing
+          : 0;
+        leg.hip.rotation.z = approach(
+          leg.hip.rotation.z,
+          (leg.restZ ?? 0) - leg.side * lift,
+          20, dt,
+        );
+        /* The knee undoes whatever the hip is doing, so the shin stays
+           vertical and the foot comes straight up and straight back down. */
+        leg.knee.rotation.z = -leg.hip.rotation.z;
+        continue;
+      }
+      if (plan === "hopper") {
+        /* Both legs together — a hopper has no left and right, it has a
+           launch and a landing. They coil under the body at the top of the arc
+           and reach out ahead of it on the way down, which is what turns the
+           bounce into something that looks like it is being *aimed*. */
+        const coil = moving ? Math.max(0, Math.sin(stridePhase)) * swing : 0;
+        const reach = f.grounded ? 0 : THREE.MathUtils.clamp(-f.verticalVel / 10, 0, 1);
+        const land = Math.max(coil, reach);
+        leg.hip.rotation.x = approach(leg.hip.rotation.x, 0.62 + land * 0.5, 14, dt);
+        leg.knee.rotation.x = approach(leg.knee.rotation.x, -1.24 - land * 0.72, 14, dt);
+        leg.foot.rotation.x = approach(leg.foot.rotation.x, 0.62 + land * 0.24, 14, dt);
+        continue;
+      }
       const ph = stridePhase + (leg.side < 0 ? 0 : Math.PI);
       if (f.thrusting) {
         // Hover: knees tucked, feet trailing.
@@ -2277,6 +2913,20 @@ export function buildProceduralPilot(
       scarfJoints[i].rotation.y = THREE.MathUtils.clamp(-f.yawRate * 0.06 * (i + 1), -0.4, 0.4);
       // Keep the shoulder sweep the rig was built with; bank on top of it.
       scarfJoints[i].rotation.z = scarfRestZ[i] - bank * (0.2 + i * 0.12);
+    }
+
+    // ---- Claws ---------------------------------------------------------
+    /* Open on the reach, snap shut on the plant, and clack idly now and then
+       when nothing else is happening. Same stride phase as the legs, so the
+       whole animal is on one clock. */
+    for (const c of clawJaws) {
+      const beat = Math.sin(stridePhase + (c.side < 0 ? 0 : 1.1));
+      const idleClack = moving ? 0 : Math.max(0, Math.sin(t * 0.9 + c.side * 2.1) - 0.86) * 6;
+      c.jaw.rotation.x = approach(
+        c.jaw.rotation.x,
+        -0.06 - Math.max(0, beat) * 0.4 * swing - idleClack * 0.34,
+        16, dt,
+      );
     }
 
     // ---- Wings ---------------------------------------------------------

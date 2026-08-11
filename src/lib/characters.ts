@@ -346,6 +346,81 @@ export const CHARACTERS: CharSpec[] = [
     blurb: "A green dinosaur in a white suit under a glass bubble. Dressed for somewhere else.",
     accent: "#b57bff",
   },
+  /* The eight-legged, the airborne and the patterned.
+     Free, all of them. These are the first characters on the roster you could
+     pick out from behind in silhouette — three of them do not walk at all, and
+     six wear a pattern drawn into a canvas at build time rather than a texture
+     anybody had to ship. See `proceduralPilot.ts` for both. */
+  {
+    id: "pinch", url: "", label: "Pinch", emoji: "🦀",
+    blurb: "Travels sideways, on eight legs, with the eyestalks still pointed where it is going. Snaps when it lands.",
+    accent: "#ffe066",
+  },
+  {
+    id: "hermit", url: "", label: "Hermit", emoji: "🐚",
+    blurb: "Sand and shell, scuttling broadside. Slower than Pinch and in no hurry about it.",
+    accent: "#7ce0d0",
+  },
+  {
+    id: "barnacle", url: "", label: "Barnacle", emoji: "🌊",
+    blurb: "Something from far enough down that it brought its own light. Chrome carapace, eight legs, no interest in you.",
+    accent: "#3df0ff",
+  },
+  {
+    id: "widow", url: "", label: "Widow", emoji: "🕷️",
+    blurb: "The body barely moves. All eight legs do, in a wave that runs back to front, and that is the whole problem with it.",
+    accent: "#ff2d4b",
+  },
+  {
+    id: "harvest", url: "", label: "Harvest", emoji: "🕸️",
+    blurb: "Pale, long, and far more polite than Widow. Steps over things rather than through them.",
+    accent: "#ffb84d",
+  },
+  {
+    id: "roo", url: "", label: "Roo", emoji: "🦘",
+    blurb: "Does not walk. Hops — and the faster you go the further the arc, with the tail holding the whole thing level.",
+    accent: "#ffdf87",
+  },
+  {
+    id: "pogo", url: "", label: "Pogo", emoji: "🤸",
+    blurb: "A crate that learned to jump. One scanning bar for a face and no plan for stairs.",
+    accent: "#ffe14d",
+  },
+  {
+    id: "cricket", url: "", label: "Cricket", emoji: "🦗",
+    blurb: "Antennae, enormous lenses, and legs folded like a spring. Bounces the moment you ask it to move.",
+    accent: "#d9ff5c",
+  },
+  {
+    id: "tabby", url: "", label: "Tabby", emoji: "🐈",
+    blurb: "Four legs at a trot, with stripes that were drawn rather than downloaded.",
+    accent: "#8bf07a",
+  },
+  {
+    id: "dapple", url: "", label: "Dapple", emoji: "🦌",
+    blurb: "Long legs, small horns, and a spotted coat. Trots like it knows the way.",
+    accent: "#ffb35c",
+  },
+  {
+    id: "basilisk", url: "", label: "Basilisk", emoji: "🦎",
+    blurb: "Scaled head to tail, with tusks and a heavy tail that arrives a beat after the turn.",
+    accent: "#c9ff3d",
+  },
+  {
+    id: "hexen", url: "", label: "Hexen", emoji: "⬡",
+    blurb: "Mirror plate under a honeycomb weave, with a reactor in the chest and shoulders to match.",
+    accent: "#59e0ff",
+  },
+  {
+    id: "grit", url: "", label: "Grit", emoji: "🛠️",
+    blurb: "Sandblasted, blunt, and built to carry things. The pack on the back is not for show.",
+    accent: "#ff8a3d",
+  },
+  {
+    id: "monarch", url: "", label: "Monarch", emoji: "🦋",
+    blurb: "Black and orange, patterned wings folded on the ground and open the moment you leave it.",
+    accent: "#ffcf5c",
+  },
   { id: "vibey", url: vibeyUrl, label: "Vibey 2.0", emoji: "🤖", blurb: "Resident bot.", accent: "#73ffb8" },
   { id: "alien", url: alienUrl, label: "Alien", emoji: "👽", blurb: "Quaternius animated visitor.", accent: "#b392ff" },
   ...Object.entries(QUATERNIUS_URLS)

@@ -66,6 +66,25 @@ import origamiArt from "@/assets/characters/origami.png";
 import ridgebackArt from "@/assets/characters/ridgeback.png";
 import striderArt from "@/assets/characters/strider.png";
 import haulerArt from "@/assets/characters/hauler.png";
+/* The eight-legged, the airborne and the patterned. Free characters, but the
+   picker draws the same tile the shelf does — and these are the ones whose
+   whole argument is the shape, so a missing portrait costs them more than it
+   costs a recoloured biped. They are also what COIL draws its bots from, which
+   is a roster of exactly the ids in this file. */
+import pinchArt from "@/assets/characters/pinch.png";
+import hermitArt from "@/assets/characters/hermit.png";
+import barnacleArt from "@/assets/characters/barnacle.png";
+import widowArt from "@/assets/characters/widow.png";
+import harvestArt from "@/assets/characters/harvest.png";
+import rooArt from "@/assets/characters/roo.png";
+import pogoArt from "@/assets/characters/pogo.png";
+import cricketArt from "@/assets/characters/cricket.png";
+import tabbyArt from "@/assets/characters/tabby.png";
+import dappleArt from "@/assets/characters/dapple.png";
+import basiliskArt from "@/assets/characters/basilisk.png";
+import hexenArt from "@/assets/characters/hexen.png";
+import gritArt from "@/assets/characters/grit.png";
+import monarchArt from "@/assets/characters/monarch.png";
 
 export const CHARACTER_ART: Record<string, string> = {
   aurora: auroraArt,
@@ -112,6 +131,20 @@ export const CHARACTER_ART: Record<string, string> = {
   ridgeback: ridgebackArt,
   strider: striderArt,
   hauler: haulerArt,
+  pinch: pinchArt,
+  hermit: hermitArt,
+  barnacle: barnacleArt,
+  widow: widowArt,
+  harvest: harvestArt,
+  roo: rooArt,
+  pogo: pogoArt,
+  cricket: cricketArt,
+  tabby: tabbyArt,
+  dapple: dappleArt,
+  basilisk: basiliskArt,
+  hexen: hexenArt,
+  grit: gritArt,
+  monarch: monarchArt,
 };
 
 /**

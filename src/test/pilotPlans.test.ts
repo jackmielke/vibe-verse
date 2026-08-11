@@ -64,12 +64,31 @@ function merge(intervals: [number, number][], slack: number): [number, number][]
 }
 
 describe("every character in the design table", () => {
-  it("has at least the five body plans between them", () => {
+  it("keeps every body plan in use by at least one character", () => {
+    /* A plan with nobody on it is dead code that still typechecks, and the
+       gait solvers are the expensive half of this file. If a design is renamed
+       or dropped and takes the last crab with it, that should fail here rather
+       than quietly reduce the roster to bipeds again. */
     const plans = new Set(IDS.map((id) => PILOT_DESIGNS[id].plan ?? "biped"));
-    expect(plans).toContain("biped");
-    expect(plans).toContain("hover");
-    expect(plans).toContain("tread");
-    expect(plans).toContain("waddle");
+    for (const p of [
+      "biped", "hover", "tread", "waddle", "astromech", "rollerball", "quad",
+      "crab", "arachnid", "hopper",
+    ]) {
+      expect(plans, `no character uses plan "${p}"`).toContain(p);
+    }
+  });
+
+  it("gives the sideways walkers a body that is wider than it is long", () => {
+    /* The crab's whole read is a lid travelling broadside. Measured rather
+       than trusted: a carapace that ends up narrower than it is deep is a
+       spider, and the difference is one scale call that nothing else checks. */
+    for (const id of IDS.filter((k) => PILOT_DESIGNS[k].plan === "crab")) {
+      const pilot = buildProceduralPilot(undefined, id);
+      settle(pilot);
+      const size = new THREE.Box3().setFromObject(pilot.group).getSize(new THREE.Vector3());
+      expect(size.x, `${id} is not wide`).toBeGreaterThan(size.z);
+      pilot.dispose();
+    }
   });
 
   for (const id of IDS) {

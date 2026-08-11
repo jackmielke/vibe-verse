@@ -101,7 +101,20 @@ export class CoilSim {
     this.snakes.push(this.makeSnake(0, opts.name || mine.name, mine, false));
     this.snakes[0].alive = false;
 
-    const looks = botLooks(this.skill.snakes, mine.charId, this.rng);
+    /**
+     * The cast is drawn from its OWN generator, not the arena's.
+     *
+     * `botLooks` shuffles the whole portrait roster, which costs one draw per
+     * character in it — so with the shared stream, adding a character to
+     * `characterArt.ts` silently re-rolled every seeded match in the game.
+     * That is not a hypothetical: fourteen new characters landed and a boost
+     * test that had nothing to do with the roster started failing, because the
+     * orbs were now somewhere else.
+     *
+     * A second generator, offset from the same seed, keeps the cast
+     * deterministic while making the arena immune to how many faces exist.
+     */
+    const looks = botLooks(this.skill.snakes, mine.charId, new Rng(((opts.seed ?? 0) ^ 0x5bf03635) >>> 0));
     for (let i = 0; i < looks.length; i++) {
       const s = this.makeSnake(i + 1, looks[i].name, looks[i], true);
       // `makeSnake` builds one; it does not seat it. Forgetting this line gave
