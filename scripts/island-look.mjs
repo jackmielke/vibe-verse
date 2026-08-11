@@ -60,6 +60,7 @@ const SHOTS = [
   ["04-ninja-palace", 18, -16, 15, 0.18, -1.2],
   ["05-rim-edge", 44, 6, 12, 0.02, 0.4],
   ["06-plaza-wide", 0, 10, 40, 0.55, 0.0],
+  ["07-dream-tree", -24, 18, 16, 0.2, -0.9],
 ];
 
 for (const [name, sx, sz, dist, pitch, yaw] of SHOTS) {

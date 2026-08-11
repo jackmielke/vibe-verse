@@ -343,6 +343,84 @@ function fluteEdgeTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * Bark for the Dream Tree: vertical fissures in three browns, with moss
+ * gathering on the shaded side and lichen where the light gets in.
+ *
+ * The tree stands next to a field of individually-modelled grass blades, so a
+ * flat brown cylinder is the first thing the eye finds wrong in the frame.
+ */
+function barkTexture(): THREE.CanvasTexture {
+  const W = 256;
+  const H = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const rand = mulberry32(4711);
+
+  ctx.fillStyle = "#6b4a2c";
+  ctx.fillRect(0, 0, W, H);
+
+  // Ridges and fissures: long, near-vertical, wandering. Dark first (the
+  // cracks), then light (the ridges between them catching the sun).
+  for (const [n, dark, wMin, wSpan] of [
+    [90, true, 2, 7],
+    [120, false, 1.5, 5],
+  ] as const) {
+    for (let i = 0; i < n; i++) {
+      const x = rand() * W;
+      ctx.strokeStyle = dark
+        ? `rgba(38,24,12,${0.3 + rand() * 0.4})`
+        : `rgba(158,124,86,${0.2 + rand() * 0.3})`;
+      ctx.lineWidth = wMin + rand() * wSpan;
+      ctx.beginPath();
+      let cx = x;
+      ctx.moveTo(cx, -10);
+      for (let y = 0; y < H + 20; y += 26) {
+        cx += (rand() - 0.5) * 11;
+        ctx.lineTo(cx, y);
+      }
+      ctx.stroke();
+    }
+  }
+  // Knots — a couple of old branch scars.
+  for (let i = 0; i < 3; i++) {
+    const x = rand() * W;
+    const y = rand() * H;
+    const r = 8 + rand() * 16;
+    for (let k = 4; k > 0; k--) {
+      ctx.strokeStyle = `rgba(44,28,14,${0.14 * k})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(x, y, (r * k) / 4, ((r * k) / 4) * 1.5, 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  // Moss low down and on one side; lichen blotches higher up.
+  for (let i = 0; i < 400; i++) {
+    const x = (rand() * W * 0.55 + W * 0.05) % W;
+    const y = H - Math.pow(rand(), 0.6) * H * 0.7;
+    ctx.fillStyle = `rgba(78,116,52,${0.1 + rand() * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 1.5 + rand() * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = `rgba(178,186,158,${0.08 + rand() * 0.16})`;
+    ctx.beginPath();
+    ctx.ellipse(rand() * W, rand() * H * 0.7, 3 + rand() * 9, 2 + rand() * 6, rand() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(2.5, 1.4);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/**
  * A soft round contact shadow, drawn as a texture and laid on the grass under
  * anything heavy.
  *
@@ -940,7 +1018,7 @@ export function buildCardboardIsland(opts: {
       normalMap: lawn.normalMap,
       // Shallow. A normal map strong enough to see from the air makes the
       // ground look like crumpled foil from two metres away.
-      normalScale: new THREE.Vector2(0.9, 0.9),
+      normalScale: new THREE.Vector2(1.4, 1.4),
       roughnessMap: lawn.roughnessMap,
       roughness: 0.95,
       metalness: 0,
@@ -1019,27 +1097,136 @@ export function buildCardboardIsland(opts: {
   // the rim as a waterfall — cut; the island reads cleaner without it.)
   {
     const POOL_X = 36, POOL_Z = 10;
+    const poolRand = mulberry32(2025);
+
+    /**
+     * The pool used to be one flat cyan disc, which is the same silhouette a
+     * sheet of blue card would have. Water reads as water because of three
+     * things, and none of them is its colour: it goes darker and bluer as it
+     * gets deeper, it is wet at the edge where it meets the land, and its
+     * surface moves.
+     *
+     * So: a bed painted with the depth gradient and a shelf of pale sand at
+     * the rim, and a separate translucent surface over it that ripples.
+     */
+    const bedTex = (() => {
+      const S = 256;
+      const c = document.createElement("canvas");
+      c.width = c.height = S;
+      const x = c.getContext("2d")!;
+      const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      g.addColorStop(0, "#1d5f74"); // deepest, in the middle
+      g.addColorStop(0.5, "#37879b");
+      g.addColorStop(0.78, "#8fbfae");
+      g.addColorStop(0.93, "#cdba90"); // the sand shelf
+      g.addColorStop(1, "#b9a279");
+      x.fillStyle = g;
+      x.fillRect(0, 0, S, S);
+      // Pebbles and silt on the bed, thinning toward the middle.
+      for (let i = 0; i < 900; i++) {
+        const a = poolRand() * Math.PI * 2;
+        const rr = Math.pow(poolRand(), 0.55) * (S / 2);
+        const px = S / 2 + Math.cos(a) * rr;
+        const py = S / 2 + Math.sin(a) * rr;
+        x.fillStyle = poolRand() < 0.5
+          ? `rgba(220,206,172,${0.1 + poolRand() * 0.3})`
+          : `rgba(40,60,52,${0.08 + poolRand() * 0.22})`;
+        x.beginPath();
+        x.ellipse(px, py, 1 + poolRand() * 3.5, 1 + poolRand() * 2.6, poolRand() * 3, 0, Math.PI * 2);
+        x.fill();
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+
+    const bed = new THREE.Mesh(
+      new THREE.CircleGeometry(4.6, 40),
+      new THREE.MeshStandardMaterial({ map: bedTex, roughness: 0.95 }),
+    );
+    bed.rotation.x = -Math.PI / 2;
+    bed.position.set(POOL_X, 0.05, POOL_Z);
+    group.add(bed);
+
+    // The surface: a ring, not a circle. `CircleGeometry` is a fan — one
+    // vertex in the middle and one row around the rim — so displacing it can
+    // only tilt the whole disc. `RingGeometry`'s phiSegments give the radial
+    // rows the ripple actually needs; the 2 cm hole in the middle is under
+    // the water line and nobody will ever find it.
+    const surfGeo = new THREE.RingGeometry(0.02, 4.2, 44, 14);
+    const surfBase = Float32Array.from(surfGeo.attributes.position.array);
     const poolMat = new THREE.MeshStandardMaterial({
-      color: "#5fc4de", roughness: 0.25, metalness: 0.1,
-      transparent: true, opacity: 0.9,
-      emissive: "#1a4a5a", emissiveIntensity: 0.25,
+      color: "#7fd0e2", roughness: 0.08, metalness: 0.25,
+      transparent: true, opacity: 0.62,
+      emissive: "#12414f", emissiveIntensity: 0.22,
+      side: THREE.DoubleSide,
     });
-    const pool = new THREE.Mesh(new THREE.CircleGeometry(4.2, 28), poolMat);
+    const pool = new THREE.Mesh(surfGeo, poolMat);
     pool.rotation.x = -Math.PI / 2;
-    pool.position.set(POOL_X, 0.09, POOL_Z);
+    pool.position.set(POOL_X, 0.12, POOL_Z);
     group.add(pool);
-    // Stone lip around the pool.
+
+    // Damp sand ring where the water has been lapping — the wet line.
+    const wet = new THREE.Mesh(
+      new THREE.RingGeometry(4.35, 5.3, 40),
+      new THREE.MeshStandardMaterial({
+        color: "#6f6247", roughness: 1, transparent: true, opacity: 0.55,
+        depthWrite: false,
+      }),
+    );
+    wet.rotation.x = -Math.PI / 2;
+    wet.position.set(POOL_X, 0.03, POOL_Z);
+    wet.renderOrder = 1;
+    group.add(wet);
+
+    // Stone lip around the pool — now varied in size and seated properly into
+    // the ground rather than a ring of twelve identical beads.
     const lipMat = new THREE.MeshStandardMaterial({ color: "#b3a68d", roughness: 0.95, flatShading: true });
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), lipMat);
-      stone.position.set(POOL_X + Math.cos(a) * 4.5, 0.25, POOL_Z + Math.sin(a) * 4.5);
-      stone.scale.set(1, 0.6, 1);
-      stone.rotation.y = a * 3;
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 + poolRand() * 0.24;
+      const sz = 0.32 + poolRand() * 0.42;
+      const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(sz, 0), lipMat);
+      const rr = 4.75 + (poolRand() - 0.5) * 0.5;
+      stone.position.set(POOL_X + Math.cos(a) * rr, sz * 0.42, POOL_Z + Math.sin(a) * rr);
+      stone.scale.set(1, 0.62, 1);
+      stone.rotation.set(poolRand(), a * 3, poolRand() * 0.4);
+      stone.castShadow = true;
       group.add(stone);
     }
+    // Reeds standing in the shallows on one side.
+    const reedMat = new THREE.MeshStandardMaterial({
+      color: "#5c8f3c", roughness: 0.9, side: THREE.DoubleSide,
+    });
+    for (let i = 0; i < 26; i++) {
+      const a = 1.6 + poolRand() * 1.5;
+      const rr = 3.6 + poolRand() * 1.4;
+      const h = 0.7 + poolRand() * 0.9;
+      const reed = new THREE.Mesh(new THREE.PlaneGeometry(0.07, h), reedMat);
+      reed.position.set(POOL_X + Math.cos(a) * rr, h / 2, POOL_Z + Math.sin(a) * rr);
+      reed.rotation.set((poolRand() - 0.5) * 0.4, poolRand() * Math.PI, (poolRand() - 0.5) * 0.35);
+      group.add(reed);
+    }
+
     craftAnims.push((_dt, now) => {
-      poolMat.emissiveIntensity = 0.25 + Math.sin(now * 0.0011) * 0.1;
+      poolMat.emissiveIntensity = 0.22 + Math.sin(now * 0.0011) * 0.08;
+      const p = surfGeo.attributes.position as THREE.BufferAttribute;
+      const t = now * 0.0016;
+      for (let i = 0; i < p.count; i++) {
+        const x = surfBase[i * 3];
+        const y = surfBase[i * 3 + 1];
+        const r = Math.hypot(x, y);
+        // Two rings travelling outward at different speeds, plus a slow slosh
+        // across the whole surface. Amplitude is a couple of centimetres —
+        // any more and a two-metre puddle turns into a swell at sea.
+        p.setZ(
+          i,
+          Math.sin(r * 3.1 - t * 2.2) * 0.022 +
+            Math.sin(r * 6.7 - t * 3.4) * 0.011 +
+            Math.sin(x * 1.4 + t * 0.9) * 0.014,
+        );
+      }
+      p.needsUpdate = true;
+      surfGeo.computeVertexNormals();
     });
   }
 
@@ -1102,7 +1289,7 @@ export function buildCardboardIsland(opts: {
     const wallMat = new THREE.MeshStandardMaterial({
       map: facadeTexture(s.bg, s.fg),
       normalMap: flutes(1, s.h * 0.095),
-      normalScale: new THREE.Vector2(0.6, 0.6),
+      normalScale: new THREE.Vector2(0.95, 0.95),
       roughness: 0.88,
       metalness: 0,
     });
@@ -1508,21 +1695,132 @@ export function buildCardboardIsland(opts: {
   const tree = new THREE.Group();
   tree.position.set(TREE_X, 0, TREE_Z);
   tree.rotation.y = Math.atan2(-TREE_X, -TREE_Z); // sign faces the plaza
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.9, 1.4, 9, 10),
-    new THREE.MeshStandardMaterial({ color: "#7a5230", roughness: 0.9 }),
-  );
+  const treeRand = mulberry32(9091);
+  /**
+   * Trunk. A cylinder is a pole; a tree is a cone that swells at the base into
+   * roots and is never quite round. So the geometry gets a radial wobble and a
+   * ring of root buttresses fanning into the grass, and the bark is a real
+   * texture rather than a flat brown — vertical fissures, because a smooth
+   * trunk next to blade-level grass is the thing your eye lands on.
+   */
+  const trunkGeo = new THREE.CylinderGeometry(0.85, 1.9, 9, 14, 6);
+  {
+    const p = trunkGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const y = p.getY(i);
+      const z = p.getZ(i);
+      const r = Math.hypot(x, z);
+      if (r < 0.01) continue;
+      const a = Math.atan2(z, x);
+      // Two frequencies: a slow oval and a fast fluting, both fading out with
+      // height so the crown stays a clean cylinder for the canopy to sit on.
+      const fade = 1 - THREE.MathUtils.clamp((y + 4.5) / 9, 0, 1) * 0.65;
+      const w = 1 + (Math.sin(a * 3 + 0.7) * 0.07 + Math.sin(a * 7) * 0.035) * fade;
+      p.setX(i, x * w);
+      p.setZ(i, z * w);
+      // A slow lean, so it is not a plumb line.
+      p.setX(i, p.getX(i) + Math.pow((y + 4.5) / 9, 2) * 0.5);
+    }
+    p.needsUpdate = true;
+    trunkGeo.computeVertexNormals();
+  }
+  const barkMat = new THREE.MeshStandardMaterial({
+    map: barkTexture(),
+    normalMap: (() => {
+      const t = corrugation.clone();
+      t.needsUpdate = true;
+      // Corrugation rotated a quarter turn is a passable set of bark fissures:
+      // parallel vertical grooves. Reusing it saves a texture and nobody has
+      // ever looked at a tree and thought "those flutes are horizontal".
+      t.rotation = Math.PI / 2;
+      t.center.set(0.5, 0.5);
+      t.repeat.set(2.5, 1.4);
+      return t;
+    })(),
+    normalScale: new THREE.Vector2(0.8, 0.8),
+    roughness: 1,
+  });
+  const trunk = new THREE.Mesh(trunkGeo, barkMat);
   trunk.position.y = 4.5;
+  trunk.castShadow = true;
   tree.add(trunk);
-  const leafMat = new THREE.MeshStandardMaterial({ color: "#4a9e58", roughness: 0.85 });
-  [
-    [0, 10.5, 0, 4.2],
-    [-2.6, 9, 1.4, 2.8],
-    [2.4, 9.4, -1.2, 3.0],
-  ].forEach(([x, y, z, r]) => {
-    const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leafMat);
+  // Root buttresses flaring into the lawn.
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + treeRand() * 0.5;
+    const len = 1.1 + treeRand() * 1.3;
+    const root = new THREE.Mesh(new THREE.ConeGeometry(0.42 + treeRand() * 0.3, len * 2.4, 5), barkMat);
+    root.position.set(Math.cos(a) * (1.5 + len * 0.28), 0.5, Math.sin(a) * (1.5 + len * 0.28));
+    root.rotation.z = Math.cos(a) * 0.85;
+    root.rotation.x = -Math.sin(a) * 0.85;
+    tree.add(root);
+  }
+  dropShadow(tree, 0, 0, 13, 13);
+
+  /**
+   * Canopy. Three big spheres is a cloud, not foliage — you can see every
+   * facet and the silhouette is a smooth arc. Real foliage reads as clumps of
+   * clumps: a few large masses, a lot of small ones bunched at their edges,
+   * and a broken outline. So: seven masses, each roughened by pushing its
+   * vertices in and out, in three greens so the light side and the shaded side
+   * of the crown are different colours before any lighting happens.
+   */
+  const leafGreens = ["#3d7f3a", "#4fa04a", "#68b855"].map(
+    (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.92, flatShading: true }),
+  );
+  const roughBlob = (r: number, detail: number) => {
+    const g = new THREE.IcosahedronGeometry(r, detail);
+    const p = g.attributes.position as THREE.BufferAttribute;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      // Gentle. Push these vertices around much harder and the flat-shaded
+      // facets stop reading as leaf clumps and start reading as crumpled foil.
+      v.multiplyScalar(0.91 + treeRand() * 0.17);
+      p.setXYZ(i, v.x, v.y, v.z);
+    }
+    p.needsUpdate = true;
+    g.computeVertexNormals();
+    return g;
+  };
+  const canopy = new THREE.Group();
+  canopy.position.y = 0.4;
+  tree.add(canopy);
+  ([
+    [0.3, 10.6, 0.1, 4.0],
+    [-2.9, 9.3, 1.5, 2.9],
+    [2.7, 9.7, -1.3, 3.1],
+    [-1.4, 12.2, -1.9, 2.4],
+    [2.0, 12.0, 1.7, 2.2],
+    [-3.6, 11.4, -1.0, 1.9],
+    [0.6, 8.2, -3.1, 2.3],
+  ] as const).forEach(([x, y, z, r], i) => {
+    const blob = new THREE.Mesh(roughBlob(r, 2), leafGreens[i % 3]);
     blob.position.set(x, y, z);
-    tree.add(blob);
+    blob.scale.y = 0.82 + treeRand() * 0.3;
+    blob.castShadow = true;
+    canopy.add(blob);
+    // Small satellite clumps around the big mass, which is what breaks the
+    // silhouette. Without these the crown is a smooth arc against the sky and
+    // it does not matter how good the rest of it is.
+    const sats = 4 + Math.floor(treeRand() * 4);
+    for (let s = 0; s < sats; s++) {
+      const sa = treeRand() * Math.PI * 2;
+      const sp = Math.acos(2 * treeRand() - 1);
+      const sr = r * (0.26 + treeRand() * 0.2);
+      const tuft = new THREE.Mesh(roughBlob(sr, 1), leafGreens[(i + s) % 3]);
+      tuft.position.set(
+        x + Math.sin(sp) * Math.cos(sa) * r * 0.95,
+        y + Math.cos(sp) * r * 0.85,
+        z + Math.sin(sp) * Math.sin(sa) * r * 0.95,
+      );
+      canopy.add(tuft);
+    }
+  });
+  // The whole crown breathes in the same wind that moves the grass.
+  craftAnims.push((_dt, now) => {
+    canopy.rotation.z = Math.sin(now * 0.00042) * 0.017;
+    canopy.rotation.x = Math.cos(now * 0.00031) * 0.013;
   });
   const treeSign = new THREE.Mesh(
     new THREE.PlaneGeometry(5.5, 2.4),
@@ -1846,16 +2144,35 @@ export function buildCardboardIsland(opts: {
     const c = document.createElement("canvas");
     c.width = c.height = S;
     const ctx = c.getContext("2d")!;
-    // Green paint with brushy variation.
-    ctx.fillStyle = "#3f8c45";
+    // Green paint with brushy variation. Pitched a shade darker and duller
+    // than it used to be so the painted pad sits *into* the lawn instead of
+    // glowing out of it — the grass around it is a deep meadow green now, and
+    // a bright poster green next to that reads as a decal.
+    ctx.fillStyle = "#37773a";
     ctx.fillRect(0, 0, S, S);
-    ctx.fillStyle = "rgba(70, 160, 80, 0.55)";
+    ctx.fillStyle = "rgba(66, 138, 72, 0.5)";
     for (let i = 0; i < 80; i++) {
       const x = Math.random() * S;
       const y = Math.random() * S;
       ctx.beginPath();
       ctx.ellipse(x, y, 18 + Math.random() * 30, 8 + Math.random() * 16, Math.random() * Math.PI, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // Brush hair drag and a dry-brush pass showing the kraft under the paint.
+    for (let i = 0; i < 900; i++) {
+      const x = Math.random() * S;
+      const y = Math.random() * S;
+      const a = Math.random() * Math.PI * 2;
+      const len = 8 + Math.random() * 40;
+      ctx.strokeStyle =
+        Math.random() < 0.5
+          ? "rgba(24,58,26,0.14)"
+          : "rgba(150,120,74,0.10)"; // kraft grinning through
+      ctx.lineWidth = 0.8 + Math.random() * 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+      ctx.stroke();
     }
     // White cross paths.
     ctx.fillStyle = "#f1ecdd";
@@ -3566,28 +3883,10 @@ export function buildCardboardIsland(opts: {
       group.add(bench);
     }
 
-    // Grass tufts sprinkled across the lawn (instanced, path-aware).
-    const tuftGeo = new THREE.ConeGeometry(0.16, 0.55, 5);
-    const tuftMat = new THREE.MeshStandardMaterial({ color: "#4f9c3c", roughness: 1, flatShading: true });
-    const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, 70);
-    const tuftM = new THREE.Matrix4();
-    const tuftRand = mulberry32(4242);
-    let placed = 0;
-    while (placed < 70) {
-      const a = tuftRand() * Math.PI * 2;
-      const r = 8 + tuftRand() * (ISLAND_RADIUS - 12);
-      const tx = Math.cos(a) * r;
-      const tz = Math.sin(a) * r;
-      if (Math.abs(tx) < 6 || Math.abs(tz) < 6) continue; // keep paths clean
-      const sc = 0.7 + tuftRand() * 0.9;
-      tuftM.makeRotationY(tuftRand() * Math.PI);
-      tuftM.scale(new THREE.Vector3(sc, sc, sc));
-      tuftM.setPosition(tx, 0.22 * sc, tz);
-      tufts.setMatrixAt(placed, tuftM);
-      placed++;
-    }
-    tufts.instanceMatrix.needsUpdate = true;
-    group.add(tufts);
+    // (The seventy cone "grass tufts" that used to be scattered here are
+    // gone. They were the best available stand-in for grass when the lawn was
+    // a flat texture; standing in a field of actual blades they read as dark
+    // plastic triangles, which is worse than nothing. See `islandGrass`.)
 
     // Butterflies fluttering figure-eights over the lawns.
     const flutterColors = [0xffb3c9, 0x9fd8ff, 0xfff0a8];
@@ -3829,7 +4128,7 @@ export function buildCardboardIsland(opts: {
     /** Circles: [x, z, radius]. */
     const clearCircles: Array<[number, number, number]> = [
       [PLAZA_CX, PLAZA_CZ, PLAZA_R + 1.4], // the plaza pad and its planter wall
-      [36, 10, 5.6], // spring pool + its stone lip
+      [36, 10, 4.9], // spring pool — grass grows in among the lip stones
       [PORTAL_X, PORTAL_Z, 2.4], // Vibe Maker ring base
       [AVATAR_X, AVATAR_Z, 3.2], // character studio pedestal
       [ARCADE_X, ARCADE_Z, 1.9],

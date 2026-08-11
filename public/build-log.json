@@ -1,7 +1,148 @@
 {
-  "generated_at": "2026-08-11T00:06:22.867Z",
+  "generated_at": "2026-08-11T07:03:28.340Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "7fa8304b",
+      "date": "2026-08-11",
+      "subject": "Restamped Vibe Island",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "9dca9df4",
+      "date": "2026-08-11",
+      "subject": "Gave Vibe Island real grass, and real cardboard",
+      "lede": "The lawn was a 1024px canvas stretched over a 110 m disc — about nine pixels per metre — so standing on the island put you on a flat mint plane with a path painted on it. No redraw of that canvas fixes it; at ankle height there was nothing there to see.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 6
+    },
+    {
+      "sha": "0ac8cdf5",
+      "date": "2026-08-11",
+      "subject": "Sign in with MetaMask, and finish wiring Google",
+      "lede": "Both buttons under the divider in the sign-in dialog said \"soon\" and popped a toast saying so. Now they sign you in, and they land in the same place every other door does — a Supabase session — so no world has to know which one somebody used.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 15
+    },
+    {
+      "sha": "ab05b31a",
+      "date": "2026-08-11",
+      "subject": "Fourteen characters that are not a person in a costume",
+      "lede": "Every code-built character before this one was, underneath the paint, the same body: two legs, two arms, a head on top. Twenty side by side read as twenty costumes, and the design table says why in as many words — silhouette is what a player recognises, and silhouette is mostly how a thing moves. So these are three new body plans first and fourteen designs second.",
+      "places": [
+        "Vibe Island",
+        "the character roster"
+      ],
+      "files": 19
+    },
+    {
+      "sha": "52d7edf4",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "4112ff9e",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "f0abfdc5",
+      "date": "2026-08-11",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_017vYGwEXHXBMSj4cT1EfrNF",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "6268c039",
+      "date": "2026-08-11",
+      "subject": "Gave Vibe City a real sea, and a beach for it to break on",
+      "lede": "The ocean was a flat disc with three sine waves in its vertices, and the city's edge was asphalt meeting water at the same height — no shore in between, which is the clearest possible tell that a world was assembled rather than grown.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 6
+    },
+    {
+      "sha": "f5ffd198",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "800fac27",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "0da79f5a",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "40a4f9ac",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "fe97b5e7",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "17792dec",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "7a83c0fd",
+      "date": "2026-08-11",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "969a8381",
+      "date": "2026-08-11",
+      "subject": "Re-stamp after merging main",
+      "lede": "COIL and the worlds main touched while the branches were apart.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "cbb1aa8e",
       "date": "2026-08-11",
@@ -894,151 +1035,6 @@
       "lede": "**First, the crash.** The wallet link I added to the Vibecoin chip referenced a `payout` variable I never declared. Tapping the chip white-screened the app with \"payout is not defined\". Fixed, and it reads the linked address when the panel opens rather than at mount, so linking a wallet and coming straight back shows the new state.",
       "places": [],
       "files": 9
-    },
-    {
-      "sha": "e1a1fad9",
-      "date": "2026-08-07",
-      "subject": "🏝️ One plaza on Vibe Island, and a wallet you can actually find",
-      "lede": "**The layout.** Everything that costs or gives Vibecoin was scattered across a 110-unit island, and the character portal — one of the four things people actually use — sat at x = −34, sixty units and a jetpack ride from the shop it dresses you for. They now sit in one arc in the south-east:",
-      "places": [
-        "Vibe Island",
-        "the Wallet"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "5afafedd",
-      "date": "2026-08-07",
-      "subject": "📬 The sign-in code autofills, and the box submits itself",
-      "lede": "Three things, and the first is the one that was actually asked for.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "f1b506ab",
-      "date": "2026-08-07",
-      "subject": "🔐 The Vibe Wallet: a Base Account made with a passkey, and any wallet you own",
-      "lede": "Two doors now, for the two kinds of person who will open this card.",
-      "places": [
-        "the machinery underneath"
-      ],
-      "files": 9
-    },
-    {
-      "sha": "c41b2a79",
-      "date": "2026-08-07",
-      "subject": "🕰️ Re-stamp the worlds from a history deep enough to be true",
-      "lede": "`npm run stamp` reads each world's `source` out of the git log, and this repo is usually cloned shallow. The script guards the case where a path resolves to *nothing* — but not the case where it resolves to the clone's boundary commit, which is worse, because it looks like an answer. Twelve worlds were carrying 2026-07-21 for no reason other than that being as far back as the clone went.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "26a8a939",
-      "date": "2026-08-07",
-      "subject": "🏁 One Vibe Kart, and a lobby that starts the race for you",
-      "lede": "Two complaints, one shape. There were two Vibe Kart cards in the hub — `/kart` and `/kart-mp` — so the first decision a visitor made was one they could not yet have an opinion about, between two routes that render the same racetrack. And the multiplayer behind the second card was not really a lobby: it had a room code, a roster and a \"Start race\" button anybody could press, which works only if everyone is already sta",
-      "places": [
-        "Vibe Kart"
-      ],
-      "files": 19
-    },
-    {
-      "sha": "be974dff",
-      "date": "2026-08-07",
-      "subject": "✊ A table on the island: one hand against the house, provably fair",
-      "lede": "Walk up to the half-round table on the Vibe Island plaza, ante 25 ✦, and play one hand of rock-paper-scissors against the house. Smallest possible complete bet — no lobby, no opponent to find, ten seconds start to finish.",
-      "places": [
-        "Vibe Island",
-        "the machinery underneath"
-      ],
-      "files": 11
-    },
-    {
-      "sha": "ad3da9c4",
-      "date": "2026-08-07",
-      "subject": "🧭 Vibe Island leads, the running order moves to the top, and the map is current",
-      "lede": "**Ordering.** `ORDER` in `registry.ts` is the knob people reach for most, and it was seven hundred lines down, underneath every world entry. It is now the first thing in the file, with a comment saying that is what it is for. Vibe Island opens the collection — the gentlest door, works on a phone, the one to put in front of somebody who has never been here. Strange New Worlds moves to tenth. Orbit, the arcade and the ",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "2f4e5424",
-      "date": "2026-08-07",
-      "subject": "🕰️ Every portal says when it last moved, and the wink finally gets used",
-      "lede": "Four of Jack's notes, and one thing found on the way.",
-      "places": [],
-      "files": 13
-    },
-    {
-      "sha": "08687746",
-      "date": "2026-08-07",
-      "subject": "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on",
-      "lede": "The currency had places to spend it and no reason to want it. This is the reason: one shared sky, ten friends, one pot.",
-      "places": [
-        "The Long Silence",
-        "Orbit",
-        "the machinery underneath"
-      ],
-      "files": 21
-    },
-    {
-      "sha": "c396353b",
-      "date": "2026-08-07",
-      "subject": "Air you can see through, and water on the worlds that have some",
-      "lede": "Two more of the things that separate a rendered frame from a diorama, and both turned out to be less about shading than about geometry.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "c9d20de6",
-      "date": "2026-08-07",
-      "subject": "One engine, two games: add the mode seam",
-      "lede": "ctx.mode is 'classic' (Drop Zero — bullets, health, a purple storm) or 'water' (SOAKED — soakers, dryness, the Downpour). One island, one set of 22 systems, and the difference is a lookup into mode/water.ts rather than a fork. Two battle royales would mean every bug fixed twice and every art pass done twice, and this project has already demonstrated how expensive one pass is.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "cd1d2ae3",
-      "date": "2026-08-07",
-      "subject": "The Odyssey gets a hull, and the planets get an atmosphere",
-      "lede": "The ship was a silhouette with blue stripes painted on it, which is fine at ninety units and is what you are looking at from nine. She now carries the `metal` bake at a 0.16-unit tile, sixty instanced greebles across the engineering hull, a lathed saucer at 96 segments, a deflector housing, a lit shuttlebay, seventy-six windows on two decks, a dorsal strobe, and running lights — port red, starboard green, the same co",
-      "places": [],
-      "files": 9
-    },
-    {
-      "sha": "296027af",
-      "date": "2026-08-07",
-      "subject": "People you can stand in front of, and columns that are not clip art",
-      "lede": "The characters were the weakest thing in the world and they were weak in the one place it costs most: three metres, face to face, which is where every conversation in this game happens. You walked up to a Vulcan master to ask her about Kolinahr and you were looking at a bowling pin.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "73405066",
-      "date": "2026-08-07",
-      "subject": "A real renderer: HDR post, baked PBR surfacing, sky-probe IBL, ground scatter",
-      "lede": "The world shipped looking like coloured shapes on a coloured plane. Four things were missing and they turned out to be four specific things rather than a general lack of polish.",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "fe9bd3e8",
-      "date": "2026-08-07",
-      "subject": "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger",
-      "lede": "The arcade proved coins could be spent. It could not prove they were worth having, because everything you won there went straight back into the same machines — the currency had one sink and it was a loop.",
-      "places": [
-        "Vibe Island",
-        "the machinery underneath"
-      ],
-      "files": 12
-    },
-    {
-      "sha": "8c5e0cb2",
-      "date": "2026-08-07",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
     }
   ]
 }

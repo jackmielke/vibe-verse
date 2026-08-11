@@ -95,34 +95,47 @@ function lawnColorTexture(): THREE.CanvasTexture {
   // anything sparser averages back to a flat fill at ten metres.
   const strokeRand = mulberry32(31415);
   ctx.lineCap = "round";
-  for (let i = 0; i < 26000; i++) {
-    const x = strokeRand() * S;
-    const y = strokeRand() * S;
-    const a = strokeRand() * Math.PI * 2;
-    const len = 4 + strokeRand() * 9;
-    const shade = strokeRand();
-    ctx.strokeStyle =
-      shade < 0.42
-        ? `rgba(24,58,20,${0.18 + strokeRand() * 0.2})`
-        : shade < 0.8
-          ? `rgba(96,148,54,${0.18 + strokeRand() * 0.22})`
-          : `rgba(158,196,92,${0.14 + strokeRand() * 0.18})`;
-    ctx.lineWidth = 1.4 + strokeRand() * 1.8;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-    ctx.stroke();
+  // Two passes at two scales. The long pass is clump-sized — a tuft of grass
+  // seen from standing height is about a hand's width, and at 18 px per metre
+  // that is a ten-pixel stroke. The short pass is the stubble between them.
+  for (const [n, minLen, spread, wide] of [
+    [34000, 5, 11, 2.6],
+    [46000, 2, 4, 1.6],
+  ] as const) {
+    for (let i = 0; i < n; i++) {
+      const x = strokeRand() * S;
+      const y = strokeRand() * S;
+      const a = strokeRand() * Math.PI * 2;
+      const len = minLen + strokeRand() * spread;
+      const shade = strokeRand();
+      // The pale tone is the one to be careful with. A bright straw stroke at
+      // a third of a metre long, repeated a few thousand times, stops reading
+      // as sun-caught grass and starts reading as scratches on the lens.
+      ctx.strokeStyle =
+        shade < 0.46
+          ? `rgba(18,48,14,${0.24 + strokeRand() * 0.3})`
+          : shade < 0.88
+            ? `rgba(98,150,54,${0.22 + strokeRand() * 0.28})`
+            : `rgba(138,174,82,${0.1 + strokeRand() * 0.14})`;
+      ctx.lineWidth = 1.1 + strokeRand() * wide;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+      ctx.stroke();
+    }
   }
   // A scatter of bare, trodden patches — thin soil showing through where the
   // island gets walked on. Grass that is perfect everywhere reads as carpet.
-  for (let i = 0; i < 70; i++) {
+  // Small and faint: at 18 px per metre a 40 px blob is a two-metre bald spot,
+  // and a lawn covered in those looks diseased rather than used.
+  for (let i = 0; i < 110; i++) {
     const x = strokeRand() * S;
     const y = strokeRand() * S;
-    const r = 18 + strokeRand() * 46;
+    const r = 8 + strokeRand() * 22;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, "rgba(122,102,68,0.34)");
-    g.addColorStop(0.6, "rgba(110,96,62,0.14)");
-    g.addColorStop(1, "rgba(110,96,62,0)");
+    g.addColorStop(0, "rgba(104,84,50,0.3)");
+    g.addColorStop(0.6, "rgba(92,78,48,0.11)");
+    g.addColorStop(1, "rgba(92,78,48,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
