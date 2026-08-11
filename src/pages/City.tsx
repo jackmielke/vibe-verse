@@ -5850,7 +5850,10 @@ export default function City() {
           blur() calls keep focus off the buttons so Space stays on
           the jetpack instead of re-clicking them. */}
       {entered && !isLive && (
-        <div ref={hudWrapRef} className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
+        <div
+          ref={hudWrapRef}
+          className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2 md:top-3 md:right-auto md:left-1/2 md:-translate-x-1/2 md:items-center"
+        >
           {/* Mobile-only trigger — collapses the whole chip row. The
               ✕ state also dismisses every open sub-panel (chat /
               emote / character) so the close button actually closes
