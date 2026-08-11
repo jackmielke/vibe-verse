@@ -223,6 +223,11 @@ const App = () => (
           {/* The portal: games hosted somewhere else, paying real Vibey Coins.
               `/build` is the page you send somebody who wants in. */}
           <Route path="/play/:slug" element={<PortalPlay />} />
+          {/* Blob Battle earns a short route of its own because it is a world
+              card in the registry, and a card has to point at something the
+              router serves literally. The frame still lives at /play. */}
+          <Route path="/blob-battle" element={<Navigate to="/play/blob-battle" replace />} />
+          <Route path="/blobbattle" element={<Navigate to="/play/blob-battle" replace />} />
           <Route path="/build" element={<BuildAGame />} />
           <Route path="/build-a-game" element={<BuildAGame />} />
           {/* One field: a repo link or a deployed link. `/submit-world` is a
