@@ -38,6 +38,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "splash-royale",       // …and then the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
+  "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
