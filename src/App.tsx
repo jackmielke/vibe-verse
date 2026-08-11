@@ -93,6 +93,7 @@ const StrangeNewWorlds = lazy(() => import("./pages/StrangeNewWorlds.tsx"));
 const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
 const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
 const Coil = lazy(() => import("./pages/Coil.tsx"));
+const Twenty48 = lazy(() => import("./pages/Twenty48.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 
 const queryClient = new QueryClient();
@@ -368,6 +369,11 @@ const App = () => (
               what people type. */}
           {["/coil", "/slither", "/snake", "/worm"].map((path) => (
             <Route key={path} path={path} element={<Coil />} />
+          ))}
+          {/* NEON 2048 — the sliding-tile game in BLOB's colours. Swipe on a
+              phone, arrows on a desktop, and the 2048 tile is virus green. */}
+          {["/2048", "/twenty48", "/merge"].map((path) => (
+            <Route key={path} path={path} element={<Twenty48 />} />
           ))}
           {/* HOME ALONE — 671 Lincoln Avenue at Christmas. Walk an empty
               house, light it up, arm eight traps, then survive the two men who
