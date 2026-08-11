@@ -1361,6 +1361,7 @@ export default function City() {
       centerZ: ISLAND_Z,
       topY: ISLAND_TOP,
       boxes,
+      lowDetail: smallScreen,
     });
     scene.add(island.group);
     // Let React drive the SnackFe kiosk board; paint the opening state.

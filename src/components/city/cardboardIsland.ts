@@ -18,6 +18,7 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { lawnTextures, buildGrassField, buildGroundCover } from "./islandGrass";
 import palm1Url from "@/assets/glb/kits/pirate/environment/PalmTree_1.glb";
 import palm2Url from "@/assets/glb/kits/pirate/environment/PalmTree_2.glb";
 import palm3Url from "@/assets/glb/kits/pirate/environment/PalmTree_3.glb";
@@ -106,127 +107,342 @@ export const SNACK_MENU: SnackItem[] = [
 // Canvas helpers — everything on the island is "drawn by hand".
 // ------------------------------------------------------------------
 export function cardboardTexture(): THREE.CanvasTexture {
-  const S = 256;
+  const S = 512;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#c8a570";
+  const rand = mulberry32(80808);
+
+  // Kraft liner: not one brown, a mottled one. Recycled board is made of
+  // pulped everything and no two square inches match.
+  ctx.fillStyle = "#c2a06d";
   ctx.fillRect(0, 0, S, S);
-  // Corrugation lines.
-  ctx.strokeStyle = "rgba(122, 92, 50, 0.22)";
-  ctx.lineWidth = 1.5;
-  for (let y = 0; y < S; y += 7) {
+  for (let i = 0; i < 900; i++) {
+    const x = rand() * S;
+    const y = rand() * S;
+    const r = 4 + rand() * 26;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const warm = rand() < 0.5;
+    g.addColorStop(0, warm ? "rgba(206,172,120,0.22)" : "rgba(150,116,72,0.2)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(S, y);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Paper fibres. Short, pale, every-which-way — the thing that separates
+  // "kraft paper" from "brown".
+  for (let i = 0; i < 2600; i++) {
+    const x = rand() * S;
+    const y = rand() * S;
+    const a = rand() * Math.PI * 2;
+    const len = 3 + rand() * 12;
+    ctx.strokeStyle = rand() < 0.55 ? "rgba(228,204,160,0.20)" : "rgba(126,96,56,0.18)";
+    ctx.lineWidth = 0.7 + rand() * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
     ctx.stroke();
   }
-  // Packing-tape strips.
-  ctx.fillStyle = "rgba(190, 170, 130, 0.5)";
-  ctx.fillRect(0, S * 0.3, S, 9);
-  ctx.fillRect(S * 0.62, 0, 9, S);
-  // Kid doodles.
+
+  // Flutes read through the liner as a soft periodic shading, not as ruled
+  // lines. The old version drew a 1.5 px hard stroke every 7 px, which at any
+  // real distance aliased into moiré stripes; a gradient band per flute
+  // survives mip-mapping into an honest average instead.
+  const FLUTE = 14;
+  for (let y = 0; y < S; y += FLUTE) {
+    const g = ctx.createLinearGradient(0, y, 0, y + FLUTE);
+    g.addColorStop(0, "rgba(96,70,38,0.22)");
+    g.addColorStop(0.42, "rgba(255,235,196,0.10)");
+    g.addColorStop(1, "rgba(96,70,38,0.22)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y, S, FLUTE);
+  }
+
+  // Packing tape — slightly glossy, slightly crooked, with a lifted end.
+  const tape = (x: number, y: number, w: number, h: number, rot: number) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.fillStyle = "rgba(214,196,158,0.42)";
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.strokeStyle = "rgba(240,230,205,0.5)";
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(-w / 2, -h / 2, w, h);
+    // Trapped air bubbles along the run.
+    ctx.fillStyle = "rgba(255,250,235,0.32)";
+    for (let i = 0; i < w / 22; i++) {
+      ctx.beginPath();
+      ctx.ellipse(-w / 2 + 14 + i * 22, (rand() - 0.5) * h * 0.5, 3 + rand() * 4, 1.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  };
+  tape(S * 0.5, S * 0.3, S * 1.2, 20, 0.012);
+  tape(S * 0.66, S * 0.5, 18, S * 1.2, Math.PI / 2 + 0.008);
+
+  // Scuffs and creases — worn corners, a bent fold line, a coffee ring's
+  // worth of grubbiness. Cardboard that has been handled by a child.
+  for (let i = 0; i < 40; i++) {
+    const x = rand() * S;
+    const y = rand() * S;
+    ctx.strokeStyle = `rgba(120,92,54,${0.06 + rand() * 0.1})`;
+    ctx.lineWidth = 1 + rand() * 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rand() - 0.5) * 90, y + (rand() - 0.5) * 40);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 8; i++) {
+    const x = rand() * S;
+    const y = rand() * S;
+    const r = 20 + rand() * 60;
+    const g = ctx.createRadialGradient(x, y, r * 0.4, x, y, r);
+    g.addColorStop(0, "rgba(92,66,34,0)");
+    g.addColorStop(1, "rgba(92,66,34,0.13)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Kid doodles — unchanged in spirit, because they are the whole point of
+  // the island. Just drawn with a wobblier hand now.
   const doodles = ["#e85d75", "#5db8e8", "#8cd16a", "#f2b134", "#b78ae0"];
-  for (let i = 0; i < 9; i++) {
+  ctx.lineCap = "round";
+  for (let i = 0; i < 11; i++) {
     ctx.strokeStyle = doodles[i % doodles.length];
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 2.2;
-    const x = (i * 73 + 20) % S;
-    const y = (i * 47 + 30) % S;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 3.4;
+    const x = (i * 147 + 40) % S;
+    const y = (i * 95 + 60) % S;
     ctx.beginPath();
     if (i % 3 === 0) {
-      ctx.arc(x, y, 7, 0, Math.PI * 2); // sun/flower head
+      ctx.arc(x, y, 13, 0, Math.PI * 2); // sun / flower head
     } else if (i % 3 === 1) {
-      ctx.moveTo(x - 7, y + 5);
-      ctx.lineTo(x, y - 7);
-      ctx.lineTo(x + 7, y + 5); // little roof / mountain
+      ctx.moveTo(x - 14, y + 10);
+      ctx.lineTo(x + 1, y - 14);
+      ctx.lineTo(x + 14, y + 10); // little roof / mountain
     } else {
-      ctx.moveTo(x - 8, y);
-      ctx.quadraticCurveTo(x, y - 9, x + 8, y); // rainbow arc
+      ctx.moveTo(x - 16, y);
+      ctx.quadraticCurveTo(x, y - 18, x + 16, y); // rainbow arc
     }
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+
   const t = new THREE.CanvasTexture(canvas);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/**
+ * The corrugation, as geometry the light can find: a tiling normal map of
+ * parallel flutes with a fibre-scale roughness on top.
+ *
+ * This is the single change that stops the shops being painted boxes. A flat
+ * wall with a picture of cardboard on it is lit exactly like a flat wall; the
+ * same wall with flutes in its normals catches a highlight along every ridge
+ * and goes dark between them, and it turns as you walk past it. Corrugation is
+ * the most recognisable surface in the world and it costs one texture.
+ *
+ * Clone the returned texture per material and set `.repeat` — a clone shares
+ * the image but carries its own UV transform, so one canvas dresses a 15 m
+ * shop wall and a 40 cm bench slat at the right scale for each.
+ */
+function corrugationNormalTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#8080ff";
+  ctx.fillRect(0, 0, S, S);
+
+  // Flutes: a sine ridge running along +x, encoded as a left/right tilt in
+  // the red channel. Sixteen flutes over the tile.
+  const FLUTES = 16;
+  const period = S / FLUTES;
+  const img = ctx.getImageData(0, 0, S, S);
+  for (let y = 0; y < S; y++) {
+    // dHeight/dy of a sine ridge → the y tilt, which lives in green.
+    const phase = ((y % period) / period) * Math.PI * 2;
+    const slope = Math.cos(phase) * 0.55;
+    const g = Math.round(THREE.MathUtils.clamp(0.5 - slope * 0.5, 0, 1) * 255);
+    for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      img.data[i] = 128;
+      img.data[i + 1] = g;
+      img.data[i + 2] = 235;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // Fibre grain over the flutes so the surface is not perfectly extruded.
+  const rand = mulberry32(1212);
+  for (let i = 0; i < 1600; i++) {
+    const x = rand() * S;
+    const y = rand() * S;
+    const a = rand() * Math.PI * 2;
+    const len = 2 + rand() * 9;
+    ctx.strokeStyle = rand() < 0.5 ? "rgba(96,128,255,0.22)" : "rgba(160,128,255,0.22)";
+    ctx.lineWidth = 0.8 + rand() * 1.1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+    ctx.stroke();
+  }
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/**
+ * The cut edge of a sheet of corrugated board: two liners with a row of
+ * fluted arches sandwiched between them.
+ *
+ * Nothing says "this is cardboard, not a beige box" as fast as the exposed
+ * edge, and it is the one detail a real cardboard build has on every single
+ * cut. Applied as thin strips along wall tops and roof rims.
+ */
+function fluteEdgeTexture(): THREE.CanvasTexture {
+  const W = 128;
+  const H = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#b08f5e";
+  ctx.fillRect(0, 0, W, H);
+  // Liners top and bottom, a touch paler than the core.
+  ctx.fillStyle = "#cfae7a";
+  ctx.fillRect(0, 0, W, 5);
+  ctx.fillRect(0, H - 5, W, 5);
+  // The fluting: alternating arches, each shaded so it reads as a tube.
+  const P = 9;
+  for (let x = 0; x < W; x += P) {
+    const g = ctx.createLinearGradient(x, 0, x + P, 0);
+    g.addColorStop(0, "rgba(72,50,24,0.75)");
+    g.addColorStop(0.45, "rgba(226,204,164,0.55)");
+    g.addColorStop(1, "rgba(72,50,24,0.75)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 5, P - 1, H - 10);
+  }
+  // Dark seam where core meets liner — the shadow line inside the sheet.
+  ctx.fillStyle = "rgba(60,40,18,0.4)";
+  ctx.fillRect(0, 5, W, 1.5);
+  ctx.fillRect(0, H - 6.5, W, 1.5);
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
-function islandGroundTexture(): THREE.CanvasTexture {
-  const S = 1024;
+/**
+ * A soft round contact shadow, drawn as a texture and laid on the grass under
+ * anything heavy.
+ *
+ * The island sits outside the sun's shadow frustum — deliberately, since it is
+ * floating in the sky with nothing under it to catch a shadow — so every
+ * building on it was hovering a couple of centimetres above its own lawn. A
+ * painted patch of dark under the footprint is the cheap fix and, at this art
+ * level, an almost undetectable one.
+ */
+function contactShadowTexture(): THREE.CanvasTexture {
+  const S = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext("2d")!;
-
-  // Lush lawn base with soft mowed-stripe variation.
-  ctx.fillStyle = "#79c258";
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(18,26,10,0.55)");
+  g.addColorStop(0.55, "rgba(18,26,10,0.34)");
+  g.addColorStop(1, "rgba(18,26,10,0)");
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
-  for (let i = 0; i < 14; i++) {
-    ctx.fillStyle = i % 2 ? "rgba(255,255,255,0.045)" : "rgba(30,80,30,0.05)";
-    ctx.save();
-    ctx.translate(S / 2, S / 2);
-    ctx.rotate(0.35);
-    ctx.fillRect(-S, -S / 2 + i * (S / 14), S * 2, S / 28);
-    ctx.restore();
-  }
-  // Mottled grass texture: soft darker blobs.
-  for (let i = 0; i < 90; i++) {
-    ctx.fillStyle = i % 3 ? "rgba(52,120,52,0.10)" : "rgba(150,210,110,0.12)";
-    const x = (i * 131 + 40) % S;
-    const y = (i * 197 + 60) % S;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 22 + ((i * 13) % 26), 14 + ((i * 7) % 18), i, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Sandy path cross with a soft edge, then crisp stepping stones on top.
-  const path = (horizontal: boolean) => {
-    const g = horizontal
-      ? ctx.createLinearGradient(0, S / 2 - 30, 0, S / 2 + 30)
-      : ctx.createLinearGradient(S / 2 - 30, 0, S / 2 + 30, 0);
-    g.addColorStop(0, "rgba(226,206,164,0)");
-    g.addColorStop(0.25, "rgba(226,206,164,0.95)");
-    g.addColorStop(0.75, "rgba(226,206,164,0.95)");
-    g.addColorStop(1, "rgba(226,206,164,0)");
-    ctx.fillStyle = g;
-    if (horizontal) ctx.fillRect(0, S / 2 - 30, S, 60);
-    else ctx.fillRect(S / 2 - 30, 0, 60, S);
-  };
-  path(true);
-  path(false);
-  for (let i = -10; i <= 10; i++) {
-    for (const [dx, dy, horiz] of [[i * 42, 0, true], [0, i * 42, false]] as const) {
-      if (!horiz && Math.abs(i) < 1) continue; // don't double the center
-      ctx.fillStyle = "#d3bd97";
-      ctx.strokeStyle = "rgba(120,100,70,0.28)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(S / 2 + dx + (i % 2 ? 5 : -5), S / 2 + dy, horiz ? 11 : 8, horiz ? 8 : 11, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-
-  // Clover flowers scattered on the lawn (kept off the paths).
-  const petals = ["#ff8fae", "#ffd166", "#c9a2ff", "#ffffff"];
-  for (let i = 0; i < 64; i++) {
-    const x = (i * 263 + 40) % S;
-    const y = (i * 389 + 60) % S;
-    if (Math.abs(x - S / 2) < 60 || Math.abs(y - S / 2) < 60) continue;
-    ctx.fillStyle = petals[i % petals.length];
-    for (let p = 0; p < 4; p++) {
-      const pa = (p / 4) * Math.PI * 2 + i;
-      ctx.beginPath();
-      ctx.arc(x + Math.cos(pa) * 3.2, y + Math.sin(pa) * 3.2, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = "#f7f3d0";
-    ctx.beginPath();
-    ctx.arc(x, y, 1.8, 0, Math.PI * 2);
-    ctx.fill();
-  }
   const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/**
+ * The cut edge of the turf — the band you see on the cylinder wall of the
+ * grass cap, from the zipline and from anywhere below the island.
+ *
+ * A cylinder's side UVs run u around the rim and v from bottom to top, so this
+ * is drawn as a cross-section: soil and pebbles at the bottom, a root mat in
+ * the middle, and grass spilling over the top lip. It used to be a flat green
+ * that made the island look like it was extruded out of felt.
+ */
+function turfEdgeTexture(): THREE.CanvasTexture {
+  const W = 256;
+  const H = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+
+  const soil = ctx.createLinearGradient(0, H, 0, 0);
+  soil.addColorStop(0, "#6d4f33"); // deep, damp
+  soil.addColorStop(0.55, "#846044");
+  soil.addColorStop(1, "#5f4a30"); // darker again right under the roots
+  ctx.fillStyle = soil;
+  ctx.fillRect(0, 0, W, H);
+
+  // Pebbles and clods through the soil.
+  for (let i = 0; i < 220; i++) {
+    const x = (i * 71) % W;
+    const y = H * 0.3 + ((i * 137) % Math.round(H * 0.7));
+    const r = 1 + (i % 4);
+    ctx.fillStyle = i % 3 === 0 ? "rgba(160,142,118,0.5)" : "rgba(58,42,26,0.45)";
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Root mat: pale threads reaching down out of the turf.
+  ctx.strokeStyle = "rgba(214,196,158,0.4)";
+  for (let i = 0; i < 90; i++) {
+    const x = (i * 47) % W;
+    ctx.lineWidth = 0.8 + (i % 3) * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(x, H * 0.34);
+    ctx.bezierCurveTo(x + 4, H * 0.5, x - 5, H * 0.62, x + 2, H * 0.78);
+    ctx.stroke();
+  }
+
+  // The turf layer itself, with a ragged underside where soil meets roots.
+  ctx.fillStyle = "#3f7a33";
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(W, 0);
+  ctx.lineTo(W, H * 0.3);
+  for (let x = W; x >= 0; x -= 8) {
+    ctx.lineTo(x, H * (0.3 + Math.sin(x * 0.11) * 0.045 + ((x * 13) % 7) * 0.006));
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // Grass spilling over the top lip — the blades that hang past the edge.
+  ctx.strokeStyle = "#5da944";
+  ctx.lineCap = "round";
+  for (let i = 0; i < 320; i++) {
+    const x = (i * 29) % W;
+    const len = 6 + ((i * 17) % 16);
+    ctx.lineWidth = 1.2 + (i % 3) * 0.5;
+    ctx.strokeStyle = ["#4e9a3c", "#69bb4f", "#7fc95e"][i % 3];
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.quadraticCurveTo(x + ((i % 5) - 2), len * 0.6, x + ((i % 7) - 3), len);
+    ctx.stroke();
+  }
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(14, 1);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
@@ -311,35 +527,137 @@ function displaceRadial(geo: THREE.BufferGeometry, rimFn: (a: number) => number)
   geo.computeVertexNormals();
 }
 
-/** Clean painted facade: soft color wash, paper grain, baseboard and a
- * trim line — handmade-but-tidy, replacing the raw doodle cardboard. */
+/**
+ * A painted cardboard facade.
+ *
+ * The important word is *painted*. Emulsion on corrugated board does not go on
+ * flat: it soaks into the fibre, thins over the flute ridges so the kraft
+ * ghosts through, pools at the brush edges, and never quite covers the corners.
+ * The old version of this was a solid fill with four grain lines on it, which
+ * is why the shops read as coloured boxes from any distance at all.
+ *
+ * Canvas y runs 0 at the top of the wall to S at the bottom (the wall meshes
+ * are box faces with unrotated UVs), so the weathering at the end is applied
+ * to the *bottom* of the image, where the wall meets the wet grass.
+ */
 function facadeTexture(tint: string, trim: string): THREE.CanvasTexture {
-  const S = 256;
+  const S = 512;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = tint;
+  const rand = mulberry32(
+    // Same tint → same wall, always. Cheap string hash so the two shops don't
+    // share a weathering pattern.
+    [...tint].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7),
+  );
+
+  // Kraft underneath. Everything after this is paint that only mostly covers.
+  ctx.fillStyle = "#b99a68";
   ctx.fillRect(0, 0, S, S);
-  // Paper grain: sparse soft strokes, two tones.
-  for (let i = 0; i < 46; i++) {
-    ctx.strokeStyle = i % 2 ? "rgba(255,255,255,0.05)" : "rgba(60,40,20,0.05)";
-    ctx.lineWidth = 1 + (i % 3);
-    const y = (i * 61) % S;
+
+  // Roller coats: broad vertical passes, each slightly translucent, so the
+  // colour builds unevenly and the overlaps show as faint bands.
+  ctx.fillStyle = tint;
+  ctx.globalAlpha = 0.88;
+  ctx.fillRect(0, 0, S, S);
+  ctx.globalAlpha = 1;
+  // Each pass is a soft-edged wash, not a rectangle. `fillRect` was the first
+  // thing tried here and a hard vertical edge — even at four percent alpha —
+  // is a crisp seam a metre wide on a thirteen-metre wall, and a dozen of them
+  // turn a painted shop into a barcode.
+  for (let i = 0; i < 14; i++) {
+    const x = rand() * S;
+    const w = 70 + rand() * 150;
+    const g = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+    const a = 0.05 + rand() * 0.08;
+    g.addColorStop(0, "rgba(255,255,255,0)");
+    g.addColorStop(0.5, rand() < 0.5 ? `rgba(255,255,255,${a})` : `rgba(30,20,8,${a})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - w / 2, -10, w, S + 20);
+  }
+  ctx.globalAlpha = 1;
+
+  // Brush texture within the coats: fine light and dark streaks following the
+  // stroke direction. Kept faint — one 512 px texture covers a 13 m wall, so
+  // a stroke you can see here is a 10 cm stripe on the building, and a wall of
+  // those reads as dirt rather than as paint.
+  for (let i = 0; i < 420; i++) {
+    const x = rand() * S;
+    const y = rand() * S;
+    const len = 30 + rand() * 110;
+    ctx.strokeStyle = rand() < 0.5 ? "rgba(255,255,255,0.035)" : "rgba(40,26,10,0.04)";
+    ctx.lineWidth = 0.8 + rand() * 2.2;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(S * 0.3, y + 3, S * 0.7, y - 3, S, y);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rand() - 0.5) * 12, y + len);
     ctx.stroke();
   }
-  // Baseboard + upper trim line.
+
+  // Flute ghosting: the paint sits thinner on the ridges, so the corrugation
+  // shows faintly through the colour. Low contrast on purpose — this is the
+  // texture equivalent of the normal map, for the far view where the normal
+  // map has mipped away. Pitched to match `flutes()` on the wall material; if
+  // one is retuned the other has to move with it or the wall gets two sets of
+  // corrugation at different spacings, which reads as moiré.
+  for (let y = 0; y < S; y += 64) {
+    const g = ctx.createLinearGradient(0, y, 0, y + 64);
+    g.addColorStop(0, "rgba(50,34,14,0.055)");
+    g.addColorStop(0.45, "rgba(255,255,255,0.035)");
+    g.addColorStop(1, "rgba(50,34,14,0.055)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y, S, 64);
+  }
+
+  // Baseboard + upper trim line, hand-painted: not straight, and the brush
+  // ran out at one end.
   ctx.fillStyle = trim;
-  ctx.globalAlpha = 0.85;
-  ctx.fillRect(0, S - 18, S, 18);
-  ctx.globalAlpha = 0.4;
-  ctx.fillRect(0, 26, S, 5);
+  ctx.globalAlpha = 0.88;
+  ctx.beginPath();
+  ctx.moveTo(0, S - 40);
+  for (let x = 0; x <= S; x += 32) ctx.lineTo(x, S - 40 + Math.sin(x * 0.03) * 3.5);
+  ctx.lineTo(S, S);
+  ctx.lineTo(0, S);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 0.38;
+  ctx.fillRect(0, 52, S, 9);
   ctx.globalAlpha = 1;
+
+  // Chips and scuffs where the kraft is showing through the paint — corners,
+  // the odd knock, a scrape along the baseboard.
+  for (let i = 0; i < 90; i++) {
+    const edgeBias = rand();
+    const x = edgeBias < 0.35 ? rand() * 40 : edgeBias < 0.7 ? S - rand() * 40 : rand() * S;
+    const y = rand() < 0.5 ? S - rand() * 90 : rand() * S;
+    ctx.fillStyle = `rgba(176,146,98,${0.25 + rand() * 0.35})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 1.5 + rand() * 6, 1 + rand() * 3, rand() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Ground weathering: splash-back dirt up the bottom of the wall, and a damp
+  // line right at the grass. A building that is clean where it meets the
+  // ground is the tell that it was dropped in rather than built there.
+  const damp = ctx.createLinearGradient(0, S, 0, S - 110);
+  damp.addColorStop(0, "rgba(56,44,24,0.42)");
+  damp.addColorStop(0.4, "rgba(64,52,28,0.16)");
+  damp.addColorStop(1, "rgba(64,52,28,0)");
+  ctx.fillStyle = damp;
+  ctx.fillRect(0, S - 110, S, 110);
+  for (let i = 0; i < 160; i++) {
+    const x = rand() * S;
+    const y = S - rand() * rand() * 90;
+    ctx.fillStyle = `rgba(70,54,28,${0.1 + rand() * 0.22})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 1 + rand() * 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   const t = new THREE.CanvasTexture(canvas);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
   return t;
 }
 
@@ -515,16 +833,85 @@ export function buildCardboardIsland(opts: {
   centerZ: number;
   topY: number;
   boxes: WorldBox[];
+  /**
+   * Thin the lawn out. A phone is already pushing a 3× pixel ratio over the
+   * whole district; twenty-six thousand grass blades is a fine trade on a
+   * laptop and a bad one there. Same field, a third of the blades.
+   */
+  lowDetail?: boolean;
 }): IslandWorld {
-  const { centerX, centerZ, topY, boxes } = opts;
+  const { centerX, centerZ, topY, boxes, lowDetail = false } = opts;
   const group = new THREE.Group();
   group.position.set(centerX, topY, centerZ); // group origin = island surface center
   const spinners: THREE.Object3D[] = [];
   const starSpots: THREE.Vector3[] = [];
 
   const cardboard = cardboardTexture();
-  const cardboardMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.92 });
-  const cardboardDark = new THREE.MeshStandardMaterial({ color: "#9a7a4e", roughness: 0.95 });
+  const corrugation = corrugationNormalTexture();
+  const fluteEdge = fluteEdgeTexture();
+  const contactShadow = contactShadowTexture();
+
+  /**
+   * Clone the corrugation for one surface at one scale.
+   *
+   * A three texture's `.repeat` belongs to the texture, not the material, so
+   * sharing one instance across a 15 m shop wall and a 40 cm bench slat gives
+   * you flutes at whichever scale was set last. Clones share the uploaded
+   * image — this is a UV transform, not another megabyte of VRAM.
+   */
+  const flutes = (repeatU: number, repeatV = repeatU) => {
+    const t = corrugation.clone();
+    t.needsUpdate = true;
+    t.repeat.set(repeatU, repeatV);
+    return t;
+  };
+
+  const cardboardMat = new THREE.MeshStandardMaterial({
+    map: cardboard,
+    normalMap: flutes(3, 3),
+    normalScale: new THREE.Vector2(0.85, 0.85),
+    roughness: 0.94,
+  });
+  // The "cut board" tone — roof slabs, posts, legs, counters. Now with the
+  // corrugation in its normals, which is most of what makes a roof slab stop
+  // looking like a slab of butter.
+  const cardboardDark = new THREE.MeshStandardMaterial({
+    color: "#9a7a4e",
+    normalMap: flutes(6, 6),
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    roughness: 0.96,
+  });
+
+  /**
+   * Lay a soft dark patch on the lawn under something.
+   *
+   * See `contactShadowTexture` for why this exists rather than a real shadow.
+   * `renderOrder` and `polygonOffset` keep it off the grass cap's z-fighting
+   * range without lifting it far enough to be visible as a floating card.
+   */
+  const contactShadowMat = new THREE.MeshBasicMaterial({
+    map: contactShadow,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const dropShadow = (
+    parent: THREE.Object3D,
+    x: number,
+    z: number,
+    sx: number,
+    sz = sx,
+    rotY = 0,
+  ) => {
+    const s = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), contactShadowMat);
+    s.rotation.set(-Math.PI / 2, 0, rotY);
+    s.position.set(x, 0.02, z);
+    s.renderOrder = 1;
+    parent.add(s);
+    return s;
+  };
 
   // ---- Island body (craft pass) -------------------------------------
   // An organic landform instead of a lathe: every layer shares ONE rim
@@ -538,13 +925,30 @@ export function buildCardboardIsland(opts: {
   // the dirt below. Cylinder material order is [side, top, bottom].
   const capGeo = new THREE.CylinderGeometry(ISLAND_RADIUS + 1.6, ISLAND_RADIUS - 0.6, 3.2, 56, 1);
   displaceRadial(capGeo, landRim);
-  const grassSide = new THREE.MeshStandardMaterial({ color: "#5da944", roughness: 0.95, flatShading: true });
+  // The cut edge of the turf, seen from below and from the zipline: soil with
+  // roots in it and a fringe of grass over the lip, not a green wall.
+  const grassSide = new THREE.MeshStandardMaterial({
+    map: turfEdgeTexture(),
+    roughness: 1,
+    flatShading: true,
+  });
+  const lawn = lawnTextures();
   const top = new THREE.Mesh(capGeo, [
     grassSide,
-    new THREE.MeshStandardMaterial({ map: islandGroundTexture(), roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({
+      map: lawn.map,
+      normalMap: lawn.normalMap,
+      // Shallow. A normal map strong enough to see from the air makes the
+      // ground look like crumpled foil from two metres away.
+      normalScale: new THREE.Vector2(0.9, 0.9),
+      roughnessMap: lawn.roughnessMap,
+      roughness: 0.95,
+      metalness: 0,
+    }),
     grassSide,
   ]);
   top.position.y = -1.6;
+  top.receiveShadow = true;
   group.add(top);
 
   // Dirt band under the lip.
@@ -686,11 +1090,36 @@ export function buildCardboardIsland(opts: {
     const toLocal = (u: number, v: number): [number, number] =>
       alongX ? [u, v] : [v, u];
 
+    // Painted board: the facade colour, the corrugation in the normals, and
+    // enough of a roughness spread that the light rakes across the flutes
+    // instead of settling on the wall as one value.
+    //
+    // The flute pitch is set to about 1.5 per metre, which is nothing like
+    // real C-flute — but this is a nine-metre-tall box built by a child out of
+    // whatever came off a fridge, and at true pitch the ridges land under a
+    // pixel and turn the whole wall into shimmering moiré. Pitched to what
+    // reads, not to what measures.
     const wallMat = new THREE.MeshStandardMaterial({
       map: facadeTexture(s.bg, s.fg),
-      roughness: 0.85,
+      normalMap: flutes(1, s.h * 0.095),
+      normalScale: new THREE.Vector2(0.6, 0.6),
+      roughness: 0.88,
+      metalness: 0,
     });
-    const trimMat = new THREE.MeshStandardMaterial({ color: s.fg, roughness: 0.6 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: s.fg, roughness: 0.62 });
+    // The exposed sheet edge, for the strips capping the walls.
+    const edgeMat = new THREE.MeshStandardMaterial({
+      map: (() => {
+        const t = fluteEdge.clone();
+        t.needsUpdate = true;
+        t.repeat.set(Math.max(2, Math.round(s.w * 0.8)), 1);
+        return t;
+      })(),
+      roughness: 0.95,
+    });
+
+    // The building sits on the lawn — see `dropShadow`.
+    dropShadow(shop, 0, 0, s.w * 1.9, s.d * 1.9);
 
     // A wall panel: centered at (u,v) in the local frame, sized (du,dv,h),
     // rendered AND collided so interiors are real.
@@ -702,6 +1131,8 @@ export function buildCardboardIsland(opts: {
       const sd = alongX ? dv : du;
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(sw, h, sd), wallMat);
       mesh.position.set(lx, yBase + h / 2, lz);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       shop.add(mesh);
       wallBoxes.push({
         minX: centerX + s.x + lx - sw / 2, maxX: centerX + s.x + lx + sw / 2,
@@ -739,11 +1170,84 @@ export function buildCardboardIsland(opts: {
       shop.add(lintel);
     }
 
-    // Roof slab with a proper overhang + fascia trim (still landable).
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(s.w + 1.6, 0.5, s.d + 1.6), cardboardDark);
+    // ---- Roof --------------------------------------------------------
+    // Still a flat landable slab — the collision box below assumes it and
+    // people jump on these — but no longer a bare slab. What it gets is what a
+    // real sheet of board laid on a box gets: a fold crease down the middle
+    // where it was scored to sit flat, corrugated ridges running across it, a
+    // taped seam, and a lifted corner that was never quite pressed down.
+    const roofW = s.w + 1.6;
+    const roofD = s.d + 1.6;
+    const roofMat = new THREE.MeshStandardMaterial({
+      map: cardboard,
+      normalMap: flutes(1, roofD * 0.1),
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      color: "#b59468",
+      roughness: 0.96,
+    });
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(roofW, 0.5, roofD), roofMat);
     roof.position.y = s.h + 0.25;
     roof.rotation.z = 0.015;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
     shop.add(roof);
+
+    // Ridges: shallow battens across the sheet. Cheap geometry, and they are
+    // what gives the roof a silhouette from the zipline and a set of edges for
+    // the light to catch from the plaza.
+    {
+      const ridges = Math.max(4, Math.round(roofD / 1.5));
+      const ridgeGeo = new THREE.BoxGeometry(roofW - 0.25, 0.12, 0.5);
+      for (let i = 0; i < ridges; i++) {
+        const t = (i + 0.5) / ridges - 0.5;
+        const bar = new THREE.Mesh(ridgeGeo, cardboardDark);
+        bar.position.set(0, s.h + 0.53, t * (roofD - 0.6));
+        bar.rotation.z = 0.015;
+        bar.castShadow = true;
+        shop.add(bar);
+      }
+      // Scored fold line along the long axis.
+      const crease = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.1, roofD - 0.2),
+        new THREE.MeshStandardMaterial({ color: "#7d6039", roughness: 1 }),
+      );
+      crease.position.set(0, s.h + 0.52, 0);
+      shop.add(crease);
+      // Packing tape over the seam — the join that actually holds it on.
+      const tape = new THREE.Mesh(
+        new THREE.BoxGeometry(0.62, 0.04, roofD + 0.5),
+        new THREE.MeshStandardMaterial({ color: "#d9c8a4", roughness: 0.42, metalness: 0.05 }),
+      );
+      tape.position.set(roofW * 0.22, s.h + 0.53, 0);
+      shop.add(tape);
+      // One corner flap, lifted. Nobody's cardboard roof is flat everywhere.
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.12, 1.5), roofMat);
+      flap.position.set(-roofW / 2 + 0.9, s.h + 0.62, roofD / 2 - 0.75);
+      flap.rotation.x = -0.22;
+      flap.rotation.z = 0.06;
+      shop.add(flap);
+    }
+
+    // Exposed sheet edge all the way round the roof rim — the fluting you
+    // can see from the ground, which is the detail that reads as cardboard
+    // faster than any amount of brown paint.
+    for (const [w, d, ry] of [
+      [roofW, 0, 0],
+      [roofW, 0, Math.PI],
+      [0, roofD, Math.PI / 2],
+      [0, roofD, -Math.PI / 2],
+    ] as const) {
+      const len = w || d;
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.34), edgeMat);
+      strip.position.set(
+        ry === Math.PI / 2 ? roofW / 2 + 0.01 : ry === -Math.PI / 2 ? -roofW / 2 - 0.01 : 0,
+        s.h + 0.25,
+        ry === 0 ? roofD / 2 + 0.01 : ry === Math.PI ? -roofD / 2 - 0.01 : 0,
+      );
+      strip.rotation.y = ry;
+      shop.add(strip);
+    }
+
     const fascia = new THREE.Mesh(new THREE.BoxGeometry(s.w + 1.75, 0.18, s.d + 1.75), trimMat);
     fascia.position.y = s.h + 0.06;
     shop.add(fascia);
@@ -799,28 +1303,99 @@ export function buildCardboardIsland(opts: {
       shop.add(glow);
     }
 
-    // Glowing windows with mullions + flower boxes on the side walls.
+    /**
+     * Windows on the side walls.
+     *
+     * These used to be a single emissive plane laid flat on the wall surface —
+     * a lit rectangle, which from any angle other than straight-on is exactly
+     * what it looked like. A window is a hole: it has a reveal you can see the
+     * thickness of, a sill that catches light and throws a line of shade under
+     * itself, and glass that sits back from the face and picks up the sky.
+     * So this builds all four: reveal, sill, recessed glass, mullions.
+     */
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: "#fff3cf",
+      emissive: "#ffcf7a",
+      emissiveIntensity: 0.85,
+      // Glass is the one thing on this island that is not matte. A low
+      // roughness and a little metalness give it a specular the flutes and the
+      // paint cannot have, which is what separates it from the wall.
+      roughness: 0.12,
+      metalness: 0.3,
+      side: THREE.DoubleSide,
+    });
+    const WIN_W = 2.2;
+    const WIN_H = 1.5;
     for (const side of [-1, 1]) {
-      const [wx, wz] = toLocal(0, side * (V / 2 + 0.03));
-      const pane = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.2, 1.5),
-        new THREE.MeshStandardMaterial({
-          color: "#fff3cf", emissive: "#ffcf7a", emissiveIntensity: 0.85,
-          roughness: 0.4, side: THREE.DoubleSide,
-        }),
-      );
-      pane.position.set(wx, 2.2, wz);
-      pane.rotation.y = alongX ? 0 : Math.PI / 2;
+      const faceV = side * (V / 2);
+      const [wx, wz] = toLocal(0, faceV);
+      const yaw = alongX ? 0 : Math.PI / 2;
+
+      // Glass, set back into the wall by most of the wall's thickness.
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W, WIN_H), glassMat);
+      const [gx, gz] = toLocal(0, faceV - side * WALL_T * 0.7);
+      pane.position.set(gx, 2.2, gz);
+      pane.rotation.y = yaw;
       shop.add(pane);
+
+      // The reveal: four short walls around the opening, in the facade
+      // material, so the wall reads as having thickness at the hole.
+      const revealMat = new THREE.MeshStandardMaterial({ color: s.bg, roughness: 0.9 });
+      for (const [ow, oh, oy, ov] of [
+        [WIN_W + 0.3, 0.16, WIN_H / 2 + 0.08, 0],
+        [WIN_W + 0.3, 0.16, -WIN_H / 2 - 0.08, 0],
+        [0.16, WIN_H + 0.3, 0, WIN_W / 2 + 0.08],
+        [0.16, WIN_H + 0.3, 0, -WIN_W / 2 - 0.08],
+      ] as const) {
+        const sw = alongX ? ow : WALL_T * 0.7;
+        const sd = alongX ? WALL_T * 0.7 : ow;
+        const jamb = new THREE.Mesh(new THREE.BoxGeometry(sw, oh, sd), revealMat);
+        const [jx, jz] = toLocal(ov, faceV - side * WALL_T * 0.35);
+        jamb.position.set(jx, 2.2 + oy, jz);
+        shop.add(jamb);
+      }
+
+      // Frame + mullions, proud of the wall.
       for (const mull of [0, 1]) {
         const bar = new THREE.Mesh(
-          new THREE.BoxGeometry(mull ? 2.35 : 0.1, mull ? 0.1 : 1.6, 0.08),
+          new THREE.BoxGeometry(mull ? WIN_W + 0.15 : 0.1, mull ? 0.1 : WIN_H + 0.1, 0.08),
           trimMat,
         );
-        bar.position.set(wx, 2.2, wz);
-        bar.rotation.y = alongX ? 0 : Math.PI / 2;
+        const [mx, mz] = toLocal(0, faceV - side * WALL_T * 0.55);
+        bar.position.set(mx, 2.2, mz);
+        bar.rotation.y = yaw;
         shop.add(bar);
       }
+      // Casing round the opening: four bars, not one box. A solid box here
+      // would sit in front of the recessed glass and brick the window up.
+      for (const [along, oy, ov] of [
+        [WIN_W + 0.5, WIN_H / 2 + 0.17, 0],
+        [WIN_W + 0.5, -WIN_H / 2 - 0.17, 0],
+        [0, 0, WIN_W / 2 + 0.17],
+        [0, 0, -WIN_W / 2 - 0.17],
+      ] as const) {
+        const horiz = along > 0;
+        const lenU = horiz ? along : 0.17;
+        const lenY = horiz ? 0.17 : WIN_H + 0.5;
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(alongX ? lenU || 0.17 : 0.15, lenY, alongX ? 0.15 : lenU || 0.17),
+          trimMat,
+        );
+        const [cx4, cz4] = toLocal(ov, faceV + side * 0.04);
+        bar.position.set(cx4, 2.2 + oy, cz4);
+        shop.add(bar);
+      }
+
+      // Sill: a board under the window with a lip, and the flower box on it.
+      const sill = new THREE.Mesh(
+        new THREE.BoxGeometry(alongX ? WIN_W + 0.7 : 0.42, 0.14, alongX ? 0.42 : WIN_W + 0.7),
+        cardboardDark,
+      );
+      const [sx, sz] = toLocal(0, faceV + side * 0.16);
+      sill.position.set(sx, 2.2 - WIN_H / 2 - 0.16, sz);
+      sill.castShadow = true;
+      shop.add(sill);
+
       const box = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 2.3 : 0.5, 0.35, alongX ? 0.5 : 2.3), cardboardDark);
       const [bx2, bz2] = toLocal(0, side * (V / 2 + 0.28));
       box.position.set(bx2, 1.3, bz2);
@@ -833,6 +1408,17 @@ export function buildCardboardIsland(opts: {
         const [fx, fz] = toLocal((f - 1) * 0.7, side * (V / 2 + 0.28));
         flower.position.set(fx, 1.55, fz);
         shop.add(flower);
+      }
+      // Trailing greenery out of the box, so it isn't three balls on a shelf.
+      for (let f = 0; f < 5; f++) {
+        const vine = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.015, 0.35 + (f % 3) * 0.22, 4),
+          new THREE.MeshStandardMaterial({ color: "#4e8c3a", roughness: 0.95 }),
+        );
+        const [vx, vz] = toLocal((f - 2) * 0.5, side * (V / 2 + 0.42));
+        vine.position.set(vx, 1.05 - (f % 3) * 0.08, vz);
+        vine.rotation.z = (f - 2) * 0.09;
+        shop.add(vine);
       }
     }
 
@@ -3225,6 +3811,76 @@ export function buildCardboardIsland(opts: {
   beam.position.set(0, 40, -38);
   group.add(beam);
   spinners.push(beam);
+
+  // ---- The lawn ------------------------------------------------------
+  // Built last on purpose: the exclusion predicate below names every pad,
+  // path and footprint the rest of this function has just placed, and it can
+  // only do that once they exist as constants.
+  //
+  // Grass does NOT get kept out of everything. It grows up against benches,
+  // lamp posts, palms and the zipline poles, because that is what grass does
+  // and a neat halo around every prop is the single most obvious tell that a
+  // world was assembled rather than grown. What it stays out of is anything
+  // with a floor: the plaza pad, the worn path cross, building interiors, the
+  // pool, and the small pedestals you stand on.
+  {
+    /** Half-width of the sandy path cross, matched to the ground texture. */
+    const PATH_HALF = 4.0;
+    /** Circles: [x, z, radius]. */
+    const clearCircles: Array<[number, number, number]> = [
+      [PLAZA_CX, PLAZA_CZ, PLAZA_R + 1.4], // the plaza pad and its planter wall
+      [36, 10, 5.6], // spring pool + its stone lip
+      [PORTAL_X, PORTAL_Z, 2.4], // Vibe Maker ring base
+      [AVATAR_X, AVATAR_Z, 3.2], // character studio pedestal
+      [ARCADE_X, ARCADE_Z, 1.9],
+      [RPS_X, RPS_Z, 2.2],
+      [SHOP_X, SHOP_Z, 2.6],
+      [TV_X, TV_Z, 2.2],
+      [MILL_X, MILL_Z, 2.6],
+    ];
+    /** Rectangles: [x, z, halfW, halfD] — building footprints, plus a step. */
+    // Footprints only, with no margin — grass grows right up against a wall
+    // and a little way under the roof overhang, and a mown border round every
+    // building is the tell that the buildings were dropped onto the lawn.
+    const clearRects: Array<[number, number, number, number]> = [
+      ...SHOPS.map((s) => [s.x, s.z, s.w / 2 - 0.3, s.d / 2 - 0.3] as [number, number, number, number]),
+      [SNACK_X, SNACK_Z, SNACK_W / 2 - 0.3, SNACK_D / 2 - 0.3],
+    ];
+
+    const blocked = (x: number, z: number) => {
+      if (Math.abs(x) < PATH_HALF || Math.abs(z) < PATH_HALF) return true;
+      for (const [cx, cz, r] of clearCircles) {
+        if ((x - cx) ** 2 + (z - cz) ** 2 < r * r) return true;
+      }
+      for (const [rx, rz, hw, hd] of clearRects) {
+        if (Math.abs(x - rx) < hw && Math.abs(z - rz) < hd) return true;
+      }
+      return false;
+    };
+
+    // The cap's top radius is (ISLAND_RADIUS + 1.6) scaled by the same rim
+    // noise every other layer uses, so the grass ends exactly where the land
+    // does — including the bits that bulge out past the nominal circle.
+    const rimAt = (a: number) => 1 + landRim(a);
+    const grass = buildGrassField({
+      radius: ISLAND_RADIUS + 1.2,
+      rimAt,
+      blocked,
+      count: lowDetail ? 18000 : 62000,
+      seed: 61803,
+    });
+    group.add(grass.mesh);
+    craftAnims.push((_dt, now) => grass.update(now));
+
+    const cover = buildGroundCover({
+      radius: ISLAND_RADIUS,
+      rimAt,
+      blocked,
+      count: lowDetail ? 240 : 700,
+      seed: 27182,
+    });
+    group.add(cover.mesh);
+  }
 
   // A few starting star spots on the lawn ring.
   starSpots.push(
