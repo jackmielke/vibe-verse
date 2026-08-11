@@ -61,12 +61,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
+    { sha: "0ff7358", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
+    { sha: "14ffac3", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
+    { sha: "6521988", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
+    { sha: "faf2a48", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
+    { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
-    { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
-    { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
-    { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
-    { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
-    { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
   ],
   "coil": [
     { sha: "8555942", iso: "2026-08-11T00:01:59+00:00", subject: "COIL: slither, with your shop character riding the front" },
@@ -147,12 +147,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
-    { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -186,12 +186,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
+    { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
-    { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
   ],
   "museum": [
     { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -248,12 +248,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
-    { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
   ],
   "space": [
     { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
@@ -304,12 +304,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
-    { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
   ],
   "vibeverse": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },

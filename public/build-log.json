@@ -1,7 +1,81 @@
 {
-  "generated_at": "2026-08-10T23:23:00.026Z",
+  "generated_at": "2026-08-11T00:06:22.867Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "cbb1aa8e",
+      "date": "2026-08-11",
+      "subject": "Stamp COIL",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01LrHxfRC156y4mpWX17EHrF",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "85559428",
+      "date": "2026-08-11",
+      "subject": "COIL: slither, with your shop character riding the front",
+      "lede": "A new world at /coil (and /slither, /snake, /worm). Nobody here is too big to kill. You cannot stop and you cannot reverse — only turn, at one fixed rate, however long you get — so the whole game is getting in front of somebody and letting them run into you.",
+      "places": [],
+      "files": 20
+    },
+    {
+      "sha": "0ff7358d",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "14ffac3f",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "6521988f",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "faf2a48c",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "8a777ce1",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "e3e28b50",
+      "date": "2026-08-10",
+      "subject": "Regenerate the build log with 2048 in it",
+      "lede": "The build log is generated from git history, so it goes stale the moment anything lands. This is that regeneration.",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "001ad5ef",
       "date": "2026-08-10",
@@ -965,73 +1039,6 @@
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "47f35011",
-      "date": "2026-08-07",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "ca3cab09",
-      "date": "2026-08-07",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "f8b079fd",
-      "date": "2026-08-07",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "d0b65ec9",
-      "date": "2026-08-07",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "2a904dec",
-      "date": "2026-08-07",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "84f2e8f0",
-      "date": "2026-08-07",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 9
-    },
-    {
-      "sha": "99439c83",
-      "date": "2026-08-07",
-      "subject": "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back",
-      "lede": "/trek is the half of Star Trek where you shoot. This is the other half: make orbit somewhere nobody has been, run the sensors, then go down and ask it a question. No combat anywhere in it, on purpose.",
-      "places": [
-        "The Long Silence",
-        "the machinery underneath"
-      ],
-      "files": 26
-    },
-    {
-      "sha": "ae5a8a6a",
-      "date": "2026-08-06",
-      "subject": "Storm damage works; the beat was reading the wrong bar",
-      "lede": "Instrumenting dz:hit outside the zone showed a tick landing every simulated second, correctly sized — {amount: 0.504, shield: true} — with shield walking 100 -> 97.98 while health sat at exactly 100. skipToLive grants a full shield and applyDamage spends it first, like every other damage source, so the beat was watching a number that would not have moved for 200 seconds.",
-      "places": [],
-      "files": 2
     }
   ]
 }
