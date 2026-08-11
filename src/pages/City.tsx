@@ -5883,7 +5883,11 @@ export default function City() {
               </span>
             )}
           </button>
-          <div className={`${hudMenuOpen ? "flex" : "hidden"} md:flex flex-wrap justify-end gap-2 max-w-[88vw]`}>
+          <div
+            className={`${
+              hudMenuOpen ? "flex" : "hidden"
+            } md:flex flex-wrap justify-end gap-2 max-w-[88vw] md:justify-center md:max-w-[62vw] md:rounded-full md:bg-background/40 md:backdrop-blur-md md:border md:border-border/40 md:px-2 md:py-1.5`}
+          >
             <button
               onClick={(e) => {
                 const next = !muted;
