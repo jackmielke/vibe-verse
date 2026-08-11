@@ -622,6 +622,14 @@ export function buildOcean({ skyUniforms, lowDetail = false }: OceanOptions): Oc
     vertexColors: true,
     roughness: 0.92,
     metalness: 0,
+    // The sand runs a few metres UNDER the city plate so the seam is hidden,
+    // and from six hundred metres up the depth buffer cannot tell the two
+    // apart — the island's whole rim shimmered. Pushed away rather than
+    // pulled forward: where they overlap, the asphalt is the one that should
+    // win. Out past the kerb there is nothing to fight, so it costs nothing.
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 4,
   });
   // Planar UVs in world metres, so the grain does not smear along the polar
   // rings the way a radial UV would.

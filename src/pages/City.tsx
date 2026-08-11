@@ -3899,7 +3899,8 @@ export default function City() {
         support: (x: number, y: number, z: number) => number;
         boxesNear: (x: number, z: number) => Array<Record<string, number>>;
         mines: () => [boolean, boolean, number, number, number];
-        snapshot: () => string;
+        snapshot: (near?: number) => string;
+        camPose: () => { near: number; dist: number; pitch: number; yaw: number; x: number; y: number; z: number };
         heistGo: () => void;
         heistPos: () => [number, number, number] | null;
         rebelRemote: (ev: RebelEvent) => void;
@@ -3943,10 +3944,50 @@ export default function City() {
       // Render one fresh frame and read it back in the same task —
       // works without preserveDrawingBuffer, so headless tests can
       // take reliable stills of the world.
-      snapshot: () => {
+      /**
+       * Render one frame right now and read the canvas back.
+       *
+       * `near` re-renders the SAME frame with a different near plane, which is
+       * the only way to see z-fighting in a still: two surfaces at the same
+       * depth pick a winner and hold it, so a frozen frame looks fine and the
+       * shimmer only appears once the camera moves. Nudge the near plane by a
+       * hair and every pixel whose winner depended on depth precision swaps —
+       * with nothing else in the world having moved, since both renders happen
+       * inside one synchronous call. See `scripts/city-flicker.mjs`.
+       */
+      snapshot: (near?: number) => {
+        const prev = camera.near;
+        if (near !== undefined) {
+          camera.near = near;
+          camera.updateProjectionMatrix();
+        }
         renderer.render(scene, camera);
-        return canvas.toDataURL("image/png");
+        const url = canvas.toDataURL("image/png");
+        if (near !== undefined) {
+          camera.near = prev;
+          camera.updateProjectionMatrix();
+        }
+        return url;
       },
+      /**
+       * Where the camera actually IS, as opposed to where it was told to go.
+       *
+       * `__cityCam` is a request, not a guarantee: the arrival swoop, fast
+       * travel and the kart chase all drive the camera too, and any of them
+       * firing mid-run silently rehomes it. A harness that cannot read the
+       * pose back cannot tell a fixed camera from a drifting one — which is
+       * how a flicker measurement came back saying a fix had made things
+       * worse, when what had actually changed was the zoom.
+       */
+      camPose: () => ({
+        near: camera.near,
+        dist: camDist,
+        pitch: camPitch,
+        yaw: camYaw,
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      }),
       heistGo: () => {
         chaseNextAt = 0;
       },
@@ -5252,6 +5293,14 @@ export default function City() {
         const fogNow = scene.fog as THREE.Fog;
         fogNow.near = baseFogNear;
         fogNow.far = baseFogFar;
+        // And put the near plane back where a headset needs it. The
+        // zoom-driven one in the else-branch below is meaningless in VR, and a
+        // 6 m near plane inherited from a god-view zoom would clip away the
+        // room you are standing in.
+        if (camera.near !== 0.1) {
+          camera.near = 0.1;
+          camera.updateProjectionMatrix();
+        }
       } else {
         modelHolder.visible = true;
         // Vibe Island arrival: sweep from a far, high establishing shot
@@ -5292,6 +5341,36 @@ export default function City() {
         const fogNow = scene.fog as THREE.Fog;
         fogNow.near = Math.max(baseFogNear, camDist * 1.2);
         fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
+
+        /**
+         * The near plane moves with the zoom, and that is what stops the city
+         * shimmering from the air.
+         *
+         * A depth buffer's precision falls off with the SQUARE of distance and
+         * in inverse proportion to the near plane: at range z it can resolve
+         * about z² / (near · 2²⁴). Parked at 0.1 m — which is what a camera
+         * needs when it is nine metres behind a walking player — that is 21 cm
+         * of resolution at 600 m. The sidewalks sit 1.2 cm above the asphalt
+         * and the crossings 2 cm above that, so from a god view every kerb and
+         * every zebra in the district is fighting the road underneath it, and
+         * the whole grid boils. A burst of ten frames had 44% of the pixels
+         * inside the district flipping back and forth.
+         *
+         * The near plane is the free variable: nothing is ever within 2% of
+         * the orbit radius of the camera, because the orbit radius is how far
+         * away the thing being looked at is. At full zoom-out that buys 6 m of
+         * near plane and takes the resolution at 600 m to 4 mm.
+         *
+         * This is only half the fix — it scales with camDist, so it does
+         * nothing for a player who jetpacks to 300 m with the camera still
+         * tight behind them. `polygonOffset` on the pavement in district.ts is
+         * the other half, and that one is resolution-independent.
+         */
+        const wantNear = THREE.MathUtils.clamp(camDist * 0.02, 0.12, 6);
+        if (Math.abs(camera.near - wantNear) > wantNear * 0.04) {
+          camera.near = wantNear;
+          camera.updateProjectionMatrix();
+        }
       }
 
       // Project world positions onto floating in-world bubbles (DOM overlays).

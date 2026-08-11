@@ -809,9 +809,28 @@ export function buildDistrict(opts: DistrictOpts): District {
   const paveNight = makePaving(false);
   const paveDay = makePaving(true);
   [paveNight, paveDay].forEach((t) => t.repeat.set(block / 8, block / 8));
-  const paveMat = new THREE.MeshStandardMaterial({ map: paveNight, roughness: 0.92 });
-  const parkMat = new THREE.MeshStandardMaterial({ color: "#16311f", roughness: 0.95 });
-  const plazaMat = new THREE.MeshStandardMaterial({ color: "#13312a", roughness: 0.9 });
+  /**
+   * The sidewalk sits 1.2 cm above the asphalt, which is a real gap on the
+   * ground and no gap at all in the depth buffer once the camera is a few
+   * hundred metres up: precision falls off with the square of range, so from a
+   * flyover the block interiors and the road they sit on land in the same
+   * depth value and the grid boils.
+   *
+   * `polygonOffset` fixes that in the units that actually matter — it biases
+   * by a number of *resolvable depth steps*, whatever those happen to be worth
+   * at this range — so the sidewalk wins from a kerb-height camera and from
+   * orbit alike. The dynamic near plane in City.tsx does most of the work for
+   * the orbit camera; this is what covers the case it cannot, a player who
+   * jetpacks to 300 m with the camera still tight behind them.
+   */
+  const decal = (units: number) => ({
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: units,
+  });
+  const paveMat = new THREE.MeshStandardMaterial({ map: paveNight, roughness: 0.92, ...decal(-4) });
+  const parkMat = new THREE.MeshStandardMaterial({ color: "#16311f", roughness: 0.95, ...decal(-4) });
+  const plazaMat = new THREE.MeshStandardMaterial({ color: "#13312a", roughness: 0.9, ...decal(-4) });
 
   const walkGeos: THREE.BufferGeometry[] = [];
   const parkGeos: THREE.BufferGeometry[] = [];
@@ -855,8 +874,13 @@ export function buildDistrict(opts: DistrictOpts): District {
   // intersection. Instanced quads a couple of centimetres off the asphalt
   // rather than paint in the road texture, which tiles every 16 m and would
   // repeat the crossings with it.
+  // Deeper offset than the pavement: the paint has to clear both the asphalt
+  // and the sidewalk it can overlap at a junction. Without it the crossings
+  // blink in and out from the air — they never wrote depth, so they were not
+  // fighting anything, they were simply failing the depth test half the time.
   const markMat = new THREE.MeshBasicMaterial({
     color: "#c9d4c0", transparent: true, opacity: 0.5, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -10,
   });
   const markGeo = new THREE.PlaneGeometry(1, 1);
   const marks: THREE.Matrix4[] = [];
