@@ -2119,6 +2119,11 @@ export function buildCardboardIsland(opts: {
   // Whatever. Two chunky posts hold the stacked boards.
   const welcome = new THREE.Group();
   welcome.position.set(0, 0, -18);
+  // Two posts on the lawn: without these the arch reads as hanging in the air
+  // over the path. See `dropShadow` for why the island gets painted contact
+  // shadows rather than real ones.
+  dropShadow(welcome, -7, 0, 3.4, 3.4);
+  dropShadow(welcome, 7, 0, 3.4, 3.4);
   [-7, 7].forEach((px) => {
     const post = new THREE.Mesh(
       new THREE.CylinderGeometry(0.22, 0.28, 8.6, 10),
@@ -2224,6 +2229,7 @@ export function buildCardboardIsland(opts: {
   const MILL_X = 40;
   const MILL_Z = -26;
   mill.position.set(MILL_X, 0, MILL_Z);
+  dropShadow(mill, 0, 0, 9, 9);
   const towerH = 15;
   const tower = new THREE.Mesh(new THREE.BoxGeometry(4.5, towerH, 4.5), cardboardMat);
   tower.position.y = towerH / 2;
@@ -2292,6 +2298,7 @@ export function buildCardboardIsland(opts: {
         const a = ((i * 2 + c) / 6) * Math.PI * 2 + 0.4;
         inst.scale.setScalar(fit * (0.85 + ((i + c) % 3) * 0.12));
         inst.position.set(Math.cos(a) * (ISLAND_RADIUS - 7), 0, Math.sin(a) * (ISLAND_RADIUS - 7));
+        dropShadow(group, inst.position.x, inst.position.z, 7, 7);
         inst.rotation.y = a * 2.3;
         group.add(inst);
       }
@@ -3762,6 +3769,8 @@ export function buildCardboardIsland(opts: {
   // Rotate so the service window faces inward toward the plaza/center.
   snackGroup.rotation.y = Math.PI;
 
+  dropShadow(snackGroup, 0, 0, SNACK_W * 2, SNACK_D * 2.2);
+
   // Dark matte concrete body — contrast against cardboard kid-world.
   const snackBody = new THREE.Mesh(
     new THREE.BoxGeometry(SNACK_W, SNACK_H, SNACK_D),
@@ -4446,15 +4455,35 @@ export function buildCardboardIsland(opts: {
       [SNACK_X, SNACK_Z, SNACK_W / 2 - 0.3, SNACK_D / 2 - 0.3],
     ];
 
-    const blocked = (x: number, z: number) => {
-      if (Math.abs(x) < PATH_HALF || Math.abs(z) < PATH_HALF) return true;
+    /**
+     * How much grass grows at a point, 0..1.
+     *
+     * The pads and the footprints are hard zeroes — they have a floor. The
+     * paths are not: grass thins over a metre and a half of verge either side
+     * rather than stopping at a line, because a lawn with a dead-straight edge
+     * along a footpath is the clearest possible signal that it was placed by a
+     * rule. Same for the plaza's outer metre.
+     */
+    const VERGE = 1.6;
+    const feather = (dist: number) =>
+      THREE.MathUtils.clamp(dist / VERGE, 0, 1);
+    const grassDensity = (x: number, z: number) => {
+      // Distance out of the path cross (negative inside it).
+      let d = feather(Math.min(Math.abs(x), Math.abs(z)) - PATH_HALF);
+      if (d <= 0) return 0;
       for (const [cx, cz, r] of clearCircles) {
-        if ((x - cx) ** 2 + (z - cz) ** 2 < r * r) return true;
+        d = Math.min(d, feather(Math.hypot(x - cx, z - cz) - r));
+        if (d <= 0) return 0;
       }
       for (const [rx, rz, hw, hd] of clearRects) {
-        if (Math.abs(x - rx) < hw && Math.abs(z - rz) < hd) return true;
+        // Outside distance from an axis-aligned box; inside it this goes
+        // negative on at least one axis and `feather` clamps to zero.
+        const ox = Math.abs(x - rx) - hw;
+        const oz = Math.abs(z - rz) - hd;
+        d = Math.min(d, feather(Math.max(ox, oz)));
+        if (d <= 0) return 0;
       }
-      return false;
+      return d;
     };
 
     // The cap's top radius is (ISLAND_RADIUS + 1.6) scaled by the same rim
@@ -4464,7 +4493,7 @@ export function buildCardboardIsland(opts: {
     const grass = buildGrassField({
       radius: ISLAND_RADIUS + 1.2,
       rimAt,
-      blocked,
+      density: grassDensity,
       count: lowDetail ? 18000 : 62000,
       seed: 61803,
     });
@@ -4474,7 +4503,7 @@ export function buildCardboardIsland(opts: {
     const cover = buildGroundCover({
       radius: ISLAND_RADIUS,
       rimAt,
-      blocked,
+      density: grassDensity,
       count: lowDetail ? 240 : 700,
       seed: 27182,
     });
