@@ -1094,8 +1094,8 @@ export function buildCardboardIsland(opts: {
 
   const cardboardMat = new THREE.MeshStandardMaterial({
     map: cardboard,
-    normalMap: flutes(3, 3),
-    normalScale: new THREE.Vector2(0.85, 0.85),
+    normalMap: flutes(1, 0.4),
+    normalScale: new THREE.Vector2(0.75, 0.75),
     roughness: 0.94,
   });
   // The "cut board" tone — roof slabs, posts, legs, counters. Now with the
@@ -1103,8 +1103,8 @@ export function buildCardboardIsland(opts: {
   // looking like a slab of butter.
   const cardboardDark = new THREE.MeshStandardMaterial({
     color: "#9a7a4e",
-    normalMap: flutes(6, 6),
-    normalScale: new THREE.Vector2(0.9, 0.9),
+    normalMap: flutes(1, 0.3),
+    normalScale: new THREE.Vector2(0.7, 0.7),
     roughness: 0.96,
   });
 
@@ -2494,7 +2494,16 @@ export function buildCardboardIsland(opts: {
   // Low cardboard planter wall around the rim (segments, with gaps for paths).
   {
     const seg = 24;
-    const wallMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.95 });
+    const wallMat = new THREE.MeshStandardMaterial({
+      map: cardboard,
+      // Planter-wall segments are 70 cm tall, and a box face's UVs are 0..1
+      // whatever its size — so the repeat has to be picked per prop, not per
+      // material, or a knee-high wall gets thirty-four flutes to the metre and
+      // shimmers. About 1.5 per metre is the target everywhere.
+      normalMap: flutes(1, 0.09),
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughness: 0.95,
+    });
     for (let i = 0; i < seg; i++) {
       const a = (i / seg) * Math.PI * 2;
       // Leave 4 gaps aligned with the cross paths (N/S/E/W).
@@ -2556,7 +2565,12 @@ export function buildCardboardIsland(opts: {
 
   // Benches facing Jerry, on the diagonals.
   {
-    const benchMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.92 });
+    const benchMat = new THREE.MeshStandardMaterial({
+      map: cardboard,
+      normalMap: flutes(1, 0.1),
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughness: 0.92,
+    });
     const diagonals = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4];
     diagonals.forEach((a) => {
       const r = PLAZA_R - 2.6;
@@ -2624,7 +2638,12 @@ export function buildCardboardIsland(opts: {
     // longer blocks the spawn camera's view of the player.
     archGroup.position.set(-(PLAZA_R + 0.3), 0, 0);
     archGroup.rotation.y = Math.PI / 2;
-    const postMat = new THREE.MeshStandardMaterial({ map: cardboard, roughness: 0.95 });
+    const postMat = new THREE.MeshStandardMaterial({
+      map: cardboard,
+      normalMap: flutes(1, 0.5),
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughness: 0.95,
+    });
     [-2.4, 2.4].forEach((px) => {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5, 0.45), postMat);
       post.position.set(px, 2.5, 0);
