@@ -27,9 +27,12 @@ import { CHARACTERS, findCharacter, type CharSpec } from "@/lib/characters";
 import {
   DEFAULT_LOADOUT,
   equip,
+  owns,
   subscribeWardrobe,
   type WardrobeState,
 } from "@/lib/wardrobe";
+import { SHOP_CHARACTERS } from "@/lib/characterShop";
+
 
 const LS_KEY = "lobby.character";
 const LS_KEY_CITY = "city.character";
