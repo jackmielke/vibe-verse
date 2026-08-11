@@ -173,6 +173,33 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
     const baseRate = (Math.PI * 2) / rotateSeconds;
     let currentMul = 1;
     let raf = 0;
+    /**
+     * Off screen, or in a hidden tab, it stops.
+     *
+     * This is what makes the arc safe to put in more than one place. It holds
+     * a live WebGL context and a rAF for as long as it is mounted, and browsers
+     * cap contexts at around sixteen — the same cap this repo already worries
+     * about worlds leaking. A brand ornament that keeps a GPU context spinning
+     * behind a scrolled-past section is the cheapest possible way to break the
+     * *next* thing the visitor opens.
+     *
+     * `clock.getDelta()` is also why the stop has to be a real stop rather than
+     * an early return that leaves the rAF running: resuming after two minutes
+     * in a background tab with a two-minute delta would fling the arc across
+     * the canvas. Restarting the loop restarts the clock with it.
+     */
+    let running = false;
+    const start = () => {
+      if (running) return;
+      running = true;
+      clock.getDelta();          // discard the gap since it last ran
+      raf = requestAnimationFrame(tick);
+    };
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(raf);
+    };
+
     const tick = () => {
       const dt = clock.getDelta();
       const t = clock.elapsedTime;
@@ -249,12 +276,35 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
         }
       }
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
+      if (running) raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+
+    /* Visible and in a foreground tab is the only state that draws. Both
+       observers fire immediately on attach, so nothing has to guess the
+       starting state. */
+    let onScreen = true;
+    const sync = () => (onScreen && !document.hidden ? start() : stop());
+    const io =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(
+            ([e]) => {
+              onScreen = e.isIntersecting;
+              sync();
+            },
+            { rootMargin: "120px" },
+          );
+    io?.observe(canvas);
+    document.addEventListener("visibilitychange", sync);
+    /* One frame regardless, so a canvas that is never scrolled to is still a
+       picture of the arc rather than a transparent hole. */
+    renderer.render(scene, camera);
+    if (!io) start();
 
     return () => {
-      cancelAnimationFrame(raf);
+      io?.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+      stop();
       pmrem.dispose();
       renderer.dispose();
       scene.traverse((o) => {

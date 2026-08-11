@@ -110,7 +110,7 @@ export default function Join() {
               was written months ago and imported by nothing — an emblem that
               only exists in the source is not a brand. */}
           <div className="flex justify-center">
-            <VibeWink size={112} speed={0.85} />
+            <VibeWink size={112} speed={0.85} priority />
           </div>
           <p className="mt-1 font-heading text-[9px] font-bold uppercase tracking-[0.44em] text-[#8fb4ff]">
             You have been invited

@@ -27,7 +27,7 @@
  * should have to be a decision rather than the default everywhere.
  */
 import type { CSSProperties } from "react";
-import winkGlass from "@/assets/brand/vibe-wink-glass.png.asset.json";
+import { WINK_GLASS_INTRINSIC, winkSrcFor } from "@/lib/brand";
 
 interface Props {
   /** Pixel size of the emblem. Default 220. */
@@ -43,6 +43,14 @@ interface Props {
   bob?: boolean;
   /** Phase offset in seconds so multiple wink copies don't sync. */
   phase?: number;
+  /**
+   * This is the mark somebody is waiting to see — fetch it ahead of the rest.
+   *
+   * Exactly one surface per page should say so. The default is a lazy image,
+   * which is right for a wink sitting beside a balance halfway down a page and
+   * wrong for the one filling the middle of `/join`.
+   */
+  priority?: boolean;
   className?: string;
   style?: CSSProperties;
 }
@@ -53,6 +61,7 @@ export default function VibeWink({
   spin = false,
   bob = false,
   phase = 0,
+  priority = false,
   className = "",
   style,
 }: Props) {
@@ -84,9 +93,18 @@ export default function VibeWink({
         }}
       >
         <img
-          src={winkGlass.url}
+          src={winkSrcFor(size)}
           alt=""
           draggable={false}
+          /* Intrinsic size, so the box is reserved before the bytes arrive.
+             Without these the mark is a 0×0 image until it loads and then
+             shoves the line it is in — most visible next to a balance, which
+             is the number people are actually reading. */
+          width={WINK_GLASS_INTRINSIC}
+          height={WINK_GLASS_INTRINSIC}
+          decoding="async"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           style={{
             display: "block",
             width: "100%",

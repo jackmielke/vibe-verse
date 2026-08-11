@@ -304,7 +304,7 @@ export default function Game() {
               390 px the headline is the brand. */}
           <div className="flex items-center gap-4 sm:gap-6">
             <div className="hidden shrink-0 sm:block" aria-hidden>
-              <VibeWink size={96} speed={0.7} />
+              <VibeWink size={96} speed={0.7} priority />
             </div>
             <div className="min-w-0">
               <p className="font-heading text-[9px] font-bold uppercase tracking-[0.36em] text-muted-foreground sm:text-[10px] sm:tracking-[0.42em]">
