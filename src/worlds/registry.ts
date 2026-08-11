@@ -538,7 +538,7 @@ const WORLDS_RAW: WorldEntry[] = [
       "Jetpack a neon district — multiplayer, NPCs, star runs, and Vibey to talk to.",
     status: "Playable — multiplayer",
     accent: "#f0abfc",
-    source: "src/pages/City.tsx + src/components/city",
+    source: "src/pages/City.tsx + src/components/city + src/city",
     nav: true,
     passport: true,
   },

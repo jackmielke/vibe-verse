@@ -61,6 +61,7 @@ import {
 } from "@/lib/worldPhysics";
 import { CollisionWorld } from "@/city/player/collision";
 import { buildDistrict } from "@/city/district";
+import { buildOcean, beachHeightAt, OCEAN_DAY, OCEAN_NIGHT } from "@/city/ocean";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -1323,85 +1324,10 @@ export default function City() {
     // own collision into the same array. See CollisionWorld's constructor.
     const boxes = district.boxes;
     const pads = district.pads;
-    // Surrounding "ocean": a shader plane around the city plate. Gentle
-    // animated waves, fresnel sky reflection, sun glints, and a day/night
-    // tint so the world feels like a city on an island.
-    const waterUniforms = {
-      uTime: { value: 0 },
-      uDay: { value: 1 },
-      uShallow: { value: new THREE.Color("#3aa9c4") },
-      uDeep: { value: new THREE.Color("#0a2238") },
-      uSky: { value: new THREE.Color("#bcdff5") },
-      uFogColor: { value: new THREE.Color("#cfe6f5") },
-      uFogNear: { value: 170 },
-      uFogFar: { value: 1100 },
-    };
-    const apronMat = new THREE.ShaderMaterial({
-      uniforms: waterUniforms,
-      transparent: true,
-      depthWrite: false,
-      fog: false,
-      vertexShader: `
-        uniform float uTime;
-        varying vec3 vWorld;
-        void main(){
-          vec4 wp = modelMatrix * vec4(position, 1.0);
-          float t = uTime;
-          // Waves flatten to a calm sheet under and around the city
-          // plate (half-diagonal ~255m) — they used to crest ABOVE the
-          // ground plane and shimmer through the streets.
-          float damp = smoothstep(265.0, 420.0, length(wp.xz));
-          wp.y += (sin(wp.x * 0.012 + t * 0.9) * 0.35
-                + sin(wp.z * 0.017 - t * 0.7) * 0.30
-                + sin((wp.x + wp.z) * 0.008 + t * 0.5) * 0.20) * damp
-                - 0.12;
-          vWorld = wp.xyz;
-          gl_Position = projectionMatrix * viewMatrix * wp;
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        uniform float uDay;
-        uniform vec3 uShallow;
-        uniform vec3 uDeep;
-        uniform vec3 uSky;
-        uniform vec3 uFogColor;
-        uniform float uFogNear;
-        uniform float uFogFar;
-        varying vec3 vWorld;
-        void main(){
-          float t = uTime;
-          vec3 n = normalize(vec3(
-            sin(vWorld.x * 0.06 + t * 1.3) * 0.18 + sin(vWorld.x * 0.19 - t * 1.8) * 0.07,
-            1.0,
-            sin(vWorld.z * 0.07 + t * 1.1) * 0.18 + sin(vWorld.z * 0.22 - t * 1.5) * 0.07
-          ));
-          vec3 viewDir = normalize(cameraPosition - vWorld);
-          float fres = pow(1.0 - max(dot(viewDir, n), 0.0), 3.0);
-          float dist = length(vWorld.xz);
-          float depthMix = smoothstep(180.0, 900.0, dist);
-          vec3 col = mix(uShallow, uDeep, depthMix);
-          col = mix(col, uSky, fres * 0.7);
-          vec3 sunDir = normalize(vec3(0.4, 0.9, 0.3));
-          vec3 h = normalize(viewDir + sunDir);
-          float spec = pow(max(dot(n, h), 0.0), 180.0);
-          col += vec3(1.0, 0.95, 0.8) * spec * 1.4 * uDay;
-          float dCam = length(cameraPosition - vWorld);
-          float fogF = smoothstep(uFogNear, uFogFar, dCam);
-          col = mix(col, uFogColor, fogF);
-          gl_FragColor = vec4(col, 0.97);
-        }
-      `,
-    });
-    // Circular ocean disc — matches Earth's horizon better than a square
-    // plane; corners no longer cut off in fog.
-    const apron = new THREE.Mesh(new THREE.CircleGeometry(2000, 128), apronMat);
-    apron.rotation.x = -Math.PI / 2;
-    apron.position.y = -0.05;
-    scene.add(apron);
-    const updateWater = (now: number) => {
-      waterUniforms.uTime.value = now * 0.001;
-    };
+    // The sea, the seabed and the beach the city sits on all come out of
+    // `src/city/ocean.ts` — but it is built further down, after the sky
+    // dome, because it reflects that dome's own uniforms rather than a
+    // second set of colours that could drift out of step with it.
 
     // Plaza spawn ring + marquee.
     const padMat = new THREE.MeshBasicMaterial({
@@ -2590,6 +2516,28 @@ export default function City() {
     skyDome.renderOrder = -1000;
     scene.add(skyDome);
 
+    /**
+     * The sea, and the beach it breaks on.
+     *
+     * Built here rather than up with the district because it takes the sky
+     * dome's uniform objects BY REFERENCE. The water's reflection is the same
+     * gradient function fed the same colours, so `applyMode` crossing the sky
+     * from night to day, and the weather system tinting it afterwards, both
+     * carry into the water for free. The previous ocean kept its own copies of
+     * four colours and they had to be re-stated by hand in `applyMode`, which
+     * is exactly how the city once ended up sitting at night on a bright
+     * turquoise daylight sea.
+     */
+    const ocean = buildOcean({ skyUniforms, lowDetail: smallScreen });
+    scene.add(ocean.group);
+    // Dev-only handle for `scripts/ocean-probe.mjs`. Water is the one thing in
+    // here you genuinely cannot debug from a screenshot: "flat blue" is what a
+    // missing mesh, a shader that failed to link and a correct calm sea all
+    // look like.
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__cityOcean = ocean.group;
+    }
+
     // Stars + moon (fog-exempt so they read at any distance).
     const starGeo = new THREE.BufferGeometry();
     {
@@ -2792,13 +2740,10 @@ export default function City() {
       skyUniforms.uSunColor.value.set(day ? "#ffe6b0" : "#8fb4e8");
       skyUniforms.uSunPower.value = day ? 0.9 : 0.22;
       district.setDay(day);
-      waterUniforms.uDay.value = day ? 1 : 0;
-      waterUniforms.uShallow.value.set(day ? "#3aa9c4" : "#0a1a2a");
-      waterUniforms.uDeep.value.set(day ? "#0a2238" : "#02060d");
-      waterUniforms.uSky.value.set(day ? "#bcdff5" : "#0a1322");
-      waterUniforms.uFogColor.value.set(day ? "#cfe6f5" : "#05080d");
-      waterUniforms.uFogNear.value = day ? 170 : 90;
-      waterUniforms.uFogFar.value = day ? 1100 : 520;
+      ocean.setPalette(day ? OCEAN_DAY : OCEAN_NIGHT);
+      // The sand is lit geometry, not a shader, so it needs the same knock-down
+      // the facades get at night or the beach glows like a runway.
+      ocean.setSandTint(day ? "#ffffff" : "#7f92aa");
       // GOD MODE layers on top: this function has just reset every handle
       // to its clear-sky value, so the weather has to re-state itself.
       weatherRef.current?.applyAtmosphere(day);
@@ -3353,6 +3298,36 @@ export default function City() {
         arrivalStart = 0;
         player.position.set(ISLAND_X + x, ISLAND_TOP + 1.2, ISLAND_Z + z);
       };
+
+      /**
+       * Pin the time of day.
+       *
+       * Clicking the toggle is not enough for a screenshot harness: the mode
+       * is a shared world setting, so the Supabase row and any peer's toggle
+       * both overwrite it mid-run — which is how a "day" pass came back as
+       * seven pictures of a night ocean.
+       */
+      (window as unknown as Record<string, unknown>).__cityDay = (on: boolean) => {
+        setDayMode(on);
+        applyMode(on);
+      };
+
+      /**
+       * Stand anywhere, in world coordinates.
+       *
+       * `__cityGoto` is island-local and pins you to the island's altitude,
+       * which is the wrong tool for photographing the shoreline: getting to
+       * the beach through it meant a 120 m drop, and a 120 m drop is fall
+       * damage, a respawn, and a screenshot of the plaza.
+       */
+      (window as unknown as Record<string, unknown>).__cityWarp = (
+        x: number,
+        y: number,
+        z: number,
+      ) => {
+        arrivalStart = 0;
+        player.position.set(x, y, z);
+      };
     }
     // VR-only: stable "body yaw" the dolly is parked behind. This is
     // intentionally decoupled from the headset rotation so turning your
@@ -3490,7 +3465,10 @@ export default function City() {
     const collision = new CollisionWorld(boxes, {
       radius: PLAYER_RADIUS,
       // Powder Peak's snow is computed, not boxed.
-      analyticHeightAt: (x, z) => skiWorld.heightAt(x, z),
+      // Two analytic surfaces now: Powder Peak's snow, and the sand berm
+      // around the city. They never overlap — the ski world is 850 m out —
+      // so first non-null wins is enough.
+      analyticHeightAt: (x, z) => skiWorld.heightAt(x, z) ?? beachHeightAt(x, z),
     });
 
     // Bounciness of whichever surface won the most recent
@@ -5144,7 +5122,7 @@ export default function City() {
       
       vibey.update(dt, now);
       updateClouds(now);
-      updateWater(now);
+      ocean.update(now * 0.001, scene.fog as THREE.Fog | null);
       agentResidents.update(dt, pos);
       rosterBoard.update(dt);
 
@@ -5420,9 +5398,14 @@ export default function City() {
       unsubRoster();
       rosterBoard.dispose();
       district.dispose();
+      ocean.dispose();
 
       delete devWindow.__cityDebug;
       delete (window as unknown as Record<string, unknown>).__cityCam;
+      delete (window as unknown as Record<string, unknown>).__cityGoto;
+      delete (window as unknown as Record<string, unknown>).__cityWarp;
+      delete (window as unknown as Record<string, unknown>).__cityOcean;
+      delete (window as unknown as Record<string, unknown>).__cityDay;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();
