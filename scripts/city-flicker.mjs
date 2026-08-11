@@ -1,29 +1,36 @@
 #!/usr/bin/env node
 /**
- * city-flicker — catch the city shimmering from the air, with a number.
+ * city-flicker — measure how much of the city is decided by depth rounding.
  *
  *     node scripts/city-flicker.mjs <outDir> [dist] [pitch] [yaw]
- *     node scripts/city-flicker.mjs --compare <dirA> <dirB>
  *
  * "It flickers from above" is not something a screenshot shows or a build
- * catches. Z-fighting is also invisible in a frozen frame — two surfaces at
- * the same depth pick a winner and hold it, and the pattern only *flickers*
- * once the camera moves. So this drives a deliberate, tiny, reproducible orbit
- * (a fraction of a pixel per frame at this range) and counts the pixels that
- * flip hard and flip back, which is the z-fighting signature and is nothing
- * like the smooth movement of traffic, water or a blinking window.
+ * catches, and the obvious tool for it does not work. Diffing consecutive
+ * frames sounds right and is useless here: at this zoom a fraction of a pixel
+ * of camera drift lights up every edge in a dense city, so the metric
+ * saturates around 45% whatever you do to the depth buffer. Two measurements
+ * taken that way were wrong, one of them declaring a fix a regression.
  *
- * Two things make the number trustworthy, and both were learned the hard way:
+ * What works is a **depth probe**. Z-fighting is invisible in a frozen frame —
+ * two surfaces at the same depth pick a winner and hold it — but it is not
+ * invisible to a change in *precision*. So this renders the same frame twice
+ * inside one synchronous call with the near plane nudged two parts in ten
+ * thousand between them. No traffic has moved, no wave has advanced, the
+ * camera has not shifted by a nanometre; every pixel that differs is a pixel
+ * whose winner was decided by depth rounding rather than by geometry. That is
+ * the number, and it is stable enough to compare across runs:
  *
- *  - The pose is read BACK through `__cityDebug.camPose()` and re-asserted
- *    until it sticks. `__cityCam` is a request; the arrival swoop, fast travel
- *    and the kart chase all drive the camera too. A run where the camera
- *    quietly settled at a different zoom reported a fix as a regression.
- *  - The orbit is identical between runs, so two runs are comparable. With a
- *    genuinely frozen camera the metric reads zero whether or not the depth
- *    buffer is in trouble.
+ *     before the fix   6.93% of the district
+ *     after            0.01%
  *
- * Frames are written out too, so the speckle can be eyeballed for where it is.
+ * The pose is read BACK through `__cityDebug.camPose()` and re-asserted until
+ * the camera has genuinely ARRIVED, not merely stopped for a beat. `__cityCam`
+ * is a request, not a guarantee — the arrival swoop, fast travel and the kart
+ * chase all drive the camera too, and a burst begun mid-swoop is a burst of
+ * the wrong shot at the wrong zoom.
+ *
+ * Frames are written out as pairs (`f00a.png` / `f00b.png`) so the speckle can
+ * be eyeballed for where it is; diff a pair to see the map.
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -82,7 +89,7 @@ await page.waitForFunction(
   { timeout: 90000 },
 );
 
-/** Assert the pose until the page agrees, then confirm it held for a beat. */
+/** Assert the pose until the camera has actually arrived at it. */
 async function pin(yaw) {
   for (let i = 0; i < 25; i++) {
     await page.evaluate(([d, p, y]) => {
@@ -97,11 +104,12 @@ async function pin(yaw) {
     const posed = Math.abs(a.dist - DIST) < 1 && Math.abs(a.yaw - yaw) < 1e-4;
     // Settled: the eased chase camera has stopped closing on its target.
     const still = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 0.25;
-    // ...and ARRIVED, not merely momentarily stationary. The chase camera eases
-    // in, and there is a beat at the very start of a 700 m zoom where it has
-    // not moved yet — a burst begun there is a burst of the wrong shot, taken
-    // while every distance-dependent thing in the frame is still catching up.
-    const arrived = Math.abs(a.y - (2 + Math.sin(PITCH) * DIST + 1.4)) < DIST * 0.05;
+    // ...and ARRIVED. `dist` is what the camera was ASKED for; the distance
+    // from the player is what it currently IS. There is a beat at the start of
+    // a 700 m zoom where the camera has not moved yet, and it passes a
+    // stillness test while being 600 m from where it is going.
+    const real = Math.hypot(a.x - a.px, a.y - a.py, a.z - a.pz);
+    const arrived = Math.abs(real - DIST) < DIST * 0.04;
     if (posed && still && arrived) return a;
   }
   throw new Error("camera would not hold the pose");

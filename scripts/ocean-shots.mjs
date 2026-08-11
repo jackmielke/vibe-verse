@@ -24,6 +24,7 @@ const PORT = Number(process.env.CITY_PORT ?? 5181);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 /** `at` is where the player stands; the camera orbits them. */
+const ONLY = process.env.SHOT_ONLY;
 const SHOTS = [
   { name: "01-beach", at: [196, 1.2, 20], dist: 9, pitch: 0.1, yaw: -1.5708, note: "on the sand, out to sea" },
   { name: "02-surf", at: [200, 1, 20], dist: 52, pitch: 0.16, yaw: 1.5708, note: "off the break, back at the shore" },
@@ -88,7 +89,11 @@ console.log("· booting the city (software GL, this is slow)");
 await page.goto(`${BASE}/city?fresh=1`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("canvas", { timeout: 120000 });
 await page.waitForTimeout(22000);
-await page.waitForFunction(() => typeof window.__cityDay === "function", null, { timeout: 90000 });
+await page.waitForFunction(
+  () => typeof window.__cityDay === "function" && window.__cityDebug?.camPose,
+  null,
+  { timeout: 90000 },
+);
 
 // Pinned through the DEV hook rather than the toggle button: the time of day
 // is a shared world setting, so a Supabase row or any peer's toggle overwrites
@@ -98,23 +103,64 @@ async function setDay(day) {
   await page.waitForTimeout(2000);
 }
 
+/**
+ * Hold the pose until the camera has actually arrived at it.
+ *
+ * `__cityCam` is a request, not a guarantee: the arrival swoop, fast travel
+ * and the kart chase all drive the camera too, and the chase camera EASES to
+ * its target rather than snapping. Firing the shutter on a fixed timer is how
+ * half of these came back framed on the player's back at nine metres instead
+ * of the shot that was asked for. `dist` is what the camera was asked for; the
+ * distance from the player is what it currently is, and those have to agree.
+ */
+async function hold(shot, day) {
+  // State first, once. `__cityDay` goes through a React setState, and calling
+  // it in the poll loop re-rendered the page every iteration — on software GL
+  // that is a meaningful slice of the frame budget the camera needs to close.
+  await page.evaluate(
+    ([at, d, p, y, isDay]) => {
+      window.__cityDay(isDay);
+      window.__cityWarp(at[0], at[1], at[2]);
+      window.__cityCam(d, p, y);
+    },
+    [shot.at, shot.dist, shot.pitch, shot.yaw, day],
+  );
+
+  // Then wait for the camera to arrive. It closes on its target by about 30%
+  // per tick, and a tick here can be seconds, so a 700 m zoom needs real
+  // wall-clock — the fixed four-second wait this replaced was routinely
+  // shooting a shot that was still tens of metres from where it was asked to
+  // be. Polls out early the moment it lands, so a real machine pays nothing.
+  let last = "";
+  for (let i = 0; i < 45; i++) {
+    await page.evaluate(
+      ([at, d, p, y]) => {
+        const pose = window.__cityDebug.camPose();
+        // Only re-place the player if something moved them; teleporting every
+        // poll would keep resetting the target the camera is closing on.
+        if (Math.hypot(pose.px - at[0], pose.py - at[1], pose.pz - at[2]) > 1.5) {
+          window.__cityWarp(at[0], at[1], at[2]);
+        }
+        window.__cityCam(d, p, y);
+      },
+      [shot.at, shot.dist, shot.pitch, shot.yaw],
+    );
+    await page.waitForTimeout(700);
+    const a = await page.evaluate(() => window.__cityDebug.camPose());
+    const real = Math.hypot(a.x - a.px, a.y - a.py, a.z - a.pz);
+    if (Math.abs(a.dist - shot.dist) < 1 && Math.abs(real - shot.dist) < Math.max(1.5, shot.dist * 0.06)) {
+      return;
+    }
+    last = `asked ${shot.dist}, camDist ${a.dist.toFixed(1)}, actually ${real.toFixed(1)} m from the player`;
+  }
+  console.log(`  ! camera never settled on ${shot.name} (${last}); shooting anyway`);
+}
+
 for (const mode of MODES) {
   console.log(`\n=== ${mode} ===`);
   await setDay(mode === "day");
-  for (const s of SHOTS) {
-    // Re-asserted: the city drives its own camera in several places and any
-    // of them firing mid-settle drops the shot back to head height.
-    for (let i = 0; i < 4; i++) {
-      await page.evaluate(
-        ([at, d, p, y, day]) => {
-          window.__cityDay(day);
-          window.__cityWarp(at[0], at[1], at[2]);
-          window.__cityCam(d, p, y);
-        },
-        [s.at, s.dist, s.pitch, s.yaw, mode === "day"],
-      );
-      await page.waitForTimeout(900);
-    }
+  for (const s of SHOTS.filter((x) => !ONLY || x.name.includes(ONLY))) {
+    await hold(s, mode === "day");
     const name = `${mode}-${s.name}`;
     await page.screenshot({ path: `${OUT}/${name}.png` });
     console.log(`· ${name} — ${s.note}`);
