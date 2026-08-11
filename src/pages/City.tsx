@@ -5850,7 +5850,10 @@ export default function City() {
           blur() calls keep focus off the buttons so Space stays on
           the jetpack instead of re-clicking them. */}
       {entered && !isLive && (
-        <div ref={hudWrapRef} className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
+        <div
+          ref={hudWrapRef}
+          className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2 md:top-3 md:right-auto md:left-1/2 md:-translate-x-1/2 md:items-center"
+        >
           {/* Mobile-only trigger — collapses the whole chip row. The
               ✕ state also dismisses every open sub-panel (chat /
               emote / character) so the close button actually closes
@@ -5880,7 +5883,11 @@ export default function City() {
               </span>
             )}
           </button>
-          <div className={`${hudMenuOpen ? "flex" : "hidden"} md:flex flex-wrap justify-end gap-2 max-w-[88vw]`}>
+          <div
+            className={`${
+              hudMenuOpen ? "flex" : "hidden"
+            } md:flex flex-wrap justify-end gap-2 max-w-[88vw] md:justify-center md:max-w-[62vw] md:rounded-full md:bg-background/40 md:backdrop-blur-md md:border md:border-border/40 md:px-2 md:py-1.5`}
+          >
             <button
               onClick={(e) => {
                 const next = !muted;
