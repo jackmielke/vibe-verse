@@ -74,14 +74,19 @@ export function setActiveCharacter(nextId: string) {
   adopted = true; // a deliberate pick outranks anything the server has to say
   writeLocal(nextId);
   /* Best-effort, and deliberately not awaited: putting on a different body
-     should happen on the frame you tap it. `equip` already reverts its own
-     optimistic state on failure, and the local copy is what renders either
-     way — the worst case is that this device knows and the next one does not,
-     which is exactly where we were before the column existed. Rejected for a
-     character you do not own is the ordinary case for a guest, and is not
-     worth a toast. */
+     should happen on the frame you tap it. The local copy is what renders
+     either way.
+
+     Don't even ask the till for a character that is for sale and not owned:
+     the server answers "you do not own X" with a 500, which the client's
+     error reporting surfaces as a runtime error even though `equip` swallows
+     it. Wearing an unowned shop skin locally is the pre-existing behaviour;
+     it just no longer generates a failed request per pick. */
+  const priced = SHOP_CHARACTERS.find((c) => c.id === nextId);
+  if (priced && !owns("character", nextId, priced.price)) return;
   void equip({ character: nextId }).catch(() => {});
 }
+
 
 export function useActiveCharacter(): {
   charId: string;
