@@ -241,6 +241,24 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    /* Not ours: hosted by its author and framed through the portal, so there
+       is no directory here to point `source` at and nothing to lazy-load. It
+       gets a card because people should be able to find it from the grid, and
+       a literal `/blob-battle` route because a card has to point at one. */
+    key: "blob-battle",
+    route: "/blob-battle",
+    aliases: ["/blobbattle"],
+    name: "Blob Battle",
+    emoji: "🟢",
+    kind: "game",
+    blurb:
+      "A guest game on the arcade shelf. Eat what is smaller, run from what is bigger, split to catch what runs — last blob standing takes it.",
+    status: "Playable — hosted by its author, framed here",
+    accent: "#7cf59a",
+    source: "src/pages/PortalPlay.tsx",
+    nav: false,
+  },
+  {
     key: "blob",
     route: "/blob",
     aliases: ["/agar", "/agario", "/cells"],
