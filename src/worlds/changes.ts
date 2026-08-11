@@ -65,12 +65,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
-    { sha: "2e86ffe", iso: "2026-08-11T06:40:55+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
+    { sha: "7766bad", iso: "2026-08-11T07:08:35+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
+    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
     { sha: "b4d7244", iso: "2026-08-11T06:19:49+00:00", subject: "Merge remote-tracking branch 'origin/main' into claude/vibeyverse-structure-overview-qufpth" },
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
     { sha: "52d7edf", iso: "2026-08-11T05:39:45+00:00", subject: "Changes" },
     { sha: "4112ff9", iso: "2026-08-11T05:39:22+00:00", subject: "Changes" },
-    { sha: "6268c03", iso: "2026-08-11T03:41:16+00:00", subject: "Gave Vibe City a real sea, and a beach for it to break on" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -152,12 +152,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
-    { sha: "2e86ffe", iso: "2026-08-11T06:40:55+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
+    { sha: "7766bad", iso: "2026-08-11T07:08:35+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
+    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
     { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
-    { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -191,12 +191,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
-    { sha: "2e86ffe", iso: "2026-08-11T06:40:55+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
+    { sha: "7766bad", iso: "2026-08-11T07:08:35+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
+    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
     { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
-    { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
   ],
   "museum": [
     { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -253,12 +253,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
-    { sha: "2e86ffe", iso: "2026-08-11T06:40:55+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
+    { sha: "7766bad", iso: "2026-08-11T07:08:35+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
+    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
     { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
-    { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
   ],
   "space": [
     { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
@@ -309,12 +309,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
-    { sha: "2e86ffe", iso: "2026-08-11T06:40:55+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
+    { sha: "7766bad", iso: "2026-08-11T07:08:35+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
+    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
     { sha: "8a777ce", iso: "2026-08-10T23:24:32+00:00", subject: "Changes" },
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
     { sha: "4ec0a9c", iso: "2026-08-10T05:15:29+00:00", subject: "Five characters that are not the same person in different paint" },
-    { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
   ],
   "vibeverse": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
