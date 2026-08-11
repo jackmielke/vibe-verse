@@ -18,6 +18,7 @@ import evolveArt from "@/assets/worlds/evolve.jpg";
 import gardenArt from "@/assets/worlds/garden.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
+import vibeIslandArt from "@/assets/worlds/vibe-island.jpg";
 import lobbyArt from "@/assets/worlds/lobby.png";
 import moonArt from "@/assets/worlds/moon.jpg";
 import museumArt from "@/assets/worlds/museum.jpg";
@@ -75,7 +76,11 @@ export const WORLD_ART: Record<string, string> = {
   evolve: evolveArt,
   garden: gardenArt,
   golf: golfArt,
-  island: islandArt,
+  /* Vibe Island and Island Explorer used to share one capture. They are
+     different worlds, and after the grass pass they no longer even look
+     alike — so Vibe Island has its own frame now (`scripts/island-card.mjs`)
+     and Island Explorer keeps the old one. */
+  island: vibeIslandArt,
   "island-explorer": islandArt,
   lobby: lobbyArt,
   moon: moonArt,
