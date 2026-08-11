@@ -31,6 +31,13 @@
  * the camera.
  */
 import * as THREE from "three";
+import {
+  applyDancePose,
+  bindDirectDanceSkeleton,
+  releaseDanceSkeleton,
+  type DancePose,
+  type DanceSkeleton,
+} from "@/components/city/dances";
 
 export interface PilotFrame {
   /** Horizontal speed, m/s. */
@@ -43,6 +50,16 @@ export interface PilotFrame {
   yawRate: number;
   /** Jetpack held down: switches to a hover pose. */
   thrusting: boolean;
+  /**
+   * Dance overlay, blended over the solved gait at `weight` (0..1).
+   *
+   * It rides on top rather than replacing the solver so that a dance fades in
+   * from — and back out into — whatever the body was already doing, and so the
+   * springy parts of the rig that no dance describes (scarf, cape, crest,
+   * wings, blink) keep running underneath it. A cape that went rigid the
+   * moment somebody started dancing would be a worse cape.
+   */
+  dance?: { pose: DancePose; weight: number } | null;
 }
 
 export interface ProceduralPilot {
@@ -2432,6 +2449,29 @@ export function buildProceduralPilot(
 
   group.add(root);
 
+  /**
+   * The pose every joint was BUILT in, snapshotted before a frame has run.
+   *
+   * Most of this rig is assembled at zero and the solver below writes absolute
+   * angles onto it, so most entries here are identity and cost nothing. The
+   * ones that are not are the whole reason it exists: a digitigrade leg is
+   * constructed already folded (thigh forward, knee back, ankle cancelling
+   * both), and `dances.ts` measures its angles from a rest pose. Without this
+   * a hopper would straighten its legs the instant it started dancing.
+   *
+   * Taken here rather than inside `buildDanceSkeleton` because that runs on
+   * the first frame somebody dances, by which point every one of these joints
+   * is holding a walk cycle.
+   */
+  const danceRest = new Map<THREE.Object3D, THREE.Quaternion>();
+  for (const j of [
+    hips, torso, neck,
+    ...arms.flatMap((a) => [a.shoulder, a.elbow]),
+    ...legs.flatMap((l) => [l.hip, l.knee, l.foot]),
+  ]) {
+    if (j) danceRest.set(j, j.quaternion.clone());
+  }
+
   // ---- Animation state ----------------------------------------------
   let stridePhase = 0;      // radians; one full cycle = two steps
   let t = 0;                // seconds since spawn
@@ -2942,6 +2982,65 @@ export function buildProceduralPilot(
       j.rotation.y = approach(j.rotation.y, side * (f.grounded ? 0.75 : 0.15), 8, dt);
       j.rotation.x = approach(j.rotation.x, -bank * 0.3 + (f.grounded ? 0.1 : -0.15), 8, dt);
     }
+
+    // ---- Dance overlay ---------------------------------------------------
+    /* Last, on purpose: the gait has just written every joint outright, so
+       slerping toward the dance from here blends against a live pose rather
+       than against a stale one. At weight 1 the dance wins completely; at 0
+       this is a no-op and the walk is untouched. */
+    if (f.dance && f.dance.weight > 0) {
+      if (!danceSkeleton) danceSkeleton = buildDanceSkeleton();
+      applyDancePose(danceSkeleton, f.dance.pose, f.dance.weight);
+      danceReleased = false;
+    } else if (!danceReleased) {
+      // The root carries the hop and the spin, and nothing else in this file
+      // writes it — so it has to be put back by hand when the dance ends.
+      if (danceSkeleton) releaseDanceSkeleton(danceSkeleton);
+      danceReleased = true;
+    }
+  };
+
+  /**
+   * The rig, described in the terms `dances.ts` speaks.
+   *
+   * Built on first use rather than at construction, because most pilots never
+   * dance and this is pure bookkeeping until one does. Binding late is safe
+   * here in a way it is not for a GLB: this rig's neutral is identity, so
+   * `bindDirectDanceSkeleton` records no rest pose to get wrong.
+   *
+   * `side` is +1 for the character's left in this rig (limbs are placed at
+   * `side * x`, and the body faces +Z), which is the same convention the pose
+   * functions are written in, so no mirroring is needed here.
+   */
+  let danceSkeleton: DanceSkeleton | null = null;
+  let danceReleased = true;
+  const buildDanceSkeleton = (): DanceSkeleton => {
+    const armFor = (side: number) => {
+      const a = arms.find((x) => x.side === side);
+      if (!a) return undefined;
+      // A flipper is one bone: `elbow` and `shoulder` are the same Group, and
+      // writing both would silently drop the shoulder half of the pose.
+      return { upper: a.shoulder, lower: a.elbow === a.shoulder ? null : a.elbow };
+    };
+    const legFor = (side: number) => {
+      // A quad has four legs sharing two side values, so "the left leg" is not
+      // a thing here — posing two of the four would read as a limp rather than
+      // a dance. Four-legged characters dance from the body instead.
+      if (legs.length > 2) return undefined;
+      const l = legs.find((x) => x.side === side);
+      return l ? { upper: l.hip, lower: l.knee, tip: l.foot } : undefined;
+    };
+    return bindDirectDanceSkeleton({
+      root,
+      rest: danceRest,
+      hips,
+      torso,
+      head: neck,
+      armL: armFor(1),
+      armR: armFor(-1),
+      legL: legFor(1),
+      legR: legFor(-1),
+    });
   };
 
   return {

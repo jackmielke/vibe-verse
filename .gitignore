@@ -49,3 +49,7 @@ shots/
 
 # Capture harness output — regenerate with scripts/dz-shot.mjs, never commit.
 shots/
+
+# Dance contact sheets — regenerate with scripts/dance-shots.mjs. They exist to
+# be looked at once before a push, not to be reviewed as a diff.
+.dance-shots/

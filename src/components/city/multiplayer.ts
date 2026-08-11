@@ -18,6 +18,17 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
+import {
+  applyDancePose,
+  bindGltfDanceSkeleton,
+  createDancePose,
+  evalDance,
+  findDance,
+  releaseDanceSkeleton,
+  stepDanceWeight,
+  type DanceDef,
+  type DanceSkeleton,
+} from "@/components/city/dances";
 
 export interface PlayerState {
   x: number;
@@ -28,6 +39,15 @@ export interface PlayerState {
   char: string;
   /** Player body scale multiplier (1 = normal). Defaults to 1 if omitted. */
   scale?: number;
+  /**
+   * Which dance this player is doing, or null/absent for none.
+   *
+   * Only the id travels — never a phase or a start time. Dances run off the
+   * wall clock (see `dances.ts`), so a peer who hears "floss" ten seconds late
+   * still lands on the same beat as everybody else, and a dance costs one
+   * short string on a broadcast that was already being sent.
+   */
+  dance?: string | null;
 }
 
 export interface ChatMessage {
@@ -151,6 +171,21 @@ interface Ghost {
   userId: string | null;
   emote?: { sprite: THREE.Sprite; t: number; life: number; bob: number };
   chat?: { sprite: THREE.Sprite; t: number; life: number };
+  /** Dance the peer last reported, and how far it has faded in locally. */
+  dance: string | null;
+  danceWeight: number;
+  /** Resolved definition, held through the fade-out after `dance` clears. */
+  danceDef: DanceDef | null;
+  /**
+   * Bound the moment the model loads, NOT lazily on the first dance: the bind
+   * has to capture the skeleton's rest pose, and by the time a peer starts
+   * dancing the mixer has been writing walk and idle onto those same bones for
+   * minutes. Binding late would take a mid-stride frame as "rest" and every
+   * pose would be measured from it.
+   */
+  danceSk: DanceSkeleton | null;
+  /** Whether the root transform has been handed back after a dance ended. */
+  danceReleased: boolean;
 }
 
 const SEND_INTERVAL_MS = 125;
@@ -351,6 +386,9 @@ export function createMultiplayer(opts: {
   let myUserId: string | null = null;
   const sessionId = `p-${Math.random().toString(36).slice(2, 10)}`;
   const ghosts = new Map<string, Ghost>();
+  /** Scratch pose, refilled per dancing ghost — dances are pure functions of
+   *  the clock, so one buffer is enough for the whole crowd. */
+  const ghostPose = createDancePose();
   const loader = new GLTFLoader();
   const baseCache = new Map<string, Promise<{ scene: THREE.Group; clips: THREE.AnimationClip[]; fit: number; lift: number }>>();
   let online = false;
@@ -405,6 +443,11 @@ export function createMultiplayer(opts: {
       char,
       label,
       userId,
+      dance: null,
+      danceWeight: 0,
+      danceDef: null,
+      danceSk: null,
+      danceReleased: true,
     };
     ghosts.set(key, placeholder);
     // A character with no model file is built here rather than fetched,
@@ -438,6 +481,8 @@ export function createMultiplayer(opts: {
       });
       placeholder.inst = inst;
       placeholder.baseFit = base.fit;
+      // Before any clip plays — see the note on Ghost.danceSk.
+      placeholder.danceSk = bindGltfDanceSkeleton(inst);
       placeholder.group.add(inst);
       placeholder.group.add(makeLabelSprite(label));
       const walkClip = base.clips.find((c) => /walk/i.test(c.name) && !/carry/i.test(c.name));
@@ -545,6 +590,7 @@ export function createMultiplayer(opts: {
         if (g) {
           const s = typeof p.scale === "number" && isFinite(p.scale) ? p.scale : 1;
           g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: s };
+          g.dance = typeof p.dance === "string" ? p.dance : null;
           if (p.userId && g.userId !== p.userId) g.userId = p.userId;
           if (g.char !== p.char) {
             // Character switched mid-session: respawn the ghost (preserve scale).
@@ -608,6 +654,10 @@ export function createMultiplayer(opts: {
           Math.abs(lastSent.z - me.z) > 0.03 ||
           Math.abs(lastSent.yaw - me.yaw) > 0.02 ||
           lastSent.char !== me.char ||
+          // A dance is a state, not an event, so it rides the position
+          // broadcast — but starting one usually means standing perfectly
+          // still, which is exactly the case this check would otherwise skip.
+          (lastSent.dance ?? null) !== (me.dance ?? null) ||
           Math.abs((lastSent.scale ?? 1) - (me.scale ?? 1)) > 0.01 ||
           now - lastSend > 1500; // heartbeat
         if (moved) {
@@ -662,6 +712,19 @@ export function createMultiplayer(opts: {
             g.active = want;
           }
         }
+        // ---- Dance ------------------------------------------------------
+        // A peer sends the dance id; the beat comes from the shared clock, so
+        // everyone doing the same dance is in step without any phase sync.
+        const wantDance = findDance(g.dance);
+        if (wantDance) g.danceDef = wantDance;
+        g.danceWeight = stepDanceWeight(g.danceWeight, !!wantDance, dt);
+        // Keep evaluating through the fade-OUT too. `ghostPose` is one buffer
+        // shared by the whole crowd, so a ghost that stopped dancing and left
+        // it stale would spend its quarter-second fade wearing whichever pose
+        // the next ghost in the loop happened to write.
+        if (g.danceWeight > 0 && g.danceDef) evalDance(g.danceDef, ghostPose);
+        else g.danceDef = null;
+
         g.mixer?.update(dt);
         // Model-less peers get the same rig the local pilot uses, fed
         // from the motion we just interpolated. It reads as a real gait
@@ -679,9 +742,20 @@ export function createMultiplayer(opts: {
             verticalVel: (p.y - g.prevPos.y) / Math.max(dt, 1e-4),
             yawRate: dy / Math.max(dt, 1e-4),
             thrusting: false,
+            dance: g.danceWeight > 0 ? { pose: ghostPose, weight: g.danceWeight } : null,
           });
           g.prevPos.copy(p);
           g.prevYaw = g.group.rotation.y;
+        } else if (g.danceSk) {
+          // GLB peers: the mixer has just written the walk/idle pose onto every
+          // bone, so the dance slerps on top of a live frame and blends away
+          // cleanly when the peer stops.
+          if (g.danceWeight > 0) applyDancePose(g.danceSk, ghostPose, g.danceWeight);
+          else if (g.danceReleased === false) {
+            releaseDanceSkeleton(g.danceSk);
+            g.danceReleased = true;
+          }
+          if (g.danceWeight > 0) g.danceReleased = false;
         }
 
         // Emote bubble lifecycle: bob, fade, then detach.

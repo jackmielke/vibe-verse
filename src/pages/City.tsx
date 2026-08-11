@@ -105,6 +105,18 @@ import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScr
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
 import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
+import {
+  DANCES,
+  applyDancePose,
+  bindGltfDanceSkeleton,
+  createDancePose,
+  evalDance,
+  findDance,
+  randomDanceId,
+  releaseDanceSkeleton,
+  stepDanceWeight,
+  type DanceSkeleton,
+} from "@/components/city/dances";
 // EchoVoiceAgent now lives inside PersonChatPanel as a subtle mic button
 import PersonChatPanel, { type PersonTarget } from "@/components/PersonChatPanel";
 import RpsDuelModal from "@/components/RpsDuelModal";
@@ -472,6 +484,10 @@ export default function City() {
   const tagGameRef = useRef<TagGame | null>(null);
   if (!tagGameRef.current) tagGameRef.current = createTagGame();
   const playLocalEmoteRef = useRef<((emote: EmoteName) => void) | null>(null);
+  /** Start / change / stop the body dance. Owned by the canvas effect. */
+  const setDanceRef = useRef<((id: string | null) => void) | null>(null);
+  /** Mirrored into React only so the HUD can name what you're doing. */
+  const [activeDance, setActiveDance] = useState<string | null>(null);
   const playLocalChatRef = useRef<((text: string) => void) | null>(null);
   const [emoteWheelOpen, setEmoteWheelOpen] = useState(false);
   // Nearby person (player or agent) for bump/message HUD buttons.
@@ -1221,7 +1237,10 @@ export default function City() {
       },
       {
         sprite: makeVrButton("💃", "Dance", "#ffb86b"),
-        run: () => mpRef.current?.sendEmote("dance"),
+        run: () => {
+          mpRef.current?.sendEmote("dance");
+          setDanceRef.current?.(randomDanceId());
+        },
       },
     ];
     vrButtons.forEach((b) => vrMenuGroup.add(b.sprite));
@@ -2849,6 +2868,27 @@ export default function City() {
     let activeAction: THREE.AnimationAction | null = null;
     let activeName = "";
 
+    // ---- Dancing -------------------------------------------------------
+    /* The emote wheel throws an emoji over your head; this moves the body
+       underneath it. See `dances.ts` for why the moves are solved rather than
+       played back — almost nothing in the city's cast ships a dance clip.
+
+       `danceSk` is bound once per character load, from the rest pose, because
+       the bind has to record what "not posed" looks like before the mixer
+       starts writing walk cycles onto the same bones. */
+    let danceId: string | null = null;
+    let danceWeight = 0;
+    let danceReleased = true;
+    let danceSk: DanceSkeleton | null = null;
+    const dancePose = createDancePose();
+    const setDance = (id: string | null) => {
+      const def = findDance(id);
+      danceId = def ? def.id : null;
+      setActiveDance(danceId);
+      if (def) soundsRef.current?.chime?.(1);
+    };
+    setDanceRef.current = setDance;
+
     const playClip = (names: RegExp[], fallbackFirst = false) => {
       let pick: string | undefined;
       for (const re of names) {
@@ -2903,6 +2943,10 @@ export default function City() {
       actions.clear();
       activeAction = null;
       activeName = "";
+      // The old skeleton belongs to a model that is on its way out; the new
+      // one binds below, from its own rest pose.
+      danceSk = null;
+      danceReleased = true;
 
       // No URL means the procedural pilot — nothing to fetch, it's built
       // on the spot.
@@ -2945,6 +2989,10 @@ export default function City() {
           else if (mat) apply(mat);
         });
         pilotModel = model;
+        // Bound here, before a single clip plays: the rest pose is the frame
+        // every dance angle is measured from, and one `mixer.update` later
+        // these bones are mid-stride.
+        danceSk = bindGltfDanceSkeleton(model);
         modelHolder.add(model);
 
         if (gltf.animations.length) {
@@ -3225,9 +3273,23 @@ export default function City() {
       return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTyping(e) || !enteredRef.current || !handled.has(e.code)) return;
+      if (isTyping(e) || !enteredRef.current) return;
+      // T is the dance key: it picks a move at random, and pressing it again
+      // picks a different one. One key, no menu — the point is that dancing
+      // costs less thought than walking does.
+      if (e.code === "KeyT") {
+        e.preventDefault();
+        arrivalStart = 0;
+        setDance(randomDanceId(danceId));
+        return;
+      }
+      if (!handled.has(e.code)) return;
       e.preventDefault();
       arrivalStart = 0; // input ends the arrival cinematic
+      // Walking out of it is the stop button. Done on the keypress rather
+      // than waiting for speed to build so the first step already looks like
+      // a step and not like the last frame of a floss.
+      if (danceId && e.code !== "ShiftLeft" && e.code !== "ShiftRight") setDance(null);
       keys.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -4648,7 +4710,30 @@ export default function City() {
         else if (hSpeed > 0.6) playClip([/^walk/i, /walk/i, /run/i], true);
         else playClip([/^idle$/i, /idle/i], true);
       }
+      // ---- Dance --------------------------------------------------------
+      /* Walking out of a dance is how you stop one — no menu, no second key
+         press. Speed rather than key state so the joystick, VR and a shove
+         from another player all end it too. Leaving the ground ends it as
+         well: a jetpack take-off mid-floss looked like a bug. */
+      if (danceId && (hSpeed > 1.2 || thrusting || (!onGround && vel.y > 1.5))) {
+        setDance(null);
+      }
+      danceWeight = stepDanceWeight(danceWeight, !!danceId, dt);
+      const danceDef = findDance(danceId);
+      if (danceDef && danceWeight > 0) evalDance(danceDef, dancePose);
+
       mixer?.update(dt);
+      // Applied after the mixer, so the dance slerps on top of the live clip
+      // pose and melts back into it as the weight falls away.
+      if (danceSk) {
+        if (danceWeight > 0) {
+          applyDancePose(danceSk, dancePose, danceWeight);
+          danceReleased = false;
+        } else if (!danceReleased) {
+          releaseDanceSkeleton(danceSk);
+          danceReleased = true;
+        }
+      }
       // Flux has no clips to pick between — it reads the same motion the
       // camera does and solves every joint from it.
       procPilot?.update(dt, {
@@ -4657,6 +4742,7 @@ export default function City() {
         verticalVel: vel.y,
         yawRate: yawDelta / Math.max(dt, 1e-4),
         thrusting,
+        dance: danceWeight > 0 ? { pose: dancePose, weight: danceWeight } : null,
       });
 
       // Jetpack VFX.
@@ -5176,6 +5262,7 @@ export default function City() {
         air: !onGround,
         char: charRef.current,
         scale: playerScaleRef.current,
+        dance: danceId,
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
@@ -5452,6 +5539,7 @@ export default function City() {
       disposeVR();
       applyModeRef.current = null;
       loadPilotRef.current = null;
+      setDanceRef.current = null;
       mountAvatarHoloRef.current = null;
       disposeHolo();
       procPilot?.dispose();
@@ -6140,7 +6228,9 @@ export default function City() {
             </button>
           </div>
           {emoteWheelOpen && (
-            <div className="glass-panel rounded-2xl p-3 w-60 animate-scale-in">
+            /* Two grids tall now that the dance shelf is in here, which is
+               taller than a phone held in landscape — hence the scroll. */
+            <div className="glass-panel rounded-2xl p-3 w-60 max-h-[70dvh] overflow-y-auto animate-scale-in">
               <div className="flex items-center justify-between text-[11px] mb-2">
                 <span className="font-heading font-semibold tracking-wider text-primary">
                   EMOTE WHEEL
@@ -6153,6 +6243,9 @@ export default function City() {
                     key={name}
                     onClick={(e) => {
                       mpRef.current?.sendEmote(name);
+                      // 💃 is a promise the sprite alone can't keep: throw the
+                      // emoji AND actually dance.
+                      if (name === "dance") setDanceRef.current?.(randomDanceId(activeDance));
                       setEmoteWheelOpen(false);
                       e.currentTarget.blur();
                     }}
@@ -6166,6 +6259,40 @@ export default function City() {
                   </button>
                 ))}
               </div>
+              <div className="flex items-center justify-between text-[11px] mt-3 mb-2">
+                <span className="font-heading font-semibold tracking-wider text-primary">
+                  DANCE FLOOR
+                </span>
+                <span className="text-muted-foreground">press T</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {DANCES.map((d) => {
+                  const on = activeDance === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={(e) => {
+                        setDanceRef.current?.(on ? null : d.id);
+                        e.currentTarget.blur();
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1 rounded-xl transition-colors py-2 text-2xl ${
+                        on
+                          ? "bg-primary/25 ring-1 ring-primary/60"
+                          : "bg-muted/30 hover:bg-muted/60"
+                      }`}
+                      title={d.blurb}
+                    >
+                      <span>{d.emoji}</span>
+                      <span className="text-[9px] leading-tight text-center uppercase tracking-wider text-muted-foreground">
+                        {d.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+                Everyone dances on the same beat. Walk to stop.
+              </p>
             </div>
           )}
           {chatOpen && (
@@ -7624,8 +7751,29 @@ export default function City() {
       {/* Controls hint, fades in once you enter. */}
       {entered && !isLive && (
         <div className="absolute bottom-4 right-4 glass-panel rounded-2xl px-4 py-3 text-[11px] text-muted-foreground pointer-events-none hidden sm:block">
-          WASD move · Shift run · <span className="text-primary">Space hold = jetpack</span> · drag
-          look · pinch / scroll zoom
+          WASD move · Shift run · <span className="text-primary">Space hold = jetpack</span> ·{" "}
+          <span className="text-primary">T dance</span> · drag look · pinch / scroll zoom
+        </div>
+      )}
+
+      {/* What you're dancing, while you're dancing it. */}
+      {entered && !isLive && activeDance && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 animate-scale-in">
+          <span className="glass-panel rounded-full px-4 py-2 text-xs pointer-events-none">
+            <span className="mr-1.5">{findDance(activeDance)?.emoji}</span>
+            <span className="font-semibold text-primary">{findDance(activeDance)?.label}</span>
+            <span className="text-muted-foreground"> · T for another · walk to stop</span>
+          </span>
+          <button
+            onClick={(e) => {
+              setDanceRef.current?.(randomDanceId(activeDance));
+              e.currentTarget.blur();
+            }}
+            className="glass-panel rounded-full px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
+            title="Next dance"
+          >
+            🔀
+          </button>
         </div>
       )}
 
