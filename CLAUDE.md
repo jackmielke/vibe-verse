@@ -35,6 +35,31 @@ And `vite build` strips types with esbuild without checking them. So a file
 referencing an undefined variable passes both, ships, and white-screens the
 route. That is not hypothetical; it went out that way once.
 
+## Models
+
+**Every `.glb` here has been through `gltf-transform`, and a new one must be
+too.** `node scripts/glb-optimize.mjs --write` — WebP textures capped at 1024,
+welded, decimated (static props only), quantized. It took the model folder from
+254 MB to 70 MB and `dist/` from 285 MB to 117 MB.
+
+The originals were raw Meshy exports: `floating-island.glb` was 38.7 MB and
+**1,049,034 triangles** for a prop that renders 300 px wide behind a menu. That
+is a frame-rate problem before it is a download problem, and it is what these
+files look like when nobody runs the last step.
+
+- **Draco and meshopt are deliberately not used.** They need a decoder
+  registered on the loader, and only three loaders in this repo register one —
+  so a Draco'd character would work in Vibe City and fail silently in the shop.
+  Quantization needs nothing and GLTFLoader reads it natively.
+- **`scripts/glb-verify.mjs` is the safety net.** It diffs every model against a
+  git ref and fails if a clip, channel, skin, mesh or morph target went missing.
+  Size is the easy thing to check and is not the risk; a character that lost its
+  skin looks fine in a still and stands in a T-pose in one world weeks later.
+- **`scripts/glb-compare.mjs` is how you decide.** Two renders, same camera,
+  side by side. `gltf-transform` will happily report a 15× saving on a file it
+  has turned into a smear, and the number is the part you want to believe.
+- Licences and provenance: `src/assets/glb/CREDITS.md`.
+
 ## Adding a world
 
 The shape every recent world follows (Seafair, San Palmas, The Long Silence):
