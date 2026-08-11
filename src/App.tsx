@@ -92,6 +92,7 @@ const StarTrek = lazy(() => import("./pages/StarTrek.tsx"));
 const StrangeNewWorlds = lazy(() => import("./pages/StrangeNewWorlds.tsx"));
 const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
 const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
+const Coil = lazy(() => import("./pages/Coil.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 
 const queryClient = new QueryClient();
@@ -361,6 +362,12 @@ const App = () => (
               /agar and /agario answer because that is what people type. */}
           {["/blob", "/agar", "/agario", "/cells"].map((path) => (
             <Route key={path} path={path} element={<BlobWorld />} />
+          ))}
+          {/* COIL — slither, with the character you bought in the shop riding
+              the front of the snake. /slither and /snake answer because that is
+              what people type. */}
+          {["/coil", "/slither", "/snake", "/worm"].map((path) => (
+            <Route key={path} path={path} element={<Coil />} />
           ))}
           {/* HOME ALONE — 671 Lincoln Avenue at Christmas. Walk an empty
               house, light it up, arm eight traps, then survive the two men who

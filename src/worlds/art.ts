@@ -40,6 +40,7 @@ import shopArt from "@/assets/worlds/shop.jpg";
 import portalArt from "@/assets/worlds/portal.jpg";
 import manifestoArt from "@/assets/worlds/manifesto.jpg";
 import blobArt from "@/assets/worlds/blob.jpg";
+import coilArt from "@/assets/worlds/coil.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import homeAloneArt from "@/assets/worlds/home-alone.jpg";
@@ -58,6 +59,7 @@ export const WORLD_ART: Record<string, string> = {
   manifesto: manifestoArt,
   airplane: airplaneArt,
   blob: blobArt,
+  coil: coilArt,
   "blue-angels": blueAngelsArt,
   fnaf: fnafArt,
   "home-alone": homeAloneArt,

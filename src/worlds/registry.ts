@@ -38,6 +38,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "splash-royale",       // …and then the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
+  "coil",                // …and its twin, where being big is the problem
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
   "shop",                // …which is what you spend it in
@@ -252,6 +253,23 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#5ef0a8",
     featured: true,
     source: "src/blob",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "coil",
+    route: "/coil",
+    aliases: ["/slither", "/snake", "/worm"],
+    name: "COIL",
+    emoji: "🐍",
+    kind: "game",
+    blurb:
+      "One long arena where nobody is too big to kill. You cannot stop and you cannot reverse — only turn — so getting in front of somebody is the whole game. The character you bought in the shop rides the front of your snake, and so does everybody else's.",
+    status: "Playable — phone and desktop",
+    accent: "#ff6ad5",
+    featured: true,
+    source: "src/coil",
     nav: true,
     passport: true,
     chromeless: true,

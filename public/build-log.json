@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-10T23:13:16.169Z",
+  "generated_at": "2026-08-11T00:00:46.320Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "8ac9a422",
+      "date": "2026-08-10",
+      "subject": "Re-stamp after merging main",
+      "lede": "BLOB and the portal picked up commits while the branches were apart.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "b041970e",
       "date": "2026-08-10",
@@ -1024,16 +1032,6 @@
       "lede": "three r160 prepends <colorspace_pars_fragment> to every non-raw ShaderMaterial, so PLATE_FRAG including it again declared LinearSRGBToLinearDisplayP3 twice and the whole fragment shader failed to compile — the nameplates over every bot rendered as nothing at all. This is the 'function already has a body' error the playtest surfaced during the harvest beat.",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "fb6c3510",
-      "date": "2026-08-06",
-      "subject": "⚡ GOD MODE — summon rain, snow and thunderstorms over the whole world",
-      "lede": "A chip next to the day/night switch opens a little palette: Clear, Rain, Snow, Storm. The day/night toggle is lobby-wide because everyone shares one sky; the weather is yours, because being the only person standing in a thunderstorm is funnier.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 3
     }
   ]
 }
