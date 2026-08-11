@@ -105,8 +105,10 @@ await pose(...GOD);
 await page.screenshot({ path: `${OUT}-a-normal.png` });
 console.log("shot a: as shipped");
 
-// Flat-paint both meshes. If the ring and the disc appear now, geometry and
-// transforms are fine and the shading is what is hiding them.
+// Sand flat-lit and unmistakable, water hidden. If the ring appears now, the
+// beach geometry and its transform are fine and the shading was hiding it; if
+// it does not, the mesh is not being drawn at all — which is how a polar grid
+// wound face-down was eventually found, invisible from every camera.
 await page.evaluate(() => {
   const [sand, water] = window.__cityOcean.children;
   window.__probeSaved = { map: sand.material.map, frag: water.material.fragmentShader };
@@ -118,11 +120,11 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}-b-flat.png` });
-console.log("shot b: flat red sand / green sea");
+console.log("shot b: sand flat-lit, water hidden");
 
-// Water back to its own shader, sand still flat: isolates which one is at fault.
-// Water back on, painted with its own wave normals: if this is flat grey the
-// Gerstner sum is the problem, if it is a rippled pastel it is the shading.
+// Water back on, painted with its own wave normals: flat grey means the
+// Gerstner sum is producing nothing, a rippled pastel means the waves are
+// there and it is the shading that is not showing them.
 await page.evaluate(() => {
   const [, water] = window.__cityOcean.children;
   water.visible = true;
@@ -135,7 +137,7 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}-c-shaderwater.png` });
-console.log("shot c: real water over flat sand");
+console.log("shot c: water shaded by its own normals");
 
 await page.evaluate(() => {
   const [sand, water] = window.__cityOcean.children;

@@ -3318,6 +3318,20 @@ export default function City() {
     // input hands control straight back.
     let arrivalStart = 0;
     const ARRIVAL_MS = 4500;
+    /**
+     * Set by the DEV-only `__cityCam` to place the camera on its target in one
+     * frame instead of easing to it. Never set in a production build — the
+     * hook that writes it lives behind `import.meta.env.DEV` — so this is a
+     * boolean that is read once a frame and is always false for visitors.
+     *
+     * It exists because the chase camera closes on its target by about 30% a
+     * tick, and on the software renderer the screenshot harnesses run under, a
+     * tick can be seconds. A 700 m zoom took half a minute of wall clock to
+     * arrive, and every harness in `scripts/` had grown its own fixed wait
+     * that was sometimes too short — which is how shots came back framed on
+     * the avatar's back at nine metres instead of the view that was asked for.
+     */
+    let camSnap = false;
 
     /**
      * Dev-only: pose the orbit camera from a script.
@@ -3343,6 +3357,7 @@ export default function City() {
         camDist = THREE.MathUtils.clamp(dist, MIN_CAM_DIST, MAX_CAM_DIST);
         camPitch = THREE.MathUtils.clamp(pitch, 0.06, 1.25);
         camYaw = yaw;
+        camSnap = true; // arrive this frame, not in thirty seconds
       };
 
       /**
@@ -3390,6 +3405,13 @@ export default function City() {
       ) => {
         arrivalStart = 0;
         player.position.set(x, y, z);
+        // Velocity too, or a harness that re-asserts the pose every half
+        // second re-drops the player from the same height over and over and
+        // accumulates fall speed without bound. The chase camera eases behind
+        // a moving player, so it then never sits at the distance it was asked
+        // for — which is what made half the screenshots in this repo come back
+        // framed on the avatar's back instead of the shot requested.
+        vel.set(0, 0, 0);
       };
     }
     // VR-only: stable "body yaw" the dolly is parked behind. This is
@@ -3962,7 +3984,10 @@ export default function City() {
         boxesNear: (x: number, z: number) => Array<Record<string, number>>;
         mines: () => [boolean, boolean, number, number, number];
         snapshot: (near?: number) => string;
-        camPose: () => { near: number; dist: number; pitch: number; yaw: number; x: number; y: number; z: number };
+        camPose: () => {
+          near: number; dist: number; pitch: number; yaw: number;
+          x: number; y: number; z: number; px: number; py: number; pz: number;
+        };
         heistGo: () => void;
         heistPos: () => [number, number, number] | null;
         rebelRemote: (ev: RebelEvent) => void;
@@ -4049,6 +4074,12 @@ export default function City() {
         x: camera.position.x,
         y: camera.position.y,
         z: camera.position.z,
+        // The player too, so a harness can tell "posed" from "arrived": the
+        // chase camera EASES to its target, and the requested distance is only
+        // real once the camera is actually that far from what it is orbiting.
+        px: player.position.x,
+        py: player.position.y,
+        pz: player.position.z,
       }),
       heistGo: () => {
         chaseNextAt = 0;
@@ -5421,7 +5452,8 @@ export default function City() {
         eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
         // During the arrival cinematic the eased path IS the motion —
         // follow it exactly so slow devices don't trail the swoop.
-        camera.position.lerp(eye, arrivalStart > 0 ? 1 : 1 - Math.pow(0.0008, dt));
+        camera.position.lerp(eye, camSnap || arrivalStart > 0 ? 1 : 1 - Math.pow(0.0008, dt));
+        camSnap = false;
         camera.lookAt(pos.x, pos.y + 1.5, pos.z);
 
         // Zoomed way out, the fog backs off so the diorama stays visible.

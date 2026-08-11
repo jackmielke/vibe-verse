@@ -741,7 +741,13 @@ export function buildOcean({ skyUniforms, lowDetail = false }: OceanOptions): Oc
 
         // ---- normal ----------------------------------------------------
         vec3 n = normalize(vNormal);
-        float det = uDetail * (1.0 - smoothstep(70.0, 620.0, vCamDist)) * smoothstep(0.1, 1.6, depth);
+        // Gated on depth only enough to stop ripples appearing on wet sand.
+        // The first cut faded them out below 1.6 m, which on a 7% beach face
+        // is the nearest thirty metres of water — the whole foreground from a
+        // camera standing in the shallows, and it came out as flat teal paint.
+        // The swell genuinely does die at the shore; the surface texture does
+        // not.
+        float det = uDetail * (1.0 - smoothstep(70.0, 620.0, vCamDist)) * smoothstep(0.04, 0.6, depth);
         if (det > 0.001) {
           // Fine chop, as a gradient rather than displacement: it costs two
           // cosines instead of another pass over 90k vertices, and at this
@@ -836,11 +842,11 @@ export function buildOcean({ skyUniforms, lowDetail = false }: OceanOptions): Oc
         float breaking = breakZone * line * (0.35 + 0.75 * lace2);
 
         // Whitewater keeps going after the break, thinning as it runs in.
-        float trail = smoothstep(1.9, 0.12, depth) * (0.25 + 0.55 * max(swell, 0.0)) * (0.3 + 0.8 * lace);
+        float trail = smoothstep(1.9, 0.12, depth) * (0.25 + 0.55 * max(swell, 0.0)) * (0.1 + 1.2 * lace);
 
         // The swash edge: brightest right at the instantaneous waterline,
         // torn up by the noise so it is a ragged edge, not a contour line.
-        float edge = smoothstep(0.5, 0.02, abs(depth - 0.12)) * (0.5 + 0.8 * lace2);
+        float edge = smoothstep(0.5, 0.02, abs(depth - 0.12)) * (0.22 + 1.2 * lace2);
 
         float foam = clamp(max(max(caps, breaking), max(edge, trail)), 0.0, 1.0);
         col = mix(col, uFoam, foam * 0.95);
