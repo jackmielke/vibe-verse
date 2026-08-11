@@ -343,6 +343,154 @@ function fluteEdgeTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * The topsoil band, in section: dark humus at the top where the turf sits,
+ * lightening into subsoil, with stones and root threads through it.
+ *
+ * Cylinder side UVs run u around the rim and v bottom-to-top, and three's
+ * default `flipY` puts v = 1 at canvas y = 0 — so the dark organic layer is
+ * drawn at the *top* of the canvas to end up under the grass.
+ */
+function soilBandTexture(): THREE.CanvasTexture {
+  const W = 256;
+  const H = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const rand = mulberry32(6161);
+
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#4e3a24"); // humus, right under the roots
+  g.addColorStop(0.28, "#7a5b39");
+  g.addColorStop(0.7, "#94714a");
+  g.addColorStop(1, "#836444"); // subsoil, meeting the rock
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // Grit, stones and clods.
+  for (let i = 0; i < 1500; i++) {
+    const x = rand() * W;
+    const y = rand() * H;
+    const r = 0.8 + rand() * (y > H * 0.4 ? 3.4 : 1.8);
+    ctx.fillStyle = rand() < 0.45
+      ? `rgba(48,34,18,${0.14 + rand() * 0.3})`
+      : `rgba(180,158,124,${0.1 + rand() * 0.28})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * (0.6 + rand() * 0.6), rand() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Root threads reaching down out of the humus.
+  ctx.lineCap = "round";
+  for (let i = 0; i < 130; i++) {
+    const x = rand() * W;
+    const len = 20 + rand() * 70;
+    ctx.strokeStyle = `rgba(206,184,140,${0.14 + rand() * 0.26})`;
+    ctx.lineWidth = 0.6 + rand() * 1.3;
+    ctx.beginPath();
+    ctx.moveTo(x, 4);
+    let cx = x;
+    for (let y = 4; y < len; y += 12) {
+      cx += (rand() - 0.5) * 9;
+      ctx.lineTo(cx, y);
+    }
+    ctx.stroke();
+  }
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(9, 1);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * The keel rock, in section: horizontal strata, cracks that run down through
+ * them, and mineral seams.
+ *
+ * Bands, and specifically *horizontal* bands, are what make a lump of rock
+ * read as sedimentary layers that were once ground — which is the whole story
+ * a floating island is telling. On a cone, v runs tip-to-base, so drawing the
+ * bands across the canvas puts them level in the world.
+ */
+function rockStrataTexture(): THREE.CanvasTexture {
+  const W = 256;
+  const H = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const rand = mulberry32(3131);
+
+  ctx.fillStyle = "#6a5540";
+  ctx.fillRect(0, 0, W, H);
+
+  // The layers. Uneven thicknesses, because evenly-spaced strata read as
+  // corduroy; a thick soft bed under a thin hard one is what real rock does.
+  const tones = ["#7b6449", "#5d4c39", "#8a7358", "#4f4132", "#6f5b44", "#93795c"];
+  let y = 0;
+  let band = 0;
+  while (y < H) {
+    const h = 5 + rand() * 26;
+    ctx.fillStyle = tones[band % tones.length];
+    ctx.globalAlpha = 0.55 + rand() * 0.4;
+    // A wandering top edge, so the bed is not a ruled line.
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= W; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.05 + band) * 2.4);
+    ctx.lineTo(W, y + h);
+    ctx.lineTo(0, y + h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Shadow line at the base of the harder beds — the overhang.
+    if (rand() < 0.45) {
+      ctx.fillStyle = "rgba(30,22,14,0.28)";
+      ctx.fillRect(0, y + h - 2, W, 2.5);
+    }
+    y += h;
+    band++;
+  }
+
+  // Vertical joints: cracks cutting down through several beds at once.
+  for (let i = 0; i < 26; i++) {
+    let x = rand() * W;
+    ctx.strokeStyle = `rgba(26,18,10,${0.2 + rand() * 0.35})`;
+    ctx.lineWidth = 0.8 + rand() * 2.2;
+    ctx.beginPath();
+    const y0 = rand() * H;
+    ctx.moveTo(x, y0);
+    for (let yy = y0; yy < y0 + 40 + rand() * 140; yy += 14) {
+      x += (rand() - 0.5) * 10;
+      ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+  }
+  // Mineral seams — the pale streaks that catch the light on a cliff face.
+  for (let i = 0; i < 14; i++) {
+    const yy = rand() * H;
+    ctx.strokeStyle = `rgba(206,192,166,${0.1 + rand() * 0.22})`;
+    ctx.lineWidth = 1 + rand() * 2.6;
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    for (let x = 0; x <= W; x += 20) ctx.lineTo(x, yy + Math.sin(x * 0.04 + i) * 4);
+    ctx.stroke();
+  }
+  // Speckle so the bands don't read as flat fills at close range.
+  for (let i = 0; i < 4000; i++) {
+    ctx.fillStyle = rand() < 0.5 ? "rgba(255,240,214,0.06)" : "rgba(20,14,8,0.09)";
+    ctx.fillRect(rand() * W, rand() * H, 1 + rand() * 2, 1 + rand() * 2);
+  }
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(5, 1.6);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
  * Bark for the Dream Tree: vertical fissures in three browns, with moss
  * gathering on the shaded side and lichen where the light gets in.
  *
@@ -1029,48 +1177,181 @@ export function buildCardboardIsland(opts: {
   top.receiveShadow = true;
   group.add(top);
 
-  // Dirt band under the lip.
+  // Dirt band under the lip: the topsoil layer the turf grew in, seen in
+  // section. Textured, because the whole thing is visible from the zipline
+  // and from every approach, and a flat brown ring was reading as a plinth.
   const dirtGeo = new THREE.CylinderGeometry(ISLAND_RADIUS - 0.5, ISLAND_RADIUS - 4.5, 5.5, 56, 1);
   displaceRadial(dirtGeo, landRim);
   const dirt = new THREE.Mesh(
     dirtGeo,
-    new THREE.MeshStandardMaterial({ color: "#8a6a44", roughness: 1, flatShading: true }),
+    new THREE.MeshStandardMaterial({
+      map: soilBandTexture(),
+      normalMap: (() => {
+        const t = corrugation.clone();
+        t.needsUpdate = true;
+        t.repeat.set(9, 2.2);
+        return t;
+      })(),
+      normalScale: new THREE.Vector2(0.4, 0.4),
+      roughness: 1,
+    }),
   );
   dirt.position.y = -5.9;
   group.add(dirt);
 
-  // Rock strata cone — jittered vertices for a chiselled underside.
-  const rockGeo = new THREE.ConeGeometry(ISLAND_RADIUS - 4, 30, 40, 4);
+  /**
+   * The keel: the rock the island was torn out of the ground with.
+   *
+   * This was the last flat thing left. A smooth cone in one brown is what the
+   * whole silhouette resolves to from the city — the island reads as a green
+   * disc on a beige wedge — and it is the half of a floating island that says
+   * "floating" rather than "hill".
+   *
+   * Two changes. The strata are a real texture now: horizontal bands of
+   * different rock, with cracks and mineral seams, so the layers say which way
+   * is down. And the displacement is coherent instead of per-vertex noise —
+   * every vertex in a column shares an angular noise value, which pulls the
+   * cone into vertical buttresses and gullies running the length of the keel.
+   * Per-vertex jitter (which is what was here) only ever produces sandpaper:
+   * it changes the shading and never the silhouette.
+   */
+  const rockGeo = new THREE.ConeGeometry(ISLAND_RADIUS - 4, 34, 44, 9);
   displaceRadial(rockGeo, landRim);
   {
+    const ridge = makeRimNoise(landRand, 0.16, 9); // the buttresses
+    const gully = makeRimNoise(landRand, 0.07, 23); // finer creases on top
     const p = rockGeo.attributes.position;
     for (let i = 0; i < p.count; i++) {
-      if (Math.abs(p.getY(i)) > 14.6) continue; // keep the apex sharp
-      const n = 0.92 + landRand() * 0.16;
-      p.setX(i, p.getX(i) * n);
-      p.setZ(i, p.getZ(i) * n);
+      const x = p.getX(i);
+      const y = p.getY(i);
+      const z = p.getZ(i);
+      const r = Math.hypot(x, z);
+      if (r < 0.6) continue; // leave the tip alone or it stops being a point
+      const a = Math.atan2(z, x);
+      // Cone local space: +17 at the base ring, −17 at the tip. Fade the
+      // relief out near the tip so it tapers to a spike rather than a mop.
+      const t = THREE.MathUtils.clamp((y + 17) / 34, 0, 1);
+      const relief = Math.pow(t, 0.55);
+      const s = 1 + (ridge(a) + gully(a)) * relief;
+      p.setX(i, x * s);
+      p.setZ(i, z * s);
+      // Step the layers vertically as well, so the strata bands read as
+      // ledges you could stand on rather than as stripes painted on a cone.
+      p.setY(i, y + Math.sin(a * 5 + t * 9) * 0.8 * relief);
     }
     p.needsUpdate = true;
     rockGeo.computeVertexNormals();
   }
   const rock = new THREE.Mesh(
     rockGeo,
-    new THREE.MeshStandardMaterial({ color: "#6b5540", roughness: 1, flatShading: true }),
+    new THREE.MeshStandardMaterial({
+      map: rockStrataTexture(),
+      roughness: 1,
+      flatShading: true,
+    }),
   );
   rock.rotation.x = Math.PI;
-  rock.position.y = -23.6;
+  rock.position.y = -25.6;
+  rock.castShadow = true;
   group.add(rock);
 
-  // Hanging roots trailing off the dirt band.
+  // Rock spurs breaking out of the keel — chunks that did not shear off
+  // cleanly. Cheap, and they do more for the silhouette than the whole
+  // texture does.
+  {
+    const spurMat = new THREE.MeshStandardMaterial({
+      color: "#6a5642", roughness: 1, flatShading: true,
+    });
+    for (let i = 0; i < 11; i++) {
+      const a = (i / 11) * Math.PI * 2 + landRand() * 0.5;
+      const depth = 0.12 + landRand() * 0.62; // 0 at the rim, 1 at the tip
+      const rr = (ISLAND_RADIUS - 5) * (1 - depth * 0.85) * (1 + landRim(a));
+      const sz = 1.3 + landRand() * 2.6;
+      const spur = new THREE.Mesh(new THREE.DodecahedronGeometry(sz, 0), spurMat);
+      spur.position.set(Math.cos(a) * rr, -9 - depth * 26, Math.sin(a) * rr);
+      spur.scale.set(1, 0.55 + landRand() * 0.7, 1);
+      spur.rotation.set(landRand() * 3, landRand() * 3, landRand() * 3);
+      group.add(spur);
+    }
+  }
+
+  /**
+   * Roots trailing off the dirt band.
+   *
+   * Ten straight tapered cylinders were reading as dowels. These are built
+   * from a curve — a root does not hang plumb, it wanders and curls — with a
+   * few splitting into two near the bottom, and a fringe of fine hair roots up
+   * under the soil line where the thick ones come out.
+   */
   const rootMat = new THREE.MeshStandardMaterial({ color: "#6e4f32", roughness: 1 });
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 + landRand();
-    const len = 3 + landRand() * 5;
-    const root = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.22, len, 5), rootMat);
-    const rr = (ISLAND_RADIUS - 3) * (1 + landRim(a));
-    root.position.set(Math.cos(a) * rr, -8.5 - len / 2, Math.sin(a) * rr);
-    root.rotation.z = (landRand() - 0.5) * 0.3;
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: "#8a6b48", roughness: 1, side: THREE.DoubleSide,
+  });
+  const makeRoot = (len: number, thick: number, seedA: number) => {
+    const pts: THREE.Vector3[] = [];
+    let dx = 0;
+    let dz = 0;
+    for (let k = 0; k <= 7; k++) {
+      const t = k / 7;
+      dx += Math.sin(seedA * 3 + t * 5.5) * len * 0.045;
+      dz += Math.cos(seedA * 2.3 + t * 4.1) * len * 0.045;
+      pts.push(new THREE.Vector3(dx, -t * len, dz));
+    }
+    const geo = new THREE.TubeGeometry(
+      new THREE.CatmullRomCurve3(pts), 12, thick, 5, false,
+    );
+    // Taper: scale the radius down along the tube by moving vertices toward
+    // the curve. Cheaper than a custom tube, and TubeGeometry has no taper.
+    const p = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const t = THREE.MathUtils.clamp(-p.getY(i) / len, 0, 1);
+      const k = 1 - t * 0.8;
+      const idx = Math.min(7, Math.round(t * 7));
+      const c = pts[idx];
+      p.setX(i, c.x + (p.getX(i) - c.x) * k);
+      p.setZ(i, c.z + (p.getZ(i) - c.z) * k);
+    }
+    p.needsUpdate = true;
+    geo.computeVertexNormals();
+    return new THREE.Mesh(geo, rootMat);
+  };
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + landRand() * 0.4;
+    const len = 3 + landRand() * 7;
+    const rr = (ISLAND_RADIUS - 3.2) * (1 + landRim(a));
+    const root = makeRoot(len, 0.16 + landRand() * 0.12, a + landRand());
+    root.position.set(Math.cos(a) * rr, -8.2, Math.sin(a) * rr);
     group.add(root);
+    if (landRand() < 0.45) {
+      const branch = makeRoot(len * 0.5, 0.09, a * 1.7 + 2);
+      branch.position.set(Math.cos(a) * rr, -8.2 - len * 0.55, Math.sin(a) * rr);
+      branch.rotation.z = (landRand() - 0.5) * 0.7;
+      group.add(branch);
+    }
+  }
+  // Hair roots: a low collar of thin fins right under the soil, the mat the
+  // big roots come out of.
+  {
+    const hair = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.1, 1.5), hairMat, 260);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    for (let i = 0; i < 260; i++) {
+      const a = landRand() * Math.PI * 2;
+      const rr = (ISLAND_RADIUS - 3.4) * (1 + landRim(a));
+      const h = 0.5 + landRand() * 1.4;
+      e.set((landRand() - 0.5) * 0.5, a + Math.PI / 2, (landRand() - 0.5) * 0.5);
+      q.setFromEuler(e);
+      m.compose(
+        new THREE.Vector3(Math.cos(a) * rr, -8.4 - h * 0.5, Math.sin(a) * rr),
+        q,
+        new THREE.Vector3(1, h, 1),
+      );
+      hair.setMatrixAt(i, m);
+    }
+    hair.instanceMatrix.needsUpdate = true;
+    hair.computeBoundingSphere();
+    group.add(hair);
   }
 
   // Drifting rock shards beneath — that "torn out of the earth" look.

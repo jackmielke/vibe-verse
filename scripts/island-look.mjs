@@ -79,6 +79,34 @@ for (const [name, sx, sz, dist, pitch, yaw] of SHOTS) {
   console.log(`   → ${name}.png`);
 }
 
+/* The island from outside it. `__cityGoto` pins you to the island's surface,
+   which is the wrong tool for photographing the keel — so these use world
+   coordinates and hang the camera in the air off the rim. Vibe Island sits at
+   (330, 120, −30) in the city. */
+const ISLAND = [330, 120, -30];
+for (const [name, dx, dy, dz, dist, pitch, yaw] of [
+  /* Yaw π: the orbit cam looks at the player from `yaw`, so to photograph the
+     island you have to stand past it and turn round. Yaw 0 here produced three
+     very good pictures of the empty sea. */
+  ["08-from-below", 0, -52, 92, 30, 0.08, Math.PI],
+  ["09-keel", 62, -34, 62, 40, 0.1, 0.8],
+  ["10-approach", 10, 14, 120, 46, 0.32, 0.0],
+]) {
+  for (let i = 0; i < 5; i++) {
+    await page.evaluate(
+      ([x, y, z, d, p, yw]) => {
+        window.__cityWarp(x, y, z);
+        window.__cityCam(d, p, yw);
+      },
+      [ISLAND[0] + dx, ISLAND[1] + dy, ISLAND[2] + dz, dist, pitch, yaw],
+    );
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: `${OUT}/${name}.png`, timeout: 180000 });
+  console.log(`   → ${name}.png`);
+}
+
 if (errors.length) {
   console.log(`\n!! ${errors.length} errors:`);
   [...new Set(errors)].slice(0, 6).forEach((e) => console.log(`   ${e}`));
