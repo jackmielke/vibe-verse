@@ -75,6 +75,26 @@ Vendoring someone else's game? See `src/longsilence/README.md` — it documents
 the four changes that took a standalone site and made it a route, and why each
 one was necessary.
 
+## Getting in: four doors, one session
+
+Email code, password, MetaMask and Google all end in a Supabase session, so no
+world has to know which one somebody used — read `useVibeIdentity` and stop
+there. `docs/social-sign-in.md` is the whole story; two things from it are
+worth knowing before you touch any of it:
+
+- **MetaMask is finished and needs no configuration.** The table and the
+  `wallet-auth` edge function are deployed. Do not confuse it with
+  `link-wallet`, which answers *where do my tokens go* and mints no session.
+- **Google is finished in code and switched off in the dashboard.** It needs a
+  client ID and secret pasted into Supabase once, by a person, in a browser.
+  There is nothing to build; if the button reports the provider is not enabled,
+  that is the feature working. Do not reimplement it.
+
+Every OAuth redirect goes to `/auth/callback` and nowhere else. That is one
+allow-list entry per origin instead of one per page, and passing
+`window.location.href` instead — which is what the account card used to do — is
+how a preview deploy silently lands you on production, signed out.
+
 ## Somebody else's game, without vendoring it
 
 Everything above is for a world that lives in this repository. There is a

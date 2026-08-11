@@ -2,7 +2,12 @@
  * VibeAuthDialog — code-first sign in, no app-switching required. Enter
  * your email, get a 6-digit code, paste it right here. The same email
  * also carries a magic link for people who prefer tapping it. Password
- * mode is hidden behind a toggle; wallet/Google are marked coming soon.
+ * mode is hidden behind a toggle, and below the divider are the two doors
+ * that skip the email entirely: MetaMask and Google.
+ *
+ * All four end in the same place — a Supabase session — so nothing
+ * downstream (`useVibeIdentity`, Vibecoin, the wardrobe, RLS) has to know
+ * or care which one somebody came through.
  */
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +18,15 @@ import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { OTP_LENGTH, normalizeOtp, shouldAutoSubmit } from "@/lib/otp";
+import { signInWithGoogle } from "@/lib/oauth";
+import {
+  findWallets,
+  isUserRejection,
+  metamaskDeepLink,
+  pickMetaMask,
+  signInWithWallet,
+  type DiscoveredWallet,
+} from "@/lib/walletAuth";
 
 /**
  * The iridescent arch at the top of this dialog is decoration, and it is a
@@ -43,6 +57,30 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState("");
+  /** Which of the two buttons under the divider is mid-flight, if either. */
+  const [social, setSocial] = useState<"wallet" | "google" | null>(null);
+  /**
+   * The wallets this browser announced. `null` means we have not asked yet,
+   * `[]` means we asked and nothing answered — a distinction the button label
+   * needs, because "MetaMask" and "no wallet here" should not swap places
+   * while somebody is reading them.
+   */
+  const [wallets, setWallets] = useState<DiscoveredWallet[] | null>(null);
+
+  /* Ask on open rather than on mount: this component lives in the global nav
+     on every page, and EIP-6963 discovery dispatches a window event that wakes
+     every wallet extension installed. Doing that to somebody who never opens
+     the dialog is rude, and doing it on every page load is rude repeatedly. */
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    void findWallets().then((found) => {
+      if (live) setWallets(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [open]);
 
   const reset = () => {
     setMode("magic");
@@ -52,6 +90,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     setConfirmPassword("");
     setSent(false);
     setCode("");
+    setSocial(null);
   };
 
   const handleClose = (next: boolean) => {
@@ -171,6 +210,87 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
     }
   };
 
+  /**
+   * Door three — a wallet.
+   *
+   * Labelled MetaMask because that is the name people are looking for, but it
+   * signs in with whatever actually answered: somebody running Rabby has a
+   * perfectly good wallet and should not be told to go and install a second
+   * one. `pickMetaMask` gets first refusal; anything else gets the job if
+   * MetaMask is not here.
+   */
+  const handleWallet = async () => {
+    const found = wallets ?? (await findWallets());
+    setWallets(found);
+    const wallet = pickMetaMask(found) ?? found[0] ?? null;
+
+    if (!wallet) {
+      /* On a phone there is nothing to install — MetaMask is a browser there,
+         not an extension — so the useful move is to reopen this page inside
+         it. On a desktop it really is an install. */
+      const onPhone = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+      toast.info(onPhone ? "Opening MetaMask…" : "No wallet found in this browser", {
+        description: onPhone
+          ? "Continuing in the MetaMask app's browser."
+          : "Install MetaMask (or any wallet) and try again — or use your email above.",
+      });
+      window.open(
+        onPhone ? metamaskDeepLink() : "https://metamask.io/download/",
+        onPhone ? "_self" : "_blank",
+        "noopener,noreferrer",
+      );
+      return;
+    }
+
+    setSocial("wallet");
+    try {
+      const { isNewAccount, walletName } = await signInWithWallet(wallet);
+      toast.success(isNewAccount ? "Welcome to the Vibe ✨" : "Welcome back ✨", {
+        description: `Signed in with ${walletName}.`,
+      });
+      handleClose(false);
+    } catch (err) {
+      // Closing the signature prompt is a decision, not a failure.
+      if (!isUserRejection(err)) {
+        toast.error("Could not sign you in with that wallet", {
+          description: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      setSocial(null);
+    }
+  };
+
+  /**
+   * Door four — Google.
+   *
+   * `setSocial` is never cleared on the success path, and that is correct: the
+   * browser is navigating to Google, and flipping the button back to idle for
+   * the half second before it does reads as "nothing happened, press it again".
+   */
+  const handleGoogle = async () => {
+    setSocial("google");
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      toast.error("Google sign-in isn't available", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+      setSocial(null);
+    }
+  };
+
+  /* Say the name of the wallet that will actually open. Until discovery has
+     answered we say MetaMask, which is what the button has always said and
+     what it will say again for most people. */
+  const walletLabel = (() => {
+    if (!wallets?.length) return "Continue with MetaMask";
+    const named = pickMetaMask(wallets) ?? wallets[0];
+    return `Continue with ${named.name}`;
+  })();
+
+  const busy = loading || social != null;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md p-0 overflow-hidden border border-white/10 bg-[#0b1220] text-white rounded-2xl">
@@ -233,7 +353,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                 />
                 <Button
                   type="submit"
-                  disabled={loading || code.length < OTP_LENGTH}
+                  disabled={busy || code.length < OTP_LENGTH}
                   className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90 disabled:opacity-40"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enter the Vibe"}
@@ -279,7 +399,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
 
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={busy}
                   className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90"
                 >
                   {loading ? (
@@ -354,7 +474,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={busy}
                 className="w-full h-12 rounded-xl bg-white text-black font-semibold hover:bg-white/90"
               >
                 {loading ? (
@@ -399,20 +519,23 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => toast.info("MetaMask sign-in — coming soon")}
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/60"
+              onClick={() => void handleWallet()}
+              disabled={busy}
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/80 disabled:opacity-40"
             >
-              <span className="text-lg leading-none opacity-70">🦊</span>
-              Continue with MetaMask
-              <span className="ml-1 text-[9px] uppercase tracking-widest rounded-full border border-white/20 px-1.5 py-0.5 text-white/45">
-                soon
-              </span>
+              {social === "wallet" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <span className="text-lg leading-none">🦊</span>
+              )}
+              {social === "wallet" ? "Check your wallet…" : walletLabel}
             </button>
 
             <button
               type="button"
-              onClick={() => toast.info("Google sign-in — coming soon")}
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/60"
+              onClick={() => void handleGoogle()}
+              disabled={busy}
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/80 disabled:opacity-40"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -432,10 +555,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Continue with Google
-              <span className="ml-1 text-[9px] uppercase tracking-widest rounded-full border border-white/20 px-1.5 py-0.5 text-white/45">
-                soon
-              </span>
+              {social === "google" ? "Taking you to Google…" : "Continue with Google"}
             </button>
           </div>
         </div>

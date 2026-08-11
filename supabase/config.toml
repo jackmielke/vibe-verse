@@ -24,3 +24,10 @@ verify_jwt = false
 # force a rewrite.
 [functions.vibe-times]
 verify_jwt = false
+
+# Sign in with a wallet. The caller has no session yet — that is the entire
+# point — so there is no JWT to verify. The credential is a signature over a
+# server-issued, single-use nonce, checked in the function body against the
+# exact bytes we handed out.
+[functions.wallet-auth]
+verify_jwt = false

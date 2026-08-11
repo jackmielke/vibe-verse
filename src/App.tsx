@@ -40,6 +40,7 @@ const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
 const Lobby = lazy(() => import("./pages/Lobby.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
 const SpotifyCallback = lazy(() => import("./pages/SpotifyCallback.tsx"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
 const MemoryGarden = lazy(() => import("./pages/MemoryGarden.tsx"));
 const City = lazy(() => import("./pages/City.tsx"));
 const Evolve = lazy(() => import("./pages/Evolve.tsx"));
@@ -128,6 +129,12 @@ const AppChrome = () => {
      dynamic so the registry's route-set cannot express it. */
   if (pathname.startsWith("/play/")) return null;
 
+  /* OAuth landing pads. Nobody is *at* these — they are a second of spinner
+     between a provider and wherever the visitor was actually going. Chrome
+     here means the nav paints "Log in" over somebody mid-login, and the radio
+     starts a track they will navigate away from before the first bar. */
+  if (pathname.startsWith("/auth/")) return null;
+
   return (
     <>
       <GlobalNav />
@@ -191,6 +198,10 @@ const App = () => (
           <Route path="/about" element={<About />} />
           {/* Spotify OAuth (PKCE) callback. */}
           <Route path="/auth/spotify" element={<SpotifyCallback />} />
+          {/* Where Google drops you off. One fixed path rather than one per
+              route, because every one of them has to be pasted into Supabase's
+              redirect allow list by hand. */}
+          <Route path="/auth/callback" element={<AuthCallback />} />
           {/* /space is the canonical path; /unit7 stays as a back-compat alias. */}
           <Route path="/space" element={<Unit7Playground />} />
           <Route path="/unit7" element={<Unit7Playground />} />

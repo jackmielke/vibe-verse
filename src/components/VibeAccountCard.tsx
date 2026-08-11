@@ -39,6 +39,11 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  linkProviderIdentity,
+  signInWithProvider,
+  type OAuthProvider,
+} from "@/lib/oauth";
+import {
   getVibeBalance,
   formatVibe,
   shortAddress,
@@ -269,29 +274,29 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
    *  - Signed out → `signInWithOAuth` redirects them through the
    *    provider's login and creates / finds the matching account.
    *
-   * Both rely on the provider being enabled in the Supabase project
-   * (Auth → Providers). Until that's flipped on we surface a friendly
-   * error message client-side rather than a generic 401.
+   * Both go through `lib/oauth.ts` rather than calling Supabase here, and the
+   * reason is the redirect. This used to pass `window.location.href`, which
+   * means every page carrying this card — and every query string on it — has
+   * to be in the project's redirect allow list. An unlisted redirect does not
+   * error; it silently falls back to the Site URL, so somebody linking Google
+   * from a preview deploy lands on production, signed out, with nothing to
+   * read. One shared `/auth/callback` and a stashed return path fixes that
+   * everywhere at once.
+   *
+   * Both still rely on the provider being enabled in the Supabase project
+   * (Auth → Providers); `describeOAuthError` says so in as many words rather
+   * than surfacing "Unsupported provider".
    */
-  const linkOrSignInWithProvider = async (provider: "google" | "github") => {
+  const linkOrSignInWithProvider = async (provider: OAuthProvider) => {
     setOauthError(null);
     setPendingProvider(provider);
     try {
-      if (authUserId) {
-        const { error } = await supabase.auth.linkIdentity({
-          provider,
-          options: { redirectTo: window.location.href },
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider,
-          options: { redirectTo: window.location.href },
-        });
-        if (error) throw error;
-      }
+      if (authUserId) await linkProviderIdentity(provider);
+      else await signInWithProvider(provider);
     } catch (e) {
-      setOauthError((e as Error).message ?? `Couldn't ${authUserId ? "link" : "sign in with"} ${provider}`);
+      setOauthError(
+        (e as Error).message ?? `Couldn't ${authUserId ? "link" : "sign in with"} ${provider}`,
+      );
     } finally {
       setPendingProvider(null);
     }
