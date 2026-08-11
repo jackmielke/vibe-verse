@@ -18,7 +18,7 @@ export const WORLD_UPDATED: Record<string, string> = {
   "blob-battle": "2026-08-10T07:08:13Z",
   "blue-angels": "2026-08-06T06:39:05Z",
   "characters": "2026-07-09T00:55:22Z",
-  "city": "2026-08-10T23:24:32Z",
+  "city": "2026-08-11T03:41:16Z",
   "coil": "2026-08-11T00:01:59Z",
   "coin": "2026-08-09T19:09:20Z",
   "companions": "2026-07-13T09:47:28Z",

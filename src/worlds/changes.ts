@@ -65,12 +65,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
+    { sha: "6268c03", iso: "2026-08-11T03:41:16Z", subject: "Gave Vibe City a real sea, and a beach for it to break on" },
     { sha: "0ff7358", iso: "2026-08-10T23:24:32Z", subject: "Changes" },
     { sha: "14ffac3", iso: "2026-08-10T23:24:32Z", subject: "Changes" },
     { sha: "6521988", iso: "2026-08-10T23:24:32Z", subject: "Changes" },
     { sha: "faf2a48", iso: "2026-08-10T23:24:32Z", subject: "Changes" },
     { sha: "8a777ce", iso: "2026-08-10T23:24:32Z", subject: "Changes" },
-    { sha: "64186e3", iso: "2026-08-10T06:39:09Z", subject: "Thirty more characters, and the shop finally sells characters" },
   ],
   "coil": [
     { sha: "8555942", iso: "2026-08-11T00:01:59Z", subject: "COIL: slither, with your shop character riding the front" },
