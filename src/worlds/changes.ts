@@ -65,6 +65,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "3f0643e", iso: "2026-08-08T21:32:20+00:00", subject: "Rock paper scissors leads the arcade, and the shop grows a second tab" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
   ],
+  "coil": [
+    { sha: "8555942", iso: "2026-08-11T00:01:59+00:00", subject: "COIL: slither, with your shop character riding the front" },
+  ],
   "coin": [
     { sha: "bad92a2", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
     { sha: "d7e7287", iso: "2026-08-09T19:09:20+00:00", subject: "Changes" },
