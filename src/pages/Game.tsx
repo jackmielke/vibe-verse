@@ -14,7 +14,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Search, X } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import { PLAYABLE, WORLDS, type WorldEntry } from "@/worlds/registry";
 import {
   SORT_TABS,
@@ -28,9 +28,21 @@ import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeMark from "@/components/VibeMark";
+import VibeWink from "@/components/VibeWink";
+import StarField from "@/components/StarField";
+import FeaturedCharacters from "@/components/shop/FeaturedCharacters";
 import { WorldChangesPortal } from "@/components/WorldChanges";
 import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
+
+/**
+ * Cards shown before the grid asks to be expanded.
+ *
+ * Eight because of how it divides: four across on a laptop is two clean rows,
+ * two across on a phone is four. Anything that leaves a ragged half-row reads
+ * as the page having run out rather than having been folded.
+ */
+const GRID_PREVIEW = 8;
 
 /**
  * The panel a card falls back to when a world has no honest capture yet.
@@ -274,19 +286,52 @@ export default function Game() {
     [],
   );
 
+  /**
+   * How much of the grid is on screen before somebody asks for the rest.
+   *
+   * A search is never collapsed. Typing three letters and being shown eight of
+   * the eleven matches — behind a button — is the control lying about its own
+   * result, and it is the moment a visitor stops trusting the search box.
+   */
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = !expanded && !query.trim() && shown.length > GRID_PREVIEW;
+  const visible = collapsed ? shown.slice(0, GRID_PREVIEW) : shown;
+
+  /* No `overflow-hidden` on the root, however much a full-bleed background
+     wants it: it would make this a scroll container, and the sort/search bar
+     below sticks to the page rather than to this div. The sky is `fixed` and
+     cannot overflow anything anyway. */
   return (
-    <div className="min-h-[100dvh] w-full bg-background">
-      {/* Aurora behind the header — cheap, static, and it makes a flat index
-          page feel like it belongs to the same universe as the 3D hub. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[70vh]"
-        style={{
-          background:
-            "radial-gradient(70% 55% at 22% 0%, hsl(160 80% 50% / 0.16), transparent 68%)," +
-            "radial-gradient(60% 50% at 82% 6%, hsl(266 85% 62% / 0.16), transparent 70%)",
-        }}
-        aria-hidden
-      />
+    <div className="relative min-h-[100dvh] w-full bg-background">
+      {/* The sky. Fixed rather than absolute so the stars stay put while the
+          grid scrolls over them — the whole page reads as one window onto the
+          same galaxy instead of a header decoration that scrolls away.
+
+          It is one canvas, painted once. See `StarField` for why it is not
+          WebGL and why nothing on it moves. */}
+      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
+        <StarField />
+        {/* Two nebula washes over the stars, which is the order that reads as
+            depth: gas in front of the far ones, and the bright few punching
+            through it. Behind the stars they just tint the whole field. */}
+        <div
+          className="absolute inset-x-0 top-0 h-[80vh]"
+          style={{
+            background:
+              "radial-gradient(70% 55% at 22% 0%, hsl(160 80% 50% / 0.17), transparent 68%)," +
+              "radial-gradient(60% 50% at 82% 6%, hsl(266 85% 62% / 0.18), transparent 70%)",
+          }}
+        />
+        {/* And a floor, so the cards at the bottom of a long scroll are not
+            sitting on bare starfield with nothing under them. */}
+        <div
+          className="absolute inset-x-0 bottom-0 h-[45vh]"
+          style={{
+            background:
+              "linear-gradient(to top, hsl(var(--background)) 12%, transparent 100%)",
+          }}
+        />
+      </div>
 
       {/* The header is deliberately short on a phone. This page is the front
           door, and a front door's job is to show you the room — every line of
@@ -382,7 +427,11 @@ export default function Game() {
             read as three separate controls that happened to be near each other.
             The count only appears while a search is narrowing something, where
             it answers a question somebody is actually asking. */}
-        <div className="sticky top-0 z-10 -mx-3 mt-5 flex flex-col gap-2 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-3">
+        {/* Parked below the nav rather than at `top-0`. The global nav is fixed
+            at `top-3` with a 36px pill, so a bar that sticks flush to the top
+            slides underneath it and the first sort tab spends the whole scroll
+            behind the Worlds pill — which is what it did. */}
+        <div className="sticky top-[52px] z-10 -mx-3 mt-5 flex flex-col gap-2 px-3 py-2.5 backdrop-blur-xl sm:-mx-6 sm:mt-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-3">
           <SortTabs sort={sort} onChange={chooseSort} tabs={tabs} />
 
           <div className="flex min-w-0 items-center gap-2 sm:justify-end">
@@ -423,15 +472,88 @@ export default function Game() {
         {/* Two across on a phone, always. Seeing several games at once is the
             entire job of this page. */}
         <div className="mt-1 grid auto-rows-fr grid-cols-2 gap-2.5 sm:mt-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {shown.map((w, i) => (
+          {visible.map((w, i) => (
             <Card key={w.key} world={w} index={i} onHistory={setHistory} />
           ))}
         </div>
+
+        {/* The grid is the page, and it was also a wall: fifty-two cards meant
+            nothing underneath it was ever reached, so the characters and the
+            currency may as well not have been on the page. Eight is two rows on
+            a laptop and four on a phone — enough to prove there is a lot here,
+            short enough that scrolling past it is a decision rather than a
+            journey.
+
+            The count is on the button because collapsing must not be able to
+            make the place look small. */}
+        {collapsed && (
+          <div className="mt-5 flex justify-center sm:mt-7">
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="group flex items-center gap-2 rounded-full border border-border/50 bg-background/40 px-5 py-2.5 font-heading text-[11px] font-bold uppercase tracking-wider text-foreground/80 backdrop-blur transition-colors hover:border-primary/60 hover:text-primary"
+            >
+              Show all <span className="tabular-nums">{shown.length}</span> worlds
+              <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:translate-y-0.5" />
+            </button>
+          </div>
+        )}
 
         {shown.length === 0 && (
           <p className="mt-10 text-center text-sm text-muted-foreground">
             Nothing matches “{query}”. The vibeverse is big but it is not that big yet.
           </p>
+        )}
+
+        {/* Who you play as, after what you play. Only when nothing is being
+            searched: a query is a question about worlds, and answering it with
+            a row of characters underneath is noise on top of a filtered list. */}
+        {!query.trim() && <FeaturedCharacters />}
+
+        {/* The currency and the argument, in one band at the bottom.
+            `/manifesto` has been the best-written page in here and the least
+            reachable — nothing linked to it from the front door. It is the
+            answer to "why does a browser game have money in it", so it belongs
+            directly under the money. */}
+        {!query.trim() && (
+          <section className="mt-14 overflow-hidden rounded-3xl border border-border/40 bg-black/25 p-5 backdrop-blur-sm sm:p-8">
+            <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:gap-8">
+              {/* The flat mark, not `VibeMark`. The hero at the top of this
+                  page already upgrades to the live one, and a second live mark
+                  is a second WebGL context on the page people open *before*
+                  they open a world — which is the whole reason worlds lose
+                  their context to the browser's cap. One canvas per page, and
+                  the one that gets it is the one somebody is looking at. */}
+              <div className="hidden shrink-0 sm:block" aria-hidden>
+                <VibeWink size={84} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-heading text-base font-black uppercase tracking-wider text-[#7dffd4]">
+                  Vibey Coins
+                </h2>
+                <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted-foreground">
+                  Every world pays out. Play anything in here and you earn the same
+                  currency, spend it in the arcade on characters nobody else can make,
+                  and carry it back into the next world — no account required to start.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[10.5px]">
+                  <Link
+                    to="/arcade"
+                    className="flex items-center gap-1.5 rounded-full border border-[#7dffd4]/35 bg-[#7dffd4]/[0.07] px-4 py-2 font-heading font-semibold uppercase tracking-wider text-[#7dffd4] transition-colors hover:border-[#7dffd4]/60"
+                  >
+                    <VibeCoinMark size={13} />
+                    <span>Spend them</span>
+                  </Link>
+                  <Link
+                    to="/manifesto"
+                    className="rounded-full border border-border/40 px-4 py-2 font-heading font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:border-[#c4b2ff]/60 hover:text-[#c4b2ff]"
+                  >
+                    The Arcade of the Future →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
         )}
 
         <footer className="mt-16 border-t border-border/40 pt-6 text-[11px] text-muted-foreground">

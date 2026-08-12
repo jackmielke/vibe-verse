@@ -25,7 +25,15 @@ import { LogOut, User2 } from "lucide-react";
 export default function LogInWithVibe({
   compact = false,
 }: {
-  /** When true, only render the icon — useful on dense nav rows. */
+  /**
+   * Icon only, at every width — for a row too dense to spare the word.
+   *
+   * The default is *not* icon-only. A round chip with a "?" in it was the
+   * entire log-in affordance for a while, and it reads as a help button: the
+   * one thing a signed-out visitor is looking for was the one thing the nav
+   * did not say. So the word is there from `sm:` up, and only a caller that
+   * genuinely has no room opts out of it.
+   */
   compact?: boolean;
 }) {
   const id = useVibeIdentity();
@@ -41,9 +49,9 @@ export default function LogInWithVibe({
     return <div className={`${iconBtn} bg-white/5 animate-pulse`} />;
   }
 
-  // Signed OUT — a round chip instead of a wordy pill: the face of the
-  // character you're playing as (everyone has one, account or not), or
-  // a "?" if you've never picked. Tapping it opens the login dialog.
+  // Signed OUT — the face of the character you're playing as (everyone has
+  // one, account or not) or a "?" if you've never picked, and the word "Log
+  // in" beside it wherever there is room for it.
   if (!id.session) {
     const hasPick =
       typeof window !== "undefined" &&
@@ -53,16 +61,31 @@ export default function LogInWithVibe({
       <>
         <button
           onClick={() => setOpen(true)}
-          className={`group relative ${iconBtn} bg-primary/10 hover:bg-primary/20 text-[15px] leading-none shadow-[0_0_12px_-2px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_-1px_hsl(var(--primary)/0.85)]`}
+          className={`group relative flex h-7 items-center gap-1.5 rounded-full bg-primary/10 pl-0.5 transition hover:bg-primary/20 shadow-[0_0_12px_-2px_hsl(var(--primary)/0.6)] hover:shadow-[0_0_18px_-1px_hsl(var(--primary)/0.85)] ${
+            compact ? "w-7 justify-center pl-0" : "pr-2.5"
+          }`}
           style={{ boxShadow: `0 0 0 1.5px ${ring}` }}
           title={hasPick ? `Playing as ${character.label} — log in to save your vibe` : "Log in with Vibe"}
           aria-label="Log in"
         >
-          <span className="relative z-10" aria-hidden>
+          <span
+            className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center text-[15px] leading-none"
+            aria-hidden
+          >
             {hasPick ? character.emoji : (
               <span className="text-primary text-[13px] font-bold">?</span>
             )}
           </span>
+          {/* Shown at every width, unlike the Worlds pill's label, which hides
+              on a phone. The asymmetry is deliberate: somebody who cannot find
+              the worlds has a whole page of them under this bar, and somebody
+              who cannot find the log in has nothing. It is about forty pixels
+              and it buys the one word this corner has to say. */}
+          {!compact && (
+            <span className="font-heading text-[10.5px] font-semibold uppercase leading-none tracking-wider text-primary">
+              Log in
+            </span>
+          )}
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 rounded-full opacity-50 blur-[6px] bg-primary/25 group-hover:opacity-80 transition-opacity"

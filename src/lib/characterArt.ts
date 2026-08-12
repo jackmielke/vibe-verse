@@ -85,6 +85,15 @@ import basiliskArt from "@/assets/characters/basilisk.png";
 import hexenArt from "@/assets/characters/hexen.png";
 import gritArt from "@/assets/characters/grit.png";
 import monarchArt from "@/assets/characters/monarch.png";
+/* The five that were built from the rig but never photographed. Same reason as
+   the body-plan five above: every surface that shows a character draws this
+   tile, so an unphotographed one is a character that shows up as an emoji on
+   a shelf full of renders. */
+import fluxArt from "@/assets/characters/flux.png";
+import webslingerArt from "@/assets/characters/webslinger.png";
+import nightcapeArt from "@/assets/characters/nightcape.png";
+import whiskersArt from "@/assets/characters/whiskers.png";
+import emberwingArt from "@/assets/characters/emberwing.png";
 
 export const CHARACTER_ART: Record<string, string> = {
   aurora: auroraArt,
@@ -145,12 +154,22 @@ export const CHARACTER_ART: Record<string, string> = {
   hexen: hexenArt,
   grit: gritArt,
   monarch: monarchArt,
+  flux: fluxArt,
+  webslinger: webslingerArt,
+  nightcape: nightcapeArt,
+  whiskers: whiskersArt,
+  emberwing: emberwingArt,
 };
 
 /**
  * Undefined for anything unphotographed, which callers render as a drawn
- * fallback rather than a broken image. The free roster is sixty-odd GLBs and
- * is deliberately not in here — this is the shop's art, not the world's.
+ * fallback rather than a broken image.
+ *
+ * This is every character built from the rig, sold or free — the shelf, the
+ * picker and the profile all draw the same tile, so splitting the art by who
+ * has to pay for it would only mean one of those surfaces showing emoji. What
+ * is *not* in here is the roster that ships as GLBs: those have a model to
+ * render and photographing them would be a second copy of the same thing.
  */
 export const characterArt = (id: string | null | undefined): string | undefined =>
   id ? CHARACTER_ART[id] : undefined;
