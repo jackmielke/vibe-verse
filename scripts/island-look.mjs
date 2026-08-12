@@ -61,6 +61,11 @@ const SHOTS = [
   ["05-rim-edge", 44, 6, 12, 0.02, 0.4],
   ["06-plaza-wide", 0, 10, 40, 0.55, 0.0],
   ["07-dream-tree", -24, 18, 16, 0.2, -0.9],
+  /* Down each avenue from the plaza gate, which is the view the layout was
+     designed for and the one an overhead plan cannot tell you about. */
+  ["11-high-street", 0, 14, 13, 0.16, 0.0],
+  ["12-approach", 0, -14, 13, 0.16, Math.PI],
+  ["13-promenade", 32, 32, 11, 0.1, 2.35],
 ];
 
 for (const [name, sx, sz, dist, pitch, yaw] of SHOTS) {

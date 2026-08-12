@@ -27,6 +27,13 @@
  * buildings ended up.
  */
 import * as THREE from "three";
+import { ROAD } from "./islandPlan";
+
+/** How the roads land on the canvas, in texture pixels. */
+interface RoadPx {
+  /** Pixels per island metre. */
+  ppm: number;
+}
 
 /** Deterministic RNG — the lawn must not reshuffle between visits. */
 function mulberry32(seed: number): () => number {
@@ -53,7 +60,7 @@ function mulberry32(seed: number): () => number {
  * 110 m — they can't — but because the path edges were visibly stair-stepped
  * at 1024 and a soft edge is most of what makes a path look worn in.
  */
-function lawnColorTexture(): THREE.CanvasTexture {
+function lawnColorTexture(road: RoadPx): THREE.CanvasTexture {
   const S = 2048;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
@@ -142,46 +149,112 @@ function lawnColorTexture(): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // The sandy path cross. Trodden earth, not a stripe of beige: a soft body,
-  // a slightly darker damp centre line, and grass creeping back in at the
-  // shoulders.
-  const path = (horizontal: boolean) => {
-    const half = 62;
-    const g = horizontal
-      ? ctx.createLinearGradient(0, S / 2 - half, 0, S / 2 + half)
-      : ctx.createLinearGradient(S / 2 - half, 0, S / 2 + half, 0);
-    g.addColorStop(0, "rgba(214,192,150,0)");
-    g.addColorStop(0.18, "rgba(214,192,150,0.55)");
-    g.addColorStop(0.34, "rgba(220,199,158,0.95)");
-    g.addColorStop(0.5, "rgba(203,180,140,0.95)");
-    g.addColorStop(0.66, "rgba(220,199,158,0.95)");
-    g.addColorStop(0.82, "rgba(214,192,150,0.55)");
-    g.addColorStop(1, "rgba(214,192,150,0)");
-    ctx.fillStyle = g;
-    if (horizontal) ctx.fillRect(0, S / 2 - half, S, half * 2);
-    else ctx.fillRect(S / 2 - half, 0, half * 2, S);
-  };
-  path(true);
-  path(false);
-
-  // Grit in the path — small stones and scuffs, which is the detail that
-  // stops a gradient reading as a gradient.
-  for (let i = 0; i < 2600; i++) {
-    const along = (i * 191) % S;
-    const across = ((i * 313) % 108) - 54;
-    const dark = i % 4 === 0;
-    ctx.fillStyle = dark ? "rgba(140,118,84,0.35)" : "rgba(240,228,198,0.4)";
-    const w = 2 + (i % 3);
-    if (i % 2) ctx.fillRect(along, S / 2 + across, w, w);
-    else ctx.fillRect(S / 2 + across, along, w, w);
+  /*
+   * The roads.
+   *
+   * Four arms of different lengths, not a cross running rim to rim. That is
+   * the point of the layout: the east and west arms stop at a shop door, and
+   * the north and south arms run out to the beacon and the Character Studio,
+   * so every road arrives somewhere instead of running off the edge of the
+   * island. The lengths are `ROAD.arm`, which the grass density predicate
+   * reads too — paint a road here and the grass gets out of its way for free.
+   *
+   * Texture space: island +x is +u, and three's default `flipY` puts island +z
+   * *down* the canvas. Getting that backwards lays the High Street's stepping
+   * stones up the Approach instead.
+   */
+  const half = ROAD.half * road.ppm;
+  const ARMS: Array<{ dx: number; dy: number; len: number }> = [
+    { dx: 0, dy: -1, len: ROAD.arm.north * road.ppm },
+    { dx: 0, dy: 1, len: ROAD.arm.south * road.ppm },
+    { dx: 1, dy: 0, len: ROAD.arm.east * road.ppm },
+    { dx: -1, dy: 0, len: ROAD.arm.west * road.ppm },
+  ];
+  // Trodden earth, not a stripe of beige: a soft body, a darker damp centre
+  // line, and grass creeping back in at the shoulders.
+  const surface = ctx.createLinearGradient(0, -half, 0, half);
+  surface.addColorStop(0, "rgba(214,192,150,0)");
+  surface.addColorStop(0.18, "rgba(214,192,150,0.55)");
+  surface.addColorStop(0.34, "rgba(220,199,158,0.95)");
+  surface.addColorStop(0.5, "rgba(203,180,140,0.95)");
+  surface.addColorStop(0.66, "rgba(220,199,158,0.95)");
+  surface.addColorStop(0.82, "rgba(214,192,150,0.55)");
+  surface.addColorStop(1, "rgba(214,192,150,0)");
+  for (const arm of ARMS) {
+    ctx.save();
+    ctx.translate(S / 2, S / 2);
+    // Rotate the arm onto +x, so one piece of drawing code covers all four.
+    ctx.rotate(Math.atan2(arm.dy, arm.dx));
+    ctx.fillStyle = surface;
+    // Start behind the centre so the four arms overlap into one junction
+    // rather than leaving a seam through the middle of the plaza.
+    ctx.fillRect(-half, -half, arm.len + half, half * 2);
+    // Grit — small stones and scuffs, the detail that stops a gradient
+    // reading as a gradient.
+    const span = Math.max(1, Math.round(arm.len + half));
+    for (let i = 0; i < 900; i++) {
+      const along = ((i * 191) % span) - half;
+      const across = ((i * 313) % Math.round(half * 1.8)) - half * 0.9;
+      ctx.fillStyle = i % 4 === 0 ? "rgba(140,118,84,0.35)" : "rgba(240,228,198,0.4)";
+      const w = 2 + (i % 3);
+      ctx.fillRect(along, across, w, w);
+    }
+    // A soft end cap, so the road stops like a worn patch petering out rather
+    // than a ruled line drawn across the grass.
+    const cap = ctx.createRadialGradient(arm.len, 0, half * 0.25, arm.len, 0, half * 1.2);
+    cap.addColorStop(0, "rgba(214,192,150,0.7)");
+    cap.addColorStop(1, "rgba(214,192,150,0)");
+    ctx.fillStyle = cap;
+    ctx.beginPath();
+    ctx.arc(arm.len, 0, half * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
-  // Stepping stones on top of the worn ground.
-  for (let i = -20; i <= 20; i++) {
-    for (const [dx, dy, horiz] of [[i * 84, 0, true], [0, i * 84, false]] as const) {
-      if (!horiz && Math.abs(i) < 1) continue; // don't double the centre
-      const cx = S / 2 + dx + (i % 2 ? 10 : -10);
-      const cy = S / 2 + dy;
+  /*
+   * The promenade: the same worn earth as the avenues, swept round the rim.
+   *
+   * Drawn as a thick stroked circle rather than a filled annulus so the soft
+   * shoulder gradient can be faked with three passes of decreasing alpha and
+   * increasing width — a hard-edged ring would read as a painted line on a
+   * lawn, which is the one thing the avenues were carefully not.
+   */
+  {
+    const rr = ROAD.ring.r * road.ppm;
+    const rHalf = ROAD.ring.half * road.ppm;
+    for (const [w, alpha] of [
+      [rHalf * 2.3, 0.14],
+      [rHalf * 1.8, 0.34],
+      [rHalf * 1.5, 0.8],
+    ] as const) {
+      ctx.strokeStyle = `rgba(214,192,150,${alpha})`;
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.arc(S / 2, S / 2, rr, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Grit, so the promenade is the same material as the avenues.
+    for (let i = 0; i < 2400; i++) {
+      const a = (i * 2.39996) % (Math.PI * 2); // golden angle: no clumping
+      const off = ((i * 313) % Math.round(rHalf * 1.9)) - rHalf * 0.95;
+      ctx.fillStyle = i % 4 === 0 ? "rgba(140,118,84,0.35)" : "rgba(240,228,198,0.4)";
+      const w = 2 + (i % 3);
+      ctx.fillRect(S / 2 + Math.cos(a) * (rr + off), S / 2 + Math.sin(a) * (rr + off), w, w);
+    }
+  }
+
+  // Stepping stones on top of the worn ground, laid out along each arm.
+  const STONE_GAP = 84;
+  for (const arm of ARMS) {
+    for (let i = 1; i * STONE_GAP < arm.len - half * 0.4; i++) {
+      // A stone is an ellipse laid across the road, so which axis is the long
+      // one depends on which way the arm runs. The ±10 is the stones not being
+      // laid in a straight line, which is most of what reads as "by hand".
+      const horiz = arm.dx !== 0;
+      const wobble = i % 2 ? 10 : -10;
+      const cx = S / 2 + arm.dx * i * STONE_GAP + (horiz ? 0 : wobble);
+      const cy = S / 2 + arm.dy * i * STONE_GAP + (horiz ? wobble : 0);
+      {
       ctx.fillStyle = "rgba(60,48,32,0.18)"; // contact shadow under the stone
       ctx.beginPath();
       ctx.ellipse(cx + 3, cy + 3, horiz ? 24 : 17, horiz ? 17 : 24, 0, 0, Math.PI * 2);
@@ -199,6 +272,7 @@ function lawnColorTexture(): THREE.CanvasTexture {
         ctx.beginPath();
         ctx.arc(cx + ((s * 13) % 22) - 11, cy + ((s * 7) % 18) - 9, 2.5, 0, Math.PI * 2);
         ctx.fill();
+      }
       }
     }
   }
@@ -308,14 +382,20 @@ function lawnRoughnessTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** The three maps that dress the island's grass cap. */
-export function lawnTextures(): {
+/**
+ * The three maps that dress the island's grass cap.
+ *
+ * `capDiameter` is what ties the painted roads to the real ones: the colour map
+ * covers the whole cap, so pixels-per-metre falls out of the cap's size, and
+ * the road arms can then be drawn at the metre lengths `islandPlan` declares.
+ */
+export function lawnTextures(capDiameter: number): {
   map: THREE.CanvasTexture;
   normalMap: THREE.CanvasTexture;
   roughnessMap: THREE.CanvasTexture;
 } {
   return {
-    map: lawnColorTexture(),
+    map: lawnColorTexture({ ppm: 2048 / capDiameter }),
     normalMap: lawnNormalTexture(),
     roughnessMap: lawnRoughnessTexture(),
   };

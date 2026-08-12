@@ -19,6 +19,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lawnTextures, buildGrassField, buildGroundCover } from "./islandGrass";
+import { SITE, PLAZA, ROAD, makeGrassDensity } from "./islandPlan";
 import palm1Url from "@/assets/glb/kits/pirate/environment/PalmTree_1.glb";
 import palm2Url from "@/assets/glb/kits/pirate/environment/PalmTree_2.glb";
 import palm3Url from "@/assets/glb/kits/pirate/environment/PalmTree_3.glb";
@@ -1041,13 +1042,17 @@ interface ShopSpec {
 const SHOPS: ShopSpec[] = [
   {
     lines: ["TRADER", "JOE'S"],
-    x: -30, z: -8, w: 15, h: 9, d: 11,
+    /* Square on the west road at its far end, so the road runs into the door.
+       A building at the end of a street is the oldest trick there is for
+       making a street read as one — see `islandPlan`. */
+    x: SITE.traderJoes.x, z: SITE.traderJoes.z, w: 15, h: 9, d: 11,
     bg: "#e8d9b8", fg: "#c0392b",
     sub: { lines: ["GOOD FOOD", "GOOD VIBES"], bg: "#10241a", fg: "#46e88c", glow: true },
   },
   {
     lines: ["NINJA'S", "PALACE"],
-    x: 26, z: -18, w: 13, h: 10, d: 11,
+    /* Likewise on the east road. Two roads, two doors. */
+    x: SITE.ninjasPalace.x, z: SITE.ninjasPalace.z, w: 13, h: 10, d: 11,
     bg: "#7d4ea8", fg: "#f2a134",
     tier: { w: 8, h: 6, d: 7 },
   },
@@ -1158,7 +1163,9 @@ export function buildCardboardIsland(opts: {
     roughness: 1,
     flatShading: true,
   });
-  const lawn = lawnTextures();
+  // The colour map paints the roads, so it needs the cap's real diameter to
+  // turn `islandPlan`'s metre lengths into pixels.
+  const lawn = lawnTextures((ISLAND_RADIUS + 1.6) * 2);
   const top = new THREE.Mesh(capGeo, [
     grassSide,
     new THREE.MeshStandardMaterial({
@@ -1377,7 +1384,7 @@ export function buildCardboardIsland(opts: {
   // A calm stone-ringed pool with a soft shimmer. (It used to spill off
   // the rim as a waterfall — cut; the island reads cleaner without it.)
   {
-    const POOL_X = 36, POOL_Z = 10;
+    const POOL_X = SITE.pool.x, POOL_Z = SITE.pool.z;
     const poolRand = mulberry32(2025);
 
     /**
@@ -1971,8 +1978,8 @@ export function buildCardboardIsland(opts: {
   // Moved off the plaza so it no longer crowds the spawn camera; tucked
   // into the NE lawn between the welcome path and the snack stand.
   // Town plan: the Dream Tree anchors the SW corner of the ring.
-  const TREE_X = -28;
-  const TREE_Z = 20;
+  const TREE_X = SITE.dreamTree.x;
+  const TREE_Z = SITE.dreamTree.z;
   const tree = new THREE.Group();
   tree.position.set(TREE_X, 0, TREE_Z);
   tree.rotation.y = Math.atan2(-TREE_X, -TREE_Z); // sign faces the plaza
@@ -2118,7 +2125,7 @@ export function buildCardboardIsland(opts: {
   // smaller tagline locating us in the wider Galaxy of Creative
   // Whatever. Two chunky posts hold the stacked boards.
   const welcome = new THREE.Group();
-  welcome.position.set(0, 0, -18);
+  welcome.position.set(SITE.welcomeArch.x, 0, SITE.welcomeArch.z);
   // Two posts on the lawn: without these the arch reads as hanging in the air
   // over the path. See `dropShadow` for why the island gets painted contact
   // shadows rather than real ones.
@@ -2226,8 +2233,8 @@ export function buildCardboardIsland(opts: {
   const mill = new THREE.Group();
   // Town plan: the windmill is a NE-rim landmark behind Ninja's Palace
   // now — it used to spin right at the plaza's edge.
-  const MILL_X = 40;
-  const MILL_Z = -26;
+  const MILL_X = SITE.windmill.x;
+  const MILL_Z = SITE.windmill.z;
   mill.position.set(MILL_X, 0, MILL_Z);
   dropShadow(mill, 0, 0, 9, 9);
   const towerH = 15;
@@ -2268,7 +2275,7 @@ export function buildCardboardIsland(opts: {
       roughness: 0.6,
     }),
   );
-  lantern.position.set(-21, 11, 12);
+  lantern.position.set(SITE.lantern.x, SITE.lantern.y, SITE.lantern.z);
   group.add(lantern);
   // Warm pool of light so the island stays welcoming after dark.
   const lanternLight = new THREE.PointLight(0xf2a25c, 55, 70, 1.7);
@@ -2292,10 +2299,14 @@ export function buildCardboardIsland(opts: {
       const size = new THREE.Vector3();
       box.getSize(size);
       const fit = 9 / Math.max(size.x, size.y, size.z, 0.0001);
-      // Two clones of each variant, ringed around the island edge.
-      for (let c = 0; c < 2; c++) {
+      // Palms along the promenade — four clones of each variant, evenly spaced
+      // just outside the ring path. Six of them scattered read as "some palms
+      // happen to be here"; a dozen at a steady interval on the outside of a
+      // path read as planted, which is the difference between scenery and a
+      // place somebody laid out.
+      for (let c = 0; c < 4; c++) {
         const inst = palm.clone();
-        const a = ((i * 2 + c) / 6) * Math.PI * 2 + 0.4;
+        const a = ((i * 4 + c) / 12) * Math.PI * 2 + 0.4;
         inst.scale.setScalar(fit * (0.85 + ((i + c) % 3) * 0.12));
         inst.position.set(Math.cos(a) * (ISLAND_RADIUS - 7), 0, Math.sin(a) * (ISLAND_RADIUS - 7));
         dropShadow(group, inst.position.x, inst.position.z, 7, 7);
@@ -2312,8 +2323,8 @@ export function buildCardboardIsland(opts: {
   const firewall = new THREE.Group();
   // Town plan: the firewall burns on the west ring north of Trader
   // Joe's, facing the plaza — rim art instead of mid-lawn clutter.
-  firewall.position.set(-34, 0, -20);
-  firewall.rotation.y = Math.atan2(34, 20);
+  firewall.position.set(SITE.firewall.x, 0, SITE.firewall.z);
+  firewall.rotation.y = Math.atan2(-SITE.firewall.x, -SITE.firewall.z); // face the plaza
   {
     const tex = (() => {
       const c = document.createElement("canvas");
@@ -2369,8 +2380,8 @@ export function buildCardboardIsland(opts: {
   // ---- The swing -------------------------------------------------------
   // Town plan: the swing lives on the NW rim now, turned to face the
   // open ocean — swinging out over the edge of the world.
-  const SWING_X = -30;
-  const SWING_Z = -28;
+  const SWING_X = SITE.swing.x;
+  const SWING_Z = SITE.swing.z;
   const swing = new THREE.Group();
   swing.position.set(SWING_X, 0, SWING_Z);
   swing.rotation.y = Math.atan2(SWING_X, SWING_Z); // face outward, away from the plaza
@@ -2419,9 +2430,9 @@ export function buildCardboardIsland(opts: {
   // hand-painted reference: green-painted base, white cross paths, a blue
   // lily pond, planters of vines, benches, lanterns, and a JERRY'S PLAZA
   // archway you walk through to enter.
-  const PLAZA_CX = 0;
-  const PLAZA_CZ = 0;
-  const PLAZA_R = 11; // plaza disk radius
+  const PLAZA_CX = PLAZA.x;
+  const PLAZA_CZ = PLAZA.z;
+  const PLAZA_R = PLAZA.r; // plaza disk radius
 
   const plazaGroup = new THREE.Group();
   plazaGroup.position.set(PLAZA_CX, 0, PLAZA_CZ);
@@ -2896,8 +2907,8 @@ export function buildCardboardIsland(opts: {
   // ---- Cardboard TV: the island photo gallery ---------------------------
   // Town plan: the TV sits on the east ring by the spring pool, part
   // of the SE hangout corner (it used to crowd the plaza lawn).
-  const TV_X = 31;
-  const TV_Z = 24;
+  const TV_X = SITE.cardboardTv.x;
+  const TV_Z = SITE.cardboardTv.z;
   const tv = new THREE.Group();
   tv.position.set(TV_X, 0, TV_Z);
   tv.rotation.y = Math.atan2(0 - TV_X, 0 - TV_Z); // screen faces the plaza center
@@ -2956,8 +2967,8 @@ export function buildCardboardIsland(opts: {
   // the back-island side; proximity opens the shop dialog in /city.
   // Sits just to the right of SnackFae (from a player approaching the counter)
   // so you can see both at once when you walk up to grab a snack.
-  const SHOP_X = 8;
-  const SHOP_Z = 34;
+  const SHOP_X = SITE.vibeShop.x;
+  const SHOP_Z = SITE.vibeShop.z;
   {
     const shopGroup = new THREE.Group();
     shopGroup.position.set(SHOP_X, 0, SHOP_Z);
@@ -3098,8 +3109,8 @@ export function buildCardboardIsland(opts: {
   // primitives saved to public.island_spawns. Everyone on the island
   // sees what you make; only you can delete your own creations.
   // Town plan: south ring, clear of the shop pair.
-  const PORTAL_X = -16;
-  const PORTAL_Z = 31;
+  const PORTAL_X = SITE.makerPortal.x;
+  const PORTAL_Z = SITE.makerPortal.z;
   const portalGroup = new THREE.Group();
   portalGroup.position.set(PORTAL_X, 0, PORTAL_Z);
   {
@@ -3186,8 +3197,8 @@ export function buildCardboardIsland(opts: {
   // from the plaza. (It once sat at TJ-roof height — y=9 — which left
   // it hovering in the sky after the town re-plan and out of reach of
   // its own walk-up radius. It lives on the ground now.)
-  const AVATAR_X = 28;
-  const AVATAR_Z = 31;
+  const AVATAR_X = SITE.characterStudio.x;
+  const AVATAR_Z = SITE.characterStudio.z;
   const AVATAR_Y = 0;
   const avatarPortalGroup = new THREE.Group();
   avatarPortalGroup.position.set(AVATAR_X, AVATAR_Y, AVATAR_Z);
@@ -3494,8 +3505,8 @@ export function buildCardboardIsland(opts: {
   // (which lives in its own Lovable project) in a fullscreen modal.
   // ------------------------------------------------------------------
   // Town plan: the arcade joins the SE hangout corner with SnackFe.
-  const ARCADE_X = 22;
-  const ARCADE_Z = 37;
+  const ARCADE_X = SITE.arcade.x;
+  const ARCADE_Z = SITE.arcade.z;
   const arcadeGroup = new THREE.Group();
   arcadeGroup.position.set(ARCADE_X, 0, ARCADE_Z);
   arcadeGroup.rotation.y = -Math.PI / 5;
@@ -3624,8 +3635,8 @@ export function buildCardboardIsland(opts: {
   // the island keeps the things that cost money, and because "walk past the
   // machine, sit at the table" is a nicer sentence than either alone.
   // ------------------------------------------------------------------
-  const RPS_X = 13;
-  const RPS_Z = 38;
+  const RPS_X = SITE.rpsTable.x;
+  const RPS_Z = SITE.rpsTable.z;
   const rpsGroup = new THREE.Group();
   rpsGroup.position.set(RPS_X, 0, RPS_Z);
   rpsGroup.rotation.y = Math.PI / 7;
@@ -3759,15 +3770,20 @@ export function buildCardboardIsland(opts: {
    * far enough that the kiosks do not clip. If you add a stall, keep it in the
    * arc and keep it that far from its neighbours.
    */
-  const SNACK_X = 16;
-  const SNACK_Z = 33;
+  const SNACK_X = SITE.snackFe.x;
+  const SNACK_Z = SITE.snackFe.z;
   const SNACK_W = 9;
   const SNACK_D = 6;
   const SNACK_H = 4.4;
   const snackGroup = new THREE.Group();
   snackGroup.position.set(SNACK_X, 0, SNACK_Z);
   // Rotate so the service window faces inward toward the plaza/center.
-  snackGroup.rotation.y = Math.PI;
+  // SnackFe stands on the east side of the High Street, so its service window
+  // faces WEST across the road — not at the plaza. A shop on a street faces the
+  // street; facing the town centre from a side plot is what made the old layout
+  // read as a scatter of objects that all happened to be looking the same way.
+  // At rotation 0 the window faces +z, so −π/2 turns it to −x.
+  snackGroup.rotation.y = -Math.PI / 2;
 
   dropShadow(snackGroup, 0, 0, SNACK_W * 2, SNACK_D * 2.2);
 
@@ -4104,12 +4120,20 @@ export function buildCardboardIsland(opts: {
 
   group.add(snackGroup);
 
-  // Collision: the cafe body itself.
+  /*
+   * Collision: the cafe body itself.
+   *
+   * The extents are SWAPPED relative to the geometry, because `snackGroup` is
+   * turned a quarter turn to face the High Street: the 9 m side now runs along
+   * z and the 6 m side along x. The old rotation was a half turn, which leaves
+   * an axis-aligned box's extents alone, so this was correct by accident and
+   * would have silently stopped being correct the moment the cafe turned.
+   */
   boxes.push({
-    minX: centerX + SNACK_X - SNACK_W / 2,
-    maxX: centerX + SNACK_X + SNACK_W / 2,
-    minZ: centerZ + SNACK_Z - SNACK_D / 2,
-    maxZ: centerZ + SNACK_Z + SNACK_D / 2,
+    minX: centerX + SNACK_X - SNACK_D / 2,
+    maxX: centerX + SNACK_X + SNACK_D / 2,
+    minZ: centerZ + SNACK_Z - SNACK_W / 2,
+    maxZ: centerZ + SNACK_Z + SNACK_W / 2,
     base: topY,
     height: topY + SNACK_H + 0.3,
   });
@@ -4117,22 +4141,90 @@ export function buildCardboardIsland(opts: {
 
   // ---- Craft details: lamps, bunting, benches, tufts, butterflies ----
   {
-    // Warm path lamps at the four path shoulders.
+    /*
+     * Road furniture: lamps down every avenue, and a picket rail along the
+     * verge.
+     *
+     * This is the piece that makes the layout read. Painting a road into the
+     * ground and standing buildings beside it is not enough on its own — from
+     * anywhere but straight overhead a worn strip of earth is just a lighter
+     * patch of ground. What says "street" is the *repetition* along its edge:
+     * a lamp, then another lamp the same distance away, then another. Four
+     * lamps at the plaza corners (which is what used to be here) say "plaza".
+     * Thirty down four avenues say "town".
+     *
+     * Everything here is placed off `ROAD`, so it follows the roads wherever
+     * the plan puts them.
+     */
     const lampPostMat = new THREE.MeshStandardMaterial({ color: "#3d4653", roughness: 0.55, metalness: 0.3 });
     const lampGlowMat = new THREE.MeshBasicMaterial({ color: "#ffdf9e" });
-    for (const [lx, lz] of [[4.4, 9], [-4.4, -9], [9, -4.4], [-9, 4.4]] as const) {
+    const railMat = new THREE.MeshStandardMaterial({
+      map: cardboard,
+      normalMap: flutes(1, 0.12),
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughness: 0.95,
+    });
+    /** Unit vectors down each avenue, with how far each one runs. */
+    const AVENUES: Array<[number, number, number]> = [
+      [0, -1, ROAD.arm.north],
+      [0, 1, ROAD.arm.south],
+      [1, 0, ROAD.arm.east],
+      [-1, 0, ROAD.arm.west],
+    ];
+    /** Set back from the road's centre line: past the verge, clear of the grass. */
+    const KERB = ROAD.half + 1.5;
+    const LAMP_SPACING = 9;
+    const streetLamp = (lx: number, lz: number, phase: number) => {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 2.6, 8), lampPostMat);
       post.position.set(lx, 1.3, lz);
       group.add(post);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.3, 8), lampPostMat);
       cap.position.set(lx, 2.85, lz);
       group.add(cap);
-      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lampGlowMat);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lampGlowMat.clone());
       orb.position.set(lx, 2.62, lz);
       group.add(orb);
       craftAnims.push((_dt, now) => {
-        (orb.material as THREE.MeshBasicMaterial).color.setHSL(0.11, 0.75, 0.72 + Math.sin(now * 0.002 + lx) * 0.08);
+        (orb.material as THREE.MeshBasicMaterial).color.setHSL(
+          0.11, 0.75, 0.72 + Math.sin(now * 0.002 + phase) * 0.08,
+        );
       });
+    };
+    for (const [dx, dz, len] of AVENUES) {
+      // Perpendicular to the avenue — which side of the road we are on.
+      const px = -dz;
+      const pz = dx;
+      // Start outside the plaza wall, stop short of whatever the road ends at.
+      for (let d = PLAZA_R + 3; d < len - 2; d += LAMP_SPACING) {
+        for (const side of [-1, 1]) {
+          streetLamp(dx * d + px * side * KERB, dz * d + pz * side * KERB, d + side);
+        }
+      }
+      // A low picket rail along the verge, in short runs with gaps — a
+      // continuous fence would wall the avenue off from the quarters, and the
+      // whole point of an island this size is that you can cut across it.
+      for (let d = PLAZA_R + 5; d < len - 3; d += 3.2) {
+        if (Math.round(d / 3.2) % 4 === 0) continue; // gaps to step through
+        for (const side of [-1, 1]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.16, 0.14), railMat);
+          rail.position.set(
+            dx * d + px * side * (KERB - 0.6),
+            0.62,
+            dz * d + pz * side * (KERB - 0.6),
+          );
+          rail.rotation.y = Math.atan2(dx, dz);
+          group.add(rail);
+          for (const end of [-1, 1]) {
+            const stake = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.9, 0.16), railMat);
+            stake.position.set(
+              dx * (d + end * 1.2) + px * side * (KERB - 0.6),
+              0.45,
+              dz * (d + end * 1.2) + pz * side * (KERB - 0.6),
+            );
+            group.add(stake);
+          }
+        }
+      }
     }
 
     // Pennant bunting: two sagging strings of little flags.
@@ -4166,12 +4258,33 @@ export function buildCardboardIsland(opts: {
         });
       }
     };
-    bunting(new THREE.Vector3(0, 5.1, 14), new THREE.Vector3(-13, 8.4, 25), 0.7);
-    bunting(new THREE.Vector3(-14, 8.4, 26), new THREE.Vector3(14, 14.6, 3), 1.1);
+    // Strung ACROSS the High Street between the lamp posts, not diagonally
+    // over the lawn. Bunting over a street is half of what makes it a street;
+    // bunting over grass is a rope in a field.
+    for (const z of [16, 25, 34]) {
+      bunting(
+        new THREE.Vector3(-(ROAD.half + 1.5), 3.0, z),
+        new THREE.Vector3(ROAD.half + 1.5, 3.0, z),
+        0.55,
+      );
+    }
+    // One more over the Approach, so the north road gets the same welcome.
+    bunting(
+      new THREE.Vector3(-(ROAD.half + 1.5), 3.0, -14),
+      new THREE.Vector3(ROAD.half + 1.5, 3.0, -14),
+      0.55,
+    );
 
     // Two slat benches facing the plaza paths.
     const benchWood = new THREE.MeshStandardMaterial({ color: "#a8794a", roughness: 0.9 });
-    for (const [bx, bz, ry] of [[7, 17, -0.5], [-19, 3, 1.1]] as const) {
+    // Benches on the kerb, facing the road they sit beside — the east side of
+    // the High Street and the west side of the Approach — plus one out in the
+    // Grove under the Dream Tree.
+    for (const [bx, bz, ry] of [
+      [ROAD.half + 2.2, 21, Math.PI / 2],
+      [-(ROAD.half + 2.2), -24, -Math.PI / 2],
+      [SITE.dreamTree.x + 5, SITE.dreamTree.z + 4, 2.2],
+    ] as const) {
       const bench = new THREE.Group();
       bench.position.set(bx, 0, bz);
       bench.rotation.y = ry;
@@ -4234,7 +4347,10 @@ export function buildCardboardIsland(opts: {
   // Grab it under any stretch of cable and it carries you around the
   // whole cardboard city. Poles sit just outside the cable so riders
   // glide past them, not through them.
-  const ZIP_RADIUS = 42;
+  // Runs directly above the rim promenade — same radius, so the cable follows
+  // a road instead of hanging across the island at an arbitrary distance from
+  // the middle. See `ROAD.ring` for why that matters and what it constrains.
+  const ZIP_RADIUS = ROAD.ring.r;
   const ZIP_HEIGHT = 5;
   const cable = new THREE.Mesh(
     new THREE.TorusGeometry(ZIP_RADIUS, 0.08, 6, 96),
@@ -4243,8 +4359,11 @@ export function buildCardboardIsland(opts: {
   cable.rotation.x = Math.PI / 2;
   cable.position.y = ZIP_HEIGHT;
   group.add(cable);
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 + 0.33;
+  // Eight poles rather than five: at promenade radius they read as the line of
+  // posts along a path, which is half of why the zipline now looks like part of
+  // the town instead of a hoop somebody dropped over it.
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.33;
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.22, 0.32, ZIP_HEIGHT + 0.8, 8),
       cardboardDark,
@@ -4416,7 +4535,7 @@ export function buildCardboardIsland(opts: {
       fog: false,
     }),
   );
-  beam.position.set(0, 40, -38);
+  beam.position.set(SITE.beacon.x, 40, SITE.beacon.z);
   group.add(beam);
   spinners.push(beam);
 
@@ -4432,12 +4551,10 @@ export function buildCardboardIsland(opts: {
   // with a floor: the plaza pad, the worn path cross, building interiors, the
   // pool, and the small pedestals you stand on.
   {
-    /** Half-width of the sandy path cross, matched to the ground texture. */
-    const PATH_HALF = 4.0;
     /** Circles: [x, z, radius]. */
     const clearCircles: Array<[number, number, number]> = [
       [PLAZA_CX, PLAZA_CZ, PLAZA_R + 1.4], // the plaza pad and its planter wall
-      [36, 10, 4.9], // spring pool — grass grows in among the lip stones
+      [SITE.pool.x, SITE.pool.z, 4.9], // spring pool — grass grows in among the lip stones
       [PORTAL_X, PORTAL_Z, 2.4], // Vibe Maker ring base
       [AVATAR_X, AVATAR_Z, 3.2], // character studio pedestal
       [ARCADE_X, ARCADE_Z, 1.9],
@@ -4452,39 +4569,21 @@ export function buildCardboardIsland(opts: {
     // building is the tell that the buildings were dropped onto the lawn.
     const clearRects: Array<[number, number, number, number]> = [
       ...SHOPS.map((s) => [s.x, s.z, s.w / 2 - 0.3, s.d / 2 - 0.3] as [number, number, number, number]),
-      [SNACK_X, SNACK_Z, SNACK_W / 2 - 0.3, SNACK_D / 2 - 0.3],
+      // Swapped, for the same reason the collision box below is — SnackFe is
+      // turned a quarter turn to face the street.
+      [SNACK_X, SNACK_Z, SNACK_D / 2 - 0.3, SNACK_W / 2 - 0.3],
     ];
 
-    /**
-     * How much grass grows at a point, 0..1.
+    /*
+     * How much grass grows at a point, 0..1 — hard zero on anything with a
+     * floor, feathering to nothing over a verge beside the roads.
      *
-     * The pads and the footprints are hard zeroes — they have a floor. The
-     * paths are not: grass thins over a metre and a half of verge either side
-     * rather than stopping at a line, because a lawn with a dead-straight edge
-     * along a footpath is the clearest possible signal that it was placed by a
-     * rule. Same for the plaza's outer metre.
+     * The predicate itself lives in `islandPlan` next to the road arms it has
+     * to agree with, because the same arm lengths are what get painted into
+     * the ground texture. Keeping them in one place is the only way the
+     * painted road and the gap in the grass stay the same road.
      */
-    const VERGE = 1.6;
-    const feather = (dist: number) =>
-      THREE.MathUtils.clamp(dist / VERGE, 0, 1);
-    const grassDensity = (x: number, z: number) => {
-      // Distance out of the path cross (negative inside it).
-      let d = feather(Math.min(Math.abs(x), Math.abs(z)) - PATH_HALF);
-      if (d <= 0) return 0;
-      for (const [cx, cz, r] of clearCircles) {
-        d = Math.min(d, feather(Math.hypot(x - cx, z - cz) - r));
-        if (d <= 0) return 0;
-      }
-      for (const [rx, rz, hw, hd] of clearRects) {
-        // Outside distance from an axis-aligned box; inside it this goes
-        // negative on at least one axis and `feather` clamps to zero.
-        const ox = Math.abs(x - rx) - hw;
-        const oz = Math.abs(z - rz) - hd;
-        d = Math.min(d, feather(Math.max(ox, oz)));
-        if (d <= 0) return 0;
-      }
-      return d;
-    };
+    const grassDensity = makeGrassDensity({ circles: clearCircles, rects: clearRects });
 
     // The cap's top radius is (ISLAND_RADIUS + 1.6) scaled by the same rim
     // noise every other layer uses, so the grass ends exactly where the land

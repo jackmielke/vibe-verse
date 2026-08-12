@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-08-12T00:33:39.976Z",
+  "generated_at": "2026-08-12T06:53:02.015Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "eb001bcf",
+      "date": "2026-08-12",
+      "subject": "The boss's shard was a white plate, not a gem",
+      "lede": "At 2.4× scale an additive white icosahedron at 0.95 opacity blows out into a flat slab the size of the boss's head. Smaller, amber, dimmer, and turning — a piece of God Orb it is carrying rather than a hole in the render.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
     {
       "sha": "893b6207",
       "date": "2026-08-12",
@@ -1023,14 +1033,6 @@
       "lede": "There were two pages about Vibecoin and they disagreed about what they were for. /coin led with \"our community currency\" and then showed a shop panel, a character picker and a holder leaderboard — a junk drawer of everything that touched money. /wallet explained the thing properly, in order, and was reachable only from a popover most people never open. Two pages about one subject is how you get a visitor who has read",
       "places": [],
       "files": 7
-    },
-    {
-      "sha": "96693c79",
-      "date": "2026-08-08",
-      "subject": "Soaked was in the nav twice, and main would not compile",
-      "lede": "`nav: true` appears twice in the same object literal, which esbuild strips without a word and `tsc` rejects outright: TS1117, on main. The build was green because `vite build` never type-checks — the exact hole `npm run typecheck` exists to cover.",
-      "places": [],
-      "files": 1
     }
   ]
 }
