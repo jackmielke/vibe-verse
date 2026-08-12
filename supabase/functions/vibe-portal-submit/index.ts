@@ -11,6 +11,7 @@
 //   submit  { url, label? }                  -> resolves, mirrors, files a pending row
 //   mine    {}                               -> your own submissions, including the failures
 //   queue   { status? }                      -> admin: everything, newest first
+//   preview { url }                          -> what we can work out, writing nothing
 //   review  { id, action, budgets?, note? }  -> admin: approve (writes the game) or reject
 //   resync  { slug }                         -> admin: re-pin a github game to its latest commit
 //
@@ -31,7 +32,64 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { SLUG_RE, parseSubmission, slugify } from "./github.ts";
+import { bestTitle, githubCover, parsePageMeta, type PageMeta } from "./meta.ts";
 import { mirrorFiles, resolveRepo } from "./mirror.ts";
+
+/**
+ * Read a deployed page's own description of itself.
+ *
+ * Best-effort in every direction: a game that is down, slow, blocks us, or
+ * serves a megabyte of bundle still submits fine — it just submits without a
+ * picture, which is exactly what happened for every hosted game before this
+ * existed. So every failure here returns empty metadata rather than throwing.
+ *
+ * Bounded on purpose. The timeout stops a submission hanging on somebody's
+ * asleep Heroku dyno, and the read cap stops us pulling a 40 MB inlined WASM
+ * blob into an edge function's memory to look for four `<meta>` tags that are
+ * legally required to be in the first kilobyte.
+ */
+const EMPTY_META: PageMeta = { title: null, description: null, image: null, siteName: null };
+const PAGE_FETCH_TIMEOUT_MS = 6000;
+const PAGE_READ_CAP = 512 * 1024;
+
+async function readPageMeta(url: string): Promise<PageMeta> {
+  const stop = AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: stop,
+      redirect: "follow",
+      headers: {
+        // Identifying ourselves is the polite half; asking for HTML is the half
+        // that stops a server handing us a JSON API response to parse.
+        "user-agent": "VibeVerse-Portal/1.0 (+https://myvibeverse.com)",
+        accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!res.ok) return EMPTY_META;
+    const type = res.headers.get("content-type") ?? "";
+    if (!/text\/html|application\/xhtml/i.test(type)) return EMPTY_META;
+
+    /* Streamed and capped rather than `res.text()`: the point of the cap is to
+       not hold the whole body, and `text()` would have already held it. */
+    const reader = res.body?.getReader();
+    if (!reader) return EMPTY_META;
+    const decoder = new TextDecoder();
+    let html = "";
+    while (html.length < PAGE_READ_CAP) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value, { stream: true });
+      // The tags live in <head>; once it has closed there is nothing left to find.
+      if (/<\/head>/i.test(html)) break;
+    }
+    await reader.cancel().catch(() => {});
+    // `res.url`, not `url` — a redirect means relative images resolve against
+    // where we landed, not where we knocked.
+    return parsePageMeta(html, res.url || url);
+  } catch {
+    return EMPTY_META;
+  }
+}
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -71,6 +129,7 @@ Deno.serve(async (req) => {
     const action = String(body?.action ?? "");
 
     switch (action) {
+      case "preview": return ok(await preview(body));
       case "submit": return ok(await submit(supabase, req, body));
       case "mine":   return ok(await mine(supabase, req));
       case "queue":  return ok(await queue(supabase, req, body));
@@ -131,6 +190,85 @@ async function mustBeAdmin(supabase: Supa, req: Request): Promise<Caller> {
 }
 
 // ---------------------------------------------------------------------------
+// preview
+// ---------------------------------------------------------------------------
+
+/**
+ * What we can work out from a link, without filing anything.
+ *
+ * The form used to be a leap of faith: you pasted a link, pressed Submit, and
+ * only then found out what we had decided your game was called. Now the card
+ * fills in underneath the field as you type, which is the same information a
+ * beat earlier and the difference between a form and a conversation.
+ *
+ * Deliberately unauthenticated and deliberately writing nothing. It reads a
+ * public page and a public repository — both things the caller could fetch from
+ * their own browser — so there is nothing here to protect, and no row to create
+ * for somebody who is still deciding. That also means it must not consume the
+ * daily submission limit: typing is not submitting.
+ *
+ * Never throws for a link it cannot read. A preview is an offer of help; a
+ * red error under a field somebody is still halfway through typing is not.
+ */
+async function preview(b: Record<string, unknown>) {
+  const raw = String(b.url ?? "").slice(0, 500).trim();
+  if (!raw) return { ok: false, reason: "empty" };
+
+  const { target, error } = parseSubmission(raw);
+  if (error || !target) return { ok: false, reason: error ?? "could not read that link" };
+
+  if (target.kind === "hosted") {
+    const host = new URL(target.origin).hostname;
+    const meta = await readPageMeta(target.embedUrl);
+    return {
+      ok: true,
+      kind: "hosted" as const,
+      title: bestTitle(meta, prettyTitle(host.split(".")[0] ?? "game")),
+      tagline: meta.description,
+      cover_url: meta.image,
+      author: null,
+      author_url: null,
+      license: null,
+      host,
+    };
+  }
+
+  /* A repository, without cloning it. `resolveRepo` copies a file tree and is
+     the wrong tool for a keystroke — this is the one API call that answers the
+     three questions a card asks. */
+  try {
+    const res = await fetch(`https://api.github.com/repos/${target.owner}/${target.repo}`, {
+      signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS),
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": "VibeVerse-Portal/1.0 (+https://myvibeverse.com)",
+        ...(Deno.env.get("GITHUB_TOKEN")
+          ? { authorization: `Bearer ${Deno.env.get("GITHUB_TOKEN")}` }
+          : {}),
+      },
+    });
+    if (!res.ok) {
+      return { ok: false, reason: res.status === 404 ? "no such repository" : "github unreachable" };
+    }
+    const j = await res.json();
+    const fullName: string = j.full_name ?? `${target.owner}/${target.repo}`;
+    return {
+      ok: true,
+      kind: "github" as const,
+      title: prettyTitle(j.name ?? target.repo),
+      tagline: j.description ?? null,
+      cover_url: githubCover(fullName),
+      author: j.owner?.login ?? target.owner,
+      author_url: j.owner?.html_url ?? `https://github.com/${target.owner}`,
+      license: j.license?.spdx_id ?? null,
+      repo: fullName,
+    };
+  } catch {
+    return { ok: false, reason: "github unreachable" };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // submit
 // ---------------------------------------------------------------------------
 
@@ -182,14 +320,21 @@ async function submitHosted(
   const host = new URL(origin).hostname;
   const slug = await freeSlug(supabase, host.split(".")[0] || "game");
 
+  /* The page's own description of itself. This used to be the hostname with a
+     capital letter and nothing else, so a submitter who had written a title, a
+     description and an og:image watched us ignore all three. Best-effort — a
+     game whose page we cannot read still files, exactly as it always did. */
+  const meta = await readPageMeta(embedUrl);
+
   const row = {
     submitted_url: raw,
     kind: "hosted",
     submitter_id: caller.userId,
     submitter_label: label,
     slug,
-    title: prettyTitle(host.split(".")[0] ?? slug),
-    tagline: null,
+    title: bestTitle(meta, prettyTitle(host.split(".")[0] ?? slug)),
+    tagline: meta.description,
+    cover_url: meta.image,
     author: label,
     author_url: null,
     embed_url: embedUrl,
@@ -328,6 +473,7 @@ async function submitGitHub(
     slug,
     title: prettyTitle(facts.repo),
     tagline: (facts.description ?? "").slice(0, 140) || null,
+    cover_url: githubCover(facts.fullName),
     author: label ?? facts.owner,
     author_url: facts.ownerUrl,
     repo: facts.fullName,
@@ -434,6 +580,10 @@ async function review(supabase: Supa, req: Request, b: Record<string, unknown>) 
     tagline: (b.tagline as string | undefined) ?? sub.tagline,
     author: (b.author as string | undefined) ?? sub.author,
     author_url: sub.author_url,
+    /* Copied forward rather than joined at read time, so editing a submission
+       later cannot change what is on the public shelf. Same reasoning as the
+       budgets and the mirror prefix below it. */
+    cover_url: sub.cover_url ?? null,
     embed_url: sub.embed_url,
     origin: sub.origin,
     ...budgets,

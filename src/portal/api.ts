@@ -109,6 +109,8 @@ export interface PortalSubmission {
   slug: string | null;
   title: string | null;
   tagline: string | null;
+  /** Cover read from the page's og:image, or GitHub's repo card. Often null. */
+  cover_url: string | null;
   author: string | null;
   author_url: string | null;
   repo: string | null;
@@ -185,6 +187,32 @@ async function readFunctionError(error: unknown): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * What we can work out from a link, before anybody commits to anything.
+ *
+ * Never rejects for a link it cannot read — it answers `{ ok: false, reason }`,
+ * because this fires while somebody is still typing and a thrown error under a
+ * half-finished URL is noise rather than help. It writes nothing and does not
+ * count against the daily submission limit: typing is not submitting.
+ */
+export interface PortalPreview {
+  ok: boolean;
+  reason?: string;
+  kind?: "hosted" | "github";
+  title?: string | null;
+  tagline?: string | null;
+  cover_url?: string | null;
+  author?: string | null;
+  author_url?: string | null;
+  license?: string | null;
+  repo?: string;
+  host?: string;
+}
+
+export function previewPortalGame(url: string): Promise<PortalPreview> {
+  return callSubmit("preview", { url });
 }
 
 /** Offer a game. One field: a repo link or a deployed link. */

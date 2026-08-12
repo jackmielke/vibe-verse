@@ -14,13 +14,18 @@
  * of the two doors, the list of what you have already sent. Those are the parts
  * a dialog has no room for and does not need.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Github, Globe, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { submitPortalGame, type SubmitResult } from "@/portal/api";
+import {
+  previewPortalGame,
+  submitPortalGame,
+  type PortalPreview,
+  type SubmitResult,
+} from "@/portal/api";
 
 interface Props {
   /** Called after any successful filing, so a caller can refresh its list. */
@@ -37,6 +42,48 @@ export default function SubmitGameForm({ onSubmitted, children, compact = false 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [peek, setPeek] = useState<PortalPreview | null>(null);
+  const [peeking, setPeeking] = useState(false);
+
+  /**
+   * Fill the card in underneath the field, as they type.
+   *
+   * Debounced, because the alternative is a request per keystroke against
+   * somebody else's server. Half a second is roughly the pause after pasting a
+   * URL, which is the moment this is actually for — nobody types a deploy URL
+   * out by hand.
+   *
+   * A stale answer is worse than no answer: paste one link, paste another
+   * before the first returns, and without the guard the first response lands
+   * last and describes a game you are no longer submitting.
+   */
+  const peekSeq = useRef(0);
+  useEffect(() => {
+    const u = url.trim();
+    if (u.length < 8) {
+      setPeek(null);
+      setPeeking(false);
+      return;
+    }
+    const seq = ++peekSeq.current;
+    setPeeking(true);
+    const t = window.setTimeout(() => {
+      void previewPortalGame(u)
+        .then((r) => {
+          if (seq !== peekSeq.current) return;
+          setPeek(r.ok ? r : null);
+        })
+        .catch(() => {
+          /* A preview is an offer of help. Failing to make one is not an error
+             worth showing anybody — the submit itself reports properly. */
+          if (seq === peekSeq.current) setPeek(null);
+        })
+        .finally(() => {
+          if (seq === peekSeq.current) setPeeking(false);
+        });
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [url]);
 
   useEffect(() => {
     let live = true;
@@ -67,6 +114,7 @@ export default function SubmitGameForm({ onSubmitted, children, compact = false 
       } else {
         toast.success("Filed. It is playable right now.");
         setUrl("");
+        setPeek(null);
       }
       onSubmitted?.();
     } catch (err) {
@@ -105,6 +153,55 @@ export default function SubmitGameForm({ onSubmitted, children, compact = false 
             {busy ? "Looking…" : "Submit"}
           </button>
         </div>
+
+        {/* What we worked out, while they are still deciding. Only when there
+            is something to show: an empty card that says "no title, no picture"
+            is a criticism of somebody's page, not help. */}
+        {(peek || peeking) && !result && (
+          <div className="mt-3 flex items-start gap-3 rounded-xl border border-border/50 bg-white/[0.02] p-3">
+            <div className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/40 bg-[#070c16]">
+              {peek?.cover_url ? (
+                <img
+                  src={peek.cover_url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  /* Their server, their image. If it 404s or blocks us, the box
+                     stays empty rather than showing a broken-image glyph. */
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : peek?.kind === "github" ? (
+                <Github className="h-5 w-5 text-muted-foreground/50" />
+              ) : (
+                <Globe className="h-5 w-5 text-muted-foreground/50" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              {peeking && !peek ? (
+                <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Reading that link…
+                </p>
+              ) : (
+                <>
+                  <div className="truncate font-heading text-[13px] font-bold text-foreground">
+                    {peek?.title ?? "Untitled"}
+                  </div>
+                  {peek?.tagline && (
+                    <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-muted-foreground">
+                      {peek.tagline}
+                    </p>
+                  )}
+                  <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground/50">
+                    {peek?.kind === "github"
+                      ? [peek.repo, peek.license].filter(Boolean).join(" · ")
+                      : peek?.host}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <label
           htmlFor="submit-game-label"

@@ -32,6 +32,17 @@ export default function SubmitResultCard({ result }: { result: SubmitResult }) {
         ) : (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#7dffd4]" />
         )}
+        {/* The cover, once it is real. Same picture the shelf will show. */}
+        {!bad && s.cover_url && (
+          <img
+            src={s.cover_url}
+            alt=""
+            className="h-14 w-20 shrink-0 rounded-lg border border-border/40 object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        )}
         <div className="min-w-0 flex-1">
           <div className="font-heading text-[13px] font-bold text-foreground">
             {bad
