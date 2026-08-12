@@ -370,8 +370,14 @@ export default function Game() {
               <VibeMark size={96} rotateSeconds={30} priority />
             </div>
             <div className="min-w-0">
-              <p className="font-heading text-[9px] font-bold uppercase tracking-[0.36em] text-muted-foreground sm:text-[10px] sm:tracking-[0.42em]">
-                Every builder grows the universe
+              {/* The line the arcade has always been about, and the only one
+                  that says both halves: anybody can add a door, and what you
+                  earn behind it is yours. "Every builder grows the universe"
+                  said the first half only. It is the claim /manifesto spends a
+                  page on ("Build worlds. Share ownership. Play forever.") in
+                  six words, above the name. */}
+              <p className="font-heading text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground sm:text-[10px] sm:tracking-[0.36em]">
+                Powered by creators, owned by players
               </p>
               <h1 className="mt-1 font-heading text-3xl font-black tracking-tight sm:mt-2 sm:text-6xl">
                 <span className="text-gradient-mint">VIBEVERSE</span>
