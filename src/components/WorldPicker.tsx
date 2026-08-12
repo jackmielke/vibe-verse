@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Search, X } from "lucide-react";
 import { WORLDS, featuredFirst, type WorldEntry } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
 import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
@@ -72,59 +73,80 @@ export default function WorldPicker({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.4 } }}
         >
-          <div className="min-h-full flex flex-col items-center justify-center px-4 py-10 gap-6">
-            <motion.div
-              className="text-center space-y-1"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-wide text-gradient-mint">
-                Choose your world
-              </h1>
-              <p className="text-xs text-muted-foreground tracking-[0.18em] uppercase">
-                {WORLDS.length} doors · one browser tab
-              </p>
-            </motion.div>
+          <div className="min-h-full px-4 pb-12">
+            {/* The way out, and the way to narrow it down, pinned to the top.
+                Both used to be at the ends of a fifty-two card scroll: the
+                close button was the *last* element on the page, so leaving
+                meant scrolling past every world in the vibeverse to find it,
+                and the search field scrolled away the moment you started
+                looking. A full-screen overlay has to keep its exit in view. */}
+            <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-border/40 bg-background/80 px-4 py-3 backdrop-blur-xl">
+              <div className="mx-auto flex max-w-6xl items-center gap-3">
+                <div className="hidden min-w-0 sm:block">
+                  <h1 className="font-heading text-sm font-bold tracking-wide text-gradient-mint">
+                    Choose your world
+                  </h1>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                    {filtered.length === WORLDS.length
+                      ? `${WORLDS.length} doors · one browser tab`
+                      : `${filtered.length} of ${WORLDS.length}`}
+                  </p>
+                </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="w-full max-w-md"
-            >
-              <input
-                type="search"
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search worlds…"
-                className="w-full glass-panel rounded-full border border-border/60 px-4 py-2 text-sm bg-background/40 focus:outline-none focus:border-primary/60 placeholder:text-muted-foreground/70"
-              />
-            </motion.div>
+                <div className="relative min-w-0 flex-1 sm:max-w-sm">
+                  <Search
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50"
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search worlds…"
+                    aria-label={`Search ${WORLDS.length} worlds`}
+                    className="w-full appearance-none rounded-full border border-border/60 bg-background/50 py-2 pl-9 pr-4 text-sm placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full">
+                <button
+                  onClick={onClose}
+                  aria-label="Close search"
+                  title="Close (Esc)"
+                  className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </div>
+
+            {/* Every card the same size.
+                Featured worlds used to span the full width at a different
+                aspect ratio, so a list with several of them read as one column
+                of banners with the occasional pair squeezed beside it — the
+                grid looked broken rather than emphasised. They keep their
+                accent ring, which says "start here" without rearranging
+                everything around them. */}
+            <div className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
               {filtered.map((w, i) => (
                 <motion.button
                   key={w.key}
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 * i, duration: 0.35 }}
+                  /* Capped. At `0.05 * i` the fifty-second card began appearing
+                     two and a half seconds in, so the bottom of the list stayed
+                     blank for longer than it took to scroll there. */
+                  transition={{ delay: Math.min(i, 11) * 0.03, duration: 0.3 }}
                   onClick={() => {
                     navigate(w.route);
                     onClose();
                   }}
-                  className={`group glass-panel rounded-2xl overflow-hidden text-left border transition-colors ${
-                    w.featured
-                      ? "col-span-2 lg:col-span-3 border-transparent"
-                      : "border-border/40 hover:border-primary/60"
+                  className={`group glass-panel overflow-hidden rounded-2xl border text-left transition-colors ${
+                    w.featured ? "border-transparent" : "border-border/40 hover:border-primary/60"
                   }`}
                   style={w.featured ? { boxShadow: `inset 0 0 0 1.5px ${w.accent}66` } : undefined}
                 >
-                  <div
-                    className={`relative overflow-hidden bg-black/40 ${
-                      w.featured ? "aspect-[16/7]" : "aspect-video"
-                    }`}
-                  >
+                  <div className="relative aspect-video overflow-hidden bg-black/40">
                     {artFor(w.key) ? (
                       <img
                         src={artFor(w.key)}
@@ -182,16 +204,12 @@ export default function WorldPicker({
                         </span>
                       )}
                     </div>
-                    {/* Featured worlds always explain themselves. Hiding the
-                        blurb on small screens meant a card could say only "The
-                        Terminal" on a phone — a name is not an explanation, and
-                        the whole job of this screen is telling you what is
-                        behind each door. */}
-                    <div
-                      className={`text-[11px] text-muted-foreground leading-snug mt-0.5 ${
-                        w.featured ? "block" : "hidden sm:block"
-                      }`}
-                    >
+                    {/* Two lines, on every card, at every width. A name is not
+                        an explanation and the whole job of this screen is
+                        telling you what is behind each door — but an unbounded
+                        blurb in a two-column phone grid makes every row as tall
+                        as its wordiest card. */}
+                    <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                       {w.blurb}
                     </div>
                   </div>
@@ -199,15 +217,11 @@ export default function WorldPicker({
               ))}
             </div>
 
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              onClick={onClose}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              ✕ close
-            </motion.button>
+            {filtered.length === 0 && (
+              <p className="mt-16 text-center text-sm text-muted-foreground">
+                Nothing matches “{query}”.
+              </p>
+            )}
           </div>
         </motion.div>
       )}
