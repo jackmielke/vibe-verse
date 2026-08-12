@@ -27,7 +27,7 @@ import { artFor } from "@/worlds/art";
 import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
-import VibeWink from "@/components/VibeWink";
+import VibeMark from "@/components/VibeMark";
 import { WorldChangesPortal } from "@/components/WorldChanges";
 import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
@@ -301,10 +301,18 @@ export default function Game() {
               corner at 70% opacity, where a spinning glass object is edge-on
               often enough to read as a scratch on the screen. Beside the
               wordmark it is doing the job a mark is for. Phones lose it — at
-              390 px the headline is the brand. */}
+              390 px the headline is the brand.
+
+              `VibeMark` rather than `VibeWink`: the flat render paints in the
+              first frame off the image cache, and the real geometry fades in
+              over it once three.js has arrived in the background. This is the
+              page whose entire argument is that it loads instantly, so the
+              renderer is not allowed on the critical path — and it is not. The
+              import does not begin until the mark is on screen, and by then
+              the picture is already there. */}
           <div className="flex items-center gap-4 sm:gap-6">
             <div className="hidden shrink-0 sm:block" aria-hidden>
-              <VibeWink size={96} speed={0.7} priority />
+              <VibeMark size={96} rotateSeconds={30} priority />
             </div>
             <div className="min-w-0">
               <p className="font-heading text-[9px] font-bold uppercase tracking-[0.36em] text-muted-foreground sm:text-[10px] sm:tracking-[0.42em]">

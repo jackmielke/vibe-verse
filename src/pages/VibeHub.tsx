@@ -110,7 +110,9 @@ export default function VibeHub() {
         >
           {/* ---- Hero ---- */}
           <div className="flex justify-center">
-            <VibeArc size={170} rotateSeconds={30} />
+            {/* Celebrates: this is the page about the number, so the mark
+                takes a lap when the number goes up. */}
+            <VibeArc size={170} rotateSeconds={30} celebrates />
           </div>
           <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">

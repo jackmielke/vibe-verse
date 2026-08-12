@@ -24,6 +24,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 const iridescentArcUrl = "/models/iridescent-arc.glb";
 import { playSound, ensureAudioRunning } from "@/lib/vibey-sounds";
+import { onCelebrate } from "@/lib/celebrate";
 
 type ClickAnim = "pulse" | "tumble" | "dance" | "confetti" | "frenzy";
 const ANIM_KINDS: ClickAnim[] = ["pulse", "tumble", "dance", "confetti", "frenzy"];
@@ -41,10 +42,31 @@ interface Props {
   size?: number;
   rotateSeconds?: number;
   className?: string;
+  /**
+   * Play a celebration when the vibeverse says something good happened.
+   *
+   * Off by default, and it should stay off nearly everywhere: a logo that
+   * lurches every time a balance ticks is a distraction, not a reward. Turn it
+   * on where the number is the point — `/coin`, the passport — and leave it
+   * off where the mark is only the mark.
+   */
+  celebrates?: boolean;
+  /** Fires once the model is loaded and its first frame is on the canvas. */
+  onReady?: () => void;
 }
 
-export default function VibeArc({ size = 260, rotateSeconds = 14, className = "" }: Props) {
+export default function VibeArc({
+  size = 260,
+  rotateSeconds = 14,
+  className = "",
+  celebrates = false,
+  onReady,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  /* In a ref so a caller passing an inline arrow does not tear down and
+     rebuild the whole scene on every render of its parent. */
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   // Hover speed multiplier (4× when hovered, 1× idle). Ref so the
   // render loop reads fresh state without re-running the effect.
   const speedMultiplierRef = useRef(1);
@@ -65,8 +87,10 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
     return options[Math.floor(Math.random() * options.length)];
   };
 
-  const handleClick = () => {
-    const kind = pickNextAnim();
+  /** When the last celebration fired, so payouts cannot stack up. */
+  const lastCelebrationRef = useRef(0);
+
+  const playAnim = (kind: ClickAnim) => {
     lastAnimRef.current = kind;
     clickAnimRef.current = { kind, startedAt: performance.now() };
     // Sound + DOM key-bumps per kind.
@@ -91,6 +115,31 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
       if (clickAnimRef.current?.kind === kind) clickAnimRef.current = null;
     }, ANIM_DURATION[kind] * 1000 + 50);
   };
+
+  const handleClick = () => playAnim(pickNextAnim());
+
+  /**
+   * Celebrate a payout, at most once every few seconds.
+   *
+   * The rate limit is the design, not a safety valve. Finishing an arcade run
+   * trips the balance three times in about a second — the optimistic bump, the
+   * server's answer, then the realtime echo of the same row — and three
+   * overlapping animations read as a glitch rather than as a reward.
+   * `celebrate()` is deliberately dumb about cadence so each listener can
+   * decide; this is this listener deciding.
+   */
+  useEffect(() => {
+    if (!celebrates) return;
+    return onCelebrate(() => {
+      const now = performance.now();
+      if (now - lastCelebrationRef.current < 4000) return;
+      // Nobody is looking, and a queued animation would fire on return to a
+      // tab whose payout happened minutes ago.
+      if (document.hidden) return;
+      lastCelebrationRef.current = now;
+      playAnim(pickNextAnim());
+    });
+  }, [celebrates]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -164,6 +213,11 @@ export default function VibeArc({ size = 260, rotateSeconds = 14, className = ""
           else if (mat) apply(mat);
         });
         scene.add(arc);
+        /* "Ready" means the mark is on the canvas, not that the component
+           mounted. A caller cross-fading a poster into this needs the frame to
+           exist first, or the fade reveals an empty rectangle and then pops. */
+        renderer.render(scene, camera);
+        onReadyRef.current?.();
       },
       undefined,
       (err) => console.warn("[VibeArc] failed to load", err),

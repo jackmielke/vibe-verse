@@ -32,6 +32,7 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import VibeMark from "@/components/VibeMark";
 import { motion } from "framer-motion";
 import { Lock } from "lucide-react";
 
@@ -303,6 +304,15 @@ export default function Passport() {
                 Every world stamps this book when you arrive. Go back often
                 enough and the stamp gains rings.
               </p>
+            </div>
+
+            {/* The crest. Every real passport has one on the cover, and this is
+                the vibeverse's — the live mark rather than the flat render,
+                because on a page that is otherwise a record of things already
+                done it is the one element doing something now. It celebrates:
+                earn coins with this page open and it takes a lap. */}
+            <div className="hidden shrink-0 lg:block" aria-hidden>
+              <VibeMark size={92} rotateSeconds={34} celebrates />
             </div>
 
             <dl className="flex gap-5 sm:gap-7">

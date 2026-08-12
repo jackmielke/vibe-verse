@@ -46,6 +46,7 @@
  * that disappears.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { celebrate } from "@/lib/celebrate";
 
 // ---------------------------------------------------------------------------
 // Brand
@@ -201,8 +202,24 @@ let state: VibecoinState = {
 const listeners = new Set<Listener>();
 
 function set(patch: Partial<VibecoinState>): void {
+  const was = state.balance;
   state = { ...state, ...patch };
   if (typeof patch.balance === "number") writeCache(patch.balance);
+  /**
+   * The balance went up, so something good happened — say so once, here.
+   *
+   * Every path that pays out already funnels through this one function: arcade
+   * payouts, the daily grant, portal awards, the optimistic bump, and the
+   * plain refresh that first notices a payout made in another tab. Emitting
+   * from each of them instead would be five call sites and a sixth one missed
+   * the next time somebody adds a way to earn.
+   *
+   * A *fall* is deliberately silent. Spending is a thing you chose; it does
+   * not need the logo to do a lap about it.
+   */
+  if (typeof patch.balance === "number" && was != null && patch.balance > was) {
+    celebrate("vibecoin", patch.balance - was);
+  }
   for (const l of listeners) l(state);
 }
 
