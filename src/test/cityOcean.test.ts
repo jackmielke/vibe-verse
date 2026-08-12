@@ -13,7 +13,7 @@
  * shape of the profile is checked against what a beach is supposed to be.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { CITY_HALF, bedHeight, shoreDist, beachHeightAt, waterBedHeight } from "@/city/ocean";
 
@@ -145,8 +145,17 @@ describe("the ocean's terrain", () => {
   });
 });
 
-describe("the ocean's shaders", () => {
-  const shaders = [...src.matchAll(/\/\* glsl \*\/\s*`([\s\S]*?)\n\s*`/g)].map((m) => m[1]);
+describe("the city's shaders", () => {
+  // Every GLSL literal under src/city, not just the ocean's. The narrower
+  // version of this check lives in starfleet-shaders.test.ts and watches only
+  // the directory the first accident happened in; the backtick trap has since
+  // caught two more files, both of them here.
+  const cityFiles = readdirSync(join(process.cwd(), "src", "city"))
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => readFileSync(join(process.cwd(), "src", "city", f), "utf8"));
+  const shaders = cityFiles.flatMap((text) =>
+    [...text.matchAll(/\/\* glsl \*\/\s*`([\s\S]*?)\n\s*`/g)].map((m) => m[1]),
+  );
 
   it("declares some", () => {
     expect(shaders.length).toBeGreaterThan(2);

@@ -158,6 +158,54 @@ export function beachHeightAt(x: number, z: number): number | null {
   return Math.max(0, bedHeight(x, z));
 }
 
+/** Water depth at a point, in metres. Zero or less means dry land. */
+export function waterDepthAt(x: number, z: number) {
+  return -bedHeight(x, z);
+}
+
+/**
+ * The sea surface, for anything that has to float on it.
+ *
+ * A partial mirror of the shader: the swash lift, plus the three longest
+ * Gerstner waves, which between them carry about 80% of the vertical motion.
+ * The short chop is left out deliberately — a swimmer bobbing to a 7 m wave
+ * would judder, and nobody can see a 5 cm disagreement between where a body
+ * sits and where the water is drawn.
+ *
+ * Kept beside the shader constants it copies, and covered by the same test, so
+ * retuning the swell in one place and not the other shows up as a failure
+ * rather than as a swimmer riding twenty centimetres above the water.
+ */
+export function seaSurfaceAt(x: number, z: number, t: number) {
+  const depth = -bedHeight(x, z);
+  if (depth <= 0) return 0;
+  const sd = shoreDist(x, z) - beachWidth(x, z);
+  let y = 0;
+  const near = 1 - smoothstep(0, 90, sd);
+  if (near > 0) {
+    const along =
+      Math.sin(x * 0.021 + z * 0.013) * 1.7 + Math.sin(x * 0.009 - z * 0.026 + 1.7) * 1.3;
+    const ph = t * 0.72 - sd * 0.075 + along;
+    y += SWASH * (Math.sin(ph) * 0.64 + Math.sin(ph * 0.57 + 1.7) * 0.36) * near;
+  }
+  // The same shoaling curve the vertex shader uses: zero at the waterline,
+  // taller through the surf zone, deep-water height offshore.
+  const rise = 1 + 0.55 * Math.exp(-Math.pow((depth - 4.5) / 3.2, 2));
+  const att = smoothstep(0.05, 2.6, depth) * rise;
+  for (let i = 0; i < 3; i++) {
+    const w = WAVES[i];
+    const k = (2 * Math.PI) / w.len;
+    const omega = Math.sqrt(9.81 * k);
+    const len = Math.hypot(w.dx, w.dz);
+    const phase = k * ((w.dx / len) * x + (w.dz / len) * z) - omega * t;
+    y += w.amp * att * Math.sin(phase);
+  }
+  // Clamped to the seabed exactly as the vertex shader clamps it. Without
+  // this the swell's trough reports a surface below the sand in the shallows,
+  // and anything floating on the answer is told it is standing on dry land.
+  return Math.max(y, -depth + 0.09);
+}
+
 /**
  * The Gerstner set: a long swell out of the south-west with four shorter
  * trains crossing it, so no single wavelength ever reads as "the" wave.
@@ -567,9 +615,11 @@ export interface OceanOptions {
   };
   /** Halve the mesh density and drop the fragment detail on small screens. */
   lowDetail?: boolean;
+  /** Snow accumulation, if the world has weather — the beach takes it too. */
+  snow?: { patch(m: THREE.Material | THREE.Material[] | null | undefined): void };
 }
 
-export function buildOcean({ skyUniforms, lowDetail = false }: OceanOptions): Ocean {
+export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOptions): Ocean {
   const group = new THREE.Group();
   const trash: Array<{ dispose(): void }> = [];
   const segments = lowDetail ? 320 : 576;
@@ -642,6 +692,9 @@ export function buildOcean({ skyUniforms, lowDetail = false }: OceanOptions): Oc
     }
     sandGeo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   }
+  // Snow lies on the beach too — a white shoreline against dark water is
+  // most of what says the whole world got cold, not just the streets.
+  snow?.patch(sandMat);
   const sand = new THREE.Mesh(sandGeo, sandMat);
   sand.receiveShadow = true;
   group.add(sand);

@@ -14,6 +14,14 @@ export const GRAVITY = 24;
 export const WALK_SPEED = 7;
 export const RUN_SPEED = 16;
 
+/**
+ * Swimming, m/s. Deliberately well under a walk: water is the one place in
+ * this world where you are slower than you expect, and it is what makes the
+ * beach feel like an edge rather than a texture change.
+ */
+export const SWIM_SPEED = 3.2;
+export const SWIM_SPRINT = 5.4;
+
 /** Jetpack cruising / throttle-open speeds, m/s. */
 export const FLY_SPEED = 22;
 export const FLY_RUN_SPEED = 34;

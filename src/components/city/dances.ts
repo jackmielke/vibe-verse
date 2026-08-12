@@ -157,7 +157,15 @@ export function resetDancePose(p: DancePose): DancePose {
  * character's left) for the moves where both arms go the *same* way rather
  * than mirroring — the floss being the obvious one.
  */
-function setArm(
+/**
+ * The pose vocabulary, shared with anything else that drives this rig.
+ *
+ * Angles are world-axis and get converted into each joint's bind frame by
+ * `writeJoint`, so a caller only has to think in "swing the arm forward, raise
+ * it out to the side, fold the elbow" — which is why swimming is written
+ * against these too rather than reaching for bones directly.
+ */
+export function setArm(
   l: LimbPose,
   sd: number,
   swing: number,
@@ -188,7 +196,7 @@ function setArm(
  * one subtraction and puts the feet back on the floor. Pass a lower `level`
  * where the feet genuinely should hang — mid-jump, mostly.
  */
-function setLeg(
+export function setLeg(
   l: LimbPose,
   sd: number,
   swing: number,
