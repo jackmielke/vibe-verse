@@ -65,12 +65,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
+    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
     { sha: "9480e23", iso: "2026-08-11T14:24:14+00:00", subject: "Made the screenshot harnesses actually land the shot they ask for" },
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
     { sha: "3d88bbe", iso: "2026-08-11T07:57:25+00:00", subject: "Gave everybody in the city a body that can actually dance" },
     { sha: "faeb0d3", iso: "2026-08-11T07:49:11+00:00", subject: "Corrugation on the rest of the island's cardboard" },
     { sha: "0faea20", iso: "2026-08-11T07:29:52+00:00", subject: "Vibe Island: gave the keel something to be" },
-    { sha: "e4b1fda", iso: "2026-08-11T07:08:46+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -152,12 +152,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
     { sha: "3d88bbe", iso: "2026-08-11T07:57:25+00:00", subject: "Gave everybody in the city a body that can actually dance" },
     { sha: "faeb0d3", iso: "2026-08-11T07:49:11+00:00", subject: "Corrugation on the rest of the island's cardboard" },
     { sha: "0faea20", iso: "2026-08-11T07:29:52+00:00", subject: "Vibe Island: gave the keel something to be" },
     { sha: "e4b1fda", iso: "2026-08-11T07:08:46+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
-    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -191,12 +191,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
+    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
     { sha: "3d88bbe", iso: "2026-08-11T07:57:25+00:00", subject: "Gave everybody in the city a body that can actually dance" },
     { sha: "faeb0d3", iso: "2026-08-11T07:49:11+00:00", subject: "Corrugation on the rest of the island's cardboard" },
     { sha: "0faea20", iso: "2026-08-11T07:29:52+00:00", subject: "Vibe Island: gave the keel something to be" },
     { sha: "e4b1fda", iso: "2026-08-11T07:08:46+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
-    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
   ],
   "museum": [
     { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -253,12 +253,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
     { sha: "3d88bbe", iso: "2026-08-11T07:57:25+00:00", subject: "Gave everybody in the city a body that can actually dance" },
     { sha: "faeb0d3", iso: "2026-08-11T07:49:11+00:00", subject: "Corrugation on the rest of the island's cardboard" },
     { sha: "0faea20", iso: "2026-08-11T07:29:52+00:00", subject: "Vibe Island: gave the keel something to be" },
     { sha: "e4b1fda", iso: "2026-08-11T07:08:46+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
-    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
   ],
   "space": [
     { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
@@ -309,12 +309,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
     { sha: "3d88bbe", iso: "2026-08-11T07:57:25+00:00", subject: "Gave everybody in the city a body that can actually dance" },
     { sha: "faeb0d3", iso: "2026-08-11T07:49:11+00:00", subject: "Corrugation on the rest of the island's cardboard" },
     { sha: "0faea20", iso: "2026-08-11T07:29:52+00:00", subject: "Vibe Island: gave the keel something to be" },
     { sha: "e4b1fda", iso: "2026-08-11T07:08:46+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
-    { sha: "9dca9df", iso: "2026-08-11T06:41:11+00:00", subject: "Gave Vibe Island real grass, and real cardboard" },
   ],
   "vibeverse": [
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
