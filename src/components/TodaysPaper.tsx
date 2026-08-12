@@ -55,7 +55,7 @@ function dateline(issue: Issue): string {
   return `Edition of ${d.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" })}`;
 }
 
-export default function TodaysPaper() {
+export default function TodaysPaper({ className = "" }: { className?: string }) {
   const [issue, setIssue] = useState<Issue | null>(null);
 
   useEffect(() => {
@@ -81,7 +81,10 @@ export default function TodaysPaper() {
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.15 }}
-      className="mt-5 overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-[#0e1520] to-[#080c13] sm:mt-6"
+      /* The caller can override the stacked-layout margin — `/game` sets the
+         paper beside the hero on a wide screen, where a top margin tuned for
+         "underneath the headline" pushes it out of line with it. */
+      className={`mt-5 overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-[#0e1520] to-[#080c13] sm:mt-6 ${className}`}
       aria-label="The Vibe Times"
     >
       {/* The masthead is one line now, not two stacked ones, and the weather

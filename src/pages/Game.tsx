@@ -336,7 +336,17 @@ export default function Game() {
       {/* The header is deliberately short on a phone. This page is the front
           door, and a front door's job is to show you the room — every line of
           hero copy above the fold is a game the visitor did not see. */}
-      <div className="relative mx-auto max-w-6xl px-3 pb-20 pt-16 sm:px-6 sm:pt-24">
+      <div className="relative mx-auto max-w-6xl px-3 pb-20 pt-16 sm:px-6 sm:pt-20">
+        {/* Hero and paper share a row on a wide screen.
+            Stacked, they cost 558px before the first card — so at 1440×800 you
+            could not see one whole card without scrolling, on the page whose
+            entire job is showing you the room. And the hero only ever filled
+            the left half, so the fix and the empty space were the same problem:
+            the paper goes in the gap.
+
+            Below `lg` this grid collapses to nothing and both children are
+            block-level again, which is the order they were already in. */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:items-start lg:gap-10">
         <motion.header
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -419,7 +429,8 @@ export default function Game() {
           </div>
         </motion.header>
 
-        <TodaysPaper />
+          <TodaysPaper className="lg:mt-0" />
+        </div>
 
         {/* One bar: how the list is ordered on the left, how to narrow it on
             the right. It used to be two stacked rows — a right-aligned search
