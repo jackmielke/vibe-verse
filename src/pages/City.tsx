@@ -301,6 +301,35 @@ function shortClipName(raw: string) {
   return afterPipe.replace(/^Character_/, "");
 }
 
+/**
+ * `?spawn=` targets that land you somewhere specific in the city.
+ *
+ * Half the world list is a `/city?spawn=…` link — Vibe Island, Powder Peak, the
+ * moon, Mars, TJ's, Vibestar, the mines — so this set is what "going to a
+ * world" means for most of the registry, and it has to be one list. It was two:
+ * the effect below knew these nine, and the entry overlay knew nothing about
+ * them, so every one of those links painted the character picker for a frame
+ * before the effect dismissed it. You clicked Vibe Island and got somebody
+ * else's screen, then a loading screen.
+ */
+const DIRECT_SPAWNS = new Set([
+  "island",
+  "hub",
+  "moon",
+  "mars",
+  "tjs",
+  "ski",
+  "vibestar",
+  "underworld",
+  "mines",
+]);
+
+/** The spawn target in a query string, if it is one we land directly at. */
+function directSpawn(search: string): string | null {
+  const s = new URLSearchParams(search).get("spawn");
+  return s && DIRECT_SPAWNS.has(s) ? s : null;
+}
+
 export default function City() {
   // Passport: every world records that you were here. See lib/passport.ts.
   useWorldStamp("/city", "Vibe City");
@@ -315,8 +344,14 @@ export default function City() {
   // /live — spectator broadcast mode: no entry overlay, no HUD, an
   // invisible camera anchor, and the AI director runs the show.
   const isLive = typeof window !== "undefined" && window.location.pathname === "/live";
-  const [entered, setEntered] = useState(isFreshDrop || isLive);
-  const enteredRef = useRef(isFreshDrop || isLive);
+  /* Arriving at a named destination is itself a choice about where to be, so
+     the overlay asking where to be is skipped — and skipped from the *first*
+     render rather than by an effect, which is the difference between not
+     showing it and showing it briefly. */
+  const isDirectSpawn =
+    typeof window !== "undefined" && !!directSpawn(window.location.search);
+  const [entered, setEntered] = useState(isFreshDrop || isLive || isDirectSpawn);
+  const enteredRef = useRef(isFreshDrop || isLive || isDirectSpawn);
   const [showFreshChip, setShowFreshChip] = useState(isFreshDrop);
   const [liveLines, setLiveLines] = useState<string[]>([]);
   const [liveShot, setLiveShot] = useState("");
@@ -5793,18 +5828,8 @@ export default function City() {
   // Runs on mount and whenever the query changes (e.g. the Island chip
   // is clicked while already in the city).
   useEffect(() => {
-    const spawn = new URLSearchParams(routerLocation.search).get("spawn");
-    if (
-      spawn === "island" ||
-      spawn === "hub" ||
-      spawn === "moon" ||
-      spawn === "mars" ||
-      spawn === "tjs" ||
-      spawn === "ski" ||
-      spawn === "vibestar" ||
-      spawn === "underworld" ||
-      spawn === "mines"
-    ) {
+    const spawn = directSpawn(routerLocation.search);
+    if (spawn) {
       if (spawn === "hub") hubSpawnRef.current?.();
       else if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
@@ -5819,14 +5844,19 @@ export default function City() {
         islandSpawnRef.current?.();
         setArriving(true);
       }
-      // Skip the entry overlay — visitors arriving from the hub already
-      // chose where to land, so drop them straight into control.
+      // Skip the entry overlay — visitors arriving from the hub already chose
+      // where to land, so drop them straight into control. Usually already
+      // true, set on the first render; this also covers the Island chip being
+      // clicked while the visitor is standing in the city.
       if (!enteredRef.current) {
         enteredRef.current = true;
         setEntered(true);
-        if (!soundsRef.current) soundsRef.current = createCitySounds();
-        soundsRef.current?.setMuted(muted);
       }
+      /* Outside that guard, unlike everywhere else, because it used to be
+         inside it and `entered` now starts true for these arrivals — leaving it
+         there would silence every world reached by a spawn link. */
+      if (!soundsRef.current) soundsRef.current = createCitySounds();
+      soundsRef.current?.setMuted(muted);
     }
   }, [routerLocation.search]);
 
