@@ -74,6 +74,7 @@ import {
 } from "@/city/ocean";
 import { buildSplash, evalSwim, PRONE_PITCH } from "@/city/swim";
 import { createSnowCover } from "@/city/snowCover";
+import { createHeadMount } from "@/city/headMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -3049,6 +3050,9 @@ export default function City() {
         procPilot = buildProceduralPilot(undefined, designId);
         pilotModel = procPilot.group;
         modelHolder.add(procPilot.group);
+        // Flux is built rather than rigged, so there is no head bone to bind:
+        // the mount falls back to the fixed height it always used.
+        headMount.attach(null, null, modelHolder);
         return;
       }
 
@@ -3089,6 +3093,9 @@ export default function City() {
         // these bones are mid-stride.
         danceSk = bindGltfDanceSkeleton(model);
         modelHolder.add(model);
+        // After the add: the mount measures the head against the model's own
+        // extent, and both need their world matrices to be real.
+        headMount.attach(danceSk, model, modelHolder);
 
         if (gltf.animations.length) {
           mixer = new THREE.AnimationMixer(model);
@@ -3265,9 +3272,21 @@ export default function City() {
     // ---- Cosmetics: hat + jet flame color, both equippable from the
     // Vibe Shop. Hat is parented to modelHolder so it tilts with the
     // pilot. Flame color also tints the jet point light.
-    const hatMount = new THREE.Group();
-    hatMount.position.set(0, 1.78, 0); // just above a ~1.85m model's head
-    modelHolder.add(hatMount);
+    /**
+     * Hats hang off the head BONE, not off a fixed height on the body.
+     *
+     * The old mount was a group parked at 1.78 m — right for a character
+     * standing still and for nothing else. Every character is a different GLB
+     * fitted to the same overall height, so their heads sit at different
+     * places inside it, and the hat never moved when the head did: it stayed
+     * bolt upright through nods, through dances, and through a swimmer turning
+     * to breathe. See `src/city/headMount.ts` for how the bone's bind
+     * transform is cancelled so a hat still sits upright and at its authored
+     * size on a rig whose head bone is rolled or scaled.
+     */
+    const headMount = createHeadMount();
+    headMount.attach(null, null, modelHolder);
+    const hatMount = headMount.group;
     let currentHat: THREE.Group | null = null;
     const applyHat = (id: string) => {
       if (currentHat) {
@@ -3502,6 +3521,17 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__citySnow = (depth: number) => {
         setWeatherRef.current?.(depth > 0 ? "snow" : "clear");
         snowCover.uniform.value = Math.max(0, Math.min(1, depth));
+      };
+      /**
+       * Equip a hat and, optionally, hold a dance — the pair a harness needs to
+       * tell "sits on the head" from "sits where the head usually is".
+       */
+      (window as unknown as Record<string, unknown>).__cityHat = (
+        hat: string | null,
+        dance: string | null,
+      ) => {
+        if (hat) applyHat(hat);
+        setDance(dance);
       };
       (window as unknown as Record<string, unknown>).__citySwimState = () => ({
         swimming,
@@ -5957,6 +5987,7 @@ export default function City() {
       district.dispose();
       ocean.dispose();
       splash.dispose();
+      headMount.dispose();
 
       delete devWindow.__cityDebug;
       delete (window as unknown as Record<string, unknown>).__cityCam;
@@ -5966,6 +5997,7 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityDay;
       delete (window as unknown as Record<string, unknown>).__citySwim;
       delete (window as unknown as Record<string, unknown>).__citySnow;
+      delete (window as unknown as Record<string, unknown>).__cityHat;
       delete (window as unknown as Record<string, unknown>).__citySwimState;
       soundsRef.current?.dispose();
       soundsRef.current = null;

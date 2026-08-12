@@ -609,6 +609,9 @@ const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
     crown:     { price: 250, title: "Crown" },
     halo:      { price: 400, title: "Halo" },
     sticker:   { price: 0,   title: "Holo Sticker" },
+    bucket:    { price: 45,  title: "Bucket Hat" },
+    cans:      { price: 120, title: "Studio Cans" },
+    visor:     { price: 180, title: "Neon Visor" },
   },
   flame: {
     mint:    { price: 0,   title: "Mint Stock" },

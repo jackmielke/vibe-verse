@@ -226,6 +226,115 @@ function buildStickerHat(): THREE.Group {
  * twice drifts. This file's job is the half that genuinely needs Three: which
  * builder draws each one.
  */
+
+/**
+ * A bucket hat: a soft brim that flares rather than sticking straight out.
+ *
+ * Two truncated cones and a torus. The brim is the point — it has to droop, or
+ * it reads as a bin lid, and a drooping brim is what makes a hat look like
+ * fabric instead of like a primitive.
+ */
+function buildBucket(): THREE.Group {
+  const g = new THREE.Group();
+  const cloth = mkMat("#5b8c6e", { roughness: 0.95 });
+  const dark = mkMat("#3d6350", { roughness: 0.95 });
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.26, 24, 1), cloth);
+  crown.position.y = 0.15;
+  g.add(crown);
+  // Flared and tilted DOWN — a bucket brim points at the floor, not at the
+  // horizon, and that silhouette is the whole hat.
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.52, 0.04, 24, 1, true), dark);
+  brim.position.y = 0.03;
+  g.add(brim);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.025, 6, 28), dark);
+  lip.rotation.x = Math.PI / 2;
+  lip.position.y = 0.015;
+  g.add(lip);
+  const seam = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.018, 6, 24), dark);
+  seam.rotation.x = Math.PI / 2;
+  seam.position.y = 0.09;
+  g.add(seam);
+  return g;
+}
+
+/**
+ * Studio headphones — the one that most obviously proves the hat is on the
+ * head rather than floating over it, because the cups sit at the sides and a
+ * head turn swings them through the camera.
+ */
+function buildCans(): THREE.Group {
+  const g = new THREE.Group();
+  const shell = mkMat("#20242e", { roughness: 0.45 });
+  const pad = mkMat("#12151c", { roughness: 0.95 });
+  const trim = mkMat("#2dd4a8", { roughness: 0.3, emissive: "#0d6b53", emissiveIntensity: 0.6 });
+  // The arc already runs +X to -X over the top — ear to ear, which is where a
+  // headband goes. Rotating it a quarter turn stands it up front-to-back and
+  // gives the character a fin.
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 8, 22, Math.PI), shell);
+  band.position.y = 0.02;
+  g.add(band);
+  const bandTrim = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 22, Math.PI), trim);
+  bandTrim.position.y = 0.035;
+  g.add(bandTrim);
+  for (const side of [-1, 1]) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.15, 0.08, 20), shell);
+    cup.rotation.z = Math.PI / 2;
+    cup.position.set(side * 0.3, -0.16, 0);
+    g.add(cup);
+    const ear = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 8, 18), pad);
+    ear.rotation.y = Math.PI / 2;
+    ear.position.set(side * 0.26, -0.16, 0);
+    g.add(ear);
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.09, 12), trim);
+    dot.rotation.z = Math.PI / 2;
+    dot.position.set(side * 0.335, -0.16, 0);
+    g.add(dot);
+  }
+  return g;
+}
+
+/**
+ * A wraparound visor. Transparent, which the rest of the catalogue is not, and
+ * it is the reason the sheet is a separate mesh from the strap: one wants to be
+ * see-through and lit, the other does not.
+ */
+function buildVisor(): THREE.Group {
+  const g = new THREE.Group();
+  // The mount sits at the CROWN, because that is where hats go. A visor goes
+  // across the eyes, which on these characters is about twenty centimetres
+  // further down — without this it reads as a headband and the sheet, which is
+  // the whole item, is edge-on to the camera and invisible.
+  g.position.y = -0.2;
+  const strap = mkMat("#171b24", { roughness: 0.7 });
+  const glass = new THREE.MeshStandardMaterial({
+    color: "#7dfce0",
+    roughness: 0.12,
+    metalness: 0.35,
+    transparent: true,
+    opacity: 0.55,
+    emissive: "#0f5f52",
+    emissiveIntensity: 0.7,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.04, 8, 26), strap);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.02;
+  g.add(ring);
+  // A partial cylinder across the front, tipped forward so it follows a brow.
+  const sheet = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.33, 0.33, 0.19, 26, 1, true, -1.15, 2.3),
+    glass,
+  );
+  sheet.position.set(0, 0.0, 0);
+  sheet.rotation.x = -0.12;
+  g.add(sheet);
+  const brow = new THREE.Mesh(new THREE.TorusGeometry(0.315, 0.02, 6, 26, 2.3), strap);
+  brow.rotation.set(Math.PI / 2, 0, -1.15);
+  brow.position.y = 0.1;
+  g.add(brow);
+  return g;
+}
+
 const HAT_BUILDERS: Record<string, () => THREE.Group> = {
   none: () => new THREE.Group(),
   cap: buildCap,
@@ -236,11 +345,25 @@ const HAT_BUILDERS: Record<string, () => THREE.Group> = {
   crown: buildCrown,
   halo: buildHalo,
   sticker: buildStickerHat,
+  bucket: buildBucket,
+  cans: buildCans,
+  visor: buildVisor,
 };
 
 export const HAT_CATALOG: HatDef[] = HAT_ITEMS.map((i) => ({
   ...i,
-  build: HAT_BUILDERS[i.id] ?? (() => new THREE.Group()),
+  build: () => {
+    const g = (HAT_BUILDERS[i.id] ?? (() => new THREE.Group()))();
+    // A hat with no shadow is a hat sitting a centimetre off the head no
+    // matter how well it is mounted — the contact shadow is what puts an
+    // object ON another object, and the avatar has cast shadows since the day
+    // the sun was added.
+    g.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) mesh.castShadow = true;
+    });
+    return g;
+  },
 }));
 
 // ---- Unlocks (cosmetics earned via on-chain purchases) ------------------
