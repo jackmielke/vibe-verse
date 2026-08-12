@@ -55,6 +55,8 @@ import {
   RUN_SPEED,
   FLY_SPEED,
   FLY_RUN_SPEED,
+  SWIM_SPEED,
+  SWIM_SPRINT,
   JUMP_VELOCITY,
   MAX_RISE,
   MAX_FALL,
@@ -62,7 +64,16 @@ import {
 } from "@/lib/worldPhysics";
 import { CollisionWorld } from "@/city/player/collision";
 import { buildDistrict } from "@/city/district";
-import { buildOcean, beachHeightAt, OCEAN_DAY, OCEAN_NIGHT } from "@/city/ocean";
+import {
+  buildOcean,
+  beachHeightAt,
+  seaSurfaceAt,
+  waterDepthAt,
+  OCEAN_DAY,
+  OCEAN_NIGHT,
+} from "@/city/ocean";
+import { buildSplash, evalSwim, PRONE_PITCH } from "@/city/swim";
+import { createSnowCover } from "@/city/snowCover";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -1402,12 +1413,20 @@ export default function City() {
     // loop that extruded one box per lot and a material that painted every
     // roof a single flat colour, which is exactly what the city looked like
     // from the air. See that module's header for what replaced it and why.
+    /**
+     * Snow settles on whatever it is handed. Built before the district so the
+     * district's materials can be patched as they are made — a material that
+     * has already compiled needs a `needsUpdate` to pick the injection up, and
+     * relying on that is how half a city ends up bare in a blizzard.
+     */
+    const snowCover = createSnowCover();
     const district = buildDistrict({
       seed: CITY_SEED,
       grid: GRID,
       block: BLOCK,
       street: STREET,
       padMinHeight: PAD_MIN_HEIGHT,
+      snow: snowCover,
     });
     scene.add(district.group);
     // Held live by reference — every world that loads after this pushes its
@@ -2619,8 +2638,13 @@ export default function City() {
      * is exactly how the city once ended up sitting at night on a bright
      * turquoise daylight sea.
      */
-    const ocean = buildOcean({ skyUniforms, lowDetail: smallScreen });
+    const ocean = buildOcean({ skyUniforms, lowDetail: smallScreen, snow: snowCover });
     scene.add(ocean.group);
+    // Entering and leaving the water. Pooled, because entering water is a
+    // thing that happens over and over and a particle system per entry is how
+    // a world starts hitching after ten minutes of play.
+    const splash = buildSplash();
+    scene.add(splash.group);
     // Dev-only handle for `scripts/ocean-probe.mjs`. Water is the one thing in
     // here you genuinely cannot debug from a screenshot: "flat blue" is what a
     // missing mesh, a shader that failed to link and a correct calm sea all
@@ -3449,6 +3473,51 @@ export default function City() {
       };
 
       /**
+       * Hold a synthetic "forward" input, for photographing motion.
+       *
+       * The swim stroke is solved from speed, so there is no clip to scrub and
+       * the only way to see it at pace is to actually be moving. Synthesising
+       * keyboard events would work and would also drive every other key
+       * handler in the page; one number is less to go wrong.
+       */
+      (window as unknown as Record<string, unknown>).__citySwim = (fwd: number) => {
+        devForward = Math.max(0, Math.min(1, fwd));
+        // Seeded up to speed rather than waiting for the easing. `dt` is
+        // clamped to 0.05, so under the software renderer a harness runs at
+        // roughly a fifteenth of real time and a swimmer takes the better part
+        // of a minute of wall clock to reach a stroke worth photographing.
+        if (devForward > 0) {
+          vel.x = -Math.sin(camYaw) * SWIM_SPEED * devForward;
+          vel.z = -Math.cos(camYaw) * SWIM_SPEED * devForward;
+        }
+      };
+      /**
+       * Force a snowfall and how deep it has settled.
+       *
+       * Accumulation takes half a minute of game time on purpose, and the
+       * software renderer a harness runs on advances at about a fifteenth of
+       * real time — so photographing "an inch of snow" by waiting for it costs
+       * seven minutes a frame. This sets the depth directly.
+       */
+      (window as unknown as Record<string, unknown>).__citySnow = (depth: number) => {
+        setWeatherRef.current?.(depth > 0 ? "snow" : "clear");
+        snowCover.uniform.value = Math.max(0, Math.min(1, depth));
+      };
+      (window as unknown as Record<string, unknown>).__citySwimState = () => ({
+        swimming,
+        prone: swimProne,
+        speed: Math.hypot(vel.x, vel.z),
+        // Where buoyancy is taking the body, so a harness can wait for it to
+        // get there instead of photographing a swimmer mid-sink.
+        floatY:
+          seaSurfaceAt(player.position.x, player.position.z, performance.now() * 0.001) -
+          THREE.MathUtils.lerp(1.15, -0.26, swimProne),
+        y: player.position.y,
+        sea: seaSurfaceAt(player.position.x, player.position.z, performance.now() * 0.001),
+        depth: waterDepthAt(player.position.x, player.position.z),
+      });
+
+      /**
        * Pin the time of day.
        *
        * Clicking the toggle is not enough for a screenshot harness: the mode
@@ -3668,6 +3737,30 @@ export default function City() {
     // Cloud Kingdom: launches and cloud-trampoline bounces briefly lift
     // the vertical speed cap so you can actually reach the sky.
     let superBounceUntil = 0;
+
+    /**
+     * Swimming.
+     *
+     * Entering is a hysteresis band rather than a threshold: swim from 1.1 m of
+     * water, stand up again at 0.85 m. One number for both and you get a
+     * stutter every time the swell lifts and drops you across it, which on a
+     * beach with a 30 cm swash is most of the shoreline most of the time.
+     *
+     * The sea is not part of the collision world — `CollisionWorld` floors
+     * everything at y=0 so nobody can fall out of the world, and over water
+     * that means standing on it. Rather than make the ocean solid for karts,
+     * NPCs and everything else that queries support, the swimmer opts out of
+     * that floor locally and is held up by buoyancy instead.
+     */
+    const SWIM_IN = 1.1;
+    const SWIM_OUT = 0.85;
+    let swimming = false;
+    let swimWeight = 0;
+    let swimProne = 0;
+    /** DEV-only synthetic forward input; see `__citySwim`. */
+    let devForward = 0;
+    let swimKickTimer = 0;
+    const swimPose = createDancePose();
     let lastRebelShot = 0; // KeyF autofire cooldown
     let modelYaw = 0;
     let lastTime = performance.now();
@@ -4487,6 +4580,10 @@ export default function City() {
           intent.addScaledVector(right, tm.x);
         }
       }
+      // Dev-only: a synthetic hold on "forward", so a screenshot harness can
+      // photograph a stroke at speed without simulating a keyboard. Stripped
+      // from production — `devForward` is only ever written by a DEV block.
+      if (devForward > 0) intent.addScaledVector(fwd, devForward);
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
       const jetInput = enteredRef.current && !piloting && (keys.has("Space") || touchJetRef.current);
@@ -4628,19 +4725,101 @@ export default function City() {
           now < superBounceUntil && intent.lengthSq() < 0.01
             ? 1 - Math.pow(0.7, dt)
             : 1 - Math.pow(0.05, dt);
-        const k = onGround ? 1 - Math.pow(0.0001, dt) : airK;
-        vel.x += (intent.x * targetSpeed - vel.x) * k;
-        vel.z += (intent.z * targetSpeed - vel.z) * k;
+        const k = swimming
+          ? 1 - Math.pow(0.06, dt) // water: firmer than air, softer than tarmac
+          : onGround
+            ? 1 - Math.pow(0.0001, dt)
+            : airK;
+        const speedNow = swimming ? (running ? SWIM_SPRINT : SWIM_SPEED) : targetSpeed;
+        vel.x += (intent.x * speedNow - vel.x) * k;
+        vel.z += (intent.z * speedNow - vel.z) * k;
       }
 
-      // Vertical: gravity vs. jetpack.
-      vel.y -= GRAVITY * dt;
-      if (thrusting) {
-        vel.y += THRUST * dt;
+      // ---- In the water? ------------------------------------------------
+      const waterHere = waterDepthAt(pos.x, pos.z);
+      const seaBed = -waterHere;
+      const seaTop = seaSurfaceAt(pos.x, pos.z, now * 0.001);
+      // Depth is measured to MEAN sea level, not to the instantaneous surface.
+      // Offshore the swell is nearly two metres peak to trough, so a swimmer
+      // sitting in a passing trough would otherwise be told the water had gone
+      // shallow and asked to stand up in it.
+      const deepEnough = waterHere > (swimming ? SWIM_OUT : SWIM_IN);
+      // Only in the city's own ocean: the ski world, the moons and Mars all
+      // live at their own altitudes and none of them is at sea level.
+      const atSeaLevel = pos.y < Math.max(seaTop, 0) + 0.6 && pos.y > -40;
+      const wantSwim =
+        deepEnough && atSeaLevel && !undergroundNow && !riding && !swinging && drivingKartRef.current < 0;
+      if (wantSwim && !swimming) {
+        // Hitting the water is worth a noise and a splash proportional to how
+        // hard you arrived; stepping in off the sand should barely ripple.
+        const impact = Math.min(1, Math.max(0.12, (-vel.y - 1) / 22));
+        splash.burst(pos.x, seaTop, pos.z, impact);
+        soundsRef.current?.thud?.(0.1 + impact * 0.5);
+        setDance(null);
+      } else if (!wantSwim && swimming) {
+        splash.burst(pos.x, seaTop, pos.z, 0.25);
+      }
+      swimming = wantSwim;
+      // A wake, while there is something to make one with. Throttled rather
+      // than per-frame: at sixty frames a second an emitter this cheap still
+      // empties the pool in a second and a half and the entry splash stops
+      // having any droplets left to use.
+      if (swimming) {
+        const swimSpd = Math.hypot(vel.x, vel.z);
+        if (swimProne > 0.35 && swimSpd > 1.2) {
+          swimKickTimer -= dt;
+          if (swimKickTimer <= 0) {
+            splash.kick(pos.x, seaTop, pos.z, Math.min(1, swimSpd / 4));
+            swimKickTimer = 0.11;
+          }
+        }
+      }
+
+      // Vertical: buoyancy in water, gravity out of it.
+      if (swimming) {
         onGround = false;
+        wallJumpUsed = false;
+        peakY = pos.y;
+        /**
+         * A prone swimmer rides with their back OUT of the water and a
+         * treading one is out to the shoulders — not because that is prettier
+         * but because the sea is an opaque sheet at any depth over about three
+         * metres, and a body floating wholly beneath it is a body nobody can
+         * see — the first cut of this rode twenty centimetres under and the
+         * swimmer was simply not in the frame. The rig pivots near the feet,
+         * so pitching the body prone lays it along the surface; sitting that
+         * pivot slightly PROUD of the water is what puts the back and
+         * shoulders above it, which is what a front crawl looks like.
+         */
+        const floatY = seaTop - THREE.MathUtils.lerp(1.15, -0.26, swimProne);
+        /**
+         * Eased toward a target RATE rather than sprung.
+         *
+         * A spring with linear damping (`vel *= 1 - dt * k`) is the obvious
+         * shape and it goes wrong at large dt — the damping term reaches zero
+         * at dt = 1/k and flips sign past it. `dt` is clamped to 0.05 here so
+         * that is not reachable, but an exponential is the same length of code
+         * and cannot be broken by a future clamp, and it makes the rise rate
+         * something you can read off the line rather than derive.
+         *
+         * The clamp on the target rate is what makes entering fast read as a
+         * plunge: you keep the speed you arrived with until the water has had
+         * time to take it off you, rather than being caught at the surface.
+         */
+        const wantVy = THREE.MathUtils.clamp((floatY - pos.y) * 5.5, -9, 9);
+        vel.y += (wantVy - vel.y) * (1 - Math.pow(0.008, dt));
+        if (thrusting) vel.y += THRUST * dt;
+        // Without a jetpack, Space is a kick for the surface.
+        else if (jetInput) vel.y += 26 * dt;
+      } else {
+        vel.y -= GRAVITY * dt;
+        if (thrusting) {
+          vel.y += THRUST * dt;
+          onGround = false;
+        }
       }
       // Parkour jump: edge-trigger when grounded (or within coyote window).
-      if (wantsJump && !prevJetInput) {
+      if (wantsJump && !prevJetInput && !swimming) {
         if (onGround || coyoteTimer > 0) {
           vel.y = JUMP_VELOCITY;
           onGround = false;
@@ -4747,7 +4926,20 @@ export default function City() {
       }
 
       // Land on whatever is underneath (street, rooftop, or island).
-      const support = supportHeightAt(pos.x, pos.z, prevY + 0.1);
+      let support = supportHeightAt(pos.x, pos.z, prevY + 0.1);
+      // Nothing but the phantom sea-level plate won, and we are in the water:
+      // let the swimmer past it and down to the actual seabed, which is what
+      // buoyancy is then pushing them back up off.
+      if (swimming && support <= 0.0001) support = Math.max(seaBed, -80);
+      // Wading. In water too shallow to swim in, stand on the SEABED rather
+      // than on the sea: the plate at y=0 is there so nobody can fall out of
+      // the world, and over the shallows it was also letting them walk out
+      // across the top of it. Bounded to the wading band, so a jetpack pilot
+      // descending over deep water still meets the surface and starts
+      // swimming rather than dropping to the bottom of the bay.
+      else if (!swimming && waterHere > 0 && waterHere <= SWIM_IN && support <= 0.0001) {
+        support = seaBed;
+      }
       if (pos.y <= support && vel.y <= 0) {
         const fall = -vel.y;
         pos.y = support;
@@ -4768,7 +4960,10 @@ export default function City() {
           // Falls that started up in the Cloud Kingdom OR the drifting
           // ambient cloud band land soft — nothing up there should trap.
           const fromClouds = peakY > ISLAND_TOP + 90;
-          const safeZone = inMars || inMoonA || inMoonB || inUnder || inSki || fromClouds;
+          // Landing in water is landing in water. A cannonball off a tower is
+          // a thing people should be rewarded for, not respawned for.
+          const inSea = waterHere > SWIM_OUT;
+          const safeZone = inMars || inMoonA || inMoonB || inUnder || inSki || fromClouds || inSea;
 
           const fallDamageArmed = fallDamageEnabledRef.current && !jetpackEquipped;
 
@@ -4834,11 +5029,25 @@ export default function City() {
       // Animation state machine. Jetpack thrust deliberately skips the
       // jump tuck — you just rise, standing tall.
       if (actions.size) {
-        if (thrusting) playClip([/^idle$/i, /idle/i], true);
+        // Swimming holds the idle clip underneath and lets the solved stroke
+        // do the work on top. A walk cycle fighting a front crawl for the same
+        // bones is a mess no blend weight rescues.
+        if (swimming || thrusting) playClip([/^idle$/i, /idle/i], true);
         else if (!onGround) playClip([/jump_idle/i, /jump/i, /fall/i, /idle/i], true);
         else if (hSpeed > 6.5) playClip([/^run/i, /run/i, /walk/i], true);
         else if (hSpeed > 0.6) playClip([/^walk/i, /walk/i, /run/i], true);
         else playClip([/^idle$/i, /idle/i], true);
+      }
+
+      // ---- Swimming -----------------------------------------------------
+      /* Solved, not played back — see `src/city/swim.ts`. It rides the same
+         pose channel the dances use, so it lands on every character in the
+         catalogue and on Flux, none of which ship a swim clip. */
+      swimWeight = stepDanceWeight(swimWeight, swimming, dt);
+      if (swimWeight > 0) {
+        swimProne = evalSwim(swimPose, { speed: hSpeed, t: now * 0.001 }).prone;
+      } else {
+        swimProne = 0;
       }
       // ---- Dance --------------------------------------------------------
       /* Walking out of a dance is how you stop one — no menu, no second key
@@ -4853,11 +5062,15 @@ export default function City() {
       if (danceDef && danceWeight > 0) evalDance(danceDef, dancePose);
 
       mixer?.update(dt);
-      // Applied after the mixer, so the dance slerps on top of the live clip
-      // pose and melts back into it as the weight falls away.
+      // Applied after the mixer, so the solved pose slerps on top of the live
+      // clip and melts back into it as the weight falls away. Swimming wins
+      // over a dance: you cannot floss and front crawl at once, and entering
+      // the water already cancelled the dance anyway.
+      const bodyPose = swimWeight > 0 ? swimPose : dancePose;
+      const bodyWeight = swimWeight > 0 ? swimWeight : danceWeight;
       if (danceSk) {
-        if (danceWeight > 0) {
-          applyDancePose(danceSk, dancePose, danceWeight);
+        if (bodyWeight > 0) {
+          applyDancePose(danceSk, bodyPose, bodyWeight);
           danceReleased = false;
         } else if (!danceReleased) {
           releaseDanceSkeleton(danceSk);
@@ -4872,7 +5085,7 @@ export default function City() {
         verticalVel: vel.y,
         yawRate: yawDelta / Math.max(dt, 1e-4),
         thrusting,
-        dance: danceWeight > 0 ? { pose: dancePose, weight: danceWeight } : null,
+        dance: bodyWeight > 0 ? { pose: bodyPose, weight: bodyWeight } : null,
       });
 
       // Jetpack VFX.
@@ -5423,6 +5636,9 @@ export default function City() {
       vibey.update(dt, now);
       updateClouds(now);
       ocean.update(now * 0.001, scene.fog as THREE.Fog | null);
+      splash.update(dt);
+      // Lays down while it is snowing, melts off when it stops.
+      snowCover.update(dt, weatherRef.current?.get() === "snow");
       agentResidents.update(dt, pos);
       rosterBoard.update(dt);
 
@@ -5740,6 +5956,7 @@ export default function City() {
       rosterBoard.dispose();
       district.dispose();
       ocean.dispose();
+      splash.dispose();
 
       delete devWindow.__cityDebug;
       delete (window as unknown as Record<string, unknown>).__cityCam;
@@ -5747,6 +5964,9 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityWarp;
       delete (window as unknown as Record<string, unknown>).__cityOcean;
       delete (window as unknown as Record<string, unknown>).__cityDay;
+      delete (window as unknown as Record<string, unknown>).__citySwim;
+      delete (window as unknown as Record<string, unknown>).__citySnow;
+      delete (window as unknown as Record<string, unknown>).__citySwimState;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();

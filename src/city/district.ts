@@ -66,6 +66,13 @@ export interface DistrictOpts {
   street: number;
   /** Towers above this get a rooftop landing pad. */
   padMinHeight: number;
+  /**
+   * Snow accumulation, if the world has weather. Every up-facing surface the
+   * district owns — streets, sidewalks, parks, the plaza, every roof — is
+   * handed to it, so a fall covers the whole district at once rather than a
+   * list of things somebody remembered to include.
+   */
+  snow?: { patch(m: THREE.Material | THREE.Material[] | null | undefined): void };
 }
 
 export interface District {
@@ -870,6 +877,13 @@ export function buildDistrict(opts: DistrictOpts): District {
   addSlabs(plazaGeos, plazaMat);
   trash.push(paveMat, parkMat, plazaMat, paveNight, paveDay);
 
+  // Everything the weather can settle on. Roofs and roads matter most — they
+  // are what the city IS from the air — but the trees are what gives it away:
+  // a district under six inches of snow with a green canopy over it reads as
+  // a filter somebody applied rather than as weather. The tree materials are
+  // declared further down, so they are patched at the end of the build.
+  opts.snow?.patch([roofMat, roadMat, paveMat, parkMat, plazaMat]);
+
   // Road markings: centre dashes down every street and a zebra at every
   // intersection. Instanced quads a couple of centimetres off the asphalt
   // rather than paint in the road texture, which tiles every 16 m and would
@@ -1054,6 +1068,7 @@ export function buildDistrict(opts: DistrictOpts): District {
   instance(ventGeo, plantMat, vents);
   instance(trunkGeo, trunkMat, trunks);
   instance(crownGeo, leafMat, crowns);
+  opts.snow?.patch([leafMat, concreteMat, tankMat]);
 
   const lampPostGeo = new THREE.CylinderGeometry(0.09, 0.13, 1, 6);
   const poolGeo = new THREE.PlaneGeometry(1, 1);
