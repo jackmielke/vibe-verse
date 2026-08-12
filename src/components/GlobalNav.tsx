@@ -7,10 +7,12 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { Search } from "lucide-react";
 import WorldPicker from "@/components/WorldPicker";
 import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
 import VibeCoinChip from "@/components/VibeCoinChip";
 import { VibeMark } from "@/components/HomeButton";
+import { shouldOpenSearch } from "@/lib/searchHotkey";
 
 
 export default function GlobalNav() {
@@ -32,6 +34,24 @@ export default function GlobalNav() {
   useEffect(() => {
     setPickerOpen(false);
   }, [location.pathname, location.search]);
+
+  /* "/" opens the search, the way it does everywhere else on the web. What it
+     must not do — steal a keystroke from a field, or land on somebody mid-game
+     — is `shouldOpenSearch`, which is a pure function so it can be tested. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const ok = shouldOpenSearch(e, {
+        pointerLocked: !!document.pointerLockElement,
+        active: el ? { tagName: el.tagName, isContentEditable: el.isContentEditable } : null,
+      });
+      if (!ok) return;
+      e.preventDefault();
+      setPickerOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const chipClass = (active: boolean) =>
     `group relative flex items-center gap-1.5 rounded-full px-2 sm:px-2.5 py-1.5 transition-all ${
@@ -71,6 +91,27 @@ export default function GlobalNav() {
             <VibeMark size={14} />
             <span className={labelClass}>Worlds</span>
           </Link>
+
+          {/* Universal search — the same overlay, from anywhere.
+              `WorldPicker` has had an autofocused search field over every world
+              in the registry for a long time, and nothing in the app could open
+              it: this component held the state and only ever set it to `false`.
+              A finished feature nobody could reach.
+
+              It goes next to the Worlds pill rather than in the opposite corner
+              because it is the same question asked in a hurry — that list, but
+              you already know the name. */}
+          <span className="mx-0.5 h-4 w-px bg-border/60" aria-hidden />
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className={chipClass(false)}
+            title="Search every world (press /)"
+            aria-label="Search every world"
+          >
+            <Search className="h-3.5 w-3.5" aria-hidden />
+            <span className={labelClass}>Search</span>
+          </button>
         </div>
       </div>
 

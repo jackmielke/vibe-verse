@@ -36,6 +36,19 @@ export default function WorldPicker({
   const location = useLocation();
   const [query, setQuery] = useState("");
   useEffect(() => { if (!open) setQuery(""); }, [open]);
+
+  /* Escape closes it. This overlay covers the entire viewport and used to be
+     openable only from a menu that no longer exists; now that "/" opens it from
+     any page, the one thing it must not be is a room with a single door
+     somebody has to go looking for. */
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
   const here = (w: WorldEntry) =>
     w.route.split("?")[0] === location.pathname && !w.route.includes("?");
   const filtered = useMemo(() => {
