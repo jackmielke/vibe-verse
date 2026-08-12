@@ -21,10 +21,16 @@ import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
 
 import VibeCoinMark from "@/components/VibeCoinMark";
+import SubmitGameDialog from "@/components/portal/SubmitGameDialog";
 import { listPortalGames, type PortalGameListing } from "@/portal/api";
 
 export default function PortalShelf() {
   const [games, setGames] = useState<PortalGameListing[] | null>(null);
+  /* Both invitations open the form here rather than routing to it. Somebody
+     reading this shelf is already convinced; sending them to a different page
+     to act on it makes them lose their place in the argument. `/build` still
+     exists and still explains the deal at length, for anybody who wants it. */
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -50,12 +56,13 @@ export default function PortalShelf() {
             sites, in a sandbox, on an allowance.
           </p>
         </div>
-        <Link
-          to="/build"
+        <button
+          type="button"
+          onClick={() => setSubmitting(true)}
           className="shrink-0 font-heading text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
         >
           Add yours →
-        </Link>
+        </button>
       </div>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -91,8 +98,9 @@ export default function PortalShelf() {
           </motion.div>
         ))}
 
-        <Link
-          to="/build"
+        <button
+          type="button"
+          onClick={() => setSubmitting(true)}
           className="group flex min-h-[7.5rem] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/50 p-4 text-center transition-colors hover:border-[#8fb4ff]/60 hover:bg-white/[0.03]"
         >
           <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-[#8fb4ff]" />
@@ -102,8 +110,10 @@ export default function PortalShelf() {
           <span className="text-[10px] leading-snug text-muted-foreground/60">
             Four lines of JavaScript. No key, no account.
           </span>
-        </Link>
+        </button>
       </div>
+
+      <SubmitGameDialog open={submitting} onOpenChange={setSubmitting} />
     </section>
   );
 }
