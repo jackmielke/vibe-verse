@@ -209,6 +209,13 @@ const TJS_ISLET_R = 22; // landing tolerance for fast-travel detection
 const UNDER_X = 620;
 const UNDER_Y = -300;
 const UNDER_Z = 480;
+// A mines run gives you three hearts. Take three hits and the gremlins
+// throw you out — you keep the coins you banked, the cavern resets.
+const MINES_HEARTS = 3;
+// Coins: one per gold nugget, one per gremlin stomped, and a purse for
+// putting the boss down.
+const MINES_STOMP_COIN = 1;
+const MINES_BOSS_COIN = 25;
 // Ninja portal placements: behind the plaza on Edge Island, and in
 // a dim alley between two city towers.
 const NINJA_PORTAL_ISLAND = { x: ISLAND_X - 22, y: ISLAND_TOP, z: ISLAND_Z - 28 };
@@ -426,6 +433,12 @@ export default function City() {
   const undergroundWorldRef = useRef<UndergroundWorld | null>(null);
   const undergroundActiveRef = useRef(false);
   const undergroundInvulnRef = useRef(0);
+  // Hearts live in a ref because the render loop reads them every frame;
+  // the state above is only the HUD's copy.
+  const minesHeartsRef = useRef(MINES_HEARTS);
+  // Edge-detects the boss's charge tell so the warning banner and its
+  // sound fire once per charge, not once per frame.
+  const bossWarnRef = useRef(false);
   // Snapshot of who you were before entering, so exit restores everything.
   const ninjaStateRef = useRef<{ prevChar: string; prevJet: string; returnPos: { x: number; y: number; z: number } } | null>(null);
   const ninjaHurtRef = useRef<((knockFromX: number, knockFromZ: number) => void) | null>(null);
@@ -801,12 +814,34 @@ export default function City() {
   const [nearNinjaPortal, setNearNinjaPortal] = useState(false);
   const [underground, setUnderground] = useState(false);
   const [bossHp, setBossHp] = useState(3);
+  // A mines run: three hearts, and a tally of what you got out with.
+  // Without a fail state the fight had no stakes — a hit just shoved
+  // you sideways and you walked back in.
+  const [minesHearts, setMinesHearts] = useState(MINES_HEARTS);
+  const [minesStomps, setMinesStomps] = useState(0);
+  const [minesGold, setMinesGold] = useState(0);
+  const [minesKo, setMinesKo] = useState(0);
+  const [bossWarning, setBossWarning] = useState(false);
   const [orbShardWon, setOrbShardWon] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("city.orbShard") === "1";
   });
   const [showShardReward, setShowShardReward] = useState(false);
   const [enterFx, setEnterFx] = useState(0);
+  // Clear the arrival flash on a timer, exactly like respawnFx and
+  // transcendFx above. It used to hang its cleanup off onAnimationEnd,
+  // which never fired — so the flash, and its full-screen backdrop blur,
+  // stayed on top of the mines forever.
+  useEffect(() => {
+    if (enterFx <= 0) return;
+    const timer = window.setTimeout(() => setEnterFx(0), 2000);
+    return () => window.clearTimeout(timer);
+  }, [enterFx]);
+  useEffect(() => {
+    if (minesKo <= 0) return;
+    const timer = window.setTimeout(() => setMinesKo(0), 2200);
+    return () => window.clearTimeout(timer);
+  }, [minesKo]);
   const enterUndergroundRef = useRef<(() => void) | null>(null);
   const exitUndergroundRef = useRef<(() => void) | null>(null);
 
@@ -3935,6 +3970,14 @@ export default function City() {
       undergroundActiveRef.current = true;
       setUnderground(true);
       setBossHp(undergroundWorld.bossHpRemaining());
+      // Fresh run: full hearts, empty scoreboard.
+      minesHeartsRef.current = MINES_HEARTS;
+      bossWarnRef.current = false;
+      setMinesHearts(MINES_HEARTS);
+      setMinesStomps(0);
+      setMinesGold(0);
+      setMinesKo(0);
+      setBossWarning(false);
       setEnterFx(Date.now());
     };
     exitUndergroundRef.current = () => {
@@ -3962,11 +4005,15 @@ export default function City() {
       wallJumpUsed = false;
       undergroundActiveRef.current = false;
       undergroundInvulnRef.current = 0;
+      bossWarnRef.current = false;
       setUnderground(false);
+      setBossWarning(false);
 
       // Reset the mines so the next run starts fresh.
       undergroundWorld.reset();
       setBossHp(undergroundWorld.bossHpRemaining());
+      minesHeartsRef.current = MINES_HEARTS;
+      setMinesHearts(MINES_HEARTS);
     };
 
 
@@ -3983,6 +4030,10 @@ export default function City() {
         support: (x: number, y: number, z: number) => number;
         boxesNear: (x: number, z: number) => Array<Record<string, number>>;
         mines: () => [boolean, boolean, number, number, number];
+        minesRun: () => {
+          hearts: number; bossHp: number; boss: string; bossDist: number;
+          bossAt: [number, number, number];
+        };
         snapshot: (near?: number) => string;
         camPose: () => {
           near: number; dist: number; pitch: number; yaw: number;
@@ -4028,6 +4079,18 @@ export default function City() {
         undergroundWorld.spawn.y,
         undergroundWorld.spawn.z,
       ],
+      // Live run state, so a headless play-test can assert that the
+      // clan actually lands hits and the boss actually charges.
+      minesRun: () => {
+        const bp = undergroundWorld.bossPos();
+        return {
+          hearts: minesHeartsRef.current,
+          bossHp: undergroundWorld.bossHpRemaining(),
+          boss: undergroundWorld.bossPhase(),
+          bossDist: Math.hypot(bp.x - player.position.x, bp.z - player.position.z),
+          bossAt: [bp.x, bp.y, bp.z] as [number, number, number],
+        };
+      },
       // Render one fresh frame and read it back in the same task —
       // works without preserveDrawingBuffer, so headless tests can
       // take reliable stills of the world.
@@ -5182,7 +5245,10 @@ export default function City() {
       }
 
       // ---- Gremlin Mines: same loop as Mars, plus a 3-stomp boss ----
-      undergroundWorld.update(dt, now);
+      // The clan and the boss only hunt a player who is actually down
+      // here, so the cavern is told where you are — or that you are not.
+      const inMinesNow = undergroundWorld.isInside(pos);
+      undergroundWorld.update(dt, now, inMinesNow ? pos : null);
       // Spin the two surface portals so they read as alive.
       for (const np of ninjaPortals) {
         const r = (np as unknown as { __ring?: THREE.Mesh }).__ring;
@@ -5202,7 +5268,7 @@ export default function City() {
         }
       }
       // Detect underground transitions so jetpack toggles cleanly.
-      const insideNow = undergroundWorld.isInside(pos);
+      const insideNow = inMinesNow;
       if (insideNow !== undergroundActiveRef.current) {
         undergroundActiveRef.current = insideNow;
         setUnderground(insideNow);
@@ -5253,6 +5319,18 @@ export default function City() {
         if (ev.stomps > 0) {
           vel.y = 12;
           soundsRef.current?.chime?.(3 + ev.stomps);
+          setMinesStomps((n) => n + ev.stomps);
+          vibeBalanceRef.current =
+            Math.max(0, vibeBalanceRef.current) + ev.stomps * MINES_STOMP_COIN;
+          setVibeBalanceTick((n) => n + 1);
+          persistVibeBalanceRef.current?.();
+        }
+        if (ev.nuggets > 0) {
+          soundsRef.current?.chime?.(8);
+          setMinesGold((n) => n + ev.nuggets);
+          vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + ev.nuggets;
+          setVibeBalanceTick((n) => n + 1);
+          persistVibeBalanceRef.current?.();
         }
         if (ev.bossStomped) {
           vel.y = 16;
@@ -5263,16 +5341,43 @@ export default function City() {
           try { localStorage.setItem("city.orbShard", "1"); } catch { /* ignore */ }
           setOrbShardWon(true);
           setShowShardReward(true);
+          vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + MINES_BOSS_COIN;
+          setVibeBalanceTick((n) => n + 1);
+          persistVibeBalanceRef.current?.();
+        }
+        // Warn the HUD while the boss is winding up a charge.
+        {
+          const phase = undergroundWorld.bossPhase();
+          const warn = phase === "windup" || phase === "charge";
+          if (warn !== bossWarnRef.current) {
+            bossWarnRef.current = warn;
+            setBossWarning(warn);
+            if (warn) soundsRef.current?.thud?.(0.25);
+          }
         }
         if (ev.hit && undergroundInvulnRef.current <= 0) {
           undergroundInvulnRef.current = 1.2;
           const dx = pos.x - UNDER_X;
           const dz = pos.z - UNDER_Z;
           const d = Math.hypot(dx, dz) || 1;
-          vel.x = (dx / d) * 10;
-          vel.z = (dz / d) * 10;
-          vel.y = 8;
-          soundsRef.current?.thud?.(0.5);
+          const knock = ev.bossCharged ? 18 : 10;
+          vel.x = (dx / d) * knock;
+          vel.z = (dz / d) * knock;
+          vel.y = ev.bossCharged ? 11 : 8;
+          soundsRef.current?.thud?.(ev.bossCharged ? 0.8 : 0.5);
+          // Guarded so a second hit inside the knock-out animation
+          // cannot schedule a second exit.
+          if (minesHeartsRef.current > 0) {
+            const left = minesHeartsRef.current - 1;
+            minesHeartsRef.current = left;
+            setMinesHearts(left);
+            if (left <= 0) {
+              // Knocked out: the gremlins win this run. Coins already
+              // banked stay banked; the cavern starts over.
+              setMinesKo(Date.now());
+              window.setTimeout(() => exitUndergroundRef.current?.(), 900);
+            }
+          }
         }
       }
 
@@ -6892,7 +6997,6 @@ export default function City() {
         <div
           key={enterFx}
           className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
-          onAnimationEnd={() => window.setTimeout(() => setEnterFx(0), 900)}
         >
           <div className="absolute inset-0 bg-purple-700/30 backdrop-blur-md" />
           <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in border border-purple-400/60 shadow-[0_0_40px_rgba(183,138,255,0.6)]">
@@ -6903,11 +7007,24 @@ export default function City() {
         </div>
       )}
 
-      {/* Underground HUD: boss HP + "Go back" exit. */}
+      {/* Underground HUD: your hearts, boss HP, the run's haul, exit.
+          It used to sit dead centre at top-20, underneath the world
+          toolbar — unreadable on a phone. Tucked into the left margin
+          it clears both the toolbar and the touch sticks. */}
       {entered && underground && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none">
-          <div className="glass-panel rounded-full px-4 py-1.5 text-xs text-purple-200 border border-purple-400/40 shadow-[0_0_20px_rgba(183,138,255,0.4)] bg-purple-950/40 backdrop-blur-md flex items-center gap-2">
-            <span>⚔ Boss HP</span>
+        <div className="fixed top-16 left-2 sm:left-3 z-30 flex flex-col items-start gap-1.5 pointer-events-none">
+          <div className="glass-panel rounded-full px-3 py-1.5 text-xs text-rose-100 border border-rose-400/40 shadow-[0_0_20px_rgba(255,120,150,0.35)] bg-rose-950/40 backdrop-blur-md flex items-center gap-2">
+            <span>🥷 You</span>
+            <span className="font-mono tracking-widest">
+              {Array.from({ length: MINES_HEARTS }).map((_, i) => (
+                <span key={i} className={i < minesHearts ? "text-rose-300" : "text-rose-900/50"}>
+                  ❤
+                </span>
+              ))}
+            </span>
+          </div>
+          <div className="glass-panel rounded-full px-3 py-1.5 text-xs text-purple-200 border border-purple-400/40 shadow-[0_0_20px_rgba(183,138,255,0.4)] bg-purple-950/40 backdrop-blur-md flex items-center gap-2">
+            <span>⚔ Boss</span>
             <span className="font-mono tracking-widest">
               {Array.from({ length: 3 }).map((_, i) => (
                 <span key={i} className={i < bossHp ? "text-rose-300" : "text-rose-900/50"}>
@@ -6916,12 +7033,44 @@ export default function City() {
               ))}
             </span>
           </div>
+          <div className="glass-panel rounded-full px-3 py-1.5 text-xs text-amber-100 border border-amber-300/40 bg-amber-950/30 backdrop-blur-md flex items-center gap-3 font-mono">
+            <span>🪙 {minesGold}</span>
+            <span>👣 {minesStomps}</span>
+          </div>
           <button
             onClick={() => exitUndergroundRef.current?.()}
-            className="pointer-events-auto glass-panel rounded-full px-4 py-1.5 text-xs text-cyan-100 border border-cyan-300/50 shadow-[0_0_18px_rgba(122,235,255,0.5)] hover:bg-cyan-500/15 transition-colors"
+            className="pointer-events-auto glass-panel rounded-full px-3 py-1.5 text-xs text-cyan-100 border border-cyan-300/50 shadow-[0_0_18px_rgba(122,235,255,0.5)] hover:bg-cyan-500/15 transition-colors"
           >
             🔼 Return to surface
           </button>
+        </div>
+      )}
+
+      {/* Charge tell — the boss is about to run you down. Mirrors the
+          red ring that lights up under it in the 3D scene, for anybody
+          looking at their own feet when it starts. */}
+      {entered && underground && bossWarning && minesKo === 0 && (
+        <div className="pointer-events-none fixed top-1/3 left-1/2 -translate-x-1/2 z-30 animate-fade-in">
+          <div className="glass-panel rounded-full px-4 py-1.5 text-xs font-semibold tracking-wide text-rose-100 border border-rose-400/70 bg-rose-950/60 shadow-[0_0_28px_rgba(255,60,90,0.6)]">
+            ⚠ THE BOSS IS CHARGING — MOVE
+          </div>
+        </div>
+      )}
+
+      {/* Knocked out of the mines: three hits and the clan wins. */}
+      {entered && minesKo > 0 && (
+        <div
+          key={minesKo}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+        >
+          <div className="absolute inset-0 bg-rose-900/30 backdrop-blur-[2px]" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in border border-rose-400/60 shadow-[0_0_40px_rgba(255,80,110,0.6)]">
+            <div className="text-5xl mb-1">💀</div>
+            <div className="text-sm font-semibold text-rose-200">THE GREMLINS WIN</div>
+            <div className="text-xs text-rose-100/80">
+              You keep every ✦ you banked. The mines reset.
+            </div>
+          </div>
         </div>
       )}
 

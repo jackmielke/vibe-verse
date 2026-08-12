@@ -65,12 +65,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "city": [
+    { sha: "9480e23", iso: "2026-08-11T14:24:14+00:00", subject: "Made the screenshot harnesses actually land the shot they ask for" },
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
     { sha: "3d88bbe", iso: "2026-08-11T07:57:25+00:00", subject: "Gave everybody in the city a body that can actually dance" },
     { sha: "faeb0d3", iso: "2026-08-11T07:49:11+00:00", subject: "Corrugation on the rest of the island's cardboard" },
     { sha: "0faea20", iso: "2026-08-11T07:29:52+00:00", subject: "Vibe Island: gave the keel something to be" },
     { sha: "e4b1fda", iso: "2026-08-11T07:08:46+00:00", subject: "Vibe Island: a real tree, a real pool, and a lawn worth standing in" },
-    { sha: "9b3bb8f", iso: "2026-08-11T07:05:11+00:00", subject: "Stopped the city shimmering when you look at it from the air" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },

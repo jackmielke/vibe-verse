@@ -1,7 +1,51 @@
 {
-  "generated_at": "2026-08-11T14:00:00.785Z",
+  "generated_at": "2026-08-12T00:23:00.333Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f9b75dc8",
+      "date": "2026-08-11",
+      "subject": "The wink was the 14 MB file, and the arc can go anywhere now",
+      "lede": "Two marks share a name and only one of them was ever slow.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "9480e237",
+      "date": "2026-08-11",
+      "subject": "Made the screenshot harnesses actually land the shot they ask for",
+      "lede": "Half the frames these scripts produced were of the wrong thing, and the reason was the same in every case: `__cityCam` is a request, and nobody was checking whether it had been granted.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "07815561",
+      "date": "2026-08-11",
+      "subject": "254 MB of models becomes 70 MB, and nothing looks different",
+      "lede": "None of the .glb files in this repo had ever been through an optimiser. floating-island.glb was 38.7 MB and 1,049,034 triangles — for a decorative island that renders about 300 px wide behind a menu. That is a frame-rate problem on every phone that opens the hub before it is a download problem, and it is simply what a Meshy export looks like when nobody runs the last step.",
+      "places": [],
+      "files": 253
+    },
+    {
+      "sha": "638f5c51",
+      "date": "2026-08-11",
+      "subject": "Restamped Vibe Island",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "ae871433",
+      "date": "2026-08-11",
+      "subject": "Verges, and the last few things standing on nothing",
+      "lede": "The grass field took a boolean — grow here, don't grow there — so the lawn ended in a dead-straight line 4 m either side of every path. That edge is the clearest possible signal that a lawn was placed by a rule.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 3
+    },
     {
       "sha": "1f832a21",
       "date": "2026-08-11",
@@ -989,46 +1033,6 @@
         "the machinery underneath"
       ],
       "files": 5
-    },
-    {
-      "sha": "9f11b0da",
-      "date": "2026-08-08",
-      "subject": "One game, one card: Soaked leads, Drop Zero becomes the classic build",
-      "lede": "/drop-zero boots water now, so its card was advertising a game nobody gets by default — 'build faster than they can shoot' when the guns are full of water. It becomes 'Drop Zero (classic)' at ?mode=classic, unfeatured and out of the nav: the same engine with ctx.mode flipped is one world, and a variant should stay reachable without competing for attention.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "080df65e",
-      "date": "2026-08-08",
-      "subject": "mobile-shot: check whether a page actually fits a phone",
-      "lede": "The desktop capture harness says nothing about whether a layout FITS. This opens a route in a real iPhone context — touch enabled, coarse pointer, correct DPR, which matters because without them you are testing a narrow desktop rather than a phone — screenshots the full page, and lists every element wider than the viewport with its tag, classes and text.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "03ecbfda",
-      "date": "2026-08-08",
-      "subject": "Re-stamp after the merge",
-      "lede": "The Vibe Times and the city-family worlds picked up commits while BLOB was being built, so their dates were a day stale the moment the branches came together.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "0833372f",
-      "date": "2026-08-08",
-      "subject": "Stamp BLOB, and repair the dates a shallow clone had flattened",
-      "lede": "`npm run stamp` gives the new world its date. It also corrects a dozen others: this checkout was shallow, so `git log -- <path>` for anything older than the clone boundary returned the boundary commit instead of nothing, and a previous run had written that one timestamp across every world whose code had not been touched recently. The script guards against a path resolving to *nothing*; it cannot tell that a path reso",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "9423a4a4",
-      "date": "2026-08-08",
-      "subject": "BLOB: agar.io in the vibeverse — one dish, twenty-four rivals",
-      "lede": "A new world at /blob (and /agar, /agario, /cells, because that is what people type). You are a cell: everything smaller is food, everything bigger is a problem, and the only real decision is whether to spend half of yourself catching something that is running away.",
-      "places": [],
-      "files": 18
     }
   ]
 }

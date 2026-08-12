@@ -27,6 +27,10 @@ export interface UndergroundTickEvents {
   hit: boolean;
   bossStomped: boolean;
   bossDefeated: boolean;
+  /** Gold nuggets picked up this tick — one Vibey Coin each. */
+  nuggets: number;
+  /** True on the frame the boss commits to a charge (cue a sound). */
+  bossCharged: boolean;
 }
 
 export interface UndergroundWorld {
@@ -39,11 +43,23 @@ export interface UndergroundWorld {
   center: THREE.Vector3;
   /** True if the player's Y is inside the cavern volume. */
   isInside(pos: THREE.Vector3): boolean;
-  update(dt: number, now: number): void;
+  /**
+   * `player` is the player's world position when they are inside the
+   * cavern, or null when they are not — the clan and the boss only
+   * hunt somebody who is actually down here.
+   */
+  update(dt: number, now: number, player?: THREE.Vector3 | null): void;
   processPlayer(p: UndergroundPlayerSample, dt: number, now: number): UndergroundTickEvents;
   reset(): void;
   bossHpRemaining(): number;
+  /** What the boss is doing right now — the HUD reads this to warn you. */
+  bossPhase(): BossPhase;
+  /** Boss world position, for headless play-tests. */
+  bossPos(): THREE.Vector3;
 }
+
+/** Boss fight state machine — see the tuning constants below. */
+export type BossPhase = "prowl" | "hunt" | "windup" | "charge" | "recover" | "stunned" | "dead";
 
 const FLOOR_R = 70;
 const FLOOR_THICKNESS = 4;
@@ -60,6 +76,37 @@ const STOMP_HEAD_Y = 1.2;
 const STOMP_RANGE = 1.4;
 const HIT_RANGE = 1.05;
 const STOMP_MIN_FALL = 0.5;
+
+// A stomped gremlin used to stay stomped, so eight stomps emptied the
+// cavern and the mines became a walking simulator with a boss in it.
+// They dig their way back now — the clan is a renewable threat.
+const RESPAWN_TIME: readonly [number, number] = [5, 9];
+// Roaming gremlins inside this radius stop wandering and come for you.
+const GREMLIN_AGGRO_R = 16;
+
+// ---- Boss fight tuning ----------------------------------------------
+// The boss cycles hunt → windup → charge → recover. The recover window
+// is the fair opening: it stands still, panting, long enough to land a
+// stomp on. Every phase gets faster as its HP drops.
+const BOSS_AGGRO_R = 34;
+const BOSS_HUNT_SPEED = 2.6;
+const BOSS_WINDUP_TIME = 0.75;
+const BOSS_CHARGE_TIME = 0.6;
+const BOSS_CHARGE_SPEED = 17;
+const BOSS_RECOVER_TIME = 1.3;
+const BOSS_STUN_TIME = 1.5;
+// How close it will walk before it stops and starts circling. Without a
+// standoff it just parks on top of you: permanently too close to charge
+// (the charge needs room) and permanently in contact. It stalked you to
+// death by standing still, which is neither fun nor readable.
+const BOSS_STANDOFF = 6;
+const BOSS_CHARGE_MAX_R = 26;
+const BOSS_CHARGE_COOLDOWN = 1.8;
+
+// ---- Gold nuggets ----------------------------------------------------
+const NUGGET_COUNT = 14;
+const NUGGET_PICKUP_R = 1.9;
+const NUGGET_RESPAWN = 22;
 
 function caveFloorTexture(): THREE.CanvasTexture {
   const W = 1024;
@@ -254,16 +301,27 @@ export function buildUnderground(opts: {
     stal.rotation.x = Math.PI;
     group.add(stal);
   }
-  for (let i = 0; i < 14; i++) {
+  // The gold the gremlins have already dug out. It used to be scenery;
+  // now it is the reason to explore the far side of the cavern — one
+  // Vibey Coin each, and a fresh seam surfaces every ~22 seconds.
+  interface Nugget {
+    mesh: THREE.Mesh;
+    spin: number;
+    taken: boolean;
+    respawnT: number;
+  }
+  const nuggets: Nugget[] = [];
+  for (let i = 0; i < NUGGET_COUNT; i++) {
     const a = Math.random() * Math.PI * 2;
     const r = 8 + Math.random() * (FLOOR_R - 14);
     const pile = new THREE.Mesh(
       new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.7, 0),
-      goldMat,
+      goldMat.clone(),
     );
-    pile.position.set(Math.cos(a) * r, 0.35, Math.sin(a) * r);
+    pile.position.set(Math.cos(a) * r, 0.55, Math.sin(a) * r);
     pile.rotation.set(Math.random(), Math.random(), Math.random());
     group.add(pile);
+    nuggets.push({ mesh: pile, spin: 0.4 + Math.random() * 0.6, taken: false, respawnT: 0 });
   }
 
   // ---- Entry mist column (purple) at the spawn point ------------------
@@ -318,19 +376,19 @@ export function buildUnderground(opts: {
 
   // ---- Lore plaque ----------------------------------------------------
   const sign = makeLoreSign("⚔  THE GREMLIN MINES  ⚔", [
-    "Half the God Orb was stolen and dragged",
-    "down here. The gremlins are mining its",
-    "light to feed their negativity.",
+    "Half the God Orb was dragged down here.",
+    "The gremlins mine its light. They dig",
+    "back up as fast as you stomp them.",
     "",
-    "STOMP the gremlins. Crush the BOSS.",
-    "Recover the shard. Power the world.",
+    "STOMP gremlins · GRAB gold · 3 hearts",
+    "When the red ring lights up, RUN.",
   ]);
   sign.position.set(-FLOOR_R * 0.55, 4, -2);
   sign.rotation.y = Math.PI / 6;
   group.add(sign);
 
   // ---- Mini gremlin clan (Mars logic, ported) -------------------------
-  type GState = "roaming" | "dying" | "burrowing" | "underground" | "emerging";
+  type GState = "roaming" | "dying" | "dead" | "burrowing" | "underground" | "emerging";
   interface Gremlin {
     mesh: THREE.Group;
     targetX: number;
@@ -354,6 +412,8 @@ export function buildUnderground(opts: {
     BURROW_INTERVAL[0] + Math.random() * (BURROW_INTERVAL[1] - BURROW_INTERVAL[0]);
   const ru = () =>
     UNDERGROUND_TIME[0] + Math.random() * (UNDERGROUND_TIME[1] - UNDERGROUND_TIME[0]);
+  const rr = () =>
+    RESPAWN_TIME[0] + Math.random() * (RESPAWN_TIME[1] - RESPAWN_TIME[0]);
 
   for (let i = 0; i < GREMLIN_COUNT; i++) {
     const m = makeGremlin();
@@ -384,11 +444,43 @@ export function buildUnderground(opts: {
   let bossTargetX = boss.position.x;
   let bossTargetZ = boss.position.z;
   let bossBob = 0;
+  let bossPhase: BossPhase = "prowl";
+  let bossPhaseT = 0;
+  let bossChargeCd = BOSS_CHARGE_COOLDOWN;
+  let bossCircleDir = 1;
+  const bossChargeDir = new THREE.Vector2(1, 0);
+  // Warning glow that swells during the windup — the tell that says
+  // "move now". A charge you cannot see coming is not a fight.
+  const bossTell = new THREE.Mesh(
+    new THREE.RingGeometry(1.6, 2.6, 32),
+    new THREE.MeshBasicMaterial({
+      color: "#ff3a5c",
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  bossTell.rotation.x = -Math.PI / 2;
+  bossTell.position.y = 0.12;
+  group.add(bossTell);
+  const bossTellMat = bossTell.material as THREE.MeshBasicMaterial;
+  /** Rage scales every timing with missing HP: 0 at full, 1 at one HP left. */
+  const bossRage = () => (BOSS_HP - bossHp) / BOSS_HP;
 
-  const tickGremlin = (g: Gremlin, dt: number) => {
+  const tickGremlin = (g: Gremlin, dt: number, player: THREE.Vector3 | null) => {
     if (g.state === "roaming") {
       g.nextBurrow -= dt;
-      if (Math.random() < dt * 0.4) {
+      // Hunt the intruder if they are close enough to smell; otherwise
+      // wander. A gremlin that only ever wanders is a decoration.
+      const chasing =
+        player !== null &&
+        Math.hypot(player.x - g.mesh.position.x, player.z - g.mesh.position.z) < GREMLIN_AGGRO_R;
+      if (chasing && player) {
+        g.targetX = player.x;
+        g.targetZ = player.z;
+      } else if (Math.random() < dt * 0.4) {
         const p = randSpot();
         g.targetX = p.x;
         g.targetZ = p.z;
@@ -396,7 +488,7 @@ export function buildUnderground(opts: {
       const dx = g.targetX - g.mesh.position.x;
       const dz = g.targetZ - g.mesh.position.z;
       const d = Math.hypot(dx, dz);
-      const speed = 2.3;
+      const speed = chasing ? 3.4 : 2.3;
       if (d > 0.05) {
         g.vx = (dx / d) * speed;
         g.vz = (dz / d) * speed;
@@ -452,7 +544,26 @@ export function buildUnderground(opts: {
       const t = 1 - Math.max(0, g.stateT) / 0.4;
       g.mesh.scale.setScalar(Math.max(0.001, 1 - t));
       g.mesh.rotation.y += dt * 12;
-      if (g.stateT <= 0) g.mesh.visible = false;
+      if (g.stateT <= 0) {
+        g.mesh.visible = false;
+        g.state = "dead";
+        g.stateT = rr();
+      }
+    } else if (g.state === "dead") {
+      // Waiting out the respawn timer, then digging back up somewhere
+      // else in the cavern using the normal emerge animation.
+      g.stateT -= dt;
+      if (g.stateT <= 0) {
+        const p = randSpot();
+        g.mesh.position.set(p.x, -2.2, p.z);
+        g.targetX = p.x;
+        g.targetZ = p.z;
+        g.mesh.scale.setScalar(1);
+        g.mesh.visible = true;
+        g.alive = true;
+        g.state = "emerging";
+        g.stateT = EMERGE_TIME;
+      }
     }
   };
 
@@ -468,37 +579,149 @@ export function buildUnderground(opts: {
         Math.hypot(pos.x - centerX, pos.z - centerZ) < FLOOR_R + 6
       );
     },
-    update(dt, now) {
+    update(dt, now, player) {
       exitRing.rotation.z += dt * 1.4;
       (exitBeam.material as THREE.MeshBasicMaterial).opacity =
         0.14 + Math.sin(now * 0.003) * 0.06;
       (mist.material as THREE.MeshBasicMaterial).opacity =
         0.18 + Math.sin(now * 0.0018) * 0.06;
-      gremlins.forEach((g) => tickGremlin(g, dt));
+
+      // Everything below hunts in cavern-local space; the player arrives
+      // in world space because that is what the City tick has.
+      const local = player
+        ? new THREE.Vector3(player.x - centerX, player.y - centerY, player.z - centerZ)
+        : null;
+
+      gremlins.forEach((g) => tickGremlin(g, dt, local));
+
+      // Nuggets: spin the live ones, count down the taken ones.
+      for (const n of nuggets) {
+        if (n.taken) {
+          n.respawnT -= dt;
+          if (n.respawnT <= 0) {
+            n.taken = false;
+            n.mesh.visible = true;
+            n.mesh.scale.setScalar(1);
+          }
+          continue;
+        }
+        n.mesh.rotation.y += dt * n.spin;
+        n.mesh.position.y = 0.55 + Math.sin(now * 0.002 + n.spin * 9) * 0.12;
+      }
+
       if (bossAlive) {
         bossBob += dt;
         if (bossInvuln > 0) bossInvuln -= dt;
-        // Slow drift toward target, re-aim periodically.
-        if (Math.random() < dt * 0.25) {
-          const p = randSpot();
-          bossTargetX = p.x;
-          bossTargetZ = p.z;
+        bossPhaseT -= dt;
+        const rage = bossRage();
+        const dpx = local ? local.x - boss.position.x : 0;
+        const dpz = local ? local.z - boss.position.z : 0;
+        const dp = local ? Math.hypot(dpx, dpz) : Infinity;
+
+        if (bossPhase === "stunned") {
+          // Reeling from a stomp: rocking, not moving, wide open.
+          boss.rotation.z = Math.sin(now * 0.02) * 0.25;
+          if (bossPhaseT <= 0) {
+            boss.rotation.z = 0;
+            bossPhase = local ? "hunt" : "prowl";
+          }
+        } else if (bossPhase === "recover") {
+          // Panting after a charge — the fair window to land a stomp.
+          boss.rotation.z = Math.sin(now * 0.008) * 0.1;
+          if (bossPhaseT <= 0) {
+            boss.rotation.z = 0;
+            bossPhase = local ? "hunt" : "prowl";
+          }
+        } else if (bossPhase === "windup") {
+          // Rear back and grow, aimed at wherever you were standing.
+          const k = 1 - Math.max(0, bossPhaseT) / (BOSS_WINDUP_TIME * (1 - rage * 0.35));
+          boss.scale.setScalar(2.4 * (1 + k * 0.18));
+          bossTellMat.opacity = 0.15 + k * 0.55;
+          bossTell.position.set(boss.position.x, 0.12, boss.position.z);
+          bossTell.scale.setScalar(1 + k * 0.5);
+          if (local && dp > 0.001) {
+            bossChargeDir.set(dpx / dp, dpz / dp);
+            boss.rotation.y = Math.atan2(bossChargeDir.x, bossChargeDir.y);
+          }
+          if (bossPhaseT <= 0) {
+            boss.scale.setScalar(2.4);
+            bossTellMat.opacity = 0;
+            bossPhase = "charge";
+            bossPhaseT = BOSS_CHARGE_TIME;
+          }
+        } else if (bossPhase === "charge") {
+          const speed = BOSS_CHARGE_SPEED * (1 + rage * 0.25);
+          boss.position.x += bossChargeDir.x * speed * dt;
+          boss.position.z += bossChargeDir.y * speed * dt;
+          // Skid to a stop at the cavern wall rather than through it.
+          const r = Math.hypot(boss.position.x, boss.position.z);
+          if (r > FLOOR_R - 8) {
+            boss.position.x *= (FLOOR_R - 8) / r;
+            boss.position.z *= (FLOOR_R - 8) / r;
+            bossPhaseT = 0;
+          }
+          if (bossPhaseT <= 0) {
+            bossPhase = "recover";
+            bossPhaseT = BOSS_RECOVER_TIME * (1 - rage * 0.3);
+            bossChargeCd = BOSS_CHARGE_COOLDOWN * (1 - rage * 0.5);
+          }
+        } else {
+          // prowl / hunt — close to the standoff, circle, then charge.
+          if (local && dp < BOSS_AGGRO_R) {
+            bossPhase = "hunt";
+            bossChargeCd -= dt;
+            const speed = BOSS_HUNT_SPEED * (1 + rage * 0.5);
+            if (dp > 0.1) {
+              const ux = dpx / dp;
+              const uz = dpz / dp;
+              if (dp > BOSS_STANDOFF) {
+                boss.position.x += ux * speed * dt;
+                boss.position.z += uz * speed * dt;
+              } else {
+                // Inside the standoff: sidestep around you, winding up
+                // for the next run rather than smothering you.
+                boss.position.x += -uz * bossCircleDir * speed * 0.7 * dt;
+                boss.position.z += ux * bossCircleDir * speed * 0.7 * dt;
+                if (Math.random() < dt * 0.4) bossCircleDir *= -1;
+              }
+              boss.rotation.y = Math.atan2(ux, uz);
+            }
+            if (bossChargeCd <= 0 && dp < BOSS_CHARGE_MAX_R) {
+              bossPhase = "windup";
+              bossPhaseT = BOSS_WINDUP_TIME * (1 - rage * 0.35);
+            }
+          } else {
+            bossPhase = "prowl";
+            // Hold the cooldown full while it has nobody to charge, so
+            // walking into the cavern never eats an instant lunge.
+            bossChargeCd = BOSS_CHARGE_COOLDOWN;
+            if (Math.random() < dt * 0.25) {
+              const p = randSpot();
+              bossTargetX = p.x;
+              bossTargetZ = p.z;
+            }
+            const dx = bossTargetX - boss.position.x;
+            const dz = bossTargetZ - boss.position.z;
+            const d = Math.hypot(dx, dz);
+            if (d > 0.1) {
+              boss.position.x += (dx / d) * 1.4 * dt;
+              boss.position.z += (dz / d) * 1.4 * dt;
+              boss.rotation.y = Math.atan2(dx / d, dz / d);
+            }
+          }
         }
-        const dx = bossTargetX - boss.position.x;
-        const dz = bossTargetZ - boss.position.z;
-        const d = Math.hypot(dx, dz);
-        const speed = 1.4 + (BOSS_HP - bossHp) * 0.6; // angrier as HP drops
-        if (d > 0.1) {
-          boss.position.x += (dx / d) * speed * dt;
-          boss.position.z += (dz / d) * speed * dt;
+
+        if (bossPhase !== "windup") {
+          bossTellMat.opacity = Math.max(0, bossTellMat.opacity - dt * 3);
+          if (boss.scale.x !== 2.4) boss.scale.setScalar(2.4);
         }
-        boss.position.y = 0.05 + Math.sin(bossBob * 3) * 0.35;
-        boss.rotation.y += dt * (0.6 + (BOSS_HP - bossHp) * 0.4);
-        // Flash on invuln
+        boss.position.y =
+          0.05 + Math.sin(bossBob * (3 + rage * 3)) * (bossPhase === "charge" ? 0.12 : 0.35);
+        // Flash while invulnerable so a bounced stomp reads as "not yet".
         const shard = boss.getObjectByName("boss-shard") as THREE.Mesh | null;
         if (shard) {
           (shard.material as THREE.MeshBasicMaterial).opacity =
-            0.75 + Math.sin(now * 0.01) * 0.2;
+            bossInvuln > 0 ? 0.3 + Math.sin(now * 0.04) * 0.3 : 0.75 + Math.sin(now * 0.01) * 0.2;
         }
       }
     },
@@ -508,7 +731,22 @@ export function buildUnderground(opts: {
         hit: false,
         bossStomped: false,
         bossDefeated: false,
+        nuggets: 0,
+        bossCharged: false,
       };
+      // Gold nuggets — walk over one and it is yours.
+      for (const n of nuggets) {
+        if (n.taken) continue;
+        const nx = centerX + n.mesh.position.x;
+        const nz = centerZ + n.mesh.position.z;
+        const ny = centerY + n.mesh.position.y;
+        if (Math.abs(p.pos.y - ny) > 3) continue;
+        if (Math.hypot(p.pos.x - nx, p.pos.z - nz) > NUGGET_PICKUP_R) continue;
+        n.taken = true;
+        n.respawnT = NUGGET_RESPAWN;
+        n.mesh.visible = false;
+        events.nuggets++;
+      }
       // Gremlins
       for (const g of gremlins) {
         if (!g.alive || g.state !== "roaming") continue;
@@ -537,7 +775,10 @@ export function buildUnderground(opts: {
         const dx = p.pos.x - bx;
         const dz = p.pos.z - bz;
         const d = Math.hypot(dx, dz);
-        if (d < 3.2) {
+        // A charging boss has a wider, meaner hitbox — that is the point
+        // of getting out of the way when the ring lights up.
+        const charging = bossPhase === "charge";
+        if (d < (charging ? 4.6 : 3.2)) {
           const headY = by + STOMP_HEAD_Y * 2.4;
           if (
             bossInvuln <= 0 &&
@@ -548,13 +789,24 @@ export function buildUnderground(opts: {
             bossHp--;
             bossInvuln = 1.2;
             events.bossStomped = true;
+            // Stagger it: the stomp interrupts whatever it was doing.
+            bossPhase = "stunned";
+            bossPhaseT = BOSS_STUN_TIME * (1 - bossRage() * 0.4);
+            bossChargeCd = BOSS_CHARGE_COOLDOWN * (1 - bossRage() * 0.5);
+            boss.scale.setScalar(2.4);
+            bossTellMat.opacity = 0;
             if (bossHp <= 0) {
               bossAlive = false;
               events.bossDefeated = true;
               boss.visible = false;
+              bossPhase = "dead";
             }
-          } else if (Math.abs(p.pos.y - by) < 2.2 && d < HIT_RANGE * 1.8) {
+          } else if (
+            Math.abs(p.pos.y - by) < (charging ? 3 : 2.2) &&
+            d < HIT_RANGE * (charging ? 3.2 : 1.8)
+          ) {
             events.hit = true;
+            if (charging) events.bossCharged = true;
           }
         }
       }
@@ -574,13 +826,32 @@ export function buildUnderground(opts: {
         g.targetZ = p.z;
         g.bob = Math.random() * Math.PI * 2;
       });
+      nuggets.forEach((n) => {
+        n.taken = false;
+        n.respawnT = 0;
+        n.mesh.visible = true;
+        n.mesh.scale.setScalar(1);
+      });
       bossHp = BOSS_HP;
       bossAlive = true;
       boss.visible = true;
       boss.position.set(-FLOOR_R * 0.3, 0.05, FLOOR_R * 0.3);
+      boss.scale.setScalar(2.4);
+      boss.rotation.z = 0;
       bossInvuln = 0;
+      bossPhase = "prowl";
+      bossPhaseT = 0;
+      bossChargeCd = BOSS_CHARGE_COOLDOWN;
+      bossTellMat.opacity = 0;
     },
     bossHpRemaining: () => bossHp,
+    bossPhase: () => bossPhase,
+    bossPos: () =>
+      new THREE.Vector3(
+        centerX + boss.position.x,
+        centerY + boss.position.y,
+        centerZ + boss.position.z,
+      ),
   };
 }
 

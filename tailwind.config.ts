@@ -94,11 +94,26 @@ export default {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(100%)" },
         },
+        // `animate-fade-in` and `animate-scale-in` are used ~19 times
+        // across the app. They were never defined here, so every one of
+        // them was a no-op class — panels appeared with a hard cut, and
+        // anything hanging cleanup off `onAnimationEnd` never fired,
+        // because an undefined animation emits no animationend event.
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "scale-in": {
+          from: { opacity: "0", transform: "scale(0.94)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "vibe-sweep": "vibe-sweep 1.15s linear infinite",
+        "fade-in": "fade-in 0.28s ease-out both",
+        "scale-in": "scale-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
       },
 
     },
