@@ -6188,7 +6188,25 @@ export default function City() {
       {entered && !isLive && (
         <div
           ref={hudWrapRef}
-          className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2 md:top-3 md:right-auto md:left-1/2 md:-translate-x-1/2 md:items-center"
+          /* Centred by `inset-x-0` + `items-center`, not by `left-1/2` and a
+             translate. The old pair looks like centring and is also a width
+             cap: an absolutely positioned box whose containing block starts at
+             the 50% mark has only the right half of the screen to grow into, so
+             the strip could never exceed 50vw however much room was going. The
+             ten chips want 752px, which meant three rows at 900px and two rows
+             at 1440px — the `max-w-[62vw]` written here never once applied.
+
+             `pointer-events-none` because the wrapper now spans the whole width
+             and would otherwise swallow clicks on the sky across the top of the
+             world; the strip itself takes them back.
+
+             And it sits at `top-16` at every width now, rather than sliding up
+             to `top-3` on a desktop. A full-width strip on the same band as the
+             global nav runs underneath the Worlds pill, which is `z-40` to this
+             HUD's `z-10` — so between 900 and 1024 the mute chip was covered
+             and simply did not take clicks. Hit-tested, not guessed. The nav
+             owns that row; this one goes below it. */
+          className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2 md:inset-x-2 md:items-center md:pointer-events-none"
         >
           {/* Mobile-only trigger — collapses the whole chip row. The
               ✕ state also dismisses every open sub-panel (chat /
@@ -6222,7 +6240,7 @@ export default function City() {
           <div
             className={`${
               hudMenuOpen ? "flex" : "hidden"
-            } md:flex flex-wrap justify-end gap-2 max-w-[88vw] md:justify-center md:max-w-[62vw] md:rounded-full md:bg-background/40 md:backdrop-blur-md md:border md:border-border/40 md:px-2 md:py-1.5`}
+            } md:flex flex-wrap justify-end gap-2 max-w-[88vw] md:pointer-events-auto md:justify-center md:gap-1.5 md:max-w-full md:rounded-full md:bg-background/40 md:backdrop-blur-md md:border md:border-border/40 md:px-2 md:py-1.5`}
           >
             <button
               onClick={(e) => {
