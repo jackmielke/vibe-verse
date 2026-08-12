@@ -1,7 +1,33 @@
 {
-  "generated_at": "2026-08-12T00:23:00.333Z",
+  "generated_at": "2026-08-12T00:33:39.976Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "893b6207",
+      "date": "2026-08-12",
+      "subject": "mines-probe: survive an HMR reload instead of dying on it",
+      "lede": "Editing a source file while the probe is up sends vite's hot reload through page.evaluate, which throws \"execution context was destroyed\" and killed the run seconds before its summary. One skipped sample is the right response.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "330b57a8",
+      "date": "2026-08-12",
+      "subject": "npm run stamp: the mines work moves the City-hosted world dates",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "fe79add6",
+      "date": "2026-08-12",
+      "subject": "The Gremlin Mines: dropped the stuck flash, gave the boss a fight",
+      "lede": "Landing in the mines put \"THE GREMLIN MINES / Purple mist deadens your jetpack…\" on screen with a full-viewport backdrop blur behind it, and left it there. The card cleared itself from onAnimationEnd — and animate-fade-in was never defined in the Tailwind config, so no animation ran, no animationend fired, and the blur stayed on top of the game forever. It now clears on a timer, the way the splat and transcendence fl",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 7
+    },
     {
       "sha": "f9b75dc8",
       "date": "2026-08-11",
@@ -1005,34 +1031,6 @@
       "lede": "`nav: true` appears twice in the same object literal, which esbuild strips without a word and `tsc` rejects outright: TS1117, on main. The build was green because `vite build` never type-checks — the exact hole `npm run typecheck` exists to cover.",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "e9f4060e",
-      "date": "2026-08-08",
-      "subject": "Cover art for Soaked, from the water build",
-      "lede": "A real frame of the game as it now plays: the island under a summer sky, the treeline running down to the sea, and a rainbow off the left shoulder that the water sky shader throws for free. The HUD in it reads THE DOWNPOUR 1, DRY GROUND and 100 STILL DRY, which is the fastest way to tell someone what this game is before they click.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "6776e92c",
-      "date": "2026-08-08",
-      "subject": "Never regenerate the build log from a shallow clone",
-      "lede": "`prebuild` regenerates public/build-log.json on every deploy, which is right when the checkout has the full history and wrong when it does not. CI clones shallow by default, and a shallow checkout of this repo sees 62 of the 120 commits in the committed log — so the deploy that was meant to refresh the paper's memory would have thrown half of it away instead, silently, and the next morning's issue would have reported",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "7318d507",
-      "date": "2026-08-08",
-      "subject": "🕕 Every edition says what time it came off the presses",
-      "lede": "The paper knew what day it was and not what time, which on the one surface that claims to be current is the half that makes it feel live. Each issue now carries `printed_at` — the moment the presses actually ran, in UTC — and every surface renders it in the reader's own clock, because 13:00 UTC is breakfast in California and dinner somewhere else.",
-      "places": [
-        "Vibe Island",
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 5
     }
   ]
 }

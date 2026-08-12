@@ -203,12 +203,15 @@ function makeBoss(): THREE.Group {
     g.add(spike);
   }
   // Shard glow — the half of the God Orb the boss carries.
+  // Additive white at 0.95 blew out into a flat plate the size of the
+  // boss's head once it was scaled 2.4×. Smaller, warmer and dimmer
+  // reads as the piece of God Orb it is meant to be.
   const shard = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(0.45, 0),
+    new THREE.IcosahedronGeometry(0.3, 0),
     new THREE.MeshBasicMaterial({
-      color: "#fff2a0",
+      color: "#ffcc55",
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.6,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     }),
@@ -720,8 +723,10 @@ export function buildUnderground(opts: {
         // Flash while invulnerable so a bounced stomp reads as "not yet".
         const shard = boss.getObjectByName("boss-shard") as THREE.Mesh | null;
         if (shard) {
+          shard.rotation.y += dt * 1.6;
+          shard.rotation.x += dt * 0.7;
           (shard.material as THREE.MeshBasicMaterial).opacity =
-            bossInvuln > 0 ? 0.3 + Math.sin(now * 0.04) * 0.3 : 0.75 + Math.sin(now * 0.01) * 0.2;
+            bossInvuln > 0 ? 0.25 + Math.sin(now * 0.04) * 0.2 : 0.5 + Math.sin(now * 0.01) * 0.15;
         }
       }
     },
