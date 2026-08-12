@@ -68,13 +68,21 @@ page.on("pageerror", (e) => errors.push(`PAGEERROR: ${e.message}`));
 await page.goto(`${BASE}/city?spawn=mines`, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.mouse.click(640, 400).catch(() => {});
 
-const sample = () =>
-  page.evaluate(() => ({
-    flash: document.body.innerText.includes("Purple mist"),
-    run: window.__cityDebug?.minesRun?.() ?? null,
-    hud: document.body.innerText.includes("🥷 You"),
-    ko: document.body.innerText.includes("THE GREMLINS WIN"),
-  }));
+// Tolerates a mid-run reload: editing any source file while the probe
+// is up sends vite's HMR through here, and a destroyed execution
+// context should skip one sample, not end the play-test.
+const sample = async () => {
+  try {
+    return await page.evaluate(() => ({
+      flash: document.body.innerText.includes("Purple mist"),
+      run: window.__cityDebug?.minesRun?.() ?? null,
+      hud: document.body.innerText.includes("🥷 You"),
+      ko: document.body.innerText.includes("THE GREMLINS WIN"),
+    }));
+  } catch {
+    return { flash: false, run: null, hud: false, ko: false };
+  }
+};
 
 const phases = new Set();
 let flashLast = -1;
@@ -96,10 +104,12 @@ while ((Date.now() - t0) / 1000 < SECONDS) {
   // the three hits that end a run. Headless runs at a few frames a
   // second, so waiting for it to happen naturally takes all afternoon.
   if (elapsed > SECONDS * (Number(process.env.PROBE_KO_AT ?? 0.75))) {
-    await page.evaluate(() => {
-      const run = window.__cityDebug?.minesRun?.();
-      if (run) window.__cityDebug?.teleport?.(run.bossAt[0], run.bossAt[1] + 0.2, run.bossAt[2]);
-    });
+    await page
+      .evaluate(() => {
+        const run = window.__cityDebug?.minesRun?.();
+        if (run) window.__cityDebug?.teleport?.(run.bossAt[0], run.bossAt[1] + 0.2, run.bossAt[2]);
+      })
+      .catch(() => {});
   }
   const key = KEYS[i % KEYS.length];
   if (running) {
