@@ -49,6 +49,9 @@ export const HAT_ITEMS: CosmeticItem[] = [
   { id: "crown",     name: "Crown",        emoji: "👑", price: 250 },
   { id: "halo",      name: "Halo",         emoji: "😇", price: 400 },
   { id: "sticker",   name: "Holo Sticker", emoji: "✨", price: 0 },
+  { id: "bucket",    name: "Bucket Hat",   emoji: "🎣", price: 45 },
+  { id: "cans",      name: "Studio Cans",  emoji: "🎧", price: 120 },
+  { id: "visor",     name: "Neon Visor",   emoji: "🕶️", price: 180 },
 ];
 
 export const FLAME_ITEMS: FlameItem[] = [
