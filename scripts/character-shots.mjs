@@ -22,7 +22,14 @@ import { resolve } from "node:path";
 
 const PORT = Number(process.env.SF_PORT ?? 5177);
 const BASE = `http://127.0.0.1:${PORT}`;
-const OUT_DIR = resolve(process.cwd(), "src/assets/characters");
+const FACE = process.argv.includes("--face");
+/* Faces go in their own directory because they are a different picture of the
+   same character, not a newer one. `--face` regenerating over the portraits
+   would silently swap every shop tile for a head. */
+const OUT_DIR = resolve(
+  process.cwd(),
+  FACE ? "src/assets/characters/face" : "src/assets/characters",
+);
 
 /** The shelf, read from the shop table so this cannot drift from what is sold. */
 async function shelfIds() {
@@ -31,6 +38,24 @@ async function shelfIds() {
   );
   const ids = [...src.matchAll(/^\s*id:\s*"([\w-]+)",/gm)].map((m) => m[1]);
   if (!ids.length) throw new Error("no ids found in src/lib/characterShop.ts");
+  return ids;
+}
+
+/**
+ * Everything that already has a portrait — which is every character built from
+ * the rig, sold or free.
+ *
+ * Faces are read off `characterArt` rather than off the shop table: the avatar
+ * has to work for whoever you are actually playing as, and most of the roster
+ * (including all the newest designs) is free and therefore not on the shelf.
+ */
+async function photographedIds() {
+  const src = await import("node:fs").then((fs) =>
+    fs.readFileSync(resolve(process.cwd(), "src/lib/characterArt.ts"), "utf8"),
+  );
+  const body = src.slice(src.indexOf("CHARACTER_ART"));
+  const ids = [...body.matchAll(/^\s{2}"?([\w-]+)"?:\s/gm)].map((m) => m[1]);
+  if (!ids.length) throw new Error("no ids found in src/lib/characterArt.ts");
   return ids;
 }
 
@@ -49,7 +74,7 @@ async function up(url, ms) {
 }
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith("-"));
-const ids = only.length ? only : await shelfIds();
+const ids = only.length ? only : FACE ? await photographedIds() : await shelfIds();
 
 const server = (await up(BASE, 1200))
   ? null
@@ -87,7 +112,14 @@ await page.evaluate(async () => {
 mkdirSync(OUT_DIR, { recursive: true });
 
 for (const id of ids) {
-  const url = await page.evaluate((designId) => window.__shootCharacter(designId), id);
+  const url = await page.evaluate(
+    ([designId, face]) =>
+      window.__shootCharacter(
+        designId,
+        face ? { crop: "face", width: 192, height: 192 } : {},
+      ),
+    [id, FACE],
+  );
   const b64 = url.split(",")[1];
   if (!b64 || b64.length < 2000) {
     console.error(`  ${id}: render came back empty — skipped`);

@@ -21,6 +21,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User2 } from "lucide-react";
+import { characterFace } from "@/lib/characterFaces";
+
+/**
+ * The character you are playing as, at avatar size — their actual face.
+ *
+ * Falls back to the emoji, which is what this always was and is still right
+ * for the GLB roster: those have a model rather than a rig, so there is no
+ * head for `character-shots --face` to point a camera at.
+ *
+ * `eager`, unusually for an image this small: it is the avatar in the corner of
+ * every page, so it is above the fold everywhere, and lazily loading a 28px
+ * picture only buys a visible pop-in on the thing that says who you are.
+ */
+function CharacterFace({ id, emoji }: { id: string; emoji: string }) {
+  const src = characterFace(id);
+  if (!src) return <span aria-hidden>{emoji}</span>;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={192}
+      height={192}
+      decoding="async"
+      className="h-full w-full scale-[1.18] object-contain"
+      aria-hidden
+    />
+  );
+}
 
 export default function LogInWithVibe({
   compact = false,
@@ -69,10 +97,10 @@ export default function LogInWithVibe({
           aria-label="Log in"
         >
           <span
-            className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center text-[15px] leading-none"
+            className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[15px] leading-none"
             aria-hidden
           >
-            {hasPick ? character.emoji : (
+            {hasPick ? <CharacterFace id={character.id} emoji={character.emoji} /> : (
               <span className="text-primary text-[13px] font-bold">?</span>
             )}
           </span>
@@ -111,17 +139,17 @@ export default function LogInWithVibe({
           title={`${display} · ${character.label}`}
           aria-label="Vibe Profile"
         >
-          <span aria-hidden>{character.emoji}</span>
+          <CharacterFace id={character.id} emoji={character.emoji} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 bg-zinc-950 border-white/15 text-white">
         <DropdownMenuLabel className="flex items-center gap-2">
           <span
-            className="h-8 w-8 rounded-full flex items-center justify-center text-lg leading-none bg-white/5"
+            className="h-8 w-8 overflow-hidden rounded-full flex items-center justify-center text-lg leading-none bg-white/5"
             style={ringStyle}
             aria-hidden
           >
-            {character.emoji}
+            <CharacterFace id={character.id} emoji={character.emoji} />
           </span>
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-widest text-white/40">Vibe Profile</div>

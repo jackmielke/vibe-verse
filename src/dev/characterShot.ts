@@ -39,8 +39,14 @@ export interface ShotOptions {
    * reduces to a coloured stick. `bust` frames the top ~55%, so the face,
    * the crown and the shoulders fill the tile — the three things that
    * actually distinguish one design from another.
+   *
+   * `face` goes tighter still, for an avatar. At 28px in a nav chip even a
+   * bust is a smudge, and cropping a bust in CSS does not work: the slice is
+   * measured from the top of each character, so a fixed crop that finds
+   * Monarch's face lands on a crab's back. The camera has to be told, which
+   * means it has to be rendered.
    */
-  crop?: "full" | "bust";
+  crop?: "full" | "bust" | "face";
 }
 
 /**
@@ -114,13 +120,52 @@ export async function shootCharacter(
   // frames the same as Bumble at 1.1.
   const slice = opts.crop === "full" ? 1 : 0.56;
   const windowH = size.y * slice;
-  const aimY = box.max.y - windowH / 2;
+  let aimY = box.max.y - windowH / 2;
+  let aimX = 0;
+  let aimZ = 0;
+  let fitH = windowH * 1.1;
+  let fitW = (size.x * (opts.crop === "full" ? 1.3 : 1.05)) / camera.aspect;
 
-  const fitH = windowH * 1.1;
-  const fitW = (size.x * (opts.crop === "full" ? 1.3 : 1.05)) / camera.aspect;
+  if (opts.crop === "face") {
+    /**
+     * The head, from the rig, rather than a fraction of the bounding box.
+     *
+     * A slice measured down from `box.max.y` is a fine heuristic for a humanoid
+     * and it is wrong the moment a body plan stops being one: on a crab the top
+     * of the bounds is the middle of its shell, so the "face" crop photographed
+     * its back. `pilot.head` is the joint the rig already exposes so a hat can
+     * be parented to the skull, and it is the only landmark that means the same
+     * thing on every plan.
+     *
+     * Its box includes whatever grows out of the crown — antennae, eyestalks,
+     * horns — which is right: those are the half of a silhouette you recognise
+     * at 28 pixels.
+     */
+    pilot.group.updateMatrixWorld(true);
+    const headBox = new THREE.Box3().setFromObject(pilot.head);
+    const headSize = new THREE.Vector3();
+    const headCentre = new THREE.Vector3();
+    headBox.getSize(headSize);
+    headBox.getCenter(headCentre);
+    aimX = headCentre.x;
+    aimY = headCentre.y;
+    /* And the head's own Z. Aiming at the group's centre plane works for a
+       humanoid, whose skull sits over its hips, and throws a crab's head — held
+       out in front of it — off to the side of the frame. */
+    aimZ = headCentre.z;
+    /* Air on every side. `1.35` cropped flush to the edges: the box is the
+       skull, and a face wants to be a face in a circle rather than a texture. */
+    fitH = Math.max(headSize.y, headSize.x, headSize.z) * 1.9;
+    fitW = fitH / camera.aspect;
+  }
+
   const dist = (Math.max(fitH, fitW) / 2) / Math.tan((camera.fov * Math.PI) / 360);
-  camera.position.set(dist * 0.26, aimY + windowH * 0.04, dist);
-  camera.lookAt(0, aimY, 0);
+  camera.position.set(
+    aimX + dist * 0.26,
+    aimY + windowH * (opts.crop === "face" ? 0 : 0.04),
+    aimZ + dist,
+  );
+  camera.lookAt(aimX, aimY, aimZ);
 
   // Lighting: a warm key from camera-left, a cool fill from the right to keep
   // the shadow side from going black, and a rim from behind to lift the
