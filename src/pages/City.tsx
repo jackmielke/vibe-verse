@@ -2907,6 +2907,15 @@ export default function City() {
     scene.add(player);
     const modelHolder = new THREE.Group(); // takes the flight tilt
     player.add(modelHolder);
+    /* Declared up here, hundreds of lines before the hat code that reads it,
+       because `loadPilot` below attaches to it — and for a procedural
+       character (Flux and friends, `url: ""`) it does so *synchronously*, on
+       the initial load, before execution ever reaches the cosmetics block.
+       Left down there, that is a temporal-dead-zone ReferenceError that takes
+       the whole world down: anyone whose saved character had no GLB opened
+       /city and got the crash screen. A GLB character hid it, because there
+       the attach happens in a loader callback a tick later. */
+    const headMount = createHeadMount();
     setPlayerScaleRef.current = (s: number) => {
       const clamped = Math.max(0.4, Math.min(12, s));
       modelHolder.scale.setScalar(clamped);
@@ -3284,7 +3293,9 @@ export default function City() {
      * transform is cancelled so a hat still sits upright and at its authored
      * size on a rig whose head bone is rolled or scaled.
      */
-    const headMount = createHeadMount();
+    /* `headMount` itself is created next to `modelHolder`, far above — see the
+       note there. This is only the default bind for a body that has not been
+       loaded yet. */
     headMount.attach(null, null, modelHolder);
     const hatMount = headMount.group;
     let currentHat: THREE.Group | null = null;

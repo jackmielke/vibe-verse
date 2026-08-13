@@ -23,10 +23,18 @@ that builds and renders a black screen is a broken demo, and the build will not
 tell you.
 
 `npm run smoke` is the blunt instrument for that last part: it opens every
-route in a real Chromium and reports which ones rendered nothing. It takes a
-few minutes, it will not tell you a world looks *wrong*, and it is the fastest
-way to find out that one of fifty routes stopped existing. `npm run smoke --
+route in a real Chromium and reports which ones rendered nothing — or rendered
+the crash screen, which is not the same thing and used to score as a pass,
+because the friendly fallback is text and text was the bar. It takes a few
+minutes, it will not tell you a world looks *wrong*, and it is the fastest way
+to find out that one of fifty routes stopped existing. `npm run smoke --
 /sf /kart` for just the ones you touched.
+
+`SMOKE_CHARACTER=flux npm run smoke -- /city` picks a saved character first.
+Half the cast in `src/lib/characters.ts` has an empty `url` and is built in
+code instead of fetched — a different, *synchronous* code path that a default
+run never touches. /city crashed on that path for every player who had picked
+one of them, through a green build, a green typecheck and a green smoke run.
 
 **`npm run typecheck`, never bare `tsc --noEmit`.** The root `tsconfig.json` is
 a solution-style config — `"files": []` plus project references — so `tsc
