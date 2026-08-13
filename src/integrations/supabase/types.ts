@@ -4222,51 +4222,89 @@ export type Database = {
           active: boolean
           author: string | null
           author_url: string | null
+          cover_url: string | null
           created_at: string
           daily_budget: number
           embed_url: string
+          entry_path: string | null
           max_award: number
+          mirror_prefix: string | null
+          mirrored_at: string | null
           note: string | null
           origin: string
           player_daily: number
+          repo: string | null
+          repo_ref: string | null
+          repo_sha: string | null
           session_budget: number
           slug: string
+          source_kind: string
+          submission_id: string | null
           tagline: string | null
           title: string
+          uses_sdk: boolean
         }
         Insert: {
           active?: boolean
           author?: string | null
           author_url?: string | null
+          cover_url?: string | null
           created_at?: string
           daily_budget?: number
           embed_url: string
+          entry_path?: string | null
           max_award?: number
+          mirror_prefix?: string | null
+          mirrored_at?: string | null
           note?: string | null
           origin: string
           player_daily?: number
+          repo?: string | null
+          repo_ref?: string | null
+          repo_sha?: string | null
           session_budget?: number
           slug: string
+          source_kind?: string
+          submission_id?: string | null
           tagline?: string | null
           title: string
+          uses_sdk?: boolean
         }
         Update: {
           active?: boolean
           author?: string | null
           author_url?: string | null
+          cover_url?: string | null
           created_at?: string
           daily_budget?: number
           embed_url?: string
+          entry_path?: string | null
           max_award?: number
+          mirror_prefix?: string | null
+          mirrored_at?: string | null
           note?: string | null
           origin?: string
           player_daily?: number
+          repo?: string | null
+          repo_ref?: string | null
+          repo_sha?: string | null
           session_budget?: number
           slug?: string
+          source_kind?: string
+          submission_id?: string | null
           tagline?: string | null
           title?: string
+          uses_sdk?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "vibe_portal_games_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "vibe_portal_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vibe_portal_sessions: {
         Row: {
@@ -4312,6 +4350,134 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vibe_portal_games"
             referencedColumns: ["slug"]
+          },
+        ]
+      }
+      vibe_portal_submissions: {
+        Row: {
+          author: string | null
+          author_url: string | null
+          cover_url: string | null
+          created_at: string
+          daily_budget: number | null
+          embed_url: string | null
+          entry_path: string | null
+          file_count: number | null
+          id: string
+          kind: string
+          license: string | null
+          max_award: number | null
+          origin: string | null
+          player_daily: number | null
+          repo: string | null
+          repo_ref: string | null
+          repo_sha: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          session_budget: number | null
+          slug: string | null
+          status: string
+          status_note: string | null
+          submitted_url: string
+          submitter_id: string | null
+          submitter_label: string | null
+          tagline: string | null
+          title: string | null
+          total_bytes: number | null
+          uses_sdk: boolean
+        }
+        Insert: {
+          author?: string | null
+          author_url?: string | null
+          cover_url?: string | null
+          created_at?: string
+          daily_budget?: number | null
+          embed_url?: string | null
+          entry_path?: string | null
+          file_count?: number | null
+          id?: string
+          kind: string
+          license?: string | null
+          max_award?: number | null
+          origin?: string | null
+          player_daily?: number | null
+          repo?: string | null
+          repo_ref?: string | null
+          repo_sha?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          session_budget?: number | null
+          slug?: string | null
+          status?: string
+          status_note?: string | null
+          submitted_url: string
+          submitter_id?: string | null
+          submitter_label?: string | null
+          tagline?: string | null
+          title?: string | null
+          total_bytes?: number | null
+          uses_sdk?: boolean
+        }
+        Update: {
+          author?: string | null
+          author_url?: string | null
+          cover_url?: string | null
+          created_at?: string
+          daily_budget?: number | null
+          embed_url?: string | null
+          entry_path?: string | null
+          file_count?: number | null
+          id?: string
+          kind?: string
+          license?: string | null
+          max_award?: number | null
+          origin?: string | null
+          player_daily?: number | null
+          repo?: string | null
+          repo_ref?: string | null
+          repo_sha?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          session_budget?: number | null
+          slug?: string | null
+          status?: string
+          status_note?: string | null
+          submitted_url?: string
+          submitter_id?: string | null
+          submitter_label?: string | null
+          tagline?: string | null
+          title?: string | null
+          total_bytes?: number | null
+          uses_sdk?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_portal_submissions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vibe_portal_submissions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "vibe_portal_submissions_submitter_id_fkey"
+            columns: ["submitter_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vibe_portal_submissions_submitter_id_fkey"
+            columns: ["submitter_id"]
+            isOneToOne: false
+            referencedRelation: "wc_leaderboard"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -4506,6 +4672,36 @@ export type Database = {
           published_at?: string | null
           sources?: Json
           status?: string
+        }
+        Relationships: []
+      }
+      vibe_wallet_nonces: {
+        Row: {
+          address: string
+          created_at: string
+          expires_at: string
+          message: string
+          nonce: string
+          origin: string | null
+          used_at: string | null
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          expires_at: string
+          message: string
+          nonce: string
+          origin?: string | null
+          used_at?: string | null
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          expires_at?: string
+          message?: string
+          nonce?: string
+          origin?: string | null
+          used_at?: string | null
         }
         Relationships: []
       }
