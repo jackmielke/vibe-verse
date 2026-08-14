@@ -58,6 +58,7 @@ const VibeShop = lazy(() => import("./pages/VibeShop.tsx"));
 const ShopCosmos = lazy(() => import("./pages/ShopCosmos.tsx"));
 const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
 const Passport = lazy(() => import("./pages/Passport.tsx"));
+const HomeLooks = lazy(() => import("./pages/HomeLooks.tsx"));
 const Orbit = lazy(() => import("./pages/Orbit.tsx"));
 const Join = lazy(() => import("./pages/Join.tsx"));
 const StartFlow = lazy(() => import("./pages/StartFlow.tsx"));
@@ -263,6 +264,10 @@ const App = () => (
 
           {/* The one record that spans every world. */}
           <Route path="/passport" element={<Passport />} />
+
+          {/* Pick the front door's typography. A preview surface, not a
+              setting — it goes away once one of the six wins. */}
+          <Route path="/looks" element={<HomeLooks />} />
           <Route path="/stamps" element={<Navigate to="/passport" replace />} />
           <Route path="/future" element={<Navigate to="/manifesto" replace />} />
           {/* ORBIT — the staked game. One button, one shared seed per round,

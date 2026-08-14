@@ -30,6 +30,7 @@ import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeMark from "@/components/VibeMark";
 import VibeMarketChip from "@/components/VibeMarketChip";
+import HomeHero, { readLook, type LookId } from "@/components/home/HomeHero";
 import TwoCoins from "@/components/TwoCoins";
 import StarField from "@/components/StarField";
 import FeaturedCharacters from "@/components/shop/FeaturedCharacters";
@@ -352,6 +353,14 @@ export default function Game() {
    * result, and it is the moment a visitor stops trusting the search box.
    */
   const [expanded, setExpanded] = useState(false);
+  /* Which hero treatment. `?look=poster` previews one without saving, which
+     is what a link to somebody else should do; anything else uses the pick
+     made at `/looks`. Read once — it cannot change while the page is open. */
+  const [look] = useState<LookId>(() => {
+    const want = new URLSearchParams(window.location.search).get("look") as LookId | null;
+    return want || readLook();
+  });
+
   const collapsed = !expanded && !query.trim() && shown.length > GRID_PREVIEW;
   const visible = collapsed ? shown.slice(0, GRID_PREVIEW) : shown;
 
@@ -423,40 +432,31 @@ export default function Game() {
               renderer is not allowed on the critical path — and it is not. The
               import does not begin until the mark is on screen, and by then
               the picture is already there. */}
-          <div className="flex items-center gap-4 sm:gap-6">
-            <div className="hidden shrink-0 sm:block" aria-hidden>
-              <VibeMark size={96} rotateSeconds={30} priority />
-            </div>
-            <div className="min-w-0">
-              {/* The line the arcade has always been about, and the only one
-                  that says both halves: anybody can add a door, and what you
-                  earn behind it is yours. "Every builder grows the universe"
-                  said the first half only. It is the claim /manifesto spends a
-                  page on ("Build worlds. Share ownership. Play forever.") in
-                  six words, above the name. */}
-              <p className="font-heading text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground sm:text-[10px] sm:tracking-[0.36em]">
-                Powered by creators, owned by players
-              </p>
-              <h1 className="mt-1 font-heading text-3xl font-black tracking-tight sm:mt-2 sm:text-6xl">
-                <span className="text-gradient-mint">VIBEVERSE</span>
-              </h1>
-            </div>
-          </div>
-          {/* Not "by Jack Mielke and friends" any more. The point of the place
-              is that anybody can add a door to it, and a byline quietly says
-              the opposite — the eyebrow above already names the invitation. */}
-          <p className="mt-1.5 font-heading text-[13px] font-semibold leading-snug text-foreground/85 sm:mt-2 sm:text-base">
-            A massive collection of AI-coded games ;)
-          </p>
-          {/* The full pitch is desktop-only; the phone gets the one-line
-              version in the row of chips below. */}
-          <p className="mt-3 hidden max-w-xl text-sm leading-relaxed text-muted-foreground sm:block">
-            {/* The total, not the playable count — this sentence sits directly
-                above a grid of every door, and saying 36 over 45 cards reads
-                as a miscount. The chip below carries the "how many work" nuance. */}
-            {WORLDS.length} worlds and games, all in one browser tab. No install, no
-            account, no launcher — pick a card and you are in it in a few seconds.
-          </p>
+          {/* The lockup — mark, eyebrow, wordmark, tagline, pitch — in
+              whichever of six styles is chosen at `/looks`. It was mint green
+              from the first commit, which is the accent the play *currency*
+              uses everywhere else: the loudest type on the site was quietly
+              saying "coins". See `HomeHero`; picking a winner is a one-line
+              change to `DEFAULT_LOOK` and a delete of the others.
+
+              `VibeMark` rather than `VibeWink` inside it: the flat render
+              paints in the first frame off the image cache and the real
+              geometry fades in once three.js has arrived. This is the page
+              whose entire argument is that it loads instantly, so the renderer
+              is not allowed on the critical path. */}
+          <HomeHero
+            look={look}
+            copy={{
+              eyebrow: "Powered by creators, owned by players",
+              title: "VIBEVERSE",
+              tagline: "A massive collection of AI-coded games ;)",
+              /* The total, not the playable count — this sentence sits
+                 directly above a grid of every door, and saying 36 over 45
+                 cards reads as a miscount. The chip below carries the "how
+                 many work" nuance. */
+              pitch: `${WORLDS.length} worlds and games, all in one browser tab. No install, no account, no launcher — pick a card and you are in it in a few seconds.`,
+            }}
+          />
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10.5px] sm:mt-5 sm:gap-2 sm:text-[11px]">
             {/* "Start at the Terminal" and "The 3D hub" used to lead here —
