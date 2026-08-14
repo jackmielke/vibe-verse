@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-14T06:57:23.746Z",
+  "generated_at": "2026-08-14T07:00:51.592Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "7dad4f4a",
+      "date": "2026-08-14",
+      "subject": "The Chronicle: every world, in the order it appeared",
+      "lede": "The vibeverse has fifty-two worlds and no memory of building any of them. `/game` shows what exists and the passport shows where you have been; nothing has ever shown how the place came to be. This is that — and it writes itself, out of git, so it is exactly as true as the repository and cannot drift from it. Add a world and it writes itself a line here.",
+      "places": [],
+      "files": 12
+    },
     {
       "sha": "b6b15b85",
       "date": "2026-08-12",
@@ -1034,14 +1042,6 @@
       "lede": "Two changes, one rule.",
       "places": [],
       "files": 3
-    },
-    {
-      "sha": "9fba933c",
-      "date": "2026-08-08",
-      "subject": "Re-stamp after the merge",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
-      "places": [],
-      "files": 2
     }
   ]
 }

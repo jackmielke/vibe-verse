@@ -23,7 +23,7 @@ export interface WorldLife {
 export const REPO_LIFE = {
   "born": "2026-04-14T01:06:26+00:00",
   "firstWords": "Work in progress",
-  "commits": 1757,
+  "commits": 1758,
   "hands": 5
 } as const;
 
@@ -37,6 +37,7 @@ export const WORLD_LIFE: Record<string, WorldLife> = {
   "blob-battle": {"born":"2026-08-09T07:49:03+00:00","commits":2,"hands":1},
   "blue-angels": {"born":"2026-08-02T02:33:05+00:00","commits":8,"hands":1},
   "characters": {"born":"2026-07-01T12:12:14-07:00","commits":3,"hands":2},
+  "chronicle": {"born":"2026-08-14T06:58:33+00:00","commits":1,"hands":1},
   "city": {"born":"2026-06-11T07:44:57+00:00","commits":603,"hands":3},
   "coil": {"born":"2026-08-11T00:01:59+00:00","commits":2,"hands":1},
   "coin": {"born":"2026-05-11T11:40:19-07:00","commits":26,"hands":3},

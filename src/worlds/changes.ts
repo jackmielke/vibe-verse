@@ -64,6 +64,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "d9cd716", iso: "2026-07-02T19:19:25+00:00", subject: "Vibe karts, cleaner clouds, VibeVerse marquee, saved character" },
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
+  "chronicle": [
+    { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
+  ],
   "city": [
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7a1fca6", iso: "2026-08-12T20:16:30+00:00", subject: "Merge remote-tracking branch 'origin/main' into claude/vibeyverse-structure-overview-qufpth" },
