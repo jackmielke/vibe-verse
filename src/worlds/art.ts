@@ -51,6 +51,8 @@ import strangeNewWorldsArt from "@/assets/worlds/strange-new-worlds.jpg";
 import kartArt from "@/assets/worlds/kart.jpg";
 import runArt from "@/assets/worlds/run.jpg";
 import trekArt from "@/assets/worlds/final-frontier.jpg";
+import seafairArt from "@/assets/worlds/seafair.jpg";
+import vibestarArt from "@/assets/worlds/vibestar.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
@@ -97,10 +99,21 @@ export const WORLD_ART: Record<string, string> = {
   "island-2": vibeIsland2Art,
   vibeverse: vibeverseArt,
   village: villageArt,
-  // Deliberately absent, and each for the same reason — no honest capture yet:
-  //   seafair  · still being art-directed
-  //   globetrotter, go, agent-lobby, times, companions, world-builder,
-  //   submit-world, characters, vibestar
+  seafair: seafairArt,
+  vibestar: vibestarArt,
+  // Deliberately absent, and no longer all for the same reason:
+  //
+  //   globetrotter, go   · both draw the real Earth from map tiles, so a
+  //     capture taken anywhere the tiles do not load is a black rectangle with
+  //     "NO SATELLITE SIGNAL" in the middle of it. That is a picture of the
+  //     network, not of the world. Capture these from a machine that can reach
+  //     Mapbox and they will look like what they are.
+  //   blob-battle        · not ours. It is a guest game the portal frames from
+  //     its author's own host, so its cover belongs in `vibe_portal_games`
+  //     next to the game, not screenshotted into our assets folder.
+  //   agent-lobby, times, companions, world-builder, submit-world, characters,
+  //   passport           · tools rather than places. A card for a form does not
+  //     want a photograph of the form.
 };
 
 /** Card art for a world, or undefined when there is no honest capture. */
