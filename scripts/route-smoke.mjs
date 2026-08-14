@@ -30,6 +30,14 @@
  *   node scripts/route-smoke.mjs                 # every route
  *   node scripts/route-smoke.mjs /sf /kart       # just these
  *   SMOKE_WAIT=20000 node scripts/route-smoke.mjs
+ *   SMOKE_CHARACTER=flux node scripts/route-smoke.mjs /city
+ *
+ * `SMOKE_CHARACTER` picks the saved character before the route opens. It
+ * matters because half the catalog (`src/lib/characters.ts`) has an empty
+ * `url` — those are built in code rather than fetched, on a *synchronous*
+ * path no default run ever takes, and a crash there took /city down for
+ * everyone who had picked one. Any id from the catalog works; `flux` is the
+ * first procedural one.
  *
  * It runs against the dev server on SF_PORT (5177), starting one if there is
  * not already one up — the same convention as `route-shot.mjs`.
@@ -41,6 +49,7 @@ import { existsSync, readFileSync } from "node:fs";
 const PORT = Number(process.env.SF_PORT ?? 5177);
 const BASE = `http://127.0.0.1:${PORT}`;
 const WAIT = Number(process.env.SMOKE_WAIT ?? 12000);
+const CHARACTER = process.env.SMOKE_CHARACTER ?? "";
 
 /**
  * Every route the router serves, read out of `App.tsx`.
@@ -113,6 +122,18 @@ for (const route of routes) {
 
   let verdict = "blank";
   try {
+    if (CHARACTER) {
+      /* Both keys, because the hook reads the canonical one and City still
+         reads the mirror. Written from the origin's own page, since
+         localStorage is per-origin and there is nowhere else to put it — and
+         from a static file rather than a route, so seeding does not boot the
+         whole app (and log a 404) before the run has started. */
+      await page.goto(`${BASE}/robots.txt`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.evaluate((id) => {
+        localStorage.setItem("lobby.character", id);
+        localStorage.setItem("city.character", id);
+      }, CHARACTER);
+    }
     await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60000 });
     /* Most worlds gate their first frame behind a gesture — a title screen, a
        pointer-lock prompt. One click is the difference between "renders" and
@@ -130,9 +151,17 @@ for (const route of routes) {
           return {
             text: text.length,
             canvas: canvas ? canvas.width * canvas.height : 0,
+            crash: document.querySelector("[data-vibe-crash]")?.getAttribute("data-vibe-crash") ?? "",
           };
         })
-        .catch(() => ({ text: 0, canvas: 0 }));
+        .catch(() => ({ text: 0, canvas: 0, crash: "" }));
+      /* The crash screen is text and it is on top of everything, so without
+         this it scores as a pass. It is also the *worst* verdict — a blank
+         route might still be loading; this one has already given up. */
+      if (state.crash) {
+        verdict = `crash:${state.crash}`;
+        break;
+      }
       if (state.canvas > 0) {
         verdict = "canvas";
         break;
@@ -151,7 +180,7 @@ for (const route of routes) {
   }
 
   results.push({ route, verdict, errors: [...new Set(errors)] });
-  const mark = verdict === "blank" ? "FAIL" : "ok  ";
+  const mark = verdict === "blank" || verdict.startsWith("crash") ? "FAIL" : "ok  ";
   console.log(
     `${mark} ${route.padEnd(26)} ${verdict}${
       results.at(-1).errors.length ? `  (${results.at(-1).errors.length} console errors)` : ""

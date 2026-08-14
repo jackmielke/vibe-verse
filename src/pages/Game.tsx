@@ -29,7 +29,8 @@ import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeMark from "@/components/VibeMark";
-import VibeWink from "@/components/VibeWink";
+import VibeMarketChip from "@/components/VibeMarketChip";
+import TwoCoins from "@/components/TwoCoins";
 import StarField from "@/components/StarField";
 import FeaturedCharacters from "@/components/shop/FeaturedCharacters";
 import { WorldChangesPortal } from "@/components/WorldChanges";
@@ -475,8 +476,17 @@ export default function Game() {
             >
               <VibeCoinMark size={13} />
               <span className="tabular-nums">{coin.display}</span>
-              <span className="opacity-70">Vibecoin</span>
+              {/* It says "Vibey" because that is what this number is. It read
+                  "Vibecoin" for months while showing the play balance, which
+                  is the one place in the app that actively taught the
+                  confusion the panel at the bottom of this page exists to
+                  clear up. */}
+              <span className="opacity-70">Vibey</span>
             </Link>
+
+            {/* The token's market cap. A number that moves is the cheapest
+                proof that the other half of this is not a metaphor. */}
+            <VibeMarketChip />
             {/* Was a grey span for months: the one record spanning every
                 world in here, rendered as five words you could not click. */}
             <Link
@@ -584,51 +594,13 @@ export default function Game() {
             a row of characters underneath is noise on top of a filtered list. */}
         {!query.trim() && <FeaturedCharacters />}
 
-        {/* The currency and the argument, in one band at the bottom.
-            `/manifesto` has been the best-written page in here and the least
-            reachable — nothing linked to it from the front door. It is the
-            answer to "why does a browser game have money in it", so it belongs
-            directly under the money. */}
-        {!query.trim() && (
-          <section className="mt-14 overflow-hidden rounded-3xl border border-border/40 bg-black/25 p-5 backdrop-blur-sm sm:p-8">
-            <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:gap-8">
-              {/* The flat mark, not `VibeMark`. The hero at the top of this
-                  page already upgrades to the live one, and a second live mark
-                  is a second WebGL context on the page people open *before*
-                  they open a world — which is the whole reason worlds lose
-                  their context to the browser's cap. One canvas per page, and
-                  the one that gets it is the one somebody is looking at. */}
-              <div className="hidden shrink-0 sm:block" aria-hidden>
-                <VibeWink size={84} />
-              </div>
-              <div className="min-w-0">
-                <h2 className="font-heading text-base font-black uppercase tracking-wider text-[#7dffd4]">
-                  Vibey Coins
-                </h2>
-                <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted-foreground">
-                  Every world pays out. Play anything in here and you earn the same
-                  currency, spend it in the arcade on characters nobody else can make,
-                  and carry it back into the next world — no account required to start.
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-[10.5px]">
-                  <Link
-                    to="/arcade"
-                    className="flex items-center gap-1.5 rounded-full border border-[#7dffd4]/35 bg-[#7dffd4]/[0.07] px-4 py-2 font-heading font-semibold uppercase tracking-wider text-[#7dffd4] transition-colors hover:border-[#7dffd4]/60"
-                  >
-                    <VibeCoinMark size={13} />
-                    <span>Spend them</span>
-                  </Link>
-                  <Link
-                    to="/manifesto"
-                    className="rounded-full border border-border/40 px-4 py-2 font-heading font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:border-[#c4b2ff]/60 hover:text-[#c4b2ff]"
-                  >
-                    The Arcade of the Future →
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
+        {/* The band that was here said "Vibey Coins" and described one of the
+            two currencies as though it were the only one. That is the exact
+            confusion worth spending a panel on, so this replaces it with both
+            of them side by side — see `TwoCoins`. Same `!query.trim()` guard:
+            a search is a question about worlds, and a currency explainer under
+            a filtered list is noise. */}
+        {!query.trim() && <TwoCoins />}
 
         <footer className="mt-16 border-t border-border/40 pt-6 text-[11px] text-muted-foreground">
           Built something?{" "}
