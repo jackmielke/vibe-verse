@@ -26,6 +26,7 @@ import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith("--"));
@@ -56,6 +57,58 @@ const WARMUP = flag("warmup", 6000);
  * downscale is worth less than the smoothness, so the default is close to 1:1.
  */
 const SCALE = flag("scale", 1.25);
+/**
+ * Fewest distinct frames worth keeping.
+ *
+ * The gate that makes this safe to point at a list of worlds. "A world that
+ * waits at a title screen records a title screen" is not a warning anybody will
+ * remember to act on, so it is checked instead: below this the recording is
+ * discarded and the world keeps its still. Eight over a couple of seconds is
+ * about where a clip reads as motion rather than as a glitching JPEG.
+ */
+const MIN_FRAMES = flag("min-frames", 8);
+
+/**
+ * Frame count, distinct frames and real duration, read back out of the GIF.
+ *
+ * Checking the encoder's own output rather than trusting what it was asked for.
+ * Two of the three bugs in this tool produced a *structurally perfect* GIF with
+ * the wrong pictures in it — duplicated frames, and delays describing a rate the
+ * capture never achieved — and neither is visible from anything but the bytes.
+ */
+function gifStats(b) {
+  let i = 13;
+  const g = b[10];
+  if (g & 0x80) i += 3 * 2 ** ((g & 7) + 1);
+  const seen = new Set();
+  let frames = 0, cs = 0, pending = 0, guard = 0;
+  while (i < b.length && guard++ < 200000) {
+    const blk = b[i];
+    if (blk === 0x3b) break;
+    if (blk === 0x21) {
+      if (b[i + 1] === 0xf9) pending = b.readUInt16LE(i + 4);
+      i += 2;
+      while (i < b.length && b[i]) i += b[i] + 1;
+      i++;
+      continue;
+    }
+    if (blk === 0x2c) {
+      const packed = b[i + 9];
+      i += 10;
+      if (packed & 0x80) i += 3 * 2 ** ((packed & 7) + 1);
+      i++;
+      const start = i;
+      while (i < b.length && b[i]) i += b[i] + 1;
+      i++;
+      frames++;
+      cs += pending;
+      seen.add(createHash("md5").update(b.subarray(start, i)).digest("hex"));
+      continue;
+    }
+    break;
+  }
+  return { w: b.readUInt16LE(6), h: b.readUInt16LE(8), frames, distinct: seen.size, duration: cs / 100 };
+}
 
 const PORT = Number(process.env.SF_PORT ?? 5177);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -154,6 +207,24 @@ if (!b64 || b64.length < 2000) {
   process.exit(1);
 }
 const buf = Buffer.from(b64, "base64");
+
+const stats = gifStats(buf);
+const realFps = stats.duration > 0 ? stats.frames / stats.duration : 0;
+console.log(
+  `  ${stats.w}x${stats.h} · ${stats.frames} frames (${stats.distinct} distinct) · ` +
+    `${stats.duration.toFixed(2)}s · ${realFps.toFixed(1)} fps · ${Math.round(buf.length / 1024)} kB`,
+);
+
+if (stats.distinct < MIN_FRAMES) {
+  console.error(
+    `REJECTED ${route}: ${stats.distinct} distinct frames, need ${MIN_FRAMES}. ` +
+      `Not enough happens here without a player — it keeps its still.`,
+  );
+  await browser.close();
+  if (server) server.kill();
+  process.exit(2);
+}
+
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, buf);
 console.log(`wrote ${out} (${Math.round(buf.length / 1024)} kB)`);
