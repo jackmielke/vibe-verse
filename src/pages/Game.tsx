@@ -24,6 +24,7 @@ import {
   type WorldSort,
 } from "@/worlds/sorting";
 import { artFor } from "@/worlds/art";
+import { motionFor } from "@/worlds/motion";
 import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
@@ -43,6 +44,20 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
  * as the page having run out rather than having been folded.
  */
 const GRID_PREVIEW = 8;
+
+/**
+ * Whether this visitor should be shown a still instead of a recording.
+ *
+ * `prefers-reduced-motion` is the whole check, and it is a real one here rather
+ * than a box-ticking one: a grid where a card starts playing a game under the
+ * cursor is precisely the kind of thing that setting exists to turn off. Read
+ * per card rather than cached — somebody can change it mid-session, and this is
+ * one `matchMedia` call on a pointer event, not on a render.
+ */
+function stillPreferred(): boolean {
+  if (typeof window === "undefined") return true;
+  return !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
 
 /**
  * The panel a card falls back to when a world has no honest capture yet.
@@ -96,6 +111,26 @@ function Card({
   const iso = updatedAt(world.key);
   const updated = sinceLabel(iso);
   const exact = exactLabel(iso);
+
+  /**
+   * The moving card, on hover only.
+   *
+   * `hovering` gates the *mount*, not just the opacity: an `<img>` that is
+   * rendered at `opacity: 0` has still been downloaded, so styling it hidden
+   * would put a hundred and twenty kilobytes per animated card on the initial
+   * load and defeat the whole arrangement. Once mounted it stays mounted —
+   * moving off and back should not re-fetch or restart it.
+   *
+   * `motionReady` is separate so the first hover cross-fades in when the bytes
+   * land rather than snapping from a half-drawn frame.
+   */
+  const [hovering, setHovering] = useState(false);
+  const [everHovered, setEverHovered] = useState(false);
+  const [motionReady, setMotionReady] = useState(false);
+  /* Not `motion` — that is framer-motion's, and shadowing it turns every
+     `<motion.div>` in this file into a property access on a string. */
+  const clip = everHovered && !stillPreferred() ? motionFor(world.key) : undefined;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -106,6 +141,15 @@ function Card({
     >
       <Link
         to={world.route}
+        onPointerEnter={(e) => {
+          /* Fine pointers only. A touch "enter" fires on the tap that is
+             already navigating away, so a phone would download the clip for a
+             card it is in the middle of leaving. */
+          if (e.pointerType !== "mouse") return;
+          setEverHovered(true);
+          setHovering(true);
+        }}
+        onPointerLeave={() => setHovering(false)}
         className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/40 transition-colors hover:border-transparent"
         style={{ boxShadow: `inset 0 0 0 1px ${world.accent}22` }}
       >
@@ -119,6 +163,19 @@ function Card({
             />
           ) : (
             <DrawnPanel accent={world.accent} />
+          )}
+          {/* A few seconds of the world actually being played, over the still.
+              Mounted only once a pointer has been on the card, so the grid
+              costs exactly what it did before — see `worlds/motion.ts` for why
+              these cannot simply replace the stills. */}
+          {clip && (
+            <img
+              src={clip}
+              alt=""
+              onLoad={() => setMotionReady(true)}
+              className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
+              style={{ opacity: motionReady && hovering ? 1 : 0 }}
+            />
           )}
           {/* Scrim: the captures are bright, and the status pill has to stay
               readable over a white sky as well as a night city. */}

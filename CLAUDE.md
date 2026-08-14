@@ -89,6 +89,16 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
   (`node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg`, then a
   line in `src/worlds/art.ts`). A world whose capture only ever produces a
   broken frame ships without art: misleading card art is worse than none.
+  - **A world that plays itself can also have a moving card.**
+    `node scripts/route-gif.mjs "/coil?shot" src/assets/worlds/coil.gif --ms
+    2600 --width 320 --fps 12.5 --colors 64`, then a line in
+    `src/worlds/motion.ts`. It needs an attract mode — COIL's `?shot` hands the
+    snake to an AI brain and respawns it, which is why COIL was first; a world
+    that waits at a title screen records a title screen.
+  - The clip is an **upgrade to a still, never a replacement**. It is fetched on
+    hover and nowhere else, because 120 KB × fifty-two cards is six megabytes on
+    the page whose whole argument is that it opens instantly. Verified against a
+    real build: scrolling the entire grid requests no clips at all.
 - A way back to the hub from inside the world, shown when the player is not
   mid-action.
 - Teardown on unmount — dispose the renderer, close audio contexts, remove
