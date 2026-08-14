@@ -104,7 +104,12 @@ export default function VibeWink({
           height={WINK_GLASS_INTRINSIC}
           decoding="async"
           loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
+          /* Lowercase, spread in. React 18 does not know the camelCase form
+             and warns on every render that it is passing an unrecognised prop
+             through to the DOM — which is one console line per wink, and the
+             wink is now on the front door twice. The attribute browsers
+             actually read is the lowercase one either way. */
+          {...({ fetchpriority: priority ? "high" : "auto" } as Record<string, string>)}
           style={{
             display: "block",
             width: "100%",

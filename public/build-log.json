@@ -1,7 +1,33 @@
 {
-  "generated_at": "2026-08-13T23:25:13.017Z",
+  "generated_at": "2026-08-14T02:33:43.710Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "d35910cb",
+      "date": "2026-08-14",
+      "subject": "Two coins, told apart on the front door — and the token's market cap",
+      "lede": "**The market cap, top right.** `$VIBE $70.78K ▼4.2%`, next to the play balance. A number that moves is the cheapest possible proof that the token half of this is not a metaphor, and until now the only page that knew the price was the wallet.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "4260719e",
+      "date": "2026-08-14",
+      "subject": "A fresh clone could not install, so none of the checks could run",
+      "lede": "`postprocessing` was declared `^6.35.0` and resolved to 6.39, which is the release that raised its floor to `three >= 0.168`. Three is pinned at 0.160 here and moving it is a day of work in forty worlds, so npm called the tree impossible and installed nothing at all — no node_modules, and therefore no typecheck, no build, no test, no smoke. Every check CLAUDE.md asks for before pushing to a live `main` was unavailabl",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "3ed7b4a5",
+      "date": "2026-08-13",
+      "subject": "Vibe Island stopped opening if your character had no model file",
+      "lede": "Anyone whose saved character was one of the code-built ones — Flux and the two dozen others in `src/lib/characters.ts` with an empty `url` — opened /city and got the crash screen. The report was \"whenever I try to open Vibe Island it says a corner of the Vibeverse glitched\", and `client_errors` had been saying `Cannot access 'headMount' before initialization` since 16:18 that afternoon.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
     {
       "sha": "8868df2a",
       "date": "2026-08-13",
@@ -1018,30 +1044,6 @@
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "649b86dd",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "093f8c09",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "f2719fe2",
-      "date": "2026-08-09",
-      "subject": "The wink stops spinning, and starts meaning \"real\"",
-      "lede": "Two changes, one rule.",
-      "places": [],
-      "files": 3
     }
   ]
 }
