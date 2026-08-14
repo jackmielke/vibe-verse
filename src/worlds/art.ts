@@ -40,6 +40,7 @@ import orbitArt from "@/assets/worlds/orbit.jpg";
 import shopArt from "@/assets/worlds/shop.jpg";
 import portalArt from "@/assets/worlds/portal.jpg";
 import manifestoArt from "@/assets/worlds/manifesto.jpg";
+import chronicleArt from "@/assets/worlds/chronicle.jpg";
 import blobArt from "@/assets/worlds/blob.jpg";
 import coilArt from "@/assets/worlds/coil.jpg";
 import twenty48Art from "@/assets/worlds/2048.jpg";
@@ -93,6 +94,7 @@ export const WORLD_ART: Record<string, string> = {
   ski: skiArt,
   space: spaceArt,
   terminal: terminalArt,
+  chronicle: chronicleArt,
   coin: vibeArt,
   "island-2": vibeIsland2Art,
   vibeverse: vibeverseArt,

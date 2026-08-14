@@ -51,6 +51,7 @@ const VibeGo = lazy(() => import("./pages/VibeGo.tsx"));
 const VibeArcade = lazy(() => import("./pages/VibeArcade.tsx"));
 const ArcadeCharacters = lazy(() => import("./pages/ArcadeCharacters.tsx"));
 const PortalPlay = lazy(() => import("./pages/PortalPlay.tsx"));
+const Chronicle = lazy(() => import("./pages/Chronicle.tsx"));
 const BuildAGame = lazy(() => import("./pages/BuildAGame.tsx"));
 const SubmitGame = lazy(() => import("./pages/SubmitGame.tsx"));
 const AdminGames = lazy(() => import("./pages/AdminGames.tsx"));
@@ -239,6 +240,8 @@ const App = () => (
               router serves literally. The frame still lives at /play. */}
           <Route path="/blob-battle" element={<Navigate to="/play/blob-battle" replace />} />
           <Route path="/blobbattle" element={<Navigate to="/play/blob-battle" replace />} />
+          <Route path="/chronicle" element={<Chronicle />} />
+          <Route path="/history" element={<Chronicle />} />
           <Route path="/build" element={<BuildAGame />} />
           <Route path="/build-a-game" element={<BuildAGame />} />
           {/* One field: a repo link or a deployed link. `/submit-world` is a

@@ -818,6 +818,34 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "chronicle",
+    route: "/chronicle",
+    aliases: ["/history"],
+    name: "The Chronicle",
+    emoji: "📜",
+    kind: "tool",
+    blurb:
+      "Every world, in the order it appeared — read out of git, so it is exactly as true as the repository. When it was born, how many commits it took, how many hands. The one page here that needs no server, no account and no network, and will still open in a hundred years.",
+    status: "A history that writes itself",
+    accent: "#c4b2ff",
+    source: "src/pages/Chronicle.tsx + scripts/chronicle.mjs",
+    /* Not in the nav, for the same reason the manifesto is not: somebody
+       arriving to play should meet a game first. It is one tap from `/game`
+       and from the passport, which are the two places you would want it.
+
+       And deliberately not stamped. The Chronicle *reads* your passport — it
+       marks the worlds you have stood in — so a stamp for having read it would
+       be the page congratulating you for looking at it. It is the shelf, not a
+       book on the shelf.
+
+       There is a second, duller reason worth recording: the archive panel in
+       The Long Silence draws every passport world, computes its row pitch to
+       fit, and `PASSPORT_ROWS` is the point past which the type stops being
+       legible. It was already at thirty of thirty. Adding a page about the
+       collection is not worth shrinking the type on a completion screen whose
+       whole job is telling you what you have not done. */
+  },
+  {
     key: "portal",
     route: "/build",
     aliases: ["/build-a-game"],

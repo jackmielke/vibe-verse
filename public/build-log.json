@@ -1,7 +1,140 @@
 {
-  "generated_at": "2026-08-12T06:53:02.015Z",
+  "generated_at": "2026-08-14T06:57:23.746Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "b6b15b85",
+      "date": "2026-08-12",
+      "subject": "The form fills itself in while you type",
+      "lede": "Pasting a link was a leap of faith: you pressed Submit and only then found out what we had decided your game was called. Now the card fills in underneath the field, which is the same information a beat earlier and the difference between a form and a conversation.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "5dfcd2b7",
+      "date": "2026-08-12",
+      "subject": "Hats that are actually on the head, and three more of them",
+      "lede": "Hats were parented to the model holder at a fixed 1.78 m — \"just above a ~1.85 m model's head\" — which is true of a character standing still and of nothing else. Every character in the catalogue is a different GLB fitted to the same overall height, so their heads sit at different places inside it: the same number floats over a short one and cuts through a tall one. And because the mount never moved, the hat stayed bo",
+      "places": [
+        "Vibe Island",
+        "the machinery underneath"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "29d52c3e",
+      "date": "2026-08-12",
+      "subject": "The city's controls fit on one row",
+      "lede": "Ten chips wanting 752px, and the strip holding them was never wider than half the screen — so three rows at 900px and two at 1440px.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "7077dd7e",
+      "date": "2026-08-12",
+      "subject": "Swimming, and snow that settles",
+      "lede": "Two things you could see the world wanting the moment it had a beach.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 11
+    },
+    {
+      "sha": "2fb84f59",
+      "date": "2026-08-12",
+      "subject": "Vibe Island stops showing you somebody else's screen first",
+      "lede": "Clicking Vibe Island painted the character picker for a beat, then a loading screen, then the island. Same for Powder Peak, the moon, Mars, TJ's, Vibestar and the mines — half the world list is a `/city?spawn=…` link, so this was most of what \"going to a world\" looked like.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "5545ca63",
+      "date": "2026-08-12",
+      "subject": "The avatar is the character's actual face",
+      "lede": "The chip in the corner has always shown an emoji — 🤖 for Vibey, 🦀 for Pinch — which identifies a species rather than a character. Sixty-three characters are built from one rig and photographed from it, so the corner can show the one you picked.",
+      "places": [],
+      "files": 67
+    },
+    {
+      "sha": "cf9a89e7",
+      "date": "2026-08-12",
+      "subject": "Submit a game without leaving the shelf",
+      "lede": "\"Add yours →\" and \"Put your game here\" both sent you to `/build`, which is a page about the deal rather than the form — so acting on the invitation meant two navigations away from the thing that made you want to. The arcade shelf is the argument for submitting; a form on its own route has to make that argument again from scratch.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "e0628825",
+      "date": "2026-08-12",
+      "subject": "Powered by creators, owned by players",
+      "lede": "The old arcade's line, back above the wordmark. \"Every builder grows the universe\" said one half of it — anybody can add a door — and stopped there. This one says the other half too: what you earn behind the door is yours. It is the claim /manifesto spends a page on (\"Build worlds. Share ownership. Play forever.\") in six words, in the slot a tagline goes.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "2978d803",
+      "date": "2026-08-12",
+      "subject": "The picker gets an exit, and one card width",
+      "lede": "Three things wrong with the search overlay, all of them mine from two commits ago when I gave it a way to open without looking at what opening it revealed.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "f4d5ce53",
+      "date": "2026-08-12",
+      "subject": "Restamped Vibe Island",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "fb1d2199",
+      "date": "2026-08-12",
+      "subject": "Gave Vibe Island a town plan",
+      "lede": "From the air it read as a green disc with objects sprinkled on it: two shops sitting at angles in the middle of a lawn, a painted road cross nothing was built along, thirteen things crammed into the southern quarter and two empty quarters opposite. Every object was fine. The town was not a town.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "049c4296",
+      "date": "2026-08-12",
+      "subject": "The paper moves into the hole beside the headline",
+      "lede": "At 1440×800 the first card row started at 558px and was cut off by the bottom of the window — you could not see one whole card without scrolling, on the page whose entire job is showing you the room. This file's own comment has said so for a while: every line of hero copy above the fold is a game the visitor did not see.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "eadc5946",
+      "date": "2026-08-12",
+      "subject": "The search that was already written, with a way to open it",
+      "lede": "`WorldPicker` is a full-screen overlay over every world in the registry, with an autofocused search field, featured-first ordering and cards that route straight there. It has been finished for a long time and nothing in the app could open it: `GlobalNav` holds the state and the only thing it ever does with it is set it to `false`. The menu that used to open it was removed and the component was left behind — a whole f",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "fb62b96f",
+      "date": "2026-08-12",
+      "subject": "The front door gets a sky, a cast, and a way in",
+      "lede": "/game answers \"what can I play here?\" and answered nothing else. Four things change, and one of them is a bug that has been sitting in the corner of the screen for months.",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "51778ca0",
+      "date": "2026-08-12",
+      "subject": "The wink arrives as a picture, then wakes up",
+      "lede": "The mark on /coin has been a live three.js object for a while and the mark everywhere else has been a PNG, and each was right about something. The render is the real artwork and it paints in one frame off the image cache; the object turns, catches the light differently every second, and can react to things — and costs three.js, a GLB and a WebGL context to say so.",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "eb001bcf",
       "date": "2026-08-12",
@@ -909,130 +1042,6 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "3f0643ea",
-      "date": "2026-08-08",
-      "subject": "Rock paper scissors leads the arcade, and the shop grows a second tab",
-      "lede": "## The floor now opens with a game, not a paytable",
-      "places": [
-        "Vibe Island",
-        "the Arcade",
-        "the machinery underneath"
-      ],
-      "files": 10
-    },
-    {
-      "sha": "f74dd787",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "c850258e",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "1478ac69",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3660216d",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "af46f502",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "1f98cf2d",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "75474eaa",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "10884e59",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "b919650d",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "c0062812",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cd5c38d9",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "6d7c6554",
-      "date": "2026-08-08",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "0342fdce",
-      "date": "2026-08-08",
-      "subject": "Re-stamp after the merge with Soaked and Blob",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "230d0edb",
-      "date": "2026-08-08",
-      "subject": "One page about the currency, told as three steps",
-      "lede": "There were two pages about Vibecoin and they disagreed about what they were for. /coin led with \"our community currency\" and then showed a shop panel, a character picker and a holder leaderboard — a junk drawer of everything that touched money. /wallet explained the thing properly, in order, and was reachable only from a popover most people never open. Two pages about one subject is how you get a visitor who has read",
-      "places": [],
-      "files": 7
     }
   ]
 }
