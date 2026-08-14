@@ -612,6 +612,19 @@ export default function Game() {
             the world builder
           </Link>
           .
+          {/* This grid is the present tense — every world, flattened, with no
+              sense of which came first or how fast they arrived. The Chronicle
+              is the same list with time put back into it, and it is worth one
+              line here because there is nowhere else anybody would think to
+              look for it. */}
+          <br />
+          <span className="mt-2 inline-block">
+            {WORLDS.length} worlds and counting —{" "}
+            <Link to="/chronicle" className="text-[#c4b2ff] hover:underline">
+              see them in the order they appeared
+            </Link>
+            .
+          </span>
         </footer>
       </div>
 

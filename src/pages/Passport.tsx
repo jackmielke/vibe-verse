@@ -33,6 +33,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import VibeMark from "@/components/VibeMark";
+import { REPO_LIFE } from "@/worlds/chronicle";
 import { motion } from "framer-motion";
 import { Lock } from "lucide-react";
 
@@ -44,6 +45,13 @@ import {
 } from "@/lib/passport";
 
 type Filter = "all" | "stamped" | "unexplored";
+
+const DAY_MS = 86_400_000;
+
+/** Whole days from the vibeverse's first commit to `t`, 1-indexed. */
+function dayOfVibeverse(t: number): number {
+  return Math.max(1, Math.floor((t - Date.parse(REPO_LIFE.born)) / DAY_MS) + 1);
+}
 
 /** How many rings the seal wears. One per rank above "stamped". */
 const RANK_RINGS: Record<Rank, number> = {
@@ -215,6 +223,8 @@ export default function Passport() {
   const trips = rows.reduce((n, r) => n + r.count, 0);
   const pct = rows.length ? Math.round((visited.length / rows.length) * 100) : 0;
   const first = visited.reduce((m, r) => (r.first && (!m || r.first < m) ? r.first : m), 0);
+  const arrivalDay = first ? dayOfVibeverse(first) : 0;
+  const ageDays = dayOfVibeverse(Date.now());
 
   const shown = rows.filter((r) =>
     filter === "all" ? true : filter === "stamped" ? r.visited : !r.visited,
@@ -304,6 +314,23 @@ export default function Passport() {
                 Every world stamps this book when you arrive. Go back often
                 enough and the stamp gains rings.
               </p>
+              {/* Where your record sits inside the vibeverse's own.
+                  `first` is the earliest arrival in this browser, `REPO_LIFE`
+                  is the first commit there ever was, and the difference is the
+                  one fact only the passport can tell you — not when you turned
+                  up, but how far into the story. It is also the only link to
+                  `/chronicle` that is about *you* rather than about the place. */}
+              {first > 0 && (
+                <p className="mt-2 max-w-md text-[12px] leading-relaxed text-muted-foreground">
+                  You arrived on{" "}
+                  <span className="text-foreground">day {arrivalDay}</span> of a
+                  story that is {ageDays} days long so far —{" "}
+                  <Link to="/chronicle" className="text-[#c4b2ff] hover:underline">
+                    read the whole thing
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
 
             {/* The crest. Every real passport has one on the cover, and this is
