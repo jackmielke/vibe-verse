@@ -255,3 +255,56 @@
   0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.7; }
   100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
 }
+
+/* ---------------------------------------------------------------------------
+   Front-door hero looks. See `src/components/home/HomeHero.tsx` — these are the
+   two treatments that need a keyframe, and they live here rather than inline so
+   the reduced-motion rule at the top of this file can switch them off.
+   --------------------------------------------------------------------------- */
+
+/* Terminal: the caret. `steps(2)` rather than a fade, because a terminal
+   cursor does not fade — and it is CSS rather than React state so the top of
+   the front page is not re-rendering twice a second forever. */
+@keyframes vibeCaretBlink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.vibe-caret {
+  animation: vibeCaretBlink 1.06s steps(2, jump-none) infinite;
+}
+
+/* Aurora: a slow colour wash BEHIND the headline, never in it. Tinting white
+   letters at this weight against a starfield is how the mint version becomes
+   unreadable at small sizes; a blurred field behind flat white does not. */
+@keyframes vibeAuroraDrift {
+  0%   { transform: translate3d(-6%, 0, 0) scale(1.05); }
+  50%  { transform: translate3d(6%, 2%, 0) scale(1.15); }
+  100% { transform: translate3d(-6%, 0, 0) scale(1.05); }
+}
+.vibe-aurora {
+  background:
+    radial-gradient(42% 78% at 20% 50%, hsl(190 95% 58% / 0.95), transparent 68%),
+    radial-gradient(38% 72% at 52% 44%, hsl(276 95% 66% / 0.9), transparent 70%),
+    radial-gradient(40% 76% at 84% 56%, hsl(330 92% 64% / 0.8), transparent 70%);
+  animation: vibeAuroraDrift 18s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vibe-caret { animation: none; opacity: 1; }
+  .vibe-aurora { animation: none; }
+}
+
+/* Marquee: the wordmark running past behind itself. `translate3d` on the
+   track, so it lives on the compositor and never touches layout on the page
+   that has to paint fastest. The track holds two copies, so -50% is a seamless
+   loop rather than a jump. */
+@keyframes vibeMarqueeRun {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+.vibe-marquee {
+  animation: vibeMarqueeRun 26s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vibe-marquee { animation: none; }
+}

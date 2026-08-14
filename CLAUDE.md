@@ -23,10 +23,18 @@ that builds and renders a black screen is a broken demo, and the build will not
 tell you.
 
 `npm run smoke` is the blunt instrument for that last part: it opens every
-route in a real Chromium and reports which ones rendered nothing. It takes a
-few minutes, it will not tell you a world looks *wrong*, and it is the fastest
-way to find out that one of fifty routes stopped existing. `npm run smoke --
+route in a real Chromium and reports which ones rendered nothing — or rendered
+the crash screen, which is not the same thing and used to score as a pass,
+because the friendly fallback is text and text was the bar. It takes a few
+minutes, it will not tell you a world looks *wrong*, and it is the fastest way
+to find out that one of fifty routes stopped existing. `npm run smoke --
 /sf /kart` for just the ones you touched.
+
+`SMOKE_CHARACTER=flux npm run smoke -- /city` picks a saved character first.
+Half the cast in `src/lib/characters.ts` has an empty `url` and is built in
+code instead of fetched — a different, *synchronous* code path that a default
+run never touches. /city crashed on that path for every player who had picked
+one of them, through a green build, a green typecheck and a green smoke run.
 
 **`npm run typecheck`, never bare `tsc --noEmit`.** The root `tsconfig.json` is
 a solution-style config — `"files": []` plus project references — so `tsc
@@ -34,6 +42,31 @@ a solution-style config — `"files": []` plus project references — so `tsc
 And `vite build` strips types with esbuild without checking them. So a file
 referencing an undefined variable passes both, ships, and white-screens the
 route. That is not hypothetical; it went out that way once.
+
+## Dependencies
+
+**`three` is pinned at 0.160 and everything that draws has to agree with it.**
+Forty worlds import three directly, so moving it is not a version bump, it is a
+day of work in every one of them. The packages *around* three are on caret
+ranges, so they float, and one of them eventually floats past the pin.
+
+`postprocessing` did. It was declared `^6.35.0`, resolved to 6.39, and 6.39 is
+the release that raised its floor to `three >= 0.168`. The way that presented
+is worth remembering, because it is not the way a broken dependency usually
+looks:
+
+- **npm refused to install anything at all.** ERESOLVE, no `node_modules`, so
+  `typecheck`, `build`, `test` and `smoke` were *all* unavailable on a fresh
+  clone — every check this file tells you to run before pushing to a live
+  `main`. Nobody who cloned it could verify a change.
+- **The deploy path never noticed**, because bun does not enforce peer ranges.
+  The build stayed green through the whole thing.
+
+So: pin the offender *below* its breaking release rather than widening the
+three range, and run `npm ci` — not just `bun install` — after touching
+`package.json`, because bun will install a tree npm considers impossible.
+`src/test/threePeers.test.ts` checks the installed tree against every peer
+range in it and names whatever disagrees.
 
 ## Models
 
@@ -89,6 +122,22 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
   (`node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg`, then a
   line in `src/worlds/art.ts`). A world whose capture only ever produces a
   broken frame ships without art: misleading card art is worse than none.
+  - **A world that plays itself can also have a moving card.**
+    `node scripts/world-gifs.mjs` tries every world with a `?shot` mode and
+    keeps what actually moves; `route-gif.mjs` records one. Then a line in
+    `src/worlds/motion.ts`.
+  - **Do not choose which worlds get one — measure.** Seven of fourteen
+    candidates passed. A `?shot` hook is not an attract mode: Splash Royale's
+    and Drop Zero's take a still and nothing self-plays, San Palmas and /sf sit
+    still enough to yield two and three distinct frames, and Seafair and 2048
+    are drawn in the DOM with no canvas to read. The recorder refuses anything
+    under eight distinct frames and exits non-zero, so a world that cannot be
+    filmed keeps its still without anybody having to notice.
+  - The clip is an **upgrade to a still, never a replacement**. They run
+    120–300 KB each, so they are fetched on hover and nowhere else — the front
+    door's whole argument is that it opens instantly. Verified against a real
+    build: scrolling the entire grid requests no clips at all, and hovering one
+    card requests exactly one.
 - A way back to the hub from inside the world, shown when the player is not
   mid-action.
 - Teardown on unmount — dispose the renderer, close audio contexts, remove

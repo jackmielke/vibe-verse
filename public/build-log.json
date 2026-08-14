@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-14T07:00:51.592Z",
+  "generated_at": "2026-08-14T07:02:20.957Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "c40073b9",
+      "date": "2026-08-14",
+      "subject": "The Chronicle learns its own birthday",
+      "lede": "`npm run stamp && npm run chronicle`, now that the page has a commit to read. It is the fifty-third world and the newest line in its own history: born 2026-08-14, one commit, one hand.",
+      "places": [],
+      "files": 4
+    },
     {
       "sha": "7dad4f4a",
       "date": "2026-08-14",
@@ -1034,14 +1042,6 @@
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "f2719fe2",
-      "date": "2026-08-09",
-      "subject": "The wink stops spinning, and starts meaning \"real\"",
-      "lede": "Two changes, one rule.",
-      "places": [],
-      "files": 3
     }
   ]
 }

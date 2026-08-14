@@ -24,11 +24,14 @@ import {
   type WorldSort,
 } from "@/worlds/sorting";
 import { artFor } from "@/worlds/art";
+import { motionFor } from "@/worlds/motion";
 import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
 import VibeMark from "@/components/VibeMark";
-import VibeWink from "@/components/VibeWink";
+import VibeMarketChip from "@/components/VibeMarketChip";
+import HomeHero, { readLook, type LookId } from "@/components/home/HomeHero";
+import TwoCoins from "@/components/TwoCoins";
 import StarField from "@/components/StarField";
 import FeaturedCharacters from "@/components/shop/FeaturedCharacters";
 import { WorldChangesPortal } from "@/components/WorldChanges";
@@ -43,6 +46,20 @@ import { useVibecoin } from "@/hooks/use-vibecoin";
  * as the page having run out rather than having been folded.
  */
 const GRID_PREVIEW = 8;
+
+/**
+ * Whether this visitor should be shown a still instead of a recording.
+ *
+ * `prefers-reduced-motion` is the whole check, and it is a real one here rather
+ * than a box-ticking one: a grid where a card starts playing a game under the
+ * cursor is precisely the kind of thing that setting exists to turn off. Read
+ * per card rather than cached — somebody can change it mid-session, and this is
+ * one `matchMedia` call on a pointer event, not on a render.
+ */
+function stillPreferred(): boolean {
+  if (typeof window === "undefined") return true;
+  return !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
 
 /**
  * The panel a card falls back to when a world has no honest capture yet.
@@ -96,6 +113,26 @@ function Card({
   const iso = updatedAt(world.key);
   const updated = sinceLabel(iso);
   const exact = exactLabel(iso);
+
+  /**
+   * The moving card, on hover only.
+   *
+   * `hovering` gates the *mount*, not just the opacity: an `<img>` that is
+   * rendered at `opacity: 0` has still been downloaded, so styling it hidden
+   * would put a hundred and twenty kilobytes per animated card on the initial
+   * load and defeat the whole arrangement. Once mounted it stays mounted —
+   * moving off and back should not re-fetch or restart it.
+   *
+   * `motionReady` is separate so the first hover cross-fades in when the bytes
+   * land rather than snapping from a half-drawn frame.
+   */
+  const [hovering, setHovering] = useState(false);
+  const [everHovered, setEverHovered] = useState(false);
+  const [motionReady, setMotionReady] = useState(false);
+  /* Not `motion` — that is framer-motion's, and shadowing it turns every
+     `<motion.div>` in this file into a property access on a string. */
+  const clip = everHovered && !stillPreferred() ? motionFor(world.key) : undefined;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -106,6 +143,15 @@ function Card({
     >
       <Link
         to={world.route}
+        onPointerEnter={(e) => {
+          /* Fine pointers only. A touch "enter" fires on the tap that is
+             already navigating away, so a phone would download the clip for a
+             card it is in the middle of leaving. */
+          if (e.pointerType !== "mouse") return;
+          setEverHovered(true);
+          setHovering(true);
+        }}
+        onPointerLeave={() => setHovering(false)}
         className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/40 transition-colors hover:border-transparent"
         style={{ boxShadow: `inset 0 0 0 1px ${world.accent}22` }}
       >
@@ -119,6 +165,19 @@ function Card({
             />
           ) : (
             <DrawnPanel accent={world.accent} />
+          )}
+          {/* A few seconds of the world actually being played, over the still.
+              Mounted only once a pointer has been on the card, so the grid
+              costs exactly what it did before — see `worlds/motion.ts` for why
+              these cannot simply replace the stills. */}
+          {clip && (
+            <img
+              src={clip}
+              alt=""
+              onLoad={() => setMotionReady(true)}
+              className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
+              style={{ opacity: motionReady && hovering ? 1 : 0 }}
+            />
           )}
           {/* Scrim: the captures are bright, and the status pill has to stay
               readable over a white sky as well as a night city. */}
@@ -294,6 +353,14 @@ export default function Game() {
    * result, and it is the moment a visitor stops trusting the search box.
    */
   const [expanded, setExpanded] = useState(false);
+  /* Which hero treatment. `?look=poster` previews one without saving, which
+     is what a link to somebody else should do; anything else uses the pick
+     made at `/looks`. Read once — it cannot change while the page is open. */
+  const [look] = useState<LookId>(() => {
+    const want = new URLSearchParams(window.location.search).get("look") as LookId | null;
+    return want || readLook();
+  });
+
   const collapsed = !expanded && !query.trim() && shown.length > GRID_PREVIEW;
   const visible = collapsed ? shown.slice(0, GRID_PREVIEW) : shown;
 
@@ -365,40 +432,31 @@ export default function Game() {
               renderer is not allowed on the critical path — and it is not. The
               import does not begin until the mark is on screen, and by then
               the picture is already there. */}
-          <div className="flex items-center gap-4 sm:gap-6">
-            <div className="hidden shrink-0 sm:block" aria-hidden>
-              <VibeMark size={96} rotateSeconds={30} priority />
-            </div>
-            <div className="min-w-0">
-              {/* The line the arcade has always been about, and the only one
-                  that says both halves: anybody can add a door, and what you
-                  earn behind it is yours. "Every builder grows the universe"
-                  said the first half only. It is the claim /manifesto spends a
-                  page on ("Build worlds. Share ownership. Play forever.") in
-                  six words, above the name. */}
-              <p className="font-heading text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground sm:text-[10px] sm:tracking-[0.36em]">
-                Powered by creators, owned by players
-              </p>
-              <h1 className="mt-1 font-heading text-3xl font-black tracking-tight sm:mt-2 sm:text-6xl">
-                <span className="text-gradient-mint">VIBEVERSE</span>
-              </h1>
-            </div>
-          </div>
-          {/* Not "by Jack Mielke and friends" any more. The point of the place
-              is that anybody can add a door to it, and a byline quietly says
-              the opposite — the eyebrow above already names the invitation. */}
-          <p className="mt-1.5 font-heading text-[13px] font-semibold leading-snug text-foreground/85 sm:mt-2 sm:text-base">
-            A massive collection of AI-coded games ;)
-          </p>
-          {/* The full pitch is desktop-only; the phone gets the one-line
-              version in the row of chips below. */}
-          <p className="mt-3 hidden max-w-xl text-sm leading-relaxed text-muted-foreground sm:block">
-            {/* The total, not the playable count — this sentence sits directly
-                above a grid of every door, and saying 36 over 45 cards reads
-                as a miscount. The chip below carries the "how many work" nuance. */}
-            {WORLDS.length} worlds and games, all in one browser tab. No install, no
-            account, no launcher — pick a card and you are in it in a few seconds.
-          </p>
+          {/* The lockup — mark, eyebrow, wordmark, tagline, pitch — in
+              whichever of six styles is chosen at `/looks`. It was mint green
+              from the first commit, which is the accent the play *currency*
+              uses everywhere else: the loudest type on the site was quietly
+              saying "coins". See `HomeHero`; picking a winner is a one-line
+              change to `DEFAULT_LOOK` and a delete of the others.
+
+              `VibeMark` rather than `VibeWink` inside it: the flat render
+              paints in the first frame off the image cache and the real
+              geometry fades in once three.js has arrived. This is the page
+              whose entire argument is that it loads instantly, so the renderer
+              is not allowed on the critical path. */}
+          <HomeHero
+            look={look}
+            copy={{
+              eyebrow: "Powered by creators, owned by players",
+              title: "VIBEVERSE",
+              tagline: "A massive collection of AI-coded games ;)",
+              /* The total, not the playable count — this sentence sits
+                 directly above a grid of every door, and saying 36 over 45
+                 cards reads as a miscount. The chip below carries the "how
+                 many work" nuance. */
+              pitch: `${WORLDS.length} worlds and games, all in one browser tab. No install, no account, no launcher — pick a card and you are in it in a few seconds.`,
+            }}
+          />
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10.5px] sm:mt-5 sm:gap-2 sm:text-[11px]">
             {/* "Start at the Terminal" and "The 3D hub" used to lead here —
@@ -418,8 +476,17 @@ export default function Game() {
             >
               <VibeCoinMark size={13} />
               <span className="tabular-nums">{coin.display}</span>
-              <span className="opacity-70">Vibecoin</span>
+              {/* It says "Vibey" because that is what this number is. It read
+                  "Vibecoin" for months while showing the play balance, which
+                  is the one place in the app that actively taught the
+                  confusion the panel at the bottom of this page exists to
+                  clear up. */}
+              <span className="opacity-70">Vibey</span>
             </Link>
+
+            {/* The token's market cap. A number that moves is the cheapest
+                proof that the other half of this is not a metaphor. */}
+            <VibeMarketChip />
             {/* Was a grey span for months: the one record spanning every
                 world in here, rendered as five words you could not click. */}
             <Link
@@ -527,51 +594,13 @@ export default function Game() {
             a row of characters underneath is noise on top of a filtered list. */}
         {!query.trim() && <FeaturedCharacters />}
 
-        {/* The currency and the argument, in one band at the bottom.
-            `/manifesto` has been the best-written page in here and the least
-            reachable — nothing linked to it from the front door. It is the
-            answer to "why does a browser game have money in it", so it belongs
-            directly under the money. */}
-        {!query.trim() && (
-          <section className="mt-14 overflow-hidden rounded-3xl border border-border/40 bg-black/25 p-5 backdrop-blur-sm sm:p-8">
-            <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:gap-8">
-              {/* The flat mark, not `VibeMark`. The hero at the top of this
-                  page already upgrades to the live one, and a second live mark
-                  is a second WebGL context on the page people open *before*
-                  they open a world — which is the whole reason worlds lose
-                  their context to the browser's cap. One canvas per page, and
-                  the one that gets it is the one somebody is looking at. */}
-              <div className="hidden shrink-0 sm:block" aria-hidden>
-                <VibeWink size={84} />
-              </div>
-              <div className="min-w-0">
-                <h2 className="font-heading text-base font-black uppercase tracking-wider text-[#7dffd4]">
-                  Vibey Coins
-                </h2>
-                <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted-foreground">
-                  Every world pays out. Play anything in here and you earn the same
-                  currency, spend it in the arcade on characters nobody else can make,
-                  and carry it back into the next world — no account required to start.
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-[10.5px]">
-                  <Link
-                    to="/arcade"
-                    className="flex items-center gap-1.5 rounded-full border border-[#7dffd4]/35 bg-[#7dffd4]/[0.07] px-4 py-2 font-heading font-semibold uppercase tracking-wider text-[#7dffd4] transition-colors hover:border-[#7dffd4]/60"
-                  >
-                    <VibeCoinMark size={13} />
-                    <span>Spend them</span>
-                  </Link>
-                  <Link
-                    to="/manifesto"
-                    className="rounded-full border border-border/40 px-4 py-2 font-heading font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:border-[#c4b2ff]/60 hover:text-[#c4b2ff]"
-                  >
-                    The Arcade of the Future →
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
+        {/* The band that was here said "Vibey Coins" and described one of the
+            two currencies as though it were the only one. That is the exact
+            confusion worth spending a panel on, so this replaces it with both
+            of them side by side — see `TwoCoins`. Same `!query.trim()` guard:
+            a search is a question about worlds, and a currency explainer under
+            a filtered list is noise. */}
+        {!query.trim() && <TwoCoins />}
 
         <footer className="mt-16 border-t border-border/40 pt-6 text-[11px] text-muted-foreground">
           Built something?{" "}

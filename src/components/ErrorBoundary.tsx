@@ -20,6 +20,13 @@ export function ErrorFallback({ error, onReload }: { error?: Error | null; onRel
   const stale = !webgl && isStaleChunkError(error);
   return (
     <div
+      /* A machine-readable marker for the smoke test. This screen is text, and
+         `route-smoke.mjs` passes a route the moment it renders any text — so
+         the friendly crash screen scored as a working world, and a route that
+         crashed on every visit read "ok" in the one check that exists to catch
+         exactly that. Attribute rather than heading text so a copy edit here
+         cannot quietly switch the detector off. */
+      data-vibe-crash={webgl ? "webgl" : stale ? "stale" : "render"}
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-5 p-6 text-center"
       style={{ background: "radial-gradient(120% 100% at 50% 0%, #16233a 0%, #0b1220 60%, #070b14 100%)" }}
     >

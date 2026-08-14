@@ -67,7 +67,36 @@ page.on("console", (m) => {
 await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 90000 });
 // Click once — pointer-locked shooters usually gate their first frame behind a
 // user gesture, and a start screen is not the picture we want on the card.
-await page.mouse.click(800, 450).catch(() => {});
+//
+// The centre of the viewport is the right guess for a shooter that only wants
+// *a* gesture, and the wrong one for a world with a real menu: Seafair's DEPLOY
+// button sits below the middle, so the click landed on empty sky and the card
+// came out as the title screen. `ROUTE_SHOT_CLICK=x:y` aims it — viewport
+// coordinates, 1600x900. `ROUTE_SHOT_ENTER=<text>,<text>` is the sturdier
+// version where the gate is a button with a name, because a named button
+// survives a layout change and a pair of coordinates does not. It takes a
+// sequence because a menu is rarely one screen — Seafair asks you to deploy
+// and *then* to pick an operative, and a card wants neither of those screens.
+const enter = process.env.ROUTE_SHOT_ENTER;
+if (enter) {
+  for (const label of enter.split(",")) {
+    // A world's menu is usually a canvas-adjacent DOM overlay, so this finds
+    // the real button most of the time; say so loudly when it does not, since
+    // the symptom otherwise is a card showing a menu.
+    const hit = await page
+      .getByText(label.trim(), { exact: false })
+      .first()
+      .click({ timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hit) console.log(`no "${label.trim()}" to click — the shot may be a menu`);
+    await page.waitForTimeout(2500);
+  }
+}
+if (!enter) {
+  const [cx, cy] = (process.env.ROUTE_SHOT_CLICK ?? "800:450").split(":").map(Number);
+  await page.mouse.click(cx, cy).catch(() => {});
+}
 // Optional: walk the player somewhere more photogenic than the spawn point.
 // Spawn frames are usually the worst frame in the game — clipped into
 // geometry, mid-fall, or facing a wall.
@@ -77,6 +106,13 @@ if (walk) {
   // Nudge the view first. Spawn pitch is frequently left staring at the sky.
   const look = process.env.ROUTE_SHOT_LOOK;
   if (look) {
+    // Mouse-look in a pointer-locked world does nothing until the world holds
+    // the lock, and the lock is only granted to a real gesture. Entering
+    // through a menu spends that gesture on the menu, so the world asks for
+    // the lock from a timer and the browser refuses — the symptom is a shot
+    // that ignored ROUTE_SHOT_LOOK entirely. One click on the canvas first.
+    await page.mouse.click(800, 450).catch(() => {});
+    await page.waitForTimeout(600);
     const [dx, dy] = look.split(":").map(Number);
     for (let i = 0; i < 24; i++) {
       await page.mouse.move(800 + (dx / 24) * i, 450 + (dy / 24) * i, { steps: 2 });
