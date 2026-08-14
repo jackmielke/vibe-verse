@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-08-14T05:24:52.671Z",
+  "generated_at": "2026-08-14T05:31:27.841Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "05126219",
+      "date": "2026-08-14",
+      "subject": "Chrome is the front door now, and five more to try",
+      "lede": "`DEFAULT_LOOK` moves to chrome, so a first-time visitor with nothing saved gets the brushed-metal wordmark instead of the mint one. Checked with a clean profile rather than assumed: no localStorage, and the h1 comes up with a transparent fill and the gradient behind it.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "6984f45f",
+      "date": "2026-08-14",
+      "subject": "Seven cards play, and the list is a result rather than a choice",
+      "lede": "\"Every game, or the top ten?\" turned out to be the wrong question — most worlds physically cannot be recorded, so which cards move is discovered, not decided. Fourteen worlds have a `?shot` mode; seven of them move on their own.",
+      "places": [],
+      "files": 9
+    },
     {
       "sha": "c74d8b58",
       "date": "2026-08-14",
@@ -1028,22 +1044,6 @@
       "lede": "The lobby scrolled sideways and ate content — the glue-gun sentence cut mid-word, a second button entirely off-screen past JOIN, DOLPHINS and FLAMINGOS clipped. Now single-column with real tap targets and safe-area padding: mobile-shot reports horizontallyScrolls false and zero offenders at both 390 and 360, which is where things actually break.",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "a1c39062",
-      "date": "2026-08-09",
-      "subject": "SOAKED on a phone: nothing clipped, and thumbs can play it",
-      "lede": "The lobby scrolled sideways and ate content — the glue-gun sentence cut mid-word, a second button entirely off-screen past JOIN, DOLPHINS and FLAMINGOS clipped. Now single-column with real tap targets and safe-area padding: mobile-shot reports horizontallyScrolls false and zero offenders at both 390 and 360, which is where things actually break.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "6a033710",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
     }
   ]
 }
