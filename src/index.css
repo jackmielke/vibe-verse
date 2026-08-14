@@ -293,3 +293,18 @@
   .vibe-caret { animation: none; opacity: 1; }
   .vibe-aurora { animation: none; }
 }
+
+/* Marquee: the wordmark running past behind itself. `translate3d` on the
+   track, so it lives on the compositor and never touches layout on the page
+   that has to paint fastest. The track holds two copies, so -50% is a seamless
+   loop rather than a jump. */
+@keyframes vibeMarqueeRun {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+.vibe-marquee {
+  animation: vibeMarqueeRun 26s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vibe-marquee { animation: none; }
+}
