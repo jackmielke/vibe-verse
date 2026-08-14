@@ -43,6 +43,31 @@ And `vite build` strips types with esbuild without checking them. So a file
 referencing an undefined variable passes both, ships, and white-screens the
 route. That is not hypothetical; it went out that way once.
 
+## Dependencies
+
+**`three` is pinned at 0.160 and everything that draws has to agree with it.**
+Forty worlds import three directly, so moving it is not a version bump, it is a
+day of work in every one of them. The packages *around* three are on caret
+ranges, so they float, and one of them eventually floats past the pin.
+
+`postprocessing` did. It was declared `^6.35.0`, resolved to 6.39, and 6.39 is
+the release that raised its floor to `three >= 0.168`. The way that presented
+is worth remembering, because it is not the way a broken dependency usually
+looks:
+
+- **npm refused to install anything at all.** ERESOLVE, no `node_modules`, so
+  `typecheck`, `build`, `test` and `smoke` were *all* unavailable on a fresh
+  clone — every check this file tells you to run before pushing to a live
+  `main`. Nobody who cloned it could verify a change.
+- **The deploy path never noticed**, because bun does not enforce peer ranges.
+  The build stayed green through the whole thing.
+
+So: pin the offender *below* its breaking release rather than widening the
+three range, and run `npm ci` — not just `bun install` — after touching
+`package.json`, because bun will install a tree npm considers impossible.
+`src/test/threePeers.test.ts` checks the installed tree against every peer
+range in it and names whatever disagrees.
+
 ## Models
 
 **Every `.glb` here has been through `gltf-transform`, and a new one must be
