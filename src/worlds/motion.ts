@@ -31,10 +31,40 @@
  * Re-record when the world changes enough that its card starts lying — the same
  * rule the stills follow, one step livelier.
  */
+import blobMotion from "@/assets/worlds/blob.gif";
 import coilMotion from "@/assets/worlds/coil.gif";
+import fnafMotion from "@/assets/worlds/fnaf.gif";
+import golfMotion from "@/assets/worlds/golf.gif";
+import iSpyMotion from "@/assets/worlds/i-spy.gif";
+import island2Motion from "@/assets/worlds/island-2.gif";
+import runMotion from "@/assets/worlds/run.gif";
 
+/**
+ * Seven, out of fourteen worlds that were tried.
+ *
+ * The list is a *result*, not a choice. `node scripts/world-gifs.mjs` runs
+ * every world with a `?shot` mode through the recorder and the recorder refuses
+ * anything under eight distinct frames, so what is in here is exactly what
+ * turned out to move on its own:
+ *
+ *   too still  home-alone (6 frames), sf (3), san-palmas (2) — the camera sits
+ *              still and nothing walks past
+ *   nothing    splash-royale, drop-zero — their `?shot` mode is for taking a
+ *              still, and it does that job perfectly
+ *   no canvas  seafair, 2048 — drawn in the DOM, so there is nothing to read
+ *
+ * Which is the answer to "why not all of them": having a `?shot` hook is not
+ * the same as having an attract mode, and no amount of wanting makes a static
+ * hallway animate.
+ */
 export const WORLD_MOTION: Record<string, string> = {
+  blob: blobMotion,
   coil: coilMotion,
+  fnaf: fnafMotion,
+  golf: golfMotion,
+  "i-spy": iSpyMotion,
+  "island-2": island2Motion,
+  run: runMotion,
 };
 
 /** The moving version of a world's card, when there is one. */

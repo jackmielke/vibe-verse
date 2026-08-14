@@ -192,10 +192,27 @@ const ticker = setInterval(async () => {
   if (p) process.stdout.write(`\r  ${p.phase} ${p.done}/${p.total}   `);
 }, 700);
 
-const dataUrl = await page.evaluate(
-  (o) => window.__recordGif(o),
-  { ms: MS, fps: FPS, width: WIDTH, colors: COLORS },
-);
+let dataUrl;
+try {
+  dataUrl = await page.evaluate(
+    (o) => window.__recordGif(o),
+    { ms: MS, fps: FPS, width: WIDTH, colors: COLORS },
+  );
+} catch (e) {
+  clearInterval(ticker);
+  const why = String(e?.message ?? e);
+  /* "nothing moved" is a verdict about the world, not a crash in the tool, so
+     it exits the same way a too-still recording does. Reporting it as a failure
+     sent Splash Royale and Drop Zero to the "broken" column when what actually
+     happened is that their `?shot` mode does its job — it takes a still. */
+  if (/nothing on this page moved/.test(why)) {
+    console.error(`REJECTED ${route}: nothing moved. It keeps its still.`);
+    await browser.close();
+    if (server) server.kill();
+    process.exit(2);
+  }
+  throw e;
+}
 clearInterval(ticker);
 process.stdout.write("\r");
 

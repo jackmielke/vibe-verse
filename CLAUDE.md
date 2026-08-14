@@ -123,15 +123,21 @@ The shape every recent world follows (Seafair, San Palmas, The Long Silence):
   line in `src/worlds/art.ts`). A world whose capture only ever produces a
   broken frame ships without art: misleading card art is worse than none.
   - **A world that plays itself can also have a moving card.**
-    `node scripts/route-gif.mjs "/coil?shot" src/assets/worlds/coil.gif --ms
-    2600 --width 320 --fps 12.5 --colors 64`, then a line in
-    `src/worlds/motion.ts`. It needs an attract mode — COIL's `?shot` hands the
-    snake to an AI brain and respawns it, which is why COIL was first; a world
-    that waits at a title screen records a title screen.
-  - The clip is an **upgrade to a still, never a replacement**. It is fetched on
-    hover and nowhere else, because 120 KB × fifty-two cards is six megabytes on
-    the page whose whole argument is that it opens instantly. Verified against a
-    real build: scrolling the entire grid requests no clips at all.
+    `node scripts/world-gifs.mjs` tries every world with a `?shot` mode and
+    keeps what actually moves; `route-gif.mjs` records one. Then a line in
+    `src/worlds/motion.ts`.
+  - **Do not choose which worlds get one — measure.** Seven of fourteen
+    candidates passed. A `?shot` hook is not an attract mode: Splash Royale's
+    and Drop Zero's take a still and nothing self-plays, San Palmas and /sf sit
+    still enough to yield two and three distinct frames, and Seafair and 2048
+    are drawn in the DOM with no canvas to read. The recorder refuses anything
+    under eight distinct frames and exits non-zero, so a world that cannot be
+    filmed keeps its still without anybody having to notice.
+  - The clip is an **upgrade to a still, never a replacement**. They run
+    120–300 KB each, so they are fetched on hover and nowhere else — the front
+    door's whole argument is that it opens instantly. Verified against a real
+    build: scrolling the entire grid requests no clips at all, and hovering one
+    card requests exactly one.
 - A way back to the hub from inside the world, shown when the player is not
   mid-action.
 - Teardown on unmount — dispose the renderer, close audio contexts, remove
