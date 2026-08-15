@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-15T05:54:22.413Z",
+  "generated_at": "2026-08-15T15:23:38.918Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f6b29fbb",
+      "date": "2026-08-15",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "cbd5788a",
       "date": "2026-08-15",
@@ -1035,14 +1043,6 @@
       "lede": "The game is SPLASH ROYALE. The rename is the strings table, the route, the registry key, the card art and the page — not a sweep through 65k lines, because every player-facing word already reads from WATER.strings and the bus re-letters itself from the same record.",
       "places": [],
       "files": 24
-    },
-    {
-      "sha": "375e5d6e",
-      "date": "2026-08-09",
-      "subject": "The battle bus is worth looking at now",
-      "lede": "The opening shot was the inside of a blue box: the spring arm hung off the rider's head while they stood in the hull, so the first thirty seconds of every match framed interior struts and underside panels. The arm now hangs off the BUS, look input orbits it, and a keep-out ellipsoid containing the whole rig — hull, balloon and riders — is solved along the look axis so it can never end up inside again. Wheel and two-f",
-      "places": [],
-      "files": 2
     }
   ]
 }

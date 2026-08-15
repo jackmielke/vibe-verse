@@ -167,6 +167,28 @@ const repoFirstSubject = git(["log", "--format=%cI%x00%s"])
 const repoCommits = Number(git(["rev-list", "--count", "HEAD"]).trim()) - 1;
 const repoHands = new Set(git(["log", "--format=%an"]).split("\n").map((s) => s.trim()).filter(Boolean)).size;
 
+/**
+ * Commits per calendar day, for the grid.
+ *
+ * The per-world dates say what was built; this says when anybody was *here*,
+ * which is a different and in places better story. A fortnight of silence and
+ * then a hundred and ninety-six commits in one day are both facts that no list
+ * of birthdays can show.
+ *
+ * Only days with commits are stored — six hundred zeroes would be most of the
+ * file, and the page infers silence from the gaps.
+ */
+const dayCounts = {};
+for (const line of git(["log", "--format=%cI%x00%cd", "--date=short"]).split("\n").filter(Boolean)) {
+  const [iso, day] = line.split("\0");
+  if (iso === TEMPLATE_ISO) continue;
+  dayCounts[day] = (dayCounts[day] ?? 0) + 1;
+}
+const dayBody = Object.keys(dayCounts)
+  .sort()
+  .map((d) => `  ${JSON.stringify(d)}: ${dayCounts[d]},`)
+  .join("\n");
+
 const sorted = Object.keys(out).sort();
 const body = sorted.map((k) => `  ${JSON.stringify(k)}: ${JSON.stringify(out[k])},`).join("\n");
 
@@ -203,6 +225,14 @@ export const REPO_LIFE = ${JSON.stringify(
 export const WORLD_LIFE: Record<string, WorldLife> = {
 ${body}
 };
+
+/**
+ * Commits per calendar day, UTC. Only days with commits — a day missing from
+ * here had none, which the page reads as silence rather than as absent data.
+ */
+export const COMMIT_DAYS: Record<string, number> = {
+${dayBody}
+};
 `,
   "utf8",
 );
@@ -210,4 +240,6 @@ ${body}
 console.log(`wrote ${OUT} — ${sorted.length} worlds`);
 console.log(`repo: born ${repoFirst?.slice(0, 10)} — "${repoFirstSubject}"`);
 console.log(`      ${repoCommits} commits, ${repoHands} hands (template commit excluded)`);
+const busiest = Object.entries(dayCounts).sort((a, b) => b[1] - a[1])[0];
+console.log(`      ${Object.keys(dayCounts).length} active days, busiest ${busiest?.[0]} with ${busiest?.[1]}`);
 if (missing.length) console.log(`no history for: ${missing.join(", ")}`);

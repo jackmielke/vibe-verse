@@ -28,8 +28,10 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import StarField from "@/components/StarField";
+import DayGrid from "@/components/chronicle/DayGrid";
 import { artFor } from "@/worlds/art";
-import { REPO_LIFE, WORLD_LIFE } from "@/worlds/chronicle";
+import { COMMIT_DAYS, REPO_LIFE, WORLD_LIFE } from "@/worlds/chronicle";
+import { activity, bornOn, busiestDay, dayMs, longestSilence } from "@/worlds/chronicleStats";
 import { WORLDS, type WorldEntry } from "@/worlds/registry";
 import { readPassport, type Stamp } from "@/lib/passport";
 
@@ -103,12 +105,31 @@ export default function Chronicle() {
     return set;
   }, []);
 
+  /** Epoch ms of the earliest stamp in this browser, for the grid's marker. */
+  const arrival = useMemo(() => {
+    const times = (Object.values(readPassport().stamps) as Stamp[])
+      .map((s) => s.first)
+      .filter((n) => typeof n === "number" && n > 0);
+    return times.length ? Math.min(...times) : undefined;
+  }, []);
+
   const beenTo = useMemo(
     () => eras.reduce((n, e) => n + e.worlds.filter((w) => visited.has(w.route)).length, 0),
     [eras, visited],
   );
 
   const ageDays = Math.max(1, Math.floor((Date.now() - Date.parse(REPO_LIFE.born)) / DAY));
+
+  /* Computed once. `Date.now()` is read here rather than inside the helpers so
+     every number on the page agrees about what day it is — a render that
+     straddles midnight would otherwise report a span and a silence measured
+     against two different todays. */
+  const now = useMemo(() => Date.now(), []);
+  const todayKey = new Date(now).toISOString().slice(0, 10);
+  const act = useMemo(() => activity(COMMIT_DAYS, REPO_LIFE.born, now), [now]);
+  const peak = useMemo(() => busiestDay(COMMIT_DAYS), []);
+  const peakBorn = useMemo(() => (peak ? bornOn(WORLD_LIFE, peak.day) : []), [peak]);
+  const quiet = useMemo(() => longestSilence(COMMIT_DAYS, REPO_LIFE.born, now), [now]);
   const busiest = Math.max(...eras.map((e) => e.worlds.length), 1);
 
   return (
@@ -177,6 +198,47 @@ export default function Chronicle() {
                 </span>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* The days themselves, under the months. The bar chart says how many
+            worlds a month produced; this says what the work looked like — and
+            the two disagree in the interesting way, because the busiest day in
+            the vibeverse's history produced no worlds at all. */}
+        <section className="mt-10" aria-label="Every day, by how much was committed">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="font-heading text-sm font-black uppercase tracking-wider text-[#c4b2ff]">
+              Every day
+            </h2>
+            <p className="text-[11.5px] text-muted-foreground">
+              {act.activeDays} of {act.totalDays} days had something committed —{" "}
+              {act.sharePct}% of them.
+            </p>
+          </div>
+          <div className="mt-3">
+            <DayGrid arrival={arrival} />
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {peak && (
+              <Note label="The hardest day">
+                <span className="text-foreground">{longDate(peak.day)}</span> —{" "}
+                {peak.commits} commits.{" "}
+                {peakBorn.length
+                  ? `${peakBorn.map(worldName).join(", ")} ${peakBorn.length === 1 ? "was" : "were"} born that day.`
+                  : "Nothing was born that day; it was all repair and rebuild."}
+              </Note>
+            )}
+            {quiet && (
+              <Note label="The longest quiet">
+                {quiet.days} days without a commit, from{" "}
+                <span className="text-foreground">{longDate(quiet.from)}</span> to{" "}
+                <span className="text-foreground">{longDate(quiet.to)}</span>.{" "}
+                {quiet.to === todayKey
+                  ? "That silence is the one we are in now."
+                  : "Then it started again."}
+              </Note>
+            )}
           </div>
         </section>
 
@@ -297,6 +359,32 @@ export default function Chronicle() {
           </p>
         </footer>
       </div>
+    </div>
+  );
+}
+
+/** `2026-06-18` → `18 June 2026`. */
+function longDate(day: string): string {
+  return new Date(dayMs(day)).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** A world's display name, falling back to its key if it has left the registry. */
+function worldName(key: string): string {
+  return WORLDS.find((w) => w.key === key)?.name ?? key;
+}
+
+function Note({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-black/20 p-3.5">
+      <div className="font-heading text-[8.5px] font-bold uppercase tracking-[0.18em] text-muted-foreground/60">
+        {label}
+      </div>
+      <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">{children}</p>
     </div>
   );
 }
