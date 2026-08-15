@@ -54,7 +54,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { WorldBox } from "@/components/city/cardboardIsland";
-import { buildTraffic } from "./traffic";
+import { buildTraffic, type Traffic } from "./traffic";
 
 export interface DistrictOpts {
   /** Deterministic — the same seed always builds the same city. */
@@ -86,6 +86,8 @@ export interface District {
   pads: Array<{ x: number; z: number; y: number }>;
   /** Flip the whole district between day and night. */
   setDay(day: boolean): void;
+  /** The cars, for anyone who wants to get into one. See `src/city/traffic.ts`. */
+  traffic: Traffic;
   /**
    * Drive the traffic.
    *
@@ -1174,6 +1176,7 @@ export function buildDistrict(opts: DistrictOpts): District {
     group,
     boxes,
     pads,
+    traffic,
     setDay,
     update,
     dispose() {

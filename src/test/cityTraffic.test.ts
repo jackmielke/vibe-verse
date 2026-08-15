@@ -79,6 +79,40 @@ describe("city traffic", () => {
     t.dispose();
   });
 
+  it("hands a car over to a driver and takes it back", () => {
+    const boxes: WorldBox[] = [];
+    const t = buildTraffic({ ...OPTS, boxes });
+    // Settle, then stand in the road until something stops for us.
+    let ride = null as ReturnType<typeof t.nearestRidable>;
+    const stander = new THREE.Vector3(-20 + 12 * 0.22, 0, 0);
+    for (let i = 0; i < 600 && !ride; i++) {
+      t.update(1 / 60, stander);
+      ride = t.nearestRidable(stander.x, stander.z, 8);
+    }
+    expect(ride).not.toBeNull();
+
+    const claimed = t.claim(ride!.id);
+    expect(claimed).not.toBeNull();
+    // A claimed car cannot be claimed twice, and stops being offered.
+    expect(t.claim(ride!.id)).toBeNull();
+
+    // Its box must not block its own driver.
+    t.update(1 / 60, stander);
+    const box = boxes.find((b) => b.height < 0);
+    expect(box).toBeDefined();
+
+    // Drive it somewhere no lane goes — up onto a pavement — and it stays put.
+    t.drive(ride!.id, 5, 0, 5, 1.2);
+    for (let i = 0; i < 30; i++) t.update(1 / 60, null);
+    expect(t.nearestRidable(5, 5, 3)).toBeNull();
+
+    // Handed back, it rejoins a lane and becomes solid again.
+    t.release(ride!.id);
+    t.update(1 / 60, null);
+    expect(box!.height).toBeGreaterThan(1);
+    t.dispose();
+  });
+
   it("takes its boxes back out on dispose", () => {
     const other: WorldBox = { minX: 0, maxX: 1, minZ: 0, maxZ: 1, base: 0, height: 1 };
     const boxes: WorldBox[] = [other];

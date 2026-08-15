@@ -695,6 +695,16 @@ export default function City() {
   const drivingKartRef = useRef(-1);
   const enterKartRef = useRef<((i: number) => void) | null>(null);
   const exitKartRef = useRef<(() => void) | null>(null);
+  /**
+   * The traffic car standing in hop-in range, if any.
+   *
+   * Separate from `nearKart` because the two parked vibe karts are fixed
+   * objects with an index into `kartStates`, and a city car is a fleet member
+   * identified by its own id — see `src/city/traffic.ts`. They share the
+   * driving physics and the hop-out button; only the way you get in differs.
+   */
+  const [nearRide, setNearRide] = useState(-1);
+  const enterRideRef = useRef<((id: number) => void) | null>(null);
   const [snackMsg, setSnackMsg] = useState<string | null>(null);
   // The order-rail flavor line fades on its own a few seconds after a buy.
   useEffect(() => {
@@ -2066,11 +2076,28 @@ export default function City() {
     // mesh comes from karts.ts; the arcade driving physics live in the
     // tick below (throttle + steer, wall sliding, ground follow — and
     // yes, you can drive straight off the island rim).
-    const kartStates = [
-      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b") },
-      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c") },
+    /*
+     * `mesh` is the parked go-kart's own model; `ride` is the id of a city car
+     * whose wheel you have taken. Exactly one of them is set. The third entry
+     * is the standing slot for a commandeered city car — a fixed index rather
+     * than a push/pop, because `drivingKartRef` holds an index into this array
+     * and shuffling it mid-drive would hand you a different vehicle.
+     */
+    const kartStates: Array<{
+      x: number; y: number; z: number; yaw: number;
+      speed: number; vy: number; steer: number;
+      mesh: ReturnType<typeof buildKart> | null;
+      ride: number;
+    }> = [
+      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b"), ride: -1 },
+      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c"), ride: -1 },
+      { x: 0, y: 0, z: 0, yaw: 0, speed: 0, vy: 0, steer: 0, mesh: null, ride: -1 },
     ];
+    const RIDE_SLOT = kartStates.length - 1;
+    /** True while the player is sitting inside a city car (not a go-kart). */
+    const insideACar = () => kartStates[RIDE_SLOT].ride >= 0;
     for (const k of kartStates) {
+      if (!k.mesh) continue;
       k.mesh.group.position.set(k.x, k.y, k.z);
       k.mesh.group.rotation.y = k.yaw;
       scene.add(k.mesh.group);
@@ -2081,6 +2108,32 @@ export default function City() {
       setDrivingKart(i);
       soundsRef.current?.chime(4);
     };
+    /**
+     * Take the wheel of a city car.
+     *
+     * The car leaves the fleet (`claim`) and the standing ride slot picks up
+     * its pose, after which it is driven by exactly the same arcade physics as
+     * the two parked go-karts. The avatar is hidden for the duration: they are
+     * inside a car with a roof on it, and a 1.7 m figure standing through the
+     * windscreen is worse than no figure at all.
+     */
+    enterRideRef.current = (id) => {
+      const ride = district.traffic.claim(id);
+      if (!ride) return;
+      const k = kartStates[RIDE_SLOT];
+      k.ride = id;
+      k.x = ride.x;
+      k.y = 0;
+      k.z = ride.z;
+      k.yaw = ride.yaw + Math.PI; // see the note where `drive` is called
+      k.speed = 0;
+      k.vy = 0;
+      k.steer = 0;
+      drivingKartRef.current = RIDE_SLOT;
+      setDrivingKart(RIDE_SLOT);
+      setNearRide(-1);
+      soundsRef.current?.chime(4);
+    };
     exitKartRef.current = () => {
       const i = drivingKartRef.current;
       if (i < 0) return;
@@ -2089,6 +2142,10 @@ export default function City() {
       setDrivingKart(-1);
       k.speed = 0;
       k.steer = 0;
+      if (k.ride >= 0) {
+        district.traffic.release(k.ride);
+        k.ride = -1;
+      }
       // Hop off to the kart's right with a small pop.
       player.position.set(
         k.x + Math.cos(k.yaw) * 1.9,
@@ -3968,12 +4025,21 @@ export default function City() {
         );
         setNearBlasterRack(!rs.active && rebel.nearRack(player.position));
       }
+      // Nearest city car you could get into — only while on the streets, and
+      // only when one has actually stopped near you.
+      setNearRide(() => {
+        if (drivingKartRef.current >= 0) return -1;
+        if (Math.abs(player.position.y) > 3) return -1;
+        const r = district.traffic.nearestRidable(player.position.x, player.position.z, 6);
+        return r ? r.id : -1;
+      });
       // Nearest parked kart in hop-on range (hidden while driving).
       {
         let nk = -1;
         if (drivingKartRef.current < 0) {
           for (let i = 0; i < kartStates.length; i++) {
             const k = kartStates[i];
+            if (!k.mesh) continue; // the ride slot has no parked model
             if (
               Math.hypot(player.position.x - k.x, player.position.z - k.z) < 5 &&
               Math.abs(player.position.y - k.y) < 4
@@ -5537,6 +5603,19 @@ export default function City() {
       // driven one. Parked karts idle with a faint underglow.
       for (let i = 0; i < kartStates.length; i++) {
         const k = kartStates[i];
+        if (k.ride >= 0) {
+          // A commandeered city car: the fleet still draws it, we just say
+          // where. Its wheels and body come from src/city/traffic.ts.
+          /*
+           * `+ π` is the whole handshake between two forward conventions.
+           * City's kart physics drives toward (sin yaw, cos yaw) — +Z forward,
+           * inherited from `karts.ts`. The Vibe Kart model is −Z forward. Pass
+           * the raw yaw and the car drives perfectly, backwards.
+           */
+          district.traffic.drive(k.ride, k.x, k.y, k.z, k.yaw + Math.PI);
+          continue;
+        }
+        if (!k.mesh) continue;
         k.mesh.group.position.set(k.x, k.y, k.z);
         k.mesh.group.rotation.y = k.yaw;
         if (drivingKartRef.current === i) {
@@ -5869,7 +5948,7 @@ export default function City() {
         dolly.position.lerp(desired, 1 - Math.pow(followBase, dt));
         // Hide the avatar mesh in first-person — otherwise the camera
         // is inside the player's head and the view fills with model.
-        modelHolder.visible = !vrFirstPerson;
+        modelHolder.visible = !vrFirstPerson && !insideACar();
 
         // Keep fog comfy in VR (no zoom-out gesture available).
         const fogNow = scene.fog as THREE.Fog;
@@ -5884,7 +5963,15 @@ export default function City() {
           camera.updateProjectionMatrix();
         }
       } else {
-        modelHolder.visible = true;
+        /*
+         * Visible unless you are sitting in a car.
+         *
+         * This line runs every frame, so setting `visible = false` at the
+         * moment you take the wheel does not survive to the next one — which is
+         * how the first version of the ride shipped with the driver's head
+         * poking up through the roof.
+         */
+        modelHolder.visible = !insideACar();
         // Vibe Island arrival: sweep from a far, high establishing shot
       // down behind the player. Wall-clock so slow devices never see a
       // stretched-out crawl.
@@ -8021,6 +8108,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
             >
               🏎️ Drive the vibe kart
+            </button>
+          )}
+          {nearRide >= 0 && nearKart < 0 && drivingKart < 0 && (
+            <button
+              onClick={(e) => {
+                enterRideRef.current?.(nearRide);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              🚗 Take the wheel
             </button>
           )}
           {nearSnackfe && (

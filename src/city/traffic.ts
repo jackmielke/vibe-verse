@@ -287,6 +287,24 @@ interface Car {
   box: WorldBox;
   /** Slot in its model's instanced meshes. */
   slot: number;
+  /**
+   * Somebody is driving this one. It leaves the AI entirely: no lane queue, no
+   * signals, no collision box, and its pose comes from `drive()` instead of
+   * from `t`. A car cannot block its own driver.
+   */
+  driven: boolean;
+}
+
+/** A car you can get into, or are already in. */
+export interface TrafficRide {
+  id: number;
+  x: number;
+  z: number;
+  yaw: number;
+  /** Half-extents and roof height, for seating a driver and aiming a camera. */
+  halfLong: number;
+  halfWide: number;
+  roofY: number;
 }
 
 export interface Traffic {
@@ -301,6 +319,22 @@ export interface Traffic {
    * every direction blocked and cannot walk out. Pass null to skip both.
    */
   update(dt: number, player: THREE.Vector3 | null): void;
+  /**
+   * The nearest car close enough and slow enough to get into, or null.
+   *
+   * "Slow enough" is the interesting half. You cannot leap into a car doing
+   * 12 m/s — but you never have to wait for a red light either, because cars
+   * already brake for anybody standing in the road. Step off the kerb, the next
+   * one stops for you, and now it is under the threshold. That flow was not
+   * designed; it fell out of the braking rule.
+   */
+  nearestRidable(x: number, z: number, radius: number): TrafficRide | null;
+  /** Take the wheel. The car leaves the fleet and stops colliding with you. */
+  claim(id: number): TrafficRide | null;
+  /** Put the claimed car somewhere. The caller owns its pose until release. */
+  drive(id: number, x: number, y: number, z: number, yaw: number): void;
+  /** Hand it back. It rejoins the lane nearest to where it was abandoned. */
+  release(id: number): void;
   dispose(): void;
 }
 
@@ -388,6 +422,7 @@ export function buildTraffic(opts: {
             height: 1.3,
             box: { minX: 0, maxX: 0, minZ: 0, maxZ: 0, base: 0, height: 0 },
             slot: 0,
+            driven: false,
           });
         }
       }
@@ -630,7 +665,10 @@ export function buildTraffic(opts: {
   const clearAhead = (car: Car, player: THREE.Vector3 | null): number => {
     let best = Infinity;
     for (const other of lanes.get(laneKey(car)) ?? []) {
-      if (other === car) continue;
+      // A driven car's `t` is stale — its real position comes from `drive()`.
+      // Other cars still brake for it, through the `player` check below, which
+      // is the same point in space while somebody is at the wheel.
+      if (other === car || other.driven) continue;
       const d = wrap((other.t - car.t) * car.dir) - car.halfLong - other.halfLong;
       if (d > -0.5 && d < best) best = d;
     }
@@ -689,6 +727,9 @@ export function buildTraffic(opts: {
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
 
     for (const car of cars) {
+      // A driven car is nobody's business but its driver's: `drive()` writes
+      // its transform and its box stays collapsed.
+      if (car.driven) continue;
       /*
        * Target speed.
        *
@@ -781,9 +822,122 @@ export function buildTraffic(opts: {
     }
   };
 
+  /** Write one car's transform into its model's instanced meshes. */
+  const pose = (car: Car, x: number, y: number, z: number, yaw: number) => {
+    const b = built[car.model];
+    Q.setFromAxisAngle(UP, yaw);
+    P.set(x, y, z);
+    M.compose(P, Q, ONE);
+    for (const part of b.parts) part.setMatrixAt(car.slot, M);
+    for (let w = 0; w < b.wheels.length; w++) {
+      const spec = b.wheels[w];
+      WE.set(car.spin, 0, 0);
+      WQ.setFromEuler(WE).premultiply(Q);
+      WP.set(spec.x, spec.y, spec.z).applyQuaternion(Q).add(P);
+      WSCALE.set(
+        spec.width / TYRE_BASE.width,
+        spec.radius / TYRE_BASE.radius,
+        spec.radius / TYRE_BASE.radius,
+      );
+      M.compose(WP, WQ, WSCALE);
+      b.tyres.setMatrixAt(car.slot * 4 + w, M);
+      b.rims.setMatrixAt(car.slot * 4 + w, M);
+    }
+    for (const part of b.parts) part.instanceMatrix.needsUpdate = true;
+    b.tyres.instanceMatrix.needsUpdate = true;
+    b.rims.instanceMatrix.needsUpdate = true;
+  };
+
+  const rideOf = (car: Car, id: number): TrafficRide => ({
+    id,
+    x: car.axis === 0 ? car.lane : car.t,
+    z: car.axis === 0 ? car.t : car.lane,
+    // Kart local space is −Z forward; this is the same mapping the AI uses.
+    yaw: car.axis === 0 ? (car.dir > 0 ? Math.PI : 0) : car.dir > 0 ? -Math.PI / 2 : Math.PI / 2,
+    halfLong: car.halfLong,
+    halfWide: car.halfWide,
+    roofY: car.height,
+  });
+
+  const nearestRidable = (x: number, z: number, radius: number): TrafficRide | null => {
+    let best: TrafficRide | null = null;
+    let bestD = radius * radius;
+    for (let i = 0; i < cars.length; i++) {
+      const car = cars[i];
+      if (car.driven) continue;
+      // Crawling counts. A car stopped in a queue or held at a red is the one
+      // you want, and 3.5 m/s is walking pace — you can catch it.
+      if (car.speed > 3.5) continue;
+      const cx = car.axis === 0 ? car.lane : car.t;
+      const cz = car.axis === 0 ? car.t : car.lane;
+      const d = (x - cx) ** 2 + (z - cz) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = rideOf(car, i);
+      }
+    }
+    return best;
+  };
+
   return {
     group,
     update,
+    nearestRidable,
+
+    claim(id) {
+      const car = cars[id];
+      if (!car || car.driven) return null;
+      const ride = rideOf(car, id);
+      car.driven = true;
+      car.speed = 0;
+      // Collapse the box rather than removing it: the array is held live by
+      // `CollisionWorld` and by whoever else has a reference, and splicing it
+      // mid-frame would shift every index after it.
+      car.box.minX = car.box.maxX = car.box.minZ = car.box.maxZ = 0;
+      car.box.height = -1000;
+      return ride;
+    },
+
+    drive(id, x, y, z, yaw) {
+      const car = cars[id];
+      if (!car || !car.driven) return;
+      // Wheels turn off the distance covered, same as the AI's.
+      car.spin += Math.hypot(x - (car.axis === 0 ? car.lane : car.t), z - (car.axis === 0 ? car.t : car.lane)) / 0.32;
+      if (car.axis === 0) {
+        car.lane = x;
+        car.t = z;
+      } else {
+        car.lane = z;
+        car.t = x;
+      }
+      pose(car, x, y, z, yaw);
+    },
+
+    release(id) {
+      const car = cars[id];
+      if (!car || !car.driven) return;
+      /*
+       * Rejoin the road.
+       *
+       * `drive` has been storing the car's world position in `lane`/`t`, which
+       * for a car that has been driven up a pavement is not a lane at all. So
+       * it snaps to the nearest centreline for its own axis, keeps the offset
+       * that puts it on the right-hand side, and carries on. The snap is a jump
+       * of a few metres and it reads as the driver getting back in and pulling
+       * out — the alternative is a car permanently parked wherever it was left,
+       * which drains the fleet one abandoned car at a time.
+       */
+      let bestI = 0;
+      for (let k = 1; k < centrelines.length; k++) {
+        if (Math.abs(centrelines[k] - car.lane) < Math.abs(centrelines[bestI] - car.lane)) bestI = k;
+      }
+      car.laneIndex = bestI;
+      car.lane = centrelines[bestI] + (car.axis === 0 ? -car.dir : car.dir) * (street * 0.22);
+      car.t = THREE.MathUtils.clamp(car.t, -half, half);
+      car.speed = 0;
+      car.driven = false;
+    },
+
     dispose() {
       for (const t of trash) t.dispose();
       for (const b of built) {
