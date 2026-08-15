@@ -49,17 +49,48 @@ const TAU = Math.PI * 2;
 export const PRONE_PITCH = 1.42;
 
 export interface SwimInput {
-  /** Horizontal speed, m/s. Drives both the blend and the stroke rate. */
+  /** Horizontal speed, m/s. Decides how prone the body is and how fast it strokes. */
   speed: number;
-  /** Seconds. Any clock will do; only differences matter. */
-  t: number;
+  /**
+   * Stroke phase, in cycles. ACCUMULATED by the caller — `phase += strokeRate(speed) * dt`
+   * — never computed as clock x rate.
+   *
+   * That distinction is the whole reason this is a phase and not a timestamp.
+   * Multiplying an absolute clock by a rate that depends on current speed means
+   * every change in speed instantly rescales all of the phase accumulated so
+   * far: five minutes into a session, a swimmer slowing by a tenth of a metre
+   * per second teleports their stroke through a hundred radians. Speed changes
+   * continuously — waves, drag, the stick — so the stroke was effectively being
+   * re-randomised every frame. It reads exactly as "glitchy", and no amount of
+   * tuning the pose fixes it, because the pose was never the problem.
+   */
+  phase: number;
+}
+
+/**
+ * Strokes per second at a given speed. A steady swim lands near one a second,
+ * which is about what a person does.
+ */
+export function strokeRate(speed: number) {
+  return 0.62 + Math.max(0, speed) * 0.14;
 }
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+/** Wrap into [-PI, PI]. The shoulder turns full revolutions; the angle should not. */
+const wrapPi = (a: number) => ((((a + PI) % TAU) + TAU) % TAU) - PI;
+/**
+ * Every number in a pose is an angle, so they blend the SHORT way round.
+ *
+ * The crawl's shoulder turns full revolutions and its angle is wrapped into
+ * [-PI, PI]; a plain lerp from the treading pose across that wrap sends the arm
+ * the long way round the body, and mid-blend is exactly when a player is
+ * looking — it is the moment they push off and start swimming.
+ */
+const lerpAngle = (a: number, b: number, k: number) => a + wrapPi(b - a) * k;
 const lerpVec = (out: Vec3, a: Vec3, b: Vec3, k: number) => {
-  out.x = lerp(a.x, b.x, k);
-  out.y = lerp(a.y, b.y, k);
-  out.z = lerp(a.z, b.z, k);
+  out.x = lerpAngle(a.x, b.x, k);
+  out.y = lerpAngle(a.y, b.y, k);
+  out.z = lerpAngle(a.z, b.z, k);
 };
 const lerpLimb = (out: LimbPose, a: LimbPose, b: LimbPose, k: number) => {
   lerpVec(out.upper, a.upper, b.upper, k);
@@ -68,8 +99,10 @@ const lerpLimb = (out: LimbPose, a: LimbPose, b: LimbPose, k: number) => {
 };
 
 /** Treading water: upright, hands sculling, eggbeater kick. */
-function tread(p: DancePose, t: number) {
-  const c = t * 1.5; // slow — treading is meant to look sustainable
+function tread(p: DancePose, phase: number) {
+  // Slower than the crawl, off the same accumulated phase — treading is meant
+  // to look sustainable.
+  const c = phase * 0.55;
   const s = Math.sin(c * TAU);
   const s2 = Math.sin(c * TAU + PI);
   p.rootY = 0.04 * Math.sin(c * TAU * 0.5) - 0.02;
@@ -87,35 +120,75 @@ function tread(p: DancePose, t: number) {
 }
 
 /**
- * Front crawl. The root is pitched prone by the caller, so "swing the arm
- * forward" here comes out as "lift it up out of the water and reach".
+ * Front crawl.
+ *
+ * The root is pitched prone by the caller, so a shoulder swinging "forward"
+ * here comes out as an arm lifting out of the water, reaching over the head
+ * and pulling back down the body — which is why the shoulder angle rises
+ * MONOTONICALLY through a full turn rather than swinging back and forth. The
+ * first version oscillated it, and an arm that reverses at the top of its
+ * travel is a doggy paddle no amount of tuning rescues.
+ *
+ * Two things are deliberately not where you would first put them:
+ *
+ *  - **The body roll is on the hips and torso, not on `rootRoll`.** The root's
+ *    euler is XYZ, so its Z is applied BEFORE the prone pitch, in the frame
+ *    where the body is still standing up — which means on a swimmer it does
+ *    not roll them at all, it swings them left and right like a fish tail. A
+ *    joint rotation about the model's own Y is a twist about the body's long
+ *    axis once that body is prone, and that is what a roll is.
+ *  - **Nothing is clipped with `max(0, ...)`.** A half-rectified sine has a
+ *    kink in its derivative at every zero crossing, and a kink in an elbow
+ *    twice a stroke is precisely the sort of thing that reads as "glitchy"
+ *    without ever looking like a specific mistake.
  */
-function crawl(p: DancePose, t: number, rate: number) {
-  const c = t * rate;
-  const ph = c * TAU;
-  // One arm pulls while the other recovers, half a cycle apart. The swing
-  // sweeps a full circle rather than swinging back and forth — a crawl that
-  // reverses at the top is a doggy paddle.
-  const armSwing = (o: number) => 0.55 + 2.05 * Math.cos(ph + o);
-  // Elbow folds through the recovery (the half where the arm is out of the
-  // water) and straightens for the catch.
-  const armBend = (o: number) => 0.35 + 0.7 * Math.max(0, Math.sin(ph + o));
-  setArm(p.armL, 1, armSwing(0), 0.2, armBend(0), 0.1);
-  setArm(p.armR, -1, armSwing(PI), 0.2, armBend(PI), 0.1);
-  // Body roll follows the pulling arm, which is most of what makes a crawl
-  // read as a crawl from behind.
-  p.rootRoll = 0.3 * Math.sin(ph);
-  p.rootY = 0.03 * Math.sin(ph * 2);
-  p.hips.z = 0.08 * Math.sin(ph);
-  p.torso.z = 0.1 * Math.sin(ph);
-  // Breathe to one side, once a cycle, on the roll that favours it.
-  const breath = Math.max(0, Math.sin(ph - 0.6));
-  p.head.x = -0.35 + 0.1 * breath;
-  p.head.y = 0.75 * breath * breath;
-  // Flutter kick: small, fast, knees barely bent. Three beats to the stroke.
-  const kick = Math.sin(ph * 3);
-  setLeg(p.legL, 1, 0.34 * kick, 0.06, 0.28 + 0.22 * Math.max(0, kick), 0.5);
-  setLeg(p.legR, -1, -0.34 * kick, 0.06, 0.28 + 0.22 * Math.max(0, -kick), 0.5);
+function crawl(p: DancePose, phase: number) {
+  const ph = phase * TAU;
+
+  /**
+   * One arm, `off` out of phase with the other.
+   *
+   * The phase is warped so the recovery is quick and the pull is long, which
+   * is the asymmetry that makes a crawl read as effort rather than as a
+   * windmill: slope is 1 + 0.4·sin(a), above one through the recovery half and
+   * below it through the pull, and never negative, so the sweep stays
+   * monotonic.
+   */
+  const arm = (limb: LimbPose, side: number, off: number) => {
+    const a = ph + off;
+    const swing = a - 0.4 * Math.cos(a) + 0.4;
+    // 1 in the middle of the recovery, 0 in the middle of the pull.
+    const rec = 0.5 + 0.5 * Math.sin(a);
+    // High elbow over the water, long arm through the catch. And the arm
+    // swings wider on the way over, or it scythes through the head.
+    setArm(limb, side, wrapPi(swing), 0.12 + 0.28 * rec, 0.16 + 0.72 * rec, 0.05);
+  };
+  arm(p.armL, 1, 0);
+  arm(p.armR, -1, PI);
+
+  // Roll toward whichever arm is pulling. Most of what makes a crawl read as a
+  // crawl from behind, and the reason the head has somewhere to turn to.
+  const roll = 0.3 * Math.sin(ph);
+  p.hips.y = roll;
+  p.torso.y = roll * 0.55;
+  p.rootY = 0.02 * Math.sin(ph * 2);
+
+  // Breathe once a cycle, to the side the roll is already going. The power
+  // shapes how long the head stays turned; at six it was a spike, and a head
+  // that snaps forty degrees and back inside a fifth of a second is a twitch,
+  // not a breath.
+  const breath = Math.pow(0.5 + 0.5 * Math.sin(ph + 0.9), 2.5);
+  p.head.x = -0.28 + 0.14 * breath;
+  p.head.y = roll * 0.35 + 0.5 * breath;
+
+  // Four-beat flutter: two full oscillations to one arm cycle, with enough
+  // travel to read as a kick. Three oscillations put the legs at better than
+  // three hertz, which on a low-poly leg is not a kick, it is a buzz.
+  const kp = ph * 2;
+  const k = Math.sin(kp);
+  const kBend = (x: number) => 0.18 + 0.3 * (0.5 + 0.5 * x);
+  setLeg(p.legL, 1, 0.42 * k, 0.05, kBend(k), 0.5);
+  setLeg(p.legR, -1, -0.42 * k, 0.05, kBend(-k), 0.5);
 }
 
 const _tread = createDancePose();
@@ -136,14 +209,11 @@ export function evalSwim(out: DancePose, input: SwimInput): { pose: DancePose; p
   // under the target, and a stroke that only goes properly flat at maximum
   // speed spends its whole life half-upright.
   const prone = THREE.MathUtils.smoothstep(speed, 0.4, 2.4);
-  // Stroke rate rises with speed but never stops: a stationary swimmer still
-  // sculls, and a frozen pose in water looks like a corpse.
-  const rate = 0.42 + speed * 0.085;
 
   resetDancePose(_tread);
   resetDancePose(_crawl);
-  tread(_tread, input.t);
-  crawl(_crawl, input.t, rate);
+  tread(_tread, input.phase);
+  crawl(_crawl, input.phase);
 
   resetDancePose(out);
   out.rootY = lerp(_tread.rootY, _crawl.rootY, prone);

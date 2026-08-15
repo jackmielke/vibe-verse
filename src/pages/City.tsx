@@ -72,7 +72,7 @@ import {
   OCEAN_DAY,
   OCEAN_NIGHT,
 } from "@/city/ocean";
-import { buildSplash, evalSwim, PRONE_PITCH } from "@/city/swim";
+import { buildSplash, evalSwim, strokeRate, PRONE_PITCH } from "@/city/swim";
 import { createSnowCover } from "@/city/snowCover";
 import { createHeadMount } from "@/city/headMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
@@ -3537,12 +3537,44 @@ export default function City() {
        * Equip a hat and, optionally, hold a dance — the pair a harness needs to
        * tell "sits on the head" from "sits where the head usually is".
        */
+      /**
+       * Freeze the stroke at an exact phase, or null to let the clock run.
+       * `scripts/swim-strip.mjs` walks a full cycle with this.
+       */
+      (window as unknown as Record<string, unknown>).__citySwimPose = (
+        phase: number | null,
+        speed = 3.2,
+      ) => {
+        devSwimPose = phase === null ? null : { phase, speed };
+      };
       (window as unknown as Record<string, unknown>).__cityHat = (
         hat: string | null,
         dance: string | null,
       ) => {
         if (hat) applyHat(hat);
         setDance(dance);
+      };
+      /**
+       * Which joints the pose system actually got hold of on this character.
+       *
+       * The stroke can be perfect and still look broken if the rig's arm bones
+       * did not match: the body pitches prone, the mixer keeps playing idle on
+       * the unbound limbs, and the result is a face-down avatar doing a
+       * standing animation. That failure is per-character and silent.
+       */
+      (window as unknown as Record<string, unknown>).__cityRig = () => ({
+        bound: danceSk?.bound ?? 0,
+        hips: !!danceSk?.hips,
+        spine: !!danceSk?.spine,
+        torso: !!danceSk?.torso,
+        head: !!danceSk?.head,
+        armL: [!!danceSk?.armL.upper, !!danceSk?.armL.lower],
+        armR: [!!danceSk?.armR.upper, !!danceSk?.armR.lower],
+        legL: [!!danceSk?.legL.upper, !!danceSk?.legL.lower, !!danceSk?.legL.tip],
+        legR: [!!danceSk?.legR.upper, !!danceSk?.legR.lower, !!danceSk?.legR.tip],
+      });
+      (window as unknown as Record<string, unknown>).__cityChar = (name: string) => {
+        loadPilotRef.current?.(name);
       };
       (window as unknown as Record<string, unknown>).__citySwimState = () => ({
         swimming,
@@ -3568,6 +3600,11 @@ export default function City() {
        */
       (window as unknown as Record<string, unknown>).__cityDay = (on: boolean) => {
         setDayMode(on);
+        // The ref too, not just the state. `dayModeRef` is updated by an effect
+        // on the next React render, and anything that re-applies the
+        // atmosphere before then — the weather setter does — reads the stale
+        // value and puts the world straight back to night.
+        dayModeRef.current = on;
         applyMode(on);
       };
 
@@ -3800,7 +3837,23 @@ export default function City() {
     let swimProne = 0;
     /** DEV-only synthetic forward input; see `__citySwim`. */
     let devForward = 0;
+    /** DEV-only frozen stroke phase; see `__citySwimPose`. */
+    let devSwimPose: { phase: number; speed: number } | null = null;
     let swimKickTimer = 0;
+    /**
+     * Stroke phase, in cycles, ACCUMULATED — never derived from the clock.
+     *
+     * See the note on `SwimInput.phase`: a phase computed as clock x rate
+     * teleports every time the rate changes, and the rate follows speed, which
+     * follows the waves and the stick. It kept the pose valid and made the
+     * motion nonsense.
+     */
+    let swimPhase = 0;
+    /**
+     * Speed, smoothed. It feeds how prone the body is, so raw speed makes a
+     * swimmer pitch up and down every time a wave takes the edge off them.
+     */
+    let swimSpeedEased = 0;
     const swimPose = createDancePose();
     let lastRebelShot = 0; // KeyF autofire cooldown
     let modelYaw = 0;
@@ -5086,7 +5139,16 @@ export default function City() {
          catalogue and on Flux, none of which ship a swim clip. */
       swimWeight = stepDanceWeight(swimWeight, swimming, dt);
       if (swimWeight > 0) {
-        swimProne = evalSwim(swimPose, { speed: hSpeed, t: now * 0.001 }).prone;
+        swimSpeedEased += (hSpeed - swimSpeedEased) * (1 - Math.pow(0.02, dt));
+        swimPhase += strokeRate(swimSpeedEased) * dt;
+        // The stroke is a pure function of (speed, phase), which is what lets a
+        // harness freeze it at an exact point in the cycle and photograph a
+        // whole one — motion is the only way to judge an animation, and a
+        // screenshot of a running clock never lands on the same frame twice.
+        swimProne = evalSwim(
+          swimPose,
+          devSwimPose ?? { speed: swimSpeedEased, phase: swimPhase },
+        ).prone;
       } else {
         swimProne = 0;
       }
@@ -6009,6 +6071,9 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__citySwim;
       delete (window as unknown as Record<string, unknown>).__citySnow;
       delete (window as unknown as Record<string, unknown>).__cityHat;
+      delete (window as unknown as Record<string, unknown>).__citySwimPose;
+      delete (window as unknown as Record<string, unknown>).__cityRig;
+      delete (window as unknown as Record<string, unknown>).__cityChar;
       delete (window as unknown as Record<string, unknown>).__citySwimState;
       soundsRef.current?.dispose();
       soundsRef.current = null;
