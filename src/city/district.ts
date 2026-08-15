@@ -54,6 +54,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { WorldBox } from "@/components/city/cardboardIsland";
+import { buildTraffic } from "./traffic";
 
 export interface DistrictOpts {
   /** Deterministic — the same seed always builds the same city. */
@@ -73,6 +74,8 @@ export interface DistrictOpts {
    * list of things somebody remembered to include.
    */
   snow?: { patch(m: THREE.Material | THREE.Material[] | null | undefined): void };
+  /** Thin the traffic out and drop its shadows. */
+  lowDetail?: boolean;
 }
 
 export interface District {
@@ -83,8 +86,15 @@ export interface District {
   pads: Array<{ x: number; z: number; y: number }>;
   /** Flip the whole district between day and night. */
   setDay(day: boolean): void;
-  /** Drive the traffic. */
-  update(dt: number): void;
+  /**
+   * Drive the traffic.
+   *
+   * `player` lets the cars brake for whoever is standing in the road, and lets
+   * a player who has ended up inside a car be pushed back out — so the vector
+   * is mutated. Omit it and the traffic simply ignores you (it is still solid;
+   * see `src/city/traffic.ts`).
+   */
+  update(dt: number, player?: THREE.Vector3 | null): void;
   dispose(): void;
 }
 
@@ -517,7 +527,7 @@ function massing(
 // ---------------------------------------------------------------------------
 
 export function buildDistrict(opts: DistrictOpts): District {
-  const { seed, grid, block, street, padMinHeight } = opts;
+  const { seed, grid, block, street, padMinHeight, lowDetail = false } = opts;
   const pitch = block + street;
   const span = grid * pitch;
   const half = span / 2;
@@ -1101,47 +1111,16 @@ export function buildDistrict(opts: DistrictOpts): District {
   );
 
   // ---- Traffic ---------------------------------------------------------
-  // Cars are the difference between a model of a city and a city. They run the
-  // street centrelines at a constant speed and wrap at the far edge — no
-  // junction logic, because from any altitude where you can see the grid you
-  // cannot see that nobody is turning.
-  const CAR_COLORS = ["#c9ced6", "#2b3440", "#8d2f38", "#26506e", "#b8a13f", "#5a6470"];
-  const cars: Array<{ lane: number; axis: 0 | 1; dir: 1 | -1; t: number; speed: number }> = [];
-  for (let g = 1; g < grid; g++) {
-    const laneCentre = (g - center - 0.5) * pitch;
-    for (const axis of [0, 1] as const) {
-      for (const dir of [1, -1] as const) {
-        for (let i = 0, n = 2 + Math.floor(r() * 3); i < n; i++) {
-          cars.push({
-            lane: laneCentre + dir * 2.6,
-            axis,
-            dir,
-            t: r() * span - half,
-            speed: 8 + r() * 7,
-          });
-        }
-      }
-    }
-  }
-  const carGeo = new THREE.BoxGeometry(1.8, 1.25, 4.2);
-  const carMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.5 });
-  const carMesh = new THREE.InstancedMesh(carGeo, carMat, Math.max(1, cars.length));
-  carMesh.castShadow = true;
-  {
-    const c = new THREE.Color();
-    for (let i = 0; i < cars.length; i++) {
-      c.set(CAR_COLORS[Math.floor(r() * CAR_COLORS.length)]);
-      carMesh.setColorAt(i, c);
-    }
-    if (carMesh.instanceColor) carMesh.instanceColor.needsUpdate = true;
-  }
-  group.add(carMesh);
-  trash.push(carGeo, carMat);
-
-  const carQ = new THREE.Quaternion();
-  const carP = new THREE.Vector3();
-  const carS = new THREE.Vector3(1, 1, 1);
-  const UP = new THREE.Vector3(0, 1, 0);
+  // Cars are the difference between a model of a city and a city — and for a
+  // long time these were `BoxGeometry(1.8, 1.25, 4.2)` sliding along the
+  // centrelines, defended on the grounds that from any altitude where you can
+  // see the grid you cannot see that nobody is turning. True, and irrelevant
+  // the moment somebody stands on the pavement.
+  //
+  // `src/city/traffic.ts` owns them now: Vibe Kart bodies, lanes, signals, and
+  // collision boxes pushed into the array below so you can be stopped by one.
+  const traffic = buildTraffic({ seed, grid, block, street, boxes, lowDetail });
+  group.add(traffic.group);
 
   // ---- Day / night -----------------------------------------------------
   const setDay = (day: boolean) => {
@@ -1179,7 +1158,7 @@ export function buildDistrict(opts: DistrictOpts): District {
   setDay(false);
 
   let clock = 0;
-  const update = (dt: number) => {
+  const update = (dt: number, player: THREE.Vector3 | null = null) => {
     clock += dt;
     // Aviation beacons: a slow blink, each group a third of a period out of
     // phase, so the skyline twinkles instead of strobing.
@@ -1188,23 +1167,7 @@ export function buildDistrict(opts: DistrictOpts): District {
       // Short flash, long dark — a beacon is mostly off.
       beaconMats[i].opacity = phase < 0.22 ? 0.55 + Math.sin(phase / 0.22 * Math.PI) * 0.45 : 0.06;
     }
-    for (let i = 0; i < cars.length; i++) {
-      const car = cars[i];
-      car.t += car.speed * car.dir * dt;
-      if (car.t > half) car.t -= span;
-      else if (car.t < -half) car.t += span;
-      const x = car.axis === 0 ? car.lane : car.t;
-      const z = car.axis === 0 ? car.t : car.lane;
-      const yaw =
-        car.axis === 0
-          ? car.dir > 0 ? 0 : Math.PI
-          : car.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-      carQ.setFromAxisAngle(UP, yaw);
-      carP.set(x, 0.65, z);
-      M.compose(carP, carQ, carS);
-      carMesh.setMatrixAt(i, M);
-    }
-    carMesh.instanceMatrix.needsUpdate = true;
+    traffic.update(dt, player);
   };
 
   return {
@@ -1214,6 +1177,7 @@ export function buildDistrict(opts: DistrictOpts): District {
     setDay,
     update,
     dispose() {
+      traffic.dispose();
       trash.forEach((t) => t.dispose());
     },
   };

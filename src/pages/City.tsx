@@ -1428,6 +1428,7 @@ export default function City() {
       street: STREET,
       padMinHeight: PAD_MIN_HEIGHT,
       snow: snowCover,
+      lowDetail: smallScreen,
     });
     scene.add(district.group);
     // Held live by reference — every world that loads after this pushes its
@@ -5269,7 +5270,10 @@ export default function City() {
         }
       }
 
-      district.update(dt); // the traffic
+      // The traffic. The player goes in because the cars brake for whoever is
+      // standing in the road — and push them back out if they end up inside
+      // one, which mutates `player.position`. See src/city/traffic.ts.
+      district.update(dt, player.position);
       island.update(dt, now);
       ninjaShow.update(dt, now);
       updateAvatarHolo(dt);
