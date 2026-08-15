@@ -39,9 +39,13 @@
  * Rigged characters get a gentler pass (`--simplify` off): decimating a skinned
  * mesh moves vertices that are weighted to bones, and a 3% error budget that is
  * invisible on a rock shows up on a face.
+ *
+ * **Which models those are is read out of the file, never guessed from its
+ * name.** See `riggedFlags`. The name-based version of this check let the
+ * biggest asset in the repo through untouched for months.
  */
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readdirSync, statSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -65,11 +69,59 @@ function allModels() {
 }
 
 const files = only.length ? only : allModels();
-/* A rigged character is anything with a skeleton. Cheaper to detect by where it
-   lives than to parse every file: the two rigged folders are known. */
-const isRigged = (f) =>
-  f.includes("/characters/") ||
-  /vibey|alien|astronaut|robot/i.test(f.split("/").pop());
+
+/**
+ * A rigged model is one with a skeleton or an animation, and the only way to
+ * know that is to look. This used to guess from the filename — `/characters/`
+ * plus a regex of words that sounded like characters — which is cheaper and was
+ * wrong about the largest file in the repo.
+ *
+ * `floating-astronaut.glb` matched `/astronaut/`, so it skipped decimation and
+ * shipped at **702,760 triangles and 15.9 MB** — for a prop that spins in the
+ * distance and has neither a skin nor a single animation channel. It is the
+ * `floating-island.glb` story from the header, repeated, and the guess is what
+ * repeated it: three files were misclassified and they held 1.13 M of the
+ * 1.82 M triangles in the whole model folder.
+ *
+ * Reading the file costs a JSON parse of the header chunk — the bin payload is
+ * never touched — against an optimiser pass that takes minutes. There is no
+ * reason to guess.
+ */
+/**
+ * Static models that are nonetheless looked at closely, and so get a much
+ * tighter error budget than a background prop.
+ *
+ * The default 0.0015 is tuned for something 300 px across in the distance. Run
+ * Vibey through it and you get 13,559 triangles and a mascot with a visibly
+ * faceted shoulder and a dented head — `glb-compare.mjs` shows it plainly, and
+ * the file-size number alone would have talked you into shipping it. At 0.0002
+ * the same model lands at ~75 k triangles and 1.6 MB, still a third of the
+ * original, with the silhouette intact.
+ *
+ * Match on basename: the same mesh is shipped from two places.
+ */
+const CLOSE_UP = new Set(["vibey.glb", "expressive-vibey.glb"]);
+const CLOSE_UP_ERROR = "0.0002";
+
+function riggedFlags(f) {
+  try {
+    const buf = readFileSync(f);
+    /* GLB: 12-byte header, then chunks. The first is always JSON. */
+    if (buf.readUInt32LE(0) !== 0x46546c67) return { rigged: true, why: "not a GLB — assume the careful path" };
+    const len = buf.readUInt32LE(12);
+    if (buf.readUInt32LE(16) !== 0x4e4f534a) return { rigged: true, why: "no JSON chunk" };
+    const j = JSON.parse(buf.subarray(20, 20 + len).toString("utf8"));
+    const skins = j.skins?.length ?? 0;
+    const anims = j.animations?.length ?? 0;
+    if (skins || anims) return { rigged: true, why: `${skins} skin(s), ${anims} animation(s)` };
+    return { rigged: false, why: "static" };
+  } catch (e) {
+    /* Unreadable means unknown, and unknown takes the pass that cannot ruin a
+       face. A model that silently lost its rig is far worse than one that
+       stayed big. */
+    return { rigged: true, why: `unreadable (${String(e).slice(0, 40)})` };
+  }
+}
 
 const tmp = mkdtempSync(join(tmpdir(), "glbopt-"));
 let before = 0;
@@ -80,15 +132,16 @@ for (const f of files) {
   const src = resolve(f);
   const dst = join(tmp, "out.glb");
   const wasBytes = statSync(src).size;
-  const rigged = isRigged(f);
+  const { rigged, why } = riggedFlags(src);
+  const closeUp = CLOSE_UP.has(f.split("/").pop());
   const flags = [
     "optimize", src, dst,
     "--compress", "quantize",
     "--texture-compress", "webp",
-    "--texture-size", rigged ? "1024" : "1024",
+    "--texture-size", "1024",
     "--simplify", rigged ? "false" : "true",
   ];
-  if (!rigged) flags.push("--simplify-error", "0.0015");
+  if (!rigged) flags.push("--simplify-error", closeUp ? CLOSE_UP_ERROR : "0.0015");
   try {
     execFileSync("npx", ["gltf-transform", ...flags], { stdio: "pipe" });
   } catch (e) {
@@ -105,7 +158,7 @@ for (const f of files) {
     continue;
   }
   if (write) copyFileSync(dst, src);
-  rows.push([f, wasBytes, nowBytes, rigged ? "rigged" : ""]);
+  rows.push([f, wasBytes, nowBytes, rigged ? `rigged — ${why}` : closeUp ? "close-up — gentle" : ""]);
   before += wasBytes;
   after += nowBytes;
 }
