@@ -65,10 +65,11 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
   "chronicle": [
+    { sha: "7d18916", iso: "2026-08-15T15:25:14+00:00", subject: "Every day of the vibeverse, one square each" },
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "3ef6465", iso: "2026-08-15T15:33:25+00:00", subject: "Take the wheel of any car in Vibe City" },
+    { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
     { sha: "cbd5788", iso: "2026-08-15T05:51:10+00:00", subject: "Real cars in Vibe City, and you can walk into them" },
     { sha: "a960456", iso: "2026-08-15T05:31:38+00:00", subject: "Fixed the swim stroke lurching, and made it a real crawl" },
     { sha: "3ed7b4a", iso: "2026-08-13T23:30:30+00:00", subject: "Vibe Island stopped opening if your character had no model file" },

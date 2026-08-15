@@ -1,7 +1,33 @@
 {
-  "generated_at": "2026-08-15T15:30:04.119Z",
+  "generated_at": "2026-08-15T15:36:32.497Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "27c6217c",
+      "date": "2026-08-15",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "97f99b36",
+      "date": "2026-08-15",
+      "subject": "Take the wheel of any car in Vibe City",
+      "lede": "Walk into the road, wait for a car to stop, and drive it away.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 6
+    },
+    {
+      "sha": "7d18916b",
+      "date": "2026-08-15",
+      "subject": "Every day of the vibeverse, one square each",
+      "lede": "The Chronicle told you what was built. It could not tell you what the building looked like — and the shape of the work turns out to be the better story.",
+      "places": [],
+      "files": 7
+    },
     {
       "sha": "f6b29fbb",
       "date": "2026-08-15",
@@ -1019,30 +1045,6 @@
       "lede": "",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "433accbd",
-      "date": "2026-08-09",
-      "subject": "Wire the soak burst to every death, and get the red out",
-      "lede": "soakBurst was built and called by nobody. It is now fired from combat.ts's fileDeath — the single place every elimination is filed, whether it was a balloon, a bot, the Downpour or a fall — rather than from each of the several callers that can end a life. It fires at the victim's capsule centre: water thrown from ankle height reads as a puddle rather than as somebody going out.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "7fef527a",
-      "date": "2026-08-09",
-      "subject": "Checkpoint: the water death pass, mid-flight but green",
-      "lede": "The elimination burst, the blue damage palette and the wet-screen feedback are in progress in vfx.ts, postfx.ts and HUD.tsx. Committed as a checkpoint rather than left loose: this container is ephemeral, and a thousand lines of working tree is not a place to keep work.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "76b6afed",
-      "date": "2026-08-09",
-      "subject": "SPLASH ROYALE, and a repair to a rebase that broke main",
-      "lede": "The game is SPLASH ROYALE. The rename is the strings table, the route, the registry key, the card art and the page — not a sweep through 65k lines, because every player-facing word already reads from WATER.strings and the bus re-letters itself from the same record.",
-      "places": [],
-      "files": 24
     }
   ]
 }
