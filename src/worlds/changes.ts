@@ -68,12 +68,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "cbd5788", iso: "2026-08-15T05:51:10+00:00", subject: "Real cars in Vibe City, and you can walk into them" },
+    { sha: "a960456", iso: "2026-08-15T05:31:38+00:00", subject: "Fixed the swim stroke lurching, and made it a real crawl" },
+    { sha: "3ed7b4a", iso: "2026-08-13T23:30:30+00:00", subject: "Vibe Island stopped opening if your character had no model file" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7a1fca6", iso: "2026-08-12T20:16:30+00:00", subject: "Merge remote-tracking branch 'origin/main' into claude/vibeyverse-structure-overview-qufpth" },
     { sha: "29d52c3", iso: "2026-08-12T20:16:20+00:00", subject: "The city's controls fit on one row" },
-    { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
-    { sha: "2fb84f5", iso: "2026-08-12T19:35:51+00:00", subject: "Vibe Island stops showing you somebody else's screen first" },
-    { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -217,6 +217,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
   ],
   "passport": [
+    { sha: "9e1e6e4", iso: "2026-08-14T13:41:03+00:00", subject: "Your own line in the history" },
     { sha: "51778ca", iso: "2026-08-12T06:08:52+00:00", subject: "The wink arrives as a picture, then wakes up" },
     { sha: "7c30fbb", iso: "2026-08-10T03:06:30+00:00", subject: "The passport is a book now, not a fraction" },
   ],
