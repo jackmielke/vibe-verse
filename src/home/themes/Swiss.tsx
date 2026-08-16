@@ -15,7 +15,7 @@
  */
 import { Link } from "react-router-dom";
 
-import { shortStatus, useHomeData } from "@/home/kit";
+import { shortStatus, spellCount, useHomeData } from "@/home/kit";
 
 const RED = "#e2231a";
 const PAPER = "#fafafa";
@@ -53,7 +53,7 @@ export default function Swiss() {
             className="col-span-12 font-heading font-bold leading-[0.88] tracking-[-0.035em] sm:col-span-8"
             style={{ fontSize: "clamp(2.6rem, 7.6vw, 6rem)" }}
           >
-            Fifty-three
+            {spellCount(d.counts.worlds, true)}
             <br />
             worlds. One
             <br />

@@ -67,7 +67,7 @@ export const HOME_THEMES: HomeTheme[] = [
     id: "terminal",
     name: "Terminal",
     mood: "Directory listing",
-    note: "No pictures at all. Fifty-three worlds you can read top to bottom in ten seconds.",
+    note: "No pictures at all. Every world, readable top to bottom in ten seconds.",
     palette: ["#020604", "#7dffd4", "#0b3b2c"],
     Component: lazy(() => import("@/home/themes/Terminal")),
   },

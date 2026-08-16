@@ -12,7 +12,7 @@
  *   Enter opens a world, because a console interface that can only be used with
  *   a mouse is a website with big pictures. The focused tile scrolls itself into
  *   view, which is the part everybody forgets and the part that makes it usable.
- * - **The rails scroll rather than wrap.** Fifty-three worlds in five rails, no
+ * - **The rails scroll rather than wrap.** Every world in five rails, no
  *   pagination, no "see all" — the shelf just keeps going, which is the honest
  *   way to show a library that grows every week.
  */

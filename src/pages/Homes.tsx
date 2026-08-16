@@ -10,7 +10,7 @@
  * ## Why they are live pages rather than screenshots
  *
  * A screenshot of a homepage is a picture of a homepage that has not been
- * tested. These render the real registry — fifty-three worlds, the real
+ * tested. These render the real registry — every world in it, the real
  * balance, today's paper — so a layout that falls apart at real length falls
  * apart here, in front of you, before it is chosen. It also means the winner is
  * already built.

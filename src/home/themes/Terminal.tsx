@@ -3,7 +3,7 @@
  *
  * Monospace, phosphor green, one column, and every world a row with its size
  * and date like `ls -l`. The pictures are gone entirely, which is the argument:
- * fifty-three worlds is a lot to scan visually, and a list you can read top to
+ * fifty-odd worlds is a lot to scan visually, and a list you can read top to
  * bottom in ten seconds may genuinely be the fastest front door here.
  *
  * The rows highlight on hover the way a selected line does in a real terminal —
@@ -98,7 +98,7 @@ passport ${d.passport.visited}/${d.passport.total}`}</pre>
           <Link to="/game" className="hover:underline">cd /game</Link>
           <Link to="/arcade" className="hover:underline">cd /arcade</Link>
           <Link to="/chronicle" className="hover:underline">cat /chronicle</Link>
-          <Link to="/build" className="hover:underline">./submit-a-game</Link>
+          <Link to="/submit-game" className="hover:underline">./submit-a-game</Link>
         </div>
 
         <p className="mt-8 text-[11.5px] opacity-35">

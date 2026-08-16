@@ -4,7 +4,7 @@
  * `/homes` is a bake-off: fifteen genuinely different front doors, all of them
  * live, all of them showing the same real worlds, so choosing between them is a
  * design decision rather than a guess about which mock would survive contact
- * with fifty-three cards and a real coin balance.
+ * with fifty-odd cards and a real coin balance.
  *
  * ## What is shared and what is not
  *
@@ -21,7 +21,7 @@
  *
  * A theme that renders placeholder cards is a theme that has not been tested.
  * Every one of these pulls the actual registry, so a design that falls apart at
- * fifty-three items falls apart here, in front of you, before it is chosen.
+ * fifty-odd items falls apart here, in front of you, before it is chosen.
  */
 import { useEffect, useMemo, useState } from "react";
 
@@ -271,6 +271,34 @@ export function BlueprintGrid({
       }}
     />
   );
+}
+
+const ONES = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+  "seventeen", "eighteen", "nineteen",
+];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+/**
+ * The world count, in words.
+ *
+ * Three of these themes set the number as part of a headline, where a numeral
+ * reads as a statistic and a word reads as a sentence. They each spelled it out
+ * by hand, and then a world was added and all three said "fifty-three" beside a
+ * grid of fifty-four. That is the same failure the registry exists to prevent —
+ * a second copy of a fact that nobody remembers to update — so there should not
+ * be a spelled number anywhere in this directory that is not this function.
+ *
+ * Falls back to the numeral above ninety-nine, by which point a headline saying
+ * "one hundred and forty-two worlds" has other problems.
+ */
+export function spellCount(n: number, cap = false): string {
+  let out: string;
+  if (n < 0 || n > 99 || !Number.isInteger(n)) out = String(n);
+  else if (n < 20) out = ONES[n];
+  else out = TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : "");
+  return cap ? out[0].toUpperCase() + out.slice(1) : out;
 }
 
 /** Format a world's status for a badge — the part before the dash. */

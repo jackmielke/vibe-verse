@@ -18,7 +18,7 @@
  */
 import { Link } from "react-router-dom";
 
-import { Grain, useHomeData } from "@/home/kit";
+import { Grain, spellCount, useHomeData } from "@/home/kit";
 
 const PAGE = "#fdf6e8";
 const INK = "#3b2f26";
@@ -86,7 +86,7 @@ export default function Storybook() {
                 className="mx-auto mt-5 max-w-2xl font-heading font-black leading-[0.9] tracking-[-0.03em]"
                 style={{ fontSize: "clamp(2.6rem, 8vw, 5rem)" }}
               >
-                Fifty-three
+                {spellCount(d.counts.worlds, true)}
                 <br />
                 worlds
               </h1>

@@ -12,7 +12,7 @@
  */
 import { Link } from "react-router-dom";
 
-import { AuroraWash, Grain, shortStatus, useHomeData } from "@/home/kit";
+import { AuroraWash, Grain, shortStatus, spellCount, useHomeData } from "@/home/kit";
 
 /** Tile shapes, in order. Repeats once the list runs out. */
 const SPANS = [
@@ -63,7 +63,7 @@ export default function Aurora() {
 
         <header className="pt-16 sm:pt-24">
           <h1 className="max-w-3xl font-heading text-[2.6rem] font-black leading-[1.02] tracking-[-0.035em] sm:text-[4.4rem]">
-            Fifty-three worlds,
+            {spellCount(d.counts.worlds, true)} worlds,
             <br />
             <span className="bg-gradient-to-r from-[#a78bfa] via-[#22d3ee] to-[#f0abfc] bg-clip-text text-transparent">
               one link away.

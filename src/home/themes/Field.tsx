@@ -3,7 +3,7 @@
  *
  * Worlds hang off a single dotted line running down the page, alternating left
  * and right, the way stops are drawn on a route map. It is a deliberately
- * inefficient way to show fifty-three of anything, and that is the argument it
+ * inefficient way to show fifty-odd of anything, and that is the argument it
  * is making: a grid says "choose"; a trail says "go in this order, and here is
  * how far you have got".
  *
