@@ -42,6 +42,37 @@
  * would appear to teleport around a container-hosted match. `--timescale
  * 0.0025` slows this process to match. Against a real browser, leave it at 1.
  *
+ * IT STAYS, AND IT GETS BETTER
+ * ----------------------------
+ * Two things this file used to not do, both of which made it read as a demo
+ * rather than a squadmate:
+ *
+ * It stopped playing. Soaked out at 0% dry meant standing in a field until
+ * somebody killed the process — through the end card, through the next lobby,
+ * through the next match. Now a life is a life: it plays one, notices when the
+ * lobby has rolled into a new match, and starts another. Leave it running and
+ * it is still there tomorrow, with a better record than it had tonight.
+ *
+ * And it learned nothing. Every match started the beginner it was the first
+ * time. Now `dz-skill.mjs` keeps a notebook — seven decisions about how to
+ * fight, each an independent bandit, each credited with the soak actually
+ * traded while it was in force. It is a small enough idea to hold in your head
+ * and it converges in an evening: after a few dozen engagements the bot knows
+ * whether *this* squad's fights are won by holding at 34 m or closing to 18.
+ *
+ * FAIR PLAY, WHICH IS THE WHOLE POINT
+ * -----------------------------------
+ * A bot with the wire in front of it can trivially be unbeatable, and an
+ * unbeatable teammate is not fun to play with, it is furniture. So the caps in
+ * `FAIR` below are not tuning values, they are the rules: a reaction time
+ * floor before it may shoot a target it has just acquired, an engagement range
+ * no longer than a human could reasonably see, an accuracy ceiling well short
+ * of the hitscan certainty the packets would allow, human movement speeds, the
+ * game's own drying rate, and no teleporting except the one place a human is
+ * also moved by the game — the drop bus. The learner cannot touch any of them.
+ * It may only get better at *deciding*, which is the only kind of better worth
+ * having.
+ *
  * USAGE
  *   node scripts/dz-teammate.mjs --room SPLASH-4B2 --name Claude --team blue
  *
@@ -51,10 +82,13 @@
  *   --team TEAM      riptide|dolphin|cannonball|flamingo [riptide]
  *   --url URL        Supabase URL      [$VITE_SUPABASE_URL or .env]
  *   --key KEY        Supabase anon key [$VITE_SUPABASE_PUBLISHABLE_KEY or .env]
- *   --follow-dist M  how far behind a teammate to hold   [6]
+ *   --follow-dist M  how far behind a teammate to hold   [learned, 6 to start]
  *   --zone x,z,r     safe-zone hint, if you know it (see "The downpour")
  *   --timescale N    simulated seconds per wall second   [1]
  *   --quiet          drop the movement/status chatter, keep chat + events
+ *   --skill FILE     training record            [<repo>/.dz/skill.json]
+ *   --no-learn       play, but neither read nor write the training record
+ *   --report         print what it has learned so far and exit
  *   --selftest       run the brain offline against a scripted teammate and
  *                    exit — no socket, no lobby, no Supabase config needed
  *   --help
@@ -65,6 +99,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { openSkill, KNOBS } from "./dz-skill.mjs";
 // @supabase/supabase-js is imported dynamically down in connect(), for the
 // same reason net.ts does it: a missing or broken client should be a sentence
 // the operator can act on, not a module-scope stack trace — and --selftest
@@ -131,7 +166,7 @@ const ISLAND_HALF = 1500 * 0.82;
 function leaderReach(base) {
   const lead = peers.get(leaderId);
   if (!lead || !lead.posed) return base;
-  const need = Math.max(Math.abs(lead.x), Math.abs(lead.z)) + FOLLOW_DIST + SLOT_SIDE;
+  const need = Math.max(Math.abs(lead.x), Math.abs(lead.z)) + followDist() + SLOT_SIDE;
   return Math.max(base, need);
 }
 
@@ -179,15 +214,83 @@ const GUN_ACC_FAR = 0.38;
 /** Stop shooting at someone we have not had a fresh pose from. */
 const GUN_STALE = 1.5;
 
-/** Dryness: how wet a splash within SPLASH_RADIUS makes us, and how fast we
- *  towel off again while nothing is hitting us. 0% dry = out of the match. */
+/**
+ * Dryness: how wet a splash within SPLASH_RADIUS makes us, and how fast we
+ * towel off again while nothing is hitting us. 0% dry = down.
+ *
+ * The drying numbers are `DRYNESS` from `src/royale/mode/water.ts`, copied
+ * rather than guessed. They used to be 1.4/s after 4 s, which was neither the
+ * game's rule nor a deliberate handicap — just a number typed before anybody
+ * checked. It mattered more than it looks: at less than half the real rate,
+ * breaking off to dry never paid for the time it cost, so the only strategy
+ * the bot could express was "keep shooting until someone is out". The mode is
+ * built around retreating to dry, and now the bot plays the same game we do.
+ */
 const SPLASH_RADIUS = 3.2;
 const SPLASH_SOAK = 9;
-const DRY_REGEN = 1.4;
-const DRY_REGEN_DELAY = 4;
+const DRY_REGEN = 3.2;
+const DRY_REGEN_DELAY = 5;
+/** Wind across a wet shirt — `DRYNESS.dryWindBonus`. Sprinting away from a
+ *  fight really is the fastest way to get dry, and that is the mode's joke. */
+const DRY_WIND_BONUS = 1.35;
+
+/** Downed, from `DRYNESS`: 0% is a slump, not an ending. A squadmate can
+ *  towel you off at `REVIVE_DRY` if they stand over you for `REVIVE_TIME`. */
+const REVIVE_DRY = 30;
+const REVIVE_TIME = 7;
+/** How close you must be to towel someone off. */
+const REVIVE_REACH = 3.0;
+
+/**
+ * FAIR PLAY. Not tuning — rules. Nothing in `dz-skill.mjs` can reach past any
+ * of these, and every one exists because the wire makes the opposite trivial.
+ *
+ * `reaction` is the important one and the least obvious. This process knows
+ * exactly where everyone is, ten times a second, with no eyes and no monitor
+ * in the way. Without a deliberate delay between a target existing and the
+ * trigger being available, it opens fire on the same frame someone rounds a
+ * corner — which is not "good", it is a thing no human can be. 220 ms is at
+ * the fast end of a human visual reaction and it is where this stays.
+ */
+const FAIR = {
+  /** Seconds a target must have been acquired before we may shoot it. */
+  reaction: 0.22,
+  /** Hard ceiling on any learned engagement range. */
+  maxRange: GUN_RANGE,
+  /** Hard ceiling on movement, both learned and steered. */
+  maxSpeed: SPRINT_SPEED,
+  /** The only legitimate reason to be moved somewhere we did not walk: the
+   *  drop bus, which moves the humans too. See `mayRejoin()`. */
+  teleport: "drop-bus-only",
+};
+
+/** Pause after a burst, so the tank has a moment to catch up. Two refill
+ *  delays: long enough to matter, short enough not to read as a jam. */
+const BURST_PAUSE = GUN_REFILL_DELAY * 2;
+/** An engagement ends when nothing has been traded for this long. */
+const ENGAGE_TIMEOUT = 5;
+/** A knockout counts as ours if we soaked them inside this window. */
+const CREDIT_WINDOW = 3.5;
+/** Out this long with everyone around us dry: the match rolled without us. */
+const NEW_MATCH_PATIENCE = 45;
+/** Write the training record this often, so a kill -9 costs at most this. */
+const SKILL_SAVE_INTERVAL = 120;
 
 /** How long a glue hit leaves us stumbling. */
 const GLUE_STUMBLE = 3.5;
+
+/**
+ * How far away a tracer or a splash is still something a player would notice.
+ *
+ * This is the one piece of long-range information the bot is allowed to act
+ * on, and it is allowed because a human has it too: you see the water arc and
+ * you hear the burst, and rotating toward a fight you did not start is normal
+ * play. The exact position of a rival who has not fired is on our wire and
+ * stays out of our decisions — that would be a wallhack with a friendly name.
+ */
+const HEARING = 90;
+/** How long a fight we heard is still worth walking toward. */
+const GUNFIRE_MEMORY = 20;
 
 /** Minimum gap between our chat lines, so the bot never spams the squad.
  *  Being spoken to directly shortens it — ignoring a question is worse. */
@@ -243,10 +346,13 @@ if (args.help || args.h) {
       "    --team TEAM      riptide|dolphin|cannonball|flamingo [riptide]",
       "    --url URL        Supabase URL      [VITE_SUPABASE_URL / .env]",
       "    --key KEY        Supabase anon key [VITE_SUPABASE_PUBLISHABLE_KEY / .env]",
-      "    --follow-dist M  how far behind a teammate to hold   [6]",
+      "    --follow-dist M  how far behind a teammate to hold   [learned]",
       "    --zone x,z,r     safe-zone hint, if you know it",
       "    --timescale N    simulated seconds per wall second   [1]",
       "    --quiet          drop movement chatter, keep chat + events",
+      "    --skill FILE     training record          [<repo>/.dz/skill.json]",
+      "    --no-learn       play without reading or writing the record",
+      "    --report         print what it has learned so far and exit",
       "    --selftest       run the brain offline and exit (no lobby needed)",
       "",
     ].join("\n"),
@@ -318,6 +424,7 @@ const pick = (...names) => {
 };
 
 const SELFTEST = !!args.selftest;
+const REPORT_ONLY = !!args.report;
 
 const SUPABASE_URL = String(args.url || pick("VITE_SUPABASE_URL", "SUPABASE_URL"));
 const SUPABASE_KEY = String(
@@ -329,8 +436,9 @@ const SUPABASE_KEY = String(
     ),
 );
 
-// --selftest never opens a socket, so it must run with no config at all.
-if (!SELFTEST) {
+// --selftest never opens a socket, and --report only reads a local file, so
+// both must run with no config at all.
+if (!SELFTEST && !REPORT_ONLY) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     bail(
       "no Supabase configuration found, so there is no lobby to join.",
@@ -354,7 +462,9 @@ function normalizeRoomCode(raw) {
     .slice(0, 24);
 }
 
-const ROOM = normalizeRoomCode(args.room ?? args.r ?? (SELFTEST ? "SELFTEST" : ""));
+const ROOM = normalizeRoomCode(
+  args.room ?? args.r ?? (SELFTEST ? "SELFTEST" : REPORT_ONLY ? "REPORT" : ""),
+);
 if (!ROOM) {
   bail(
     "no room code. The teammate joins a lobby the humans are already in.",
@@ -396,9 +506,72 @@ if (args.team && !SQUADS.includes(TEAM)) {
       `who picked the same string, so check the invite button in the lobby.`,
   );
 }
-const FOLLOW_DIST = Math.max(2.5, Number(args["follow-dist"]) || 6);
+/** `--follow-dist` is an override now, not the value: with nothing on the
+ *  command line the follow slot is one of the things the bot works out for
+ *  itself. Null means "learned". */
+const FOLLOW_OVERRIDE = args["follow-dist"] ? Math.max(2.5, Number(args["follow-dist"]) || 6) : null;
 const TIMESCALE = Number(args.timescale) > 0 ? Number(args.timescale) : 1;
 const SELF_ID = `s-claude-${Math.random().toString(36).slice(2, 8)}`;
+
+// ---------------------------------------------------------------- the notebook
+//
+// Opened before anything else can want it, and deliberately incapable of
+// failing loudly: a training record that cannot be read is a bot that plays
+// like it is new, which is exactly what it was yesterday.
+
+const SKILL_FILE = String(args.skill || resolve(REPO, ".dz/skill.json"));
+const skill = openSkill({
+  file: SKILL_FILE,
+  // --selftest gets a memory-only notebook. A test run must never train the
+  // real one: fifty scripted engagements against a dummy would drown a night
+  // of actual play in synthetic rewards.
+  enabled: !args["no-learn"] && !SELFTEST,
+  warn: (m) => log.warn(m),
+});
+
+if (REPORT_ONLY) {
+  console.log("");
+  console.log(`  ${c("1", "dz-teammate")} — ${SKILL_FILE}`);
+  console.log("");
+  console.log(skill.report());
+  console.log("");
+  process.exit(0);
+}
+
+/**
+ * The plan: one setting per knob, chosen at the start of every life and held
+ * for it. Read through `fair()` at the point of use, never raw.
+ */
+let plan = skill.plan();
+
+/** Every learned number passes through here. The clamps are the contract in
+ *  `FAIR` made executable — a bad file, a hand-edited record or a future knob
+ *  with a typo in its values cannot buy the bot anything a human can't have. */
+function fair(knob) {
+  const v = plan[knob];
+  switch (knob) {
+    case "engageRange":
+      return clamp(Number(v) || 26, 6, FAIR.maxRange);
+    case "pushDry":
+      return clamp(Number(v) || 40, 0, 100);
+    case "breakDist":
+      return clamp(Number(v) || 32, 8, 90);
+    case "strafeAmp":
+      return clamp(Number(v) || 0, 0, FAIR.maxSpeed * 0.6);
+    case "burstLen":
+      return clamp(Number(v) || 6, 1, GUN_TANK);
+    case "followDist":
+      return FOLLOW_OVERRIDE ?? clamp(Number(v) || 6, 2.5, 20);
+    case "focus":
+      return KNOBS.focus.values.includes(v) ? v : "nearest";
+    default:
+      return v;
+  }
+}
+
+/** Read as `FOLLOW_DIST` was, so the rest of the file did not have to change
+ *  shape to gain a learned follow slot. */
+const followDist = () => fair("followDist");
 
 /** Optional safe-zone hint, "--zone x,z,r". See "The downpour" below. */
 let zone = null;
@@ -421,6 +594,19 @@ function turnToward(from, to, maxStep) {
   while (d < -Math.PI) d += Math.PI * 2;
   return from + clamp(d, -maxStep, maxStep);
 }
+
+/**
+ * "Are they talking to me?", precompiled.
+ *
+ * Built once, and with the name escaped: `--name "Claude++"` used to compile
+ * `(^|\W)@?Claude++\b`, which is a syntax error, thrown from inside a realtime
+ * callback on the first chat line of the match — a bot that goes silent and
+ * deaf the moment anybody says hello, for no reason a player could ever guess.
+ */
+const NAME_RE = new RegExp(
+  `(^|\\W)@?${NAME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+  "i",
+);
 
 const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
 /** Compass word for the direction from `a` to `b`. +X east, +Z south — the
@@ -474,6 +660,40 @@ let soakedByUs = 0;
 /** `sim` of the last rejoin, so an unwalkable gap cannot rubber-band us. */
 let lastRejoinAt = -Infinity;
 let detourSign = 1;
+
+// ---- combat, and the life it belongs to --------------------------------
+//
+// An *engagement* is the unit the learner is scored on: from the first thing
+// traded with a particular rival to ENGAGE_TIMEOUT after the last. A *life*
+// is spawn to soaked-out, and owns one plan.
+
+/** When the current aim target was first acquired — the reaction-time gate. */
+let acquiredAt = -Infinity;
+/** Shots since the last pause, and the pause we are serving. */
+let burstShots = 0;
+let burstUntil = -1;
+/** { id, name, dealt, taken, knockout, last } or null. */
+let engagement = null;
+/** id -> `sim` when we last soaked them, for knockout credit. */
+const damagedAt = new Map();
+/** `sim` this life began, how many we have played, and whether this one is
+ *  still unbeaten. */
+let lifeStartedAt = 0;
+let lives = 0;
+let wonThisLife = false;
+/** `sim` we hit 0%, so we know how long we have been down. */
+let downedAt = -Infinity;
+/** Squadmate we are currently towelling off: { id, since }. */
+let reviving = null;
+/** Rolling autosave, and the wall clock the session started on. */
+let lastSkillSaveAt = 0;
+const startedWallMs = Date.now();
+/** The last fight we saw or heard: { x, z, t }. See `HEARING`. */
+let lastGunfire = null;
+/** Where the rival we were fighting was standing when we lost them. */
+let lastFoeAt = null;
+/** So two bots in one lobby do not strafe in lockstep like a chorus line. */
+const strafePhase = Math.random() * Math.PI * 2;
 
 /** Rolling chat backlog handed to the reply seam. */
 const chatMemory = [];
@@ -546,6 +766,137 @@ function livingPeers(sameTeam) {
     if (sameTeam === undefined || mate === sameTeam) out.push(p);
   }
   return out;
+}
+
+// ---------------------------------------------------------------- scoring
+//
+// The learner needs one number per fight, and the wire will not give it to us
+// directly — nobody broadcasts "you dealt 36". So we keep the books ourselves:
+// what we know we landed (we sent it), what landed on us (it was addressed to
+// us), and who was still standing at the end.
+//
+// It is honest bookkeeping rather than perfect bookkeeping. A victim's own
+// client owns the truth about its dryness and may refuse a hit we counted; a
+// rival soaked by someone else three seconds after we shot them is credited to
+// us. Both blur the reward a little, and neither blurs it in a direction that
+// rewards playing badly, which is the only property the bandit actually needs.
+
+/** Open, or extend, the engagement with `id`. */
+function contact(id, name) {
+  if (!engagement || engagement.id !== id) {
+    closeEngagement();
+    engagement = { id, name: name || "someone", dealt: 0, taken: 0, knockout: 0, last: sim, since: sim };
+  }
+  engagement.last = sim;
+  return engagement;
+}
+
+/** Bank the current engagement against the plan that fought it. */
+function closeEngagement(died = false) {
+  if (!engagement) return;
+  const e = engagement;
+  engagement = null;
+  // A fight nobody landed anything in is not evidence about anything.
+  if (e.dealt <= 0 && e.taken <= 0 && !died) return;
+  const reward = skill.engagement(plan, {
+    dealt: e.dealt,
+    taken: e.taken,
+    knockout: e.knockout,
+    died,
+  });
+  log.event(
+    `engagement with ${e.name}: dealt ${Math.round(e.dealt)}, took ${Math.round(e.taken)}` +
+      `${e.knockout ? `, ${e.knockout} soaked` : ""}${died ? ", and lost" : ""} — reward ${reward.toFixed(2)}`,
+  );
+}
+
+/** Soak that landed on us, from wherever. */
+function noteTaken(amount, fromId, fromName) {
+  if (!(amount > 0)) return;
+  const e = contact(fromId ?? "unknown", fromName);
+  e.taken += amount;
+}
+
+/** Soak we landed. */
+function noteDealt(amount, p) {
+  const e = contact(p.id, p.name);
+  e.dealt += amount;
+  damagedAt.set(p.id, sim);
+}
+
+/**
+ * Start a life. Called on the first placement and on every new match after.
+ *
+ * This is where a new plan is drawn, which is why it is one call and not
+ * three: a plan that changed halfway through a life would be credited with
+ * fights it never fought.
+ */
+function beginLife(why) {
+  closeEngagement();
+  // The life that just ended was a match, and it was one we either won or
+  // didn't. Counted here rather than at either of the two places a life can
+  // end, so it is counted exactly once however we got here.
+  if (lives > 0) {
+    skill.match(wonThisLife);
+    log.info(
+      `last life: ${Math.round(sim - lifeStartedAt)}s, ${wonThisLife ? "last one dry" : "soaked out"}`,
+    );
+  }
+  lives += 1;
+  me.dry = 100;
+  me.state = "ground";
+  announcedOut = false;
+  downedAt = -Infinity;
+  wonThisLife = false;
+  tank = GUN_TANK;
+  lastSoakedAt = -Infinity;
+  burstShots = 0;
+  burstUntil = -1;
+  damagedAt.clear();
+  reviving = null;
+  lastFoeAt = null;
+  lifeStartedAt = sim;
+  plan = skill.plan();
+  skill.life();
+  log.info(
+    `new life — ${why}. plan: ` +
+      Object.entries(plan)
+        .map(([k, v]) => `${k} ${v}`)
+        .join(", "),
+  );
+}
+
+/**
+ * Did the lobby roll into a new match without us?
+ *
+ * There is no match-start event on the wire — `NetEventKind` has no such kind
+ * and inventing one would mean shipping a game change to run a bot. So we
+ * infer it, from the one thing a new match always does: everybody who was
+ * soaked out is suddenly dry again.
+ *
+ * Being wrong is cheap in one direction and not the other. A false positive
+ * puts a soaked bot back in a match it should be watching — mildly rude. A
+ * false negative is what this file did for its whole life before now: stand in
+ * a field for eleven hours. So the test is deliberately generous.
+ */
+function maybeNewMatch(p, wasDry) {
+  if (me.dry > 0) return;
+  if (wasDry <= 0 && p.dry >= 90) {
+    beginLife(`${p.name} respawned — new match`);
+  }
+}
+
+/** The same question, asked from the tick, for the case where nobody around us
+ *  ever went to zero: we have simply been out a long time and everyone we can
+ *  see is dry. Also covers an empty lobby — with nobody left to watch, sitting
+ *  out is pointless. */
+function watchForNewMatch() {
+  if (me.dry > 0 || sim - downedAt < NEW_MATCH_PATIENCE) return;
+  const seen = [...peers.values()].filter((p) => p.posed);
+  const allDry = seen.length > 0 && seen.every((p) => p.dry >= 90);
+  if (allDry || seen.length === 0) {
+    beginLife(seen.length === 0 ? "lobby is empty — back on my feet" : "everyone is dry again");
+  }
 }
 
 /**
@@ -734,6 +1085,8 @@ function worldSnapshot() {
     rivals: livingPeers(false).length,
     zone: zone ? { x: zone.x, z: zone.z, r: zone.r } : null,
     soaked: me.dry <= 0,
+    /** Soak we have landed this session — the bot's own match, in one number. */
+    dealt: Math.round(soakedByUs),
   };
 }
 
@@ -755,6 +1108,28 @@ function onPose(w) {
   if (!Number.isFinite(w.x) || !Number.isFinite(w.y) || !Number.isFinite(w.z)) return;
   const p = peer(w.i);
   const firstPose = !p.posed;
+  const wasDry = p.dry;
+
+  // ---- bug watch -------------------------------------------------------
+  // Everything the bot sees goes past here ten times a second per player, so
+  // this is the cheapest place in the system to notice the game misbehaving.
+  // Counted rather than logged: see `skill.bug`.
+  if (!firstPose) {
+    const jump = dist2(p.x, p.z, w.x, w.z);
+    // A sprint is 6.9 m/s and the drop is a fall, so a tenth of a second is
+    // metres. Two hundred is not a movement, it is a desync or a quick travel
+    // the wire has no word for.
+    if (jump > 200) {
+      skill.bug("peer-position-jump", `${p.name} moved ${Math.round(jump)} m between poses`);
+    }
+  }
+  if (Number.isFinite(w.d) && (w.d < 0 || w.d > 100)) {
+    skill.bug("dryness-out-of-range", `${w.n ?? p.name} published ${w.d}%`);
+  }
+  if (w.a !== undefined && !Number.isFinite(w.a)) {
+    skill.bug("pose-yaw-not-finite", `${w.n ?? p.name}`);
+  }
+
   if (w.n) p.name = w.n;
   if (w.t !== undefined) p.team = w.t || null;
   if (w.g) p.agent = true;
@@ -771,7 +1146,17 @@ function onPose(w) {
     log.net(`${c("1", p.name)} is on the field (${p.team ?? "no team"})`);
   }
 
-  // First time we can see anyone, appear beside the squad rather than
+  // Someone we were shooting has gone to zero. Their own client owns that
+  // truth, so this is the moment we learn it — and if we were the ones soaking
+  // them a moment ago, the fight we are in the middle of scoring gets the
+  // credit. (`soaked` events give us the same news; whichever arrives first
+  // wins, and `damagedAt.delete` keeps it from counting twice.)
+  if (wasDry > 0 && p.dry <= 0) creditKnockout(p);
+
+  // The lobby may have rolled into a new match while we were sitting out.
+  maybeNewMatch(p, wasDry);
+
+  // First time we can see a human, appear beside the squad rather than
   // sprinting in from the origin — we have no terrain data, so their
   // position is the only place we know is standable.
   if (!placed && !p.agent) {
@@ -783,6 +1168,50 @@ function onPose(w) {
     log.move(`spawned beside ${p.name} at ${q(me.x)}, ${q(me.z)}`);
     void consider({ kind: "joined" }, true);
   }
+
+  // ...but the *life* starts on the first peer of any kind. These used to be
+  // the same branch, which meant a lobby of nothing but agents — two of these
+  // sparring, which is now a thing that happens — played a whole match that
+  // the notebook never saw: no plan drawn, no life counted, every engagement
+  // credited to whatever the default settings happened to be.
+  if (lives === 0) beginLife(`${p.name} is on the field`);
+}
+
+/**
+ * Zero dryness. A slump, not an ending.
+ *
+ * `mode/water.ts` is clear about this — `downThreshold: 0`, `reviveDryness:
+ * 30` — and so is `play/player.ts`, which puts a human at zero into `down` and
+ * stands them back up if anything heals them. The bot now models the same
+ * thing: it goes quiet and stays put, but it is a body on the floor rather
+ * than a process that has finished, and either a towel or the next match
+ * brings it back.
+ */
+function goDown(byId) {
+  if (announcedOut) return;
+  announcedOut = true;
+  // Belt and braces: every caller today has already reached zero, and a
+  // `down` state sitting on top of a positive dryness would be a bot that is
+  // lying on the floor and cannot be revived, respawned or soaked out of it.
+  me.dry = 0;
+  me.state = "down";
+  me.vx = 0;
+  me.vz = 0;
+  downedAt = sim;
+  reviving = null;
+  closeEngagement(true);
+  sendEvent("soaked", { id: SELF_ID, name: NAME, by: byId });
+  void consider({ kind: "self-soaked" }, true);
+}
+
+/** Count a knockout if we soaked them inside CREDIT_WINDOW. */
+function creditKnockout(p) {
+  const hit = damagedAt.get(p.id);
+  if (hit === undefined || sim - hit > CREDIT_WINDOW) return;
+  damagedAt.delete(p.id);
+  const e = contact(p.id, p.name);
+  e.knockout += 1;
+  log.event(`${c("1", p.name)} is soaked out — that one was ours`);
 }
 
 function onEvent(w) {
@@ -800,10 +1229,12 @@ function onEvent(w) {
       chatMemory.push({ name, text, self: false, t: sim, from: w.i });
       if (chatMemory.length > CHAT_MEMORY) chatMemory.shift();
       log.chat(`${c("1", name)}: ${text}`);
-      if (me.dry <= 0) return; // we're out; let the living talk
-      const direct =
-        new RegExp(`(^|\\W)@?${NAME}\\b`, "i").test(text) ||
-        /\bclaude\b/i.test(text);
+      // Down, not gone: we still answer when spoken to — being ignored by the
+      // teammate lying at your feet is worse than a bot that talks too much —
+      // but we no longer chime in on chatter the squad is having without us.
+      const named = NAME_RE.test(text) || /\bclaude\b/i.test(text);
+      if (me.dry <= 0 && !named) return;
+      const direct = named;
       // Being named shortens the cooldown; that is the whole difference
       // between "a bot in the lobby" and "someone who is listening".
       if (direct && sim - lastChatAt >= CHAT_COOLDOWN_DIRECT) {
@@ -820,20 +1251,23 @@ function onEvent(w) {
       if (![x, z].every(Number.isFinite)) return;
       const dMe = Math.hypot(me.x - x, me.z - z, (me.y - (y ?? me.y)) * 0.5);
       const mate = !!TEAM && foldTeam(from?.team) === TEAM;
-      if (!mate && dMe < SPLASH_RADIUS && me.dry > 0) {
-        const soak = Number.isFinite(payload.amount) ? payload.amount : SPLASH_SOAK;
+      // `amount: 0` means "this is a decal, the damage was addressed
+      // separately" — which is exactly what this file sends with every shot
+      // it lands. Treating it as proximity damage cost nothing (zero soak is
+      // zero soak) but logged a phantom hit beside every real one.
+      const soak = Number.isFinite(payload.amount) ? payload.amount : SPLASH_SOAK;
+      if (!mate && soak > 0 && dMe < SPLASH_RADIUS && me.dry > 0) {
         me.dry = clamp(me.dry - soak, 0, 100);
         lastSoakedAt = sim;
+        noteTaken(soak, w.i, who);
         log.event(`splashed by ${who} — ${Math.round(me.dry)}% dry`);
-        if (me.dry <= 0 && !announcedOut) {
-          announcedOut = true;
-          me.state = "down";
-          sendEvent("soaked", { id: SELF_ID, name: NAME, by: w.i });
-          void consider({ kind: "self-soaked" }, true);
-        }
+        if (me.dry <= 0) goDown(w.i);
         return;
       }
-      if (!mate) maybeCallout(x, z, from);
+      if (!mate) {
+        hear(x, z);
+        maybeCallout(x, z, from);
+      }
       return;
     }
 
@@ -850,15 +1284,12 @@ function onEvent(w) {
       // Same ceiling the browser applies to an inbound hit: no single packet
       // takes more than a quarter of us.
       const soak = Math.min(raw, 25);
+      if (raw > 25) skill.bug("oversized-hit", `${who} sent ${Math.round(raw)} soak in one packet`);
       me.dry = clamp(me.dry - soak, 0, 100);
       lastSoakedAt = sim;
+      noteTaken(soak, w.i, who);
       log.event(`hit by ${who} for ${Math.round(soak)} — ${Math.round(me.dry)}% dry`);
-      if (me.dry <= 0 && !announcedOut) {
-        announcedOut = true;
-        me.state = "down";
-        sendEvent("soaked", { id: SELF_ID, name: NAME, by: w.i });
-        void consider({ kind: "self-soaked" }, true);
-      }
+      if (me.dry <= 0) goDown(w.i);
       return;
     }
 
@@ -869,6 +1300,7 @@ function onEvent(w) {
       const oz = payload.z ?? payload.oz;
       if (![ox, oz].every(Number.isFinite)) return;
       if (TEAM && foldTeam(from?.team) === TEAM) return;
+      hear(ox, oz);
       maybeCallout(ox, oz, from);
       return;
     }
@@ -890,7 +1322,10 @@ function onEvent(w) {
     case "soaked": {
       const id = payload.id ?? w.i;
       const p = peers.get(id);
-      if (p) p.dry = 0;
+      if (p) {
+        creditKnockout(p);
+        p.dry = 0;
+      }
       const name = p?.name ?? payload.name ?? who;
       log.event(`${name} is soaked`);
       const mate = !!TEAM && foldTeam(p?.team) === TEAM;
@@ -898,6 +1333,10 @@ function onEvent(w) {
       // Nobody publishes a "victory" event, so infer it: our squad is still
       // dry and there is nobody left who isn't on it.
       if (me.dry > 0 && livingPeers(false).length === 0 && livingPeers(true).length > 0) {
+        if (!wonThisLife) {
+          wonThisLife = true;
+          skill.match(true);
+        }
         void consider({ kind: "victory" }, true);
       }
       return;
@@ -905,8 +1344,24 @@ function onEvent(w) {
 
     case "revive": {
       const id = payload.id ?? payload.target;
+      // Addressed to us: stand up. Nothing in the browser sends this yet —
+      // `revive` is a declared NetEventKind with no publisher — so today this
+      // only ever fires from another agent. It costs one comparison and it
+      // means the day somebody wires the towel up to the wire, the bot is
+      // already a thing you can save.
+      if (id === SELF_ID) {
+        if (me.dry > 0) return;
+        me.dry = REVIVE_DRY;
+        me.state = "ground";
+        announcedOut = false;
+        downedAt = -Infinity;
+        lastSoakedAt = sim;
+        log.event(`${who} towelled us off — back up at ${REVIVE_DRY}%`);
+        say(`Thanks ${who} — back up.`, true);
+        return;
+      }
       const p = peers.get(id);
-      if (p) p.dry = Math.max(p.dry, 25);
+      if (p) p.dry = Math.max(p.dry, REVIVE_DRY);
       log.event(`${who} towelled off ${p?.name ?? "a squadmate"}`);
       return;
     }
@@ -928,8 +1383,39 @@ function onEvent(w) {
     }
 
     default:
-      return; // balloon / build / harvest / emote — nothing to say about those
+      // balloon / build / harvest / emote — nothing to say about those. A
+      // kind that is *not* one of those is either a game that has grown a new
+      // message this file has not been taught, or a malformed packet; both are
+      // worth a line in the notebook and neither is worth a crash.
+      if (!KNOWN_EVENT_KINDS.has(w.k)) {
+        skill.bug("unknown-event-kind", `"${String(w.k).slice(0, 32)}" from ${who}`);
+      }
+      return;
   }
+}
+
+/** `NET_EVENT_KINDS` from `src/royale/net/types.ts`. Copied for the same
+ *  reason `normalizeRoomCode` is: this is a script, that is a TS module. */
+const KNOWN_EVENT_KINDS = new Set([
+  "shot",
+  "splash",
+  "balloon",
+  "glue",
+  "build",
+  "harvest",
+  "hit",
+  "soaked",
+  "revive",
+  "emote",
+  "chat",
+  "ping",
+]);
+
+/** Note a fight we could plausibly see or hear from where we are standing. */
+function hear(x, z) {
+  if (![x, z].every(Number.isFinite)) return;
+  if (dist2(me.x, me.z, x, z) > HEARING) return;
+  lastGunfire = { x, z, t: sim };
 }
 
 /** Call out an enemy position, at most once every CALLOUT_COOLDOWN. */
@@ -1022,11 +1508,68 @@ async function connect() {
 // there", and what makes that read is holding a sensible slot, keeping up
 // without shoving, and not walking into walls forever.
 
+/** The rival we are fighting, if that is still a live fact. */
+function currentFoe() {
+  const foe = aimId ? peers.get(aimId) : null;
+  if (!foe || !foe.posed || foe.dry <= 0) return null;
+  if (sim - foe.lastSeen > GUN_STALE) return null;
+  if (me.dry <= 0) return null;
+  return foe;
+}
+
+/**
+ * Where to stand while fighting someone — the learned part of combat, and the
+ * part that separates a bot that walks into your stream from one that is
+ * annoying to hit.
+ *
+ * Two stances, and which one we are in is the single most consequential
+ * decision in the mode:
+ *
+ *   press — hold near the edge of our own engagement range, sliding sideways.
+ *           Being at range is a choice with a cost: less soak lands, but less
+ *           soak lands on us, and the gun's falloff does not start until 45 m
+ *           so it costs nothing at all inside that.
+ *   break — get `breakDist` away and dry off. `DRYNESS.dryWindBonus` means
+ *           sprinting out of a fight dries you a third faster than standing
+ *           in one, so retreating is not giving up, it is the mechanic.
+ *
+ * `pushDry` is the threshold between them and it is learned, because the right
+ * answer depends entirely on who you are playing with: a squad that trades
+ * hard wants a bot that stays in, a squad that plays for the last circle wants
+ * one that leaves at 70%.
+ */
+function combatPoint(foe) {
+  const d = Math.max(dist2(me.x, me.z, foe.x, foe.z), 0.001);
+  // Unit vector pointing from them to us — the way out.
+  const ux = (me.x - foe.x) / d;
+  const uz = (me.z - foe.z) / d;
+
+  if (me.dry < fair("pushDry")) {
+    const want = fair("breakDist");
+    return { x: foe.x + ux * want, z: foe.z + uz * want, urgent: true, purposeful: true, combat: "break" };
+  }
+
+  // Hold just inside our own range, and never let "hold" mean "walk into
+  // them" — PERSONAL_SPACE is about teammates, this is about not hugging the
+  // person soaking us.
+  const hold = Math.max(fair("engageRange") * 0.8, 6);
+  const amp = fair("strafeAmp");
+  const wob = Math.sin(sim * 1.35 + strafePhase) * amp;
+  return {
+    x: foe.x + ux * hold - uz * wob,
+    z: foe.z + uz * hold + ux * wob,
+    urgent: false,
+    purposeful: true,
+    combat: "press",
+  };
+}
+
 /**
  * Where we would like to be standing.
  *
- * Priority: the safe zone when the downpour has us outside it, otherwise a
- * slot behind and slightly beside whichever squadmate is nearest.
+ * Priority: the downpour when it has us outside it, then the fight we are in,
+ * then a squadmate on the floor, then a slot behind whichever squadmate is
+ * nearest, then — with nobody at all — the sound of gunfire.
  */
 function desiredPoint() {
   // The downpour. The engine does not broadcast the circle on the wire (there
@@ -1044,11 +1587,68 @@ function desiredPoint() {
     }
   }
 
+  // A fight beats formation. Everything below this is about where to stand
+  // when nobody is shooting at us.
+  const foe = currentFoe();
+  if (foe) {
+    lastFoeAt = { x: foe.x, z: foe.z, t: sim };
+    return combatPoint(foe);
+  }
+
+  // Contact broken while still wet. Keep going until we are `breakDist` from
+  // where they were: turning round the instant someone leaves our engagement
+  // range is how a bot gets finished off by the player it just ran from, and
+  // the drying clock has barely started.
+  if (lastFoeAt && me.dry < fair("pushDry") && sim - lastFoeAt.t < 10) {
+    const d = Math.max(dist2(me.x, me.z, lastFoeAt.x, lastFoeAt.z), 0.001);
+    const want = fair("breakDist");
+    if (d < want) {
+      return {
+        x: lastFoeAt.x + ((me.x - lastFoeAt.x) / d) * want,
+        z: lastFoeAt.z + ((me.z - lastFoeAt.z) / d) * want,
+        urgent: true,
+        purposeful: true,
+        combat: "break",
+      };
+    }
+  }
+
   const mates = squadmates();
+
+  // A squadmate on the floor is the most valuable place on the map: standing
+  // over them for REVIVE_TIME is worth more than any slot behind anybody.
+  const downed = mates.find((p) => p.dry <= 0);
+  if (downed && me.dry > 0) {
+    idleHome = null;
+    return { x: downed.x + 1.2, z: downed.z + 1.2, urgent: true, purposeful: true, revive: downed.id };
+  }
+
   if (mates.length === 0) {
-    // Nobody visible. Shift our weight around one spot so we don't read as a
-    // frozen mannequin — but around a *remembered* spot, not around wherever
-    // we happen to be standing.
+    // Nobody on our squad. That used to mean "stop playing" — shuffle on the
+    // spot until the process is killed — which is how this file spent eleven
+    // hours in an empty field once. It is still a match, and there is still a
+    // right thing to do in it.
+    //
+    // Rotating toward gunfire is that thing, and it is honest: tracers and
+    // splashes are things a player genuinely sees and hears from a long way
+    // off, unlike the exact position of a silent rival behind a hill, which
+    // is on our wire and stays out of our decisions. See `HEARING`.
+    if (lastGunfire && sim - lastGunfire.t < GUNFIRE_MEMORY) {
+      const d = dist2(me.x, me.z, lastGunfire.x, lastGunfire.z);
+      if (d > 14) {
+        idleHome = null;
+        const k = 12 / Math.max(d, 0.001);
+        return {
+          x: me.x + (lastGunfire.x - me.x) * (1 - k),
+          z: me.z + (lastGunfire.z - me.z) * (1 - k),
+          urgent: false,
+          purposeful: true,
+        };
+      }
+    }
+    // Nothing to walk toward. Shift our weight around one spot so we don't
+    // read as a frozen mannequin — but around a *remembered* spot, not around
+    // wherever we happen to be standing.
     //
     // This used to offset from `me.x`/`me.z`, which made the target move with
     // us: a random walk with no way home. An empty lobby wandered 63 m in ten
@@ -1058,6 +1658,7 @@ function desiredPoint() {
       x: idleHome.x + Math.cos(sim * 0.23) * 2.2,
       z: idleHome.z + Math.sin(sim * 0.19) * 2.2,
       urgent: false,
+      purposeful: false,
     };
   }
   idleHome = null;
@@ -1072,10 +1673,49 @@ function desiredPoint() {
   const fx = Math.sin(lead.yaw);
   const fz = Math.cos(lead.yaw);
   return {
-    x: lead.x - fx * FOLLOW_DIST + fz * SLOT_SIDE,
-    z: lead.z - fz * FOLLOW_DIST - fx * SLOT_SIDE,
+    x: lead.x - fx * followDist() + fz * SLOT_SIDE,
+    z: lead.z - fz * followDist() - fx * SLOT_SIDE,
     urgent: false,
   };
+}
+
+/**
+ * May we appear beside the leader instead of walking?
+ *
+ * This is the one movement in the file that a player cannot perform, so it is
+ * fenced to the one situation where the *game* moves a player the same way:
+ * the drop bus. Everyone rides it, nobody walks to it, and it starts its run
+ * about 2.4 km out and 600 m up — six solid minutes of sprinting, by which
+ * time the match is decided and the squad has spent it alone.
+ *
+ * The test is therefore altitude, not distance. A leader hundreds of metres
+ * above us is on the bus or under a canopy; a leader who is merely far away is
+ * a run, and we run it. Before this, any 220 m gap teleported the bot —
+ * including a squadmate quick-travelling across the island mid-fight, which is
+ * a rival watching a teammate blink to the far side of the map. That is
+ * cheating, however it was described in the comment above it.
+ */
+function mayRejoin(lead) {
+  const gap = dist2(me.x, me.z, lead.x, lead.z);
+  if (gap <= REJOIN_DIST) return false;
+  // Not yet placed: our very first sighting, the same legitimate placement
+  // `onPose` does, because we have no terrain and their ground is the only
+  // ground we know is standable.
+  if (!placed) return true;
+  return lead.y - me.y > 60;
+}
+
+/** Drop peers that stopped talking without a presence goodbye. */
+function reapPeers() {
+  for (const [id, p] of peers) {
+    if (sim - p.lastSeen > PEER_TIMEOUT) {
+      peers.delete(id);
+      damagedAt.delete(id);
+      if (id === leaderId) leaderId = null;
+      if (id === aimId) aimId = null;
+      log.net(`lost ${p.name} (timed out)`);
+    }
+  }
 }
 
 /**
@@ -1084,13 +1724,42 @@ function desiredPoint() {
  * @param {number} dt simulated seconds since the last tick.
  */
 function tick(dt) {
-  // Soaked players don't move. Stay put, stay quiet, let the squad play.
+  // A pose that has gone non-finite is unrecoverable by arithmetic — every
+  // subsequent frame inherits the NaN — and it is invisible from inside the
+  // game: the ghost simply stops existing. Catch it here, put ourselves back
+  // somewhere real, and write it down.
+  if (![me.x, me.y, me.z, me.vx, me.vz, me.yaw].every(Number.isFinite)) {
+    skill.bug("bot-pose-not-finite", "reset to the squad");
+    const home = peers.get(leaderId) ?? idleHome ?? { x: 0, y: 0, z: 0 };
+    me.x = Number.isFinite(home.x) ? home.x : 0;
+    me.y = Number.isFinite(home.y) ? home.y : 0;
+    me.z = Number.isFinite(home.z) ? home.z : 0;
+    me.vx = 0;
+    me.vz = 0;
+    me.yaw = 0;
+    anchor = { x: me.x, z: me.z, t: sim };
+  }
+
+  // Reaping runs whether or not we are playing. It used to sit at the bottom
+  // of this function, below the early return below it, so a bot that got
+  // soaked stopped noticing anybody leaving — it would still be "following"
+  // and reporting `peers 3` for a lobby that had emptied an hour earlier.
+  reapPeers();
+
+  // Down. Stay put, stay quiet, let the squad play — but keep watching for
+  // the next match, because a life ending is not the session ending.
   if (me.dry <= 0) {
     me.vx = 0;
     me.vz = 0;
     me.state = "down";
+    aimId = null;
+    closeEngagement();
+    watchForNewMatch();
     return;
   }
+
+  // An engagement nobody has touched for a while is over, win or lose.
+  if (engagement && sim - engagement.last > ENGAGE_TIMEOUT) closeEngagement();
 
   // Rejoin. Some gaps cannot be walked, and pretending otherwise is what
   // "stuck — taking a detour" looks like for six minutes.
@@ -1110,7 +1779,7 @@ function tick(dt) {
   let goal = desiredPoint();
   if (!goal.urgent && sim - lastRejoinAt > REJOIN_COOLDOWN) {
     const lead = peers.get(leaderId);
-    if (lead && lead.posed && dist2(me.x, me.z, lead.x, lead.z) > REJOIN_DIST) {
+    if (lead && lead.posed && mayRejoin(lead)) {
       const gap = dist2(me.x, me.z, lead.x, lead.z);
       me.x = lead.x - SLOT_SIDE;
       me.z = lead.z - SLOT_SIDE;
@@ -1142,7 +1811,7 @@ function tick(dt) {
   // while the wobble target sits a metre or two off. That is every condition
   // for "stuck" met by a bot doing exactly what it was told, and it logged a
   // detour every few seconds into an empty room all night.
-  const purposeful = !!leaderId || !!zone;
+  const purposeful = goal.purposeful ?? (!!leaderId || !!zone);
   const moved = dist2(me.x, me.z, anchor.x, anchor.z);
   if (purposeful && sim - anchor.t > STUCK_WINDOW) {
     if (d > SLOT_DEADZONE && moved < STUCK_DIST && sim > detourUntil) {
@@ -1173,9 +1842,11 @@ function tick(dt) {
   }
 
   // Separation. Never end up standing inside a teammate — this is the rule
-  // that stops the bot from being the thing that gets you soaked.
+  // that stops the bot from being the thing that gets you soaked. The one
+  // exception is the person we are trying to towel off: you cannot revive
+  // someone you are politely keeping 2.4 m away from.
   for (const p of peers.values()) {
-    if (!p.posed) continue;
+    if (!p.posed || p.id === goal.revive) continue;
     const sx = me.x - p.x;
     const sz = me.z - p.z;
     const sd = Math.hypot(sx, sz);
@@ -1240,22 +1911,73 @@ function tick(dt) {
   // a second to face the person soaking it looks broken.
   me.yaw = turnToward(me.yaw, target, dt * (engaging ? 9 : 5));
 
-  me.state = stumbling ? "stumble" : moving > WALK_SPEED * 1.1 ? "sprint" : "ground";
+  const sprinting = moving > WALK_SPEED * 1.1;
+  me.state = stumbling ? "stumble" : sprinting ? "sprint" : "ground";
 
-  // Towel off slowly once nothing has hit us for a moment. A soaked-out bot
-  // stays out — 0% is elimination, and it does not come back on its own.
+  // Aim up and down as well as around. `me.pitch` was declared, published on
+  // every pose, and never once written to — so the ghost the humans see stared
+  // dead level while soaking someone on a roof. Only while engaging: outside a
+  // fight, a level head is right.
+  const wantPitch = engaging
+    ? Math.atan2(
+        engaging.y + 1.0 - (me.y + 1.5),
+        Math.max(dist2(me.x, me.z, engaging.x, engaging.z), 0.001),
+      )
+    : 0;
+  me.pitch = clamp(turnToward(me.pitch, wantPitch, dt * 6), -1.2, 1.2);
+
+  // Towel off, on the game's own terms: nothing for DRY_REGEN_DELAY seconds
+  // after a soak, then DRY_REGEN a second, a third faster if we are sprinting.
+  // (`DRYNESS.dryShelterBonus` needs a roof over our head, and roofs live in
+  // the browser, so the bot never claims that one.)
   if (me.dry > 0 && sim - lastSoakedAt > DRY_REGEN_DELAY) {
-    me.dry = clamp(me.dry + DRY_REGEN * dt, 0, 100);
+    me.dry = clamp(me.dry + DRY_REGEN * (sprinting ? DRY_WIND_BONUS : 1) * dt, 0, 100);
   }
 
-  // Reap peers that stopped talking without a presence goodbye.
-  for (const [id, p] of peers) {
-    if (sim - p.lastSeen > PEER_TIMEOUT) {
-      peers.delete(id);
-      if (id === leaderId) leaderId = null;
-      log.net(`lost ${p.name} (timed out)`);
-    }
+  // Towelling off a squadmate: stand over them, hold still for REVIVE_TIME.
+  tickRevive(goal);
+}
+
+/**
+ * Bring a downed squadmate back up.
+ *
+ * `goal.revive` is set by `desiredPoint` when the nearest squadmate is on the
+ * floor. Reaching them is the hard part and it is already done by the time we
+ * get here; this is the seven seconds of standing still, which is a real cost
+ * and the reason reviving is a decision rather than a reflex.
+ *
+ * Worth knowing: no browser subscribes to `revive` today, so a human sees the
+ * bot come to them and wait, and does not stand up. The gap is in the game,
+ * not here — the event kind and the mode's `reviveTime`/`reviveDryness` are
+ * both already declared — and this is the half of it that can be written
+ * without touching a live route.
+ */
+function tickRevive(goal) {
+  const id = goal?.revive;
+  if (!id) {
+    reviving = null;
+    return;
   }
+  const p = peers.get(id);
+  if (!p || p.dry > 0) {
+    reviving = null;
+    return;
+  }
+  if (dist2(me.x, me.z, p.x, p.z) > REVIVE_REACH) {
+    reviving = null;
+    return;
+  }
+  if (!reviving || reviving.id !== id) {
+    reviving = { id, since: sim };
+    say(`Hold on ${p.name}, towelling you off.`, true);
+    return;
+  }
+  if (sim - reviving.since < REVIVE_TIME) return;
+  reviving = null;
+  p.dry = REVIVE_DRY;
+  sendEvent("revive", { id, target: id, by: SELF_ID, dryness: REVIVE_DRY });
+  skill.revive();
+  log.event(`towelled off ${p.name}`);
 }
 
 /**
@@ -1287,34 +2009,81 @@ function fireControl(dt) {
     tank = Math.min(GUN_TANK, tank + GUN_REFILL * dt);
   }
 
-  // Nearest living rival with a fresh pose. Teammates are not candidates and
-  // never can be — the shooter refuses friendly fire, not the victim.
+  // Living rivals with a fresh pose, inside the range we have *chosen* — which
+  // is at most the honest 40 m and often deliberately less. Teammates are not
+  // candidates and never can be: the shooter refuses friendly fire, not the
+  // victim.
+  const range = fair("engageRange");
+  const mode = fair("focus");
   let best = null;
+  let bestScore = Infinity;
   let bestD = Infinity;
   for (const p of peers.values()) {
-    if (p.agent || !p.posed || p.dry <= 0) continue;
+    // Agents are excluded from `squadmates()` — two bots orbiting each other
+    // instead of playing is a comedy nobody needs — but they are *not*
+    // excluded here. A rival is a rival. Before this, two bots on opposite
+    // squads stood in the same field politely ignoring each other, which is a
+    // strange thing to watch and a waste of the one sparring partner that is
+    // always available: with this, a second instance on another squad is both
+    // a real opponent and a training session.
+    if (!p.posed || p.dry <= 0) continue;
     if (TEAM && p.team && foldTeam(p.team) === TEAM) continue;
     if (sim - p.lastSeen > GUN_STALE) continue;
     const d = dist2(me.x, me.z, p.x, p.z);
     // Vertical separation counts: someone 30 m below us on a cliff is not
     // 5 m away just because their map pin is.
     const dy = Math.abs(me.y - p.y);
-    if (d > GUN_RANGE || dy > 12) continue;
-    if (d < bestD) {
+    if (d > range || dy > 12) continue;
+
+    // Target priority — a learned decision, and a real one. Finishing the
+    // wounded ends fights faster and stops a rival drying off behind a rock;
+    // answering whoever is actually soaking us is what keeps *us* in the
+    // match; nearest is the safe default and usually the one you can hit.
+    let score = d;
+    if (mode === "weakest") score = p.dry * 0.6 + d * 0.4;
+    else if (mode === "threat") {
+      const hurtingUs = engagement && engagement.id === p.id && sim - engagement.last < 3;
+      score = d - (hurtingUs ? 60 : 0);
+    }
+    if (score < bestScore) {
+      bestScore = score;
       bestD = d;
       best = p;
     }
   }
 
-  aimId = best ? best.id : null;
+  // Acquisition, and the reaction floor that goes with it. Switching targets
+  // costs the same 220 ms as seeing one for the first time — the wire hands us
+  // a new target instantly and a human has to look at it.
+  if (best?.id !== aimId) {
+    aimId = best ? best.id : null;
+    acquiredAt = sim;
+    burstShots = 0;
+  }
   if (!best) return null;
+  if (sim - acquiredAt < FAIR.reaction) return best;
+
   if (tank < 1) return best;
+  // Trigger discipline. The tank refills fastest from a pause, so a burst and
+  // a beat beats holding the trigger down — and it is the difference between
+  // a bot that runs dry in the middle of every fight and one that doesn't.
+  if (sim < burstUntil) return best;
+  if (burstShots >= fair("burstLen")) {
+    burstShots = 0;
+    burstUntil = sim + BURST_PAUSE;
+    return best;
+  }
   if (sim - lastShotAt < 1 / GUN_SHOTS_PER_SEC) return best;
 
   lastShotAt = sim;
+  burstShots += 1;
   tank -= 1;
 
-  const t = clamp(bestD / GUN_RANGE, 0, 1);
+  // Accuracy is not a knob and never will be — it is measured against the
+  // gun's full range, not the range we chose, so picking a shorter engagement
+  // range cannot buy back hit chance. Learning to fight closer has to earn its
+  // accuracy the way a player does: by being closer.
+  const t = clamp(bestD / FAIR.maxRange, 0, 1);
   const acc = GUN_ACC_NEAR + (GUN_ACC_FAR - GUN_ACC_NEAR) * t;
   const hit = Math.random() < acc;
 
@@ -1335,8 +2104,10 @@ function fireControl(dt) {
   sendEvent("splash", { x: best.x, y: best.y, z: best.z, r: 1.1, a: 0.5, amount: 0 });
 
   // Track what we know we landed. The victim owns the truth and will announce
-  // its own elimination; this is only so the bot can talk about its own match.
+  // its own elimination; this is what the learner is scored on and what the
+  // bot's own match report is built from.
   soakedByUs += GUN_SOAK;
+  noteDealt(GUN_SOAK, best);
   return best;
 }
 
@@ -1381,9 +2152,13 @@ function publishPose() {
 function status() {
   const lead = peers.get(leaderId);
   const near = lead ? `${lead.name} ${Math.round(dist2(me.x, me.z, lead.x, lead.z))}m` : "—";
+  const foe = currentFoe();
+  const fight = foe
+    ? `  ${me.dry < fair("pushDry") ? "breaking from" : "fighting"} ${foe.name} ${Math.round(dist2(me.x, me.z, foe.x, foe.z))}m`
+    : "";
   log.move(
     `pos ${q(me.x)},${q(me.z)}  y${q(me.y)}  ${me.state}  dry ${Math.round(me.dry)}%  ` +
-      `following ${near}  peers ${peers.size}`,
+      `following ${near}  peers ${peers.size}${fight}`,
   );
 }
 
@@ -1420,7 +2195,7 @@ if (SELFTEST) {
   drive(20);
   const jack = peers.get(JACK);
   const gap = dist2(me.x, me.z, jack.x, jack.z);
-  check("keeps up with a moving teammate", gap < FOLLOW_DIST + 6, `${gap.toFixed(1)} m behind`);
+  check("keeps up with a moving teammate", gap < followDist() + 6, `${gap.toFixed(1)} m behind`);
   check("does not body-block", gap > PERSONAL_SPACE * 0.8, `${gap.toFixed(1)} m > ${PERSONAL_SPACE} m`);
   check("stays on the island", Math.abs(me.x) < ISLAND_HALF && Math.abs(me.z) < ISLAND_HALF);
   check("adopts the teammate's altitude", Math.abs(me.y - jack.y) < 0.5, `y=${q(me.y)}`);
@@ -1439,7 +2214,7 @@ if (SELFTEST) {
     tick(step);
   }
   const busGap = dist2(me.x, me.z, busX, busZ);
-  check("follows the squad outside the island", busGap < FOLLOW_DIST + 6, `${busGap.toFixed(1)} m from the bus`);
+  check("follows the squad outside the island", busGap < followDist() + 6, `${busGap.toFixed(1)} m from the bus`);
   check("climbs to the drop altitude", Math.abs(me.y - 617) < 5, `y=${q(me.y)}`);
 
   // ...and once they land, the fence is back on and we are not out at sea.
@@ -1617,6 +2392,269 @@ if (SELFTEST) {
   check("bows out at 0% dry", me.dry === 0 && me.state === "down", `${me.dry}% / ${me.state}`);
   log.say = realLog;
 
+  // ---------------------------------------------------------------- part two
+  //
+  // Fair play, combat decisions, and the fact that a life ending is not the
+  // session ending. Everything above this line was written when the bot was a
+  // follower; everything below it is what makes it a player.
+
+  /** Put the field back to a clean, standing, unengaged state. The checks
+   *  below each want a stage of their own, and they run in one process. */
+  const resetField = () => {
+    peers.clear();
+    damagedAt.clear();
+    leaderId = null;
+    aimId = null;
+    idleHome = null;
+    zone = null;
+    engagement = null;
+    reviving = null;
+    lastGunfire = null;
+    placed = true;
+    announcedOut = false;
+    me.x = 0;
+    me.y = 0;
+    me.z = 0;
+    me.vx = 0;
+    me.vz = 0;
+    me.dry = 100;
+    me.state = "ground";
+    tank = GUN_TANK;
+    lastShotAt = -Infinity;
+    lastSoakedAt = -Infinity;
+    acquiredAt = -Infinity;
+    burstShots = 0;
+    burstUntil = -1;
+    downedAt = -Infinity;
+    detourUntil = -1;
+    lastRejoinAt = -Infinity;
+    anchor = { x: 0, z: 0, t: sim };
+  };
+
+  /** Drive n seconds while holding a peer at a fixed pose. */
+  const hold = (seconds, pose) => {
+    for (let i = 0; i < seconds * TICK_HZ; i++) {
+      sim += step;
+      if (pose) onPose(pose());
+      tick(step);
+    }
+  };
+
+  const basePlan = { ...plan };
+
+  // ---- the reaction floor ----------------------------------------------
+  // The whole difference between a teammate and an aimbot is measured here.
+  {
+    resetField();
+    plan = { ...basePlan, engageRange: 34, focus: "nearest", burstLen: 30, strafeAmp: 0 };
+    const fired = [];
+    wire.send = (k, p) => fired.push({ k, p, t: sim });
+    const rival = () => ({ i: "s-react", x: me.x + 6, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Quick" });
+    hold(FAIR.reaction * 0.8, rival);
+    check("holds fire for a human reaction time", fired.length === 0, `${fired.length} packet(s) in ${(FAIR.reaction * 0.8).toFixed(2)} s`);
+    hold(0.6, rival);
+    check("shoots once it has actually reacted", fired.some((f) => f.k === "shot"), `${fired.filter((f) => f.k === "shot").length} shot(s)`);
+    wire.send = null;
+  }
+
+  // ---- target priority is a decision, and it is learned ------------------
+  {
+    resetField();
+    plan = { ...basePlan, engageRange: 34, focus: "weakest", burstLen: 30, strafeAmp: 0 };
+    onPose({ i: "s-near", x: me.x + 8, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Fresh" });
+    onPose({ i: "s-hurt", x: me.x + 20, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 12, t: "red", n: "Nearly" });
+    hold(0.5, null);
+    check("finishes the wounded one when focusing weakest", aimId === "s-hurt", aimId ?? "(nobody)");
+
+    plan = { ...plan, focus: "nearest" };
+    aimId = null;
+    hold(0.5, null);
+    check("takes the near one when focusing nearest", aimId === "s-near", aimId ?? "(nobody)");
+  }
+
+  // ---- press and break ---------------------------------------------------
+  {
+    resetField();
+    plan = { ...basePlan, engageRange: 34, pushDry: 25, strafeAmp: 0, focus: "nearest" };
+    // Inside our engagement range to start with: a rival who has not fired and
+    // is beyond it is a position on the wire we have decided not to know.
+    me.x = 48;
+    const far = () => ({ i: "s-press", x: 60, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Duelist" });
+    hold(20, far);
+    const holdAt = dist2(me.x, me.z, 60, 0);
+    check(
+      "holds a fighting distance instead of hugging",
+      Math.abs(holdAt - fair("engageRange") * 0.8) < 7,
+      `${holdAt.toFixed(1)} m, wanted ~${(fair("engageRange") * 0.8).toFixed(0)} m`,
+    );
+
+    // Now soak it below the threshold: it should leave, not trade.
+    plan = { ...plan, pushDry: 70, breakDist: 46 };
+    me.dry = 40;
+    lastSoakedAt = sim;
+    const before = dist2(me.x, me.z, 60, 0);
+    hold(2, far);
+    check("sprints while breaking, which is how drying works", me.state === "sprint", me.state);
+    hold(8, far);
+    const after = dist2(me.x, me.z, 60, 0);
+    check("breaks off to dry when low", after > before + 6, `${before.toFixed(0)} → ${after.toFixed(0)} m`);
+  }
+
+  // ---- trigger discipline ------------------------------------------------
+  {
+    resetField();
+    plan = { ...basePlan, engageRange: 34, burstLen: 3, strafeAmp: 0, focus: "nearest" };
+    const fired = [];
+    wire.send = (k, p) => fired.push({ k, p, t: sim });
+    hold(6, () => ({ i: "s-burst", x: me.x + 10, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Sponge" }));
+    const shots = fired.filter((f) => f.k === "shot");
+    // Uncapped, six seconds at 3.5/s is 21 shots. Three-shot bursts with a
+    // pause between them should land well under that and well over nothing.
+    check("fires in bursts rather than holding the trigger", shots.length > 4 && shots.length < 17, `${shots.length} shot(s) in 6 s`);
+    wire.send = null;
+  }
+
+  // ---- no teleporting, except the bus ------------------------------------
+  {
+    resetField();
+    const startX = me.x;
+    const startZ = me.z;
+    // A squadmate 400 m away at ground level is a run. It used to be a blink.
+    hold(3, () => ({ i: "s-runner", x: 400, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Runner" }));
+    const covered = dist2(me.x, me.z, startX, startZ);
+    check("runs to a distant squadmate rather than blinking", covered < FAIR.maxSpeed * 3 + 2, `${covered.toFixed(0)} m in 3 s`);
+
+    // ...and the drop bus, 600 m up, still is one — nobody walks to a plane.
+    hold(0.5, () => ({ i: "s-runner", x: 400, y: 620, z: 0, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Runner" }));
+    check("still joins the squad on the drop bus", dist2(me.x, me.z, 400, 0) < 20, `${dist2(me.x, me.z, 400, 0).toFixed(0)} m from the bus`);
+  }
+
+  // ---- towelling off -----------------------------------------------------
+  {
+    resetField();
+    plan = { ...basePlan };
+    const fired = [];
+    wire.send = (k, p) => fired.push({ k, p });
+    const downedMate = () => ({ i: "s-downed", x: 4, y: 0, z: 0, a: 0, p: 0, s: "down", d: 0, t: TEAM, n: "Mate" });
+    hold(REVIVE_TIME + 6, downedMate);
+    check("towels off a downed squadmate", fired.some((f) => f.k === "revive" && f.p.id === "s-downed"), `${fired.filter((f) => f.k === "revive").length} revive(s)`);
+    wire.send = null;
+
+    // ...and can be towelled off itself. Nothing in the browser sends this
+    // yet; the day it does, the bot is already a thing you can save.
+    resetField();
+    onPose({ i: "s-saviour", x: 2, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Saviour" });
+    goDown("s-rival");
+    check("goes down at 0%", me.state === "down", me.state);
+    onEvent({ i: "s-saviour", k: "revive", p: { id: SELF_ID } });
+    check("stands back up when towelled off", me.dry === REVIVE_DRY && me.state === "ground", `${me.dry}% / ${me.state}`);
+  }
+
+  // ---- a life ending is not the session ending ---------------------------
+  {
+    resetField();
+    onPose({ i: "s-next", x: 10, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+    goDown("s-rival");
+    // The lobby rolls: everyone who was out comes back dry.
+    onPose({ i: "s-next", x: 10, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 0, t: TEAM, n: "Jack" });
+    onPose({ i: "s-next", x: 10, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+    check("plays the next match instead of standing in a field", me.dry === 100 && me.state !== "down", `${Math.round(me.dry)}% / ${me.state}`);
+
+    // The same, with nobody around to respawn: out long enough in an empty
+    // lobby and there is no reason left to be lying down.
+    goDown("s-rival");
+    peers.clear();
+    downedAt = sim - NEW_MATCH_PATIENCE - 1;
+    tick(step);
+    check("gets up eventually in an empty lobby", me.dry === 100, `${Math.round(me.dry)}%`);
+
+    // Down is not deaf: being named still gets an answer.
+    goDown("s-rival");
+    log.say = (m) => said.push(m);
+    // Going down says something of its own, and it says it from a promise —
+    // let that land before measuring what the chat reply added.
+    await flush();
+    lastChatAt = -Infinity;
+    said.length = 0;
+    onEvent({ i: "s-next", k: "chat", p: { name: "Jack", text: "claude you good?" } });
+    await flush();
+    check("answers from the floor when named", said.length === 1, said[0] ?? "(silence)");
+    said.length = 0;
+    onEvent({ i: "s-next", k: "chat", p: { name: "Jack", text: "push left" } });
+    await flush();
+    check("stays out of the chat it is not in", said.length === 0, said[0] ?? "(silence)");
+    log.say = realLog;
+  }
+
+  // ---- peers still time out while we are down ----------------------------
+  {
+    resetField();
+    onPose({ i: "s-ghost", x: 10, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Ghost" });
+    goDown("s-rival");
+    downedAt = sim; // don't let the new-match watch fire mid-check
+    for (const p of peers.values()) p.lastSeen = sim - PEER_TIMEOUT - 1;
+    tick(step);
+    check("reaps stale peers even while down", peers.size === 0, `${peers.size} peer(s)`);
+  }
+
+  // ---- a lobby of nothing but bots is still a match -----------------------
+  {
+    resetField();
+    lives = 0;
+    placed = false;
+    onPose({ i: "s-other-bot", x: 30, y: 0, z: 0, a: 0, p: 0, s: "ground", d: 100, t: "dolphin", n: "Rival", g: 1 });
+    check("starts a life even with no humans in the room", lives === 1, `${lives} life/lives`);
+    check("does not spawn on top of another bot", placed === false, `placed=${placed}`);
+
+    // ...and another bot on another squad is a rival, not scenery.
+    resetField();
+    plan = { ...basePlan, engageRange: 34, focus: "nearest" };
+    hold(0.6, () => ({ i: "s-other-bot", x: me.x + 9, y: me.y, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "dolphin", n: "Rival", g: 1 }));
+    check("fights a bot on the other squad", aimId === "s-other-bot", aimId ?? "(nobody)");
+  }
+
+  // ---- a decal is not a hit ----------------------------------------------
+  {
+    resetField();
+    onPose({ i: "s-decal", x: me.x + 2, y: 0, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Splasher" });
+    const dryBefore = me.dry;
+    onEvent({ i: "s-decal", k: "splash", p: { x: me.x, y: me.y, z: me.z, amount: 0 } });
+    check("ignores a scenery splash at amount 0", me.dry === dryBefore, `${Math.round(me.dry)}%`);
+  }
+
+  // ---- the caps are not negotiable ---------------------------------------
+  {
+    plan = {
+      engageRange: 999,
+      pushDry: 900,
+      breakDist: 5000,
+      strafeAmp: 99,
+      burstLen: 1e6,
+      focus: "aimbot",
+      followDist: 4000,
+    };
+    check("clamps a hostile engagement range", fair("engageRange") === FAIR.maxRange, `${fair("engageRange")} m`);
+    check("clamps a hostile strafe", fair("strafeAmp") <= FAIR.maxSpeed * 0.6, `${fair("strafeAmp")}`);
+    check("clamps a hostile follow slot", fair("followDist") <= 20, `${fair("followDist")} m`);
+    check("clamps a hostile burst", fair("burstLen") <= GUN_TANK, `${fair("burstLen")}`);
+    check("refuses an unknown focus mode", fair("focus") === "nearest", fair("focus"));
+    plan = { ...basePlan };
+  }
+
+  // ---- the notebook itself ------------------------------------------------
+  {
+    const s = openSkill({ file: "(memory)", enabled: false, warn: () => {} });
+    for (let i = 0; i < 12; i++) {
+      s.engagement({ engageRange: 34 }, { dealt: 96, taken: 0, knockout: 1 });
+      s.engagement({ engageRange: 18 }, { dealt: 0, taken: 96 });
+    }
+    check("learns which way of fighting wins", s.best().engageRange === 34, `picked ${s.best().engageRange} m`);
+    s.bug("kettle-boiled-dry", "twice");
+    s.bug("kettle-boiled-dry", "twice");
+    check("counts a repeated bug once, with a tally", s.data.bugs.length === 1 && s.data.bugs[0].count === 2, `${s.data.bugs.length} kind(s)`);
+    check("writes a report a human can read", /career:/.test(s.report()), s.report().split("\n")[0]);
+  }
+
   const failed = checks.filter((k) => !k.ok);
   console.log("");
   log.info(`${checks.length - failed.length}/${checks.length} checks passed`);
@@ -1662,6 +2700,14 @@ loop = setInterval(() => {
     lastStatusAt = sim;
     if (placed || peers.size) status();
   }
+
+  // The notebook is worth nothing if it only survives a polite Ctrl-C. This
+  // runs it to disk every couple of minutes, which is the most a `kill -9`,
+  // a closed laptop or a dropped socket can cost.
+  if (sim - lastSkillSaveAt > SKILL_SAVE_INTERVAL) {
+    lastSkillSaveAt = sim;
+    if (skill.dirty) skill.save();
+  }
 }, Math.round(1000 / TICK_HZ));
 
 // ---------------------------------------------------------------- shutdown
@@ -1673,6 +2719,19 @@ async function leave(code) {
   if (loop) clearInterval(loop);
   console.log("");
   log.info("leaving the lobby...");
+
+  // Bank the session before the socket work, not after: `untrack` can hang on
+  // a dead network for as long as it likes, and an evening of play should not
+  // be riding on whether it comes back.
+  closeEngagement();
+  skill.close(Math.round((Date.now() - startedWallMs) / 1000));
+  if (skill.enabled) {
+    console.log("");
+    console.log(skill.report());
+    console.log("");
+    log.info(`training record: ${SKILL_FILE}`);
+  }
+
   try {
     if (online) {
       sendEvent("chat", { text: "Heading out — good games.", name: NAME });
@@ -1689,4 +2748,5 @@ process.on("SIGINT", () => void leave(0));
 process.on("SIGTERM", () => void leave(0));
 process.on("unhandledRejection", (err) => {
   log.warn(`unhandled: ${err?.message ?? err}`);
+  skill.bug("unhandled-rejection", String(err?.message ?? err));
 });

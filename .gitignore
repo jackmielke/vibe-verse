@@ -53,3 +53,9 @@ shots/
 # Dance contact sheets — regenerate with scripts/dance-shots.mjs. They exist to
 # be looked at once before a push, not to be reviewed as a diff.
 .dance-shots/
+
+# The teammate bot's training record — `scripts/dz-skill.mjs` writes it while
+# it plays. Local by design: it is a log of what worked in *your* lobbies, it
+# changes every few minutes of play, and a beginner's copy of it is one deleted
+# file away. Nothing in the site reads it.
+.dz/

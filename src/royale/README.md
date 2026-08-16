@@ -74,8 +74,47 @@ green when valid, red when blocked. Ramps let you climb. Everything you build
 is destructible and structural — shoot the wall under a ramp tower and the
 tower comes down.
 
+## The third squadmate
+
+`scripts/dz-teammate.mjs` joins a Splash Royale lobby from the command line and
+plays it — follows, fights, talks, revives, and stays for the next match.
+
+```bash
+npm run dz:teammate -- --room SPLASH-4B2 --name Claude --team dolphin
+```
+
+Nothing in this directory knows about it. It joins the same Supabase Realtime
+channel `net.ts` uses, as an ordinary peer whose presence meta happens to carry
+`agent: true`, and every code path in the game treats it as a player. **Do not
+add a bot hook here.** The reason it cannot break the game is that the game has
+never heard of it.
+
+Two things worth knowing before you change either side:
+
+- **It keeps a training record** in `.dz/skill.json` (gitignored) — seven
+  decisions about how to fight, each an independent bandit scored on the soak
+  actually traded. `npm run dz:report` prints what it has worked out.
+  Delete the file and it is a beginner again.
+- **It plays under caps it cannot learn past** — a reaction-time floor, an
+  engagement range, an accuracy ceiling, this mode's own drying rate, and no
+  teleporting except onto the drop bus. They are in `FAIR` at the top of the
+  script, with the reasoning. If you give the bot something new to do, it goes
+  under those, not around them.
+
+`npm run dz:selftest` runs the whole brain offline against scripted peers — no
+socket, no lobby, no Supabase config. Run it before you touch the script.
+
+Two instances on different squads will fight each other, which is both the
+easiest way to test a change end to end and how the bot trains when nobody is
+online.
+
 ## Conventions
 
 - `+X` east, `+Z` south, `+Y` up. 1 unit = 1 metre.
 - Engine events are namespaced `dz:` (`dz:lock`, `dz:hud`, `dz:eliminate`, …).
 - The HUD reads engine events only. It never reaches into a system.
+- `revive` is a declared `NetEventKind` that nothing in the browser sends or
+  handles yet. The mode already has the numbers (`DRYNESS.reviveTime`,
+  `reviveDryness`) and `player.ts` already stands you up if something heals
+  you while you are down — the missing piece is the wire, and the teammate bot
+  already speaks both halves of it.
