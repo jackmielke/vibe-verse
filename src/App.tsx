@@ -60,6 +60,8 @@ const ShopCosmos = lazy(() => import("./pages/ShopCosmos.tsx"));
 const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
 const Passport = lazy(() => import("./pages/Passport.tsx"));
 const HomeLooks = lazy(() => import("./pages/HomeLooks.tsx"));
+const Homes = lazy(() => import("./pages/Homes.tsx"));
+const HomeThemePage = lazy(() => import("./pages/Homes.tsx").then((m) => ({ default: m.HomeThemePage })));
 const Orbit = lazy(() => import("./pages/Orbit.tsx"));
 const Join = lazy(() => import("./pages/Join.tsx"));
 const StartFlow = lazy(() => import("./pages/StartFlow.tsx"));
@@ -130,6 +132,12 @@ const AppChrome = () => {
      floating over a stranger's canvas would be one too many, and the route is
      dynamic so the registry's route-set cannot express it. */
   if (pathname.startsWith("/play/")) return null;
+
+  /* `/homes/:id` is a front-door bake-off: each candidate draws its own nav,
+     its own palette and its own idea of a header, so the global chrome would
+     be a second nav sitting on top of the thing being judged. The picker's own
+     bar is the way out, and `/homes` itself keeps normal chrome. */
+  if (pathname.startsWith("/homes/")) return null;
 
   /* OAuth landing pads. Nobody is *at* these — they are a second of spinner
      between a provider and wherever the visitor was actually going. Chrome
@@ -270,6 +278,8 @@ const App = () => (
 
           {/* Pick the front door's typography. A preview surface, not a
               setting — it goes away once one of the six wins. */}
+          <Route path="/homes" element={<Homes />} />
+          <Route path="/homes/:id" element={<HomeThemePage />} />
           <Route path="/looks" element={<HomeLooks />} />
           <Route path="/stamps" element={<Navigate to="/passport" replace />} />
           <Route path="/future" element={<Navigate to="/manifesto" replace />} />
