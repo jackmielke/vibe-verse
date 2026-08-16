@@ -464,6 +464,23 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "dunes",
+    route: "/dunes",
+    aliases: ["/dune-sea"],
+    name: "The Dune Sea",
+    emoji: "🏜️",
+    kind: "game",
+    blurb:
+      "Sandboard nine hundred metres of sunset dunes down to the oasis. You never push — the slope is the engine — and every gate you ride puts the sun back up.",
+    status: "Playable — rides well, the light is still being art-directed",
+    accent: "#ff9f4a",
+    featured: true,
+    source: "src/dunes",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "glass-lake",
     route: "/glass-lake",
     aliases: ["/aurora"],

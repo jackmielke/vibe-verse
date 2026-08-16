@@ -86,6 +86,7 @@ const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
+const DuneSea = lazy(() => import("./pages/DuneSea.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
@@ -353,6 +354,11 @@ const App = () => (
               is a raymarched function and the ice reflects it by calling the
               same function along the reflected ray. Skate, carve, collect. */}
           <Route path="/glass-lake" element={<GlassLake />} />
+          {/* THE DUNE SEA — sandboarding a bowl of dunes with the sunset as
+              the clock. The terrain is one function, sampled by the mesh and
+              by the board's physics, so they cannot disagree. */}
+          <Route path="/dunes" element={<DuneSea />} />
+          <Route path="/dune-sea" element={<DuneSea />} />
           <Route path="/aurora" element={<GlassLake />} />
           {/* THE VIBEVERSE — the hub seen from orbit. Fly the survey vessel VIBEY
               through a procedural galaxy where three of the stars are real

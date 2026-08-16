@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-16T18:05:07.378Z",
+  "generated_at": "2026-08-16T18:37:20.650Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f30d5d94",
+      "date": "2026-08-16",
+      "subject": "The Glass Lake: it is you out there now, and the steering woke up",
+      "lede": "The skater was a figure built from primitives in this world's own code, which is a strange thing for a repo whose whole character system exists so that the person you picked follows you between worlds. It now loads that person: `lobby.character` — the same key the lobby, the hub and the profile all write — through `loadCharacterRig`, which handles the fifty-odd catalog GLBs and the code-built cast that has no file at",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "dbcace51",
+      "date": "2026-08-16",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "cd24e85e",
+      "date": "2026-08-16",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "2675c183",
       "date": "2026-08-16",
@@ -1016,34 +1040,6 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "7c30fbba",
-      "date": "2026-08-10",
-      "subject": "The passport is a book now, not a fraction",
-      "lede": "It has existed for months as five grey words on the landing page — \"passport 18/28\" — not a link, with no way to see what the other ten were. It was the only record in here that spans every world, and the only way to read it was as a ratio.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "2e670f82",
-      "date": "2026-08-10",
-      "subject": "Stamp the registry after the character shelf grew",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "e506684a",
-      "date": "2026-08-10",
-      "subject": "Tapping a character opens that character, and you can dress it",
-      "lede": "Four things, all from watching the page get used.",
-      "places": [
-        "Vibe Island",
-        "the character roster",
-        "the machinery underneath"
-      ],
-      "files": 14
     }
   ]
 }
