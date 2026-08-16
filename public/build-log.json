@@ -1,7 +1,39 @@
 {
-  "generated_at": "2026-08-15T15:36:32.497Z",
+  "generated_at": "2026-08-16T07:42:23.325Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "819ed128",
+      "date": "2026-08-16",
+      "subject": "The teammate stopped standing in a field, and started keeping score",
+      "lede": "It played one life. Soaked out at 0% meant standing still until somebody killed the process — through the end card, through the next lobby, through the next match. One session sat in an empty field for eleven hours. And it learned nothing: every match started the beginner it was the first time.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "1feddd5a",
+      "date": "2026-08-15",
+      "subject": "Measured what the worlds cost, and stopped guessing which models are rigged",
+      "lede": "`route-smoke.mjs` answers \"is the world there\". Nothing answered \"and what does it cost\", so `npm run perf` now does: draw calls, triangles, shader programs, texture bytes, live GL contexts and JS heap, per route. It counts at the WebGL layer rather than through renderer.info, because forty-odd worlds build their renderer in forty-odd places and most never expose it.",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "98618ddb",
+      "date": "2026-08-15",
+      "subject": "A fresh clone still could not npm ci",
+      "lede": "`npm ci` refuses to run at all: package.json and package-lock.json are out of sync, missing @testing-library/dom and the seven transitive packages under it.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "45ae074e",
+      "date": "2026-08-15",
+      "subject": "Restamped after merging main",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "27c6217c",
       "date": "2026-08-15",
@@ -1011,38 +1043,6 @@
       "date": "2026-08-09",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "d6a41e17",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "52625c59",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3d7a49b2",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "95839be6",
-      "date": "2026-08-09",
-      "subject": "Work in progress",
-      "lede": "",
       "places": [],
       "files": 1
     }

@@ -93,6 +93,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
   "drop-zero": [
+    { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
     { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
     { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
@@ -276,6 +277,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "d577da6", iso: "2026-05-14T04:33:23+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
     { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
     { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
