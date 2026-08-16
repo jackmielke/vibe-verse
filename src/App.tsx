@@ -85,6 +85,7 @@ const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
 const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
+const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
@@ -348,6 +349,11 @@ const App = () => (
           {/* SEAFAIR 2117 — future Seattle during Seafair. Hydros, Blue Angels,
               and aliens holding the Space Needle. */}
           <Route path="/seafair" element={<Seafair />} />
+          {/* THE GLASS LAKE — black ice at night under a live aurora. The sky
+              is a raymarched function and the ice reflects it by calling the
+              same function along the reflected ray. Skate, carve, collect. */}
+          <Route path="/glass-lake" element={<GlassLake />} />
+          <Route path="/aurora" element={<GlassLake />} />
           {/* THE VIBEVERSE — the hub seen from orbit. Fly the survey vessel VIBEY
               through a procedural galaxy where three of the stars are real
               destinations, and land on one to walk into it. /long-silence stays

@@ -16,6 +16,7 @@ import cityArt from "@/assets/worlds/city.jpg";
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import evolveArt from "@/assets/worlds/evolve.jpg";
 import gardenArt from "@/assets/worlds/garden.jpg";
+import glassLakeArt from "@/assets/worlds/glass-lake.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
 import vibeIslandArt from "@/assets/worlds/vibe-island.jpg";
@@ -80,6 +81,7 @@ export const WORLD_ART: Record<string, string> = {
   "edm-town": edmTownArt,
   evolve: evolveArt,
   garden: gardenArt,
+  "glass-lake": glassLakeArt,
   golf: golfArt,
   /* Vibe Island and Island Explorer used to share one capture. They are
      different worlds, and after the grass pass they no longer even look

@@ -464,6 +464,23 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "glass-lake",
+    route: "/glass-lake",
+    aliases: ["/aurora"],
+    name: "The Glass Lake",
+    emoji: "🌌",
+    kind: "world",
+    blurb:
+      "Black ice at night under a living aurora. Skate it, carve it, and bring twelve fallen shards back to the sky.",
+    status: "Playable — skate, carve, collect",
+    accent: "#5cf0c0",
+    featured: true,
+    source: "src/glasslake",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "san-palmas",
     route: "/san-palmas",
     aliases: ["/fps"],
