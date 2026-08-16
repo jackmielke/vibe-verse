@@ -89,6 +89,7 @@ const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
+const TheDeep = lazy(() => import("./pages/TheDeep.tsx"));
 const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
 const BlueAngels = lazy(() => import("./pages/BlueAngels.tsx"));
 const ISpy = lazy(() => import("./pages/ISpy.tsx"));
@@ -380,6 +381,19 @@ const App = () => (
               `/kart-mp` was the old multiplayer world and still answers. */}
           {["/kart", "/kart-mp"].map((path) => (
             <Route key={path} path={path} element={<VibeKart />} />
+          ))}
+          {/* THE MIDNIGHT ZONE — a submersible descent to the floor of the
+              trench, where the only light is the light things make. */}
+          {["/deep", "/midnight-zone", "/abyss"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<div className="fixed inset-0 bg-[#020913]" />}>
+                  <TheDeep />
+                </Suspense>
+              }
+            />
           ))}
           {/* BLUE ANGELS — Seafair over Lake Washington. You fly number 1 and
               the other five fly your wing, over a real Seattle. */}

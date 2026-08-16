@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "blob",                // …and the one you can explain in four words
   "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
+  "deep",                // the new one: eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
   "shop",                // …which is what you spend it in
@@ -128,6 +129,23 @@ export interface WorldEntry {
  * that reorders itself is a list nobody can build muscle memory for.
  */
 const WORLDS_RAW: WorldEntry[] = [
+  {
+    key: "deep",
+    route: "/deep",
+    aliases: ["/midnight-zone", "/abyss"],
+    name: "The Midnight Zone",
+    emoji: "🔦",
+    kind: "game",
+    blurb:
+      "Sink eight kilometres, on a submersible trimmed slightly heavy, until the sunlight gives out and the only light left is the light things make. Twelve real animals at their real depths — find them in the dark, survey them, and read what they are.",
+    status: "Playable — desktop, phone, one long descent",
+    accent: "#7ff0ff",
+    featured: true,
+    source: "src/deep",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
   {
     key: "trek",
     route: "/trek",

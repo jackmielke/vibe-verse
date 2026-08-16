@@ -1,0 +1,347 @@
+/**
+ * The Midnight Zone — the submersible.
+ *
+ * The hull, the lamps, and the physics of a thing that is very nearly the same
+ * density as the water it is in.
+ *
+ * The movement model is not a spaceship's. A submersible has enormous drag and
+ * almost no inertia to fight, so thrust maps closely to *speed* rather than to
+ * acceleration — you stop within a metre of releasing the stick. What it does
+ * have is buoyancy: trimmed slightly heavy, so with the ballast controls
+ * untouched you sink, slowly, forever. That single choice is what makes the
+ * descent happen *to* you rather than being something you hold a key down for.
+ *
+ * The lamps are the other half of the design. Two spotlights, and the entire
+ * game is what they do and do not reach. They cost power; power comes back
+ * slowly when they are off. Turning them off in the midnight zone to save
+ * power means being blind, and being blind here is genuinely unpleasant, which
+ * is exactly the trade the world is about.
+ */
+import * as THREE from "three";
+import { depthOf, FLOOR_DEPTH, type DeepCtx, type SubService, type System } from "../types";
+
+/** Trimmed heavy: metres per second of sink with no input at all. */
+const BALLAST_SINK = 1.9;
+/** Peak speeds, m/s. Slow — this is a submersible, not a jet ski. */
+const SURGE_SPEED = 13;
+const HEAVE_SPEED = 11;
+const BOOST_MULT = 2.35;
+/** How hard the water fights back. High: it is water. */
+const DRAG = 3.1;
+const YAW_RATE = 1.5;
+
+/** Below here the hull starts to complain, then to fail. */
+export const CRUSH_DEPTH = 7400;
+
+/**
+ * The visible beam.
+ *
+ * A `SpotLight` lights surfaces; it does not light *water*. In clear air that
+ * is fine, but a submersible's lamps are famous for the cone itself — the
+ * shaft of green-white you can see hanging in the water in front of the sub —
+ * and without it the lamps read as two bright dots on the hull rather than as
+ * headlights.
+ *
+ * Real volumetrics for this cost a depth prepass and a raymarch. A cone mesh
+ * with alpha baked into its vertex colours costs one draw call, and at the
+ * angles you ever see it from, it is indistinguishable.
+ */
+function buildBeam(length: number, radius: number): THREE.Mesh {
+  const geo = new THREE.CylinderGeometry(0.06, radius, length, 18, 6, true);
+  // The lathe runs along +Y; the lamps point along +Z.
+  geo.rotateX(Math.PI / 2);
+  geo.translate(0, 0, length / 2);
+
+  const colors: number[] = [];
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i);
+    const t = z / length; // 0 at the lamp, 1 at the far end
+    // Bright at the lamp, gone by the end. The shoulder near the lamp is what
+    // makes it look like it is being *emitted* rather than just fading in.
+    const a = Math.pow(1 - t, 2.2) * (1 - Math.pow(t, 8));
+    colors.push(a, a, a);
+  }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xbfe9ff,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    // Fogging the beam would make it vanish exactly where it is doing its job.
+    fog: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 3;
+  return mesh;
+}
+
+function buildHull(): {
+  root: THREE.Group;
+  lampL: THREE.SpotLight;
+  lampR: THREE.SpotLight;
+  beams: THREE.Mesh[];
+  fill: THREE.PointLight;
+} {
+  const root = new THREE.Group();
+
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xf0b429, roughness: 0.45, metalness: 0.55 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x1c2431, roughness: 0.6, metalness: 0.7 });
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x9fe8ff,
+    roughness: 0.05,
+    metalness: 0,
+    transmission: 0.85,
+    thickness: 0.4,
+    transparent: true,
+    opacity: 0.55,
+  });
+
+  // Pressure sphere forward, faired body behind — the Alvin/Limiting Factor
+  // silhouette. Yellow because every submersible anyone can picture is yellow.
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 1.5, 8, 18), hullMat);
+  body.rotation.x = Math.PI / 2;
+  root.add(body);
+
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.52, 20, 16), glassMat);
+  dome.position.z = 1.05;
+  root.add(dome);
+
+  // Sail.
+  const sail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.9), trimMat);
+  sail.position.set(0, 0.62, -0.25);
+  root.add(sail);
+
+  // Thruster ducts either side.
+  for (const s of [-1, 1]) {
+    const duct = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.42, 12, 1, true), trimMat);
+    duct.rotation.x = Math.PI / 2;
+    duct.position.set(s * 0.82, -0.12, -0.9);
+    root.add(duct);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.05), trimMat);
+    blade.position.copy(duct.position);
+    blade.name = s < 0 ? "propL" : "propR";
+    root.add(blade);
+  }
+
+  // Skids, so it has somewhere to stand when it reaches the floor.
+  for (const s of [-1, 1]) {
+    const skid = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 2.2), trimMat);
+    skid.position.set(s * 0.62, -0.86, -0.1);
+    root.add(skid);
+  }
+
+  // The lamps. Wide and slightly toed-in and nose-down, so their pools overlap
+  // a few metres ahead — which is where the thing you are looking at will be,
+  // and where the seafloor comes up to meet you.
+  const beams: THREE.Mesh[] = [];
+  const mk = (x: number) => {
+    const l = new THREE.SpotLight(0xdff2ff, 260, 90, 0.62, 0.45, 1.1);
+    l.position.set(x, -0.18, 1.0);
+    const t = new THREE.Object3D();
+    t.position.set(x * 0.3, -4.2, 24);
+    root.add(t);
+    l.target = t;
+    root.add(l);
+
+    const beam = buildBeam(30, 8.4);
+    beam.position.copy(l.position);
+    // Point the cone the same way as the light: down the line to its target.
+    beam.lookAt(t.position);
+    beam.name = x < 0 ? "beamL" : "beamR";
+    root.add(beam);
+    beams.push(beam);
+
+    // The housing, so the lamp is visibly a thing on the hull.
+    const can = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.16, 0.22, 10),
+      new THREE.MeshStandardMaterial({ color: 0xe8f6ff, emissive: 0xdff2ff, emissiveIntensity: 3 }),
+    );
+    can.rotation.x = Math.PI / 2;
+    can.position.copy(l.position);
+    can.name = x < 0 ? "canL" : "canR";
+    root.add(can);
+    return l;
+  };
+  const lampL = mk(-0.66);
+  const lampR = mk(0.66);
+
+  /**
+   * A dim fill on the hull itself.
+   *
+   * Physically there is nothing down here to bounce light back onto the sub,
+   * and rendering that honestly gives you a black hole where your vehicle
+   * should be. The player's own craft is the one thing that must always read —
+   * it is the anchor for every judgement about speed, attitude and distance —
+   * so it gets a small light nobody is meant to notice.
+   */
+  const fill = new THREE.PointLight(0x9fd8f0, 9, 7, 2);
+  fill.position.set(0, 2.2, -1.4);
+  root.add(fill);
+
+  return { root, lampL, lampR, beams, fill };
+}
+
+export default function createSub(ctx: DeepCtx): System {
+  const { root, lampL, lampR, beams, fill } = buildHull();
+  root.position.set(0, -4, 0);
+  ctx.scene.add(root);
+
+  const velocity = new THREE.Vector3();
+  const forward = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  let yaw = 0;
+  let pitch = 0;
+  let roll = 0;
+  let lightsOn = true;
+  let power = 1;
+  let hull = 1;
+  let landed = false;
+
+  const service: SubService = {
+    object: root,
+    position: root.position,
+    velocity,
+    speed: 0,
+    depth: 4,
+    lightsOn: true,
+    power: 1,
+    hull: 1,
+    setLights(on) {
+      lightsOn = on;
+      service.lightsOn = on;
+    },
+  };
+  ctx.services.sub = service;
+
+  return {
+    update(dt) {
+      const input = ctx.input;
+
+      if (input.lightsPressed) service.setLights(!lightsOn);
+
+      // -- attitude ---------------------------------------------------------
+      // Yaw from the stick and from look-drag together, so a mouse and a
+      // keyboard steer the same vehicle rather than fighting over it.
+      yaw -= input.yaw * YAW_RATE * dt;
+      yaw -= input.lookYaw;
+      pitch = THREE.MathUtils.clamp(pitch - input.lookPitch, -1.05, 1.05);
+      input.lookYaw = 0;
+      input.lookPitch = 0;
+
+      // Bank into the turn. Cosmetic, and it is most of what makes the sub
+      // feel like it has mass.
+      const wantRoll = -input.yaw * 0.32;
+      roll += (wantRoll - roll) * Math.min(1, dt * 3.4);
+
+      root.rotation.set(0, 0, 0);
+      root.rotateY(yaw);
+      root.rotateX(pitch * 0.5);
+      root.rotateZ(roll);
+
+      forward.set(0, 0, 1).applyQuaternion(root.quaternion);
+      right.set(1, 0, 0).applyQuaternion(root.quaternion);
+
+      // -- thrust -----------------------------------------------------------
+      const boosting = input.boost && power > 0.02;
+      const mult = boosting ? BOOST_MULT : 1;
+      const drive = power > 0.01 ? 1 : 0.25; // A flat battery still coasts.
+
+      velocity.addScaledVector(forward, input.surge * SURGE_SPEED * mult * drive * dt * DRAG);
+      velocity.y += input.heave * HEAVE_SPEED * drive * dt * DRAG;
+      // Ballast. Always there, always down.
+      velocity.y -= BALLAST_SINK * dt * DRAG * 0.34;
+
+      // Water drag. Exponential, so releasing the stick stops you promptly and
+      // there is no space-sim glide.
+      const damp = Math.exp(-DRAG * dt);
+      velocity.multiplyScalar(damp);
+
+      root.position.addScaledVector(velocity, dt);
+
+      // -- the floor, and the ceiling ---------------------------------------
+      const floorY = -FLOOR_DEPTH;
+      if (root.position.y < floorY + 1.6) {
+        root.position.y = floorY + 1.6;
+        if (velocity.y < 0) velocity.y = 0;
+        if (!landed) {
+          landed = true;
+          ctx.emit("sub:landed", { depth: FLOOR_DEPTH });
+        }
+      } else if (landed && root.position.y > floorY + 3) {
+        landed = false;
+      }
+      // You cannot leave. Breaching would show the sky, and there is no sky.
+      if (root.position.y > -1.6) {
+        root.position.y = -1.6;
+        if (velocity.y > 0) velocity.y = 0;
+      }
+
+      const depth = depthOf(root.position.y);
+      service.depth = depth;
+      service.speed = velocity.dot(forward);
+
+      // -- power ------------------------------------------------------------
+      // Lamps are the main draw; thrust costs a little; everything trickles
+      // back. Tuned so a careful pilot never runs out and a heavy-handed one
+      // has to go dark for a while, which is its own kind of scene.
+      const draw = (lightsOn ? 0.0125 : 0) + Math.abs(input.surge) * 0.004 + (boosting ? 0.02 : 0);
+      power = THREE.MathUtils.clamp(power - draw * dt + 0.0075 * dt, 0, 1);
+      service.power = power;
+
+      // -- pressure ---------------------------------------------------------
+      if (depth > CRUSH_DEPTH) {
+        const over = (depth - CRUSH_DEPTH) / (FLOOR_DEPTH - CRUSH_DEPTH);
+        hull = Math.max(0, hull - over * 0.035 * dt);
+        if (ctx.rng() < over * dt * 2.2) ctx.emit("sub:groan", { depth, hull });
+      } else if (hull < 1) {
+        hull = Math.min(1, hull + 0.012 * dt);
+      }
+      service.hull = hull;
+
+      // -- lamps ------------------------------------------------------------
+      // Brightness follows power, so a dying battery dims rather than snapping
+      // off — you get to watch it happen and decide what to do about it.
+      const want = lightsOn ? 260 * (0.35 + 0.65 * Math.min(1, power * 2.2)) : 0;
+      lampL.intensity += (want - lampL.intensity) * Math.min(1, dt * 5);
+      lampR.intensity = lampL.intensity;
+      // The visible cone follows the lamps, and thickens with depth: there is
+      // more to scatter off down there, and it is the clearest signal the
+      // player has that the lamps are the only thing left working.
+      const beamAlpha = (lampL.intensity / 260) * (0.055 + Math.min(1, depth / 1600) * 0.075);
+      for (const b of beams) {
+        const bm = b.material as THREE.MeshBasicMaterial;
+        bm.opacity = beamAlpha;
+        b.visible = beamAlpha > 0.004;
+      }
+      fill.intensity = 6 + (lightsOn ? 4 : 0);
+      const canGlow = lightsOn ? 3 * (0.3 + 0.7 * power) : 0;
+      for (const n of ["canL", "canR"]) {
+        const can = root.getObjectByName(n) as THREE.Mesh | undefined;
+        if (can) (can.material as THREE.MeshStandardMaterial).emissiveIntensity = canGlow;
+      }
+
+      // Props spin with thrust.
+      const spin = (Math.abs(input.surge) * mult + 0.12) * dt * 14;
+      for (const n of ["propL", "propR"]) {
+        const p = root.getObjectByName(n);
+        if (p) p.rotation.z += spin;
+      }
+    },
+
+    dispose() {
+      ctx.scene.remove(root);
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mat = (m as unknown as { material?: THREE.Material | THREE.Material[] }).material;
+        if (mat) for (const one of Array.isArray(mat) ? mat : [mat]) one.dispose();
+      });
+      if (ctx.services.sub === service) delete ctx.services.sub;
+    },
+  };
+}

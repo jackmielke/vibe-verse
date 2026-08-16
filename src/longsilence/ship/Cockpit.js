@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 30;
+export const PASSPORT_ROWS = 33;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1218,7 +1218,16 @@ function drawArchivePassport(g, v, ctx) {
      point past which the text gets too small to read rather than the point
      past which it stops being drawn — and passport.test.ts still holds the
      other end, so a nineteenth world fails a test rather than vanishing from
-     somebody's passport. */
+     somebody's passport.
+
+     The Midnight Zone made thirty-one, and this time the raise cost nothing at
+     all: run the pitch arithmetic across window heights and thirty, thirty-one
+     and thirty-three all land on the same `nameSize` in every regime — 13.5 on
+     anything 720 px tall or more, and identical to the old value on the short
+     ones too. The third column bought more headroom than the last raise
+     realised. The type does not actually start shrinking until about
+     forty-eight, so thirty-three is a limit with room in it rather than
+     another ceiling to bump next month. */
   const TOP = 196;
   const BOTTOM = h - 76;
   const shown = rows.slice(0, PASSPORT_ROWS);
