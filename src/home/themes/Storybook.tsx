@@ -100,7 +100,16 @@ export default function Storybook() {
                   cream rather than as the front of a book. */}
               <div aria-hidden className="mt-9 flex items-center justify-center gap-3">
                 <span className="h-px w-16 sm:w-24" style={{ background: "rgba(59,47,38,0.3)" }} />
-                <span className="text-[13px]" style={{ color: BERRY }}>❧</span>
+                {/* Three drawn dots rather than a glyph. A floret like ❧ is
+                    inside the emoji ranges on some platforms and arrives as a
+                    small colour picture on the title page of a book. */}
+                {[6, 8, 6].map((n, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full"
+                    style={{ width: n, height: n, background: BERRY, opacity: n === 8 ? 1 : 0.55 }}
+                  />
+                ))}
                 <span className="h-px w-16 sm:w-24" style={{ background: "rgba(59,47,38,0.3)" }} />
               </div>
               <p className="mt-6 font-heading text-[9.5px] uppercase tracking-[0.3em] opacity-45">

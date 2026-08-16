@@ -43,10 +43,16 @@ export default function Zine() {
           </Link>
         </nav>
 
-        <header className="relative py-16 sm:py-24">
+        {/* Text beside the wall rather than above it. Stacked, the headline
+            took the whole first screen and the pinned wall — which is the only
+            reason this theme exists — began below the fold. It also reads more
+            like a zine this way: the writing is pinned up among the pictures
+            instead of introducing them. */}
+        <div className="lg:flex lg:items-start lg:gap-10">
+        <header className="relative py-12 sm:py-16 lg:sticky lg:top-6 lg:w-[36%] lg:shrink-0 lg:self-start lg:py-10">
           <h1
             className="font-heading font-black uppercase leading-[0.85] tracking-[-0.045em]"
-            style={{ fontSize: "clamp(3rem, 12vw, 8rem)" }}
+            style={{ fontSize: "clamp(2.6rem, 9vw, 4.4rem)" }}
           >
             what kind
             <br />
@@ -68,7 +74,7 @@ export default function Zine() {
 
         {/* The wall. `columns` rather than a grid so the cards stack at their
             own heights and the rows never line up — which is the entire look. */}
-        <div className="columns-2 gap-4 sm:columns-3 lg:columns-4 [column-fill:balance]">
+        <div className="columns-2 gap-4 sm:columns-3 lg:min-w-0 lg:flex-1 lg:pt-10 [column-fill:balance]">
           {wall.map((w) => {
             const s = seedOf(w.key);
             const tilt = (s - 0.5) * 5.4;
@@ -111,6 +117,7 @@ export default function Zine() {
               </Link>
             );
           })}
+        </div>
         </div>
 
         <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[11px] text-white/40">

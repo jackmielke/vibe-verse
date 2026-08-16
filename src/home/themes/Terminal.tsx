@@ -41,7 +41,22 @@ export default function Terminal() {
 
       <div className="relative z-10 mx-auto max-w-4xl px-4 pb-24 pt-8 sm:px-8">
         <pre className="whitespace-pre-wrap text-[11.5px] opacity-70">{`vibeverse 1.0 — ${d.counts.worlds} worlds mounted
-balance ${d.coin.display}   passport ${d.passport.visited}/${d.passport.total}`}</pre>
+passport ${d.passport.visited}/${d.passport.total}`}</pre>
+        {/* A balance of `—` is what every other theme printed before it learned
+            to offer a way in. A shell would tell you why it is empty. */}
+        <p className="text-[11.5px] opacity-70">
+          {d.coin.signedIn ? (
+            <>balance {d.coin.display}</>
+          ) : (
+            <>
+              balance —{" "}
+              <Link to="/profile" className="underline underline-offset-2 hover:bg-[#7dffd4] hover:text-[#020604]">
+                sign in
+              </Link>{" "}
+              to earn
+            </>
+          )}
+        </p>
 
         <h1 className="mt-6 text-[15px] font-bold">
           <span className="opacity-60">visitor@vibeverse</span>
