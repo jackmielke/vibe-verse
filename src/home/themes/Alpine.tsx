@@ -36,12 +36,12 @@ export default function Alpine() {
         />
         <div
           aria-hidden
-          className="absolute rounded-full"
-          style={{ width: 190, height: 190, right: "12%", top: "14%", background: SUN, opacity: 0.95 }}
+          className="absolute h-[120px] w-[120px] rounded-full sm:h-[190px] sm:w-[190px]"
+          style={{ right: "8%", top: "9%", background: SUN, opacity: 0.95 }}
         />
 
-        <div className="relative mx-auto max-w-6xl px-6 pb-36 pt-6 sm:px-10">
-          <nav className="flex items-center gap-6 font-heading text-[11px] font-bold uppercase tracking-[0.2em] text-white/85">
+        <div className="relative mx-auto max-w-6xl px-6 pb-24 pt-6 sm:px-10 sm:pb-36">
+          <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 font-heading text-[10px] font-bold uppercase tracking-[0.16em] text-white/85 sm:gap-x-6 sm:text-[11px] sm:tracking-[0.2em]">
             <span className="text-white">Vibeverse</span>
             <Link to="/game" className="hover:text-white">Worlds</Link>
             <Link to="/arcade" className="hover:text-white">Arcade</Link>
@@ -55,7 +55,7 @@ export default function Alpine() {
             </Link>
           </nav>
 
-          <p className="mt-20 font-heading text-[10px] font-bold uppercase tracking-[0.4em] text-white/70">
+          <p className="mt-14 font-heading text-[9px] font-bold uppercase tracking-[0.3em] text-white/70 sm:mt-20 sm:text-[10px] sm:tracking-[0.4em]">
             Powered by creators · owned by players
           </p>
           <h1

@@ -68,9 +68,15 @@ const browser = await chromium.launch({
 const probe = await browser.newPage();
 await probe.goto(`${BASE}/homes`, { waitUntil: "domcontentloaded" });
 await probe.waitForTimeout(3500);
-const ids = await probe.evaluate(() =>
-  [...document.querySelectorAll('a[href^="/homes/"]')].map((a) => a.getAttribute("href").split("/").pop()),
-);
+/* Deduped: the picker links each theme twice — once from its row and once
+   from the preview pane's "open full size" button. */
+const ids = await probe.evaluate(() => [
+  ...new Set(
+    [...document.querySelectorAll('a[href^="/homes/"]')].map((a) =>
+      a.getAttribute("href").split("/").pop().split("?")[0],
+    ),
+  ),
+]);
 await probe.close();
 
 const list = only.length ? only : ids;
@@ -112,7 +118,39 @@ for (const id of list) {
       const stat = await page.evaluate(() => {
         const links = document.querySelectorAll('a[href^="/"]').length;
         const imgs = [...document.querySelectorAll("img")];
+
+        /* Content that runs off the right edge but is *clipped* rather than
+           scrolled. `overflowX` never catches this: an ancestor with
+           `overflow: hidden` absorbs it silently, so a nav whose last item is
+           a sign-in button simply loses the button and every automated check
+           passes. Found exactly that way on a 390px phone. */
+        const clipped = [...document.querySelectorAll("a, button, h1, h2, h3, p, span")]
+          .filter((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.width < 8 || r.height < 8) return false;
+            const s = getComputedStyle(el);
+            if (s.visibility === "hidden" || s.opacity === "0") return false;
+
+            /* The question is whether the element escapes *its own clipper's*
+               box — not whether it is off the viewport. Off-viewport is normal
+               and fine for a tile in a side-scrolling rail, and a card in that
+               rail carries `overflow-hidden` of its own for its rounded
+               corners, so any rule phrased against the viewport calls every
+               shelf broken. Compare against the nearest clipping ancestor's
+               rect and both cases come out right. */
+            for (let p = el.parentElement; p; p = p.parentElement) {
+              const ox = getComputedStyle(p).overflowX;
+              if (/auto|scroll/.test(ox)) return false;
+              if (/hidden|clip/.test(ox)) {
+                return r.right > p.getBoundingClientRect().right + 4;
+              }
+            }
+            return false;
+          })
+          .map((el) => `${el.tagName.toLowerCase()}:${(el.textContent || "").trim().slice(0, 22)}`);
+
         return {
+          clipped: [...new Set(clipped)].slice(0, 3),
           height: document.body.scrollHeight,
           links,
           imgs: imgs.length,
@@ -124,7 +162,8 @@ for (const id of list) {
 
       const thin = stat.height < viewport.height * 0.9;
       const empty = stat.text < 200 || stat.links < 5;
-      const flag = errs.length || empty || thin || stat.overflowX || stat.brokenImgs;
+      const flag =
+        errs.length || empty || thin || stat.overflowX || stat.brokenImgs || stat.clipped.length;
       if (flag) bad++;
 
       await page
@@ -136,6 +175,7 @@ for (const id of list) {
           `h=${stat.height} links=${stat.links} imgs=${stat.imgs}` +
           (stat.brokenImgs ? ` broken=${stat.brokenImgs}` : "") +
           (stat.overflowX ? " OVERFLOW-X" : "") +
+          (stat.clipped.length ? ` CLIPPED[${stat.clipped.join(" | ")}]` : "") +
           (thin ? " TOO-SHORT" : "") +
           (empty ? " EMPTY" : "") +
           (errs.length ? ` err="${errs[0]}"` : ""),
