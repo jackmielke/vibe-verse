@@ -74,9 +74,9 @@ export default function Sunrise() {
             className="mt-6 font-heading font-black leading-[0.92] tracking-[-0.035em]"
             style={{ fontSize: "clamp(2.8rem, 9vw, 5.6rem)" }}
           >
-            Somewhere
+            What kind of adventure
             <br />
-            new to be
+            will you choose today?
           </h1>
           <p className="mx-auto mt-6 max-w-md text-[15px] leading-relaxed opacity-80">
             {d.counts.worlds} worlds, all of them a browser tab away. No install,
