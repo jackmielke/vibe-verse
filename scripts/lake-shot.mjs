@@ -74,6 +74,17 @@ page.on("console", (m) => {
 // sky, and the result is written as a downscaled JPEG.
 const ART = process.env.LAKE_ART;
 
+// LAKE_CHARACTER=knight seeds the same localStorage key the lobby writes,
+// so a run can prove the world really is reading the vibeverse-wide pick
+// rather than shipping a body of its own. Half the catalog has no model
+// file and is built in code instead — a different, synchronous path — so
+// it is worth being able to aim at either.
+const CHARACTER = process.env.LAKE_CHARACTER;
+if (CHARACTER) {
+  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 120000 });
+  await page.evaluate((id) => localStorage.setItem("lobby.character", id), CHARACTER);
+}
+
 await page.goto(`${BASE}/glass-lake${ART ? "?shot=1" : ""}`, {
   waitUntil: "domcontentloaded",
   timeout: 120000,
@@ -156,6 +167,13 @@ const hud = () =>
 
 await shot("lake-arrival.png");
 console.log("HUD:", await hud());
+console.log(
+  "character:",
+  await page.evaluate(() => ({
+    stored: localStorage.getItem("lobby.character"),
+    inWorld: window.__lakeDebug?.character?.() ?? null,
+  })).then(JSON.stringify),
+);
 
 // A lap: push forward, carve right, carve left. Long holds, because the
 // software rasteriser runs the world in slow motion.

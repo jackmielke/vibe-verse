@@ -15,6 +15,8 @@ import { buildSkater } from "./skater";
 import { buildScenery } from "./scenery";
 import { buildShards } from "./shards";
 import { buildPostFx } from "./postfx";
+import { findCharacter } from "@/lib/characters";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { createLakeAudio, type LakeAudio } from "./audio";
 
 export const LAKE_RADIUS = 190;
@@ -114,16 +116,58 @@ export function createGlassLake(options: GlassLakeOptions): GlassLakeWorld {
   scene.add(shards.group);
 
   const skater = buildSkater();
-  scene.add(skater.group);
+  scene.add(skater.group, skater.scarfGroup);
+
+  // Whoever you already are, on the ice.
+  //
+  // Read straight from the same localStorage key the lobby, the hub and
+  // the profile all write, so the character you picked anywhere in the
+  // vibeverse is the one standing on the lake — no picker of its own, and
+  // no second copy of the roster. The load is not awaited: the world is
+  // skateable on the first frame and the body drops in when it arrives.
+  const SKATER_HEIGHT = 1.7;
+  let rig: CharacterRig | null = null;
+  let rigDropped = false;
+  const charId =
+    (typeof window !== "undefined" &&
+      (localStorage.getItem("lobby.character") ?? localStorage.getItem("city.character"))) ||
+    "vibey";
+  void loadCharacterRig(findCharacter(charId), {
+    height: SKATER_HEIGHT,
+    fitBy: "height",
+    center: true,
+    castShadow: false,
+    // Locomotion 1 means "pushing", which is a brisk stride rather than
+    // the 4.2 m/s a walking world means by it.
+    walkSpeed: 2.6,
+  })
+    .then((r) => {
+      // The world may already have been torn down while the GLB was in
+      // flight; mounting into a disposed scene leaks the whole rig.
+      if (rigDropped) return r.dispose();
+      rig = r;
+      skater.mount(r.object, SKATER_HEIGHT);
+    })
+    .catch(() => {
+      /* A missing model costs you a body, not the lake. */
+    });
 
   // The only two lights in the world, and both of them are the sky: the
   // moon as a key, and the aurora as a coloured fill that brightens as it
   // fills in. Nothing else is lit at all.
-  const moon = new THREE.DirectionalLight(0xbfd4ff, 0.55);
+  const moon = new THREE.DirectionalLight(0xbfd4ff, 0.9);
   moon.position.set(-0.42, 0.16, -0.9).multiplyScalar(100);
   scene.add(moon);
-  const auroraFill = new THREE.HemisphereLight(0x2ef0a8, 0x050a12, 0.35);
+  const auroraFill = new THREE.HemisphereLight(0x2ef0a8, 0x050a12, 0.55);
   scene.add(auroraFill);
+  // A rim from the arc, which stands to the north at +Z. Nothing else in
+  // the world is lit — the ice, the sky, the pines and the snow are all
+  // shaders or flat silhouettes — so these three lights exist solely to
+  // make the character you picked legible against a bright sky. Without
+  // the rim, a gold knight and a goblin are the same black cut-out.
+  const auroraRim = new THREE.DirectionalLight(0x7dffd0, 0.85);
+  auroraRim.position.set(0.15, 0.35, 1).multiplyScalar(100);
+  scene.add(auroraRim);
 
   const postfx = buildPostFx(renderer, quality.tier);
 
@@ -227,6 +271,10 @@ export function createGlassLake(options: GlassLakeOptions): GlassLakeWorld {
     hopRequest = false;
 
     skater.update(dt, { x: ix, y: iy, boost, hop }, camYaw, LAKE_RADIUS);
+    if (rig) {
+      rig.setLocomotion(skater.effort);
+      rig.update(dt);
+    }
 
     // ---- Carve trail -------------------------------------------------
     // Only while a blade is actually on the ice.
@@ -266,8 +314,11 @@ export function createGlassLake(options: GlassLakeOptions): GlassLakeWorld {
     sky.setEnergy(energy);
     ice.setEnergy(energy);
     postfx.setFlash(flash);
-    auroraFill.intensity = 0.28 + energy * 0.5;
+    // The character is lit by the sky, so it warms toward violet with it.
+    auroraFill.intensity = 0.5 + energy * 0.55;
     (auroraFill.color as THREE.Color).setHSL(0.42 - energy * 0.18, 0.85, 0.55);
+    auroraRim.intensity = 0.75 + energy * 0.6;
+    (auroraRim.color as THREE.Color).setHSL(0.42 - energy * 0.2, 0.8, 0.62);
 
     // ---- Camera ---------------------------------------------------------
     // Sits behind the direction of travel, not behind the body: at speed
@@ -343,6 +394,8 @@ export function createGlassLake(options: GlassLakeOptions): GlassLakeWorld {
   // hundred and ninety metres in a software rasteriser at four frames a
   // second. Everything here goes through the real pickup path.
   const debug = {
+    /** Which catalog id the world actually put on the ice. */
+    character: () => charId,
     state: (): LakeState => ({
       shards: shards.taken,
       total: shards.total,
@@ -398,6 +451,10 @@ export function createGlassLake(options: GlassLakeOptions): GlassLakeWorld {
       canvas.removeEventListener("wheel", onWheel);
       audio?.dispose();
       audio = null;
+      rigDropped = true;
+      skater.unmount();
+      rig?.dispose();
+      rig = null;
       delete (window as unknown as { __lakeDebug?: unknown }).__lakeDebug;
       sky.dispose();
       ice.dispose();

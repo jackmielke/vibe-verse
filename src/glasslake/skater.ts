@@ -28,12 +28,33 @@ const BOOST_SPEED = 30;
 const PUSH = 17;
 const FORWARD_DRAG = 0.22;   // glide: a long, slow bleed
 const LATERAL_BITE = 7.5;    // edges: a fast one
-const TURN_RATE = 3.1;
+// Steering authority, radians per second at a standstill.
+//
+// This was 3.1 with the falloff below capped at 0.62, which left 1.2 rad/s
+// at speed — a ninety-degree turn took a second and a third, and the lake
+// is only three hundred and eighty metres across. It read as a boat. The
+// carve is supposed to come from the *edges* biting, not from the steering
+// being sluggish, so the rate went up and the falloff came down: you can
+// always point where you want, and the ice still decides how fast you get
+// there.
+const TURN_RATE = 4.4;
+const TURN_FALLOFF = 0.42;
 const HOP_V = 5.2;
 const GRAVITY = 18;
 
 export interface SkaterHandle {
   group: THREE.Group;
+  /** Added to the scene alongside `group` — see buildMesh's note. */
+  scarfGroup: THREE.Group;
+  /**
+   * Put a body on the skates. Called once the character rig has loaded —
+   * the world starts without one rather than waiting, so the lake is
+   * skateable the moment it paints.
+   */
+  mount(object: THREE.Object3D, height: number): void;
+  unmount(): void;
+  /** 0 when gliding, 1 when pushing — drives the rig's walk cycle. */
+  readonly effort: number;
   readonly position: THREE.Vector3;
   readonly velocity: THREE.Vector3;
   readonly heading: number;
@@ -44,12 +65,39 @@ export interface SkaterHandle {
   dispose(): void;
 }
 
-/** A lantern-lit figure: dark silhouette, glowing blades, a scarf that lags. */
+/**
+ * The rider: whoever you already are, on a pair of blades.
+ *
+ * The body is not built here. It is the character you picked in the
+ * vibeverse — `loadCharacterRig` fits any of the fifty-odd catalog
+ * models (or the code-built ones, which have no file at all) to a
+ * height, plants its feet at y=0 and hands back a rig that animates
+ * itself. This world adds the two things that make that character a
+ * skater rather than a walker: blades under the feet and a scarf that
+ * lags behind the neck.
+ *
+ * The rig arrives asynchronously and the world does not wait for it, so
+ * everything below is built and posed whether or not a body has turned
+ * up yet. A skater with no model is a scarf and two blades skating on
+ * their own, which is a better failure than a blank lake.
+ */
 function buildMesh(): {
   group: THREE.Group;
+  /**
+   * The scarf lives in world space, so it is a *sibling* of the skater
+   * rather than a child. A trailing chain is solved in world coordinates
+   * by definition — each link chases where the last one actually is —
+   * and writing those coordinates into children of a group that is
+   * itself moving and rotating applies the skater's transform twice.
+   * The visible result was six red blocks dropped on the ice in a line
+   * behind you, which is a convincing bug report for parenting.
+   */
+  scarfGroup: THREE.Group;
   scarf: THREE.Mesh[];
   lean: THREE.Group;
   blades: THREE.Mesh[];
+  mount(object: THREE.Object3D, height: number): void;
+  unmount(): void;
   dispose(): void;
 } {
   const group = new THREE.Group();
@@ -62,59 +110,58 @@ function buildMesh(): {
     return x;
   };
 
-  const coat = keep(
-    new THREE.MeshStandardMaterial({ color: "#14161f", roughness: 0.85, metalness: 0.05 }),
-  );
-  const skin = keep(
-    new THREE.MeshStandardMaterial({ color: "#d9b48f", roughness: 0.9 }),
-  );
   const glow = keep(
     new THREE.MeshBasicMaterial({ color: "#8ef7d2", transparent: true, opacity: 0.95 }),
   );
 
-  const body = new THREE.Mesh(keep(new THREE.CapsuleGeometry(0.26, 0.62, 6, 12)), coat);
-  body.position.y = 0.86;
-  lean.add(body);
-
-  const head = new THREE.Mesh(keep(new THREE.SphereGeometry(0.19, 16, 12)), skin);
-  head.position.y = 1.42;
-  lean.add(head);
-
-  const hat = new THREE.Mesh(keep(new THREE.ConeGeometry(0.22, 0.3, 12)), coat);
-  hat.position.y = 1.62;
-  lean.add(hat);
-
   const blades: THREE.Mesh[] = [];
-  for (const dx of [-0.16, 0.16]) {
-    const leg = new THREE.Mesh(keep(new THREE.CapsuleGeometry(0.09, 0.34, 4, 8)), coat);
-    leg.position.set(dx, 0.32, 0);
-    lean.add(leg);
-    const blade = new THREE.Mesh(keep(new THREE.BoxGeometry(0.05, 0.05, 0.5)), glow);
-    blade.position.set(dx, 0.05, 0);
+  for (const dx of [-0.14, 0.14]) {
+    const blade = new THREE.Mesh(keep(new THREE.BoxGeometry(0.05, 0.045, 0.52)), glow);
+    blade.position.set(dx, 0.03, 0.02);
     lean.add(blade);
     blades.push(blade);
   }
 
   // The scarf is six free bodies chasing the neck. It is the only thing in
-  // the world that shows your speed without a number on the screen.
+  // the world that shows your speed without a number on the screen — and it
+  // is the one piece of costume every character gets, so the pug and the
+  // knight are recognisably in the same sport.
   const scarfMat = keep(
     new THREE.MeshStandardMaterial({ color: "#e8465f", roughness: 0.8, side: THREE.DoubleSide }),
   );
   const scarfGeo = keep(new THREE.BoxGeometry(0.16, 0.1, 0.24));
+  const scarfGroup = new THREE.Group();
   const scarf: THREE.Mesh[] = [];
   for (let i = 0; i < 6; i++) {
     const seg = new THREE.Mesh(scarfGeo, scarfMat);
     seg.position.set(0, 1.22, -0.1 * i);
     seg.scale.setScalar(1 - i * 0.09);
-    group.add(seg);
+    scarfGroup.add(seg);
     scarf.push(seg);
   }
 
+  let body: THREE.Object3D | null = null;
+
   return {
     group,
+    scarfGroup,
     scarf,
     lean,
     blades,
+    mount(object, height) {
+      if (body) lean.remove(body);
+      body = object;
+      // Blades ride under the feet, and the scarf sits at the shoulders of
+      // whoever turned up — a pug and an alien do not wear it in the same
+      // place, so it is measured off the fitted height rather than fixed.
+      object.position.set(0, 0.06, 0);
+      lean.add(object);
+      scarf.forEach((seg, i) => seg.position.set(0, height * 0.72, -0.1 * i));
+    },
+    unmount() {
+      if (body) lean.remove(body);
+      body = null;
+    },
     dispose() {
       owned.forEach((o) => o.dispose());
     },
@@ -134,10 +181,23 @@ export function buildSkater(): SkaterHandle {
   const forward = new THREE.Vector3();
   const lateral = new THREE.Vector3();
   const desired = new THREE.Vector3();
-  const scarfTargets = mesh.scarf.map(() => new THREE.Vector3(0, 1.22, 0));
+  const scarfDir = new THREE.Vector3();
+  const scarfTmp = new THREE.Vector3();
+  let neckY = 1.22;
+  let effort = 0;
+  const scarfTargets = mesh.scarf.map(() => new THREE.Vector3(0, neckY, 0));
 
   return {
     group: mesh.group,
+    scarfGroup: mesh.scarfGroup,
+    mount(object, height) {
+      mesh.mount(object, height);
+      neckY = height * 0.72;
+    },
+    unmount: () => mesh.unmount(),
+    get effort() {
+      return effort;
+    },
     position,
     velocity,
     get heading() {
@@ -152,6 +212,11 @@ export function buildSkater(): SkaterHandle {
 
     update(dt, input, camYaw, lakeRadius) {
       const mag = Math.min(1, Math.hypot(input.x, input.y));
+      // A skater pushing is doing something a walk cycle reads well; a
+      // skater gliding is not. Ease it so the legs do not flicker on and
+      // off with the stick.
+      const wantEffort = airborne ? 0 : mag > 0.06 ? (input.boost ? 1 : 0.72) : 0.06;
+      effort += (wantEffort - effort) * (1 - Math.exp(-7 * dt));
 
       // Stick → world direction, rotated into the camera's frame.
       if (mag > 0.06) {
@@ -163,7 +228,8 @@ export function buildSkater(): SkaterHandle {
         // Turning authority falls away with speed — a carve at pace is a
         // long arc, and a spin on the spot is something you do stopped.
         const speed = Math.hypot(velocity.x, velocity.z);
-        const authority = TURN_RATE * (1 - Math.min(0.62, speed / 34)) * (airborne ? 0.35 : 1);
+        const authority =
+          TURN_RATE * (1 - Math.min(TURN_FALLOFF, speed / 46)) * (airborne ? 0.4 : 1);
         let delta = want - heading;
         while (delta > Math.PI) delta -= Math.PI * 2;
         while (delta < -Math.PI) delta += Math.PI * 2;
@@ -248,31 +314,43 @@ export function buildSkater(): SkaterHandle {
       bob += dt * (4 + speed * 0.4);
       mesh.lean.position.y = airborne ? 0 : Math.abs(Math.sin(bob)) * 0.035 * Math.min(1, speed / 6);
 
-      // Scarf: each segment chases the one in front, with gravity and a
-      // shove from the air you are moving through.
-      const drag = 0.02 + Math.min(0.10, speed * 0.006);
+      // Scarf: a chain, not a queue of laggards.
+      //
+      // Each link sits exactly one segment-length from the one in front,
+      // in whatever direction it already lies, pulled down by gravity and
+      // straightened out by the air you are moving through. The distance
+      // is a *constraint* — the previous version eased each link toward
+      // the one ahead and then shoved it backwards by velocity × drag
+      // every frame, which is an offset applied sixty times a second and
+      // never repaid. At speed the tail simply left, and six red blocks
+      // went skidding across the lake behind you.
+      const SEG = 0.24;
       for (let i = 0; i < mesh.scarf.length; i++) {
         const target = scarfTargets[i];
         if (i === 0) {
-          target.set(
-            position.x - fx * 0.1,
-            position.y + 1.24,
-            position.z - fz * 0.1,
-          );
+          // The neck, a little behind the collarbone.
+          target.set(position.x - fx * 0.12, position.y + neckY, position.z - fz * 0.12);
         } else {
           const prev = scarfTargets[i - 1];
-          target.lerp(prev, 1 - Math.exp(-14 * dt));
-          target.x -= velocity.x * drag;
-          target.z -= velocity.z * drag;
-          target.y = THREE.MathUtils.lerp(
-            target.y,
-            position.y + 1.2 - i * 0.06 + Math.min(0.5, speed * 0.02),
-            1 - Math.exp(-8 * dt),
-          );
+          scarfDir.subVectors(target, prev);
+          if (scarfDir.lengthSq() < 1e-6) scarfDir.set(-fx, 0, -fz);
+          scarfDir.normalize();
+          // Hangs at rest, streams flat at speed, and always trails the
+          // direction of travel rather than the direction you face.
+          scarfDir.y += -0.9 + Math.min(0.86, speed * 0.062);
+          scarfDir.x -= velocity.x * 0.035;
+          scarfDir.z -= velocity.z * 0.035;
+          if (scarfDir.lengthSq() < 1e-6) scarfDir.set(-fx, -0.5, -fz);
+          scarfDir.normalize();
+          scarfTmp.copy(prev).addScaledVector(scarfDir, SEG);
+          target.lerp(scarfTmp, 1 - Math.exp(-24 * dt));
         }
         mesh.scarf[i].position.copy(target);
-        mesh.scarf[i].rotation.y = heading + Math.sin(bob * 0.7 + i) * 0.25;
-        mesh.scarf[i].rotation.z = Math.sin(bob * 0.9 + i * 0.7) * 0.3;
+        // Point each link at the one in front so the scarf reads as cloth
+        // rather than as a row of separate blocks.
+        if (i > 0) mesh.scarf[i].lookAt(scarfTargets[i - 1]);
+        else mesh.scarf[i].rotation.set(0, heading, 0);
+        mesh.scarf[i].rotation.z += Math.sin(bob * 0.9 + i * 0.7) * 0.22;
       }
 
       // Blades brighten as they bite.
@@ -289,7 +367,7 @@ export function buildSkater(): SkaterHandle {
       y = 0;
       vy = 0;
       airborne = false;
-      scarfTargets.forEach((t) => t.set(0, 1.22, 0));
+      scarfTargets.forEach((t) => t.set(0, neckY, 0));
     },
 
     dispose() {
