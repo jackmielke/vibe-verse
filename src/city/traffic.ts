@@ -331,8 +331,15 @@ export interface Traffic {
   nearestRidable(x: number, z: number, radius: number): TrafficRide | null;
   /** Take the wheel. The car leaves the fleet and stops colliding with you. */
   claim(id: number): TrafficRide | null;
-  /** Put the claimed car somewhere. The caller owns its pose until release. */
-  drive(id: number, x: number, y: number, z: number, yaw: number): void;
+  /**
+   * Put the claimed car somewhere. The caller owns its pose until release.
+   * `pitch`/`roll` default to level and are only ever non-zero for a car that
+   * has left the road in a way it is not coming back from — sinking, so far.
+   */
+  drive(
+    id: number, x: number, y: number, z: number, yaw: number,
+    pitch?: number, roll?: number,
+  ): void;
   /** Hand it back. It rejoins the lane nearest to where it was abandoned. */
   release(id: number): void;
   dispose(): void;
@@ -638,6 +645,8 @@ export function buildTraffic(opts: {
   const WE = new THREE.Euler();
   const WP = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
+  /** Only used by a car that is not level — see `pose`. */
+  const PE = new THREE.Euler();
   const SIG = new THREE.Color();
 
   /** Wrap a signed along-axis delta into (−half, +half]. */
@@ -822,10 +831,22 @@ export function buildTraffic(opts: {
     }
   };
 
-  /** Write one car's transform into its model's instanced meshes. */
-  const pose = (car: Car, x: number, y: number, z: number, yaw: number) => {
+  /**
+   * Write one car's transform into its model's instanced meshes.
+   *
+   * `pitch` and `roll` are zero for every car on the road — traffic is
+   * axis-aligned and flat by construction — and exist for the one case that is
+   * neither: a car sinking in the bay, which noses over and rolls as it goes
+   * down. Applied in YXZ so the yaw is a heading and the pitch tips the nose,
+   * rather than the two fighting over which one happens in world space.
+   */
+  const pose = (
+    car: Car, x: number, y: number, z: number, yaw: number,
+    pitch = 0, roll = 0,
+  ) => {
     const b = built[car.model];
-    Q.setFromAxisAngle(UP, yaw);
+    if (pitch === 0 && roll === 0) Q.setFromAxisAngle(UP, yaw);
+    else Q.setFromEuler(PE.set(pitch, yaw, roll, "YXZ"));
     P.set(x, y, z);
     M.compose(P, Q, ONE);
     for (const part of b.parts) part.setMatrixAt(car.slot, M);
@@ -898,7 +919,7 @@ export function buildTraffic(opts: {
       return ride;
     },
 
-    drive(id, x, y, z, yaw) {
+    drive(id, x, y, z, yaw, pitch = 0, roll = 0) {
       const car = cars[id];
       if (!car || !car.driven) return;
       // Wheels turn off the distance covered, same as the AI's.
@@ -910,7 +931,7 @@ export function buildTraffic(opts: {
         car.lane = z;
         car.t = x;
       }
-      pose(car, x, y, z, yaw);
+      pose(car, x, y, z, yaw, pitch, roll);
     },
 
     release(id) {

@@ -75,6 +75,7 @@ import {
 import { buildSplash, evalSwim, strokeRate, PRONE_PITCH } from "@/city/swim";
 import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
+import { createCarSink } from "@/city/carSink";
 import { createHeadMount } from "@/city/headMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
@@ -2097,11 +2098,26 @@ export default function City() {
       speed: number; vy: number; steer: number;
       mesh: ReturnType<typeof buildKart> | null;
       ride: number;
+      /**
+       * Seconds since this vehicle hit the water, or 0 for one that is dry.
+       *
+       * A sinking car is no longer a car: it does not steer, does not answer
+       * the throttle and is not held up by the phantom sea-level plate that
+       * every other query in the world floors at y=0. See `sinkTick`.
+       */
+      sink: number;
+      /** Where it noses over to, and how far it lists. Rolled once per sink. */
+      pitch: number; roll: number;
+      /** Parked pose, so a drowned kart can be recovered rather than lost. */
+      home: { x: number; y: number; z: number; yaw: number } | null;
     }> = [
-      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b"), ride: -1 },
-      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c"), ride: -1 },
-      { x: 0, y: 0, z: 0, yaw: 0, speed: 0, vy: 0, steer: 0, mesh: null, ride: -1 },
+      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b"), ride: -1, sink: 0, pitch: 0, roll: 0, home: null },
+      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c"), ride: -1, sink: 0, pitch: 0, roll: 0, home: null },
+      { x: 0, y: 0, z: 0, yaw: 0, speed: 0, vy: 0, steer: 0, mesh: null, ride: -1, sink: 0, pitch: 0, roll: 0, home: null },
     ];
+    for (const k of kartStates) {
+      if (k.mesh) k.home = { x: k.x, y: k.y, z: k.z, yaw: k.yaw };
+    }
     const RIDE_SLOT = kartStates.length - 1;
     /** True while the player is sitting inside a city car (not a go-kart). */
     const insideACar = () => kartStates[RIDE_SLOT].ride >= 0;
@@ -2713,6 +2729,13 @@ export default function City() {
     // a world starts hitching after ten minutes of play.
     const splash = buildSplash();
     scene.add(splash.group);
+    // Much bigger water, for the one thing that arrives much faster than a
+    // swimmer: a car. Kept separate rather than scaling `splash` up, because a
+    // person's entry and a two-tonne impact want different particle counts,
+    // different lifetimes and different shapes, and one tunable that has to be
+    // both ends up being neither.
+    const carSink = createCarSink();
+    scene.add(carSink.group);
     // Dev-only handle for `scripts/ocean-probe.mjs`. Water is the one thing in
     // here you genuinely cannot debug from a screenshot: "flat blue" is what a
     // missing mesh, a shader that failed to link and a correct calm sea all
@@ -3672,6 +3695,52 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__cityDive = (v: number | null) => {
         devDive = v === null ? null : Math.max(0, Math.min(1, v));
       };
+      /**
+       * Put the red kart somewhere, pointed somewhere, at a speed, and get in.
+       *
+       * Driving one into the sea by hand takes a route, a straight, and about
+       * eight seconds of held throttle — which under software GL is two
+       * minutes of a harness pressing W and hoping it did not clip a bollard
+       * on the way. This starts the interesting part at the interesting place.
+       */
+      (window as unknown as Record<string, unknown>).__cityDrive = (
+        x: number, y: number, z: number, yaw: number, speed: number,
+        throttle: number | null = null,
+      ) => {
+        const k = kartStates[0];
+        k.x = x; k.y = y; k.z = z; k.yaw = yaw;
+        k.speed = speed; k.vy = 0; k.steer = 0;
+        k.sink = 0; k.pitch = 0; k.roll = 0;
+        kartPitchNow[0] = 0;
+        devThrottle = throttle;
+        enterKartRef.current?.(0);
+      };
+      /**
+       * Fast-forward the sink clock.
+       *
+       * The recovery fires eleven seconds after the hit, and under software GL
+       * this world steps at about a tenth of real time — so measuring it
+       * honestly costs a hundred and ten seconds of a harness polling a car
+       * lying on the seabed. This skips the lying-there, not the logic: the
+       * same branch, with the same conditions, on the next frame.
+       */
+      (window as unknown as Record<string, unknown>).__cityKartAge = (sec: number) => {
+        if (kartStates[0].sink > 0) kartStates[0].sink = sec;
+      };
+      (window as unknown as Record<string, unknown>).__cityKartState = () => {
+        const k = kartStates[0];
+        return {
+          x: k.x, y: k.y, z: k.z, vy: k.vy, speed: k.speed,
+          // Seconds since it hit the water, 0 when dry. The single number that
+          // says whether the sea is water or pavement.
+          sink: k.sink,
+          pitch: kartPitchNow[0], roll: k.roll,
+          driving: drivingKartRef.current === 0,
+          depth: waterDepthAt(k.x, k.z),
+          sea: seaSurfaceAt(k.x, k.z, performance.now() * 0.001),
+          home: k.home,
+        };
+      };
       (window as unknown as Record<string, unknown>).__citySwimState = () => ({
         swimming,
         prone: swimProne,
@@ -3893,6 +3962,196 @@ export default function City() {
     const blockedAt = (x: number, z: number, y: number): boolean =>
       collision.isBlocked(x, z, y);
 
+    // ---- Driving into the sea ------------------------------------------
+    /**
+     * Deep enough to drown a car. Below this you are fording a puddle at the
+     * top of the beach, which should stay driveable — the shore shelves out
+     * gently on purpose and a hard cutoff at the waterline would mean a kart
+     * that dies the instant a wave washes over the sand.
+     */
+    const SINK_DEPTH = 1.6;
+    /** Seconds from the hit to the driver bailing out. */
+    const SINK_EJECT = 1.15;
+    /** Seconds from the hit to a drowned kart being put back where it lives. */
+    const SINK_RECOVER = 11;
+    /** Eased nose-down angle per vehicle, written here, read by the mesh sync. */
+    const kartPitchNow: number[] = kartStates.map(() => 0);
+    const ease01 = (t: number) => {
+      const x = THREE.MathUtils.clamp(t, 0, 1);
+      return x * x * (3 - 2 * x);
+    };
+
+    /**
+     * One vehicle, one frame, in or above the water.
+     *
+     * The whole reason this exists: `CollisionWorld` floors everything at y=0
+     * so nothing can fall out of the world, and over open water that floor is
+     * a phantom plate with no mesh under it. Every ground query a car makes
+     * therefore answers "sea level, go ahead" — so before this, driving off
+     * the quay put you on a two-tonne hovercraft, wheels spinning, crossing
+     * the bay at thirty miles an hour on top of the waves. It is the loudest
+     * remaining tell that the ocean is scenery.
+     *
+     * A sinking car opts out of that plate the same way a swimmer does, and
+     * for the same reason.
+     */
+    const sinkTick = (k: (typeof kartStates)[number], i: number, dt: number) => {
+      const seaTop = seaSurfaceAt(k.x, k.z, performance.now() * 0.001);
+      const deep = waterDepthAt(k.x, k.z);
+
+      if (k.sink === 0) {
+        // Not in the water yet. The height test is doing real work: Vibe
+        // Island, Mars and the moons all sit far offshore at their own
+        // altitudes, so `waterDepthAt` is happily positive under all of them
+        // and a kart on the island lawn would otherwise drown on the spot.
+        if (deep <= SINK_DEPTH || k.y > seaTop + 0.6 || k.y < -40) return;
+        k.sink = 1e-6;
+        // Arriving fast is the whole joke, so the impact reads off the speed
+        // it actually arrived with — forward and downward together, since
+        // launching off a sea wall is mostly the second one.
+        const hit = Math.hypot(k.speed, k.vy);
+        // `carSink.impact` and nothing else. Firing the swimmer's `splash`
+        // here as well seemed like free extra water and is not: it draws its
+        // own four expanding rings on top of these two, and the six together
+        // read as a bullseye painted on the sea. Its droplets are square
+        // `Points` next to these soft ones, too. One effect, one look.
+        carSink.impact(k.x, seaTop, k.z, hit);
+        soundsRef.current?.thud?.(Math.min(1, 0.45 + hit / 40));
+        // Nose-down and listing, rolled once so no two cars go down the same
+        // way. Front-heavy: that is where the engine is.
+        k.pitch = -(0.55 + Math.random() * 0.5);
+        k.roll = (Math.random() - 0.5) * 0.7;
+        // Punch it under. Two tonnes arriving at speed goes THROUGH the
+        // surface and comes back up — without this the car sits dead level on
+        // the water for the second it takes the flooding to ramp in, which is
+        // the exact "driving on top of the sea" reading this replaced, just
+        // briefer.
+        k.vy = -(0.8 + Math.min(30, hit) * 0.1);
+        return;
+      }
+
+      const prev = k.sink;
+      k.sink += dt;
+
+      /**
+       * It keeps going. This is the line that decides where a car ends up.
+       *
+       * Killing the speed on impact is the obvious model and it puts every
+       * car on the bottom at the exact spot it touched — which, because the
+       * shore shelves gently on purpose, is always the shallowest water that
+       * qualifies. Measured: a kart launched off the beach at 26 m/s stopped
+       * dead and settled in 1.7 m, roof awash, technically sunk and reading
+       * as a car parked in a puddle.
+       *
+       * Two tonnes at speed does not stop dead in water; it ploughs. So the
+       * momentum carries, and it carries the car out down the shelf into
+       * water deep enough to swallow it, which is both what happens and the
+       * shot worth watching. Once it is dragging along the seabed the sand
+       * takes the rest off it quickly.
+       */
+      const onBed = k.y <= -deep + 0.35;
+      k.speed *= Math.pow(onBed ? 0.06 : 0.42, dt);
+      k.x += Math.sin(k.yaw) * k.speed * dt;
+      k.z += Math.cos(k.yaw) * k.speed * dt;
+
+      /**
+       * Plunge, bob, then go.
+       *
+       * A car does not sink the moment it lands and it does not sit on the
+       * water either — it punches under, comes back up wallowing, and then
+       * goes as the cabin fills. That middle beat is most of what makes the
+       * sink read as something heavy rather than as an object being deleted
+       * downward, and the recovery from the plunge is what makes it read as
+       * floating rather than as hovering.
+       *
+       * So: buoyancy holds it just under the surface and FADES as it floods,
+       * while the flooding rate takes over. The two crossing is the moment it
+       * stops being a car in the water and starts being a wreck.
+       */
+      const flood = ease01((k.sink - 0.15) / 1.5);
+      const lift = (1 - flood) * THREE.MathUtils.clamp((seaTop - 0.35 - k.y) * 5.5, -2.5, 7);
+      const wantVy = lift - 3.4 * flood;
+      k.vy += (wantVy - k.vy) * (1 - Math.pow(0.02, dt));
+      k.y += k.vy * dt;
+
+      // Down to the seabed, and no further. `waterDepthAt` is analytic and
+      // keeps descending forever; the mesh under it does not, but out here it
+      // now goes far enough to be the thing you land on.
+      const bed = -deep;
+      const settled = k.y <= bed + 0.2;
+      if (settled) {
+        k.y = bed + 0.2;
+        k.vy = 0;
+      }
+
+      // Nose over. It starts the moment the front end digs in and holds
+      // whatever attitude it settled into; `k.pitch` and `k.roll` were rolled
+      // once at entry and are not re-randomised, or it would shimmy all the
+      // way to the bottom.
+      kartPitchNow[i] = k.pitch * ease01(k.sink / 1.6);
+
+      // Air leaving it: hard at first, a trickle once it is on the bottom.
+      // Emitted from below the waterline whatever the car is doing — while it
+      // is still bobbing, `k.y + 0.5` is in the air, and bubbles born above
+      // the sea are just white dots hanging over it.
+      const rate = settled ? 5 : 34 * Math.exp(-k.sink * 0.35) + 6;
+      if (k.sink < SINK_RECOVER) {
+        carSink.bubble(dt, k.x, Math.min(k.y + 0.5, seaTop - 0.35), k.z, rate);
+      }
+
+      // Get out. Crossing the threshold once, not every frame after it.
+      if (prev < SINK_EJECT && k.sink >= SINK_EJECT && drivingKartRef.current === i) {
+        drivingKartRef.current = -1;
+        setDrivingKart(-1);
+        // Pushed off the roof and into the water, where swimming takes over.
+        // Deliberately NOT `exitKartRef`: that releases a commandeered city
+        // car back to the traffic fleet, which teleports it to the nearest
+        // lane — so the car you just drowned reappears, dry, on the road,
+        // while you are still watching the bubbles.
+        player.position.set(k.x + Math.cos(k.yaw) * 1.4, seaTop + 0.2, k.z - Math.sin(k.yaw) * 1.4);
+        vel.set(0, 1.5, 0);
+        onGround = false;
+        splash.burst(player.position.x, seaTop, player.position.z, 0.5);
+      }
+
+      // Give it back. A world that permanently loses one of its two karts to
+      // the bay every time somebody tries this is a world that runs out of
+      // karts, and the fix a player would reach for — swimming down to push
+      // it home — is not a thing you can do.
+      /**
+       * Wait until nobody is watching, then put it back.
+       *
+       * The recovery is a teleport, and a kart that blinks out of existence
+       * three metres in front of a player treading water over it is worse
+       * than the problem it solves. So it needs both the timer AND some
+       * distance — with a hard deadline, because "nobody is watching" is a
+       * condition a player can hold false indefinitely by floating there, and
+       * a kart that never comes back is the thing this exists to prevent.
+       */
+      const watcher = Math.hypot(player.position.x - k.x, player.position.z - k.z);
+      if (k.sink >= SINK_RECOVER && (watcher > 30 || k.sink >= SINK_RECOVER * 3)) {
+        k.sink = 0;
+        k.speed = 0;
+        k.vy = 0;
+        k.steer = 0;
+        k.pitch = 0;
+        k.roll = 0;
+        kartPitchNow[i] = 0;
+        if (k.ride >= 0) {
+          // A city car rejoins the traffic fleet on its own, which snaps it to
+          // the nearest lane — exactly the recovery this needs, for free.
+          district.traffic.release(k.ride);
+          k.ride = -1;
+        } else if (k.home) {
+          k.x = k.home.x;
+          k.y = k.home.y;
+          k.z = k.home.z;
+          k.yaw = k.home.yaw;
+        }
+        return;
+      }
+    };
+
     // ---- Simulation state ---------------------------------------------
     const vel = new THREE.Vector3();
     let onGround = true;
@@ -3955,6 +4214,17 @@ export default function City() {
      * mid-shot. This decouples the two for measurement only.
      */
     let devDive: number | null = null;
+    /**
+     * DEV-only held throttle for a kart; see `__cityDrive`.
+     *
+     * The sibling of `devForward` for swimming, and there for the same reason:
+     * a harness pressing a real W key has to win a race against the keypress
+     * actually arriving, and it lost. The kart was placed doing 26 m/s,
+     * coasted for the second it took the key to land, and hit the water at 3 —
+     * which made the impact look like it was not scaling with speed, when what
+     * was broken was the measurement.
+     */
+    let devThrottle: number | null = null;
     let swimKickTimer = 0;
     /**
      * Stroke phase, in cycles, ACCUMULATED — never derived from the clock.
@@ -4883,18 +5153,30 @@ export default function City() {
         // Kart-relative controls: W/S (or joystick Y) throttle + brake,
         // A/D (or joystick X) steer. Space hops you out.
         const kart = kartStates[drivingKartRef.current];
-        const thIn = THREE.MathUtils.clamp(
+        /**
+         * Going down. `sinkTick` owns the vehicle from here — position, sink
+         * rate and attitude — so everything below is skipped rather than
+         * fighting it: the throttle would keep driving it forward through the
+         * seabed and the ground follow would snap it straight back up to the
+         * phantom sea-level plate it is supposed to have fallen through.
+         *
+         * Steering is dead too. A car in the water is not a boat, and being
+         * able to drive it around down there would undo the whole point.
+         */
+        const drowning = kart.sink > 0;
+        const thIn = drowning ? 0 : devThrottle ?? THREE.MathUtils.clamp(
           ((keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
             (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0)) +
             (touchLen > 0.12 ? -tm.y : 0),
           -1, 1,
         );
-        const stIn = THREE.MathUtils.clamp(
+        const stIn = drowning ? 0 : THREE.MathUtils.clamp(
           ((keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
             (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0)) +
             (touchLen > 0.12 ? tm.x : 0),
           -1, 1,
         );
+        if (!drowning) {
         // Throttle + rolling drag (heavier drag when coasting).
         const KART_MAX = running ? 32 : 23;
         kart.speed += thIn * 28 * dt;
@@ -4935,11 +5217,15 @@ export default function City() {
             kart.vy = 0;
           }
         }
+        }
         // Stand the driver on the rear deck; velocity mirrors the kart
         // so the run animation + exit momentum feel right.
         pos.set(kart.x, kart.y + 0.72, kart.z);
         vel.set(Math.sin(kart.yaw) * kart.speed, 0, Math.cos(kart.yaw) * kart.speed);
-        onGround = true;
+        // Not standing on anything, once it is under: `onGround` gates the
+        // jump, the landing thud and the walk animation, and a driver riding a
+        // car to the seabed is doing none of those.
+        onGround = !drowning;
         peakY = pos.y;
         // Camera eases in behind the kart, Mario-Kart style.
         {
@@ -5733,6 +6019,15 @@ export default function City() {
         }
       }
 
+      /**
+       * Water check for every vehicle, not just the one being driven.
+       *
+       * Hop out mid-plunge and the car has to carry on going down without
+       * you — otherwise abandoning it at the waterline leaves a kart bobbing
+       * on the surface, which is the exact thing this replaced.
+       */
+      for (let i = 0; i < kartStates.length; i++) sinkTick(kartStates[i], i, dt);
+
       // Sync kart meshes; spin wheels + steer the front axle on the
       // driven one. Parked karts idle with a faint underglow.
       for (let i = 0; i < kartStates.length; i++) {
@@ -5746,17 +6041,33 @@ export default function City() {
            * inherited from `karts.ts`. The Vibe Kart model is −Z forward. Pass
            * the raw yaw and the car drives perfectly, backwards.
            */
-          district.traffic.drive(k.ride, k.x, k.y, k.z, k.yaw + Math.PI);
+          district.traffic.drive(
+            k.ride, k.x, k.y, k.z, k.yaw + Math.PI,
+            // Sign flips with the `+ π`: the car model faces the other way, so
+            // the nose-down it needs is the tail-down of the kart convention.
+            -kartPitchNow[i], k.sink > 0 ? k.roll : 0,
+          );
           continue;
         }
         if (!k.mesh) continue;
         k.mesh.group.position.set(k.x, k.y, k.z);
-        k.mesh.group.rotation.y = k.yaw;
+        // YXZ so the yaw stays a heading and the pitch tips the nose, rather
+        // than the default XYZ applying the roll before the pitch and turning
+        // a listing car into a corkscrew.
+        k.mesh.group.rotation.set(kartPitchNow[i], k.yaw, k.sink > 0 ? k.roll : 0, "YXZ");
         if (drivingKartRef.current === i) {
           for (const w of k.mesh.wheels) w.rotateY((k.speed * dt) / 0.32);
           for (const p of k.mesh.frontPivots) p.rotation.y = -k.steer * 0.42;
           (k.mesh.glow.material as THREE.MeshBasicMaterial).opacity =
             0.3 + Math.min(0.25, Math.abs(k.speed) / 60);
+        }
+        // The electrics drown. Also removes a real artifact: the underglow is
+        // a flat bright quad under the chassis, invisible while the kart is
+        // level on a road and, once it noses over in the water, a hard-edged
+        // white parallelogram sticking out from under the car.
+        if (k.sink > 0) {
+          (k.mesh.glow.material as THREE.MeshBasicMaterial).opacity =
+            Math.max(0, 0.3 - k.sink * 0.5);
         }
       }
 
@@ -6157,9 +6468,16 @@ export default function City() {
         // the eye 60 cm above the waves no matter how deep the swimmer went.
         // Under the sea the floor is the seabed.
         const eyeSupport = supportHeightAt(eye.x, eye.z, pos.y + 2);
+        // Riding a sinking car counts too, and it is the whole shot: the water
+        // closing over the windscreen only works if the camera is allowed to
+        // go with it. Clamped to the plate instead, it stops dead at the
+        // surface and you watch your own car leave without you.
+        const eyeMayGoUnder =
+          swimming ||
+          (drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].sink > 0);
         eye.y = Math.max(
           eye.y,
-          swimming && eyeSupport <= 0.0001
+          eyeMayGoUnder && eyeSupport <= 0.0001
             ? -waterDepthAt(eye.x, eye.z) + 0.45
             : eyeSupport + 0.6,
         );
@@ -6221,6 +6539,13 @@ export default function City() {
         const overSea = waterDepthAt(camera.position.x, camera.position.z) > 0.05;
         underwater.update(dt, now * 0.001, overSea ? seaAtEye - eyeY : -1, camera.position);
       }
+      // Also after the camera block, and for the same kind of reason: the
+      // spray quads have no billboard material, they are faced by copying the
+      // camera's world quaternion. Do it before the camera has moved and every
+      // particle is aimed one frame behind, which shows up as the whole plume
+      // shearing whenever you swing the view — during a crash, which is the
+      // only time you ever see it, and exactly when the view is swinging.
+      carSink.update(dt, camera);
 
       // Project world positions onto floating in-world bubbles (DOM overlays).
       {
@@ -6331,6 +6656,7 @@ export default function City() {
       ocean.dispose();
       underwater.dispose();
       splash.dispose();
+      carSink.dispose();
       headMount.dispose();
 
       delete devWindow.__cityDebug;
@@ -6347,6 +6673,9 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityChar;
       delete (window as unknown as Record<string, unknown>).__citySwimState;
       delete (window as unknown as Record<string, unknown>).__cityDive;
+      delete (window as unknown as Record<string, unknown>).__cityDrive;
+      delete (window as unknown as Record<string, unknown>).__cityKartState;
+      delete (window as unknown as Record<string, unknown>).__cityKartAge;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();
