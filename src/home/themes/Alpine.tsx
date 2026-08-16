@@ -46,9 +46,13 @@ export default function Alpine() {
             <Link to="/game" className="hover:text-white">Worlds</Link>
             <Link to="/arcade" className="hover:text-white">Arcade</Link>
             <Link to="/build" className="hover:text-white">Create</Link>
-            <span className="ml-auto rounded-sm px-2 py-1" style={{ background: SUN, color: PAPER }}>
-              {d.coin.display}
-            </span>
+            <Link
+              to={d.coin.signedIn ? "/shop" : "/profile"}
+              className="ml-auto rounded-sm px-2 py-1"
+              style={{ background: SUN, color: PAPER }}
+            >
+              {d.coin.signedIn ? d.coin.display : "Sign in"}
+            </Link>
           </nav>
 
           <p className="mt-20 font-heading text-[10px] font-bold uppercase tracking-[0.4em] text-white/70">

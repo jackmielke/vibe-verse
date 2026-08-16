@@ -38,7 +38,9 @@ export default function Zine() {
           <span className="text-white">vibeverse</span>
           <Link to="/game" className="hover:text-white">worlds</Link>
           <Link to="/arcade" className="hover:text-white">arcade</Link>
-          <span className="ml-auto">{d.coin.display}</span>
+          <Link to={d.coin.signedIn ? "/shop" : "/profile"} className="ml-auto hover:underline">
+            {d.coin.signedIn ? d.coin.display : "Sign in"}
+          </Link>
         </nav>
 
         <header className="relative py-16 sm:py-24">

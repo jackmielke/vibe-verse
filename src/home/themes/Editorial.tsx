@@ -36,7 +36,10 @@ export default function Editorial() {
           <Link to="/arcade" className="opacity-60 hover:opacity-100">Arcade</Link>
           <Link to="/chronicle" className="opacity-60 hover:opacity-100">Chronicle</Link>
           <span className="ml-auto tabular-nums opacity-45">
-            №{d.counts.worlds} · {d.coin.display}
+            №{d.counts.worlds} ·{" "}
+            <Link to={d.coin.signedIn ? "/shop" : "/profile"} className="hover:underline">
+              {d.coin.signedIn ? d.coin.display : "Sign in"}
+            </Link>
           </span>
         </nav>
 

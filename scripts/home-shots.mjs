@@ -102,6 +102,10 @@ for (const id of list) {
     const errs = [];
     page.on("pageerror", (e) => errs.push(String(e.message ?? e).slice(0, 120)));
     try {
+      /* Before any script on the page runs, so the very first render already
+         has a history to draw. Seeding after `goto` would photograph the empty
+         state and quietly pass every passport-driven theme. */
+      await page.addInitScript(seed);
       await page.goto(`${BASE}/homes/${id}?bare`, { waitUntil: "domcontentloaded", timeout: 60000 });
       await page.waitForTimeout(5200);
 

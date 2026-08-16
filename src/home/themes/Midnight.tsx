@@ -57,9 +57,12 @@ export default function Midnight() {
             <span className="hidden rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[12px] text-white/50 md:block">
               Search worlds…
             </span>
-            <span className="rounded-full border border-[#7dffd4]/40 px-3 py-1.5 font-mono text-[12px] text-[#7dffd4]">
-              {d.coin.display}
-            </span>
+            <Link
+              to={d.coin.signedIn ? "/shop" : "/profile"}
+              className="rounded-full border border-[#7dffd4]/40 px-3 py-1.5 font-mono text-[12px] text-[#7dffd4] transition-colors hover:bg-[#7dffd4]/10"
+            >
+              {d.coin.signedIn ? d.coin.display : "Sign in"}
+            </Link>
           </div>
         </nav>
 

@@ -26,9 +26,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { artFor } from "@/worlds/art";
+import { motionFor } from "@/worlds/motion";
 import { WORLDS, type WorldEntry } from "@/worlds/registry";
 import { sinceLabel, updatedAt } from "@/worlds/freshness";
-import { passportProgress } from "@/lib/passport";
+import { passportProgress, readPassport } from "@/lib/passport";
 import { loadCurrentIssue, type Issue } from "@/lib/vibeTimes";
 import { useVibecoin } from "@/hooks/use-vibecoin";
 
@@ -41,10 +42,19 @@ export interface HomeData {
   rest: WorldEntry[];
   counts: { worlds: number; playable: number };
   passport: { visited: number; total: number };
-  coin: { display: string; balance: number | null };
+  /** Routes this visitor has actually stamped, for themes that show progress. */
+  visited: Set<string>;
+  /**
+   * The balance, and whether there is one. A logged-out visitor's `display` is
+   * an em-dash, and a lone em-dash in a nav corner reads as a rendering bug in
+   * every one of these themes — so each of them shows a way in instead.
+   */
+  coin: { display: string; balance: number | null; signedIn: boolean };
   /** Today's paper, or null while it loads / if it never arrives. */
   issue: Issue | null;
   art: (key: string) => string | undefined;
+  /** A few seconds of the world being played, for the handful that have one. */
+  motion: (key: string) => string | undefined;
   freshness: (key: string) => string | null;
 }
 
@@ -86,9 +96,11 @@ export function useHomeData(): HomeData {
         playable: WORLDS.filter((w) => /playable|open/i.test(w.status ?? "")).length,
       },
       passport: { visited: progress.visited, total: progress.total },
-      coin: { display: coin.display, balance: coin.balance },
+      visited: new Set(Object.keys(readPassport().stamps)),
+      coin: { display: coin.display, balance: coin.balance, signedIn: coin.balance != null },
       issue,
       art: artFor,
+      motion: motionFor,
       freshness: (key: string) => sinceLabel(updatedAt(key)),
     };
   }, [coin.display, coin.balance, issue]);
