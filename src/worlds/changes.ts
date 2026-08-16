@@ -104,6 +104,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
   ],
   "dunes": [
+    { sha: "48820f2", iso: "2026-08-16T20:40:32+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
     { sha: "c7d5b2c", iso: "2026-08-16T18:38:10+00:00", subject: "The Dune Sea: sandboarding a sunset, on one function" },
   ],
   "edm-town": [
