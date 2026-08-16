@@ -74,6 +74,7 @@ import {
 } from "@/city/ocean";
 import { buildSplash, evalSwim, strokeRate, PRONE_PITCH } from "@/city/swim";
 import { createSnowCover } from "@/city/snowCover";
+import { createUnderwater } from "@/city/underwater";
 import { createHeadMount } from "@/city/headMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
@@ -363,6 +364,14 @@ export default function City() {
   const isDirectSpawn =
     typeof window !== "undefined" && !!directSpawn(window.location.search);
   const [entered, setEntered] = useState(isFreshDrop || isLive || isDirectSpawn);
+  /**
+   * In the water, for the UI only.
+   *
+   * Set from the swim transitions in the frame loop — which fire exactly once
+   * each way — rather than polled every frame, because this drives a React
+   * render and swimming is a state you can be in for minutes at a time.
+   */
+  const [inWater, setInWater] = useState(false);
   const enteredRef = useRef(isFreshDrop || isLive || isDirectSpawn);
   const [showFreshChip, setShowFreshChip] = useState(isFreshDrop);
   const [liveLines, setLiveLines] = useState<string[]>([]);
@@ -2924,6 +2933,32 @@ export default function City() {
     };
     applyModeRef.current = applyMode;
 
+    // ---- Below the waterline -------------------------------------------
+    /**
+     * Built here, after `applyMode`, because that is the thing it has to be
+     * able to undo.
+     *
+     * Underwater is an atmosphere, not an object: it collapses the fog from a
+     * kilometre to thirty metres, recolours the ambient and the hemisphere and
+     * repaints the background. All four of those handles belong to `applyMode`,
+     * which owns the day/night crossing and the weather on top of it. So rather
+     * than try to remember and replay whatever they were, surfacing calls the
+     * one function that can rebuild all of them from scratch.
+     */
+    const underwater = createUnderwater({
+      scene,
+      fog: scene.fog as THREE.Fog,
+      ambient,
+      hemi,
+      sun: moonlight,
+      sunDir: skyUniforms.uSun.value,
+      restore: () => applyMode(dayModeRef.current),
+    });
+    scene.add(underwater.group);
+    // Caustics go on the seabed — the same mesh as the beach, so the moving
+    // web runs right up the sand and stops at the waterline on its own.
+    underwater.patch(ocean.bedMaterial);
+
     // ---- GOD MODE: weather over the whole world ------------------------
     const weather = createWeather({
       scene,
@@ -3634,6 +3669,9 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__cityChar = (name: string) => {
         loadPilotRef.current?.(name);
       };
+      (window as unknown as Record<string, unknown>).__cityDive = (v: number | null) => {
+        devDive = v === null ? null : Math.max(0, Math.min(1, v));
+      };
       (window as unknown as Record<string, unknown>).__citySwimState = () => ({
         swimming,
         prone: swimProne,
@@ -3646,6 +3684,17 @@ export default function City() {
         y: player.position.y,
         sea: seaSurfaceAt(player.position.x, player.position.z, performance.now() * 0.001),
         depth: waterDepthAt(player.position.x, player.position.z),
+        // Diving. `camY` and `under` are about the CAMERA, because the camera
+        // is what decides whether the world is rendered as water or as air —
+        // a swimmer can be well below the surface with the eye still in the
+        // sunshine, and that reads on screen as "the dive did nothing".
+        dive: diveEased,
+        // Vertical velocity, so a harness can ask "is it still descending?"
+        // without inferring it from how far it got between two polls — which
+        // under software GL measures the frame rate, not the physics.
+        vy: vel.y,
+        camY: camera.position.y,
+        under: underwater.submerged(),
       });
 
       /**
@@ -3897,6 +3946,15 @@ export default function City() {
     let devForward = 0;
     /** DEV-only frozen stroke phase; see `__citySwimPose`. */
     let devSwimPose: { phase: number; speed: number } | null = null;
+    /**
+     * DEV-only held dive, 0..1; see `__cityDive`.
+     *
+     * Diving is normally driven BY the camera aim, which means a harness can
+     * never dive and look up at the same time — levelling the camera to shoot
+     * Snell's window cancels the dive that put you under it, and you surface
+     * mid-shot. This decouples the two for measurement only.
+     */
+    let devDive: number | null = null;
     let swimKickTimer = 0;
     /**
      * Stroke phase, in cycles, ACCUMULATED — never derived from the clock.
@@ -3912,6 +3970,17 @@ export default function City() {
      * swimmer pitch up and down every time a wave takes the edge off them.
      */
     let swimSpeedEased = 0;
+    /**
+     * How hard the swimmer is currently diving, 0..1, eased.
+     *
+     * There is no dive BUTTON. You aim the camera down and swim forward, which
+     * is the gesture people already try, and it is reversible without thinking
+     * about it: level the camera off and buoyancy — which is never switched
+     * off, only turned down — floats you back up. That last part is the whole
+     * safety argument for having no air meter. Nobody can get stuck down there
+     * by letting go of the controls.
+     */
+    let diveEased = 0;
     const swimPose = createDancePose();
     let lastRebelShot = 0; // KeyF autofire cooldown
     let modelYaw = 0;
@@ -4335,6 +4404,7 @@ export default function City() {
         rebelState: () => { active: boolean; wave: number; kills: number; hp: number; seed: number };
         addVibe: (n: number) => void;
         residentNear: (x: number, z: number) => { name: string; x: number; y: number; z: number } | null;
+        atmos: () => Record<string, unknown>;
       };
     };
     devWindow.__cityDebug = {
@@ -4345,6 +4415,33 @@ export default function City() {
       zeppelin: () => {
         const z = skyIslands.zeppelin;
         return [z.pos.x, z.pos.y + z.deckY, z.pos.z];
+      },
+      /**
+       * What the atmosphere ACTUALLY is right now.
+       *
+       * Reading an underwater scene off a screenshot does not work. "The
+       * seabed looks too bright and unfogged" has at least four causes that
+       * produce the same picture — fog not reaching the material, the fog
+       * range not collapsing, the key light not being absorbed, or the sand
+       * simply being a pale colour — and picking between them by eye is how an
+       * afternoon disappears. These are the numbers.
+       */
+      atmos: () => {
+        const f = scene.fog as THREE.Fog;
+        const bed = ocean.bedMaterial as THREE.MeshStandardMaterial;
+        return {
+          fogNear: f.near,
+          fogFar: f.far,
+          fogColor: `#${f.color.getHexString()}`,
+          background: `#${(scene.background as THREE.Color).getHexString()}`,
+          ambient: `${ambient.intensity.toFixed(2)} #${ambient.color.getHexString()}`,
+          hemi: `${hemi.intensity.toFixed(2)} #${hemi.color.getHexString()}`,
+          sun: `${moonlight.intensity.toFixed(2)} #${moonlight.color.getHexString()}`,
+          // The seabed's own material, since it is the thing being judged.
+          bedFog: bed.fog,
+          bedColor: `#${bed.color.getHexString()}`,
+          bedVertexColors: bed.vertexColors,
+        };
       },
       player: () => [player.position.x, player.position.y, player.position.z],
       setCam: (yaw, pitch, dist) => {
@@ -4917,8 +5014,10 @@ export default function City() {
         splash.burst(pos.x, seaTop, pos.z, impact);
         soundsRef.current?.thud?.(0.1 + impact * 0.5);
         setDance(null);
+        setInWater(true);
       } else if (!wantSwim && swimming) {
         splash.burst(pos.x, seaTop, pos.z, 0.25);
+        setInWater(false);
       }
       swimming = wantSwim;
       // A wake, while there is something to make one with. Throttled rather
@@ -4967,12 +5066,47 @@ export default function City() {
          * plunge: you keep the speed you arrived with until the water has had
          * time to take it off you, rather than being caught at the surface.
          */
-        const wantVy = THREE.MathUtils.clamp((floatY - pos.y) * 5.5, -9, 9);
+        /**
+         * Diving: aim the camera down and swim forward.
+         *
+         * Buoyancy is turned DOWN, never off, and a modest sink rate is added
+         * on top. Two consequences worth stating, because they are the design:
+         * levelling the camera off floats you back to the surface with no
+         * input at all, and holding the dive still leaves you rising slowly if
+         * you stop swimming — so the sea can never trap anybody. There is no
+         * air meter for the same reason.
+         */
+        const paddling = Math.min(1, Math.hypot(intent.x, intent.z));
+        const wantDive =
+          devDive ?? THREE.MathUtils.clamp((camPitch - 0.45) / 0.7, 0, 1) * paddling;
+        diveEased += (wantDive - diveEased) * (1 - Math.pow(0.05, dt));
+        const buoyK = THREE.MathUtils.lerp(5.5, 0.7, diveEased);
+        const rise = THREE.MathUtils.clamp((floatY - pos.y) * buoyK, -9, 9);
+        /**
+         * The dive has to out-pull buoyancy at EVERY depth, not just the first
+         * few metres.
+         *
+         * Buoyancy is a spring, so its pull grows the deeper you get, and a
+         * constant sink rate on top of a growing spring has an equilibrium: at
+         * a 0.7 gain against 3.4 m/s that lands just under five metres, and the
+         * bay is twelve deep. Measured, it was exactly that — the swimmer sank
+         * to about five metres and hung there, with the caustics and the whole
+         * lit seabed still seven metres below and unreachable. The dive worked
+         * and had a ceiling on it nobody had chosen.
+         *
+         * So while diving, cap how hard the water is allowed to push back. A
+         * body a few metres down is very nearly neutrally buoyant anyway; it is
+         * the last metre to the surface that does the lifting, and that metre
+         * is exactly what the cap leaves intact for when you let go.
+         */
+        const held = THREE.MathUtils.lerp(rise, Math.min(rise, 1.1), diveEased);
+        const wantVy = held - diveEased * 3.4;
         vel.y += (wantVy - vel.y) * (1 - Math.pow(0.008, dt));
         if (thrusting) vel.y += THRUST * dt;
         // Without a jetpack, Space is a kick for the surface.
         else if (jetInput) vel.y += 26 * dt;
       } else {
+        diveEased *= Math.pow(0.05, dt);
         vel.y -= GRAVITY * dt;
         if (thrusting) {
           vel.y += THRUST * dt;
@@ -5994,13 +6128,41 @@ export default function City() {
       }
 
       // Chase camera.
+        /**
+         * Diving swings the camera from overhead to behind.
+         *
+         * The gesture that starts a dive is aiming DOWN, and aiming down is
+         * exactly what lifts the chase camera up and away: at nine metres and a
+         * steep pitch the eye rides five metres above the swimmer's head. Leave
+         * it there and the camera never gets wet however deep the player goes —
+         * you would be watching a dive from a helicopter, through the surface,
+         * with the whole underwater world on the far side of the sea from you.
+         *
+         * So the eye commits to the dive too. It comes in close and drops to
+         * just over the swimmer's head, which is both the right shot and the
+         * thing that puts the camera under the water at about two metres.
+         * `camPitch` itself is untouched — the player's aim still means what
+         * they set it to, and levelling off unwinds all of this.
+         */
+        const camPitchNow = THREE.MathUtils.lerp(camPitch, 0.35, diveEased);
+        const camDistNow = THREE.MathUtils.lerp(camDist, Math.min(camDist, 4.6), diveEased);
+        const camLift = THREE.MathUtils.lerp(1.4, 0.25, diveEased);
         const eye = new THREE.Vector3(
-          pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
-          pos.y + Math.sin(camPitch) * camDist + 1.4,
-          pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist,
+          pos.x + Math.sin(camYaw) * Math.cos(camPitchNow) * camDistNow,
+          pos.y + Math.sin(camPitchNow) * camDistNow + camLift,
+          pos.z + Math.cos(camYaw) * Math.cos(camPitchNow) * camDistNow,
         );
-        // Keep the camera out of the street floor.
-        eye.y = Math.max(eye.y, supportHeightAt(eye.x, eye.z, pos.y + 2) + 0.6);
+        // Keep the camera out of the street floor — but over open water the
+        // collision world answers with the phantom plate at y=0, which pinned
+        // the eye 60 cm above the waves no matter how deep the swimmer went.
+        // Under the sea the floor is the seabed.
+        const eyeSupport = supportHeightAt(eye.x, eye.z, pos.y + 2);
+        eye.y = Math.max(
+          eye.y,
+          swimming && eyeSupport <= 0.0001
+            ? -waterDepthAt(eye.x, eye.z) + 0.45
+            : eyeSupport + 0.6,
+        );
         // During the arrival cinematic the eased path IS the motion —
         // follow it exactly so slow devices don't trail the swoop.
         camera.position.lerp(eye, camSnap || arrivalStart > 0 ? 1 : 1 - Math.pow(0.0008, dt));
@@ -6041,6 +6203,23 @@ export default function City() {
           camera.near = wantNear;
           camera.updateProjectionMatrix();
         }
+      }
+
+      /**
+       * Underwater, driven off the CAMERA and run last.
+       *
+       * Last because the block above rewrites `fog.near`/`fog.far` from the
+       * zoom level every single frame, so anything that fogs the world has to
+       * come after it or be silently undone. Off the camera because the eye is
+       * what decides whether you are looking through thirty metres of water or
+       * through a kilometre of air — a swimmer six metres down with a chase
+       * camera still in the sunshine is above water, however wet they are.
+       */
+      {
+        const eyeY = camera.position.y;
+        const seaAtEye = seaSurfaceAt(camera.position.x, camera.position.z, now * 0.001);
+        const overSea = waterDepthAt(camera.position.x, camera.position.z) > 0.05;
+        underwater.update(dt, now * 0.001, overSea ? seaAtEye - eyeY : -1, camera.position);
       }
 
       // Project world positions onto floating in-world bubbles (DOM overlays).
@@ -6150,6 +6329,7 @@ export default function City() {
       rosterBoard.dispose();
       district.dispose();
       ocean.dispose();
+      underwater.dispose();
       splash.dispose();
       headMount.dispose();
 
@@ -6166,6 +6346,7 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityRig;
       delete (window as unknown as Record<string, unknown>).__cityChar;
       delete (window as unknown as Record<string, unknown>).__citySwimState;
+      delete (window as unknown as Record<string, unknown>).__cityDive;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();
@@ -8413,6 +8594,22 @@ export default function City() {
         <div className="absolute bottom-4 right-4 glass-panel rounded-2xl px-4 py-3 text-[11px] text-muted-foreground pointer-events-none hidden sm:block">
           WASD move · Shift run · <span className="text-primary">Space hold = jetpack</span> ·{" "}
           <span className="text-primary">T dance</span> · drag look · pinch / scroll zoom
+        </div>
+      )}
+
+      {/*
+        Diving is a gesture, not a button, which makes it the kind of thing
+        nobody ever finds. So say it, once, while they are in the water — where
+        it is the only thing they can do and the only place it means anything.
+      */}
+      {entered && !isLive && inWater && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 animate-scale-in">
+          <span className="glass-panel rounded-full px-4 py-2 text-xs pointer-events-none">
+            <span className="mr-1.5">🤿</span>
+            <span className="text-muted-foreground">Look down and swim to </span>
+            <span className="font-semibold text-primary">dive</span>
+            <span className="text-muted-foreground"> · Space to surface</span>
+          </span>
         </div>
       )}
 

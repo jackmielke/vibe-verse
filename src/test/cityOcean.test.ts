@@ -145,6 +145,44 @@ describe("the ocean's terrain", () => {
   });
 });
 
+describe("the seabed you can dive to", () => {
+  /**
+   * Everything below the waterline used to be unreachable, so it did not
+   * matter that the seabed MESH stopped a long way short of where `bedHeight`
+   * keeps descending. Diving made it matter: swim past the last ring, aim
+   * down, sink twelve metres and land — standing, solidly — on nothing at all,
+   * because the floor existed for the physics and had no geometry to draw.
+   *
+   * The mesh is built from a list of `shoreDist` parameters, so the check is
+   * on how far out that list goes.
+   */
+  const shelfEnd = (() => {
+    const m = src.match(/for \(let s = 210; s <= (\d+); s \+= [^)]*\) sandRadii\.push\(s\);/);
+    return m ? Number(m[1]) : 0;
+  })();
+
+  it("draws a seabed as far out as a swimmer can realistically get", () => {
+    expect(shelfEnd).toBeGreaterThanOrEqual(700);
+  });
+
+  it("covers the water that is deep enough to dive in", () => {
+    // Anywhere with more than a couple of metres over it, within the shelf,
+    // has to have something under it to look at.
+    for (const [x, z] of ring(shelfEnd - 20)) {
+      expect(-bedHeight(x, z)).toBeGreaterThan(2);
+    }
+  });
+
+  it("keeps descending past the shelf rather than flattening out", () => {
+    // The far edge is a cut-off, not a bottom — asserted so nobody 'fixes'
+    // the gap by clamping the analytic bed and quietly creating a glass floor
+    // in the middle of the ocean.
+    const a = ring(600, 8).map(([x, z]) => bedHeight(x, z));
+    const b = ring(900, 8).map(([x, z]) => bedHeight(x, z));
+    for (let i = 0; i < a.length; i++) expect(b[i]).toBeLessThan(a[i]);
+  });
+});
+
 describe("the city's shaders", () => {
   // Every GLSL literal under src/city, not just the ocean's. The narrower
   // version of this check lives in starfleet-shaders.test.ts and watches only

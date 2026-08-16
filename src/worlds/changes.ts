@@ -69,12 +69,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "7564ac6", iso: "2026-08-16T10:06:27+00:00", subject: "The sea has an inside now: dive under Vibe City" },
     { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
     { sha: "cbd5788", iso: "2026-08-15T05:51:10+00:00", subject: "Real cars in Vibe City, and you can walk into them" },
     { sha: "a960456", iso: "2026-08-15T05:31:38+00:00", subject: "Fixed the swim stroke lurching, and made it a real crawl" },
     { sha: "3ed7b4a", iso: "2026-08-13T23:30:30+00:00", subject: "Vibe Island stopped opening if your character had no model file" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
-    { sha: "7a1fca6", iso: "2026-08-12T20:16:30+00:00", subject: "Merge remote-tracking branch 'origin/main' into claude/vibeyverse-structure-overview-qufpth" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -93,7 +93,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
   "deep": [
-    { sha: "60268e7", iso: "2026-08-16T09:20:40+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
+    { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "drop-zero": [
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
@@ -327,12 +327,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
   ],
   "vibeverse": [
+    { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
     { sha: "99439c8", iso: "2026-08-07T01:20:45+00:00", subject: "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
     { sha: "7533666", iso: "2026-08-02T13:54:08+00:00", subject: "One grid, two columns, and cards that go where they say" },
     { sha: "c5f07c9", iso: "2026-08-02T08:44:36+00:00", subject: "THE FINAL FRONTIER joins the vibeverse" },
-    { sha: "77ca812", iso: "2026-08-02T06:51:59+00:00", subject: "Fly it with one hand on the mouse, and hit something hard enough to matter" },
   ],
   "village": [
     { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },

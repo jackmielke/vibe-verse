@@ -461,6 +461,13 @@ export interface Ocean {
   setPalette(p: OceanPalette): void;
   /** Sun lighting for the sand, so the beach reacts to day/night with the city. */
   setSandTint(color: THREE.ColorRepresentation): void;
+  /**
+   * The seabed's material, exposed so things that draw ON it — caustics, so
+   * far — can patch it after the fact. Handed out rather than accepting
+   * another `patch` option because the underwater layer is built after the
+   * ocean and would otherwise need the two constructed in the wrong order.
+   */
+  bedMaterial: THREE.Material;
   dispose(): void;
 }
 
@@ -630,6 +637,21 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
   const sandRadii: number[] = [];
   for (let s = -9; s < 78; s += lowDetail ? 3 : 1.6) sandRadii.push(s);
   for (let s = 78; s <= 210; s += lowDetail ? 16 : 9) sandRadii.push(s);
+  /**
+   * The offshore shelf, and the reason it goes out this far.
+   *
+   * `bedHeight` is analytic and keeps descending forever, but the MESH used to
+   * stop at 210 m out — which was invisible and free right up until you could
+   * dive. Then it became: swim 250 m offshore, aim down, sink twelve metres and
+   * land, standing, on nothing. The floor was there for the physics and for the
+   * water's depth term, and there was simply no geometry to draw. Caustics on a
+   * seabed that does not exist look exactly like caustics that are broken.
+   *
+   * Ten coarse rings out to 760 m. Underwater visibility is forty metres, so
+   * nobody will ever resolve the spacing; they will only notice whether there
+   * is a bottom.
+   */
+  for (let s = 210; s <= 760; s += lowDetail ? 110 : 55) sandRadii.push(s);
   // The ring at parameter s has to land where shoreDist == s, and shoreDist is
   // the p=16 norm — so scale each direction by the inverse of that norm.
   const pnorm = (c: number, s: number) => Math.pow(Math.pow(Math.abs(c), 16) + Math.pow(Math.abs(s), 16), 0.0625);
@@ -727,6 +749,14 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
     transparent: true,
     depthWrite: false,
     fog: false,
+    // Two-sided so the sea still exists when your eyes go under it. Faces are
+    // wound upward, so single-sided the entire ocean was simply culled away the
+    // moment the camera dropped below the waterline: you swam down and the sky
+    // was still there, through the water, because there was no water. The
+    // underside is a genuinely different surface — see `gl_FrontFacing` in the
+    // fragment shader — and costs nothing from above, where there are no back
+    // faces on a sheet you are looking down at.
+    side: THREE.DoubleSide,
     vertexShader: /* glsl */ `
       uniform float uTime;
       varying vec3 vWorld;
@@ -909,6 +939,54 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
         // work a real one would.
         col += uCityGlow * exp(-max(sd0, 0.0) / 55.0) * (0.35 + fres);
 
+        // ---- the ceiling ---------------------------------------------------
+        // Everything above was the sea seen from the air. From underneath it is
+        // not the same surface dimmed — it is a different optical object, and
+        // the difference has a name.
+        //
+        // Light can only escape water into air within about 48.6 degrees of
+        // straight up; past that the surface is a perfect mirror. So a swimmer
+        // looking up sees the ENTIRE sky — horizon to horizon, the whole
+        // hemisphere — squeezed into a bright circular window overhead, and
+        // outside that circle a dark mirror of the water below. That is
+        // Snell's window, it is the single most recognisable thing about being
+        // underwater, and it is free: it falls straight out of refract().
+        if (!gl_FrontFacing) {
+          vec3 I = normalize(vWorld - cameraPosition); // travelling up, out
+          float ct = dot(I, n);
+          // cos(48.6 deg) = 0.661. Softened either side because the surface is
+          // rough: a real window has a shimmering, broken rim, not a stencil.
+          float win = smoothstep(0.58, 0.74, ct);
+
+          vec3 rd = refract(I, -n, 1.333);
+          // Total internal reflection returns zero; so does the numerically
+          // ragged band right at the critical angle. Fall back to straight up
+          // rather than sampling the sky along a null vector.
+          rd = dot(rd, rd) < 1e-5 ? vec3(I.x, abs(I.y) + 0.35, I.z) : rd;
+          vec3 sky = skyColor(normalize(rd));
+          // The sun through the window, spread by the surface it came through.
+          sky += uSunColor * pow(max(dot(normalize(rd), L), 0.0), 90.0) * 1.6 * uSunStrength;
+
+          // Outside the window: the water below, reflected back down at you.
+          // Darker than the body colour and slightly green — it is a second
+          // pass through the same water.
+          vec3 mirror = mix(uDeep, uShallow, 0.25) * 0.55;
+          mirror += uCityGlow * exp(-max(sd0, 0.0) / 55.0) * 0.6;
+
+          vec3 under = mix(mirror, sky, win);
+          // Foam is bubbles, and bubbles seen from below are the brightest
+          // thing down there — broken sets read as lit patches on the ceiling.
+          under = mix(under, uFoam, foam * 0.8);
+
+          float fogU = smoothstep(uFogNear, uFogFar, length(cameraPosition - vWorld));
+          under = mix(under, uFogColor, fogU);
+          // Opaque, unlike the top: there is no seabed to see THROUGH the
+          // ceiling. Still faded out at the waterline so it does not paint a
+          // lip of sea over the wet sand at the very edge.
+          gl_FragColor = vec4(under, smoothstep(-0.10, 0.25, depth));
+          return;
+        }
+
         // ---- shoreline and depth alpha -------------------------------------
         // Shallow water is see-through, so the beach you built underneath it
         // is visible through the swell; deep water is not.
@@ -954,6 +1032,7 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
     setSandTint(color) {
       sandMat.color.set(color);
     },
+    bedMaterial: sandMat,
     dispose() {
       trash.forEach((t) => t.dispose());
     },
