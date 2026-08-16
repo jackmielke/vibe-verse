@@ -106,6 +106,25 @@ export interface CarSink {
    * car — the effect belongs to the sea.
    */
   impact(x: number, y: number, z: number, speed: number): void;
+  /**
+   * A car ploughing through water too shallow to drown it.
+   *
+   * Between the waterline and the depth that sinks you there used to be
+   * nothing at all: you drove into the sea, the sea ignored you for twenty
+   * metres, and then a wall of water arrived out of nowhere. `yaw` is the
+   * heading, so the spray can come off the front of the car and be thrown
+   * outward the way a bow wave actually goes.
+   */
+  wake(
+    dt: number, x: number, y: number, z: number,
+    yaw: number, speed: number, depth: number,
+  ): void;
+  /**
+   * The car does not survive the landing. Fire, then smoke, then nothing —
+   * gated on arriving hard, so rolling gently in off the sand does not
+   * detonate.
+   */
+  fireball(x: number, y: number, z: number, speed: number): void;
   /** Air leaving a sinking car. Called every frame while it goes down. */
   bubble(dt: number, x: number, y: number, z: number, rate: number): void;
   /** `camera` is needed to face the quads; there is no billboard material. */
@@ -116,6 +135,10 @@ export interface CarSink {
 const SPRAY = 260;
 const BUBBLES = 200;
 const RINGS = 5;
+const FIRE = 150;
+const SMOKE = 90;
+/** Below this the car just gets wet. Above it, it does not survive. */
+const FIREBALL_SPEED = 11;
 
 export function createCarSink(): CarSink {
   const group = new THREE.Group();
@@ -162,10 +185,74 @@ export function createCarSink(): CarSink {
   group.add(bubbles);
   trash.push(bubbleTex, bubbleMat);
 
+  // ---- Fire and smoke ----------------------------------------------------
+  /**
+   * Two pools, because fire and smoke are not the same material.
+   *
+   * Fire is additive — it is light, it blows out to white where it is thick,
+   * and it must not be occluded by the water it is sitting on. Smoke is the
+   * opposite: it is opaque, it DARKENS what is behind it, and drawn additively
+   * it would brighten the sky instead of blocking it, which reads as steam.
+   * The colours are per-instance so a single pool can cool from white through
+   * yellow to a dull red over its life.
+   */
+  const fireMat = new THREE.MeshBasicMaterial({
+    map: sprayTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    // Fire is its own light source, so distance haze should not tint it.
+    fog: false,
+  });
+  const fire = new THREE.InstancedMesh(quad, fireMat, FIRE);
+  fire.frustumCulled = false;
+  fire.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  fire.renderOrder = 6;
+  group.add(fire);
+  trash.push(fireMat);
+
+  const smokeMat = new THREE.MeshBasicMaterial({
+    map: sprayTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    side: THREE.DoubleSide,
+    fog: true,
+  });
+  const smoke = new THREE.InstancedMesh(quad, smokeMat, SMOKE);
+  smoke.frustumCulled = false;
+  smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  smoke.renderOrder = 5;
+  group.add(smoke);
+  trash.push(smokeMat);
+
+  /**
+   * The flash.
+   *
+   * An explosion that does not light anything around it is a decal. This one
+   * light is what puts the fireball onto the water under it and the car in
+   * front of it, and it costs one extra light for the half second it is above
+   * zero — parked at intensity 0 the rest of the time, not removed and
+   * re-added, because adding a light forces every material in the scene to
+   * recompile and that is a hitch you would see.
+   */
+  const flash = new THREE.PointLight(0xffa040, 0, 26, 2);
+  group.add(flash);
+
   const sprayP: Particle[] = Array.from({ length: SPRAY }, emptyParticle);
   const bubbleP: Particle[] = Array.from({ length: BUBBLES }, emptyParticle);
+  const fireP: Particle[] = Array.from({ length: FIRE }, emptyParticle);
+  const smokeP: Particle[] = Array.from({ length: SMOKE }, emptyParticle);
   let sprayNext = 0;
   let bubbleNext = 0;
+  let fireNext = 0;
+  let smokeNext = 0;
+  /** Seconds left on the flash, and how bright it started. */
+  let flashT = 0;
+  let flashPeak = 0;
+  /** Metres of water the car has ploughed since the last wake puff. */
+  let wakeCarry = 0;
 
   // Surface rings, flat on the water, running outward from the hit.
   const ringGeo = new THREE.RingGeometry(0.72, 1.0, 48);
@@ -196,6 +283,8 @@ export function createCarSink(): CarSink {
   const S = new THREE.Vector3();
   const FACE = new THREE.Quaternion();
   const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
+  const FIRE_COL = new THREE.Color();
+  const SMOKE_COL = new THREE.Color();
 
   return {
     group,
@@ -304,6 +393,114 @@ export function createCarSink(): CarSink {
       }
     },
 
+    wake(dt, x, y, z, yaw, speed, depth) {
+      if (speed < 1.2 || depth < 0.08) return;
+      // How much water is actually being shifted: fast through deep-ish water
+      // throws a lot, a crawl through an inch throws nothing.
+      const bite = Math.min(1, depth / 1.2) * Math.min(1, speed / 18);
+      /**
+       * Emitted per METRE travelled, not per second.
+       *
+       * Per-second emission ties the wake's density to how fast the machine is
+       * rendering rather than to how fast the car is going — so the same drive
+       * through the same shallows lays down a thick trail on a fast device and
+       * a dotted line on a slow one. Per-metre, the trail is a property of the
+       * drive.
+       */
+      wakeCarry += speed * dt;
+      const step = 0.55;
+      const fx = Math.sin(yaw);
+      const fz = Math.cos(yaw);
+      while (wakeCarry >= step) {
+        wakeCarry -= step;
+        // Two sheets, thrown out to either side off the front wheels — which
+        // is where a car actually picks the water up.
+        for (const side of [-1, 1]) {
+          const p = sprayP[sprayNext++ % SPRAY];
+          p.x = x + fx * 0.9 - fz * side * 0.55;
+          p.y = y + 0.08;
+          p.z = z + fz * 0.9 + fx * side * 0.55;
+          const out = (1.6 + Math.random() * 2.6) * (0.4 + bite);
+          p.vx = -fz * side * out + fx * speed * 0.18;
+          p.vz = fx * side * out + fz * speed * 0.18;
+          p.vy = (1.8 + Math.random() * 3.4) * (0.35 + bite);
+          p.life = p.t = 0.4 + Math.random() * 0.45;
+          p.size = (0.14 + Math.random() * 0.2) * (0.5 + bite);
+          p.grow = 2.0;
+          p.wob = 0;
+        }
+      }
+    },
+
+    fireball(x, y, z, speed) {
+      if (speed < FIREBALL_SPEED) return;
+      const s = THREE.MathUtils.clamp((speed - FIREBALL_SPEED) / 20, 0, 1);
+      const power = 0.5 + s;
+
+      /**
+       * Fire: a ball that rises and cools.
+       *
+       * Every number here is smaller than the obvious one, because additive
+       * blending SUMS. The first cut threw a hundred quads up to 2.4 m across
+       * into a three-metre sphere four metres from the camera, each one at
+       * full brightness — and additively that is not a fireball, it is a white
+       * rectangle where the screen used to be. You could not see the car, the
+       * sea or the explosion.
+       *
+       * So each blob is dim and small, and the hot core is what you get where
+       * a lot of them overlap. That is also how fire actually looks: bright in
+       * the middle because there is more of it there, not because the edges
+       * are dark.
+       */
+      const balls = Math.round(24 + power * 30);
+      for (let i = 0; i < balls; i++) {
+        const p = fireP[fireNext++ % FIRE];
+        // Spherical, biased upward — an explosion off a surface goes up
+        // because the ground is in the way of everything else.
+        const a = Math.random() * Math.PI * 2;
+        const up = Math.random();
+        const r = Math.random() * 0.85 * power;
+        p.x = x + Math.cos(a) * r;
+        p.y = y + 0.4 + up * 1.2 * power;
+        p.z = z + Math.sin(a) * r;
+        const out = (1.2 + Math.random() * 3.2) * power;
+        p.vx = Math.cos(a) * out;
+        p.vz = Math.sin(a) * out;
+        p.vy = (2.2 + Math.random() * 5.5) * power;
+        p.life = p.t = 0.35 + Math.random() * 0.55;
+        p.size = (0.3 + Math.random() * 0.5) * power;
+        p.grow = 1.1;
+        // Reused as the cooling offset, so no two blobs are the same colour
+        // at the same instant.
+        p.wob = Math.random() * 0.35;
+      }
+
+      // ---- Smoke: slower, bigger, sticks around ---------------------------
+      const puffs = Math.round(14 + power * 24);
+      for (let i = 0; i < puffs; i++) {
+        const p = smokeP[smokeNext++ % SMOKE];
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * 1.6 * power;
+        p.x = x + Math.cos(a) * r;
+        p.y = y + 0.6 + Math.random() * 1.8;
+        p.z = z + Math.sin(a) * r;
+        p.vx = Math.cos(a) * (0.5 + Math.random() * 1.6);
+        p.vz = Math.sin(a) * (0.5 + Math.random() * 1.6);
+        p.vy = 1.4 + Math.random() * 2.8;
+        p.life = p.t = 1.6 + Math.random() * 1.8;
+        p.size = (0.9 + Math.random() * 1.3) * power;
+        p.grow = 2.4;
+        p.wob = Math.random() * Math.PI * 2;
+      }
+
+      // Enough to throw orange onto the water and the car, and no more. The
+      // first pass ran this to 220 over a 60 m radius, which lit the whole bay
+      // as if somebody had switched the sun on underneath it.
+      flashPeak = 18 + power * 26;
+      flashT = 0.42;
+      flash.position.set(x, y + 1.4, z);
+    },
+
     bubble(dt, x, y, z, rate) {
       // Poisson-ish: a fractional expected count per frame turned into whole
       // bubbles, so the stream does not quantise to the frame rate.
@@ -389,6 +586,92 @@ export function createCarSink(): CarSink {
       }
       bubbles.instanceMatrix.needsUpdate = true;
       bubbleMat.opacity = 0.85;
+
+      // ---- Fire ----------------------------------------------------------
+      for (let i = 0; i < FIRE; i++) {
+        const p = fireP[i];
+        if (p.t <= 0) {
+          fire.setMatrixAt(i, HIDDEN);
+          continue;
+        }
+        p.t -= dt;
+        // Rises rather than falls: it is hot gas, not debris. The outward
+        // punch dies fast; the buoyancy does not.
+        p.vy += 5.5 * dt;
+        const drag = Math.pow(0.06, dt);
+        p.vx *= drag;
+        p.vz *= drag;
+        p.vy *= Math.pow(0.5, dt);
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        const k = Math.max(0, p.t / p.life);
+        // Cools white → yellow → orange → dull red as it goes, which is the
+        // whole reason this is per-instance colour rather than one hot orange
+        // material: a fireball that stays the same colour for its entire life
+        // reads as a light being switched off, not as something burning out.
+        const heat = Math.max(0, k - p.wob);
+        // Deliberately well under 1. These sum where they overlap, and the
+        // overlap is where the fireball gets its bright core — start them at
+        // full brightness and the core is not a core, it is the whole screen.
+        FIRE_COL.setRGB(
+          Math.min(1, 0.22 + heat * 0.62),
+          Math.min(1, 0.05 + heat * heat * 0.52),
+          Math.min(1, heat * heat * heat * 0.34),
+        );
+        fire.setColorAt(i, FIRE_COL);
+        P.set(p.x, p.y, p.z);
+        S.setScalar(Math.max(0.001, p.size * (1 + p.grow * (1 - k)) * Math.min(1, k * 3.5)));
+        fire.setMatrixAt(i, M.compose(P, FACE, S));
+      }
+      fire.instanceMatrix.needsUpdate = true;
+      if (fire.instanceColor) fire.instanceColor.needsUpdate = true;
+      // A second brake on the same runaway: with additive blending, opacity is
+      // a straight multiplier on how much each blob contributes to the sum.
+      fireMat.opacity = 0.6;
+
+      // ---- Smoke ---------------------------------------------------------
+      for (let i = 0; i < SMOKE; i++) {
+        const p = smokeP[i];
+        if (p.t <= 0) {
+          smoke.setMatrixAt(i, HIDDEN);
+          continue;
+        }
+        p.t -= dt;
+        p.wob += dt * 0.7;
+        p.vy *= Math.pow(0.55, dt);
+        p.vy += 0.9 * dt;
+        const drag = Math.pow(0.25, dt);
+        p.vx *= drag;
+        p.vz *= drag;
+        p.x += (p.vx + Math.sin(p.wob) * 0.35) * dt;
+        p.y += p.vy * dt;
+        p.z += (p.vz + Math.cos(p.wob * 0.8) * 0.35) * dt;
+        const k = Math.max(0, p.t / p.life);
+        // Darkest while it is fresh and thick, thinning to nothing.
+        const grey = 0.1 + (1 - k) * 0.34;
+        SMOKE_COL.setRGB(grey, grey * 0.97, grey * 0.95);
+        smoke.setColorAt(i, SMOKE_COL);
+        P.set(p.x, p.y, p.z);
+        S.setScalar(Math.max(0.001, p.size * (1 + p.grow * (1 - k))));
+        smoke.setMatrixAt(i, M.compose(P, FACE, S));
+      }
+      smoke.instanceMatrix.needsUpdate = true;
+      if (smoke.instanceColor) smoke.instanceColor.needsUpdate = true;
+      // One opacity for the batch. Smoke has to thin out or it leaves a bank
+      // of grey discs hanging over the bay.
+      smokeMat.opacity = 0.5;
+
+      // ---- Flash -----------------------------------------------------------
+      if (flashT > 0) {
+        flashT = Math.max(0, flashT - dt);
+        // Squared falloff: the eye reads an explosion's light as a spike, and
+        // a linear fade looks like somebody turning a dimmer down.
+        const k = flashT / 0.42;
+        flash.intensity = flashPeak * k * k;
+      } else if (flash.intensity !== 0) {
+        flash.intensity = 0;
+      }
 
       // ---- Rings ---------------------------------------------------------
       for (const ring of rings) {

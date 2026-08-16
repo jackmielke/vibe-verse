@@ -123,6 +123,8 @@ let firstShotDone = false;
 let deepestY = 0;
 let ejectedAt = -1;
 let restedDepth = 0;
+let avatarAfterBail = null;
+let avatarLater = null;
 
 /**
  * Catch the entry speed before it is gone.
@@ -134,10 +136,28 @@ let restedDepth = 0;
  * the impact scaling was broken. Poll hard until it hits, then relax.
  */
 let launchShot = false;
+/**
+ * Was there anything at all between the waterline and the plunge?
+ *
+ * There used to be nothing: you drove into the sea, the sea ignored you for
+ * twenty metres, and then a wall of water arrived out of nowhere. `wet` is the
+ * ploughing phase — first touch, spray off the wheels, water dragging on you —
+ * and catching it means sampling hard, because at 26 m/s the car crosses from
+ * ankle-deep to sinking in well under a second.
+ */
+let wadedFrames = 0;
+let wadeShot = false;
 for (let i = 0; i < 400; i++) {
   const k = await state();
   if (k.sink > 0) break;
   hitSpeed = Math.max(hitSpeed, k.speed);
+  if (k.wet) {
+    wadedFrames++;
+    if (!wadeShot) {
+      await shot("00b-first-touch");
+      wadeShot = true;
+    }
+  }
   if (!launchShot && k.speed > 12) {
     await shot("00-launch");
     launchShot = true;
@@ -157,7 +177,9 @@ for (let i = 0; i < 400; i++) {
  *
  * So: poll hard and trip the shutter on the sink clock itself.
  */
-for (const [mark, name] of [[0.06, "01a-hit"], [0.16, "01b-crown"], [0.3, "01c-falling"]]) {
+for (const [mark, name] of [
+  [0.06, "01a-hit"], [0.16, "01b-crown"], [0.3, "01c-fireball"], [0.9, "01d-smoke"],
+]) {
   for (let i = 0; i < 120; i++) {
     const k = await state();
     if (k.sink >= mark) break;
@@ -178,7 +200,14 @@ for (let i = 0; i < 70; i++) {
         `doing ~${hitSpeed.toFixed(0)} m/s`,
     );
   }
-  if (ejectedAt < 0 && hitAt >= 0 && !k.driving) ejectedAt = i;
+  if (ejectedAt < 0 && hitAt >= 0 && !k.driving) {
+    ejectedAt = i;
+    // The moment the vanishing act used to start. Bailing out left the car
+    // claimed so it could keep sinking, which left `insideACar()` true, which
+    // left the avatar hidden — for the eleven seconds until the wreck was
+    // recovered, the player swam as nobody.
+    avatarAfterBail = await page.evaluate(() => window.__cityAvatar());
+  }
   // Only while it is still in the water. Tracked to the end of the loop, this
   // picks up the depth AFTER recovery has teleported the kart back to its
   // parking spot in the city — and reports the wreck as resting in minus
@@ -206,6 +235,9 @@ await shot("03-settled");
 
 const rest = await state();
 const sw = await swim();
+// And still there several seconds later, while the wreck is still on the
+// bottom and still claimed. This is the frame the bug lived in.
+avatarLater = await page.evaluate(() => window.__cityAvatar());
 
 // ---- Recovery ------------------------------------------------------------
 // Swim away first: the recovery deliberately waits for nobody to be watching,
@@ -249,6 +281,17 @@ console.log(
 console.log(`   driver is swimming           ${sw.swimming ? "yes" : "no"}`);
 console.log(
   `   kart recovered               ${recovered ? "yes, back at its parking spot" : "NO — lost to the bay"}`,
+);
+const wadedFirst = wadedFrames > 0;
+console.log(
+  `   splashed before the plunge   ${wadedFirst ? `yes, ploughing for ${wadedFrames} samples` : "NO — nothing until the big one"}`,
+);
+const avatarKept =
+  !!avatarAfterBail?.visible && !!avatarLater?.visible;
+console.log(
+  `   avatar still drawn           ` +
+    `${avatarAfterBail?.visible ? "yes at bail-out" : "NO at bail-out"}, ` +
+    `${avatarLater?.visible ? "yes later" : "NO later — the player vanished"}`,
 );
 
 /**
@@ -309,4 +352,9 @@ console.log(`shots in ${OUT}`);
 
 await browser.close();
 server?.kill();
-process.exit(sank && wentUnder && bailed && recovered && arrivedFast && deepOk ? 0 : 1);
+process.exit(
+  sank && wentUnder && bailed && recovered && arrivedFast && deepOk &&
+  wadedFirst && avatarKept
+    ? 0
+    : 1,
+);

@@ -293,6 +293,28 @@ interface Car {
    * from `t`. A car cannot block its own driver.
    */
   driven: boolean;
+  /**
+   * Knocked out of its lane, and flying.
+   *
+   * Traffic is otherwise entirely lane-space: a car's position is `lane` and
+   * `t`, its heading falls out of `axis` and `dir`, and it is level by
+   * construction. That is why the fleet is cheap and why every car is always
+   * exactly where it should be — and it is also why running into one used to
+   * stop you dead against what was, as far as the physics was concerned, a
+   * building. There is nowhere in lane-space to put "tumbling through the air
+   * sideways".
+   *
+   * So a hit car leaves lane-space entirely for a few seconds and comes back.
+   * Null for the ninety-odd cars that are behaving.
+   */
+  hit: {
+    x: number; y: number; z: number;
+    vx: number; vy: number; vz: number;
+    yaw: number; pitch: number; roll: number;
+    spinY: number; spinP: number; spinR: number;
+    /** Seconds since the hit; it rejoins the road after settling. */
+    t: number;
+  } | null;
 }
 
 /** A car you can get into, or are already in. */
@@ -331,6 +353,35 @@ export interface Traffic {
   nearestRidable(x: number, z: number, radius: number): TrafficRide | null;
   /** Take the wheel. The car leaves the fleet and stops colliding with you. */
   claim(id: number): TrafficRide | null;
+  /**
+   * The id of the car occupying this point, or -1.
+   *
+   * `CollisionWorld` can already say that something is in the way, but not
+   * what — and a kart needs to know, because bouncing off a building and
+   * bouncing off a Nissan should not be the same event.
+   */
+  carAt(x: number, z: number, y: number): number;
+  /**
+   * Knock a car out of its lane and into the air.
+   *
+   * `vx`/`vz` are the direction of the hit and are normalised here; `force` is
+   * roughly the speed to send it away at. The car leaves the AI for a few
+   * seconds, tumbles, lands, and rejoins the nearest lane on its own.
+   */
+  shove(id: number, vx: number, vz: number, force: number): void;
+  /**
+   * Every car near a point, with whether it is currently airborne.
+   *
+   * For harnesses. A shove is a physics behaviour with no readable side
+   * effect — the car looks the same, it is just somewhere else — so proving it
+   * happened means watching a specific car's position over time, and there is
+   * otherwise no way to ask about one.
+   */
+  debugNear(x: number, z: number, r: number): Array<{
+    id: number; x: number; y: number; z: number; hit: boolean; speed: number;
+    /** 0 = travelling along Z, 1 = along X. With `dir`, this is a heading. */
+    axis: 0 | 1; dir: 1 | -1;
+  }>;
   /**
    * Put the claimed car somewhere. The caller owns its pose until release.
    * `pitch`/`roll` default to level and are only ever non-zero for a car that
@@ -430,6 +481,7 @@ export function buildTraffic(opts: {
             box: { minX: 0, maxX: 0, minZ: 0, maxZ: 0, base: 0, height: 0 },
             slot: 0,
             driven: false,
+            hit: null,
           });
         }
       }
@@ -677,7 +729,10 @@ export function buildTraffic(opts: {
       // A driven car's `t` is stale — its real position comes from `drive()`.
       // Other cars still brake for it, through the `player` check below, which
       // is the same point in space while somebody is at the wheel.
-      if (other === car || other.driven) continue;
+      // A knocked car's `t` is as stale as a driven one's — it is off in the
+      // air somewhere — so queueing behind where it used to be would leave a
+      // line of cars stopped for nothing in the middle of an empty street.
+      if (other === car || other.driven || other.hit) continue;
       const d = wrap((other.t - car.t) * car.dir) - car.halfLong - other.halfLong;
       if (d > -0.5 && d < best) best = d;
     }
@@ -739,6 +794,63 @@ export function buildTraffic(opts: {
       // A driven car is nobody's business but its driver's: `drive()` writes
       // its transform and its box stays collapsed.
       if (car.driven) continue;
+
+      /**
+       * Airborne after a hit: free physics, not lane physics.
+       *
+       * Everything below this block reads `lane`/`t` and writes a level,
+       * axis-aligned pose. A car that has just been rammed is doing none of
+       * those things, so it runs its own integration here and rejoins the
+       * fleet when it has stopped moving.
+       */
+      if (car.hit) {
+        const h = car.hit;
+        h.t += dt;
+        h.vy -= 22 * dt;
+        h.x += h.vx * dt;
+        h.y += h.vy * dt;
+        h.z += h.vz * dt;
+        h.yaw += h.spinY * dt;
+        h.pitch += h.spinP * dt;
+        h.roll += h.spinR * dt;
+        if (h.y <= 0) {
+          // Down. Bounces once or twice, scrubbing hard — a car is not a ball.
+          h.y = 0;
+          h.vy = h.vy < -3 ? -h.vy * 0.28 : 0;
+          const grip = Math.pow(0.02, dt);
+          h.vx *= grip;
+          h.vz *= grip;
+          // Rocks flat rather than stopping mid-roll, which would leave a car
+          // parked at forty degrees in the middle of a junction.
+          h.spinY *= Math.pow(0.05, dt);
+          h.spinP *= Math.pow(0.002, dt);
+          h.spinR *= Math.pow(0.002, dt);
+          h.pitch *= Math.pow(0.02, dt);
+          h.roll *= Math.pow(0.02, dt);
+        }
+        const still =
+          Math.hypot(h.vx, h.vz) < 0.4 && Math.abs(h.vy) < 0.4 &&
+          Math.abs(h.pitch) < 0.06 && Math.abs(h.roll) < 0.06;
+        // Held a moment after it settles so it does not snap back to a lane
+        // the instant it stops rolling, which reads as a glitch rather than as
+        // the driver restarting and pulling away.
+        if (still && h.t > 2.2) {
+          car.lane = car.axis === 0 ? h.x : h.z;
+          car.t = car.axis === 0 ? h.z : h.x;
+          rejoin(car);
+          continue;
+        }
+        pose(car, h.x, h.y, h.z, h.yaw, h.pitch, h.roll);
+        const hx0 = car.axis === 0 ? car.halfWide : car.halfLong;
+        const hz0 = car.axis === 0 ? car.halfLong : car.halfWide;
+        car.box.minX = h.x - hx0;
+        car.box.maxX = h.x + hx0;
+        car.box.minZ = h.z - hz0;
+        car.box.maxZ = h.z + hz0;
+        car.box.base = 0;
+        car.box.height = car.height;
+        continue;
+      }
       /*
        * Target speed.
        *
@@ -832,6 +944,30 @@ export function buildTraffic(opts: {
   };
 
   /**
+   * Put a car back on the road from wherever it has ended up.
+   *
+   * Shared by `release` (a driver got out) and by a car settling after being
+   * knocked out of its lane. Both leave `lane` and `t` holding a world
+   * position, which for a car sitting on a pavement or upside down in a plaza
+   * is not a lane at all — so it snaps to the nearest centreline for its own
+   * axis, keeps the offset that puts it on the right-hand side, and carries
+   * on. The snap is a jump of a few metres and reads as the driver getting
+   * back in and pulling out. The alternative is a car permanently abandoned
+   * wherever it stopped, which drains the fleet one at a time.
+   */
+  const rejoin = (car: Car) => {
+    let bestI = 0;
+    for (let k = 1; k < centrelines.length; k++) {
+      if (Math.abs(centrelines[k] - car.lane) < Math.abs(centrelines[bestI] - car.lane)) bestI = k;
+    }
+    car.laneIndex = bestI;
+    car.lane = centrelines[bestI] + (car.axis === 0 ? -car.dir : car.dir) * (street * 0.22);
+    car.t = THREE.MathUtils.clamp(car.t, -half, half);
+    car.speed = 0;
+    car.hit = null;
+  };
+
+  /**
    * Write one car's transform into its model's instanced meshes.
    *
    * `pitch` and `roll` are zero for every car on the road — traffic is
@@ -886,6 +1022,10 @@ export function buildTraffic(opts: {
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       if (car.driven) continue;
+      // Not one that is currently cartwheeling down the street. Its `speed` is
+      // zero and its `lane`/`t` are stale, so without this it looks like the
+      // most inviting car on the block from wherever it used to be.
+      if (car.hit) continue;
       // Crawling counts. A car stopped in a queue or held at a red is the one
       // you want, and 3.5 m/s is walking pace — you can catch it.
       if (car.speed > 3.5) continue;
@@ -907,7 +1047,12 @@ export function buildTraffic(opts: {
 
     claim(id) {
       const car = cars[id];
-      if (!car || car.driven) return null;
+      // `nearestRidable` already refuses to offer an airborne car, but the id
+      // it offered a moment ago can be acted on later — the button holds it in
+      // React state, and a car can be sent flying between the render and the
+      // click. Taking the wheel of one mid-cartwheel would strand it there:
+      // `drive` writes its pose from then on and its flight is never resolved.
+      if (!car || car.driven || car.hit) return null;
       const ride = rideOf(car, id);
       car.driven = true;
       car.speed = 0;
@@ -937,26 +1082,76 @@ export function buildTraffic(opts: {
     release(id) {
       const car = cars[id];
       if (!car || !car.driven) return;
-      /*
-       * Rejoin the road.
-       *
-       * `drive` has been storing the car's world position in `lane`/`t`, which
-       * for a car that has been driven up a pavement is not a lane at all. So
-       * it snaps to the nearest centreline for its own axis, keeps the offset
-       * that puts it on the right-hand side, and carries on. The snap is a jump
-       * of a few metres and it reads as the driver getting back in and pulling
-       * out — the alternative is a car permanently parked wherever it was left,
-       * which drains the fleet one abandoned car at a time.
-       */
-      let bestI = 0;
-      for (let k = 1; k < centrelines.length; k++) {
-        if (Math.abs(centrelines[k] - car.lane) < Math.abs(centrelines[bestI] - car.lane)) bestI = k;
-      }
-      car.laneIndex = bestI;
-      car.lane = centrelines[bestI] + (car.axis === 0 ? -car.dir : car.dir) * (street * 0.22);
-      car.t = THREE.MathUtils.clamp(car.t, -half, half);
-      car.speed = 0;
+      rejoin(car);
       car.driven = false;
+    },
+
+    debugNear(x, z, r) {
+      const out: ReturnType<Traffic["debugNear"]> = [];
+      for (let i = 0; i < cars.length; i++) {
+        const c = cars[i];
+        const cx = c.hit ? c.hit.x : c.axis === 0 ? c.lane : c.t;
+        const cz = c.hit ? c.hit.z : c.axis === 0 ? c.t : c.lane;
+        if (Math.hypot(cx - x, cz - z) > r) continue;
+        out.push({
+          id: i, x: cx, y: c.hit ? c.hit.y : 0, z: cz,
+          hit: !!c.hit, speed: c.speed, axis: c.axis, dir: c.dir,
+        });
+      }
+      return out;
+    },
+
+    carAt(x, z, y) {
+      for (let i = 0; i < cars.length; i++) {
+        const c = cars[i];
+        if (c.driven) continue;
+        const b = c.box;
+        if (y > b.height + 0.4) continue;
+        if (x >= b.minX - 0.3 && x <= b.maxX + 0.3 && z >= b.minZ - 0.3 && z <= b.maxZ + 0.3) {
+          return i;
+        }
+      }
+      return -1;
+    },
+
+    shove(id, vx, vz, force) {
+      const car = cars[id];
+      if (!car || car.driven) return;
+      const x = car.hit ? car.hit.x : car.axis === 0 ? car.lane : car.t;
+      const z = car.hit ? car.hit.z : car.axis === 0 ? car.t : car.lane;
+      const y = car.hit ? car.hit.y : 0;
+      const yaw = car.hit
+        ? car.hit.yaw
+        : car.axis === 0
+          ? car.dir > 0 ? Math.PI : 0
+          : car.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+      const len = Math.hypot(vx, vz) || 1;
+      const nx = vx / len;
+      const nz = vz / len;
+      const f = Math.max(0, force);
+      // Lifted as well as pushed. A car shunted purely horizontally slides
+      // like a hockey puck; the little bit of air under it is what makes it
+      // read as having been HIT.
+      car.hit = {
+        x, y, z,
+        vx: (car.hit?.vx ?? 0) + nx * f,
+        vy: (car.hit?.vy ?? 0) + Math.min(7, 1.5 + f * 0.28),
+        vz: (car.hit?.vz ?? 0) + nz * f,
+        yaw,
+        pitch: car.hit?.pitch ?? 0,
+        roll: car.hit?.roll ?? 0,
+        // Spun about all three, scaled to the hit and signed off which side of
+        // the nose it landed on, so a glancing blow slews and a square one
+        // barrel-rolls.
+        spinY: (car.hit?.spinY ?? 0) + (nx * 0.6 + nz * 0.6) * f * 0.16,
+        spinP: (car.hit?.spinP ?? 0) + f * 0.06,
+        spinR: (car.hit?.spinR ?? 0) + (nz - nx) * f * 0.09,
+        t: 0,
+      };
+      car.speed = 0;
+      // Out of the lane queue immediately: leaving it in means the cars behind
+      // brake for a phantom at its old `t` while the real one is in the air.
+      car.t = THREE.MathUtils.clamp(car.axis === 0 ? z : x, -half, half);
     },
 
     dispose() {

@@ -2106,21 +2106,34 @@ export default function City() {
        * every other query in the world floors at y=0. See `sinkTick`.
        */
       sink: number;
+      /** In water shallow enough to drive through. Edge-triggers the first splash. */
+      wet: boolean;
       /** Where it noses over to, and how far it lists. Rolled once per sink. */
       pitch: number; roll: number;
       /** Parked pose, so a drowned kart can be recovered rather than lost. */
       home: { x: number; y: number; z: number; yaw: number } | null;
     }> = [
-      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b"), ride: -1, sink: 0, pitch: 0, roll: 0, home: null },
-      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c"), ride: -1, sink: 0, pitch: 0, roll: 0, home: null },
-      { x: 0, y: 0, z: 0, yaw: 0, speed: 0, vy: 0, steer: 0, mesh: null, ride: -1, sink: 0, pitch: 0, roll: 0, home: null },
+      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b"), ride: -1, sink: 0, wet: false, pitch: 0, roll: 0, home: null },
+      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c"), ride: -1, sink: 0, wet: false, pitch: 0, roll: 0, home: null },
+      { x: 0, y: 0, z: 0, yaw: 0, speed: 0, vy: 0, steer: 0, mesh: null, ride: -1, sink: 0, wet: false, pitch: 0, roll: 0, home: null },
     ];
     for (const k of kartStates) {
       if (k.mesh) k.home = { x: k.x, y: k.y, z: k.z, yaw: k.yaw };
     }
     const RIDE_SLOT = kartStates.length - 1;
-    /** True while the player is sitting inside a city car (not a go-kart). */
-    const insideACar = () => kartStates[RIDE_SLOT].ride >= 0;
+    /**
+     * True while the player is sitting inside a city car (not a go-kart).
+     *
+     * Both halves matter. `ride >= 0` alone means "the slot is holding a car",
+     * which stays true after the player has left it — and a car sinking in the
+     * bay is deliberately kept claimed for the whole descent so that releasing
+     * it does not teleport it back to the nearest lane. This drives whether
+     * the avatar is drawn, so with the `driving` half missing the player was
+     * simply invisible for the eleven seconds it took the wreck to be
+     * recovered: you crash into the sea, bail out, and swim as nobody.
+     */
+    const insideACar = () =>
+      kartStates[RIDE_SLOT].ride >= 0 && drivingKartRef.current === RIDE_SLOT;
     for (const k of kartStates) {
       if (!k.mesh) continue;
       k.mesh.group.position.set(k.x, k.y, k.z);
@@ -3710,7 +3723,7 @@ export default function City() {
         const k = kartStates[0];
         k.x = x; k.y = y; k.z = z; k.yaw = yaw;
         k.speed = speed; k.vy = 0; k.steer = 0;
-        k.sink = 0; k.pitch = 0; k.roll = 0;
+        k.sink = 0; k.wet = false; k.pitch = 0; k.roll = 0;
         kartPitchNow[0] = 0;
         devThrottle = throttle;
         enterKartRef.current?.(0);
@@ -3727,6 +3740,23 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__cityKartAge = (sec: number) => {
         if (kartStates[0].sink > 0) kartStates[0].sink = sec;
       };
+      /**
+       * Is the avatar actually being drawn?
+       *
+       * `modelHolder.visible` is written every frame from `insideACar()`, and
+       * a wrong answer there is completely silent — the player is simply not
+       * there. That shipped once: bailing out of a car sinking in the bay left
+       * the car claimed, which left `insideACar()` true, which left the
+       * swimmer invisible for the eleven seconds until the wreck was
+       * recovered.
+       */
+      (window as unknown as Record<string, unknown>).__cityAvatar = () => ({
+        visible: modelHolder.visible,
+        x: player.position.x, y: player.position.y, z: player.position.z,
+      });
+      (window as unknown as Record<string, unknown>).__cityCarsNear = (
+        x: number, z: number, r: number,
+      ) => district.traffic.debugNear(x, z, r);
       (window as unknown as Record<string, unknown>).__cityKartState = () => {
         const k = kartStates[0];
         return {
@@ -3734,6 +3764,9 @@ export default function City() {
           // Seconds since it hit the water, 0 when dry. The single number that
           // says whether the sea is water or pavement.
           sink: k.sink,
+          // In water but not yet drowning — the ploughing phase that used to
+          // not exist at all.
+          wet: k.wet,
           pitch: kartPitchNow[0], roll: k.roll,
           driving: drivingKartRef.current === 0,
           depth: waterDepthAt(k.x, k.z),
@@ -3819,6 +3852,17 @@ export default function City() {
     // so a single press toggles 1st/3rd person without re-firing each frame.
     const vrPrevBtn = new Map<string, boolean>();
 
+    /**
+     * What the frame loop last worked out is within reach, for the keyboard.
+     *
+     * The same values go to React state for the on-screen buttons, but a
+     * keydown handler cannot read those — it closes over the state from the
+     * render it was created in, which for a handler registered once is the
+     * first one, forever. These are the live copies.
+     */
+    let nearKartNow = -1;
+    let nearRideNow = -1;
+
     // Toggle 1st/3rd person with "V" on desktop (mirrors the VR button).
     const onToggleView = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -3829,6 +3873,22 @@ export default function City() {
       // "P" takes / releases the zeppelin helm while standing on its deck.
       if (e.code === "KeyP" && ridingZeppelin) {
         setZepPilotMode(!zepPilotRef.current);
+      }
+      /**
+       * "F" is get in / get out, and it is one key on purpose.
+       *
+       * Getting into a vehicle used to be a small button that appears at the
+       * bottom of the screen when you walk near one, and getting out was that
+       * button again or Space — which is also the jetpack, so leaving a kart
+       * and firing your jetpack were the same keystroke and you did both.
+       * Driving is the one activity in this world where your hands are already
+       * on the keyboard, and taking them off to aim a mouse at a pill-shaped
+       * target is the wrong ask.
+       */
+      if (e.code === "KeyF") {
+        if (drivingKartRef.current >= 0) exitKartRef.current?.();
+        else if (nearKartNow >= 0) enterKartRef.current?.(nearKartNow);
+        else if (nearRideNow >= 0) enterRideRef.current?.(nearRideNow);
       }
     };
     window.addEventListener("keydown", onToggleView);
@@ -4000,11 +4060,41 @@ export default function City() {
       const deep = waterDepthAt(k.x, k.z);
 
       if (k.sink === 0) {
-        // Not in the water yet. The height test is doing real work: Vibe
-        // Island, Mars and the moons all sit far offshore at their own
-        // altitudes, so `waterDepthAt` is happily positive under all of them
-        // and a kart on the island lawn would otherwise drown on the spot.
-        if (deep <= SINK_DEPTH || k.y > seaTop + 0.6 || k.y < -40) return;
+        /**
+         * Wading: in the water, not yet drowning.
+         *
+         * This whole branch is here because there used to be nothing between
+         * the waterline and the sinking depth. You drove into the sea, the sea
+         * ignored you completely for twenty metres, and then a wall of water
+         * arrived out of nowhere — no first touch, no spray off the wheels,
+         * no warning. The big splash was the ONLY splash, and it read as a
+         * cutscene rather than as a consequence.
+         *
+         * The height test is doing real work: Vibe Island, Mars and the moons
+         * all sit far offshore at their own altitudes, so `waterDepthAt` is
+         * happily positive under all of them and a kart on the island lawn
+         * would otherwise be permanently wading.
+         */
+        const atSeaLevel = k.y < seaTop + 0.6 && k.y > -40;
+        if (atSeaLevel && deep > 0.1) {
+          if (!k.wet) {
+            k.wet = true;
+            // The first touch. A quarter of the weight of the real thing, so
+            // it reads as the moment the wheels find water rather than
+            // stealing the plunge's thunder.
+            const touch = Math.hypot(k.speed, k.vy);
+            carSink.impact(k.x, seaTop, k.z, touch * 0.35);
+            soundsRef.current?.thud?.(Math.min(0.5, 0.12 + touch / 90));
+          }
+          carSink.wake(dt, k.x, seaTop, k.z, k.yaw, Math.abs(k.speed), deep);
+          // Water is heavy. Wading scrubs speed off well before the depth
+          // does anything, which is what makes the shallows feel like water
+          // rather than like slightly damp road.
+          k.speed *= Math.pow(Math.max(0.25, 1 - deep * 0.5), dt);
+        } else if (k.wet) {
+          k.wet = false;
+        }
+        if (deep <= SINK_DEPTH || !atSeaLevel) return;
         k.sink = 1e-6;
         // Arriving fast is the whole joke, so the impact reads off the speed
         // it actually arrived with — forward and downward together, since
@@ -4016,6 +4106,10 @@ export default function City() {
         // read as a bullseye painted on the sea. Its droplets are square
         // `Points` next to these soft ones, too. One effect, one look.
         carSink.impact(k.x, seaTop, k.z, hit);
+        // And it does not survive the landing. Gated on arriving hard inside
+        // `fireball`, so rolling gently off the sand gets a splash and keeps
+        // its paint.
+        carSink.fireball(k.x, seaTop, k.z, hit);
         soundsRef.current?.thud?.(Math.min(1, 0.45 + hit / 40));
         // Nose-down and listing, rolled once so no two cars go down the same
         // way. Front-heavy: that is where the engine is.
@@ -4131,6 +4225,7 @@ export default function City() {
       const watcher = Math.hypot(player.position.x - k.x, player.position.z - k.z);
       if (k.sink >= SINK_RECOVER && (watcher > 30 || k.sink >= SINK_RECOVER * 3)) {
         k.sink = 0;
+        k.wet = false;
         k.speed = 0;
         k.vy = 0;
         k.steer = 0;
@@ -4367,10 +4462,10 @@ export default function City() {
       // Nearest city car you could get into — only while on the streets, and
       // only when one has actually stopped near you.
       setNearRide(() => {
-        if (drivingKartRef.current >= 0) return -1;
-        if (Math.abs(player.position.y) > 3) return -1;
+        if (drivingKartRef.current >= 0) return (nearRideNow = -1);
+        if (Math.abs(player.position.y) > 3) return (nearRideNow = -1);
         const r = district.traffic.nearestRidable(player.position.x, player.position.z, 6);
-        return r ? r.id : -1;
+        return (nearRideNow = r ? r.id : -1);
       });
       // Nearest parked kart in hop-on range (hidden while driving).
       {
@@ -4386,6 +4481,7 @@ export default function City() {
           }
         }
         setNearKart(nk);
+        nearKartNow = nk;
       }
       setNearPortal(player.position.distanceTo(island.portal) < 5.5);
       setNearAvatarPortal(player.position.distanceTo(island.avatarPortal) < 5.5);
@@ -5191,13 +5287,50 @@ export default function City() {
         const kdz = Math.cos(kart.yaw) * kart.speed * dt;
         const knx = kart.x + kdx;
         const knz = kart.z + kdz;
-        if (!blockedAt(knx, knz, kart.y + 0.5)) {
+        /**
+         * Bumper cars.
+         *
+         * `blockedAt` says something is in the way; it does not say what, and
+         * before this nothing asked. So running into a parked Nissan and
+         * running into a granite office block were the same event — you
+         * stopped dead, which is the least interesting thing that can happen
+         * in a car, and the city's ninety-odd vehicles were effectively
+         * street furniture.
+         *
+         * Now a car in the way gets hit. It leaves its lane, goes up and away
+         * carrying the momentum you gave it, tumbles, lands, and drives off
+         * again. You keep most of your speed, because the whole point is that
+         * you can plough through a junction.
+         */
+        const nose = kart.y + 0.5;
+        const hitId = blockedAt(knx, knz, nose)
+          ? district.traffic.carAt(knx, knz, nose)
+          : -1;
+        if (hitId >= 0) {
+          const impactSpeed = Math.abs(kart.speed);
+          // Scaled off how hard you arrived, and always worth SOMETHING —
+          // nudging a car at walking pace should still shift it, or the rule
+          // becomes "fast cars pass through, slow cars are blocked", which is
+          // worse than the behaviour it replaced.
+          district.traffic.shove(
+            hitId,
+            Math.sin(kart.yaw) * Math.sign(kart.speed || 1),
+            Math.cos(kart.yaw) * Math.sign(kart.speed || 1),
+            3 + impactSpeed * 0.85,
+          );
+          // Through it. Barging costs a third of your speed, so a run down a
+          // busy street bleeds off and you have to get back on the throttle.
           kart.x = knx;
           kart.z = knz;
-        } else if (!blockedAt(knx, kart.z, kart.y + 0.5)) {
+          kart.speed *= 0.66;
+          soundsRef.current?.thud?.(Math.min(1, 0.3 + impactSpeed / 34));
+        } else if (!blockedAt(knx, knz, nose)) {
+          kart.x = knx;
+          kart.z = knz;
+        } else if (!blockedAt(knx, kart.z, nose)) {
           kart.x = knx;
           kart.speed *= 0.6;
-        } else if (!blockedAt(kart.x, knz, kart.y + 0.5)) {
+        } else if (!blockedAt(kart.x, knz, nose)) {
           kart.z = knz;
           kart.speed *= 0.6;
         } else {
@@ -6676,6 +6809,8 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityDrive;
       delete (window as unknown as Record<string, unknown>).__cityKartState;
       delete (window as unknown as Record<string, unknown>).__cityKartAge;
+      delete (window as unknown as Record<string, unknown>).__cityAvatar;
+      delete (window as unknown as Record<string, unknown>).__cityCarsNear;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();
@@ -8292,7 +8427,7 @@ export default function City() {
                 }}
                 className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary"
               >
-                ⏏ Hop out
+                ⏏ Hop out{isTouch ? "" : " (F)"}
               </button>
             </div>
           )}
@@ -8617,7 +8752,7 @@ export default function City() {
               }}
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
             >
-              🏎️ Drive the vibe kart
+              🏎️ Drive the vibe kart{isTouch ? "" : " (F)"}
             </button>
           )}
           {nearRide >= 0 && nearKart < 0 && drivingKart < 0 && (
@@ -8628,7 +8763,7 @@ export default function City() {
               }}
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
             >
-              🚗 Take the wheel
+              🚗 Take the wheel{isTouch ? "" : " (F)"}
             </button>
           )}
           {nearSnackfe && (
