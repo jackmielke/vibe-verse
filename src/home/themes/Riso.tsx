@@ -71,9 +71,13 @@ export default function Riso() {
             missed, and the black that landed. */}
         <header className="relative pt-14 sm:pt-20">
           <div className="relative select-none">
+            {/* Offsets in `em`, not px. A fixed 7px miss is a seventh of the
+                cap height on a phone and a twentieth on a desktop, so the same
+                number that reads as a printing error on one reads as a smear on
+                the other. Tied to the type size it is one press either way. */}
             {[
-              { c: PINK, dx: -7, dy: 5 },
-              { c: BLUE, dx: 6, dy: -4 },
+              { c: PINK, dx: -0.055, dy: 0.04 },
+              { c: BLUE, dx: 0.05, dy: -0.032 },
               { c: INK, dx: 0, dy: 0 },
             ].map(({ c, dx, dy }, i) => (
               <h1
@@ -87,7 +91,7 @@ export default function Riso() {
                   mixBlendMode: i < 2 ? "multiply" : "normal",
                   position: i < 2 ? "absolute" : "relative",
                   inset: i < 2 ? 0 : undefined,
-                  transform: `translate(${dx}px, ${dy}px)`,
+                  transform: `translate(${dx}em, ${dy}em)`,
                 }}
               >
                 Play

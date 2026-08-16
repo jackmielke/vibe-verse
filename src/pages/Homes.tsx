@@ -23,7 +23,7 @@
  * — or photographed — without it.
  */
 import { Suspense, useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, LayoutGrid } from "lucide-react";
 
 import { HOME_THEMES, stepTheme, themeById, type HomeTheme } from "@/home/themes";
@@ -37,6 +37,26 @@ export function HomeThemePage() {
   const [params] = useSearchParams();
   const theme = themeById(id);
   const bare = params.has("bare");
+  const nav = useNavigate();
+
+  /* Walking fifteen designs one click at a time is the slow way to compare
+     them; tapping a key and watching them flick past is the fast one.
+     Deliberately NOT the arrow keys — Console drives its shelves with those,
+     and a stepper bound to them would step and scroll on the same press.
+     Above the `!theme` return because hooks cannot be conditional. */
+  useEffect(() => {
+    if (!theme) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && /input|textarea|select/i.test(t.tagName)) return;
+      const dir = e.key === "[" ? -1 : e.key === "]" ? 1 : 0;
+      if (!dir) return;
+      nav(`/homes/${stepTheme(theme.id, dir).id}${bare ? "?bare" : ""}`);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [bare, nav, theme]);
 
   if (!theme) {
     return (
@@ -82,6 +102,9 @@ export function HomeThemePage() {
               <div className="mt-0.5 font-heading text-[8.5px] uppercase tracking-[0.16em] text-white/45">
                 {HOME_THEMES.findIndex((t) => t.id === theme.id) + 1} of {HOME_THEMES.length} ·{" "}
                 {theme.mood}
+                <span className="ml-1.5 hidden font-mono normal-case tracking-normal text-white/30 sm:inline">
+                  [ ]
+                </span>
               </div>
             </div>
 
