@@ -103,6 +103,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
     { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
   ],
+  "dunes": [
+    { sha: "c7d5b2c", iso: "2026-08-16T18:38:10+00:00", subject: "The Dune Sea: sandboarding a sunset, on one function" },
+  ],
   "edm-town": [
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
     { sha: "c02b5ca", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
@@ -128,6 +131,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "8f21d79", iso: "2026-05-14T03:26:15+00:00", subject: "Changes" },
   ],
   "glass-lake": [
+    { sha: "f30d5d9", iso: "2026-08-16T18:06:05+00:00", subject: "The Glass Lake: it is you out there now, and the steering woke up" },
     { sha: "82036eb", iso: "2026-08-16T10:10:03+00:00", subject: "The Glass Lake: black ice, a live aurora, and the reflection for free" },
   ],
   "globetrotter": [
