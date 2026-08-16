@@ -83,6 +83,10 @@ void main() {
 `;
 
 export interface DunePostFx {
+  /** Whether the chain got an HDR buffer, and what it is thresholding at. */
+  readonly info: { half: boolean; threshold: number };
+  /** Test aid: dial the veil out to see what the scene actually looks like. */
+  setGlow(v: number): void;
   render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, time: number): void;
   setSize(width: number, height: number, pixelRatio: number): void;
   /** 0..1 — how much the air shimmers. Falls off with the sun. */
@@ -150,6 +154,10 @@ export function buildPostFx(renderer: THREE.WebGLRenderer, quality: "low" | "hig
   };
 
   return {
+    info: { half, threshold: thresholdMat.uniforms.uThreshold.value as number },
+    setGlow(v) {
+      gradeMat.uniforms.uGlowStrength.value = v;
+    },
     setSize(width, height, pixelRatio) {
       const w = Math.max(1, Math.floor(width * pixelRatio));
       const h = Math.max(1, Math.floor(height * pixelRatio));

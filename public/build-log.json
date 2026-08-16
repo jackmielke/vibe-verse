@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-08-16T18:37:20.650Z",
+  "generated_at": "2026-08-16T20:39:45.962Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "2540f1fe",
+      "date": "2026-08-16",
+      "subject": "npm run stamp: The Dune Sea gets its date",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "c7d5b2c6",
+      "date": "2026-08-16",
+      "subject": "The Dune Sea: sandboarding a sunset, on one function",
+      "lede": "A second sport, at /dunes, and the same character rides it — the vibeverse pick, through `loadCharacterRig`, exactly as on the Glass Lake.",
+      "places": [],
+      "files": 12
+    },
     {
       "sha": "f30d5d94",
       "date": "2026-08-16",
@@ -1024,22 +1040,6 @@
       "lede": "Tonight's match, from the bot's log: spawned beside Jack, then \"stuck — taking a detour\" every three seconds for six minutes, pinned at x -1230, 866 m away, until the match ended. Jack never saw it. Two bugs stacked.",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "e0e80524",
-      "date": "2026-08-09",
-      "subject": "Escape gives the mouse back instead of throwing you out",
-      "lede": "Escape is the only way a browser hands the cursor back, and the lobby veil was keyed on pointer lock alone. That conflated \"has not joined yet\" with \"has joined and wants their mouse\", so every player who pressed it got the full entry screen — room code, roster, drop-in button — slammed over a match that was still running underneath. It read as being kicked to the lobby. Nothing had stopped.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "0e3e6531",
-      "date": "2026-08-10",
-      "subject": "Stamp the registry for the passport page",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
-      "places": [],
-      "files": 2
     }
   ]
 }

@@ -472,7 +472,7 @@ const WORLDS_RAW: WorldEntry[] = [
     kind: "game",
     blurb:
       "Sandboard nine hundred metres of sunset dunes down to the oasis. You never push — the slope is the engine — and every gate you ride puts the sun back up.",
-    status: "Playable — rides well, the light is still being art-directed",
+    status: "Playable — one long descent, desktop and phone",
     accent: "#ff9f4a",
     featured: true,
     source: "src/dunes",

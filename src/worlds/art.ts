@@ -16,6 +16,7 @@ import cityArt from "@/assets/worlds/city.jpg";
 import edmTownArt from "@/assets/worlds/edm-town.jpg";
 import evolveArt from "@/assets/worlds/evolve.jpg";
 import gardenArt from "@/assets/worlds/garden.jpg";
+import dunesArt from "@/assets/worlds/dunes.jpg";
 import glassLakeArt from "@/assets/worlds/glass-lake.jpg";
 import golfArt from "@/assets/worlds/golf.jpg";
 import islandArt from "@/assets/worlds/island.jpg";
@@ -81,6 +82,7 @@ export const WORLD_ART: Record<string, string> = {
   "edm-town": edmTownArt,
   evolve: evolveArt,
   garden: gardenArt,
+  dunes: dunesArt,
   "glass-lake": glassLakeArt,
   golf: golfArt,
   /* Vibe Island and Island Explorer used to share one capture. They are

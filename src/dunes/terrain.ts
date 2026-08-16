@@ -189,18 +189,24 @@ export function sunVisibility(
   sunZ: number,
 ): number {
   const h0 = duneHeight(x, z) + 0.3;
+  // How far to look for whatever is casting. A shadow is as long as the
+  // caster is tall divided by the tangent of the sun's elevation, so at
+  // sunset it is enormous: a 40 m dune with the sun two degrees up throws
+  // shadow more than a kilometre. Marching a fixed 220 m — which is what
+  // this did — finds no shadows at all at exactly the hour the world is
+  // about, and a sunset with no shadows in it is an orange carpet.
+  const reach = 240 / Math.max(0.055, sunY);
   let shadow = 0;
-  // Long steps: a shadow at sunset is hundreds of metres, and the terrain
-  // between here and the crest that casts it is smooth at that scale.
   for (let i = 1; i <= 8; i++) {
-    const t = i * i * 3.5;
+    const f = i / 8;
+    const t = f * f * reach;
     const hx = x + sunX * t;
     const hz = z + sunZ * t;
     const ray = h0 + sunY * t;
     const ground = duneHeight(hx, hz);
     if (ground > ray) {
       // Soften with distance so the shadow edge is not a razor.
-      shadow = Math.max(shadow, Math.min(1, (ground - ray) / 6) * (1 - i / 11));
+      shadow = Math.max(shadow, Math.min(1, (ground - ray) / 8) * (1 - f * 0.35));
     }
   }
   return 1 - shadow;

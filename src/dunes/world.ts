@@ -191,10 +191,16 @@ export function createDuneSea(options: DuneSeaOptions): DuneSeaWorld {
   // ---- The oasis ------------------------------------------------------
   const oasis = new THREE.Group();
   {
+    // Emissive, not just lit. At sunset the sun is two degrees up and a
+    // rough-0.08 metal disc facing straight at the sky returns almost
+    // nothing to a camera at head height — the pool rendered as a black
+    // hole in the middle of the one place you are trying to reach.
     const waterMat = new THREE.MeshStandardMaterial({
-      color: "#1d6f7a",
-      roughness: 0.08,
-      metalness: 0.5,
+      color: "#2a8f9c",
+      roughness: 0.15,
+      metalness: 0.2,
+      emissive: "#0d4f5c",
+      emissiveIntensity: 0.8,
     });
     const water = new THREE.Mesh(new THREE.CircleGeometry(OASIS_RADIUS * 0.55, 48), waterMat);
     water.rotation.x = -Math.PI / 2;
@@ -360,7 +366,8 @@ export function createDuneSea(options: DuneSeaOptions): DuneSeaWorld {
   let bestAir = 0;
   let arrived = false;
   let benighted = false;
-  let shadowClock = 0;
+  // Enough to sweep the whole field about every second and a half.
+  const shadowBudget = Math.max(80, Math.round((quality.rings * quality.segments) / 90));
   let stateClock = 0;
   let elapsed = 0;
   let raf = 0;
@@ -387,7 +394,6 @@ export function createDuneSea(options: DuneSeaOptions): DuneSeaWorld {
       (g.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2;
     });
     sky.setElevation(1);
-    sand.refreshShadows(sky.sunDir);
   };
   startRun();
 
@@ -424,14 +430,10 @@ export function createDuneSea(options: DuneSeaOptions): DuneSeaWorld {
     sunLight.intensity = 1.2 + Math.max(0, sunElevation) * 1.8;
     skyFill.color.copy(sky.skyColor);
     skyFill.intensity = 0.35 + Math.max(0, sunElevation) * 0.5;
-    // Marching every vertex against the sun is the most expensive thing in
-    // the world, so it happens on a slow cadence and the sun is allowed to
-    // be a few seconds ahead of its own shadows.
-    shadowClock += dt;
-    if (shadowClock > 6) {
-      shadowClock = 0;
-      sand.refreshShadows(sky.sunDir);
-    }
+    // A slice of the shadow march every frame rather than the whole field
+    // every six seconds. Same total work, no long frame anywhere — and the
+    // shadows keep up with a sun that is always moving.
+    sand.stepShadows(sky.sunDir, shadowBudget);
 
     // ---- Gates ---------------------------------------------------------
     for (const g of gates) {
@@ -560,6 +562,9 @@ export function createDuneSea(options: DuneSeaOptions): DuneSeaWorld {
   // arrives. Placement goes through the same physics reset the run does.
   const debug = {
     character: () => charId,
+    postfx: () => postfx.info,
+    setGlow: (v: number) => postfx.setGlow(v),
+    probeSand: (mode: "off" | "front" | "double") => sand.setProbe(mode),
     state: () => ({
       gates: gatesPassed,
       sun: sunElevation,
@@ -574,6 +579,8 @@ export function createDuneSea(options: DuneSeaOptions): DuneSeaWorld {
     setSun: (e: number) => {
       sunElevation = e;
       sky.setElevation(e);
+      // Full sweep, immediately: a capture must not photograph a field
+      // that is half-way through catching up with a sun that just jumped.
       sand.refreshShadows(sky.sunDir);
     },
   };

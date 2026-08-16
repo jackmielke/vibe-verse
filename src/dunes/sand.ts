@@ -22,10 +22,20 @@ import * as THREE from "three";
 import { duneHeight, duneNormal, sunVisibility, DUNE_RADIUS } from "./terrain";
 
 export interface SandHandle {
-  mesh: THREE.Mesh;
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
   material: THREE.ShaderMaterial;
-  /** Re-march the sun shadows. Costly — call it a few times a minute. */
+  setProbe(mode: "off" | "front" | "double"): void;
+  /**
+   * Re-march every vertex against the sun. Seconds of work on a phone —
+   * only for the capture harness and tests, never on the play path.
+   */
   refreshShadows(sun: THREE.Vector3): void;
+  /**
+   * March a slice of the vertices and move the cursor on. Called every
+   * frame with a small budget so the whole field is re-shadowed every
+   * couple of seconds without a single long frame anywhere.
+   */
+  stepShadows(sun: THREE.Vector3, budget: number): void;
   update(sun: THREE.Vector3, sunColor: THREE.Color, skyColor: THREE.Color, time: number): void;
   dispose(): void;
 }
@@ -78,11 +88,14 @@ void main() {
   float detail = exp(-dist * 0.004);
   vec2 wind = normalize(vec2(0.87, 0.49));
   vec2 acrossWind = vec2(-wind.y, wind.x);
+  // The warp used to be ×5, which swung the phase by five radians over
+  // sixteen metres and scrambled a 5.5 m corrugation into noise — visible
+  // as nothing at all. It is a wander, not a scramble.
   float ripplePhase = dot(vWorld.xz, acrossWind) * 1.15
-                    + noise(vWorld.xz * 0.06) * 5.0;
+                    + noise(vWorld.xz * 0.045) * 1.3;
   float ripple = sin(ripplePhase) * 0.5 + 0.5;
   ripple = pow(ripple, 1.6);
-  vec2 slope = acrossWind * cos(ripplePhase) * 0.19 * detail;
+  vec2 slope = acrossWind * cos(ripplePhase) * 0.13 * detail;
   N = normalize(N + vec3(slope.x, 0.0, slope.y));
 
   // ---- Light -----------------------------------------------------------
@@ -94,29 +107,42 @@ void main() {
   // Sand is bright, dry and rough: a wide diffuse lobe with almost no
   // specular, plus a strong forward-scatter when you look toward the sun
   // through the top millimetre of a lit crest.
-  float scatter = pow(max(dot(V, -uSun), 0.0), 3.0) * pow(ndl, 0.6) * 0.55;
+  float scatter = pow(max(dot(V, -uSun), 0.0), 3.0) * pow(ndl, 0.6) * 0.25;
 
-  vec3 lit = vec3(1.02, 0.76, 0.44);
-  vec3 shade = vec3(0.31, 0.31, 0.43);
+  vec3 lit = vec3(1.05, 0.72, 0.38);
+  // Sand in shadow is lit by the sky, so it is genuinely blue — but at
+  // (0.13, 0.14, 0.24) against a near-white lit tone the whole field read
+  // as snow at dawn. Warmer and closer together: still cool, still sand.
+  vec3 shade = vec3(0.125, 0.115, 0.165);
   // The colour of sand is mostly a question of how much sky it can see.
   float sky = 0.5 + 0.5 * N.y;
   // Lit sand is the sun's colour, not a constant. This shipped as a fixed
   // cream, which meant the entire sunset happened in the sky and the haze
   // while the ground stayed the colour of noon — the one thing this world
   // is about, missing from the half of the frame that is ground.
-  vec3 base = mix(shade * mix(0.75, 1.0, sky), lit * uSunColor * 1.3, vSun * wrap);
+  // 0.55, not 1.3.
+  //
+  // This is the whole reason the field looked flat. Lit sand was landing at
+  // about (1.36, 1.10, 0.92) in linear — every channel already past white
+  // before the tone mapper saw it — so ACES compressed the entire dune
+  // field into the top of its shoulder and every crest, face and ripple
+  // came out the same cream. Dialling the veil out did not help, because
+  // the veil was never the problem: the picture was overexposed at source.
+  // Sitting the lit tone near 0.5 puts the variation back in the part of
+  // the curve that can carry it.
+  vec3 base = mix(shade * mix(0.75, 1.0, sky), lit * uSunColor * 0.78, vSun * wrap);
   base += uSunColor * scatter * vSun;
   // The ripple has to be visible on sand the sun cannot reach, or every
   // lee face in the world is a flat blue-grey card. A shadowed dune is
   // still corrugated; it is just lit by the sky instead.
-  base = mix(base, base * 1.16 + vec3(0.05, 0.035, 0.01), ripple * 0.6 * detail);
-  base += uSkyColor * sky * 0.26;
+  base = mix(base, base * 1.16 + vec3(0.05, 0.035, 0.01), ripple * 0.42 * detail);
+  base += uSkyColor * sky * 0.14;
 
   // Individual quartz grains catching the sun. Sparse, tiny, and only on
   // the lit side — this is the detail that says "sand" rather than "dune".
   float g = hash21(floor(vWorld.xz * 22.0));
   float glint = step(0.9955, g) * pow(max(dot(reflect(-uSun, N), V), 0.0), 40.0);
-  base += uSunColor * glint * 3.0 * vSun * detail;
+  base += uSunColor * glint * 1.6 * vSun * detail;
 
   // ---- Haze ------------------------------------------------------------
   // Blown sand in the air. Thicker toward the sun, because that is where
@@ -178,17 +204,28 @@ export function buildSand(rings: number, segments: number): SandHandle {
     }
   }
 
+  // Winding, and it is worth being explicit about which way round.
+  //
+  // Rings run anticlockwise in (x, z) — x = cos a, z = sin a — and with y
+  // up that is *clockwise* seen from above, so the naive order gives every
+  // triangle a downward face normal. Three culls back faces by default, so
+  // the entire ground you stand on was invisible: what rendered was only
+  // the slopes angled away from the camera, and the rest of the frame was
+  // the sky dome showing through the floor. It reads exactly like a flat,
+  // washed-out desert, which is why it survived so many passes at the
+  // lighting — every one of them was tuning a shader on a surface that was
+  // not being drawn.
   const indices: number[] = [];
   for (let s = 0; s < segments; s++) {
-    indices.push(0, 1 + s, 1 + ((s + 1) % segments));
+    indices.push(0, 1 + ((s + 1) % segments), 1 + s);
   }
   for (let ring = 0; ring < rings - 1; ring++) {
     const a0 = 1 + ring * segments;
     const b0 = 1 + (ring + 1) * segments;
     for (let s = 0; s < segments; s++) {
       const s1 = (s + 1) % segments;
-      indices.push(a0 + s, b0 + s, b0 + s1);
-      indices.push(a0 + s, b0 + s1, a0 + s1);
+      indices.push(a0 + s, b0 + s1, b0 + s);
+      indices.push(a0 + s, a0 + s1, b0 + s1);
     }
   }
 
@@ -211,18 +248,54 @@ export function buildSand(rings: number, segments: number): SandHandle {
     },
   });
 
-  const mesh = new THREE.Mesh(geometry, material);
+  const mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Material> = new THREE.Mesh(
+    geometry,
+    material,
+  );
   mesh.frustumCulled = false;
   mesh.name = "sand";
 
+  /** Test aid: paint the mesh flat, one side or both, to tell a shading
+      problem from a winding one. */
+  const probeMat = new THREE.MeshBasicMaterial({ color: "#ff00aa" });
+  const setProbe = (mode: "off" | "front" | "double") => {
+    if (mode === "off") {
+      mesh.material = material;
+      return;
+    }
+    probeMat.side = mode === "double" ? THREE.DoubleSide : THREE.FrontSide;
+    mesh.material = probeMat;
+  };
+
   const sunAttr = geometry.getAttribute("aSun") as THREE.BufferAttribute;
+  let shadowCursor = 0;
 
   return {
     mesh,
     material,
+    setProbe,
 
     refreshShadows(sunDir) {
       for (let i = 0; i < vertexCount; i++) {
+        sunAttr.setX(
+          i,
+          sunVisibility(positions[i * 3], positions[i * 3 + 2], sunDir.x, sunDir.y, sunDir.z),
+        );
+      }
+      sunAttr.needsUpdate = true;
+    },
+
+    stepShadows(sunDir, budget) {
+      // Incremental, and deliberately so. Marching all 44,000 vertices in
+      // one go costs whole seconds on a phone: it froze the first frame and
+      // then hitched every six seconds, for ever, which is what "it does
+      // not work" looks like from the outside. Spread over ~90 frames it is
+      // invisible, and the sun is allowed to be a second or two ahead of
+      // its own shadows — nobody has ever noticed that outdoors either.
+      const n = Math.min(budget, vertexCount);
+      for (let k = 0; k < n; k++) {
+        const i = shadowCursor;
+        shadowCursor = (shadowCursor + 1) % vertexCount;
         sunAttr.setX(
           i,
           sunVisibility(positions[i * 3], positions[i * 3 + 2], sunDir.x, sunDir.y, sunDir.z),
@@ -243,6 +316,7 @@ export function buildSand(rings: number, segments: number): SandHandle {
     dispose() {
       geometry.dispose();
       material.dispose();
+      probeMat.dispose();
     },
   };
 }

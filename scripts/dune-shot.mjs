@@ -109,13 +109,17 @@ if (ART) {
   // Partway down the field, in the last of the light, with air under the
   // board — the honest picture of what this world is.
   await page.evaluate(() => window.__duneDebug?.warp(300, 420)).catch(() => {});
-  await page.evaluate(() => window.__duneDebug?.setSun(0.55)).catch(() => {});
-  for (const [key, ms] of [["KeyW", 5200], ["KeyD", 1500], ["KeyW", 3600]]) {
+  await page.evaluate(() => window.__duneDebug?.setSun(0.34)).catch(() => {});
+  for (const [key, ms] of [["KeyW", 5200], ["KeyD", 1500], ["KeyW", 4200]]) {
     await page.keyboard.down(key);
     await page.waitForTimeout(ms);
     await page.keyboard.up(key);
   }
-  await page.waitForTimeout(1200);
+  // Off a crest: the camera pulls back and up for air, which is the only
+  // pose in this world that puts the horizon and the sun in the same frame
+  // as the board.
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(900);
   await hideChrome();
   await page.waitForTimeout(400);
 
@@ -142,6 +146,29 @@ if (ART) {
 
 await shot("dune-drop.png");
 console.log("at the rim:", JSON.stringify(await state()));
+console.log(
+  "postfx:",
+  await page.evaluate(() => JSON.stringify(window.__duneDebug?.postfx?.() ?? null)).catch(() => "?"),
+);
+// The same pose with the veil dialled out, so a washed frame can be blamed
+// on the right pass rather than argued about.
+if (process.env.DUNE_PROBE) {
+  for (const mode of ["front", "double"]) {
+    await page.evaluate((m) => window.__duneDebug?.probeSand(m), mode).catch(() => {});
+    await page.waitForTimeout(1600);
+    await shot(`dune-probe-${mode}.png`);
+  }
+  await page.evaluate(() => window.__duneDebug?.probeSand("off")).catch(() => {});
+  await page.waitForTimeout(1200);
+}
+
+if (process.env.DUNE_NOGLOW) {
+  await page.evaluate(() => window.__duneDebug?.setGlow(0)).catch(() => {});
+  await page.waitForTimeout(1500);
+  await shot("dune-noglow.png");
+  await page.evaluate(() => window.__duneDebug?.setGlow(0.45)).catch(() => {});
+  await page.waitForTimeout(1200);
+}
 console.log(
   "character:",
   await page
