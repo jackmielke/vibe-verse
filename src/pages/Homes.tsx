@@ -22,11 +22,11 @@
  * end up matching none of them. It hides on `?bare` so a theme can be looked at
  * — or photographed — without it.
  */
-import { Suspense } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, LayoutGrid } from "lucide-react";
 
-import { HOME_THEMES, stepTheme, themeById } from "@/home/themes";
+import { HOME_THEMES, stepTheme, themeById, type HomeTheme } from "@/home/themes";
 
 /* -------------------------------------------------------------------------- */
 /* One theme, full bleed                                                      */
@@ -114,10 +114,88 @@ export function HomeThemePage() {
 /* The list                                                                   */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The preview pane.
+ *
+ * One iframe, never fifteen. Booting the whole app fifteen times over to draw a
+ * contact sheet is half a gigabyte of memory to answer a question you can
+ * answer with one frame at a time, and the tab that dies is the tab you were
+ * choosing in. So the pane shows whichever row is under the cursor, and swaps.
+ *
+ * It renders at a real desktop width and is scaled down with a transform rather
+ * than made small, because a homepage rendered into a 460px box is a homepage in
+ * its phone layout — which is a picture of a different design than the one being
+ * chosen. `ResizeObserver` keeps the scale honest at any pane width.
+ *
+ * The swap is debounced. Sweeping the cursor down the list otherwise mounts and
+ * tears down a dozen apps in a second, and the pane spends the whole time
+ * white.
+ */
+function Preview({ theme }: { theme: HomeTheme }) {
+  const [shown, setShown] = useState(theme);
+  const box = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.32);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShown(theme), 220);
+    return () => clearTimeout(t);
+  }, [theme]);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setScale(e.contentRect.width / FRAME_W));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div className="sticky top-8">
+      <div
+        ref={box}
+        className="relative overflow-hidden rounded-2xl border border-border/60 bg-black shadow-2xl"
+        style={{ height: FRAME_H * scale }}
+      >
+        <iframe
+          key={shown.id}
+          src={`/homes/${shown.id}?bare`}
+          title={`${shown.name} preview`}
+          loading="lazy"
+          tabIndex={-1}
+          className="absolute left-0 top-0 origin-top-left border-0"
+          style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})` }}
+        />
+        {/* The frame is a picture, not a page. Clicks belong to the row. */}
+        <div className="absolute inset-0" aria-hidden />
+      </div>
+      <div className="mt-3 flex items-baseline gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate font-heading text-[15px] font-bold">{theme.name}</h2>
+          <p className="mt-0.5 font-heading text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">
+            {theme.mood}
+          </p>
+        </div>
+        <Link
+          to={`/homes/${theme.id}`}
+          className="ml-auto shrink-0 rounded-full bg-primary px-4 py-2 font-heading text-[11px] font-bold text-primary-foreground"
+        >
+          Open full size →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/** The width the preview pretends to be, so themes render their desktop layout. */
+const FRAME_W = 1440;
+const FRAME_H = 900;
+
 export default function Homes() {
+  const [hover, setHover] = useState(HOME_THEMES[0]);
+
   return (
     <div className="min-h-[100dvh] w-full bg-background">
-      <div className="mx-auto max-w-4xl px-5 pb-24 pt-16 sm:px-8 sm:pt-20">
+      <div className="mx-auto max-w-6xl px-5 pb-24 pt-16 sm:px-8 sm:pt-20">
         <header>
           <p className="font-heading text-[9px] font-bold uppercase tracking-[0.34em] text-muted-foreground sm:text-[10px]">
             Pick a front door
@@ -136,12 +214,21 @@ export default function Homes() {
           </p>
         </header>
 
-        <ol className="mt-10 space-y-2.5">
+        {/* The preview gets the larger half. It is the thing being judged; the
+            list is only how you point at it. */}
+        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <ol className="space-y-2.5">
           {HOME_THEMES.map((t, i) => (
             <li key={t.id}>
               <Link
                 to={`/homes/${t.id}`}
-                className="group flex items-center gap-4 rounded-2xl border border-border/50 bg-black/20 p-3.5 transition-colors hover:border-primary/50 hover:bg-black/40"
+                onMouseEnter={() => setHover(t)}
+                onFocus={() => setHover(t)}
+                className={`group flex items-center gap-4 rounded-2xl border p-3.5 transition-colors ${
+                  hover.id === t.id
+                    ? "border-primary/60 bg-black/45"
+                    : "border-border/50 bg-black/20 hover:border-primary/50 hover:bg-black/40"
+                }`}
               >
                 {/* The swatch is three colours that genuinely appear on the
                     page. A screenshot would be prettier and would be wrong the
@@ -168,6 +255,15 @@ export default function Homes() {
             </li>
           ))}
         </ol>
+
+          {/* Hidden below `lg` rather than made small: a 320px-wide preview of
+              a homepage is unreadable, and a row you have to scroll past to
+              reach the next row is worse than no preview at all. On a phone the
+              list is the right interface. */}
+          <div className="hidden lg:block">
+            <Preview theme={hover} />
+          </div>
+        </div>
 
         <footer className="mt-12 border-t border-border/40 pt-6 text-[11.5px] leading-relaxed text-muted-foreground">
           The live front door is still{" "}
