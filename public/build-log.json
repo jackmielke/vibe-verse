@@ -1,8 +1,89 @@
 {
-<<<<<<< HEAD
-  "generated_at": "2026-08-16T07:42:23.325Z",
+  "generated_at": "2026-08-16T10:07:34.558Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "998a3855",
+      "date": "2026-08-16",
+      "subject": "The Glass Lake: black ice, a live aurora, and the reflection for free",
+      "lede": "A new world at /glass-lake. It is night, you are on a hundred and ninety metres of frozen lake, and the sky above it is not a texture.",
+      "places": [],
+      "files": 18
+    },
+    {
+      "sha": "8765c89c",
+      "date": "2026-08-16",
+      "subject": "A world was added and three homepages said fifty-three anyway",
+      "lede": "The Midnight Zone landed on main, and Aurora, Swiss and Storybook each went on announcing \"Fifty-three worlds\" over a grid of fifty-four — because each of them had spelled the number out by hand in its headline. That is exactly the failure `registry.ts` was built to end, reappearing in a new directory.",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "234182e8",
+      "date": "2026-08-16",
+      "subject": "Step through the fifteen with a key, and fix Riso's smear",
+      "lede": "`[` and `]` walk the bake-off. Not the arrow keys: Console drives its shelves with those, so a stepper bound to them would step the theme and scroll the shelf on the same press. Verified both — `]]]` walks midnight→alpine→editorial→zine, and two ArrowRights inside Console move its cursor and leave the URL alone.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "df6f7646",
+      "date": "2026-08-16",
+      "subject": "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out",
+      "lede": "Forty-four worlds in the vibeverse and not one of them underwater. So: a submersible, trimmed slightly heavy so it sinks on its own, and 8,200 m of ocean between you and the floor of the trench.",
+      "places": [
+        "The Long Silence"
+      ],
+      "files": 25
+    },
+    {
+      "sha": "cd60b3da",
+      "date": "2026-08-16",
+      "subject": "Zine put its wall below the fold, which is the only thing Zine is",
+      "lede": "The headline was set to 12vw and stacked above the collage, so the first screen of a theme whose entire argument is \"worlds pinned to a wall at angles\" was a sentence on black. The text now sits beside the wall and sticks while it scrolls, which is also more like an actual zine — the writing pinned up among the pictures rather than introducing them.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "fab43bad",
+      "date": "2026-08-16",
+      "subject": "Alpine lost its sign-in button on a phone, and nothing noticed",
+      "lede": "The nav did not wrap, so at 390px the last item ran off the edge of the sky — which has `overflow: hidden`, so the page did not scroll, nothing was reported, and the button was simply gone. Every check passed on a homepage you could not sign in from.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "30d33671",
+      "date": "2026-08-16",
+      "subject": "The picker shows you the page, not a paragraph about the page",
+      "lede": "`/homes` listed fifteen candidates as three-colour swatches and a sentence each, which is enough to tell them apart and not nearly enough to choose between them. It now carries a live preview beside the list: hover a row, see that homepage running.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "332aafcd",
+      "date": "2026-08-16",
+      "subject": "Ten more front doors, and every one of them argues with the rest",
+      "lede": "Completes the bake-off at `/homes`. The ten added here are structural rather than tonal — the point of fifteen is lost the moment two of them are the same layout in different colours:",
+      "places": [],
+      "files": 17
+    },
+    {
+      "sha": "92b06836",
+      "date": "2026-08-16",
+      "subject": "Fifteen front doors, and a way to walk through them — first five",
+      "lede": "`/homes` is a bake-off. Each candidate is a whole page — its own layout, type, palette and card — not a skin over one design, because fifteen token-swaps of the same page tell you nothing a swatch could not. The variety has to be structural or the exercise is theatre.",
+      "places": [],
+      "files": 11
+    },
+    {
+      "sha": "d410df58",
+      "date": "2026-08-16",
+      "subject": "Stamped the royale cards with the teammate's date",
+      "lede": "`npm run stamp` on this machine rewrites every timestamp from +00:00 to Z, which is 500 lines of churn and no information, so this is the two entries that actually changed.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "819ed128",
       "date": "2026-08-16",
@@ -345,12 +426,6 @@
       "files": 8
     },
     {
-=======
-  "generated_at": "2026-08-16T09:51:04.154Z",
-  "window_days": 45,
-  "commits": [
-    {
->>>>>>> 63e7bab (The Glass Lake: black ice, a live aurora, and the reflection for free)
       "sha": "eb001bcf",
       "date": "2026-08-12",
       "subject": "The boss's shard was a white plate, not a gem",
@@ -972,418 +1047,6 @@
         "the machinery underneath"
       ],
       "files": 25
-    },
-    {
-      "sha": "03fbb0f7",
-      "date": "2026-08-10",
-      "subject": "The front door: one toolbar, a shorter paper, and a clock in the log",
-      "lede": "Four things on `/game`, all of them things you notice in the first three seconds and none of them the worlds themselves.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "d3761bda",
-      "date": "2026-08-10",
-      "subject": "The branch rule outranks CLAUDE.md, so put the permission it wants in CLAUDE.md",
-      "lede": "Web sessions arrive with a `claude/<slug>` development branch in their config and an instruction never to push elsewhere without explicit permission. That outranks this file, so every session read \"push straight to main\", could not act on it, and stopped to ask — which is the one thing the push-to-main rule exists to avoid.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "be0e7c1c",
-      "date": "2026-08-09",
-      "subject": "Twelve world cards were lying about their dates, and the stamper could not tell",
-      "lede": "`npm run stamp` guards against a shallow clone by keeping the committed date whenever `git log` for a world's `source` comes back empty. That covers `--depth=1`. It does not cover the case that actually happens, which is worse for being quieter: a clone deep enough to have *some* history presents its graft boundary as the commit that created every file in the tree. So `git log -- src/pages/About.tsx` answers, confide",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "16323128",
-      "date": "2026-08-09",
-      "subject": "The first page was 47 MB. It is now 1 MB.",
-      "lede": "Opening the grid of cards at `/` downloaded a 7.4 MB JavaScript bundle (2.26 MB gzipped) and then, separately, a 40 MB GLB — on every route, on a phone, before anything painted. Nothing here got smaller; four things stopped being downloaded by people who were never going to look at them.",
-      "places": [],
-      "files": 17
-    },
-    {
-      "sha": "0edd3c2a",
-      "date": "2026-08-09",
-      "subject": "The teammate bot's default team was on nobody's squad",
-      "lede": "--team defaulted to \"blue\", which is not one of the four squads the lobby offers. Running the command without a team therefore put Claude on a squad nobody else could be on: it read every human as a rival, never followed anyone, and looked like a broken bot rather than a wrong flag. It now defaults to riptide, the same squad the lobby picker defaults to.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "6d39f968",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "bad92a2a",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "d7e7287f",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "a126569f",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cf59d395",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-<<<<<<< HEAD
-=======
-    },
-    {
-      "sha": "d6a41e17",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "52625c59",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3d7a49b2",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "95839be6",
-      "date": "2026-08-09",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "433accbd",
-      "date": "2026-08-09",
-      "subject": "Wire the soak burst to every death, and get the red out",
-      "lede": "soakBurst was built and called by nobody. It is now fired from combat.ts's fileDeath — the single place every elimination is filed, whether it was a balloon, a bot, the Downpour or a fall — rather than from each of the several callers that can end a life. It fires at the victim's capsule centre: water thrown from ankle height reads as a puddle rather than as somebody going out.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "7fef527a",
-      "date": "2026-08-09",
-      "subject": "Checkpoint: the water death pass, mid-flight but green",
-      "lede": "The elimination burst, the blue damage palette and the wet-screen feedback are in progress in vfx.ts, postfx.ts and HUD.tsx. Committed as a checkpoint rather than left loose: this container is ephemeral, and a thousand lines of working tree is not a place to keep work.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "76b6afed",
-      "date": "2026-08-09",
-      "subject": "SPLASH ROYALE, and a repair to a rebase that broke main",
-      "lede": "The game is SPLASH ROYALE. The rename is the strings table, the route, the registry key, the card art and the page — not a sweep through 65k lines, because every player-facing word already reads from WATER.strings and the bus re-letters itself from the same record.",
-      "places": [],
-      "files": 24
-    },
-    {
-      "sha": "375e5d6e",
-      "date": "2026-08-09",
-      "subject": "The battle bus is worth looking at now",
-      "lede": "The opening shot was the inside of a blue box: the spring arm hung off the rider's head while they stood in the hull, so the first thirty seconds of every match framed interior struts and underside panels. The arm now hangs off the BUS, look input orbits it, and a keep-out ellipsoid containing the whole rig — hull, balloon and riders — is solved along the look axis so it can never end up inside again. Wheel and two-f",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "59320e3a",
-      "date": "2026-08-09",
-      "subject": "CLAUDE.md: there are now two doors, not one",
-      "lede": "\"Adding a world\" describes the only path that existed until last night — a page, a registry entry, card art, all of it in this repo. Somebody reading it now and wanting to add a friend's game would follow it and vendor the game, which is the trade we took exactly once and should not take again by default.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "f505bc36",
-      "date": "2026-08-09",
-      "subject": "The one line people copy pointed at a domain that does not exist",
-      "lede": "/build printed `https://thevibeverse.xyz/vibeverse.js` — a host I made up. The snippet on that page is the single thing every visitor is guaranteed to copy, which made it the single thing guaranteed not to work, and nothing in a build or a test would ever have said so.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "329740f2",
-      "date": "2026-08-09",
-      "subject": "The portal gets a registry row, a date and a real card",
-      "lede": "One entry in src/worlds/registry.ts, so the nav, the picker, /game, the hub carousel and the passport all learn about it at once — the whole reason that file exists.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "88a12640",
-      "date": "2026-08-09",
-      "subject": "The portal: other people's games, paying real Vibey Coins",
-      "lede": "Every world in here is a file in this repository, which caps how many there can ever be at how much of Jack's week is free. That does not scale to \"my friend made a game\", and it does not scale to an eight-year-old with an idea.",
-      "places": [
-        "the Arcade",
-        "the machinery underneath"
-      ],
-      "files": 16
-    },
-    {
-      "sha": "bc6bf8c4",
-      "date": "2026-08-09",
-      "subject": "main did not compile, and the play coin gets its own name",
-      "lede": "## main was broken before either of these changes",
-      "places": [
-        "the Arcade"
-      ],
-      "files": 13
-    },
-    {
-      "sha": "87933ab8",
-      "date": "2026-08-09",
-      "subject": "The logo holds still, and the balance moves without a reload",
-      "lede": "Two things Jack hit sending the first real drop.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "0883aac8",
-      "date": "2026-08-09",
-      "subject": "SOAKED on a phone: nothing clipped, and thumbs can play it",
-      "lede": "The lobby scrolled sideways and ate content — the glue-gun sentence cut mid-word, a second button entirely off-screen past JOIN, DOLPHINS and FLAMINGOS clipped. Now single-column with real tap targets and safe-area padding: mobile-shot reports horizontallyScrolls false and zero offenders at both 390 and 360, which is where things actually break.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "a1c39062",
-      "date": "2026-08-09",
-      "subject": "SOAKED on a phone: nothing clipped, and thumbs can play it",
-      "lede": "The lobby scrolled sideways and ate content — the glue-gun sentence cut mid-word, a second button entirely off-screen past JOIN, DOLPHINS and FLAMINGOS clipped. Now single-column with real tap targets and safe-area padding: mobile-shot reports horizontallyScrolls false and zero offenders at both 390 and 360, which is where things actually break.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "6a033710",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "ef0da068",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "9a2759b2",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "72220d11",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "d6e7432b",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "649b86dd",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "093f8c09",
-      "date": "2026-08-09",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "f2719fe2",
-      "date": "2026-08-09",
-      "subject": "The wink stops spinning, and starts meaning \"real\"",
-      "lede": "Two changes, one rule.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "9fba933c",
-      "date": "2026-08-08",
-      "subject": "Re-stamp after the merge",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "3f0643ea",
-      "date": "2026-08-08",
-      "subject": "Rock paper scissors leads the arcade, and the shop grows a second tab",
-      "lede": "## The floor now opens with a game, not a paytable",
-      "places": [
-        "Vibe Island",
-        "the Arcade",
-        "the machinery underneath"
-      ],
-      "files": 10
-    },
-    {
-      "sha": "f74dd787",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "c850258e",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "1478ac69",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3660216d",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "af46f502",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "1f98cf2d",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "75474eaa",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "10884e59",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "b919650d",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "c0062812",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cd5c38d9",
-      "date": "2026-08-08",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "6d7c6554",
-      "date": "2026-08-08",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "0342fdce",
-      "date": "2026-08-08",
-      "subject": "Re-stamp after the merge with Soaked and Blob",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "230d0edb",
-      "date": "2026-08-08",
-      "subject": "One page about the currency, told as three steps",
-      "lede": "There were two pages about Vibecoin and they disagreed about what they were for. /coin led with \"our community currency\" and then showed a shop panel, a character picker and a holder leaderboard — a junk drawer of everything that touched money. /wallet explained the thing properly, in order, and was reachable only from a popover most people never open. Two pages about one subject is how you get a visitor who has read",
-      "places": [],
-      "files": 7
->>>>>>> 63e7bab (The Glass Lake: black ice, a live aurora, and the reflection for free)
     }
   ]
 }

@@ -69,7 +69,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "7564ac6", iso: "2026-08-16T10:06:27+00:00", subject: "The sea has an inside now: dive under Vibe City" },
+    { sha: "f8deb43", iso: "2026-08-16T10:07:24+00:00", subject: "The sea has an inside now: dive under Vibe City" },
     { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
     { sha: "cbd5788", iso: "2026-08-15T05:51:10+00:00", subject: "Real cars in Vibe City, and you can walk into them" },
     { sha: "a960456", iso: "2026-08-15T05:31:38+00:00", subject: "Fixed the swim stroke lurching, and made it a real crawl" },
@@ -126,6 +126,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cc0a14b", iso: "2026-05-14T04:34:45+00:00", subject: "Changes" },
     { sha: "a761af7", iso: "2026-05-14T04:34:27+00:00", subject: "Changes" },
     { sha: "8f21d79", iso: "2026-05-14T03:26:15+00:00", subject: "Changes" },
+  ],
+  "glass-lake": [
+    { sha: "82036eb", iso: "2026-08-16T10:10:03+00:00", subject: "The Glass Lake: black ice, a live aurora, and the reflection for free" },
   ],
   "globetrotter": [
     { sha: "550ec4e", iso: "2026-07-27T04:50:37+00:00", subject: "🌍 Globetrotter — the world, inside the world" },
