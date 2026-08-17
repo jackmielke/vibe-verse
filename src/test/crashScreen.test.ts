@@ -44,8 +44,22 @@ describe("the crash screen is machine-readable", () => {
   it("is the attribute the smoke test actually looks for", () => {
     const smoke = readFileSync(resolve(process.cwd(), "scripts/route-smoke.mjs"), "utf8");
     expect(smoke).toContain(MARKER);
-    /* A marker the runner finds but does not fail on would be worse than
-       none: it would look like coverage. */
-    expect(smoke).toMatch(/verdict\.startsWith\("crash"\)/);
+    /* This line used to also assert the source contained
+       `verdict.startsWith("crash")`, meaning to guarantee that a crash fails
+       the run — "a marker the runner finds but does not fail on would be
+       worse than none: it would look like coverage."
+
+       It was the right worry and the wrong test. That string appears in the
+       expression choosing the per-route FAIL label, while the summary counted
+       only `blank` and the process exited 0. A crashed world ended the run
+       green, and this assertion passed the whole time, because grepping for
+       an implementation detail proves the detail is present — not that it is
+       wired to anything.
+
+       What matters is the exit code, which is arithmetic, so it is tested as
+       arithmetic in `smokeSummary.test.ts`. All that is left to check here is
+       that the runner still routes its exit through that arithmetic rather
+       than going back to counting verdicts by hand. */
+    expect(smoke).toMatch(/process\.exit\(summary\.exitCode\)/);
   });
 });

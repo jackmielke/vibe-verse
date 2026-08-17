@@ -43,6 +43,7 @@
  * not already one up — the same convention as `route-shot.mjs`.
  */
 import { chromium } from "playwright";
+import { summarise } from "./lib/smokeSummary.mjs";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -192,10 +193,11 @@ for (const route of routes) {
 await browser.close();
 if (server) server.kill();
 
-const blank = results.filter((r) => r.verdict === "blank");
-console.log(`\n${results.length - blank.length}/${results.length} routes rendered something.`);
+const summary = summarise(results);
+console.log(`\n${summary.headline}`);
+for (const line of summary.detail) console.log(`   ${line}`);
 for (const r of results.filter((x) => x.errors.length)) {
   console.log(`\n${r.route} [${r.verdict}]`);
   for (const e of r.errors.slice(0, 4)) console.log(`   ${e}`);
 }
-process.exit(blank.length ? 1 : 0);
+process.exit(summary.exitCode);
