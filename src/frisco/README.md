@@ -21,9 +21,17 @@ of the geometry. Chunks arriving late, tiers cross-fading, impostor tiles
 blinking. None of that machinery exists here, so none of that class of bug can.
 A city you can hold in memory cannot change while you look at it.
 
-The price is a hard ceiling on size. The map is 3.4 × 4.4 km and about 750 000
-triangles resident, and that is close to the limit of what this approach will
-carry. If it ever needs to be bigger, that is a rewrite, not a tuning pass.
+The price is a hard ceiling on size. The map is 3.4 × 4.4 km and about 1.2
+million triangles resident across some sixty draw calls, and that is close to
+the limit of what this approach will carry. If it ever needs to be bigger, that
+is a rewrite, not a tuning pass — and anything added between now and then
+should come with a number, the way `street.ts` and the bay windows do.
+
+**Two things move without `dt` from the render loop, and neither is negotiable:
+nothing at all.** Every animated thing here — traffic, the crowd, the boats, the
+cable cars, the coins, the fog banks — steps on the loop's `dt`, which is what
+makes `__frisco.freeze()` able to stop the entire city dead for a photograph.
+Anything that reaches for `performance.now()` on its own breaks that.
 
 ## The files, in dependency order
 
@@ -34,12 +42,15 @@ carry. If it ever needs to be bigger, that is a rewrite, not a tuning pass.
 | `batch.ts` | Geometry accumulation into growable typed arrays. `box`, `bandedBox`, `gable`, `cylinder`, `ribbon`, `quad`. |
 | `city.ts` | Builds the ground, the streets, the pavements, the blocks, the trees and the bay, once. Returns five meshes and a collider list. |
 | `landmarks.ts` | The twelve buildings that make it San Francisco, by hand. |
-| `collision.ts` | A uniform grid over the colliders. |
+| `collision.ts` | A uniform grid over the colliders, plus a two-entry `dynamic` list for the cable cars. Colliders are frusta, and some are elliptical. |
 | `player.ts` | Walking, jumping, the jetpack, the third-person camera, the Vibeverse character rig. |
 | `input.ts` | Keyboard, mouse and two thumbs. |
-| `life.ts` | Cars and boats — the only things that move by themselves. |
-| `play.ts` | The logbook, the coins and the Market Street course. |
-| `sky.ts` | The dome, the clouds, Karl the fog, and the three lights. |
+| `street.ts` | Lamp posts, signals, hydrants, benches, shelters, trolley wires. A budget problem, and documented as one. |
+| `life.ts` | Cars, boats and nine hundred pedestrians — the things that move by themselves. |
+| `cablecar.ts` | The Powell line: rails, two cars, and the only thing here you can ride. |
+| `play.ts` | The logbook, the coins, three ring courses and the Grand Tour. |
+| `audio.ts` | The entire soundtrack, synthesised, with no files in it. |
+| `sky.ts` | The dome, the clouds, five times of day, Karl the fog, and the three lights. |
 | `engine.ts` | The renderer, the loop, the teardown, and the `window.__frisco` debug surface. |
 
 ## Things that have gone wrong here, and will again
@@ -76,6 +87,22 @@ numbers somewhere else. They *will* disagree, and the failure is silent: the
 generator never visits those coordinates, so it is a place you can be sent and
 cannot stand on. `friscoMap.test.ts` walks all five against the bounds.
 
+**A collider that is not the shape of its building.** Reported as "the physics
+don't work on curved buildings", and exactly right: everything was a prism with
+the base's footprint, so the corners of round towers and the taper of every
+setback were floor with nothing underneath. Colliders interpolate between base
+and roof and can be elliptical now, and `friscoCollision.test.ts` checks it
+against the real nine-thousand-collider city. Every assertion in that file was
+verified to *fail* against the old behaviour before being kept — a test that
+passes both ways is worse than no test.
+
+**Anything placed by arithmetic into a city built by arithmetic.** Ring courses,
+spawns, coins: the maths is right and the result is inside a building. Three of
+the Hill Climb's ten rings were in Nob Hill apartment blocks and the course was
+simply unfinishable; the Fisherman's Wharf spawn was a courtyard with no way
+out. Both are invisible from the air and in a screenshot. Place against
+`roofOver` / `snapToStreet`, and check with `frisco-challenges.mjs`.
+
 ## Verifying a change
 
 `npm run typecheck` and `npm run build` catch nothing that matters here. The
@@ -83,8 +110,22 @@ tools that do:
 
 ```
 node scripts/frisco-shot.mjs <outDir> card,downtown,waterfront,market
-node scripts/frisco-shot.mjs <outDir> landmarks     # all twelve, one each
+node scripts/frisco-shot.mjs <outDir> landmarks       # all twelve, one each
+node scripts/frisco-shot.mjs <outDir> spawn:wharf     # a real spawn, not a pose
+node scripts/frisco-challenges.mjs                    # fly every course
+node scripts/frisco-audio-check.mjs                   # the audio context lifecycle
+FRISCO_TIME=night FRISCO_FOG=0.8 node scripts/frisco-shot.mjs <outDir> downtown
 ```
+
+**Prefer `spawn:<key>` to a hard-coded pose for anything at street level.** A
+pose is three numbers that were on a road on the day they were written, and the
+city keeps getting denser; half the street shots in this repo's history ended up
+inside a wall, which reads as a rendering bug and is not one.
+
+`frisco-challenges.mjs` earns its keep on a class of bug nothing else can see:
+the Hill Climb once had three of its ten rings inside Nob Hill apartment blocks.
+Visible through the wall, unreachable, and the course silently never advanced.
+Perfect from the air, perfect in a screenshot. You have to fly it.
 
 The landmark tour is the only way to see that a landmark is inside out, sunk
 into a hill, at the wrong scale, or simply not built — every one of those reads
@@ -96,7 +137,13 @@ built apart from geometry that was culled.
 recuts the card art.
 
 `window.__frisco` is the debug surface the harnesses drive: `stats`, `player`,
-`setPose`, `goTo`, `landmarks`, `show(layer, on)`, `setFog`, `setShadows`,
-`setLights`, `startCourse`, `playState`, `raw`. Layer toggling is how most of
+`setPose`, `goTo`, `landmarks`, `show(layer, on)`, `setFog`, `setTime`,
+`freeze`, `setShadows`, `setLights`, `startCourse`, `nextRing`, `playState`,
+`audioRunning`, `raw`.
+
+Two of those are load-bearing for photography. **Layer toggling** is how most of
 the bugs above were finally localised — "which mesh is that black thing in" is
-one call and not an afternoon.
+one call and not an afternoon. **`freeze`** stops `dt`, which holds the traffic,
+the crowd, the boats and the cable cars still: photographing something that
+moves by posing the camera and waiting has a race in it that no amount of
+waiting fixes.

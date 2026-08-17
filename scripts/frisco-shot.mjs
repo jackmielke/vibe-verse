@@ -195,6 +195,10 @@ for (const name of shots) {
     console.log(`no such pose: ${name}`);
     continue;
   }
+  // Hold the world still while the pose settles. Traffic, walkers and the
+  // cable cars all move on `dt`, so a pose set and then waited on photographs
+  // them somewhere else — there is no wait long enough to fix that.
+  await page.evaluate(() => window.__frisco.freeze?.(true));
   // Re-assert the pose across several frames — gravity is still running, and a
   // single set followed by a wait photographs a character mid-fall.
   for (let i = 0; i < 12; i++) {
@@ -202,6 +206,7 @@ for (const name of shots) {
     await page.waitForTimeout(400);
   }
   writeFileSync(`${OUT}/${name}.png`, await page.screenshot());
+  await page.evaluate(() => window.__frisco.freeze?.(false));
   if (process.env.FRISCO_JPEG) {
     writeFileSync(
       resolve(process.env.FRISCO_JPEG),

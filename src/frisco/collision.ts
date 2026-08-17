@@ -68,6 +68,18 @@ export class CityCollision {
   private readonly boxes: BuildingBox[];
   private readonly cells = new Map<number, number[]>();
 
+  /**
+   * Boxes that move, tested on every query in addition to the grid.
+   *
+   * There are two of them — the cable cars — and that is the entire design
+   * rationale for handling them this way. Putting a moving box into a uniform
+   * grid means removing and re-inserting it every frame, which is a rebuild
+   * cost and a whole class of stale-bucket bug, for a list short enough to scan
+   * linearly a hundred thousand times a second. If this ever holds more than a
+   * dozen things it wants a real broadphase; at two it wants an array.
+   */
+  readonly dynamic: BuildingBox[] = [];
+
   constructor(boxes: BuildingBox[]) {
     this.boxes = boxes;
     boxes.forEach((b, i) => {
@@ -120,15 +132,33 @@ export class CityCollision {
    */
   supportAt(x: number, z: number, ceiling: number): number {
     let best = walkHeight(x, z);
-    for (const i of this.near(x, z, this.scratch)) {
-      const b = this.boxes[i];
-      if (b.roofY > ceiling || b.roofY <= best) continue;
+    const test = (b: BuildingBox) => {
+      if (b.roofY > ceiling || b.roofY <= best) return;
       const { lx, lz } = local(x, z, b);
       const top = extentsAt(b, b.roofY);
-      if (!within(lx, lz, top.hw, top.hd, b.round === true, 0)) continue;
+      if (!within(lx, lz, top.hw, top.hd, b.round === true, 0)) return;
       best = b.roofY;
-    }
+    };
+    for (const i of this.near(x, z, this.scratch)) test(this.boxes[i]);
+    for (const b of this.dynamic) test(b);
     return best;
+  }
+
+  /**
+   * Which dynamic box, if any, is holding up a character standing at this
+   * height — the question "am I on the cable car".
+   *
+   * A small tolerance rather than an exact match because the player's Y is set
+   * from `supportAt` on the previous frame and the platform has moved since.
+   */
+  standingOn(x: number, y: number, z: number): BuildingBox | null {
+    for (const b of this.dynamic) {
+      if (Math.abs(y - b.roofY) > 0.45) continue;
+      const { lx, lz } = local(x, z, b);
+      const top = extentsAt(b, b.roofY);
+      if (within(lx, lz, top.hw, top.hd, b.round === true, 0.1)) return b;
+    }
+    return null;
   }
 
   /**
@@ -146,8 +176,11 @@ export class CityCollision {
    */
   resolve(pos: { x: number; z: number }, feetY: number, radius: number): boolean {
     let hit = false;
-    for (const i of this.near(pos.x, pos.z, this.scratch)) {
-      const b = this.boxes[i];
+    const list = this.scratch;
+    this.near(pos.x, pos.z, list);
+    const total = list.length + this.dynamic.length;
+    for (let n = 0; n < total; n++) {
+      const b = n < list.length ? this.boxes[list[n]] : this.dynamic[n - list.length];
       // Standing on the roof is not colliding with the building.
       if (feetY > b.roofY - 0.4) continue;
       if (feetY + 2.2 < b.baseY) continue;
@@ -189,13 +222,19 @@ export class CityCollision {
   /** Is this point inside a building? Used to keep the camera out of walls. */
   occupied(x: number, y: number, z: number): boolean {
     if (y < walkHeight(x, z) + 0.4) return true;
-    for (const i of this.near(x, z, this.scratch)) {
-      const b = this.boxes[i];
-      if (y < b.baseY - 1 || y > b.roofY) continue;
+    const test = (b: BuildingBox) => {
+      if (y < b.baseY - 1 || y > b.roofY) return false;
       const { lx, lz } = local(x, z, b);
       const at = extentsAt(b, y);
-      if (within(lx, lz, at.hw, at.hd, b.round === true, 0.2)) return true;
-    }
+      return within(lx, lz, at.hw, at.hd, b.round === true, 0.2);
+    };
+    for (const i of this.near(x, z, this.scratch)) if (test(this.boxes[i])) return true;
+    /* Dynamic boxes are deliberately NOT tested here. `occupied` is what keeps
+       the third-person camera out of walls, and a cable car is the one solid
+       thing in the world you are expected to be standing *on* — treating it as
+       a wall shoves the camera onto the back of your head for the whole ride,
+       which is the worst view of the best thing here. You collide with the car
+       (`resolve`) and stand on it (`supportAt`); the camera sees through it. */
     return false;
   }
 

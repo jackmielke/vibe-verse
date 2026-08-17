@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
 import { buildLandmarks } from "./landmarks";
+import { buildCableTrack } from "./cablecar";
 import { buildStreetFurniture } from "./street";
 import { COLORS, WALLS, addOutline, toon } from "./look";
 import {
@@ -728,6 +729,7 @@ export function buildCity(): CityBuild {
   const lines = streetLines();
   buildStreets(roads, walks, lines);
   const furniture = buildStreetFurniture(props, lines, rng.fork("street"));
+  buildCableTrack(props);
   buildBlocks(buildings, colliders, rng.fork("blocks"));
   buildGreenery(green, rng.fork("trees"));
   buildWater(water);

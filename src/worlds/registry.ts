@@ -539,8 +539,8 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🌁",
     kind: "world",
     blurb:
-      "San Francisco as a toy you can fly around. The real downtown — both street grids, the hills, the waterfront — painted in flat colour and built small enough to hold. Strap the jetpack on your own character and go over the top of it.",
-    status: "Playable — walk it, or fly it with the jetpack",
+      "San Francisco as a toy you can fly around. The real downtown — both street grids, the hills, the waterfront, twelve landmarks from the Transamerica to Alcatraz — painted in flat colour and built small enough to hold. Strap the jetpack on your own character, ride the Powell Street cable car, fly a ring course up Market, and watch nine thousand windows come on at dusk.",
+    status: "Playable — walk it, fly it, or ride the cable car",
     accent: "#ff8a3d",
     featured: true,
     backdrop: "#8fd0f0",

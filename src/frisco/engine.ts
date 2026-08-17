@@ -13,6 +13,7 @@
  */
 import * as THREE from "three";
 import { CityAudio } from "./audio";
+import { createCableCars, type CableCarLine } from "./cablecar";
 import { buildCity, disposeCity, type CityBuild } from "./city";
 import { CityCollision } from "./collision";
 import { createInput, type FriscoInput } from "./input";
@@ -32,6 +33,7 @@ export interface FriscoHandle {
   sky: SkyRig;
   play: Playground;
   life: CityLife;
+  cable: CableCarLine;
   audio: CityAudio;
   input: FriscoInput;
   scene: THREE.Scene;
@@ -144,6 +146,9 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   const life = new CityLife();
   scene.add(life.group);
 
+  o.onProgress?.("Winding the cable");
+  const cable = createCableCars(scene, collision);
+
   o.onProgress?.("Hiding the coins");
   const play = new Playground(city.colliders, collision);
   scene.add(play.group);
@@ -170,9 +175,10 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   let frames = 0;
   let disposed = false;
   let wasGrounded = true;
+  let frozen = false;
 
   const handle: FriscoHandle = {
-    player, city, collision, sky, play, life, audio, input, scene, camera, renderer,
+    player, city, collision, sky, play, life, cable, audio, input, scene, camera, renderer,
     fps: 0,
     setCharacter(id) {
       void player.loadCharacter(id);
@@ -209,6 +215,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       player.dispose();
       play.dispose();
       life.dispose();
+      cable.dispose();
       audio.dispose();
       sky.dispose();
       disposeCity(city);
@@ -270,12 +277,23 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
     const now = performance.now();
     // Clamped so a backgrounded tab does not resume with a two-second step and
     // fling the player through the map.
-    const dt = Math.min((now - last) / 1000, 1 / 15);
+    /* `frozen` is for the capture harnesses. Everything in this world that
+       moves — traffic, walkers, boats, the cable cars, the coins — moves on
+       `dt`, so setting it to zero holds the entire city still while a pose is
+       set and a frame is taken. Photographing a moving object by posing the
+       camera and waiting has a race in it that no amount of waiting fixes. */
+    const dt = frozen ? 0 : Math.min((now - last) / 1000, 1 / 15);
     last = now;
     elapsed += dt;
 
     if (attract) runAttract(elapsed);
+    /* The cars move BEFORE the player steps, so `supportAt` sees them where
+       they now are; then `carry` adds their movement to a rider afterwards.
+       The other order works right up until you stand still on a moving deck,
+       at which point the deck slides out from under you every frame. */
+    cable.update(dt);
     player.update(dt, elapsed);
+    if (player.state.grounded) cable.carry(player.state.position);
     if (attract) runAttract(elapsed);
     life.update(dt, elapsed);
     sky.update(dt, elapsed, camera);
@@ -399,6 +417,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         }
       },
       setFog: (a: number) => sky.setFog(a),
+      freeze: (on: boolean) => { frozen = on; },
       setTime: (k: string) => sky.setTime(k),
       setShadows: (on: boolean) => { renderer.shadowMap.enabled = on; sky.sun.castShadow = on; },
       setLights: (sunI: number, hemiI: number) => { sky.sun.intensity = sunI; sky.hemi.intensity = hemiI; },
@@ -425,6 +444,7 @@ declare global {
       raw: () => { scene: unknown; camera: unknown; renderer: unknown; sky: unknown };
       show: (name: string, on: boolean) => void;
       setFog: (a: number) => void;
+      freeze: (on: boolean) => void;
       setTime: (k: string) => void;
       setShadows: (on: boolean) => void;
       setLights: (s: number, h: number) => void;
