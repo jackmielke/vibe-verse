@@ -12,8 +12,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { useActiveCharacter } from "@/hooks/use-active-character";
-import { SPAWNS } from "@/frisco/map";
+import { LANDMARK_SITES, SPAWNS } from "@/frisco/map";
 import type { FriscoHandle } from "@/frisco/engine";
+import type { PlayEvent, PlaySnapshot } from "@/frisco/play";
 import type { Stance } from "@/frisco/player";
 
 const CHIP =
@@ -40,10 +41,24 @@ export default function VibeFrancisco() {
 
   const [phase, setPhase] = useState<"loading" | "playing" | "failed">("loading");
   const [progress, setProgress] = useState("Waking up the city");
-  const [sheet, setSheet] = useState<"char" | "go" | null>(null);
+  const [sheet, setSheet] = useState<"char" | "go" | "log" | null>(null);
   const [hud, setHud] = useState<Hud>({ fuel: 1, stance: "ground", altitude: 0, speed: 0, fps: 0 });
   const [touch, setTouch] = useState(false);
   const [hint, setHint] = useState(true);
+  const [play, setPlay] = useState<PlaySnapshot | null>(null);
+  const [toast, setToast] = useState<{ id: number; title: string; body: string } | null>(null);
+  const toastId = useRef(0);
+
+  /* One toast at a time, and the newest wins.
+     Flying through a line of coins fires an event a frame apart; a queue would
+     make the HUD narrate a thing that finished four seconds ago, which is the
+     opposite of what a toast is for. */
+  const say = useCallback((title: string, body: string) => {
+    toastId.current += 1;
+    const id = toastId.current;
+    setToast({ id, title, body });
+    window.setTimeout(() => setToast((t) => (t && t.id === id ? null : t)), 3800);
+  }, []);
 
   useEffect(() => {
     setTouch(window.matchMedia("(hover: none), (pointer: coarse)").matches);
@@ -97,6 +112,21 @@ export default function VibeFrancisco() {
             speed: s.speed,
             fps: handle!.fps,
           });
+          setPlay(handle!.play.snapshot());
+        };
+        handle.onPlay = (events: PlayEvent[]) => {
+          for (const e of events) {
+            if (e.kind === "landmark") {
+              sayRef.current(`${e.name} — ${e.found}/${e.total}`, e.blurb);
+            } else if (e.kind === "course") {
+              sayRef.current(
+                e.record ? "New best time!" : "Course complete",
+                `${e.seconds.toFixed(1)}s · best ${e.best.toFixed(1)}s`,
+              );
+            } else if (e.kind === "course-start") {
+              sayRef.current("Market Street run", "Fourteen rings, from the water to the hill.");
+            }
+          }
         };
         setPhase("playing");
       } catch (err) {
@@ -114,10 +144,25 @@ export default function VibeFrancisco() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // `say` is stable but the mount effect runs once and must not close over a
+  // stale copy of anything, so it reads through a ref.
+  const sayRef = useRef(say);
+  useEffect(() => {
+    sayRef.current = say;
+  }, [say]);
+
   /* ---- apply changes without a rebuild ---- */
   useEffect(() => {
     handleRef.current?.setCharacter(charId);
   }, [charId]);
+
+  const toggleCourse = useCallback(() => {
+    const h = handleRef.current;
+    if (!h) return;
+    if (h.play.snapshot().ring >= 0) h.play.stopCourse();
+    else h.onPlay?.(h.play.startCourse());
+    setSheet(null);
+  }, []);
 
   const goTo = useCallback(
     (key: string) => {
@@ -145,13 +190,18 @@ export default function VibeFrancisco() {
             onGo={() => setSheet("go")}
           />
           <FuelGauge hud={hud} />
+          <Scoreboard play={play} onLog={() => setSheet("log")} onCourse={toggleCourse} />
+          <Toast toast={toast} />
           {touch ? <JetPad /> : null}
-          <Hint show={hint} touch={touch} />
+          <Hint show={hint && !toast} touch={touch} />
         </>
       ) : null}
 
       {sheet === "char" ? <CharacterSheet onClose={() => setSheet(null)} /> : null}
       {sheet === "go" ? <GoSheet onPick={goTo} onClose={() => setSheet(null)} /> : null}
+      {sheet === "log" ? (
+        <LogSheet play={play} onCourse={toggleCourse} onClose={() => setSheet(null)} />
+      ) : null}
     </div>
   );
 }
@@ -256,6 +306,137 @@ function FuelGauge({ hud }: { hud: Hud }) {
         {hud.stance === "jet" ? <span className="text-[#7dfce0]">▲ burning</span> : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * The scoreboard: coins, the logbook count, and the course clock.
+ *
+ * Top right, deliberately small, and it disappears into the corner when
+ * nothing is happening. The temptation with a world like this is a permanent
+ * quest panel, and it is the wrong instinct — the thing you are meant to be
+ * looking at is the city.
+ */
+function Scoreboard({
+  play,
+  onLog,
+  onCourse,
+}: {
+  play: PlaySnapshot | null;
+  onLog: () => void;
+  onCourse: () => void;
+}) {
+  if (!play) return null;
+  const running = play.ring >= 0;
+  return (
+    <div
+      className="pointer-events-none absolute right-0 z-20 flex flex-col items-end gap-1.5"
+      style={{
+        top: "max(env(safe-area-inset-top), 62px)",
+        paddingRight: "max(env(safe-area-inset-right), 12px)",
+      }}
+    >
+      <button
+        onClick={onLog}
+        className={`${CHIP} !min-h-[34px] !px-2.5 !text-[10px]`}
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        🪙 {play.coins}
+        <span className="mx-1 text-white/25">·</span>
+        📖 {play.found.length}/{play.totalLandmarks}
+      </button>
+      {running ? (
+        <button
+          onClick={onCourse}
+          className={`${CHIP} !min-h-[34px] !px-2.5 !text-[10px] !bg-[#0e5f52]/70`}
+          style={{ WebkitTapHighlightColor: "transparent" }}
+        >
+          ⏱ {play.clock.toFixed(1)}s · ring {play.ring + 1}/{play.totalRings}
+        </button>
+      ) : null}
+      {play.nearest && !play.nearest.found && play.nearest.metres < 420 ? (
+        <div className="rounded-lg bg-black/35 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60 backdrop-blur-sm">
+          {play.nearest.name} · {play.nearest.metres} m
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** What just happened. One at a time — see `say` in the page. */
+function Toast({ toast }: { toast: { id: number; title: string; body: string } | null }) {
+  return (
+    <div
+      className={`pointer-events-none absolute inset-x-0 z-20 flex justify-center transition-all duration-300 ${
+        toast ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
+      }`}
+      style={{ top: "max(env(safe-area-inset-top), 108px)" }}
+    >
+      <div className="mx-4 max-w-sm rounded-2xl bg-black/60 px-4 py-2.5 text-center backdrop-blur-sm ring-1 ring-white/15">
+        <div className="text-[12px] font-black uppercase tracking-[0.14em] text-[#ffcf6b]">
+          {toast?.title}
+        </div>
+        <div className="mt-0.5 text-[11px] leading-snug text-white/70">{toast?.body}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The logbook: all twelve landmarks, with the ones you have not found kept
+ * secret except for their name.
+ *
+ * Showing the name and hiding the blurb is the balance this needs. A blank
+ * row gives you nothing to aim at; a full description means there is no
+ * reason to go. The name is a destination and the blurb is the reward.
+ */
+function LogSheet({
+  play,
+  onCourse,
+  onClose,
+}: {
+  play: PlaySnapshot | null;
+  onCourse: () => void;
+  onClose: () => void;
+}) {
+  const found = new Set(play?.found ?? []);
+  return (
+    <Sheet title="Logbook" onClose={onClose}>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="rounded-lg bg-white/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70 ring-1 ring-white/10">
+          🪙 {play?.coins ?? 0} / {play?.totalCoins ?? 0} coins this visit
+        </span>
+        <button onClick={onCourse} className={CHIP}>
+          {play && play.ring >= 0 ? "Stop the run" : "⏱ Fly the Market Street run"}
+        </button>
+        {play?.bestCourse != null ? (
+          <span className="text-[11px] text-white/45">best {play.bestCourse.toFixed(1)}s</span>
+        ) : null}
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {LANDMARK_SITES.map((l) => {
+          const got = found.has(l.key);
+          return (
+            <div
+              key={l.key}
+              className={`rounded-xl p-3 ring-1 ${
+                got ? "bg-white/10 ring-white/20" : "bg-white/[0.03] ring-white/5"
+              }`}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className={got ? "text-[#7dfce0]" : "text-white/20"}>{got ? "✓" : "○"}</span>
+                <span className={`text-sm font-bold ${got ? "text-white" : "text-white/45"}`}>
+                  {l.name}
+                </span>
+              </div>
+              <div className="mt-0.5 pl-6 text-[11px] leading-snug text-white/50">
+                {got ? l.blurb : "Not found yet — fly over and take a look."}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 

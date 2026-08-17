@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-08-17T08:54:50.648Z",
+  "generated_at": "2026-08-17T09:13:59.004Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "c2d5a7c8",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco gets its landmarks, and the city gets its walls back",
+      "lede": "Twelve buildings, hand-made from the real ones: the Transamerica Pyramid, Salesforce Tower, Coit Tower, the Ferry Building, Grace Cathedral, the Dragon Gate, the Dewey Monument on Union Square, Pier 39, the crooked block of Lombard Street, the Powell Street cable car turnaround, the Bay Bridge, and Alcatraz. They are the only things in the world that get the cartoon outline, because an outline on everything is an out",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "92c749d7",
+      "date": "2026-08-17",
+      "subject": "The water soundscape, and an ending nobody had ever reached",
+      "lede": "THE FINDING: the victory path had never executed once. Not broken — DRAIN_CURVE holds the lobby at 100 for eighteen seconds and only reaches one survivor at t=820 simulated seconds, a fourteen-minute match at 60 fps and about a day and a half under SwiftSHADER. That is why neither end card had ever been seen. match.skipToEnd() makes the ending reachable the way skipToLive made the ground reachable, and it deliberatel",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "53371bc3",
       "date": "2026-08-17",
@@ -1035,22 +1051,6 @@
         "Vibe Island"
       ],
       "files": 1
-    },
-    {
-      "sha": "e3e28b50",
-      "date": "2026-08-10",
-      "subject": "Regenerate the build log with 2048 in it",
-      "lede": "The build log is generated from git history, so it goes stale the moment anything lands. This is that regeneration.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "001ad5ef",
-      "date": "2026-08-10",
-      "subject": "Stamp Neon 2048 into the world dates",
-      "lede": "`npm run stamp` reads each world's `source` path out of the registry and dates the card from its last commit, so a world is not dated until the code it points at exists. Which means this is always a second commit.",
-      "places": [],
-      "files": 2
     }
   ]
 }

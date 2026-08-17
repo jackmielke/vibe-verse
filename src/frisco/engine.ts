@@ -18,6 +18,7 @@ import { createInput, type FriscoInput } from "./input";
 import { disposeLook } from "./look";
 import { SPAWNS, VIEW, landmarkPositions, ll, walkHeight, type Spawn } from "./map";
 import { Player } from "./player";
+import { Playground, type PlayEvent } from "./play";
 import { createSky, type SkyRig } from "./sky";
 
 export interface FriscoHandle {
@@ -25,6 +26,7 @@ export interface FriscoHandle {
   city: CityBuild;
   collision: CityCollision;
   sky: SkyRig;
+  play: Playground;
   input: FriscoInput;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -37,6 +39,8 @@ export interface FriscoHandle {
   goTo(key: string): void;
   /** Called every frame after the world has stepped, for the HUD and the game. */
   onFrame?: (dt: number, elapsed: number) => void;
+  /** Called whenever the play layer has something to say — a coin, a landmark. */
+  onPlay?: (events: PlayEvent[]) => void;
   dispose(): void;
 }
 
@@ -123,6 +127,10 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   o.onProgress?.("Painting the sky");
   const sky = createSky(scene);
 
+  o.onProgress?.("Hiding the coins");
+  const play = new Playground(city.colliders);
+  scene.add(play.group);
+
   const input = createInput(canvas);
 
   o.onProgress?.("Finding your character");
@@ -145,7 +153,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   let disposed = false;
 
   const handle: FriscoHandle = {
-    player, city, collision, sky, input, scene, camera, renderer,
+    player, city, collision, sky, play, input, scene, camera, renderer,
     fps: 0,
     setCharacter(id) {
       void player.loadCharacter(id);
@@ -164,6 +172,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       window.removeEventListener("resize", onResize);
       input.dispose();
       player.dispose();
+      play.dispose();
       sky.dispose();
       disposeCity(city);
       disposeLook();
@@ -198,6 +207,8 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
 
     player.update(dt, elapsed);
     sky.update(dt, elapsed, camera);
+    const events = play.update(dt, elapsed, player.state.position);
+    if (events.length) handle.onPlay?.(events);
     handle.onFrame?.(dt, elapsed);
 
     renderer.render(scene, camera);
@@ -261,6 +272,9 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         player.state.pitch = pitch;
       },
       goTo: (k: string) => handle.goTo(k),
+      startCourse: () => { handle.onPlay?.(play.startCourse()); },
+      nextRing: () => { const v = play.nextRingPosition(); return v ? { x: v.x, y: v.y, z: v.z } : null; },
+      playState: () => play.snapshot(),
       landmarks: () =>
         landmarkPositions().map((l) => ({
           key: l.key, name: l.name, x: l.x, z: l.z, height: l.height,
@@ -299,6 +313,9 @@ declare global {
       player: () => unknown;
       setPose: (x: number, y: number, z: number, yaw: number, pitch: number) => void;
       goTo: (k: string) => void;
+      startCourse: () => void;
+      nextRing: () => { x: number; y: number; z: number } | null;
+      playState: () => unknown;
       landmarks: () => Array<{
         key: string; name: string; x: number; z: number; height: number; ground: number;
       }>;
