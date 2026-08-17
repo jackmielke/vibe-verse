@@ -54,19 +54,79 @@ export function ll(lat: number, lon: number): Vec2 {
   };
 }
 
-/** How far the world extends from the origin before the sea takes over. */
+/**
+ * How far the world extends from the origin before the sea takes over.
+ *
+ * Both `minX` and `minZ` reach further than it looks like they need to, and
+ * the reason is that they once did not. At -1250 and -1450 the map stopped
+ * short of the whole north-west quarter of downtown: Fisherman's Wharf,
+ * Aquatic Park, Russian Hill and the crooked block of Lombard Street were all
+ * in `DISTRICTS`, `SPAWNS` or `OPEN_SPACES` and all sat past the edge of the
+ * ground mesh. `maxZ` had the same hole in the other direction, with SoMa's
+ * own centre off the south edge. Nothing failed. The generator simply never visited those
+ * coordinates, so they were places you could be sent and could not stand —
+ * and `SPAWNS` would happily send you.
+ *
+ * `friscoMap.test.ts` now walks all three lists against these numbers, which
+ * is the only way this stays true: the bounds and the gazetteer are edited
+ * months apart by people looking at different things.
+ */
 export const BOUNDS = {
-  minX: -1250,
-  maxX: 1100,
-  minZ: -1450,
-  maxZ: 1150,
-  /** Ceiling for the jetpack. High enough to see the whole map from. */
-  skyCeiling: 430,
+  minX: -2000,
+  maxX: 1400,
+  minZ: -2200,
+  maxZ: 2200,
+  /* Ceiling for the jetpack. High enough to see the whole map from, and —
+     since Salesforce Tower is 268 m of it — high enough to get above the
+     tallest thing in the world rather than level with it. */
+  skyCeiling: 560,
   seaLevel: 0,
 } as const;
 
 export const MAP_WIDTH = BOUNDS.maxX - BOUNDS.minX;
 export const MAP_DEPTH = BOUNDS.maxZ - BOUNDS.minZ;
+/** Corner to corner. What the camera and the sky dome have to clear. */
+export const MAP_DIAGONAL = Math.hypot(MAP_WIDTH, MAP_DEPTH);
+
+/**
+ * How far from the origin the street grids have to be walked to reach every
+ * corner of the map.
+ *
+ * Derived, because it was a literal — 1700, then 1800 in a second place — and
+ * the moment the bounds grew, the grids stopped short of the new edges. The
+ * result is not an error but something worse: the city simply ends, and the
+ * outer ring of the map becomes bare hillside with a coastline on it, which
+ * looks exactly like a deliberate green belt until you notice Fisherman's
+ * Wharf is in it.
+ */
+export const GRID_REACH = Math.hypot(
+  Math.max(-BOUNDS.minX, BOUNDS.maxX),
+  Math.max(-BOUNDS.minZ, BOUNDS.maxZ),
+);
+
+/**
+ * The camera's clip planes and the radius of the sky dome — here, in the file
+ * that owns how big the world is, because that is the only thing they are
+ * derived from.
+ *
+ * They used to be three literals in three files, and growing `minZ` to take in
+ * Fisherman's Wharf silently pushed the map's diagonal past the dome: the sky
+ * would have ended nearer than the far shore. `friscoMap.test.ts` caught it,
+ * because it asserts the *relationships* rather than the numbers — the dome
+ * outside the world so you can never fly to the edge of it, and inside the far
+ * plane so it is never clipped away. A clipped dome renders as the clear
+ * colour, which reads as "the world failed to load".
+ *
+ * The near plane stays at 0.4 for a third-person camera that has to get close
+ * to a wall without slicing through the character. That makes the depth range
+ * twelve thousand to one, which is far past what a conventional depth buffer
+ * can hold — see `engine.ts` for why that is fine and what it cost to learn.
+ */
+export const VIEW = {
+  near: 0.4,
+  far: 7000,
+  domeRadius: 6100,
+} as const;
 
 /* ------------------------------------------------------------------ *
  * The two grids
@@ -265,6 +325,26 @@ export function shoreSDF(x: number, z: number): number {
  * ramp, and nothing else. It is also why the streets can be laid flat on it
  * without a single seam.
  */
+/**
+ * Alcatraz, as terrain rather than as scenery.
+ *
+ * The island is in the heightfield, not modelled on top of it, and that is
+ * what makes it a *place*: `walkHeight`, `isWater`, the ground mesh, the tree
+ * scatter and the player's collision all read the same function, so the rock
+ * is solid the moment it exists and nothing has to be told about it. Building
+ * it as a mesh instead would have given a beautiful island you sink through.
+ *
+ * See `LANDMARK_SITES` for why it is at 55% of its true distance.
+ */
+export const ALCATRAZ_PULL = 0.55;
+const ALCATRAZ_TRUE = ll(37.8267, -122.423);
+const ALCATRAZ = {
+  x: ALCATRAZ_TRUE.x * ALCATRAZ_PULL,
+  z: ALCATRAZ_TRUE.z * ALCATRAZ_PULL,
+  radius: 118,
+  height: 26,
+};
+
 export function groundHeight(x: number, z: number): number {
   let h = 2.5;
   for (const hill of HILLS_W) {
@@ -279,6 +359,13 @@ export function groundHeight(x: number, z: number): number {
   if (s < 60) {
     const t = Math.max(0, Math.min(1, (s + 30) / 90));
     h = h * t + (1 - t) * -6;
+  }
+  // The rock, after the shore ramp has finished pushing everything offshore
+  // down to -6. Before it, and the bay would drown the island it just built.
+  const ad = Math.hypot(x - ALCATRAZ.x, z - ALCATRAZ.z) / ALCATRAZ.radius;
+  if (ad < 1) {
+    const t = 0.5 + 0.5 * Math.cos(Math.PI * ad);
+    h = Math.max(h, -6 + (ALCATRAZ.height + 6) * Math.pow(t, 0.75));
   }
   return h;
 }
@@ -315,7 +402,9 @@ export type DistrictKey =
   | "soma"
   | "embarcadero"
   | "wharf"
-  | "civic";
+  | "civic"
+  | "mission"
+  | "hayes";
 
 export interface District {
   key: DistrictKey;
@@ -359,7 +448,12 @@ export const DISTRICTS: District[] = [
   },
   {
     key: "soma", name: "SoMa", lat: 37.7815, lon: -122.3968,
-    radius: 520, minH: 14, maxH: 96, palette: [2, 10, 1], towerBias: 0.34,
+    /* Five wall colours rather than three, and two of them warm. A district
+       palette of nothing but slate, navy glass and pale blue is correct about
+       the new towers on Folsom and wrong about everything else, and SoMa is
+       the biggest district on the map — from the air the southern third of the
+       city was one continuous grey field. */
+    radius: 520, minH: 14, maxH: 96, palette: [2, 10, 1, 0, 6], towerBias: 0.34,
   },
   {
     key: "embarcadero", name: "Embarcadero", lat: 37.7955, lon: -122.396,
@@ -372,6 +466,20 @@ export const DISTRICTS: District[] = [
   {
     key: "civic", name: "Civic Center", lat: 37.7793, lon: -122.4177,
     radius: 300, minH: 14, maxH: 40, palette: [8, 9, 6], towerBias: 0.12,
+  },
+  /* The two below are not downtown, and they are here because the map now
+     reaches them. `districtAt` returns the *nearest* district to any point, so
+     without them the whole south-western quarter was built to SoMa's rules:
+     ninety-metre glass towers all the way out to the edge of a map whose real
+     equivalent is three-storey Victorians. A district is how a place is built
+     as much as it is a name. */
+  {
+    key: "mission", name: "The Mission", lat: 37.776, lon: -122.413,
+    radius: 520, minH: 9, maxH: 24, palette: [7, 9, 6, 3], towerBias: 0.02,
+  },
+  {
+    key: "hayes", name: "Hayes Valley", lat: 37.779, lon: -122.421,
+    radius: 420, minH: 10, maxH: 26, palette: [6, 8, 9, 0], towerBias: 0.04,
   },
 ];
 
@@ -420,10 +528,132 @@ export const OPEN_SPACES: OpenSpace[] = [
   open("Transamerica Redwood Park", "park", 37.7951, -122.4018, 34),
 ];
 
+/* ------------------------------------------------------------------ *
+ * Landmarks
+ * ------------------------------------------------------------------ */
+
+/**
+ * Where each landmark stands, and how much room the block generator has to
+ * leave it.
+ *
+ * The *sites* live here and the *geometry* lives in `landmarks.ts`, which is
+ * the same split as everything else in this world: `map.ts` is the only file
+ * that knows where anything is. It also means the generic block filler and the
+ * landmark builder cannot disagree about a footprint, which they would within
+ * a week of being two lists — a generated tower growing up through the middle
+ * of Grace Cathedral is not a bug anybody would think to look for.
+ */
+export interface LandmarkSite {
+  key: string;
+  name: string;
+  lat: number;
+  lon: number;
+  /** Metres of clearance the generated city leaves around it. */
+  footprint: number;
+  /** Roughly how tall, for the map pin and the fly-to camera. */
+  height: number;
+  blurb: string;
+  /**
+   * Fraction of the true distance from the origin to place it at.
+   *
+   * Only Alcatraz uses this. Everything else in the city is where a map says
+   * it is, and should stay that way.
+   */
+  pull?: number;
+}
+
+export const LANDMARK_SITES: LandmarkSite[] = [
+  {
+    key: "transamerica", name: "Transamerica Pyramid", lat: 37.7952, lon: -122.4028,
+    footprint: 46, height: 240,
+    blurb: "The one on the skyline. Two white wings and a spike you can stand on.",
+  },
+  {
+    key: "salesforce", name: "Salesforce Tower", lat: 37.7897, lon: -122.3972,
+    footprint: 44, height: 300,
+    blurb: "The tallest thing for a thousand miles. Round, tapered, and always in the way of your photo.",
+  },
+  {
+    key: "coit", name: "Coit Tower", lat: 37.8024, lon: -122.4058,
+    footprint: 34, height: 64,
+    blurb: "A fluted column on Telegraph Hill, paid for by a woman who liked firefighters.",
+  },
+  {
+    key: "ferry", name: "Ferry Building", lat: 37.7955, lon: -122.3937,
+    footprint: 66, height: 74,
+    blurb: "The clock at the foot of Market. Everything downtown points at it.",
+  },
+  {
+    key: "grace", name: "Grace Cathedral", lat: 37.7919, lon: -122.4133,
+    footprint: 54, height: 52,
+    blurb: "Twin towers on top of Nob Hill, with the whole city underneath.",
+  },
+  {
+    key: "dragon", name: "Dragon Gate", lat: 37.7908, lon: -122.4058,
+    footprint: 22, height: 14,
+    blurb: "The green-tiled gate into Chinatown. Walk under it, that is the point.",
+  },
+  {
+    key: "dewey", name: "Union Square", lat: 37.7879, lon: -122.4075,
+    footprint: 40, height: 30,
+    blurb: "Palms, a column with Victory on top, and shopping you cannot do.",
+  },
+  {
+    key: "pier39", name: "Pier 39", lat: 37.8087, lon: -122.4098,
+    footprint: 70, height: 16,
+    blurb: "Sheds on stilts over the water. The sea lions got here first.",
+  },
+  {
+    key: "lombard", name: "Lombard Street", lat: 37.8021, lon: -122.4187,
+    footprint: 46, height: 8,
+    blurb: "Eight switchbacks down Russian Hill. Try it without touching the flowers.",
+  },
+  {
+    key: "cablecar", name: "Powell Street Turnaround", lat: 37.7857, lon: -122.4079,
+    footprint: 22, height: 6,
+    blurb: "Where they spin the cable car round by hand and everybody queues.",
+  },
+  {
+    key: "baybridge", name: "Bay Bridge", lat: 37.7906, lon: -122.3888,
+    footprint: 60, height: 160,
+    blurb: "The other bridge. Longer, busier, and it holds the light better.",
+  },
+  {
+    /* Alcatraz is real, and 3.7 km out — half again as far as this whole map
+       is wide. So it is the one thing here placed on its true *bearing* at
+       55% of its true distance, which is what `pull` means and what it is for.
+
+       That is a compression and it is the right one. Putting the island where
+       a ruler says leaves it outside the world: visible from the air, and
+       impossible to land on, because the player is clamped to the map. A
+       landmark you can see and cannot reach is a worse lie than a short swim.
+       Pulled in, it still reads correctly — out past the wharf, off the north
+       shore, alone in the bay — and you can fly to it, which is the entire
+       point of having a jetpack. */
+    key: "alcatraz", name: "Alcatraz", lat: 37.8267, lon: -122.423, pull: 0.55,
+    footprint: 130, height: 44,
+    blurb: "The rock. Nobody ever swam off it, and you can fly.",
+  },
+];
+
+const LANDMARKS_W = LANDMARK_SITES.map((l) => {
+  const p = ll(l.lat, l.lon);
+  const k = l.pull ?? 1;
+  return { ...l, x: p.x * k, z: p.z * k };
+});
+
+/** Every landmark, in world metres. */
+export function landmarkPositions(): Array<LandmarkSite & Vec2> {
+  return LANDMARKS_W;
+}
+
 /** True where the block generator must not put a building. */
 export function isOpen(x: number, z: number): boolean {
   for (const o of OPEN_SPACES) {
     if (Math.hypot(x - o.x, z - o.z) < o.radius) return true;
+  }
+  for (const l of LANDMARKS_W) {
+    if (Math.hypot(x - l.x, z - l.z) < l.footprint) return true;
   }
   return false;
 }

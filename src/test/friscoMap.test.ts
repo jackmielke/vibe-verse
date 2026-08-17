@@ -14,7 +14,15 @@
 import { describe, expect, it } from "vitest";
 import {
   BOUNDS,
+  DISTRICTS,
+  MAP_DIAGONAL,
   MARKET_ANGLE,
+  OPEN_SPACES,
+  SHORE,
+  SPAWNS,
+  VIEW,
+  isOpen,
+  landmarkPositions,
   alongMarket,
   districtAt,
   groundHeight,
@@ -190,24 +198,129 @@ describe("Vibe Francisco — districts", () => {
  */
 describe("Vibe Francisco — the depth range", () => {
   it("needs more depth range than a conventional buffer would give it", () => {
-    const near = 0.4;
-    const far = 4200;
-    const span = Math.hypot(BOUNDS.maxX - BOUNDS.minX, BOUNDS.maxZ - BOUNDS.minZ);
-    expect(far).toBeGreaterThan(span);
+    expect(VIEW.far).toBeGreaterThan(MAP_DIAGONAL);
     // The ratio is the thing. Anything over a few thousand to one is where a
     // 16-bit depth buffer stops being able to tell the far half of the world
     // apart from the far plane.
-    expect(far / near).toBeGreaterThan(3000);
+    expect(VIEW.far / VIEW.near).toBeGreaterThan(3000);
   });
 
-  it("keeps the sky dome inside the far plane", () => {
-    // A dome outside the far plane is clipped away and the sky renders as the
-    // clear colour, which reads as "the world failed to load".
-    const DOME_RADIUS = 3800;
-    expect(DOME_RADIUS).toBeLessThan(4200);
-    // ...and outside the world, so you can never fly to the edge of it.
-    expect(DOME_RADIUS).toBeGreaterThan(
-      Math.hypot(BOUNDS.maxX - BOUNDS.minX, BOUNDS.maxZ - BOUNDS.minZ),
-    );
+  it("keeps the sky dome outside the world and inside the far plane", () => {
+    // Outside the world, so you can never fly to the edge of the sky...
+    expect(VIEW.domeRadius).toBeGreaterThan(MAP_DIAGONAL);
+    // ...and inside the far plane, or it is clipped away and the sky renders
+    // as the clear colour, which reads as "the world failed to load".
+    expect(VIEW.domeRadius).toBeLessThan(VIEW.far);
+  });
+});
+
+/**
+ * The landmarks, which are the reason anybody comes.
+ *
+ * These check the two things that can silently go wrong with a hand-placed
+ * list: a landmark ending up somewhere the world does not exist, and two of
+ * them ending up on top of each other.
+ */
+describe("Vibe Francisco — the landmarks", () => {
+  const sites = landmarkPositions();
+
+  it("puts every landmark inside the map", () => {
+    for (const l of sites) {
+      expect(l.x, `${l.name} x`).toBeGreaterThan(BOUNDS.minX);
+      expect(l.x, `${l.name} x`).toBeLessThan(BOUNDS.maxX);
+      expect(l.z, `${l.name} z`).toBeGreaterThan(BOUNDS.minZ);
+      expect(l.z, `${l.name} z`).toBeLessThan(BOUNDS.maxZ);
+    }
+  });
+
+  it("puts every landmark on dry land", () => {
+    // Alcatraz is the interesting one: the island only exists because
+    // `groundHeight` puts it there, so this is really a test that the terrain
+    // and the landmark list agree about where the rock is.
+    for (const l of sites) {
+      if (l.key === "baybridge" || l.key === "pier39") continue; // built over water on purpose
+      expect(isWater(l.x, l.z), `${l.name} should be on land`).toBe(false);
+    }
+  });
+
+  it("keeps Alcatraz out in the bay rather than up against the shore", () => {
+    const rock = sites.find((l) => l.key === "alcatraz")!;
+    // It is pulled in from its true distance, but it still has to be an
+    // island: water all the way round, a good way off the north shore.
+    expect(isWater(rock.x, rock.z)).toBe(false);
+    for (const a of [0, 1.6, 3.1, 4.7]) {
+      const px = rock.x + Math.cos(a) * 190;
+      const pz = rock.z + Math.sin(a) * 190;
+      expect(isWater(px, pz), `bay at bearing ${a}`).toBe(true);
+    }
+  });
+
+  it("does not stack two landmarks on the same spot", () => {
+    for (let i = 0; i < sites.length; i++) {
+      for (let j = i + 1; j < sites.length; j++) {
+        const d = Math.hypot(sites[i].x - sites[j].x, sites[i].z - sites[j].z);
+        expect(d, `${sites[i].name} vs ${sites[j].name}`).toBeGreaterThan(
+          Math.max(sites[i].footprint, sites[j].footprint),
+        );
+      }
+    }
+  });
+
+  it("leaves the generated city out of every landmark footprint", () => {
+    for (const l of sites) {
+      expect(isOpen(l.x, l.z), `${l.name} should be reserved`).toBe(true);
+    }
+  });
+});
+
+/**
+ * The waterfront exists.
+ *
+ * Fisherman's Wharf was in `DISTRICTS`, in `SPAWNS` and in `OPEN_SPACES` while
+ * sitting entirely outside `BOUNDS` — so the generator never visited it and
+ * the north shore was a place you could be sent and could not stand. Nothing
+ * failed; there was simply no city there.
+ */
+describe("Vibe Francisco — everything named is on the map", () => {
+  it("holds every district centre", () => {
+    for (const d of DISTRICTS) {
+      const p = ll(d.lat, d.lon);
+      expect(p.x, `${d.name} x`).toBeGreaterThan(BOUNDS.minX);
+      expect(p.x, `${d.name} x`).toBeLessThan(BOUNDS.maxX);
+      expect(p.z, `${d.name} z`).toBeGreaterThan(BOUNDS.minZ);
+      expect(p.z, `${d.name} z`).toBeLessThan(BOUNDS.maxZ);
+    }
+  });
+
+  it("holds every spawn, on land", () => {
+    for (const s of SPAWNS) {
+      const p = ll(s.lat, s.lon);
+      expect(p.x, `${s.name} x`).toBeGreaterThan(BOUNDS.minX);
+      expect(p.x, `${s.name} x`).toBeLessThan(BOUNDS.maxX);
+      expect(p.z, `${s.name} z`).toBeGreaterThan(BOUNDS.minZ);
+      expect(p.z, `${s.name} z`).toBeLessThan(BOUNDS.maxZ);
+      expect(isWater(p.x, p.z), `${s.name} should be on land`).toBe(false);
+    }
+  });
+
+  it("holds the whole seawall", () => {
+    // The shoreline is what decides land from water everywhere else in the
+    // file, so a seawall point off the edge of the map is a stretch of
+    // waterfront that cannot be drawn or stood on.
+    for (const p of SHORE) {
+      expect(p.x).toBeGreaterThan(BOUNDS.minX);
+      expect(p.x).toBeLessThan(BOUNDS.maxX);
+      expect(p.z).toBeGreaterThan(BOUNDS.minZ);
+      expect(p.z).toBeLessThan(BOUNDS.maxZ);
+    }
+  });
+
+  it("holds every open space", () => {
+    for (const o of OPEN_SPACES) {
+      expect(o.x, `${o.name} x`).toBeGreaterThan(BOUNDS.minX);
+      expect(o.x, `${o.name} x`).toBeLessThan(BOUNDS.maxX);
+      expect(o.z, `${o.name} z`).toBeGreaterThan(BOUNDS.minZ);
+      expect(o.z, `${o.name} z`).toBeLessThan(BOUNDS.maxZ);
+    }
   });
 });

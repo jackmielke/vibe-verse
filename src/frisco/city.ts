@@ -16,10 +16,12 @@
 import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
-import { COLORS, WALLS, toon } from "./look";
+import { buildLandmarks } from "./landmarks";
+import { COLORS, WALLS, addOutline, toon } from "./look";
 import {
   BOUNDS,
   GRID_N,
+  GRID_REACH,
   GRID_S,
   MARKET_ANGLE,
   MARKET_DIR,
@@ -53,7 +55,7 @@ export interface CityBuild {
   group: THREE.Group;
   /** Solid boxes the player collides with, for `collision.ts`. */
   colliders: BuildingBox[];
-  stats: { triangles: number; buildings: number; ms: number };
+  stats: { triangles: number; buildings: number; landmarks: number; ms: number };
 }
 
 /** One building, as the collision system sees it. */
@@ -109,8 +111,13 @@ function buildGround(batch: Batch): void {
 
   const colourAt = (x: number, z: number, h: number): [number, number, number] => {
     const s = shoreSDF(x, z);
+    /* Sand is a *beach*: low ground close to the seawall. The test used to be
+       `shoreSDF < 34` on its own, which is true of everything on the far side
+       of the seawall no matter how far away — so the whole of Alcatraz, twenty-
+       six metres up and nine hundred metres out in the bay, came out the colour
+       of a tideline. */
     if (h <= BOUNDS.seaLevel + 0.4) return sand;
-    if (s < 34) return sand;
+    if (s < 34 && s > -70 && h < 7) return sand;
     if (isOpen(x, z)) return grass;
     const t = Math.min(1, h / 120);
     return mix(lot, rock, t);
@@ -174,14 +181,18 @@ function streetLines(): StreetLine[] {
   ) => {
     // March from one side of the map to the other, collecting the runs that are
     // on land and on the right side of Market.
-    const span = 3400;
+    const span = GRID_REACH * 2;
     let run: Vec2[] = [];
     for (let t = -span / 2; t <= span / 2; t += SAMPLE) {
       const x = origin.x + dir.x * t;
       const z = origin.z + dir.z * t;
       const inBounds =
         x > BOUNDS.minX && x < BOUNDS.maxX && z > BOUNDS.minZ && z < BOUNDS.maxZ;
-      const onLand = !isWater(x, z);
+      /* On land AND on the mainland side of the seawall. `isWater` alone is
+         not enough now that there is an island out in the bay: Alcatraz is
+         dry ground, so the grid cheerfully paved it with two of downtown's
+         streets. Nothing is on the far side of the seawall except the rock. */
+      const onLand = !isWater(x, z) && shoreSDF(x, z) > 0;
       const rightSide =
         northOfMarket === null
           ? true
@@ -207,13 +218,13 @@ function streetLines(): StreetLine[] {
     const c = Math.cos(grid.angle);
     const s = Math.sin(grid.angle);
     // Streets running along the grid's local +Z...
-    const reachX = Math.ceil(1800 / grid.spacingX);
+    const reachX = Math.ceil(GRID_REACH / grid.spacingX);
     for (let i = -reachX; i <= reachX; i++) {
       const off = i * grid.spacingX;
       walk({ x: off * c, z: off * s }, { x: -s, z: c }, grid.roadHalfWidth, kind, north);
     }
     // ...and along its local +X.
-    const reachZ = Math.ceil(1800 / grid.spacingZ);
+    const reachZ = Math.ceil(GRID_REACH / grid.spacingZ);
     for (let j = -reachZ; j <= reachZ; j++) {
       const off = j * grid.spacingZ;
       walk({ x: -off * s, z: off * c }, { x: c, z: s }, grid.roadHalfWidth, kind, north);
@@ -432,8 +443,8 @@ function buildBlocks(buildings: Batch, colliders: BuildingBox[], rng: Rng): void
   ] as const) {
     const c = Math.cos(grid.angle);
     const s = Math.sin(grid.angle);
-    const reachX = Math.ceil(1700 / grid.spacingX);
-    const reachZ = Math.ceil(1700 / grid.spacingZ);
+    const reachX = Math.ceil(GRID_REACH / grid.spacingX);
+    const reachZ = Math.ceil(GRID_REACH / grid.spacingZ);
     for (let i = -reachX; i < reachX; i++) {
       for (let j = -reachZ; j < reachZ; j++) {
         // Block centre = halfway between two streets in each direction.
@@ -445,9 +456,19 @@ function buildBlocks(buildings: Batch, colliders: BuildingBox[], rng: Rng): void
         const side = sideOfMarket(x, z);
         if (north && side < MARKET_HALF_WIDTH + 8) continue;
         if (!north && side > -(MARKET_HALF_WIDTH + 8)) continue;
-        // Beyond the end of Market the grids have no business existing.
+        /* Past the *foot* of Market the grids have no business existing —
+           that end is the Ferry Building and then the bay. The other end runs
+           as far as the map does, which is a change from the original 1560 m
+           cut: that stopped the city dead a third of the way up Market and
+           left the western third of the map as bare hillside. San Francisco
+           does not have a green belt in the middle of it.
+
+           The grids stay plausible that far out, incidentally, because they
+           are the real ones: the Mission is laid out on SoMa's angle and the
+           avenues are laid out on downtown's, so extending both is closer to
+           the truth than stopping them. */
         const t = alongMarket(x, z);
-        if (t < -950 || t > 1560) continue;
+        if (t < -950) continue;
         const hw = grid.spacingX / 2 - grid.roadHalfWidth - 3.4;
         const hd = grid.spacingZ / 2 - grid.roadHalfWidth - 3.4;
         fillBlock(buildings, colliders, x, z, hw, hd, grid.angle, rng.fork(`b:${north}:${i}:${j}`));
@@ -549,6 +570,7 @@ export function buildCity(): CityBuild {
   const buildings = new Batch();
   const green = new Batch();
   const water = new Batch();
+  const marks = new Batch();
   const colliders: BuildingBox[] = [];
 
   buildGround(ground);
@@ -556,6 +578,7 @@ export function buildCity(): CityBuild {
   buildBlocks(buildings, colliders, rng.fork("blocks"));
   buildGreenery(green, rng.fork("trees"));
   buildWater(water);
+  const landmarks = buildLandmarks(marks, colliders);
 
   const vertexColoured = toon(0xffffff, { vertexColors: true });
   let triangles = 0;
@@ -566,6 +589,7 @@ export function buildCity(): CityBuild {
     ["pavements", walks, true, false],
     ["buildings", buildings, true, true],
     ["greenery", green, true, true],
+    ["landmarks", marks, true, true],
   ] as const) {
     const geo = batch.finish();
     if (!geo) continue;
@@ -578,12 +602,26 @@ export function buildCity(): CityBuild {
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     group.add(mesh);
+    /* The landmarks, and only the landmarks, get the cartoon outline.
+       It doubles their draw and it is what separates the twelve buildings
+       somebody came here to see from the three thousand that are scenery —
+       an outline on everything is an outline on nothing. */
+    if (name === "landmarks") {
+      const shell = addOutline(mesh, 0.006);
+      if (shell) {
+        shell.matrixAutoUpdate = false;
+        shell.updateMatrix();
+      }
+    }
   }
 
   return {
     group,
     colliders,
-    stats: { triangles, buildings: colliders.length, ms: performance.now() - t0 },
+    stats: {
+      triangles, buildings: colliders.length, landmarks,
+      ms: performance.now() - t0,
+    },
   };
 }
 

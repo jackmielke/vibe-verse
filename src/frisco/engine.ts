@@ -16,7 +16,7 @@ import { buildCity, disposeCity, type CityBuild } from "./city";
 import { CityCollision } from "./collision";
 import { createInput, type FriscoInput } from "./input";
 import { disposeLook } from "./look";
-import { SPAWNS, ll, walkHeight, type Spawn } from "./map";
+import { SPAWNS, VIEW, landmarkPositions, ll, walkHeight, type Spawn } from "./map";
 import { Player } from "./player";
 import { createSky, type SkyRig } from "./sky";
 
@@ -111,8 +111,8 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   const camera = new THREE.PerspectiveCamera(
     62,
     Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1),
-    0.4,
-    4200,
+    VIEW.near,
+    VIEW.far,
   );
 
   o.onProgress?.("Laying out the streets");
@@ -261,6 +261,11 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         player.state.pitch = pitch;
       },
       goTo: (k: string) => handle.goTo(k),
+      landmarks: () =>
+        landmarkPositions().map((l) => ({
+          key: l.key, name: l.name, x: l.x, z: l.z, height: l.height,
+          ground: walkHeight(l.x, l.z),
+        })),
       raw: () => ({ scene, camera, renderer, sky }),
       show: (name: string, on: boolean) => {
         if (name === "sky") { sky.group.visible = on; return; }
@@ -294,6 +299,9 @@ declare global {
       player: () => unknown;
       setPose: (x: number, y: number, z: number, yaw: number, pitch: number) => void;
       goTo: (k: string) => void;
+      landmarks: () => Array<{
+        key: string; name: string; x: number; z: number; height: number; ground: number;
+      }>;
       raw: () => { scene: unknown; camera: unknown; renderer: unknown; sky: unknown };
       show: (name: string, on: boolean) => void;
       setFog: (a: number) => void;

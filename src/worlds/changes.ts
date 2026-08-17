@@ -125,6 +125,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
     { sha: "dffe1d7", iso: "2026-08-17T06:13:37+00:00", subject: "A card for San Francisco that shows the city it is now" },
   ],
   "garden": [
@@ -341,12 +342,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
   ],
   "vibeverse": [
+    { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
     { sha: "99439c8", iso: "2026-08-07T01:20:45+00:00", subject: "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
     { sha: "7533666", iso: "2026-08-02T13:54:08+00:00", subject: "One grid, two columns, and cards that go where they say" },
-    { sha: "c5f07c9", iso: "2026-08-02T08:44:36+00:00", subject: "THE FINAL FRONTIER joins the vibeverse" },
   ],
   "village": [
     { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },

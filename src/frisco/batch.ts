@@ -244,11 +244,40 @@ export class Batch {
           if (f.ax !== 0) return P(f.ax * w, y, sign * d);
           return P(sign * w, y, f.az * d);
         };
-        const a = corner(w0, d0, fy0, f.ax !== 0 ? 1 : -1);
-        const b = corner(w0, d0, fy0, f.ax !== 0 ? -1 : 1);
-        const cc = corner(w1, d1, fy1, f.ax !== 0 ? -1 : 1);
-        const dd = corner(w1, d1, fy1, f.ax !== 0 ? 1 : -1);
-        this.quad(a, b, cc, dd, c, [f.ax, 0, f.az]);
+        /* Which way round the two in-plane corners go, per face.
+           It was `f.ax !== 0 ? 1 : -1`, which is correct for the east and
+           south faces and backwards for the west and north ones — so every
+           banded building in the world was built with two of its four walls
+           inside out, and back-face culling threw them away. You could see
+           into three thousand buildings from the north-west, and out the far
+           side of them, and it read as "the walls have not loaded yet".
+
+           Seen from outside a face whose outward axis is `n`, screen-right is
+           `up x n`, and the first corner is the one *left* of centre. That is
+           `+f.ax` along Z for the east/west pair and `-f.az` along X for the
+           north/south pair, with no case left over to get wrong. */
+        const lead = f.ax !== 0 ? f.ax : -f.az;
+        const a = corner(w0, d0, fy0, lead);
+        const b = corner(w0, d0, fy0, -lead);
+        const cc = corner(w1, d1, fy1, -lead);
+        const dd = corner(w1, d1, fy1, lead);
+        /* The normal has to be turned by `yaw` too, and for a long time it was
+           not — the face axis was handed over raw.
+
+           It is only a lighting error, so it hides: a block turned by three
+           degrees on the northern grid looks fine. But the grid *south* of
+           Market is turned 2.4 radians, so every building in SoMa was lit as
+           though it were facing a completely different way, and half of them
+           landed in the toon ramp's darkest band on the side the sun was
+           actually on. The whole district read as flat grey and the obvious
+           conclusion was that its palette was wrong.
+
+           The inverted-hull outline made it worse than cosmetic: that shader
+           pushes the shell along this same normal, so a wrong one pushes the
+           black hull out through the face it is supposed to sit behind. The
+           Ferry Building rendered as a solid black slab with a gold clock on
+           it. */
+        this.quad(a, b, cc, dd, c, [f.ax * cs - f.az * sn, 0, f.ax * sn + f.az * cs]);
       }
     }
     // Roof.

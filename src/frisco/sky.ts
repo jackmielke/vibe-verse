@@ -17,7 +17,7 @@
  */
 import * as THREE from "three";
 import { COLORS, flat, toon } from "./look";
-import { BOUNDS } from "./map";
+import { BOUNDS, VIEW } from "./map";
 
 export interface SkyRig {
   group: THREE.Group;
@@ -48,13 +48,13 @@ export interface SkyRig {
  * everything because it genuinely IS behind everything, and it stays behind
  * everything under any render order.
  *
- * The radius is bounded on both sides and `friscoMap.test.ts` checks both. It
- * has to clear the map's own diagonal — 3.5 km corner to corner — or the sky
- * ends up nearer than the far side of the city; and it has to stay inside the
- * 4.2 km far plane or it is clipped away and the sky renders as the clear
+ * The radius lives in `map.ts` with the clip planes, bounded on both sides and
+ * checked by `friscoMap.test.ts`: it has to clear the map's own diagonal or
+ * the sky ends up nearer than the far side of the city, and it has to stay
+ * inside the far plane or it is clipped away and the sky renders as the clear
  * colour, which reads as "the world failed to load".
  */
-const DOME_RADIUS = 3800;
+const DOME_RADIUS = VIEW.domeRadius;
 
 /**
  * The two `#include`s in each of these are the whole reason the sky is visible.

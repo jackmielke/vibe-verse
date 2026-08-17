@@ -49,6 +49,7 @@ const POSES = {
 };
 
 const wanted = (process.argv[3] ?? "skyline,downtown,market,street,waterfront,hills,wide").split(",");
+// `POSES` is extended below with one entry per landmark when asked for.
 
 async function up(url, ms) {
   const t0 = Date.now();
@@ -110,7 +111,7 @@ if (process.env.FRISCO_CHARACTER) {
 
 await page.goto(`${BASE}/frisco`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("canvas", { timeout: 120000 });
-await page.waitForFunction(() => typeof window.__frisco?.setPose === "function", null, {
+await page.waitForFunction(() => typeof window.__frisco?.landmarks === "function", null, {
   timeout: 180000,
 });
 // The character arrives a moment after the world does.
@@ -121,7 +122,36 @@ console.log(
   `city: ${stats.buildings} buildings, ${stats.triangles} triangles, built in ${stats.buildMs} ms`,
 );
 
-for (const name of wanted) {
+/**
+ * `landmarks` walks all twelve hand-built buildings and photographs each one
+ * from the same three-quarter angle.
+ *
+ * There is no other way to check them. A landmark is wrong in ways a wide shot
+ * hides completely — inside out, sunk into the hill, at the wrong scale, or
+ * simply not built because its key does not match its builder — and every one
+ * of those reads as "a slightly odd blob on the horizon" from anywhere else.
+ */
+const marks = wanted.includes("landmarks")
+  ? await page.evaluate(() => window.__frisco.landmarks())
+  : [];
+for (const m of marks) {
+  // Back off proportionally to how tall it is, and look at its middle.
+  const dist = Math.max(70, m.height * 1.5);
+  const eye = m.ground + m.height * 0.62 + 18;
+  const yaw = 2.5;
+  POSES[`lm-${m.key}`] = [
+    m.x - Math.cos(yaw) * dist,
+    eye,
+    m.z - Math.sin(yaw) * dist,
+    yaw,
+    Math.atan2(m.ground + m.height * 0.45 - eye, dist),
+  ];
+}
+const shots = wanted.flatMap((w) =>
+  w === "landmarks" ? marks.map((m) => `lm-${m.key}`) : [w],
+);
+
+for (const name of shots) {
   const pose = POSES[name];
   if (!pose) {
     console.log(`no such pose: ${name}`);

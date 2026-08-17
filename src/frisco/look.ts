@@ -249,8 +249,15 @@ export function outlineMaterial(thickness = 0.02): THREE.MeshBasicMaterial {
           outlineNormal = vec3( skinMatrix * vec4( outlineNormal, 0.0 ) );
         #endif
         vec4 mvPosition = modelViewMatrix * vec4( transformed, 1.0 );
+        // Scaled by depth so the line keeps a constant width on screen — but
+        // CLAMPED, because unbounded it eats the thing it is outlining. At a
+        // kilometre the shell was growing six metres, which is wider than a
+        // bridge cable, a clock face or a cathedral spire: distant landmarks
+        // turned into featureless black lumps floating over the skyline, and
+        // the shape of the lump changed as you flew, which reads as anything
+        // but an outline. Past a hundred metres the line is sub-pixel anyway.
         mvPosition.xyz += normalize( normalMatrix * outlineNormal ) * uThickness *
-          max( -mvPosition.z, 0.05 );
+          clamp( -mvPosition.z, 0.05, 110.0 );
         gl_Position = projectionMatrix * mvPosition;
         `,
       );
