@@ -83,6 +83,17 @@ export type CharSpec = {
 const prettyName = (filename: string) => filename.replace(/_/g, " ");
 
 export const CHARACTERS: CharSpec[] = [
+  /* The default leads. Whoever sits in this slot is both who you are before
+     you have chosen and the first tile in every picker, and those being the
+     same character is the whole reason the picker opens on you rather than on
+     somebody else. It used to be Flux then Webslinger, which meant the second
+     face anybody saw in the vibeverse was a wall-crawler. See
+     DEFAULT_CHARACTER_ID. */
+  {
+    id: "toadstool", url: "", label: "Toadstool", emoji: "🍄",
+    blurb: "A cap, a soft round body, and legs much too short for either.",
+    accent: "#ffd9c2",
+  },
   // Flux has no `url` because it has no model file — it is assembled
   // from primitives and animated entirely in code. Anything that renders
   // a character should go through loadCharacterRig(), which handles the
@@ -272,11 +283,6 @@ export const CHARACTERS: CharSpec[] = [
     accent: "#ffe27a",
   },
   {
-    id: "toadstool", url: "", label: "Toadstool", emoji: "🍄",
-    blurb: "A cap, a soft round body, and legs much too short for either.",
-    accent: "#ffd9c2",
-  },
-  {
     id: "origami", url: "", label: "Origami", emoji: "📄",
     blurb: "Hard folds and paper colours, with wings that fold flat.",
     accent: "#e05a4a",
@@ -439,5 +445,28 @@ export const CHARACTERS: CharSpec[] = [
     .sort((a, b) => a.label.localeCompare(b.label)),
 ];
 
+/**
+ * Who you are before you have chosen anybody.
+ *
+ * It lives here, next to the roster, because three other places have to agree
+ * with it — `DEFAULT_LOADOUT`, the fallback in `use-active-character`, and
+ * whatever the shop is selling — and a literal repeated in four files is a
+ * literal that will disagree with itself.
+ *
+ * Two rules for whatever sits in this slot:
+ *
+ *   1. **It must be free.** The server refuses to equip a priced character you
+ *      do not own, so a default with a price on it fails for every visitor who
+ *      has not bought it — and fails at the moment they change a hat, which is
+ *      nowhere near the mistake.
+ *   2. **It should be funny rather than impressive.** This is the first thing
+ *      anybody sees themselves as, and a heroic default reads as the app
+ *      telling you who to be. A penguin-adjacent mushroom with legs too short
+ *      to stride does not have that problem.
+ */
+export const DEFAULT_CHARACTER_ID = "toadstool";
+
 export const findCharacter = (id: string | null | undefined): CharSpec =>
-  CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];
+  CHARACTERS.find((c) => c.id === id) ??
+  CHARACTERS.find((c) => c.id === DEFAULT_CHARACTER_ID) ??
+  CHARACTERS[0];

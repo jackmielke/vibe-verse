@@ -30,6 +30,7 @@
  * who already picked a hat keep it.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { DEFAULT_CHARACTER_ID } from "@/lib/characters";
 import { currentOwner, refreshVibecoin } from "@/lib/vibecoin";
 
 export type CosmeticKind = "hat" | "flame" | "jetpack";
@@ -50,14 +51,30 @@ export interface Loadout {
   character: string;
 }
 
+/**
+ * What the `char_id` column defaults to, which is NOT what the app defaults to.
+ *
+ * These were the same string for as long as there was one default, and the
+ * comment here said all three copies had to agree. They no longer do, on
+ * purpose: the app opens on `DEFAULT_CHARACTER_ID` while the column still
+ * defaults to `vibey`, because changing a column default only affects rows
+ * written after the migration and would leave every existing wallet on a
+ * different answer to every new one.
+ *
+ * So this constant means exactly one thing: **nobody has ever chosen.** It is
+ * what `use-active-character` checks before adopting the server's opinion, and
+ * conflating it with "what a new visitor sees" is what would make a signed-in
+ * visitor flip characters a half-second after the page loads.
+ */
+export const SERVER_UNSET_CHARACTER = "vibey";
+
 export const DEFAULT_LOADOUT: Loadout = {
   hat: "none",
   flame: "mint",
   jetpack: "stock",
-  // Matches the fallback in `use-active-character` and the column default in
-  // the migration. All three have to agree, or a fresh wallet flickers between
-  // two characters as the server answer lands.
-  character: "vibey",
+  // Must match the fallback in `use-active-character`, and must be something
+  // the shop does not sell — see DEFAULT_CHARACTER_ID for why both.
+  character: DEFAULT_CHARACTER_ID,
 };
 
 /** `hat:crown` — namespaced because "violet" is both a flame and a jetpack. */

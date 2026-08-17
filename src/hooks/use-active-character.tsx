@@ -26,6 +26,7 @@ import { useEffect, useState, useCallback } from "react";
 import { CHARACTERS, findCharacter, type CharSpec } from "@/lib/characters";
 import {
   DEFAULT_LOADOUT,
+  SERVER_UNSET_CHARACTER,
   equip,
   owns,
   subscribeWardrobe,
@@ -39,11 +40,14 @@ const LS_KEY_CITY = "city.character";
 const EVT = "vibe:character-changed";
 
 function readId(): string {
-  if (typeof window === "undefined") return "vibey";
+  /* The app's default, not the column's — see SERVER_UNSET_CHARACTER. This is
+     the one that decides who a first-time visitor actually is, before any
+     wardrobe fetch has landed, so it is the answer to "who shows up". */
+  if (typeof window === "undefined") return DEFAULT_LOADOUT.character;
   return (
     localStorage.getItem(LS_KEY) ??
     localStorage.getItem(LS_KEY_CITY) ??
-    "vibey"
+    DEFAULT_LOADOUT.character
   );
 }
 
@@ -101,7 +105,7 @@ export function useActiveCharacter(): {
       const next =
         (e as CustomEvent<string>).detail ??
         localStorage.getItem(LS_KEY) ??
-        "vibey";
+        DEFAULT_LOADOUT.character;
       setCharIdState(next);
     };
     const onStorage = (e: StorageEvent) => {
@@ -125,9 +129,16 @@ export function useActiveCharacter(): {
      localStorage cache, and adopting from the cache would mean adopting
      DEFAULT_LOADOUT on a first run and stamping over a pick the visitor made
      months ago. And we ignore the default value even when it does come from
-     the server, because the column defaults to 'vibey' and there is no way to
+     the server, because the column defaults to `vibey` and there is no way to
      tell "they chose Vibey" from "nobody has ever told us" — so a wallet that
-     has never equipped anything must not overrule a local choice. */
+     has never equipped anything must not overrule a local choice.
+
+     That check is against SERVER_UNSET_CHARACTER, deliberately, and NOT against
+     the app's own default. They used to be the same string and are not any
+     more: the app opens on Toadstool while the column still says `vibey`.
+     Comparing to the app default here would mean the server's `vibey` no
+     longer looked like "unset", and every signed-in visitor would be flipped
+     off Toadstool a half-second after the page painted. */
   useEffect(() => {
     if (adopted) return;
     let sawFetch = false;
@@ -139,7 +150,7 @@ export function useActiveCharacter(): {
       if (!sawFetch || adopted || pickedThisSession || s.stale) return;
       adopted = true;
       const server = s.loadout.character;
-      if (!server || server === DEFAULT_LOADOUT.character) return;
+      if (!server || server === SERVER_UNSET_CHARACTER) return;
       if (server === readId()) return;
       writeLocal(server);
     };

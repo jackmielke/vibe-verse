@@ -1,7 +1,89 @@
 {
-  "generated_at": "2026-08-16T20:39:45.962Z",
+  "generated_at": "2026-08-17T06:35:53.963Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "461d142e",
+      "date": "2026-08-17",
+      "subject": "Traffic can knock you over, water muffles the world, and /city got measured",
+      "lede": "Three things, and the third one found a regression I had shipped.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 10
+    },
+    {
+      "sha": "fe24c75a",
+      "date": "2026-08-17",
+      "subject": "sf-flicker was measuring a falling character",
+      "lede": "/sf opens in walking mode now, and `setPose` moves the PLAYER rather than a detached camera. So the probe's own poses — 236 m over the Financial District, 22 m above Market Street — handed the walking controller a character in mid-air, and it did the correct thing with it: dropped it. The settle test is defined as two frames of a frozen pose. It was comparing two frames of a fall, reading 37%, and blaming the city.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "390b8cf5",
+      "date": "2026-08-17",
+      "subject": "npm run stamp: San Francisco's date",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_011nNcUJKivGcV3xsUbHjaFx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "a13e9849",
+      "date": "2026-08-17",
+      "subject": "Spawn on the plaza, not inside it",
+      "lede": "Walking into Union Square worked. Spawning there did not, and it failed in the way that is hardest to report: the character was simply not in the picture. Every character, GLB and procedural alike, which is what made it look like a rig-loading bug rather than a physics one.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "60b25c05",
+      "date": "2026-08-17",
+      "subject": "Walk San Francisco, and stop the city boiling while you do",
+      "lede": "The glitching was one bug, and it was not the one it looked like. A chunk that generates no geometry — water, park, the Presidio's meadows, a third of this map — was treated as \"not built yet\" rather than \"built, and empty\", so every rescan rebuilt every one of them, four hundred milliseconds apart, forever. The queue never drained in a whole session, real chunks queued behind work already done, and the LOD cross-fad",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 21
+    },
+    {
+      "sha": "cffdbc9f",
+      "date": "2026-08-16",
+      "subject": "Fireballs, bumper cars, F to get out, and the invisible swimmer",
+      "lede": "Six things from Jack, all in and around driving.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "fff1ed10",
+      "date": "2026-08-16",
+      "subject": "npm run stamp: the dunes moved",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "271da818",
+      "date": "2026-08-16",
+      "subject": "The Dune Sea was drawing the sky where the ground should be",
+      "lede": "The world looked flat, washed out and wrong, and it was not the lighting. The terrain mesh's triangle winding was inverted, so three culled every face that pointed at the camera. What rendered was the handful of slopes angled *away* — the rest of the frame was the sky dome showing straight through the floor. It reads exactly like an overexposed desert, which is why it survived four passes at the shading: every one of",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "f28e4477",
+      "date": "2026-08-16",
+      "subject": "Drive into the sea and the sea does something about it",
+      "lede": "`CollisionWorld` floors everything at y=0 so nothing can fall out of the world, and over open water that floor is a phantom plate with no mesh under it. Every ground query a car made therefore answered \"sea level, go ahead\" — so a kart driven off the quay carried on driving, at sea level, across the bay, wheels spinning on nothing. With an ocean this good it was the loudest remaining tell that the water is scenery.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 7
+    },
     {
       "sha": "2540f1fe",
       "date": "2026-08-16",
@@ -961,83 +1043,6 @@
       "date": "2026-08-09",
       "subject": "An idle teammate stopped insisting it was stuck",
       "lede": "Fallout from the drift fix, and visible only because the bot sat in an empty lobby for two hours: \"stuck — taking a detour\", every few seconds, all night, with nothing to be stuck on.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "eb1f1244",
-      "date": "2026-08-10",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "4ec0a9c2",
-      "date": "2026-08-10",
-      "subject": "Five characters that are not the same person in different paint",
-      "lede": "Everything on the shelf was one biped. You could change the palette, the ears, the cape and the wings and still get twelve characters who are indistinguishable in a doorway at thirty metres, because a silhouette is mostly *how a thing moves* and every one of them moved identically — same hips, same two legs, same stride solver.",
-      "places": [
-        "Vibe Island",
-        "the character roster"
-      ],
-      "files": 11
-    },
-    {
-      "sha": "c53b8026",
-      "date": "2026-08-09",
-      "subject": "An idle teammate walked away",
-      "lede": "Caught by watching an empty lobby: 63 m in ten minutes with nobody in the room and nothing to follow.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "18bc6e85",
-      "date": "2026-08-09",
-      "subject": "A voice in the booth calls the match",
-      "lede": "Eliminations, a squadmate going out, the Downpour closing, the win — read aloud by ElevenLabs over the same engine events the HUD already draws from.",
-      "places": [
-        "the machinery underneath"
-      ],
-      "files": 3
-    },
-    {
-      "sha": "46842359",
-      "date": "2026-08-09",
-      "subject": "The teammate can shoot back",
-      "lede": "It has spent every match so far as a very loyal 4 m of scenery: it followed, it called out, it talked, and it could not take a single point of dryness off anyone. Now that ghosts are real damage targets and `hit` carries damage, it has the same soaker everyone else does.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "e3f87669",
-      "date": "2026-08-09",
-      "subject": "Players can finally soak each other",
-      "lede": "SPLASH ROYALE shipped without player-versus-player water. Not throttled, not buggy — absent. No client ever sent a shot, `shot` and `splash` existed in the protocol and were never emitted by a weapon, ghosts were never registered as damage targets, and the two systems that did consume `splash` used it for a decal and some particles. Two people in a lobby could see each other, chat, glue each other's ankles and announ",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "7916b80d",
-      "date": "2026-08-09",
-      "subject": "The teammate went deaf after the first finished match",
-      "lede": "Watched live tonight, three times: jack joins, the log says \"jack is on the field (dolphin)\", and the next status line reads `peers 1, following —`. The bot could see him and would not follow him.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "8a0487a5",
-      "date": "2026-08-09",
-      "subject": "The end card says Play again",
-      "lede": "\"Get wet again\" is a joke that only lands once, and the button it is on is the one you press when you want another match — not the one you press to be told what the mode is called. Jack asked for the plain word.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "14933f63",
-      "date": "2026-08-09",
-      "subject": "The teammate could not reach a squad that was still on the bus",
-      "lede": "Tonight's match, from the bot's log: spawned beside Jack, then \"stuck — taking a detour\" every three seconds for six minutes, pinned at x -1230, 866 m away, until the match ended. Jack never saw it. Two bugs stacked.",
       "places": [],
       "files": 1
     }

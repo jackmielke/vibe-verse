@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   SHOP_CHARACTERS,
   TIER_STYLE,
@@ -24,7 +24,8 @@ import {
   isForSale,
   shopCharacter,
 } from "@/lib/characterShop";
-import { CHARACTERS } from "@/lib/characters";
+import { CHARACTERS, DEFAULT_CHARACTER_ID } from "@/lib/characters";
+import { DEFAULT_LOADOUT, SERVER_UNSET_CHARACTER } from "@/lib/wardrobe";
 import { PILOT_DESIGNS } from "@/components/city/proceduralPilot";
 import { itemKey } from "@/lib/wardrobe";
 
@@ -163,5 +164,55 @@ describe("the shop catalog itself", () => {
     expect(characterPrice("Wizard")).toBe(0);
     expect(characterPrice("grimlock")).toBe(600);
     expect(shopCharacter("nope")).toBeUndefined();
+  });
+});
+
+/**
+ * The default character has constraints that nothing else on the roster has,
+ * and every one of them fails quietly rather than loudly.
+ *
+ * The trap: the server refuses to equip a priced character you do not own, and
+ * it applies that rule on `set_loadout` — not on read. So a *priced* default
+ * looks fine right up until somebody who has never bought it changes a hat,
+ * at which point the whole loadout write is rejected with "you do not own
+ * Toadstool" and the failure surfaces nowhere near the cause.
+ */
+describe("the default character", () => {
+  it("is a character that actually exists", () => {
+    expect(CHARACTERS.some((c) => c.id === DEFAULT_CHARACTER_ID)).toBe(true);
+  });
+
+  it("is what a fresh loadout hands you", () => {
+    expect(DEFAULT_LOADOUT.character).toBe(DEFAULT_CHARACTER_ID);
+  });
+
+  it("is free — the shop must never price the thing everybody starts as", () => {
+    expect(
+      SHOP_CHARACTERS.map((c) => c.id),
+      "a priced default is rejected by set_loadout for anyone who has not bought it",
+    ).not.toContain(DEFAULT_CHARACTER_ID);
+  });
+
+  it("is free on the server too, which for characters means absent", () => {
+    /* `COSMETICS.character` inverts the usual rule: present means you must own
+       it, absent means free. So the check is that the id is simply not there. */
+    const fn = readFileSync(
+      join(process.cwd(), "supabase/functions/vibe-economy/index.ts"),
+      "utf8",
+    );
+    const table = fn.slice(fn.indexOf("  character: {"), fn.indexOf("};", fn.indexOf("  character: {")));
+    expect(table).not.toMatch(new RegExp(`\\b${DEFAULT_CHARACTER_ID}\\b`));
+  });
+
+  it("is NOT the column default, and that difference is deliberate", () => {
+    /* `SERVER_UNSET_CHARACTER` means "nobody has ever chosen" — it is what the
+       migration set `char_id` to. Collapsing the two would make the server's
+       `vibey` stop looking unset, and every signed-in visitor would be flipped
+       off the default a half-second after the page painted. */
+    expect(SERVER_UNSET_CHARACTER).not.toBe(DEFAULT_LOADOUT.character);
+  });
+
+  it("leads the roster, so the picker opens on who you already are", () => {
+    expect(CHARACTERS[0].id).toBe(DEFAULT_CHARACTER_ID);
   });
 });

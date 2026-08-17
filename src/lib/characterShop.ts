@@ -305,13 +305,6 @@ export const SHOP_CHARACTERS: ShopCharacter[] = [
     pitch: "Boxy, green, and spiked along the crown. Do not hug.",
   },
   {
-    id: "toadstool",
-    price: 175,
-    tier: "rare",
-    title: "Toadstool",
-    pitch: "A cap, a soft body, and legs far too short for either.",
-  },
-  {
     id: "origami",
     price: 250,
     tier: "epic",

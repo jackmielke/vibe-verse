@@ -676,7 +676,6 @@ const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
     mothling: { price: 300, title: "Mothling" },
     jelly: { price: 250, title: "Jelly" },
     prickle: { price: 150, title: "Prickle" },
-    toadstool: { price: 175, title: "Toadstool" },
     origami: { price: 250, title: "Origami" },
     ridgeback: { price: 450, title: "Ridgeback" },
     strider: { price: 500, title: "Strider" },
