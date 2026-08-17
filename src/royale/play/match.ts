@@ -149,6 +149,20 @@ interface CombatLike {
   }[];
 }
 
+/**
+ * The two water bursts, as the victory beat uses them.
+ *
+ * Neither is on `VfxService` in a form we can call directly — `balloonBurst`
+ * is not on the shared contract at all and `soakBurst` is declared with an
+ * `unknown` options bag — so both are read structurally and optionally. In
+ * classic mode they are documented no-ops, which is a second reason the
+ * confetti is gated on the mode rather than on their presence.
+ */
+interface VfxLike {
+  balloonBurst?(point: THREE.Vector3, scale?: number): void;
+  soakBurst?(point: THREE.Vector3, scale?: number, opts?: unknown): void;
+}
+
 interface MatchServices {
   terrain?: TerrainService;
   materials?: MaterialsService;
@@ -156,6 +170,7 @@ interface MatchServices {
   audio?: AudioLike;
   combat?: CombatLike;
   sky?: SkyService;
+  vfx?: VfxLike;
   /**
    * `closing` biases who the fabricated feed blames. `center`/`radius` are
    * read by `skipToLive`, which must not put a fast-forwarded player down
@@ -244,6 +259,31 @@ export interface DropZeroMatchService extends MatchService {
    * pass any Y.
    */
   skipToLive(at?: THREE.Vector3): THREE.Vector3;
+  /**
+   * DEBUG / PHOTO ENTRY POINT: end the match, now, and return the phase it
+   * ended on.
+   *
+   * This exists because of a measurement, and the measurement is worth writing
+   * down. Driven honestly — `skipToLive`, then every bot in the lobby killed
+   * through its own damage entry point — the alive counter STOPS AT 84 and
+   * stays there. Nothing is broken: the drain curve holds the lobby at 100
+   * until eighteen seconds after the match goes live and does not reach 1
+   * until t=820, so `alive <= 1` is a fourteen-minute proposition. In a real
+   * browser at 60 fps that is a match. Under SwiftSHADER, where the simulation
+   * runs a few hundred times slower than wall clock, it is a day and a half of
+   * capture, which is why the victory card had never been rendered by anything,
+   * ever, and why the losing card had only been seen by whoever wrote it.
+   *
+   * So: same bargain `skipToLive` makes one phase earlier. `"victory"` retires
+   * the remaining crowd and flips the phase; `"eliminated"` files the player's
+   * own death through `reportDeath`, which is the identical call combat makes,
+   * so the feed line, the placement and the killer on the card are the real
+   * ones and not a fixture.
+   *
+   * It cannot manufacture a win the player did not earn — it is not reachable
+   * from input, only from a harness holding the service.
+   */
+  skipToEnd(kind?: "victory" | "eliminated", by?: DamageSource): MatchPhase;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -330,8 +370,44 @@ const DOOR_ARC = 1.35;
 /** Dropping ends when the player lands, or after this many seconds regardless. */
 const DROP_TIMEOUT = 40;
 
+/**
+ * The victory beat.
+ *
+ * The old shot was one exponential `damp` from 6 m to 13.5 m at lambda 0.35,
+ * which is a curve that starts fast and never actually arrives — it is 30% of
+ * the way there after a second and still creeping at ten. Read as a camera it
+ * reads as a drift, not as a move, and the moment a match has been building
+ * to for twelve minutes deserves a move.
+ *
+ * So: two eased beats off `phaseTime`. `HOLD` seconds close and still, which
+ * is the beat where the player registers that the person standing there dry
+ * is them, then one long `PULL` back and up onto the orbit, easing to a stop.
+ * Both curves start and end still, which is the only acceptable shape for a
+ * camera the player is not driving.
+ *
+ * Timed off `phaseTime`, i.e. simulated seconds — never wall clock. Under
+ * SwiftSHADER the two differ by a factor of a few hundred and a wall-clock
+ * victory lap would be over before the first frame composed.
+ */
+const VICTORY_HOLD = 1.15;
+const VICTORY_PULL = 5.4;
+/** Orbit radius at the start of the hold and at the end of the pull, metres. */
+const VICTORY_IN = 5.2;
+const VICTORY_OUT = 15.5;
+/** Metres the camera lifts across the pull, on top of the framing height. */
+const VICTORY_RISE = 6.2;
+/** Field of view at the close hold and out on the orbit. Widening = pulling back twice. */
+const VICTORY_FOV_IN = 42;
+const VICTORY_FOV_OUT = 58;
 /** Seconds the victory orbit takes to make one full turn. */
 const VICTORY_ORBIT_PERIOD = 26;
+/**
+ * Simulated seconds between droplet-confetti pops around the winner, and how
+ * long the shower keeps going. Long enough to still be raining when a first
+ * screenshot lands, short enough that it is a celebration and not weather.
+ */
+const VICTORY_POP_EVERY = 0.34;
+const VICTORY_POP_FOR = 14;
 /** Spectate pull-back distance and duration after the player is eliminated. */
 const SPECTATE_DIST = 24;
 const SPECTATE_RISE = 13;
@@ -3295,7 +3371,24 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
   let realAliveCache = LOBBY;
   let realAliveTimer = 0;
   let victoryAngle = 0;
-  let victoryRadius = 7;
+  let victoryRadius = VICTORY_IN;
+  /** Countdown to the next droplet pop, in simulated seconds. */
+  let victoryPopT = 0;
+  /**
+   * How many of the lobby were still dry when the player let go of the bus.
+   *
+   * Captured at the jump rather than derived on the end card, because by the
+   * time the card mounts the counter is 1 and there is no way back to it.
+   */
+  let aliveAtDrop = LOBBY;
+  /**
+   * The feed line that ended the player's match — who soaked them and with
+   * what. Held explicitly rather than read off the tail of `feed` on the end
+   * card: the tail is only reliably the player's own death in the same tick
+   * it was filed, and a phantom kill landing in between would put a stranger's
+   * name on the loss card.
+   */
+  let playerDeath: KillEntry | null = null;
   let spectateT = 0;
   const spectatePoint = new THREE.Vector3();
   const spectateDir = new THREE.Vector3(0, 0, 1);
@@ -3380,6 +3473,9 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     },
     skipToLive(at) {
       return skipToLive(at);
+    },
+    skipToEnd(kind, by) {
+      return skipToEnd(kind, by);
     },
     jump() {
       requestJump();
@@ -3750,7 +3846,7 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     }
 
     setAlive(service.alive - 1);
-    pushFeed({
+    const entry: KillEntry = {
       killer,
       victim,
       weapon,
@@ -3758,7 +3854,9 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       onPlayer: victimIsPlayer,
       environmental,
       at: ctx.elapsed,
-    });
+    };
+    if (victimIsPlayer) playerDeath = entry;
+    pushFeed(entry);
 
     if (victimIsPlayer && phase !== "eliminated" && phase !== "victory") {
       setPhase("eliminated");
@@ -3840,9 +3938,23 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
   }
 
   // ---- jumping -----------------------------------------------------------
+
+  /**
+   * Note who was still dry the instant the player left the bus.
+   *
+   * There are three ways off — you let go, the bus throws you off the end of
+   * the line, or `skipToLive` fast-forwards the whole opening — and the end
+   * card wants the same number from all three. Idempotent, because it is
+   * called immediately before each of the three `jumped = true` writes.
+   */
+  function markDeparture(): void {
+    if (!jumped) aliveAtDrop = service.alive;
+  }
+
   function requestJump(): void {
     if (jumped) return;
     if (phase !== "bus") return;
+    markDeparture();
     jumped = true;
     jumpBeatT = JUMP_BEAT_TIME;
     ctx.emit("dz:jump", { t: service.busT, x: busPosition.x, y: busPosition.y, z: busPosition.z });
@@ -3942,6 +4054,7 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
           // Fortnite throws you out at the end of the line and so do we —
           // being carried past the island is not a strategy.
           announce("End of the line", "urgent");
+          markDeparture();
           jumped = true;
           jumpBeatT = JUMP_BEAT_TIME;
           sfx("bus-release", 0.8);
@@ -4015,16 +4128,45 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       enter() {
         service.placement = 1;
         cineTarget = 1;
-        victoryAngle = (services.player?.yaw ?? 0) + Math.PI;
-        victoryRadius = 6;
+        victoryRadius = VICTORY_IN;
+        victoryPopT = 0;
+        /*
+         * Frame the orbit off the SUN, not off the player's yaw.
+         *
+         * `sunDirection` points from the scene toward the sun, so putting the
+         * camera at that azimuth stands it between the sun and the winner and
+         * lights them full in the face. A third of a turn off it is the
+         * three-quarter key every portrait wants, and as the orbit runs it
+         * drifts around into rim light with the sun flaring past their
+         * shoulder — which, with the composer's bloom on wet ground, is the
+         * whole "catch the light" of this beat. Yaw gave whatever the player
+         * happened to be looking at when the last rival went out.
+         */
+        const sun = services.sky?.sunDirection;
+        victoryAngle =
+          sun && (sun.x !== 0 || sun.z !== 0)
+            ? Math.atan2(sun.z, sun.x) + Math.PI * 0.34
+            : (services.player?.yaw ?? 0) + Math.PI;
         music("victory", 0.75);
+        // `victory` is the shipped stinger and stays the spine of the moment.
+        // The water flavour on top is `balloon-burst` (the ammunition coming
+        // apart, one pop per confetti burst) and `chest-open`, whose ascending
+        // struck-bell arpeggio is documented in the bank as a victory sound.
+        // Names requested from the cue-bank work happening in parallel, to be
+        // swapped in here one line each once they land: `victory-splash`,
+        // `crowd-cheer`, `party-horn`, `sprinkler`.
         sfx("victory", 0.9);
-        announce("VICTORY ROYALE", "urgent");
+        sfx("chest-open", 0.5, 1.18);
+        announce(ctx.mode === "water" ? WATER.strings.victory : "VICTORY ROYALE", "urgent");
         ctx.emit("dz:victory", {
           placement: 1,
           eliminations: service.eliminations,
           lobby: LOBBY,
           matchTime: service.matchTime,
+          // The numbers that make it personal. Everything here is a thing the
+          // match system is the only witness to; the HUD sources the rest
+          // (longest shot, materials) off events it already receives.
+          aliveAtDrop,
           feed: feed.slice(),
         });
       },
@@ -4032,8 +4174,27 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
         // Input is already frozen: `player.controllable` is false outside the
         // playable phases, so the player system stops accepting movement,
         // aiming and fire the instant `phase` flips.
-        victoryRadius = damp(victoryRadius, 13.5, 0.35, dt);
+        const pull = easeInOut((phaseTime - VICTORY_HOLD) / VICTORY_PULL);
+        victoryRadius = lerp(VICTORY_IN, VICTORY_OUT, pull);
         victoryAngle += (dt * Math.PI * 2) / VICTORY_ORBIT_PERIOD;
+        // Keep the shadow cascade on the winner. The cine camera has walked
+        // fifteen metres away from the player by the end of the pull, and a
+        // cascade that follows the camera instead can drop the one figure the
+        // shot is about out of the shadow map — they stop casting, and a
+        // figure with no contact shadow floats.
+        const p = services.player?.position;
+        if (p) {
+          try {
+            services.sky?.focus(p);
+          } catch {
+            /* shadows are cosmetic; never take the card down for them */
+          }
+        }
+        victoryPopT -= dt;
+        if (victoryPopT <= 0 && phaseTime < VICTORY_POP_FOR) {
+          victoryPopT = VICTORY_POP_EVERY;
+          popConfetti();
+        }
         offerRestart(4);
       },
     },
@@ -4053,13 +4214,26 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
         }
         music("defeat", 0.6);
         sfx("eliminated", 0.85);
+        /*
+         * Who soaked you, and with what.
+         *
+         * `playerDeath` is the line `reportDeath` filed for the player. The
+         * old code read the tail of `feed`, which is the same entry only in
+         * the tick it was pushed — a phantom elimination landing between the
+         * death and this hook renamed the killer to a stranger the player
+         * never saw. It also fell back to "the storm" when the feed was
+         * empty, which is a guess; `environmental` says whether it really was.
+         */
+        const death = playerDeath;
         ctx.emit("dz:eliminated", {
           placement: service.placement,
           eliminations: service.eliminations,
           lobby: LOBBY,
           matchTime: service.matchTime,
-          killer: feed.length ? feed[feed.length - 1].killer : "the storm",
-          weapon: feed.length ? feed[feed.length - 1].weapon : "storm",
+          killer: death?.killer ?? "the storm",
+          weapon: death?.weapon ?? "storm",
+          environmental: death?.environmental ?? true,
+          aliveAtDrop,
           feed: feed.slice(),
         });
       },
@@ -4069,6 +4243,39 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
       },
     },
   };
+
+  /**
+   * One burst of droplet confetti somewhere around the winner.
+   *
+   * This is the game's own ammunition coming apart in mid-air — `balloonBurst`
+   * is what a thrown water balloon does when it pops, and a shower of those
+   * over somebody's head is a water fight's version of a ticker-tape parade.
+   * No new effect, no new asset, and it obeys the same postfx pass as the rest
+   * of the frame, so it photographs the way it plays.
+   *
+   * Water only. Both bursts are documented no-ops in classic, and firing a
+   * balloon pop in Drop Zero would be a water sound in a game that has none.
+   */
+  function popConfetti(): void {
+    if (ctx.mode !== "water") return;
+    const vfx = services.vfx;
+    const p = services.player?.position;
+    if (!vfx || !p) return;
+    // Spokes driven off the orbit angle rather than off `rng()` alone, so the
+    // pops walk around the winner with the camera instead of clustering.
+    const a = victoryAngle * 2.7 + (rng() * 2 - 1) * 0.8;
+    const r = 1.8 + rng() * 3.6;
+    tmpA.set(p.x + Math.cos(a) * r, p.y + 1.5 + rng() * 2.8, p.z + Math.sin(a) * r);
+    try {
+      vfx.balloonBurst?.(tmpA);
+      // Half of them also throw the heavier elimination spray, which is what
+      // puts water on the GROUND — confetti that never lands reads as fog.
+      if (rng() < 0.5) vfx.soakBurst?.(tmpA, 0.65);
+    } catch (err) {
+      console.error("[Drop Zero] victory confetti failed", err);
+    }
+    sfx("balloon-burst", 0.3 + rng() * 0.25, 0.88 + rng() * 0.4, tmpA.clone());
+  }
 
   function setPhase(next: MatchPhase): void {
     if (next === phase) return;
@@ -4295,6 +4502,7 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     }
     skipRequested = true;
     warmupT = WARMUP_TIME;
+    markDeparture();
     jumped = true;
     landed = true;
     // Put the bus where it would be about half a minute in: past us, still on
@@ -4338,6 +4546,52 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
 
     if (phase !== "live") setPhase("live");
     return spot;
+  }
+
+  /**
+   * See the doc on `DropZeroMatchService.skipToEnd` for why this exists.
+   *
+   * The only thing shortened is the *waiting*. Both endings run their real
+   * transition — the phase table's `enter` hook, the announce, the audio, the
+   * event the HUD's card mounts on — so what a caller photographs afterwards
+   * is the card a player would get, not a mock of it.
+   */
+  function skipToEnd(
+    kind: "victory" | "eliminated" = "victory",
+    by?: DamageSource,
+  ): MatchPhase {
+    if (phase === "victory" || phase === "eliminated") return phase;
+    // Everything after the drop has to have happened for the numbers on the
+    // card to mean anything — `matchTime` is measured from `live`, and a card
+    // reporting a negative time survived is worse than no card.
+    if (phase !== "live") {
+      try {
+        skipToLive();
+      } catch (err) {
+        console.error("[Drop Zero] skipToEnd could not reach live", err);
+      }
+    }
+
+    if (kind === "eliminated") {
+      // Straight through the front door: this is byte-for-byte the call
+      // `combat.ts` makes when a real blaster finishes you, so placement, the
+      // feed line and the killer on the card are all produced the normal way.
+      reportDeath("player", by ?? { by: "storm", weapon: "storm" });
+      return phase;
+    }
+
+    // Retire what is left of the crowd. The last few go through `killPhantom`
+    // so the feed under the card has real lines in it the way it would after a
+    // real endgame; the rest go in one `setAlive`, which is still the same
+    // function the drain uses — callouts fire, `dz:match` is emitted — rather
+    // than a write to `service.alive` that would skip both.
+    for (let i = 0; i < 3 && service.alive > 1; i++) killPhantom();
+    if (service.alive > 1) setAlive(1);
+    // Deliberately NOT `setPhase("victory")`. `live.fixed` owns that check and
+    // it is the thing under test: it sees `alive <= 1` on its next step and
+    // flips the phase itself, so a harness that gets a card back has proved
+    // the real transition rather than a shortcut around it.
+    return phase;
   }
 
   function offerRestart(delay: number): void {
@@ -4519,14 +4773,25 @@ const createMatch: SystemFactory = (ctx: WorldCtx): System => {
     if (phase === "victory") {
       const player = services.player;
       const c = tmpB.copy(player?.position ?? new THREE.Vector3());
-      c.y += 1.7;
+      // Chest height, not eye height: the shot wants the whole figure with
+      // ground under it, and looking at the eyeline puts the horizon through
+      // their head and crops their feet at the bottom of the frame.
+      c.y += 1.25;
+      const pull = easeInOut((phaseTime - VICTORY_HOLD) / VICTORY_PULL);
+      // Rise with the pull. Close in it is nearly level — you read the face —
+      // and by the end it is a proper crane looking down over the island.
+      const rise = 1.1 + VICTORY_RISE * pull + Math.sin(victoryAngle * 0.5) * 0.5 * pull;
       cinePos.set(
         c.x + Math.cos(victoryAngle) * victoryRadius,
-        c.y + 3.4 + Math.sin(victoryAngle * 0.5) * 0.8,
+        c.y + rise,
         c.z + Math.sin(victoryAngle) * victoryRadius,
       );
       cineLook.copy(c);
-      cineFov = damp(cineFov, 48, 1.2, dt);
+      // Widening while pulling back is the second half of the same move: the
+      // island opens up around the winner instead of the frame just getting
+      // further away. Damped rather than set so the hand-off from the player's
+      // own FOV is not a cut.
+      cineFov = damp(cineFov, lerp(VICTORY_FOV_IN, VICTORY_FOV_OUT, pull), 1.2, dt);
       return;
     }
 

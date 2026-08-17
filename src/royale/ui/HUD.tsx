@@ -337,6 +337,21 @@ interface Live {
   busToX: number;
   busToZ: number;
 
+  // ---- end-card tallies -------------------------------------------------
+  /**
+   * The two numbers on the end card that nothing else in the game keeps.
+   *
+   * `match.ts` is the witness for placement, soakings and time; these two are
+   * only ever visible as a stream of events passing through here, so the HUD
+   * is the only place that can add them up. Both live in the mutable model
+   * rather than in React state because `dz:material` and `dz:damage` fire
+   * several times a second in a firefight and neither is drawn until the
+   * match is over.
+   */
+  harvested: number;
+  /** Metres to the furthest hit the local player has landed this match. */
+  longestShot: number;
+
   // ---- prompts ----------------------------------------------------------
   promptHold: number;
   consumeT: number;
@@ -459,6 +474,9 @@ function makeLive(): Live {
     busFromZ: 0,
     busToX: 0,
     busToZ: 0,
+
+    harvested: 0,
+    longestShot: 0,
 
     promptHold: 0,
     consumeT: 0,
@@ -663,6 +681,14 @@ interface Ending {
   lobby: number;
   killer: string;
   weapon: string;
+  /** True when it was the Downpour/the storm and there is nobody to name. */
+  environmental: boolean;
+  /** How many were still in it when the player let go of the bus. */
+  aliveAtDrop: number;
+  /** Metres to the furthest hit the player landed. 0 = they never hit anyone. */
+  longestShot: number;
+  /** Every unit of wood/stone/metal they swung a pickaxe for. */
+  harvested: number;
 }
 
 interface MapPad {
@@ -732,7 +758,6 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
   const [consume, setConsume] = useState<{ name: string } | null>(null);
   const [ending, setEnding] = useState<Ending | null>(null);
   const [canRestart, setCanRestart] = useState(false);
-  const [needsReload, setNeedsReload] = useState(false);
   const [map, setMap] = useState<MapModel | null>(null);
 
 
@@ -880,6 +905,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       l.stone = kind === "stone" ? num(d.total, l.stone) : l.stone;
       l.metal = kind === "metal" ? num(d.total, l.metal) : l.metal;
       l.flash[kind] = 1;
+      l.harvested += amount;
       // Stack rapid harvest ticks into one floating number instead of racing
       // two "+15"s past each other — a pickaxe swing lands three of these.
       const gain = l.gain[kind];
@@ -933,6 +959,28 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
 
     on("dz:heal", () => {
       l.healFlash = 1;
+    });
+
+    /*
+     * Longest shot.
+     *
+     * `dz:damage` is fired for EVERY routed hit in the match — bots shooting
+     * each other included — and carries the impact point plus who fired, so
+     * the `by === "player"` filter is not optional; without it the end card
+     * would proudly report the longest shot somebody else took.
+     *
+     * The range is measured from the position `dz:hud` last published, which
+     * is the same frame's player position: both events are emitted inside one
+     * fixed step, so the two are never more than one step apart. The 1200 m
+     * ceiling is a sanity guard, not a rule — the island is 3 km across, so a
+     * larger number means a payload arrived without coordinates and we are
+     * measuring the distance from the player to the world origin.
+     */
+    on("dz:damage", (p) => {
+      const d = rec(p);
+      if (str(d.by) !== "player") return;
+      const dist = Math.hypot(num(d.x) - l.x, num(d.y) - l.y, num(d.z) - l.z);
+      if (dist > l.longestShot && dist < 1200) l.longestShot = dist;
     });
 
     on("dz:storm", (p) => {
@@ -1146,35 +1194,47 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
 
     on("dz:victory", (p) => {
       const d = rec(p);
+      const lobby = Math.round(num(d.lobby, 100));
       setEnding({
         kind: "victory",
         placement: 1,
         eliminations: Math.round(num(d.eliminations, l.eliminations)),
         matchTime: num(d.matchTime),
-        lobby: Math.round(num(d.lobby, 100)),
+        lobby,
         killer: "",
         weapon: "",
+        environmental: false,
+        aliveAtDrop: Math.round(num(d.aliveAtDrop, lobby)),
+        longestShot: l.longestShot,
+        harvested: l.harvested,
       });
     });
 
     on("dz:eliminated", (p) => {
       const d = rec(p);
+      const lobby = Math.round(num(d.lobby, 100));
       setEnding({
         kind: "eliminated",
         placement: Math.round(num(d.placement, l.alive)),
         eliminations: Math.round(num(d.eliminations, l.eliminations)),
         matchTime: num(d.matchTime),
-        lobby: Math.round(num(d.lobby, 100)),
+        lobby,
         killer: str(d.killer, "the storm"),
         weapon: str(d.weapon),
+        // Absent payload means an older `match.ts`; "no named killer" is the
+        // safer read, because naming the storm as a person is the worse miss.
+        environmental: d.environmental === undefined ? !str(d.killer) : bool(d.environmental),
+        aliveAtDrop: Math.round(num(d.aliveAtDrop, lobby)),
+        longestShot: l.longestShot,
+        harvested: l.harvested,
       });
     });
 
-    on("dz:restart-available", (p) => {
-      const d = rec(p);
+    on("dz:restart-available", () => {
       // The island, loot table and storm are baked once at boot; match.ts
-      // says so in the payload. A rematch is a route reload, nothing clever.
-      setNeedsReload(str(d.method, "reload") === "reload");
+      // says so in the payload. A rematch is a route reload, nothing clever —
+      // and the button reloads whatever the method field says, so an
+      // unrecognised method can never leave the card with a dead control.
       setCanRestart(true);
     });
 
@@ -1237,9 +1297,25 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
     };
   }, [engine]);
 
+  /*
+   * "Drop again".
+   *
+   * There is no in-place rematch — `match.ts` says so in the payload and
+   * explains why: the island, the loot table and the storm are all built once
+   * at boot, and reloading the route rebuilds them in about a second. So this
+   * reloads, and it does it UNCONDITIONALLY.
+   *
+   * The previous version was `if (needsReload) window.location.reload()`,
+   * which meant the one interactive control on the end card silently did
+   * nothing for any restart method other than "reload" — including the case
+   * where the payload arrived without a method at all. A button that no-ops
+   * is worse than one that is not there: the player presses it twice and then
+   * goes and closes the tab. Reload is the fallback for everything; a real
+   * in-place restart, when there is one, gets its own branch above it.
+   */
   const restart = useCallback(() => {
-    if (needsReload) window.location.reload();
-  }, [needsReload]);
+    if (typeof window !== "undefined") window.location.reload();
+  }, []);
 
   const dropping = phase === "warmup" || phase === "bus" || phase === "dropping";
 
@@ -2638,13 +2714,6 @@ function ChatPanel({ engine }: { engine: Engine }) {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
-
-  // Tell the page the box is open. Without this the pause veil — which is
-  // raised by losing the lock — lands on top of the very input you opened
-  // with Escape-then-Enter, and there is no way to type a word.
-  useEffect(() => {
-    engine.emit("soaked:chat-open", open);
-  }, [engine, open]);
 
   // The mouse shield. Capture phase on `window`, so it fires before the
   // engine's own listeners and before the event reaches anything else. Only
@@ -4130,6 +4199,144 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * Deterministic scatter.
+ *
+ * The confetti has to hold still across re-renders — the end card re-renders
+ * when the restart offer lands, and forty droplets that teleport at that
+ * moment look like a glitch, not like weather. So the layout comes from an
+ * integer hash of the droplet's own index rather than from `Math.random()`,
+ * and a `useMemo` would be redundant on top of it.
+ *
+ * It is murmur3's finalizer and not a one-multiply LCG for a reason that only
+ * shows up on screen: a single multiply leaves consecutive `i` on an
+ * arithmetic progression, so two axes drawn from it with different salts differ
+ * by a constant and every droplet lands on the same diagonal. The avalanche
+ * steps are what make x and y independent.
+ */
+function scatter(i: number, salt: number): number {
+  let h = Math.imul(i + 1, 0x27d4eb2d) ^ Math.imul(salt + 1, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+/**
+ * Confetti of droplets.
+ *
+ * The premise of this whole mode is that nobody gets hurt, they get drenched,
+ * so the winner gets thrown water rather than thrown ticker tape. Each drop is
+ * a stretched ellipse in the balloon palette with a highlight on its shoulder,
+ * falling and drifting on its own clock.
+ *
+ * **Every drop is placed across the full height at rest, not queued above the
+ * top edge.** That is not a style choice: the capture harness screenshots with
+ * `animations: "disabled"`, which pins every animation at its first frame, so
+ * confetti authored as "start off-screen, fall in" photographs as an empty
+ * card — and an empty card is indistinguishable from a broken one. Spread at
+ * rest, the frame is honest whether or not the animation ever ran.
+ */
+function Droplets({ count, tone }: { count: number; tone: "victory" | "loss" }) {
+  // The five balloon skins, which are the same five the ammunition is tinted
+  // with. Read from the table so a repaint of the balloons repaints the
+  // confetti with them.
+  const palette = WATER.balloon.colors;
+  const drops: ReactElement[] = [];
+  for (let i = 0; i < count; i++) {
+    const x = scatter(i, 1) * 100;
+    const y = scatter(i, 2) * 108 - 4;
+    const size = 5 + scatter(i, 3) * 9;
+    const color = palette[i % palette.length];
+    const dur = (tone === "victory" ? 3.6 : 5.4) + scatter(i, 4) * 3.2;
+    const drift = (scatter(i, 5) * 2 - 1) * 5;
+    drops.push(
+      <motion.span
+        key={i}
+        aria-hidden
+        className="absolute block"
+        style={{
+          left: `${x}%`,
+          top: `${y}%`,
+          width: size,
+          height: size * 1.55,
+          borderRadius: "50%",
+          background: `linear-gradient(155deg, rgba(255,255,255,0.92), ${rgba(color, 0.85)} 46%, ${rgba(color, 0.35)})`,
+          boxShadow: `0 0 ${size}px ${rgba(color, 0.45)}`,
+        }}
+        initial={{ opacity: tone === "victory" ? 0.9 : 0.5 }}
+        // Viewport units, not percentages: a percentage `y` on a transform is
+        // a percentage of the ELEMENT's own height, and these elements are
+        // fifteen pixels tall — the drops would twitch a couple of centimetres
+        // and loop. `vh` is the distance that actually crosses the card.
+        animate={{
+          y: ["0vh", "112vh"],
+          x: ["0vw", `${drift}vw`],
+          opacity: tone === "victory" ? [0.9, 0.9, 0] : [0.5, 0.5, 0],
+        }}
+        transition={{ duration: dur, repeat: Infinity, ease: "linear" }}
+      />,
+    );
+  }
+  return <div className="pointer-events-none absolute inset-0 overflow-hidden">{drops}</div>;
+}
+
+/**
+ * The rainbow, and the sun coming out behind it.
+ *
+ * Seven stroked arcs of one circle rather than a single conic gradient: a
+ * conic band cannot be feathered on both edges, and a rainbow with a hard
+ * outer edge reads as a logo. Drawn wider than the viewport and cropped by the
+ * card, so on any aspect ratio you get the top of a very large arc rather than
+ * a small complete one sitting in the middle of the screen like a sticker.
+ */
+const RAINBOW = ["#ff6b6b", "#ff9f43", "#ffe45e", "#8affc1", "#5ecfff", "#7c9bff", "#c08aff"];
+
+function Rainbow() {
+  return (
+    <motion.svg
+      aria-hidden
+      viewBox="0 0 200 100"
+      preserveAspectRatio="xMidYMax meet"
+      className="pointer-events-none absolute left-1/2 top-[6%] h-[92vh] w-[190vh] -translate-x-1/2"
+      // Blooms in, but NEVER from zero — same lesson the confetti carries. A
+      // capture taken with animations frozen sits on the initial frame, and a
+      // rainbow authored as `opacity: 0 → 0.42` photographs as no rainbow at
+      // all. That is exactly what the first capture of this card came back as.
+      initial={{ opacity: 0.26, scale: 1.05 }}
+      animate={{ opacity: 0.46, scale: 1 }}
+      transition={{ duration: 1.6, delay: 0.35, ease: "easeOut" }}
+    >
+      <defs>
+        {/* Fade the arc out at both feet — a rainbow that stops dead where it
+            meets the ground is the tell that it was drawn rather than seen. */}
+        <linearGradient id="dz-bow-fade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0" />
+          <stop offset="26%" stopColor="#fff" stopOpacity="1" />
+          <stop offset="74%" stopColor="#fff" stopOpacity="1" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <mask id="dz-bow-mask">
+          <rect x="0" y="0" width="200" height="100" fill="url(#dz-bow-fade)" />
+        </mask>
+      </defs>
+      <g mask="url(#dz-bow-mask)" fill="none" strokeLinecap="round">
+        {RAINBOW.map((c, i) => (
+          <path
+            key={c}
+            d={`M ${14 + i * 2.6} 100 A ${86 - i * 2.6} ${86 - i * 2.6} 0 0 1 ${186 - i * 2.6} 100`}
+            stroke={c}
+            strokeWidth={2.8}
+            opacity={0.85 - i * 0.03}
+            style={{ filter: "blur(1.1px)" }}
+          />
+        ))}
+      </g>
+    </motion.svg>
+  );
+}
+
 function EndCard({
   ending,
   canRestart,
@@ -4162,6 +4369,26 @@ function EndCard({
             : "radial-gradient(circle at 50% 40%, rgba(30,8,10,0.86), rgba(2,3,8,0.96) 65%)",
       }}
     >
+      {/* The sun coming out. It blooms in over a second and a half rather
+          than being there from frame one, so the card has an arc: the water
+          clears, then the light arrives. Victory only — losing gets the same
+          lit sky the palette already carries, but not the fanfare. */}
+      {victory && water && (
+        <motion.div
+          aria-hidden
+          className="absolute left-1/2 top-[22%] h-[120vh] w-[120vh] -translate-x-1/2 -translate-y-1/2"
+          initial={{ opacity: 0.5, scale: 0.82 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.5, delay: 0.25, ease: "easeOut" }}
+          style={{
+            background:
+              "radial-gradient(circle, rgba(255,244,200,0.55) 0%, rgba(255,214,120,0.28) 22%, rgba(255,190,90,0) 58%)",
+          }}
+        />
+      )}
+
+      {victory && water && <Rainbow />}
+
       {victory && (
         <motion.div
           aria-hidden
@@ -4178,17 +4405,43 @@ function EndCard({
         />
       )}
 
+      {/* Water falls on both cards. Far more people will see the losing one,
+          and a defeat screen with a little water still drifting past it says
+          "that was a water fight" where a still, dark one says "you died". */}
+      {water && <Droplets count={victory ? 46 : 20} tone={victory ? "victory" : "loss"} />}
+
       <motion.div
         initial={{ scale: 0.9, y: 16, opacity: 0 }}
         animate={{ scale: 1, y: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 26, delay: 0.12 }}
         className="relative flex flex-col items-center px-8 text-center"
       >
+        {/*
+          A scrim under the type.
+
+          The card sits over a live render of a sunlit town, and the first
+          capture of this one put the eyebrow — 11 px, letter-spaced half an em,
+          70% white — across a lit stucco wall, where it was simply not there.
+          Everything else on the card is either huge or on a plate; this line
+          and the sub are the only bare small type, so they get their own soft
+          ground rather than the whole card getting darker and losing the sun.
+        */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -inset-x-24 -inset-y-14 -z-10"
+          style={{
+            background:
+              "radial-gradient(ellipse at 50% 42%, rgba(3,16,32,0.62) 0%, rgba(3,16,32,0.34) 46%, rgba(3,16,32,0) 76%)",
+          }}
+        />
         {victory ? (
           <>
             <span
               className="text-[11px] font-bold uppercase tracking-[0.55em]"
-              style={{ color: water ? "rgba(155,232,255,0.7)" : "rgba(253,230,138,0.7)" }}
+              style={{
+                color: water ? "rgba(198,242,255,0.95)" : "rgba(253,230,138,0.9)",
+                textShadow: "0 1px 10px rgba(2,12,26,0.9)",
+              }}
             >
               #1 of {ending.lobby}
             </span>
@@ -4217,14 +4470,36 @@ function EndCard({
               )}
             </h1>
             {water && (
-              <p className="mt-3 text-sm text-sky-100/60">{W.victorySub}</p>
+              <p
+                className="mt-3 text-sm text-sky-50/85"
+                style={{ textShadow: "0 1px 10px rgba(2,12,26,0.9)" }}
+              >
+                {W.victorySub}
+              </p>
+            )}
+            {/* The lobby, said out loud. "#1 of 100" is a rank; "you dropped
+                with 99 other people and none of them got you" is a story, and
+                it is the line that makes the screenshot worth posting. */}
+            {ending.aliveAtDrop > 1 && (
+              <motion.p
+                className="mt-1 text-[11px] font-bold uppercase tracking-[0.3em] text-white/60"
+                style={{ textShadow: "0 1px 10px rgba(2,12,26,0.9)" }}
+                initial={{ opacity: 0.55 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.6 }}
+              >
+                {ending.aliveAtDrop} dropped · one walked home dry
+              </motion.p>
             )}
           </>
         ) : (
           <>
             <span
               className="text-[11px] font-bold uppercase tracking-[0.55em]"
-              style={{ color: water ? "rgba(155,232,255,0.62)" : "rgba(254,202,202,0.6)" }}
+              style={{
+                color: water ? "rgba(198,242,255,0.92)" : "rgba(254,202,202,0.85)",
+                textShadow: "0 1px 10px rgba(2,12,26,0.9)",
+              }}
             >
               {water ? W.eliminated : "Eliminated"}
             </span>
@@ -4244,23 +4519,44 @@ function EndCard({
             >
               {water ? fmt(W.placement, { n: ending.placement }) : `#${ending.placement}`}
             </h1>
-            <p className="mt-2 text-sm text-white/60">
+            {/*
+              Who did it, and with what. This one line is the whole reason a
+              player presses the button again — "soaked by OnyxSentry42 with a
+              Pump Blaster" is an opponent and a grudge, where "eliminated" is
+              a status. The Downpour gets its own name rather than being fed
+              through the "by {name}" template as if the weather were a rival.
+            */}
+            <p
+              className="mt-2 text-sm text-white/75"
+              style={{ textShadow: "0 1px 10px rgba(2,12,26,0.9)" }}
+            >
               {water ? (
                 <span className="font-bold text-white/90">
-                  {fmt(W.eliminatedBy, { by: ending.killer })}
+                  {fmt(W.eliminatedBy, { by: ending.environmental ? W.stormName : ending.killer })}
                 </span>
               ) : (
                 <>
                   Taken out by <span className="font-bold text-white/90">{ending.killer}</span>
                 </>
               )}
-              {ending.weapon ? <span className="text-white/40"> · {ending.weapon}</span> : null}
+              {ending.weapon && !ending.environmental ? (
+                <span className="text-white/40"> · {ending.weapon}</span>
+              ) : null}
             </p>
           </>
         )}
 
+        {/*
+          The numbers that make it personal.
+
+          Four, not three, and the two new ones are the two the game already
+          knew and never told anybody: how far the best shot you landed was,
+          and how much you swung a pickaxe for. Both are tallied in the HUD's
+          own live model off events it was already receiving — nothing new
+          crosses the engine boundary for them.
+        */}
         <div
-          className="mt-8 flex items-center gap-8 rounded-[6px] px-8 py-4"
+          className="mt-8 flex flex-wrap items-center justify-center gap-x-7 gap-y-4 rounded-[6px] px-8 py-4"
           style={{ ...modePlate(water), background: water ? "rgba(8,26,44,0.66)" : "rgba(6,10,20,0.66)" }}
         >
           <Stat label={water ? W.elimsLabel : "Eliminations"} value={`${ending.eliminations}`} />
@@ -4275,6 +4571,15 @@ function EndCard({
           )}
           <div className="h-9 w-px bg-white/10" />
           <Stat label={water ? "Time dry" : "Time survived"} value={clockText(ending.matchTime)} />
+          <div className="h-9 w-px bg-white/10" />
+          <Stat
+            label="Longest shot"
+            // An em dash, not "0 m". A player who never landed a hit knows it
+            // already and does not need a zero to confirm it on their card.
+            value={ending.longestShot >= 1 ? `${Math.round(ending.longestShot)} m` : "—"}
+          />
+          <div className="h-9 w-px bg-white/10" />
+          <Stat label="Harvested" value={`${Math.round(ending.harvested)}`} />
         </div>
 
         <div className="mt-8 flex items-center gap-3">
@@ -4298,7 +4603,7 @@ function EndCard({
               boxShadow: "0 10px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.7)",
             }}
           >
-            {water ? "Play again" : "Drop again"}
+            {water ? "Get wet again" : "Drop again"}
           </motion.button>
           <a
             href="/"

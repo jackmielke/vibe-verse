@@ -495,6 +495,29 @@ function saturate(o: Float32Array, amount: number): void {
   }
 }
 
+/**
+ * One-pole DC blocker, ~3 Hz corner.
+ *
+ * Water is the one family in this bank that needs it. A soaker is heavily
+ * lowpassed noise — the SVF's low output has a random walk in it below the
+ * cutoff — driven through a saturator, and both of those bias the signal off
+ * zero. One jet sitting 1% off the line is inaudible; ten of them summing on
+ * the same bus during a firefight is 10% of the limiter's headroom spent on
+ * silence, plus a click at every voice start and stop. Measured before and
+ * after on `soak-hose`: -1.03e-2 → under 1e-4.
+ */
+function dcBlock(o: Float32Array, sr: number): void {
+  const r = 1 - 20 / sr;
+  let x1 = 0;
+  let y1 = 0;
+  for (let i = 0; i < o.length; i++) {
+    const x = o[i];
+    y1 = x - x1 + r * y1;
+    x1 = x;
+    o[i] = y1;
+  }
+}
+
 /** Peak-normalise so every cue arrives at the mixer at a known level. */
 function normalise(o: Float32Array, target: number): void {
   let peak = 0;
@@ -748,6 +771,178 @@ function whoosh(o: Float32Array, sr: number, rnd: Rand, dur: number, amp: number
     t0: dur * 0.35, dur: dur * 0.65, amp: amp * 0.55, cut0: hi, cut1: lo * 0.8,
     tau: dur * 0.22, res: 1.4, mode: "band", atk: dur * 0.05,
   });
+}
+
+// ===========================================================================
+// 3b. SPLASH ROYALE recipes
+//
+// A soaker is not a gun and must never be built like one. A gunshot is a
+// pressure *step*: everything that matters happens in the first 30 ms and the
+// rest is the room answering. A water gun is the opposite — it is a
+// *sustain*, and the information lives in the middle of the sound rather than
+// at the front of it. So the envelope here has a soft nose and a real body,
+// and the layers stand in for five physical things:
+//
+//   valve   the trigger opening on a pressurised tank — a chuff of air
+//   jet     the stream: band-passed noise, where the band IS the nozzle bore
+//   throat  the water column still in the barrel — a low burble underneath
+//   spray   droplets leaving the stream and arriving somewhere
+//   mech    the plastic of the thing, because it is a toy and should sound it
+//
+// Every water weapon in `mode/water.ts` is those five with different numbers,
+// exactly the way every firearm is `makeGun` with different numbers. Keep the
+// separation on the same four axes the guns use — band centre, band width,
+// burble pitch and sustain length — so a Hydro Lance and a Firehose stay
+// distinguishable through 200 m of air absorption and not just up close.
+// ===========================================================================
+
+interface SoakerSpec {
+  dur: number;
+  /** Valve chuff: displaced air, ahead of the water. */
+  valveAmp: number;
+  valveCut: number;
+  /** The jet. `jetCut0 → jetCut1` is the nozzle losing pressure as the pull ends. */
+  jetAmp: number;
+  jetCut0: number;
+  jetCut1: number;
+  /** Band resonance. High = a tight needle of a jet; low = a broad wash. */
+  jetRes: number;
+  jetTau: number;
+  /** Attack. Never below ~1 ms — a firing-pin attack on water reads as a gun. */
+  jetAtk: number;
+  /** The column in the barrel: a low burble, FM'd so it gurgles. */
+  burbleF: number;
+  burbleAmp: number;
+  /** Droplet count and level. */
+  spray: number;
+  sprayAmp: number;
+  /** Plastic mechanism — modal, but on wood partials: plastic is not metal. */
+  mechAmp: number;
+  mechFreq: number;
+  drive: number;
+  /** Optional displaced-air thump. This is what makes the Pump Blaster WHUMP. */
+  thumpAmp?: number;
+  thumpF?: number;
+  thumpTau?: number;
+  /** Environment tail level. Water throws far less room than a muzzle blast. */
+  tailAmp?: number;
+}
+
+function makeSoaker(s: SoakerSpec) {
+  return (o: Float32Array, sr: number, rnd: Rand, indoor: boolean): void => {
+    // Air first, water second. The chuff is the only fast thing in the cue and
+    // it is what stops a soaker sounding like a kettle.
+    noiseLayer(o, sr, rnd, {
+      dur: 0.04, amp: s.valveAmp, cut0: s.valveCut, cut1: s.valveCut * 0.28,
+      tau: 0.007, res: 1.1, mode: "high", atk: 0.0005,
+    });
+    if (s.thumpAmp) {
+      toneLayer(o, sr, rnd, {
+        dur: 0.35, amp: s.thumpAmp, f0: s.thumpF ?? 128, f1: (s.thumpF ?? 128) * 0.33,
+        tau: s.thumpTau ?? 0.07, atk: 0.0016,
+      });
+    }
+    // The stream itself, twice: a bright band for the hiss and a broader,
+    // darker layer under it for the wet. One alone is a hiss OR a rumble; the
+    // pair is water under pressure.
+    noiseLayer(o, sr, rnd, {
+      dur: s.dur, amp: s.jetAmp, cut0: s.jetCut0, cut1: s.jetCut1,
+      tau: s.jetTau, res: s.jetRes, mode: "band", atk: s.jetAtk,
+    });
+    noiseLayer(o, sr, rnd, {
+      dur: s.dur * 0.85, amp: s.jetAmp * 0.5, cut0: s.jetCut0 * 0.36, cut1: s.jetCut1 * 0.45,
+      tau: s.jetTau * 1.25, res: 0.7, atk: s.jetAtk * 1.7,
+    });
+    // Throat burble. The FM is doing all the work — an unmodulated sine here
+    // is a test tone, and a test tone under noise is the cheapest sound there
+    // is. 43 Hz modulation is slow enough to hear as gurgle, not as timbre.
+    toneLayer(o, sr, rnd, {
+      dur: Math.min(s.dur, 0.55), amp: s.burbleAmp, f0: s.burbleF, f1: s.burbleF * 0.52,
+      tau: s.jetTau * 0.95, atk: 0.0025, fm: s.burbleF * 0.7, fmF: 43, vib: 0.06, vibF: 17,
+    });
+    if (s.spray > 0) {
+      grainLayer(o, sr, rnd, {
+        t0: 0.012, dur: s.dur * 0.7, count: s.spray, amp: s.sprayAmp,
+        f0: 900, f1: 5200, tau: 0.007, kind: "ping", clump: 0.5,
+      });
+    }
+    if (s.mechAmp > 0) {
+      modalLayer(o, sr, rnd, {
+        t0: 0.002, freq: s.mechFreq, amp: s.mechAmp, tau: 0.016,
+        partials: WOOD_PARTIALS, damp: 0.4, detune: 0.03,
+      });
+    }
+    const tail = s.tailAmp ?? 0.12;
+    if (indoor) {
+      slapback(o, sr, { delay: 0.021, feedback: 0.6, damp: 1300, mix: tail * 2, t0: 0.004 });
+    } else {
+      slapback(o, sr, { delay: 0.079, feedback: 0.28, damp: 3000, mix: tail * 0.85, t0: 0.006 });
+    }
+    saturate(o, s.drive);
+    dcBlock(o, sr);
+    fadeOut(o, sr, 12);
+  };
+}
+
+/**
+ * Water arriving on something. The most reused shape in the mode, and the one
+ * worth getting right: `size` scales the whole event, with frequencies going
+ * DOWN as times go UP. That inverse relationship is the entire difference
+ * between a splat and a splash — a bigger mass of water is a lower, slower,
+ * wider version of the same four layers, never a louder one.
+ *
+ *   0.55  a droplet cluster        1.0  a water balloon
+ *   1.6   a bucket                 2.4  a person coming apart into water
+ */
+function wetSlap(o: Float32Array, sr: number, rnd: Rand, t0: number, amp: number, size: number): void {
+  const k = 1 / size;
+  const t = size;
+  // Contact. Broadband and immediately dark: water has no ring at all, which
+  // is exactly what separates it from every impact cue above.
+  noiseLayer(o, sr, rnd, {
+    t0, dur: 0.32 * t, amp, cut0: 5200 * k, cut1: 300 * k, tau: 0.045 * t, res: 1.15, atk: 0.0005,
+  });
+  // The mass behind the contact.
+  toneLayer(o, sr, rnd, {
+    t0, dur: 0.4 * t, amp: amp * 0.55, f0: 168 * k, f1: 46 * k, tau: 0.075 * t, atk: 0.0014,
+  });
+  // The sheet fanning out sideways: a band that OPENS. A closing band would
+  // read as another impact; an opening one reads as spreading.
+  noiseLayer(o, sr, rnd, {
+    t0: t0 + 0.02 * t, dur: 0.55 * t, amp: amp * 0.42, cut0: 520 * k, cut1: 2700 * k,
+    tau: 0.17 * t, res: 0.85, mode: "band", atk: 0.014 * t,
+  });
+  // …and the rain of it coming back down.
+  grainLayer(o, sr, rnd, {
+    t0: t0 + 0.03 * t, dur: 0.6 * t, count: Math.round(15 * size), amp: amp * 0.3,
+    f0: 700 * k, f1: 4400 * k, tau: 0.01 * t, kind: "ping", clump: 0.8,
+  });
+}
+
+/** A gulp of water moving through a pipe or a neck. Refills, dunks, glue. */
+function glug(o: Float32Array, sr: number, rnd: Rand, t0: number, amp: number, count: number, span: number): void {
+  for (let i = 0; i < count; i++) {
+    const t = t0 + (i / count) * span + rnd() * 0.02;
+    const f = 150 + rnd() * 260;
+    // A bloop is a RISING cavity resonance — the bubble closing behind itself.
+    toneLayer(o, sr, rnd, { t0: t, dur: 0.1, amp: amp * (0.6 + rnd() * 0.5), f0: f, f1: f * 2.6, tau: 0.022, atk: 0.0016 });
+    noiseLayer(o, sr, rnd, { t0: t, dur: 0.06, amp: amp * 0.3, cut0: 1600, cut1: 500, tau: 0.012, res: 1.4, mode: "band", atk: 0.0008 });
+  }
+}
+
+/**
+ * Rain on everything: the texture the Downpour is built out of. `atk` is the
+ * swell — short for weather that is already here, long for weather arriving.
+ */
+function rainLayer(
+  o: Float32Array, sr: number, rnd: Rand, t0: number, dur: number,
+  amp: number, cut: number, drops: number, atk = 0.02,
+): void {
+  noiseLayer(o, sr, rnd, { t0, dur, amp: amp * 0.7, cut0: cut, cut1: cut * 0.75, tau: dur * 0.9, res: 0.8, atk });
+  noiseLayer(o, sr, rnd, { t0, dur, amp: amp * 0.4, cut0: cut * 0.16, cut1: cut * 0.13, tau: dur * 0.95, res: 0.7, atk: atk * 2 });
+  // The patter. Without discrete drops on top, broadband noise is a fan, not
+  // rain — this layer is the whole read and it is cheap.
+  grainLayer(o, sr, rnd, { t0, dur, count: drops, amp: amp * 0.5, f0: 1400, f1: 7000, tau: 0.004, kind: "tick", clump: 0 });
 }
 
 // ===========================================================================
@@ -1931,6 +2126,617 @@ const CUES: Record<string, Cue> = {
     },
   },
 
+  // =========================================================================
+  // SPLASH ROYALE
+  //
+  // Every name below is one another system already asks for by name — the
+  // `sound`/`soundRefill`/`soundBurst` fields of `mode/water.ts`, plus the
+  // handful `player.ts`, `weapons.ts`, `inventory.ts` and `vfx.ts` call
+  // directly. Before this block they all fell through `resolveCue` onto
+  // `generic` (and `glue-fire`, containing "fire", onto an assault rifle).
+  //
+  // The premise governs all of it: nobody is hurt, they get drenched. Nothing
+  // here cracks, nothing rings like metal, nothing is a report. The loud
+  // moments are wet and comic — a burst balloon, a bucket of water arriving —
+  // and the quiet ones are plastic and rubber.
+  // =========================================================================
+
+  // --- Soakers -------------------------------------------------------------
+  /** Super Soaker 9000. The reference jet: everything else is placed off it. */
+  "soak-ar": {
+    dur: 0.5, gain: 0.82, ref: 14, max: 620, wet: 0.85, prio: 0.8, gap: 0.02, same: 5,
+    jitter: 0.06, travel: true, env: true, duck: 0.34,
+    render: makeSoaker({
+      dur: 0.5, valveAmp: 0.5, valveCut: 7200,
+      jetAmp: 0.95, jetCut0: 3400, jetCut1: 1100, jetRes: 1.5, jetTau: 0.1, jetAtk: 0.0018,
+      burbleF: 190, burbleAmp: 0.4, spray: 9, sprayAmp: 0.16,
+      mechAmp: 0.16, mechFreq: 1250, drive: 1.5, tailAmp: 0.13,
+    }),
+  },
+  /** Squirt Pistol. Small, thin, cheerful — a spritz with a trigger click. */
+  "soak-pistol": {
+    dur: 0.3, gain: 0.6, ref: 9, max: 320, wet: 0.7, prio: 0.7, gap: 0.02, same: 4,
+    jitter: 0.09, travel: true, env: true, duck: 0.22,
+    render: makeSoaker({
+      dur: 0.3, valveAmp: 0.55, valveCut: 8600,
+      jetAmp: 0.8, jetCut0: 4600, jetCut1: 1900, jetRes: 1.7, jetTau: 0.055, jetAtk: 0.0014,
+      burbleF: 300, burbleAmp: 0.24, spray: 5, sprayAmp: 0.14,
+      mechAmp: 0.26, mechFreq: 2350, drive: 1.4, tailAmp: 0.08,
+    }),
+  },
+  /** Drizzler 500. Fast and chattery: more mechanism, less water per pull. */
+  "soak-smg": {
+    dur: 0.28, gain: 0.6, ref: 10, max: 380, wet: 0.7, prio: 0.72, gap: 0.014, same: 6,
+    jitter: 0.1, travel: true, env: true, duck: 0.26,
+    render: makeSoaker({
+      dur: 0.28, valveAmp: 0.48, valveCut: 8200,
+      jetAmp: 0.82, jetCut0: 4100, jetCut1: 1700, jetRes: 1.8, jetTau: 0.05, jetAtk: 0.0012,
+      burbleF: 260, burbleAmp: 0.22, spray: 5, sprayAmp: 0.13,
+      mechAmp: 0.3, mechFreq: 2050, drive: 1.4, tailAmp: 0.07,
+    }),
+  },
+  /**
+   * Pump Blaster. A percussive WHUMP of displaced air and water, not a hiss —
+   * the thump layer is louder than the jet, which is true of nothing else in
+   * the arsenal and is why this one reads as a shotgun without being one.
+   */
+  "soak-pump": {
+    dur: 0.95, gain: 0.94, ref: 17, max: 800, wet: 1, prio: 0.9, gap: 0.05, same: 3,
+    jitter: 0.05, travel: true, env: true, duck: 0.6,
+    render: makeSoaker({
+      dur: 0.95, valveAmp: 0.75, valveCut: 6000,
+      jetAmp: 0.72, jetCut0: 2400, jetCut1: 420, jetRes: 0.95, jetTau: 0.16, jetAtk: 0.0022,
+      burbleF: 120, burbleAmp: 0.5, spray: 20, sprayAmp: 0.26,
+      mechAmp: 0.2, mechFreq: 820, drive: 2, tailAmp: 0.24,
+      thumpAmp: 0.95, thumpF: 118, thumpTau: 0.1,
+    }),
+  },
+  /** Tac Soaker. The wide wet wash — low resonance, lots of droplets. */
+  "soak-tac": {
+    dur: 0.55, gain: 0.72, ref: 12, max: 480, wet: 0.9, prio: 0.8, gap: 0.03, same: 4,
+    jitter: 0.07, travel: true, env: true, duck: 0.4,
+    render: makeSoaker({
+      dur: 0.55, valveAmp: 0.55, valveCut: 5600,
+      jetAmp: 0.9, jetCut0: 2600, jetCut1: 700, jetRes: 0.8, jetTau: 0.12, jetAtk: 0.0024,
+      burbleF: 150, burbleAmp: 0.4, spray: 22, sprayAmp: 0.24,
+      mechAmp: 0.16, mechFreq: 1050, drive: 1.7, tailAmp: 0.18,
+      thumpAmp: 0.4, thumpF: 140, thumpTau: 0.055,
+    }),
+  },
+  /**
+   * Hydro Lance. A tight high jet: one narrow, resonant band and almost no
+   * spray, because a needle of water does not scatter. It is also the only
+   * soaker with any real reach, so it carries the longest tail on the mode.
+   */
+  "soak-lance": {
+    dur: 1.1, gain: 0.9, ref: 20, max: 1600, roll: 0.7, wet: 1.2, prio: 0.95, gap: 0.15,
+    same: 2, travel: true, env: true, duck: 0.7,
+    render: makeSoaker({
+      dur: 1.1, valveAmp: 0.8, valveCut: 10500,
+      jetAmp: 0.95, jetCut0: 6200, jetCut1: 2600, jetRes: 3.1, jetTau: 0.26, jetAtk: 0.0011,
+      burbleF: 240, burbleAmp: 0.22, spray: 6, sprayAmp: 0.1,
+      mechAmp: 0.22, mechFreq: 1650, drive: 1.7, tailAmp: 0.3,
+    }),
+  },
+  /**
+   * The Firehose. A roaring torrent: broad, low, sustained, and deliberately
+   * modest per pull — this weapon fires continuously, so the roar is built by
+   * overlapping copies. Loud per shot here would be a wall of mud at 20 Hz.
+   */
+  "soak-hose": {
+    dur: 0.42, gain: 0.52, ref: 15, max: 700, wet: 0.8, prio: 0.72, gap: 0.012, same: 6,
+    jitter: 0.11, travel: true, env: true, duck: 0.34,
+    render: makeSoaker({
+      dur: 0.42, valveAmp: 0.34, valveCut: 4200,
+      jetAmp: 1, jetCut0: 1700, jetCut1: 900, jetRes: 0.62, jetTau: 0.16, jetAtk: 0.006,
+      burbleF: 88, burbleAmp: 0.5, spray: 14, sprayAmp: 0.2,
+      mechAmp: 0.08, mechFreq: 700, drive: 2.1, tailAmp: 0.14,
+    }),
+  },
+  /** Balloon Launcher firing: a hollow air-cannon pock, with a wobble on it. */
+  "soak-lob": {
+    dur: 0.6, gain: 0.72, ref: 13, max: 520, wet: 0.9, prio: 0.82, gap: 0.06, same: 3,
+    travel: true, env: true, duck: 0.42,
+    render: (o, sr, rnd, indoor) => {
+      // Compressed air leaving a tube: a pitched pock, not a crack.
+      toneLayer(o, sr, rnd, { dur: 0.3, amp: 0.9, f0: 230, f1: 84, tau: 0.045, atk: 0.0018 });
+      noiseLayer(o, sr, rnd, { dur: 0.12, amp: 0.7, cut0: 2600, cut1: 480, tau: 0.022, res: 1.3, atk: 0.0009 });
+      // The payload leaving, still sloshing.
+      toneLayer(o, sr, rnd, {
+        t0: 0.03, dur: 0.35, amp: 0.3, f0: 165, f1: 120, tau: 0.11, atk: 0.01, vib: 0.14, vibF: 13,
+      });
+      noiseLayer(o, sr, rnd, { t0: 0.02, dur: 0.4, amp: 0.28, cut0: 900, cut1: 2400, tau: 0.13, res: 1.1, mode: "band", atk: 0.02 });
+      modalLayer(o, sr, rnd, { t0: 0.004, freq: 960, amp: 0.2, tau: 0.02, partials: WOOD_PARTIALS, damp: 0.4 });
+      if (indoor) slapback(o, sr, { delay: 0.02, feedback: 0.58, damp: 1400, mix: 0.3, t0: 0.004 });
+      else slapback(o, sr, { delay: 0.083, feedback: 0.26, damp: 3200, mix: 0.14, t0: 0.006 });
+      saturate(o, 1.8);
+      fadeOut(o, sr, 12);
+    },
+  },
+  /**
+   * Triple Tap. Also the base splat `vfx.soakBurst()` plays on an elimination,
+   * because `mode/water.ts` points both at this one name — so it has to work
+   * three times a second AND as the front half of somebody coming apart. It is
+   * therefore a wet PUNCH: short, mid-weight, no long tail to stack up. The
+   * big elimination layer is `soak-out`, fired off `dz:soakburst` instead.
+   */
+  "soak-burst": {
+    dur: 0.62, gain: 0.8, ref: 13, max: 620, wet: 0.95, prio: 0.85, gap: 0.02, same: 4,
+    jitter: 0.06, travel: true, env: true, duck: 0.45,
+    render: (o, sr, rnd, indoor) => {
+      wetSlap(o, sr, rnd, 0, 0.95, 0.75);
+      noiseLayer(o, sr, rnd, { dur: 0.05, amp: 0.45, cut0: 8000, cut1: 2400, tau: 0.008, res: 1.2, mode: "high", atk: 0.0006 });
+      if (indoor) slapback(o, sr, { delay: 0.018, feedback: 0.6, damp: 1400, mix: 0.34, t0: 0.003 });
+      else slapback(o, sr, { delay: 0.076, feedback: 0.28, damp: 3000, mix: 0.16, t0: 0.005 });
+      saturate(o, 1.8);
+      fadeOut(o, sr, 12);
+    },
+  },
+  /**
+   * THE GLUE GUN, firing. Thick and gloopy: the band sweeps the wrong way for
+   * a gun (up, then the strand pulls it back down) and the FM is deep enough
+   * to be audibly sticky rather than merely low.
+   */
+  "glue-fire": {
+    dur: 0.55, gain: 0.66, ref: 11, max: 380, wet: 0.75, prio: 0.78, gap: 0.05, same: 3,
+    jitter: 0.07, travel: true, env: true, duck: 0.3,
+    render: (o, sr, rnd) => {
+      // The plunger.
+      clack(o, sr, rnd, 0, 0.4, 780, 0.014);
+      // Gloop leaving the nozzle: heavy FM on a low carrier is the sticky part.
+      toneLayer(o, sr, rnd, {
+        dur: 0.3, amp: 0.85, f0: 130, f1: 320, tau: 0.09, atk: 0.004, fm: 150, fmF: 29, vib: 0.1, vibF: 11,
+      });
+      noiseLayer(o, sr, rnd, { dur: 0.34, amp: 0.6, cut0: 1400, cut1: 3200, tau: 0.1, res: 1.9, mode: "band", atk: 0.006 });
+      // The strand paying out behind it — thin, rising, and slightly sour.
+      toneLayer(o, sr, rnd, { t0: 0.08, dur: 0.4, amp: 0.28, f0: 620, f1: 1450, tau: 0.14, atk: 0.02, vib: 0.05, vibF: 23 });
+      grainLayer(o, sr, rnd, { t0: 0.05, dur: 0.3, count: 7, amp: 0.12, f0: 1200, f1: 4000, tau: 0.008, kind: "ping" });
+      saturate(o, 1.6);
+      // Deep FM on a low carrier is the second thing in this file that walks
+      // off the zero line, so the glue gets the same treatment as the soakers.
+      dcBlock(o, sr);
+      fadeOut(o, sr, 12);
+    },
+  },
+
+  // --- Water balloons ------------------------------------------------------
+  /** The throw: an underarm wobble. Almost no attack — nothing has happened yet. */
+  "balloon-throw": {
+    dur: 0.55, gain: 0.5, ref: 4, max: 70, prio: 0.4, jitter: 0.12,
+    render: (o, sr, rnd) => {
+      whoosh(o, sr, rnd, 0.42, 0.55, 420, 1600);
+      // A skin full of water does not fly quietly: it wobbles, audibly, and
+      // the vibrato depth here is the difference between a balloon and a rock.
+      toneLayer(o, sr, rnd, { t0: 0.02, dur: 0.4, amp: 0.4, f0: 148, f1: 118, tau: 0.14, atk: 0.02, vib: 0.19, vibF: 11 });
+      // Rubber against a glove on the way out.
+      noiseLayer(o, sr, rnd, { dur: 0.05, amp: 0.2, cut0: 2600, cut1: 5200, tau: 0.02, res: 2.4, mode: "band", atk: 0.004 });
+      fadeOut(o, sr, 14);
+    },
+  },
+  /** Pulling a fresh one off the belt and letting it settle in the hand. */
+  "balloon-load": {
+    dur: 0.5, gain: 0.46, ref: 3, max: 45, prio: 0.3, jitter: 0.1,
+    render: (o, sr, rnd) => {
+      // Latex stretching: a squeak is a resonant band that rises and thins.
+      noiseLayer(o, sr, rnd, { dur: 0.16, amp: 0.5, cut0: 1600, cut1: 4200, tau: 0.06, res: 2.8, mode: "band", atk: 0.008 });
+      glug(o, sr, rnd, 0.1, 0.35, 2, 0.14);
+      toneLayer(o, sr, rnd, { t0: 0.18, dur: 0.25, amp: 0.35, f0: 132, f1: 108, tau: 0.08, atk: 0.012, vib: 0.16, vibF: 14 });
+      clack(o, sr, rnd, 0.3, 0.3, 900, 0.012);
+      fadeOut(o, sr, 12);
+    },
+  },
+  /**
+   * THE BURST. The best sound in the game, and it is three events inside
+   * 400 ms: a latex POP that is over in 4 ms, a broad wet slap behind it, and
+   * then the scatter. Get the order wrong — slap first, pop late — and it
+   * turns into a splash with a click on it, which is what most games ship.
+   */
+  "balloon-burst": {
+    dur: 1.2, gain: 0.98, ref: 12, max: 900, wet: 1.25, prio: 0.95, gap: 0.03, same: 4,
+    jitter: 0.07, travel: true, env: true, duck: 0.7, variants: 3,
+    render: (o, sr, rnd, indoor) => {
+      // 1. The pop: latex letting go. Brutally short, and the modal ring on
+      //    wood partials is what makes it *rubber* rather than a click.
+      noiseLayer(o, sr, rnd, { dur: 0.012, amp: 1, cut0: sr * 0.22, cut1: 3800, tau: 0.0017, atk: 0.00004, mode: "high" });
+      modalLayer(o, sr, rnd, { freq: 1450, amp: 0.42, tau: 0.012, partials: WOOD_PARTIALS, damp: 0.35, detune: 0.04 });
+      // 2. The water, arriving as one mass a hair later.
+      wetSlap(o, sr, rnd, 0.004, 1, 1.15);
+      // 3. …and everything that used to be inside it, landing.
+      grainLayer(o, sr, rnd, { t0: 0.06, dur: 0.85, count: 30, amp: 0.3, f0: 600, f1: 4600, tau: 0.011, kind: "ping", clump: 0.75 });
+      if (indoor) slapback(o, sr, { delay: 0.019, feedback: 0.62, damp: 1500, mix: 0.4, t0: 0.003 });
+      else slapback(o, sr, { delay: 0.081, feedback: 0.3, damp: 3200, mix: 0.2, t0: 0.006 });
+      saturate(o, 2);
+      fadeOut(o, sr, 16);
+    },
+  },
+
+  // --- The glue gun --------------------------------------------------------
+  /** A strand landing and taking hold: suction, then stretch. */
+  "glue-stick": {
+    dur: 0.7, gain: 0.7, ref: 8, max: 260, wet: 0.9, prio: 0.75, gap: 0.05, same: 3, jitter: 0.08,
+    render: (o, sr, rnd) => {
+      // Contact: a wet thock, rising like every cavity closing in this file.
+      toneLayer(o, sr, rnd, { dur: 0.14, amp: 0.75, f0: 190, f1: 560, tau: 0.04, atk: 0.0014 });
+      noiseLayer(o, sr, rnd, { dur: 0.2, amp: 0.7, cut0: 2200, cut1: 420, tau: 0.05, res: 1.25, atk: 0.0007 });
+      // Stretch: a slow resonant climb. This is the layer that says "and now
+      // you are attached to something", and it has to arrive after the thock.
+      noiseLayer(o, sr, rnd, { t0: 0.08, dur: 0.5, amp: 0.45, cut0: 700, cut1: 2900, tau: 0.19, res: 2.6, mode: "band", atk: 0.03 });
+      toneLayer(o, sr, rnd, { t0: 0.1, dur: 0.45, amp: 0.3, f0: 320, f1: 780, tau: 0.16, atk: 0.03, vib: 0.07, vibF: 15 });
+      grainLayer(o, sr, rnd, { t0: 0.04, dur: 0.3, count: 8, amp: 0.14, f0: 900, f1: 3600, tau: 0.009, kind: "ping" });
+      saturate(o, 1.5);
+      fadeOut(o, sr, 14);
+    },
+  },
+  /**
+   * The strand giving way. A twang, and the honest way to get one is a real
+   * plucked string — `ksPluck` already ships for the music arp, and a filtered
+   * sine sweep would sound like a cartoon boing instead of like tension going.
+   */
+  "glue-snap": {
+    dur: 0.75, gain: 0.66, ref: 7, max: 220, wet: 1, prio: 0.8, gap: 0.05, same: 3, jitter: 0.1,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.02, amp: 0.6, cut0: 7000, cut1: 2200, tau: 0.004, mode: "high", atk: 0.00006 });
+      ksPluck(o, sr, rnd, { t0: 0, freq: 196, amp: 0.8, dur: 0.5, damp: 0.35, bright: 0.8 });
+      // The two ends recoiling through the air.
+      noiseLayer(o, sr, rnd, { t0: 0.01, dur: 0.24, amp: 0.4, cut0: 3400, cut1: 900, tau: 0.07, res: 2, mode: "band", atk: 0.003 });
+      toneLayer(o, sr, rnd, { t0: 0.005, dur: 0.3, amp: 0.35, f0: 620, f1: 180, tau: 0.09, atk: 0.002 });
+      fadeOut(o, sr, 14);
+    },
+  },
+  /** Going down while glued. Indignity, not injury: a thud and a wet flop. */
+  "glue-stumble": {
+    dur: 0.9, gain: 0.78, ref: 6, max: 150, prio: 0.7, jitter: 0.07,
+    render: (o, sr, rnd) => {
+      // The scramble — two scuffs before the ground arrives.
+      noiseLayer(o, sr, rnd, { dur: 0.1, amp: 0.4, cut0: 2400, cut1: 700, tau: 0.035, res: 1.1, atk: 0.004 });
+      noiseLayer(o, sr, rnd, { t0: 0.07, dur: 0.1, amp: 0.35, cut0: 1900, cut1: 600, tau: 0.03, res: 1.1, atk: 0.004 });
+      // Body, flat out.
+      toneLayer(o, sr, rnd, { t0: 0.16, dur: 0.4, amp: 0.9, f0: 104, f1: 34, tau: 0.11, atk: 0.0012 });
+      wetSlap(o, sr, rnd, 0.16, 0.6, 1.35);
+      // Rubber squeak on the way down, because the whole thing is comic.
+      toneLayer(o, sr, rnd, { t0: 0.02, dur: 0.16, amp: 0.16, f0: 900, f1: 420, tau: 0.05, atk: 0.008, vib: 0.1, vibF: 21 });
+      saturate(o, 1.7);
+      fadeOut(o, sr, 14);
+    },
+  },
+
+  // --- Refills and tanks ---------------------------------------------------
+  /** The stroke every soaker shares: mechanical in, water back. */
+  "pump-refill": {
+    dur: 0.75, gain: 0.6, ref: 5, max: 85, prio: 0.42, jitter: 0.06,
+    render: (o, sr, rnd) => {
+      clack(o, sr, rnd, 0, 0.75, 1150, 0.026);
+      // The draw stroke: air and water climbing the tube.
+      noiseLayer(o, sr, rnd, { t0: 0.03, dur: 0.22, amp: 0.5, cut0: 900, cut1: 2600, tau: 0.11, res: 1.5, mode: "band", atk: 0.01 });
+      glug(o, sr, rnd, 0.06, 0.4, 3, 0.18);
+      // …and the stroke home.
+      clack(o, sr, rnd, 0.3, 0.9, 880, 0.032);
+      noiseLayer(o, sr, rnd, { t0: 0.3, dur: 0.28, amp: 0.4, cut0: 2200, cut1: 600, tau: 0.09, res: 1.2, atk: 0.003 });
+      saturate(o, 1.5);
+      fadeOut(o, sr, 12);
+    },
+  },
+  /** The Firehose spooling: a ratchet accelerating, then the line charging. */
+  "hose-spool": {
+    dur: 1.15, gain: 0.55, ref: 6, max: 120, prio: 0.45,
+    render: (o, sr, rnd) => {
+      // Ratchet: ticks whose gaps close. Uniform gaps read as a machine gun.
+      // Counted, not while-t<end: a geometric gap that only ever shrinks sums
+      // to 0.075/(1-0.86) = 0.54 s and never reaches 0.62, so the obvious
+      // spelling of this loop is an infinite one. The offline render harness
+      // caught it; nothing in the type system or the build would have.
+      let t = 0;
+      let gap = 0.075;
+      for (let i = 0; i < 16; i++) {
+        modalLayer(o, sr, rnd, { t0: t, freq: 1800 + rnd() * 700, amp: 0.42, tau: 0.007, partials: WOOD_PARTIALS, damp: 0.4 });
+        t += gap;
+        gap = Math.max(0.016, gap * 0.86);
+      }
+      // Water reaching the nozzle: pressure rising under the ratchet.
+      noiseLayer(o, sr, rnd, { t0: 0.1, dur: 0.95, amp: 0.6, cut0: 340, cut1: 1500, tau: 0.4, res: 0.9, atk: 0.12 });
+      toneLayer(o, sr, rnd, { t0: 0.2, dur: 0.8, amp: 0.35, f0: 62, f1: 108, tau: 0.35, atk: 0.1, fm: 40, fmF: 21 });
+      glug(o, sr, rnd, 0.55, 0.3, 3, 0.3);
+      saturate(o, 1.5);
+      fadeOut(o, sr, 20);
+    },
+  },
+  /** The Hydro Lance charging: pressure climbing to a valve seating hard. */
+  "lance-charge": {
+    dur: 1.0, gain: 0.58, ref: 5, max: 95, prio: 0.5,
+    render: (o, sr, rnd) => {
+      // A rising resonant band is a pump loading. The narrower it gets the
+      // more it reads as pressure rather than as wind.
+      noiseLayer(o, sr, rnd, { dur: 0.75, amp: 0.65, cut0: 600, cut1: 4200, tau: 0.34, res: 2.9, mode: "band", atk: 0.09 });
+      toneLayer(o, sr, rnd, { dur: 0.7, amp: 0.3, f0: 120, f1: 430, tau: 0.3, atk: 0.08, fm: 60, fmF: 33 });
+      // The seat: the whole reason this cue is satisfying to hold.
+      clack(o, sr, rnd, 0.74, 0.9, 1450, 0.026);
+      noiseLayer(o, sr, rnd, { t0: 0.74, dur: 0.14, amp: 0.4, cut0: 5200, cut1: 1200, tau: 0.035, res: 1.4, mode: "high", atk: 0.0006 });
+      saturate(o, 1.5);
+      fadeOut(o, sr, 16);
+    },
+  },
+  /** Seating a fresh glue cartridge: thick, and slightly disgusting. */
+  "glue-load": {
+    dur: 0.6, gain: 0.55, ref: 4, max: 60, prio: 0.35,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.14, amp: 0.4, cut0: 1200, cut1: 400, tau: 0.05, res: 1.1, atk: 0.006 });
+      glug(o, sr, rnd, 0.05, 0.55, 3, 0.22);
+      toneLayer(o, sr, rnd, { t0: 0.08, dur: 0.3, amp: 0.3, f0: 105, f1: 190, tau: 0.1, atk: 0.01, fm: 90, fmF: 19 });
+      clack(o, sr, rnd, 0.36, 0.8, 1020, 0.028);
+      saturate(o, 1.4);
+      fadeOut(o, sr, 12);
+    },
+  },
+  /** Dunking the tank in a pool, a trough or the sea. All bubbles. */
+  "dunk-start": {
+    dur: 1.1, gain: 0.6, ref: 5, max: 110, prio: 0.5, jitter: 0.06,
+    render: (o, sr, rnd) => {
+      // Breaking the surface.
+      noiseLayer(o, sr, rnd, { dur: 0.3, amp: 0.75, cut0: 3800, cut1: 380, tau: 0.09, res: 1.05, atk: 0.0008 });
+      toneLayer(o, sr, rnd, { dur: 0.2, amp: 0.4, f0: 220, f1: 700, tau: 0.06, atk: 0.0016 });
+      // Then a tank filling, which is glugs slowing down as it gets full.
+      glug(o, sr, rnd, 0.16, 0.6, 7, 0.7);
+      noiseLayer(o, sr, rnd, { t0: 0.15, dur: 0.85, amp: 0.3, cut0: 700, cut1: 220, tau: 0.35, res: 0.85, atk: 0.03 });
+      fadeOut(o, sr, 18);
+    },
+  },
+
+  // --- The Downpour --------------------------------------------------------
+  /**
+   * Crossing into it: a wall of rain arriving. The swell is the whole cue —
+   * a rain bed that simply switches on reads as a fader move, and the point
+   * of this moment is that the weather came to you.
+   */
+  "downpour-enter": {
+    dur: 2.0, gain: 0.72, bus: "ui", prio: 0.9, stereo: true,
+    render: (o, sr, rnd) => {
+      // Two rain layers, sparse-then-dense, because an arrival is a change in
+      // DENSITY and a level ramp alone reads as somebody moving a fader. The
+      // first spits at you; the second is the sheet catching up.
+      rainLayer(o, sr, rnd, 0, 0.8, 0.3, 3000, 26, 0.12);
+      rainLayer(o, sr, rnd, 0.45, 1.45, 0.85, 4400, 200, 0.4);
+      // Under it, the low rumble of a lot of water hitting a lot of ground.
+      toneLayer(o, sr, rnd, { dur: 1.8, amp: 0.4, f0: 44, f1: 78, tau: 0.9, atk: 0.22, fm: 22, fmF: 7 });
+      // The leading edge sweeping over you.
+      noiseLayer(o, sr, rnd, { dur: 1.6, amp: 0.5, cut0: 700, cut1: 5200, tau: 0.7, res: 1.05, mode: "band", atk: 0.16 });
+      fadeIn(o, sr, 40);
+      fadeOut(o, sr, 60);
+    },
+  },
+  /**
+   * The warning. Urgent without a klaxon: three rising water-drop bloops on a
+   * closing rhythm, over a rain hiss that swells under them. The urgency is
+   * in the tempo and the pitch ladder, never in a sawtooth — a two-tone siren
+   * in a water fight would be the one sound that breaks the premise.
+   */
+  "downpour-warn": {
+    dur: 2.3, gain: 0.56, bus: "ui", prio: 0.85, gap: 0.4,
+    render: (o, sr, rnd) => {
+      const at = [0, 0.5, 0.88, 1.14];
+      const f = [420, 520, 640, 800];
+      for (let i = 0; i < at.length; i++) {
+        toneLayer(o, sr, rnd, { t0: at[i], dur: 0.32, amp: 0.62 + i * 0.08, f0: f[i], f1: f[i] * 2.2, tau: 0.055, atk: 0.0022 });
+        noiseLayer(o, sr, rnd, {
+          t0: at[i], dur: 0.16, amp: 0.22, cut0: f[i] * 4, cut1: f[i] * 1.4, tau: 0.03, res: 2.2, mode: "band", atk: 0.001,
+        });
+      }
+      // The weather answering.
+      rainLayer(o, sr, rnd, 0.9, 1.35, 0.32, 3400, 90);
+      toneLayer(o, sr, rnd, { t0: 1.0, dur: 1.2, amp: 0.2, f0: 52, f1: 84, tau: 0.55, atk: 0.2 });
+      fadeOut(o, sr, 50);
+    },
+  },
+  /** The wall starting to move. The water-mode counterpart of `storm-close`. */
+  "downpour-close": {
+    dur: 3.4, gain: 0.62, prio: 0.8, stereo: true,
+    render: (o, sr, rnd) => {
+      rainLayer(o, sr, rnd, 0, 3.2, 0.7, 3000, 300);
+      toneLayer(o, sr, rnd, { dur: 3.2, amp: 0.45, f0: 86, f1: 33, tau: 1.5, atk: 0.35 });
+      // Distant thunder, once, low enough to be felt rather than identified.
+      toneLayer(o, sr, rnd, { t0: 0.6, dur: 2.2, amp: 0.3, f0: 58, f1: 30, tau: 0.9, atk: 0.25, fm: 26, fmF: 5 });
+      noiseLayer(o, sr, rnd, { t0: 0.55, dur: 2.4, amp: 0.28, cut0: 260, cut1: 90, tau: 1, res: 0.8, atk: 0.3 });
+      fadeOut(o, sr, 120);
+    },
+  },
+  /** Getting out of it. Everything opens up and the patter falls away. */
+  "downpour-exit": {
+    dur: 1.5, gain: 0.58, bus: "ui", prio: 0.85, stereo: true,
+    render: (o, sr, rnd) => {
+      // Leaving is the same trick in reverse: the drops thin out before the
+      // hiss does, which is what it sounds like to walk out from under it.
+      rainLayer(o, sr, rnd, 0, 0.5, 0.6, 3800, 50);
+      rainLayer(o, sr, rnd, 0.42, 0.75, 0.22, 2600, 14);
+      // Relief is a band that opens and a level that leaves.
+      noiseLayer(o, sr, rnd, { dur: 1.2, amp: 0.4, cut0: 2600, cut1: 6000, tau: 0.34, res: 1, mode: "band", atk: 0.03 });
+      toneLayer(o, sr, rnd, { dur: 0.9, amp: 0.25, f0: 96, f1: 190, tau: 0.35, atk: 0.03 });
+      fadeOut(o, sr, 50);
+    },
+  },
+
+  // --- Getting dry ---------------------------------------------------------
+  /** Pulling a poncho over your head: crinkle, then the hood settling. */
+  "poncho-on-start": {
+    dur: 0.7, gain: 0.5, ref: 3, max: 40, prio: 0.4, jitter: 0.08,
+    render: (o, sr, rnd) => {
+      // Thin plastic is a crowd of tiny events, not a swept band.
+      grainLayer(o, sr, rnd, { dur: 0.45, count: 40, amp: 0.4, f0: 2600, f1: 9000, tau: 0.003, kind: "tick", clump: 0.3 });
+      noiseLayer(o, sr, rnd, { dur: 0.4, amp: 0.4, cut0: 1800, cut1: 5200, tau: 0.16, res: 1.3, mode: "band", atk: 0.02 });
+      fadeOut(o, sr, 12);
+    },
+  },
+  /** …and on. The dull thump of a hood landing is the "it worked" beat. */
+  "poncho-on": {
+    dur: 0.75, gain: 0.58, ref: 3, max: 45, prio: 0.45,
+    render: (o, sr, rnd) => {
+      grainLayer(o, sr, rnd, { dur: 0.3, count: 26, amp: 0.35, f0: 2400, f1: 8000, tau: 0.003, kind: "tick", clump: 0.5 });
+      noiseLayer(o, sr, rnd, { t0: 0.08, dur: 0.3, amp: 0.5, cut0: 3200, cut1: 700, tau: 0.1, res: 1.1, atk: 0.01 });
+      toneLayer(o, sr, rnd, { t0: 0.2, dur: 0.3, amp: 0.4, f0: 128, f1: 62, tau: 0.08, atk: 0.004 });
+      // Two rising notes: quiet, but this is a defensive item paying off.
+      chime(o, sr, rnd, [784, 1046.5], 0.26, 0.1, 0.16, 0.16);
+      fadeOut(o, sr, 14);
+    },
+  },
+  /** Towelling off: friction, in three strokes that get shorter. */
+  "towel-rub-start": {
+    dur: 0.9, gain: 0.46, ref: 3, max: 34, prio: 0.35,
+    render: (o, sr, rnd) => {
+      for (let i = 0; i < 3; i++) {
+        const t = i * 0.26;
+        const up = i % 2 === 0;
+        // A stroke is a band sweeping one way; alternating the direction is
+        // what makes three of them read as rubbing rather than as three hisses.
+        noiseLayer(o, sr, rnd, {
+          t0: t, dur: 0.24, amp: 0.55 - i * 0.06, cut0: up ? 900 : 2600, cut1: up ? 2600 : 900,
+          tau: 0.1, res: 1.15, mode: "band", atk: 0.018,
+        });
+      }
+      fadeOut(o, sr, 14);
+    },
+  },
+  "towel-rub": {
+    dur: 0.8, gain: 0.5, ref: 3, max: 34, prio: 0.4,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.3, amp: 0.55, cut0: 2400, cut1: 900, tau: 0.12, res: 1.1, mode: "band", atk: 0.016 });
+      noiseLayer(o, sr, rnd, { t0: 0.22, dur: 0.26, amp: 0.4, cut0: 1100, cut1: 3000, tau: 0.1, res: 1.2, mode: "band", atk: 0.014 });
+      // A flick of the towel to finish, and a small "that's better".
+      noiseLayer(o, sr, rnd, { t0: 0.44, dur: 0.1, amp: 0.45, cut0: 5200, cut1: 1400, tau: 0.026, res: 1.6, mode: "high", atk: 0.001 });
+      chime(o, sr, rnd, [880], 0.48, 0.1, 0.14, 0.14);
+      fadeOut(o, sr, 12);
+    },
+  },
+  /** A hair dryer spinning up: a warm motor, not a fan. */
+  "hair-dryer-start": {
+    dur: 1.4, gain: 0.5, ref: 3, max: 44, prio: 0.4,
+    render: (o, sr, rnd) => {
+      // Motor: a saw whose harmonics glide up as it finds its speed. The FM
+      // is the commutator, and without it this is a synthesiser sweep.
+      toneLayer(o, sr, rnd, { dur: 1.3, amp: 0.42, f0: 88, f1: 186, tau: 0.9, atk: 0.06, shape: "saw", fm: 26, fmF: 128 });
+      toneLayer(o, sr, rnd, { dur: 1.3, amp: 0.2, f0: 176, f1: 372, tau: 0.9, atk: 0.09, shape: "tri" });
+      // Air through the element: hot air is a broad band, not a hiss.
+      noiseLayer(o, sr, rnd, { dur: 1.3, amp: 0.6, cut0: 900, cut1: 3000, tau: 0.85, res: 0.85, atk: 0.1 });
+      clack(o, sr, rnd, 0, 0.35, 1400, 0.01);
+      saturate(o, 1.4);
+      fadeOut(o, sr, 30);
+    },
+  },
+  /** …and winding down, warm and finished. */
+  "hair-dryer": {
+    dur: 1.3, gain: 0.55, ref: 3, max: 44, prio: 0.45,
+    render: (o, sr, rnd) => {
+      toneLayer(o, sr, rnd, { dur: 0.9, amp: 0.42, f0: 186, f1: 62, tau: 0.4, atk: 0.02, shape: "saw", fm: 24, fmF: 120 });
+      noiseLayer(o, sr, rnd, { dur: 1.0, amp: 0.55, cut0: 3000, cut1: 600, tau: 0.36, res: 0.85, atk: 0.02 });
+      clack(o, sr, rnd, 0.02, 0.3, 1300, 0.01);
+      // Bone dry. Three notes up, and the only unambiguously happy cue here.
+      chime(o, sr, rnd, [659.25, 880, 1174.7], 0.44, 0.1, 0.22, 0.2);
+      fadeOut(o, sr, 20);
+    },
+  },
+
+  // --- Bodies and puddles --------------------------------------------------
+  /**
+   * You, at zero dryness. Not a death rattle — a slump and a squelch, which
+   * means a low wet body sound with a comic bloop in it and no impact at all.
+   */
+  squelch: {
+    dur: 1.0, gain: 0.8, ref: 5, max: 120, prio: 0.85, jitter: 0.05,
+    render: (o, sr, rnd) => {
+      // Sodden clothing hitting sodden ground.
+      wetSlap(o, sr, rnd, 0, 0.8, 1.7);
+      // The squelch proper: a low resonance that falls and then rises, which
+      // is water being pushed out of fabric and then sucked back into it.
+      toneLayer(o, sr, rnd, { t0: 0.06, dur: 0.45, amp: 0.5, f0: 190, f1: 78, tau: 0.16, atk: 0.012, fm: 70, fmF: 17, vib: 0.09, vibF: 6 });
+      toneLayer(o, sr, rnd, { t0: 0.34, dur: 0.4, amp: 0.3, f0: 96, f1: 210, tau: 0.14, atk: 0.03, fm: 40, fmF: 13 });
+      noiseLayer(o, sr, rnd, { t0: 0.3, dur: 0.5, amp: 0.3, cut0: 800, cut1: 240, tau: 0.2, res: 1.25, atk: 0.02 });
+      glug(o, sr, rnd, 0.42, 0.22, 3, 0.3);
+      saturate(o, 1.5);
+      fadeOut(o, sr, 18);
+    },
+  },
+  /** Losing your feet on a puddle. Friction, then an involuntary squeak. */
+  skid: {
+    dur: 0.6, gain: 0.55, ref: 4, max: 70, prio: 0.5, jitter: 0.14, same: 2, gap: 0.12,
+    render: (o, sr, rnd) => {
+      // Wet rubber on wet ground: a high resonant band that slides.
+      noiseLayer(o, sr, rnd, { dur: 0.38, amp: 0.7, cut0: 2200, cut1: 5200, tau: 0.14, res: 3.2, mode: "band", atk: 0.008 });
+      toneLayer(o, sr, rnd, { t0: 0.03, dur: 0.34, amp: 0.35, f0: 780, f1: 1900, tau: 0.12, atk: 0.01, vib: 0.06, vibF: 26 });
+      // The water being pushed along in front of the foot.
+      noiseLayer(o, sr, rnd, { dur: 0.3, amp: 0.4, cut0: 1400, cut1: 340, tau: 0.1, res: 0.9, atk: 0.006 });
+      grainLayer(o, sr, rnd, { t0: 0.02, dur: 0.3, count: 9, amp: 0.16, f0: 900, f1: 3400, tau: 0.008, kind: "ping" });
+      fadeOut(o, sr, 14);
+    },
+  },
+  /**
+   * THE ELIMINATION. Somebody has just come apart into water, and this is the
+   * punchline of every fight in the mode, so it gets the most layers of
+   * anything here: a bucket hitting pavement, scaled up by half again.
+   *
+   * Fired off the `dz:soakburst` event rather than by name, because
+   * `mode/water.ts` already spends the name `soak-burst` on the Triple Tap.
+   * Layer order is the whole sound: the mass arrives, the sheet spreads, the
+   * bucket rings once (hollow, comic, gone in 90 ms), and then it rains.
+   */
+  "soak-out": {
+    dur: 2.0, gain: 1.05, ref: 16, max: 900, wet: 1.4, prio: 0.97, gap: 0.12, same: 2,
+    jitter: 0.05, travel: true, env: true, duck: 0.85, variants: 3,
+    render: (o, sr, rnd, indoor) => {
+      // The mass. Twice the size of a balloon and half again as slow.
+      wetSlap(o, sr, rnd, 0, 1, 2.4);
+      // A second slap a hair later and a size down: two arrivals read as a
+      // volume of water rather than as one impact, which is the entire trick.
+      wetSlap(o, sr, rnd, 0.055, 0.6, 1.4);
+      // The hollow ring of the bucket itself. Brief and slightly ridiculous.
+      modalLayer(o, sr, rnd, { t0: 0.006, freq: 320, amp: 0.28, tau: 0.09, partials: [1, 2.4, 3.9], damp: 0.5, detune: 0.02 });
+      // Sub: the floor taking it.
+      toneLayer(o, sr, rnd, { dur: 0.7, amp: 0.5, f0: 74, f1: 28, tau: 0.2, atk: 0.002 });
+      // And then it rains for a second and a half.
+      grainLayer(o, sr, rnd, { t0: 0.12, dur: 1.5, count: 54, amp: 0.34, f0: 500, f1: 4200, tau: 0.013, kind: "ping", clump: 0.55 });
+      noiseLayer(o, sr, rnd, { t0: 0.1, dur: 1.4, amp: 0.24, cut0: 1600, cut1: 400, tau: 0.5, res: 0.9, atk: 0.05 });
+      if (indoor) slapback(o, sr, { delay: 0.02, feedback: 0.66, damp: 1400, mix: 0.5, t0: 0.004 });
+      else slapback(o, sr, { delay: 0.088, feedback: 0.32, damp: 3000, mix: 0.24, t0: 0.007 });
+      saturate(o, 2.1);
+      fadeOut(o, sr, 24);
+    },
+  },
+
+  // --- Harvesting the block party ------------------------------------------
+  /** Pool noodles. Foam is the most damped thing in the game: a dull thwack. */
+  "harvest-foam": {
+    dur: 0.4, gain: 0.6, ref: 6, max: 130, prio: 0.4, gap: 0.02, same: 4, jitter: 0.12,
+    render: (o, sr, rnd) => {
+      // No ring, no grit, and the cutoff collapses almost immediately — every
+      // one of those absences is what says "foam" rather than "wood".
+      noiseLayer(o, sr, rnd, { dur: 0.16, amp: 0.7, cut0: 1500, cut1: 260, tau: 0.028, res: 0.8, atk: 0.0012 });
+      toneLayer(o, sr, rnd, { dur: 0.22, amp: 0.65, f0: 132, f1: 62, tau: 0.05, atk: 0.0016 });
+      // The squeak of a hand dragging across closed-cell foam.
+      noiseLayer(o, sr, rnd, { t0: 0.03, dur: 0.16, amp: 0.16, cut0: 2200, cut1: 3600, tau: 0.06, res: 2.6, mode: "band", atk: 0.01 });
+      fadeOut(o, sr, 10);
+    },
+  },
+  /** Deck planks. Dry, harmonic, and the brightest of the three. */
+  "harvest-plank": {
+    dur: 0.5, gain: 0.66, ref: 7, max: 170, prio: 0.42, gap: 0.02, same: 4, jitter: 0.1,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.09, amp: 0.7, cut0: 4800, cut1: 1200, tau: 0.018, res: 1.2, atk: 0.0004 });
+      modalLayer(o, sr, rnd, { freq: 420, amp: 0.6, tau: 0.1, partials: WOOD_PARTIALS, damp: 0.55, detune: 0.02 });
+      toneLayer(o, sr, rnd, { dur: 0.2, amp: 0.35, f0: 160, f1: 78, tau: 0.05, atk: 0.001 });
+      grainLayer(o, sr, rnd, { t0: 0.01, dur: 0.16, count: 6, amp: 0.16, f0: 2200, f1: 6000, tau: 0.005, kind: "tick" });
+      fadeOut(o, sr, 10);
+    },
+  },
+  /** Corrugated tarp. Thin sheet: a rattle and a flutter, never a clang. */
+  "harvest-tarp": {
+    dur: 0.55, gain: 0.62, ref: 7, max: 180, prio: 0.42, gap: 0.02, same: 4, jitter: 0.12,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.12, amp: 0.7, cut0: 6200, cut1: 1600, tau: 0.02, res: 1.3, mode: "high", atk: 0.0004 });
+      // A sheet is a wobble board: a low modal with a big detune, damped fast.
+      modalLayer(o, sr, rnd, { freq: 210, amp: 0.45, tau: 0.13, partials: [1, 1.87, 3.14, 4.6], damp: 0.7, detune: 0.06 });
+      // The flutter after the strike — amplitude wobble, cheap and unmistakable.
+      noiseLayer(o, sr, rnd, { t0: 0.03, dur: 0.3, amp: 0.3, cut0: 1800, cut1: 700, tau: 0.11, res: 1.9, mode: "band", atk: 0.006 });
+      toneLayer(o, sr, rnd, { t0: 0.02, dur: 0.28, amp: 0.2, f0: 138, f1: 96, tau: 0.09, atk: 0.006, vib: 0.22, vibF: 19 });
+      fadeOut(o, sr, 12);
+    },
+  },
+
   // --- The safety net ------------------------------------------------------
   // Twelve systems ship independently and one of them will always ask for a
   // name nobody wrote. Silence is a worse bug than an approximate sound.
@@ -1988,6 +2794,20 @@ const ALIASES: Record<string, string> = {
   horn: "bus-horn", bus: "bus-horn", siren: "storm-warn", alarm: "storm-warn",
   storm: "storm-close", thunder: "storm-close", whoosh: "pickaxe-whoosh",
   ricochet_metal: "ricochet", whistle: "whizz", crack: "whizz",
+  // SPLASH ROYALE. The left-hand names are the ones `mode/water.ts` and the
+  // water systems spell; anything that is already a cue above is not repeated.
+  soak: "soak-ar", soaker: "soak-ar", "water-gun": "soak-ar", squirt: "soak-pistol",
+  "soak-minigun": "soak-hose", "soak-sniper": "soak-lance", "soak-rocket": "soak-lob",
+  "soak-shotgun": "soak-pump", "soak-smg2": "soak-smg",
+  balloon: "balloon-burst", "water-balloon": "balloon-burst", pop: "balloon-burst",
+  glue: "glue-fire", strand: "glue-stick", snap: "glue-snap", stumble: "glue-stumble",
+  downpour: "downpour-close", rain: "downpour-close", "downpour-loop": "downpour-close",
+  drench: "squelch", soaked: "squelch", slip: "skid", slide_wet: "skid",
+  towel: "towel-rub", poncho: "poncho-on", dryer: "hair-dryer", dry: "hair-dryer",
+  refill: "pump-refill", dunk: "dunk-start", tank: "pump-refill",
+  eliminate_water: "soak-out", "soak-elim": "soak-out", splat: "soak-out",
+  "harvest-noodle": "harvest-foam", "harvest-deck": "harvest-plank",
+  "harvest-sheet": "harvest-tarp",
 };
 
 /**
@@ -2009,6 +2829,21 @@ function resolveCue(name: string): string {
     const n = name.toLowerCase().replace(/[\s_]+/g, "-");
     if (CUES[n]) key = n;
     else if (ALIASES[n]) key = ALIASES[n];
+    // SPLASH ROYALE first. These have to outrank the firearm rules below or
+    // "glue-fire" lands on an assault rifle, which is exactly what it did
+    // before this block existed — the fuzzy path is not a safety net when the
+    // wrong branch is a confident match.
+    else if (n.includes("soak") || n.includes("drench")) key = "soak-ar";
+    else if (n.includes("balloon")) key = "balloon-burst";
+    else if (n.includes("glue")) key = "glue-fire";
+    else if (n.includes("downpour") || n.includes("rain")) key = "downpour-close";
+    else if (n.includes("towel")) key = "towel-rub";
+    else if (n.includes("poncho")) key = "poncho-on";
+    else if (n.includes("dryer") || n.includes("drying")) key = "hair-dryer";
+    else if (n.includes("squelch") || n.includes("squish")) key = "squelch";
+    else if (n.includes("skid") || n.includes("slip")) key = "skid";
+    else if (n.includes("dunk")) key = "dunk-start";
+    else if (n.includes("refill")) key = "pump-refill";
     else if (n.includes("explo") || n.includes("blast") || n.includes("boom")) key = "explosion";
     else if (n.includes("rocket") || n.includes("missile")) key = "shot-rocket";
     else if (n.includes("shotgun") || n.includes("pump")) key = "shot-pump";
@@ -2257,6 +3092,39 @@ const BEDS: Record<string, Bed> = {
       // Electrical crackle scattered through it.
       grainLayer(o, sr, rnd, { dur: span - 0.4, count: 90, amp: 0.09, f0: 1800, f1: 8000, tau: 0.005, kind: "tick", clump: 0 });
       saturate(o, 1.25);
+    },
+  },
+
+  /**
+   * THE DOWNPOUR. The water-mode counterpart of `storm`, and deliberately not
+   * the same bed with a filter on it: the storm wall is an electrical roar
+   * carried by its low band, while rain is thousands of discrete arrivals and
+   * lives in the top. Broadband hiss alone is an extractor fan — the patter
+   * grains are what make it rain, and the surges are what stop it being a
+   * loop. The director opens its cutoff as you approach the wall.
+   */
+  downpour: {
+    dur: 8, gain: 0.5, cut: 1400,
+    render: (o, sr, rnd) => {
+      const span = o.length / sr;
+      // Two hiss bands: the sheet, and the ground it is landing on.
+      noiseLayer(o, sr, rnd, { dur: span, amp: 0.32, cut0: 2600, cut1: 3200, tau: 1e6, res: 0.75, atk: 0.6 });
+      noiseLayer(o, sr, rnd, { dur: span, amp: 0.26, cut0: 800, cut1: 620, tau: 1e6, res: 0.85, atk: 0.8 });
+      // Weight underneath, so it is weather and not static.
+      noiseLayer(o, sr, rnd, { dur: span, amp: 0.2, cut0: 150, cut1: 190, tau: 1e6, res: 0.8, atk: 1 });
+      // The patter. 520 drops over 8 s is sparse enough to hear as individual
+      // arrivals near the top of the band and dense enough to fuse below it.
+      grainLayer(o, sr, rnd, { dur: span - 0.3, count: 520, amp: 0.07, f0: 1600, f1: 8000, tau: 0.004, kind: "tick", clump: 0 });
+      // Gusts: rain does not fall at a constant rate for eight seconds.
+      for (let i = 0; i < 6; i++) {
+        const t = rnd() * (span - 3);
+        noiseLayer(o, sr, rnd, {
+          t0: t, dur: 3, amp: 0.12 + rnd() * 0.14, cut0: 1200, cut1: 3400, tau: 1.4, res: 1, atk: 0.9,
+        });
+      }
+      // Fat drops off a roof edge, scattered and much slower.
+      grainLayer(o, sr, rnd, { dur: span - 0.5, count: 26, amp: 0.1, f0: 400, f1: 1300, tau: 0.02, kind: "ping", clump: 0 });
+      saturate(o, 1.2);
     },
   },
 
@@ -2605,6 +3473,13 @@ interface StemVoice {
 
 const createAudio: SystemFactory = (ctx) => {
   const quality = ctx.quality;
+  /**
+   * The seam, read once: the mode cannot change inside a match, and this is
+   * consulted from the bed director at 8 Hz. It only ever chooses *which*
+   * sound to make — every cue in the bank stays available in both modes, so a
+   * caller that asks for a soaker in classic still gets one.
+   */
+  const waterMode = ctx.mode === "water";
   // A private deterministic stream, seeded once off the world RNG so that
   // runtime audio jitter can never perturb worldgen's draw order.
   const rng = makeRng(((ctx.rng() * 0xffffffff) >>> 0) ^ 0x5f356495);
@@ -3019,6 +3894,24 @@ const createAudio: SystemFactory = (ctx) => {
     "@in:shot-ar", "@in:shot-pump", "@in:shot-smg", "@in:impact-concrete",
     "@in:impact-metal", "@in:step-concrete", "@in:shot-pistol", "@in:shot-sniper",
   ];
+  if (waterMode) {
+    // Water mode hears its own arsenal in the first thirty seconds and never
+    // hears a firearm, so the soakers go to the FRONT of the queue rather than
+    // the back. The classic list below them still renders — a few hundred
+    // milliseconds of idle work over the bus ride, and it keeps one queue.
+    prebuild.unshift(
+      "soak-ar", "soak-pistol", "soak-smg", "soak-pump", "soak-tac",
+      "balloon-burst", "balloon-throw", "soak-burst", "squelch", "skid",
+      "pump-refill", "harvest-foam", "harvest-plank", "harvest-tarp",
+      "@bed:downpour", "soak-out", "soak-lance", "soak-hose", "soak-lob",
+      "glue-fire", "glue-stick", "glue-snap", "glue-stumble",
+      "downpour-warn", "downpour-enter", "downpour-close", "downpour-exit",
+      "towel-rub", "towel-rub-start", "poncho-on", "poncho-on-start",
+      "hair-dryer", "hair-dryer-start", "dunk-start", "balloon-load",
+      "glue-load", "lance-charge", "hose-spool",
+      "@in:soak-ar", "@in:soak-pump", "@in:balloon-burst",
+    );
+  }
   let prebuildAt = 0;
   /** Milliseconds we owe the frame budget after an item overran it. */
   let prebuildDebt = 0;
@@ -3467,6 +4360,9 @@ const createAudio: SystemFactory = (ctx) => {
       case "engine": case "aircraft": return "bus";
       case "water": case "submerged": return "underwater";
       case "air": case "gust": return "wind";
+      // `WATER.downpour.ambience` is "downpour-loop"; match.ts passes it
+      // straight through, and before this line it fell out as null.
+      case "downpour-loop": case "downpour": case "rain": return "downpour";
       default: return null;
     }
   }
@@ -3828,10 +4724,18 @@ const createAudio: SystemFactory = (ctx) => {
     // Storm roar: audible from ~180 m outside the wall, and everything once
     // you are in it. Squared so it comes up under you rather than switching on.
     const stormNear = clamp01(1 - Math.max(0, -env.stormDist) / 180);
-    const stormBed = bedVoice("storm");
+    // Same geometry, different weather. In SPLASH ROYALE the wall is rain, and
+    // a rain bed indoors keeps more of its top than a storm roar does — you
+    // hear it *on the roof*, which is the read that makes shelter feel like
+    // shelter. The unused bed is never started, so this costs one render.
+    const wallBedName = waterMode ? "downpour" : "storm";
+    const stormBed = bedVoice(wallBedName);
     const stormAmt = env.inStorm ? 1 : stormNear * stormNear;
-    stormBed.target = BEDS.storm.gain * stormAmt * (0.35 + 0.65 * (1 - env.indoor * 0.5));
-    stormBed.cutTarget = 380 + 2600 * (env.inStorm ? 1 : stormNear);
+    stormBed.target = BEDS[wallBedName].gain * stormAmt
+      * (waterMode ? 0.45 + 0.55 * (1 - env.indoor * 0.3) : 0.35 + 0.65 * (1 - env.indoor * 0.5));
+    stormBed.cutTarget = waterMode
+      ? 700 + 5200 * (env.inStorm ? 1 : stormNear)
+      : 380 + 2600 * (env.inStorm ? 1 : stormNear);
 
     bedVoice("underwater").target = BEDS.underwater.gain * env.submerged;
 
@@ -4013,6 +4917,34 @@ const createAudio: SystemFactory = (ctx) => {
   unsubs.push(
     ctx.on("dz:underwater", (p) => {
       env.submerged = p ? 1 : 0;
+    }),
+  );
+
+  /**
+   * The elimination. `vfx.soakBurst()` already plays `soak-burst` by name, but
+   * `mode/water.ts` spends that same name on the Triple Tap's per-pull cue, so
+   * it cannot also be the two-second bucket of water a player comes apart
+   * into. `vfx.ts` anticipated exactly this and emits `dz:soakburst` with the
+   * position and scale — "the beat the audio system should build the real
+   * elimination sound on" — so the big layer is fired from here instead.
+   *
+   * Position is rebuilt into a scratch vector rather than allocated: an
+   * elimination is rare, but so is every other reason to leak a Vector3 into
+   * a hot service, and the pattern is the one the rest of this file uses.
+   */
+  unsubs.push(
+    ctx.on("dz:soakburst", (p) => {
+      const e = p as { x?: number; y?: number; z?: number; scale?: number } | null;
+      if (!e || typeof e.x !== "number" || typeof e.y !== "number" || typeof e.z !== "number") return;
+      const scale = typeof e.scale === "number" && e.scale > 0 ? e.scale : 1;
+      evtPos.set(e.x, e.y, e.z);
+      // Bigger bursts land lower and louder — the same size-scales-pitch rule
+      // `wetSlap` is built on, applied once more at playback.
+      play("soak-out", {
+        position: evtPos,
+        volume: Math.min(1, 0.55 + 0.3 * scale),
+        rate: 1.06 - Math.min(0.22, scale * 0.12),
+      });
     }),
   );
 
