@@ -4675,6 +4675,71 @@ export type Database = {
         }
         Relationships: []
       }
+      vibe_times_letters: {
+        Row: {
+          author: string
+          body: string
+          created_at: string
+          id: number
+          ip_hash: string | null
+          printed_in: number | null
+          status: string
+        }
+        Insert: {
+          author: string
+          body: string
+          created_at?: string
+          id?: never
+          ip_hash?: string | null
+          printed_in?: number | null
+          status?: string
+        }
+        Update: {
+          author?: string
+          body?: string
+          created_at?: string
+          id?: never
+          ip_hash?: string | null
+          printed_in?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_times_letters_printed_in_fkey"
+            columns: ["printed_in"]
+            isOneToOne: false
+            referencedRelation: "vibe_times_issues"
+            referencedColumns: ["issue"]
+          },
+        ]
+      }
+      vibe_visits: {
+        Row: {
+          first_seen: string
+          name: string | null
+          owner_kind: string
+          owner_ref: string
+          paid: number
+          world_key: string
+        }
+        Insert: {
+          first_seen?: string
+          name?: string | null
+          owner_kind: string
+          owner_ref: string
+          paid?: number
+          world_key: string
+        }
+        Update: {
+          first_seen?: string
+          name?: string | null
+          owner_kind?: string
+          owner_ref?: string
+          paid?: number
+          world_key?: string
+        }
+        Relationships: []
+      }
       vibe_wallet_nonces: {
         Row: {
           address: string

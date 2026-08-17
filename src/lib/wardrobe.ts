@@ -31,6 +31,8 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_CHARACTER_ID } from "@/lib/characters";
+import { shopCharacter } from "@/lib/characterShop";
+
 import { claimGuestTravel } from "@/lib/explore";
 import { currentOwner, refreshVibecoin } from "@/lib/vibecoin";
 
@@ -269,7 +271,16 @@ export async function buyCosmetic(
 export async function equip(patch: Partial<Loadout>): Promise<boolean> {
   const before = state.loadout;
   set({ loadout: { ...before, ...patch } });
+  /* Never ask the till to equip a shop character you have not bought: the
+     server answers "you do not own X" with a 500, which surfaces as a runtime
+     error even though the catch below swallows it. Wearing it locally is the
+     pre-existing behaviour; it just no longer makes a doomed request. */
+  if (patch.character) {
+    const priced = shopCharacter(patch.character);
+    if (priced?.price && !owns("character", patch.character, priced.price)) return true;
+  }
   try {
+
     const owner = await currentOwner();
     const r = await call<{ loadout: Loadout }>("set_loadout", {
       ownerKind: owner.kind,
