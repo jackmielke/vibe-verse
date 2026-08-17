@@ -1832,10 +1832,28 @@ function buildRoadPaint(c: BuildCtx): Built {
     seed: "paint:cracks",
   });
 
+  /**
+   * Wear is *colour* first and *holes* second, and it has to be that way round
+   * because of how an alpha test behaves across mip levels.
+   *
+   * The cutout is 0.35 and the wear field is full-contrast noise on a 1 m tile.
+   * Seen from the air the paint is minified, every texel is an average of many,
+   * the average sits above the threshold, and the markings read as solid lines
+   * with a bit of texture — which is what every shot of this world had ever
+   * been taken of. Stand on the same crossing and you are sampling mip 0: the
+   * unaveraged noise goes under the threshold across a third of its area and
+   * the stripes come apart into ragged islands. It looks less like worn
+   * thermoplastic than like the road is corrupt.
+   *
+   * So the alpha now starts opaque and is only cut by the features that are
+   * genuinely *gaps* — the crack network and the outer edge feather — while the
+   * broad wear field, which is what carries "this paint is twenty years old",
+   * moves to the albedo below where a mip average is exactly what you want.
+   */
   const alpha = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const wear = smoothstep(0.32, 0.62, wearN[i]);
-    alpha[i] = clamp01(wear * 1.35 - edgeN[i] * 0.35 - cracks[i] * 0.5);
+    alpha[i] = clamp01(0.62 + wear * 0.5 - edgeN[i] * 0.3 - cracks[i] * 0.62);
   }
   const beadMask = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -1848,7 +1866,13 @@ function buildRoadPaint(c: BuildCtx): Built {
   // Near-white so a single bake serves both lane white and centreline yellow
   // via material.color.
   const a = new AlbedoBuffer(size, 0xeeece4);
+  // The wear the alpha channel no longer punches out, carried as colour: thin
+  // paint goes grey and lets the asphalt tone through, which is what worn
+  // thermoplastic actually looks like and what survives being mipmapped.
   a.modulate(wearN, 0.12);
+  const worn = new Float32Array(n);
+  for (let i = 0; i < n; i++) worn[i] = 1 - smoothstep(0.32, 0.62, wearN[i]);
+  a.lerpTo(0x8d8a80, worn, 0.62);
   a.lerpTo(0xbdb9ad, scuff, 0.55);
   a.lerpTo(0xd6d2c6, cracks, 0.4);
   a.setAlpha(alpha);

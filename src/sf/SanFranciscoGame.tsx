@@ -14,6 +14,7 @@ import { QUALITY, WORLD_SEED, type QualityTier } from "./config";
 import { frame, resetFrame, useSfStore } from "./state/store";
 import { SHOT_POSES, installShotHook, readShotRequest, resolvePose } from "./debug/shotHook";
 import { SPAWNS, terrainHeight, walkableHeight, WORLD } from "./geo/sfGeo";
+import Walker from "./player/Walker";
 import Terrain from "./world/Terrain";
 import Bay from "./world/Bay";
 import Sky from "./sky/Sky";
@@ -52,9 +53,78 @@ function RendererSetup({ tier }: { tier: QualityTier }) {
  * ------------------------------------------------------------------ */
 
 function FrameDriver({ shotKey }: { shotKey: string | null }) {
-  const { gl, camera } = useThree();
+  const { gl, camera, scene } = useThree();
   const hook = useMemo(() => installShotHook(), []);
   const acc = useRef({ t: 0, frames: 0 });
+
+  /* The debug surface the offline harnesses drive the level through. Installed
+     here because this is the one component that holds the renderer, the camera
+     and the scene at once. `snapshot` renders synchronously rather than waiting
+     for the loop, which is what lets sf-flicker.mjs take two frames that differ
+     in nothing but depth precision. */
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    hook.camPose = () => ({
+      x: cam.position.x,
+      y: cam.position.y,
+      z: cam.position.z,
+      yaw: frame.yaw,
+      pitch: frame.pitch,
+      near: cam.near,
+      far: cam.far,
+      fov: cam.fov,
+      logDepth: gl.capabilities.logarithmicDepthBuffer === true,
+    });
+    hook.setPose = (pos, look, fov) => {
+      cam.position.set(...pos);
+      cam.lookAt(new THREE.Vector3(...look));
+      frame.position.set(...pos);
+      const dir = new THREE.Vector3(...look).sub(cam.position).normalize();
+      frame.yaw = Math.atan2(-dir.x, -dir.z);
+      frame.pitch = Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1));
+      if (fov !== undefined) cam.fov = fov;
+      cam.updateProjectionMatrix();
+      hook.framesSincePose = 0;
+    };
+    hook.setWeather = (tod, fog) => {
+      frame.timeOfDay = tod;
+      frame.fogDensity = fog;
+    };
+    /**
+     * `depthNudge` scales whichever plane actually decides depth precision.
+     *
+     * Not the near plane — that was the first version of this and it measured
+     * nothing at all. three's logarithmic depth is `log2(w + 1) * FC * 0.5`
+     * with `FC = 2 / log2(far + 1)`: the near plane does not appear in it, so
+     * nudging near leaves every pixel bit-identical and the probe cheerfully
+     * reports 0.00% z-fighting for a scene that is visibly fighting. The far
+     * plane is the one that moves FC, so under log depth that is the knob.
+     */
+    hook.snapshot = (depthNudge) => {
+      const log = gl.capabilities.logarithmicDepthBuffer === true;
+      const prevNear = cam.near;
+      const prevFar = cam.far;
+      if (depthNudge !== undefined) {
+        if (log) cam.far = prevFar * depthNudge;
+        else cam.near = prevNear * depthNudge;
+        cam.updateProjectionMatrix();
+      }
+      gl.render(scene, cam);
+      const url = gl.domElement.toDataURL("image/png");
+      if (depthNudge !== undefined) {
+        cam.near = prevNear;
+        cam.far = prevFar;
+        cam.updateProjectionMatrix();
+      }
+      return url;
+    };
+    return () => {
+      delete hook.camPose;
+      delete hook.setPose;
+      delete hook.setWeather;
+      delete hook.snapshot;
+    };
+  }, [camera, gl, scene, hook]);
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 1 / 20);
@@ -170,9 +240,17 @@ function World() {
 export interface SanFranciscoGameProps {
   /** Spawn key from `SPAWNS`. */
   spawn?: string;
+  /** `walk` puts your character on the pavement; `fly` is the free camera. */
+  mode?: "walk" | "fly";
+  /** Character id from `@/lib/characters`. Only read in `walk`. */
+  charId?: string;
 }
 
-export default function SanFranciscoGame({ spawn = "coit" }: SanFranciscoGameProps) {
+export default function SanFranciscoGame({
+  spawn = "coit",
+  mode = "walk",
+  charId,
+}: SanFranciscoGameProps) {
   const quality = useSfStore((s) => s.quality);
   const setQuality = useSfStore((s) => s.setQuality);
   const setPhase = useSfStore((s) => s.setPhase);
@@ -192,9 +270,15 @@ export default function SanFranciscoGame({ spawn = "coit" }: SanFranciscoGamePro
       }
     }
     const sp = SPAWNS.find((s) => s.key === spawn) ?? SPAWNS[0];
-    resetFrame(sp.x, terrainHeight(sp.x, sp.z) + sp.yOffset, sp.z, sp.heading);
+    /* A spawn's `yOffset` is where a *flying* observer starts — 266 m up the
+       Transamerica, on the Golden Gate's south tower. Dropping a walking
+       character in at the same place is a long fall onto a roof they did not
+       ask for, so on foot the offset is ignored and you start on the ground
+       under it, which is the interesting place to be standing anyway. */
+    const y = mode === "walk" ? walkableHeight(sp.x, sp.z) : terrainHeight(sp.x, sp.z) + sp.yOffset;
+    resetFrame(sp.x, y, sp.z, sp.heading);
     setPhase("playing");
-  }, [shot, spawn, setQuality, setPhase]);
+  }, [shot, spawn, mode, setQuality, setPhase]);
 
   const q = QUALITY[quality];
 
@@ -217,7 +301,13 @@ export default function SanFranciscoGame({ spawn = "coit" }: SanFranciscoGamePro
       >
         <RendererSetup tier={quality} />
         <FrameDriver shotKey={shot?.key ?? null} />
-        {shot ? <ShotCamera shotKey={shot.key} fov={shot.fov} /> : <Explorer />}
+        {shot ? (
+          <ShotCamera shotKey={shot.key} fov={shot.fov} />
+        ) : mode === "walk" ? (
+          <Walker charId={charId ?? "vibey"} />
+        ) : (
+          <Explorer />
+        )}
         <Suspense fallback={null}>
           <World />
         </Suspense>

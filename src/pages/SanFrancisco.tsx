@@ -1,12 +1,18 @@
 /**
  * /sf — SAN FRANCISCO: FREE FALL
  *
- * The Vibeverse's open-world shooter. Grapple, wingsuit and shoot your way
- * across a real-geometry San Francisco, from the Golden Gate to the Bay Bridge.
+ * The Vibeverse's open-world San Francisco. Walk it as your own character, or
+ * take the free camera and cover the whole nine kilometres in a few seconds.
+ *
+ * The page owns the chrome and nothing else: a way out, a way to swap bodies,
+ * a way to jump across town, and a controls hint that gets out of the way. The
+ * world itself is `@/sf`, lazily.
  */
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { useActiveCharacter } from "@/hooks/use-active-character";
+import { SPAWN_DEFS } from "@/sf/geo/spawnList";
 
 const SanFranciscoGame = lazy(() => import("@/sf/SanFranciscoGame"));
 
@@ -27,13 +33,111 @@ function Loader() {
   );
 }
 
+const CHIP =
+  "pointer-events-auto inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-black/45 px-3.5 " +
+  "text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur-sm " +
+  "ring-1 ring-white/15 transition active:scale-95 hover:text-white";
+
+/** The character grid. Emoji and accent, not portraits — every character has
+ *  those, and only some have a render. */
+function CharacterSheet({ onClose }: { onClose: () => void }) {
+  const { charId, setCharId, all } = useActiveCharacter();
+  const [query, setQuery] = useState("");
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? all.filter((c) => c.label.toLowerCase().includes(q)) : all;
+  }, [all, query]);
+
+  return (
+    <div className="pointer-events-auto fixed inset-0 z-30 flex flex-col bg-black/80 backdrop-blur-md">
+      <div className="flex items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),14px)]">
+        <h2 className="text-sm font-black uppercase tracking-[0.22em] text-white">
+          Who are you today
+        </h2>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search…"
+          className="ml-auto w-32 rounded-lg bg-white/10 px-3 py-2 text-xs text-white
+                     placeholder:text-white/35 outline-none ring-1 ring-white/15 focus:ring-white/35"
+        />
+        <button onClick={onClose} className={CHIP} style={{ WebkitTapHighlightColor: "transparent" }}>
+          Done
+        </button>
+      </div>
+      <div className="grid flex-1 grid-cols-3 gap-2 overflow-y-auto p-4 sm:grid-cols-5 md:grid-cols-8">
+        {shown.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setCharId(c.id)}
+            className={`flex min-h-[84px] flex-col items-center justify-center gap-1 rounded-xl p-2
+                        text-center transition active:scale-95 ${
+                          c.id === charId
+                            ? "bg-white/15 ring-2"
+                            : "bg-white/5 ring-1 ring-white/10 hover:bg-white/10"
+                        }`}
+            style={{ ...(c.id === charId ? { boxShadow: `0 0 0 2px ${c.accent}` } : null) }}
+          >
+            <span className="text-2xl leading-none">{c.emoji}</span>
+            <span className="text-[10px] leading-tight text-white/70">{c.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Jump across town. The same spawn list the world already knows about. */
+function SpawnSheet({
+  onPick,
+  onClose,
+}: {
+  onPick: (key: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="pointer-events-auto fixed inset-0 z-30 flex flex-col bg-black/80 backdrop-blur-md">
+      <div className="flex items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),14px)]">
+        <h2 className="text-sm font-black uppercase tracking-[0.22em] text-white">Go somewhere</h2>
+        <button onClick={onClose} className={`${CHIP} ml-auto`}>
+          Close
+        </button>
+      </div>
+      <div className="grid flex-1 grid-cols-1 gap-2 overflow-y-auto p-4 sm:grid-cols-2 md:grid-cols-3">
+        {SPAWN_DEFS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => onPick(s.key)}
+            className="rounded-xl bg-white/5 p-3 text-left ring-1 ring-white/10 transition
+                       active:scale-95 hover:bg-white/10"
+          >
+            <div className="text-sm font-bold text-white">{s.name}</div>
+            <div className="mt-0.5 text-[11px] leading-snug text-white/50">{s.blurb}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
- * The thin chrome over the canvas: a way out, and a controls hint that gets out
- * of the way. Hidden entirely in capture mode so it never lands in a shot.
+ * The thin chrome over the canvas. Hidden entirely in capture mode so it never
+ * lands in a shot.
  */
-function Overlay() {
+function Overlay({
+  mode,
+  onMode,
+  onSpawn,
+  charLabel,
+}: {
+  mode: "walk" | "fly";
+  onMode: (m: "walk" | "fly") => void;
+  onSpawn: (key: string) => void;
+  charLabel: string;
+}) {
   const [hint, setHint] = useState(true);
   const [touch, setTouch] = useState(false);
+  const [sheet, setSheet] = useState<"char" | "spawn" | null>(null);
 
   useEffect(() => {
     setTouch(window.matchMedia("(hover: none), (pointer: coarse)").matches);
@@ -41,42 +145,84 @@ function Overlay() {
     return () => window.clearTimeout(t);
   }, []);
 
-  return (
-    <div
-      className="pointer-events-none fixed inset-0 z-10 select-none"
-      style={{
-        paddingTop: "max(env(safe-area-inset-top), 12px)",
-        paddingLeft: "max(env(safe-area-inset-left), 12px)",
-        paddingRight: "max(env(safe-area-inset-right), 12px)",
-        paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
-      }}
-    >
-      <Link
-        to="/worlds"
-        className="pointer-events-auto inline-flex min-h-[44px] items-center gap-2 rounded-xl
-                   bg-black/45 px-3.5 text-[11px] font-semibold uppercase tracking-[0.18em]
-                   text-white/80 backdrop-blur-sm ring-1 ring-white/15 transition
-                   active:scale-95 hover:text-white"
-        style={{ WebkitTapHighlightColor: "transparent" }}
-      >
-        ← Worlds
-      </Link>
+  // The hint is about the controls, so it comes back when the controls change.
+  useEffect(() => {
+    setHint(true);
+    const t = window.setTimeout(() => setHint(false), 7000);
+    return () => window.clearTimeout(t);
+  }, [mode]);
 
+  return (
+    <>
       <div
-        className={`absolute inset-x-0 bottom-0 flex justify-center transition-opacity duration-700
-                    ${hint ? "opacity-100" : "opacity-0"}`}
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)" }}
+        className="pointer-events-none fixed inset-0 z-10 select-none"
+        style={{
+          paddingTop: "max(env(safe-area-inset-top), 12px)",
+          paddingLeft: "max(env(safe-area-inset-left), 12px)",
+          paddingRight: "max(env(safe-area-inset-right), 12px)",
+          paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
+        }}
       >
-        <p
-          className="mx-4 rounded-full bg-black/50 px-4 py-2 text-center text-[11px]
-                     leading-relaxed text-white/70 backdrop-blur-sm ring-1 ring-white/10"
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/worlds" className={CHIP} style={{ WebkitTapHighlightColor: "transparent" }}>
+            ← Worlds
+          </Link>
+          <button
+            onClick={() => onMode(mode === "walk" ? "fly" : "walk")}
+            className={CHIP}
+            style={{ WebkitTapHighlightColor: "transparent" }}
+          >
+            {mode === "walk" ? "🚶 Walking" : "🕊 Flying"}
+          </button>
+          {mode === "walk" ? (
+            <button
+              onClick={() => setSheet("char")}
+              className={CHIP}
+              style={{ WebkitTapHighlightColor: "transparent" }}
+            >
+              {charLabel}
+            </button>
+          ) : null}
+          <button
+            onClick={() => setSheet("spawn")}
+            className={CHIP}
+            style={{ WebkitTapHighlightColor: "transparent" }}
+          >
+            📍 Go
+          </button>
+        </div>
+
+        <div
+          className={`absolute inset-x-0 bottom-0 flex justify-center transition-opacity duration-700
+                      ${hint ? "opacity-100" : "opacity-0"}`}
+          style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)" }}
         >
-          {touch
-            ? "Left thumb to move · right thumb to look"
-            : "Click to capture the mouse · WASD to fly · Shift to boost · Space / C for altitude"}
-        </p>
+          <p
+            className="mx-4 rounded-full bg-black/50 px-4 py-2 text-center text-[11px]
+                       leading-relaxed text-white/70 backdrop-blur-sm ring-1 ring-white/10"
+          >
+            {mode === "walk"
+              ? touch
+                ? "Left thumb to walk · right thumb to look"
+                : "Click to capture the mouse · WASD to walk · Shift to run · Space to jump"
+              : touch
+                ? "Left thumb to move · right thumb to look"
+                : "Click to capture the mouse · WASD to fly · Shift to boost · Space / C for altitude"}
+          </p>
+        </div>
       </div>
-    </div>
+
+      {sheet === "char" ? <CharacterSheet onClose={() => setSheet(null)} /> : null}
+      {sheet === "spawn" ? (
+        <SpawnSheet
+          onPick={(k) => {
+            setSheet(null);
+            onSpawn(k);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -84,9 +230,11 @@ export default function SanFrancisco() {
   // Passport: every world records that you were here. See lib/passport.ts.
   useWorldStamp("/sf", "San Francisco");
 
-  const [params] = useSearchParams();
-  const spawn = params.get("spawn") ?? "coit";
+  const [params, setParams] = useSearchParams();
+  const spawn = params.get("spawn") ?? "market";
+  const mode = params.get("mode") === "fly" ? "fly" : "walk";
   const capturing = params.has("shot");
+  const { charId, character } = useActiveCharacter();
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -96,10 +244,26 @@ export default function SanFrancisco() {
     };
   }, []);
 
+  const setParam = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    next.set(key, value);
+    setParams(next, { replace: true });
+  };
+
   return (
     <Suspense fallback={<Loader />}>
-      <SanFranciscoGame spawn={spawn} />
-      {capturing ? null : <Overlay />}
+      {/* Keyed on mode and character so switching either one rebuilds the
+          controller and the rig from a clean slate rather than trying to hand
+          a half-simulated player between two of them. */}
+      <SanFranciscoGame key={`${mode}:${charId}`} spawn={spawn} mode={mode} charId={charId} />
+      {capturing ? null : (
+        <Overlay
+          mode={mode}
+          onMode={(m) => setParam("mode", m)}
+          onSpawn={(k) => setParam("spawn", k)}
+          charLabel={`${character.emoji} ${character.label}`}
+        />
+      )}
     </Suspense>
   );
 }

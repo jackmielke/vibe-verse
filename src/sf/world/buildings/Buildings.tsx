@@ -24,6 +24,16 @@
  *
  * Draw calls: one per chunk (the whole city shares one material), one per
  * impostor tile. Roughly seventy for the entire visible city.
+ *
+ * Residency is the other invariant, and it is the one that broke. A chunk is
+ * resident once it has been *generated*, which is not the same as once it has a
+ * *mesh* — a third of this map is water and park and generates nothing at all.
+ * Inferring residency from the mesh meant every empty chunk was rebuilt on
+ * every rescan, four hundred milliseconds apart, forever: the queue never
+ * drained in a whole session, real chunks waited behind work that was already
+ * done, and the city visibly boiled. Measured with `scripts/sf-flicker.mjs`,
+ * 12.5% of the pixels on screen changed between two frames of a frozen camera.
+ * See `Chunk.empty`.
  */
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -43,9 +53,9 @@ import { buildBlock, enumerateBlocks, type BlockSpec, type Lot } from "./lots";
 import { generateBuilding, type BuildingRecord } from "./generator";
 import { dressRoofs } from "./rooftops";
 import {
-  FADE_SECONDS,
   buildLodPlan,
   castsShadow,
+  fadeSeconds,
   stableLod,
   type LodPlan,
 } from "./lod";
@@ -54,6 +64,7 @@ import {
   createImpostorMesh,
   disposeImpostorMesh,
   disposeImpostorResources,
+  setImpostorNearClip,
 } from "./impostors";
 import { buildingIndex } from "./spatialIndex";
 
@@ -188,6 +199,22 @@ interface Chunk {
   /** LOD the pending job is building. */
   pendingLod: number;
   indexed: boolean;
+  /**
+   * This chunk was generated and came out with no geometry in it — open water,
+   * a park, the Presidio's meadows. It is RESIDENT, and the distinction from
+   * "not built yet" is the difference between a city that settles and one that
+   * never stops working.
+   *
+   * `commit` always meant to record this — its comment says so — but residency
+   * was inferred from `mesh`, which an empty chunk does not have. So every
+   * empty chunk was re-enumerated, re-subdivided and re-emitted on the next
+   * rescan, four hundred milliseconds later, forever. A third of this map is
+   * water and park: the queue never drained once in a session, the real chunks
+   * behind it arrived late, and the LOD cross-fades they arrived with were
+   * still dissolving when the next scan retargeted them. Standing still, 12.5%
+   * of the pixels on screen changed from one moment to the next.
+   */
+  empty: boolean;
 }
 
 interface ImpTile {
@@ -337,9 +364,13 @@ export default function Buildings() {
         const tx = i * tile;
         const tz = j * tile;
         const near = boxDistance(cx, cz, tx, tz, tile);
-        // Only tiles that are entirely outside the geometric field — otherwise
-        // the far city would be drawn twice, once as boxes and once for real.
-        if (near > p.impostorRadius || near < p.nearRadius) continue;
+        // Keep a tile until it is ENTIRELY inside the geometric field, judged
+        // by its far corner rather than its near edge — a 1500 m tile that
+        // merely touches the boundary still carries a kilometre of skyline
+        // nothing else draws. The overlap is clipped per-fragment instead, so
+        // nothing is painted twice. See `setImpostorNearClip`.
+        const far = boxFarDistance(cx, cz, tx, tz, tile);
+        if (near > p.impostorRadius || far < p.nearRadius) continue;
         const key = `I:${i}:${j}`;
         wantImp.add(key);
         if (impostors.has(key)) continue;
@@ -377,13 +408,37 @@ export default function Buildings() {
         key, x, z, size: sz, lod,
         mesh: null, oldMesh: null,
         fadeIn: null, fadeOut: null, fadeT: 0,
-        job: null, pendingLod: lod, indexed: false,
+        job: null, pendingLod: lod, indexed: false, empty: false,
       };
       chunks.set(key, c);
     }
-    // Already correct, or already building the right thing.
-    if (c.mesh && c.lod === lod && !c.job) return;
-    if (c.job && c.pendingLod === lod) {
+    /**
+     * Silhouette first, detail second.
+     *
+     * A chunk with nothing on screen yet is not a slightly-too-simple block, it
+     * is a *hole* — bare ground with a road grid painted on it, which is what
+     * flying anywhere used to look like for the first several seconds. A full
+     * LOD-0 block of the Financial District is around thirty milliseconds of
+     * lot subdivision, bays, fire escapes and stoops; the LOD-2 version of the
+     * same block is a prism, a crown and a roof cap, and lands roughly an order
+     * of magnitude sooner.
+     *
+     * So a chunk that has never been drawn is always built coarse first,
+     * whatever tier it is entitled to, and a later scan refines it. You reach a
+     * block and it is *there*, and the bays arrive while you look at it. The
+     * silhouette is the same either way — that is the whole reason tier 2
+     * resolves into tier 0 rather than into a different shape.
+     */
+    const firstBuild = !c.mesh && !c.empty;
+    const want = firstBuild ? Math.max(lod, 2) : lod;
+
+    // Already correct, or already building the right thing. An empty chunk
+    // counts as built — see `Chunk.empty`.
+    if ((c.mesh || c.empty) && c.lod === want && !c.job) return;
+    if (c.job && (c.pendingLod === want || firstBuild)) {
+      // While a chunk still has nothing on screen, finishing *something* beats
+      // retargeting to the right thing: a job dropped at 90% is 90% of a block
+      // that nobody ever saw.
       c.job.priority = dist;
       return;
     }
@@ -393,10 +448,10 @@ export default function Buildings() {
       if (qi >= 0) queue.splice(qi, 1);
       c.job = null;
     }
-    const job = new ChunkJob(key, x, z, sz, lod);
+    const job = new ChunkJob(key, x, z, sz, want);
     job.priority = dist;
     c.job = job;
-    c.pendingLod = lod;
+    c.pendingLod = want;
     queue.push(job);
   };
 
@@ -438,10 +493,12 @@ export default function Buildings() {
         c.mesh = null;
       }
       c.lod = job.lod;
+      c.empty = true;
       buildingIndex.removeChunk(c.key);
       c.indexed = false;
       return;
     }
+    c.empty = false;
 
     const mesh = new THREE.Mesh(geo, material);
     mesh.position.set(job.x, 0, job.z);
@@ -452,7 +509,24 @@ export default function Buildings() {
     mesh.frustumCulled = true;
     mesh.name = `sf-buildings-${c.key}`;
 
-    if (c.mesh) {
+    if (c.mesh && fadeSeconds() <= 0) {
+      // No temporal resolve downstream, so the dissolve would be visible noise
+      // rather than a dissolve — see `fadeSeconds` in lod.ts. Swap outright.
+      if (c.oldMesh) {
+        g.remove(c.oldMesh);
+        c.oldMesh.geometry.dispose();
+        releaseFadeMaterial(c.oldMesh.material as THREE.MeshStandardMaterial);
+        c.oldMesh = null;
+        c.fadeIn = null;
+        c.fadeOut = null;
+      }
+      g.remove(c.mesh);
+      c.mesh.geometry.dispose();
+      if (c.mesh.material !== material) {
+        releaseFadeMaterial(c.mesh.material as THREE.MeshStandardMaterial);
+      }
+      c.mesh = null;
+    } else if (c.mesh) {
       // Cross-fade: the outgoing mesh dissolves out while the new one dissolves
       // in. Both get their own fade material, which shares the compiled program
       // with the base one, so this costs no shader compilation.
@@ -502,6 +576,8 @@ export default function Buildings() {
     sunColor(frame.timeOfDay, _sunCol);
     skyFillColor(frame.timeOfDay, _skyCol);
     updateFacadeUniforms(_sunDir, _sunCol, _skyCol, frame.timeOfDay, frame.fogDensity);
+    // Where the real city stops and the box city may start.
+    setImpostorNearClip(p.nearRadius);
 
     camera.getWorldPosition(_camPos);
     const now = performance.now();
@@ -515,10 +591,21 @@ export default function Buildings() {
       rescan(_camPos.x, _camPos.z);
     }
 
-    // --- generation budget ---
-    const pending = queue.length + impQueue.length;
-    if (warm.current && pending === 0) warm.current = false;
-    const budget = warm.current ? warmupBudget(q.detailRadius) : BUDGET_MS;
+    /* --- generation budget ---
+     *
+     * The warmup budget is for holes, not for start-up. It used to latch off
+     * the first time the queue drained and never come back, so the city loaded
+     * on 11–26 ms a frame and was then re-loaded on 5 as you flew across it —
+     * and crossing the map is exactly when the near field is emptiest. What
+     * earns the larger budget is the thing you can see: resident chunks in
+     * range with nothing drawn for them. When there are none, the city is
+     * complete and generation goes back to a slice that never costs a frame. */
+    let holes = 0;
+    for (const c of chunks.values()) {
+      if (!c.mesh && !c.empty) holes++;
+    }
+    warm.current = holes > 0;
+    const budget = holes > 0 ? warmupBudget(q.detailRadius) : BUDGET_MS;
     const deadline = now + budget;
 
     while (queue.length > 0 && performance.now() < deadline) {
@@ -562,7 +649,7 @@ export default function Buildings() {
     const dt = Math.min(delta, 1 / 15);
     for (const c of chunks.values()) {
       if (!c.oldMesh) continue;
-      c.fadeT += dt / FADE_SECONDS;
+      c.fadeT += dt / Math.max(fadeSeconds(), 1e-3);
       const t = Math.min(1, c.fadeT);
       if (c.fadeIn) c.fadeIn.value = t;
       if (c.fadeOut) c.fadeOut.value = 1 - t;
@@ -583,6 +670,8 @@ export default function Buildings() {
     // The screenshot harness waits on this before it grabs a frame.
     if (typeof window !== "undefined" && window.__sf) {
       window.__sf.pendingChunks = queue.length + impQueue.length;
+      window.__sf.pendingDetail = queue.length;
+      window.__sf.pendingImpostor = impQueue.length;
     }
   });
 
@@ -597,5 +686,12 @@ export default function Buildings() {
 function boxDistance(px: number, pz: number, x: number, z: number, size: number): number {
   const dx = Math.max(x - px, 0, px - (x + size));
   const dz = Math.max(z - pz, 0, pz - (z + size));
+  return Math.hypot(dx, dz);
+}
+
+/** Distance to the FARTHEST corner of the same square. */
+function boxFarDistance(px: number, pz: number, x: number, z: number, size: number): number {
+  const dx = Math.max(Math.abs(px - x), Math.abs(px - (x + size)));
+  const dz = Math.max(Math.abs(pz - z), Math.abs(pz - (z + size)));
   return Math.hypot(dx, dz);
 }

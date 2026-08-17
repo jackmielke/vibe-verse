@@ -522,8 +522,8 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🌉",
     kind: "game",
     blurb:
-      "FREE FALL — the real city, hill for hill, bridge for bridge. Fly it now; grapple and wingsuit soon.",
-    status: "Sandbox — fly the city",
+      "FREE FALL — the real city, hill for hill, bridge for bridge. Walk it as your own character, past thirty-two landmarks from the Golden Gate to the Castro, or take the free camera and fly the whole nine kilometres.",
+    status: "Sandbox — walk it or fly it",
     accent: "#ff6a2b",
     featured: true,
     source: "src/sf",

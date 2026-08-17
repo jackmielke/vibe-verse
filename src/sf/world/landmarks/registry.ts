@@ -25,6 +25,20 @@ import { sutroTower } from "./sutroTower";
 import { pier39, shipyardCranes, windmill } from "./waterfront";
 import { cableCarTurnaround, chinatownGate, graceCathedral } from "./civicSmall";
 import { fiveFiveFiveCalifornia, millenniumTower, sfmoma } from "./towers";
+import {
+  cliffHouse,
+  conservatoryOfFlowers,
+  deYoungMuseum,
+  twinPeaksOverlook,
+} from "./parkAndCoast";
+import {
+  castroTheatre,
+  chaseCenter,
+  fortPoint,
+  ghirardelliSquare,
+  missionDolores,
+  unionSquare,
+} from "./neighbourhoods";
 
 export const LANDMARK_BUILDERS: Record<LandmarkKind, LandmarkModule> = {
   "golden-gate-bridge": goldenGateBridge,
@@ -49,6 +63,16 @@ export const LANDMARK_BUILDERS: Record<LandmarkKind, LandmarkModule> = {
   "555-california": fiveFiveFiveCalifornia,
   "shipyard-cranes": shipyardCranes,
   windmill,
+  "conservatory-of-flowers": conservatoryOfFlowers,
+  "de-young": deYoungMuseum,
+  "cliff-house": cliffHouse,
+  "twin-peaks-overlook": twinPeaksOverlook,
+  "union-square": unionSquare,
+  "ghirardelli-square": ghirardelliSquare,
+  "castro-theatre": castroTheatre,
+  "mission-dolores": missionDolores,
+  "fort-point": fortPoint,
+  "chase-center": chaseCenter,
 };
 
 /** The module for a kind, or `null` if nothing has been written for it yet. */

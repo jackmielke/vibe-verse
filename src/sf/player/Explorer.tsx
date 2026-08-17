@@ -1,44 +1,26 @@
 /**
- * Explorer — the interim camera for San Francisco: FREE FALL.
+ * Explorer — the free-flying camera for San Francisco: FREE FALL.
  *
- * The real player controller (grapple, wingsuit, parachute, weapons) is not
- * built yet. Until it is, the city still has to be something you can actually
- * move through on whatever device you are holding, so this is a free-flying
- * observer with a proper input layer: pointer-lock + WASD on desktop, and twin
- * touch sticks on a phone.
+ * The grapple/wingsuit controller is not built yet, and `Walker` is now the
+ * default way in, so this is the *other* mode: a free-flying observer for
+ * covering nine kilometres of map in a few seconds, and for looking at the
+ * city from where nobody can stand.
  *
  * It writes into `frame` exactly the way the real controller will — position,
  * yaw, pitch, velocity, movement state — so when the controller lands this can
  * be deleted without anything downstream noticing.
  *
- * Design notes for touch, which is where most of the care went:
- *  - The look stick is the *whole right half of the screen*, not a small pad.
- *    Small pads are a desktop designer's idea of a thumbstick.
- *  - The move stick is anchored wherever the thumb first lands on the left
- *    half, rather than at a fixed spot, because thumbs do not land where a
- *    layout grid expects them to.
- *  - Look sensitivity is independent of frame rate and of device pixel ratio.
+ * The input layer it used to own now lives in `traversalInput.ts`, shared with
+ * the walking controller — see that file for the touch design notes.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { PLAYER } from "../config";
 import { frame } from "../state/store";
 import { WORLD, clampToWorld, walkableHeight } from "../geo/sfGeo";
 import { clamp, damp } from "../math/rng";
-
-/** Live input state. Mutated by listeners, read once per frame. */
-interface InputState {
-  /** -1..1 strafe / forward. */
-  moveX: number;
-  moveZ: number;
-  /** -1..1 vertical (space / ctrl, or the touch rise-fall pad). */
-  moveY: number;
-  boost: boolean;
-  /** Accumulated look delta in pixels, drained each frame. */
-  lookX: number;
-  lookY: number;
-}
+import { readMove, useTraversalInput } from "./traversalInput";
 
 /** How fast the observer flies, m/s. It is a 9.5 km map; slow is unusable. */
 const BASE_SPEED = 34;
@@ -46,17 +28,13 @@ const BOOST_MULTIPLIER = 4.5;
 const SLOW_MULTIPLIER = 0.22;
 
 export interface ExplorerProps {
-  /** Disabled while the screenshot harness owns the camera. */
+  /** Disabled while the screenshot harness or the walking controller owns the camera. */
   enabled?: boolean;
 }
 
 export default function Explorer({ enabled = true }: ExplorerProps) {
-  const { camera, gl } = useThree();
-
-  const input = useMemo<InputState>(
-    () => ({ moveX: 0, moveZ: 0, moveY: 0, boost: false, lookX: 0, lookY: 0 }),
-    [],
-  );
+  const { camera } = useThree();
+  const input = useTraversalInput({ enabled });
 
   // Scratch vectors — allocating these per frame is exactly the mistake this
   // codebase bans elsewhere.
@@ -70,114 +48,7 @@ export default function Explorer({ enabled = true }: ExplorerProps) {
     [],
   );
 
-  const keys = useRef(new Set<string>()).current;
-  /** Active touches: which pointer id is driving which stick. */
-  const touch = useRef({
-    moveId: -1,
-    moveOx: 0,
-    moveOy: 0,
-    lookId: -1,
-    lookX: 0,
-    lookY: 0,
-  }).current;
-
   const speedRef = useRef(BASE_SPEED);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const canvas = gl.domElement;
-
-    /* ---------------- keyboard ---------------- */
-    const onKeyDown = (e: KeyboardEvent) => {
-      keys.add(e.code);
-      // Don't let the page scroll out from under a game.
-      if (
-        ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)
-      ) {
-        e.preventDefault();
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
-    window.addEventListener("keydown", onKeyDown, { passive: false });
-    window.addEventListener("keyup", onKeyUp);
-
-    /* ---------------- pointer lock (desktop) ---------------- */
-    const onCanvasClick = () => {
-      if (window.matchMedia("(pointer: coarse)").matches) return;
-      if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== canvas) return;
-      input.lookX += e.movementX;
-      input.lookY += e.movementY;
-    };
-    canvas.addEventListener("click", onCanvasClick);
-    window.addEventListener("mousemove", onMouseMove);
-
-    /* ---------------- touch ---------------- */
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.pointerType !== "touch") return;
-      const half = canvas.clientWidth * 0.5;
-      if (e.clientX < half && touch.moveId === -1) {
-        // Anchor the move stick wherever the thumb actually landed.
-        touch.moveId = e.pointerId;
-        touch.moveOx = e.clientX;
-        touch.moveOy = e.clientY;
-      } else if (e.clientX >= half && touch.lookId === -1) {
-        touch.lookId = e.pointerId;
-        touch.lookX = e.clientX;
-        touch.lookY = e.clientY;
-      }
-    };
-    const onPointerMove = (e: PointerEvent) => {
-      if (e.pointerType !== "touch") return;
-      if (e.pointerId === touch.moveId) {
-        // 62 px of travel = full deflection. Comfortable for a thumb.
-        const dx = (e.clientX - touch.moveOx) / 62;
-        const dy = (e.clientY - touch.moveOy) / 62;
-        input.moveX = clamp(dx, -1, 1);
-        input.moveZ = clamp(dy, -1, 1);
-      } else if (e.pointerId === touch.lookId) {
-        input.lookX += e.clientX - touch.lookX;
-        input.lookY += e.clientY - touch.lookY;
-        touch.lookX = e.clientX;
-        touch.lookY = e.clientY;
-      }
-    };
-    const endPointer = (e: PointerEvent) => {
-      if (e.pointerId === touch.moveId) {
-        touch.moveId = -1;
-        input.moveX = 0;
-        input.moveZ = 0;
-      }
-      if (e.pointerId === touch.lookId) touch.lookId = -1;
-    };
-    canvas.addEventListener("pointerdown", onPointerDown);
-    canvas.addEventListener("pointermove", onPointerMove);
-    canvas.addEventListener("pointerup", endPointer);
-    canvas.addEventListener("pointercancel", endPointer);
-
-    // Stop the browser turning a drag into a scroll, a pinch-zoom, or a
-    // text selection. Without this the world slides around under your thumb.
-    const stop = (e: Event) => e.preventDefault();
-    canvas.addEventListener("touchstart", stop, { passive: false });
-    canvas.addEventListener("touchmove", stop, { passive: false });
-    canvas.style.touchAction = "none";
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      canvas.removeEventListener("click", onCanvasClick);
-      window.removeEventListener("mousemove", onMouseMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerup", endPointer);
-      canvas.removeEventListener("pointercancel", endPointer);
-      canvas.removeEventListener("touchstart", stop);
-      canvas.removeEventListener("touchmove", stop);
-      if (document.pointerLockElement === canvas) document.exitPointerLock?.();
-    };
-  }, [enabled, gl, input, keys, touch]);
 
   useFrame((_, delta) => {
     if (!enabled) return;
@@ -192,22 +63,8 @@ export default function Explorer({ enabled = true }: ExplorerProps) {
     input.lookX = 0;
     input.lookY = 0;
 
-    /* ---- keyboard movement ---- */
-    let kx = 0;
-    let kz = 0;
-    let ky = 0;
-    if (keys.has("KeyW") || keys.has("ArrowUp")) kz -= 1;
-    if (keys.has("KeyS") || keys.has("ArrowDown")) kz += 1;
-    if (keys.has("KeyA") || keys.has("ArrowLeft")) kx -= 1;
-    if (keys.has("KeyD") || keys.has("ArrowRight")) kx += 1;
-    if (keys.has("Space")) ky += 1;
-    if (keys.has("ControlLeft") || keys.has("KeyC")) ky -= 1;
-    const boost = keys.has("ShiftLeft") || keys.has("ShiftRight") || input.boost;
-    const slow = keys.has("AltLeft");
-
-    const mx = kx + input.moveX;
-    const mz = kz + input.moveZ;
-    const my = ky + input.moveY;
+    /* ---- movement ---- */
+    const { x: mx, z: mz, y: my, boost, slow } = readMove(input);
 
     /* ---- integrate ---- */
     const target =

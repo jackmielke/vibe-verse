@@ -246,10 +246,34 @@ vec3 impSrgb(vec3 c) { return c * (c * (c * 0.305306011 + 0.682171111) + 0.01252
  * response except the window sparkle, which we add explicitly. Halving the
  * lighting cost of twenty thousand instances is worth more.
  */
+/**
+ * Inside this view distance the real geometry is drawn, so impostors must not
+ * be. See `setImpostorNearClip` for why this is a shader clip and not a
+ * scheduling decision.
+ */
+export const impostorNearClip = { value: 0 };
+
+/**
+ * Tell the far field where the geometric field currently ends.
+ *
+ * Tiles used to be culled whole the moment their NEAREST edge crossed into the
+ * geometric radius — with a 1500 m tile that threw away up to a kilometre and a
+ * half of skyline that nothing else was drawing, so a slab of the distant city
+ * blinked out and back as you moved, which is not a subtle artifact when the
+ * slab contains Sutro Tower. Tiles are now kept until they are ENTIRELY inside
+ * the geometric field, and the overlap is resolved here instead: a fragment
+ * closer than this never draws, so nothing is ever painted twice and the
+ * boundary is a circle around the camera that real buildings already cover.
+ */
+export function setImpostorNearClip(metres: number): void {
+  impostorNearClip.value = metres;
+}
+
 function getImpostorMaterial(): THREE.MeshLambertMaterial {
   if (impostorMaterial) return impostorMaterial;
   const m = new THREE.MeshLambertMaterial({ color: 0xffffff });
   m.onBeforeCompile = (shader) => {
+    shader.uniforms.uImpNearClip = impostorNearClip;
     shader.uniforms.uNight = facadeUniforms.uNight;
     shader.uniforms.uNightLit = facadeUniforms.uNightLit;
     shader.uniforms.uSunColor = facadeUniforms.uSunColor;
@@ -285,7 +309,16 @@ function getImpostorMaterial(): THREE.MeshLambertMaterial {
       );
 
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${IMPOSTOR_GLSL_COMMON}`)
+      .replace(
+        "#include <common>",
+        `#include <common>\nuniform float uImpNearClip;\n${IMPOSTOR_GLSL_COMMON}`,
+      )
+      .replace(
+        "#include <clipping_planes_fragment>",
+        `#include <clipping_planes_fragment>
+         // The real city is drawn inside this radius; see setImpostorNearClip.
+         if (vImpDist < uImpNearClip) discard;`,
+      )
       .replace(
         "#include <map_fragment>",
         `

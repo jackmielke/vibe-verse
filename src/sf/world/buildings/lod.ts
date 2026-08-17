@@ -28,8 +28,38 @@
  */
 import type { QualitySettings } from "../../config";
 
-/** Seconds a chunk spends cross-fading between two tiers. */
+/** Seconds a chunk spends cross-fading between two tiers, when it fades at all. */
 export const FADE_SECONDS = 0.42;
+
+/**
+ * Whether anything downstream is going to resolve a dithered dissolve.
+ *
+ * The cross-fade is screen-door: both meshes draw for `FADE_SECONDS` and each
+ * discards a noise-selected half of its pixels. That is a good trick and it has
+ * one hard prerequisite, stated in the comment next to the `discard` — TAA
+ * resolves the noise into a clean dissolve. Without a temporal resolve it is
+ * not a dissolve at all, it is every re-tiering block boiling for four hundred
+ * milliseconds, and re-tiering is what moving *does*.
+ *
+ * `postfx/Pipeline` is not mounted by the composition root today, so this is
+ * false and tiers swap instantly. That is the right trade even when it is
+ * close: tier 2 resolves into tier 0 as a detail change, not a silhouette
+ * change, so a hard swap of a distant block is a texture getting sharper. The
+ * flag exists so that the day the pipeline does mount, the dissolve comes back
+ * on its own — and so the prerequisite is written down somewhere the next
+ * person will actually look.
+ */
+let temporalResolve = false;
+
+/** Called by the postfx pipeline when TAA is running (and when it stops). */
+export function setTemporalResolve(on: boolean): void {
+  temporalResolve = on;
+}
+
+/** Seconds this frame's tier changes should spend fading. Zero means swap. */
+export function fadeSeconds(): number {
+  return temporalResolve ? FADE_SECONDS : 0;
+}
 
 export interface LodRing {
   /** Tier index 0..2 (3 = impostor, handled by impostors.ts). */

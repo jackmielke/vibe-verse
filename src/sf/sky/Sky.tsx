@@ -17,7 +17,8 @@ import * as THREE from "three";
 import { frame } from "../state/store";
 import { QUALITY } from "../config";
 import { useSfStore } from "../state/store";
-import { clamp01, smoothstep } from "../math/rng";
+import { clamp, clamp01, smoothstep } from "../math/rng";
+import { walkableHeight } from "../geo/sfGeo";
 
 /* ------------------------------------------------------------------ *
  * Sun position
@@ -279,6 +280,7 @@ export default function Sky() {
 
   const sunRef = useRef<THREE.DirectionalLight>(null);
   const hemiRef = useRef<THREE.HemisphereLight>(null);
+  const bounceRef = useRef<THREE.HemisphereLight>(null);
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const domeRef = useRef<THREE.Mesh>(null);
 
@@ -336,8 +338,30 @@ export default function Sky() {
       light.castShadow = q.shadowCascades > 0;
       if (light.shadow) {
         const cam = light.shadow.camera as THREE.OrthographicCamera;
-        const d = q.shadowDistance * 0.5;
-        if (cam.right !== d) {
+        /**
+         * The shadow frustum follows how high you are, and that is what stops
+         * the pavement crawling with speckle.
+         *
+         * One orthographic map covering `shadowDistance` spends its texels
+         * uniformly: at the medium tier that is 560 m across a 1536² map, or
+         * 36 cm per texel. Thirty-six centimetres is fine for a building's
+         * shadow seen from the air and hopeless on the road surface directly
+         * under a character's feet — the depth comparison lands on the wrong
+         * side of the texel in patches, and a downtown street in shadow fills
+         * with lit white crumbs. Nobody had seen it because until there was a
+         * walking mode nobody was ever down there.
+         *
+         * Height above ground is the free variable, exactly as camera distance
+         * is in Vibe City's near plane: what you can see the shadows OF grows
+         * with how high you are, so the frustum can shrink to a tenth when you
+         * are standing on the street and take the texel to 9 cm.
+         */
+        const agl = camera.position.y - walkableHeight(camera.position.x, camera.position.z);
+        const d = clamp(64 + Math.max(agl, 0) * 1.5, 64, Math.max(q.shadowDistance * 0.5, 64));
+        // Re-projecting every frame on a continuously varying number is a
+        // matrix rebuild for nothing; 6% is under the threshold where the
+        // shadow edge visibly resamples.
+        if (Math.abs(cam.right - d) > d * 0.06) {
           cam.left = -d;
           cam.right = d;
           cam.top = d;
@@ -347,7 +371,10 @@ export default function Sky() {
           cam.updateProjectionMatrix();
         }
         light.shadow.bias = -0.0006;
-        light.shadow.normalBias = 0.55;
+        // Normal bias is in world units, so it has to shrink with the frustum
+        // or a tight map pays a 55 cm offset it no longer needs — which is how
+        // a shadow detaches from the thing casting it.
+        light.shadow.normalBias = Math.max(0.05, (d / 280) * 0.55);
       }
     }
 
@@ -357,6 +384,33 @@ export default function Sky() {
       hemiRef.current.color.copy(fill);
       hemiRef.current.groundColor.copy(fill).multiplyScalar(0.35);
       hemiRef.current.intensity = 0.55 + frame.fogDensity * 0.9 + (1 - night) * 0.35;
+    }
+
+    /**
+     * The third term: warm bounce off the sunlit facades.
+     *
+     * ART_DIRECTION lists three lights — "the sun as key, the sky dome as a
+     * coloured fill, and the ground bounce as a warm third term" — and only two
+     * of them were ever built. From the air you cannot tell, because everything
+     * up there is in direct sun. From the pavement it is the whole picture: a
+     * downtown street at golden hour is in shadow from end to end, and with a
+     * cold sky fill as its only light the asphalt reads as pure black. The
+     * light that is actually falling on that road in real life comes off the
+     * building faces opposite, which are in full sun and are the warmest thing
+     * for a mile.
+     *
+     * A hemisphere light lights +Y normals with its sky colour, so this term
+     * lands on roads, pavements and roof decks — the horizontal surfaces the
+     * bounce would reach — and barely touches the walls that are casting it. It
+     * follows the sun's own colour and intensity, so it is at its strongest and
+     * most orange exactly when the shadows are longest, and it goes away at
+     * night when there is nothing to bounce.
+     */
+    if (bounceRef.current) {
+      const warm = sunColor(hour, scratch.sun);
+      bounceRef.current.color.copy(warm);
+      bounceRef.current.groundColor.copy(warm).multiplyScalar(0.15);
+      bounceRef.current.intensity = 0.55 * sunIntensity(hour) * (1 - frame.fogDensity * 0.4);
     }
 
     // Scene fog tracks the atmosphere so distant geometry and sky agree.
@@ -392,6 +446,8 @@ export default function Sky() {
         shadow-mapSize-height={q.shadowMapSize}
       />
       <hemisphereLight ref={hemiRef} intensity={0.8} />
+      {/* The warm bounce term — see the note where it is driven, above. */}
+      <hemisphereLight ref={bounceRef} intensity={0} />
     </>
   );
 }

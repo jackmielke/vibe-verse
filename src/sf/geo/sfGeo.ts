@@ -19,6 +19,7 @@
  * its genuine lat/lon. It is not "a city that feels like SF"; it is SF.
  */
 import { clamp, clamp01, fbm2, smoothstep } from "../math/rng";
+import { SPAWN_DEFS } from "./spawnList";
 
 /* ------------------------------------------------------------------ *
  * Geodesy
@@ -794,7 +795,21 @@ export type LandmarkKind =
   | "millennium-tower"
   | "555-california"
   | "shipyard-cranes"
-  | "windmill";
+  | "windmill"
+  /* The ten added for walking. Everything above this line reads at a kilometre
+     from a wingsuit; everything below it is a landmark because of what it is
+     like to stand in front of, which is a different job and only became worth
+     doing once there was a character to stand there. */
+  | "conservatory-of-flowers"
+  | "de-young"
+  | "cliff-house"
+  | "twin-peaks-overlook"
+  | "union-square"
+  | "ghirardelli-square"
+  | "castro-theatre"
+  | "mission-dolores"
+  | "fort-point"
+  | "chase-center";
 
 export interface LandmarkDef {
   key: string;
@@ -850,6 +865,18 @@ export const LANDMARKS: LandmarkDef[] = [
   landmark("555cal", "555-california", "555 California", 37.7924, -122.4038, 0.0, 237, 40, false),
   landmark("cranes", "shipyard-cranes", "Pier 70 Cranes", 37.7601, -122.3846, 0.0, 60, 80, false),
   landmark("windmill", "windmill", "Dutch Windmill", 37.7699, -122.5108, 0.0, 24, 24, false),
+
+  /* ---- the walking landmarks ---- */
+  landmark("conservatory", "conservatory-of-flowers", "Conservatory of Flowers", 37.7723, -122.4602, 0.0, 26, 90),
+  landmark("de-young", "de-young", "de Young Museum", 37.7715, -122.4687, 0.0, 44, 130),
+  landmark("cliff-house", "cliff-house", "Cliff House", 37.7787, -122.5137, 0.0, 22, 170),
+  landmark("twin-peaks-view", "twin-peaks-overlook", "Twin Peaks Overlook", 37.7544, -122.4477, 0.0, 6, 190, false),
+  landmark("union-square", "union-square", "Union Square", 37.7879, -122.4075, 0.0, 31, 60),
+  landmark("ghirardelli", "ghirardelli-square", "Ghirardelli Square", 37.8060, -122.4229, 0.0, 41, 80),
+  landmark("castro-theatre", "castro-theatre", "Castro Theatre", 37.7621, -122.4348, 0.0, 27, 40),
+  landmark("mission-dolores", "mission-dolores", "Mission Dolores", 37.7645, -122.4268, 0.0, 43, 60),
+  landmark("fort-point", "fort-point", "Fort Point", 37.8106, -122.4770, 0.0, 19, 70),
+  landmark("chase-center", "chase-center", "Chase Center", 37.7680, -122.3877, 0.0, 45, 150),
 ];
 
 export const LANDMARK_BY_KEY: Record<string, LandmarkDef> = Object.fromEntries(
@@ -917,57 +944,27 @@ export interface SpawnPoint {
   blurb: string;
 }
 
-export const SPAWNS: SpawnPoint[] = [
-  {
-    key: "coit",
-    name: "Coit Tower",
-    ...latLonToWorld(37.8024, -122.4058),
-    yOffset: 66,
-    heading: 2.2,
-    blurb: "Top of Telegraph Hill. The whole city under your boots.",
-  },
-  {
-    key: "transamerica",
-    name: "Transamerica Pyramid",
-    ...latLonToWorld(37.7952, -122.4028),
-    yOffset: 266,
-    heading: 1.1,
-    blurb: "260 metres up the spike. Step off.",
-  },
-  {
-    key: "goldengate",
-    name: "Golden Gate Bridge",
-    ...latLonToWorld(37.8199, -122.4783),
-    yOffset: 232,
-    heading: 1.6,
-    blurb: "The south tower. Fog optional.",
-  },
-  {
-    key: "market",
-    name: "Market Street",
-    x: 0,
-    z: 0,
-    yOffset: 2,
-    heading: 2.4,
-    blurb: "Street level, downtown. Cable car bells and sirens.",
-  },
-  {
-    key: "twinpeaks",
-    name: "Twin Peaks",
-    ...latLonToWorld(37.7544, -122.4477),
-    yOffset: 4,
-    heading: 0.6,
-    blurb: "282 metres. Best wingsuit run in the city.",
-  },
-  {
-    key: "alcatraz",
-    name: "Alcatraz",
-    ...latLonToWorld(37.8267, -122.4230),
-    yOffset: 24,
-    heading: 2.7,
-    blurb: "On the Rock. Swim, boat, or grapple your way out.",
-  },
-];
+/**
+ * The spawn table, projected into world metres.
+ *
+ * The list itself lives in `spawnList.ts` with no dependencies, so the page
+ * chrome can offer "Go somewhere" without importing this module — see the note
+ * at the top of that file.
+ */
+export const SPAWNS: SpawnPoint[] = SPAWN_DEFS.map((d) => {
+  const p = d.lat !== undefined && d.lon !== undefined
+    ? latLonToWorld(d.lat, d.lon)
+    : { x: d.x ?? 0, z: d.z ?? 0 };
+  return {
+    key: d.key,
+    name: d.name,
+    x: p.x,
+    z: p.z,
+    yOffset: d.yOffset,
+    heading: d.heading,
+    blurb: d.blurb,
+  };
+});
 
 /* ------------------------------------------------------------------ *
  * Convenience

@@ -40,12 +40,42 @@ export interface SfDebugHook {
   request: ShotRequest | null;
   /** Frames rendered since the shot pose was applied. */
   framesSincePose: number;
-  /** Streaming chunks still outstanding. */
+  /** Streaming chunks still outstanding (building chunks + impostor tiles). */
   pendingChunks: number;
+  /** The same number, split — a queue that will not drain is one or the other. */
+  pendingDetail?: number;
+  pendingImpostor?: number;
   /** Force a new camera pose at runtime (used by the critic loop). */
   setPose?: (pos: [number, number, number], look: [number, number, number], fov?: number) => void;
   /** Force time of day / fog at runtime. */
   setWeather?: (tod: number, fog: number) => void;
+  /** Where the camera actually is, and what its depth range currently is. */
+  camPose?: () => CamPose;
+  /**
+   * Render one frame synchronously and return it as a data URL, optionally
+   * with the depth range perturbed by `depthNudge` (a multiplier, e.g. 1.0002)
+   * for that render only.
+   *
+   * This is the whole basis of `scripts/sf-flicker.mjs`: two renders taken
+   * inside one call, a hair apart in depth precision, with nothing else in the
+   * world allowed to move between them. See that file for why a frame-to-frame
+   * diff cannot answer the same question — and `SanFranciscoGame` for which
+   * plane the nudge has to be applied to, which is not the obvious one.
+   */
+  snapshot?: (depthNudge?: number) => string;
+}
+
+export interface CamPose {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+  near: number;
+  far: number;
+  fov: number;
+  /** True when three actually granted a logarithmic depth buffer. */
+  logDepth: boolean;
 }
 
 declare global {
