@@ -125,6 +125,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "c84ef4a", iso: "2026-08-17T09:56:42+00:00", subject: "Vibe Francisco: two hundred cars, fifteen boats, and a Ferry Building that fits" },
     { sha: "5afd6f9", iso: "2026-08-17T09:43:04+00:00", subject: "Vibe Francisco: land on a street, and a camera that flies itself" },
     { sha: "1da54ff", iso: "2026-08-17T09:15:39+00:00", subject: "Vibe Francisco: a logbook, a hundred and seventy coins, and a race up Market" },
     { sha: "c2d5a7c", iso: "2026-08-17T08:56:22+00:00", subject: "Vibe Francisco gets its landmarks, and the city gets its walls back" },

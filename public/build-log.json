@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-17T09:55:01.575Z",
+  "generated_at": "2026-08-17T10:06:52.509Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "c84ef4af",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco: two hundred cars, fifteen boats, and a Ferry Building that fits",
+      "lede": "A city with nothing moving in it reads as a model of a city. You notice immediately and cannot say why — the buildings are right, the streets are right, the hills are right, and the whole thing still looks like something under glass. So: cars on the grid and boats on the bay, two instanced meshes between them.",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "5afd6f9a",
       "date": "2026-08-17",
@@ -1030,16 +1038,6 @@
     },
     {
       "sha": "14ffac3f",
-      "date": "2026-08-10",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "6521988f",
       "date": "2026-08-10",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",

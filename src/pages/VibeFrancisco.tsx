@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { useActiveCharacter } from "@/hooks/use-active-character";
-import { LANDMARK_SITES, SPAWNS } from "@/frisco/map";
+import { BOUNDS, LANDMARK_SITES, MARKET_DIR, SHORE, SPAWNS, landmarkPositions } from "@/frisco/map";
 import type { FriscoHandle } from "@/frisco/engine";
 import type { PlayEvent, PlaySnapshot } from "@/frisco/play";
 import type { Stance } from "@/frisco/player";
@@ -28,6 +28,9 @@ interface Hud {
   altitude: number;
   speed: number;
   fps: number;
+  x: number;
+  z: number;
+  yaw: number;
 }
 
 export default function VibeFrancisco() {
@@ -50,7 +53,9 @@ export default function VibeFrancisco() {
   const [phase, setPhase] = useState<"loading" | "playing" | "failed">("loading");
   const [progress, setProgress] = useState("Waking up the city");
   const [sheet, setSheet] = useState<"char" | "go" | "log" | null>(null);
-  const [hud, setHud] = useState<Hud>({ fuel: 1, stance: "ground", altitude: 0, speed: 0, fps: 0 });
+  const [hud, setHud] = useState<Hud>({
+    fuel: 1, stance: "ground", altitude: 0, speed: 0, fps: 0, x: 0, z: 0, yaw: 0,
+  });
   const [touch, setTouch] = useState(false);
   const [hint, setHint] = useState(true);
   const [play, setPlay] = useState<PlaySnapshot | null>(null);
@@ -120,6 +125,9 @@ export default function VibeFrancisco() {
             altitude: s.altitude,
             speed: s.speed,
             fps: handle!.fps,
+            x: s.position.x,
+            z: s.position.z,
+            yaw: s.yaw,
           });
           setPlay(handle!.play.snapshot());
         };
@@ -200,6 +208,7 @@ export default function VibeFrancisco() {
           />
           <FuelGauge hud={hud} />
           <Scoreboard play={play} onLog={() => setSheet("log")} onCourse={toggleCourse} />
+          <MiniMap play={play} pos={{ x: hud.x, z: hud.z }} yaw={hud.yaw} touch={touch} />
           <Toast toast={toast} />
           {touch ? <JetPad /> : null}
           <Hint show={hint && !toast} touch={touch} />
@@ -314,6 +323,152 @@ function FuelGauge({ hud }: { hud: Hud }) {
         <span>{Math.round(hud.speed * 3.6)} km/h</span>
         {hud.stance === "jet" ? <span className="text-[#7dfce0]">▲ burning</span> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The minimap.
+ *
+ * A 3.4 by 4.4 km city is too big to hold in your head from inside it, and the
+ * symptom is specific: people fly up, look around, pick a direction, and land
+ * somewhere they have already been. Nothing about the world is wrong; they
+ * simply have no way to know where they are. One small top-down picture fixes
+ * it completely.
+ *
+ * What it draws is chosen for legibility at 150 pixels, not for completeness.
+ * The bay, Market Street, the twelve landmarks and you — and nothing else. A
+ * minimap with three thousand buildings on it is a grey rectangle; a minimap
+ * with the street grid on it is a moiré pattern. The landmarks are the whole
+ * point: found ones are solid, unfound ones are hollow, so the map is also the
+ * to-do list.
+ *
+ * Drawn on a real canvas rather than in SVG or divs because it redraws ten
+ * times a second forever, and a hundred DOM nodes reconciling at 10 Hz is a
+ * frame-budget problem that a `fillRect` loop is not.
+ */
+function MiniMap({
+  play,
+  pos,
+  yaw,
+  touch,
+}: {
+  play: PlaySnapshot | null;
+  pos: { x: number; z: number };
+  yaw: number;
+  touch: boolean;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const found = useMemo(() => new Set(play?.found ?? []), [play?.found]);
+
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const S = cv.width;
+    /* World → map, at ONE scale for both axes and centred.
+       Fitting X and Y independently is the obvious thing and it is wrong: the
+       map is 3.4 km by 4.4 km, so a square canvas stretched to fit turns the
+       street grid 8 degrees and puts the Ferry Building somewhere it is not.
+       A map you have to mentally un-squash is worse than no map. */
+    const W = BOUNDS.maxX - BOUNDS.minX;
+    const D = BOUNDS.maxZ - BOUNDS.minZ;
+    const k = S / Math.max(W, D);
+    const ox = (S - W * k) / 2;
+    const oy = (S - D * k) / 2;
+    const toX = (x: number) => ox + (x - BOUNDS.minX) * k;
+    const toY = (z: number) => oy + (z - BOUNDS.minZ) * k;
+
+    ctx.clearRect(0, 0, S, S);
+    ctx.fillStyle = "#b8b09c";
+    ctx.fillRect(toX(BOUNDS.minX), toY(BOUNDS.minZ), W * k, D * k);
+    /* The bay is the seawall polyline closed around the north-east corner of
+       the map. `shoreSDF` keeps land on the LEFT of the direction of travel, so
+       the water is everything to the right of it, and the corners to go round
+       are (maxX,maxZ) → (maxX,minZ) → (minX,minZ). Closing it the other way
+       floods downtown, which is a very clear failure at least. */
+    ctx.beginPath();
+    ctx.moveTo(toX(SHORE[0].x), toY(SHORE[0].z));
+    for (const p of SHORE) ctx.lineTo(toX(p.x), toY(p.z));
+    ctx.lineTo(toX(BOUNDS.maxX), toY(BOUNDS.maxZ));
+    ctx.lineTo(toX(BOUNDS.maxX), toY(BOUNDS.minZ));
+    ctx.lineTo(toX(BOUNDS.minX), toY(BOUNDS.minZ));
+    ctx.closePath();
+    ctx.fillStyle = "#2f6ea8";
+    ctx.fill();
+    // Alcatraz, which is land in the middle of that and would otherwise vanish.
+    const rock = landmarkPositions().find((l) => l.key === "alcatraz");
+    if (rock) {
+      ctx.beginPath();
+      ctx.arc(toX(rock.x), toY(rock.z), 118 * k, 0, Math.PI * 2);
+      ctx.fillStyle = "#b8b09c";
+      ctx.fill();
+    }
+
+    // Market Street, which is the one line that orients you instantly.
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(toX(MARKET_DIR.x * -420), toY(MARKET_DIR.z * -420));
+    ctx.lineTo(toX(MARKET_DIR.x * 2300), toY(MARKET_DIR.z * 2300));
+    ctx.stroke();
+
+    for (const l of landmarkPositions()) {
+      const x = toX(l.x);
+      const y = toY(l.z);
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      if (found.has(l.key)) {
+        ctx.fillStyle = "#ffcf6b";
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+    }
+
+    // You, as an arrow, because a dot cannot tell you which way you are facing
+    // and which way you are facing is half of what a map is for.
+    const px = toX(pos.x);
+    const py = toY(pos.z);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(-yaw + Math.PI / 2);
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(4, 5);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(-4, 5);
+    ctx.closePath();
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }, [found, pos.x, pos.z, yaw]);
+
+  return (
+    <div
+      className="pointer-events-none absolute z-20 overflow-hidden rounded-xl ring-1 ring-white/20 backdrop-blur-sm"
+      style={{
+        right: "max(env(safe-area-inset-right), 12px)",
+        /* Clear of the JET pad, which is 108 px tall in the same corner. On a
+           phone the map is the first thing to lose room and the last thing you
+           want to lose, so it shrinks rather than moving. */
+        bottom: touch
+          ? "calc(max(env(safe-area-inset-bottom), 18px) + 122px)"
+          : "max(env(safe-area-inset-bottom), 20px)",
+      }}
+    >
+      <canvas
+        ref={ref}
+        width={150}
+        height={150}
+        className={touch ? "block h-[92px] w-[92px]" : "block h-[132px] w-[132px]"}
+      />
     </div>
   );
 }
