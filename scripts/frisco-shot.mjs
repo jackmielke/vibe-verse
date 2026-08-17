@@ -172,6 +172,20 @@ if (process.env.FRISCO_TIME) {
 }
 
 for (const name of shots) {
+  /* `spawn:market` photographs a real spawn point instead of a fixed pose.
+     Hard-coded street-level poses go stale: they are three numbers that were
+     on a road on the day they were written, and the city keeps getting denser.
+     Half the street shots in this file's history ended up inside a wall that
+     way, which reads as a rendering bug and is not one. A spawn snaps itself
+     to asphalt at load, so it cannot. */
+  if (name.startsWith("spawn:")) {
+    await page.evaluate((k) => window.__frisco.goTo(k), name.slice(6));
+    await page.waitForTimeout(2200);
+    writeFileSync(`${OUT}/${name.replace(":", "-")}.png`, await page.screenshot());
+    const st = await page.evaluate(() => window.__frisco.stats());
+    console.log(`${name.padEnd(16)} ${st.drawCalls} draws, ${st.drawnTriangles} tris, ${st.fps} fps`);
+    continue;
+  }
   const pose = POSES[name];
   if (!pose) {
     console.log(`no such pose: ${name}`);

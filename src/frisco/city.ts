@@ -43,6 +43,17 @@ import {
 
 export const CITY_SEED = "vibe-francisco-v1";
 
+/**
+ * Where the bay windows go.
+ *
+ * The residential districts, and not the Financial District, SoMa or the
+ * Embarcadero — which is both true of the real city and the thing that keeps
+ * the detail affordable.
+ */
+const VICTORIAN_DISTRICTS = new Set([
+  "chinatown", "northbeach", "russianhill", "nobhill", "wharf", "mission", "hayes", "civic",
+]);
+
 /** Blend two vertex colours. `t` of 0 is all `a`. */
 function mix(
   a: readonly [number, number, number],
@@ -328,6 +339,82 @@ function buildStreets(roads: Batch, walks: Batch, lines: StreetLine[]): void {
  * ------------------------------------------------------------------ */
 
 /**
+ * The bay window, the cornice and the stoop — a San Francisco Victorian in
+ * about thirty triangles.
+ *
+ * This is the highest-value detail in the whole world per polygon, and it is
+ * worth being clear about why. Everything else here is generic: a grid of
+ * streets over hills with pastel boxes on it could be almost any western city
+ * at this level of abstraction. The projecting bay window is not generic. It is
+ * on tens of thousands of houses in the Mission, North Beach, the Haight and
+ * the Richmond, it is the reason the streets read as *rows* rather than as
+ * walls, and it is the one thing a person who has been to San Francisco will
+ * notice is missing without being able to say what it was.
+ *
+ * The budget matters, because there are seven thousand perimeter buildings and
+ * anything spent here is spent seven thousand times. A bay is five quads, the
+ * cornice is a box, the stoop is a box and the door is a quad: about thirty
+ * triangles, or a hundred thousand across the residential half of the city.
+ * A version with a proper hipped bay roof and window mullions was four times
+ * that and looked, from any distance you actually see a house at, identical.
+ *
+ * `out` is the outward normal in the BLOCK's local frame; the yaw rotates it
+ * into the world. Getting that wrong builds the bay window into the courtyard
+ * at the back, where it is both invisible and inside the neighbour.
+ */
+function victorianFront(
+  b: Batch,
+  x: number, base: number, z: number,
+  hwB: number, h: number, hdB: number,
+  out: Vec2,
+  yaw: number,
+  wall: [number, number, number],
+  glass: [number, number, number],
+  rng: Rng,
+): void {
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  // The outward direction in world space, and the along-facade direction.
+  const ox = out.x * cs - out.z * sn;
+  const oz = out.x * sn + out.z * cs;
+  const facing = Math.atan2(oz, ox);
+  // Half-width of the facade this bay sits on: whichever extent runs across it.
+  const faceHalf = Math.abs(out.x) > 0.5 ? hdB : hwB;
+  const depth = Math.abs(out.x) > 0.5 ? hwB : hdB;
+
+  const trim = shade(wall, 1.1);
+  const shadowed = shade(wall, 0.9);
+
+  // The bay: a shallow box projecting from the facade, glazed on three sides.
+  const bayHalf = Math.min(faceHalf * 0.42, 3.2);
+  const proj = 0.85;
+  const y0 = base + 1.1;
+  const bayH = Math.max(2.2, h - 2.0);
+  const bx = x + ox * (depth + proj * 0.5);
+  const bz = z + oz * (depth + proj * 0.5);
+  // Two courses, not three: the third is invisible at any range a house is
+  // actually seen from and it is eleven thousand triangles across the city.
+  b.bandedBox(bx, y0, bz, proj * 0.5, bayH, bayHalf, shadowed, glass, 2, 1, facing);
+  // Its little roof, and a cornice across the whole front.
+  b.box(bx, y0 + bayH, bz, proj * 0.62, 0.34, bayHalf * 1.08, trim, 1, facing);
+  b.box(
+    x + ox * (depth + 0.12), base + h - 0.55, z + oz * (depth + 0.12),
+    0.3, 0.55, faceHalf * 1.02, trim, 1, facing,
+  );
+
+  // A stoop, off to one side of the bay, because a door in the middle of a bay
+  // window is the one arrangement no Victorian has.
+  const doorSide = rng.chance(0.5) ? 1 : -1;
+  const dOff = bayHalf + Math.min(1.5, (faceHalf - bayHalf) * 0.5);
+  const px = -oz * doorSide * dOff;
+  const pz = ox * doorSide * dOff;
+  b.box(x + px + ox * (depth + 0.5), base, z + pz + oz * (depth + 0.5),
+    0.55, 0.85, 0.9, shade(trim, 0.96), 1, facing);
+  b.box(x + px + ox * (depth + 0.06), base + 0.85, z + pz + oz * (depth + 0.06),
+    0.12, 2.1, 0.55, shade(wall, 0.72), 1, facing);
+}
+
+/**
  * Fill one city block with buildings.
  *
  * The block is the rectangle between four streets; buildings are laid around
@@ -479,6 +566,17 @@ function fillBlock(
          stops at the eaves — drops you waist-deep into the gable every time you
          land on a North Beach walk-up. Half the ridge height is the compromise
          that reads right from the street and from the air. */
+      /* The Victorian front, on the low-rise residential districts only.
+         A bay window on a forty-metre Financial District block is a
+         forty-metre bay window, and downtown does not have them anyway. */
+      /* Not every house. Real blocks mix bay-fronted and flat-fronted, so
+         three in four is both truer and forty thousand triangles cheaper than
+         all of them. */
+      if (h < 26 && VICTORIAN_DISTRICTS.has(district.key) && rng.chance(0.74)) {
+        const outLocal: Vec2 =
+          side.along === "x" ? { x: 0, z: side.sign } : { x: side.sign, z: 0 };
+        victorianFront(buildings, p.x, base, p.z, hwB, h, hdB, outLocal, yaw, myWall, glass, rng);
+      }
       colliders.push({
         x: p.x, z: p.z, hw: hwB, hd: hdB, yaw,
         baseY: base, roofY: base + h + roofRise,
