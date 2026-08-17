@@ -38,6 +38,10 @@ class Buf {
     next.set(this.data.subarray(0, this.len));
     this.data = next;
   }
+  push1(a: number): void {
+    this.need(1);
+    this.data[this.len++] = a;
+  }
   push3(a: number, b: number, c: number): void {
     this.need(3);
     this.data[this.len++] = a;
@@ -85,6 +89,21 @@ export function rgb(hex: number): [number, number, number] {
   return out;
 }
 
+/**
+ * A deterministic 0..1 from three numbers.
+ *
+ * Used to decide which window courses are lit at night. It has to be a *hash*
+ * rather than an RNG stream because `bandedBox` is called from four different
+ * builders and has no seed of its own — and because the answer must be the same
+ * for the four faces of one building, or a tower ends up lit on the north side
+ * and dark on the east.
+ */
+function hash3(a: number, b: number, c: number): number {
+  let h = (Math.round(a * 7.3) * 374761393 + Math.round(b * 7.3) * 668265263 + c * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /** Multiply a colour by a scalar — the cheapest way to shade a face by hand. */
 export function shade(c: [number, number, number], k: number): [number, number, number] {
   return [c[0] * k, c[1] * k, c[2] * k];
@@ -100,6 +119,21 @@ export class Batch {
   private pos = new Buf(1 << 16);
   private nrm = new Buf(1 << 16);
   private col = new Buf(1 << 16);
+  /**
+   * Per-vertex emission, 0 or 1. What lights up at night.
+   *
+   * A channel rather than a separate mesh, and that is the whole trick: the
+   * city is one material painting nine thousand buildings out of vertex
+   * colour, and splitting the window bands into their own mesh so they could
+   * have their own material would have meant threading a second `Batch`
+   * through every builder in the world. One float per vertex costs 3.4 MB on
+   * a city this size, is uploaded once, and lets `look.ts` add
+   * `glow * night * lamplight` in the fragment shader for free.
+   *
+   * Geometry that never sets it is not paying for a decision it did not make:
+   * an attribute a shader reads and a geometry lacks reads as zero.
+   */
+  private glo = new Buf(1 << 14);
   private idx = new IndexBuf(1 << 16);
   private vertexCount = 0;
   triangles = 0;
@@ -112,10 +146,12 @@ export class Batch {
     x: number, y: number, z: number,
     nx: number, ny: number, nz: number,
     c: [number, number, number],
+    glow = 0,
   ): number {
     this.pos.push3(x, y, z);
     this.nrm.push3(nx, ny, nz);
     this.col.push3(c[0], c[1], c[2]);
+    this.glo.push1(glow);
     return this.vertexCount++;
   }
 
@@ -132,6 +168,7 @@ export class Batch {
     p3: readonly [number, number, number],
     c: [number, number, number],
     normal?: readonly [number, number, number],
+    glow = 0,
   ): void {
     let nx: number, ny: number, nz: number;
     if (normal) {
@@ -142,10 +179,10 @@ export class Batch {
       V.cross(N).normalize();
       nx = V.x; ny = V.y; nz = V.z;
     }
-    const a = this.vertex(p0[0], p0[1], p0[2], nx, ny, nz, c);
-    const b = this.vertex(p1[0], p1[1], p1[2], nx, ny, nz, c);
-    const d = this.vertex(p2[0], p2[1], p2[2], nx, ny, nz, c);
-    const e = this.vertex(p3[0], p3[1], p3[2], nx, ny, nz, c);
+    const a = this.vertex(p0[0], p0[1], p0[2], nx, ny, nz, c, glow);
+    const b = this.vertex(p1[0], p1[1], p1[2], nx, ny, nz, c, glow);
+    const d = this.vertex(p2[0], p2[1], p2[2], nx, ny, nz, c, glow);
+    const e = this.vertex(p3[0], p3[1], p3[2], nx, ny, nz, c, glow);
     this.tri(a, b, d);
     this.tri(a, d, e);
   }
@@ -238,6 +275,15 @@ export class Batch {
            wall colour do the work of telling neighbourhoods apart. */
         const isWindow = i % 3 === 1;
         const c = shade(isWindow ? window : wall, f.k);
+        /* Which floors have the lights on, and how brightly.
+           Lighting every course of every building turned night into a city made
+           of fluorescent tubes — correct in mechanism and completely wrong to
+           look at, because the thing that makes a night skyline read is that it
+           is *patchy*. Just over half of them, at varying brightness, and the
+           value is hashed off the building's own position so it is the same on
+           every face and the same on every reload. */
+        const roll = hash3(cx, cz, i);
+        const lit = isWindow && roll > 0.42 ? 0.45 + roll * 0.55 : 0;
         const w0 = hw * s0, d0 = hd * s0, w1 = hw * s1, d1 = hd * s1;
         // Corners of this band on this face.
         const corner = (w: number, d: number, y: number, sign: number): [number, number, number] => {
@@ -277,7 +323,14 @@ export class Batch {
            black hull out through the face it is supposed to sit behind. The
            Ferry Building rendered as a solid black slab with a gold clock on
            it. */
-        this.quad(a, b, cc, dd, c, [f.ax * cs - f.az * sn, 0, f.ax * sn + f.az * cs]);
+        // The window courses carry the glow. At night `look.ts` adds it back as
+        // emission, which is why a banded building turns into a lit one for the
+        // cost of a single float per vertex and no extra draw.
+        this.quad(
+          a, b, cc, dd, c,
+          [f.ax * cs - f.az * sn, 0, f.ax * sn + f.az * cs],
+          lit,
+        );
       }
     }
     // Roof.
@@ -416,6 +469,7 @@ export class Batch {
     g.setAttribute("position", new THREE.BufferAttribute(this.pos.view().slice(), 3));
     g.setAttribute("normal", new THREE.BufferAttribute(this.nrm.view().slice(), 3));
     g.setAttribute("color", new THREE.BufferAttribute(this.col.view().slice(), 3));
+    g.setAttribute("glow", new THREE.BufferAttribute(this.glo.view().slice(), 1));
     g.setIndex(new THREE.BufferAttribute(this.idx.view().slice(), 1));
     g.computeBoundingSphere();
     return g;

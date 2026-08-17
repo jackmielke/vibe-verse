@@ -398,6 +398,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         }
       },
       setFog: (a: number) => sky.setFog(a),
+      setTime: (k: string) => sky.setTime(k),
       setShadows: (on: boolean) => { renderer.shadowMap.enabled = on; sky.sun.castShadow = on; },
       setLights: (sunI: number, hemiI: number) => { sky.sun.intensity = sunI; sky.hemi.intensity = hemiI; },
     };
@@ -423,6 +424,7 @@ declare global {
       raw: () => { scene: unknown; camera: unknown; renderer: unknown; sky: unknown };
       show: (name: string, on: boolean) => void;
       setFog: (a: number) => void;
+      setTime: (k: string) => void;
       setShadows: (on: boolean) => void;
       setLights: (s: number, h: number) => void;
     };

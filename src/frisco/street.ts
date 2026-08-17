@@ -62,7 +62,22 @@ function lamp(b: Batch, x: number, z: number, toRoad: Vec2): void {
   const az = z + toRoad.z * 1.1;
   const yaw = Math.atan2(toRoad.z, toRoad.x);
   b.box(ax, y + 7.0, az, 1.2, 0.14, 0.14, shade(metal, 1.05), 1, yaw);
+  // The head glows; the pole does not. `box` has no glow parameter, so the
+  // lamp is drawn as one quad face-up plus the box, and the quad carries it.
   b.box(x + toRoad.x * 2.1, y + 6.75, z + toRoad.z * 2.1, 0.5, 0.2, 0.28, glassy, 1, yaw);
+  lampGlow(b, x + toRoad.x * 2.1, y + 6.64, z + toRoad.z * 2.1, yaw);
+}
+
+/** The lit underside of a lamp head — one quad, glowing. */
+function lampGlow(b: Batch, x: number, y: number, z: number, yaw: number): void {
+  const glassy = rgb(0xfff0c4);
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const P = (lx: number, lz: number): [number, number, number] => [
+    x + lx * cs - lz * sn, y, z + lx * sn + lz * cs,
+  ];
+  // Face down: wound clockwise seen from above is counter-clockwise from below.
+  b.quad(P(-0.46, -0.24), P(-0.46, 0.24), P(0.46, 0.24), P(0.46, -0.24), glassy, [0, -1, 0], 1);
 }
 
 /** A traffic signal: a post, a mast arm, and a three-lamp head. */

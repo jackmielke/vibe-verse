@@ -129,6 +129,8 @@ export interface ToonOptions {
   side?: THREE.Side;
   emissive?: number;
   emissiveIntensity?: number;
+  /** Read the per-vertex `glow` attribute and emit it at night. */
+  glow?: boolean;
 }
 
 /**
@@ -139,10 +141,31 @@ export interface ToonOptions {
  * a downtown, without any batching cleverness, purely because nothing needs to
  * be different from anything else.
  */
+/**
+ * How lit the world is, 0 by day and 1 at deep night, shared by every material
+ * that can glow.
+ *
+ * One uniform *object*, handed to every compiled program by reference, so
+ * setting `.value` once lights every window in the city on the same frame.
+ * Giving each material its own uniform and looping over them would work too,
+ * and would go wrong the first time somebody added a material and forgot.
+ */
+const NIGHT = { value: 0 };
+const LAMPLIGHT = { value: new THREE.Color(0xffd08a) };
+
+/** 0 = full daylight, 1 = the lights are on. Driven by `sky.ts`. */
+export function setNight(v: number): void {
+  NIGHT.value = Math.max(0, Math.min(1, v));
+}
+
+export function nightAmount(): number {
+  return NIGHT.value;
+}
+
 export function toon(color: number, o: ToonOptions = {}): THREE.MeshToonMaterial {
   const key = `t:${color}:${o.vertexColors ? 1 : 0}:${o.transparent ? 1 : 0}:${
     o.opacity ?? 1
-  }:${o.side ?? 0}:${o.emissive ?? -1}:${o.emissiveIntensity ?? 0}`;
+  }:${o.side ?? 0}:${o.emissive ?? -1}:${o.emissiveIntensity ?? 0}:${o.glow ? 1 : 0}`;
   const hit = cache.get(key);
   if (hit) return hit as THREE.MeshToonMaterial;
   const m = new THREE.MeshToonMaterial({
@@ -153,6 +176,38 @@ export function toon(color: number, o: ToonOptions = {}): THREE.MeshToonMaterial
     opacity: o.opacity ?? 1,
     side: o.side ?? THREE.FrontSide,
   });
+  if (o.glow) {
+    /* The night lights, injected rather than hand-written.
+       `look.ts` learned this the hard way with the outline shader: a raw
+       ShaderMaterial here would lose skinning, the logarithmic depth buffer and
+       colour management all at once. So this is a stock MeshToonMaterial with a
+       `glow` attribute read in the vertex shader and added to the output in the
+       fragment shader, and everything else three does for us stays done.
+
+       The addition happens BEFORE `colorspace_fragment`, so the glow is added
+       in linear space along with everything else and converted once on the way
+       out. Adding it after gives a light that is roughly twice as bright as
+       intended and does not blend with the toon bands underneath. */
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uNight = NIGHT;
+      shader.uniforms.uLamp = LAMPLIGHT;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float glow;\nvarying float vGlow;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvGlow = glow;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          "#include <common>\nuniform float uNight;\nuniform vec3 uLamp;\nvarying float vGlow;",
+        )
+        .replace(
+          "#include <colorspace_fragment>",
+          "gl_FragColor.rgb += vGlow * uNight * uLamp * 0.95;\n#include <colorspace_fragment>",
+        );
+    };
+    // Without this three reuses one compiled program for every MeshToonMaterial
+    // in the scene and the injection silently applies to all of them or none.
+    m.customProgramCacheKey = () => `frisco-glow:${color}:${o.vertexColors ? 1 : 0}`;
+  }
   if (o.emissive !== undefined) {
     m.emissive = new THREE.Color(o.emissive);
     m.emissiveIntensity = o.emissiveIntensity ?? 1;

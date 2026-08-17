@@ -635,7 +635,8 @@ export function buildCity(): CityBuild {
   buildWater(water);
   const landmarks = buildLandmarks(marks, colliders);
 
-  const vertexColoured = toon(0xffffff, { vertexColors: true });
+  // `glow: true` — the window courses and the lamp heads light up at night.
+  const vertexColoured = toon(0xffffff, { vertexColors: true, glow: true });
   let triangles = 0;
   for (const [name, batch, receive, cast] of [
     ["ground", ground, true, false],

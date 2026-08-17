@@ -15,7 +15,16 @@ import { useActiveCharacter } from "@/hooks/use-active-character";
 import { BOUNDS, LANDMARK_SITES, MARKET_DIR, SHORE, SPAWNS, landmarkPositions } from "@/frisco/map";
 import type { FriscoHandle } from "@/frisco/engine";
 import type { PlayEvent, PlaySnapshot } from "@/frisco/play";
+import { TIMES } from "@/frisco/sky";
 import type { Stance } from "@/frisco/player";
+
+const TIME_ICON: Record<string, string> = {
+  dawn: "🌅",
+  day: "☀️",
+  golden: "🌇",
+  dusk: "🌆",
+  night: "🌙",
+};
 
 const CHIP =
   "pointer-events-auto inline-flex min-h-[42px] items-center gap-1.5 rounded-xl bg-black/40 px-3 " +
@@ -62,6 +71,7 @@ export default function VibeFrancisco() {
   const [play, setPlay] = useState<PlaySnapshot | null>(null);
   const [toast, setToast] = useState<{ id: number; title: string; body: string } | null>(null);
   const [muted, setMuted] = useState(false);
+  const [timeKey, setTimeKey] = useState("day");
   const toastId = useRef(0);
 
   /* One toast at a time, and the newest wins.
@@ -148,6 +158,7 @@ export default function VibeFrancisco() {
           }
         };
         setMuted(handle.audio.isMuted);
+        setTimeKey(handle.sky.time.key);
         /* The audio graph cannot exist before a gesture — browsers refuse to
            start an AudioContext without one, and one created early sits
            suspended forever while everything downstream silently does nothing.
@@ -215,6 +226,18 @@ export default function VibeFrancisco() {
     setMuted(next);
   }, []);
 
+  /** Step to the next time of day. A cycle rather than a menu: five stops is
+      few enough that pressing a button four times is faster than opening
+      anything. */
+  const nextTime = useCallback(() => {
+    const h = handleRef.current;
+    if (!h) return;
+    const i = TIMES.findIndex((t) => t.key === h.sky.time.key);
+    const t = TIMES[(i + 1) % TIMES.length];
+    h.sky.setTime(t.key);
+    setTimeKey(t.key);
+  }, []);
+
   const goTo = useCallback(
     (key: string) => {
       handleRef.current?.goTo(key);
@@ -241,6 +264,8 @@ export default function VibeFrancisco() {
             onGo={() => setSheet("go")}
             muted={muted}
             onMute={toggleMute}
+            timeKey={timeKey}
+            onTime={nextTime}
           />
           <FuelGauge hud={hud} />
           <Scoreboard play={play} onLog={() => setSheet("log")} onCourse={toggleCourse} />
@@ -304,12 +329,16 @@ function TopChrome({
   onGo,
   muted,
   onMute,
+  timeKey,
+  onTime,
 }: {
   charLabel: string;
   onChar: () => void;
   onGo: () => void;
   muted: boolean;
   onMute: () => void;
+  timeKey: string;
+  onTime: () => void;
 }) {
   return (
     <div
@@ -328,6 +357,14 @@ function TopChrome({
       </button>
       <button onClick={onGo} className={CHIP} style={{ WebkitTapHighlightColor: "transparent" }}>
         📍 Go
+      </button>
+      <button
+        onClick={onTime}
+        className={`${CHIP} !px-2.5`}
+        aria-label="Time of day"
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        {TIME_ICON[timeKey] ?? "☀️"}
       </button>
       <button
         onClick={onMute}

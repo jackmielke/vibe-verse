@@ -16,7 +16,7 @@
  * fly through it and out the other side.
  */
 import * as THREE from "three";
-import { COLORS, flat, toon } from "./look";
+import { COLORS, flat, setNight, toon } from "./look";
 import { BOUNDS, VIEW } from "./map";
 
 export interface SkyRig {
@@ -27,6 +27,9 @@ export interface SkyRig {
   /** 0..1 — how much fog is currently over the city. Drives the HUD hint. */
   fogAmount: number;
   setFog(amount: number): void;
+  /** Which of `TIMES` is showing. */
+  time: TimeOfDay;
+  setTime(key: string): void;
   dispose(): void;
 }
 
@@ -107,7 +110,73 @@ const DOME_FRAG = /* glsl */ `
   }
 `;
 
-/** Where the sun sits. Mid-afternoon, west-south-west — SF's best light. */
+/**
+ * The times of day, as five sets of numbers.
+ *
+ * A named list rather than a continuous clock, and that is a deliberate
+ * limitation. A real day/night cycle means every screenshot, every recorded
+ * clip and every bug report happens at a different time, and "the shadows look
+ * wrong" becomes unanswerable. Five stops you choose between are five looks
+ * that can each be checked, and four of them exist mainly so that the fifth —
+ * night, with nine thousand lit windows — has something to be different from.
+ *
+ * `night` is the blend factor `look.ts` uses to light the windows, not a
+ * lighting term in itself.
+ */
+export interface TimeOfDay {
+  key: string;
+  label: string;
+  /** Direction TO the sun. */
+  sun: [number, number, number];
+  sunColor: number;
+  sunIntensity: number;
+  skyLow: number;
+  skyHigh: number;
+  hemiSky: number;
+  hemiGround: number;
+  hemiIntensity: number;
+  /** 0 by day, 1 when the lights are on. */
+  night: number;
+  /** What the clear colour and the loading screen use. */
+  backdrop: number;
+}
+
+export const TIMES: TimeOfDay[] = [
+  {
+    key: "dawn", label: "Dawn",
+    sun: [0.72, 0.16, 0.34], sunColor: 0xffcf9a, sunIntensity: 1.5,
+    skyLow: 0xffd9b0, skyHigh: 0x5c86c4, hemiSky: 0xd8c4e0, hemiGround: 0xc0a888,
+    hemiIntensity: 1.0, night: 0.4, backdrop: 0xbcd0e4,
+  },
+  {
+    key: "day", label: "Midday",
+    sun: [-0.55, 0.62, -0.36], sunColor: 0xfff4dd, sunIntensity: 2.05,
+    skyLow: 0xcfeaf7, skyHigh: 0x3f8fd8, hemiSky: 0xbfe3ff, hemiGround: 0xe8d9b8,
+    hemiIntensity: 1.35, night: 0, backdrop: 0x8fd0f0,
+  },
+  {
+    key: "golden", label: "Golden hour",
+    sun: [-0.86, 0.22, -0.2], sunColor: 0xffc888, sunIntensity: 2.0,
+    skyLow: 0xffd7a4, skyHigh: 0x4f8ecf, hemiSky: 0xd8dcf0, hemiGround: 0xe8c496,
+    hemiIntensity: 1.1, night: 0.18, backdrop: 0xd7c0a8,
+  },
+  {
+    key: "dusk", label: "Dusk",
+    sun: [-0.94, 0.07, -0.12], sunColor: 0xff9a63, sunIntensity: 1.2,
+    skyLow: 0xff9d6e, skyHigh: 0x2c3f78, hemiSky: 0x8a90c8, hemiGround: 0x7a5f60,
+    hemiIntensity: 0.85, night: 0.72, backdrop: 0x6a5a80,
+  },
+  {
+    key: "night", label: "Night",
+    sun: [-0.4, 0.5, -0.5], sunColor: 0x9fb4e0, sunIntensity: 0.42,
+    skyLow: 0x2a3556, skyHigh: 0x0d1430, hemiSky: 0x38456e, hemiGround: 0x232a3c,
+    hemiIntensity: 0.5, night: 1, backdrop: 0x121a33,
+  },
+];
+
+const TIME_KEY = "frisco.time";
+
+/** Where the sun sits. Replaced on every time change. */
 const SUN_DIR = new THREE.Vector3(-0.55, 0.62, -0.36).normalize();
 
 export function createSky(scene: THREE.Scene): SkyRig {
@@ -204,10 +273,49 @@ export function createSky(scene: THREE.Scene): SkyRig {
 
   scene.add(group);
 
+  const domeLow = domeMat.uniforms.uLow.value as THREE.Color;
+  const domeHigh = domeMat.uniforms.uHigh.value as THREE.Color;
+  const domeSun = domeMat.uniforms.uSun.value as THREE.Vector3;
+  const domeSunColor = domeMat.uniforms.uSunColor.value as THREE.Color;
+
+  let stored = "day";
+  try {
+    stored = localStorage.getItem(TIME_KEY) ?? "day";
+  } catch {
+    /* ignore */
+  }
+
   const rig: SkyRig = {
     group,
     sun,
     hemi,
+    time: TIMES.find((t) => t.key === stored) ?? TIMES[1],
+    setTime(key: string) {
+      const t = TIMES.find((v) => v.key === key);
+      if (!t) return;
+      rig.time = t;
+      try {
+        localStorage.setItem(TIME_KEY, key);
+      } catch {
+        /* ignore */
+      }
+      SUN_DIR.set(t.sun[0], t.sun[1], t.sun[2]).normalize();
+      sun.color.setHex(t.sunColor);
+      sun.intensity = t.sunIntensity;
+      hemi.color.setHex(t.hemiSky);
+      hemi.groundColor.setHex(t.hemiGround);
+      hemi.intensity = t.hemiIntensity;
+      domeLow.setHex(t.skyLow);
+      domeHigh.setHex(t.skyHigh);
+      domeSunColor.setHex(t.sunColor);
+      domeSun.copy(SUN_DIR);
+      /* The clouds go with the light. They are unlit white geometry, so at
+         night they stay a bright white cut-out unless somebody tells them —
+         which is the single most obvious tell that a "night mode" is a filter
+         rather than a time of day. */
+      cloudMat.color.setHex(t.night > 0.5 ? 0x5d6a8c : 0xffffff);
+      setNight(t.night);
+    },
     fogAmount: 0,
     setFog(a: number) {
       rig.fogAmount = Math.max(0, Math.min(1, a));
@@ -218,6 +326,7 @@ export function createSky(scene: THREE.Scene): SkyRig {
       // Follows the camera so its edge can never be reached, and so the far
       // plane can stay tight.
       dome.position.copy(camera.position);
+      domeSun.copy(SUN_DIR);
 
       // The sun's shadow frustum follows the player, sized for the near field:
       // a toy city wants crisp shadows on the street, and one 2048 map over
@@ -265,6 +374,7 @@ export function createSky(scene: THREE.Scene): SkyRig {
       sun.dispose();
     },
   };
+  rig.setTime(rig.time.key);
   return rig;
 }
 

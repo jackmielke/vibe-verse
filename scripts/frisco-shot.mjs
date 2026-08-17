@@ -159,6 +159,18 @@ const shots = wanted.flatMap((w) =>
   w === "landmarks" ? marks.map((m) => `lm-${m.key}`) : [w],
 );
 
+/**
+ * `FRISCO_TIME=night` shoots at a named time of day.
+ *
+ * Night is the one that matters: nine thousand lit window courses are a
+ * per-vertex glow channel and a shader injection, and there is no way to know
+ * either of them landed except by looking at the city with the lights on.
+ */
+if (process.env.FRISCO_TIME) {
+  await page.evaluate((t) => window.__frisco.setTime(t), process.env.FRISCO_TIME);
+  await page.waitForTimeout(900);
+}
+
 for (const name of shots) {
   const pose = POSES[name];
   if (!pose) {
