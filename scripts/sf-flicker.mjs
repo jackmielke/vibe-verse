@@ -125,7 +125,18 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
 page.on("pageerror", (e) => console.log(`PAGEERROR ${e}`));
 
-await page.goto(`${BASE}/sf`, { waitUntil: "domcontentloaded" });
+/**
+ * `mode=fly` is not optional, it is the measurement.
+ *
+ * /sf opens in WALKING mode, and `setPose` moves the player rather than a
+ * detached camera — so a pose 236 m over the Financial District hands the
+ * walking controller a character in mid-air and it does the correct thing with
+ * it, which is drop it. Every frame the camera then moves, and the settle test,
+ * which is defined as "two frames of a FROZEN pose", is instead measuring a
+ * fall. It reads 37% and blames the city. The free camera holds a pose because
+ * holding a pose is all it does.
+ */
+await page.goto(`${BASE}/sf?mode=fly`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("canvas", { timeout: 120000 });
 await page.waitForFunction(() => typeof window.__sf?.snapshot === "function", null, {
   timeout: 120000,
@@ -143,7 +154,8 @@ await page.waitForFunction(() => typeof window.__sf?.snapshot === "function", nu
 async function settle(key) {
   const pose = POSES[key];
   if (!pose) throw new Error(`no such pose: ${key}`);
-  for (let i = 0; i < 150; i++) {
+  const tries = Number(process.env.SF_SETTLE_TRIES ?? 400);
+  for (let i = 0; i < tries; i++) {
     await page.evaluate(([p, l]) => window.__sf.setPose(p, l), [pose.pos, pose.look]);
     await page.waitForTimeout(700);
     const pending = await page.evaluate(() => window.__sf.pendingChunks);
