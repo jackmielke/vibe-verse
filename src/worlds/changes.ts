@@ -125,12 +125,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "2c4cd3e", iso: "2026-08-17T18:16:16+00:00", subject: "The Powell Street cable car, and you can ride it" },
     { sha: "ba32f69", iso: "2026-08-17T17:55:13+00:00", subject: "Karl comes in" },
     { sha: "b4ba187", iso: "2026-08-17T17:43:08+00:00", subject: "Bay windows, which is the most San Francisco thing there is" },
     { sha: "f139274", iso: "2026-08-17T17:29:48+00:00", subject: "Vibe Francisco: three courses and a Grand Tour" },
     { sha: "9a60d84", iso: "2026-08-17T17:05:15+00:00", subject: "Vibe Francisco after dark, and four other times of day" },
     { sha: "9d740b6", iso: "2026-08-17T16:09:09+00:00", subject: "Vibe Francisco: lamp posts, trolley wires, and nine hundred people" },
-    { sha: "64c0d0f", iso: "2026-08-17T15:44:14+00:00", subject: "Vibe Francisco: you can land on a round building now, and it makes a noise" },
   ],
   "garden": [
     { sha: "1bf8d5a", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },

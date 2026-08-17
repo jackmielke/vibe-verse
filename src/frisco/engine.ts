@@ -177,6 +177,40 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   let wasGrounded = true;
   let frozen = false;
 
+  /* ---- adaptive quality ---- *
+   *
+   * The city is 1.2 million triangles now, up from 750 000, and there is no
+   * way to know from here whether that is fine. On a desktop GPU it is nothing;
+   * on a four-year-old phone it might be twenty frames a second, and the person
+   * on the phone has no idea that a setting exists or that they want it.
+   *
+   * So this measures and steps down. Three tiers, each a knob that costs
+   * nothing to turn — hiding a mesh, thinning an instanced list, switching off
+   * the shadow pass — because a quality system that has to rebuild the city is
+   * a quality system that hitches at exactly the moment it is trying to help.
+   *
+   * It only ever steps DOWN. A system that steps back up oscillates: the frame
+   * rate recovers *because* the detail went away, so restoring it recovers the
+   * problem, and the visible result is a city that flickers between two
+   * versions of itself every few seconds. Somebody who wants the detail back
+   * can reload, and `?quality=high` pins it for anybody who would rather have
+   * the pixels than the frames.
+   */
+  const PIN_HIGH =
+    typeof window !== "undefined" && window.location.search.includes("quality=high");
+  let tier = 2;
+  let tierAcc = 0;
+  let tierFrames = 0;
+
+  const applyTier = () => {
+    life.setDensity(tier >= 2 ? 1 : tier === 1 ? 0.45 : 0.25);
+    renderer.shadowMap.enabled = tier >= 2 && !attract;
+    sky.sun.castShadow = tier >= 2 && !attract;
+    for (const c of city.group.children) {
+      if (c.name === "frisco-props") c.visible = tier >= 1;
+    }
+  };
+
   const handle: FriscoHandle = {
     player, city, collision, sky, play, life, cable, audio, input, scene, camera, renderer,
     fps: 0,
@@ -282,7 +316,17 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
        `dt`, so setting it to zero holds the entire city still while a pose is
        set and a frame is taken. Photographing a moving object by posing the
        camera and waiting has a race in it that no amount of waiting fixes. */
-    const dt = frozen ? 0 : Math.min((now - last) / 1000, 1 / 15);
+    /* Two clocks, and conflating them was a real bug for a long time.
+       `real` is how long the last frame actually took. `dt` is what the world
+       is allowed to step, clamped so a backgrounded tab does not resume with a
+       two-second step and fling the player through the map.
+       Measuring the frame RATE from the clamped value is what went wrong: it
+       saturates at fifteen, so a world running at one and a half frames a
+       second reported "17 fps" — in the HUD, in every screenshot this repo has
+       taken, and to the adaptive quality system, which therefore never once
+       triggered on a machine that plainly needed it. */
+    const real = (now - last) / 1000;
+    const dt = frozen ? 0 : Math.min(real, 1 / 15);
     last = now;
     elapsed += dt;
 
@@ -329,12 +373,29 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
 
     renderer.render(scene, camera);
 
-    acc += dt;
+    acc += real;
     frames++;
     if (acc >= 1) {
       handle.fps = Math.round(frames / acc);
       acc = 0;
       frames = 0;
+    }
+
+    /* Give it four seconds before judging: the first second of any WebGL world
+       is shader compilation and texture upload, and measuring that would drop
+       every visitor to the bottom tier on a machine that is perfectly fine. */
+    if (!PIN_HIGH && !frozen && tier > 0) {
+      tierAcc += real;
+      tierFrames++;
+      if (tierAcc >= 4) {
+        const avg = tierFrames / tierAcc;
+        if (avg < (tier === 2 ? 28 : 20)) {
+          tier--;
+          applyTier();
+        }
+        tierAcc = 0;
+        tierFrames = 0;
+      }
     }
   };
   raf = requestAnimationFrame(tick);
@@ -362,6 +423,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         furniture: city.stats.furniture,
         life: life.stats(),
         buildMs: Math.round(city.stats.ms),
+        tier,
         drawCalls: renderer.info.render.calls,
         drawnTriangles: renderer.info.render.triangles,
         meshes: city.group.children.map((c) => {
@@ -418,6 +480,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       },
       setFog: (a: number) => sky.setFog(a),
       freeze: (on: boolean) => { frozen = on; },
+      setTier: (t: number) => { tier = Math.max(0, Math.min(2, t)); applyTier(); },
       setTime: (k: string) => sky.setTime(k),
       setShadows: (on: boolean) => { renderer.shadowMap.enabled = on; sky.sun.castShadow = on; },
       setLights: (sunI: number, hemiI: number) => { sky.sun.intensity = sunI; sky.hemi.intensity = hemiI; },
@@ -445,6 +508,7 @@ declare global {
       show: (name: string, on: boolean) => void;
       setFog: (a: number) => void;
       freeze: (on: boolean) => void;
+      setTier: (t: number) => void;
       setTime: (k: string) => void;
       setShadows: (on: boolean) => void;
       setLights: (s: number, h: number) => void;

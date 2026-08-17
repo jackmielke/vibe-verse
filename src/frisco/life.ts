@@ -237,6 +237,8 @@ export class CityLife {
   private e = new THREE.Euler();
   private v = new THREE.Vector3();
   private one = new THREE.Vector3(1, 1, 1);
+  private zero = new THREE.Vector3(0, 0, 0);
+  private density = 1;
 
   constructor() {
     this.group.name = "frisco-life";
@@ -304,7 +306,13 @@ export class CityLife {
   }
 
   update(dt: number, elapsed: number): void {
+    const carCut = Math.ceil(this.cars.length * this.density);
     for (let i = 0; i < this.cars.length; i++) {
+      if (i >= carCut) {
+        this.m.compose(this.v.set(0, -500, 0), this.q.identity(), this.zero);
+        this.carMesh.setMatrixAt(i, this.m);
+        continue;
+      }
       const c = this.cars[i];
       c.x += c.dx * c.speed * dt;
       c.z += c.dz * c.speed * dt;
@@ -351,7 +359,13 @@ export class CityLife {
     }
     this.boatMesh.instanceMatrix.needsUpdate = true;
 
+    const walkCut = Math.ceil(this.walkers.length * this.density);
     for (let i = 0; i < this.walkers.length; i++) {
+      if (i >= walkCut) {
+        this.m.compose(this.v.set(0, -500, 0), this.q.identity(), this.zero);
+        this.walkerMesh.setMatrixAt(i, this.m);
+        continue;
+      }
       const w = this.walkers[i];
       if (w.speed > 0) {
         w.x += w.dx * w.speed * dt;
@@ -380,12 +394,31 @@ export class CityLife {
     this.walkerMesh.instanceMatrix.needsUpdate = true;
   }
 
+  /**
+   * Thin the crowd and the traffic without rebuilding anything.
+   *
+   * `density` of 0.4 keeps the first 40% of each list and scales the rest to
+   * nothing — no geometry is freed and no buffer is rebuilt, which is the whole
+   * point: this runs while somebody is playing, in response to a frame rate,
+   * and a hitch is exactly what it is trying to avoid. The skipped instances
+   * also stop being simulated, which is where most of the saving actually is:
+   * `isSidewalk` on nine hundred walkers is more work than drawing them.
+   */
+  setDensity(density: number): void {
+    this.density = Math.max(0.15, Math.min(1, density));
+  }
+
   /** How many of each are actually placed and moving. */
-  stats(): { cars: number; boats: number; walkers: number } {
+  stats(): { cars: number; boats: number; walkers: number; density: number } {
+    // What is actually DRAWN, which is the density cut applied to what is
+    // actually placed. Reporting the placed count while half of them are
+    // scaled to zero is how a quality system becomes invisible.
+    const live = (n: number) => Math.ceil(n * this.density);
     return {
-      cars: this.cars.filter((c) => c.speed > 0).length,
+      cars: live(this.cars.filter((c) => c.speed > 0).length),
       boats: this.boats.filter((b) => b.speed > 0).length,
-      walkers: this.walkers.filter((w) => w.speed > 0).length,
+      walkers: live(this.walkers.filter((w) => w.speed > 0).length),
+      density: this.density,
     };
   }
 

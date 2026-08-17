@@ -117,7 +117,11 @@ if (process.env.FRISCO_CHARACTER) {
   }, process.env.FRISCO_CHARACTER);
 }
 
-await page.goto(`${BASE}/frisco`, { waitUntil: "domcontentloaded" });
+/* `?quality=high` pins the detail. The world steps its own quality down when
+   the frame rate will not hold, and this runs on a software renderer at under
+   twenty frames a second — so without the pin, every screenshot this harness
+   has ever taken would silently be of the lowest-detail version of the city. */
+await page.goto(`${BASE}/frisco?quality=high`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("canvas", { timeout: 120000 });
 await page.waitForFunction(() => typeof window.__frisco?.landmarks === "function", null, {
   timeout: 180000,
