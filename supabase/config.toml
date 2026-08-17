@@ -39,3 +39,12 @@ verify_jwt = false
 # edition once and serves the stored file afterwards.
 [functions.vibe-times-read]
 verify_jwt = false
+
+# Exploring pays. Guests earn coins for arriving in a world exactly like
+# signed-in players do — the whole point is that a visitor collects a
+# passport before they have any idea what an account is — so there is no
+# session to verify. Nothing here trusts the caller with anything that
+# matters: the payout is once per world per wallet, enforced by a primary
+# key, and bounded by a per-wallet ceiling rather than by who is asking.
+[functions.vibe-explore]
+verify_jwt = false

@@ -30,13 +30,20 @@
  * That means this page is honest only about *this browser*, and it says so at
  * the bottom rather than implying an account-wide record it does not have.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import VibeMark from "@/components/VibeMark";
 import { REPO_LIFE } from "@/worlds/chronicle";
 import { motion } from "framer-motion";
 import { Lock } from "lucide-react";
 
+import {
+  DEFAULT_PER_WORLD,
+  MILESTONES,
+  pullVisits,
+  rankFor,
+  syncExplore,
+} from "@/lib/explore";
 import {
   RANKS,
   passportRows,
@@ -209,15 +216,146 @@ function Badge({ row, i }: { row: PassportRow; i: number }) {
   );
 }
 
+/**
+ * What the travelling has been worth, and what is still out there.
+ *
+ * This is the half of the passport that changed the day exploring started
+ * paying. It has one job beyond arithmetic: make the unvisited badges below
+ * read as money on the floor rather than as a completion percentage. "17 worlds
+ * left" is a chore; "425 ✦ still out there" is an afternoon.
+ *
+ * It is also the page that settles up. Opening it pushes anything this browser
+ * has been quietly stamping at the server, which is why somebody who has been
+ * exploring since June gets paid for all of it the first time they look.
+ */
+function ExplorerPayout({
+  visited,
+  total,
+  earned,
+}: {
+  visited: number;
+  total: number;
+  /** null until the ledger has answered — renders as a dash, never a spinner. */
+  earned: number | null;
+}) {
+  const { earned: rank, next } = rankFor(visited);
+  const left = Math.max(0, total - visited);
+  // Everything still collectable: the unvisited worlds, plus every bonus above
+  // where this traveller currently stands.
+  const onTheTable =
+    left * DEFAULT_PER_WORLD +
+    MILESTONES.filter((m) => m.at > visited).reduce((t, m) => t + m.bonus, 0);
+
+  const toNext = next ? Math.max(0, next.at - visited) : 0;
+  const span = next ? next.at - (rank?.at ?? 0) : 1;
+  const through = next ? Math.min(1, Math.max(0, (visited - (rank?.at ?? 0)) / span)) : 1;
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.1 }}
+      className="mt-4 overflow-hidden rounded-3xl border border-[#7dffd4]/25 bg-[#7dffd4]/[0.045]"
+    >
+      <div className="grid gap-5 p-5 sm:grid-cols-3 sm:p-6">
+        <div>
+          <p className="font-heading text-[8.5px] font-bold uppercase tracking-[0.28em] text-[#7dffd4]/70">
+            Earned exploring
+          </p>
+          <p className="mt-1.5 font-heading text-2xl font-black tabular-nums text-[#7dffd4]">
+            {earned == null ? "—" : `${earned.toLocaleString()} ✦`}
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            {DEFAULT_PER_WORLD} ✦ the first time you set foot in a world, once
+            each, forever.
+          </p>
+        </div>
+
+        <div>
+          <p className="font-heading text-[8.5px] font-bold uppercase tracking-[0.28em] text-muted-foreground">
+            Rank
+          </p>
+          <p className="mt-1.5 font-heading text-2xl font-black tracking-tight text-foreground">
+            {rank?.title ?? "Traveller"}
+          </p>
+          {next ? (
+            <>
+              <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-[#7dffd4] to-[#8fb4ff]"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${through * 100}%` }}
+                  transition={{ duration: 0.9, ease: "easeOut" }}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                {toNext} more {toNext === 1 ? "world" : "worlds"} to{" "}
+                <span className="text-foreground/80">{next.title}</span> — worth{" "}
+                {next.bonus.toLocaleString()} ✦ on its own.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              Every rank collected. There is nothing above Cartographer.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="font-heading text-[8.5px] font-bold uppercase tracking-[0.28em] text-muted-foreground">
+            Still out there
+          </p>
+          <p className="mt-1.5 font-heading text-2xl font-black tabular-nums text-foreground">
+            {onTheTable.toLocaleString()} ✦
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            {left === 0
+              ? "Nothing left to claim. You have been everywhere."
+              : `Across ${left} unexplored ${left === 1 ? "world" : "worlds"}, plus the ranks above.`}
+          </p>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 export default function Passport() {
   /* No stamp of its own. This is the book, not a place in it — a passport
      that records you having looked at your passport is counting the wrong
      thing, and it would need a page in itself to do it. */
 
-  /* Read once. The passport is localStorage and nothing on this page writes
-     to it, so re-reading on every render would be work for no new answer. */
-  const rows = useMemo(() => passportRows(), []);
+  /* The server's record is pulled in on mount, and a passport filled in on
+     another device arrives as new stamps — so this cannot be read exactly once
+     any more. `settled` flips when the pull has finished merging. */
+  const [settled, setSettled] = useState(0);
+  const rows = useMemo(() => passportRows(), [settled]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [earned, setEarned] = useState<number | null>(null);
+
+  /*
+   * Settle up, once, here — and not also inside the payout panel, which is
+   * where this lived first and meant opening the passport pulled the same
+   * record twice on every mount.
+   *
+   * Order matters: sync before pull, so the figure this page prints already
+   * includes whatever opening it just paid out. Anyone arriving with a
+   * passport that has been filling up since June gets paid for the lot on the
+   * first look, which is the nicest possible version of shipping this.
+   */
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await syncExplore();
+      const v = await pullVisits();
+      if (!alive || !v) return;
+      setEarned(v.earned);
+      // Only re-read the book if the pull actually wrote something into it.
+      if (v.keys.length) setSettled((n) => n + 1);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const visited = rows.filter((r) => r.visited);
   const trips = rows.reduce((n, r) => n + r.count, 0);
@@ -382,6 +520,8 @@ export default function Passport() {
           </div>
         </motion.header>
 
+        <ExplorerPayout visited={visited.length} total={rows.length} earned={earned} />
+
         {/* ---- Filter ---- */}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           {(
@@ -431,9 +571,12 @@ export default function Passport() {
         )}
 
         <footer className="mt-14 border-t border-white/10 pt-6 text-[11px] leading-relaxed text-muted-foreground">
-          The passport lives in this browser, not in your account — it needs no
-          sign-in and works offline, and the trade for that is that it does not
-          follow you to a different device. Ranks are{" "}
+          The book is written in this browser — no sign-in, works offline — and
+          the worlds you have been <em>paid</em> for are also kept against your
+          wallet, so those come back on a new device. Arrival times and counts
+          are local and stay local. Every world pays {DEFAULT_PER_WORLD} ✦ once
+          and never again, which is why the number in the corner moves the first
+          time you arrive somewhere and not the second. Ranks are{" "}
           {Object.values(RANKS)
             .filter((r) => r.at > 0)
             .map((r) => `${r.label} at ${r.at}`)

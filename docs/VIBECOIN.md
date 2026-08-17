@@ -91,10 +91,57 @@ server-side in `vibe-economy`.
 | Source | Amount | Limit | Reason code |
 |---|---|---|---|
 | Welcome grant | 100 | Once per wallet | `starter` |
+| **First visit to a world** | **25** | **Once per world per wallet, ever; 60 worlds max** | **`explore`** |
+| **Explorer ranks** | **100 / 200 / 400 / 1,000** | **At 5, 10, 20 and 30 worlds** | **`explore_milestone`** |
 | Sky-island mini-games (Vibe City) | up to 120/run | 3 rewarded runs per game per day | `game_reward` |
 | Arcade payouts | see paytables | 400/day total | `arcade_win` |
 | Daily allowance | tops you up to 30 | Once a day, only if you are under 30 | `arcade_allowance` |
 | Invite links | set per code | Once per person, capped per code | `invite` |
+
+### Why exploring pays — and what the numbers said
+
+Exploring is the newest faucet and the first one aimed at the median visitor.
+The reason it exists is a query anybody can re-run:
+
+```sql
+select count(*) filter (where balance = 100) as untouched_starter,
+       count(*) filter (where balance > 100) as ever_earned_more,
+       max(balance) as richest
+from vibe_balances where owner_kind = 'user';
+```
+
+In August 2026 that returned **491 untouched, 1 ever, richest 116** — out of 495
+wallets. Three cosmetics had ever been bought, all on one afternoon, and
+`game_reward` had fired exactly once in its life. The shop was not the problem;
+every way to *earn* was buried inside a specific world that almost nobody
+reached, so the arcade, the character shop and ORBIT were all furniture
+downstream of an action that essentially never happened.
+
+Walking into a world is the action that *does* happen, and it was already being
+recorded — in `localStorage`, where the server could never see it and therefore
+could never pay for it. `vibe_visits` plus the `vibe-explore` function is that
+record moved somewhere it counts.
+
+Three properties worth knowing:
+
+- **It lives in `vibe-explore`, not `vibe-economy`.** Same reason the staked
+  rounds do not: that file is a thousand lines and every deploy re-uploads all
+  of it. `vibe-rounds` set the precedent.
+- **There is no roster of worlds on the server, deliberately.** The registry
+  ships with the app; a copy in the function would be a second list, and the day
+  they disagree is the day a new world silently pays nothing. So any key-shaped
+  id is accepted and the mint is bounded by a *ceiling* instead — 60 paid worlds
+  per wallet, which is why adding worlds needs no deploy there.
+- **The most a wallet can ever mint from exploring is 3,200** (60 × 25 + 1,700
+  in ranks). `src/test/explore.test.ts` asserts that arithmetic, and asserts
+  that every registry key actually matches the regex the server guards on —
+  a key with a capital letter would be a world that silently never pays.
+
+It is honest about its own limit: a modified client can claim a world it never
+opened. There is no server-side proof a browser rendered a route, and building
+one would be a lot of machinery guarding play money with no peg. It is the same
+trust level as an arcade score, with a tighter bound — every world pays once,
+ever.
 
 Invite grants are the one faucet an operator opens by hand, and the only one
 that can mint an arbitrary amount. That is deliberate — "the first ten people

@@ -31,6 +31,7 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_CHARACTER_ID } from "@/lib/characters";
+import { claimGuestTravel } from "@/lib/explore";
 import { currentOwner, refreshVibecoin } from "@/lib/vibecoin";
 
 export type CosmeticKind = "hat" | "flame" | "jetpack";
@@ -309,16 +310,30 @@ export async function claimGuestWallet(): Promise<{ claimed: number; itemsMoved:
   if (!guestRef) return null;
   if (localStorage.getItem(CLAIM_TRIED) === guestRef) return null;
 
+  /*
+   * Travel moves FIRST, and the marker below is gated on it.
+   *
+   * The coins, items and look are moved by the call after this one; the map is
+   * moved by `vibe-explore`, because that is where visits live. Order matters:
+   * if the account ends up with the guest's coins but none of its visit rows,
+   * the next passport sync pays it a second time for every world the guest was
+   * already paid for. So a travel claim that did not get through leaves the
+   * marker unset and the whole thing is retried on the next sign-in, which is
+   * safe because both halves are idempotent server-side.
+   */
+  const worldsMoved = await claimGuestTravel(guestRef);
+
   try {
     const r = await call<{ claimed: number; itemsMoved: number }>("claim_guest", { guestRef });
-    localStorage.setItem(CLAIM_TRIED, guestRef);
+    if (worldsMoved !== null) localStorage.setItem(CLAIM_TRIED, guestRef);
     void refreshVibecoin();
     void refreshWardrobe();
     return r;
   } catch {
-    // Already claimed, or not signed in yet. Mark it either way — a wallet that
-    // cannot be claimed will not become claimable by asking again.
-    localStorage.setItem(CLAIM_TRIED, guestRef);
+    // Already claimed, or not signed in yet. Mark it — a wallet that cannot be
+    // claimed will not become claimable by asking again — but still only if the
+    // travel half actually reported back.
+    if (worldsMoved !== null) localStorage.setItem(CLAIM_TRIED, guestRef);
     return null;
   }
 }

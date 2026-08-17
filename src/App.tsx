@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import ExplorerStamp from "./components/ExplorerStamp.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import HomeButton from "./components/HomeButton.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
@@ -191,6 +192,12 @@ const App = () => (
           {/* Global nav + VIBE FM where there is room for them, and the one
               way home everywhere else. */}
           <AppChrome />
+          {/* Deliberately OUTSIDE AppChrome, which renders nothing on the
+              chromeless routes — and chromeless routes are precisely the
+              full-screen worlds where nearly every first visit happens. It
+              takes no pointer events and sits above everything, so it can play
+              over a crosshair without becoming part of the game. */}
+          <ExplorerStamp />
           {/* One Suspense for the whole router. There used to be fifteen of
               them, one per lazy world, each with its own hand-typed hex — and
               the moment every route went lazy that would have been forty. */}

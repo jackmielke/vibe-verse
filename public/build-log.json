@@ -1,347 +1,7 @@
 {
-  "generated_at": "2026-08-17T06:35:53.963Z",
+  "generated_at": "2026-08-17T06:56:29.178Z",
   "window_days": 45,
   "commits": [
-    {
-      "sha": "461d142e",
-      "date": "2026-08-17",
-      "subject": "Traffic can knock you over, water muffles the world, and /city got measured",
-      "lede": "Three things, and the third one found a regression I had shipped.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 10
-    },
-    {
-      "sha": "fe24c75a",
-      "date": "2026-08-17",
-      "subject": "sf-flicker was measuring a falling character",
-      "lede": "/sf opens in walking mode now, and `setPose` moves the PLAYER rather than a detached camera. So the probe's own poses — 236 m over the Financial District, 22 m above Market Street — handed the walking controller a character in mid-air, and it did the correct thing with it: dropped it. The settle test is defined as two frames of a frozen pose. It was comparing two frames of a fall, reading 37%, and blaming the city.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "390b8cf5",
-      "date": "2026-08-17",
-      "subject": "npm run stamp: San Francisco's date",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_011nNcUJKivGcV3xsUbHjaFx",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "a13e9849",
-      "date": "2026-08-17",
-      "subject": "Spawn on the plaza, not inside it",
-      "lede": "Walking into Union Square worked. Spawning there did not, and it failed in the way that is hardest to report: the character was simply not in the picture. Every character, GLB and procedural alike, which is what made it look like a rig-loading bug rather than a physics one.",
-      "places": [
-        "San Francisco"
-      ],
-      "files": 2
-    },
-    {
-      "sha": "60b25c05",
-      "date": "2026-08-17",
-      "subject": "Walk San Francisco, and stop the city boiling while you do",
-      "lede": "The glitching was one bug, and it was not the one it looked like. A chunk that generates no geometry — water, park, the Presidio's meadows, a third of this map — was treated as \"not built yet\" rather than \"built, and empty\", so every rescan rebuilt every one of them, four hundred milliseconds apart, forever. The queue never drained in a whole session, real chunks queued behind work already done, and the LOD cross-fad",
-      "places": [
-        "San Francisco"
-      ],
-      "files": 21
-    },
-    {
-      "sha": "cffdbc9f",
-      "date": "2026-08-16",
-      "subject": "Fireballs, bumper cars, F to get out, and the invisible swimmer",
-      "lede": "Six things from Jack, all in and around driving.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "fff1ed10",
-      "date": "2026-08-16",
-      "subject": "npm run stamp: the dunes moved",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "271da818",
-      "date": "2026-08-16",
-      "subject": "The Dune Sea was drawing the sky where the ground should be",
-      "lede": "The world looked flat, washed out and wrong, and it was not the lighting. The terrain mesh's triangle winding was inverted, so three culled every face that pointed at the camera. What rendered was the handful of slopes angled *away* — the rest of the frame was the sky dome showing straight through the floor. It reads exactly like an overexposed desert, which is why it survived four passes at the shading: every one of",
-      "places": [],
-      "files": 9
-    },
-    {
-      "sha": "f28e4477",
-      "date": "2026-08-16",
-      "subject": "Drive into the sea and the sea does something about it",
-      "lede": "`CollisionWorld` floors everything at y=0 so nothing can fall out of the world, and over open water that floor is a phantom plate with no mesh under it. Every ground query a car made therefore answered \"sea level, go ahead\" — so a kart driven off the quay carried on driving, at sea level, across the bay, wheels spinning on nothing. With an ocean this good it was the loudest remaining tell that the water is scenery.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "2540f1fe",
-      "date": "2026-08-16",
-      "subject": "npm run stamp: The Dune Sea gets its date",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "c7d5b2c6",
-      "date": "2026-08-16",
-      "subject": "The Dune Sea: sandboarding a sunset, on one function",
-      "lede": "A second sport, at /dunes, and the same character rides it — the vibeverse pick, through `loadCharacterRig`, exactly as on the Glass Lake.",
-      "places": [],
-      "files": 12
-    },
-    {
-      "sha": "f30d5d94",
-      "date": "2026-08-16",
-      "subject": "The Glass Lake: it is you out there now, and the steering woke up",
-      "lede": "The skater was a figure built from primitives in this world's own code, which is a strange thing for a repo whose whole character system exists so that the person you picked follows you between worlds. It now loads that person: `lobby.character` — the same key the lobby, the hub and the profile all write — through `loadCharacterRig`, which handles the fifty-odd catalog GLBs and the code-built cast that has no file at",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "dbcace51",
-      "date": "2026-08-16",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cd24e85e",
-      "date": "2026-08-16",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "2675c183",
-      "date": "2026-08-16",
-      "subject": "npm run stamp: dates for the two worlds that landed together",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "82036eb4",
-      "date": "2026-08-16",
-      "subject": "The Glass Lake: black ice, a live aurora, and the reflection for free",
-      "lede": "A new world at /glass-lake. It is night, you are on a hundred and ninety metres of frozen lake, and the sky above it is not a texture.",
-      "places": [],
-      "files": 18
-    },
-    {
-      "sha": "f8deb431",
-      "date": "2026-08-16",
-      "subject": "The sea has an inside now: dive under Vibe City",
-      "lede": "The ocean had a top and nothing behind it. You could swim on it, and the moment your eyes went under, the world carried on being the world — same fog, same sky, same flat blue sheet seen from a side it was never drawn for. This is the other half, reached by aiming the camera down and swimming.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "8765c89c",
-      "date": "2026-08-16",
-      "subject": "A world was added and three homepages said fifty-three anyway",
-      "lede": "The Midnight Zone landed on main, and Aurora, Swiss and Storybook each went on announcing \"Fifty-three worlds\" over a grid of fifty-four — because each of them had spelled the number out by hand in its headline. That is exactly the failure `registry.ts` was built to end, reappearing in a new directory.",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "234182e8",
-      "date": "2026-08-16",
-      "subject": "Step through the fifteen with a key, and fix Riso's smear",
-      "lede": "`[` and `]` walk the bake-off. Not the arrow keys: Console drives its shelves with those, so a stepper bound to them would step the theme and scroll the shelf on the same press. Verified both — `]]]` walks midnight→alpine→editorial→zine, and two ArrowRights inside Console move its cursor and leave the URL alone.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "df6f7646",
-      "date": "2026-08-16",
-      "subject": "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out",
-      "lede": "Forty-four worlds in the vibeverse and not one of them underwater. So: a submersible, trimmed slightly heavy so it sinks on its own, and 8,200 m of ocean between you and the floor of the trench.",
-      "places": [
-        "The Long Silence"
-      ],
-      "files": 25
-    },
-    {
-      "sha": "cd60b3da",
-      "date": "2026-08-16",
-      "subject": "Zine put its wall below the fold, which is the only thing Zine is",
-      "lede": "The headline was set to 12vw and stacked above the collage, so the first screen of a theme whose entire argument is \"worlds pinned to a wall at angles\" was a sentence on black. The text now sits beside the wall and sticks while it scrolls, which is also more like an actual zine — the writing pinned up among the pictures rather than introducing them.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "fab43bad",
-      "date": "2026-08-16",
-      "subject": "Alpine lost its sign-in button on a phone, and nothing noticed",
-      "lede": "The nav did not wrap, so at 390px the last item ran off the edge of the sky — which has `overflow: hidden`, so the page did not scroll, nothing was reported, and the button was simply gone. Every check passed on a homepage you could not sign in from.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "30d33671",
-      "date": "2026-08-16",
-      "subject": "The picker shows you the page, not a paragraph about the page",
-      "lede": "`/homes` listed fifteen candidates as three-colour swatches and a sentence each, which is enough to tell them apart and not nearly enough to choose between them. It now carries a live preview beside the list: hover a row, see that homepage running.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "332aafcd",
-      "date": "2026-08-16",
-      "subject": "Ten more front doors, and every one of them argues with the rest",
-      "lede": "Completes the bake-off at `/homes`. The ten added here are structural rather than tonal — the point of fifteen is lost the moment two of them are the same layout in different colours:",
-      "places": [],
-      "files": 17
-    },
-    {
-      "sha": "92b06836",
-      "date": "2026-08-16",
-      "subject": "Fifteen front doors, and a way to walk through them — first five",
-      "lede": "`/homes` is a bake-off. Each candidate is a whole page — its own layout, type, palette and card — not a skin over one design, because fifteen token-swaps of the same page tell you nothing a swatch could not. The variety has to be structural or the exercise is theatre.",
-      "places": [],
-      "files": 11
-    },
-    {
-      "sha": "d410df58",
-      "date": "2026-08-16",
-      "subject": "Stamped the royale cards with the teammate's date",
-      "lede": "`npm run stamp` on this machine rewrites every timestamp from +00:00 to Z, which is 500 lines of churn and no information, so this is the two entries that actually changed.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "819ed128",
-      "date": "2026-08-16",
-      "subject": "The teammate stopped standing in a field, and started keeping score",
-      "lede": "It played one life. Soaked out at 0% meant standing still until somebody killed the process — through the end card, through the next lobby, through the next match. One session sat in an empty field for eleven hours. And it learned nothing: every match started the beginner it was the first time.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "1feddd5a",
-      "date": "2026-08-15",
-      "subject": "Measured what the worlds cost, and stopped guessing which models are rigged",
-      "lede": "`route-smoke.mjs` answers \"is the world there\". Nothing answered \"and what does it cost\", so `npm run perf` now does: draw calls, triangles, shader programs, texture bytes, live GL contexts and JS heap, per route. It counts at the WebGL layer rather than through renderer.info, because forty-odd worlds build their renderer in forty-odd places and most never expose it.",
-      "places": [],
-      "files": 7
-    },
-    {
-      "sha": "98618ddb",
-      "date": "2026-08-15",
-      "subject": "A fresh clone still could not npm ci",
-      "lede": "`npm ci` refuses to run at all: package.json and package-lock.json are out of sync, missing @testing-library/dom and the seven transitive packages under it.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "45ae074e",
-      "date": "2026-08-15",
-      "subject": "Restamped after merging main",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "27c6217c",
-      "date": "2026-08-15",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "97f99b36",
-      "date": "2026-08-15",
-      "subject": "Take the wheel of any car in Vibe City",
-      "lede": "Walk into the road, wait for a car to stop, and drive it away.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "7d18916b",
-      "date": "2026-08-15",
-      "subject": "Every day of the vibeverse, one square each",
-      "lede": "The Chronicle told you what was built. It could not tell you what the building looked like — and the shape of the work turns out to be the better story.",
-      "places": [],
-      "files": 7
-    },
-    {
-      "sha": "f6b29fbb",
-      "date": "2026-08-15",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "cbd5788a",
-      "date": "2026-08-15",
-      "subject": "Real cars in Vibe City, and you can walk into them",
-      "lede": "The traffic was `BoxGeometry(1.8, 1.25, 4.2)` sliding along the street centrelines at a constant speed. No wheels, no lights, no collision, and cross traffic drove straight through itself at every junction. The comment defending it was honest — from any altitude where you can see the grid, you cannot see that nobody is turning — and it stopped being true the moment anybody stood on the pavement.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "a9604565",
-      "date": "2026-08-15",
-      "subject": "Fixed the swim stroke lurching, and made it a real crawl",
-      "lede": "The stroke was being re-randomised every frame, and nothing about the pose was to blame.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 5
-    },
-    {
-      "sha": "9e1e6e4e",
-      "date": "2026-08-14",
-      "subject": "Your own line in the history",
-      "lede": "The Chronicle tells the vibeverse's story and had nothing to say about yours. The passport does, and it is the only page that can: it knows the earliest arrival in this browser, `REPO_LIFE` knows the first commit there ever was, and the difference between them is a fact nothing else here could produce — not when you turned up, but how far into the story.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "baef199b",
-      "date": "2026-08-14",
-      "subject": "Build log catches up with the Chronicle",
-      "lede": "Regenerated by `prebuild` on the last build, so it now carries the Chronicle and the merge rather than stopping short of them. Generated artifact — the churn is a timestamp and the newest commits, nothing to read.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "c40073b9",
-      "date": "2026-08-14",
-      "subject": "The Chronicle learns its own birthday",
-      "lede": "`npm run stamp && npm run chronicle`, now that the page has a commit to read. It is the fifty-third world and the newest line in its own history: born 2026-08-14, one commit, one hand.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "7dad4f4a",
-      "date": "2026-08-14",
-      "subject": "The Chronicle: every world, in the order it appeared",
-      "lede": "The vibeverse has fifty-two worlds and no memory of building any of them. `/game` shows what exists and the passport shows where you have been; nothing has ever shown how the place came to be. This is that — and it writes itself, out of git, so it is exactly as true as the repository and cannot drift from it. Add a world and it writes itself a line here.",
-      "places": [],
-      "files": 12
-    },
     {
       "sha": "c8d63a06",
       "date": "2026-08-14",
@@ -1045,6 +705,345 @@
       "lede": "Fallout from the drift fix, and visible only because the bot sat in an empty lobby for two hours: \"stuck — taking a detour\", every few seconds, all night, with nothing to be stuck on.",
       "places": [],
       "files": 1
+    },
+    {
+      "sha": "eb1f1244",
+      "date": "2026-08-10",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "4ec0a9c2",
+      "date": "2026-08-10",
+      "subject": "Five characters that are not the same person in different paint",
+      "lede": "Everything on the shelf was one biped. You could change the palette, the ears, the cape and the wings and still get twelve characters who are indistinguishable in a doorway at thirty metres, because a silhouette is mostly *how a thing moves* and every one of them moved identically — same hips, same two legs, same stride solver.",
+      "places": [
+        "Vibe Island",
+        "the character roster"
+      ],
+      "files": 11
+    },
+    {
+      "sha": "c53b8026",
+      "date": "2026-08-09",
+      "subject": "An idle teammate walked away",
+      "lede": "Caught by watching an empty lobby: 63 m in ten minutes with nobody in the room and nothing to follow.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "18bc6e85",
+      "date": "2026-08-09",
+      "subject": "A voice in the booth calls the match",
+      "lede": "Eliminations, a squadmate going out, the Downpour closing, the win — read aloud by ElevenLabs over the same engine events the HUD already draws from.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "46842359",
+      "date": "2026-08-09",
+      "subject": "The teammate can shoot back",
+      "lede": "It has spent every match so far as a very loyal 4 m of scenery: it followed, it called out, it talked, and it could not take a single point of dryness off anyone. Now that ghosts are real damage targets and `hit` carries damage, it has the same soaker everyone else does.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e3f87669",
+      "date": "2026-08-09",
+      "subject": "Players can finally soak each other",
+      "lede": "SPLASH ROYALE shipped without player-versus-player water. Not throttled, not buggy — absent. No client ever sent a shot, `shot` and `splash` existed in the protocol and were never emitted by a weapon, ghosts were never registered as damage targets, and the two systems that did consume `splash` used it for a decal and some particles. Two people in a lobby could see each other, chat, glue each other's ankles and announ",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "7916b80d",
+      "date": "2026-08-09",
+      "subject": "The teammate went deaf after the first finished match",
+      "lede": "Watched live tonight, three times: jack joins, the log says \"jack is on the field (dolphin)\", and the next status line reads `peers 1, following —`. The bot could see him and would not follow him.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "8a0487a5",
+      "date": "2026-08-09",
+      "subject": "The end card says Play again",
+      "lede": "\"Get wet again\" is a joke that only lands once, and the button it is on is the one you press when you want another match — not the one you press to be told what the mode is called. Jack asked for the plain word.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "14933f63",
+      "date": "2026-08-09",
+      "subject": "The teammate could not reach a squad that was still on the bus",
+      "lede": "Tonight's match, from the bot's log: spawned beside Jack, then \"stuck — taking a detour\" every three seconds for six minutes, pinned at x -1230, 866 m away, until the match ended. Jack never saw it. Two bugs stacked.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e0e80524",
+      "date": "2026-08-09",
+      "subject": "Escape gives the mouse back instead of throwing you out",
+      "lede": "Escape is the only way a browser hands the cursor back, and the lobby veil was keyed on pointer lock alone. That conflated \"has not joined yet\" with \"has joined and wants their mouse\", so every player who pressed it got the full entry screen — room code, roster, drop-in button — slammed over a match that was still running underneath. It read as being kicked to the lobby. Nothing had stopped.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "0e3e6531",
+      "date": "2026-08-10",
+      "subject": "Stamp the registry for the passport page",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "7c30fbba",
+      "date": "2026-08-10",
+      "subject": "The passport is a book now, not a fraction",
+      "lede": "It has existed for months as five grey words on the landing page — \"passport 18/28\" — not a link, with no way to see what the other ten were. It was the only record in here that spans every world, and the only way to read it was as a ratio.",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "2e670f82",
+      "date": "2026-08-10",
+      "subject": "Stamp the registry after the character shelf grew",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01WciZHfbCmF6sR8X9P3K1C7",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "e506684a",
+      "date": "2026-08-10",
+      "subject": "Tapping a character opens that character, and you can dress it",
+      "lede": "Four things, all from watching the page get used.",
+      "places": [
+        "Vibe Island",
+        "the character roster",
+        "the machinery underneath"
+      ],
+      "files": 14
+    },
+    {
+      "sha": "39f14024",
+      "date": "2026-08-10",
+      "subject": "A second storefront, and the writing that says why any of it exists",
+      "lede": "Two things, and they arrived together because they belong together.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "56590fb9",
+      "date": "2026-08-10",
+      "subject": "The shop window shows the characters instead of naming them",
+      "lede": "The arcade's shop card was six emoji in a row next to \"Six originals you can only get here\". It described the stock accurately and sold none of it, because a shop window's job is to show you the thing and an emoji is a label for one.",
+      "places": [
+        "Vibe Island",
+        "the character roster",
+        "the Arcade",
+        "the machinery underneath"
+      ],
+      "files": 25
+    },
+    {
+      "sha": "03fbb0f7",
+      "date": "2026-08-10",
+      "subject": "The front door: one toolbar, a shorter paper, and a clock in the log",
+      "lede": "Four things on `/game`, all of them things you notice in the first three seconds and none of them the worlds themselves.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "d3761bda",
+      "date": "2026-08-10",
+      "subject": "The branch rule outranks CLAUDE.md, so put the permission it wants in CLAUDE.md",
+      "lede": "Web sessions arrive with a `claude/<slug>` development branch in their config and an instruction never to push elsewhere without explicit permission. That outranks this file, so every session read \"push straight to main\", could not act on it, and stopped to ask — which is the one thing the push-to-main rule exists to avoid.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "be0e7c1c",
+      "date": "2026-08-09",
+      "subject": "Twelve world cards were lying about their dates, and the stamper could not tell",
+      "lede": "`npm run stamp` guards against a shallow clone by keeping the committed date whenever `git log` for a world's `source` comes back empty. That covers `--depth=1`. It does not cover the case that actually happens, which is worse for being quieter: a clone deep enough to have *some* history presents its graft boundary as the commit that created every file in the tree. So `git log -- src/pages/About.tsx` answers, confide",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "16323128",
+      "date": "2026-08-09",
+      "subject": "The first page was 47 MB. It is now 1 MB.",
+      "lede": "Opening the grid of cards at `/` downloaded a 7.4 MB JavaScript bundle (2.26 MB gzipped) and then, separately, a 40 MB GLB — on every route, on a phone, before anything painted. Nothing here got smaller; four things stopped being downloaded by people who were never going to look at them.",
+      "places": [],
+      "files": 17
+    },
+    {
+      "sha": "0edd3c2a",
+      "date": "2026-08-09",
+      "subject": "The teammate bot's default team was on nobody's squad",
+      "lede": "--team defaulted to \"blue\", which is not one of the four squads the lobby offers. Running the command without a team therefore put Claude on a squad nobody else could be on: it read every human as a rival, never followed anyone, and looked like a broken bot rather than a wrong flag. It now defaults to riptide, the same squad the lobby picker defaults to.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "6d39f968",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "bad92a2a",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d7e7287f",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "a126569f",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "cf59d395",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d6a41e17",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "52625c59",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "3d7a49b2",
+      "date": "2026-08-09",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "95839be6",
+      "date": "2026-08-09",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "433accbd",
+      "date": "2026-08-09",
+      "subject": "Wire the soak burst to every death, and get the red out",
+      "lede": "soakBurst was built and called by nobody. It is now fired from combat.ts's fileDeath — the single place every elimination is filed, whether it was a balloon, a bot, the Downpour or a fall — rather than from each of the several callers that can end a life. It fires at the victim's capsule centre: water thrown from ankle height reads as a puddle rather than as somebody going out.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "7fef527a",
+      "date": "2026-08-09",
+      "subject": "Checkpoint: the water death pass, mid-flight but green",
+      "lede": "The elimination burst, the blue damage palette and the wet-screen feedback are in progress in vfx.ts, postfx.ts and HUD.tsx. Committed as a checkpoint rather than left loose: this container is ephemeral, and a thousand lines of working tree is not a place to keep work.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "76b6afed",
+      "date": "2026-08-09",
+      "subject": "SPLASH ROYALE, and a repair to a rebase that broke main",
+      "lede": "The game is SPLASH ROYALE. The rename is the strings table, the route, the registry key, the card art and the page — not a sweep through 65k lines, because every player-facing word already reads from WATER.strings and the bus re-letters itself from the same record.",
+      "places": [],
+      "files": 24
+    },
+    {
+      "sha": "375e5d6e",
+      "date": "2026-08-09",
+      "subject": "The battle bus is worth looking at now",
+      "lede": "The opening shot was the inside of a blue box: the spring arm hung off the rider's head while they stood in the hull, so the first thirty seconds of every match framed interior struts and underside panels. The arm now hangs off the BUS, look input orbits it, and a keep-out ellipsoid containing the whole rig — hull, balloon and riders — is solved along the look axis so it can never end up inside again. Wheel and two-f",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "59320e3a",
+      "date": "2026-08-09",
+      "subject": "CLAUDE.md: there are now two doors, not one",
+      "lede": "\"Adding a world\" describes the only path that existed until last night — a page, a registry entry, card art, all of it in this repo. Somebody reading it now and wanting to add a friend's game would follow it and vendor the game, which is the trade we took exactly once and should not take again by default.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "f505bc36",
+      "date": "2026-08-09",
+      "subject": "The one line people copy pointed at a domain that does not exist",
+      "lede": "/build printed `https://thevibeverse.xyz/vibeverse.js` — a host I made up. The snippet on that page is the single thing every visitor is guaranteed to copy, which made it the single thing guaranteed not to work, and nothing in a build or a test would ever have said so.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "329740f2",
+      "date": "2026-08-09",
+      "subject": "The portal gets a registry row, a date and a real card",
+      "lede": "One entry in src/worlds/registry.ts, so the nav, the picker, /game, the hub carousel and the passport all learn about it at once — the whole reason that file exists.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "88a12640",
+      "date": "2026-08-09",
+      "subject": "The portal: other people's games, paying real Vibey Coins",
+      "lede": "Every world in here is a file in this repository, which caps how many there can ever be at how much of Jack's week is free. That does not scale to \"my friend made a game\", and it does not scale to an eight-year-old with an idea.",
+      "places": [
+        "the Arcade",
+        "the machinery underneath"
+      ],
+      "files": 16
+    },
+    {
+      "sha": "bc6bf8c4",
+      "date": "2026-08-09",
+      "subject": "main did not compile, and the play coin gets its own name",
+      "lede": "## main was broken before either of these changes",
+      "places": [
+        "the Arcade"
+      ],
+      "files": 13
+    },
+    {
+      "sha": "87933ab8",
+      "date": "2026-08-09",
+      "subject": "The logo holds still, and the balance moves without a reload",
+      "lede": "Two things Jack hit sending the first real drop.",
+      "places": [],
+      "files": 5
     }
   ]
 }

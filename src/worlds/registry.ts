@@ -1042,6 +1042,16 @@ export const CHROMELESS_ROUTES: string[] = WORLDS.filter((w) => w.chromeless).fl
 
 /** Worlds that stamp the passport, plus the one you have to earn. */
 export interface PassportRoute {
+  /**
+   * The world's stable id, carried through so a stamp can be *paid* for.
+   *
+   * The passport itself is keyed by route, which was right while it only ever
+   * lived in one browser. It stopped being right the moment a visit became
+   * worth coins: `/hub` has already been three different places, and a payout
+   * keyed on a path pays a second time the day somebody renames one. The
+   * server records `world_key` and nothing else.
+   */
+  key: string;
   route: string;
   name: string;
   emoji: string;
@@ -1060,6 +1070,7 @@ export interface PassportRoute {
 
 export const PASSPORT_ROUTES: PassportRoute[] = [
   ...WORLDS.filter((w) => w.passport).map((w) => ({
+    key: w.key,
     route: w.route,
     name: w.name,
     emoji: w.emoji,
@@ -1068,6 +1079,7 @@ export const PASSPORT_ROUTES: PassportRoute[] = [
     blurb: w.blurb,
   })),
   {
+    key: CONTESTED.key,
     route: CONTESTED.stampRoute,
     name: CONTESTED.name,
     emoji: CONTESTED.emoji,
