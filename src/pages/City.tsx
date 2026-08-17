@@ -76,6 +76,7 @@ import { buildSplash, evalSwim, strokeRate, PRONE_PITCH } from "@/city/swim";
 import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
+import { createWrecks } from "@/city/wrecks";
 import { createHeadMount } from "@/city/headMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
@@ -2749,6 +2750,9 @@ export default function City() {
     // both ends up being neither.
     const carSink = createCarSink();
     scene.add(carSink.group);
+    // Something to find down there, so the dive has a point beyond the view.
+    const wrecks = createWrecks();
+    scene.add(wrecks.group);
     // Dev-only handle for `scripts/ocean-probe.mjs`. Water is the one thing in
     // here you genuinely cannot debug from a screenshot: "flat blue" is what a
     // missing mesh, a shader that failed to link and a correct calm sea all
@@ -3609,7 +3613,7 @@ export default function City() {
       ) => {
         arrivalStart = 0; // cancel the arrival swoop, or it fights the pose
         camDist = THREE.MathUtils.clamp(dist, MIN_CAM_DIST, MAX_CAM_DIST);
-        camPitch = THREE.MathUtils.clamp(pitch, 0.06, 1.25);
+        camPitch = THREE.MathUtils.clamp(pitch, minCamPitch(), 1.25);
         camYaw = yaw;
         camSnap = true; // arrive this frame, not in thirty seconds
       };
@@ -3762,6 +3766,18 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__cityCarsNear = (
         x: number, z: number, r: number,
       ) => district.traffic.debugNear(x, z, r);
+      /**
+       * Where the treasure is and what has been taken.
+       *
+       * A hunt is the one feature you genuinely cannot photograph: the sites
+       * are placed by walking out along a bearing until the water is deep
+       * enough, so nothing in the source says where they end up, and "did the
+       * chest pay out" is a number in a wallet.
+       */
+      (window as unknown as Record<string, unknown>).__cityWrecks = () =>
+        wrecks.sites.map((s) => ({ ...s }));
+      (window as unknown as Record<string, unknown>).__cityWrecksReset = () => wrecks.reset();
+      (window as unknown as Record<string, unknown>).__cityVibe = () => vibeBalanceRef.current;
       (window as unknown as Record<string, unknown>).__cityKartState = () => {
         const k = kartStates[0];
         return {
@@ -3927,6 +3943,19 @@ export default function City() {
         tapStart = null;
       }
     };
+    /**
+     * How far down the camera may aim, which is a different number in water.
+     *
+     * On land the chase camera must stay above the player — a negative pitch
+     * puts the eye in the pavement, and the floor clamp then shoves it back up
+     * through the model. In water there is no floor until the seabed, and
+     * aiming UP is the whole point: Snell's window is directly overhead, so a
+     * camera that can only ever look down at you can never show you the single
+     * most recognisable thing about being underwater. It was built, it worked,
+     * and for two weeks nobody could see it.
+     */
+    const minCamPitch = () => (swimming ? -0.85 : 0.06);
+
     const onPointerMove = (e: PointerEvent) => {
       const p = pointers.get(e.pointerId);
       if (p) {
@@ -3944,7 +3973,7 @@ export default function City() {
       const dy = e.clientY - dragLast.y;
       dragLast = { x: e.clientX, y: e.clientY };
       camYaw -= dx * 0.0052;
-      camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0052, 0.06, 1.25);
+      camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0052, minCamPitch(), 1.25);
     };
     const onPointerUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
@@ -4409,6 +4438,8 @@ export default function City() {
      * by letting go of the controls.
      */
     let diveEased = 0;
+    /** How hard the swimmer is holding depth, 0..1, eased. See the glide note. */
+    let glideEased = 0;
     const swimPose = createDancePose();
     let lastRebelShot = 0; // KeyF autofire cooldown
     let modelYaw = 0;
@@ -5569,7 +5600,24 @@ export default function City() {
         const wantDive =
           devDive ?? THREE.MathUtils.clamp((camPitch - 0.45) / 0.7, 0, 1) * paddling;
         diveEased += (wantDive - diveEased) * (1 - Math.pow(0.05, dt));
-        const buoyK = THREE.MathUtils.lerp(5.5, 0.7, diveEased);
+        /**
+         * Gliding: swimming forward on a level camera holds your depth.
+         *
+         * Without this the sea has exactly two states — going down, or on your
+         * way back up — because buoyancy is never off. That is the right answer
+         * for safety and the wrong one for looking at anything: the moment you
+         * stop aiming at the seabed you leave it, so you cannot swim ALONG the
+         * bottom, which is what anybody down there actually wants to do.
+         *
+         * It is safe for the same reason the dive is. Gliding needs you to be
+         * swimming; stop, and it decays and full buoyancy takes you up. Aiming
+         * up does the same. There is still nothing you can hold that keeps you
+         * under.
+         */
+        const levelish = THREE.MathUtils.clamp(1 - Math.abs(camPitch - 0.1) / 0.55, 0, 1);
+        const wantGlide = paddling * levelish * (1 - diveEased);
+        glideEased += (wantGlide - glideEased) * (1 - Math.pow(0.05, dt));
+        const buoyK = THREE.MathUtils.lerp(5.5, 0.7, Math.max(diveEased, glideEased));
         const rise = THREE.MathUtils.clamp((floatY - pos.y) * buoyK, -9, 9);
         /**
          * The dive has to out-pull buoyancy at EVERY depth, not just the first
@@ -5588,7 +5636,20 @@ export default function City() {
          * the last metre to the surface that does the lifting, and that metre
          * is exactly what the cap leaves intact for when you let go.
          */
-        const held = THREE.MathUtils.lerp(rise, Math.min(rise, 1.1), diveEased);
+        /**
+         * Two caps, and the tighter one wins.
+         *
+         * Diving keeps 1.1 m/s, which against the 3.4 m/s sink term is the
+         * measured 2.3 m/s descent. Gliding gets 0.35, so a swimmer working
+         * along the bottom drifts up slowly rather than being fired at the
+         * surface the instant they level off — while still, always, drifting
+         * UP if they do nothing.
+         */
+        const cap = Math.min(
+          THREE.MathUtils.lerp(9, 1.1, diveEased),
+          THREE.MathUtils.lerp(9, 0.35, glideEased),
+        );
+        const held = Math.min(rise, cap);
         const wantVy = held - diveEased * 3.4;
         vel.y += (wantVy - vel.y) * (1 - Math.pow(0.008, dt));
         if (thrusting) vel.y += THRUST * dt;
@@ -5596,6 +5657,7 @@ export default function City() {
         else if (jetInput) vel.y += 26 * dt;
       } else {
         diveEased *= Math.pow(0.05, dt);
+        glideEased *= Math.pow(0.05, dt);
         vel.y -= GRAVITY * dt;
         if (thrusting) {
           vel.y += THRUST * dt;
@@ -6672,7 +6734,26 @@ export default function City() {
          * `camPitch` itself is untouched — the player's aim still means what
          * they set it to, and levelling off unwinds all of this.
          */
-        const camPitchNow = THREE.MathUtils.lerp(camPitch, 0.35, diveEased);
+        // Out of the water, the underwater aim is no longer legal — ease it
+        // back rather than snapping, so surfacing while looking up is a tilt
+        // and not a cut. Without this the camera stays below the waterline on
+        // dry land and the floor clamp shoves it up through the player's head.
+        if (!swimming && camPitch < 0.06) {
+          camPitch = Math.min(0.06, camPitch + dt * 1.6);
+        }
+        /**
+         * The dive pulls the camera down to 0.35 — but only ever DOWN.
+         *
+         * Its job is to stop the eye hovering five metres overhead while you
+         * aim at the seabed, so it only has to act on a steep downward aim.
+         * Applied unconditionally it also overrides an UPWARD one, which
+         * quietly cancels the entire free-look: hold a dive, aim at the
+         * surface, and the camera sits at 0.35 looking down at you. Measured
+         * exactly that — pitch −0.72 requested, eye still a metre and a half
+         * above the swimmer's head.
+         */
+        const camPitchNow =
+          camPitch > 0.35 ? THREE.MathUtils.lerp(camPitch, 0.35, diveEased) : camPitch;
         const camDistNow = THREE.MathUtils.lerp(camDist, Math.min(camDist, 4.6), diveEased);
         const camLift = THREE.MathUtils.lerp(1.4, 0.25, diveEased);
         const eye = new THREE.Vector3(
@@ -6766,6 +6847,29 @@ export default function City() {
         // the swimmer, for the same reason the fog keys off it. Half a metre
         // of water is already audibly different, hence the short ramp.
         soundsRef.current?.setSubmerged?.(THREE.MathUtils.clamp(camDepth / 0.9, 0, 1));
+        /**
+         * Treasure, gated on the SWIMMER being under — not the camera.
+         *
+         * Everything else down here keys off the camera because the camera is
+         * what sees. Reaching into a chest is the one thing that is about the
+         * body: a swimmer on the bottom with the camera up in a wave trough
+         * has still got their hand on it.
+         */
+        {
+          const got = wrecks.update(
+            dt, now * 0.001, player.position,
+            swimming && player.position.y < seaSurfaceAt(player.position.x, player.position.z, now * 0.001) - 0.4,
+          );
+          if (got) {
+            soundsRef.current?.fanfare?.();
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + got.reward;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+            toast.success(`+${got.reward} ✦ VIBE — ${got.label}`, {
+              description: "Salvaged from the bay floor.",
+            });
+          }
+        }
       }
       // Also after the camera block, and for the same kind of reason: the
       // spray quads have no billboard material, they are faced by copying the
@@ -6885,6 +6989,7 @@ export default function City() {
       underwater.dispose();
       splash.dispose();
       carSink.dispose();
+      wrecks.dispose();
       headMount.dispose();
 
       delete devWindow.__cityDebug;
@@ -6906,6 +7011,9 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityKartAge;
       delete (window as unknown as Record<string, unknown>).__cityAvatar;
       delete (window as unknown as Record<string, unknown>).__cityCarsNear;
+      delete (window as unknown as Record<string, unknown>).__cityWrecks;
+      delete (window as unknown as Record<string, unknown>).__cityWrecksReset;
+      delete (window as unknown as Record<string, unknown>).__cityVibe;
       soundsRef.current?.dispose();
       soundsRef.current = null;
       ro.disconnect();

@@ -69,12 +69,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "805fd7b", iso: "2026-08-17T05:12:07+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
+    { sha: "e6c8b6b", iso: "2026-08-17T06:37:22+00:00", subject: "The bay has something in it, and you can finally look up" },
+    { sha: "461d142", iso: "2026-08-17T05:14:33+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
     { sha: "cffdbc9", iso: "2026-08-16T21:05:25+00:00", subject: "Fireballs, bumper cars, F to get out, and the invisible swimmer" },
     { sha: "f28e447", iso: "2026-08-16T18:44:24+00:00", subject: "Drive into the sea and the sea does something about it" },
     { sha: "f8deb43", iso: "2026-08-16T10:07:24+00:00", subject: "The sea has an inside now: dive under Vibe City" },
     { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
-    { sha: "cbd5788", iso: "2026-08-15T05:51:10+00:00", subject: "Real cars in Vibe City, and you can walk into them" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -93,6 +93,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
   "deep": [
+    { sha: "18b88dc", iso: "2026-08-17T06:36:43+00:00", subject: "🔦 The Midnight Zone was unplayable, and none of it showed up in a build" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "drop-zero": [
