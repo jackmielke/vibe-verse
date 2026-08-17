@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-17T09:41:24.243Z",
+  "generated_at": "2026-08-17T09:55:01.575Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "5afd6f9a",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco: land on a street, and a camera that flies itself",
+      "lede": "Spawns snap to the nearest asphalt. They are stored as the real lat/lon of a real place, which is right, and lands you wherever that place falls relative to a generated street grid — for Fisherman's Wharf that was the middle of a block, in a courtyard between the backs of four buildings with no way out, which reads as a bug in the collision system rather than as a spawn point. A spiral search puts every one of them o",
+      "places": [],
+      "files": 10
+    },
     {
       "sha": "1da54ff2",
       "date": "2026-08-17",
@@ -1032,16 +1040,6 @@
     },
     {
       "sha": "6521988f",
-      "date": "2026-08-10",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "faf2a48c",
       "date": "2026-08-10",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",

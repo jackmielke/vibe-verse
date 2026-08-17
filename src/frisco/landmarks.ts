@@ -170,11 +170,17 @@ function ferry(b: Batch, p: Vec2, base: number): void {
   // The arcade runs along the waterfront, which here means along Market's
   // normal — the building faces the street head on.
   const yaw = Math.PI / 2 + 0.36;
-  b.bandedBox(p.x, base, p.z, 84, 16, 13, stone, shade(stone, 0.9), 3, 1, yaw);
-  b.box(p.x, base + 16, p.z, 86, 1.4, 14, shade(roof, 1.0), 1, yaw);
+  /* 132 m by 20 m, which is a shade under the real 201 by 35 and is the right
+     kind of wrong. The first pass was 168 by 26 with a roof slab 172 m across,
+     and the result was a grey aircraft carrier moored across the foot of
+     Market: from the air it was the biggest single object in the city, which
+     is exactly what the Ferry Building is not. A landmark that dwarfs the
+     Financial District behind it is not more visible, it is less believable. */
+  b.bandedBox(p.x, base, p.z, 66, 15, 10, stone, shade(stone, 0.9), 4, 1, yaw);
+  b.box(p.x, base + 15, p.z, 67, 1.2, 11, shade(roof, 1.0), 1, yaw);
   // The tower.
-  b.bandedBox(p.x, base, p.z, 11, 52, 11, stone, shade(stone, 0.92), 9, 0.94, yaw);
-  b.box(p.x, base + 52, p.z, 11.6, 2, 11.6, shade(roof, 0.95), 1, yaw);
+  b.bandedBox(p.x, base, p.z, 8.5, 52, 8.5, stone, shade(stone, 0.92), 9, 0.94, yaw);
+  b.box(p.x, base + 52, p.z, 9.1, 1.8, 9.1, shade(roof, 0.95), 1, yaw);
   /* The clock faces: one on each side, and they are the reason anybody looks.
      A flat slab standing against the wall rather than `cylinder`, because
      `cylinder` stands on Y — a short one is a dinner plate lying face up, and
@@ -184,13 +190,13 @@ function ferry(b: Batch, p: Vec2, base: number): void {
     const ox = ax * c - az * s;
     const oz = ax * s + az * c;
     b.box(
-      p.x + ox * 10.6, base + 40.6, p.z + oz * 10.6,
-      3.4, 6.8, 0.4, gold, 1, Math.atan2(-ox, oz),
+      p.x + ox * 8.3, base + 41, p.z + oz * 8.3,
+      2.7, 5.4, 0.4, gold, 1, Math.atan2(-ox, oz),
     );
   }
   // The lantern on top.
-  b.bandedBox(p.x, base + 54, p.z, 6.2, 12, 6.2, stone, gold, 3, 0.8, yaw);
-  b.cylinder(p.x, base + 66, p.z, 5.4, 0, 10, 8, shade(roof, 1.05), false);
+  b.bandedBox(p.x, base + 53.8, p.z, 5.0, 11, 5.0, stone, gold, 3, 0.8, yaw);
+  b.cylinder(p.x, base + 64.8, p.z, 4.4, 0, 9, 8, shade(roof, 1.05), false);
 }
 
 /**
@@ -553,7 +559,7 @@ const SOLID: Record<string, { hw: number; hd: number; h: number }> = {
   transamerica: { hw: 26, hd: 26, h: 212 },
   salesforce: { hw: 21, hd: 21, h: 268 },
   coit: { hw: 12, hd: 12, h: 61 },
-  ferry: { hw: 15, hd: 84, h: 66 },
+  ferry: { hw: 11, hd: 66, h: 62 },
   grace: { hw: 40, hd: 24, h: 41 },
   pier39: { hw: 26, hd: 62, h: 13 },
   alcatraz: { hw: 46, hd: 24, h: 14 },

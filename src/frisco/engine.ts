@@ -15,6 +15,7 @@ import * as THREE from "three";
 import { buildCity, disposeCity, type CityBuild } from "./city";
 import { CityCollision } from "./collision";
 import { createInput, type FriscoInput } from "./input";
+import { CityLife } from "./life";
 import { disposeLook } from "./look";
 import { SPAWNS, VIEW, landmarkPositions, ll, snapToStreet, walkHeight, type Spawn } from "./map";
 import { Player } from "./player";
@@ -27,6 +28,7 @@ export interface FriscoHandle {
   collision: CityCollision;
   sky: SkyRig;
   play: Playground;
+  life: CityLife;
   input: FriscoInput;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -134,6 +136,10 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   o.onProgress?.("Painting the sky");
   const sky = createSky(scene);
 
+  o.onProgress?.("Letting the traffic out");
+  const life = new CityLife();
+  scene.add(life.group);
+
   o.onProgress?.("Hiding the coins");
   const play = new Playground(city.colliders);
   scene.add(play.group);
@@ -160,7 +166,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   let disposed = false;
 
   const handle: FriscoHandle = {
-    player, city, collision, sky, play, input, scene, camera, renderer,
+    player, city, collision, sky, play, life, input, scene, camera, renderer,
     fps: 0,
     setCharacter(id) {
       void player.loadCharacter(id);
@@ -196,6 +202,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       input.dispose();
       player.dispose();
       play.dispose();
+      life.dispose();
       sky.dispose();
       disposeCity(city);
       disposeLook();
@@ -263,6 +270,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
     if (attract) runAttract(elapsed);
     player.update(dt, elapsed);
     if (attract) runAttract(elapsed);
+    life.update(dt, elapsed);
     sky.update(dt, elapsed, camera);
     const events = play.update(dt, elapsed, player.state.position);
     if (events.length) handle.onPlay?.(events);
