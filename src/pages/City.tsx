@@ -3753,6 +3753,11 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__cityAvatar = () => ({
         visible: modelHolder.visible,
         x: player.position.x, y: player.position.y, z: player.position.z,
+        vx: vel.x, vy: vel.y, vz: vel.z,
+        // Seconds left of being bowled over by a car. Zero the rest of the
+        // time, which is most of it.
+        knockdown,
+        onGround,
       });
       (window as unknown as Record<string, unknown>).__cityCarsNear = (
         x: number, z: number, r: number,
@@ -4034,6 +4039,8 @@ export default function City() {
     const SINK_EJECT = 1.15;
     /** Seconds from the hit to a drowned kart being put back where it lives. */
     const SINK_RECOVER = 11;
+    /** Seconds until the next audible bubble; see the note where it is used. */
+    let bubbleSfx = 0;
     /** Eased nose-down angle per vehicle, written here, read by the mesh sync. */
     const kartPitchNow: number[] = kartStates.map(() => 0);
     const ease01 = (t: number) => {
@@ -4084,7 +4091,7 @@ export default function City() {
             // stealing the plunge's thunder.
             const touch = Math.hypot(k.speed, k.vy);
             carSink.impact(k.x, seaTop, k.z, touch * 0.35);
-            soundsRef.current?.thud?.(Math.min(0.5, 0.12 + touch / 90));
+            soundsRef.current?.splash?.(Math.min(0.6, 0.12 + touch / 55));
           }
           carSink.wake(dt, k.x, seaTop, k.z, k.yaw, Math.abs(k.speed), deep);
           // Water is heavy. Wading scrubs speed off well before the depth
@@ -4110,7 +4117,10 @@ export default function City() {
         // `fireball`, so rolling gently off the sand gets a splash and keeps
         // its paint.
         carSink.fireball(k.x, seaTop, k.z, hit);
-        soundsRef.current?.thud?.(Math.min(1, 0.45 + hit / 40));
+        soundsRef.current?.splash?.(Math.min(1, 0.5 + hit / 40));
+        // The explosion is gated on the same speed the fireball is, so a
+        // gentle roll-in gets a splash and no detonation to go with it.
+        if (hit > 11) soundsRef.current?.boom?.(Math.min(1, (hit - 11) / 20));
         // Nose-down and listing, rolled once so no two cars go down the same
         // way. Front-heavy: that is where the engine is.
         k.pitch = -(0.55 + Math.random() * 0.5);
@@ -4191,6 +4201,18 @@ export default function City() {
       const rate = settled ? 5 : 34 * Math.exp(-k.sink * 0.35) + 6;
       if (k.sink < SINK_RECOVER) {
         carSink.bubble(dt, k.x, Math.min(k.y + 0.5, seaTop - 0.35), k.z, rate);
+        /**
+         * And you can hear them, at a small fraction of the visual rate.
+         *
+         * One sound per bubble would be thirty oscillators a second, which is
+         * not a wreck venting air, it is a kettle. A few a second reads as the
+         * same event and leaves room to hear anything else.
+         */
+        bubbleSfx -= dt;
+        if (bubbleSfx <= 0) {
+          soundsRef.current?.bubble?.();
+          bubbleSfx = 0.16 + Math.random() * 0.24;
+        }
       }
 
       // Get out. Crossing the threshold once, not every frame after it.
@@ -4254,6 +4276,47 @@ export default function City() {
     let coyoteTimer = 0; // grace window so jumping just after leaving ground feels right
     let wallJumpUsed = false; // one parkour wall-jump per air phase
     let peakY = 0; // highest Y reached this air phase, for fall-damage
+    /**
+     * Seconds left of being bowled over by a car.
+     *
+     * While this is running you have no steering — you are a body that has
+     * been hit, not a pedestrian who has decided to travel in that direction —
+     * and the model tumbles. It runs out on its own; there is no getting-up
+     * animation to wait for and nothing here can kill you.
+     */
+    let knockdown = 0;
+    /** Tumble angle, so the avatar rolls rather than skidding upright. */
+    let knockSpin = 0;
+    let knockAxis = 0;
+    /**
+     * Registered here rather than where the district is built, because it
+     * needs `vel` and `onGround` and those are declared with the rest of the
+     * simulation state, a couple of thousand lines further down the file than
+     * the scenery.
+     */
+    district.traffic.onPlayerHit((dx, dz, speed) => {
+      // Not while you are in something. Being launched out of a car you are
+      // driving because that car got rear-ended is a different feature and a
+      // much more annoying one.
+      if (drivingKartRef.current >= 0 || riding || swinging) return;
+      const k = Math.min(1, speed / 13);
+      // Sent the way the car was going, mostly, plus enough lift to leave the
+      // ground — a pedestrian who slides along the tarmac reads as a physics
+      // bug and one who goes over the bonnet reads as a consequence.
+      vel.x = dx * (7 + speed * 0.9);
+      vel.z = dz * (7 + speed * 0.9);
+      vel.y = 5.5 + k * 4;
+      onGround = false;
+      coyoteTimer = 0;
+      peakY = player.position.y;
+      knockdown = 1.5 + k * 0.6;
+      knockSpin = 0;
+      // Tumble about whichever axis is across the direction of travel, so the
+      // roll is over the bonnet rather than around the spine.
+      knockAxis = Math.abs(dx) > Math.abs(dz) ? 1 : 0;
+      soundsRef.current?.thud?.(Math.min(1, 0.5 + speed / 26));
+      setDance(null);
+    });
     let ridingZeppelin = false; // standing on the circling zeppelin's deck
     let zeppelinToastShown = false;
     let zeppelinPilotToastShown = false;
@@ -5217,6 +5280,10 @@ export default function City() {
       // Parkour mode: no jetpack (or underground) means Space becomes a jump.
       const wantsJump = (!jetpackEquipped || undergroundNow) && jetInput;
 
+      // Knocked over: no steering. A body that has just been hit by a bus does
+      // not get to change its mind about which way it is going, and letting it
+      // is what turns the whole thing from a consequence into a bump.
+      if (knockdown > 0) intent.set(0, 0, 0);
       if (intent.lengthSq() > 0) intent.normalize();
       const targetSpeed = onGround
         ? running ? RUN_SPEED : WALK_SPEED
@@ -5431,11 +5498,14 @@ export default function City() {
         // hard you arrived; stepping in off the sand should barely ripple.
         const impact = Math.min(1, Math.max(0.12, (-vel.y - 1) / 22));
         splash.burst(pos.x, seaTop, pos.z, impact);
-        soundsRef.current?.thud?.(0.1 + impact * 0.5);
+        // Water, not a landing. `thud` is a body hitting ground and it is what
+        // stepping into the sea sounded like until there was anything better.
+        soundsRef.current?.splash?.(0.15 + impact * 0.55);
         setDance(null);
         setInWater(true);
       } else if (!wantSwim && swimming) {
         splash.burst(pos.x, seaTop, pos.z, 0.25);
+        soundsRef.current?.splash?.(0.3);
         setInWater(false);
       }
       swimming = wantSwim;
@@ -5737,8 +5807,18 @@ export default function City() {
       // Keep the character upright in the air — the previous forward
       // lean read as a sideways tilt whenever the model's yaw didn't
       // match the camera (e.g. strafing or curved jetpack arcs).
-      modelHolder.rotation.x += (0 - modelHolder.rotation.x) * Math.min(1, dt * 8);
-      modelHolder.rotation.z += (0 - modelHolder.rotation.z) * Math.min(1, dt * 8);
+      //
+      // Except while you are being run over, which is the one time you should
+      // NOT be upright. The same easing then puts you back on your feet on its
+      // own as the knockdown runs out, so there is no getting-up animation to
+      // own and nothing to get stuck in.
+      if (knockdown > 0) {
+        if (knockAxis === 1) modelHolder.rotation.z = knockSpin;
+        else modelHolder.rotation.x = knockSpin;
+      } else {
+        modelHolder.rotation.x += (0 - modelHolder.rotation.x) * Math.min(1, dt * 8);
+        modelHolder.rotation.z += (0 - modelHolder.rotation.z) * Math.min(1, dt * 8);
+      }
 
       // Animation state machine. Jetpack thrust deliberately skips the
       // jump tuck — you just rise, standing tall.
@@ -5893,6 +5973,10 @@ export default function City() {
       // standing in the road — and push them back out if they end up inside
       // one, which mutates `player.position`. See src/city/traffic.ts.
       district.update(dt, player.position);
+      if (knockdown > 0) {
+        knockdown = Math.max(0, knockdown - dt);
+        knockSpin += dt * 9;
+      }
       island.update(dt, now);
       ninjaShow.update(dt, now);
       updateAvatarHolo(dt);
@@ -6670,7 +6754,18 @@ export default function City() {
         const eyeY = camera.position.y;
         const seaAtEye = seaSurfaceAt(camera.position.x, camera.position.z, now * 0.001);
         const overSea = waterDepthAt(camera.position.x, camera.position.z) > 0.05;
-        underwater.update(dt, now * 0.001, overSea ? seaAtEye - eyeY : -1, camera.position);
+        const camDepth = overSea ? seaAtEye - eyeY : -1;
+        underwater.update(dt, now * 0.001, camDepth, camera.position);
+        // The offshore seabed is only worth drawing to somebody who can see
+        // it, which means somebody under the surface — from above, the sea is
+        // opaque long before the shelf begins. A metre of margin so breaking
+        // through a wave does not flicker it.
+        ocean.setDeepBedVisible(camDepth > -1);
+        ocean.setUnderside(camDepth > -1);
+        // Muffle the world by how far under the LISTENER is — the camera, not
+        // the swimmer, for the same reason the fog keys off it. Half a metre
+        // of water is already audibly different, hence the short ramp.
+        soundsRef.current?.setSubmerged?.(THREE.MathUtils.clamp(camDepth / 0.9, 0, 1));
       }
       // Also after the camera block, and for the same kind of reason: the
       // spray quads have no billboard material, they are faced by copying the

@@ -230,6 +230,110 @@ console.log(
 );
 console.log(`   avatar drawn after            ${avatar.visible ? "yes" : "NO"}`);
 
+// ---- Standing in the road ------------------------------------------------
+/**
+ * The other half of bumper cars.
+ *
+ * Traffic brakes for pedestrians, which is why you can step off the kerb and
+ * climb into the next car that stops — a flow nobody designed, it fell out of
+ * the braking rule. But a car that is already doing twelve metres a second
+ * when it reaches you used to slide you politely sideways, and now that a kart
+ * can send a car twenty-four metres down the street, being the one object in
+ * the city that traffic cannot move is conspicuous.
+ *
+ * The braking is also what makes this awkward to test: park in a lane and the
+ * approaching car stops for you. So the player is dropped in FRONT of a car
+ * that is already moving and close, inside its stopping distance.
+ */
+console.log("\n· standing in the road");
+let bowled = null;
+let peak = 0;
+for (let attempt = 0; attempt < 6 && !bowled; attempt++) {
+  const moving = (await carsNear(0, 0, 170))
+    .filter((c) => !c.hit && c.speed > 7)
+    .sort((a, b) => b.speed - a.speed)[0];
+  if (!moving) {
+    await page.waitForTimeout(600);
+    continue;
+  }
+  // Six metres ahead of it, in its lane — closer than it can stop from.
+  const ax = moving.axis === 1;
+  const px = ax ? moving.x + moving.dir * 6 : moving.x;
+  const pz = ax ? moving.z : moving.z + moving.dir * 6;
+  await page.evaluate(([x, z]) => {
+    window.__cityDay(true);
+    window.__cityWarp(x, 0.2, z);
+    window.__cityCam(10, 0.3, 0);
+  }, [px, pz]);
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(150);
+    const a = await page.evaluate(() => window.__cityAvatar());
+    peak = Math.max(peak, a.y);
+    if (a.knockdown > 0) {
+      bowled = a;
+      console.log(
+        `   hit — launched at ${Math.hypot(a.vx, a.vz).toFixed(1)} m/s, ` +
+          `up ${a.vy.toFixed(1)} m/s, knockdown ${a.knockdown.toFixed(2)}s`,
+      );
+      await shot("04-bowled-over");
+      break;
+    }
+  }
+}
+// Steering is dead while you are down, which is the difference between being
+// hit and merely being bumped.
+/**
+ * Long enough for two seconds of WORLD time.
+ *
+ * The knockdown is just under two seconds and counts down by `dt` in the frame
+ * loop, and this world steps at somewhere between a tenth and a thirtieth of
+ * real time under software GL — so the obvious twelve-second poll expired with
+ * the timer still at 1.5 and reported the player permanently stuck. That is
+ * the third time a harness in this repo has measured the frame rate and
+ * called it a bug.
+ */
+let cameBack = false;
+let reHit = false;
+if (bowled) {
+  let prev = bowled.knockdown;
+  let fell = 0;
+  for (let i = 0; i < 200; i++) {
+    await page.waitForTimeout(400);
+    const a = await page.evaluate(() => window.__cityAvatar());
+    peak = Math.max(peak, a.y);
+    // Going UP means something hit them again while they were down. That is
+    // the actual stuck-forever failure mode, and it is worth telling apart
+    // from "the clock has not finished yet".
+    if (a.knockdown > prev + 0.01) reHit = true;
+    fell += Math.max(0, prev - a.knockdown);
+    prev = a.knockdown;
+    if (i % 25 === 0) console.log(`   knockdown ${a.knockdown.toFixed(2)}s  y ${a.y.toFixed(2)}`);
+    if (a.knockdown === 0) { cameBack = true; break; }
+    /**
+     * Or: it has visibly unwound most of the way with nothing re-triggering
+     * it, which is the same claim without waiting out the clock.
+     *
+     * The timer is `max(0, knockdown - dt)` in the frame loop, so once it is
+     * monotonically falling the only thing that can stop it reaching zero is
+     * another car — and that is exactly what `reHit` watches for. Waiting for
+     * the literal zero means waiting ninety-four seconds of wall clock for two
+     * seconds of world, because this world runs at two percent of real time
+     * under software GL.
+     */
+    if (!reHit && fell > 1.4) { cameBack = true; break; }
+  }
+}
+console.log(
+  `   bowled over                  ${bowled ? "yes" : "NO — traffic still just nudges you"}`,
+);
+console.log(
+  `   left the ground              peak y ${peak.toFixed(2)}`,
+);
+console.log(
+  `   got back up on its own       ${cameBack ? "yes" : "NO — stuck down"}` +
+    `${reHit ? " (and was run over again while down)" : ""}`,
+);
+
 if (errors.length) {
   console.log(`\n!! ${errors.length} page errors:`);
   [...new Set(errors)].slice(0, 6).forEach((e) => console.log(`   ${e}`));
@@ -242,7 +346,8 @@ await browser.close();
 server?.kill();
 process.exit(
   sawFlying && moved > 3 && maxY > 0.3 && kAfter.speed > 3 &&
-  drivingBefore && !drivingAfter && avatar.visible
+  drivingBefore && !drivingAfter && avatar.visible &&
+  !!bowled && peak > 0.8 && cameBack
     ? 0
     : 1,
 );

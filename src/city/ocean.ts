@@ -468,6 +468,23 @@ export interface Ocean {
    * ocean and would otherwise need the two constructed in the wrong order.
    */
   bedMaterial: THREE.Material;
+  /**
+   * Draw the offshore shelf, or don't.
+   *
+   * It is only ever visible to somebody under the water: from above, the sea
+   * is fully opaque by three metres of depth and the shelf starts at seven.
+   * Drawing it anyway cost 83% of the frame over open water, measured.
+   */
+  setDeepBedVisible(on: boolean): void;
+  /**
+   * Render the sea's underside, or cull it.
+   *
+   * Only the same viewer who needs the offshore shelf needs this, and for the
+   * same reason: it is what you see looking up from below. `side` is raster
+   * state in three, not a shader define, so flipping it per frame costs a GL
+   * call and never a recompile.
+   */
+  setUnderside(on: boolean): void;
   dispose(): void;
 }
 
@@ -651,18 +668,38 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
    * nobody will ever resolve the spacing; they will only notice whether there
    * is a bottom.
    */
+  /** Index of the last ring of the near mesh; the deep mesh starts on it. */
+  const deepFrom = sandRadii.length - 1;
   for (let s = 210; s <= 760; s += lowDetail ? 110 : 55) sandRadii.push(s);
   // The ring at parameter s has to land where shoreDist == s, and shoreDist is
   // the p=16 norm — so scale each direction by the inverse of that norm.
   const pnorm = (c: number, s: number) => Math.pow(Math.pow(Math.abs(c), 16) + Math.pow(Math.abs(s), 16), 0.0625);
-  const sandGeo = polarGrid(
-    sandRadii.map((s) => CITY_HALF + s),
-    segments,
-    (c, s) => 1 / pnorm(c, s),
-  );
-  {
-    const pos = sandGeo.getAttribute("position") as THREE.BufferAttribute;
+  const radiusOf = (s: number) => CITY_HALF + s;
+  const buildBed = (rings: number[]) =>
+    polarGrid(rings.map(radiusOf), segments, (c, s) => 1 / pnorm(c, s));
+  /**
+   * Two meshes, one material, sharing a ring.
+   *
+   * The offshore shelf exists so a diver has a floor. Seen from ABOVE the
+   * water it is behind sea that is fully opaque by three metres of depth — the
+   * shelf starts at seven — so every triangle of it is drawn and then painted
+   * over. That was free when there was no shelf and it is not free now:
+   * measured on the same scene, adding it took a frame over open water from
+   * 538 ms to 986 ms. Eighty-three percent, to draw a seabed nobody can see.
+   *
+   * So it is split off and switched by `setDeepBedVisible`, which the world
+   * ties to whether the camera is under the surface. The two share their
+   * boundary ring (`deepFrom` is an index into one list, used as the last of
+   * the near rings and the first of the deep ones) so the seam is exact rather
+   * than nearly — a crack in the seabed is a hole through to the sky.
+   */
+  const sandGeo = buildBed(sandRadii.slice(0, deepFrom + 1));
+  const deepGeo = buildBed(sandRadii.slice(deepFrom));
+  /** Heights, vertex colours and planar UVs. Run over both halves of the bed. */
+  const dressBed = (geo: THREE.BufferGeometry) => {
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
     const colors = new Float32Array(pos.count * 3);
+    const uv = new Float32Array(pos.count * 2);
     const dry = new THREE.Color("#f0dcb0");
     const wet = new THREE.Color("#947951");
     const sunk = new THREE.Color("#31544f");
@@ -681,10 +718,17 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
       colors[i * 3] = tmp.r * v;
       colors[i * 3 + 1] = tmp.g * v;
       colors[i * 3 + 2] = tmp.b * v;
+      // Planar UVs in world metres, so the grain does not smear along the
+      // polar rings the way a radial UV would.
+      uv[i * 2] = x;
+      uv[i * 2 + 1] = z;
     }
-    sandGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    sandGeo.computeVertexNormals();
-  }
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    geo.computeVertexNormals();
+  };
+  dressBed(sandGeo);
+  dressBed(deepGeo);
   const sandTex = sandTexture();
   sandTex.repeat.set(0.16, 0.16);
   const sandMat = new THREE.MeshStandardMaterial({
@@ -703,24 +747,19 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 4,
   });
-  // Planar UVs in world metres, so the grain does not smear along the polar
-  // rings the way a radial UV would.
-  {
-    const pos = sandGeo.getAttribute("position") as THREE.BufferAttribute;
-    const uv = new Float32Array(pos.count * 2);
-    for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = pos.getX(i);
-      uv[i * 2 + 1] = pos.getZ(i);
-    }
-    sandGeo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-  }
   // Snow lies on the beach too — a white shoreline against dark water is
   // most of what says the whole world got cold, not just the streets.
   snow?.patch(sandMat);
   const sand = new THREE.Mesh(sandGeo, sandMat);
   sand.receiveShadow = true;
   group.add(sand);
-  trash.push(sandGeo, sandMat, sandTex);
+  const deepBed = new THREE.Mesh(deepGeo, sandMat);
+  // No shadows out here: it is seven metres under water at its shallowest and
+  // the only light reaching it has already been through the surface.
+  deepBed.receiveShadow = false;
+  deepBed.visible = false;
+  group.add(deepBed);
+  trash.push(sandGeo, deepGeo, sandMat, sandTex);
 
   // ---- The sea ---------------------------------------------------------
   const uniforms = {
@@ -746,17 +785,30 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
 
   const waterMat = new THREE.ShaderMaterial({
     uniforms,
+    // Starts empty: the underside is compiled in on demand by `setUnderside`.
+    defines: {} as Record<string, string>,
     transparent: true,
     depthWrite: false,
     fog: false,
-    // Two-sided so the sea still exists when your eyes go under it. Faces are
-    // wound upward, so single-sided the entire ocean was simply culled away the
-    // moment the camera dropped below the waterline: you swam down and the sky
-    // was still there, through the water, because there was no water. The
-    // underside is a genuinely different surface — see `gl_FrontFacing` in the
-    // fragment shader — and costs nothing from above, where there are no back
-    // faces on a sheet you are looking down at.
-    side: THREE.DoubleSide,
+    /**
+     * Two-sided only while somebody is under it — see `setUnderside`.
+     *
+     * Faces are wound upward, so single-sided the entire ocean is culled away
+     * the moment the camera drops below the waterline: you swim down and the
+     * sky is still there, through the water, because there is no water. The
+     * underside is a genuinely different surface (see `gl_FrontFacing` in the
+     * fragment shader) and it has to exist.
+     *
+     * But leaving it two-sided from ABOVE is not free, which is what the
+     * comment here used to claim. A flat sheet seen from overhead has no back
+     * faces; a Gerstner sea seen at a grazing angle out to the horizon is
+     * nothing like flat, and the far side of every wave is back-facing. Culling
+     * normally throws all of those away before they are shaded, and this
+     * fragment shader — fbm noise, a sky sample, four kinds of foam — is one of
+     * the most expensive in the world. Measured over open water, turning
+     * culling off cost about a fifth of the frame.
+     */
+    side: THREE.FrontSide,
     vertexShader: /* glsl */ `
       uniform float uTime;
       varying vec3 vWorld;
@@ -951,6 +1003,7 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
         // outside that circle a dark mirror of the water below. That is
         // Snell's window, it is the single most recognisable thing about being
         // underwater, and it is free: it falls straight out of refract().
+        #ifdef UNDERSIDE
         if (!gl_FrontFacing) {
           vec3 I = normalize(vWorld - cameraPosition); // travelling up, out
           float ct = dot(I, n);
@@ -986,6 +1039,7 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
           gl_FragColor = vec4(under, smoothstep(-0.10, 0.25, depth));
           return;
         }
+        #endif
 
         // ---- shoreline and depth alpha -------------------------------------
         // Shallow water is see-through, so the beach you built underneath it
@@ -1033,6 +1087,28 @@ export function buildOcean({ skyUniforms, lowDetail = false, snow }: OceanOption
       sandMat.color.set(color);
     },
     bedMaterial: sandMat,
+    setDeepBedVisible(on) {
+      deepBed.visible = on;
+    },
+    setUnderside(on) {
+      const want = on ? THREE.DoubleSide : THREE.FrontSide;
+      if (waterMat.side === want) return;
+      waterMat.side = want;
+      /**
+       * Recompiled, not branched.
+       *
+       * The underside is dead code for everybody standing on dry land, and a
+       * branch that is never taken is not free in a fragment shader this size —
+       * it costs the test on every pixel of a sea that fills the screen, and it
+       * spends registers that the rest of the shader wanted. A `#define` moves
+       * that cost to a one-off compile at the moment somebody's eyes go under,
+       * which is a place where a few milliseconds of hitch is hidden by the
+       * splash they are already in the middle of.
+       */
+      if (on) waterMat.defines.UNDERSIDE = "1";
+      else delete waterMat.defines.UNDERSIDE;
+      waterMat.needsUpdate = true;
+    },
     dispose() {
       trash.forEach((t) => t.dispose());
     },

@@ -315,6 +315,8 @@ interface Car {
     /** Seconds since the hit; it rejoins the road after settling. */
     t: number;
   } | null;
+  /** Seconds until this car can bowl the player over again. */
+  hitCool: number;
 }
 
 /** A car you can get into, or are already in. */
@@ -369,6 +371,19 @@ export interface Traffic {
    * seconds, tumbles, lands, and rejoins the nearest lane on its own.
    */
   shove(id: number, vx: number, vz: number, force: number): void;
+  /**
+   * Called when a moving car catches a pedestrian.
+   *
+   * `dx`/`dz` is the car's direction of travel and `speed` is how fast it was
+   * going. Registered rather than passed to `update` because the tick is
+   * already wrapped by `district.update`, and threading a callback through two
+   * signatures to reach one call site is worse than one setter.
+   *
+   * The alternative — traffic setting the player's velocity itself — would
+   * mean this module knowing about jumping, coyote time and fall damage. It
+   * knows about cars.
+   */
+  onPlayerHit(cb: (dx: number, dz: number, speed: number) => void): void;
   /**
    * Every car near a point, with whether it is currently airborne.
    *
@@ -482,6 +497,7 @@ export function buildTraffic(opts: {
             slot: 0,
             driven: false,
             hit: null,
+            hitCool: 0,
           });
         }
       }
@@ -770,6 +786,9 @@ export function buildTraffic(opts: {
 
   let clock = 0;
 
+  /** Set by `onPlayerHit`. Null until somebody cares about being run over. */
+  let onPlayerHit: ((dx: number, dz: number, speed: number) => void) | null = null;
+
   const update = (dt: number, player: THREE.Vector3 | null) => {
     clock += dt;
 
@@ -921,17 +940,38 @@ export function buildTraffic(opts: {
        * out of the road is the answer a player expects and being shoved along
        * it is how you end up carried across the district.
        */
+      if (car.hitCool > 0) car.hitCool -= dt;
       if (player && player.y < car.height && player.y > -1.2) {
         const dx = player.x - x;
         const dz = player.z - z;
         const pushX = hx + 0.45 - Math.abs(dx);
         const pushZ = hz + 0.45 - Math.abs(dz);
         if (pushX > 0 && pushZ > 0) {
-          // Prefer the across-the-car axis unless the along axis is much closer.
-          const acrossIsX = car.axis === 1;
-          const preferX = acrossIsX ? pushX <= pushZ + 1.2 : pushX + 1.2 < pushZ;
-          if (preferX) player.x += Math.sign(dx || 1) * pushX;
-          else player.z += Math.sign(dz || 1) * pushZ;
+          /**
+           * Fast enough to hurt: launch, do not nudge.
+           *
+           * The gentle push below is right for a car crawling in a queue —
+           * it is what lets you step off the kerb, have the next one stop for
+           * you, and climb in. It is absurd for one doing twelve metres a
+           * second, which used to slide you politely out of its way. Now that
+           * a kart can send a car twenty-four metres down the street, being
+           * the only object in the city that traffic cannot move is the odd
+           * one out.
+           *
+           * Cooldown so this fires once per contact rather than every frame
+           * of the several the overlap lasts, which would stack the impulses
+           * and fire you into orbit.
+           */
+          if (car.speed > 4.5 && onPlayerHit && car.hitCool <= 0) {
+            onPlayerHit(car.axis === 0 ? 0 : car.dir, car.axis === 0 ? car.dir : 0, car.speed);
+            car.hitCool = 1.4;
+          } else {
+            // Prefer the across-the-car axis unless the along axis is much closer.
+            const acrossIsX = car.axis === 1;
+            const preferX = acrossIsX ? pushX <= pushZ + 1.2 : pushX + 1.2 < pushZ;
+            if (preferX) player.x += Math.sign(dx || 1) * pushX;
+            else player.z += Math.sign(dz || 1) * pushZ;
+          }
         }
       }
     }
@@ -1084,6 +1124,10 @@ export function buildTraffic(opts: {
       if (!car || !car.driven) return;
       rejoin(car);
       car.driven = false;
+    },
+
+    onPlayerHit(cb) {
+      onPlayerHit = cb;
     },
 
     debugNear(x, z, r) {

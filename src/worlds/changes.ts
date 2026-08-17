@@ -69,12 +69,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "805fd7b", iso: "2026-08-17T05:12:07+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
     { sha: "cffdbc9", iso: "2026-08-16T21:05:25+00:00", subject: "Fireballs, bumper cars, F to get out, and the invisible swimmer" },
     { sha: "f28e447", iso: "2026-08-16T18:44:24+00:00", subject: "Drive into the sea and the sea does something about it" },
     { sha: "f8deb43", iso: "2026-08-16T10:07:24+00:00", subject: "The sea has an inside now: dive under Vibe City" },
     { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
     { sha: "cbd5788", iso: "2026-08-15T05:51:10+00:00", subject: "Real cars in Vibe City, and you can walk into them" },
-    { sha: "a960456", iso: "2026-08-15T05:31:38+00:00", subject: "Fixed the swim stroke lurching, and made it a real crawl" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },

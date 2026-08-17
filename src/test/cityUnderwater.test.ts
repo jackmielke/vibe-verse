@@ -90,12 +90,34 @@ describe("underwater: the shaders", () => {
 });
 
 describe("ocean: the sea has an underside", () => {
-  it("is double sided", () => {
+  it("becomes double sided for anybody under it", () => {
     // Faces are wound upward. Single-sided, the entire ocean is culled the
     // moment the camera drops below the waterline: you dive, and the sea
     // simply is not there — you look up at the sky through it. A build, a
     // typecheck and a still of the surface all pass while that is true.
-    expect(oceanSrc).toContain("side: THREE.DoubleSide");
+    //
+    // It is a toggle rather than a constant because from above, the underside
+    // is dead code on the most expensive fragment shader in the world.
+    expect(oceanSrc).toMatch(/const want = on \? THREE\.DoubleSide : THREE\.FrontSide;/);
+  });
+
+  it("compiles the underside out when nobody is under it", () => {
+    // A branch that is never taken still costs the test on every pixel of a
+    // sea that fills the screen, and spends registers the rest of the shader
+    // wanted.
+    expect(oceanSrc).toContain("#ifdef UNDERSIDE");
+    expect(oceanSrc).toMatch(/waterMat\.defines\.UNDERSIDE = "1";/);
+    expect(oceanSrc).toMatch(/delete waterMat\.defines\.UNDERSIDE;/);
+  });
+
+  it("keeps the two toggles on the same condition", () => {
+    // Culling the back faces and compiling out the code that shades them are
+    // the same decision. Split them and you get a sea that is double-sided
+    // with no underside shader — which renders the TOP of the water on the
+    // bottom of every wave, and looks like the sea turning inside out.
+    const setter = oceanSrc.slice(oceanSrc.indexOf("setUnderside(on) {"));
+    expect(setter.slice(0, 900)).toContain("waterMat.side = want;");
+    expect(setter.slice(0, 900)).toContain("UNDERSIDE");
   });
 
   it("renders the underside as a different surface", () => {
