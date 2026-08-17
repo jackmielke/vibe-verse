@@ -31,6 +31,8 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_CHARACTER_ID } from "@/lib/characters";
+import { shopCharacter } from "@/lib/characterShop";
+
 import { claimGuestTravel } from "@/lib/explore";
 import { currentOwner, refreshVibecoin } from "@/lib/vibecoin";
 
