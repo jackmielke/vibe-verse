@@ -175,6 +175,7 @@ export const TIMES: TimeOfDay[] = [
 ];
 
 const TIME_KEY = "frisco.time";
+const FOG_KEY = "frisco.fog";
 
 /** Where the sun sits. Replaced on every time change. */
 const SUN_DIR = new THREE.Vector3(-0.55, 0.62, -0.36).normalize();
@@ -285,6 +286,32 @@ export function createSky(scene: THREE.Scene): SkyRig {
     /* ignore */
   }
 
+  /* Fog is a *scene* property, so it lives here rather than on the group, and
+     it has to be torn down with everything else — a scene handed back with a
+     fog still on it fogs whatever is mounted into it next. */
+  const fogColor = new THREE.Color(COLORS.fog);
+  const sceneFog = new THREE.Fog(fogColor.getHex(), 60, 5000);
+
+  const applyFog = () => {
+    const amount = rig.fogAmount;
+    const t = rig.time;
+    // Karl is grey-white by day and a dirty amber under sodium light at night,
+    // because that is what a lit city does to a cloud sitting on top of it.
+    fogColor.setHex(t.night > 0.5 ? 0x3b4260 : COLORS.fog);
+    if (amount < 0.02) {
+      scene.fog = null;
+    } else {
+      sceneFog.color.copy(fogColor);
+      // From "a bit hazy" to "you cannot see the next block".
+      sceneFog.near = 30 + (1 - amount) * 900;
+      sceneFog.far = 260 + (1 - amount) * 5200;
+      scene.fog = sceneFog;
+    }
+    // The horizon has to agree with the fog or the join is a hard line.
+    domeLow.setHex(t.skyLow).lerp(fogColor, amount * 0.85);
+    domeHigh.setHex(t.skyHigh).lerp(fogColor, amount * 0.45);
+  };
+
   const rig: SkyRig = {
     group,
     sun,
@@ -315,10 +342,36 @@ export function createSky(scene: THREE.Scene): SkyRig {
          rather than a time of day. */
       cloudMat.color.setHex(t.night > 0.5 ? 0x5d6a8c : 0xffffff);
       setNight(t.night);
+      applyFog();
     },
     fogAmount: 0,
+    /**
+     * Bring Karl in, or send him away.
+     *
+     * Two mechanisms, because San Francisco fog is two things at once and only
+     * one of them is cheap. `THREE.Fog` does the part everybody means by fog —
+     * the far shore disappearing, the Transamerica going to a silhouette at
+     * four hundred metres — for the price of one uniform, because every
+     * material in this world already respects it. The drifting slabs do the
+     * part distance fog cannot: banks you fly *through* and come out above,
+     * which is the whole experience of leaving a fogged city vertically and is
+     * the reason there is a jetpack.
+     *
+     * The dome is deliberately excluded from `THREE.Fog` (`fog: false` on its
+     * material) and instead has its low end lerped toward the fog colour here.
+     * Fogging the dome by distance does nothing useful — it is 6 km away, so it
+     * would simply become solid fog colour — and leaving it alone gives a crisp
+     * blue sky over a city you cannot see through, which reads as a bug.
+     */
     setFog(a: number) {
-      rig.fogAmount = Math.max(0, Math.min(1, a));
+      const amount = Math.max(0, Math.min(1, a));
+      rig.fogAmount = amount;
+      try {
+        localStorage.setItem(FOG_KEY, String(amount));
+      } catch {
+        /* ignore */
+      }
+      applyFog();
     },
     update(dt, elapsed, camera) {
       // The dome and the weather follow the camera so they can never be
@@ -327,6 +380,7 @@ export function createSky(scene: THREE.Scene): SkyRig {
       // plane can stay tight.
       dome.position.copy(camera.position);
       domeSun.copy(SUN_DIR);
+      fogMat.color.copy(fogColor);
 
       // The sun's shadow frustum follows the player, sized for the near field:
       // a toy city wants crisp shadows on the street, and one 2048 map over
@@ -366,6 +420,7 @@ export function createSky(scene: THREE.Scene): SkyRig {
       }
     },
     dispose() {
+      scene.fog = null;
       group.removeFromParent();
       domeGeo.dispose();
       domeMat.dispose();
@@ -374,6 +429,11 @@ export function createSky(scene: THREE.Scene): SkyRig {
       sun.dispose();
     },
   };
+  try {
+    rig.fogAmount = Number(localStorage.getItem(FOG_KEY) ?? "0") || 0;
+  } catch {
+    /* ignore */
+  }
   rig.setTime(rig.time.key);
   return rig;
 }

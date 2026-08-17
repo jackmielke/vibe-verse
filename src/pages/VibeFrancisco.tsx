@@ -83,6 +83,7 @@ export default function VibeFrancisco() {
   const [toast, setToast] = useState<{ id: number; title: string; body: string } | null>(null);
   const [muted, setMuted] = useState(false);
   const [timeKey, setTimeKey] = useState("day");
+  const [foggy, setFoggy] = useState(false);
   const toastId = useRef(0);
 
   /* One toast at a time, and the newest wins.
@@ -177,6 +178,7 @@ export default function VibeFrancisco() {
         };
         setMuted(handle.audio.isMuted);
         setTimeKey(handle.sky.time.key);
+        setFoggy(handle.sky.fogAmount > 0.02);
         /* The audio graph cannot exist before a gesture — browsers refuse to
            start an AudioContext without one, and one created early sits
            suspended forever while everything downstream silently does nothing.
@@ -257,6 +259,17 @@ export default function VibeFrancisco() {
     setTimeKey(t.key);
   }, []);
 
+  /* Karl in or Karl out. A toggle rather than a weather cycle, for the same
+     reason the times of day are five named stops: fog that arrives on its own
+     schedule means no screenshot and no bug report is reproducible. */
+  const toggleFog = useCallback(() => {
+    const h = handleRef.current;
+    if (!h) return;
+    const on = h.sky.fogAmount <= 0.02;
+    h.sky.setFog(on ? 0.82 : 0);
+    setFoggy(on);
+  }, []);
+
   const goTo = useCallback(
     (key: string) => {
       handleRef.current?.goTo(key);
@@ -285,6 +298,8 @@ export default function VibeFrancisco() {
             onMute={toggleMute}
             timeKey={timeKey}
             onTime={nextTime}
+            foggy={foggy}
+            onFog={toggleFog}
           />
           <FuelGauge hud={hud} />
           <Scoreboard play={play} onLog={() => setSheet("log")} onChallenge={toggleChallenge} />
@@ -350,6 +365,8 @@ function TopChrome({
   onMute,
   timeKey,
   onTime,
+  foggy,
+  onFog,
 }: {
   charLabel: string;
   onChar: () => void;
@@ -358,6 +375,8 @@ function TopChrome({
   onMute: () => void;
   timeKey: string;
   onTime: () => void;
+  foggy: boolean;
+  onFog: () => void;
 }) {
   return (
     <div
@@ -384,6 +403,14 @@ function TopChrome({
         style={{ WebkitTapHighlightColor: "transparent" }}
       >
         {TIME_ICON[timeKey] ?? "☀️"}
+      </button>
+      <button
+        onClick={onFog}
+        className={`${CHIP} !px-2.5 ${foggy ? "!bg-white/25" : ""}`}
+        aria-label="Fog"
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        🌫️
       </button>
       <button
         onClick={onMute}

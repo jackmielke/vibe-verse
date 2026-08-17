@@ -166,6 +166,10 @@ const shots = wanted.flatMap((w) =>
  * per-vertex glow channel and a shader injection, and there is no way to know
  * either of them landed except by looking at the city with the lights on.
  */
+if (process.env.FRISCO_FOG) {
+  await page.evaluate((a) => window.__frisco.setFog(Number(a)), process.env.FRISCO_FOG);
+  await page.waitForTimeout(600);
+}
 if (process.env.FRISCO_TIME) {
   await page.evaluate((t) => window.__frisco.setTime(t), process.env.FRISCO_TIME);
   await page.waitForTimeout(900);

@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-17T17:41:23.155Z",
+  "generated_at": "2026-08-17T17:53:08.918Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "b4ba187a",
+      "date": "2026-08-17",
+      "subject": "Bay windows, which is the most San Francisco thing there is",
+      "lede": "Every low-rise house in Chinatown, North Beach, Russian Hill, the Wharf, the Mission, Hayes Valley and Civic Center now has a projecting bay window with its own little roof, a cornice across the front, and a stoop off to one side — because a door in the middle of a bay window is the one arrangement no Victorian has.",
+      "places": [],
+      "files": 6
+    },
     {
       "sha": "f1392746",
       "date": "2026-08-17",
@@ -1031,16 +1039,6 @@
         "the character roster"
       ],
       "files": 19
-    },
-    {
-      "sha": "52d7edf4",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
     }
   ]
 }
