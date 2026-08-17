@@ -81,6 +81,7 @@ import { createHeadMount } from "@/city/headMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
+import { createDanceFloor } from "@/components/city/danceFloor";
 import { createTagGame, type TagGame } from "@/components/city/tagGame";
 import { TagHud } from "@/components/city/TagHud";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -2551,6 +2552,19 @@ export default function City() {
       },
     });
     agentResidentsRef.current = agentResidents;
+
+    /* ---- The dance floor -------------------------------------------------
+       Off the plaza's east side, clear of the spawn point and the portal
+       discs. It comes with four regulars who join in when anybody near them
+       dances — see `danceFloor.ts` for why the crowd is stocked rather than
+       left to chance: the music's layers are gated on a headcount, and an
+       empty city means nobody ever hears past the first one. */
+    const danceFloor = createDanceFloor({
+      center: { x: 15, y: 0, z: 4 },
+      tiles: 7,
+    });
+    scene.add(danceFloor.group);
+
     postWorldEvent("enter");
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
 
@@ -6586,6 +6600,16 @@ export default function City() {
       snowCover.update(dt, weatherRef.current?.get() === "snow");
       agentResidents.update(dt, pos);
       rosterBoard.update(dt);
+      /* Peers first, then the floor: its regulars join in for a remote player
+         dancing on it as readily as for you, so somebody watching from across
+         the plaza sees a real party rather than four statues around one
+         person. `mp` has not been updated yet this frame, so these are last
+         frame's positions — a sixteenth of a beat stale, which nothing here
+         can perceive. */
+      const peerDancers = mp.countDancersNear(pos.x, pos.z, 34);
+      // Returns how many of its regulars are dancing, which the music below
+      // counts alongside the real people.
+      const floorDancers = danceFloor.update(dt, pos, (danceId ? 1 : 0) + peerDancers);
 
       mp.update(dt, {
         x: pos.x,
@@ -6605,7 +6629,7 @@ export default function City() {
          here rather than in the music because only the world knows where
          anybody is standing. The radius is generous — you should hear a party
          from far enough away to want to walk over to it. */
-      const crowd = (danceId ? 1 : 0) + mp.countDancersNear(pos.x, pos.z, 34);
+      const crowd = (danceId ? 1 : 0) + peerDancers + floorDancers;
       musicRef.current?.update(crowd);
       if (crowd !== crowdShown) {
         crowdShown = crowd;
@@ -7015,6 +7039,7 @@ export default function City() {
       travelRef.current = null;
       resetRunRef.current = null;
       vibeyExciteRef.current = null;
+      danceFloor.dispose();
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");
