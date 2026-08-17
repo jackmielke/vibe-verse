@@ -69,12 +69,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "6896dbb", iso: "2026-08-17T06:39:11+00:00", subject: "The bay has something in it, and you can finally look up" },
     { sha: "461d142", iso: "2026-08-17T05:14:33+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
     { sha: "cffdbc9", iso: "2026-08-16T21:05:25+00:00", subject: "Fireballs, bumper cars, F to get out, and the invisible swimmer" },
     { sha: "f28e447", iso: "2026-08-16T18:44:24+00:00", subject: "Drive into the sea and the sea does something about it" },
-    { sha: "f8deb43", iso: "2026-08-16T10:07:24+00:00", subject: "The sea has an inside now: dive under Vibe City" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -125,12 +125,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "9d740b6", iso: "2026-08-17T16:09:09+00:00", subject: "Vibe Francisco: lamp posts, trolley wires, and nine hundred people" },
     { sha: "64c0d0f", iso: "2026-08-17T15:44:14+00:00", subject: "Vibe Francisco: you can land on a round building now, and it makes a noise" },
     { sha: "c84ef4a", iso: "2026-08-17T09:56:42+00:00", subject: "Vibe Francisco: two hundred cars, fifteen boats, and a Ferry Building that fits" },
     { sha: "5afd6f9", iso: "2026-08-17T09:43:04+00:00", subject: "Vibe Francisco: land on a street, and a camera that flies itself" },
     { sha: "1da54ff", iso: "2026-08-17T09:15:39+00:00", subject: "Vibe Francisco: a logbook, a hundred and seventy coins, and a race up Market" },
     { sha: "c2d5a7c", iso: "2026-08-17T08:56:22+00:00", subject: "Vibe Francisco gets its landmarks, and the city gets its walls back" },
-    { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
   ],
   "garden": [
     { sha: "1bf8d5a", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },
@@ -176,12 +176,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
-    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -215,12 +215,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
+    { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
-    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
   ],
   "museum": [
     { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -281,12 +281,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
-    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
   ],
   "space": [
     { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
@@ -316,6 +316,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "1a0094c", iso: "2026-06-15T22:23:49+00:00", subject: "Changes" },
   ],
   "terminal": [
+    { sha: "e7f0101", iso: "2026-08-17T15:57:50+00:00", subject: "Changes" },
     { sha: "d6c3472", iso: "2026-08-05T22:37:49+00:00", subject: "Changes" },
     { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },
     { sha: "bed57ee", iso: "2026-08-01T19:54:56+00:00", subject: "Fix the Terminal on phones, and say what this project actually is" },
@@ -338,12 +339,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
-    { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
   ],
   "vibeverse": [
     { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },

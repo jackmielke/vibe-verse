@@ -1,7 +1,57 @@
 {
-  "generated_at": "2026-08-17T16:06:46.302Z",
+  "generated_at": "2026-08-17T16:30:40.597Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "52261cff",
+      "date": "2026-08-17",
+      "subject": "A dance floor in the plaza, with regulars who join in",
+      "lede": "The music's layers are gated on how many people are dancing near you — hats at two, the lead at three, the stabs at five. Shipping that into a city that is usually empty meant almost everybody who ever pressed T heard layer one and nothing else, and would have concluded the whole thing was a loop. A mechanic that needs four strangers to be online at the same moment is a mechanic hardly anyone has.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "9d740b61",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco: lamp posts, trolley wires, and nine hundred people",
+      "lede": "Standing on a pavement is where a city is judged, and until now the pavements had nothing on them. Now: lamp posts with their arms out over the road, traffic signals, hydrants, benches, bins, bus shelters, and the overhead trolley wires that are one of the most recognisable things about Market Street. Plus nine hundred people walking, a hundred and ninety cars, and fifteen boats.",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "e7f01015",
+      "date": "2026-08-17",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "bd18321b",
+      "date": "2026-08-17",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "33dd2309",
+      "date": "2026-08-17",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "05213a1c",
+      "date": "2026-08-17",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "64c0d0f4",
       "date": "2026-08-17",
@@ -988,54 +1038,6 @@
     },
     {
       "sha": "f5ffd198",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "800fac27",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "0da79f5a",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "40a4f9ac",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "fe97b5e7",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "17792dec",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "7a83c0fd",
       "date": "2026-08-11",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
