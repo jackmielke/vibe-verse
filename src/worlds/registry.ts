@@ -601,6 +601,7 @@ const WORLDS_RAW: WorldEntry[] = [
   {
     key: "city",
     route: "/city",
+    aliases: ["/world"],
     name: "Vibe City",
     emoji: "🏙️",
     kind: "world",
