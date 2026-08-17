@@ -43,8 +43,19 @@ import {
 
 const STORE_KEY = "frisco.logbook";
 
-/** How close you have to get before a landmark counts as found. */
+/**
+ * How close you have to get before a landmark counts as found: its own
+ * footprint, plus this, plus a share of its height.
+ *
+ * The height term is the part worth having. "Found" should mean "you have
+ * seen it", and you can see the Transamerica Pyramid from three streets away
+ * and have to be standing under the Dragon Gate to notice it at all. A flat
+ * radius makes the tall ones feel unresponsive — you land on the roof, look
+ * around, and the logbook says nothing — while making it big enough for them
+ * hands you the small ones from the next block.
+ */
 const FIND_PAD = 55;
+const FIND_PER_METRE = 0.35;
 
 export type PlayEvent =
   | { kind: "landmark"; key: string; name: string; blurb: string; found: number; total: number }
@@ -350,7 +361,7 @@ export class Playground {
         bestD = d;
         bestMark = m;
       }
-      if (d > m.footprint + FIND_PAD) continue;
+      if (d > m.footprint + FIND_PAD + m.height * FIND_PER_METRE) continue;
       if (this.found.has(m.key)) continue;
       this.found.add(m.key);
       save({ found: [...this.found], bestCourse: this.bestCourse ?? undefined });

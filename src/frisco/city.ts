@@ -284,7 +284,9 @@ function buildStreets(roads: Batch, walks: Batch, lines: StreetLine[]): void {
     }
     // A centre line on the wider streets. Market gets the double yellow it has.
     if (s.halfWidth >= 11) {
-      roads.ribbon(s.points, 0.35, 0.1, line, walkHeight);
+      // Narrow, because a third-person camera sits a metre off the ground
+      // and a 70 cm stripe fills the bottom third of the screen from there.
+      roads.ribbon(s.points, 0.22, 0.09, line, walkHeight);
     }
   }
 }

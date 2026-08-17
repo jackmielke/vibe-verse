@@ -742,6 +742,31 @@ export function isRoad(x: number, z: number): boolean {
   return r.distance < r.halfWidth;
 }
 
+/**
+ * Nudge a point onto the nearest piece of asphalt.
+ *
+ * Spawns are stored as the real lat/lon of a real place, which is the right way
+ * to store them and lands you wherever that place happens to fall relative to
+ * the generated street grid — quite often the middle of a block, between the
+ * backs of four buildings, in a courtyard with no way out that reads as a bug
+ * in the collision system. Fisherman's Wharf did exactly that.
+ *
+ * A spiral search rather than anything clever: the grid is a pure function, so
+ * this is a few hundred cheap evaluations, once, at spawn time.
+ */
+export function snapToStreet(x: number, z: number): Vec2 {
+  if (isRoad(x, z) && !isWater(x, z)) return { x, z };
+  for (let r = 7; r <= 110; r += 7) {
+    for (let a = 0; a < 16; a++) {
+      const t = (a / 16) * Math.PI * 2 + r * 0.21;
+      const px = x + Math.cos(t) * r;
+      const pz = z + Math.sin(t) * r;
+      if (isRoad(px, pz) && !isWater(px, pz)) return { x: px, z: pz };
+    }
+  }
+  return { x, z };
+}
+
 /** True if a point is on the pavement beside a road. */
 export function isSidewalk(x: number, z: number): boolean {
   const r = roadAt(x, z);
@@ -769,8 +794,12 @@ export const SPAWNS: Spawn[] = [
     up: 0, heading: 2.2, blurb: "The middle of it all. Towers up the street, water down it.",
   },
   {
-    key: "coit", name: "Coit Tower", lat: 37.8024, lon: -122.4058,
-    up: 0, heading: 2.4, blurb: "Top of Telegraph Hill. Jump off — that is what the jetpack is for.",
+    /* Facing away from the tower and down the hill. Pointing at it puts the
+       third-person camera inside sixty metres of solid concrete, and the
+       collision does the only thing it can — shoves the camera onto the back
+       of the character's head. */
+    key: "coit", name: "Coit Tower", lat: 37.802, lon: -122.4051,
+    up: 0, heading: 5.55, blurb: "Top of Telegraph Hill. Jump off — that is what the jetpack is for.",
   },
   {
     key: "ferry", name: "Ferry Building", lat: 37.7955, lon: -122.3937,

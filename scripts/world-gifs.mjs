@@ -32,6 +32,15 @@ const CANDIDATES = [
   { key: "home-alone", route: "/home-alone?shot" },
   { key: "fnaf", route: "/fnaf?shot" },
   { key: "sf", route: "/sf?shot" },
+  /* Vibe Francisco has a real attract mode — a slow crane over the Financial
+     District — and it is rejected here anyway, at six distinct frames out of
+     the eight this asks for. Not because nothing moves but because a 737 000
+     triangle city renders at under two frames a second on the software
+     renderer this runs on, so three seconds of wall clock is six frames of
+     film. It stays on the list: the world is filmable, this machine is not the
+     one that can film it, and the day it runs somewhere with a GPU it will
+     pass without anybody editing this file. */
+  { key: "frisco", route: "/frisco?shot" },
   { key: "san-palmas", route: "/san-palmas?shot" },
   { key: "seafair", route: "/seafair?shot" },
   { key: "island-2", route: "/island-2?shot" },

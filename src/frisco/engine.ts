@@ -16,7 +16,7 @@ import { buildCity, disposeCity, type CityBuild } from "./city";
 import { CityCollision } from "./collision";
 import { createInput, type FriscoInput } from "./input";
 import { disposeLook } from "./look";
-import { SPAWNS, VIEW, landmarkPositions, ll, walkHeight, type Spawn } from "./map";
+import { SPAWNS, VIEW, landmarkPositions, ll, snapToStreet, walkHeight, type Spawn } from "./map";
 import { Player } from "./player";
 import { Playground, type PlayEvent } from "./play";
 import { createSky, type SkyRig } from "./sky";
@@ -37,6 +37,8 @@ export interface FriscoHandle {
   setCharacter(id: string): void;
   /** Jump to a named spawn. */
   goTo(key: string): void;
+  /** Hand the camera to the attract path — what `?shot` does. */
+  setAttract(on: boolean): void;
   /** Called every frame after the world has stepped, for the HUD and the game. */
   onFrame?: (dt: number, elapsed: number) => void;
   /** Called whenever the play layer has something to say — a coin, a landmark. */
@@ -50,12 +52,17 @@ export interface MountOptions {
   spawn?: string;
   /** Reports build progress so the loading screen can say something true. */
   onProgress?: (label: string) => void;
+  /** Start in attract mode — no input, camera on rails. `?shot`. */
+  attract?: boolean;
 }
 
 /** Spawns are stored as real lat/lon; `map.ts` owns the projection. */
 function resolveSpawn(key: string | undefined): { spawn: Spawn; x: number; z: number; y: number } {
   const s = SPAWNS.find((v) => v.key === key) ?? SPAWNS[0];
-  const p = ll(s.lat, s.lon);
+  // Snapped to the street unless the spawn is deliberately in the air — the
+  // top of the Transamerica is not supposed to be on a road.
+  const raw = ll(s.lat, s.lon);
+  const p = s.up > 0 ? raw : snapToStreet(raw.x, raw.z);
   return { spawn: s, x: p.x, z: p.z, y: walkHeight(p.x, p.z) + s.up + 0.4 };
 }
 
@@ -158,10 +165,26 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
     setCharacter(id) {
       void player.loadCharacter(id);
     },
+    setAttract(on) {
+      attract = on;
+      input.setEnabled(!on);
+      /* Shadows off while the camera is on rails.
+         Not a quality decision — a measurement one. The shadow pass draws the
+         city a second time, and the offline recorder runs on a software
+         renderer where that is the difference between four rendered frames in
+         three seconds and enough to make a clip out of. `route-gif.mjs` counts
+         *distinct* frames and rejects anything under eight, so a world this
+         heavy simply cannot be filmed with the second pass on, however good it
+         looks in it. Nobody sees attract mode with shadows on anyway: it exists
+         for the card. */
+      renderer.shadowMap.enabled = !on;
+      sky.sun.castShadow = !on;
+    },
     goTo(key) {
       const s = SPAWNS.find((v) => v.key === key);
       if (!s) return;
-      const p = ll(s.lat, s.lon);
+      const raw = ll(s.lat, s.lon);
+      const p = s.up > 0 ? raw : snapToStreet(raw.x, raw.z);
       player.teleport(p.x, p.z, s.heading);
       if (s.up > 0) player.state.position.y = walkHeight(p.x, p.z) + s.up;
     },
@@ -196,6 +219,38 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   window.addEventListener("resize", onResize);
   onResize();
 
+  /**
+   * The attract mode `?shot` puts the world into: a slow crane over downtown
+   * with nobody at the controls.
+   *
+   * It exists for `route-gif.mjs`, which records a few seconds of a route and
+   * refuses to keep anything under eight distinct frames — the repo's rule for
+   * "this world plays itself" is measured, not decided. A city that sits
+   * perfectly still because it has no simulation in it would fail that test on
+   * the merits, and it should: what moves in Vibe Francisco is the camera, so
+   * the camera is what has to move.
+   *
+   * The path is an arc around the Financial District rather than a full orbit.
+   * Three seconds of a full orbit is a smear; three seconds of a slow arc past
+   * the Transamerica with the bay opening up behind it is a place.
+   */
+  let attract = false;
+  const runAttract = (t: number) => {
+    const a = 1.15 + t * 0.14;
+    const radius = 620 - t * 26;
+    const height = 300 - t * 12;
+    const cx = -120;
+    const cz = -160;
+    const x = cx + Math.cos(a) * radius;
+    const z = cz + Math.sin(a) * radius;
+    player.state.position.set(x, height, z);
+    player.state.velocity.set(0, 0, 0);
+    player.state.yaw = a + Math.PI;
+    player.state.pitch = -0.34;
+  };
+
+  if (o.attract === true) handle.setAttract(true);
+
   const tick = () => {
     raf = requestAnimationFrame(tick);
     const now = performance.now();
@@ -205,7 +260,9 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
     last = now;
     elapsed += dt;
 
+    if (attract) runAttract(elapsed);
     player.update(dt, elapsed);
+    if (attract) runAttract(elapsed);
     sky.update(dt, elapsed, camera);
     const events = play.update(dt, elapsed, player.state.position);
     if (events.length) handle.onPlay?.(events);

@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-17T09:13:59.004Z",
+  "generated_at": "2026-08-17T09:41:24.243Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "1da54ff2",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco: a logbook, a hundred and seventy coins, and a race up Market",
+      "lede": "Three reasons to go somewhere, in one new file.",
+      "places": [],
+      "files": 6
+    },
     {
       "sha": "c2d5a7c8",
       "date": "2026-08-17",
@@ -1034,16 +1042,6 @@
     },
     {
       "sha": "faf2a48c",
-      "date": "2026-08-10",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "8a777ce1",
       "date": "2026-08-10",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",

@@ -35,6 +35,14 @@ export interface FriscoInput {
   /** Read-and-clear a "swap camera side" request. */
   consumeCamSwap(): boolean;
   keys: Set<string>;
+  /**
+   * Stop reading the player entirely — what attract mode needs.
+   *
+   * Zeroing the axes is not enough on its own: the listeners stay attached and
+   * a stray keypress during a three-second recording puts a jetpack burn in
+   * the middle of the card art. This gates the whole thing at the source.
+   */
+  setEnabled(on: boolean): void;
   dispose(): void;
   /** For the HUD: where the touch move-stick is, so it can be drawn. */
   stick: { active: boolean; ox: number; oy: number; x: number; y: number };
@@ -52,6 +60,7 @@ export function createInput(canvas: HTMLCanvasElement, o: InputOptions = {}): Fr
   const keys = new Set<string>();
   let jumpLatched = false;
   let camSwapLatched = false;
+  let enabled = true;
 
   const state: FriscoInput = {
     moveX: 0, moveZ: 0, lookX: 0, lookY: 0,
@@ -68,6 +77,18 @@ export function createInput(canvas: HTMLCanvasElement, o: InputOptions = {}): Fr
       return c;
     },
     stick: { active: false, ox: 0, oy: 0, x: 0, y: 0 },
+    setEnabled(on: boolean) {
+      enabled = on;
+      if (!on) {
+        keys.clear();
+        state.moveX = state.moveZ = 0;
+        state.lookX = state.lookY = 0;
+        state.jet = false;
+        state.boost = false;
+        state.stick.active = false;
+        jumpLatched = false;
+      }
+    },
     dispose() {
       /* replaced below */
     },
@@ -75,7 +96,7 @@ export function createInput(canvas: HTMLCanvasElement, o: InputOptions = {}): Fr
 
   /* ---------------- keyboard ---------------- */
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.repeat) return;
+    if (!enabled || e.repeat) return;
     if (e.code === "Space") jumpLatched = true;
     if (e.code === "KeyV") camSwapLatched = true;
     keys.add(e.code);
@@ -96,10 +117,12 @@ export function createInput(canvas: HTMLCanvasElement, o: InputOptions = {}): Fr
 
   /* ---------------- pointer lock ---------------- */
   const onClick = () => {
+    if (!enabled) return;
     if (window.matchMedia("(pointer: coarse)").matches) return;
     if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
   };
   const onMouseMove = (e: MouseEvent) => {
+    if (!enabled) return;
     if (document.pointerLockElement !== canvas) return;
     state.lookX += e.movementX;
     state.lookY += e.movementY;
@@ -117,7 +140,7 @@ export function createInput(canvas: HTMLCanvasElement, o: InputOptions = {}): Fr
     x > canvas.clientWidth - 150 && y > canvas.clientHeight - 150;
 
   const onPointerDown = (e: PointerEvent) => {
-    if (e.pointerType !== "touch") return;
+    if (!enabled || e.pointerType !== "touch") return;
     if (e.clientY < deadZoneTop) return;
     if (inJetPad(e.clientX, e.clientY) && touch.jetId === -1) {
       touch.jetId = e.pointerId;
@@ -139,7 +162,7 @@ export function createInput(canvas: HTMLCanvasElement, o: InputOptions = {}): Fr
     }
   };
   const onPointerMove = (e: PointerEvent) => {
-    if (e.pointerType !== "touch") return;
+    if (!enabled || e.pointerType !== "touch") return;
     if (e.pointerId === touch.moveId) {
       const dx = (e.clientX - state.stick.ox) / 64;
       const dy = (e.clientY - state.stick.oy) / 64;

@@ -34,10 +34,18 @@ export default function VibeFrancisco() {
   useWorldStamp("/frisco", "Vibe Francisco");
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const shotRef = useRef(false);
   const handleRef = useRef<FriscoHandle | null>(null);
   const [params, setParams] = useSearchParams();
   const spawn = params.get("at") ?? "market";
+  /* `?shot` is the attract mode the capture harnesses drive: the camera goes on
+     rails, the input layer stops listening, and the chrome comes off so the
+     frame is the world and nothing else. `route-gif.mjs` measures whether what
+     comes out actually moves, so this is a claim the repo checks rather than
+     one this file gets to make. */
+  const shot = params.has("shot");
   const { charId, character } = useActiveCharacter();
+  shotRef.current = params.has("shot");
 
   const [phase, setPhase] = useState<"loading" | "playing" | "failed">("loading");
   const [progress, setProgress] = useState("Waking up the city");
@@ -93,6 +101,7 @@ export default function VibeFrancisco() {
           canvas,
           charId,
           spawn,
+          attract: shotRef.current,
           onProgress: (label) => !cancelled && setProgress(label),
         });
         handleRef.current = handle;
@@ -182,7 +191,7 @@ export default function VibeFrancisco() {
       {phase === "loading" ? <Loading progress={progress} /> : null}
       {phase === "failed" ? <Failed /> : null}
 
-      {phase === "playing" ? (
+      {phase === "playing" && !shot ? (
         <>
           <TopChrome
             charLabel={`${character.emoji} ${character.label}`}
