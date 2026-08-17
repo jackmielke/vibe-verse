@@ -257,12 +257,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1e", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "a13e984", iso: "2026-08-17T02:54:08+00:00", subject: "Spawn on the plaza, not inside it" },
+    { sha: "60b25c0", iso: "2026-08-17T02:10:52+00:00", subject: "Walk San Francisco, and stop the city boiling while you do" },
     { sha: "05f01ed", iso: "2026-08-04T17:47:22+00:00", subject: "Changes" },
     { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },
     { sha: "4640558", iso: "2026-07-29T10:14:23+00:00", subject: "SF: eight subsystems land — postfx, physics, player, weapons, vfx, ai, vehicles, audio" },
     { sha: "9ba1460", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
-    { sha: "eb067f3", iso: "2026-07-29T04:54:34+00:00", subject: "SF: land the VFX, AI, audio and vehicle subsystems (not yet mounted)" },
-    { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "shop": [
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
