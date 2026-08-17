@@ -7,25 +7,55 @@
  * The movement model is not a spaceship's. A submersible has enormous drag and
  * almost no inertia to fight, so thrust maps closely to *speed* rather than to
  * acceleration — you stop within a metre of releasing the stick. What it does
- * have is buoyancy: trimmed slightly heavy, so with the ballast controls
- * untouched you sink, slowly, forever. That single choice is what makes the
- * descent happen *to* you rather than being something you hold a key down for.
+ * have is buoyancy: trimmed heavy, so with the controls untouched you sink.
+ *
+ * The sink is a *current*, not the journey. That distinction was the first
+ * build's central mistake: it made the drift the intended way down, at a rate
+ * that needed three and a half hours, and told players so in the briefing.
+ * Descending is something you do — hold the dive control and the floor is two
+ * minutes away, one if you spend the boost.
  *
  * The lamps are the other half of the design. Two spotlights, and the entire
- * game is what they do and do not reach. They cost power; power comes back
- * slowly when they are off. Turning them off in the midnight zone to save
- * power means being blind, and being blind here is genuinely unpleasant, which
- * is exactly the trade the world is about.
+ * game is what they do and do not reach. They no longer cost more power than
+ * they can earn: darkness has to be a thing you *choose*, by switching them
+ * off, because darkness that creeps up on you is indistinguishable from a
+ * broken renderer — which is exactly how it was reported.
  */
 import * as THREE from "three";
 import { depthOf, FLOOR_DEPTH, type DeepCtx, type SubService, type System } from "../types";
 
-/** Trimmed heavy: metres per second of sink with no input at all. */
-const BALLAST_SINK = 1.9;
-/** Peak speeds, m/s. Slow — this is a submersible, not a jet ski. */
-const SURGE_SPEED = 13;
-const HEAVE_SPEED = 11;
-const BOOST_MULT = 2.35;
+/**
+ * Speeds, in metres per second of *terminal* velocity.
+ *
+ * These are the numbers that decide whether the world is playable, and the
+ * first build got them badly wrong by reasoning about the accelerations rather
+ * than measuring the result. Because the integrator is `v += a·dt` followed by
+ * `v *= exp(-DRAG·dt)`, terminal velocity is `a / DRAG` — so an acceleration
+ * that *looks* brisk lands somewhere else entirely. What shipped was a free
+ * sink of 0.65 m/s, which is three and a half hours to the floor, in a world
+ * whose own briefing tells you it sinks on its own. Holding the dive key was
+ * eleven minutes.
+ *
+ * So they are quoted as terminal velocities now, and converted at the point of
+ * use. The arithmetic is in `deep.test.ts`, which fails if the full descent
+ * ever creeps back over a few minutes — a number nobody notices going wrong by
+ * reading the code, and everybody notices while playing.
+ */
+export const SPEEDS = {
+  /** Sink rate with nothing held down. */
+  ballast: 11,
+  /** Forward thrust. */
+  surge: 34,
+  /** Ballast controls, up or down. */
+  heave: 60,
+  /** Multiplier on surge and heave alike while boosting. */
+  boost: 2,
+} as const;
+
+const BALLAST_SINK = SPEEDS.ballast;
+const SURGE_SPEED = SPEEDS.surge;
+const HEAVE_SPEED = SPEEDS.heave;
+const BOOST_MULT = SPEEDS.boost;
 /** How hard the water fights back. High: it is water. */
 const DRAG = 3.1;
 const YAW_RATE = 1.5;
@@ -91,14 +121,24 @@ function buildHull(): {
 
   const hullMat = new THREE.MeshStandardMaterial({ color: 0xf0b429, roughness: 0.45, metalness: 0.55 });
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x1c2431, roughness: 0.6, metalness: 0.7 });
-  const glassMat = new THREE.MeshPhysicalMaterial({
+  /**
+   * The viewport dome — deliberately *not* `transmission`.
+   *
+   * A material with transmission makes three render the whole scene a second
+   * time, into a transmission target, every frame. That is a defensible price
+   * for a pane of glass you stand in front of; it is an indefensible one for a
+   * half-metre dome on the back of your own submersible, in a world where the
+   * scene behind it is near-black anyway. It doubled the cost of every frame
+   * for an effect nobody can see, on top of a bloom and a grade pass — which
+   * is a strong candidate for "very glitchy" on anything without a discrete
+   * GPU. Plain transparency is indistinguishable here and free.
+   */
+  const glassMat = new THREE.MeshStandardMaterial({
     color: 0x9fe8ff,
-    roughness: 0.05,
-    metalness: 0,
-    transmission: 0.85,
-    thickness: 0.4,
+    roughness: 0.08,
+    metalness: 0.1,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.42,
   });
 
   // Pressure sphere forward, faired body behind — the Alvin/Limiting Factor
@@ -148,7 +188,13 @@ function buildHull(): {
     l.target = t;
     root.add(l);
 
-    const beam = buildBeam(30, 8.4);
+    // Short and narrow. At 30 m long and 8.4 m across these stopped being
+    // shafts and became a wall: additive, unfogged, and filling the lower two
+    // thirds of the frame with a pale dome you descend *inside* of. That never
+    // showed up while the sub was parked next to a seafloor that caught the
+    // light — only once you travelled far enough through open water to spend a
+    // minute looking at nothing else.
+    const beam = buildBeam(17, 2.9);
     beam.position.copy(l.position);
     // Point the cone the same way as the light: down the line to its target.
     beam.lookAt(t.position);
@@ -179,8 +225,8 @@ function buildHull(): {
    * it is the anchor for every judgement about speed, attitude and distance —
    * so it gets a small light nobody is meant to notice.
    */
-  const fill = new THREE.PointLight(0x9fd8f0, 9, 7, 2);
-  fill.position.set(0, 2.2, -1.4);
+  const fill = new THREE.PointLight(0x9fd8f0, 26, 12, 2);
+  fill.position.set(0, 2.4, -2.6);
   root.add(fill);
 
   return { root, lampL, lampR, beams, fill };
@@ -249,12 +295,15 @@ export default function createSub(ctx: DeepCtx): System {
       // -- thrust -----------------------------------------------------------
       const boosting = input.boost && power > 0.02;
       const mult = boosting ? BOOST_MULT : 1;
-      const drive = power > 0.01 ? 1 : 0.25; // A flat battery still coasts.
+      const drive = power > 0.01 ? 1 : 0.4; // A flat battery still coasts.
 
-      velocity.addScaledVector(forward, input.surge * SURGE_SPEED * mult * drive * dt * DRAG);
-      velocity.y += input.heave * HEAVE_SPEED * drive * dt * DRAG;
+      // `speed * DRAG` is the acceleration whose terminal velocity is `speed`.
+      velocity.addScaledVector(forward, input.surge * SURGE_SPEED * mult * drive * DRAG * dt);
+      // Boost helps the *descent* too. It only ever helped forward thrust,
+      // which is the one axis the descent does not use.
+      velocity.y += input.heave * HEAVE_SPEED * mult * drive * DRAG * dt;
       // Ballast. Always there, always down.
-      velocity.y -= BALLAST_SINK * dt * DRAG * 0.34;
+      velocity.y -= BALLAST_SINK * DRAG * dt;
 
       // Water drag. Exponential, so releasing the stick stops you promptly and
       // there is no space-sim glide.
@@ -289,8 +338,15 @@ export default function createSub(ctx: DeepCtx): System {
       // Lamps are the main draw; thrust costs a little; everything trickles
       // back. Tuned so a careful pilot never runs out and a heavy-handed one
       // has to go dark for a while, which is its own kind of scene.
-      const draw = (lightsOn ? 0.0125 : 0) + Math.abs(input.surge) * 0.004 + (boosting ? 0.02 : 0);
-      power = THREE.MathUtils.clamp(power - draw * dt + 0.0075 * dt, 0, 1);
+      // Lamps are *sustainable*. They were not: 0.0125/s of draw against
+      // 0.0075/s of regen is a net loss no pilot can win, so the battery
+      // emptied after about three minutes and the lamps sat at 35 % for the
+      // rest of the dive — which is most of what "the screen is black a lot"
+      // turned out to mean. Being in the dark should be a thing you choose, by
+      // switching the lamps off, not a thing that creeps up on you. Boost is
+      // the only real cost now, and it is the only one you can feel.
+      const draw = (lightsOn ? 0.006 : 0) + Math.abs(input.surge) * 0.002 + (boosting ? 0.055 : 0);
+      power = THREE.MathUtils.clamp(power - draw * dt + 0.02 * dt, 0, 1);
       service.power = power;
 
       // -- pressure ---------------------------------------------------------
@@ -312,13 +368,13 @@ export default function createSub(ctx: DeepCtx): System {
       // The visible cone follows the lamps, and thickens with depth: there is
       // more to scatter off down there, and it is the clearest signal the
       // player has that the lamps are the only thing left working.
-      const beamAlpha = (lampL.intensity / 260) * (0.055 + Math.min(1, depth / 1600) * 0.075);
+      const beamAlpha = (lampL.intensity / 260) * (0.03 + Math.min(1, depth / 1600) * 0.035);
       for (const b of beams) {
         const bm = b.material as THREE.MeshBasicMaterial;
         bm.opacity = beamAlpha;
         b.visible = beamAlpha > 0.004;
       }
-      fill.intensity = 6 + (lightsOn ? 4 : 0);
+      fill.intensity = 18 + (lightsOn ? 10 : 0);
       const canGlow = lightsOn ? 3 * (0.3 + 0.7 * power) : 0;
       for (const n of ["canL", "canR"]) {
         const can = root.getObjectByName(n) as THREE.Mesh | undefined;

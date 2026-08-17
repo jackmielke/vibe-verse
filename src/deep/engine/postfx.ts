@@ -146,8 +146,15 @@ export default function createPostFx(ctx: DeepCtx): System {
     },
 
     resize(width, height) {
+      // `composer.setSize` takes CSS pixels and multiplies by the renderer's
+      // pixel ratio itself — and it already forwards the *device*-pixel size to
+      // every pass it owns. Calling `bloom.setSize` again here re-sized the
+      // bloom's internal targets to the unscaled figure, so on any display with
+      // a pixel ratio above 1 every window resize or rotation halved the
+      // bloom's resolution and mis-registered it against the frame. That is a
+      // glitch you cannot see on the machine that renders at 1×, which is
+      // exactly the machine this was verified on.
       composer?.setSize(width, height);
-      bloom?.setSize(width, height);
     },
 
     dispose() {

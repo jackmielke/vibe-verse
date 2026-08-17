@@ -23,6 +23,7 @@ import {
   zoneAt,
 } from "@/deep/types";
 import { SPECIES, speciesAt } from "@/deep/life/species";
+import { SPEEDS } from "@/deep/play/sub";
 
 const luminance = (hex: number) => {
   const r = (hex >> 16) & 255;
@@ -175,5 +176,53 @@ describe("colour mixing", () => {
       expect(c).toBeGreaterThanOrEqual(0);
       expect(c).toBeLessThanOrEqual(0xffffff);
     }
+  });
+});
+
+describe("how long the dive takes", () => {
+  /**
+   * The complaint that sent this back for a second pass: "8 km takes too long."
+   *
+   * It did. The first build quoted its speeds as accelerations, and because the
+   * integrator applies exponential drag the terminal velocity is `a / DRAG` —
+   * so a ballast sink that read as 1.9 in the source was 0.65 m/s in the water,
+   * which is **three and a half hours** to the floor. The briefing told players
+   * to let it sink. Holding the dive key was still eleven minutes.
+   *
+   * Nobody catches that by reading the constants, and no build or typecheck has
+   * an opinion about it. So the arithmetic lives here, in the units a player
+   * actually experiences.
+   */
+  const terminal = {
+    free: SPEEDS.ballast,
+    dive: SPEEDS.heave + SPEEDS.ballast,
+    boosted: SPEEDS.heave * SPEEDS.boost + SPEEDS.ballast,
+  };
+  const minutes = (mps: number) => FLOOR_DEPTH / mps / 60;
+
+  it("gets a committed pilot to the bottom in a couple of minutes", () => {
+    expect(minutes(terminal.dive)).toBeLessThan(3);
+  });
+
+  it("rewards the boost with a run under ninety seconds", () => {
+    expect(minutes(terminal.boosted) * 60).toBeLessThan(90);
+  });
+
+  it("does not make the descent so fast that the zones blur past", () => {
+    /* The other failure mode. Under about forty seconds the five layers stop
+       being places you travel through and become a loading screen, and the
+       creatures cannot spawn in fast enough to be met. */
+    expect(minutes(terminal.boosted) * 60).toBeGreaterThan(40);
+  });
+
+  it("keeps drifting slower than driving, but not by an hour", () => {
+    expect(terminal.free).toBeLessThan(terminal.dive);
+    expect(minutes(terminal.free)).toBeLessThan(20);
+  });
+
+  it("lets the thrusters out-climb the ballast", () => {
+    /* If ballast beat heave you could never go back up to re-scan something
+       you missed, and the sink would be a trap rather than a current. */
+    expect(SPEEDS.heave).toBeGreaterThan(SPEEDS.ballast * 2);
   });
 });

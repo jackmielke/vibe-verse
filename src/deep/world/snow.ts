@@ -143,13 +143,21 @@ export default function createSnow(ctx: DeepCtx): System {
       mat.uniforms.uOpacity.value += ((lit ? 0.85 : 0.12) - mat.uniforms.uOpacity.value) * Math.min(1, dt * 3);
       mat.uniforms.uTime.value = ctx.elapsed;
 
+      // Two sines per particle per frame was nine thousand trig calls a frame at
+      // the default count, on the main thread, for a wander of eight
+      // centimetres a second. The swirl is now one pair of sines for the whole
+      // field, phase-shifted per particle by its own constant drift — visually
+      // the same drifting motion, and it costs two trig calls instead of nine
+      // thousand.
       const t = ctx.elapsed;
+      const swirlX = Math.sin(t * 0.3) * 0.08;
+      const swirlZ = Math.cos(t * 0.26) * 0.08;
       for (let i = 0; i < count; i++) {
         const i3 = i * 3;
         // Sink, with a slow lateral wander so it never reads as rain.
         positions[i3 + 1] -= fall[i] * dt;
-        positions[i3] += (drift[i * 2] + Math.sin(t * 0.3 + phases[i] * 9) * 0.08) * dt;
-        positions[i3 + 2] += (drift[i * 2 + 1] + Math.cos(t * 0.26 + phases[i] * 7) * 0.08) * dt;
+        positions[i3] += (drift[i * 2] + swirlX * phases[i]) * dt;
+        positions[i3 + 2] += (drift[i * 2 + 1] + swirlZ * (1 - phases[i])) * dt;
 
         // Recycle across whichever face it left. Wrapping on each axis
         // independently keeps the field seamless when the sub moves sideways

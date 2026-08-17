@@ -64,13 +64,53 @@ export class DeepEngine {
   /** Set by the post-processing system to take over the final draw. */
   renderOverride: ((dt: number) => void) | null = null;
 
+  /** Raised when the GPU takes the context away mid-dive. The page shows it. */
+  contextLost = false;
+  private canvas: HTMLCanvasElement | null = null;
+
+  private onContextLost = (e: Event) => {
+    // Preventing the default is what makes a restore even possible.
+    e.preventDefault();
+    this.contextLost = true;
+    this.stop();
+    this.emit("engine:contextlost");
+  };
+
+  private onContextRestored = () => {
+    this.contextLost = false;
+    this.emit("engine:contextrestored");
+  };
+
   readonly stats = { fps: 0, frameMs: 0, frames: 0 };
 
   constructor(opts: DeepEngineOptions) {
     const quality = opts.quality ?? detectDeepQuality();
     const shot = isShotMode();
 
+    /**
+     * Ask for the context *first*, and say something useful when it is refused.
+     *
+     * Browsers cap the number of live WebGL contexts per page — Chrome allows
+     * about sixteen — and every 3D world in the vibeverse takes one. Walk
+     * through enough of them and `getContext` starts returning null, at which
+     * point `new WebGLRenderer` dies deep inside `getMaxPrecision` with
+     * "Cannot read properties of null (reading 'precision')". That is a real
+     * failure a real visitor hits, and it is indistinguishable from a black
+     * screen unless somebody names it — so this names it, and `TheDeep.tsx`
+     * offers a reload rather than a corpse.
+     */
+    const probe =
+      opts.canvas.getContext("webgl2", { failIfMajorPerformanceCaveat: false }) ??
+      opts.canvas.getContext("webgl");
+    if (!probe) {
+      throw new Error(
+        "This browser would not give the page another 3D context — usually because too many " +
+          "worlds are open at once. Reloading the tab clears them.",
+      );
+    }
+
     const renderer = new THREE.WebGLRenderer({
+      context: probe as WebGLRenderingContext,
       canvas: opts.canvas,
       antialias: quality === "low",
       powerPreference: "high-performance",
@@ -106,6 +146,14 @@ export class DeepEngine {
     camera.position.set(0, -6, 14);
     camera.lookAt(0, -8, 0);
     scene.add(camera);
+
+    // A context can also be taken away *after* boot — a GPU reset, a laptop
+    // switching graphics cards, a background tab reclaimed under memory
+    // pressure. Without a listener the world simply stops painting and the
+    // player is looking at the last frame, or at nothing.
+    opts.canvas.addEventListener("webglcontextlost", this.onContextLost);
+    opts.canvas.addEventListener("webglcontextrestored", this.onContextRestored);
+    this.canvas = opts.canvas;
 
     this.ctx = {
       scene,
@@ -239,6 +287,9 @@ export class DeepEngine {
     }
     this.systems = [];
     this.listeners.clear();
+    this.canvas?.removeEventListener("webglcontextlost", this.onContextLost);
+    this.canvas?.removeEventListener("webglcontextrestored", this.onContextRestored);
+    this.canvas = null;
     disposeTree(this.ctx.scene);
     this.ctx.renderer.dispose();
     // Browsers cap live WebGL contexts, and a leaked one breaks the *next*

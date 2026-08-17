@@ -22,9 +22,16 @@ export interface CameraService {
   shake(amount: number): void;
 }
 
-/** Where the camera wants to sit relative to the hull, in the hull's frame. */
-const CHASE_OFFSET = new THREE.Vector3(0, 1.5, -6.2);
-const CHASE_LOOK = new THREE.Vector3(0, 0.4, 7);
+/** How far back along the direction of travel the camera rides, metres. */
+const CHASE_DISTANCE = 7.4;
+/** …and how far above it, in world space, so the hull sits low in the frame. */
+const CHASE_RISE = 1.9;
+/** How far ahead of the sub the camera looks. Short: a long lead points the
+ *  view away from the thing it is supposed to be framing. */
+const CHASE_LEAD = 3.2;
+/** Hard cap on how far the spring may stretch behind `desired`, metres. */
+const MAX_TRAIL = 5.5;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 export default function createCamera(ctx: DeepCtx): System {
   const cam = ctx.camera;
@@ -34,6 +41,8 @@ export default function createCamera(ctx: DeepCtx): System {
 
   const desired = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
+  const travel = new THREE.Vector3();
+  const nose = new THREE.Vector3();
   const smoothLook = new THREE.Vector3(0, -6, 0);
   const tmp = new THREE.Vector3();
 
@@ -53,9 +62,13 @@ export default function createCamera(ctx: DeepCtx): System {
   function snap(): void {
     const sub = ctx.services.sub as SubService | undefined;
     if (!sub) return;
-    desired.copy(CHASE_OFFSET).applyQuaternion(sub.object.quaternion).add(sub.position);
+    nose.set(0, 0, 1).applyQuaternion(sub.object.quaternion);
+    desired
+      .copy(sub.position)
+      .addScaledVector(nose, -CHASE_DISTANCE)
+      .addScaledVector(WORLD_UP, CHASE_RISE);
     cam.position.copy(desired);
-    lookAt.copy(CHASE_LOOK).applyQuaternion(sub.object.quaternion).add(sub.position);
+    lookAt.copy(sub.position).addScaledVector(nose, CHASE_LEAD);
     smoothLook.copy(lookAt);
     cam.lookAt(smoothLook);
   }
@@ -91,17 +104,50 @@ export default function createCamera(ctx: DeepCtx): System {
         return;
       }
 
-      // Position: spring toward the offset. Slower vertically than laterally,
-      // so a hard dive lets the sub drop out of frame for a moment — which is
-      // the most legible "you are descending fast" the camera can give.
-      desired.copy(CHASE_OFFSET).applyQuaternion(sub.object.quaternion).add(sub.position);
-      const k = Math.min(1, dt * 4.6);
-      cam.position.x += (desired.x - cam.position.x) * k;
-      cam.position.z += (desired.z - cam.position.z) * k;
-      cam.position.y += (desired.y - cam.position.y) * Math.min(1, dt * 3.2);
+      /**
+       * Trail the direction of *travel*, not the direction the nose points.
+       *
+       * This is the whole fix, and the original was subtly, badly wrong. The
+       * camera sat behind the hull's forward axis and looked at a point seven
+       * metres ahead of it — which is correct for something that moves the way
+       * it is facing, and wrong for a submersible, because diving is straight
+       * down while the nose stays level. Measured mid-dive, the sub projected
+       * to y = -2.3 in normalised device coordinates: more than two full frame
+       * heights below the bottom of the screen. You spent the entire descent
+       * looking at empty water with your own vehicle somewhere off-camera, and
+       * that is a very good imitation of a broken renderer.
+       *
+       * Trailing the velocity makes "behind" mean *above* when you dive and
+       * *behind* when you cruise, with no special cases. The blend back toward
+       * the nose keeps a slow drift framed like a chase camera rather than
+       * swinging around every time the velocity wanders.
+       */
+      travel.copy(sub.velocity);
+      nose.set(0, 0, 1).applyQuaternion(sub.object.quaternion);
+      if (travel.lengthSq() < 1) travel.copy(nose);
+      else travel.normalize().lerp(nose, 0.3).normalize();
 
-      lookAt.copy(CHASE_LOOK).applyQuaternion(sub.object.quaternion).add(sub.position);
-      smoothLook.lerp(lookAt, Math.min(1, dt * 5.2));
+      desired
+        .copy(sub.position)
+        .addScaledVector(travel, -CHASE_DISTANCE)
+        .addScaledVector(WORLD_UP, CHASE_RISE);
+
+      // One spring on all three axes now. The vertical lag that used to be a
+      // deliberate speed cue is what put the sub off-screen once the descent
+      // got fast enough to be worth doing.
+      const k = Math.min(1, dt * 5.0);
+      cam.position.lerp(desired, k);
+
+      // A spring alone lets the trail grow with speed — steady-state lag is
+      // roughly velocity over stiffness, so the 71 m/s descent would sit the
+      // camera twenty-odd metres back and shrink a three-metre submersible to
+      // a speck. Some stretch is a good speed cue; unbounded stretch is the
+      // framing bug again in slow motion.
+      const trail = cam.position.distanceTo(desired);
+      if (trail > MAX_TRAIL) cam.position.lerpVectors(desired, cam.position, MAX_TRAIL / trail);
+
+      lookAt.copy(sub.position).addScaledVector(travel, CHASE_LEAD);
+      smoothLook.lerp(lookAt, Math.min(1, dt * 5.6));
       cam.lookAt(smoothLook);
 
       // FOV opens with speed. Small — 6 degrees — and it does more for the

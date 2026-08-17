@@ -20,6 +20,8 @@ export default function TheDeep() {
   const [progress, setProgress] = useState({ stage: "Sealing the hatch", fraction: 0 });
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Bumped by the retry button; re-runs the whole boot effect. */
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -38,6 +40,13 @@ export default function TheDeep() {
         }
         engineRef.current = eng;
         setEngine(eng);
+        // A context lost mid-dive is not a crash and must not read like one.
+        eng.on("engine:contextlost", (() => {
+          setError(
+            "The browser took the 3D context back — usually a GPU reset, or too many worlds " +
+              "open in other tabs.",
+          );
+        }) as (p: never) => void);
         eng.start();
         setReady(true);
         if (isShotMode() || import.meta.env.DEV) {
@@ -64,7 +73,7 @@ export default function TheDeep() {
       engineRef.current?.dispose();
       engineRef.current = null;
     };
-  }, []);
+  }, [attempt]);
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#020913]">
@@ -72,13 +81,43 @@ export default function TheDeep() {
 
       {engine && <DeepUI engine={engine} ready={ready} progress={progress} />}
 
+      {/* A failure here is nearly always the browser refusing another WebGL
+          context, which is temporary and fixable — so the screen says what
+          happened and offers the two things that actually work, rather than
+          being a black rectangle with a stack trace on it. */}
       {error && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/90 p-8 text-center">
-          <h2 className="text-xl font-bold text-red-400">The Midnight Zone failed to boot</h2>
-          <p className="max-w-lg font-mono text-xs text-white/60">{error}</p>
-          <a href="/" className="mt-4 text-xs uppercase tracking-widest text-cyan-300">
-            ← back to the vibeverse
-          </a>
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#020913]/95 p-8 text-center">
+          <h2 className="text-lg font-bold uppercase tracking-[0.3em] text-cyan-300">
+            The dive could not start
+          </h2>
+          <p className="max-w-md text-sm leading-relaxed text-white/70">{error}</p>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setReady(false);
+                setEngine(null);
+                setAttempt((n) => n + 1);
+              }}
+              className="rounded-xl border border-cyan-300/40 bg-cyan-400/10 px-5 py-2 text-xs font-bold uppercase tracking-widest text-cyan-200 hover:bg-cyan-400/20"
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-xl border border-white/20 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white/70 hover:border-white/40"
+            >
+              Reload the page
+            </button>
+            <a
+              href="/"
+              className="rounded-xl border border-white/20 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white/70 hover:border-white/40"
+            >
+              Back to the vibeverse
+            </a>
+          </div>
         </div>
       )}
     </div>

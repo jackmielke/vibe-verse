@@ -356,14 +356,16 @@ export default function DeepUI({ engine, ready, progress }: DeepUIProps) {
             <div className="dp-title">The Midnight Zone</div>
             <div className="dp-sub">A descent to {FLOOR_DEPTH.toLocaleString()} metres</div>
             <p className="dp-blurb">
-              Your submersible is trimmed slightly heavy, so it sinks on its own. Below a
-              kilometre no sunlight has ever reached, and every light you see from there down was
-              made by something living. Find them, survey them, and keep going until the floor.
+              <b>Hold Shift to dive.</b> The floor is two minutes down, or one if you hold Z as
+              well. Below a kilometre no sunlight has ever reached, and every light you see from
+              there on was made by something living — point the sub at one and hold F to find out
+              what it is.
             </p>
             <div className="dp-keys">
               <span className="dp-key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> steer</span>
-              <span className="dp-key"><kbd>Space</kbd> rise</span>
               <span className="dp-key"><kbd>Shift</kbd> dive</span>
+              <span className="dp-key"><kbd>Space</kbd> rise</span>
+              <span className="dp-key"><kbd>Z</kbd> boost</span>
               <span className="dp-key"><kbd>F</kbd> survey</span>
               <span className="dp-key"><kbd>L</kbd> lamps</span>
               <span className="dp-key">drag to look</span>
