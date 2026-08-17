@@ -40,7 +40,7 @@ export interface LobbyProps {
 /** Real destinations only. A button that does nothing is worse than no button. */
 const LINKS: { label: string; to: string }[] = [
   { label: "Worlds", to: "/game" },
-  { label: "People", to: "/world" },
+  { label: "People", to: "/agent-lobby" },
   { label: "News", to: "/times" },
   { label: "Create", to: "/world-builder" },
 ];
