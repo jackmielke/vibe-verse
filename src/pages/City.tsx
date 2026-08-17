@@ -78,6 +78,7 @@ import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
 import { createWrecks } from "@/city/wrecks";
 import { createHeadMount } from "@/city/headMount";
+import { createBackMount } from "@/city/backMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -3091,6 +3092,8 @@ export default function City() {
        /city and got the crash screen. A GLB character hid it, because there
        the attach happens in a loader callback a tick later. */
     const headMount = createHeadMount();
+    // Same trick, other end of the spine — see src/city/backMount.ts.
+    const backMount = createBackMount();
     setPlayerScaleRef.current = (s: number) => {
       const clamped = Math.max(0.4, Math.min(12, s));
       modelHolder.scale.setScalar(clamped);
@@ -3245,6 +3248,7 @@ export default function City() {
         // Flux is built rather than rigged, so there is no head bone to bind:
         // the mount falls back to the fixed height it always used.
         headMount.attach(null, null, modelHolder);
+        backMount.attach(null, null, modelHolder);
         return;
       }
 
@@ -3288,6 +3292,7 @@ export default function City() {
         // After the add: the mount measures the head against the model's own
         // extent, and both need their world matrices to be real.
         headMount.attach(danceSk, model, modelHolder);
+        backMount.attach(danceSk, model, modelHolder);
 
         if (gltf.animations.length) {
           mixer = new THREE.AnimationMixer(model);
@@ -3455,8 +3460,18 @@ export default function City() {
       jetpack.add(flame);
       flames.push(flame);
     });
-    jetpack.position.set(0, 1.06, -0.24); // on the pilot's back
-    modelHolder.add(jetpack);
+    /**
+     * On the pilot's back, and this time actually on it.
+     *
+     * It used to be `modelHolder.add(jetpack)` at a fixed (0, 1.06, −0.24),
+     * which is right for one character standing upright and wrong for the
+     * other fifty-seven — and wrong for ALL of them the moment they move,
+     * because the swim stroke pitches the rig's root eighty-one degrees and
+     * the model holder is not part of that. The swimmer went flat and the
+     * jetpack stayed vertical, hanging in the water behind them.
+     */
+    backMount.attach(null, null, modelHolder);
+    backMount.group.add(jetpack);
     const jetLight = new THREE.PointLight(0x7dfce0, 0, 9, 2);
     jetLight.position.set(0, 0.4, -0.2);
     player.add(jetLight);
@@ -3824,6 +3839,32 @@ export default function City() {
        * enough, so nothing in the source says where they end up, and "did the
        * chest pay out" is a number in a wallet.
        */
+      /**
+       * Where the jetpack actually is, relative to the body wearing it.
+       *
+       * The whole failure mode is that the pack keeps its authored offset
+       * while the character moves out from under it — so the only thing worth
+       * measuring is the gap between the pack and the spine it is supposed to
+       * be strapped to, sampled while the body is doing something. Standing
+       * still it looked correct for two weeks.
+       */
+      (window as unknown as Record<string, unknown>).__cityJetpack = () => {
+        const jp = new THREE.Vector3();
+        jetpack.getWorldPosition(jp);
+        const bone = danceSk?.torso?.obj ?? danceSk?.spine?.obj ?? danceSk?.hips?.obj ?? null;
+        const bp = new THREE.Vector3();
+        if (bone) bone.getWorldPosition(bp);
+        else modelHolder.getWorldPosition(bp);
+        return {
+          bound: !!bone,
+          gap: bone ? jp.distanceTo(bp) : -1,
+          jet: { x: jp.x, y: jp.y, z: jp.z },
+          spine: { x: bp.x, y: bp.y, z: bp.z },
+          // The pack's own tilt in world space. A back that has pitched eighty
+          // degrees and a pack still pointing at the sky is the bug.
+          tilt: new THREE.Euler().setFromQuaternion(jetpack.getWorldQuaternion(new THREE.Quaternion())).x,
+        };
+      };
       (window as unknown as Record<string, unknown>).__cityWrecks = () =>
         wrecks.sites.map((s) => ({ ...s }));
       (window as unknown as Record<string, unknown>).__cityWrecksReset = () => wrecks.reset();
@@ -4120,6 +4161,25 @@ export default function City() {
     const SINK_RECOVER = 11;
     /** Seconds until the next audible bubble; see the note where it is used. */
     let bubbleSfx = 0;
+    /**
+     * How loud something at (x, z) should be, 0..1.
+     *
+     * `citySounds` has no panner and no listener — every sound is mixed
+     * straight into one master gain — so distance is the caller's job, and
+     * until now no caller did it. A kart sinking on the far side of the bay
+     * bubbled in your ear at full volume for eleven seconds, which is what
+     * "the water sound kept going after I left the water" actually was: not a
+     * stuck filter, a wreck three hundred metres away that nobody had told the
+     * audio engine about.
+     *
+     * Linear rather than inverse-square: this is a cartoon city, and a proper
+     * physical falloff makes everything more than a few metres away inaudible,
+     * which trades one wrong answer for a quieter one.
+     */
+    const earshot = (x: number, z: number, reach = 45) => {
+      const d = Math.hypot(player.position.x - x, player.position.z - z);
+      return THREE.MathUtils.clamp(1 - d / reach, 0, 1);
+    };
     /** Eased nose-down angle per vehicle, written here, read by the mesh sync. */
     const kartPitchNow: number[] = kartStates.map(() => 0);
     const ease01 = (t: number) => {
@@ -4170,7 +4230,7 @@ export default function City() {
             // stealing the plunge's thunder.
             const touch = Math.hypot(k.speed, k.vy);
             carSink.impact(k.x, seaTop, k.z, touch * 0.35);
-            soundsRef.current?.splash?.(Math.min(0.6, 0.12 + touch / 55));
+            soundsRef.current?.splash?.(Math.min(0.6, 0.12 + touch / 55), earshot(k.x, k.z));
           }
           carSink.wake(dt, k.x, seaTop, k.z, k.yaw, Math.abs(k.speed), deep);
           // Water is heavy. Wading scrubs speed off well before the depth
@@ -4196,10 +4256,13 @@ export default function City() {
         // `fireball`, so rolling gently off the sand gets a splash and keeps
         // its paint.
         carSink.fireball(k.x, seaTop, k.z, hit);
-        soundsRef.current?.splash?.(Math.min(1, 0.5 + hit / 40));
+        soundsRef.current?.splash?.(Math.min(1, 0.5 + hit / 40), earshot(k.x, k.z));
         // The explosion is gated on the same speed the fireball is, so a
         // gentle roll-in gets a splash and no detonation to go with it.
-        if (hit > 11) soundsRef.current?.boom?.(Math.min(1, (hit - 11) / 20));
+        // A detonation carries further than a splash does.
+        if (hit > 11) {
+          soundsRef.current?.boom?.(Math.min(1, (hit - 11) / 20), earshot(k.x, k.z, 140));
+        }
         // Nose-down and listing, rolled once so no two cars go down the same
         // way. Front-heavy: that is where the engine is.
         k.pitch = -(0.55 + Math.random() * 0.5);
@@ -4289,7 +4352,7 @@ export default function City() {
          */
         bubbleSfx -= dt;
         if (bubbleSfx <= 0) {
-          soundsRef.current?.bubble?.();
+          soundsRef.current?.bubble?.(earshot(k.x, k.z, 28));
           bubbleSfx = 0.16 + Math.random() * 0.24;
         }
       }
@@ -6906,7 +6969,21 @@ export default function City() {
       {
         const eyeY = camera.position.y;
         const seaAtEye = seaSurfaceAt(camera.position.x, camera.position.z, now * 0.001);
-        const overSea = waterDepthAt(camera.position.x, camera.position.z) > 0.05;
+        /**
+         * Over the sea, and in the same world as it.
+         *
+         * The depth test alone is a trap: the Gremlin Mines are a pocket
+         * dimension deep below the open ocean, so a camera four hundred metres
+         * down a mineshaft is directly under water by this arithmetic and
+         * reads as submerged by four hundred metres. Nothing about that is
+         * visible — the mines have their own fog and their own sky — except
+         * that every sound in them would be muffled as if you were drowning,
+         * with no way out because you never surface.
+         */
+        const overSea =
+          waterDepthAt(camera.position.x, camera.position.z) > 0.05 &&
+          camera.position.y > -40 &&
+          !undergroundActiveRef.current;
         const camDepth = overSea ? seaAtEye - eyeY : -1;
         underwater.update(dt, now * 0.001, camDepth, camera.position);
         // The offshore seabed is only worth drawing to somebody who can see
@@ -7064,6 +7141,7 @@ export default function City() {
       carSink.dispose();
       wrecks.dispose();
       headMount.dispose();
+      backMount.dispose();
 
       delete devWindow.__cityDebug;
       delete (window as unknown as Record<string, unknown>).__cityCam;
@@ -7084,6 +7162,7 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityKartAge;
       delete (window as unknown as Record<string, unknown>).__cityAvatar;
       delete (window as unknown as Record<string, unknown>).__cityCarsNear;
+      delete (window as unknown as Record<string, unknown>).__cityJetpack;
       delete (window as unknown as Record<string, unknown>).__cityWrecks;
       delete (window as unknown as Record<string, unknown>).__cityWrecksReset;
       delete (window as unknown as Record<string, unknown>).__cityVibe;

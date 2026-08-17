@@ -32,6 +32,7 @@
  */
 import * as THREE from "three";
 import type { DanceSkeleton } from "@/components/city/dances";
+import { alignToBone, boxInHolder } from "@/city/boneMount";
 
 export interface HeadMount {
   /** Parent hats here. Empty until a model with a head bone is bound. */
@@ -62,11 +63,6 @@ export function createHeadMount(): HeadMount {
   const align = new THREE.Group();
   align.add(group);
 
-  const m = new THREE.Matrix4();
-  const pos = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  const scale = new THREE.Vector3();
-  const inv = new THREE.Matrix4();
   const box = new THREE.Box3();
 
   return {
@@ -87,28 +83,14 @@ export function createHeadMount(): HeadMount {
         return;
       }
 
-      holder.updateWorldMatrix(true, true);
-      // The bone, expressed in the holder's space. Going through the holder
-      // rather than through world space is what makes this immune to the
-      // player's own scale, which the shop can change at any time.
-      m.copy(inv.copy(holder.matrixWorld).invert()).multiply(bone.matrixWorld);
-      m.decompose(pos, quat, scale);
-
-      // The model's extent, brought into the same space as the bone. Box3 is
-      // world-space by default and the bone above is holder-space; mixing the
-      // two silently works whenever the holder happens to sit at the origin
-      // with unit scale, and breaks the moment the shop scales the player.
-      box.setFromObject(model).applyMatrix4(inv.copy(holder.matrixWorld).invert());
+      // The bind-pose correction and the parenting; see `boneMount`.
+      const fit = alignToBone(align, bone, holder);
+      // The model's extent, in the same space as the bone.
+      boxInHolder(box, model, holder);
       // Measured from the bone to the crown, in holder units. A rig whose head
       // bone sits at the very top (some do — the "head" is the mesh's pivot,
       // not its base) still gets a sane gap rather than a hat inside the skull.
-      const gap = Math.max(0.08, (box.max.y - pos.y) * CROWN_FRACTION);
-
-      align.quaternion.copy(quat).invert();
-      const s = (scale.x + scale.y + scale.z) / 3;
-      align.scale.setScalar(s > 1e-4 ? 1 / s : 1);
-      group.position.y = gap;
-      bone.add(align);
+      group.position.y = Math.max(0.08, (box.max.y - fit.pos.y) * CROWN_FRACTION);
     },
     dispose() {
       align.removeFromParent();

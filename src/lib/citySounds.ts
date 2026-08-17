@@ -26,12 +26,19 @@ export interface CitySounds {
   /**
    * Something entering water. `strength` 0..1 — a swimmer stepping off the
    * sand at one end, a kart arriving at thirty metres a second at the other.
+   *
+   * `gain` is distance. There is no panner anywhere in this engine and no
+   * listener position: every sound is mixed straight into one master gain, so
+   * without a caller-supplied falloff a splash on the far side of the bay is
+   * exactly as loud as one at your feet. That is not a subtlety — it is why a
+   * kart sinking three hundred metres away kept bubbling in your ear after you
+   * had walked up the beach and gone home.
    */
-  splash(strength: number): void;
+  splash(strength: number, gain?: number): void;
   /** A car not surviving the landing: a body blow with a long tail. */
-  boom(strength: number): void;
+  boom(strength: number, gain?: number): void;
   /** One bubble. Call it at a throttled rate, not per frame. */
-  bubble(): void;
+  bubble(gain?: number): void;
   /**
    * How far under the water the LISTENER is, 0..1.
    *
@@ -197,8 +204,10 @@ export function createCitySounds(): CitySounds | null {
       osc.stop(t + 0.75);
       vib.stop(t + 0.75);
     },
-    splash(strength) {
+    splash(strength, gain = 1) {
       const s = Math.max(0, Math.min(1, strength));
+      const g0 = Math.max(0, Math.min(1, gain));
+      if (g0 < 0.01) return;
       const t = ctx.currentTime;
       /**
        * Noise, not an oscillator, for the same reason thunder is: water has no
@@ -215,7 +224,7 @@ export function createCitySounds(): CitySounds | null {
       f.frequency.exponentialRampToValueAtTime(240, t + 0.3 + 0.35 * s);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(0.34 * (0.25 + s), t + 0.012);
+      g.gain.linearRampToValueAtTime(0.34 * (0.25 + s) * g0, t + 0.012);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45 + 0.55 * s);
       src.connect(f).connect(g).connect(master);
       // Offset into the buffer, so two splashes in a row are not the same
@@ -223,8 +232,10 @@ export function createCitySounds(): CitySounds | null {
       src.start(t, Math.random() * 1.5);
       src.stop(t + 1.2);
     },
-    boom(strength) {
+    boom(strength, gain = 1) {
       const s = Math.max(0, Math.min(1, strength));
+      const g0 = Math.max(0, Math.min(1, gain));
+      if (g0 < 0.01) return;
       const t = ctx.currentTime;
       // The body: a sine dropped through two octaves. This is the part you
       // feel rather than hear, and it is what separates an explosion from a
@@ -234,7 +245,7 @@ export function createCitySounds(): CitySounds | null {
       osc.frequency.setValueAtTime(130, t);
       osc.frequency.exponentialRampToValueAtTime(26, t + 0.55);
       const og = ctx.createGain();
-      og.gain.setValueAtTime(0.5 * (0.4 + s), t);
+      og.gain.setValueAtTime(0.5 * (0.4 + s) * g0, t);
       og.gain.exponentialRampToValueAtTime(0.0001, t + 0.95);
       osc.connect(og).connect(master);
       osc.start(t);
@@ -247,13 +258,15 @@ export function createCitySounds(): CitySounds | null {
       f.frequency.setValueAtTime(5000, t);
       f.frequency.exponentialRampToValueAtTime(170, t + 1.1);
       const g = ctx.createGain();
-      g.gain.setValueAtTime(0.42 * (0.3 + s), t);
+      g.gain.setValueAtTime(0.42 * (0.3 + s) * g0, t);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 1.35);
       src.connect(f).connect(g).connect(master);
       src.start(t, Math.random() * 1.5);
       src.stop(t + 1.5);
     },
-    bubble() {
+    bubble(gain = 1) {
+      const g0 = Math.max(0, Math.min(1, gain));
+      if (g0 < 0.01) return;
       const t = ctx.currentTime;
       const osc = ctx.createOscillator();
       osc.type = "sine";
@@ -265,7 +278,7 @@ export function createCitySounds(): CitySounds | null {
       osc.frequency.exponentialRampToValueAtTime(f0 * 2.3, t + 0.085);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(0.055, t + 0.006);
+      g.gain.linearRampToValueAtTime(0.055 * g0, t + 0.006);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
       osc.connect(g).connect(master);
       osc.start(t);

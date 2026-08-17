@@ -14,6 +14,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const src = readFileSync(resolve(__dirname, "../lib/citySounds.ts"), "utf8");
+/**
+ * Where the implementations start.
+ *
+ * Every method name appears twice in this file — once in the `CitySounds`
+ * interface and once in the object `createCitySounds` returns — so slicing
+ * from a bare `indexOf(name)` lands in the interface and hands you a
+ * hundred-character block of type declarations that contains none of the
+ * envelope you meant to check.
+ */
+const IMPL = src.indexOf("  return {");
 const citySrc = readFileSync(resolve(__dirname, "../pages/City.tsx"), "utf8");
 
 describe("the submerged filter", () => {
@@ -56,7 +66,7 @@ describe("the submerged filter", () => {
 describe("the new sounds", () => {
   it("makes a splash out of noise, not an oscillator", () => {
     // Water has no pitch. An oscillator is a whistle.
-    const splash = src.slice(src.indexOf("splash(strength) {"), src.indexOf("boom(strength) {"));
+    const splash = src.slice(src.indexOf("splash(strength", IMPL), src.indexOf("boom(strength", IMPL));
     expect(splash.length).toBeGreaterThan(200);
     expect(splash).toContain("noiseBuf");
     expect(splash).not.toContain("createOscillator");
@@ -65,12 +75,12 @@ describe("the new sounds", () => {
   it("sweeps the splash filter down rather than sitting still", () => {
     // Bright at contact, closing to a low churn as the froth collapses. A
     // fixed filter over noise is a hiss.
-    const splash = src.slice(src.indexOf("splash(strength) {"), src.indexOf("boom(strength) {"));
+    const splash = src.slice(src.indexOf("splash(strength", IMPL), src.indexOf("boom(strength", IMPL));
     expect(splash).toMatch(/frequency\.exponentialRampToValueAtTime\(24\d/);
   });
 
   it("gives the explosion a body you feel and a tail you hear", () => {
-    const boom = src.slice(src.indexOf("boom(strength) {"), src.indexOf("bubble() {"));
+    const boom = src.slice(src.indexOf("boom(strength", IMPL), src.indexOf("bubble(gain", IMPL));
     expect(boom.length).toBeGreaterThan(200);
     // The sine dropped through two octaves is the punch.
     expect(boom).toContain("createOscillator");
@@ -82,7 +92,7 @@ describe("the new sounds", () => {
     // A bubble's resonant frequency CLIMBS as it shrinks. A falling blip
     // sounds like a game menu; a rising one sounds like air in water. This is
     // the single detail that decides which one you get.
-    const bub = src.slice(src.indexOf("bubble() {"), src.indexOf("setSubmerged(k) {"));
+    const bub = src.slice(src.indexOf("bubble(gain", IMPL), src.indexOf("setSubmerged(k)", IMPL));
     expect(bub).toMatch(/exponentialRampToValueAtTime\(f0 \* [\d.]+/);
     const m = bub.match(/exponentialRampToValueAtTime\(f0 \* ([\d.]+)/);
     expect(Number(m![1])).toBeGreaterThan(1);
@@ -99,7 +109,7 @@ describe("what plays when", () => {
   it("only detonates above the same speed the fireball needs", () => {
     // A splash with no explosion is a car rolling in off the sand. The two
     // gates have to agree or you get a bang with no fire, or fire in silence.
-    expect(citySrc).toMatch(/if \(hit > 11\) soundsRef\.current\?\.boom\?\./);
+    expect(citySrc).toMatch(/if \(hit > 11\) \{[\s\S]{0,240}?soundsRef\.current\?\.boom\?\./);
   });
 
   it("throttles the bubbles well below the rate they are drawn", () => {
