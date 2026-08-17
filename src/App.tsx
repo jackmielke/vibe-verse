@@ -323,7 +323,8 @@ const App = () => (
           <Route path="/world-builder" element={<WorldBuilder />} />
           <Route path="/admin/worlds" element={<AdminWorlds />} />
           {/* Agent Lobby — an always-on room agents join over HTTP and live in. */}
-          <Route path="/world" element={<AgentLobby />} />
+          {/* /world is a friendly short URL for Vibe City. */}
+          <Route path="/world" element={<City />} />
           <Route path="/agent-lobby" element={<AgentLobby />} />
           {/* Profile / character picker — replaces the tiny color popover. */}
           <Route path="/profile" element={<VibeProfile />} />
