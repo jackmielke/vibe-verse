@@ -19,6 +19,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { loadPaper, printedAt, type Dispatch, type Issue } from "@/lib/vibeTimes";
+import { Letterbox } from "@/components/times/Letterbox";
+import { ReadAloud } from "@/components/times/ReadAloud";
 
 /** What each wire item gets called above its headline. */
 const DESKS: Record<string, string> = {
@@ -103,6 +105,7 @@ export default function VibeTimes() {
   const wire = issue.dispatches ?? [];
   const forecast = issue.forecast ?? [];
   const sources = issue.sources ?? [];
+  const letters = issue.letters ?? [];
   const printed = printedAt(issue.printed_at);
 
   return (
@@ -127,6 +130,7 @@ export default function VibeTimes() {
             </span>
             <span>price: one good vibe</span>
           </div>
+          <ReadAloud issue={issue} />
         </header>
 
         {/* Back issues. Only shown once there is more than one, so the
@@ -248,6 +252,35 @@ export default function VibeTimes() {
             </div>
           </div>
         </section>
+
+        {/* The postbag. Letters print as the reader wrote them — the editor
+            chooses which run and answers underneath, and never touches the
+            words in between. */}
+        {letters.length > 0 && (
+          <section className="mt-8">
+            <div className="border-y-4 border-double border-[#2a2118] py-2 text-center">
+              <h3 className="text-sm font-bold uppercase tracking-[0.35em]">✉️ Letters to the Editor</h3>
+            </div>
+            <div className="mt-5 space-y-5">
+              {letters.map((l) => (
+                <article key={l.author + l.text} className="border-b border-[#2a2118]/20 pb-4">
+                  <blockquote className="text-[15px] leading-relaxed">“{l.text}”</blockquote>
+                  <p className="mt-1 text-xs uppercase tracking-widest">— {l.author}</p>
+                  {l.note && (
+                    <p className="mt-2 border-l-2 border-[#2a2118]/40 pl-3 text-sm italic leading-relaxed opacity-80">
+                      {l.note}
+                      <span className="ml-2 not-italic text-[10px] uppercase tracking-widest opacity-60">— ed.</span>
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Only today's paper takes letters. Writing to a back issue would
+            be writing to the past, and the box would be lying about it. */}
+        {!isBackIssue && <Letterbox />}
 
         {/* Vibey's column and the forecast. The forecast is the only part
             of the paper allowed to make things up, and it says so. */}

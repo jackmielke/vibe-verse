@@ -31,3 +31,11 @@ verify_jwt = false
 # exact bytes we handed out.
 [functions.wallet-auth]
 verify_jwt = false
+
+# The read-aloud button is on a public page, so the endpoint behind it has
+# to be too. It is not an open text-to-speech service: it will only ever
+# read an issue that is already published, it builds the script itself
+# rather than speaking whatever it is handed, and it synthesises each
+# edition once and serves the stored file afterwards.
+[functions.vibe-times-read]
+verify_jwt = false

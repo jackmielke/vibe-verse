@@ -43,6 +43,8 @@ export interface Issue {
   /** Everything below arrived with the daily edition; older issues lack it. */
   dispatches?: Dispatch[];
   vibey_says?: string;
+  /** `text` is the reader's own words; `note` is the editor answering back. */
+  letters?: { author: string; text: string; note: string }[];
   forecast?: { emoji: string; label: string; text: string }[];
   sources?: { label: string; url: string }[];
 }
@@ -129,4 +131,28 @@ export async function loadPaper(limit = 14): Promise<Paper> {
 /** Just the front page, for surfaces that only show a teaser. */
 export async function loadCurrentIssue(): Promise<Issue | null> {
   return (await loadPaper(1)).current;
+}
+
+/**
+ * Write to the editor.
+ *
+ * The line goes in the postbag and up on the graffiti wall in the plaza, and
+ * the next morning's edition may print it — verbatim, under this name, with
+ * the editor's reply underneath. Resolves with an error string rather than
+ * throwing, because "the editor is not taking letters right now" is
+ * something the page should say out loud rather than swallow.
+ */
+export async function sendLetter(author: string, body: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "letter", author, body }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!res.ok || !data.ok) return { ok: false, error: data.error ?? "the postbag is jammed" };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "couldn't reach the letterbox" };
+  }
 }
