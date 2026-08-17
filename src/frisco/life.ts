@@ -32,7 +32,7 @@ import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
 import { toon } from "./look";
-import { BOUNDS, isRoad, isWater, roadAt, shoreSDF, walkHeight } from "./map";
+import { BOUNDS, isRoad, isSidewalk, isWater, roadAt, shoreSDF, walkHeight } from "./map";
 
 /** Body colours. Muted, because a street of primary-coloured cars reads as a toy shop. */
 const CAR_PAINT = [
@@ -40,8 +40,25 @@ const CAR_PAINT = [
   0x6fa07a, 0xcf7f4a, 0x8e6fa8, 0xd8d3c6, 0x3f4a58,
 ] as const;
 
+/** Coats. Muted and various, which is what a pavement looks like from above. */
+const COAT = [
+  0x3c4250, 0x8a4f42, 0x4a6a8a, 0xd8d3c6, 0x5f7a5c,
+  0x9a6f8a, 0xc4a15a, 0x2f3540, 0xb4675a, 0x6f6f78,
+] as const;
+
 const CAR_COUNT = 190;
 const BOAT_COUNT = 15;
+/* Two hundred and forty people, which sounds like a lot and is nowhere near
+   enough for a downtown — and that is fine. A pavement with one person on it
+   every forty metres reads as populated; a pavement with the real density reads
+   as a crowd simulation, costs twenty times as much, and invites you to notice
+   that none of them avoid each other.
+
+   They are clustered on downtown rather than spread evenly, which is both
+   cheaper and truer: a fixed number spread over 3.4 by 4.4 km put one person
+   every hundred and fifty metres, so Market Street — where you start, and the
+   busiest pavement in the city — had about four people on it. */
+const WALKER_COUNT = 900;
 
 interface Car {
   x: number;
@@ -50,6 +67,18 @@ interface Car {
   dz: number;
   speed: number;
   /** Metres left before this one gives up and reseeds — a fuse, not a plan. */
+  life: number;
+}
+
+interface Walker {
+  x: number;
+  z: number;
+  dx: number;
+  dz: number;
+  speed: number;
+  /** Stride phase, so a pavement is not a chorus line. */
+  phase: number;
+  /** Metres before this one turns round or is reseeded. */
   life: number;
 }
 
@@ -78,6 +107,28 @@ function carGeometry(): THREE.BufferGeometry {
   }
   const geo = b.finish();
   if (!geo) throw new Error("car geometry is empty");
+  return geo;
+}
+
+/**
+ * One person: a body, a head, and two legs that do not move.
+ *
+ * The legs do not move because at the range you see them from, the *bob* is
+ * the animation. A walk cycle on a 1.7 m figure sixty metres away is four
+ * pixels of leg travelling behind four pixels of other leg, and it costs a
+ * skinned mesh per person. Vertical bob at stride frequency, plus a slight
+ * lean, reads as walking from every distance this world ever shows them at.
+ */
+function walkerGeometry(): THREE.BufferGeometry {
+  const b = new Batch();
+  const body = rgb(0xffffff); // Tinted per instance.
+  const skin = rgb(0xd8ad8a);
+  const legs = rgb(0x3c4250);
+  b.box(0, 0.42, 0, 0.16, 0.42, 0.14, legs);
+  b.box(0, 0.84, 0, 0.22, 0.5, 0.16, body);
+  b.box(0, 1.34, 0, 0.13, 0.19, 0.13, skin);
+  const geo = b.finish();
+  if (!geo) throw new Error("walker geometry is empty");
   return geo;
 }
 
@@ -127,6 +178,29 @@ function seedCar(rng: Rng, car: Car): void {
   car.life = 1;
 }
 
+/** Put a person on a pavement, facing along it. */
+function seedWalker(rng: Rng, w: Walker): void {
+  for (let tries = 0; tries < 70; tries++) {
+    // Gaussian about the middle of downtown, clamped to the map. Two thirds
+    // land within 600 m of Market and Montgomery, which is where the crowd is.
+    const x = Math.max(BOUNDS.minX + 40, Math.min(BOUNDS.maxX - 40, rng.gauss() * 620 - 120));
+    const z = Math.max(BOUNDS.minZ + 40, Math.min(BOUNDS.maxZ - 40, rng.gauss() * 660 - 120));
+    if (isWater(x, z) || !isSidewalk(x, z)) continue;
+    const r = roadAt(x, z);
+    const s = rng.chance(0.5) ? 1 : -1;
+    w.x = x;
+    w.z = z;
+    w.dx = r.dir.x * s;
+    w.dz = r.dir.z * s;
+    w.speed = rng.range(1.1, 1.9);
+    w.phase = rng.next() * Math.PI * 2;
+    w.life = rng.range(40, 260);
+    return;
+  }
+  w.speed = 0;
+  w.life = 1;
+}
+
 function seedBoat(rng: Rng, boat: Boat): void {
   for (let tries = 0; tries < 80; tries++) {
     const x = rng.range(BOUNDS.minX, BOUNDS.maxX);
@@ -150,10 +224,13 @@ export class CityLife {
 
   private cars: Car[] = [];
   private boats: Boat[] = [];
+  private walkers: Walker[] = [];
   private carMesh: THREE.InstancedMesh;
   private boatMesh: THREE.InstancedMesh;
+  private walkerMesh: THREE.InstancedMesh;
   private carGeo: THREE.BufferGeometry;
   private boatGeo: THREE.BufferGeometry;
+  private walkerGeo: THREE.BufferGeometry;
   private rng: Rng;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -186,6 +263,17 @@ export class CityLife {
     this.boatMesh.frustumCulled = false;
     this.group.add(this.boatMesh);
 
+    this.walkerGeo = walkerGeometry();
+    this.walkerMesh = new THREE.InstancedMesh(
+      this.walkerGeo,
+      toon(0xffffff, { vertexColors: true }),
+      WALKER_COUNT,
+    );
+    this.walkerMesh.name = "frisco-walkers";
+    this.walkerMesh.frustumCulled = false;
+    this.walkerMesh.castShadow = true;
+    this.group.add(this.walkerMesh);
+
     const paint = new THREE.Color();
     for (let i = 0; i < CAR_COUNT; i++) {
       const car: Car = { x: 0, z: 0, dx: 1, dz: 0, speed: 0, life: 0 };
@@ -204,6 +292,15 @@ export class CityLife {
       this.boatMesh.setColorAt(i, paint);
     }
     if (this.boatMesh.instanceColor) this.boatMesh.instanceColor.needsUpdate = true;
+
+    for (let i = 0; i < WALKER_COUNT; i++) {
+      const w: Walker = { x: 0, z: 0, dx: 1, dz: 0, speed: 0, phase: 0, life: 0 };
+      seedWalker(this.rng, w);
+      this.walkers.push(w);
+      paint.setHex(COAT[this.rng.int(0, COAT.length - 1)]);
+      this.walkerMesh.setColorAt(i, paint);
+    }
+    if (this.walkerMesh.instanceColor) this.walkerMesh.instanceColor.needsUpdate = true;
   }
 
   update(dt: number, elapsed: number): void {
@@ -253,13 +350,52 @@ export class CityLife {
       this.boatMesh.setMatrixAt(i, this.m);
     }
     this.boatMesh.instanceMatrix.needsUpdate = true;
+
+    for (let i = 0; i < this.walkers.length; i++) {
+      const w = this.walkers[i];
+      if (w.speed > 0) {
+        w.x += w.dx * w.speed * dt;
+        w.z += w.dz * w.speed * dt;
+        w.life -= w.speed * dt;
+      }
+      /* Turn round at the end of the block rather than being reseeded, so a
+         street you are standing on does not keep blinking people out of
+         existence three metres away. Only a walker who has actually left the
+         pavement — a corner, a driveway, the water — gets a new home. */
+      if (w.life <= 0 && w.speed > 0) {
+        w.dx = -w.dx;
+        w.dz = -w.dz;
+        w.life = 40 + (i % 7) * 24;
+      }
+      if (w.speed === 0 || !isSidewalk(w.x, w.z) || isWater(w.x, w.z)) {
+        seedWalker(this.rng, w);
+      }
+      const bob = Math.sin(elapsed * w.speed * 3.4 + w.phase);
+      this.v.set(w.x, walkHeight(w.x, w.z) + 0.16 + Math.abs(bob) * 0.055, w.z);
+      this.e.set(bob * 0.06, Math.atan2(w.dx, w.dz), bob * 0.045);
+      this.q.setFromEuler(this.e);
+      this.m.compose(this.v, this.q, this.one);
+      this.walkerMesh.setMatrixAt(i, this.m);
+    }
+    this.walkerMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** How many of each are actually placed and moving. */
+  stats(): { cars: number; boats: number; walkers: number } {
+    return {
+      cars: this.cars.filter((c) => c.speed > 0).length,
+      boats: this.boats.filter((b) => b.speed > 0).length,
+      walkers: this.walkers.filter((w) => w.speed > 0).length,
+    };
   }
 
   dispose(): void {
     this.group.removeFromParent();
     this.carGeo.dispose();
     this.boatGeo.dispose();
+    this.walkerGeo.dispose();
     this.carMesh.dispose();
     this.boatMesh.dispose();
+    this.walkerMesh.dispose();
   }
 }

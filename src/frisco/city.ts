@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
 import { buildLandmarks } from "./landmarks";
+import { buildStreetFurniture } from "./street";
 import { COLORS, WALLS, addOutline, toon } from "./look";
 import {
   BOUNDS,
@@ -55,7 +56,9 @@ export interface CityBuild {
   group: THREE.Group;
   /** Solid boxes the player collides with, for `collision.ts`. */
   colliders: BuildingBox[];
-  stats: { triangles: number; buildings: number; landmarks: number; ms: number };
+  stats: {
+    triangles: number; buildings: number; landmarks: number; furniture: number; ms: number;
+  };
 }
 
 /**
@@ -620,10 +623,13 @@ export function buildCity(): CityBuild {
   const green = new Batch();
   const water = new Batch();
   const marks = new Batch();
+  const props = new Batch();
   const colliders: BuildingBox[] = [];
 
   buildGround(ground);
-  buildStreets(roads, walks, streetLines());
+  const lines = streetLines();
+  buildStreets(roads, walks, lines);
+  const furniture = buildStreetFurniture(props, lines, rng.fork("street"));
   buildBlocks(buildings, colliders, rng.fork("blocks"));
   buildGreenery(green, rng.fork("trees"));
   buildWater(water);
@@ -639,6 +645,7 @@ export function buildCity(): CityBuild {
     ["buildings", buildings, true, true],
     ["greenery", green, true, true],
     ["landmarks", marks, true, true],
+    ["props", props, true, true],
   ] as const) {
     const geo = batch.finish();
     if (!geo) continue;
@@ -668,7 +675,7 @@ export function buildCity(): CityBuild {
     group,
     colliders,
     stats: {
-      triangles, buildings: colliders.length, landmarks,
+      triangles, buildings: colliders.length, landmarks, furniture,
       ms: performance.now() - t0,
     },
   };

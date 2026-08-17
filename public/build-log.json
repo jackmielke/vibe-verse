@@ -1,7 +1,39 @@
 {
-  "generated_at": "2026-08-17T15:42:14.137Z",
+  "generated_at": "2026-08-17T16:06:46.302Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "64c0d0f4",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco: you can land on a round building now, and it makes a noise",
+      "lede": "**The physics.** Reported as \"if it's a curved building, I don't land right\", and that was exactly it. Every collider in the city was a prism with the footprint of the building's base, and a great many of the buildings are not prisms:",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "37398c11",
+      "date": "2026-08-17",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "61049a48",
+      "date": "2026-08-17",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "f7f5ddd8",
+      "date": "2026-08-17",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 2
+    },
     {
       "sha": "3df984e6",
       "date": "2026-08-17",
@@ -1008,40 +1040,6 @@
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
-      "files": 1
-    },
-    {
-      "sha": "969a8381",
-      "date": "2026-08-11",
-      "subject": "Re-stamp after merging main",
-      "lede": "COIL and the worlds main touched while the branches were apart.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "cbb1aa8e",
-      "date": "2026-08-11",
-      "subject": "Stamp COIL",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01LrHxfRC156y4mpWX17EHrF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "85559428",
-      "date": "2026-08-11",
-      "subject": "COIL: slither, with your shop character riding the front",
-      "lede": "A new world at /coil (and /slither, /snake, /worm). Nobody here is too big to kill. You cannot stop and you cannot reverse — only turn, at one fixed rate, however long you get — so the whole game is getting in front of somebody and letting them run into you.",
-      "places": [],
-      "files": 20
-    },
-    {
-      "sha": "0ff7358d",
-      "date": "2026-08-10",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
       "files": 1
     }
   ]

@@ -340,6 +340,8 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         canvas: { w: canvas.clientWidth, h: canvas.clientHeight, bw: canvas.width, bh: canvas.height },
         triangles: city.stats.triangles,
         buildings: city.stats.buildings,
+        furniture: city.stats.furniture,
+        life: life.stats(),
         buildMs: Math.round(city.stats.ms),
         drawCalls: renderer.info.render.calls,
         drawnTriangles: renderer.info.render.triangles,

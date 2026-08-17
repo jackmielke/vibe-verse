@@ -41,8 +41,16 @@ const POSES = {
   card: [-560, 130, -180, 1.4, -0.28],
   skyline: [420, 300, 620, 4.1, -0.44],
   downtown: [-40, 190, -140, 2.3, -0.5],
-  market: [120, 26, 150, 2.35, -0.12],
-  street: [-150, 4, -60, 1.1, -0.05],
+  // Standing on Market at Montgomery, which is where the world opens. The
+  // old value was 26 m up over SoMa and ended up inside a building the day the
+  // city got denser — a street-level pose has to be a place a spawn actually
+  // resolves to, not a number that looked about right once.
+  market: [0, 3, 0, 2.35, -0.04],
+  // On the Embarcadero north of the Ferry Building — (693,-212) is the
+  // building itself, and became an inside-the-wall shot the day it was built.
+  embarcadero: [686, 3, -330, 2.1, -0.02],
+  chinatown: [-372, 3, -300, 1.15, -0.03],
+  street: [-537, 3, 635, 1.1, -0.03],
   waterfront: [640, 120, -420, 3.6, -0.35],
   hills: [-560, 210, -330, 1.5, -0.38],
   wide: [0, 420, 900, 3.3, -0.62],
