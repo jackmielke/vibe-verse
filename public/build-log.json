@@ -1,7 +1,43 @@
 {
-  "generated_at": "2026-08-17T16:30:42.047Z",
+  "generated_at": "2026-08-17T17:28:05.409Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "9a60d84f",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco after dark, and four other times of day",
+      "lede": "Dawn, midday, golden hour, dusk and night, on a button in the top bar. Each one moves the sun, its colour and intensity, both ends of the sky gradient, the hemisphere fill, and the clouds — which matters more than it sounds, because unlit white cloud geometry staying bright white is the single most obvious tell that a \"night mode\" is a colour filter rather than a time of day.",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "5a0721d9",
+      "date": "2026-08-17",
+      "subject": "The jetpack is on your back now, and the sea stops following you home",
+      "lede": "Two things Jack caught, and one of them was not what it looked like.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 10
+    },
+    {
+      "sha": "f9b34b06",
+      "date": "2026-08-17",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "52261cff",
+      "date": "2026-08-17",
+      "subject": "A dance floor in the plaza, with regulars who join in",
+      "lede": "The music's layers are gated on how many people are dancing near you — hats at two, the lead at three, the stabs at five. Shipping that into a city that is usually empty meant almost everybody who ever pressed T heard layer one and nothing else, and would have concluded the whole thing was a loop. A mechanic that needs four strangers to be online at the same moment is a mechanic hardly anyone has.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
     {
       "sha": "9d740b61",
       "date": "2026-08-17",
@@ -1006,40 +1042,6 @@
       "places": [
         "Vibe Island"
       ],
-      "files": 1
-    },
-    {
-      "sha": "f0abfdc5",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_017vYGwEXHXBMSj4cT1EfrNF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "6268c039",
-      "date": "2026-08-11",
-      "subject": "Gave Vibe City a real sea, and a beach for it to break on",
-      "lede": "The ocean was a flat disc with three sine waves in its vertices, and the city's edge was asphalt meeting water at the same height — no shore in between, which is the clearest possible tell that a world was assembled rather than grown.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "f5ffd198",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "800fac27",
-      "date": "2026-08-11",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
       "files": 1
     }
   ]

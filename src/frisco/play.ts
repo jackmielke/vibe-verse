@@ -31,14 +31,18 @@
 import * as THREE from "three";
 import { makeRng } from "@/shared/proc/rng";
 import type { BuildingBox } from "./city";
+import type { CityCollision } from "./collision";
 import { COLORS, flat, toon } from "./look";
 import {
   BOUNDS,
   MARKET_DIR,
+  SHORE,
   isOpen,
   isWater,
   landmarkPositions,
+  ll,
   walkHeight,
+  type Vec2,
 } from "./map";
 
 const STORE_KEY = "frisco.logbook";
@@ -61,8 +65,10 @@ export type PlayEvent =
   | { kind: "landmark"; key: string; name: string; blurb: string; found: number; total: number }
   | { kind: "coin"; got: number; total: number }
   | { kind: "ring"; index: number; total: number }
-  | { kind: "course"; seconds: number; best: number; record: boolean }
-  | { kind: "course-start" };
+  | { kind: "course"; course: string; name: string; seconds: number; best: number; record: boolean }
+  | { kind: "course-start"; course: string; name: string; blurb: string }
+  | { kind: "tour"; touched: number; total: number; name: string }
+  | { kind: "tour-done"; seconds: number; best: number; record: boolean };
 
 export interface PlaySnapshot {
   /** Landmark keys found, ever. */
@@ -70,19 +76,27 @@ export interface PlaySnapshot {
   totalLandmarks: number;
   coins: number;
   totalCoins: number;
-  /** Which ring of the course is next, or -1 when the course is not running. */
+  /** Which challenge is running: a course key, "tour", or null. */
+  running: string | null;
+  /** Which ring of the course is next, or -1 when no course is running. */
   ring: number;
   totalRings: number;
+  /** Landmarks touched on this tour run. */
+  touched: number;
+  touchedKeys: string[];
   /** Seconds into the current run, or 0. */
   clock: number;
-  bestCourse: number | null;
+  /** Best times by challenge key. */
+  best: Record<string, number>;
   /** The nearest landmark, for the compass line in the HUD. */
   nearest: { name: string; metres: number; found: boolean } | null;
 }
 
 interface Stored {
   found?: string[];
+  /** Legacy: the single Market-run best, before there were three courses. */
   bestCourse?: number;
+  best?: Record<string, number>;
 }
 
 function load(): Stored {
@@ -196,38 +210,154 @@ interface Ring {
 }
 
 /**
- * The course: fourteen rings from the Ferry Building up Market Street and over
- * Nob Hill.
+ * The courses.
  *
- * It follows a real street on purpose. A ring course laid out in open air is a
- * slalom that could be anywhere; one that runs up Market makes you fly the
- * city — down a canyon, over the top of Union Square, up the hill — and you
- * come out of it knowing where things are.
+ * Three of them, and every one follows something real: Market Street, the
+ * Embarcadero, the climb from the water up over Nob Hill. A ring course laid
+ * out in open air is a slalom that could be anywhere; one that runs up an
+ * actual street makes you fly the city — down a canyon, over the top of Union
+ * Square, up the hill — and you come out of it knowing where things are.
+ *
+ * They are data now rather than one hard-coded function, which is the whole
+ * reason there are three instead of one. A course is a polyline, a count and a
+ * height profile; `ringsAlong` does the rest.
  */
-function placeRings(): Ring[] {
+export interface Course {
+  key: string;
+  name: string;
+  blurb: string;
+  /**
+   * `clearance(x, z)` is the height of whatever is already there — a roof, or
+   * the ground. Every ring is placed above it.
+   *
+   * Not optional and not an afterthought: the Hill Climb was unfinishable
+   * because three of its ten rings were inside Nob Hill apartment blocks. You
+   * could see them through the wall, the collision pushed you back out every
+   * time you got near, and the course simply never advanced. Nothing about that
+   * is visible from the air, and nothing about it is visible in a screenshot —
+   * it took flying all three courses in a harness to find.
+   */
+  build(clearance: (x: number, z: number) => number): Ring[];
+}
+
+/**
+ * Lay `count` rings along a polyline, at `liftAt` metres above the ground.
+ *
+ * The weave is what stops a course being a tube, and it is bounded by
+ * `halfWidth` for a reason: the first version of the Market run wove 34 m off
+ * the centreline, which is twice the width of the street, so half its rings
+ * were buried inside the buildings on either side. You could see them through a
+ * wall and there was no way to fly to one. A course you cannot finish is worse
+ * than no course, and from outside the canyon it looks perfectly fine.
+ */
+function ringsAlong(
+  path: Vec2[],
+  count: number,
+  halfWidth: number,
+  liftAt: (t: number) => number,
+  clearance: (x: number, z: number) => number,
+  weaves = 2.6,
+): Ring[] {
   const out: Ring[] = [];
-  const N = 14;
-  const yaw = Math.atan2(MARKET_DIR.z, MARKET_DIR.x);
-  for (let i = 0; i < N; i++) {
-    const t = i / (N - 1);
-    // From the foot of Market (behind the origin) up past Twin Peaks way.
-    const along = -420 + t * 2000;
-    const x = MARKET_DIR.x * along;
-    const z = MARKET_DIR.z * along;
-    /* Weave and climb — but the weave stays inside Market's own half-width.
-       It was 34 m, which is twice the street, so half the course was buried
-       inside the buildings on either side: you could see the ring through a
-       wall and there was no way to fly to it. A course you cannot complete is
-       worse than no course, and it is invisible from outside the canyon. */
-    const side = Math.sin(t * Math.PI * 2.6) * 11;
-    const px = x - MARKET_DIR.z * side;
-    const pz = z + MARKET_DIR.x * side;
-    const ground = walkHeight(px, pz);
-    const lift = 34 + Math.sin(t * Math.PI * 1.7) * 30;
-    out.push({ x: px, y: ground + lift, z: pz, yaw, r: 11 });
+  // Arc length, so rings are evenly spaced however unevenly the path is sampled.
+  const cum: number[] = [0];
+  for (let i = 1; i < path.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z));
+  }
+  const total = cum[cum.length - 1];
+  if (total < 1) return out;
+
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0 : i / (count - 1);
+    const want = t * total;
+    let seg = 1;
+    while (seg < cum.length - 1 && cum[seg] < want) seg++;
+    const span = cum[seg] - cum[seg - 1] || 1;
+    const f = (want - cum[seg - 1]) / span;
+    const a = path[seg - 1];
+    const b = path[seg];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const ux = dx / len;
+    const uz = dz / len;
+    const cx = a.x + dx * f;
+    const cz = a.z + dz * f;
+    const side = Math.sin(t * Math.PI * weaves) * halfWidth;
+    const px = cx - uz * side;
+    const pz = cz + ux * side;
+    // Above the ground, and above anything standing on it, plus a ring's worth
+    // of room so you are not threading the gap between a roof and a ring.
+    const floor = Math.max(walkHeight(px, pz), clearance(px, pz) + 14);
+    out.push({
+      x: px,
+      y: floor + liftAt(t),
+      z: pz,
+      yaw: Math.atan2(uz, ux),
+      r: 11,
+    });
   }
   return out;
 }
+
+export const COURSES: Course[] = [
+  {
+    key: "market",
+    name: "Market Street Run",
+    blurb: "Fourteen rings from the water up the street and over the hill.",
+    build: (clear) => {
+      const path: Vec2[] = [];
+      for (let t = -420; t <= 1580; t += 100) {
+        path.push({ x: MARKET_DIR.x * t, z: MARKET_DIR.z * t });
+      }
+      return ringsAlong(path, 14, 11, (t) => 34 + Math.sin(t * Math.PI * 1.7) * 30, clear);
+    },
+  },
+  {
+    key: "waterfront",
+    name: "Waterfront Dash",
+    blurb: "Twelve rings up the Embarcadero, from the Bay Bridge to Pier 39.",
+    build: (clear) => {
+      /* The seawall backwards — south to north — offset inland so the rings sit
+         over the Embarcadero rather than over the bay. The shore polyline runs
+         north to south and land is on its left, so the inland normal is the
+         right-hand one when you walk it in reverse. */
+      const path: Vec2[] = [];
+      const pts = [...SHORE].reverse();
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const len = Math.hypot(dx, dz) || 1;
+        path.push({ x: pts[i].x + (dz / len) * 30, z: pts[i].z - (dx / len) * 30 });
+      }
+      return ringsAlong(path, 12, 9, (t) => 22 + Math.sin(t * Math.PI) * 24, clear, 3.4);
+    },
+  },
+  {
+    key: "hills",
+    name: "The Hill Climb",
+    blurb: "Ten rings from the Ferry Building over Nob Hill. Watch your fuel.",
+    build: (clear) => {
+      const a = ll(37.7955, -122.3937);
+      const b = ll(37.7924, -122.4145);
+      const c = ll(37.8021, -122.4187);
+      const path: Vec2[] = [];
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10;
+        // Two legs: out to Nob Hill, then north to Lombard.
+        const p = t < 0.6
+          ? { x: a.x + (b.x - a.x) * (t / 0.6), z: a.z + (b.z - a.z) * (t / 0.6) }
+          : { x: b.x + (c.x - b.x) * ((t - 0.6) / 0.4), z: b.z + (c.z - b.z) * ((t - 0.6) / 0.4) };
+        path.push(p);
+      }
+      // A climbing profile ON TOP of terrain that is itself climbing, so the
+      // last rings are a hundred and thirty metres over the bay.
+      return ringsAlong(path, 10, 14, (t) => 30 + t * 46, clear, 2.0);
+    },
+  },
+];
 
 /* ------------------------------------------------------------------ *
  * The playground
@@ -238,14 +368,18 @@ export class Playground {
 
   private coins: Coin[];
   private rings: Ring[];
+  private courseRings: Map<string, Ring[]>;
+  private maxRings: number;
   private coinMesh: THREE.InstancedMesh;
   private ringMesh: THREE.InstancedMesh;
   private coinGeo: THREE.BufferGeometry;
   private ringGeo: THREE.BufferGeometry;
   private found: Set<string>;
-  private bestCourse: number | null;
+  private best: Record<string, number>;
   private got = 0;
+  private running: string | null = null;
   private nextRing = -1;
+  private touched = new Set<string>();
   private clock = 0;
   private nearest: PlaySnapshot["nearest"] = null;
   private tmp = new THREE.Matrix4();
@@ -253,14 +387,23 @@ export class Playground {
   private v = new THREE.Vector3();
   private s = new THREE.Vector3(1, 1, 1);
 
-  constructor(colliders: BuildingBox[]) {
+  constructor(colliders: BuildingBox[], collision: CityCollision) {
     this.group.name = "frisco-play";
     const stored = load();
     this.found = new Set(stored.found ?? []);
-    this.bestCourse = stored.bestCourse ?? null;
+    this.best = { ...(stored.best ?? {}) };
+    // Carry forward the one time that existed before there were three courses,
+    // rather than silently resetting somebody's record.
+    if (stored.bestCourse !== undefined && this.best.market === undefined) {
+      this.best.market = stored.bestCourse;
+    }
 
     this.coins = placeCoins(colliders);
-    this.rings = placeRings();
+    // Sized for the longest course; shorter ones leave the tail scaled to zero.
+    const clear = (x: number, z: number) => collision.roofOver(x, z) ?? walkHeight(x, z);
+    this.courseRings = new Map(COURSES.map((c) => [c.key, c.build(clear)]));
+    this.maxRings = Math.max(...[...this.courseRings.values()].map((r) => r.length));
+    this.rings = [];
 
     /* A twelve-sided coin lying on its side, spun about Y. Not a torus and not
        a sprite: a sprite cannot show you which way it is facing, and the flash
@@ -279,38 +422,49 @@ export class Playground {
     this.group.add(this.coinMesh);
 
     this.ringGeo = new THREE.TorusGeometry(11, 0.85, 8, 26);
-    this.ringMesh = new THREE.InstancedMesh(this.ringGeo, flat(0x35f0d0), this.rings.length);
+    this.ringMesh = new THREE.InstancedMesh(this.ringGeo, flat(0x35f0d0), this.maxRings);
     this.ringMesh.name = "frisco-rings";
     this.ringMesh.frustumCulled = false;
     this.ringMesh.visible = false;
     this.group.add(this.ringMesh);
-
-    this.layoutRings();
   }
 
-  private layoutRings(): void {
-    for (let i = 0; i < this.rings.length; i++) {
-      const r = this.rings[i];
-      this.v.set(r.x, r.y, r.z);
-      this.q.setFromEuler(new THREE.Euler(0, -r.yaw, 0));
-      this.tmp.compose(this.v, this.q, this.s);
-      this.ringMesh.setMatrixAt(i, this.tmp);
+  /**
+   * Start a challenge: one of the `COURSES` keys, or `"tour"`.
+   *
+   * Starting one stops whatever else was running, because two clocks at once
+   * is a HUD problem and an "is that time for the thing I finished or the thing
+   * I am doing" problem, and neither is worth the feature.
+   */
+  start(key: string): PlayEvent[] {
+    this.stop();
+    if (key === "tour") {
+      this.running = "tour";
+      this.clock = 0;
+      this.touched.clear();
+      return [{
+        kind: "course-start", course: "tour", name: "The Grand Tour",
+        blurb: "Touch all twelve landmarks. The clock is running.",
+      }];
     }
-    this.ringMesh.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Start the Market Street course from the beginning. */
-  startCourse(): PlayEvent[] {
+    const course = COURSES.find((c) => c.key === key);
+    if (!course) return [];
+    this.running = key;
+    this.rings = this.courseRings.get(key) ?? [];
     this.nextRing = 0;
     this.clock = 0;
     this.ringMesh.visible = true;
-    return [{ kind: "course-start" }];
+    return [{
+      kind: "course-start", course: key, name: course.name, blurb: course.blurb,
+    }];
   }
 
-  /** Abandon a run. The rings go away and nothing is recorded. */
-  stopCourse(): void {
+  /** Abandon a run. Nothing is recorded. */
+  stop(): void {
+    this.running = null;
     this.nextRing = -1;
     this.clock = 0;
+    this.touched.clear();
     this.ringMesh.visible = false;
   }
 
@@ -362,9 +516,29 @@ export class Playground {
         bestMark = m;
       }
       if (d > m.footprint + FIND_PAD + m.height * FIND_PER_METRE) continue;
+      /* The tour counts a touch whether or not the logbook already has it —
+         they are different questions. The logbook is "have you ever seen this";
+         the tour is "have you been to all twelve since the clock started". */
+      if (this.running === "tour" && !this.touched.has(m.key)) {
+        this.touched.add(m.key);
+        if (this.touched.size >= marks.length) {
+          const seconds = this.clock;
+          const record = this.best.tour === undefined || seconds < this.best.tour;
+          if (record) {
+            this.best.tour = seconds;
+            this.persist();
+          }
+          events.push({ kind: "tour-done", seconds, best: this.best.tour ?? seconds, record });
+          this.stop();
+        } else {
+          events.push({
+            kind: "tour", touched: this.touched.size, total: marks.length, name: m.name,
+          });
+        }
+      }
       if (this.found.has(m.key)) continue;
       this.found.add(m.key);
-      save({ found: [...this.found], bestCourse: this.bestCourse ?? undefined });
+      this.persist();
       events.push({
         kind: "landmark",
         key: m.key,
@@ -378,6 +552,9 @@ export class Playground {
       ? { name: bestMark.name, metres: Math.round(bestD), found: this.found.has(bestMark.key) }
       : null;
 
+    /* ---- the clock ---- */
+    if (this.running === "tour") this.clock += dt;
+
     /* ---- the course ---- */
     if (this.nextRing >= 0) {
       this.clock += dt;
@@ -387,18 +564,22 @@ export class Playground {
         this.nextRing++;
         if (this.nextRing >= this.rings.length) {
           const seconds = this.clock;
-          const record = this.bestCourse === null || seconds < this.bestCourse;
+          const key = this.running ?? "market";
+          const prev = this.best[key];
+          const record = prev === undefined || seconds < prev;
           if (record) {
-            this.bestCourse = seconds;
-            save({ found: [...this.found], bestCourse: seconds });
+            this.best[key] = seconds;
+            this.persist();
           }
           events.push({
             kind: "course",
+            course: key,
+            name: COURSES.find((c) => c.key === key)?.name ?? "Course",
             seconds,
-            best: this.bestCourse ?? seconds,
+            best: this.best[key] ?? seconds,
             record,
           });
-          this.stopCourse();
+          this.stop();
         } else {
           events.push({ kind: "ring", index: this.nextRing, total: this.rings.length });
         }
@@ -424,16 +605,23 @@ export class Playground {
     return events;
   }
 
+  private persist(): void {
+    save({ found: [...this.found], best: this.best });
+  }
+
   snapshot(): PlaySnapshot {
     return {
       found: [...this.found],
       totalLandmarks: landmarkPositions().length,
       coins: this.got,
       totalCoins: this.coins.length,
+      running: this.running,
       ring: this.nextRing,
       totalRings: this.rings.length,
-      clock: this.nextRing >= 0 ? this.clock : 0,
-      bestCourse: this.bestCourse,
+      touched: this.touched.size,
+      touchedKeys: [...this.touched],
+      clock: this.running ? this.clock : 0,
+      best: { ...this.best },
       nearest: this.nearest,
     };
   }

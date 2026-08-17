@@ -145,7 +145,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   scene.add(life.group);
 
   o.onProgress?.("Hiding the coins");
-  const play = new Playground(city.colliders);
+  const play = new Playground(city.colliders, collision);
   scene.add(play.group);
 
   const input = createInput(canvas);
@@ -285,7 +285,8 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         if (e.kind === "coin") audio.cue("coin");
         else if (e.kind === "landmark") audio.cue("landmark");
         else if (e.kind === "ring") audio.cue("ring");
-        else if (e.kind === "course") audio.cue("finish");
+        else if (e.kind === "course" || e.kind === "tour-done") audio.cue("finish");
+        else if (e.kind === "tour") audio.cue("landmark");
       }
       handle.onPlay?.(events);
     }
@@ -371,7 +372,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         player.state.pitch = pitch;
       },
       goTo: (k: string) => handle.goTo(k),
-      startCourse: () => { handle.onPlay?.(play.startCourse()); },
+      startCourse: (k = "market") => { handle.onPlay?.(play.start(k)); },
       audioRunning: () => audio.isRunning,
       nextRing: () => { const v = play.nextRingPosition(); return v ? { x: v.x, y: v.y, z: v.z } : null; },
       playState: () => play.snapshot(),
@@ -414,7 +415,7 @@ declare global {
       player: () => unknown;
       setPose: (x: number, y: number, z: number, yaw: number, pitch: number) => void;
       goTo: (k: string) => void;
-      startCourse: () => void;
+      startCourse: (k?: string) => void;
       audioRunning: () => boolean;
       nextRing: () => { x: number; y: number; z: number } | null;
       playState: () => unknown;

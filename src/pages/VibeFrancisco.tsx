@@ -15,8 +15,19 @@ import { useActiveCharacter } from "@/hooks/use-active-character";
 import { BOUNDS, LANDMARK_SITES, MARKET_DIR, SHORE, SPAWNS, landmarkPositions } from "@/frisco/map";
 import type { FriscoHandle } from "@/frisco/engine";
 import type { PlayEvent, PlaySnapshot } from "@/frisco/play";
+import { COURSES } from "@/frisco/play";
 import { TIMES } from "@/frisco/sky";
 import type { Stance } from "@/frisco/player";
+
+/** Everything with a clock on it: the three ring courses, plus the tour. */
+const CHALLENGES = [
+  ...COURSES.map((c) => ({ key: c.key, name: c.name, blurb: c.blurb })),
+  {
+    key: "tour",
+    name: "The Grand Tour",
+    blurb: "Touch all twelve landmarks, against the clock. No rings, no route — your problem.",
+  },
+];
 
 const TIME_ICON: Record<string, string> = {
   dawn: "🌅",
@@ -149,11 +160,18 @@ export default function VibeFrancisco() {
               sayRef.current(`${e.name} — ${e.found}/${e.total}`, e.blurb);
             } else if (e.kind === "course") {
               sayRef.current(
-                e.record ? "New best time!" : "Course complete",
+                e.record ? `${e.name} — new best!` : `${e.name} complete`,
                 `${e.seconds.toFixed(1)}s · best ${e.best.toFixed(1)}s`,
               );
+            } else if (e.kind === "tour-done") {
+              sayRef.current(
+                e.record ? "Grand Tour — new best!" : "Grand Tour complete",
+                `All twelve in ${e.seconds.toFixed(1)}s · best ${e.best.toFixed(1)}s`,
+              );
+            } else if (e.kind === "tour") {
+              sayRef.current(`${e.name}`, `${e.touched} of ${e.total} on this tour`);
             } else if (e.kind === "course-start") {
-              sayRef.current("Market Street run", "Fourteen rings, from the water to the hill.");
+              sayRef.current(e.name, e.blurb);
             }
           }
         };
@@ -209,11 +227,12 @@ export default function VibeFrancisco() {
     handleRef.current?.setCharacter(charId);
   }, [charId]);
 
-  const toggleCourse = useCallback(() => {
+  /** Start a challenge, or stop the one that is running. */
+  const toggleChallenge = useCallback((key: string) => {
     const h = handleRef.current;
     if (!h) return;
-    if (h.play.snapshot().ring >= 0) h.play.stopCourse();
-    else h.onPlay?.(h.play.startCourse());
+    if (h.play.snapshot().running === key) h.play.stop();
+    else h.onPlay?.(h.play.start(key));
     setSheet(null);
   }, []);
 
@@ -268,7 +287,7 @@ export default function VibeFrancisco() {
             onTime={nextTime}
           />
           <FuelGauge hud={hud} />
-          <Scoreboard play={play} onLog={() => setSheet("log")} onCourse={toggleCourse} />
+          <Scoreboard play={play} onLog={() => setSheet("log")} onChallenge={toggleChallenge} />
           <MiniMap play={play} pos={{ x: hud.x, z: hud.z }} yaw={hud.yaw} touch={touch} />
           <Toast toast={toast} />
           {touch ? <JetPad /> : null}
@@ -279,7 +298,7 @@ export default function VibeFrancisco() {
       {sheet === "char" ? <CharacterSheet onClose={() => setSheet(null)} /> : null}
       {sheet === "go" ? <GoSheet onPick={goTo} onClose={() => setSheet(null)} /> : null}
       {sheet === "log" ? (
-        <LogSheet play={play} onCourse={toggleCourse} onClose={() => setSheet(null)} />
+        <LogSheet play={play} onChallenge={toggleChallenge} onClose={() => setSheet(null)} />
       ) : null}
     </div>
   );
@@ -569,14 +588,14 @@ function MiniMap({
 function Scoreboard({
   play,
   onLog,
-  onCourse,
+  onChallenge,
 }: {
   play: PlaySnapshot | null;
   onLog: () => void;
-  onCourse: () => void;
+  onChallenge: (key: string) => void;
 }) {
   if (!play) return null;
-  const running = play.ring >= 0;
+  const running = play.running !== null;
   return (
     <div
       className="pointer-events-none absolute right-0 z-20 flex flex-col items-end gap-1.5"
@@ -596,11 +615,14 @@ function Scoreboard({
       </button>
       {running ? (
         <button
-          onClick={onCourse}
+          onClick={() => onChallenge(play.running!)}
           className={`${CHIP} !min-h-[34px] !px-2.5 !text-[10px] !bg-[#0e5f52]/70`}
           style={{ WebkitTapHighlightColor: "transparent" }}
         >
-          ⏱ {play.clock.toFixed(1)}s · ring {play.ring + 1}/{play.totalRings}
+          ⏱ {play.clock.toFixed(1)}s ·{" "}
+          {play.running === "tour"
+            ? `${play.touched}/${play.totalLandmarks}`
+            : `ring ${play.ring + 1}/${play.totalRings}`}
         </button>
       ) : null}
       {play.nearest && !play.nearest.found && play.nearest.metres < 420 ? (
@@ -641,27 +663,54 @@ function Toast({ toast }: { toast: { id: number; title: string; body: string } |
  */
 function LogSheet({
   play,
-  onCourse,
+  onChallenge,
   onClose,
 }: {
   play: PlaySnapshot | null;
-  onCourse: () => void;
+  onChallenge: (key: string) => void;
   onClose: () => void;
 }) {
   const found = new Set(play?.found ?? []);
   return (
     <Sheet title="Logbook" onClose={onClose}>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="rounded-lg bg-white/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70 ring-1 ring-white/10">
           🪙 {play?.coins ?? 0} / {play?.totalCoins ?? 0} coins this visit
         </span>
-        <button onClick={onCourse} className={CHIP}>
-          {play && play.ring >= 0 ? "Stop the run" : "⏱ Fly the Market Street run"}
-        </button>
-        {play?.bestCourse != null ? (
-          <span className="text-[11px] text-white/45">best {play.bestCourse.toFixed(1)}s</span>
-        ) : null}
       </div>
+      <h3 className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-white/50">
+        Challenges
+      </h3>
+      <div className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {CHALLENGES.map((c) => {
+          const best = play?.best[c.key];
+          const live = play?.running === c.key;
+          return (
+            <button
+              key={c.key}
+              onClick={() => onChallenge(c.key)}
+              className={`rounded-xl p-3 text-left ring-1 transition active:scale-95 ${
+                live
+                  ? "bg-[#0e5f52]/60 ring-[#35f0d0]/40"
+                  : "bg-white/5 ring-white/10 hover:bg-white/10"
+              }`}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-bold text-white">{c.name}</span>
+                {best != null ? (
+                  <span className="text-[11px] text-[#7dfce0]">{best.toFixed(1)}s</span>
+                ) : null}
+              </div>
+              <div className="mt-0.5 text-[11px] leading-snug text-white/50">
+                {live ? "Running — tap to give up." : c.blurb}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <h3 className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-white/50">
+        Landmarks
+      </h3>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {LANDMARK_SITES.map((l) => {
           const got = found.has(l.key);

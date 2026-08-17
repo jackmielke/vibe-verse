@@ -69,7 +69,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "598ed03", iso: "2026-08-17T16:46:57+00:00", subject: "The jetpack is on your back now, and the sea stops following you home" },
+    { sha: "5a0721d", iso: "2026-08-17T16:54:36+00:00", subject: "The jetpack is on your back now, and the sea stops following you home" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "6896dbb", iso: "2026-08-17T06:39:11+00:00", subject: "The bay has something in it, and you can finally look up" },
@@ -125,12 +125,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "9a60d84", iso: "2026-08-17T17:05:15+00:00", subject: "Vibe Francisco after dark, and four other times of day" },
     { sha: "9d740b6", iso: "2026-08-17T16:09:09+00:00", subject: "Vibe Francisco: lamp posts, trolley wires, and nine hundred people" },
     { sha: "64c0d0f", iso: "2026-08-17T15:44:14+00:00", subject: "Vibe Francisco: you can land on a round building now, and it makes a noise" },
     { sha: "c84ef4a", iso: "2026-08-17T09:56:42+00:00", subject: "Vibe Francisco: two hundred cars, fifteen boats, and a Ferry Building that fits" },
     { sha: "5afd6f9", iso: "2026-08-17T09:43:04+00:00", subject: "Vibe Francisco: land on a street, and a camera that flies itself" },
     { sha: "1da54ff", iso: "2026-08-17T09:15:39+00:00", subject: "Vibe Francisco: a logbook, a hundred and seventy coins, and a race up Market" },
-    { sha: "c2d5a7c", iso: "2026-08-17T08:56:22+00:00", subject: "Vibe Francisco gets its landmarks, and the city gets its walls back" },
   ],
   "garden": [
     { sha: "1bf8d5a", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },
