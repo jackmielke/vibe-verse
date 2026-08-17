@@ -45,6 +45,7 @@ import {
   type LandmarkCollider,
 } from "../world/landmarks";
 import { readMove, useTraversalInput } from "./traversalInput";
+import { getShotHook } from "../debug/shotHook";
 
 /** Chase boom length at rest, metres, and how far it may be pushed in. */
 const CAM_DISTANCE = 5.6;
@@ -56,6 +57,15 @@ const CAM_PROBES = 7;
 
 /** Vertical band around the feet that counts as "this obstacle is in my way". */
 const BODY_TOP = PLAYER.height;
+
+/**
+ * How long after spawning the feet may still climb onto something taller than
+ * a step, and how tall that something may be. Long enough for the landmark
+ * layer to stream in; short enough that it is over before you have taken three
+ * paces. Six metres clears every plinth in the world and reaches no roof.
+ */
+const SETTLE_SECONDS = 6;
+const SETTLE_LIFT = 6;
 
 export interface WalkerProps {
   /** Disabled while the fly camera or the screenshot harness owns the view. */
@@ -197,6 +207,11 @@ export default function Walker({ enabled = true, charId }: WalkerProps) {
   /** Facing, smoothed toward the direction of travel. */
   const facing = useRef(frame.yaw);
   const camDist = useRef(CAM_DISTANCE);
+  /**
+   * Seconds left in which the feet may still be lifted onto a surface higher
+   * than a step — see the note at `SETTLE_LIFT` in the frame loop.
+   */
+  const settling = useRef(SETTLE_SECONDS);
 
   /* ---------------- the character ---------------- */
   useEffect(() => {
@@ -237,6 +252,25 @@ export default function Walker({ enabled = true, charId }: WalkerProps) {
     };
   }, [rig]);
 
+  /* ---------------- debug surface ---------------- */
+  useEffect(() => {
+    const hook = getShotHook();
+    hook.player = () => ({
+      x: frame.position.x,
+      y: frame.position.y,
+      z: frame.position.z,
+      grounded: frame.grounded,
+      support: supportAt(frame.position.x, frame.position.z, frame.position.y + SETTLE_LIFT),
+      settling: settling.current,
+      rig: !!rig,
+      colliders: queryLandmarkColliders(frame.position.x, frame.position.z, 40, []).length,
+      rigHeight: rig ? rig.size.y : 0,
+    });
+    return () => {
+      delete hook.player;
+    };
+  }, [rig]);
+
   /* ---------------- the frame ---------------- */
   useFrame((_, delta) => {
     const g = group.current;
@@ -271,6 +305,45 @@ export default function Walker({ enabled = true, charId }: WalkerProps) {
       intent *
       (boost ? PLAYER.sprintSpeed : slow ? PLAYER.crouchSpeed : PLAYER.walkSpeed);
 
+    /**
+     * ---- stand up before moving ----
+     *
+     * The vertical resolve has to come FIRST, and the order is the whole bug it
+     * fixes. A spawn point is worked out from the *terrain*, because at the
+     * moment the level mounts that is all that exists — landmarks stream in
+     * afterwards. So spawning at Union Square puts you at terrain height and
+     * the plaza then builds its 1.4 m granite deck around you. With the
+     * horizontal pass running first, `pushOut` sees a solid box containing your
+     * feet and does exactly what it is asked to: ejects you sideways out of it.
+     * A 62 m plaza ejects you 31 m, into the street, where the deck is no
+     * longer overhead and can never be stood on. What that looks like from
+     * outside is a character that is simply not there, with the camera skimming
+     * a granite surface it is five centimetres above.
+     *
+     * Settle first, and the plaza is a floor rather than a wall: the feet climb
+     * onto it, `pushOut` then skips it (you are on top), and you spawn in the
+     * middle of the square looking at the Dewey Monument.
+     *
+     * The relaxed lift is time-boxed because it only exists to absorb geometry
+     * that arrived after the spawn — six metres clears every plinth in the
+     * world and reaches no roof.
+     */
+    settling.current = Math.max(0, settling.current - dt);
+    const settlingNow = settling.current > 0;
+    const stepLimit = settlingNow ? SETTLE_LIFT : PLAYER.stepHeight;
+    // While settling this runs even when airborne, because at spawn you ARE
+    // airborne — `resetFrame` drops you — and the very first frame is the one
+    // that ejects you. It is skipped on the way UP so it can never interrupt a
+    // jump, only a fall or a stand.
+    if (frame.grounded || (settlingNow && frame.velocity.y <= 0)) {
+      const here = supportAt(frame.position.x, frame.position.z, frame.position.y + stepLimit);
+      if (here > frame.position.y) {
+        frame.position.y = here;
+        frame.velocity.y = 0;
+        frame.grounded = true;
+      }
+    }
+
     /* ---- horizontal move, then resolve ---- */
     const feetY = frame.position.y;
     scratch.flat.set(
@@ -283,7 +356,7 @@ export default function Walker({ enabled = true, charId }: WalkerProps) {
     frame.position.z = clamped.z;
 
     /* ---- vertical ---- */
-    const ceiling = frame.grounded ? feetY + PLAYER.stepHeight : feetY;
+    const ceiling = frame.grounded ? feetY + stepLimit : feetY;
     const ground = supportAt(frame.position.x, frame.position.z, ceiling);
 
     if (frame.grounded && input.consumeJump()) {

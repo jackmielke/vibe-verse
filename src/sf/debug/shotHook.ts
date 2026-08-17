@@ -52,6 +52,13 @@ export interface SfDebugHook {
   /** Where the camera actually is, and what its depth range currently is. */
   camPose?: () => CamPose;
   /**
+   * Where the *player* is, which is a different question and the one you want
+   * when somebody reports that their character is not there. A chase camera
+   * five metres behind a character buried inside a landmark's plinth looks
+   * exactly like a chase camera behind no character at all.
+   */
+  player?: () => PlayerPose;
+  /**
    * Render one frame synchronously and return it as a data URL, optionally
    * with the depth range perturbed by `depthNudge` (a multiplier, e.g. 1.0002)
    * for that render only.
@@ -63,6 +70,23 @@ export interface SfDebugHook {
    * plane the nudge has to be applied to, which is not the obvious one.
    */
   snapshot?: (depthNudge?: number) => string;
+}
+
+export interface PlayerPose {
+  x: number;
+  y: number;
+  z: number;
+  grounded: boolean;
+  /** Height of the surface the controller believes is under the feet. */
+  support: number;
+  /** Seconds left of the post-spawn window in which the feet may still climb. */
+  settling: number;
+  /** True once the character rig has loaded and been parented. */
+  rig: boolean;
+  /** Landmark colliders registered within 40 m of the feet. */
+  colliders: number;
+  /** Fitted height of the character rig, metres. Should be PLAYER.height. */
+  rigHeight: number;
 }
 
 export interface CamPose {
