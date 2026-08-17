@@ -555,14 +555,35 @@ const BUILDERS: Record<string, Builder> = {
  * would put an invisible wall across a pavement, which is the single most
  * infuriating bug a walkable world can have.
  */
-const SOLID: Record<string, { hw: number; hd: number; h: number }> = {
-  transamerica: { hw: 26, hd: 26, h: 212 },
-  salesforce: { hw: 21, hd: 21, h: 268 },
-  coit: { hw: 12, hd: 12, h: 61 },
-  ferry: { hw: 11, hd: 66, h: 62 },
-  grace: { hw: 40, hd: 24, h: 41 },
-  pier39: { hw: 26, hd: 62, h: 13 },
-  alcatraz: { hw: 46, hd: 24, h: 14 },
+interface Solid {
+  hw: number;
+  hd: number;
+  h: number;
+  /** Roof half-extents, if it tapers. */
+  topHw?: number;
+  topHd?: number;
+  round?: boolean;
+  yaw?: number;
+}
+
+const SOLID: Record<string, Solid> = {
+  /* A pyramid, and its collider is one: 26 m at the base tapering to a 2.5 m
+     platform under the spire. The platform is deliberately real — the "Top of
+     the Pyramid" spawn puts you on it, and a collider that came to a true point
+     would drop you 212 m the moment you arrived. Everywhere else on the flanks
+     you are outside the roof footprint, so you slide off, which is what a
+     pyramid should do. */
+  transamerica: { hw: 26, hd: 26, h: 212, topHw: 2.5, topHd: 2.5, yaw: -0.045 },
+  // Round, and tapering to 58% — both of which the square collider got wrong.
+  salesforce: { hw: 21, hd: 21, h: 268, topHw: 12.2, topHd: 12.2, round: true },
+  coit: { hw: 7.6, hd: 7.6, h: 58, topHw: 7.2, topHd: 7.2, round: true },
+  ferry: { hw: 11, hd: 66, h: 62, yaw: Math.PI / 2 + 0.36 },
+  grace: { hw: 40, hd: 24, h: 41, yaw: -0.045 + Math.PI / 2 },
+  /* The pier's deck, not its sheds: 4.2 m up, which is the surface you walk on
+     when you land there. Colliding with the sheds as well would mean two
+     overlapping boxes and a seam between them to fall down. */
+  pier39: { hw: 26, hd: 62, h: 4.2, yaw: 0.2 },
+  alcatraz: { hw: 46, hd: 11, h: 14, yaw: 0.5 },
 };
 
 export function buildLandmarks(b: Batch, colliders: BuildingBox[]): number {
@@ -577,7 +598,8 @@ export function buildLandmarks(b: Batch, colliders: BuildingBox[]): number {
     if (solid) {
       colliders.push({
         x: site.x, z: site.z, hw: solid.hw, hd: solid.hd,
-        yaw: 0, baseY: base, roofY: base + solid.h,
+        yaw: solid.yaw ?? 0, baseY: base, roofY: base + solid.h,
+        topHw: solid.topHw, topHd: solid.topHd, round: solid.round,
       });
     }
   }

@@ -58,17 +58,46 @@ export interface CityBuild {
   stats: { triangles: number; buildings: number; landmarks: number; ms: number };
 }
 
-/** One building, as the collision system sees it. */
+/**
+ * One building, as the collision system sees it.
+ *
+ * The two optional fields are the difference between "you can land on a
+ * building" and "you can land on a rectangular building". Almost everything in
+ * the generated city is a plain box and needs neither; almost everything
+ * *interesting* — every tower with a setback, Salesforce, Coit Tower, the
+ * Transamerica — is a shape whose footprint at the roof is not its footprint at
+ * the pavement, and a collider that ignores that puts an invisible floor out in
+ * mid-air around the top of it.
+ */
 export interface BuildingBox {
   x: number;
   z: number;
-  /** Half extents in the building's own frame. */
+  /** Half extents at the BASE, in the building's own frame. */
   hw: number;
   hd: number;
   yaw: number;
   /** Ground level at its base, and the height of its roof. */
   baseY: number;
   roofY: number;
+  /**
+   * Half extents at the ROOF. Defaults to the base extents.
+   *
+   * This is what you stand on. A tower tapered to 82% is nearly two metres
+   * narrower at the top than at the bottom on each side, and standing in that
+   * margin is standing on nothing — you are outside the building you can see
+   * and inside the box the collider believes in.
+   */
+  topHw?: number;
+  topHd?: number;
+  /**
+   * Elliptical footprint rather than rectangular.
+   *
+   * Salesforce Tower is a 42 m circle and its collider was a 42 m square, so
+   * the four corners — 21% of the roof area — were floor you could stand on
+   * with nothing underneath. This is the bug you notice by landing on a round
+   * building and finding yourself hovering beside it.
+   */
+  round?: boolean;
 }
 
 /* ------------------------------------------------------------------ *
@@ -352,7 +381,8 @@ function fillBlock(
     const h = rng.range(district.minH, district.maxH) * (0.75 + weight * 0.45);
     const base = walkHeight(cx, cz);
     const floors = Math.max(3, Math.round(h / 7));
-    buildings.bandedBox(cx, base, cz, w, h, d, wall, glass, floors, rng.range(0.82, 1.0), yaw);
+    const taper = rng.range(0.82, 1.0);
+    buildings.bandedBox(cx, base, cz, w, h, d, wall, glass, floors, taper, yaw);
     // A parapet and a rooftop box, which is what makes a flat roof read as a
     // roof rather than as the top of a box.
     const towerRoof = mix(roofC, wall, 0.3);
@@ -364,7 +394,14 @@ function fillBlock(
         shade(towerRoof, 0.9), 1, yaw,
       );
     }
-    colliders.push({ x: cx, z: cz, hw: w, hd: d, yaw, baseY: base, roofY: base + h });
+    /* The collider tapers with the building. The parapet is 92% of the tower's
+       top and is what you actually land on, so that — not `w` — is the roof
+       footprint. Standing in the difference used to mean standing on air a
+       metre and a half out from a fortieth-floor wall. */
+    colliders.push({
+      x: cx, z: cz, hw: w, hd: d, yaw, baseY: base, roofY: base + h,
+      topHw: w * taper * 0.92, topHd: d * taper * 0.92,
+    });
     return;
   }
 
@@ -423,8 +460,11 @@ function fillBlock(
       const myRoof = mix(roofC, myWall, 0.34);
       // Low buildings get a pitched roof; it is most of what separates North
       // Beach from the Financial District at a glance.
+      let roofRise = 0.4;
       if (h < 24 && rng.chance(0.62)) {
-        buildings.gable(p.x, base + h, p.z, hwB * 1.06, rng.range(1.8, 3.4), hdB * 1.06,
+        const rise = rng.range(1.8, 3.4);
+        roofRise = rise * 0.5;
+        buildings.gable(p.x, base + h, p.z, hwB * 1.06, rise, hdB * 1.06,
           shade(myRoof, rng.range(0.85, 1.05)), yaw + (side.along === "x" ? 0 : Math.PI / 2));
       } else {
         // A parapet, not a lid: 40 cm proud of the wall and barely wider than
@@ -432,7 +472,14 @@ function fillBlock(
         buildings.box(p.x, base + h, p.z, hwB * 1.012, 0.4, hdB * 1.012,
           shade(myRoof, 0.95), 1, yaw);
       }
-      colliders.push({ x: p.x, z: p.z, hw: hwB, hd: hdB, yaw, baseY: base, roofY: base + h });
+      /* A pitched roof is not a floor, but the alternative — a collider that
+         stops at the eaves — drops you waist-deep into the gable every time you
+         land on a North Beach walk-up. Half the ridge height is the compromise
+         that reads right from the street and from the air. */
+      colliders.push({
+        x: p.x, z: p.z, hw: hwB, hd: hdB, yaw,
+        baseY: base, roofY: base + h + roofRise,
+      });
     }
   }
 }

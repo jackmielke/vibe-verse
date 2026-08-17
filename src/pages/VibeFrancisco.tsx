@@ -38,6 +38,7 @@ export default function VibeFrancisco() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const shotRef = useRef(false);
+  const wakeRef = useRef<(() => void) | null>(null);
   const handleRef = useRef<FriscoHandle | null>(null);
   const [params, setParams] = useSearchParams();
   const spawn = params.get("at") ?? "market";
@@ -60,6 +61,7 @@ export default function VibeFrancisco() {
   const [hint, setHint] = useState(true);
   const [play, setPlay] = useState<PlaySnapshot | null>(null);
   const [toast, setToast] = useState<{ id: number; title: string; body: string } | null>(null);
+  const [muted, setMuted] = useState(false);
   const toastId = useRef(0);
 
   /* One toast at a time, and the newest wins.
@@ -145,6 +147,23 @@ export default function VibeFrancisco() {
             }
           }
         };
+        setMuted(handle.audio.isMuted);
+        /* The audio graph cannot exist before a gesture — browsers refuse to
+           start an AudioContext without one, and one created early sits
+           suspended forever while everything downstream silently does nothing.
+           So: every plausible first gesture starts it, once, and then unhooks
+           itself. `pointerdown` rather than `click` because a click on a
+           canvas that captures the pointer may never arrive. */
+        const wake = () => {
+          handle?.audio.start();
+          window.removeEventListener("pointerdown", wake);
+          window.removeEventListener("keydown", wake);
+          window.removeEventListener("touchstart", wake);
+        };
+        window.addEventListener("pointerdown", wake);
+        window.addEventListener("keydown", wake);
+        window.addEventListener("touchstart", wake);
+        wakeRef.current = wake;
         setPhase("playing");
       } catch (err) {
         console.warn("[frisco] failed to start:", err);
@@ -154,6 +173,12 @@ export default function VibeFrancisco() {
 
     return () => {
       cancelled = true;
+      if (wakeRef.current) {
+        window.removeEventListener("pointerdown", wakeRef.current);
+        window.removeEventListener("keydown", wakeRef.current);
+        window.removeEventListener("touchstart", wakeRef.current);
+        wakeRef.current = null;
+      }
       handle?.dispose();
       handleRef.current = null;
     };
@@ -181,6 +206,15 @@ export default function VibeFrancisco() {
     setSheet(null);
   }, []);
 
+  const toggleMute = useCallback(() => {
+    const h = handleRef.current;
+    if (!h) return;
+    const next = !h.audio.isMuted;
+    h.audio.start();
+    h.audio.setMuted(next);
+    setMuted(next);
+  }, []);
+
   const goTo = useCallback(
     (key: string) => {
       handleRef.current?.goTo(key);
@@ -205,6 +239,8 @@ export default function VibeFrancisco() {
             charLabel={`${character.emoji} ${character.label}`}
             onChar={() => setSheet("char")}
             onGo={() => setSheet("go")}
+            muted={muted}
+            onMute={toggleMute}
           />
           <FuelGauge hud={hud} />
           <Scoreboard play={play} onLog={() => setSheet("log")} onCourse={toggleCourse} />
@@ -266,10 +302,14 @@ function TopChrome({
   charLabel,
   onChar,
   onGo,
+  muted,
+  onMute,
 }: {
   charLabel: string;
   onChar: () => void;
   onGo: () => void;
+  muted: boolean;
+  onMute: () => void;
 }) {
   return (
     <div
@@ -288,6 +328,14 @@ function TopChrome({
       </button>
       <button onClick={onGo} className={CHIP} style={{ WebkitTapHighlightColor: "transparent" }}>
         📍 Go
+      </button>
+      <button
+        onClick={onMute}
+        className={`${CHIP} !px-2.5`}
+        aria-label={muted ? "Unmute" : "Mute"}
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        {muted ? "🔇" : "🔊"}
       </button>
     </div>
   );

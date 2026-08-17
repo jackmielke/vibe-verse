@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-17T10:06:52.509Z",
+  "generated_at": "2026-08-17T15:42:14.137Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "3df984e6",
+      "date": "2026-08-17",
+      "subject": "Vibe Francisco: a minimap, because 3.4 km is too big to hold in your head",
+      "lede": "The symptom was specific and it was not a bug: people fly up, look around, pick a direction, and land somewhere they have already been. Nothing about the world is wrong — they simply have no way to know where they are. One small top-down picture fixes it completely.",
+      "places": [],
+      "files": 4
+    },
     {
       "sha": "c84ef4af",
       "date": "2026-08-17",
@@ -1028,16 +1036,6 @@
     },
     {
       "sha": "0ff7358d",
-      "date": "2026-08-10",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "14ffac3f",
       "date": "2026-08-10",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",

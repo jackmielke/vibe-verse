@@ -12,12 +12,15 @@
  * looking good, and every effect not present is an effect that cannot flicker.
  */
 import * as THREE from "three";
+import { CityAudio } from "./audio";
 import { buildCity, disposeCity, type CityBuild } from "./city";
 import { CityCollision } from "./collision";
 import { createInput, type FriscoInput } from "./input";
 import { CityLife } from "./life";
 import { disposeLook } from "./look";
-import { SPAWNS, VIEW, landmarkPositions, ll, snapToStreet, walkHeight, type Spawn } from "./map";
+import {
+  SPAWNS, VIEW, isWater, landmarkPositions, ll, snapToStreet, walkHeight, type Spawn,
+} from "./map";
 import { Player } from "./player";
 import { Playground, type PlayEvent } from "./play";
 import { createSky, type SkyRig } from "./sky";
@@ -29,6 +32,7 @@ export interface FriscoHandle {
   sky: SkyRig;
   play: Playground;
   life: CityLife;
+  audio: CityAudio;
   input: FriscoInput;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -145,6 +149,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   scene.add(play.group);
 
   const input = createInput(canvas);
+  const audio = new CityAudio();
 
   o.onProgress?.("Finding your character");
   const sp = resolveSpawn(o.spawn);
@@ -164,9 +169,10 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
   let acc = 0;
   let frames = 0;
   let disposed = false;
+  let wasGrounded = true;
 
   const handle: FriscoHandle = {
-    player, city, collision, sky, play, life, input, scene, camera, renderer,
+    player, city, collision, sky, play, life, audio, input, scene, camera, renderer,
     fps: 0,
     setCharacter(id) {
       void player.loadCharacter(id);
@@ -203,6 +209,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       player.dispose();
       play.dispose();
       life.dispose();
+      audio.dispose();
       sky.dispose();
       disposeCity(city);
       disposeLook();
@@ -273,7 +280,32 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
     life.update(dt, elapsed);
     sky.update(dt, elapsed, camera);
     const events = play.update(dt, elapsed, player.state.position);
-    if (events.length) handle.onPlay?.(events);
+    if (events.length) {
+      for (const e of events) {
+        if (e.kind === "coin") audio.cue("coin");
+        else if (e.kind === "landmark") audio.cue("landmark");
+        else if (e.kind === "ring") audio.cue("ring");
+        else if (e.kind === "course") audio.cue("finish");
+      }
+      handle.onPlay?.(events);
+    }
+    /* The audio reads the same state the HUD does, one frame later, and knows
+       nothing about the world beyond it. Six numbers is the entire interface,
+       which is what keeps a synthesiser from growing opinions about geometry. */
+    const ps = player.state;
+    if (!attract) {
+      audio.update(dt, {
+        speed: ps.speed,
+        altitude: ps.altitude,
+        grounded: ps.grounded,
+        burning: ps.stance === "jet",
+        fuel: ps.fuel,
+        inWater: ps.position.y <= 0.6 && isWater(ps.position.x, ps.position.z),
+      });
+      if (ps.grounded && !wasGrounded) audio.cue("land");
+      else if (!ps.grounded && wasGrounded && ps.velocity.y > 1) audio.cue("jump");
+      wasGrounded = ps.grounded;
+    }
     handle.onFrame?.(dt, elapsed);
 
     renderer.render(scene, camera);
@@ -338,6 +370,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       },
       goTo: (k: string) => handle.goTo(k),
       startCourse: () => { handle.onPlay?.(play.startCourse()); },
+      audioRunning: () => audio.isRunning,
       nextRing: () => { const v = play.nextRingPosition(); return v ? { x: v.x, y: v.y, z: v.z } : null; },
       playState: () => play.snapshot(),
       landmarks: () =>
@@ -379,6 +412,7 @@ declare global {
       setPose: (x: number, y: number, z: number, yaw: number, pitch: number) => void;
       goTo: (k: string) => void;
       startCourse: () => void;
+      audioRunning: () => boolean;
       nextRing: () => { x: number; y: number; z: number } | null;
       playState: () => unknown;
       landmarks: () => Array<{
