@@ -1,65 +1,7 @@
 {
-  "generated_at": "2026-08-17T07:22:59.271Z",
+  "generated_at": "2026-08-17T08:06:43.742Z",
   "window_days": 45,
   "commits": [
-    {
-      "sha": "c53bd6d7",
-      "date": "2026-08-17",
-      "subject": "Exploring pays, because nothing else did",
-      "lede": "The ledger said something bleak. Of 495 wallets, 491 sat at exactly the 100 coins they were handed on arrival, ONE had ever gone past it, and the richest in the whole vibeverse held 116. Three cosmetics had ever been bought, all on one afternoon. `game_reward` had fired once in its life.",
-      "places": [
-        "the machinery underneath"
-      ],
-      "files": 16
-    },
-    {
-      "sha": "e2dc8847",
-      "date": "2026-08-17",
-      "subject": "A crashed world ended the smoke run green",
-      "lede": "`npm run smoke` opens all fifty-four routes and is the only automated check that a world still comes up. It has four verdicts: canvas, text, blank, and crash — the last one when the route renders the app's own crash screen, which is deliberately the WORST outcome, because a blank route might still be loading while a crashed one has already given up.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "caccb2a5",
-      "date": "2026-08-17",
-      "subject": "✉️ The paper takes letters, and Vibey finally reads it out loud",
-      "lede": "Two things the paper was missing: a way in, and a voice.",
-      "places": [
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 13
-    },
-    {
-      "sha": "6896dbb4",
-      "date": "2026-08-17",
-      "subject": "The bay has something in it, and you can finally look up",
-      "lede": "The sea got waves, then a floor, then caustics on the floor, then fish over the caustics, then a way to swim down through all of it — and no reason to. You dive once, see the best-looking thing in the world, surface, and never dive again. Three commits of ocean making a very good set and not a place.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "f68b30fa",
-      "date": "2026-08-17",
-      "subject": "Everybody starts as a mushroom",
-      "lede": "The default character was Vibey, the fallback for an unknown id was Flux, and Webslinger sat at index 1 — so the second face anybody saw in the vibeverse was a wall-crawler, in every picker, on every surface that lists the roster. It is Toadstool now: the default, the fallback, and the first tile.",
-      "places": [
-        "the character roster",
-        "the machinery underneath"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "18b88dcb",
-      "date": "2026-08-17",
-      "subject": "🔦 The Midnight Zone was unplayable, and none of it showed up in a build",
-      "lede": "Jack played the thing I shipped and got a black screen most of the time, a descent that never ended, and something he described as very glitchy. All of it was real, all of it was mine, and every single one got past a green build, a green typecheck, 1,528 passing tests and a set of screenshots I took myself.",
-      "places": [],
-      "files": 8
-    },
     {
       "sha": "dffe1d7a",
       "date": "2026-08-17",
@@ -1047,6 +989,62 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01LrHxfRC156y4mpWX17EHrF",
       "places": [],
       "files": 2
+    },
+    {
+      "sha": "64140cc0",
+      "date": "2026-08-10",
+      "subject": "BLOB: a phone sets a course, and a room code shares the dish",
+      "lede": "Two things, both asked for.",
+      "places": [],
+      "files": 15
+    },
+    {
+      "sha": "7f744351",
+      "date": "2026-08-10",
+      "subject": "Regenerate the build log for the submission desk",
+      "lede": "`prebuild` writes this from git history, so it lands one commit behind the thing it describes. No hand edits.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "1ece01a5",
+      "date": "2026-08-10",
+      "subject": "Anybody can hand the arcade a game now",
+      "lede": "The portal could always frame somebody else's game; what it could not do was let them ask. Getting in meant knowing Jack and waiting for a migration, and the schema said as much in a comment: \"flip this when the submit form lands.\"",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 15
+    },
+    {
+      "sha": "168ee1ba",
+      "date": "2026-08-10",
+      "subject": "Say \"not on sale yet\" rather than \"no such cosmetic\"",
+      "lede": "Character prices live in this repo twice on purpose: once in `characterShop.ts` so the shelf can print an honest number before you pay, and once in the `vibe-economy` edge function, which is the copy that actually charges. Adding stock therefore needs a function deploy as well as a push — and pushing does not deploy functions here, which I had assumed and checked and had wrong in that order.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "64186e31",
+      "date": "2026-08-10",
+      "subject": "Thirty more characters, and the shop finally sells characters",
+      "lede": "Two things, and the second is the reason the first was worth doing.",
+      "places": [
+        "Vibe Island",
+        "the character roster",
+        "the machinery underneath"
+      ],
+      "files": 38
+    },
+    {
+      "sha": "b0e6602b",
+      "date": "2026-08-10",
+      "subject": "Ask for the morning paper every hour until there is one",
+      "lede": "The presses have not missed a day — issues 3, 4 and 5 came out at 05:32, 13:00 and 06:25 — but the schedule was one shot at 13:00 UTC, and one shot is a design that loses a whole day to a bad minute. A timeout, an OpenRouter blip, a cold start that runs long: nothing retries, and the front door goes on quietly showing yesterday.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 3
     }
   ]
 }

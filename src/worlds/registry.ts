@@ -532,6 +532,24 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "frisco",
+    route: "/frisco",
+    aliases: ["/vibe-francisco", "/toy-sf"],
+    name: "Vibe Francisco",
+    emoji: "🌁",
+    kind: "world",
+    blurb:
+      "San Francisco as a toy you can fly around. The real downtown — both street grids, the hills, the waterfront — painted in flat colour and built small enough to hold. Strap the jetpack on your own character and go over the top of it.",
+    status: "Playable — walk it, or fly it with the jetpack",
+    accent: "#ff8a3d",
+    featured: true,
+    backdrop: "#8fd0f0",
+    source: "src/frisco",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
     key: "kart",
     route: "/kart",
     /* `/kart-mp` was a second card for the same racetrack, and the choice it

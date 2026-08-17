@@ -89,8 +89,22 @@ export const MARKET_DIR: Vec2 = {
   x: Math.cos(MARKET_ANGLE),
   z: Math.sin(MARKET_ANGLE),
 };
-/** Unit normal to Market, pointing north-west (toward the Financial District). */
-export const MARKET_NORMAL: Vec2 = { x: MARKET_DIR.z, z: -MARKET_DIR.x };
+/**
+ * Unit normal to Market, pointing north-west — toward the Financial District.
+ *
+ * The sign here is load-bearing and it is easy to get backwards, which is
+ * exactly what happened first. With it flipped, `sideOfMarket` called the
+ * Transamerica Pyramid "south of Market", the two street grids were built into
+ * each other's halves of the city, and `buildBlocks` — which asks which side a
+ * block is on before it fills it — rejected nearly every block it looked at.
+ * The whole city rendered in one corner and was empty everywhere else, from a
+ * single minus sign. `src/test/friscoMap.test.ts` now asserts it against real
+ * addresses rather than against my arithmetic.
+ *
+ * Market runs south-west; +X is east and +Z is south, so the normal that
+ * points into the Financial District is (-dir.z, +dir.x).
+ */
+export const MARKET_NORMAL: Vec2 = { x: -MARKET_DIR.z, z: MARKET_DIR.x };
 
 /** Signed distance from Market's centreline. Positive = north of Market. */
 export function sideOfMarket(x: number, z: number): number {

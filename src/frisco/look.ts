@@ -192,43 +192,149 @@ export function flat(color: number, o: { transparent?: boolean; opacity?: number
  * carry the world's identity — the landmarks and the character — and never
  * applied to the thousand background blocks, which get their definition from
  * the toon ramp alone.
+ *
+ * **It is a stock `MeshBasicMaterial` with one injected line, and not the
+ * hand-written `ShaderMaterial` it obviously wants to be.** That is the whole
+ * point of this function and it is worth the paragraph, because the obvious
+ * version — twelve lines of GLSL that push the vertex along its normal and
+ * return a constant colour — was written first and cost most of a day.
+ *
+ * A raw shader opts out of everything three does for you, and three was doing
+ * three things here that this world depends on:
+ *
+ *  - **Skinning.** A hand-written shader has none, so the hull of a character
+ *    renders in bind pose, ignoring the bones. On a rig scaled 38× — which is
+ *    what `loadCharacterRig` hands back — the un-skinned hull is a
+ *    seventy-metre black shape parked at the rig's origin. It engulfs the
+ *    camera, and every pixel of the sky comes back the outline colour. What
+ *    that looks like is a world with no sky, so it is diagnosed as a sky bug,
+ *    which is where the day went. The `[6,5,4]` in the framebuffer was what
+ *    finally named it: `COLORS.outline` in *linear* space, which is the third
+ *    problem below announcing itself.
+ *  - **The logarithmic depth buffer.** Every other material in this world
+ *    writes `gl_FragDepth` on the log scale; a raw shader writes ordinary
+ *    `gl_FragCoord.z`. The two are not comparable, and the outline wins and
+ *    loses depth tests essentially at random.
+ *  - **Colour management.** Uniforms set from a `THREE.Color` are converted to
+ *    linear on assignment, and a raw shader never converts back, so the colour
+ *    that reaches the screen is not the colour in the palette.
+ *
+ * `onBeforeCompile` keeps all three and buys the one thing the raw shader was
+ * for. `customProgramCacheKey` is not optional alongside it: without it three
+ * reuses one compiled program for every `MeshBasicMaterial` in the scene and
+ * the injection silently applies to none of them, or all of them.
  */
-export function outlineMaterial(thickness = 0.02): THREE.ShaderMaterial {
+export function outlineMaterial(thickness = 0.02): THREE.MeshBasicMaterial {
   const key = `o:${thickness}`;
   const hit = cache.get(key);
-  if (hit) return hit as THREE.ShaderMaterial;
-  const m = new THREE.ShaderMaterial({
-    uniforms: { uThickness: { value: thickness }, uColor: { value: new THREE.Color(COLORS.outline) } },
-    vertexShader: /* glsl */ `
-      uniform float uThickness;
-      void main() {
-        // Grow along the normal in VIEW space, scaled by depth, so the outline
-        // keeps a constant thickness on screen instead of vanishing at range.
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vec3 n = normalize(normalMatrix * normal);
-        mv.xyz += n * uThickness * -mv.z;
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform vec3 uColor;
-      void main() { gl_FragColor = vec4(uColor, 1.0); }
-    `,
-    side: THREE.BackSide,
-  });
+  if (hit) return hit as THREE.MeshBasicMaterial;
+  const m = new THREE.MeshBasicMaterial({ color: COLORS.outline, side: THREE.BackSide });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uThickness = { value: thickness };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uThickness;")
+      .replace(
+        "#include <project_vertex>",
+        /* glsl */ `
+        // The stock projection, with the hull pushed out along the normal in
+        // VIEW space and scaled by depth, so the line keeps a constant width on
+        // screen instead of thinning to nothing at range.
+        //
+        // \`transformed\` already carries the skinning; the normal has to be
+        // skinned by hand here because MeshBasicMaterial only bothers to do it
+        // when there is an environment map, and a shell with an unskinned
+        // normal turns inside out at every joint.
+        vec3 outlineNormal = normal;
+        #ifdef USE_SKINNING
+          outlineNormal = vec3( skinMatrix * vec4( outlineNormal, 0.0 ) );
+        #endif
+        vec4 mvPosition = modelViewMatrix * vec4( transformed, 1.0 );
+        mvPosition.xyz += normalize( normalMatrix * outlineNormal ) * uThickness *
+          max( -mvPosition.z, 0.05 );
+        gl_Position = projectionMatrix * mvPosition;
+        `,
+      );
+  };
+  m.customProgramCacheKey = () => `frisco-outline:${thickness}`;
   cache.set(key, m);
   return m;
 }
 
-/** Give an object a cartoon outline. Returns the added mesh, or null. */
+/**
+ * Give an object a cartoon outline. Returns the added shell, or null.
+ *
+ * Where the shell goes depends on what it is outlining, and the two cases are
+ * not interchangeable:
+ *
+ *  - A plain mesh gets the shell as a **child** with an identity transform, so
+ *    it inherits the mesh's place in the world for free.
+ *  - A skinned mesh gets a `SkinnedMesh` shell bound to the *same skeleton*,
+ *    added as a **sibling**. A skinned mesh's own `matrixWorld` is not where it
+ *    appears — the bones decide that — so a child would be drawn wherever the
+ *    rig's root happens to sit, at whatever scale the rig happens to carry.
+ *
+ * Either way the shell is marked, because it is a trap for anything that walks
+ * the scene graph: the first version of this had no mark, and
+ * `traverse(addOutline)` over a character rig outlined the outline, and
+ * outlined that, until the stack ran out. The symptom is a `Maximum call stack
+ * size exceeded` from deep inside `updateMatrixWorld`, which points at three
+ * rather than at the code that did it. Never add to a subtree you are
+ * traversing.
+ */
 export function addOutline(mesh: THREE.Mesh, thickness = 0.02): THREE.Mesh | null {
   if (!mesh.geometry) return null;
-  const shell = new THREE.Mesh(mesh.geometry, outlineMaterial(thickness));
+  if (isOutline(mesh)) return null;
+
+  const mat = outlineMaterial(thickness);
+  const skinned = mesh as THREE.SkinnedMesh;
+  let shell: THREE.Mesh;
+
+  if (skinned.isSkinnedMesh && skinned.skeleton) {
+    const s = new THREE.SkinnedMesh(mesh.geometry, mat);
+    s.bindMode = skinned.bindMode;
+    s.bind(skinned.skeleton, skinned.bindMatrix);
+    s.position.copy(mesh.position);
+    s.quaternion.copy(mesh.quaternion);
+    s.scale.copy(mesh.scale);
+    shell = s;
+  } else {
+    shell = new THREE.Mesh(mesh.geometry, mat);
+    shell.matrixAutoUpdate = false;
+  }
+
+  shell.name = OUTLINE_NAME;
+  shell.userData.friscoOutline = true;
   shell.renderOrder = -1;
   shell.castShadow = false;
   shell.receiveShadow = false;
-  mesh.add(shell);
+  // The hull is bigger than the thing it wraps and the camera can end up inside
+  // it, which three's bounding-sphere test reads as "off screen".
+  shell.frustumCulled = false;
+
+  if (skinned.isSkinnedMesh && mesh.parent) mesh.parent.add(shell);
+  else mesh.add(shell);
   return shell;
+}
+
+const OUTLINE_NAME = "frisco-outline";
+
+/** True for a shell this module added. */
+export function isOutline(o: THREE.Object3D): boolean {
+  return o.userData?.friscoOutline === true;
+}
+
+/**
+ * Outline every mesh in a subtree, safely.
+ *
+ * Collects first, mutates second — see the note on `addOutline`.
+ */
+export function outlineTree(root: THREE.Object3D, thickness = 0.012): void {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry && !isOutline(m)) meshes.push(m);
+  });
+  for (const m of meshes) addOutline(m, thickness);
 }
 
 /** Drop every cached material. Called on unmount. */

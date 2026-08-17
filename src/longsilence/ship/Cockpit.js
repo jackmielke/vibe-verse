@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 33;
+export const PASSPORT_ROWS = 36;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1227,7 +1227,14 @@ function drawArchivePassport(g, v, ctx) {
      ones too. The third column bought more headroom than the last raise
      realised. The type does not actually start shrinking until about
      forty-eight, so thirty-three is a limit with room in it rather than
-     another ceiling to bump next month. */
+     another ceiling to bump next month.
+
+     Vibe Francisco made thirty-four and it is now thirty-six, which is the
+     first raise that changes anything at all — and only on a window under
+     about 560 px tall, where twelve rows instead of eleven takes `nameSize`
+     from 12 to 11.5. Everything 600 px and up is unchanged. Thirty-six rather
+     than thirty-four so this is not a line somebody has to come back to for
+     the two worlds after this one. */
   const TOP = 196;
   const BOTTOM = h - 76;
   const shown = rows.slice(0, PASSPORT_ROWS);

@@ -69,7 +69,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
+    { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "6896dbb", iso: "2026-08-17T06:39:11+00:00", subject: "The bay has something in it, and you can finally look up" },
     { sha: "461d142", iso: "2026-08-17T05:14:33+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
     { sha: "cffdbc9", iso: "2026-08-16T21:05:25+00:00", subject: "Fireballs, bumper cars, F to get out, and the invisible swimmer" },
@@ -124,6 +124,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b991259", iso: "2026-08-02T00:05:06+00:00", subject: "Thirty seconds up, then the system falls over" },
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
+  "frisco": [
+    { sha: "dffe1d7", iso: "2026-08-17T06:13:37+00:00", subject: "A card for San Francisco that shows the city it is now" },
+  ],
   "garden": [
     { sha: "1bf8d5a", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
@@ -168,7 +171,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
-    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
+    { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
@@ -207,7 +210,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
-    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
+    { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
@@ -273,7 +276,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
-    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
+    { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
@@ -330,7 +333,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
-    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
+    { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },

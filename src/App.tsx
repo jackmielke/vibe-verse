@@ -81,6 +81,7 @@ const CharacterSelect = lazy(() => import("./pages/CharacterSelect.tsx"));
 const Companions = lazy(() => import("./pages/Companions.tsx"));
 const VibeTimes = lazy(() => import("./pages/VibeTimes.tsx"));
 const SanFrancisco = lazy(() => import("./pages/SanFrancisco.tsx"));
+const VibeFrancisco = lazy(() => import("./pages/VibeFrancisco.tsx"));
 const SanPalmas = lazy(() => import("./pages/SanPalmas.tsx"));
 const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
 const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
@@ -346,6 +347,9 @@ const App = () => (
           <Route path="/sf" element={<SanFrancisco />} />
           <Route path="/san-francisco" element={<SanFrancisco />} />
           <Route path="/free-fall" element={<SanFrancisco />} />
+          <Route path="/frisco" element={<VibeFrancisco />} />
+          <Route path="/vibe-francisco" element={<VibeFrancisco />} />
+          <Route path="/toy-sf" element={<VibeFrancisco />} />
           {/* THE TERMINAL — the front door. Stand in the sky, pick a world. */}
           <Route path="/terminal" element={<Terminal />} />
           {/* Vibe Island II — the floating archipelago, rebuilt. */}
