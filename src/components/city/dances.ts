@@ -220,16 +220,39 @@ export function setLeg(
 // The moves
 // ---------------------------------------------------------------------------
 
+/**
+ * The city's tempo. Everything danced, and everything played, is this number.
+ *
+ * It used to be per-dance — the floss at 128, the robot at 104, the hype jump
+ * at 136 — which was fine while dancing was silent and impossible the moment
+ * it was not: no single track can be under nine dances at nine tempos. So the
+ * house tempo moved here and each dance kept only a *multiplier* on it (see
+ * `beat` below), which is how a DJ would have described it in the first place.
+ */
+export const CITY_BPM = 120;
+
 export interface DanceDef {
   id: string;
   label: string;
   emoji: string;
   /** One-liner for the wheel. */
   blurb: string;
-  /** The pose function is fed beats, not seconds — tempo lives here. */
-  bpm: number;
+  /**
+   * Subdivision, as a multiple of the house tempo. 1 is on the beat, 2 is
+   * double time, 0.5 is half time.
+   *
+   * Because every move's period is a whole number of its own beats, and its
+   * own beats are a whole multiple of the city's, every dance lands on the bar
+   * — the sprinkler's slow sweep and the running man's sprint are the same
+   * music at different subdivisions, which is what dancing to one track
+   * actually is.
+   */
+  beat: number;
   pose: (b: number, out: DancePose) => void;
 }
+
+/** Effective tempo of a move, for anything that wants to say it out loud. */
+export const danceBpm = (def: DanceDef) => CITY_BPM * def.beat;
 
 const PI = Math.PI;
 /** Ramp 0→1 over `beats`, then snap back. The sprinkler's whole joke. */
@@ -242,7 +265,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "The Floss",
     emoji: "🕺",
     blurb: "Arms one way, hips the other. Badly, on purpose.",
-    bpm: 128,
+    beat: 1,
     pose(b, p) {
       const s = Math.sin(b * PI); // one full swing every two beats
       p.rootY = 0.03 * Math.abs(s) - 0.015;
@@ -266,7 +289,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "The Robot",
     emoji: "🤖",
     blurb: "Eight poses, no interpolation, one servo buzz.",
-    bpm: 104,
+    beat: 0.5,
     pose(b, p) {
       // Deliberately NOT smoothed: the rig writes whatever it is handed, so
       // flooring the beat gives the hard snap the move is made of.
@@ -300,7 +323,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "Disco Point",
     emoji: "🪩",
     blurb: "Point at the ceiling. Point at the floor. Repeat until the lights come up.",
-    bpm: 118,
+    beat: 1,
     pose(b, p) {
       const flip = Math.floor(b / 2) % 2 === 0; // swaps arms every two beats
       const pulse = Math.sin(b * PI);
@@ -329,7 +352,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "The Twist",
     emoji: "🌀",
     blurb: "Feet planted, everything above them going the other way.",
-    bpm: 124,
+    beat: 1,
     pose(b, p) {
       const s = Math.sin(b * PI);
       const a = Math.abs(s);
@@ -351,7 +374,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "Running Man",
     emoji: "🏃",
     blurb: "Sprinting, going nowhere.",
-    bpm: 126,
+    beat: 2,
     pose(b, p) {
       const s = Math.sin(b * PI);
       const hop = Math.abs(s);
@@ -375,7 +398,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "The Sprinkler",
     emoji: "💦",
     blurb: "One arm out, sweep slowly, snap back. Nobody has ever improved on it.",
-    bpm: 108,
+    beat: 0.5,
     pose(b, p) {
       // Six beats of slow sweep, then a hard reset — the timing IS the joke,
       // so the return is a jump cut rather than an ease.
@@ -399,7 +422,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "Raise the Roof",
     emoji: "🙌",
     blurb: "Both hands, straight up, on every beat.",
-    bpm: 112,
+    beat: 1,
     pose(b, p) {
       // Abs, not clamp: clamping puts the push on every OTHER beat and leaves
       // the character standing still through the one in between.
@@ -421,7 +444,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "Hype Jump",
     emoji: "🔥",
     blurb: "Off the floor on every beat, fists up.",
-    bpm: 136,
+    beat: 2,
     pose(b, p) {
       const air = clamp01(Math.sin(b * PI));
       // The beat you are NOT in the air is not a rest — it is the wind-up.
@@ -447,7 +470,7 @@ const DANCE_LIST: DanceDef[] = [
     label: "Step & Clap",
     emoji: "👏",
     blurb: "Two steps and a clap. Everybody can do this one.",
-    bpm: 116,
+    beat: 1,
     pose(b, p) {
       const s = Math.sin(b * PI * 0.5); // four-beat cycle: step, step, back, back
       const clap = Math.abs(Math.sin(b * PI)); // one clap per beat, not per bar
@@ -496,8 +519,17 @@ export function randomDanceId(exclude?: string | null): string {
  * the network only has to carry a dance *id*.
  */
 export function danceBeats(def: DanceDef, nowMs = Date.now()): number {
-  return (nowMs / 1000) * (def.bpm / 60);
+  return (nowMs / 1000) * (danceBpm(def) / 60);
 }
+
+/**
+ * Where the city's bar line is right now, in house beats since the epoch.
+ *
+ * The music reads this and so do the dances, which is the entire reason a
+ * player who walks into a crowd is already on the beat rather than a
+ * quarter-note behind it.
+ */
+export const cityBeats = (nowMs = Date.now()): number => (nowMs / 1000) * (CITY_BPM / 60);
 
 /** Fill `out` with this dance's pose for the shared clock. */
 export function evalDance(def: DanceDef, out: DancePose, nowMs = Date.now()): DancePose {

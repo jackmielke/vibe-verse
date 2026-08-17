@@ -69,12 +69,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "6896dbb", iso: "2026-08-17T06:39:11+00:00", subject: "The bay has something in it, and you can finally look up" },
     { sha: "461d142", iso: "2026-08-17T05:14:33+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
     { sha: "cffdbc9", iso: "2026-08-16T21:05:25+00:00", subject: "Fireballs, bumper cars, F to get out, and the invisible swimmer" },
     { sha: "f28e447", iso: "2026-08-16T18:44:24+00:00", subject: "Drive into the sea and the sea does something about it" },
     { sha: "f8deb43", iso: "2026-08-16T10:07:24+00:00", subject: "The sea has an inside now: dive under Vibe City" },
-    { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -168,12 +168,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
+    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
     { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
-    { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -207,12 +207,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
+    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
     { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
-    { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
   ],
   "museum": [
     { sha: "f4e5d7c", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -273,12 +273,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
     { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
-    { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
   ],
   "space": [
     { sha: "5445c68", iso: "2026-07-19T06:36:25+00:00", subject: "Changes" },
@@ -330,12 +330,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "371f817", iso: "2026-08-02T09:48:15+00:00", subject: "Not everything out here is a ship" },
   ],
   "vibestar": [
+    { sha: "71a3053", iso: "2026-08-17T07:37:56+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
     { sha: "eb001bc", iso: "2026-08-12T00:34:37+00:00", subject: "The boss's shard was a white plate, not a gem" },
     { sha: "fe79add", iso: "2026-08-12T00:25:35+00:00", subject: "The Gremlin Mines: dropped the stuck flash, gave the boss a fight" },
-    { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
   ],
   "vibeverse": [
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },

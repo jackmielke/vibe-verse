@@ -109,6 +109,15 @@ export interface Multiplayer {
   getPlayerPosition(userId: string): { x: number; y: number; z: number } | null;
   /** Trigger a local wave emote sprite above a remote ghost (e.g. when someone bumps them). */
   showEmoteOnGhost(sessionId: string, emote: EmoteName): void;
+  /**
+   * How many remote players are dancing within `radius` metres (xz).
+   *
+   * Drives the music's layers, so it counts *reported* dances rather than
+   * faded-in ones: somebody who has just pressed the key is dancing, and
+   * waiting a quarter-second for their blend to finish would put the drop a
+   * beat behind the person who caused it.
+   */
+  countDancersNear(x: number, z: number, radius: number): number;
   dispose(): void;
 }
 
@@ -834,6 +843,19 @@ export function createMultiplayer(opts: {
     showEmoteOnGhost(sid, emote) {
       const g = ghosts.get(sid);
       if (g) playEmoteOn(g, emote);
+    },
+    countDancersNear(x, z, radius) {
+      const r2 = radius * radius;
+      let n = 0;
+      for (const g of ghosts.values()) {
+        if (!g.dance) continue;
+        const p = g.group.position;
+        if (p.y < -100) continue; // not spawned yet
+        const dx = p.x - x;
+        const dz = p.z - z;
+        if (dx * dx + dz * dz < r2) n++;
+      }
+      return n;
     },
     sendTimeMode(day) {
       myDay = !!day;

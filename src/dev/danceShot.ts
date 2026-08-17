@@ -23,6 +23,7 @@ import {
   applyDancePose,
   bindGltfDanceSkeleton,
   createDancePose,
+  danceBpm,
   evalDance,
   findDance,
   releaseDanceSkeleton,
@@ -124,7 +125,7 @@ export async function shootDance(
     holder.add(model);
     if (sk.bound < 8) console.warn(`[danceShot] ${charId}: only ${sk.bound} bones bound`);
     poseAt = (beat) => {
-      evalDance(def, pose, (beat / (def.bpm / 60)) * 1000);
+      evalDance(def, pose, (beat / (danceBpm(def) / 60)) * 1000);
       applyDancePose(sk, pose, 1);
     };
     restAt = () => {
@@ -140,7 +141,7 @@ export async function shootDance(
       pilot.update(1 / 60, { speed: 0, grounded: true, verticalVel: 0, yawRate: 0, thrusting: false });
     }
     poseAt = (beat) => {
-      evalDance(def, pose, (beat / (def.bpm / 60)) * 1000);
+      evalDance(def, pose, (beat / (danceBpm(def) / 60)) * 1000);
       // A couple of steps so the joints that the gait smooths (neck, elbows)
       // arrive at the dance rather than being caught halfway to it.
       for (let i = 0; i < 3; i++) {
@@ -206,7 +207,7 @@ export async function shootDance(
 
   ctx.fillStyle = "#8ef0c8";
   ctx.font = "bold 14px monospace";
-  ctx.fillText(`${def.label} · ${spec.label} · ${def.bpm}bpm`, 8, 20);
+  ctx.fillText(`${def.label} · ${spec.label} · ${danceBpm(def)}bpm (×${def.beat})`, 8, 20);
 
   const url = sheet.toDataURL("image/png");
   dispose();

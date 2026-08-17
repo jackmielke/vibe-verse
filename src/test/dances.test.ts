@@ -26,6 +26,7 @@ import {
   bindDirectDanceSkeleton,
   createDancePose,
   danceBeats,
+  danceBpm,
   evalDance,
   findDance,
   randomDanceId,
@@ -57,7 +58,7 @@ function sweep(id: string, steps = 128, beats = 16): number[][] {
   const frames: number[][] = [];
   for (let i = 0; i <= steps; i++) {
     const b = (i / steps) * beats;
-    evalDance(def, pose, (b / (def.bpm / 60)) * 1000);
+    evalDance(def, pose, (b / (danceBpm(def) / 60)) * 1000);
     frames.push(angles(pose));
   }
   return frames;
@@ -71,8 +72,11 @@ describe("dances", () => {
       expect(d.label.length).toBeGreaterThan(0);
       expect(d.emoji.length).toBeGreaterThan(0);
       // Outside this range it is not a dance tempo, it is a bug in a constant.
-      expect(d.bpm).toBeGreaterThanOrEqual(60);
-      expect(d.bpm).toBeLessThanOrEqual(200);
+      expect(danceBpm(d)).toBeGreaterThanOrEqual(50);
+      expect(danceBpm(d)).toBeLessThanOrEqual(260);
+      // Whole-number subdivisions only: a move at ×1.37 would never land on
+      // the bar, and one track under nine dances is the whole point.
+      expect([0.25, 0.5, 1, 2, 4]).toContain(d.beat);
     }
   });
 
@@ -132,9 +136,9 @@ describe("dances", () => {
     expect(angles(a)).toEqual(angles(b));
 
     // And the clock has to actually advance: one bar later is a different pose.
-    evalDance(def, b, 1_700_000_000_000 + (60_000 / def.bpm) * 0.5);
+    evalDance(def, b, 1_700_000_000_000 + (60_000 / danceBpm(def)) * 0.5);
     expect(angles(a)).not.toEqual(angles(b));
-    expect(danceBeats(def, 60_000)).toBeCloseTo(def.bpm, 6);
+    expect(danceBeats(def, 60_000)).toBeCloseTo(danceBpm(def), 6);
   });
 
   it("always hands you a different dance than the one you're doing", () => {

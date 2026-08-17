@@ -85,13 +85,28 @@ await page.screenshot({ path: resolve(OUT_DIR, "live-0-before.png") });
 
 // The real thing: a keyboard event on the window, exactly as a player sends.
 await page.keyboard.press("KeyT");
-await page.waitForTimeout(900);
+// Six seconds, not one. Software GL runs this route at roughly a frame a
+// second, so a short wait can land entirely inside a single frame: React has
+// already re-rendered the HUD while the world has not ticked once, and every
+// world-side reading below is then a pre-keypress one. That cost an hour.
+await page.waitForTimeout(6000);
 
 const label = await page.evaluate(() => {
   const el = [...document.querySelectorAll("span")].find((s) => /walk to stop/.test(s.textContent ?? ""));
   return el?.textContent?.trim() ?? "(no dance HUD found)";
 });
 console.log(`· dancing: ${label}`);
+
+// The music. Headless Chromium renders no audio to a device, so "did it play"
+// is not observable here — what IS observable, and what actually breaks, is
+// whether the graph was built, the context left "suspended", or the scheduler
+// threw. A silent AudioContext still advances its clock and still reports its
+// state.
+const crowd = await page.evaluate(() => {
+  const el = [...document.querySelectorAll("span")].find((s) => /dancing/.test(s.textContent ?? ""));
+  return el?.textContent?.trim() ?? "(no crowd HUD found)";
+});
+console.log(`· crowd: ${crowd}`);
 
 // A dance is motion, so one frame proves nothing — take a burst and compare.
 for (let i = 1; i <= 5; i++) {

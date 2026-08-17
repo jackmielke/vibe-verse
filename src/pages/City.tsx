@@ -99,6 +99,7 @@ import {
   type RebelEvent,
 } from "@/components/city/multiplayer";
 import { createCitySounds, type CitySounds } from "@/lib/citySounds";
+import { createCityMusic, musicLayerCount, nextLayerAt, type CityMusic } from "@/lib/cityMusic";
 import { startVibeyVoice, type VibeyVoiceSession } from "@/lib/vibeyVoice";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -802,7 +803,34 @@ export default function City() {
   // current value is mirrored here rather than threaded through each one.
   useEffect(() => { dayModeRef.current = dayMode; }, [dayMode]);
   const [muted, setMuted] = useState(false);
+  /** Mirror of `muted`, so audio created from a frame loop or a raw key
+   *  handler starts at the right level without re-creating the callback. */
+  const mutedRef = useRef(false);
+  mutedRef.current = muted;
   const soundsRef = useRef<CitySounds | null>(null);
+  /** The dance track. Created on the same gesture the sound effects are. */
+  const musicRef = useRef<CityMusic | null>(null);
+  /**
+   * Bring the audio up, if it is not already.
+   *
+   * An AudioContext needs a user gesture, and the city has several front doors
+   * — the entry screen's button, a VR session, and arriving from the hub with
+   * `?fresh=1`, which skips the screen entirely and so never had a click to
+   * hang this on. That last one meant a visitor coming from the lobby got a
+   * silent city: no chimes, no thud on landing, and now no music. Every
+   * gesture that can plausibly be the first one calls this instead of
+   * repeating the two constructors.
+   */
+  const ensureAudioRef = useRef<(() => void) | null>(null);
+  /** Dancers within earshot, including you — mirrored out for the HUD. */
+  const [danceCrowd, setDanceCrowd] = useState(0);
+  const ensureAudio = useCallback(() => {
+    if (!soundsRef.current) soundsRef.current = createCitySounds();
+    if (!musicRef.current) musicRef.current = createCityMusic();
+    soundsRef.current?.setMuted(mutedRef.current);
+    musicRef.current?.setMuted(mutedRef.current);
+  }, []);
+  ensureAudioRef.current = ensureAudio;
   const [charName, setCharName] = useState(initialCharacter);
   const [charPanelOpen, setCharPanelOpen] = useState(false);
   const charRef = useRef(charName);
@@ -3119,7 +3147,15 @@ export default function City() {
     let danceReleased = true;
     let danceSk: DanceSkeleton | null = null;
     const dancePose = createDancePose();
+    /** Last crowd size pushed to React, so the HUD isn't re-rendered per frame. */
+    let crowdShown = 0;
     const setDance = (id: string | null) => {
+      /* A key press is a user gesture, and on the `?fresh=1` route it may be
+         the FIRST one — nothing else on that path has opened an AudioContext.
+         Without this, arriving from the hub and pressing T got you a dance in
+         silence, which is the one outcome this whole feature exists to
+         prevent. */
+      ensureAudioRef.current?.();
       const def = findDance(id);
       danceId = def ? def.id : null;
       setActiveDance(danceId);
@@ -5131,8 +5167,7 @@ export default function City() {
         if (!enteredRef.current) {
           enteredRef.current = true;
           setEntered(true);
-          if (!soundsRef.current) soundsRef.current = createCitySounds();
-          soundsRef.current?.setMuted(muted);
+          ensureAudioRef.current?.();
         }
       }
 
@@ -6564,6 +6599,19 @@ export default function City() {
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
+      // ---- The dance track ----------------------------------------------
+      /* Layers are gated on how many people are dancing within earshot, you
+         included, so a crowd literally sounds bigger than a soloist. Counted
+         here rather than in the music because only the world knows where
+         anybody is standing. The radius is generous — you should hear a party
+         from far enough away to want to walk over to it. */
+      const crowd = (danceId ? 1 : 0) + mp.countDancersNear(pos.x, pos.z, 34);
+      musicRef.current?.update(crowd);
+      if (crowd !== crowdShown) {
+        crowdShown = crowd;
+        setDanceCrowd(crowd);
+      }
+
       // Local emote bubble lifecycle.
       if (localEmote) {
         localEmote.t += dt;
@@ -7016,6 +7064,8 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityVibe;
       soundsRef.current?.dispose();
       soundsRef.current = null;
+      musicRef.current?.dispose();
+      musicRef.current = null;
       ro.disconnect();
       window.clearInterval(hudTimer);
       window.removeEventListener("keydown", onKeyDown);
@@ -7122,8 +7172,7 @@ export default function City() {
       /* Outside that guard, unlike everywhere else, because it used to be
          inside it and `entered` now starts true for these arrivals — leaving it
          there would silence every world reached by a spawn link. */
-      if (!soundsRef.current) soundsRef.current = createCitySounds();
-      soundsRef.current?.setMuted(muted);
+      ensureAudio();
     }
   }, [routerLocation.search]);
 
@@ -7282,8 +7331,7 @@ export default function City() {
     enteredRef.current = true;
     setEntered(true);
     // AudioContext needs a user gesture — this click is it.
-    if (!soundsRef.current) soundsRef.current = createCitySounds();
-    soundsRef.current?.setMuted(muted);
+    ensureAudio();
   };
 
   return (
@@ -7514,6 +7562,7 @@ export default function City() {
                 const next = !muted;
                 setMuted(next);
                 soundsRef.current?.setMuted(next);
+                musicRef.current?.setMuted(next);
                 e.currentTarget.blur();
               }}
               className="glass-panel rounded-full px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
@@ -9287,6 +9336,26 @@ export default function City() {
             <span className="mr-1.5">{findDance(activeDance)?.emoji}</span>
             <span className="font-semibold text-primary">{findDance(activeDance)?.label}</span>
             <span className="text-muted-foreground"> · T for another · walk to stop</span>
+          </span>
+          {/* The crowd, and what it is worth. The track gains a layer at 2, 3
+              and 5 dancers, so this is the one number that explains why the
+              music just got bigger. */}
+          <span className="glass-panel rounded-full px-3 py-2 text-xs pointer-events-none">
+            <span className="mr-1">🎵</span>
+            <span className="font-semibold text-primary">
+              {danceCrowd} dancing
+            </span>
+            <span className="text-muted-foreground">
+              {nextLayerAt(danceCrowd)
+                ? ` · ${nextLayerAt(danceCrowd)! - danceCrowd} more for the next layer`
+                : " · full mix"}
+            </span>
+            <span className="ml-1.5 tracking-widest text-primary/70">
+              {"▮".repeat(musicLayerCount(danceCrowd))}
+              <span className="text-muted-foreground/40">
+                {"▮".repeat(4 - musicLayerCount(danceCrowd))}
+              </span>
+            </span>
           </span>
           <button
             onClick={(e) => {
