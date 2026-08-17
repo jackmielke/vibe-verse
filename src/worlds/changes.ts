@@ -64,13 +64,17 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "d9cd716", iso: "2026-07-02T19:19:25+00:00", subject: "Vibe karts, cleaner clouds, VibeVerse marquee, saved character" },
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
   ],
+  "chronicle": [
+    { sha: "7d18916", iso: "2026-08-15T15:25:14+00:00", subject: "Every day of the vibeverse, one square each" },
+    { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
+  ],
   "city": [
-    { sha: "3ed7b4a", iso: "2026-08-13T23:30:30+00:00", subject: "Vibe Island stopped opening if your character had no model file" },
-    { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
-    { sha: "7a1fca6", iso: "2026-08-12T20:16:30+00:00", subject: "Merge remote-tracking branch 'origin/main' into claude/vibeyverse-structure-overview-qufpth" },
-    { sha: "29d52c3", iso: "2026-08-12T20:16:20+00:00", subject: "The city's controls fit on one row" },
-    { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
-    { sha: "2fb84f5", iso: "2026-08-12T19:35:51+00:00", subject: "Vibe Island stops showing you somebody else's screen first" },
+    { sha: "6896dbb", iso: "2026-08-17T06:39:11+00:00", subject: "The bay has something in it, and you can finally look up" },
+    { sha: "461d142", iso: "2026-08-17T05:14:33+00:00", subject: "Traffic can knock you over, water muffles the world, and /city got measured" },
+    { sha: "cffdbc9", iso: "2026-08-16T21:05:25+00:00", subject: "Fireballs, bumper cars, F to get out, and the invisible swimmer" },
+    { sha: "f28e447", iso: "2026-08-16T18:44:24+00:00", subject: "Drive into the sea and the sea does something about it" },
+    { sha: "f8deb43", iso: "2026-08-16T10:07:24+00:00", subject: "The sea has an inside now: dive under Vibe City" },
+    { sha: "97f99b3", iso: "2026-08-15T15:33:39+00:00", subject: "Take the wheel of any car in Vibe City" },
   ],
   "coil": [
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
@@ -88,13 +92,21 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "eef5ac5", iso: "2026-07-13T09:47:28+00:00", subject: "✨ Agent Lab: hatched companions gently bob (feel alive)" },
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
+  "deep": [
+    { sha: "18b88dc", iso: "2026-08-17T06:36:43+00:00", subject: "🔦 The Midnight Zone was unplayable, and none of it showed up in a build" },
+    { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
+  ],
   "drop-zero": [
+    { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
     { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
     { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
     { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
     { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
-    { sha: "7fef527", iso: "2026-08-09T16:01:45+00:00", subject: "Checkpoint: the water death pass, mid-flight but green" },
+  ],
+  "dunes": [
+    { sha: "271da81", iso: "2026-08-16T20:40:40+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
+    { sha: "c7d5b2c", iso: "2026-08-16T18:38:10+00:00", subject: "The Dune Sea: sandboarding a sunset, on one function" },
   ],
   "edm-town": [
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
@@ -119,6 +131,10 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cc0a14b", iso: "2026-05-14T04:34:45+00:00", subject: "Changes" },
     { sha: "a761af7", iso: "2026-05-14T04:34:27+00:00", subject: "Changes" },
     { sha: "8f21d79", iso: "2026-05-14T03:26:15+00:00", subject: "Changes" },
+  ],
+  "glass-lake": [
+    { sha: "f30d5d9", iso: "2026-08-16T18:06:05+00:00", subject: "The Glass Lake: it is you out there now, and the steering woke up" },
+    { sha: "82036eb", iso: "2026-08-16T10:10:03+00:00", subject: "The Glass Lake: black ice, a live aurora, and the reflection for free" },
   ],
   "globetrotter": [
     { sha: "550ec4e", iso: "2026-07-27T04:50:37+00:00", subject: "🌍 Globetrotter — the world, inside the world" },
@@ -214,6 +230,8 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
   ],
   "passport": [
+    { sha: "c53bd6d", iso: "2026-08-17T07:15:04+00:00", subject: "Exploring pays, because nothing else did" },
+    { sha: "9e1e6e4", iso: "2026-08-14T13:41:03+00:00", subject: "Your own line in the history" },
     { sha: "51778ca", iso: "2026-08-12T06:08:52+00:00", subject: "The wink arrives as a picture, then wakes up" },
     { sha: "7c30fbb", iso: "2026-08-10T03:06:30+00:00", subject: "The passport is a book now, not a fraction" },
   ],
@@ -241,12 +259,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1e", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "a13e984", iso: "2026-08-17T02:54:08+00:00", subject: "Spawn on the plaza, not inside it" },
+    { sha: "60b25c0", iso: "2026-08-17T02:10:52+00:00", subject: "Walk San Francisco, and stop the city boiling while you do" },
     { sha: "05f01ed", iso: "2026-08-04T17:47:22+00:00", subject: "Changes" },
     { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },
     { sha: "4640558", iso: "2026-07-29T10:14:23+00:00", subject: "SF: eight subsystems land — postfx, physics, player, weapons, vfx, ai, vehicles, audio" },
     { sha: "9ba1460", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
-    { sha: "eb067f3", iso: "2026-07-29T04:54:34+00:00", subject: "SF: land the VFX, AI, audio and vehicle subsystems (not yet mounted)" },
-    { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "shop": [
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
@@ -271,12 +289,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "d577da6", iso: "2026-05-14T04:33:23+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
     { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
     { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
     { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
     { sha: "433accb", iso: "2026-08-09T16:46:10+00:00", subject: "Wire the soak burst to every death, and get the red out" },
-    { sha: "7fef527", iso: "2026-08-09T16:01:45+00:00", subject: "Checkpoint: the water death pass, mid-flight but green" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
@@ -297,6 +315,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9ba1460", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
   ],
   "times": [
+    { sha: "caccb2a", iso: "2026-08-17T06:56:21+00:00", subject: "✉️ The paper takes letters, and Vibey finally reads it out loud" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "cacc859", iso: "2026-08-02T00:00:17+00:00", subject: "The Vibe Times starts actually coming out" },
@@ -319,12 +338,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ae87143", iso: "2026-08-11T14:09:53+00:00", subject: "Verges, and the last few things standing on nothing" },
   ],
   "vibeverse": [
+    { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
     { sha: "99439c8", iso: "2026-08-07T01:20:45+00:00", subject: "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
     { sha: "7533666", iso: "2026-08-02T13:54:08+00:00", subject: "One grid, two columns, and cards that go where they say" },
     { sha: "c5f07c9", iso: "2026-08-02T08:44:36+00:00", subject: "THE FINAL FRONTIER joins the vibeverse" },
-    { sha: "77ca812", iso: "2026-08-02T06:51:59+00:00", subject: "Fly it with one hand on the mouse, and hit something hard enough to matter" },
   ],
   "village": [
     { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
