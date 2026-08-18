@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Play, RotateCcw, Trophy, Clock } from "lucide-react";
 import { enableVR } from "@/lib/webxr";
@@ -495,7 +496,9 @@ export default function FruitNinja() {
       } catch {
         /* */
       }
-      renderer.dispose();
+      /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+         leaves the GL context to the garbage collector. See docs/performance.md. */
+      releaseRenderer(renderer);
     };
   }, []);
 

@@ -8,6 +8,7 @@ import {
   ensureAudioRunning,
 } from "@/lib/vibey-sounds";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -4355,7 +4356,9 @@ export default function Unit7Playground() {
       });
       composer.dispose();
       disposableTextures.forEach((texture) => texture.dispose());
-      renderer.dispose();
+      /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+         leaves the GL context to the garbage collector. See docs/performance.md. */
+      releaseRenderer(renderer);
     };
   }, []);
 

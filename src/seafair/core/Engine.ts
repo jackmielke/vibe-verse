@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { Pass, FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -616,7 +617,9 @@ export class Engine {
     window.removeEventListener("orientationchange", this.onWindowResize);
     this.atmospherePass?.dispose();
     this.composer.dispose();
-    this.renderer.dispose();
+    /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+       leaves the GL context to the garbage collector. See docs/performance.md. */
+    releaseRenderer(this.renderer);
     this.canvas.remove();
   }
 }

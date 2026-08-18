@@ -6,6 +6,7 @@
  * `boot.ts`. The core deliberately knows nothing about karts.
  */
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import {
   FIXED_DT,
   makeKartInput,
@@ -237,7 +238,9 @@ export class KartEngine {
     this.systems = [];
     this.listeners.clear();
     disposeGraph(this.ctx.scene);
-    this.ctx.renderer.dispose();
+    /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+       leaves the GL context to the garbage collector. See docs/performance.md. */
+    releaseRenderer(this.ctx.renderer);
   }
 }
 

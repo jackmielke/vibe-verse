@@ -19,6 +19,7 @@
  *  - **boost**: held, not tapped. Mouse down, space, or the button.
  */
 import { CoilAudio } from "./audio";
+import { releaseRenderer } from "@/lib/quality";
 import {
   BOOST_MIN_SCORE,
   MAX_FRAME,
@@ -290,7 +291,9 @@ export class CoilEngine {
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
     this.listeners.clear();
-    this.renderer.dispose();
+    /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+       leaves the GL context to the garbage collector. See docs/performance.md. */
+    releaseRenderer(this.renderer);
     this.audio.dispose();
   }
 

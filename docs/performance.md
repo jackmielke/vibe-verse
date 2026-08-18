@@ -90,13 +90,13 @@ written, already shipping, and confined to one world.
 > something measures the result a second later; without that, it has to be right
 > first time, which none of these can be.
 
-### 2. WebGL contexts leak across navigation
+### 2. WebGL contexts leak across navigation — fixed
 
 Every one of the twenty-nine renderers calls `renderer.dispose()` on unmount,
 which is better than expected. But in three r160 `dispose()` does **not** release
 the GL context — it drops three's own caches and leaves the context to the
 garbage collector. `renderer.forceContextLoss()` is what releases it, and
-**twenty-five of the twenty-nine never call it.**
+**twenty-five of the twenty-nine never called it.**
 
 Navigating world → hub → world in a single page, no reloads:
 
@@ -118,9 +118,27 @@ number against it.
 `route-smoke.mjs` cannot see this, because it opens a fresh page per route. A
 real visitor does not.
 
-**Fix:** `renderer.forceContextLoss()` after `dispose()`, and walk the scene
-disposing geometries, materials and textures. Mechanical, twenty-five files,
-and it wants a test that navigates rather than reloads.
+**The worst offender was not a world at all.** Tracing where each context came
+from, the one that leaked on *every* navigation was `VibeArc` — a decorative
+96×96 canvas on the hub. Worlds leak a context each time you visit them; the hub
+leaked one each time you came *back*, which is every time.
+
+Fixed by routing all twenty-six through `releaseRenderer()` in
+`src/lib/quality.ts`, which disposes and then forces the context loss. Same six
+worlds, after:
+
+```
+after /city            created=  3  lost=  2  live=  1
+after /trek            created=  5  lost=  4  live=  1
+after /starfleet       created=  7  lost=  6  live=  1
+after /museum          created=  9  lost=  8  live=  1
+after /memory-garden   created= 10  lost=  9  live=  1
+after /gallery         created= 12  lost= 12  live=  0
+```
+
+Live contexts no longer grow with navigation — they sit at one, the page you are
+on. This still wants a test that navigates rather than reloads; until there is
+one, nothing stops the next world from reintroducing it.
 
 ### 3. The model pipeline guessed from filenames — fixed
 

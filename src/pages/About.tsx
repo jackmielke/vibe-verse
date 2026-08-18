@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { ArrowLeft } from "lucide-react";
 
@@ -237,7 +238,9 @@ export default function About() {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      renderer.dispose();
+      /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+         leaves the GL context to the garbage collector. See docs/performance.md. */
+      releaseRenderer(renderer);
     };
   }, []);
 

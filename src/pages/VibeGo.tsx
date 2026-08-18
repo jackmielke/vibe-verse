@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { toast } from "sonner";
 import { CHARACTERS, type CharSpec } from "@/lib/characters";
@@ -196,7 +197,9 @@ export default function VibeGo() {
           cam.lookAt(0, 0, 0);
           renderer.render(scene, cam);
           setAvatarImg(canvas.toDataURL("image/png"));
-          renderer.dispose();
+          /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+             leaves the GL context to the garbage collector. See docs/performance.md. */
+          releaseRenderer(renderer);
         },
         undefined,
         () => { /* keep the emoji fallback */ },

@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -7221,7 +7222,9 @@ export default function City() {
           else m?.dispose();
         }
       });
-      renderer.dispose();
+      /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+         leaves the GL context to the garbage collector. See docs/performance.md. */
+      releaseRenderer(renderer);
     };
   }, []);
 

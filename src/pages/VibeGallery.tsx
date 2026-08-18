@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Image as ImageIcon, Sun, Moon, Users } from "lucide-react";
@@ -518,7 +519,9 @@ export default function VibeGallery() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       ro.disconnect();
-      renderer.dispose();
+      /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+         leaves the GL context to the garbage collector. See docs/performance.md. */
+      releaseRenderer(renderer);
       scene.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (mesh.geometry) mesh.geometry.dispose();

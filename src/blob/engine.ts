@@ -19,6 +19,7 @@
  *   is smooth on a 144 Hz display without the sim ever running faster.
  */
 import { neutralBrain, think } from "./ai";
+import { releaseRenderer } from "@/lib/quality";
 import { BlobAudio } from "./audio";
 import {
   MAX_CELLS,
@@ -466,7 +467,9 @@ export class BlobEngine {
     window.removeEventListener("blur", this.onBlur);
     this.listeners.clear();
     this.leaveRoom();
-    this.renderer.dispose();
+    /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+       leaves the GL context to the garbage collector. See docs/performance.md. */
+    releaseRenderer(this.renderer);
     this.audio.dispose();
   }
 

@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export default function StartBackdrop({ companionUrl }: { companionUrl?: string }) {
@@ -313,7 +314,14 @@ export default function StartBackdrop({ companionUrl }: { companionUrl?: string 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      renderer.dispose();
+      /* Not `renderer.dispose()` — that drops three's caches and leaves the GL
+         context for the garbage collector, which may never come. These are
+         decorative canvases that mount and unmount with the pages around them,
+         so each visit stranded one: measured, the hub leaked a context every
+         single time a visitor came back to it from a world. Browsers cap live
+         contexts near sixteen and evict the *oldest*, so the world that broke
+         was whichever one had been open longest. */
+      releaseRenderer(renderer);
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {

@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { ArrowLeft, Check, LogOut, Loader2 } from "lucide-react";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
@@ -197,7 +198,9 @@ export default function VibeProfile() {
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onUp);
-      renderer.dispose();
+      /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+         leaves the GL context to the garbage collector. See docs/performance.md. */
+      releaseRenderer(renderer);
     };
   }, []);
 

@@ -26,6 +26,7 @@
  * through the back of the instrument panel.
  */
 import * as THREE from "three";
+import { releaseRenderer } from "@/lib/quality";
 import {
   FIXED_DT,
   clearEdges,
@@ -319,7 +320,9 @@ export class Engine {
     this.listeners.clear();
     disposeGraph(this.ctx.scene);
     disposeGraph(this.ctx.cockpitScene);
-    this.ctx.renderer.dispose();
+    /* releaseRenderer, not dispose: three r160's dispose() drops its own caches and
+       leaves the GL context to the garbage collector. See docs/performance.md. */
+    releaseRenderer(this.ctx.renderer);
   }
 }
 
