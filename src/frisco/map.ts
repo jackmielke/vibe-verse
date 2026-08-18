@@ -864,8 +864,23 @@ export const SPAWNS: Spawn[] = [
     up: 0, heading: 1.6, blurb: "The crooked block. Try it without touching the flowers.",
   },
   {
+    /* Grant at Clay, under the lanterns. Chinatown is the densest, most
+       recognisable street-level district in the city and there was no way to
+       start in it — the capture harness asked for `spawn:chinatown` and got
+       silence, which is how this was noticed. */
+    key: "chinatown", name: "Chinatown", lat: 37.7942, lon: -122.407,
+    up: 0, heading: 3.35, blurb: "Grant Avenue. Fire escapes, awnings, and the Dragon Gate downhill.",
+  },
+  {
+    key: "mission", name: "The Mission", lat: 37.777, lon: -122.418,
+    up: 0, heading: 0.6, blurb: "Flat, sunny and low. Victorians the whole way down.",
+  },
+  {
+    /* Turned to look across the square rather than into the department store
+       behind it: at 1.1 the spawn opened on forty metres of blank wall with a
+       palm trunk through the middle of the shot. */
     key: "union", name: "Union Square", lat: 37.7879, lon: -122.4075,
-    up: 0, heading: 1.1, blurb: "Palms, the column, and shopping you cannot do.",
+    up: 0, heading: 2.5, blurb: "Palms, the column, and shopping you cannot do.",
   },
   {
     key: "wharf", name: "Fisherman's Wharf", lat: 37.8073, lon: -122.4152,

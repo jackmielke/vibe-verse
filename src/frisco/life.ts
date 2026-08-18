@@ -32,7 +32,7 @@ import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
 import { toon } from "./look";
-import { BOUNDS, isRoad, isSidewalk, isWater, roadAt, shoreSDF, stopLineAhead, walkHeight } from "./map";
+import { BOUNDS, isOpen, isRoad, isSidewalk, isWater, roadAt, shoreSDF, stopLineAhead, walkHeight } from "./map";
 import type { SignalHead } from "./street";
 
 /** Body colours. Muted, because a street of primary-coloured cars reads as a toy shop. */
@@ -195,7 +195,10 @@ function seedCar(rng: Rng, car: Car): void {
   for (let tries = 0; tries < 60; tries++) {
     const x = rng.range(BOUNDS.minX + 60, BOUNDS.maxX - 60);
     const z = rng.range(BOUNDS.minZ + 60, BOUNDS.maxZ - 60);
-    if (isWater(x, z) || !isRoad(x, z)) continue;
+    // `isOpen` as well as `isRoad`: the grid runs straight through Union
+    // Square and the plaza is drawn on top of it, so traffic seeded on the
+    // road alone drives across the paving.
+    if (isWater(x, z) || !isRoad(x, z) || isOpen(x, z)) continue;
     const r = roadAt(x, z);
     // Half the traffic goes the other way; both use the right-hand lane.
     const s = rng.chance(0.5) ? 1 : -1;
@@ -229,10 +232,18 @@ function seedCar(rng: Rng, car: Car): void {
 /** Put a person on a pavement, facing along it. */
 function seedWalker(rng: Rng, w: Walker): void {
   for (let tries = 0; tries < 70; tries++) {
-    // Gaussian about the middle of downtown, clamped to the map. Two thirds
-    // land within 600 m of Market and Montgomery, which is where the crowd is.
-    const x = Math.max(BOUNDS.minX + 40, Math.min(BOUNDS.maxX - 40, rng.gauss() * 620 - 120));
-    const z = Math.max(BOUNDS.minZ + 40, Math.min(BOUNDS.maxZ - 40, rng.gauss() * 660 - 120));
+    /* Two thirds gaussian about the middle of downtown, one third spread over
+       the whole map. Purely gaussian was the first version and it left the
+       Mission, Hayes Valley and the avenues completely deserted — which is
+       fine from a jetpack and wrong the moment somebody spawns down there and
+       walks a block without passing a single person. The clustering is still
+       most of the distribution, because Market Street with four people on it
+       was the bug the gaussian fixed. */
+    const wide = rng.chance(0.34);
+    const x = Math.max(BOUNDS.minX + 40, Math.min(BOUNDS.maxX - 40,
+      wide ? rng.range(BOUNDS.minX, BOUNDS.maxX) : rng.gauss() * 620 - 120));
+    const z = Math.max(BOUNDS.minZ + 40, Math.min(BOUNDS.maxZ - 40,
+      wide ? rng.range(BOUNDS.minZ, BOUNDS.maxZ) : rng.gauss() * 660 - 120));
     if (isWater(x, z) || !isSidewalk(x, z)) continue;
     const r = roadAt(x, z);
     const s = rng.chance(0.5) ? 1 : -1;

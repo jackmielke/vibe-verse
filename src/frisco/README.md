@@ -106,6 +106,12 @@ of a city. `frisco-shot.mjs` now reads the player back after posing and says so
 if it did not move. Anywhere else `dt` multiplies a rate, ask what it does at
 zero.
 
+**`isRoad` is true across every plaza.** The grid is a pure function and does
+not know Union Square is there; the open space is simply drawn on top of it. So
+anything placed on "the road" — parked cars, lane dashes, crossings, traffic —
+has to ask `isOpen` as well, and the first version of the parked cars put forty
+of them on the paving in front of the palms.
+
 **Anything placed by arithmetic into a city built by arithmetic.** Ring courses,
 spawns, coins: the maths is right and the result is inside a building. Three of
 the Hill Climb's ten rings were in Nob Hill apartment blocks and the course was

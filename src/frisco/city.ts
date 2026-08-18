@@ -34,7 +34,9 @@ import {
   groundHeight,
   isOpen,
   isRoad,
+  SPAWNS,
   isWater,
+  ll,
   roadAt,
   shoreSDF,
   sideOfMarket,
@@ -53,6 +55,19 @@ export const CITY_SEED = "vibe-francisco-v1";
  */
 const VICTORIAN_DISTRICTS = new Set([
   "chinatown", "northbeach", "russianhill", "nobhill", "wharf", "mission", "hayes", "civic",
+]);
+
+/**
+ * Where the fire escapes go.
+ *
+ * The pre-war districts plus Union Square and Civic Center, which are full of
+ * six-storey brick with the ironwork still on the front. Not the Financial
+ * District, not SoMa, not the Embarcadero: a curtain-wall tower puts its stairs
+ * inside, and a fire escape on one is the sort of detail that is wrong in a way
+ * you notice without being able to say why.
+ */
+const ESCAPE_DISTRICTS = new Set([
+  "chinatown", "northbeach", "nobhill", "union", "civic", "mission", "hayes", "tenderloin",
 ]);
 
 /** Blend two vertex colours. `t` of 0 is all `a`. */
@@ -392,8 +407,26 @@ function buildCrossings(batch: Batch): void {
           // Just outside the junction box, where the stop line would be.
           const ox = x + dx * (hw + 3.4);
           const oz = z + dz * (hw + 3.4);
-          if (isWater(ox, oz) || !isRoad(ox, oz)) continue;
+          if (isWater(ox, oz) || !isRoad(ox, oz) || isOpen(ox, oz)) continue;
           const yaw = Math.atan2(dz, dx);
+          /* The stop line, across the road just behind the crossing. This is
+             where the traffic actually halts now, so its absence was a car
+             stopping at nothing. */
+          {
+            const by = walkHeight(ox, oz) + 0.085;
+            const bx2 = ox + dx * 2.6;
+            const bz2 = oz + dz * 2.6;
+            const ax = dx * 0.3, az = dz * 0.3;
+            const sx2 = -dz * (hw - 0.5), sz2 = dx * (hw - 0.5);
+            batch.quad(
+              [bx2 - ax - sx2, by, bz2 - az - sz2],
+              [bx2 - ax + sx2, by, bz2 - az + sz2],
+              [bx2 + ax + sx2, by, bz2 + az + sz2],
+              [bx2 + ax - sx2, by, bz2 + az - sz2],
+              paint,
+              [0, 1, 0],
+            );
+          }
           // Six bars across the road, parallel to the traffic.
           for (let k = -2.5; k <= 2.5; k += 1) {
             const off = (k / 2.5) * (hw - 1.2);
@@ -408,6 +441,72 @@ function buildCrossings(batch: Batch): void {
               [bx - ax + sx, by, bz - az + sz],
               [bx + ax + sx, by, bz + az + sz],
               [bx + ax - sx, by, bz + az - sz],
+              paint,
+              [0, 1, 0],
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Dashed lane lines down the middle of the grid streets.
+ *
+ * `buildStreets` paints a solid centre line on anything with a half-width of
+ * eleven metres or more, which is Market, the Embarcadero and the SoMa grid —
+ * and leaves every downtown street, which is most of the city you walk down, as
+ * an unbroken sheet of grey. From the pavement that is the difference between a
+ * road and a corridor; from the air it is the difference between a street grid
+ * and a set of gaps between blocks.
+ *
+ * Two triangles a dash, and the dash is what a real one is: three metres of
+ * paint, six of nothing.
+ */
+function buildLaneDashes(batch: Batch): void {
+  const paint = rgb(COLORS.asphaltLine);
+  const DASH = 3;
+  const GAP = 6.2;
+  for (const [grid, north] of [
+    [GRID_N, true],
+    [GRID_S, false],
+  ] as const) {
+    const c = Math.cos(grid.angle);
+    const s = Math.sin(grid.angle);
+    const reachX = Math.ceil(GRID_REACH / grid.spacingX);
+    const reachZ = Math.ceil(GRID_REACH / grid.spacingZ);
+    const hw = grid.roadHalfWidth;
+    for (let i = -reachX; i <= reachX; i++) {
+      for (let j = -reachZ; j <= reachZ; j++) {
+        const lx = i * grid.spacingX;
+        const lz = j * grid.spacingZ;
+        const x = lx * c - lz * s;
+        const z = lx * s + lz * c;
+        if (x < BOUNDS.minX || x > BOUNDS.maxX || z < BOUNDS.minZ || z > BOUNDS.maxZ) continue;
+        const side = sideOfMarket(x, z);
+        if (north && side < MARKET_HALF_WIDTH + 8) continue;
+        if (!north && side > -(MARKET_HALF_WIDTH + 8)) continue;
+
+        // The two block faces leading away from this corner, dashed from just
+        // past one junction box to just before the next.
+        const runs: Array<[number, number, number]> = [
+          [c, s, grid.spacingX],
+          [-s, c, grid.spacingZ],
+        ];
+        for (const [dx, dz, len] of runs) {
+          for (let t = hw + 8; t < len - hw - 8; t += DASH + GAP) {
+            const mx = x + dx * (t + DASH / 2);
+            const mz = z + dz * (t + DASH / 2);
+            if (isWater(mx, mz) || !isRoad(mx, mz) || isOpen(mx, mz)) continue;
+            const y = walkHeight(mx, mz) + 0.08;
+            const ax = dx * (DASH / 2), az = dz * (DASH / 2);
+            const sx = -dz * 0.16, sz = dx * 0.16;
+            batch.quad(
+              [mx - ax - sx, y, mz - az - sz],
+              [mx - ax + sx, y, mz - az + sz],
+              [mx + ax + sx, y, mz + az + sz],
+              [mx + ax - sx, y, mz + az - sz],
               paint,
               [0, 1, 0],
             );
@@ -439,12 +538,15 @@ function buildCrossings(batch: Batch): void {
  * not the wheels themselves. One continuous skirt was the first version and it
  * made every car look like a doorstop.
  *
- * **Budgeted, and sorted by distance from downtown.** The grid reaches to the
- * bounds, so parking every kerb in the map is seventy thousand cars. What you
- * want is the streets you actually walk, so candidates are ranked by how far
- * they are from Market and Montgomery and the budget is spent from the middle
- * outwards — the same argument `street.ts` makes about lamp posts, for the
- * same reason.
+ * **Budgeted, and sorted by distance from the nearest place you can start.**
+ * The grid reaches the bounds, so parking every kerb in the map is seventy
+ * thousand cars, and the budget has to be spent somewhere. Ranking by distance
+ * from Market and Montgomery was the obvious first answer and the wrong one:
+ * the Mission spawn is eighteen hundred metres out, so it got none at all and
+ * opened on a street with empty kerbs in both directions — the exact absence
+ * this whole function exists to fix, at one of the eight places somebody is
+ * most likely to see it. Ranking against `SPAWNS` puts cars wherever a player
+ * can actually arrive, and downtown still wins because four spawns are in it.
  */
 const PARKED_BUDGET = 1500;
 /** Along-kerb pitch: a 4.5 m car plus a gap you could not actually get into. */
@@ -453,6 +555,17 @@ const PARK_PITCH = 6.4;
 const PARK_CLEAR = 16;
 
 interface ParkSlot { x: number; z: number; yaw: number; rank: number; paint: number }
+
+/** Metres to the nearest spawn point. Projected once — this is called per slot. */
+const SPAWN_XZ: Vec2[] = SPAWNS.map((s) => ll(s.lat, s.lon));
+function nearestSpawn(x: number, z: number): number {
+  let best = Infinity;
+  for (const p of SPAWN_XZ) {
+    const d = Math.hypot(p.x - x, p.z - z);
+    if (d < best) best = d;
+  }
+  return best;
+}
 
 /** Muted, and the same family as the moving traffic. */
 const PARKED_PAINT = [
@@ -480,9 +593,8 @@ function buildParked(batch: Batch, colliders: BuildingBox[], rng: Rng): number {
         const x = lx * c - lz * s;
         const z = lx * s + lz * c;
         if (x < BOUNDS.minX || x > BOUNDS.maxX || z < BOUNDS.minZ || z > BOUNDS.maxZ) continue;
-        // Cheap reject before any of the expensive per-slot work: nothing more
-        // than a kilometre and a half out will survive the budget anyway.
-        if (Math.hypot(x, z) > 1700) continue;
+        // Cheap reject before any of the expensive per-slot work.
+        if (nearestSpawn(x, z) > 700) continue;
         const side = sideOfMarket(x, z);
         if (north && side < MARKET_HALF_WIDTH + 8) continue;
         if (!north && side > -(MARKET_HALF_WIDTH + 8)) continue;
@@ -496,14 +608,20 @@ function buildParked(batch: Batch, colliders: BuildingBox[], rng: Rng): number {
           for (let t = PARK_CLEAR; t <= len - PARK_CLEAR; t += PARK_PITCH) {
             const px = x + dx * t;
             const pz = z + dz * t;
-            if (isWater(px, pz) || !isRoad(px, pz)) continue;
+            if (isWater(px, pz) || !isRoad(px, pz) || isOpen(px, pz)) continue;
             for (const kerb of [1, -1] as const) {
               // Hard against the kerb: the moving traffic runs at 0.48 of the
               // half-width, so 0.82 of it leaves a clear lane between them.
               const off = hw * 0.82;
               const kx = px + dz * off * kerb;
               const kz = pz - dx * off * kerb;
-              if (!isRoad(kx, kz) || isWater(kx, kz)) continue;
+              /* `isRoad` is true across Union Square and every other plaza —
+                 the grid is a pure function and does not know the square is
+                 there, and the open space is simply drawn on top. So the first
+                 version parked forty cars in the middle of Union Square, on the
+                 paving, in front of the palms. Anything placed on the road has
+                 to ask `isOpen` as well. */
+              if (!isRoad(kx, kz) || isWater(kx, kz) || isOpen(kx, kz)) continue;
               // A third of the spaces empty, or every kerb is a solid wall of
               // car and the street stops having a shape.
               if (!rng.chance(0.66)) continue;
@@ -511,7 +629,7 @@ function buildParked(batch: Batch, colliders: BuildingBox[], rng: Rng): number {
               const yaw = Math.atan2(dz, dx) + (kerb > 0 ? 0 : Math.PI);
               slots.push({
                 x: kx, z: kz, yaw,
-                rank: Math.hypot(kx, kz),
+                rank: nearestSpawn(kx, kz),
                 paint: PARKED_PAINT[rng.int(0, PARKED_PAINT.length - 1)],
               });
             }
@@ -675,14 +793,109 @@ function shopFront(
   // The glazing, set a hair proud of the wall so it never z-fights it.
   b.box(x + ox * (depth + 0.04), base + 0.35, z + oz * (depth + 0.04),
     0.06, 2.9, w, glass, 1, facing);
-  // The awning: a slab tipped down toward the street.
+  /* The awning: a slab out over the pavement. Capped at three metres of half
+     width rather than running the whole frontage — a forty-metre block got a
+     forty-metre awning, and on a Chinatown hill, where the building behind you
+     is a storey lower than the one you are standing beside, that reads as a
+     enormous orange sheet lying across the road. An awning is over a shop
+     door, not over a building. */
   const ay = base + 3.35;
-  b.box(x + ox * (depth + 0.75), ay, z + oz * (depth + 0.75),
-    0.85, 0.16, w * 0.96, awning, 1, facing);
+  const aw = Math.min(w * 0.96, 3);
+  b.box(x + ox * (depth + 0.62), ay, z + oz * (depth + 0.62),
+    0.7, 0.16, aw, awning, 1, facing);
   // A sign board above it, in the awning colour a shade darker.
   if (rng.chance(0.62)) {
     b.box(x + ox * (depth + 0.1), ay + 0.34, z + oz * (depth + 0.1),
-      0.1, 0.62, w * 0.7, shade(awning, 0.82), 1, facing);
+      0.1, 0.62, Math.min(w * 0.7, 3.4), shade(awning, 0.82), 1, facing);
+  }
+}
+
+/**
+ * A fire escape.
+ *
+ * The single most San Francisco thing that can be bolted to a facade, and the
+ * one piece of street-level detail that a flat banded wall most obviously
+ * lacks. Chinatown, North Beach, the Tenderloin and the Mission are zigzagged
+ * with them; downtown mostly is not, which is why this is gated on the
+ * district and on the building being an old-enough height.
+ *
+ * The stair between two landings is a QUAD, not a box. `Batch.box` only yaws —
+ * there is no pitch — so a sloped member cannot be a box at all, and the naive
+ * fix of a very long thin box laid flat gives you a landing with a shelf under
+ * it and no diagonal anywhere. A quad takes four arbitrary corners, so the
+ * flight is two triangles and reads correctly from both sides of the street.
+ *
+ * About a hundred triangles each, on roughly a fifth of the low-rise
+ * buildings.
+ */
+function fireEscape(
+  b: Batch,
+  x: number, base: number, z: number,
+  hwB: number, h: number, hdB: number,
+  out: Vec2,
+  yaw: number,
+  rng: Rng,
+): void {
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const ox = out.x * cs - out.z * sn;
+  const oz = out.x * sn + out.z * cs;
+  const facing = Math.atan2(oz, ox);
+  const faceHalf = Math.abs(out.x) > 0.5 ? hdB : hwB;
+  const depth = Math.abs(out.x) > 0.5 ? hwB : hdB;
+  // Sideways along the facade, which is `out` turned a quarter turn.
+  const sx = -oz;
+  const sz = ox;
+
+  const iron = rgb(0x4d5058);
+  const rail = rgb(0x5c6068);
+  const half = Math.min(1.9, faceHalf * 0.42);
+  // Offset along the facade, so a row of them is not a row of identical
+  // centred ladders — real ones sit wherever the stairwell happens to be.
+  const shift = rng.range(-1, 1) * Math.max(0, faceHalf - half - 0.6);
+  const px = x + sx * shift;
+  const pz = z + sz * shift;
+  // Out from the wall by the landing's depth plus a hand's breadth.
+  const stand = depth + 0.82;
+
+  // Landings start at the first floor, not the ground: the bottom flight of a
+  // real one is a counterweighted ladder that hangs above head height.
+  const floor = 4.2;
+  const top = Math.min(h - 1.6, 26);
+  let n = 0;
+  for (let y = base + floor; y < top; y += floor) {
+    // The landing.
+    b.box(px + ox * stand, y, pz + oz * stand, 0.7, 0.1, half, iron, 1, facing);
+    // Its railing, on the street side.
+    b.box(px + ox * (stand + 0.66), y + 0.1, pz + oz * (stand + 0.66), 0.06, 0.9, half, rail, 1, facing);
+    // The flight up to the next one, alternating which end it climbs from.
+    const nextY = y + floor;
+    if (nextY < top) {
+      const dir = n % 2 === 0 ? 1 : -1;
+      const a0x = px + ox * (depth + 0.2) + sx * half * dir;
+      const a0z = pz + oz * (depth + 0.2) + sz * half * dir;
+      const a1x = px + ox * (stand + 0.5) - sx * half * dir;
+      const a1z = pz + oz * (stand + 0.5) - sz * half * dir;
+      const w = 0.34;
+      b.quad(
+        [a0x - sx * w, nextY + 0.1, a0z - sz * w],
+        [a1x - sx * w, y + 0.1, a1z - sz * w],
+        [a1x + sx * w, y + 0.1, a1z + sz * w],
+        [a0x + sx * w, nextY + 0.1, a0z + sz * w],
+        iron,
+      );
+    }
+    n++;
+  }
+  if (n === 0) return;
+  // Two verticals tying the landings together, which is what makes it read as
+  // one structure rather than a stack of shelves.
+  for (const e of [-1, 1] as const) {
+    b.box(
+      px + ox * (stand + 0.6) + sx * half * e, base + floor - 0.4,
+      pz + oz * (stand + 0.6) + sz * half * e,
+      0.07, n * floor, 0.07, rail, 1, facing,
+    );
   }
 }
 
@@ -906,6 +1119,11 @@ function fillBlock(
         const awn = rgb(WALLS[district.palette[rng.int(0, district.palette.length - 1)]]);
         shopFront(buildings, p.x, base, p.z, hwB, hdB, outLocalFront, yaw, shade(awn, 0.85), rng);
       }
+      /* A fire escape on the older, lower districts. Downtown is a curtain
+         wall with the stairs inside it; Chinatown is not. */
+      if (h > 11 && h < 34 && ESCAPE_DISTRICTS.has(district.key) && rng.chance(0.46)) {
+        fireEscape(buildings, p.x, base, p.z, hwB, h, hdB, outLocalFront, yaw, rng);
+      }
       // Flat-roofed and tall enough to have plant on it.
       if (h >= 24) {
         roofClutter(buildings, p.x, base + h + roofRise, p.z, hwB * 0.85, hdB * 0.85, yaw, rng);
@@ -1064,6 +1282,7 @@ export function buildCity(): CityBuild {
   const lines = streetLines();
   buildStreets(roads, walks, lines);
   buildCrossings(roads);
+  buildLaneDashes(roads);
   const street = buildStreetFurniture(props, lines, rng.fork("street"));
   buildCableTrack(props);
   buildBlocks(buildings, colliders, rng.fork("blocks"));

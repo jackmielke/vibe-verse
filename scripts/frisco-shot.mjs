@@ -194,8 +194,17 @@ for (const name of shots) {
      way, which reads as a rendering bug and is not one. A spawn snaps itself
      to asphalt at load, so it cannot. */
   if (name.startsWith("spawn:")) {
+    const before = await page.evaluate(() => window.__frisco.player());
     await page.evaluate((k) => window.__frisco.goTo(k), name.slice(6));
     await page.waitForTimeout(2200);
+    /* A spawn key that does not exist moves nobody and says nothing, so the
+       frame comes out of wherever the last pose left the camera and looks
+       perfectly fine. `spawn:chinatown` did that for a while, because there
+       was no Chinatown spawn. */
+    const after = await page.evaluate(() => window.__frisco.player());
+    if (Math.hypot(after.x - before.x, after.z - before.z) < 1) {
+      console.log(`  ! ${name} did not move the player — is that a real spawn key?`);
+    }
     writeFileSync(`${OUT}/${name.replace(":", "-")}.png`, await page.screenshot());
     const st = await page.evaluate(() => window.__frisco.stats());
     console.log(`${name.padEnd(16)} ${st.drawCalls} draws, ${st.drawnTriangles} tris, ${st.fps} fps`);
