@@ -33,20 +33,11 @@
  * tile that glows in the dark rather than one that waits to be lit.
  */
 import * as THREE from "three";
-import {
-  DANCES,
-  cityBeats,
-  createDancePose,
-  evalDanceGrooved,
-  findDance,
-  makeGroove,
-  stepDanceWeight,
-  type DanceDef,
-  type DanceGroove,
-  type DancePose,
-} from "@/components/city/dances";
-import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
+import { cityBeats } from "@/components/city/dances";
+import { createDanceCrowd, crewHasJoined } from "@/components/city/danceCrowd";
 import { registerPOI, unregisterPOI } from "@/world/worldIndex";
+
+export { crewHasJoined };
 
 export interface DanceFloorOpts {
   center: { x: number; y: number; z: number };
@@ -76,10 +67,6 @@ export interface DanceFloor {
 const TILE = 1.5;
 /** Beyond this the floor stops animating entirely. */
 const CULL_DIST = 90;
-/** Bars between one crew member joining and the next. */
-const JOIN_STAGGER_BARS = 1;
-/** Roughly how long a regular sticks with one move before picking another. */
-const SWITCH_BARS = 8;
 
 /**
  * How bright one panel is, from the absolute beat alone.
@@ -120,25 +107,6 @@ const BAR_COLORS = [
   new THREE.Color("#ffc94a"),
 ];
 const DARK = new THREE.Color("#141a2c");
-
-interface CrewMember {
-  pilot: ProceduralPilot;
-  dance: DanceDef;
-  /** Bars after the first dancer that this one joins. */
-  order: number;
-  weight: number;
-  dancing: boolean;
-  /** Their own feel for the beat — see `makeGroove`. */
-  groove: DanceGroove;
-  /** Where they stand, so a head-turn can be measured from it. */
-  home: THREE.Vector3;
-  /** Which way they were built facing, before any glancing. */
-  baseYaw: number;
-  /** Smoothed head turn toward whoever they are watching, in radians. */
-  glance: number;
-  /** Which bar they last picked a new move on. */
-  switchedBar: number;
-}
 
 export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
   const tiles = opts.tiles ?? 7;
@@ -192,41 +160,32 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
   }
 
   // ---- The regulars -------------------------------------------------------
-  /* Placed around the edge facing in, which is what makes the middle of the
-     floor read as somewhere to go and stand. */
+  /* Four people who already live here. Placed around the edge and facing in,
+     which is what makes the middle of the floor read as somewhere to go and
+     stand — and placed *unevenly*, because four people at exactly 90° on a
+     circle of exactly one radius is the one arrangement no group has ever
+     stood in. The behaviour itself lives in `danceCrowd.ts`, shared with the
+     club. */
   const crewIds = opts.crew ?? ["pixel", "bumble", "chrome", "sable"];
-  const crew: CrewMember[] = crewIds.map((id, i) => {
-    const pilot = buildProceduralPilot(undefined, id);
-    /* Not evenly spaced, and not exactly facing in. Four people at exactly 90°
-       on a circle of exactly one radius, each squared to the centre, is the
-       one arrangement no group of people has ever stood in — it reads as
-       furniture the moment you see it from above. The jitter is hashed off
-       the index so the room is the same room every visit. */
-    const wobble = (n: number) => (Math.sin(n * 12.9898 + i * 78.233) * 43758.5453) % 1;
-    const angle = (i / crewIds.length) * Math.PI * 2 + Math.PI / 4 + wobble(1) * 0.5;
-    const r = half - TILE * 0.7 - Math.abs(wobble(2)) * TILE * 0.5;
-    const home = new THREE.Vector3(Math.cos(angle) * r, 0.1, Math.sin(angle) * r);
-    pilot.group.position.copy(home);
-    // Face roughly the centre. The rig faces +Z, so this is atan2 of the
-    // inward vector, plus a few degrees of not-quite.
-    const baseYaw = Math.atan2(-home.x, -home.z) + wobble(3) * 0.45;
-    pilot.group.rotation.y = baseYaw;
-    group.add(pilot.group);
-    return {
-      pilot,
-      // A different move each, deterministically — a floor where everyone does
-      // the same thing at the same time is a chorus line, not a crowd.
-      dance: DANCES[(i * 3 + 1) % DANCES.length],
-      order: i,
-      weight: 0,
-      dancing: false,
-      groove: makeGroove(i * 137 + 11),
-      home,
-      baseYaw,
-      glance: 0,
-      switchedBar: -999,
-    };
+  const crowd = createDanceCrowd({
+    seed: 1,
+    spots: crewIds.map((design, i) => {
+      const wobble = (n: number) => (Math.sin(n * 12.9898 + i * 78.233) * 43758.5453) % 1;
+      const angle = (i / crewIds.length) * Math.PI * 2 + Math.PI / 4 + wobble(1) * 0.5;
+      const r = half - TILE * 0.7 - Math.abs(wobble(2)) * TILE * 0.5;
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+      return {
+        design,
+        x,
+        z,
+        y: 0.1,
+        yaw: Math.atan2(-x, -z) + wobble(3) * 0.45,
+        order: i,
+      };
+    }),
   });
+  group.add(crowd.group);
 
   registerPOI({
     key: "city-dance-floor",
@@ -237,14 +196,14 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
     position: new THREE.Vector3(opts.center.x, opts.center.y, opts.center.z),
   });
 
-  const pose: DancePose = createDancePose();
   const color = new THREE.Color();
+  /** Scratch, so the per-frame look-at target costs no allocation. */
+  const _watch = new THREE.Vector3();
   /** Beat at which the crew started joining, so the stagger is musical. */
   let joinStartBar = 0;
   let wasBusy = false;
 
   const update = (dt: number, playerPos: THREE.Vector3, dancersNearby: number) => {
-    const seconds = Date.now() / 1000;
     /* Nothing here is visible from across the city, and all of it costs
        something every frame: four solved rigs and forty-nine instance colours.
        Same convention the NPC crew uses — distant things still exist, they
@@ -260,10 +219,6 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
          they cannot see. State is cleared rather than frozen so that walking
          back does the stagger again from the top. */
       wasBusy = false;
-      for (const c of crew) {
-        c.dancing = false;
-        c.weight = 0;
-      }
       return 0;
     }
 
@@ -280,62 +235,7 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
     if (busy && !wasBusy) joinStartBar = bar;
     wasBusy = busy;
 
-    let dancing = 0;
-    for (const c of crew) {
-      c.dancing = busy && crewHasJoined(c.order, bar - joinStartBar);
-      c.weight = stepDanceWeight(c.weight, c.dancing, dt);
-
-      /* Change it up. Nobody does one move for eleven minutes, and a crowd
-         that does is the thing that gives away that it is four loops. The
-         switch lands on a bar line and each regular runs their own clock, so
-         the floor is always partway through somebody changing their mind. */
-      if (c.dancing) {
-        const period = SWITCH_BARS + c.order * 3;
-        if (bar - c.switchedBar >= period) {
-          c.switchedBar = bar;
-          c.dance = DANCES[Math.abs((bar * 7 + c.order * 31) | 0) % DANCES.length];
-        }
-      }
-
-      /* And they drift. A dancer bolted to one square metre reads as a statue
-         with moving parts; a slow wander of a few centimetres, on a period
-         that has nothing to do with the beat, reads as somebody standing. */
-      const sway = c.weight * 0.16;
-      c.pilot.group.position.set(
-        c.home.x + Math.sin(seconds * 0.31 + c.order * 2.1) * sway,
-        c.home.y,
-        c.home.z + Math.sin(seconds * 0.23 + c.order * 4.7) * sway,
-      );
-
-      /* Where they are looking. People on a dance floor watch whoever is
-         dancing, and they turn their shoulders to do it — a crowd of heads
-         locked forward is the tell that they are props. The turn is capped and
-         eased, so it is a glance across a room and not an owl. */
-      const toX = playerPos.x - group.position.x - c.home.x;
-      const toZ = playerPos.z - group.position.z - c.home.z;
-      let want = 0;
-      if (busy) {
-        let d = Math.atan2(toX, toZ) - c.baseYaw;
-        while (d > Math.PI) d -= Math.PI * 2;
-        while (d < -Math.PI) d += Math.PI * 2;
-        want = Math.max(-1.1, Math.min(1.1, d));
-      }
-      c.glance += (want - c.glance) * Math.min(1, dt * 2.4);
-      c.pilot.group.rotation.y = c.baseYaw + c.glance;
-
-      if (c.weight > 0) {
-        evalDanceGrooved(c.dance, pose, c.groove);
-        dancing += c.dancing ? 1 : 0;
-      }
-      c.pilot.update(dt, {
-        speed: 0,
-        grounded: true,
-        verticalVel: 0,
-        yawRate: 0,
-        thrusting: false,
-        dance: c.weight > 0 ? { pose, weight: c.weight, lag: c.dance.lag } : null,
-      });
-    }
+    const dancing = crowd.update(dt, _watch.set(playerPos.x - group.position.x, 0, playerPos.z - group.position.z), busy);
 
     // ---- Panels ----------------------------------------------------------
     /* Idle, the floor breathes on the bar so it still reads as alive and still
@@ -368,7 +268,7 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
     },
     dispose() {
       unregisterPOI("city-dance-floor");
-      for (const c of crew) c.pilot.dispose();
+      crowd.dispose();
       panels.dispose();
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose();
@@ -378,16 +278,3 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
   };
 }
 
-/**
- * Whether the regular at `order` has joined, `barsIn` bars after the first
- * dancer started.
- *
- * The stagger is what stops five people appearing to start dancing on the same
- * frame, which reads as a cutscene rather than as a room noticing you. Bars
- * rather than seconds so each one arrives on a downbeat.
- */
-export const crewHasJoined = (order: number, barsIn: number) =>
-  barsIn >= order * JOIN_STAGGER_BARS;
-
-/** The dance the crew member at `i` performs — exported for the tests. */
-export const crewDanceFor = (i: number) => findDance(DANCES[(i * 3 + 1) % DANCES.length].id)!;

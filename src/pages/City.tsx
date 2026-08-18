@@ -84,6 +84,7 @@ import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
 import { createDanceFloor } from "@/components/city/danceFloor";
+import { createClub } from "@/components/city/club";
 import { createTagGame, type TagGame } from "@/components/city/tagGame";
 import { TagHud } from "@/components/city/TagHud";
 import { createAgentRosterBoard, type RosterAgent } from "@/components/city/agentRosterBoard";
@@ -203,6 +204,19 @@ const MOON_TOP = 175;
 
 // A second moon, hanging on the opposite side of the city so the
 // skyline has more than one celestial neighbour.
+/* THE BASEMENT — a room three hundred metres under the sea floor, south-west
+   of everything. Same address book as the Gremlin Mines at (620, -300, 480),
+   and deliberately so: the city's world is a 360m square of streets ringed by
+   ocean, so "somewhere quiet at ground level" does not exist — the first
+   version of this put the club on open water and players spawned swimming
+   inside a black box. Down here nothing else is within seven hundred metres,
+   the swim solver stops looking below -40, and the transcendence portal's
+   fell-out-of-the-world net is told to skip it, exactly as it is for the
+   mines. */
+const CLUB_X = -420;
+const CLUB_Z = 420;
+const CLUB_Y = -300;
+
 const MOON2_X = -260;
 const MOON2_Z = -240;
 const MOON2_TOP = 205;
@@ -336,6 +350,7 @@ function shortClipName(raw: string) {
 const DIRECT_SPAWNS = new Set([
   "island",
   "hub",
+  "club",
   "moon",
   "mars",
   "tjs",
@@ -441,6 +456,7 @@ export default function City() {
   const islandSpawnRef = useRef<(() => void) | null>(null);
   const hubSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
+  const clubSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
   const tjsSpawnRef = useRef<(() => void) | null>(null);
   // Mars minigame: hunt down all the gremlins. The 3D scene owns the
@@ -2256,6 +2272,7 @@ export default function City() {
       reg("mission-control", "Mission Control (roadmap)", "Cardboard Island", new THREE.Vector3(ISLAND_X + SITE.missionControl.x, ISLAND_TOP, ISLAND_Z + SITE.missionControl.z), ["roadmap", "mission control", "board", "notion"]);
       reg("wish-garden", "Wish Garden", "Cardboard Island", new THREE.Vector3(ISLAND_X + SITE.wishGarden.x, ISLAND_TOP, ISLAND_Z + SITE.wishGarden.z), ["wish", "wishes", "garden", "flowers", "blooms"]);
       reg("studio-embassy", "Vibe Ventures Studio Embassy", "Cardboard Island", new THREE.Vector3(ISLAND_X + SITE.studioEmbassy.x, ISLAND_TOP, ISLAND_Z + SITE.studioEmbassy.z), ["studio", "embassy", "vibe ventures", "network globe", "hubs"]);
+      reg("the-basement", "THE BASEMENT (club)", "THE BASEMENT", new THREE.Vector3(CLUB_X, CLUB_Y, CLUB_Z), ["club", "basement", "nightclub", "dance floor", "disco", "rave"]);
       reg("moon", "The Moon", "Moon", new THREE.Vector3(MOON_X, MOON_TOP, MOON_Z), ["moon", "luna"]);
       reg("moon-2", "Second Moon", "Moon", new THREE.Vector3(MOON2_X, MOON2_TOP, MOON2_Z), ["second moon", "lil moon"]);
       reg("mars", "Mars", "Mars", new THREE.Vector3(MARS_X, MARS_TOP, MARS_Z), ["mars", "red planet", "gremlins"]);
@@ -2568,6 +2585,28 @@ export default function City() {
       tiles: 7,
     });
     scene.add(danceFloor.group);
+
+    /* ---- THE BASEMENT ----------------------------------------------------
+       A room off the map where the music is the point: twenty regulars, a DJ,
+       beams on the beat. Reached from the stairwell disc beside the plaza
+       floor or `?spawn=club`, and left by the pad inside. */
+    const club = createClub({ centerX: CLUB_X, centerZ: CLUB_Z, floorY: CLUB_Y, boxes });
+    scene.add(club.group);
+
+    // The way in: a lit disc beside the dance floor.
+    const stairMat = new THREE.MeshBasicMaterial({ color: 0xb46bff, toneMapped: false });
+    const stairPad = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), stairMat);
+    stairPad.rotation.x = -Math.PI / 2;
+    stairPad.position.set(22.5, 0.06, 4);
+    scene.add(stairPad);
+    const STAIR = new THREE.Vector3(22.5, 0, 4);
+    /* Both doors need a cooldown, or standing on the arrival pad after a
+       teleport immediately satisfies the other door's test and you bounce
+       between the two worlds several times a second. The transcendence portal
+       learned this the same way. */
+    let clubDoorCooldown = 0;
+    /** Mirror of the frame loop's `onGround`, for `__cityDebug.clubDoor`. */
+    let onGroundForDebug = false;
 
     postWorldEvent("enter");
     let applyRemoteBump = (_x: number, _y: number, _z: number, _dirX: number, _dirZ: number, _speed: number) => {};
@@ -4855,6 +4894,13 @@ export default function City() {
       camera.lookAt(player.position.x, player.position.y + 1.2, player.position.z);
     };
     // /city?spawn=moon drops visitors onto the moon's landing pad.
+    // /city?spawn=club drops visitors straight inside THE BASEMENT.
+    clubSpawnRef.current = () => {
+      player.position.copy(club.spawn);
+      vel.set(0, 0, 0);
+      onGround = true;
+      camYaw = 0; // looking at the floor and the DJ, not at the back wall
+    };
     moonSpawnRef.current = () => {
       player.position.copy(moonWorld.spawn);
       vel.set(0, 0, 0);
@@ -4985,6 +5031,17 @@ export default function City() {
         addVibe: (n: number) => void;
         residentNear: (x: number, z: number) => { name: string; x: number; y: number; z: number } | null;
         atmos: () => Record<string, unknown>;
+        /**
+         * The state of THE BASEMENT's two doors.
+         *
+         * Exposed because the cooldown that stops them ping-ponging is counted
+         * in SIMULATED seconds, and a headless harness on a software renderer
+         * gets about fifteen milliseconds of those per wall-clock second — so
+         * `sleep(4000)` after stepping on a pad proves nothing, and reported
+         * both doors as broken when both worked. A harness should wait for the
+         * condition, not for a guess at how long it takes.
+         */
+        clubDoor: () => { cool: number; onGround: boolean; dStair: number; dExit: number };
       };
     };
     devWindow.__cityDebug = {
@@ -4992,6 +5049,12 @@ export default function City() {
         player.position.set(x, y, z);
         vel.set(0, 0, 0);
       },
+      clubDoor: () => ({
+        cool: +clubDoorCooldown.toFixed(3),
+        onGround: onGroundForDebug,
+        dStair: +player.position.distanceTo(STAIR).toFixed(2),
+        dExit: +player.position.distanceTo(club.exit).toFixed(2),
+      }),
       zeppelin: () => {
         const z = skyIslands.zeppelin;
         return [z.pos.x, z.pos.y + z.deckY, z.pos.z];
@@ -6562,7 +6625,7 @@ export default function City() {
 
       // ---- Transcendence Portal: voluntary entry + void safety net ---
       if (transcendState.cooldown > 0) transcendState.cooldown -= dt;
-      if (transcendState.cooldown <= 0 && !insideNow) {
+      if (transcendState.cooldown <= 0 && !insideNow && !club.contains(pos)) {
         const dxT = pos.x - TRANSCEND_POS.x;
         const dzT = pos.z - TRANSCEND_POS.z;
         const onDisc =
@@ -6689,6 +6752,28 @@ export default function City() {
       // counts alongside the real people.
       const floorDancers = danceFloor.update(dt, pos, (danceId ? 1 : 0) + peerDancers);
 
+      // ---- THE BASEMENT: the room, and its two doors --------------------
+      onGroundForDebug = onGround;
+      const clubDancers = club.update(dt, pos, !!danceId);
+      if (clubDoorCooldown > 0) clubDoorCooldown -= dt;
+      else if (pos.distanceTo(STAIR) < 1.9 && onGround) {
+        clubDoorCooldown = 2.5;
+        pos.copy(club.spawn);
+        vel.set(0, 0, 0);
+        /* Face into the room. You come in through the back wall, so whatever
+           way you happened to be looking in the plaza, the first thing on
+           screen is a blank wall and twenty people behind you. */
+        camYaw = 0;
+        soundsRef.current?.chime?.(4);
+      } else if (pos.distanceTo(club.exit) < 1.9 && onGround) {
+        clubDoorCooldown = 2.5;
+        pos.set(STAIR.x, 0.2, STAIR.z + 3);
+        vel.set(0, 0, 0);
+        soundsRef.current?.chime?.(2);
+      }
+      stairPad.material.opacity = 1;
+      stairPad.position.y = 0.06 + Math.sin(now * 0.004) * 0.03;
+
       mp.update(dt, {
         x: pos.x,
         y: pos.y,
@@ -6707,7 +6792,8 @@ export default function City() {
          here rather than in the music because only the world knows where
          anybody is standing. The radius is generous — you should hear a party
          from far enough away to want to walk over to it. */
-      const crowd = (danceId ? 1 : 0) + peerDancers + floorDancers;
+      const crowd =
+        (danceId ? 1 : 0) + peerDancers + floorDancers + (club.contains(pos) ? clubDancers : 0);
       musicRef.current?.update(crowd);
       if (crowd !== crowdShown) {
         crowdShown = crowd;
@@ -6904,7 +6990,17 @@ export default function City() {
          */
         const camPitchNow =
           camPitch > 0.35 ? THREE.MathUtils.lerp(camPitch, 0.35, diveEased) : camPitch;
-        const camDistNow = THREE.MathUtils.lerp(camDist, Math.min(camDist, 4.6), diveEased);
+        /* Indoors, pull the camera in.
+           A 9m chase camera in a 34×26 room spends most of its time on the
+           far side of a wall, and since the walls are single-sided you are not
+           looking at a wall — you are looking through it at nothing, which
+           renders as a completely black screen. That is not a harness quirk;
+           it is what a player standing in the club would see. Clamping to
+           something that fits inside the room is the fix, and it is the same
+           trick the dive camera above already uses. */
+        const camDistNow = club.contains(pos)
+          ? Math.min(camDist, 5.2)
+          : THREE.MathUtils.lerp(camDist, Math.min(camDist, 4.6), diveEased);
         const camLift = THREE.MathUtils.lerp(1.4, 0.25, diveEased);
         const eye = new THREE.Vector3(
           pos.x + Math.sin(camYaw) * Math.cos(camPitchNow) * camDistNow,
@@ -7132,6 +7228,9 @@ export default function City() {
       resetRunRef.current = null;
       vibeyExciteRef.current = null;
       danceFloor.dispose();
+      club.dispose();
+      stairPad.geometry.dispose();
+      stairMat.dispose();
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");
@@ -7200,6 +7299,7 @@ export default function City() {
       spawnsApiRef.current = null;
       islandSpawnRef.current = null;
       moonSpawnRef.current = null;
+      clubSpawnRef.current = null;
       marsSpawnRef.current = null;
       tjsSpawnRef.current = null;
       marsResetRef.current = null;
@@ -7270,6 +7370,7 @@ export default function City() {
     if (spawn) {
       if (spawn === "hub") hubSpawnRef.current?.();
       else if (spawn === "moon") moonSpawnRef.current?.();
+      else if (spawn === "club") clubSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
       else if (spawn === "tjs") tjsSpawnRef.current?.();
       else if (spawn === "ski") skiTravelRef.current?.("peak");
