@@ -231,6 +231,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "1020159", iso: "2026-05-14T02:41:35+00:00", subject: "Changes" },
   ],
   "newsroom": [
+    { sha: "99e4d5b", iso: "2026-08-18T22:03:15+00:00", subject: "🗂 Small ads, bylines, and a spike by the door" },
     { sha: "6871988", iso: "2026-08-18T21:35:37+00:00", subject: "🗞 The Newsroom, and a paper that can be subscribed to" },
   ],
   "ninja": [
@@ -327,12 +328,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9ba1460", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
   ],
   "times": [
+    { sha: "99e4d5b", iso: "2026-08-18T22:03:15+00:00", subject: "🗂 Small ads, bylines, and a spike by the door" },
     { sha: "6871988", iso: "2026-08-18T21:35:37+00:00", subject: "🗞 The Newsroom, and a paper that can be subscribed to" },
     { sha: "caccb2a", iso: "2026-08-17T06:56:21+00:00", subject: "✉️ The paper takes letters, and Vibey finally reads it out loud" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
     { sha: "cacc859", iso: "2026-08-02T00:00:17+00:00", subject: "The Vibe Times starts actually coming out" },
-    { sha: "2e13693", iso: "2026-07-18T02:43:29+00:00", subject: "📰 The Vibe Times — the world writes its own newspaper" },
   ],
   "trek": [
     { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },
