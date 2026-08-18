@@ -945,6 +945,21 @@ const WORLDS_RAW: WorldEntry[] = [
     passport: true,
   },
   {
+    key: "newsroom",
+    route: "/newsroom",
+    aliases: ["/press"],
+    name: "The Newsroom",
+    emoji: "🗞",
+    kind: "hangout",
+    blurb:
+      "The floor the paper is put together on. The wire comes in overhead, the presses wait for first light, the back issues hang on a spike, and the editor takes letters at the desk.",
+    status: "Open all night",
+    accent: "#ffd479",
+    source: "src/newsroom",
+    nav: true,
+    passport: true,
+  },
+  {
     key: "times",
     route: "/times",
     name: "The Vibe Times",

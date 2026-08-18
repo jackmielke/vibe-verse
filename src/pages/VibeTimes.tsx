@@ -17,7 +17,7 @@
  * it. That is also what keeps a thin news day from printing empty boxes.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { loadPaper, printedAt, type Dispatch, type Issue } from "@/lib/vibeTimes";
 import { Letterbox } from "@/components/times/Letterbox";
 import { ReadAloud } from "@/components/times/ReadAloud";
@@ -60,8 +60,13 @@ function daysOld(iso: string) {
 export default function VibeTimes() {
   const [current, setCurrent] = useState<Issue | null>(null);
   const [archive, setArchive] = useState<Issue[]>([]);
-  const [reading, setReading] = useState<number | null>(null);
   const [error, setError] = useState(false);
+  // Which edition is on screen lives in the URL, not in a useState. A back
+  // issue you cannot link to is not an archive, it is a toggle: /times/7 is
+  // the seventh paper, it can be sent to somebody, and the feed points at
+  // exactly these addresses.
+  const { issueNo } = useParams();
+  const reading = issueNo ? Number(issueNo) : null;
 
   useEffect(() => {
     let live = true;
@@ -89,6 +94,9 @@ export default function VibeTimes() {
     () => issues.find((i) => i.issue === reading) ?? current,
     [issues, reading, current],
   );
+  // A number nobody ever printed. Say so rather than quietly showing today's
+  // paper under someone else's link.
+  const missing = reading !== null && issues.length > 0 && !issues.some((i) => i.issue === reading);
 
   if (error) {
     return (
@@ -106,6 +114,7 @@ export default function VibeTimes() {
   const forecast = issue.forecast ?? [];
   const sources = issue.sources ?? [];
   const letters = issue.letters ?? [];
+  const ground = issue.ground_weather ?? null;
   const printed = printedAt(issue.printed_at);
 
   return (
@@ -121,7 +130,7 @@ export default function VibeTimes() {
           </h1>
           <p className="mt-1 italic">“{issue.motto}”</p>
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#2a2118] pt-2 text-[10px] uppercase tracking-widest sm:text-xs">
-            <span>Issue №{issue.issue}</span>
+            <span>Vol. I · No. {issue.issue}</span>
             <span className="text-center">
               {longDate(issue.date)}
               {/* The hour it was printed, on the reader's clock. Old issues
@@ -141,9 +150,9 @@ export default function VibeTimes() {
             {issues.map((i) => {
               const active = i.issue === issue.issue;
               return (
-                <button
+                <Link
                   key={i.issue}
-                  onClick={() => setReading(i.issue)}
+                  to={i.issue === current.issue ? "/times" : `/times/${i.issue}`}
                   className={
                     active
                       ? "font-bold underline decoration-2 underline-offset-2"
@@ -152,19 +161,27 @@ export default function VibeTimes() {
                   aria-current={active ? "page" : undefined}
                 >
                   №{i.issue}
-                </button>
+                </Link>
               );
             })}
           </nav>
         )}
 
+        {/* A link to an edition nobody ever printed. Better to say so than
+            to show today's paper under someone else's number. */}
+        {missing && (
+          <p className="mt-3 border border-[#2a2118]/40 px-3 py-2 text-center text-xs uppercase tracking-widest">
+            no issue №{reading} was ever printed · showing the latest instead
+          </p>
+        )}
+
         {/* Reading something other than today's front page. */}
-        {isBackIssue && (
+        {isBackIssue && !missing && (
           <p className="mt-3 border border-[#2a2118]/40 bg-[#2a2118]/[0.04] px-3 py-2 text-center text-xs uppercase tracking-widest">
             from the archive ·{" "}
-            <button onClick={() => setReading(null)} className="underline">
+            <Link to="/times" className="underline">
               back to issue №{current.issue}
-            </button>
+            </Link>
           </p>
         )}
 
@@ -243,6 +260,30 @@ export default function VibeTimes() {
           <div className="border border-[#2a2118]/40 p-4">
             <h4 className="text-center text-sm font-bold uppercase tracking-[0.25em]">⛅ Sky Weather</h4>
             <p className="mt-2 text-sm leading-relaxed">{issue.weather}</p>
+
+            {/* And the real forecast, for the real town the village is built
+                on top of. The map under Vibe Island is genuine Healdsburg
+                coordinates, so this is not a flourish: it is the weather
+                where the plaza is. Fiction in the paragraph above, a
+                thermometer directly beneath it. */}
+            {ground && (
+              <div className="mt-3 border-t border-[#2a2118]/30 pt-2">
+                <p className="text-center text-[10px] uppercase tracking-widest opacity-60">
+                  On the ground · {ground.place}
+                </p>
+                <div className="mt-1 flex items-baseline justify-center gap-3 text-sm">
+                  <span className="text-2xl font-bold">{ground.now_f}°</span>
+                  <span className="italic">{ground.conditions}</span>
+                </div>
+                <p className="mt-1 text-center text-[11px] uppercase tracking-widest opacity-70">
+                  {ground.high_f}° / {ground.low_f}°
+                  {ground.rain_chance > 0 && <> · {ground.rain_chance}% rain</>}
+                  {ground.sunrise && ground.sunset && (
+                    <> · sun {ground.sunrise}–{ground.sunset}</>
+                  )}
+                </p>
+              </div>
+            )}
             <div className="mt-3 border-t border-[#2a2118]/30 pt-2 text-center text-xs uppercase tracking-widest">
               {Object.entries(issue.stats).map(([k, v]) => (
                 <div key={k} className="mt-1">
@@ -342,7 +383,21 @@ export default function VibeTimes() {
               ))}
             </p>
           )}
+          {/* The colophon. A paper that can only be read on the page it is
+              printed on is a web page wearing a serif font; this is the
+              building it comes out of and the way to get it delivered. */}
           <p className="mt-2">
+            <Link to="/newsroom" className="underline">the newsroom</Link>
+            <span className="mx-2">·</span>
+            <a
+              href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vibe-times?format=rss`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline"
+            >
+              subscribe (rss)
+            </a>
+            <span className="mx-2">·</span>
             <Link to="/city?spawn=island" className="underline">visit the island</Link>
             <span className="mx-2">·</span>
             <Link to="/" className="underline">the VibeVerse</Link>

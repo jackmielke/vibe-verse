@@ -80,6 +80,7 @@ const Globetrotter = lazy(() => import("./pages/Globetrotter.tsx"));
 const CharacterSelect = lazy(() => import("./pages/CharacterSelect.tsx"));
 const Companions = lazy(() => import("./pages/Companions.tsx"));
 const VibeTimes = lazy(() => import("./pages/VibeTimes.tsx"));
+const Newsroom = lazy(() => import("./pages/Newsroom.tsx"));
 const SanFrancisco = lazy(() => import("./pages/SanFrancisco.tsx"));
 const VibeFrancisco = lazy(() => import("./pages/VibeFrancisco.tsx"));
 const SanPalmas = lazy(() => import("./pages/SanPalmas.tsx"));
@@ -343,6 +344,12 @@ const App = () => (
           <Route path="/companions" element={<Companions />} />
           {/* The Vibe Times — the world's own newspaper, written nightly by the loop. */}
           <Route path="/times" element={<VibeTimes />} />
+          {/* Every edition has an address of its own. The feed points at
+              these, and a back issue can be sent to somebody. */}
+          <Route path="/times/:issueNo" element={<VibeTimes />} />
+          {/* …and the floor it is put together on. */}
+          <Route path="/newsroom" element={<Newsroom />} />
+          <Route path="/press" element={<Newsroom />} />
           <Route path="/worlds" element={<Game />} />
           {/* San Francisco: Free Fall — open-world shooter, real SF geometry. */}
           <Route path="/sf" element={<SanFrancisco />} />

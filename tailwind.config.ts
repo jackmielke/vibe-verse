@@ -107,6 +107,14 @@ export default {
           from: { opacity: "0", transform: "scale(0.94)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
+        // The newsroom's wire tape. Exactly -50% because the tape is the
+        // dispatch list printed twice: half a loop puts the second copy
+        // where the first started, which is the only translation that has
+        // no seam in it.
+        wire: {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -114,6 +122,7 @@ export default {
         "vibe-sweep": "vibe-sweep 1.15s linear infinite",
         "fade-in": "fade-in 0.28s ease-out both",
         "scale-in": "scale-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
+        wire: "wire 90s linear infinite",
       },
 
     },

@@ -38,13 +38,20 @@ A `note` reading `build-log.json (missing)` means the site had not deployed
 `/build-log.json` when that issue was written, so it went out without the
 build record. A gap in `edition_date` means a day genuinely got skipped.
 
-It reads three worlds and hands all of it to Claude Sonnet as **data**:
+It reads four worlds and hands all of it to Claude Sonnet as **data**:
 
 | | Where it comes from |
 |---|---|
 | **The build record** | `public/build-log.json` — this repo's commit log, published with the site by `tools/build-log.mjs` (which runs as `prebuild`, so every deploy refreshes it). The repo is private, so the GitHub API is closed to the function unless `VIBE_TIMES_GITHUB_TOKEN` is set, in which case it prefers that and gets the log live. |
 | **The world itself** | Supabase: `world_events` (who arrived, who walked up to whom), `world_agents`, `world_graffiti`, the VIBE ledger and drops, games played, the price, and Vibey's overnight journal entries. Names and counts only — never message bodies, never wallet addresses. |
 | **Outside the sky** | The actual internet, from open feeds with no API keys: ten RSS/Atom feeds (AI, tech, sports, culture), Hacker News' front page, ESPN's scoreboards for six leagues, and Wikipedia's "on this day". |
+| **The ground** | Open-Meteo, for the weather over the village's actual coordinates (38.6135, −122.8695 — Healdsburg). No key, no account. |
+
+The weather is the small thing that does the most work. A paper that opens
+"87° and clear over Healdsburg, and the plaza was empty by four" is reporting
+from a place; one that opens with a commit is reporting from a repository.
+It is also the only line in the issue that a reader can check by looking out
+of a window, which is the entire point of printing it.
 
 ## What keeps it honest
 
@@ -118,9 +125,39 @@ and the button is never dead.
 `src/lib/vibeTimes.ts` is the one loader. It asks the function for the current
 issue plus back issues, and falls back to the committed `public/vibe-times.json`
 if the presses are unreachable — the `/times` page, the front-door strip
-(`TodaysPaper`) and the newsstand in the plaza all go through it. The page
-works out the age of the issue itself and says so rather than passing a
-week-old front page off as today's.
+(`TodaysPaper`), the newsstand in the plaza and the newsroom all go through
+it. The page works out the age of the issue itself and says so rather than
+passing a week-old front page off as today's.
+
+**Every edition has a permanent address.** `/times/13` is issue thirteen and
+will still be issue thirteen next year; `/times` is whatever is newest. That
+split matters because a back issue used to be a piece of component state, so
+there was no way to send anybody one — the archive was readable and
+unquotable at the same time.
+
+**And there is a feed**, at `…/functions/v1/vibe-times?format=rss`. One
+`<item>` per edition, linking at the permalink, so the paper can be read
+somewhere other than the site it comes from. That is the difference between a
+page on a website and something that behaves like a newspaper.
+
+## The newsroom
+
+`/newsroom` (`src/newsroom/`) is the floor the paper is put together on: the
+wire coming in over a tape, the presses and when they next run, the streak of
+unbroken mornings, the morgue of back issues, and the wall the letters go up
+on. It is the paper's own building rather than a second view of the front
+page.
+
+Nothing in it is decorative. The tape is this morning's actual dispatches,
+the countdown is the actual pg_cron window, the streak is counted from the
+actual `edition_date` column, and the wall is the actual `world_graffiti`
+table. The arithmetic — `streak`, `nextRun`, `describeAge` — lives in
+`src/newsroom/press.ts` as pure functions with tests, because a countdown
+that says "in 23 hours" during the hour the paper is being written does not
+look broken, it just is.
+
+It is built out of type rather than 3D, which is on purpose: the paper is
+words, it opens instantly, and it cannot leak a WebGL context.
 
 ## Poking it by hand
 

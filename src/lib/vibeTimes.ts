@@ -45,6 +45,23 @@ export interface Issue {
   vibey_says?: string;
   /** `text` is the reader's own words; `note` is the editor answering back. */
   letters?: { author: string; text: string; note: string }[];
+  /**
+   * The real forecast for the real town the village sits on.
+   *
+   * Computed in the edge function from Open-Meteo, never written by the
+   * model, so the number beside the invented sky weather is a thermometer
+   * reading rather than a nice-sounding one.
+   */
+  ground_weather?: {
+    place: string;
+    conditions: string;
+    now_f: number;
+    high_f: number;
+    low_f: number;
+    rain_chance: number;
+    sunrise: string | null;
+    sunset: string | null;
+  } | null;
   forecast?: { emoji: string; label: string; text: string }[];
   sources?: { label: string; url: string }[];
 }

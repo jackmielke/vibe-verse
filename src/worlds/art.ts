@@ -57,6 +57,7 @@ import kartArt from "@/assets/worlds/kart.jpg";
 import runArt from "@/assets/worlds/run.jpg";
 import trekArt from "@/assets/worlds/final-frontier.jpg";
 import seafairArt from "@/assets/worlds/seafair.jpg";
+import newsroomArt from "@/assets/worlds/newsroom.jpg";
 import vibestarArt from "@/assets/worlds/vibestar.jpg";
 
 export const WORLD_ART: Record<string, string> = {
@@ -111,6 +112,11 @@ export const WORLD_ART: Record<string, string> = {
   village: villageArt,
   seafair: seafairArt,
   vibestar: vibestarArt,
+  /* The newsroom is the one paper-shaped thing in here with a card, and the
+     rule below is why: `times` is a front page, which is a document, and a
+     photograph of a document is just the document again, smaller and
+     unreadable. The newsroom is a room. */
+  newsroom: newsroomArt,
   // Deliberately absent, and no longer all for the same reason:
   //
   //   globetrotter, go   · both draw the real Earth from map tiles, so a

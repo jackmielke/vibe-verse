@@ -6,7 +6,7 @@
 //
 // The paper used to be written by hand, which is why issue №1 sat on the
 // front door from July into August wearing a masthead that claimed it was
-// written nightly. Now it genuinely is, and it reads three worlds:
+// written nightly. Now it genuinely is, and it reads four worlds:
 //
 //   1. THE BUILD RECORD — public/build-log.json, published with the site by
 //      tools/build-log.mjs. This repo's commit subjects are already written
@@ -24,6 +24,9 @@
 //      night's scores, culture, and what happened on this date in history.
 //      All from open feeds, no API keys.
 //
+//   4. THE GROUND — the real forecast for Healdsburg, California, which is
+//      the real place the village is built on top of.
+//
 // Everything above is gathered as DATA and handed to the model with one
 // standing rule: it may only write what the brief contains. In-world claims
 // trace to a commit or a logged event; every outside-world dispatch must
@@ -36,6 +39,7 @@
 // Routes:
 //   GET  /vibe-times                      → { current, archive } (published)
 //   GET  /vibe-times?limit=5              → fewer back issues
+//   GET  /vibe-times?format=rss           → the feed, one item per edition
 //   POST /vibe-times                      → write today's issue if unwritten
 //   POST /vibe-times?force=1              → rewrite today's (service key only)
 //   POST /vibe-times {action:"letter"}    → a reader writes in
@@ -125,9 +129,9 @@ function decodeEntities(s: string) {
 }
 
 /** RSS and Atom, parsed the cheap way. We only ever want title + link. */
-function parseFeed(xml: string, limit: number) {
+function parseFeed(xmlText: string, limit: number) {
   const out: { title: string; url: string; when: string }[] = [];
-  const blocks = xml.match(/<(item|entry)\b[\s\S]*?<\/(item|entry)>/g) ?? [];
+  const blocks = xmlText.match(/<(item|entry)\b[\s\S]*?<\/(item|entry)>/g) ?? [];
   for (const b of blocks.slice(0, limit)) {
     const title = decodeEntities(b.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] ?? "");
     const url =
@@ -348,8 +352,8 @@ async function outsideWorld(now: Date): Promise<Dispatch[]> {
   for (const f of FEEDS) {
     jobs.push(
       grab(f.url, 9000)
-        .then((xml) =>
-          parseFeed(xml, f.take).map((i) => ({
+        .then((xmlText) =>
+          parseFeed(xmlText, f.take).map((i) => ({
             desk: f.desk, source: f.label, title: i.title, url: i.url, when: i.when,
           })),
         )
@@ -445,6 +449,56 @@ async function outsideWorld(now: Date): Promise<Dispatch[]> {
 }
 
 // ---------------------------------------------------------------------
+// 4. The weather where the village actually is
+// ---------------------------------------------------------------------
+//
+// The map under Vibe Island is real Healdsburg, California — the plaza,
+// the temple and the observatory all sit on genuine coordinates — so the
+// paper can print the genuine forecast for the ground the sky is over.
+// It runs beside the invented sky weather rather than instead of it, which
+// is the joke and also the point: one column is fiction, the column next to
+// it is what the thermometer says.
+//
+// Open-Meteo needs no key and no attribution beyond being decent about it.
+const VILLAGE = { lat: 38.6135, lon: -122.8695, place: "Healdsburg, California" };
+
+const WEATHER_WORDS: Record<number, string> = {
+  0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
+  45: "fog", 48: "freezing fog", 51: "light drizzle", 53: "drizzle",
+  55: "heavy drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
+  71: "light snow", 73: "snow", 75: "heavy snow", 80: "rain showers",
+  81: "rain showers", 82: "violent rain showers", 95: "thunderstorm",
+  96: "thunderstorm with hail", 99: "thunderstorm with hail",
+};
+
+async function groundWeather() {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${VILLAGE.lat}&longitude=${VILLAGE.lon}` +
+    `&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,` +
+    `precipitation_probability_max&timezone=America%2FLos_Angeles&forecast_days=1&temperature_unit=fahrenheit`;
+  const d = await grabJson<{
+    current?: { temperature_2m?: number; weather_code?: number };
+    daily?: {
+      temperature_2m_max?: number[]; temperature_2m_min?: number[];
+      sunrise?: string[]; sunset?: string[]; precipitation_probability_max?: number[];
+    };
+  }>(url, 8000);
+  if (!d?.daily || !d.current) return null;
+
+  const clock = (iso?: string) => (iso ? iso.slice(11, 16) : null);
+  return {
+    place: VILLAGE.place,
+    conditions: WEATHER_WORDS[d.current.weather_code ?? -1] ?? "unsettled",
+    now_f: Math.round(d.current.temperature_2m ?? 0),
+    high_f: Math.round(d.daily.temperature_2m_max?.[0] ?? 0),
+    low_f: Math.round(d.daily.temperature_2m_min?.[0] ?? 0),
+    rain_chance: d.daily.precipitation_probability_max?.[0] ?? 0,
+    sunrise: clock(d.daily.sunrise?.[0]),
+    sunset: clock(d.daily.sunset?.[0]),
+  };
+}
+
+// ---------------------------------------------------------------------
 // Writing the thing
 // ---------------------------------------------------------------------
 const SYSTEM = `You are the entire staff of THE VIBE TIMES, the daily paper of the VibeVerse — a hub of small 3D worlds you can walk, fly, drive and shoot your way through. Vibey, the resident AI, is your editor-in-chief. The paper is printed in the sky and read by the residents, most of whom are agents, and by the humans who wander in.
@@ -514,9 +568,9 @@ async function compose(apiKey: string, briefText: string): Promise<any> {
   if (!r.ok) throw new Error(`openrouter ${r.status}: ${(await r.text()).slice(0, 300)}`);
   const data = await r.json();
   const text: string = data?.choices?.[0]?.message?.content ?? "";
-  const json = text.replace(/^[\s\S]*?```(?:json)?/, "").replace(/```[\s\S]*$/, "").trim() || text.trim();
+  const jsonText = text.replace(/^[\s\S]*?```(?:json)?/, "").replace(/```[\s\S]*$/, "").trim() || text.trim();
   try {
-    return JSON.parse(json);
+    return JSON.parse(jsonText);
   } catch {
     // Models occasionally wrap the object in a sentence. Take the outermost
     // braces rather than failing the whole edition over punctuation.
@@ -614,6 +668,58 @@ function emoji(v: unknown, fallback: string) {
   return first ?? fallback;
 }
 
+/** XML has five characters it cannot hold, and a feed full of them. */
+function xml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * The feed.
+ *
+ * A daily paper that cannot be subscribed to is a website. One item per
+ * edition rather than per story: the issue is the unit here, it is what has
+ * a permalink, and a reader who wants one story wants the front page it
+ * came on.
+ */
+// deno-lint-ignore no-explicit-any
+function rssFeed(issues: any[]) {
+  const items = issues.map((i) => {
+    const link = `${SITE}/times/${i.issue}`;
+    const lead = (i.headlines ?? [])[0];
+    const rest = (i.headlines ?? []).slice(1).map((h: { headline: string }) => h.headline);
+    const wire = (i.dispatches ?? []).map((d: { headline: string }) => d.headline);
+    const body = [
+      lead ? `${lead.headline}. ${lead.body}` : "",
+      rest.length ? `Also: ${rest.join(" · ")}` : "",
+      wire.length ? `From the wire: ${wire.join(" · ")}` : "",
+    ].filter(Boolean).join("\n\n");
+    // Papers are dated by the day they came out, not the second.
+    const when = new Date(`${i.printed_at ?? `${i.date}T13:00:00Z`}`).toUTCString();
+    return `    <item>
+      <title>${xml(`No. ${i.issue} — ${i.motto ?? ""}`.trim())}</title>
+      <link>${xml(link)}</link>
+      <guid isPermaLink="true">${xml(link)}</guid>
+      <pubDate>${when}</pubDate>
+      <description>${xml(body)}</description>
+    </item>`;
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>The Vibe Times</title>
+  <link>${SITE}/times</link>
+  <description>The daily paper of the VibeVerse. What got built, who greeted whom, and the wire from outside the sky.</description>
+  <language>en</language>
+  <ttl>720</ttl>
+${items.join("\n")}
+</channel></rss>`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
@@ -635,6 +741,15 @@ Deno.serve(async (req) => {
       .limit(limit);
     if (error) return json({ error: error.message }, 500);
     const issues = (data ?? []).map((r) => r.payload);
+    if (url.searchParams.get("format") === "rss") {
+      return new Response(rssFeed(issues), {
+        headers: {
+          ...CORS,
+          "Content-Type": "application/rss+xml; charset=utf-8",
+          "Cache-Control": "public, max-age=900, s-maxage=900",
+        },
+      });
+    }
     return json(
       { current: issues[0] ?? null, archive: issues.slice(1) },
       200,
@@ -728,7 +843,7 @@ Deno.serve(async (req) => {
   const site = safeSite(url.searchParams.get("site")) ?? SITE;
 
   try {
-    const [build, world, wireToday, postbag] = await Promise.all([
+    const [build, world, wireToday, postbag, ground] = await Promise.all([
       buildRecord(sinceISO, site),
       worldRecord(sb, sinceISO),
       outsideWorld(now),
@@ -740,6 +855,7 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(12)
         .then((r: { data: { id: number; author: string; body: string }[] | null }) => r.data ?? []),
+      groundWeather(),
     ]);
 
     // Yesterday's stories are not today's news. Feeds move slowly enough
@@ -789,6 +905,10 @@ Deno.serve(async (req) => {
         text: l.body,
       })),
       computed_stats: stats,
+      // Real numbers for the real place the village is built on. The model
+      // may mention them in the weather column; the box that prints them is
+      // filled from here, so the thermometer is never a hallucination.
+      ground_weather: ground,
       instructions:
         "Write today's issue from this brief only. Do not repeat a previous headline. " +
         "Every dispatch url must appear verbatim in dispatches_available." +
@@ -879,6 +999,7 @@ Deno.serve(async (req) => {
       dispatches: wire,
       gossip: str(draft.gossip, 1600),
       weather: str(draft.weather, 1200),
+      ground_weather: ground,
       vibey_says: str(draft.vibey_says, 1200),
       letters: letters.map((l: { author: string; text: string; note: string }) => ({
         author: l.author,
@@ -941,6 +1062,7 @@ Deno.serve(async (req) => {
       dispatches_dropped: dropped,
       commits_read: build.commits.length,
       build_source: build.source,
+      ground_weather: ground ? `${ground.now_f}F ${ground.conditions}` : "unavailable",
     });
   } catch (e) {
     const message = String((e as Error)?.message ?? e).slice(0, 500);
