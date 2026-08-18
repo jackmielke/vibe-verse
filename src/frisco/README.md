@@ -46,7 +46,7 @@ Anything that reaches for `performance.now()` on its own breaks that.
 | `player.ts` | Walking, jumping, the jetpack, the third-person camera, the Vibeverse character rig. |
 | `input.ts` | Keyboard, mouse and two thumbs. |
 | `street.ts` | Lamp posts, signals, hydrants, benches, shelters, trolley wires. A budget problem, and documented as one. |
-| `life.ts` | Cars, boats and nine hundred pedestrians — the things that move by themselves. |
+| `life.ts` | Cars, boats and nine hundred pedestrians, the signal cycle, and traffic that stops at it. |
 | `cablecar.ts` | The Powell line: rails, two cars, and the only thing here you can ride. |
 | `play.ts` | The logbook, the coins, three ring courses and the Grand Tour. |
 | `audio.ts` | The entire soundtrack, synthesised, with no files in it. |
@@ -96,6 +96,16 @@ against the real nine-thousand-collider city. Every assertion in that file was
 verified to *fail* against the old behaviour before being kept — a test that
 passes both ways is worse than no test.
 
+**A smoother stepped with `dt` of zero.** `freeze` — the capture harness's
+hold-everything-still — sets `dt` to zero, and the third-person camera follows
+the player by an exponential smoother on `dt`. A smoother with no time in it
+never arrives, so the camera simply stopped moving and `setPose` became a
+no-op: every posed screenshot for several commits was a photograph of the
+spawn point, and nothing looked wrong because each frame was still a picture
+of a city. `frisco-shot.mjs` now reads the player back after posing and says so
+if it did not move. Anywhere else `dt` multiplies a rate, ask what it does at
+zero.
+
 **Anything placed by arithmetic into a city built by arithmetic.** Ring courses,
 spawns, coins: the maths is right and the result is inside a building. Three of
 the Hill Climb's ten rings were in Nob Hill apartment blocks and the course was
@@ -134,7 +144,19 @@ triangle count and the draw calls, which is what tells geometry that was never
 built apart from geometry that was culled.
 
 `FRISCO_JPEG=src/assets/worlds/frisco.jpg node scripts/frisco-shot.mjs /tmp/x card`
-recuts the card art.
+recuts the card art. The `kerb` pose is the one for judging the things that are
+only wrong close up — parked cars, awnings, shopfronts, the height of a lamp
+post against a person; every other pose is at least twenty metres from the
+nearest detail.
+
+**The traffic is the one part of this world that can be verified without a
+browser at all.** `CityLife` needs no WebGL context, so `friscoTraffic.test.ts`
+steps sixty seconds of world time in about three seconds and asserts the three
+things that are invisible in a still frame: that cars queue at reds, that the
+queues clear, and that the city never deadlocks. The capture harness manages
+about a twentieth of a second of world time per real second under a software
+renderer, which makes "does anything ever go green" a seven-minute question
+there and a two-second one in vitest.
 
 `window.__frisco` is the debug surface the harnesses drive: `stats`, `player`,
 `setPose`, `goTo`, `landmarks`, `show(layer, on)`, `setFog`, `setTime`,

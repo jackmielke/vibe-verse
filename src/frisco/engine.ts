@@ -144,6 +144,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
 
   o.onProgress?.("Letting the traffic out");
   const life = new CityLife();
+  life.mountSignals(city.signals);
   scene.add(life.group);
 
   o.onProgress?.("Winding the cable");
@@ -421,6 +422,8 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
         triangles: city.stats.triangles,
         buildings: city.stats.buildings,
         furniture: city.stats.furniture,
+        parked: city.stats.parked,
+        signals: city.signals.length,
         life: life.stats(),
         buildMs: Math.round(city.stats.ms),
         tier,
@@ -454,6 +457,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       goTo: (k: string) => handle.goTo(k),
       startCourse: (k = "market") => { handle.onPlay?.(play.start(k)); },
       audioRunning: () => audio.isRunning,
+      traffic: () => life.traffic(),
       nextRing: () => { const v = play.nextRingPosition(); return v ? { x: v.x, y: v.y, z: v.z } : null; },
       playState: () => play.snapshot(),
       landmarks: () =>
@@ -508,6 +512,7 @@ declare global {
       show: (name: string, on: boolean) => void;
       setFog: (a: number) => void;
       freeze: (on: boolean) => void;
+      traffic: () => { green: number; moving: number; stopped: number };
       setTier: (t: number) => void;
       setTime: (k: string) => void;
       setShadows: (on: boolean) => void;

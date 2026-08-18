@@ -18,7 +18,7 @@ import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
 import { buildLandmarks } from "./landmarks";
 import { buildCableTrack } from "./cablecar";
-import { buildStreetFurniture } from "./street";
+import { buildStreetFurniture, type SignalHead } from "./street";
 import { COLORS, WALLS, addOutline, toon } from "./look";
 import {
   BOUNDS,
@@ -68,8 +68,11 @@ export interface CityBuild {
   group: THREE.Group;
   /** Solid boxes the player collides with, for `collision.ts`. */
   colliders: BuildingBox[];
+  /** Where the lit lenses go, for `life.ts` to switch with the signal phase. */
+  signals: SignalHead[];
   stats: {
-    triangles: number; buildings: number; landmarks: number; furniture: number; ms: number;
+    triangles: number; buildings: number; landmarks: number;
+    furniture: number; parked: number; ms: number;
   };
 }
 
@@ -349,6 +352,13 @@ function buildStreets(roads: Batch, walks: Batch, lines: StreetLine[]): void {
  * across the width — because that is what San Francisco paints. The ladder
  * style with bars across the road is the British one and reads wrong
  * immediately, in a way most people cannot name.
+ *
+ * **One quad each, not one box.** A bar is paint: three centimetres of it, on
+ * a road, seen from above and never from the side. Built as boxes these were
+ * twenty-eight thousand solids and a hundred and forty thousand of the
+ * hundred and seventy thousand triangles were faces of a 3 cm cliff that no
+ * camera in this world can ever be low enough to see. Every flat mark on the
+ * ground here should be a quad; this is the only one that was not.
  */
 function buildCrossings(batch: Batch): void {
   const paint = rgb(COLORS.crossing);
@@ -389,12 +399,164 @@ function buildCrossings(batch: Batch): void {
             const off = (k / 2.5) * (hw - 1.2);
             const bx = ox - dz * off;
             const bz = oz + dx * off;
-            batch.box(bx, walkHeight(bx, bz) + 0.075, bz, 1.9, 0.03, 0.42, paint, 1, yaw);
+            const by = walkHeight(bx, bz) + 0.085;
+            // Local axes of the bar: `dx,dz` is along the traffic.
+            const ax = dx * 1.9, az = dz * 1.9;
+            const sx = -dz * 0.42, sz = dx * 0.42;
+            batch.quad(
+              [bx - ax - sx, by, bz - az - sz],
+              [bx - ax + sx, by, bz - az + sz],
+              [bx + ax + sx, by, bz + az + sz],
+              [bx + ax - sx, by, bz + az - sz],
+              paint,
+              [0, 1, 0],
+            );
           }
         }
       }
     }
   }
+}
+
+/**
+ * Cars parked at the kerb.
+ *
+ * The single loudest thing missing from these streets, and it took a while to
+ * see because what is wrong is an absence. Every kerb in San Francisco is
+ * solid with parked cars — it is most of what the ground floor of the city
+ * looks like — and a street with a hundred and ninety moving cars on it and
+ * nothing at the edges reads as a road, not as a place people live.
+ *
+ * These are static. They go into the same merged mesh as everything else and
+ * are never touched again, which is why there can be fifteen hundred of them
+ * for the price of forty-five thousand triangles: thirty each, and no
+ * simulation at all. `life.ts` is for things that move, and a parked car
+ * emphatically does not.
+ *
+ * Four boxes, not seven. Two dark blocks under the ends do the work of four
+ * wheels: from the pavement opposite — which is where these are seen from —
+ * what tells you a car has wheels is the gap of daylight between the axles,
+ * not the wheels themselves. One continuous skirt was the first version and it
+ * made every car look like a doorstop.
+ *
+ * **Budgeted, and sorted by distance from downtown.** The grid reaches to the
+ * bounds, so parking every kerb in the map is seventy thousand cars. What you
+ * want is the streets you actually walk, so candidates are ranked by how far
+ * they are from Market and Montgomery and the budget is spent from the middle
+ * outwards — the same argument `street.ts` makes about lamp posts, for the
+ * same reason.
+ */
+const PARKED_BUDGET = 1500;
+/** Along-kerb pitch: a 4.5 m car plus a gap you could not actually get into. */
+const PARK_PITCH = 6.4;
+/** Kept clear at each end of a block, where the crossings and hydrants are. */
+const PARK_CLEAR = 16;
+
+interface ParkSlot { x: number; z: number; yaw: number; rank: number; paint: number }
+
+/** Muted, and the same family as the moving traffic. */
+const PARKED_PAINT = [
+  0xd9534f, 0x4a6fa5, 0xe8c05a, 0xe8e4dc, 0x5b6878,
+  0x6fa07a, 0xcf7f4a, 0x8e6fa8, 0xd8d3c6, 0x4a5766,
+  0x8f5a4a, 0xb0aa9c,
+] as const;
+
+function buildParked(batch: Batch, colliders: BuildingBox[], rng: Rng): number {
+  const slots: ParkSlot[] = [];
+
+  for (const [grid, north] of [
+    [GRID_N, true],
+    [GRID_S, false],
+  ] as const) {
+    const c = Math.cos(grid.angle);
+    const s = Math.sin(grid.angle);
+    const reachX = Math.ceil(GRID_REACH / grid.spacingX);
+    const reachZ = Math.ceil(GRID_REACH / grid.spacingZ);
+    const hw = grid.roadHalfWidth;
+    for (let i = -reachX; i <= reachX; i++) {
+      for (let j = -reachZ; j <= reachZ; j++) {
+        const lx = i * grid.spacingX;
+        const lz = j * grid.spacingZ;
+        const x = lx * c - lz * s;
+        const z = lx * s + lz * c;
+        if (x < BOUNDS.minX || x > BOUNDS.maxX || z < BOUNDS.minZ || z > BOUNDS.maxZ) continue;
+        // Cheap reject before any of the expensive per-slot work: nothing more
+        // than a kilometre and a half out will survive the budget anyway.
+        if (Math.hypot(x, z) > 1700) continue;
+        const side = sideOfMarket(x, z);
+        if (north && side < MARKET_HALF_WIDTH + 8) continue;
+        if (!north && side > -(MARKET_HALF_WIDTH + 8)) continue;
+
+        // The two block faces leading away from this corner.
+        const runs: Array<[number, number, number]> = [
+          [c, s, grid.spacingX],
+          [-s, c, grid.spacingZ],
+        ];
+        for (const [dx, dz, len] of runs) {
+          for (let t = PARK_CLEAR; t <= len - PARK_CLEAR; t += PARK_PITCH) {
+            const px = x + dx * t;
+            const pz = z + dz * t;
+            if (isWater(px, pz) || !isRoad(px, pz)) continue;
+            for (const kerb of [1, -1] as const) {
+              // Hard against the kerb: the moving traffic runs at 0.48 of the
+              // half-width, so 0.82 of it leaves a clear lane between them.
+              const off = hw * 0.82;
+              const kx = px + dz * off * kerb;
+              const kz = pz - dx * off * kerb;
+              if (!isRoad(kx, kz) || isWater(kx, kz)) continue;
+              // A third of the spaces empty, or every kerb is a solid wall of
+              // car and the street stops having a shape.
+              if (!rng.chance(0.66)) continue;
+              // Facing the way traffic goes on that side of the road.
+              const yaw = Math.atan2(dz, dx) + (kerb > 0 ? 0 : Math.PI);
+              slots.push({
+                x: kx, z: kz, yaw,
+                rank: Math.hypot(kx, kz),
+                paint: PARKED_PAINT[rng.int(0, PARKED_PAINT.length - 1)],
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  slots.sort((a, b) => a.rank - b.rank);
+  const take = Math.min(slots.length, PARKED_BUDGET);
+  for (let n = 0; n < take; n++) {
+    const p = slots[n];
+    const y = walkHeight(p.x, p.z);
+    const paint = rgb(p.paint);
+    const cs = Math.cos(p.yaw);
+    const sn = Math.sin(p.yaw);
+    // Two axles, with daylight between them.
+    const axle = rgb(0x24262b);
+    for (const end of [-1, 1] as const) {
+      batch.box(
+        p.x + cs * end * 1.42, y + 0.02, p.z + sn * end * 1.42,
+        0.56, 0.38, 0.88, axle, 1, p.yaw,
+      );
+    }
+    // Tapered, so the top of the body is narrower than the sills. Untapered it
+    // is a shoebox, and a shoebox seen from a first-floor window — which is
+    // most of where you see these from — is all roof and no shape.
+    batch.box(p.x, y + 0.34, p.z, 2.25, 0.66, 0.9, paint, 0.93, p.yaw);
+    /* The cabin is GLASS coloured, not a darker shade of the body. Shaded paint
+       was the first version and the dark cars came out as one flat charcoal
+       lump with no shape in them at all — the glazing is most of what tells you
+       which way a car is facing, and a navy car with navy windows has none.
+       It also sits back from the middle, which is what makes three boxes read
+       as a car and not as a loaf. */
+    batch.box(
+      p.x - cs * 0.36, y + 1.0, p.z - sn * 0.36,
+      1.0, 0.56, 0.74, mix(rgb(0x9fc9dd), paint, 0.38), 0.86, p.yaw,
+    );
+    colliders.push({
+      x: p.x, z: p.z, hw: 2.25, hd: 0.96, yaw: p.yaw,
+      baseY: y, roofY: y + 1.56,
+    });
+  }
+  return take;
 }
 
 /* ------------------------------------------------------------------ *
@@ -902,12 +1064,18 @@ export function buildCity(): CityBuild {
   const lines = streetLines();
   buildStreets(roads, walks, lines);
   buildCrossings(roads);
-  const furniture = buildStreetFurniture(props, lines, rng.fork("street"));
+  const street = buildStreetFurniture(props, lines, rng.fork("street"));
   buildCableTrack(props);
   buildBlocks(buildings, colliders, rng.fork("blocks"));
   buildGreenery(green, rng.fork("trees"));
   buildWater(water);
   const landmarks = buildLandmarks(marks, colliders);
+  /* Last, so `stats.buildings` stays a count of buildings. Fifteen hundred
+     parked cars are colliders — you cannot walk through one, and you can stand
+     on the roof — but reporting them as buildings would put the city at eleven
+     thousand and quietly break every judgement anyone makes from that number. */
+  const structures = colliders.length;
+  const parked = buildParked(props, colliders, rng.fork("parked"));
 
   // `glow: true` — the window courses and the lamp heads light up at night.
   const vertexColoured = toon(0xffffff, { vertexColors: true, glow: true });
@@ -949,8 +1117,10 @@ export function buildCity(): CityBuild {
   return {
     group,
     colliders,
+    signals: street.signals,
     stats: {
-      triangles, buildings: colliders.length, landmarks, furniture,
+      triangles, buildings: structures, landmarks,
+      furniture: street.placed, parked,
       ms: performance.now() - t0,
     },
   };

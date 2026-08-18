@@ -1,28 +1,7 @@
 {
-  "generated_at": "2026-08-18T21:40:55.832Z",
+  "generated_at": "2026-08-18T21:46:30.128Z",
   "window_days": 45,
   "commits": [
-    {
-      "sha": "68719881",
-      "date": "2026-08-18",
-      "subject": "🗞 The Newsroom, and a paper that can be subscribed to",
-      "lede": "The Vibe Times had a front page and nothing behind it. This adds the floor it is made on, and three things a real paper has that this one did not.",
-      "places": [
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 18
-    },
-    {
-      "sha": "12441046",
-      "date": "2026-08-18",
-      "subject": "Made the dancers people rather than four copies of one person",
-      "lede": "Everything about the dancing was perfectly quantised, which is exactly right for keeping a room in time and exactly wrong for making it look like people. Four regulars on the floor hit every beat on the same frame, at the same size, with every joint arriving at once, facing whichever way they were built. Three changes, and they compound:",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
     {
       "sha": "151c50cf",
       "date": "2026-08-18",
@@ -1033,6 +1012,26 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
       "places": [],
       "files": 2
+    },
+    {
+      "sha": "e4b1fda8",
+      "date": "2026-08-11",
+      "subject": "Vibe Island: a real tree, a real pool, and a lawn worth standing in",
+      "lede": "Follow-up to the grass pass, all of it the same argument — the thing your eye lands on is whichever object in frame is still made of one flat value.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "9b3bb8fa",
+      "date": "2026-08-11",
+      "subject": "Stopped the city shimmering when you look at it from the air",
+      "lede": "Vibe City's ground is a stack of near-coplanar surfaces: the asphalt plate at y=0, the sidewalks 1.2 cm above it, the crossings 2 cm above those, and now the beach running a few metres underneath the plate's edge. On the street those are real gaps. From six hundred metres up they are no gap at all.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
     }
   ]
 }

@@ -32,7 +32,7 @@
 import type { Batch } from "./batch";
 import { rgb, shade } from "./batch";
 import type { Vec2 } from "./map";
-import { walkHeight } from "./map";
+import { gridAxis, walkHeight } from "./map";
 import type { Rng } from "@/shared/proc/rng";
 
 /** Hard ceiling on placed objects. Reported, never silent. */
@@ -42,6 +42,23 @@ export interface FurnitureLine {
   points: Vec2[];
   halfWidth: number;
   kind: "market" | "grid-n" | "grid-s" | "embarcadero";
+}
+
+/**
+ * Where one signal's lit lens goes, and which traffic it governs.
+ *
+ * `axis` is the grid axis of the street the signal faces down, in the sense
+ * `map.stopLineAhead` uses. Two numbers is the whole interface between the
+ * furniture and the traffic: everything on axis 1 goes green together, then
+ * everything on axis 0, and no junction has to know about any other.
+ */
+export interface SignalHead {
+  x: number;
+  z: number;
+  redY: number;
+  greenY: number;
+  yaw: number;
+  axis: 0 | 1;
 }
 
 /** How often a street gets furniture, and on how many sides. */
@@ -80,8 +97,19 @@ function lampGlow(b: Batch, x: number, y: number, z: number, yaw: number): void 
   b.quad(P(-0.46, -0.24), P(-0.46, 0.24), P(0.46, 0.24), P(0.46, -0.24), glassy, [0, -1, 0], 1);
 }
 
-/** A traffic signal: a post, a mast arm, and a three-lamp head. */
-function signal(b: Batch, x: number, z: number, toRoad: Vec2): void {
+/**
+ * A traffic signal: a post, a mast arm, and a three-lamp head.
+ *
+ * The three lenses are drawn DARK. They used to be drawn red, amber and green
+ * all at once — which was right at the time, because nothing was simulating
+ * traffic and a signal showing one colour would have been a signal permanently
+ * lying about a junction where cars sailed straight through. Now the cars stop,
+ * so the lit lens is an instanced overlay that `life.ts` switches with the
+ * phase, and the static geometry is just the housing it sits in.
+ *
+ * Returns where the head ended up, so the overlay can be hung on it.
+ */
+function signal(b: Batch, x: number, z: number, toRoad: Vec2): SignalHead {
   const y = walkHeight(x, z);
   const metal = rgb(0x3c4450);
   const yaw = Math.atan2(toRoad.z, toRoad.x);
@@ -90,16 +118,18 @@ function signal(b: Batch, x: number, z: number, toRoad: Vec2): void {
   const hx = x + toRoad.x * 4.2;
   const hz = z + toRoad.z * 4.2;
   b.box(hx, y + 4.1, hz, 0.28, 1.15, 0.22, shade(metal, 0.9), 1, yaw);
-  // Red, amber, green — always all three, because a signal that shows one
-  // colour reads as broken and nothing here is simulating traffic anyway.
-  const lamps: Array<[number, number]> = [
-    [4.95, 0xd94a3d],
-    [4.6, 0xe8b13d],
-    [4.25, 0x53c46f],
-  ];
-  for (const [ly, col] of lamps) {
-    b.box(hx + toRoad.x * -0.16, y + ly, hz + toRoad.z * -0.16, 0.13, 0.13, 0.06, rgb(col), 1, yaw);
+  const dark = rgb(0x22262c);
+  for (const ly of [4.95, 4.6, 4.25]) {
+    b.box(hx + toRoad.x * -0.16, y + ly, hz + toRoad.z * -0.16, 0.13, 0.13, 0.06, dark, 1, yaw);
   }
+  return {
+    x: hx + toRoad.x * -0.24,
+    z: hz + toRoad.z * -0.24,
+    redY: y + 4.95,
+    greenY: y + 4.25,
+    yaw,
+    axis: 0,
+  };
 }
 
 function hydrant(b: Batch, x: number, z: number): void {
@@ -170,8 +200,13 @@ function trolleyWire(b: Batch, a: Vec2, c: Vec2, height: number): void {
  * ever hits `BUDGET` the city has grown and the cadences need revisiting —
  * which is a decision, not something to discover from a frame rate.
  */
-export function buildStreetFurniture(b: Batch, lines: FurnitureLine[], rng: Rng): number {
+export function buildStreetFurniture(
+  b: Batch,
+  lines: FurnitureLine[],
+  rng: Rng,
+): { placed: number; signals: SignalHead[] } {
   let placed = 0;
+  const signals: SignalHead[] = [];
   /* Important streets first, because the budget is spent in order and
      `streetLines()` hands them over grid-first. Left alone, four thousand lamp
      posts went onto numbered cross-streets in the Mission and Market Street —
@@ -198,7 +233,7 @@ export function buildStreetFurniture(b: Batch, lines: FurnitureLine[], rng: Rng)
       const uz = dz / seg;
       let t = until;
       while (t < seg) {
-        if (placed >= BUDGET) return placed;
+        if (placed >= BUDGET) return { placed, signals };
         const px = p0.x + ux * t;
         const pz = p0.z + uz * t;
         for (const side of sides) {
@@ -222,7 +257,10 @@ export function buildStreetFurniture(b: Batch, lines: FurnitureLine[], rng: Rng)
           // A signal at roughly every third furniture point on a wide street,
           // which lands them near enough to junctions to read as junction kit.
           if (line.halfWidth >= 11 && rng.chance(0.16)) {
-            signal(b, x, z, toRoad);
+            const head = signal(b, x, z, toRoad);
+            // The traffic it governs runs along the line, not across it.
+            head.axis = gridAxis(x, z, ux, uz);
+            signals.push(head);
             placed++;
           }
         }
@@ -237,5 +275,5 @@ export function buildStreetFurniture(b: Batch, lines: FurnitureLine[], rng: Rng)
       until = t - seg;
     }
   }
-  return placed;
+  return { placed, signals };
 }

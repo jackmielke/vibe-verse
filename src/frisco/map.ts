@@ -736,6 +736,60 @@ export function roadAt(x: number, z: number): RoadHit {
   return best;
 }
 
+/**
+ * How far to the next junction, and which of the grid's axes you are on.
+ *
+ * This is what lets traffic stop at a red light without there being a road
+ * network to stop on. The grid is a pure function — streets are the lines
+ * `local X = n · spacingX` and `local Z = n · spacingZ` — so "where is the next
+ * junction ahead of me" is a modulo, not a search, and it costs the same at
+ * every point in the city whether there are two cars or two hundred.
+ *
+ * `axis` is 0 for a car travelling along the grid's local X and 1 for local Z.
+ * A signal cycle only has to agree with those two numbers to make every
+ * junction in a grid alternate together, which is what real signal timing on a
+ * rectangular grid does anyway (it is how you get a green wave).
+ *
+ * `distance` is to the STOP LINE, not to the middle of the junction: the same
+ * `roadHalfWidth + 5` offset that `buildCrossings` paints the zebra bars at, so
+ * a car stops behind the crossing rather than on top of it.
+ */
+export interface StopAhead {
+  /** Metres to the stop line. Negative means already into the junction. */
+  distance: number;
+  /** 0 = travelling along the grid's local X, 1 = along its local Z. */
+  axis: 0 | 1;
+}
+
+export function stopLineAhead(x: number, z: number, dx: number, dz: number): StopAhead {
+  const g = sideOfMarket(x, z) >= 0 ? GRID_N : GRID_S;
+  const c = Math.cos(-g.angle);
+  const s = Math.sin(-g.angle);
+  const lx = x * c - z * s;
+  const lz = x * s + z * c;
+  const vx = dx * c - dz * s;
+  const vz = dx * s + dz * c;
+  // Whichever local axis the car is more aligned with is the one it runs along;
+  // the junctions it meets are therefore spaced by the OTHER axis's period.
+  const alongZ = Math.abs(vz) >= Math.abs(vx);
+  const period = alongZ ? g.spacingZ : g.spacingX;
+  // Measure forward: flip the coordinate so travel is always increasing, then
+  // the gap to the next multiple is one modulo.
+  const u = (alongZ ? lz : lx) * ((alongZ ? vz : vx) >= 0 ? 1 : -1);
+  const gap = period - (((u % period) + period) % period);
+  return { distance: gap - (g.roadHalfWidth + 5), axis: alongZ ? 1 : 0 };
+}
+
+/** Which grid axis a heading runs along at a point. See `stopLineAhead`. */
+export function gridAxis(x: number, z: number, dx: number, dz: number): 0 | 1 {
+  const g = sideOfMarket(x, z) >= 0 ? GRID_N : GRID_S;
+  const c = Math.cos(-g.angle);
+  const s = Math.sin(-g.angle);
+  const vx = dx * c - dz * s;
+  const vz = dx * s + dz * c;
+  return Math.abs(vz) >= Math.abs(vx) ? 1 : 0;
+}
+
 /** True if a point is on asphalt. */
 export function isRoad(x: number, z: number): boolean {
   const r = roadAt(x, z);

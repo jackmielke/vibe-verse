@@ -32,7 +32,8 @@ import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
 import { toon } from "./look";
-import { BOUNDS, isRoad, isSidewalk, isWater, roadAt, shoreSDF, walkHeight } from "./map";
+import { BOUNDS, isRoad, isSidewalk, isWater, roadAt, shoreSDF, stopLineAhead, walkHeight } from "./map";
+import type { SignalHead } from "./street";
 
 /** Body colours. Muted, because a street of primary-coloured cars reads as a toy shop. */
 const CAR_PAINT = [
@@ -60,12 +61,54 @@ const BOAT_COUNT = 15;
    busiest pavement in the city — had about four people on it. */
 const WALKER_COUNT = 900;
 
+/* ------------------------------------------------------------------ *
+ * Signals
+ *
+ * One clock for the whole city. Every junction on the grid's local-Z axis goes
+ * green together, then every junction on local X, with an all-red beat between
+ * them. That sounds like a simplification and is very nearly what a real
+ * rectangular grid does: synchronised phases are how you get a green wave down
+ * a one-way street, and San Francisco runs them.
+ *
+ * The payoff is out of all proportion to the code. Cars that queue at a red and
+ * pull away together is the thing that makes traffic look like traffic — much
+ * more than the cars themselves do. Before this they drove at a constant speed
+ * through every junction and through each other, and from the pavement it read
+ * as a conveyor belt.
+ * ------------------------------------------------------------------ */
+
+/** Seconds for both phases plus both all-red beats. */
+const SIGNAL_CYCLE = 28;
+/** The all-red beat at the end of each phase. */
+const ALL_RED = 2.5;
+
+/** Which axis has a green right now, or -1 during the all-red. */
+export function greenAxis(elapsed: number): 0 | 1 | -1 {
+  const half = SIGNAL_CYCLE / 2;
+  const t = ((elapsed % SIGNAL_CYCLE) + SIGNAL_CYCLE) % SIGNAL_CYCLE;
+  if (t < half - ALL_RED) return 1;
+  if (t < half) return -1;
+  if (t < SIGNAL_CYCLE - ALL_RED) return 0;
+  return -1;
+}
+
+/** How hard a car accelerates and brakes, m/s². Braking is the harder of the two. */
+const ACCEL = 3.4;
+const BRAKE = 7.5;
+/** Start braking for a red from here. */
+const SIGHT = 30;
+/** Cell size for the who-is-in-front-of-me hash. Two car lengths and a bit. */
+const CELL = 12;
+
 interface Car {
   x: number;
   z: number;
   dx: number;
   dz: number;
+  /** Metres per second right now — braked, queued, or up to `cruise`. */
   speed: number;
+  /** What it would do on an empty green street. */
+  cruise: number;
   /** Metres left before this one gives up and reseeds — a fuse, not a plan. */
   life: number;
 }
@@ -164,7 +207,11 @@ function seedCar(rng: Rng, car: Car): void {
     car.z = z - dx * lane;
     car.dx = dx;
     car.dz = dz;
-    car.speed = rng.range(7, 15);
+    car.cruise = rng.range(8, 15);
+    // Pull away from a standstill rather than materialising at speed — a car
+    // that appears already doing 15 m/s reads as a pop-in, which is the exact
+    // family of glitch this world exists to not have.
+    car.speed = car.cruise * 0.35;
     car.life = rng.range(180, 900);
     return;
   }
@@ -175,6 +222,7 @@ function seedCar(rng: Rng, car: Car): void {
   car.dx = 1;
   car.dz = 0;
   car.speed = 0;
+  car.cruise = 0;
   car.life = 1;
 }
 
@@ -219,6 +267,11 @@ function seedBoat(rng: Rng, boat: Boat): void {
   boat.speed = 0;
 }
 
+/** A 12 m cell, packed into one integer so the map key needs no string. */
+function cellKey(x: number, z: number): number {
+  return (Math.floor(x / CELL) + 4096) * 8192 + (Math.floor(z / CELL) + 4096);
+}
+
 export class CityLife {
   readonly group = new THREE.Group();
 
@@ -239,6 +292,13 @@ export class CityLife {
   private one = new THREE.Vector3(1, 1, 1);
   private zero = new THREE.Vector3(0, 0, 0);
   private density = 1;
+  /** Cars by 12 m cell, rebuilt each frame. See `gapAhead`. */
+  private cells = new Map<number, number[]>();
+  /** The lit lenses, four meshes: red and green, for each of the two axes. */
+  private lenses: THREE.InstancedMesh[] = [];
+  private lensGeo: THREE.BufferGeometry | null = null;
+  private lensMats: THREE.Material[] = [];
+  private lastGreen: 0 | 1 | -1 = -1;
 
   constructor() {
     this.group.name = "frisco-life";
@@ -278,7 +338,7 @@ export class CityLife {
 
     const paint = new THREE.Color();
     for (let i = 0; i < CAR_COUNT; i++) {
-      const car: Car = { x: 0, z: 0, dx: 1, dz: 0, speed: 0, life: 0 };
+      const car: Car = { x: 0, z: 0, dx: 1, dz: 0, speed: 0, cruise: 0, life: 0 };
       seedCar(this.rng, car);
       this.cars.push(car);
       paint.setHex(CAR_PAINT[this.rng.int(0, CAR_PAINT.length - 1)]);
@@ -307,6 +367,9 @@ export class CityLife {
 
   update(dt: number, elapsed: number): void {
     const carCut = Math.ceil(this.cars.length * this.density);
+    const green = greenAxis(elapsed);
+    this.rehashCars(carCut);
+    this.setSignalPhase(green);
     for (let i = 0; i < this.cars.length; i++) {
       if (i >= carCut) {
         this.m.compose(this.v.set(0, -500, 0), this.q.identity(), this.zero);
@@ -314,6 +377,30 @@ export class CityLife {
         continue;
       }
       const c = this.cars[i];
+
+      /* ---- what this car would like to be doing ---- */
+      let want = c.cruise;
+
+      // A red light ahead. `stopLineAhead` is a modulo over the grid, so this
+      // costs the same whether there are two cars or two hundred — no road
+      // network, no junction objects, no queue lists.
+      const stop = stopLineAhead(c.x, c.z, c.dx, c.dz);
+      if (green !== stop.axis && stop.distance > -2 && stop.distance < SIGHT) {
+        // Ease down so the car arrives AT the line rather than braking to a
+        // halt wherever it happened to notice. Cars that all brake at the same
+        // distance and stop short of the junction look like they hit a wall.
+        want = Math.min(want, Math.max(0, stop.distance * 0.55));
+      }
+
+      // The car in front. Only the two cells it could be in are searched, so
+      // this is a handful of comparisons rather than a broadphase over 190.
+      const gap = this.gapAhead(i, c);
+      if (gap < 14) want = Math.min(want, Math.max(0, (gap - 6.5) * 1.5));
+
+      const d = want - c.speed;
+      c.speed += d > 0 ? Math.min(d, ACCEL * dt) : Math.max(d, -BRAKE * dt);
+      if (c.speed < 0) c.speed = 0;
+
       c.x += c.dx * c.speed * dt;
       c.z += c.dz * c.speed * dt;
       c.life -= c.speed * dt;
@@ -323,7 +410,7 @@ export class CityLife {
          one is, and a car that drifts off the grid at a wedge junction gets
          picked up within a frame. */
       if (
-        c.life <= 0 ||
+        (c.life <= 0 && c.speed > 0.1) ||
         c.x < BOUNDS.minX + 20 || c.x > BOUNDS.maxX - 20 ||
         c.z < BOUNDS.minZ + 20 || c.z > BOUNDS.maxZ - 20 ||
         !isRoad(c.x, c.z) || isWater(c.x, c.z)
@@ -395,6 +482,106 @@ export class CityLife {
   }
 
   /**
+   * Hang the lit lenses on the signals the city built.
+   *
+   * Four instanced meshes and nothing else: red-for-axis-0, green-for-axis-0,
+   * and the same pair for axis 1. Every matrix is written once, here, and each
+   * frame costs four boolean assignments. The obvious implementation — one mesh
+   * and rewrite the colours each frame — is a buffer upload per frame for a
+   * thing that only ever has four states.
+   */
+  mountSignals(signals: SignalHead[]): void {
+    if (!signals.length) return;
+    const b = new Batch();
+    // A lens, drawn as a flat box facing the traffic. Unshaded, so it reads as
+    // a light at midnight and at noon — a toon-shaded traffic light goes dark
+    // on the side away from the sun, which is exactly backwards.
+    b.box(0, -0.11, 0, 0.15, 0.22, 0.08, rgb(0xffffff));
+    const geo = b.finish();
+    if (!geo) return;
+    this.lensGeo = geo;
+
+    for (const axis of [0, 1] as const) {
+      const heads = signals.filter((h) => h.axis === axis);
+      for (const [colour, high] of [
+        [0xff5a46, true],
+        [0x5cff86, false],
+      ] as const) {
+        const mat = new THREE.MeshBasicMaterial({ color: colour });
+        this.lensMats.push(mat);
+        const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, heads.length));
+        mesh.name = `frisco-signal-${axis}-${high ? "red" : "green"}`;
+        mesh.frustumCulled = false;
+        mesh.count = heads.length;
+        for (let i = 0; i < heads.length; i++) {
+          const h = heads[i];
+          this.e.set(0, h.yaw, 0);
+          this.q.setFromEuler(this.e);
+          this.v.set(h.x, high ? h.redY : h.greenY, h.z);
+          this.m.compose(this.v, this.q, this.one);
+          mesh.setMatrixAt(i, this.m);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        this.lenses.push(mesh);
+        this.group.add(mesh);
+      }
+    }
+  }
+
+  /** Order in `lenses` is [a0-red, a0-green, a1-red, a1-green]. */
+  private setSignalPhase(green: 0 | 1 | -1): void {
+    this.lastGreen = green;
+    if (this.lenses.length !== 4) return;
+    this.lenses[0].visible = green !== 0;
+    this.lenses[1].visible = green === 0;
+    this.lenses[2].visible = green !== 1;
+    this.lenses[3].visible = green === 1;
+  }
+
+  /** Bucket the live cars into 12 m cells so `gapAhead` can look in two of them. */
+  private rehashCars(cut: number): void {
+    this.cells.clear();
+    for (let i = 0; i < cut && i < this.cars.length; i++) {
+      const c = this.cars[i];
+      const k = cellKey(c.x, c.z);
+      const list = this.cells.get(k);
+      if (list) list.push(i);
+      else this.cells.set(k, [i]);
+    }
+  }
+
+  /**
+   * Distance to the nearest car directly in front of this one, or Infinity.
+   *
+   * "Directly in front" is: ahead along the direction of travel, within 2.4 m
+   * laterally, and pointed roughly the same way. The lateral test is what keeps
+   * a car from braking for oncoming traffic in the other lane two metres away,
+   * which was the first version and made every street gridlock instantly.
+   */
+  private gapAhead(self: number, c: Car): number {
+    let best = Infinity;
+    // Own cell and the one 12 m ahead: a car further than that is further than
+    // the following model cares about anyway.
+    for (const [ox, oz] of [[0, 0], [c.dx * CELL, c.dz * CELL]] as const) {
+      const list = this.cells.get(cellKey(c.x + ox, c.z + oz));
+      if (!list) continue;
+      for (const j of list) {
+        if (j === self) continue;
+        const o = this.cars[j];
+        if (c.dx * o.dx + c.dz * o.dz < 0.55) continue;
+        const rx = o.x - c.x;
+        const rz = o.z - c.z;
+        const fwd = rx * c.dx + rz * c.dz;
+        if (fwd <= 0) continue;
+        const side = Math.abs(rx * c.dz - rz * c.dx);
+        if (side > 2.4) continue;
+        if (fwd < best) best = fwd;
+      }
+    }
+    return best;
+  }
+
+  /**
    * Thin the crowd and the traffic without rebuilding anything.
    *
    * `density` of 0.4 keeps the first 40% of each list and scales the rest to
@@ -408,6 +595,26 @@ export class CityLife {
     this.density = Math.max(0.15, Math.min(1, density));
   }
 
+  /**
+   * What the traffic is doing right now: the phase, and how many cars are
+   * moving versus sitting at a light. The one number that says whether any of
+   * the signal work is actually running — a city where `stopped` is always
+   * zero has signals that nothing obeys, and a city where it never returns to
+   * zero has gridlocked, and neither is visible in a screenshot.
+   */
+  traffic(): { green: number; moving: number; stopped: number } {
+    const cut = Math.ceil(this.cars.length * this.density);
+    let moving = 0;
+    let stopped = 0;
+    for (let i = 0; i < cut && i < this.cars.length; i++) {
+      const c = this.cars[i];
+      if (c.cruise <= 0) continue;
+      if (c.speed < 0.5) stopped++;
+      else moving++;
+    }
+    return { green: this.lastGreen, moving, stopped };
+  }
+
   /** How many of each are actually placed and moving. */
   stats(): { cars: number; boats: number; walkers: number; density: number } {
     // What is actually DRAWN, which is the density cut applied to what is
@@ -415,7 +622,7 @@ export class CityLife {
     // scaled to zero is how a quality system becomes invisible.
     const live = (n: number) => Math.ceil(n * this.density);
     return {
-      cars: live(this.cars.filter((c) => c.speed > 0).length),
+      cars: live(this.cars.filter((c) => c.cruise > 0).length),
       boats: this.boats.filter((b) => b.speed > 0).length,
       walkers: live(this.walkers.filter((w) => w.speed > 0).length),
       density: this.density,
@@ -424,6 +631,9 @@ export class CityLife {
 
   dispose(): void {
     this.group.removeFromParent();
+    for (const m of this.lenses) m.dispose();
+    for (const m of this.lensMats) m.dispose();
+    this.lensGeo?.dispose();
     this.carGeo.dispose();
     this.boatGeo.dispose();
     this.walkerGeo.dispose();

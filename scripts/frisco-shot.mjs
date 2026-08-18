@@ -49,7 +49,14 @@ const POSES = {
   // On the Embarcadero north of the Ferry Building — (693,-212) is the
   // building itself, and became an inside-the-wall shot the day it was built.
   embarcadero: [686, 3, -330, 2.1, -0.02],
-  chinatown: [-372, 3, -300, 1.15, -0.03],
+  // Chinatown, on Grant. The old value was inside a building — see the note on
+  // `market` above, and prefer `spawn:chinatown` to any of these.
+  chinatown: [-330, 3, -252, 1.15, -0.03],
+  /* Standing at the kerb looking across the road. The one pose for judging the
+     things that are only wrong close up: parked cars, shopfronts, awnings,
+     crossings, the height of a lamp post against a person. Everything else in
+     this list is at least twenty metres from the nearest detail. */
+  kerb: [16, 1.1, 22, 0.55, -0.06],
   street: [-537, 3, 635, 1.1, -0.03],
   waterfront: [640, 120, -420, 3.6, -0.35],
   hills: [-560, 210, -330, 1.5, -0.38],
