@@ -15,7 +15,7 @@
  */
 import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
-import { Batch, rgb, shade } from "./batch";
+import { Batch, Chunks, rgb, shade } from "./batch";
 import { buildLandmarks } from "./landmarks";
 import { buildCableTrack } from "./cablecar";
 import { buildStreetFurniture, type SignalHead } from "./street";
@@ -25,6 +25,8 @@ import {
   GRID_N,
   GRID_REACH,
   GRID_S,
+  MAP_DEPTH,
+  MAP_WIDTH,
   MARKET_ANGLE,
   MARKET_DIR,
   MARKET_HALF_WIDTH,
@@ -574,7 +576,7 @@ const PARKED_PAINT = [
   0x8f5a4a, 0xb0aa9c,
 ] as const;
 
-function buildParked(batch: Batch, colliders: BuildingBox[], rng: Rng): number {
+function buildParked(pick: (x: number, z: number) => Batch, colliders: BuildingBox[], rng: Rng): number {
   const slots: ParkSlot[] = [];
 
   for (const [grid, north] of [
@@ -644,6 +646,7 @@ function buildParked(batch: Batch, colliders: BuildingBox[], rng: Rng): number {
   for (let n = 0; n < take; n++) {
     const p = slots[n];
     const y = walkHeight(p.x, p.z);
+    const batch = pick(p.x, p.z);
     const paint = rgb(p.paint);
     const cs = Math.cos(p.yaw);
     const sn = Math.sin(p.yaw);
@@ -1140,7 +1143,7 @@ function fillBlock(
 }
 
 /** Walk both grids and fill every block between the streets. */
-function buildBlocks(buildings: Batch, colliders: BuildingBox[], rng: Rng): void {
+function buildBlocks(buildings: Chunks, colliders: BuildingBox[], rng: Rng): void {
   for (const [grid, north] of [
     [GRID_N, true],
     [GRID_S, false],
@@ -1175,7 +1178,9 @@ function buildBlocks(buildings: Batch, colliders: BuildingBox[], rng: Rng): void
         if (t < -950) continue;
         const hw = grid.spacingX / 2 - grid.roadHalfWidth - 3.4;
         const hd = grid.spacingZ / 2 - grid.roadHalfWidth - 3.4;
-        fillBlock(buildings, colliders, x, z, hw, hd, grid.angle, rng.fork(`b:${north}:${i}:${j}`));
+        // One block, one chunk: everything `fillBlock` emits is within half a
+        // block of its centre, so picking the cell once here is enough.
+        fillBlock(buildings.at(x, z), colliders, x, z, hw, hd, grid.angle, rng.fork(`b:${north}:${i}:${j}`));
       }
     }
   }
@@ -1271,11 +1276,19 @@ export function buildCity(): CityBuild {
   const ground = new Batch();
   const roads = new Batch();
   const walks = new Batch();
-  const buildings = new Batch();
+  /* The two heavy layers are chunked so they can be frustum-culled; see
+     `Chunks`. Six by six is coarse on purpose — the aim is to skip the half of
+     the city behind you, not to build a scene graph. All three were measured
+     standing on Market: 4 × 4 cut the drawn triangles from 1.75 M to 1.49 M for
+     98 draw calls, 6 × 6 to 1.28 M for 113, and 8 × 8 to 1.22 M for 132. Six is
+     where the curve flattens — an 850-metre cell is bigger than most of what a
+     62° frustum excludes, and a 425-metre one is buying almost nothing for
+     another nineteen draws. */
+  const buildings = new Chunks(6, 6, BOUNDS.minX, BOUNDS.minZ, MAP_WIDTH, MAP_DEPTH);
   const green = new Batch();
   const water = new Batch();
   const marks = new Batch();
-  const props = new Batch();
+  const props = new Chunks(6, 6, BOUNDS.minX, BOUNDS.minZ, MAP_WIDTH, MAP_DEPTH);
   const colliders: BuildingBox[] = [];
 
   buildGround(ground);
@@ -1283,8 +1296,8 @@ export function buildCity(): CityBuild {
   buildStreets(roads, walks, lines);
   buildCrossings(roads);
   buildLaneDashes(roads);
-  const street = buildStreetFurniture(props, lines, rng.fork("street"));
-  buildCableTrack(props);
+  const street = buildStreetFurniture((x, z) => props.at(x, z), lines, rng.fork("street"));
+  buildCableTrack((x, z) => props.at(x, z));
   buildBlocks(buildings, colliders, rng.fork("blocks"));
   buildGreenery(green, rng.fork("trees"));
   buildWater(water);
@@ -1294,7 +1307,7 @@ export function buildCity(): CityBuild {
      on the roof — but reporting them as buildings would put the city at eleven
      thousand and quietly break every judgement anyone makes from that number. */
   const structures = colliders.length;
-  const parked = buildParked(props, colliders, rng.fork("parked"));
+  const parked = buildParked((x, z) => props.at(x, z), colliders, rng.fork("parked"));
 
   // `glow: true` — the window courses and the lamp heads light up at night.
   const vertexColoured = toon(0xffffff, { vertexColors: true, glow: true });
@@ -1309,26 +1322,32 @@ export function buildCity(): CityBuild {
     ["landmarks", marks, true, true],
     ["props", props, true, true],
   ] as const) {
-    const geo = batch.finish();
-    if (!geo) continue;
+    /* A `Chunks` yields several geometries and a `Batch` yields one; both come
+       out of here as meshes named `frisco-<layer>`, because `show()` and the
+       quality tiers match on that name and neither has any business knowing
+       which layers happen to be chunked. */
+    const geos = batch instanceof Chunks ? batch.finish() : [batch.finish()];
     triangles += batch.triangles;
-    const mesh = new THREE.Mesh(geo, vertexColoured);
-    mesh.name = `frisco-${name}`;
-    mesh.receiveShadow = receive;
-    mesh.castShadow = cast;
-    // The city never moves, so it never needs its matrix recomputed.
-    mesh.matrixAutoUpdate = false;
-    mesh.updateMatrix();
-    group.add(mesh);
-    /* The landmarks, and only the landmarks, get the cartoon outline.
-       It doubles their draw and it is what separates the twelve buildings
-       somebody came here to see from the three thousand that are scenery —
-       an outline on everything is an outline on nothing. */
-    if (name === "landmarks") {
-      const shell = addOutline(mesh, 0.006);
-      if (shell) {
-        shell.matrixAutoUpdate = false;
-        shell.updateMatrix();
+    for (const geo of geos) {
+      if (!geo) continue;
+      const mesh = new THREE.Mesh(geo, vertexColoured);
+      mesh.name = `frisco-${name}`;
+      mesh.receiveShadow = receive;
+      mesh.castShadow = cast;
+      // The city never moves, so it never needs its matrix recomputed.
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      group.add(mesh);
+      /* The landmarks, and only the landmarks, get the cartoon outline.
+         It doubles their draw and it is what separates the twelve buildings
+         somebody came here to see from the three thousand that are scenery —
+         an outline on everything is an outline on nothing. */
+      if (name === "landmarks") {
+        const shell = addOutline(mesh, 0.006);
+        if (shell) {
+          shell.matrixAutoUpdate = false;
+          shell.updateMatrix();
+        }
       }
     }
   }

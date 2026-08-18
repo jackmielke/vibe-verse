@@ -148,7 +148,7 @@ function carMesh(): THREE.Group {
  * Lay the rails and the slot between them into a batch. Static geometry, so
  * this goes into the city build rather than into the per-frame group.
  */
-export function buildCableTrack(b: Batch): void {
+export function buildCableTrack(pick: (x: number, z: number) => Batch): void {
   const { points, cum } = track();
   const rail = rgb(0x8d8b84);
   const slot = rgb(0x3a3d44);
@@ -162,6 +162,7 @@ export function buildCableTrack(b: Batch): void {
     const mx = (p0.x + p1.x) / 2;
     const mz = (p0.z + p1.z) / 2;
     const y = (walkHeight(p0.x, p0.z) + walkHeight(p1.x, p1.z)) / 2;
+    const b = pick(mx, mz);
     for (const off of [-CAR_HALF_WIDTH * 0.8, CAR_HALF_WIDTH * 0.8]) {
       b.box(
         mx - Math.sin(p0.yaw) * off, y + 0.06, mz + Math.cos(p0.yaw) * off,

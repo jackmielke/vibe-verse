@@ -475,3 +475,67 @@ export class Batch {
     return g;
   }
 }
+
+/**
+ * A grid of batches, so the city can be frustum-culled.
+ *
+ * The whole point of `Batch` is that a city becomes a dozen draw calls, and
+ * that is still the point — but one merged mesh for every building in a
+ * 3.4 × 4.4 km map is also a mesh that is *always* drawn. Standing on Market
+ * Street facing east, the entire Mission, Hayes Valley and the avenues are
+ * behind you, and every triangle of them was submitted anyway, because
+ * three.js culls objects and there was only one object.
+ *
+ * Splitting the same geometry across a coarse grid changes nothing about how
+ * it is built, when it is built, or whether it can change while you look at it
+ * — which is the property this world exists to have. Nothing streams, nothing
+ * loads late, nothing swaps tiers. The only difference is that a chunk wholly
+ * outside the frustum is skipped, and a bounding-sphere test is exact, so a
+ * chunk never half-appears at the edge of the screen the way an LOD does.
+ *
+ * The cost is draw calls: one mesh per occupied cell instead of one for the
+ * lot. At 4 × 4 that is at most sixteen, against the sixty to a hundred this
+ * world already submits, and from any position on the ground most of them are
+ * culled — which is the entire trade.
+ */
+export class Chunks {
+  private cells: Batch[];
+  private readonly stepX: number;
+  private readonly stepZ: number;
+
+  constructor(
+    readonly nx: number,
+    readonly nz: number,
+    private readonly minX: number,
+    private readonly minZ: number,
+    width: number,
+    depth: number,
+  ) {
+    this.stepX = width / nx;
+    this.stepZ = depth / nz;
+    this.cells = Array.from({ length: nx * nz }, () => new Batch());
+  }
+
+  /** The batch covering a point. Out-of-range points clamp to the edge cell. */
+  at(x: number, z: number): Batch {
+    const i = Math.max(0, Math.min(this.nx - 1, Math.floor((x - this.minX) / this.stepX)));
+    const j = Math.max(0, Math.min(this.nz - 1, Math.floor((z - this.minZ) / this.stepZ)));
+    return this.cells[j * this.nx + i];
+  }
+
+  get triangles(): number {
+    let n = 0;
+    for (const c of this.cells) n += c.triangles;
+    return n;
+  }
+
+  /** Every non-empty cell, as geometry. */
+  finish(): THREE.BufferGeometry[] {
+    const out: THREE.BufferGeometry[] = [];
+    for (const c of this.cells) {
+      const g = c.finish();
+      if (g) out.push(g);
+    }
+    return out;
+  }
+}

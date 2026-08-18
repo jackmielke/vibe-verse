@@ -201,7 +201,7 @@ function trolleyWire(b: Batch, a: Vec2, c: Vec2, height: number): void {
  * which is a decision, not something to discover from a frame rate.
  */
 export function buildStreetFurniture(
-  b: Batch,
+  pick: (x: number, z: number) => Batch,
   lines: FurnitureLine[],
   rng: Rng,
 ): { placed: number; signals: SignalHead[] } {
@@ -245,6 +245,7 @@ export function buildStreetFurniture(
           const z = pz + nz * off;
           const toRoad: Vec2 = { x: -nx, z: -nz };
 
+          const b = pick(x, z);
           const roll = rng.next();
           if (roll < 0.72) lamp(b, x, z, toRoad);
           else if (roll < 0.8) hydrant(b, x, z);
@@ -265,7 +266,7 @@ export function buildStreetFurniture(
           }
         }
         if (line.kind === "market") {
-          trolleyWire(b, { x: px, z: pz }, { x: px + ux * every, z: pz + uz * every }, 9.4);
+          trolleyWire(pick(px, pz), { x: px, z: pz }, { x: px + ux * every, z: pz + uz * every }, 9.4);
           placed++;
         }
         t += every;

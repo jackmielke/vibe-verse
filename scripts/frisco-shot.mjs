@@ -194,6 +194,11 @@ for (const name of shots) {
      way, which reads as a rendering bug and is not one. A spawn snaps itself
      to asphalt at load, so it cannot. */
   if (name.startsWith("spawn:")) {
+    /* Park the player somewhere no spawn is, first. Without that, asking for
+       the spawn you are already standing on looks exactly like asking for one
+       that does not exist. */
+    await page.evaluate(() => window.__frisco.setPose(0, 400, 1800, 0, 0));
+    await page.waitForTimeout(300);
     const before = await page.evaluate(() => window.__frisco.player());
     await page.evaluate((k) => window.__frisco.goTo(k), name.slice(6));
     await page.waitForTimeout(2200);
