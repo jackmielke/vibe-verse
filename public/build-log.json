@@ -1,31 +1,7 @@
 {
-  "generated_at": "2026-08-18T22:16:52.074Z",
+  "generated_at": "2026-08-18T22:03:19.426Z",
   "window_days": 45,
   "commits": [
-    {
-      "sha": "31ae310a",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "4ab570fe",
-      "date": "2026-08-18",
-      "subject": "Fire escapes, lane markings, and two districts you can start in",
-      "lede": "Four things, all of them street level, because that is where this city is judged and the last two batches were mostly judged from the air.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "b3869db3",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01DkXTgDnCDSAWK5gGog75Qz",
-      "places": [],
-      "files": 3
-    },
     {
       "sha": "99e4d5bf",
       "date": "2026-08-18",
@@ -1030,6 +1006,32 @@
       "lede": "The card was a page screenshot of the old flat lawn, with somebody's chat bubble and two name tags burned into it — and it was doing double duty as Island Explorer's card, which is a different world. Vibe Island now has its own frame from `scripts/island-card.mjs`, taken through `__cityDebug.snapshot()` so it is the world and not the HUD, posed from the plaza to take in both shops, the paths, the Dream Tree and the g",
       "places": [],
       "files": 4
+    },
+    {
+      "sha": "a7acb4a5",
+      "date": "2026-08-11",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "3d88bbe7",
+      "date": "2026-08-11",
+      "subject": "Gave everybody in the city a body that can actually dance",
+      "lede": "The emote wheel could throw an emoji over your head, which is a label for a feeling rather than a performance of it: press 💃 and a pink sprite bobs above a character standing perfectly still. Nobody was dancing. Now T picks a move at random and the body does it — and pressing T again picks a different one.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 9
+    },
+    {
+      "sha": "cac360dd",
+      "date": "2026-08-11",
+      "subject": "Restamped Vibe Island",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
+      "places": [],
+      "files": 2
     }
   ]
 }
