@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-18T23:16:33.288Z",
+  "generated_at": "2026-08-18T23:26:23.404Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "9eb66186",
+      "date": "2026-08-18",
+      "subject": "Sweep the Conservatory less often",
+      "lede": "Litter, drains, slimmer glazing bars, and three quarters of the frame back.",
+      "places": [],
+      "files": 7
+    },
     {
       "sha": "2b13d314",
       "date": "2026-08-18",
@@ -1026,14 +1034,6 @@
       "lede": "The chip in the corner has always shown an emoji — 🤖 for Vibey, 🦀 for Pinch — which identifies a species rather than a character. Sixty-three characters are built from one rig and photographed from it, so the corner can show the one you picked.",
       "places": [],
       "files": 67
-    },
-    {
-      "sha": "cf9a89e7",
-      "date": "2026-08-12",
-      "subject": "Submit a game without leaving the shelf",
-      "lede": "\"Add yours →\" and \"Put your game here\" both sent you to `/build`, which is a page about the deal rather than the form — so acting on the invitation meant two navigations away from the thing that made you want to. The arcade shelf is the argument for submitting; a form on its own route has to make that argument again from scratch.",
-      "places": [],
-      "files": 5
     }
   ]
 }

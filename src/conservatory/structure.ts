@@ -519,21 +519,25 @@ export function soilMaterial(uniforms: Record<string, THREE.IUniform>) {
         // Clods at two scales, so it is lumpy rather than merely noisy.
         float coarse = fbm(p * 4.5);
         float fine = fbm(p * 19.0);
-        vec3 soil = mix(vec3(0.055, 0.042, 0.033), vec3(0.115, 0.088, 0.062),
+        /* Damp earth is DARK, but it is not black, and at 0.055–0.115
+           under a canopy term that already halves the light it came out at
+           about one part in seventy — a flat void with a hard edge where
+           the bed stopped. You should be able to see the clods. */
+        vec3 soil = mix(vec3(0.105, 0.080, 0.058), vec3(0.205, 0.158, 0.108),
                         coarse * 0.7 + fine * 0.3);
         // Leaf litter and the odd pale fleck of grit.
         float litter = smoothstep(0.66, 0.80, fbm(p * 8.0 + 31.0));
-        soil = mix(soil, vec3(0.13, 0.10, 0.055), litter * 0.55);
+        soil = mix(soil, vec3(0.215, 0.165, 0.092), litter * 0.55);
         soil += vec3(0.05) * smoothstep(0.88, 0.96, fine);
         // Moss creeping in from the kerb, where the water collects.
         float moss = smoothstep(0.60, 0.85, fbm(p * 2.2 + 7.0)) * 0.5;
-        soil = mix(soil, vec3(0.055, 0.10, 0.048), moss);
+        soil = mix(soil, vec3(0.085, 0.145, 0.070), moss);
 
         float thru = roofTransmissionSoft(vec2(vWorld.z * 0.20, vWorld.x * 0.07),
                                           vec2(0.010, 0.022));
         // Under a canopy: very little sky reaches the ground in a bed.
         float can = canopyShade(vWorld);
-        vec3 sky = uSkyColor * (0.44 + 0.30 * (n.y * 0.5 + 0.5)) * mix(0.62, 1.0, can);
+        vec3 sky = uSkyColor * (0.62 + 0.40 * (n.y * 0.5 + 0.5)) * mix(0.70, 1.0, can);
         vec3 col = soil * (sky + uSunColor * max(0.0, dot(n, normalize(uSunDir)))
                                  * thru * 1.1 * can);
         // Wet earth has a dull sheen, not a highlight.
@@ -583,11 +587,24 @@ export function buildStructure(
       const col = new THREE.CylinderGeometry(0.085, 0.10, NAVE.spring, 7);
       col.translate(side * NAVE.halfWidth, NAVE.spring / 2, z);
       ironParts.push(col);
-      // Decorative spandrel bracket where the arch meets the column.
+      /* Spandrel bracket: the quarter-round that fills the corner between
+         the top of a column and the springing of the arch it carries.
+
+         It used to be built by rotating a quarter torus about two axes with
+         a different second rotation per side, which is a sure sign nobody
+         had worked out where the ends were meant to land — and they did not
+         land anywhere. Both brackets floated a foot clear of everything,
+         at different angles, like croquet hoops somebody had thrown at the
+         wall. Placing it by its ENDPOINTS instead is unambiguous.
+
+         A quarter torus drawn from 0 to PI/2 runs from (r, 0) to (0, r).
+         Put its centre 0.5m in from the wall and 0.5m below the springing
+         and those two points are exactly the column and the arch. The left
+         one is the same arc turned a quarter turn, not a different rotation
+         order. */
       const br = new THREE.TorusGeometry(0.5, 0.035, 5, 10, Math.PI / 2);
-      br.rotateY(Math.PI / 2);
-      br.rotateX(side > 0 ? Math.PI : Math.PI / 2);
-      br.translate(side * (NAVE.halfWidth - 0.5), NAVE.spring, z);
+      if (side < 0) br.rotateZ(Math.PI / 2);
+      br.translate(side * (NAVE.halfWidth - 0.5), NAVE.spring - 0.5, z);
       ironParts.push(br);
     }
   }
@@ -724,14 +741,18 @@ export function buildStructure(
   const soilParts: THREE.BufferGeometry[] = [];
   for (const side of [-1, 1]) {
     // A low brick kerb holding the soil back from the path.
-    const kerb = new THREE.BoxGeometry(0.34, 0.44, NAVE.length - 3);
+    /* The bed runs wall to wall. It stopped 1.5m short of each gable,
+       which from the near end showed as a slab of bare soil with a sharp
+       square edge and then bare floor — the one place in the room where you
+       could see it had been BUILT rather than grown. */
+    const kerb = new THREE.BoxGeometry(0.34, 0.44, NAVE.length - 0.4);
     kerb.translate(side * 3.5, 0.22, 0);
     brickParts.push(kerb);
     /* The bed itself is EARTH, and used to be drawn in the brick material —
        so every bed had a flat orange lid with mortar courses in it, running
        the length of the room at knee height. Nothing else in the frame gave
        the game away faster. */
-    const bed = new THREE.BoxGeometry(NAVE.halfWidth - 3.5, 0.38, NAVE.length - 3);
+    const bed = new THREE.BoxGeometry(NAVE.halfWidth - 3.5, 0.38, NAVE.length - 0.4);
     bed.translate(side * (3.5 + (NAVE.halfWidth - 3.5) / 2), 0.19, 0);
     soilParts.push(bed);
   }

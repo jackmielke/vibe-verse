@@ -97,7 +97,8 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
   "conservatory": [
-    { sha: "f16d867", iso: "2026-08-18T23:18:07+00:00", subject: "Sweep the Conservatory less often" },
+    { sha: "792c23c", iso: "2026-08-18T23:27:41+00:00", subject: "Three things you could only see from the wrong end of the room" },
+    { sha: "9eb6618", iso: "2026-08-18T23:18:08+00:00", subject: "Sweep the Conservatory less often" },
     { sha: "2b13d31", iso: "2026-08-18T23:01:23+00:00", subject: "Furnish the Conservatory, and let three sparrows in" },
     { sha: "8fa0918", iso: "2026-08-18T22:26:17+00:00", subject: "The Conservatory: forty-eight metres of glasshouse, and a walk" },
   ],

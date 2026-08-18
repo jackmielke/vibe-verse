@@ -452,7 +452,7 @@ export function buildPlanting(uniforms: Record<string, THREE.IUniform>): Plantin
     const side = i % 2 === 0 ? -1 : 1;
     trunks.push({
       x: side * (4.5 + tr() * 1.9),
-      z: (tr() - 0.5) * (NAVE.length - 6),
+      z: (tr() - 0.5) * (NAVE.length - 3.0),
       h: 3.4 + tr() * 1.7,
     });
   }
@@ -588,7 +588,7 @@ export function buildPlanting(uniforms: Record<string, THREE.IUniform>): Plantin
     for (let i = 0; i < s.count; i++) {
       const side = rand() < 0.5 ? -1 : 1;
       const x = side * (s.bed[0] + rand() * (s.bed[1] - s.bed[0]));
-      const z = (rand() - 0.5) * (NAVE.length - 4.5);
+      const z = (rand() - 0.5) * (NAVE.length - 1.2);
       s.place(m4, rand, x, z, i);
       mesh.setMatrixAt(i, m4);
 
