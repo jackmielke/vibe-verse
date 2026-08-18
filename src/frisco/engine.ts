@@ -458,6 +458,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       startCourse: (k = "market") => { handle.onPlay?.(play.start(k)); },
       audioRunning: () => audio.isRunning,
       traffic: () => life.traffic(),
+      crowd: () => life.crowd(),
       nextRing: () => { const v = play.nextRingPosition(); return v ? { x: v.x, y: v.y, z: v.z } : null; },
       playState: () => play.snapshot(),
       landmarks: () =>
@@ -513,6 +514,7 @@ declare global {
       setFog: (a: number) => void;
       freeze: (on: boolean) => void;
       traffic: () => { green: number; moving: number; stopped: number };
+      crowd: () => { walkers: number; crossing: number; reseeds: number };
       setTier: (t: number) => void;
       setTime: (k: string) => void;
       setShadows: (on: boolean) => void;

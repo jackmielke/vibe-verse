@@ -58,7 +58,7 @@ Anything that reaches for `performance.now()` on its own breaks that.
 | `player.ts` | Walking, jumping, the jetpack, the third-person camera, the Vibeverse character rig. |
 | `input.ts` | Keyboard, mouse and two thumbs. |
 | `street.ts` | Lamp posts, signals, hydrants, benches, shelters, trolley wires. A budget problem, and documented as one. |
-| `life.ts` | Cars, boats and nine hundred pedestrians, the signal cycle, and traffic that stops at it. |
+| `life.ts` | Cars, boats and sixteen hundred pedestrians, the signal cycle, and traffic that stops at it. |
 | `cablecar.ts` | The Powell line: rails, two cars, and the only thing here you can ride. |
 | `play.ts` | The logbook, the coins, three ring courses and the Grand Tour. |
 | `audio.ts` | The entire soundtrack, synthesised, with no files in it. |
@@ -179,7 +179,14 @@ there and a two-second one in vitest.
 `window.__frisco` is the debug surface the harnesses drive: `stats`, `player`,
 `setPose`, `goTo`, `landmarks`, `show(layer, on)`, `setFog`, `setTime`,
 `freeze`, `setShadows`, `setLights`, `startCourse`, `nextRing`, `playState`,
-`audioRunning`, `raw`.
+`audioRunning`, `traffic`, `crowd`, `raw`.
+
+`traffic` and `crowd` exist because the two liveliest parts of this world are
+the two least visible in a still frame. A city where no car is ever `stopped`
+has signals nothing obeys; one where the number never returns to zero has
+gridlocked; and a crowd whose `reseeds` climbs is a crowd of people vanishing
+three metres from where you are standing — and the frame before and the frame
+after both look like a street with people on it.
 
 Two of those are load-bearing for photography. **Layer toggling** is how most of
 the bugs above were finally localised — "which mesh is that black thing in" is

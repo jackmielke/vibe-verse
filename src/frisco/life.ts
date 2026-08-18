@@ -59,7 +59,19 @@ const BOAT_COUNT = 15;
    cheaper and truer: a fixed number spread over 3.4 by 4.4 km put one person
    every hundred and fifty metres, so Market Street — where you start, and the
    busiest pavement in the city — had about four people on it. */
-const WALKER_COUNT = 900;
+/* Sixteen hundred rather than nine, and the increase is affordable only
+   because the pavement test is staggered — see `WALK_STAGGER`. Nine hundred
+   across 3.4 by 4.4 km put one or two people on a Mission block, which is a
+   street nobody lives on. */
+const WALKER_COUNT = 1600;
+
+/* `isSidewalk` calls `roadAt`, which walks the whole shoreline polygon to find
+   the Embarcadero — easily the most expensive pure function in this world, and
+   it was being called once per walker per frame. A person moving at 1.5 m/s
+   covers a quarter of a metre in six frames, so asking every sixth frame is
+   indistinguishable and costs a sixth as much. The stagger is by index, so the
+   work is spread evenly rather than arriving in a spike every sixth frame. */
+const WALK_STAGGER = 6;
 
 /* ------------------------------------------------------------------ *
  * Signals
@@ -116,13 +128,25 @@ interface Car {
 interface Walker {
   x: number;
   z: number;
+  /** Where they are going. `fx,fz` is where they are *facing*, which lags. */
   dx: number;
   dz: number;
+  fx: number;
+  fz: number;
   speed: number;
   /** Stride phase, so a pavement is not a chorus line. */
   phase: number;
   /** Metres before this one turns round or is reseeded. */
   life: number;
+  /**
+   * Metres of committed travel left: distance over which the pavement test is
+   * suspended. Set when somebody steps into the road to cross, and again when
+   * they cut a corner — both are journeys across ground that is not pavement,
+   * and being reseeded halfway is exactly what this exists to prevent.
+   */
+  commit: number;
+  /** True while that committed travel is a road crossing rather than a corner. */
+  inRoad: boolean;
 }
 
 interface Boat {
@@ -238,12 +262,16 @@ function seedWalker(rng: Rng, w: Walker): void {
        fine from a jetpack and wrong the moment somebody spawns down there and
        walks a block without passing a single person. The clustering is still
        most of the distribution, because Market Street with four people on it
-       was the bug the gaussian fixed. */
+       was the bug the gaussian fixed — and the spread was tightened from 620 m
+       to 400 m at the same time as the count went up, because a thousand
+       people spread over a square kilometre and a bit is one every thirty
+       metres of pavement, which reads as a quiet Sunday rather than as
+       downtown. */
     const wide = rng.chance(0.34);
     const x = Math.max(BOUNDS.minX + 40, Math.min(BOUNDS.maxX - 40,
-      wide ? rng.range(BOUNDS.minX, BOUNDS.maxX) : rng.gauss() * 620 - 120));
+      wide ? rng.range(BOUNDS.minX, BOUNDS.maxX) : rng.gauss() * 400 - 100));
     const z = Math.max(BOUNDS.minZ + 40, Math.min(BOUNDS.maxZ - 40,
-      wide ? rng.range(BOUNDS.minZ, BOUNDS.maxZ) : rng.gauss() * 660 - 120));
+      wide ? rng.range(BOUNDS.minZ, BOUNDS.maxZ) : rng.gauss() * 430 - 100));
     if (isWater(x, z) || !isSidewalk(x, z)) continue;
     const r = roadAt(x, z);
     const s = rng.chance(0.5) ? 1 : -1;
@@ -251,9 +279,12 @@ function seedWalker(rng: Rng, w: Walker): void {
     w.z = z;
     w.dx = r.dir.x * s;
     w.dz = r.dir.z * s;
+    w.fx = w.dx;
+    w.fz = w.dz;
     w.speed = rng.range(1.1, 1.9);
     w.phase = rng.next() * Math.PI * 2;
     w.life = rng.range(40, 260);
+    w.commit = 0;
     return;
   }
   w.speed = 0;
@@ -310,6 +341,10 @@ export class CityLife {
   private lensGeo: THREE.BufferGeometry | null = null;
   private lensMats: THREE.Material[] = [];
   private lastGreen: 0 | 1 | -1 = -1;
+  /** Frame counter, for staggering the expensive per-walker tests. */
+  private frame = 0;
+  /** How many times a walker has been given a new home. See `crowd()`. */
+  private reseeds = 0;
 
   constructor() {
     this.group.name = "frisco-life";
@@ -367,7 +402,7 @@ export class CityLife {
     if (this.boatMesh.instanceColor) this.boatMesh.instanceColor.needsUpdate = true;
 
     for (let i = 0; i < WALKER_COUNT; i++) {
-      const w: Walker = { x: 0, z: 0, dx: 1, dz: 0, speed: 0, phase: 0, life: 0 };
+      const w: Walker = { x: 0, z: 0, dx: 1, dz: 0, fx: 1, fz: 0, speed: 0, phase: 0, life: 0, commit: 0, inRoad: false };
       seedWalker(this.rng, w);
       this.walkers.push(w);
       paint.setHex(COAT[this.rng.int(0, COAT.length - 1)]);
@@ -377,6 +412,7 @@ export class CityLife {
   }
 
   update(dt: number, elapsed: number): void {
+    const frame = this.frame++;
     const carCut = Math.ceil(this.cars.length * this.density);
     const green = greenAxis(elapsed);
     this.rehashCars(carCut);
@@ -469,22 +505,66 @@ export class CityLife {
         w.x += w.dx * w.speed * dt;
         w.z += w.dz * w.speed * dt;
         w.life -= w.speed * dt;
+        if (w.commit > 0) w.commit -= w.speed * dt;
       }
       /* Turn round at the end of the block rather than being reseeded, so a
          street you are standing on does not keep blinking people out of
          existence three metres away. Only a walker who has actually left the
          pavement — a corner, a driveway, the water — gets a new home. */
-      if (w.life <= 0 && w.speed > 0) {
+      if (w.life <= 0 && w.speed > 0 && w.commit <= 0) {
         w.dx = -w.dx;
         w.dz = -w.dz;
         w.life = 40 + (i % 7) * 24;
       }
-      if (w.speed === 0 || !isSidewalk(w.x, w.z) || isWater(w.x, w.z)) {
-        seedWalker(this.rng, w);
+      /* The pavement test, staggered. Somebody mid-crossing is deliberately
+         exempt: they are standing in the road on purpose, and testing them
+         would reseed them into a doorway halfway across. */
+      if (w.commit <= 0 && (i + frame) % WALK_STAGGER === 0) {
+        if (w.speed === 0 || isWater(w.x, w.z)) {
+          seedWalker(this.rng, w);
+          this.reseeds++;
+        } else if (!isSidewalk(w.x, w.z)) {
+          /* Off the kerb. Try the two ways round the corner before giving up:
+             a walker who reaches the end of a block and vanishes is the single
+             most visible thing wrong with a crowd, and a corner is exactly
+             where somebody standing at a junction is looking. */
+          if (!this.turnCorner(w)) {
+            seedWalker(this.rng, w);
+            this.reseeds++;
+          }
+        } else if (w.commit === 0 && this.rng.chance(0.0005)) {
+          /* Step off and cross. Straight across the road they are beside, for
+             as far as it takes — `commit` is a distance, so they keep going
+             until they are over rather than being caught by the pavement test
+             in the middle of the carriageway. */
+          const r = roadAt(w.x, w.z);
+          // Which side of them the road is on. `roadAt` gives a distance and a
+          // direction but not a sign, so probe: one of the two ways across the
+          // pavement is asphalt and the other is a building.
+          const nx = -r.dir.z;
+          const nz = r.dir.x;
+          const step = 4;
+          const side = isRoad(w.x + nx * step, w.z + nz * step) ? 1 : -1;
+          if (isRoad(w.x + nx * step * side, w.z + nz * step * side)) {
+            w.dx = nx * side;
+            w.dz = nz * side;
+            // Far enough to be well onto the opposite pavement, not just over
+            // the far kerb — stopping on the kerb line puts them back in the
+            // road on the next step.
+            w.commit = r.halfWidth * 2 + 9;
+            w.inRoad = true;
+          }
+        }
       }
+      // Face where you are going, but not instantly: a person who reverses in
+      // one frame reads as a glitch, and turning is most of what says "person".
+      const ease = Math.min(1, dt * 5.5);
+      w.fx += (w.dx - w.fx) * ease;
+      w.fz += (w.dz - w.fz) * ease;
+      const fl = Math.hypot(w.fx, w.fz) || 1;
       const bob = Math.sin(elapsed * w.speed * 3.4 + w.phase);
       this.v.set(w.x, walkHeight(w.x, w.z) + 0.16 + Math.abs(bob) * 0.055, w.z);
-      this.e.set(bob * 0.06, Math.atan2(w.dx, w.dz), bob * 0.045);
+      this.e.set(bob * 0.06, Math.atan2(w.fx / fl, w.fz / fl), bob * 0.045);
       this.q.setFromEuler(this.e);
       this.m.compose(this.v, this.q, this.one);
       this.walkerMesh.setMatrixAt(i, this.m);
@@ -547,6 +627,52 @@ export class CityLife {
     this.lenses[1].visible = green === 0;
     this.lenses[2].visible = green !== 1;
     this.lenses[3].visible = green === 1;
+  }
+
+  /**
+   * Take the corner rather than disappear.
+   *
+   * Somebody who has walked off the end of a block is standing on a junction,
+   * where two pavements meet at right angles. Both quarter turns are tried, a
+   * couple of metres ahead each way; the first that lands on pavement wins.
+   * Only if neither does — a driveway, the water, the edge of the map — do they
+   * get a new home somewhere else.
+   */
+  private turnCorner(w: Walker): boolean {
+    /* Search, rather than probe once. The first version tried each quarter
+       turn at a fixed three and a half metres and reseeded seven walkers in
+       ten every minute, because somebody who has walked off the end of a block
+       is standing in the *cross street's* carriageway, and three and a half
+       metres in any direction is still road. The pavement they want is on the
+       far side of a nine-metre road, or diagonally across the corner.
+
+       Eight headings — the two quarter turns, the reverse, and the diagonals
+       between them, nearest-first — at five distances each. Forty `isSidewalk`
+       calls sounds expensive and is not: this runs on the one frame in a
+       minute where a given walker leaves the kerb. */
+    const dirs: Array<[number, number]> = [];
+    for (const turn of [Math.PI / 2, -Math.PI / 2, Math.PI * 0.75, -Math.PI * 0.75, Math.PI]) {
+      const c = Math.cos(turn);
+      const s = Math.sin(turn);
+      dirs.push([w.dx * c - w.dz * s, w.dx * s + w.dz * c]);
+    }
+    for (const d of [3, 6, 9, 13, 18]) {
+      for (const [nx, nz] of dirs) {
+        const px = w.x + nx * d;
+        const pz = w.z + nz * d;
+        if (isWater(px, pz) || !isSidewalk(px, pz)) continue;
+        w.dx = nx;
+        w.dz = nz;
+        w.life = 40 + this.rng.next() * 180;
+        /* Walk to it rather than being caught by the pavement test again on
+           the way: crossing the corner is crossing a road, and the mechanism
+           for that already exists. */
+        w.commit = d + 2;
+        w.inRoad = false;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Bucket the live cars into 12 m cells so `gapAhead` can look in two of them. */
@@ -624,6 +750,27 @@ export class CityLife {
       else moving++;
     }
     return { green: this.lastGreen, moving, stopped };
+  }
+
+  /**
+   * What the crowd is doing: how many are placed, how many are mid-crossing,
+   * and how many times anybody has been teleported to a new home since the
+   * world loaded.
+   *
+   * `reseeds` is the one that matters and the one nothing else can see. A
+   * walker who reaches the end of a block and is quietly moved somewhere else
+   * is a person vanishing three metres from where you are standing, and it is
+   * the single most visible thing that can be wrong with a crowd — but it is
+   * invisible in a screenshot, because the frame before and the frame after
+   * both look like a street with people on it.
+   */
+  crowd(): { walkers: number; crossing: number; reseeds: number } {
+    const cut = Math.ceil(this.walkers.length * this.density);
+    let crossing = 0;
+    for (let i = 0; i < cut && i < this.walkers.length; i++) {
+      if (this.walkers[i].inRoad && this.walkers[i].commit > 0) crossing++;
+    }
+    return { walkers: cut, crossing, reseeds: this.reseeds };
   }
 
   /** How many of each are actually placed and moving. */
