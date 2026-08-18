@@ -24,6 +24,8 @@ import {
   brickMaterial, buildStructure, floorMaterial, glassMaterial, ironMaterial, insideNave,
   NAVE, soilMaterial, waterMaterial,
 } from "./structure";
+import { buildBirds } from "./birds";
+import { buildFurniture } from "./furniture";
 import { buildPlanting } from "./planting";
 import { buildMotes, buildRainOutside, buildShafts, type AirSystem } from "./air";
 
@@ -91,6 +93,47 @@ export function createConservatory(opts: ConservatoryOptions): ConservatoryWorld
         float s = max(0.0, dot(d, normalize(uSunDir)));
         col += uSunColor * pow(s, 8.0) * (0.55 + (1.0 - uRain) * 0.9);
         col += uSunColor * pow(s, 60.0) * 1.4;
+
+        /* THE GARDEN THE BUILDING IS STANDING IN.
+           Every pane in the house shows this dome, and the dome was a
+           gradient — so from inside, the world beyond the glass was a
+           uniform pale nothing in every direction. The building had no
+           outside, and a glasshouse with no outside is a diorama.
+
+           It is painted here, on the sky, rather than built as geometry
+           beyond the walls, and that is the whole trick: one function seen
+           correctly through all sixty metres of glazing, with the panes'
+           own grime and rain already bending it, for the cost of two noise
+           lookups. You never get close enough to want parallax.
+
+           Two ranks, because one silhouette at one distance reads as a
+           cut-out: a far treeline sitting in the haze, and a nearer hedge
+           and a few real trees standing clear of it. */
+        float az = atan(d.z, d.x);
+        float horizon = d.y;
+
+        // Far treeline: low, soft, already half lost in the weather.
+        float farTop = 0.055 + 0.030 * fbm(vec2(az * 5.5, 0.0))
+                             + 0.014 * fbm(vec2(az * 17.0, 4.0));
+        float far = smoothstep(farTop + 0.012, farTop - 0.012, horizon);
+        vec3 farCol = mix(col, uSkyColor * 0.52 + vec3(0.022, 0.034, 0.018), 0.88);
+        col = mix(col, farCol, far * smoothstep(-0.09, 0.02, horizon));
+
+        // Nearer trees and a hedge — darker, crisper, and unmistakably wet.
+        float nearTop = 0.020 + 0.085 * fbm(vec2(az * 2.6 + 9.0, 0.0))
+                              + 0.030 * fbm(vec2(az * 9.0 + 3.0, 1.0));
+        float nr = smoothstep(nearTop + 0.006, nearTop - 0.006, horizon);
+        // Broken up so it is a row of trees rather than a wall of one.
+        nr *= smoothstep(0.26, 0.46, fbm(vec2(az * 3.1 + 21.0, horizon * 8.0)));
+        vec3 nearCol = vec3(0.038, 0.058, 0.036)
+                     + uSkyColor * 0.22 * (0.6 + 0.4 * fbm(vec2(az * 24.0, horizon * 40.0)));
+        col = mix(col, nearCol, nr * smoothstep(-0.14, -0.02, horizon));
+
+        // Below the treeline, wet lawn — much darker than the sky, which is
+        // what stops the horizon reading as the edge of the world.
+        float ground = smoothstep(-0.02, -0.16, horizon);
+        col = mix(col, uSkyColor * 0.34 + vec3(0.030, 0.045, 0.022), ground);
+
         gl_FragColor = vec4(col, 1.0);
       }
     `,
@@ -110,7 +153,11 @@ export function createConservatory(opts: ConservatoryOptions): ConservatoryWorld
   scene.add(structure.group);
 
   const planting = buildPlanting(uniforms);
+  const furniture = buildFurniture(uniforms);
+  const birds = buildBirds(uniforms);
   scene.add(planting.group);
+  scene.add(furniture.group);
+  scene.add(birds.group);
 
   const air: AirSystem[] = [
     buildRainOutside(uniforms),
@@ -259,6 +306,7 @@ export function createConservatory(opts: ConservatoryOptions): ConservatoryWorld
   const dev = window as unknown as { __consDebug?: ConsDebug };
   const named = new Map<string, THREE.Object3D>([
     ["sky", sky], ["structure", structure.group], ["planting", planting.group],
+    ["furniture", furniture.group], ["birds", birds.group],
     ["rain", air[0].group], ["shafts", air[1].group], ["motes", air[2].group],
   ]);
   dev.__consDebug = {
@@ -390,6 +438,7 @@ export function createConservatory(opts: ConservatoryOptions): ConservatoryWorld
     }
 
     for (const a of air) a.update(dt, t, camera);
+    birds.update(dt, t);
     sky.position.set(camera.position.x, 0, camera.position.z);
 
     opts.onWalked?.(walked);
@@ -420,6 +469,8 @@ export function createConservatory(opts: ConservatoryOptions): ConservatoryWorld
       skyGeo.dispose(); skyMat.dispose();
       iron.dispose(); glass.dispose(); floor.dispose(); brick.dispose();
       soil.dispose(); water.dispose();
+      furniture.dispose();
+      birds.dispose();
       // An audio context left open counts against a hard per-page limit,
       // and a leaked WebGL context breaks the NEXT realm somebody opens.
       void audio?.close().catch(() => {});

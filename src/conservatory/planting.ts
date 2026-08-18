@@ -145,6 +145,35 @@ function blade(
   }
 }
 
+/**
+ * A lily pad: a disc lying flat with the wedge cut out of one side.
+ *
+ * That notch is the entire recognition cue. A plain disc floating on water
+ * is a coin; the same disc with a V taken out of it is a water lily, and
+ * everybody knows it without being told. It is drawn as a fan from the
+ * centre so the notch is a real gap rather than a dark mark painted on.
+ */
+function padGeometry(r: number, segs: number) {
+  const a = newAccum();
+  const GAP = 0.42;                       // radians of missing pad
+  const span = Math.PI * 2 - GAP;
+  const push = (x: number, z: number, f: number, l: number) => {
+    // A slight dish, because a pad curls its edge up out of the water.
+    const rr = Math.hypot(x, z) / r;
+    a.pos.push(x, rr * rr * r * 0.10, z);
+    a.flex.push(f);
+    a.leaf.push(l);
+  };
+  for (let i = 0; i < segs; i++) {
+    const a0 = GAP / 2 + (i / segs) * span;
+    const a1 = GAP / 2 + ((i + 1) / segs) * span;
+    push(0, 0, 0.0, 0.0);
+    push(Math.cos(a0) * r, Math.sin(a0) * r, 0.35, 1.0);
+    push(Math.cos(a1) * r, Math.sin(a1) * r, 0.35, 1.0);
+  }
+  return finish(a);
+}
+
 /** One strap leaf, standing at the origin. Grasses, and nothing else. */
 function strapGeometry(len: number, wid: number, segs: number, droop: number) {
   const a = newAccum();
@@ -579,6 +608,55 @@ export function buildPlanting(uniforms: Record<string, THREE.IUniform>): Plantin
     s.geo.setAttribute("aParams", new THREE.InstancedBufferAttribute(params, 3));
     group.add(mesh);
     owned.push(s.geo);
+  }
+
+  /* WATER LILIES. The pool is the only place in the house where the eye
+     stops on its way down the nave, and it was a disc of water with a brick
+     ring round it. Pads are what a Victorian glasshouse pool is FOR — the
+     whole building type exists because somebody wanted somewhere to keep a
+     Victoria amazonica alive through an English winter. */
+  {
+    const POOL = { x: 0, z: 4, r: 1.86, y: 0.20 };
+    const pads = 34;
+    const pad = padGeometry(0.30, 12);
+    const mesh = new THREE.InstancedMesh(pad, mat, pads);
+    mesh.frustumCulled = false;
+    const tints = new Float32Array(pads * 3);
+    const params = new Float32Array(pads * 3);
+    const lr = rng(0x11ec);
+    for (let i = 0; i < pads; i++) {
+      // Clustered rather than spread: pads grow from a crown on the bottom,
+      // so they arrive in overlapping rafts with clear water between them.
+      const cluster = Math.floor(lr() * 4);
+      const ca = (cluster / 4) * Math.PI * 2 + 0.7;
+      const cd = 0.45 + (cluster % 2) * 0.55;
+      const a = lr() * Math.PI * 2;
+      const d = lr() * 0.52;
+      pos.set(
+        POOL.x + Math.cos(ca) * cd + Math.cos(a) * d,
+        POOL.y + 0.006,
+        POOL.z + Math.sin(ca) * cd + Math.sin(a) * d,
+      );
+      e.set(0, lr() * Math.PI * 2, 0, "YXZ");
+      q.setFromEuler(e);
+      scl.setScalar(0.55 + lr() * 0.75);
+      m4.compose(pos, q, scl);
+      mesh.setMatrixAt(i, m4);
+      const v = (lr() - 0.5) * 0.20;
+      tints[i * 3] = Math.max(0, 0.085 + v * 0.5);
+      tints[i * 3 + 1] = Math.max(0, 0.215 + v);
+      tints[i * 3 + 2] = Math.max(0, 0.105 + v * 0.4);
+      params[i * 3] = lr();
+      // Stiff, because a pad is held by the water rather than by a stem —
+      // it should ride the gust barely at all while the palms are thrashing.
+      params[i * 3 + 1] = 1.45;
+      params[i * 3 + 2] = 0.45;
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    pad.setAttribute("aTint", new THREE.InstancedBufferAttribute(tints, 3));
+    pad.setAttribute("aParams", new THREE.InstancedBufferAttribute(params, 3));
+    group.add(mesh);
+    owned.push(pad);
   }
 
   /* The trunks the palm crowns actually sit on. Not instanced with the

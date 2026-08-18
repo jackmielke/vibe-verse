@@ -179,7 +179,10 @@ float canopyShade(vec3 worldPos){
   vec2 dp = worldPos.xz * 0.85 + vec2(uGust * 0.35, uTime * 0.02);
   float dapple = 0.55 + 0.45 * fbm(dp);
   // Under the beds themselves almost nothing gets through.
-  float lit = mix(0.20, 1.0, open) * mix(0.72, 1.0, dapple);
+  /* 0.20 under the beds put them at pure black — every leaf below waist
+     height lost its shape entirely, and a jungle floor is dim, not absent.
+     Light bounces off a hundred wet surfaces before it gets down there. */
+  float lit = mix(0.38, 1.0, open) * mix(0.74, 1.0, dapple);
   /* Contact. A surface right up against the kerb is occluded by it from
      nearly every direction, and that dark line where two things meet is
      the cheapest and most convincing occlusion there is. */

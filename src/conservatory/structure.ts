@@ -149,61 +149,66 @@ export function glassMaterial(uniforms: Record<string, THREE.IUniform>) {
         vec2 warp = rain.xy;
         float wet = rain.z;
 
-        // What you see through it: a wet overcast sky, plus the sun's disc
-        // smeared by the water. The warp is what makes the drops lenses.
-        vec2 look = vUv + warp;
-        /* GLASS IS DARKER THAN WHAT IS BEHIND IT. This transmitted the sky
-           at 1.04–1.20× its own brightness, so every pane was brighter than
-           the cloud outside it and the roof blew out into one white sheet
-           with a few struts in it. A century-old horticultural pane passes
-           maybe three quarters of what hits it, and less where the grime is. */
-        float sky = 0.55 + 0.45 * look.y;
-        vec3 through = uSkyColor * (0.52 + sky * 0.26);
-        float sunDisc = pow(max(0.0, dot(normalize(-v), normalize(uSunDir))), 26.0);
-        through += uSunColor * sunDisc * 2.0;
+        /* THE PANES, IN WORLD MEASURE.
+           Keyed to uv, the same numbers gave 77cm panes on the 48m vault
+           and 34cm ones on the 3m side walls — the walls came out as a
+           lattice, because a uv is a fraction of whatever it is stretched
+           over and glazing bars are not. In metres, every pane in the
+           building is the same size, which is what makes it read as one
+           building rather than as several surfaces that happen to touch.
 
-        /* THE PANES THEMSELVES.
-           Looking up, the roof was one continuous sheet of glass with a few
-           structural ribs crossing it — and a glasshouse roof is the exact
-           opposite of that: it is a dense grid of slender glazing bars with
-           small panes between them, and that grid is most of what you see
-           when you lie on your back in one. Drawing it as geometry would be
-           several thousand more members; drawing it in the shader costs two
-           smoothsteps and is indistinguishable from underneath.
-
-           Rafters run up the arch, purlins across it, and each pane gets its
-           own faint tint, because they were cut and glazed one at a time and
-           a century of weather has not made them agree. */
-        vec2 pane = vec2(vUv.x * 62.0, vUv.y * 9.0);
+           Rafters run one way and purlins the other, and which way is which
+           depends on the surface: on the vault and the side walls the
+           rafters run along the length, and on a gable there is no length
+           to run along, so they follow x instead. */
+        float alongAxis = abs(n.z) > 0.7 ? vWorld.x : vWorld.z;
+        vec2 pane = vec2(alongAxis * 1.30, vWorld.y * 1.30);
         vec2 pf = abs(fract(pane) - 0.5);
-        float rafter = smoothstep(0.40, 0.475, pf.x);
-        float purlin = smoothstep(0.40, 0.478, pf.y);
-        float bars = max(rafter, purlin);
+        float bars = max(smoothstep(0.40, 0.475, pf.x),
+                         smoothstep(0.40, 0.478, pf.y));
         /* Fade the grid out once the panes are smaller than a pixel. Down
            the length of a 48m vault they get there quickly, and an unfaded
            grid at that scale is not a roof, it is a moiré — the same thing
            that was happening to the floor tiles, for the same reason, and
            fixed the same way. */
-        bars *= 1.0 - smoothstep(0.28, 0.85, max(fwidth(pane.x), fwidth(pane.y)));
-        // Per-pane tint, and the odd cracked or replaced one.
+        /* Fading from 0.30 was still half a bay too late: around the far end
+           of the vault the grid broke into a field of dots, which is what a
+           moiré looks like when it is nearly resolved rather than badly.
+           Start letting go while each pane is still three pixels across. */
+        bars *= 1.0 - smoothstep(0.16, 0.55, max(fwidth(pane.x), fwidth(pane.y)));
+
+        /* WHAT IS ON THE GLASS, NOT WHAT IS BEHIND IT.
+           This used to compute a sky of its own and hand it back as the
+           pane's colour, at very nearly the brightness of the actual sky
+           dome behind it — so every pane in the house painted over the
+           weather with a flat copy of itself, and the garden outside was
+           invisible from indoors. What a pane contributes is its
+           REFLECTIONS and its DIRT; the view is the thing behind it, and
+           the only honest way to show that is to let it through. */
         float pid = hash21(floor(pane));
-        through *= 0.88 + 0.24 * pid;
-
-        // Grime, and the green line where algae collects in the corners.
-        /* Keyed to world position, not to uv. On the barrel vault vUv.y
-           runs around the arch, so grime that varied only with uv drew a
-           set of perfect concentric rings down the whole roof — the most
-           obviously procedural thing in the building. */
         float grime = fbm(vec2(vWorld.z * 0.55, vUv.y * 5.0 + vWorld.x * 0.35));
-        through *= 0.80 + 0.20 * grime;
-        through = mix(through, through * vec3(0.86, 1.0, 0.88), smoothstep(0.55, 1.0, grime) * 0.5);
 
-        // Wet glass reflects more, and the drops themselves catch the sky.
-        vec3 col = through + uSkyColor * fres * 0.22 + vec3(0.75) * wet * 0.08;
-        float alpha = clamp(0.30 + fres * 0.45 + wet * 0.25, 0.0, 0.92);
+        // Reflected room and sky, plus the sun's own disc smeared by water.
+        vec3 on = uSkyColor * (0.30 + fres * 0.75);
+        float sunDisc = pow(max(0.0, dot(normalize(-v), normalize(uSunDir))), 26.0);
+        on += uSunColor * sunDisc * 1.3;
+        // Old horticultural glass is green at the edges and never clean.
+        on = mix(on, on * vec3(0.80, 1.0, 0.84), smoothstep(0.55, 1.0, grime) * 0.6);
+        on += vec3(0.55) * wet * 0.10;
+        // The drops are lenses; the warp they impose shows as a smear of
+        // whatever brightness they are sitting in front of.
+        on += uSkyColor * length(warp) * 6.0;
+
+        /* Alpha is now the pane's OPACITY — grime, water and the glancing
+           sheen — rather than an excuse to blend in a painted sky. Face on,
+           you see the garden; along the glass, you see the glass. */
+        float alpha = clamp(0.055 + fres * 0.62 + wet * 0.20
+                          + smoothstep(0.5, 1.0, grime) * 0.16
+                          + (pid - 0.5) * 0.05, 0.0, 0.94);
+        vec3 col = on;
         // The bars are painted iron, not glass: dark, and opaque.
-        col = mix(col, uSkyColor * 0.38, bars * 0.92);
-        alpha = mix(alpha, 1.0, bars * 0.92);
+        col = mix(col, uSkyColor * 0.34, bars * 0.94);
+        alpha = mix(alpha, 1.0, bars * 0.94);
         gl_FragColor = vec4(humid(col, vWorld), alpha);
       }
     `,
@@ -311,8 +316,15 @@ export function floorMaterial(uniforms: Record<string, THREE.IUniform>) {
 
         // Grout. Thin, pale, and gone the moment it stops being resolvable.
         vec2 g = abs(fract(tp) - 0.5);
-        float grout = (1.0 - smoothstep(0.42, 0.485, max(g.x, g.y)));
-        tile = mix(vec3(0.44, 0.40, 0.35), tile, mix(1.0, grout, legible));
+        float grout = (1.0 - smoothstep(0.44, 0.492, max(g.x, g.y)));
+        /* Grout is DIRTY. At 0.44 it was paler than half the tiles and
+           perfectly even, which drew a bright regular lattice over the whole
+           floor and made it read as sheet vinyl. Real lime joints in a
+           glasshouse are darker than the tile, not lighter, and they are
+           darkest where the water sits. */
+        vec3 joint = mix(vec3(0.235, 0.205, 0.175), vec3(0.30, 0.27, 0.235),
+                         fbm(p * 5.0));
+        tile = mix(joint, tile, mix(1.0, grout, legible));
 
         // Wear: the middle of the walk is polished paler, the edges are not.
         float wear = smoothstep(3.0, 0.4, abs(p.x)) * (0.6 + 0.4 * fbm(p * 1.1));
@@ -517,7 +529,7 @@ export function soilMaterial(uniforms: Record<string, THREE.IUniform>) {
                                           vec2(0.010, 0.022));
         // Under a canopy: very little sky reaches the ground in a bed.
         float can = canopyShade(vWorld);
-        vec3 sky = uSkyColor * (0.34 + 0.26 * (n.y * 0.5 + 0.5)) * mix(0.55, 1.0, can);
+        vec3 sky = uSkyColor * (0.44 + 0.30 * (n.y * 0.5 + 0.5)) * mix(0.62, 1.0, can);
         vec3 col = soil * (sky + uSunColor * max(0.0, dot(n, normalize(uSunDir)))
                                  * thru * 1.1 * can);
         // Wet earth has a dull sheen, not a highlight.
