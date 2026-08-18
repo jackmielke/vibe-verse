@@ -17,6 +17,14 @@ export interface Headline {
   emoji: string;
   headline: string;
   body: string;
+  /**
+   * Which desk filed it — "The Encounter Log", "The Economy Desk".
+   *
+   * Optional because every issue up to №13 was written before the paper had
+   * bylines, and a back issue should print without one rather than be given
+   * a plausible-looking attribution it never had.
+   */
+  byline?: string;
 }
 
 /** A story from outside the sky. `url` always points at something real. */
@@ -71,6 +79,15 @@ export interface Paper {
   archive: Issue[];
   /** Where this copy came from, for the footer to be honest about. */
   live: boolean;
+  /**
+   * Letters on the spike, not yet printed.
+   *
+   * A count and nothing else. The letters table has no read policy — an
+   * unprinted letter is somebody's post before an editor has opened it — so
+   * this says the box is not empty and nothing about what is in it. Zero
+   * when the paper came off the disk, because a static file cannot know.
+   */
+  postbag: number;
 }
 
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vibe-times`;
@@ -117,6 +134,7 @@ async function fromDisk(): Promise<Paper> {
     current: looksLikeIssue(current) ? current : null,
     archive: Array.isArray(archive) ? archive.filter(looksLikeIssue) : [],
     live: false,
+    postbag: 0,
   };
 }
 
@@ -136,6 +154,7 @@ export async function loadPaper(limit = 14): Promise<Paper> {
           current: data.current,
           archive: Array.isArray(data.archive) ? data.archive.filter(looksLikeIssue) : [],
           live: true,
+          postbag: Number.isFinite(data.postbag) ? Math.max(0, Math.trunc(data.postbag)) : 0,
         };
       }
     }

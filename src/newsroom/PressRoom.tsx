@@ -17,7 +17,7 @@
  * the actual graffiti table. A room that lies about the building it is in
  * would be a screensaver.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { loadPaper, printedAt, type Issue } from "@/lib/vibeTimes";
@@ -36,10 +36,25 @@ export function PressRoom() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [wall, setWall] = useState<WallLine[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Letters waiting for the morning. A count, never the letters — the
+  // postbag has no read policy and should not get one, because an unprinted
+  // letter is somebody's post before an editor has opened it.
+  const [postbag, setPostbag] = useState(0);
   // One clock for the whole room, ticking a minute at a time. The countdown
   // is the only thing that needs it, and a room that re-renders every second
   // to move a minute hand is a waste of a battery.
   const [now, setNow] = useState(() => new Date());
+
+  // The wall is public to read, so this needs no session. It is also
+  // entirely optional furniture: a failure here leaves an empty spike.
+  const refreshWall = useCallback(async () => {
+    const { data } = await supabase
+      .from("world_graffiti")
+      .select("author_name,text,created_at")
+      .order("created_at", { ascending: false })
+      .limit(8);
+    if (data) setWall(data as WallLine[]);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -48,27 +63,21 @@ export function PressRoom() {
       .then((paper) => {
         if (!live) return;
         setIssues(paper.current ? [paper.current, ...paper.archive] : []);
+        setPostbag(paper.postbag);
         setLoaded(true);
       })
       .catch(() => live && setLoaded(true));
 
-    // The wall is public to read, so this needs no session. It is also
-    // entirely optional furniture: a failure here leaves an empty spike.
-    supabase
-      .from("world_graffiti")
-      .select("author_name,text,created_at")
-      .order("created_at", { ascending: false })
-      .limit(8)
-      .then(({ data }) => {
-        if (live && data) setWall(data as WallLine[]);
-      });
+    void refreshWall().catch(() => {
+      /* the wall is furniture; an empty one is not an error */
+    });
 
     const tick = window.setInterval(() => live && setNow(new Date()), 60_000);
     return () => {
       live = false;
       window.clearInterval(tick);
     };
-  }, []);
+  }, [refreshWall]);
 
   const current = issues[0] ?? null;
   const press = useMemo(
@@ -191,8 +200,23 @@ export function PressRoom() {
                     letterbox, two rooms — a second implementation would be a
                     second set of rules about what a letter is. */}
                 <div className="mt-4 [&>section]:mt-0 [&>section]:border-[#d8cfae]/20 [&_input]:border-[#d8cfae]/30 [&_input]:text-[#d8cfae] [&_input]:placeholder:text-[#d8cfae]/30 [&_button[type=submit]]:border-[#ffd479]/60 [&_button[type=submit]]:bg-[#ffd479] [&_button[type=submit]]:text-[#12100c]">
-                  <Letterbox />
+                  {/* Posting a line moves the spike and the wall in the same
+                      breath, because both of those are what actually just
+                      happened. A count that only updates on reload would make
+                      the room look like a screenshot of itself. */}
+                  <Letterbox
+                    onSent={() => {
+                      setPostbag((n) => n + 1);
+                      void refreshWall();
+                    }}
+                  />
                 </div>
+                <p className="mt-3 border-t border-[#d8cfae]/15 pt-3 font-mono text-[10px] uppercase tracking-widest text-[#d8cfae]/50">
+                  on the spike:{" "}
+                  {postbag === 0
+                    ? "nothing waiting"
+                    : `${postbag} ${postbag === 1 ? "letter" : "letters"} for the morning`}
+                </p>
               </>
             ) : (
               <p className="mt-3 text-sm text-[#d8cfae]/50">The desk is dark.</p>

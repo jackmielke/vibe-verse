@@ -37,7 +37,7 @@
 // to be nonsense, and it is labelled as such.
 //
 // Routes:
-//   GET  /vibe-times                      → { current, archive } (published)
+//   GET  /vibe-times                      → { current, archive, postbag }
 //   GET  /vibe-times?limit=5              → fewer back issues
 //   GET  /vibe-times?format=rss           → the feed, one item per edition
 //   POST /vibe-times                      → write today's issue if unwritten
@@ -518,7 +518,7 @@ THE ONE RULE: you may only write what is in the brief.
 Return ONE raw JSON object, no markdown fences, exactly this shape:
 {
   "motto": string,
-  "headlines": [{ "emoji": string, "headline": string, "body": string }],
+  "headlines": [{ "emoji": string, "headline": string, "byline": string, "body": string }],
   "dispatches": [{ "desk": "ai"|"tech"|"sports"|"culture"|"history", "emoji": string, "headline": string, "body": string, "source": string, "url": string }],
   "gossip": string,
   "weather": string,
@@ -530,6 +530,7 @@ Return ONE raw JSON object, no markdown fences, exactly this shape:
 
 FIELD RULES
 - motto: the strapline under the masthead. Six words or fewer, lowercase, different every day, drawn from the day's actual material.
+- byline: which desk filed the story, 2 to 4 words, title case, no "By". Name the part of the world it was reported from: The Building Desk, The Encounter Log, The Economy Desk, The Graffiti Wall, The Night Desk. It is a label for where the facts came from, so pick the one that is actually true of that story.
 - headlines: 3 to 5 stories about the VibeVerse itself, from what_got_built and the world log. The first is the lead and runs 90 to 150 words; the rest run 50 to 90. HEADLINES IN CAPITALS. Report changes as things that HAPPENED TO THE WORLD, not as software changes: "the moon stopped throwing people into the sky" beats "fixed collision bug". If little was built, lead with the world's own life instead: who arrived, who greeted whom, what moved through the economy.
 - dispatches: 5 to 7 items from outside the sky. This is the wire desk, and it is why anyone reads a paper twice. Spread it across the desks: two or three AI and tech stories, at least one real sports result or story, at least one from culture (music, film, games), and one bit of history only if it is a delight. 40 to 80 words each. Write them as a newspaper in a fictional sky would write about the real world: report the fact straight, then let one clause connect it to life in here. Never sneer, never boost. If an AI story is genuinely a big deal, say so plainly. Skip anything with a death toll, a disaster or a war in it: this is a fun paper and there are other papers for that.
 - numbers: when you use a figure from computed_stats or the_world, describe it exactly as it is labelled. vibe_moved is everything that moved through the economy, not one resident's pay. Do not turn a total into an average or a person.
@@ -733,12 +734,24 @@ Deno.serve(async (req) => {
   // ---- Read -----------------------------------------------------------
   if (req.method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 12) || 12, 40);
-    const { data, error } = await sb
-      .from("vibe_times_issues")
-      .select("issue,edition_date,payload,published_at")
-      .eq("status", "published")
-      .order("edition_date", { ascending: false })
-      .limit(limit);
+    // How many letters are on the spike, waiting for the morning. The letters
+    // table has no read policy at all — it is service-role only, and it should
+    // stay that way, because an unprinted letter is somebody's post before an
+    // editor has seen it. A count is not the post: it says the box is not
+    // empty and nothing about what is in it.
+    const [{ data, error }, postbag] = await Promise.all([
+      sb
+        .from("vibe_times_issues")
+        .select("issue,edition_date,payload,published_at")
+        .eq("status", "published")
+        .order("edition_date", { ascending: false })
+        .limit(limit),
+      sb
+        .from("vibe_times_letters")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "new")
+        .then(({ count }) => count ?? 0, () => 0),
+    ]);
     if (error) return json({ error: error.message }, 500);
     const issues = (data ?? []).map((r) => r.payload);
     if (url.searchParams.get("format") === "rss") {
@@ -751,7 +764,7 @@ Deno.serve(async (req) => {
       });
     }
     return json(
-      { current: issues[0] ?? null, archive: issues.slice(1) },
+      { current: issues[0] ?? null, archive: issues.slice(1), postbag },
       200,
       { "Cache-Control": "public, max-age=300, s-maxage=300" },
     );
@@ -928,6 +941,10 @@ Deno.serve(async (req) => {
       .map((h: Record<string, unknown>) => ({
         emoji: emoji(h.emoji, "📰"),
         headline: str(h.headline, 160),
+        // Which desk filed it. Optional on purpose: every issue before №14
+        // has none, and the page simply does not print a line that is not
+        // there rather than inventing "Staff Reporter" for the archive.
+        byline: str(h.byline, 40),
         body: str(h.body, 2000),
       }))
       .filter((h: { headline: string; body: string }) => h.headline && h.body)

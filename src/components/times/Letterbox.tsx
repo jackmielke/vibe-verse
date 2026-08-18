@@ -18,7 +18,12 @@ import { sendLetter } from "@/lib/vibeTimes";
 
 const NAME_KEY = "times.letterName";
 
-export function Letterbox() {
+/**
+ * `onSent` lets the room around the letterbox react to a posted line — the
+ * newsroom uses it to put the letter on the spike and on the wall without a
+ * reload. The paper passes nothing: a front page has no live counters on it.
+ */
+export function Letterbox({ onSent }: { onSent?: () => void } = {}) {
   // The name is remembered because signing your letter every morning is a
   // chore, and an unsigned letters page is a worse letters page.
   const [author, setAuthor] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
@@ -42,6 +47,7 @@ export function Letterbox() {
     if (signed) localStorage.setItem(NAME_KEY, signed);
     setBody("");
     setState("sent");
+    onSent?.();
   }
 
   return (

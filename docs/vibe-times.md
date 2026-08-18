@@ -140,6 +140,27 @@ unquotable at the same time.
 somewhere other than the site it comes from. That is the difference between a
 page on a website and something that behaves like a newspaper.
 
+## The small ads
+
+Down the bottom of the front page, three classified ads. Each one is a real
+world: its emoji, its name, the **first sentence of its own blurb, verbatim**,
+and the route. `src/lib/smallAds.ts` copies from `registry.ts` and writes
+nothing, which is the point — the footer promises that only the forecast is
+invented, and a column of assembled ad copy would be the exception printed
+directly above the promise. The category headings ("Property", "Situations
+Vacant") are the one joke.
+
+The rotation is a pure function of the issue number, so today's paper shows
+today's ads on every reload and every device, issue №7 still shows the column
+it ran with, and consecutive issues never repeat. Over a few weeks it works
+its way through the whole registry.
+
+Stories carry a **byline** from issue №14 onward — the desk that filed it,
+"The Encounter Log", "The Economy Desk". It is optional in the payload and the
+page prints nothing when it is absent, because giving the thirteen editions
+that predate it a plausible-looking attribution would be the paper's first
+lie.
+
 ## The newsroom
 
 `/newsroom` (`src/newsroom/`) is the floor the paper is put together on: the

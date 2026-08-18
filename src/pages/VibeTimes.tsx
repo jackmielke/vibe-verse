@@ -19,6 +19,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { loadPaper, printedAt, type Dispatch, type Issue } from "@/lib/vibeTimes";
+import { smallAds } from "@/lib/smallAds";
+import { WORLDS } from "@/worlds/registry";
 import { Letterbox } from "@/components/times/Letterbox";
 import { ReadAloud } from "@/components/times/ReadAloud";
 
@@ -97,6 +99,10 @@ export default function VibeTimes() {
   // A number nobody ever printed. Say so rather than quietly showing today's
   // paper under someone else's link.
   const missing = reading !== null && issues.length > 0 && !issues.some((i) => i.issue === reading);
+  // The classifieds rotate with the issue, so they are part of the edition
+  // rather than part of the page: reload it, open it tomorrow, or open issue
+  // seven, and you get the column that edition ran.
+  const ads = useMemo(() => (issue ? smallAds(WORLDS, issue.issue) : []), [issue]);
 
   if (error) {
     return (
@@ -200,6 +206,13 @@ export default function VibeTimes() {
             <h2 className="text-3xl font-bold leading-tight sm:text-4xl">
               {lead.emoji} {lead.headline}
             </h2>
+            {/* The desk that filed it. Printed only when the issue has one —
+                every edition up to №13 predates bylines, and inventing
+                "Staff Reporter" for the archive would be the paper telling
+                its first lie. */}
+            {lead.byline && (
+              <p className="mt-2 text-[11px] uppercase tracking-[0.25em] opacity-60">{lead.byline}</p>
+            )}
             <p className="mt-3 text-justify text-[15px] leading-relaxed first-letter:float-left first-letter:mr-2 first-letter:text-5xl first-letter:font-bold first-letter:leading-[0.85]">
               {lead.body}
             </p>
@@ -213,6 +226,9 @@ export default function VibeTimes() {
               <h3 className="text-xl font-bold leading-snug">
                 {h.emoji} {h.headline}
               </h3>
+              {h.byline && (
+                <p className="mt-1 text-[10px] uppercase tracking-[0.25em] opacity-60">{h.byline}</p>
+              )}
               <p className="mt-2 text-justify text-sm leading-relaxed">{h.body}</p>
             </article>
           ))}
@@ -352,6 +368,35 @@ export default function VibeTimes() {
                 </p>
               </div>
             )}
+          </section>
+        )}
+
+        {/* The classifieds. Every ad is a real world, quoting its own blurb,
+            rotating with the issue number — so a back issue keeps the column
+            it ran with instead of quietly showing this morning's. */}
+        {ads.length > 0 && (
+          <section className="mt-8">
+            <div className="border-y-4 border-double border-[#2a2118] py-2 text-center">
+              <h3 className="text-sm font-bold uppercase tracking-[0.35em]">🗂 The Small Ads</h3>
+            </div>
+            <div className="mt-5 grid gap-5 sm:grid-cols-3">
+              {ads.map((ad) => (
+                <Link
+                  key={ad.key}
+                  to={ad.route}
+                  className="group border-b border-[#2a2118]/20 pb-4 transition-opacity hover:opacity-70"
+                >
+                  <p className="text-[10px] uppercase tracking-[0.25em] opacity-60">{ad.heading}</p>
+                  <p className="mt-1 text-sm font-bold uppercase tracking-wide">
+                    {ad.emoji} {ad.name}
+                  </p>
+                  <p className="mt-1 text-sm leading-snug">{ad.line}</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-widest underline decoration-dotted underline-offset-2 opacity-60">
+                    apply at {ad.route}
+                  </p>
+                </Link>
+              ))}
+            </div>
           </section>
         )}
 
