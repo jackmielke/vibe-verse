@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-08-17T18:31:10.605Z",
+  "generated_at": "2026-08-18T21:18:20.733Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "7ec4acfe",
+      "date": "2026-08-17",
+      "subject": "The frame counter was lying, and now the world can act on the truth",
+      "lede": "`handle.fps` was computed from the CLAMPED simulation step rather than from real elapsed time. The clamp exists so a backgrounded tab does not resume with a two-second step and fling the player through the map, and it caps at 1/15 — so the frame rate it produced saturated at fifteen. A world running at one and a half frames a second reported \"17 fps\", in the HUD, in every screenshot this repo has taken of it, and in ",
+      "places": [],
+      "files": 7
+    },
     {
       "sha": "2c4cd3e7",
       "date": "2026-08-17",
@@ -1024,16 +1032,6 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "9dca9df4",
-      "date": "2026-08-11",
-      "subject": "Gave Vibe Island real grass, and real cardboard",
-      "lede": "The lawn was a 1024px canvas stretched over a 110 m disc — about nine pixels per metre — so standing on the island put you on a flat mint plane with a path painted on it. No redraw of that canvas fixes it; at ankle height there was nothing there to see.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
     }
   ]
 }

@@ -335,6 +335,68 @@ function buildStreets(roads: Batch, walks: Batch, lines: StreetLine[]): void {
   }
 }
 
+/**
+ * Zebra crossings, at every intersection of every street.
+ *
+ * This is the highest-value mark on the ground in the whole world and it is
+ * cheap. From the air, a grid of plain asphalt reads as a diagram; the moment
+ * the junctions have crossings on them it reads as a city, because crossings
+ * are the thing that says *people walk here* without drawing a single person.
+ * At street level they do the other half of the job: they tell you where the
+ * junction is on a road that is otherwise a uniform grey strip running downhill.
+ *
+ * Continental bars — thick, parallel to the direction the cars travel, arrayed
+ * across the width — because that is what San Francisco paints. The ladder
+ * style with bars across the road is the British one and reads wrong
+ * immediately, in a way most people cannot name.
+ */
+function buildCrossings(batch: Batch): void {
+  const paint = rgb(COLORS.crossing);
+  for (const [grid, north] of [
+    [GRID_N, true],
+    [GRID_S, false],
+  ] as const) {
+    const c = Math.cos(grid.angle);
+    const s = Math.sin(grid.angle);
+    const reachX = Math.ceil(GRID_REACH / grid.spacingX);
+    const reachZ = Math.ceil(GRID_REACH / grid.spacingZ);
+    const hw = grid.roadHalfWidth;
+    for (let i = -reachX; i <= reachX; i++) {
+      for (let j = -reachZ; j <= reachZ; j++) {
+        const lx = i * grid.spacingX;
+        const lz = j * grid.spacingZ;
+        const x = lx * c - lz * s;
+        const z = lx * s + lz * c;
+        if (x < BOUNDS.minX || x > BOUNDS.maxX || z < BOUNDS.minZ || z > BOUNDS.maxZ) continue;
+        if (isWater(x, z)) continue;
+        const side = sideOfMarket(x, z);
+        if (north && side < MARKET_HALF_WIDTH + 8) continue;
+        if (!north && side > -(MARKET_HALF_WIDTH + 8)) continue;
+        if (alongMarket(x, z) < -950) continue;
+
+        // The four approaches: along the grid's own axes, both ways.
+        const dirs: Array<[number, number]> = [
+          [c, s], [-c, -s], [-s, c], [s, -c],
+        ];
+        for (const [dx, dz] of dirs) {
+          // Just outside the junction box, where the stop line would be.
+          const ox = x + dx * (hw + 3.4);
+          const oz = z + dz * (hw + 3.4);
+          if (isWater(ox, oz) || !isRoad(ox, oz)) continue;
+          const yaw = Math.atan2(dz, dx);
+          // Six bars across the road, parallel to the traffic.
+          for (let k = -2.5; k <= 2.5; k += 1) {
+            const off = (k / 2.5) * (hw - 1.2);
+            const bx = ox - dz * off;
+            const bz = oz + dx * off;
+            batch.box(bx, walkHeight(bx, bz) + 0.075, bz, 1.9, 0.03, 0.42, paint, 1, yaw);
+          }
+        }
+      }
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * The blocks
  * ------------------------------------------------------------------ */
@@ -416,6 +478,105 @@ function victorianFront(
 }
 
 /**
+ * A ground floor that is a shop, not more of the same wall.
+ *
+ * Real streets are two buildings stacked: whatever is above, and a band of
+ * glass, awning and signage at eye level that belongs to a different world. A
+ * generated city that extrudes one facade from pavement to parapet is
+ * recognisably wrong from the pavement and nowhere else, which is exactly the
+ * viewpoint everybody starts in.
+ *
+ * Twelve triangles: a dark glazed panel set into the facade, a sloped awning
+ * over it, and a sign board above that. On the street face only — a shopfront
+ * facing the middle of the block is money spent on something nobody can see.
+ */
+function shopFront(
+  b: Batch,
+  x: number, base: number, z: number,
+  hwB: number, hdB: number,
+  out: Vec2,
+  yaw: number,
+  awning: [number, number, number],
+  rng: Rng,
+): void {
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const ox = out.x * cs - out.z * sn;
+  const oz = out.x * sn + out.z * cs;
+  const facing = Math.atan2(oz, ox);
+  const faceHalf = Math.abs(out.x) > 0.5 ? hdB : hwB;
+  const depth = Math.abs(out.x) > 0.5 ? hwB : hdB;
+
+  const glass = rgb(0x2f3a44);
+  const w = faceHalf * 0.82;
+
+  // The glazing, set a hair proud of the wall so it never z-fights it.
+  b.box(x + ox * (depth + 0.04), base + 0.35, z + oz * (depth + 0.04),
+    0.06, 2.9, w, glass, 1, facing);
+  // The awning: a slab tipped down toward the street.
+  const ay = base + 3.35;
+  b.box(x + ox * (depth + 0.75), ay, z + oz * (depth + 0.75),
+    0.85, 0.16, w * 0.96, awning, 1, facing);
+  // A sign board above it, in the awning colour a shade darker.
+  if (rng.chance(0.62)) {
+    b.box(x + ox * (depth + 0.1), ay + 0.34, z + oz * (depth + 0.1),
+      0.1, 0.62, w * 0.7, shade(awning, 0.82), 1, facing);
+  }
+}
+
+/**
+ * What is actually on a roof.
+ *
+ * From the street, nothing — which is why it took a jetpack to notice that
+ * every roof in the city was a bare slab. From two hundred metres up, roofs are
+ * most of what you can see of a city, and a real one is covered in machinery:
+ * lift overruns, stair bulkheads, air handling, water tanks on legs, which is
+ * the specifically-San-Francisco one.
+ *
+ * Ten to thirty triangles on the buildings big enough to have any, which is the
+ * cheapest realism in the file per unit of time spent looking at it.
+ */
+function roofClutter(
+  b: Batch,
+  cx: number, roofY: number, cz: number,
+  hw: number, hd: number,
+  yaw: number,
+  rng: Rng,
+): void {
+  const metal = rgb(0x8f959d);
+  const tank = rgb(0x7b6a52);
+  const dark = rgb(0x5d636b);
+
+  // A stair bulkhead: every building with a roof has one, and it is the
+  // shape that reads as "this roof is reachable".
+  b.box(
+    cx + rng.range(-hw * 0.4, hw * 0.4), roofY, cz + rng.range(-hd * 0.4, hd * 0.4),
+    Math.min(2.4, hw * 0.3), rng.range(2.2, 3.2), Math.min(2.2, hd * 0.3), metal, 1, yaw,
+  );
+  // Air handling: a squat wide box, sometimes two.
+  const units = rng.int(1, 2);
+  for (let i = 0; i < units; i++) {
+    b.box(
+      cx + rng.range(-hw * 0.6, hw * 0.6), roofY, cz + rng.range(-hd * 0.6, hd * 0.6),
+      Math.min(1.8, hw * 0.24), rng.range(0.7, 1.3), Math.min(1.4, hd * 0.24), dark, 1, yaw,
+    );
+  }
+  // The water tank on legs, which is the one that says San Francisco.
+  if (rng.chance(0.3) && Math.min(hw, hd) > 5) {
+    const tx = cx + rng.range(-hw * 0.45, hw * 0.45);
+    const tz = cz + rng.range(-hd * 0.45, hd * 0.45);
+    const r = Math.min(1.9, Math.min(hw, hd) * 0.26);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.78;
+      b.box(tx + Math.cos(a) * r * 0.7, roofY, tz + Math.sin(a) * r * 0.7,
+        0.11, 2.0, 0.11, dark);
+    }
+    b.cylinder(tx, roofY + 2.0, tz, r, r * 0.94, r * 1.5, 8, tank);
+    b.cylinder(tx, roofY + 2.0 + r * 1.5, tz, r * 0.96, 0, r * 0.7, 8, shade(tank, 0.9), false);
+  }
+}
+
+/**
  * Fill one city block with buildings.
  *
  * The block is the rectangle between four streets; buildings are laid around
@@ -485,6 +646,7 @@ function fillBlock(
         shade(towerRoof, 0.9), 1, yaw,
       );
     }
+    roofClutter(buildings, cx, base + h + 1.1, cz, w * taper * 0.9, d * taper * 0.9, yaw, rng);
     /* The collider tapers with the building. The parapet is 92% of the tower's
        top and is what you actually land on, so that — not `w` — is the roof
        footprint. Standing in the difference used to mean standing on air a
@@ -573,10 +735,21 @@ function fillBlock(
       /* Not every house. Real blocks mix bay-fronted and flat-fronted, so
          three in four is both truer and forty thousand triangles cheaper than
          all of them. */
+      const outLocalFront: Vec2 =
+        side.along === "x" ? { x: 0, z: side.sign } : { x: side.sign, z: 0 };
+      /* A shop on the ground floor of anything on a street — which in a
+         perimeter block is all of them, since the whole point of the layout is
+         that they face out. */
+      if (h > 7 && rng.chance(0.78)) {
+        const awn = rgb(WALLS[district.palette[rng.int(0, district.palette.length - 1)]]);
+        shopFront(buildings, p.x, base, p.z, hwB, hdB, outLocalFront, yaw, shade(awn, 0.85), rng);
+      }
+      // Flat-roofed and tall enough to have plant on it.
+      if (h >= 24) {
+        roofClutter(buildings, p.x, base + h + roofRise, p.z, hwB * 0.85, hdB * 0.85, yaw, rng);
+      }
       if (h < 26 && VICTORIAN_DISTRICTS.has(district.key) && rng.chance(0.74)) {
-        const outLocal: Vec2 =
-          side.along === "x" ? { x: 0, z: side.sign } : { x: side.sign, z: 0 };
-        victorianFront(buildings, p.x, base, p.z, hwB, h, hdB, outLocal, yaw, myWall, glass, rng);
+        victorianFront(buildings, p.x, base, p.z, hwB, h, hdB, outLocalFront, yaw, myWall, glass, rng);
       }
       colliders.push({
         x: p.x, z: p.z, hw: hwB, hd: hdB, yaw,
@@ -728,6 +901,7 @@ export function buildCity(): CityBuild {
   buildGround(ground);
   const lines = streetLines();
   buildStreets(roads, walks, lines);
+  buildCrossings(roads);
   const furniture = buildStreetFurniture(props, lines, rng.fork("street"));
   buildCableTrack(props);
   buildBlocks(buildings, colliders, rng.fork("blocks"));

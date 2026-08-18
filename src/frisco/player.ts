@@ -419,11 +419,19 @@ export class Player {
         break;
       }
     }
+    /* An exponential smoother with `dt` of zero never arrives — it holds the
+       camera exactly where it already was, forever. That is not a hypothetical:
+       `freeze` for the capture harness steps the world at dt = 0, and it
+       silently turned `setPose` into a no-op. Three poses in a row photographed
+       the spawn point, and because each frame was still a picture of a city,
+       nothing looked broken. When there is no time to smooth over, snap. */
+    const ease = dt > 0 ? Math.min(1, dt * 2.6) : 1;
+    const follow = dt > 0 ? Math.min(1, dt * 18) : 1;
     // Snap in hard, ease out slow: a camera that eases INTO a wall spends the
     // easing inside it.
-    this.camDist = want < this.camDist ? want : this.camDist + (want - this.camDist) * Math.min(1, dt * 2.6);
+    this.camDist = want < this.camDist ? want : this.camDist + (want - this.camDist) * ease;
     this.scratch.camPos.copy(this.scratch.target).addScaledVector(this.scratch.boom, this.camDist);
-    camera.position.lerp(this.scratch.camPos, Math.min(1, dt * 18));
+    camera.position.lerp(this.scratch.camPos, follow);
     camera.lookAt(this.scratch.target);
   }
 

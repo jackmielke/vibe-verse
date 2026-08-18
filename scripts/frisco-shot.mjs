@@ -209,6 +209,16 @@ for (const name of shots) {
     await page.evaluate(([a, b, c, d, e]) => window.__frisco.setPose(a, b, c, d, e), pose);
     await page.waitForTimeout(400);
   }
+  /* Check the pose actually took. `setPose` writes the player's position and
+     the camera follows it — but the camera follows by exponential smoothing on
+     `dt`, and `freeze` sets `dt` to zero, so for a while the camera did not
+     move at all and every frame here was a photograph of the spawn point. Each
+     one still looked like a picture of a city, which is why it survived. */
+  const at = await page.evaluate(() => window.__frisco.player());
+  const drift = Math.hypot(at.x - pose[0], at.y - pose[1], at.z - pose[2]);
+  if (drift > 25) {
+    console.log(`  ! ${name} asked for ${pose.slice(0, 3).map(Math.round).join(",")} and is at ${[at.x, at.y, at.z].map(Math.round).join(",")} (${Math.round(drift)} m)`);
+  }
   writeFileSync(`${OUT}/${name}.png`, await page.screenshot());
   await page.evaluate(() => window.__frisco.freeze?.(false));
   if (process.env.FRISCO_JPEG) {
