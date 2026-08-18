@@ -126,7 +126,7 @@ export default function VibeTimes() {
   return (
     // The global nav floats over the top of the page, and it was sitting
     // right on top of the "est. the night the loop woke up" line.
-    <div className="min-h-screen overflow-y-auto bg-[#efe8d8] px-4 pb-10 pt-24 text-[#2a2118]" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+    <div className="newspaper min-h-screen overflow-y-auto bg-[#efe8d8] px-4 pb-10 pt-24 text-[#2a2118]" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
       <div className="mx-auto max-w-4xl">
         {/* Masthead */}
         <header className="border-b-4 border-double border-[#2a2118] pb-4 text-center">
@@ -145,13 +145,15 @@ export default function VibeTimes() {
             </span>
             <span>price: one good vibe</span>
           </div>
-          <ReadAloud issue={issue} />
+          <div className="no-print">
+            <ReadAloud issue={issue} />
+          </div>
         </header>
 
         {/* Back issues. Only shown once there is more than one, so the
             paper doesn't advertise an empty archive on day one. */}
         {issues.length > 1 && (
-          <nav className="mt-3 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
+          <nav className="no-print mt-3 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-[11px] uppercase tracking-widest">
             <span className="opacity-60">Back issues:</span>
             {issues.map((i) => {
               const active = i.issue === issue.issue;
@@ -337,7 +339,11 @@ export default function VibeTimes() {
 
         {/* Only today's paper takes letters. Writing to a back issue would
             be writing to the past, and the box would be lying about it. */}
-        {!isBackIssue && <Letterbox />}
+        {!isBackIssue && (
+          <div className="no-print">
+            <Letterbox />
+          </div>
+        )}
 
         {/* Vibey's column and the forecast. The forecast is the only part
             of the paper allowed to make things up, and it says so. */}

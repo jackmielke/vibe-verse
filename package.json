@@ -11,6 +11,7 @@
     "dz:selftest": "node scripts/dz-teammate.mjs --selftest",
     "dz:report": "node scripts/dz-teammate.mjs --report",
     "perf": "node scripts/route-perf.mjs",
+    "print": "node scripts/print-check.mjs",
     "buildlog": "node tools/build-log.mjs",
     "paper": "node tools/paper-snapshot.mjs",
     "prebuild": "node tools/build-log.mjs && node tools/paper-snapshot.mjs",

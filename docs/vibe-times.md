@@ -161,6 +161,22 @@ page prints nothing when it is absent, because giving the thirteen editions
 that predate it a plausible-looking attribution would be the paper's first
 lie.
 
+## On paper
+
+`/times` survives Ctrl-P. The print rules live at the foot of
+`src/index.css`: pinned chrome goes (anything Tailwind gave a bare `fixed` to
+has no viewport to pin itself to on A4), the buttons and the letterbox go
+(paper does not click), links keep their words and lose their underline, and
+the responsive grids are forced back to two columns — Tailwind's breakpoints
+read the *viewport*, and print reports a narrow one, so without that the whole
+paper comes out as a single column of full-width paragraphs.
+
+`npm run print -- /times` is how you check it, because print styles are a
+second rendering nobody ever sees. It prints the route to a PDF, rasterises
+page one, and fails if the sheet came out blank, if any pinned element or
+control is still printing, or if anything is wider than the 186mm of A4 the
+margins leave.
+
 ## The newsroom
 
 `/newsroom` (`src/newsroom/`) is the floor the paper is put together on: the

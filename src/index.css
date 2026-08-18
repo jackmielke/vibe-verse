@@ -308,3 +308,42 @@
 @media (prefers-reduced-motion: reduce) {
   .vibe-marquee { animation: none; }
 }
+
+/* ---------------------------------------------------------------------
+   The Vibe Times, on paper.
+   ---------------------------------------------------------------------
+   /times is a newspaper everywhere except in the one place a newspaper
+   ends up. Ctrl-P used to give you a cream rectangle with a floating nav
+   bar over the masthead, a "Vibey reads it" button that does nothing on
+   paper, and every link underlined in a colour that costs ink.
+
+   The `fixed` rule is deliberately global rather than scoped to the paper:
+   `[class~="fixed"]` matches Tailwind's own `fixed` utility exactly, and an
+   element pinned to the viewport is chrome by definition — there is no
+   viewport on a sheet of A4, so it has nowhere to be pinned to. Printing
+   any page in this app is better for it.
+   --------------------------------------------------------------------- */
+@media print {
+  [class~="fixed"] { display: none !important; }
+
+  .newspaper {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    font-size: 10.5pt;
+  }
+  /* Links keep their words and lose their decoration: on paper a dotted
+     underline is a smudge, and the routes that matter are printed as text
+     in the small ads anyway. */
+  .newspaper a { color: inherit !important; text-decoration: none !important; }
+  /* A story split across a page break is a story nobody finishes. */
+  .newspaper article,
+  .newspaper blockquote,
+  .newspaper li { break-inside: avoid; }
+  /* Tailwind's responsive columns key off the viewport, and print reports a
+     narrow one, so the whole paper would come out as a single column of
+     full-width paragraphs. */
+  .newspaper .grid { grid-template-columns: 1fr 1fr !important; }
+  /* Things you click. Paper does not click. */
+  .no-print { display: none !important; }
+}
