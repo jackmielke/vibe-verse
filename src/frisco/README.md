@@ -21,11 +21,23 @@ of the geometry. Chunks arriving late, tiers cross-fading, impostor tiles
 blinking. None of that machinery exists here, so none of that class of bug can.
 A city you can hold in memory cannot change while you look at it.
 
-The price is a hard ceiling on size. The map is 3.4 × 4.4 km and about 1.2
-million triangles resident across some sixty draw calls, and that is close to
-the limit of what this approach will carry. If it ever needs to be bigger, that
-is a rewrite, not a tuning pass — and anything added between now and then
-should come with a number, the way `street.ts` and the bay windows do.
+The price is a hard ceiling on size. The map is 3.4 × 4.4 km and about 1.8
+million triangles resident, and that is close to the limit of what this
+approach will carry. If it ever needs to be bigger, that is a rewrite, not a
+tuning pass — and anything added between now and then should come with a
+number, the way `street.ts` and the bay windows do.
+
+The two heavy layers — buildings and props — are split across a 6 × 6 grid of
+merged meshes so three.js can frustum-cull them. That is still one build, once,
+never touched: nothing streams and nothing swaps, and a bounding-sphere test is
+exact, so a chunk never half-appears at the edge of the screen. It draws about
+1.28 M triangles at street level in around 95 calls, against 1.75 M in 82 for a
+single mesh. It is headroom, not a saving to bank.
+
+**The quality tiers barely touch the buildings, and that is the current weak
+spot.** They thin the crowd, hide the props layer and turn off shadows, which
+is worth 80 000 triangles out of 1.5 M. If this world ever needs to run on
+something slow, the lever is fewer buildings, not fewer of anything else.
 
 **Two things move without `dt` from the render loop, and neither is negotiable:
 nothing at all.** Every animated thing here — traffic, the crowd, the boats, the

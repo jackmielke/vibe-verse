@@ -116,6 +116,8 @@ export class CityCollision {
   }
 
   private scratch: number[] = [];
+  /** A second one, so `resolve` can ask `free` a question mid-iteration. */
+  private scratch2: number[] = [];
 
   /**
    * The highest surface at or below `ceiling` a character could stand on:
@@ -206,8 +208,27 @@ export class CityCollision {
         const penX = ex - Math.abs(lx);
         const penZ = ez - Math.abs(lz);
         if (penX <= 0 || penZ <= 0) continue;
-        if (penX < penZ) nlx = lx >= 0 ? ex : -ex;
-        else nlz = lz >= 0 ? ez : -ez;
+        /* Shortest way out — unless the shortest way out is into the house
+           next door. A terrace of nine-metre row houses is narrower across the
+           front than it is deep, so the nearest wall from inside one is a party
+           wall, and pushing through it hands you to a neighbour who pushes you
+           straight back. That oscillates forever and the player is stuck in a
+           wall. Try the near axis, and if it lands in something solid, take the
+           long way out instead — which in a terrace is the front door. */
+        const ci0 = Math.cos(b.yaw);
+        const si0 = Math.sin(b.yaw);
+        const nearX = penX < penZ;
+        const ax = nearX ? (lx >= 0 ? ex : -ex) : lx;
+        const az = nearX ? lz : lz >= 0 ? ez : -ez;
+        const wx = b.x + (ax * ci0 - az * si0);
+        const wz = b.z + (ax * si0 + az * ci0);
+        if (this.free(wx, wz, feetY, b)) {
+          nlx = ax;
+          nlz = az;
+        } else {
+          nlx = nearX ? lx : lx >= 0 ? ex : -ex;
+          nlz = nearX ? (lz >= 0 ? ez : -ez) : lz;
+        }
       }
 
       const ci = Math.cos(b.yaw);
@@ -217,6 +238,26 @@ export class CityCollision {
       hit = true;
     }
     return hit;
+  }
+
+  /**
+   * Is a point clear of everything except one box?
+   *
+   * Only `resolve` uses this, to decide which way out of a building to push. It
+   * has its own scratch list because `resolve` is mid-iteration over the main
+   * one when it asks.
+   */
+  private free(x: number, z: number, feetY: number, ignore: BuildingBox): boolean {
+    for (const i of this.near(x, z, this.scratch2)) {
+      const b = this.boxes[i];
+      if (b === ignore) continue;
+      if (feetY > b.roofY - 0.4 || feetY + 2.2 < b.baseY) continue;
+      const { lx, lz } = local(x, z, b);
+      const at = extentsAt(b, feetY);
+      if (at.hw <= 0 || at.hd <= 0) continue;
+      if (within(lx, lz, at.hw, at.hd, b.round === true, 0)) return false;
+    }
+    return true;
   }
 
   /** Is this point inside a building? Used to keep the camera out of walls. */

@@ -112,9 +112,13 @@ describe("Vibe Francisco — standing on things", () => {
       if (col.occupied(pos.x, feet + 0.5, pos.z)) stuck++;
     }
     expect(tested).toBeGreaterThan(100);
-    // Downtown is dense enough that a handful of centres are inside a
-    // neighbour too and there is nowhere to be pushed to.
-    expect(stuck / tested).toBeLessThan(0.08);
+    /* Downtown is dense enough that a handful of centres are inside a
+       neighbour too and there is nowhere to be pushed to. Thirteen of three
+       hundred and thirty-one at the time of writing — and the ceiling is at
+       five percent rather than at twenty because this went from 35 to 13 when
+       `resolve` learned to take the long way out of a terrace, and a threshold
+       that would not have caught that is not a threshold. */
+    expect(stuck / tested).toBeLessThan(0.05);
   });
 });
 

@@ -627,6 +627,12 @@ function buildParked(pick: (x: number, z: number) => Batch, colliders: BuildingB
               // A third of the spaces empty, or every kerb is a solid wall of
               // car and the street stops having a shape.
               if (!rng.chance(0.66)) continue;
+              /* Leave the spawns a clear kerb. The third-person camera sits
+                 six metres behind you, so a car parked four metres from where
+                 somebody arrives is a car the camera is inside — the collision
+                 does the only thing it can and jams the view up against the
+                 back of your head, and the world opens on a green rectangle. */
+              if (nearestSpawn(kx, kz) < 11) continue;
               // Facing the way traffic goes on that side of the road.
               const yaw = Math.atan2(dz, dx) + (kerb > 0 ? 0 : Math.PI);
               slots.push({
@@ -811,6 +817,42 @@ function shopFront(
     b.box(x + ox * (depth + 0.1), ay + 0.34, z + oz * (depth + 0.1),
       0.1, 0.62, Math.min(w * 0.7, 3.4), shade(awning, 0.82), 1, facing);
   }
+}
+
+/**
+ * A garage door under a row house.
+ *
+ * The other half of San Francisco's street frontage, and the half a shopfront
+ * gets wrong. On a twenty-five-foot lot the ground floor is a garage and a
+ * stair, not a shop with an awning — the shops are on the corridors, which is
+ * exactly the width test that chooses between the two.
+ *
+ * Two boxes: the opening, recessed and dark, and a lintel over it.
+ */
+function garageDoor(
+  b: Batch,
+  x: number, base: number, z: number,
+  hwB: number, hdB: number,
+  out: Vec2,
+  yaw: number,
+  wall: [number, number, number],
+): void {
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const ox = out.x * cs - out.z * sn;
+  const oz = out.x * sn + out.z * cs;
+  const facing = Math.atan2(oz, ox);
+  const faceHalf = Math.abs(out.x) > 0.5 ? hdB : hwB;
+  const depth = Math.abs(out.x) > 0.5 ? hwB : hdB;
+  const w = Math.min(faceHalf * 0.5, 1.9);
+  // Off to one side, because the stoop takes the other.
+  const off = (faceHalf - w) * 0.55;
+  const gx = x - oz * off;
+  const gz = z + ox * off;
+  b.box(gx + ox * (depth + 0.03), base + 0.1, gz + oz * (depth + 0.03),
+    0.05, 2.3, w, shade(wall, 0.42), 1, facing);
+  b.box(gx + ox * (depth + 0.06), base + 2.4, gz + oz * (depth + 0.06),
+    0.12, 0.28, w * 1.08, shade(wall, 1.06), 1, facing);
 }
 
 /**
@@ -1046,7 +1088,22 @@ function fillBlock(
   ];
   for (const side of sides) {
     const runLength = side.along === "x" ? hw * 2 : hd * 2;
-    const count = Math.max(1, Math.round(runLength / rng.range(17, 27)));
+    /* Lot width, and it is the single number that decides whether a
+       residential street reads as San Francisco or as an industrial estate. A
+       standard city lot here is twenty-five feet — 7.6 m — and the row houses
+       built on them are why the Mission and the Sunset look the way they do:
+       narrow, tall, shoulder to shoulder, each one a different colour. At
+       seventeen to twenty-seven metres every block was three or four long
+       slabs, which is right for the Financial District and wrong for
+       everywhere anybody walks. */
+    /* `raw`, not the clamped weight. Every block on the map belongs to its
+       nearest district however far away that district actually is, so keying
+       narrow lots off the district alone subdivided the entire western half of
+       the map — five thousand extra buildings out in the avenues, where the
+       nearest thing to walk on is a ring course two hundred metres up. Inside
+       the district's real radius only. */
+    const residential = VICTORIAN_DISTRICTS.has(district.key) && raw > 0.12;
+    const count = Math.max(1, Math.round(runLength / (residential ? rng.range(9.5, 15) : rng.range(17, 27))));
     for (let i = 0; i < count; i++) {
       const t = (i + 0.5) / count;
       const along = -runLength / 2 + runLength * t;
@@ -1079,7 +1136,10 @@ function fillBlock(
       const hwB = side.along === "x" ? halfWidth : depth / 2;
       const hdB = side.along === "x" ? depth / 2 : halfWidth;
       const floors = Math.max(2, Math.round(h / 4.2));
-      const myWall = rng.chance(0.35)
+      /* A row of narrow houses is a row of different colours — that is most of
+         what a painted lady *is*. On a wide downtown frontage the same rule
+         gives you a stripe pattern, so it stays low there. */
+      const myWall = rng.chance(residential ? 0.72 : 0.35)
         ? rgb(WALLS[district.palette[rng.int(0, district.palette.length - 1)]])
         : wall;
       buildings.bandedBox(p.x, base, p.z, hwB, h, hdB, myWall, glass, floors, 1, yaw);
@@ -1118,13 +1178,25 @@ function fillBlock(
       /* A shop on the ground floor of anything on a street — which in a
          perimeter block is all of them, since the whole point of the layout is
          that they face out. */
-      if (h > 7 && rng.chance(0.78)) {
+      const frontHalf = side.along === "x" ? hwB : hdB;
+      if (h > 7 && frontHalf > 6.5 && rng.chance(0.78)) {
         const awn = rgb(WALLS[district.palette[rng.int(0, district.palette.length - 1)]]);
         shopFront(buildings, p.x, base, p.z, hwB, hdB, outLocalFront, yaw, shade(awn, 0.85), rng);
+      } else if (residential && rng.chance(0.66)) {
+        /* A garage, not a shop. A twenty-five-foot row house has a car under it
+           and a stair up beside it — that is the whole ground floor, and it is
+           what half of San Francisco's street frontage actually is. It is also
+           a third of the triangles of a shopfront, which is how the narrow lots
+           paid for themselves. */
+        garageDoor(buildings, p.x, base, p.z, hwB, hdB, outLocalFront, yaw, myWall);
       }
       /* A fire escape on the older, lower districts. Downtown is a curtain
          wall with the stairs inside it; Chinatown is not. */
-      if (h > 11 && h < 34 && ESCAPE_DISTRICTS.has(district.key) && rng.chance(0.46)) {
+      /* Frontage as well as height: a fire escape belongs on an apartment
+         block, and hanging one off a seven-metre row house is both wrong and
+         the most expensive thing on the facade. */
+      if (h > 11 && h < 34 && frontHalf > 5.5
+          && ESCAPE_DISTRICTS.has(district.key) && rng.chance(0.46)) {
         fireEscape(buildings, p.x, base, p.z, hwB, h, hdB, outLocalFront, yaw, rng);
       }
       // Flat-roofed and tall enough to have plant on it.
