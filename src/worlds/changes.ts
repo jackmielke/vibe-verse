@@ -136,12 +136,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "939bb6f", iso: "2026-08-18T22:49:12+00:00", subject: "Sixteen hundred people who turn corners instead of vanishing" },
+    { sha: "a12f0c3", iso: "2026-08-18T22:34:28+00:00", subject: "Twenty-five foot lots, garage doors, and the long way out of a terrace" },
     { sha: "bdf0cd6", iso: "2026-08-18T22:18:06+00:00", subject: "Chunk the city so it can be frustum-culled" },
     { sha: "4ab570f", iso: "2026-08-18T22:07:20+00:00", subject: "Fire escapes, lane markings, and two districts you can start in" },
     { sha: "74ca69d", iso: "2026-08-18T21:47:54+00:00", subject: "Traffic that stops at the lights, and fifteen hundred cars at the kerb" },
     { sha: "151c50c", iso: "2026-08-18T21:20:21+00:00", subject: "Crossings, shopfronts, roof clutter — and the camera that would not move" },
-    { sha: "7ec4acf", iso: "2026-08-17T18:32:49+00:00", subject: "The frame counter was lying, and now the world can act on the truth" },
-    { sha: "2c4cd3e", iso: "2026-08-17T18:16:16+00:00", subject: "The Powell Street cable car, and you can ride it" },
   ],
   "garden": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -366,12 +366,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
   ],
   "vibeverse": [
+    { sha: "207af00", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
     { sha: "a86765f", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
     { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
     { sha: "99439c8", iso: "2026-08-07T01:20:45+00:00", subject: "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back" },
-    { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "village": [
     { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
