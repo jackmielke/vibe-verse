@@ -1212,6 +1212,13 @@ function drawArchivePassport(g, v, ctx) {
      panel got *roomier* rather than tighter: twenty-five stamps across three
      columns is nine rows at a 26 px pitch, where twelve rows was 19.5.
 
+     First Light arriving alongside the raise to thirty-six is a good check on
+     how much room the third column really bought: thirty-six rows is twelve
+     deep, and twelve rows need 330 px of the ~450 the band actually has, so the
+     pitch never leaves its 30 px ceiling and the type never leaves 13.5. There
+     is no arithmetic pressure here at all any more — the limit is now honestly
+     about how long a list anybody wants to read.
+
      So the rows now shrink to fit instead of falling off the bottom. TOP to
      BOTTOM is the band that is genuinely free between the progress bar and the
      footer line, and the pitch is whatever divides it. PASSPORT_ROWS is the

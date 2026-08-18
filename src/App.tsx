@@ -84,6 +84,7 @@ const Newsroom = lazy(() => import("./pages/Newsroom.tsx"));
 const SanFrancisco = lazy(() => import("./pages/SanFrancisco.tsx"));
 const VibeFrancisco = lazy(() => import("./pages/VibeFrancisco.tsx"));
 const SanPalmas = lazy(() => import("./pages/SanPalmas.tsx"));
+const FirstLight = lazy(() => import("./pages/FirstLight.tsx"));
 const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
 const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
@@ -368,6 +369,8 @@ const App = () => (
           <Route path="/island-2" element={<VibeIsland2 />} />
           <Route path="/vibe-island-2" element={<VibeIsland2 />} />
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
+          <Route path="/first-light" element={<FirstLight />} />
+          <Route path="/lake" element={<FirstLight />} />
           <Route path="/san-palmas" element={<SanPalmas />} />
           <Route path="/fps" element={<SanPalmas />} />
           {/* SEAFAIR 2117 — future Seattle during Seafair. Hydros, Blue Angels,
