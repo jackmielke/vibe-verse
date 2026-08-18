@@ -127,6 +127,8 @@ import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/pr
 import {
   DANCES,
   applyDancePose,
+  evalDanceGrooved,
+  makeGroove,
   bindGltfDanceSkeleton,
   createDancePose,
   evalDance,
@@ -3166,6 +3168,10 @@ export default function City() {
     const dancePose = createDancePose();
     /** Last crowd size pushed to React, so the HUD isn't re-rendered per frame. */
     let crowdShown = 0;
+    /* Your personal feel for the beat, fixed for this visit. Random rather
+       than derived from the character, so two people on the same avatar are
+       still visibly two people. */
+    const myGroove = makeGroove(Math.floor(Math.random() * 9973));
     const setDance = (id: string | null) => {
       /* A key press is a user gesture, and on the `?fresh=1` route it may be
          the FIRST one — nothing else on that path has opened an AudioContext.
@@ -6036,7 +6042,12 @@ export default function City() {
       }
       danceWeight = stepDanceWeight(danceWeight, !!danceId, dt);
       const danceDef = findDance(danceId);
-      if (danceDef && danceWeight > 0) evalDance(danceDef, dancePose);
+      // Grooved, not straight: you have your own feel for the beat, a few
+      // milliseconds either side of it, the same way everybody else in the
+      // room does. Without this the player is the one perfectly quantised
+      // dancer on a floor full of people, which reads as the crowd being wrong
+      // rather than as you being a metronome.
+      if (danceDef && danceWeight > 0) evalDanceGrooved(danceDef, dancePose, myGroove);
 
       mixer?.update(dt);
       // Applied after the mixer, so the solved pose slerps on top of the live
@@ -6045,9 +6056,12 @@ export default function City() {
       // the water already cancelled the dance anyway.
       const bodyPose = swimWeight > 0 ? swimPose : dancePose;
       const bodyWeight = swimWeight > 0 ? swimWeight : danceWeight;
+      // Follow-through for dancing only. Swimming solves its own arcs and was
+      // tuned against a rig that snaps; lag 0 there keeps it exactly as it was.
+      const bodyLag = swimWeight > 0 ? 0 : danceDef?.lag;
       if (danceSk) {
         if (bodyWeight > 0) {
-          applyDancePose(danceSk, bodyPose, bodyWeight);
+          applyDancePose(danceSk, bodyPose, bodyWeight, dt, bodyLag);
           danceReleased = false;
         } else if (!danceReleased) {
           releaseDanceSkeleton(danceSk);

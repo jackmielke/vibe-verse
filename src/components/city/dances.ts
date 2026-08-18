@@ -248,6 +248,14 @@ export interface DanceDef {
    * actually is.
    */
   beat: number;
+  /**
+   * Seconds of follow-through, overriding `DANCE_LAG`.
+   *
+   * Almost nothing should set this. The robot must: its entire joke is that
+   * the joints arrive instantly and hold, and 45ms of body lag turns a machine
+   * back into a person doing an impression of one.
+   */
+  lag?: number;
   pose: (b: number, out: DancePose) => void;
 }
 
@@ -290,6 +298,10 @@ const DANCE_LIST: DanceDef[] = [
     emoji: "🤖",
     blurb: "Eight poses, no interpolation, one servo buzz.",
     beat: 0.5,
+    // Zero, not merely small: a small lag is still a lag, and one 60fps frame
+    // of even 8ms leaves the joint an eighth of the way short — which reads as
+    // a robot with a loose bolt rather than as a robot.
+    lag: 0,
     pose(b, p) {
       // Deliberately NOT smoothed: the rig writes whatever it is handed, so
       // flooring the beat gives the hard snap the move is made of.
@@ -539,6 +551,131 @@ export function evalDance(def: DanceDef, out: DancePose, nowMs = Date.now()): Da
 }
 
 // ---------------------------------------------------------------------------
+// Groove — the difference between a crowd and a set of animatronics
+// ---------------------------------------------------------------------------
+
+/**
+ * One dancer's personal feel for the beat.
+ *
+ * Everything above this line is perfectly quantised: give two characters the
+ * same dance and the same clock and they are frame-identical forever, which is
+ * exactly right for keeping a room in time and exactly wrong for making it
+ * look like people. Real dancers sit a few milliseconds either side of the
+ * beat and never the same few; they are bigger or smaller with the same move;
+ * and none of it holds still, because a person who is *consistently* 20ms
+ * ahead is just a quantised dancer with an offset.
+ *
+ * So a groove is three numbers and a seed, and the seed drives a slow wander
+ * on the first two. Deterministic from the seed, so a given dancer is always
+ * the same person — the regular who rushes is always the regular who rushes.
+ */
+export interface DanceGroove {
+  /** Timing, in beats. Negative pushes ahead of the beat; positive lays back. */
+  push: number;
+  /** Amplitude multiplier on every joint angle. */
+  amp: number;
+  /** Multiplier on the vertical, separately — some people bounce more. */
+  lift: number;
+  /**
+   * How much `push` and `amp` wander over time. 0 holds them exactly.
+   *
+   * Separate from `seed` so that `STRAIGHT` can be a true no-op. It was not,
+   * at first: the wander was unconditional, so the "groove switched off"
+   * control render still had a moving target in it and the comparison it
+   * existed to make was worthless — the control and the subject differed by
+   * less than the control differed from itself.
+   */
+  drift: number;
+  /** Drives the wander, and is what makes a dancer *that* dancer. */
+  seed: number;
+}
+
+/** Cheap deterministic hash → 0..1. */
+const hash01 = (n: number) => {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/**
+ * A repeatable personality from an integer.
+ *
+ * The ranges are small but not tiny. ±0.065 beats is about ±33ms at the city's
+ * tempo, which is roughly the spread of a room of people who can all hear the
+ * same kick — past that it stops reading as feel and starts reading as
+ * somebody who cannot dance. The first pass used half these numbers, and
+ * against a control render with the groove switched off it was almost
+ * impossible to tell the two apart, which is the same as not having built it.
+ */
+export function makeGroove(seed: number): DanceGroove {
+  return {
+    push: (hash01(seed * 3 + 1) - 0.5) * 0.13,
+    amp: 0.78 + hash01(seed * 7 + 2) * 0.44,
+    lift: 0.72 + hash01(seed * 11 + 3) * 0.6,
+    drift: 1,
+    seed,
+  };
+}
+
+/** The neutral groove: dead on the beat at full size. */
+export const STRAIGHT: DanceGroove = { push: 0, amp: 1, lift: 1, drift: 0, seed: 0 };
+
+/**
+ * Where this dancer's timing and size actually are right now.
+ *
+ * Two sines on periods that do not divide into each other, so the wander never
+ * resolves into a loop of its own — which would just be a slower animatronic.
+ */
+function grooveNow(g: DanceGroove, seconds: number) {
+  if (g.drift === 0) return { push: g.push, amp: g.amp };
+  const a = Math.sin(seconds * 0.37 + g.seed * 1.7);
+  const b = Math.sin(seconds * 0.23 + g.seed * 4.1);
+  return {
+    push: g.push + a * 0.025 * g.drift,
+    amp: g.amp * (1 + b * 0.07 * g.drift),
+  };
+}
+
+const scaleVec = (v: Vec3, k: number) => {
+  v.x *= k;
+  v.y *= k;
+  v.z *= k;
+};
+
+/**
+ * Evaluate a dance the way a particular body would perform it.
+ *
+ * The timing offset is applied to the *clock*, not to the output, so a dancer
+ * who lays back is genuinely late rather than playing a distorted version of
+ * the move — which matters for anything with a snap in it.
+ */
+export function evalDanceGrooved(
+  def: DanceDef,
+  out: DancePose,
+  groove: DanceGroove,
+  nowMs = Date.now(),
+): DancePose {
+  const seconds = nowMs / 1000;
+  const { push, amp } = grooveNow(groove, seconds);
+  // `push` is in house beats; convert to milliseconds before shifting the clock.
+  evalDance(def, out, nowMs + push * (60_000 / CITY_BPM));
+  if (amp !== 1) {
+    scaleVec(out.hips, amp);
+    scaleVec(out.torso, amp);
+    scaleVec(out.head, amp);
+    for (const l of [out.armL, out.armR, out.legL, out.legR]) {
+      scaleVec(l.upper, amp);
+      scaleVec(l.lower, amp);
+      scaleVec(l.tip, amp);
+    }
+    out.rootYaw *= amp;
+    out.rootPitch *= amp;
+    out.rootRoll *= amp;
+  }
+  out.rootY *= groove.lift;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Applying a pose to a skeleton
 // ---------------------------------------------------------------------------
 
@@ -553,6 +690,22 @@ export interface DanceJoint {
   wpInv: THREE.Quaternion;
   /** Scales this joint's share of the pose — the lower spine takes a fraction of the torso's. */
   gain: number;
+  /**
+   * Where this joint actually is, as opposed to where the pose says it should
+   * be. Chased toward the target rather than snapped to it — see `writeJoint`.
+   */
+  cur: THREE.Quaternion;
+  /**
+   * How much this joint trails, relative to the dance's base lag.
+   *
+   * Bodies are not rigid: the hips lead, the spine follows, and the hands
+   * arrive last, because each joint is dragging the mass of everything below
+   * it. Scaling the lag by distance from the root is the cheapest thing that
+   * reproduces that, and it is the single change that most stopped these
+   * reading as puppets — before it, a hand and a pelvis changed direction on
+   * exactly the same frame, which nothing with bones in it does.
+   */
+  lagScale: number;
 }
 
 export interface DanceSkeleton {
@@ -585,56 +738,90 @@ const _worldQ = new THREE.Quaternion();
  * dance axes would follow whatever the player's yaw happened to be when the
  * model loaded.
  */
-function bindJoint(obj: THREE.Object3D | null, rootInv: THREE.Quaternion, gain = 1): DanceJoint | null {
+function bindJoint(
+  obj: THREE.Object3D | null,
+  rootInv: THREE.Quaternion,
+  gain = 1,
+  lagScale = 1,
+): DanceJoint | null {
   if (!obj) return null;
   const wp = new THREE.Quaternion();
   if (obj.parent) obj.parent.getWorldQuaternion(wp);
   wp.premultiply(rootInv);
+  const rest = obj.quaternion.clone();
   return {
     obj,
-    rest: obj.quaternion.clone(),
+    rest,
     wp,
     wpInv: wp.clone().invert(),
     gain,
+    cur: rest.clone(),
+    lagScale,
   };
 }
 
-function writeJoint(j: DanceJoint | null, v: Vec3, weight: number) {
+function writeJoint(j: DanceJoint | null, v: Vec3, weight: number, dt: number, lag: number) {
   if (!j || weight <= 0) return;
   const g = j.gain;
   _euler.set(v.x * g, v.y * g, v.z * g, "ZYX");
   _q.setFromEuler(_euler);
   _target.copy(j.wpInv).multiply(_q).multiply(j.wp).multiply(j.rest);
+
+  const tau = lag * j.lagScale;
+  if (dt > 0 && tau > 1e-4) {
+    // Exponential chase, framerate-independent: at 30fps and at 144fps the
+    // hand is the same distance behind the beat. A plain `slerp(k)` with a
+    // constant k is neither, and would make the follow-through a property of
+    // the machine rather than of the body.
+    j.cur.slerp(_target, 1 - Math.exp(-dt / tau));
+  } else {
+    j.cur.copy(_target);
+  }
   // Slerp rather than copy so the dance blends out of (and back into) whatever
   // the mixer or the gait solver last wrote onto this bone.
-  j.obj.quaternion.slerp(_target, weight);
+  j.obj.quaternion.slerp(j.cur, weight);
 }
 
 /**
  * Push a pose onto a skeleton at `weight` (0 = leave it alone, 1 = full dance).
  * Safe to call every frame, and safe to call with weight 0 while fading out.
  */
-export function applyDancePose(sk: DanceSkeleton, pose: DancePose, weight: number) {
+/**
+ * How far behind the pose a body runs, in seconds, at `lagScale` 1.
+ *
+ * Small — 45ms is under three frames — because this is follow-through, not
+ * sloppiness. Past about 90ms a dancer stops looking loose and starts looking
+ * like they are hearing the music through a wall.
+ */
+export const DANCE_LAG = 0.045;
+
+export function applyDancePose(
+  sk: DanceSkeleton,
+  pose: DancePose,
+  weight: number,
+  dt = 0,
+  lag = DANCE_LAG,
+) {
   const w = weight <= 0 ? 0 : weight > 1 ? 1 : weight;
   if (sk.root) {
     sk.root.position.y = sk.rootBaseY + pose.rootY * w;
     sk.root.rotation.set(pose.rootPitch * w, pose.rootYaw * w, pose.rootRoll * w);
   }
   if (w <= 0) return;
-  writeJoint(sk.hips, pose.hips, w);
-  writeJoint(sk.spine, pose.torso, w);
-  writeJoint(sk.torso, pose.torso, w);
-  writeJoint(sk.head, pose.head, w);
-  writeJoint(sk.armL.upper, pose.armL.upper, w);
-  writeJoint(sk.armL.lower, pose.armL.lower, w);
-  writeJoint(sk.armR.upper, pose.armR.upper, w);
-  writeJoint(sk.armR.lower, pose.armR.lower, w);
-  writeJoint(sk.legL.upper, pose.legL.upper, w);
-  writeJoint(sk.legL.lower, pose.legL.lower, w);
-  writeJoint(sk.legL.tip, pose.legL.tip, w);
-  writeJoint(sk.legR.upper, pose.legR.upper, w);
-  writeJoint(sk.legR.lower, pose.legR.lower, w);
-  writeJoint(sk.legR.tip, pose.legR.tip, w);
+  writeJoint(sk.hips, pose.hips, w, dt, lag);
+  writeJoint(sk.spine, pose.torso, w, dt, lag);
+  writeJoint(sk.torso, pose.torso, w, dt, lag);
+  writeJoint(sk.head, pose.head, w, dt, lag);
+  writeJoint(sk.armL.upper, pose.armL.upper, w, dt, lag);
+  writeJoint(sk.armL.lower, pose.armL.lower, w, dt, lag);
+  writeJoint(sk.armR.upper, pose.armR.upper, w, dt, lag);
+  writeJoint(sk.armR.lower, pose.armR.lower, w, dt, lag);
+  writeJoint(sk.legL.upper, pose.legL.upper, w, dt, lag);
+  writeJoint(sk.legL.lower, pose.legL.lower, w, dt, lag);
+  writeJoint(sk.legL.tip, pose.legL.tip, w, dt, lag);
+  writeJoint(sk.legR.upper, pose.legR.upper, w, dt, lag);
+  writeJoint(sk.legR.lower, pose.legR.lower, w, dt, lag);
+  writeJoint(sk.legR.tip, pose.legR.tip, w, dt, lag);
 }
 
 /** Put the root back where it was found. Bones are left to the mixer/gait. */
@@ -714,29 +901,29 @@ export function bindGltfDanceSkeleton(root: THREE.Object3D): DanceSkeleton {
   const sk: DanceSkeleton = {
     root,
     rootBaseY: root.position.y,
-    hips: bindJoint(pick(bones, [/^hips$/, /^pelvis$/, /hips/, /pelvis/]), rootInv),
+    hips: bindJoint(pick(bones, [/^hips$/, /^pelvis$/, /hips/, /pelvis/]), rootInv, 1, 0.35),
     // The lower spine takes a share of the torso's rotation, which is what
     // turns a rigid twist at one joint into a bend through a back.
-    spine: bindJoint(pick(bones, [/^abdomen$/, /^spine$/, /^spine1$/]), rootInv, 0.45),
-    torso: bindJoint(pick(bones, [/^torso$/, /^chest$/, /^spine2$/, /^upperchest$/, /^spine$/]), rootInv),
-    head: bindJoint(pick(bones, [/^head$/, /^neck$/, /head/]), rootInv),
+    spine: bindJoint(pick(bones, [/^abdomen$/, /^spine$/, /^spine1$/]), rootInv, 0.45, 0.6),
+    torso: bindJoint(pick(bones, [/^torso$/, /^chest$/, /^spine2$/, /^upperchest$/, /^spine$/]), rootInv, 1, 0.75),
+    head: bindJoint(pick(bones, [/^head$/, /^neck$/, /head/]), rootInv, 1, 1.25),
     armL: {
-      upper: bindJoint(pick(bones, [L("upperarm"), L("arm"), L("shoulder")]), rootInv),
-      lower: bindJoint(pick(bones, [L("lowerarm"), L("forearm")]), rootInv),
+      upper: bindJoint(pick(bones, [L("upperarm"), L("arm"), L("shoulder")]), rootInv, 1, 1),
+      lower: bindJoint(pick(bones, [L("lowerarm"), L("forearm")]), rootInv, 1, 1.6),
     },
     armR: {
-      upper: bindJoint(pick(bones, [R("upperarm"), R("arm"), R("shoulder")]), rootInv),
-      lower: bindJoint(pick(bones, [R("lowerarm"), R("forearm")]), rootInv),
+      upper: bindJoint(pick(bones, [R("upperarm"), R("arm"), R("shoulder")]), rootInv, 1, 1),
+      lower: bindJoint(pick(bones, [R("lowerarm"), R("forearm")]), rootInv, 1, 1.6),
     },
     legL: {
-      upper: bindJoint(shinL?.parent ?? pick(bones, [L("upperleg"), L("thigh")]), rootInv),
-      lower: bindJoint(shinL, rootInv),
-      tip: bindJoint(ankleUnder(shinL, pick(bones, [L("foot"), L("ankle")])), rootInv),
+      upper: bindJoint(shinL?.parent ?? pick(bones, [L("upperleg"), L("thigh")]), rootInv, 1, 0.7),
+      lower: bindJoint(shinL, rootInv, 1, 1.1),
+      tip: bindJoint(ankleUnder(shinL, pick(bones, [L("foot"), L("ankle")])), rootInv, 1, 1.4),
     },
     legR: {
-      upper: bindJoint(shinR?.parent ?? pick(bones, [R("upperleg"), R("thigh")]), rootInv),
-      lower: bindJoint(shinR, rootInv),
-      tip: bindJoint(ankleUnder(shinR, pick(bones, [R("foot"), R("ankle")])), rootInv),
+      upper: bindJoint(shinR?.parent ?? pick(bones, [R("upperleg"), R("thigh")]), rootInv, 1, 0.7),
+      lower: bindJoint(shinR, rootInv, 1, 1.1),
+      tip: bindJoint(ankleUnder(shinR, pick(bones, [R("foot"), R("ankle")])), rootInv, 1, 1.4),
     },
     bound: 0,
   };
@@ -782,28 +969,33 @@ export function bindDirectDanceSkeleton(parts: {
    * Rest comes from the snapshot, defaulting to IDENTITY — never from
    * `obj.quaternion`, which by bind time is a mid-stride gait pose.
    */
-  const direct = (obj: THREE.Object3D | null | undefined, gain = 1): DanceJoint | null =>
-    obj
-      ? { obj, rest: (parts.rest?.get(obj) ?? I).clone(), wp: I.clone(), wpInv: I.clone(), gain }
-      : null;
+  const direct = (
+    obj: THREE.Object3D | null | undefined,
+    gain = 1,
+    lagScale = 1,
+  ): DanceJoint | null => {
+    if (!obj) return null;
+    const rest = (parts.rest?.get(obj) ?? I).clone();
+    return { obj, rest, wp: I.clone(), wpInv: I.clone(), gain, cur: rest.clone(), lagScale };
+  };
   const sk: DanceSkeleton = {
     root: parts.root ?? null,
     rootBaseY: parts.root?.position.y ?? 0,
-    hips: direct(parts.hips),
+    hips: direct(parts.hips, 1, 0.35),
     spine: null,
-    torso: direct(parts.torso),
-    head: direct(parts.head),
-    armL: { upper: direct(parts.armL?.upper), lower: direct(parts.armL?.lower) },
-    armR: { upper: direct(parts.armR?.upper), lower: direct(parts.armR?.lower) },
+    torso: direct(parts.torso, 1, 0.75),
+    head: direct(parts.head, 1, 1.25),
+    armL: { upper: direct(parts.armL?.upper, 1, 1), lower: direct(parts.armL?.lower, 1, 1.6) },
+    armR: { upper: direct(parts.armR?.upper, 1, 1), lower: direct(parts.armR?.lower, 1, 1.6) },
     legL: {
-      upper: direct(parts.legL?.upper),
-      lower: direct(parts.legL?.lower),
-      tip: direct(parts.legL?.tip),
+      upper: direct(parts.legL?.upper, 1, 0.7),
+      lower: direct(parts.legL?.lower, 1, 1.1),
+      tip: direct(parts.legL?.tip, 1, 1.4),
     },
     legR: {
-      upper: direct(parts.legR?.upper),
-      lower: direct(parts.legR?.lower),
-      tip: direct(parts.legR?.tip),
+      upper: direct(parts.legR?.upper, 1, 0.7),
+      lower: direct(parts.legR?.lower, 1, 1.1),
+      tip: direct(parts.legR?.tip, 1, 1.4),
     },
     bound: 0,
   };

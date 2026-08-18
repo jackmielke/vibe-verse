@@ -59,7 +59,7 @@ export interface PilotFrame {
    * wings, blink) keep running underneath it. A cape that went rigid the
    * moment somebody started dancing would be a worse cape.
    */
-  dance?: { pose: DancePose; weight: number } | null;
+  dance?: { pose: DancePose; weight: number; lag?: number } | null;
 }
 
 export interface ProceduralPilot {
@@ -2990,7 +2990,7 @@ export function buildProceduralPilot(
        this is a no-op and the walk is untouched. */
     if (f.dance && f.dance.weight > 0) {
       if (!danceSkeleton) danceSkeleton = buildDanceSkeleton();
-      applyDancePose(danceSkeleton, f.dance.pose, f.dance.weight);
+      applyDancePose(danceSkeleton, f.dance.pose, f.dance.weight, dt, f.dance.lag);
       danceReleased = false;
     } else if (!danceReleased) {
       // The root carries the hop and the spin, and nothing else in this file

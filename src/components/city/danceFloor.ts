@@ -37,10 +37,12 @@ import {
   DANCES,
   cityBeats,
   createDancePose,
-  evalDance,
+  evalDanceGrooved,
   findDance,
+  makeGroove,
   stepDanceWeight,
   type DanceDef,
+  type DanceGroove,
   type DancePose,
 } from "@/components/city/dances";
 import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
@@ -76,6 +78,8 @@ const TILE = 1.5;
 const CULL_DIST = 90;
 /** Bars between one crew member joining and the next. */
 const JOIN_STAGGER_BARS = 1;
+/** Roughly how long a regular sticks with one move before picking another. */
+const SWITCH_BARS = 8;
 
 /**
  * How bright one panel is, from the absolute beat alone.
@@ -124,6 +128,16 @@ interface CrewMember {
   order: number;
   weight: number;
   dancing: boolean;
+  /** Their own feel for the beat — see `makeGroove`. */
+  groove: DanceGroove;
+  /** Where they stand, so a head-turn can be measured from it. */
+  home: THREE.Vector3;
+  /** Which way they were built facing, before any glancing. */
+  baseYaw: number;
+  /** Smoothed head turn toward whoever they are watching, in radians. */
+  glance: number;
+  /** Which bar they last picked a new move on. */
+  switchedBar: number;
 }
 
 export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
@@ -183,11 +197,20 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
   const crewIds = opts.crew ?? ["pixel", "bumble", "chrome", "sable"];
   const crew: CrewMember[] = crewIds.map((id, i) => {
     const pilot = buildProceduralPilot(undefined, id);
-    const angle = (i / crewIds.length) * Math.PI * 2 + Math.PI / 4;
-    const r = half - TILE * 0.7;
-    pilot.group.position.set(Math.cos(angle) * r, 0.1, Math.sin(angle) * r);
-    // Face the centre. The rig faces +Z, so this is atan2 of the inward vector.
-    pilot.group.rotation.y = Math.atan2(-Math.cos(angle) * r, -Math.sin(angle) * r);
+    /* Not evenly spaced, and not exactly facing in. Four people at exactly 90°
+       on a circle of exactly one radius, each squared to the centre, is the
+       one arrangement no group of people has ever stood in — it reads as
+       furniture the moment you see it from above. The jitter is hashed off
+       the index so the room is the same room every visit. */
+    const wobble = (n: number) => (Math.sin(n * 12.9898 + i * 78.233) * 43758.5453) % 1;
+    const angle = (i / crewIds.length) * Math.PI * 2 + Math.PI / 4 + wobble(1) * 0.5;
+    const r = half - TILE * 0.7 - Math.abs(wobble(2)) * TILE * 0.5;
+    const home = new THREE.Vector3(Math.cos(angle) * r, 0.1, Math.sin(angle) * r);
+    pilot.group.position.copy(home);
+    // Face roughly the centre. The rig faces +Z, so this is atan2 of the
+    // inward vector, plus a few degrees of not-quite.
+    const baseYaw = Math.atan2(-home.x, -home.z) + wobble(3) * 0.45;
+    pilot.group.rotation.y = baseYaw;
     group.add(pilot.group);
     return {
       pilot,
@@ -197,6 +220,11 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
       order: i,
       weight: 0,
       dancing: false,
+      groove: makeGroove(i * 137 + 11),
+      home,
+      baseYaw,
+      glance: 0,
+      switchedBar: -999,
     };
   });
 
@@ -216,6 +244,7 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
   let wasBusy = false;
 
   const update = (dt: number, playerPos: THREE.Vector3, dancersNearby: number) => {
+    const seconds = Date.now() / 1000;
     /* Nothing here is visible from across the city, and all of it costs
        something every frame: four solved rigs and forty-nine instance colours.
        Same convention the NPC crew uses — distant things still exist, they
@@ -255,8 +284,47 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
     for (const c of crew) {
       c.dancing = busy && crewHasJoined(c.order, bar - joinStartBar);
       c.weight = stepDanceWeight(c.weight, c.dancing, dt);
+
+      /* Change it up. Nobody does one move for eleven minutes, and a crowd
+         that does is the thing that gives away that it is four loops. The
+         switch lands on a bar line and each regular runs their own clock, so
+         the floor is always partway through somebody changing their mind. */
+      if (c.dancing) {
+        const period = SWITCH_BARS + c.order * 3;
+        if (bar - c.switchedBar >= period) {
+          c.switchedBar = bar;
+          c.dance = DANCES[Math.abs((bar * 7 + c.order * 31) | 0) % DANCES.length];
+        }
+      }
+
+      /* And they drift. A dancer bolted to one square metre reads as a statue
+         with moving parts; a slow wander of a few centimetres, on a period
+         that has nothing to do with the beat, reads as somebody standing. */
+      const sway = c.weight * 0.16;
+      c.pilot.group.position.set(
+        c.home.x + Math.sin(seconds * 0.31 + c.order * 2.1) * sway,
+        c.home.y,
+        c.home.z + Math.sin(seconds * 0.23 + c.order * 4.7) * sway,
+      );
+
+      /* Where they are looking. People on a dance floor watch whoever is
+         dancing, and they turn their shoulders to do it — a crowd of heads
+         locked forward is the tell that they are props. The turn is capped and
+         eased, so it is a glance across a room and not an owl. */
+      const toX = playerPos.x - group.position.x - c.home.x;
+      const toZ = playerPos.z - group.position.z - c.home.z;
+      let want = 0;
+      if (busy) {
+        let d = Math.atan2(toX, toZ) - c.baseYaw;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        want = Math.max(-1.1, Math.min(1.1, d));
+      }
+      c.glance += (want - c.glance) * Math.min(1, dt * 2.4);
+      c.pilot.group.rotation.y = c.baseYaw + c.glance;
+
       if (c.weight > 0) {
-        evalDance(c.dance, pose);
+        evalDanceGrooved(c.dance, pose, c.groove);
         dancing += c.dancing ? 1 : 0;
       }
       c.pilot.update(dt, {
@@ -265,7 +333,7 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
         verticalVel: 0,
         yawRate: 0,
         thrusting: false,
-        dance: c.weight > 0 ? { pose, weight: c.weight } : null,
+        dance: c.weight > 0 ? { pose, weight: c.weight, lag: c.dance.lag } : null,
       });
     }
 

@@ -22,8 +22,10 @@ import {
   applyDancePose,
   bindGltfDanceSkeleton,
   createDancePose,
-  evalDance,
+  evalDanceGrooved,
   findDance,
+  makeGroove,
+  type DanceGroove,
   releaseDanceSkeleton,
   stepDanceWeight,
   type DanceDef,
@@ -185,6 +187,8 @@ interface Ghost {
   danceWeight: number;
   /** Resolved definition, held through the fade-out after `dance` clears. */
   danceDef: DanceDef | null;
+  /** This peer's personal feel for the beat, stable for as long as they exist. */
+  groove: DanceGroove;
   /**
    * Bound the moment the model loads, NOT lazily on the first dance: the bind
    * has to capture the skeleton's rest pose, and by the time a peer starts
@@ -196,6 +200,13 @@ interface Ghost {
   /** Whether the root transform has been handed back after a dance ended. */
   danceReleased: boolean;
 }
+
+/** Stable small integer from a session id, for seeding a peer's groove. */
+const hashKey = (s: string) => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h) % 9973;
+};
 
 const SEND_INTERVAL_MS = 125;
 const EMOTE_LIFE = 2.6;
@@ -455,6 +466,7 @@ export function createMultiplayer(opts: {
       dance: null,
       danceWeight: 0,
       danceDef: null,
+      groove: makeGroove(hashKey(key)),
       danceSk: null,
       danceReleased: true,
     };
@@ -731,7 +743,10 @@ export function createMultiplayer(opts: {
         // shared by the whole crowd, so a ghost that stopped dancing and left
         // it stale would spend its quarter-second fade wearing whichever pose
         // the next ghost in the loop happened to write.
-        if (g.danceWeight > 0 && g.danceDef) evalDance(g.danceDef, ghostPose);
+        // Each peer performs it in their own body: a fixed timing offset and
+        // amplitude hashed off their session id, so a room of people doing the
+        // same move is a room of people rather than a mirror array.
+        if (g.danceWeight > 0 && g.danceDef) evalDanceGrooved(g.danceDef, ghostPose, g.groove);
         else g.danceDef = null;
 
         g.mixer?.update(dt);
@@ -751,7 +766,10 @@ export function createMultiplayer(opts: {
             verticalVel: (p.y - g.prevPos.y) / Math.max(dt, 1e-4),
             yawRate: dy / Math.max(dt, 1e-4),
             thrusting: false,
-            dance: g.danceWeight > 0 ? { pose: ghostPose, weight: g.danceWeight } : null,
+            dance:
+              g.danceWeight > 0
+                ? { pose: ghostPose, weight: g.danceWeight, lag: g.danceDef?.lag }
+                : null,
           });
           g.prevPos.copy(p);
           g.prevYaw = g.group.rotation.y;
@@ -759,7 +777,9 @@ export function createMultiplayer(opts: {
           // GLB peers: the mixer has just written the walk/idle pose onto every
           // bone, so the dance slerps on top of a live frame and blends away
           // cleanly when the peer stops.
-          if (g.danceWeight > 0) applyDancePose(g.danceSk, ghostPose, g.danceWeight);
+          if (g.danceWeight > 0) {
+            applyDancePose(g.danceSk, ghostPose, g.danceWeight, dt, g.danceDef?.lag);
+          }
           else if (g.danceReleased === false) {
             releaseDanceSkeleton(g.danceSk);
             g.danceReleased = true;
