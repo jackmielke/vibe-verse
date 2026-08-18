@@ -434,7 +434,7 @@ const App = () => (
           {/* I SPY — the Geometry Dash level, in 2D, in the vibeverse. One
               button, sixty seconds, and a screen full of spikes that are not
               there. */}
-          {["/i-spy", "/ispy", "/geometry-dash"].map((path) => (
+          {["/i-spy", "/ispy", "/geometry-dash", "/i-spy/spire"].map((path) => (
             <Route key={path} path={path} element={<ISpy />} />
           ))}
           {/* BLOB — the petri dish. Eat pellets, dodge anything bigger, split

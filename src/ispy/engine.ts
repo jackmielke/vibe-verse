@@ -13,11 +13,16 @@ import { ISpyAudio } from "./audio";
 import { botDecision, corridorAt, DECISION_DT } from "./bot";
 import { LEVELS, levelById } from "./levels";
 import { clonePlayer, initialState, step, World } from "./physics";
-import { Renderer, VIEW_H, type Particle, type RenderState } from "./render";
+import { Renderer, VIEW_H, type Particle, type RenderState, type TrailPoint } from "./render";
 import type { Level, PlayerState } from "./types";
 
 const TICK = 1 / 240;
 const MAX_FRAME = 0.25;
+/** How many samples of the player's recent path the motion trail keeps. */
+const TRAIL_LEN = 9;
+/** …and how often one is taken, in seconds. Sampled on the wall clock rather
+    than per physics tick so the smear is the same length on every machine. */
+const TRAIL_DT = 1 / 70;
 /** Sonar pings per attempt. See `fireSonar`. */
 const PINGS_PER_ATTEMPT = 3;
 /** Saves are per level, so a best on one is not a best on all eleven. */
@@ -156,7 +161,13 @@ export class ISpyEngine {
   private tapPending = false;
   private camY = -1.7;
   private particles: Particle[] = [];
+  /** Smoothed frame interval in ms — the renderer's lighting budget reads it. */
+  private frameMs = 16.7;
+  private trail: TrailPoint[] = [];
+  private trailClock = 0;
   private shake = 0;
+  /** 1 at the instant of a landing, decaying — the icon's squash. */
+  private land = 0;
   private wasGrounded = true;
   /** Reused every frame — the renderer reads it, nobody keeps it. */
   private readonly spectrum = new Float32Array(30);
@@ -294,6 +305,19 @@ export class ISpyEngine {
 
   resize() {
     this.renderer.resize();
+  }
+
+  /** Where the renderer's self-tuning lighting budget has settled, 0..1.
+      Read by `scripts/ispy-shot.mjs`; nothing in the game looks at it. */
+  get renderQuality(): number {
+    return this.renderer.quality;
+  }
+
+  /** Freeze the lighting budget at `q`, or `null` to let it tune itself.
+      World-card art wants the full lighting even on a machine that could not
+      hold sixty frames a second with it on. */
+  debugQuality(q: number | null) {
+    this.renderer.pinQuality(q);
   }
 
   /** Kill the player on the spot. Used to test that dying resumes correctly. */
@@ -440,6 +464,8 @@ export class ISpyEngine {
     this.deathAge = 0;
     this.sonarAge = null;
     this.particles = [];
+    this.trail = [];
+    this.trailClock = 0;
     this.pings = this.rules.pings;
     this.applyRules();
     this.camY = Math.max(-1.7, this.player.y - VIEW_H * 0.34);
@@ -447,6 +473,7 @@ export class ISpyEngine {
     this.botHold = false;
     this.botClock = 0;
     this.shake = 0;
+    this.land = 0;
     this.wasGrounded = true;
     if (keepProgress && this.banked) {
       // Coins taken after the checkpoint are lost with the run that took them.
@@ -514,6 +541,7 @@ export class ISpyEngine {
     this.raf = requestAnimationFrame(this.frame);
     const dt = Math.min((now - this.lastFrame) / 1000, MAX_FRAME);
     this.lastFrame = now;
+    this.frameMs += (dt * 1000 - this.frameMs) * 0.05;
 
     if (this.paused) {
       this.renderer.draw(this.renderState());
@@ -535,8 +563,10 @@ export class ISpyEngine {
       }
     }
     this.shake = Math.max(0, this.shake - dt * 3.2);
+    this.land = Math.max(0, this.land - dt * 7);
 
     this.stepParticles(dt);
+    this.stepTrail(dt);
     if (this.sonarAge !== null) this.sonarAge += dt;
     this.readSpectrum();
 
@@ -625,7 +655,10 @@ export class ISpyEngine {
       this.audio.setMovement(sectionAt(this.level, this.player.x).index);
 
       // Landing dust, so a jump has a bottom to it.
-      if (this.player.onGround && !this.wasGrounded) this.burst(7, "#ffffff", 5);
+      if (this.player.onGround && !this.wasGrounded) {
+        this.burst(7, "#ffffff", 5);
+        this.land = 1;
+      }
       this.wasGrounded = this.player.onGround;
     }
 
@@ -681,6 +714,19 @@ export class ISpyEngine {
     }
   }
 
+  /** Sample where the player is, for the renderer's motion smear. */
+  private stepTrail(dt: number) {
+    if (this.phase === "dead") {
+      this.trail.length = 0;
+      return;
+    }
+    this.trailClock += dt;
+    if (this.trailClock < TRAIL_DT) return;
+    this.trailClock = 0;
+    this.trail.push({ x: this.player.x, y: this.player.y, rot: this.player.rot });
+    if (this.trail.length > TRAIL_LEN) this.trail.shift();
+  }
+
   private stepParticles(dt: number) {
     for (const p of this.particles) {
       p.life -= dt;
@@ -700,6 +746,8 @@ export class ISpyEngine {
       time: this.attemptTime,
       beat: this.audio.beatPhase(),
       particles: this.particles,
+      trail: this.trail,
+      land: this.land,
       sonarAge: this.sonarAge,
       dead: this.phase === "dead",
       deathAge: this.deathAge,
@@ -712,6 +760,7 @@ export class ISpyEngine {
       showCheckpoints: this.checkpointsOn,
       collected: this.got,
       dim: this.phase === "attract" ? 0.55 : 0,
+      frameMs: this.frameMs,
     };
   }
 

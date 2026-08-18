@@ -183,13 +183,13 @@ const WORLDS_RAW: WorldEntry[] = [
   {
     key: "i-spy",
     route: "/i-spy",
-    aliases: ["/ispy", "/geometry-dash"],
+    aliases: ["/ispy", "/geometry-dash", "/i-spy/spire"],
     name: "I Spy",
     emoji: "👁",
     kind: "game",
     blurb:
-      "The Geometry Dash level, in two dimensions. One button, sixty seconds, and a screen so full of spikes that most of them have to be lying — because they are.",
-    status: "Playable — desktop, phone, one button",
+      "The Geometry Dash level, in two dimensions — one button, one beat per jump, and a screen so full of spikes that most of them have to be lying, because they are. Eleven of them now, one per corner of the vibeverse, plus The Spire: all eleven stacked into a single climb with three lives between them.",
+    status: "Playable — 11 worlds + The Spire, desktop and phone, one button",
     accent: "#ff2fbf",
     featured: true,
     source: "src/ispy",

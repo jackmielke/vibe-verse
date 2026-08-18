@@ -11,6 +11,7 @@
  *   node scripts/ispy-shot.mjs                     # contact sheet to /tmp
  *   node scripts/ispy-shot.mjs 340 out.jpg         # one frame at block 340
    node scripts/ispy-shot.mjs --run               # …and play it through
+   node scripts/ispy-shot.mjs --spire             # …and climb the other realm
    node scripts/ispy-shot.mjs --phone             # …and shoot it on a phone
  */
 import { chromium, devices } from "playwright";
@@ -81,6 +82,11 @@ await page.waitForFunction(() => !!window.__ispy, null, { timeout: 30000 });
 // The global way-home chip is right in every world and wrong in a world card.
 // Hide it for the shot rather than teaching a shared component about capture.
 await page.addStyleTag({ content: '[class*="z-[45]"] { display: none !important; }' });
+// Shoot at full lighting. Headless Chromium has no GPU, so the renderer's
+// self-tuning budget would correctly strip the reflection and the bloom —
+// and then the card art would be a picture of a slow machine rather than a
+// picture of the game. The frame-rate probe below unpins it again.
+await page.evaluate(() => window.__ispy.debugQuality(1));
 await page.waitForTimeout(1200);
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -135,20 +141,42 @@ for (const [block, label] of shots) {
 // Frame rate under the attract bot, which is the most expensive thing the
 // page ever does: it searches 1.3 seconds of futures twenty times a second.
 const survived = await page.evaluate(async () => {
+  const measure = (ms) =>
+    new Promise((resolve) => {
+      const t0 = performance.now();
+      let frames = 0;
+      const tick = () => {
+        frames++;
+        const dt = performance.now() - t0;
+        if (dt > ms) resolve(Math.round((frames / dt) * 1000));
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
   window.__ispy.debugSeek(0);
-  const t0 = performance.now();
-  let frames = 0;
-  await new Promise((r) => {
-    const tick = () => {
-      frames++;
-      if (performance.now() - t0 > 4000) r();
-      else requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-  return { fps: Math.round(frames / 4), pct: window.__ispy.status().percent };
+  window.__ispy.debugQuality(1);
+  await measure(800);
+  const full = await measure(3000);
+  window.__ispy.debugQuality(0);
+  await measure(500);
+  const bare = await measure(3000);
+  // …and then let the budget find its own level, which is what a player gets.
+  window.__ispy.debugQuality(null);
+  await measure(2500);
+  const auto = await measure(3000);
+  return { full, bare, auto, q: window.__ispy.renderQuality, pct: window.__ispy.status().percent };
 });
-console.log(`attract mode: ${survived.fps} fps, reached ${survived.pct.toFixed(0)}%`);
+// Three numbers, because one would lie. `full` is every effect on, `bare` is
+// the floor the budget can fall back to, and `auto` is what a player on this
+// machine actually gets — a low lighting number with a good frame rate is the
+// renderer correctly deciding this machine cannot afford the reflection,
+// which is the entire reason the budget exists.
+console.log(
+  `attract mode: ${survived.auto} fps at lighting ${survived.q.toFixed(2)} ` +
+    `(${survived.full} fps all-on, ${survived.bare} fps bare), ` +
+    `reached ${survived.pct.toFixed(0)}%`,
+);
 
 // `--run` plays the level through for real. vitest proves the level is
 // possible; this proves the *page* is — the playing phase, the finish screen,
@@ -324,6 +352,80 @@ if (process.argv.includes("--modes")) {
     `clock: chill covered ${chill.pct.toFixed(1)}% in 4s, 0.8x predicts ` +
       `${predicted.toFixed(1)}% — ${drift < 1.2 ? "OK" : `FAILED (off by ${drift.toFixed(1)})`}`,
   );
+}
+
+// `--spire` walks the other realm. The climb is eleven engines in a row with
+// three lives shared between them, which is exactly the kind of thing that
+// works in the head and not in the browser: a life that does not decrement, a
+// floor that boots and never plays, a record banked from the wrong run.
+if (process.argv.includes("--spire")) {
+  const chrome = await chromium.launch({
+    ...(existsSync(exe) ? { executablePath: exe } : {}),
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
+  const p2 = await chrome.newPage({ viewport: { width: 1280, height: 720 } });
+  const errs = [];
+  p2.on("pageerror", (e) => errs.push(e.message));
+  await p2.goto(`${BASE}/i-spy/spire?debug=1`, {
+    waitUntil: "domcontentloaded",
+    timeout: 90000,
+  });
+  await p2.waitForFunction(() => !!window.__ispy, null, { timeout: 30000 });
+  const titled = await p2.getByRole("heading", { name: "THE SPIRE" }).isVisible();
+  await p2.getByRole("button", { name: /^climb$/i }).click({ timeout: 30000 });
+  await p2.waitForSelector("text=/floor 1\\/11/i", { timeout: 20000 });
+  // Every floor opens with its name on screen for a beat and a half. Killing
+  // during that is killing nobody — wait for the floor to actually be playing.
+  const playing = () =>
+    p2.waitForFunction(() => window.__ispy.status().phase === "playing", null, {
+      timeout: 20000,
+      polling: 100,
+    });
+  await playing();
+  console.log(`spire: /i-spy/spire titles itself and starts — ${titled ? "OK" : "FAILED"}`);
+
+  // A death costs a life off the whole climb and puts you back on the same
+  // floor, not on the street.
+  const hearts = async () =>
+    (await p2.locator('[aria-label*="lives left"]').first().getAttribute("aria-label")) ?? "";
+  const before = await hearts();
+  await p2.evaluate(() => window.__ispy.debugKill());
+  await p2.waitForTimeout(1800);
+  const after = await hearts();
+  const stillFloorOne = await p2.locator("text=/floor 1\\/11/i").isVisible();
+  console.log(
+    `spire: died — lives "${before}" → "${after}", still on floor 1: ${stillFloorOne} — ` +
+      `${before.startsWith("3") && after.startsWith("2") && stillFloorOne ? "OK" : "FAILED"}`,
+  );
+
+  // Clearing a floor moves the building up one and swaps the world under you.
+  await playing();
+  await p2.evaluate(() => {
+    const e = window.__ispy;
+    e.debugSeek(e.level.length - 3);
+  });
+  await p2.waitForTimeout(4000);
+  const onTwo = await p2.locator("text=/floor 2\\/11/i").isVisible();
+  const swapped = await p2.evaluate(() => window.__ispy.status().levelId);
+  console.log(
+    `spire: cleared floor 1 → floor 2 showing: ${onTwo}, engine now "${swapped}" — ` +
+      `${onTwo && swapped !== "i-spy" ? "OK" : "FAILED"}`,
+  );
+
+  // …and spending the last two lives ends the climb with the floors kept.
+  for (let i = 0; i < 2; i++) {
+    await playing().catch(() => {});
+    await p2.evaluate(() => window.__ispy.debugKill());
+    await p2.waitForTimeout(1800);
+  }
+  const over = await p2.locator("text=/the climb ends here/i").isVisible();
+  const kept = await p2.evaluate(() => JSON.parse(localStorage.getItem("ispy:spire") ?? "null"));
+  console.log(
+    `spire: out of lives — end card: ${over}, banked ${JSON.stringify(kept)} — ` +
+      `${over && kept?.cleared === 1 ? "OK" : "FAILED"}`,
+  );
+  if (errs.length) console.log(`spire page errors: ${errs.slice(0, 3).join(" | ")}`);
+  await chrome.close();
 }
 
 // `--phone` is not decoration. A portrait viewport is where this game breaks:
