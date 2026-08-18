@@ -92,6 +92,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "eef5ac5", iso: "2026-07-13T09:47:28+00:00", subject: "✨ Agent Lab: hatched companions gently bob (feel alive)" },
     { sha: "cdcbd13", iso: "2026-07-12T12:49:55+00:00", subject: "🧪 Agent Lab — hatch your own companion (chunk 1)" },
   ],
+  "conservatory": [
+    { sha: "570204e", iso: "2026-08-18T22:26:10+00:00", subject: "The Conservatory: forty-eight metres of glasshouse, and a walk" },
+  ],
   "deep": [
     { sha: "18b88dc", iso: "2026-08-17T06:36:43+00:00", subject: "🔦 The Midnight Zone was unplayable, and none of it showed up in a build" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
@@ -168,12 +171,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "502f02a", iso: "2026-08-02T09:14:33+00:00", subject: "Home Alone: a house you can walk, and two men who want it" },
   ],
   "i-spy": [
+    { sha: "e29527a", iso: "2026-08-18T22:20:14+00:00", subject: "Light the level, and stack it into a Spire" },
     { sha: "a409687", iso: "2026-08-06T17:20:04+00:00", subject: "Eleven levels, one per corner of the vibeverse" },
     { sha: "dbac9db", iso: "2026-08-04T18:19:03+00:00", subject: "Three ways to play" },
     { sha: "05f01ed", iso: "2026-08-04T17:47:22+00:00", subject: "Changes" },
     { sha: "29b3b62", iso: "2026-08-02T21:21:35+00:00", subject: "Every spike is a real spike" },
     { sha: "ee1f96c", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
-    { sha: "b9cee40", iso: "2026-08-02T14:46:26+00:00", subject: "Nothing floats but the gears" },
   ],
   "island": [
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
@@ -328,12 +331,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9ba1460", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
   ],
   "times": [
+    { sha: "67f2af3", iso: "2026-08-18T22:20:23+00:00", subject: "🖨 The paper survives Ctrl-P" },
     { sha: "99e4d5b", iso: "2026-08-18T22:03:15+00:00", subject: "🗂 Small ads, bylines, and a spike by the door" },
     { sha: "6871988", iso: "2026-08-18T21:35:37+00:00", subject: "🗞 The Newsroom, and a paper that can be subscribed to" },
     { sha: "caccb2a", iso: "2026-08-17T06:56:21+00:00", subject: "✉️ The paper takes letters, and Vibey finally reads it out loud" },
     { sha: "7318d50", iso: "2026-08-08T20:01:49+00:00", subject: "🕕 Every edition says what time it came off the presses" },
     { sha: "480cd7d", iso: "2026-08-08T05:26:39+00:00", subject: "📰 The Vibe Times prints itself every morning, with a wire desk" },
-    { sha: "cacc859", iso: "2026-08-02T00:00:17+00:00", subject: "The Vibe Times starts actually coming out" },
   ],
   "trek": [
     { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },

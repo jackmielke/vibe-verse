@@ -47,6 +47,7 @@ const ORDER: string[] = [
   "blue-angels",
   "kart",
   "fnaf",
+  "conservatory",
   "city",
   "vibeverse",
   "strange-new-worlds",
@@ -129,6 +130,26 @@ export interface WorldEntry {
  * that reorders itself is a list nobody can build muscle memory for.
  */
 const WORLDS_RAW: WorldEntry[] = [
+  {
+    key: "conservatory",
+    route: "/conservatory",
+    aliases: ["/glasshouse"],
+    name: "The Conservatory",
+    emoji: "🪴",
+    kind: "world",
+    blurb:
+      "Forty-eight metres of Victorian glasshouse, late on a wet afternoon. The sun comes in sideways and the roof ribs cut it into bars. Nothing to collect, nothing to survive — walk to the far end and back.",
+    status: "Playable — a room, and a walk",
+    accent: "#8fae94",
+    featured: true,
+    source: "src/conservatory",
+    nav: true,
+    // 34 of 36 rows before this one. The panel shrinks its pitch to fit and
+    // the type does not start suffering until the high forties, so there is
+    // real room rather than a bump waiting to happen.
+    passport: true,
+    chromeless: true,
+  },
   {
     key: "deep",
     route: "/deep",

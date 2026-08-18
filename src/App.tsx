@@ -91,6 +91,7 @@ const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
 const DuneSea = lazy(() => import("./pages/DuneSea.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
+const Conservatory = lazy(() => import("./pages/Conservatory.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
@@ -361,6 +362,9 @@ const App = () => (
           {/* THE TERMINAL — the front door. Stand in the sky, pick a world. */}
           <Route path="/terminal" element={<Terminal />} />
           {/* Vibe Island II — the floating archipelago, rebuilt. */}
+          <Route path="/conservatory" element={<Conservatory />} />
+          <Route path="/glasshouse" element={<Conservatory />} />
+
           <Route path="/island-2" element={<VibeIsland2 />} />
           <Route path="/vibe-island-2" element={<VibeIsland2 />} />
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}
