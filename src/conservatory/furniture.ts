@@ -363,6 +363,24 @@ export function buildFurniture(uniforms: Record<string, THREE.IUniform>): Furnit
     }
   }
 
+  /* DRAINS. A glasshouse floor is watered with a hose twice a day and has
+     to take it somewhere, so it falls to a channel down the middle with
+     cast gratings in it at intervals. Two bars of iron in a tiled floor,
+     and the floor stops being a texture and becomes a thing that was
+     PLUMBED — which is a surprising amount of what "real building" means. */
+  for (let i = 0; i < 6; i++) {
+    const z = -HALF + 4.5 + i * 8.2;
+    const frame = new THREE.BoxGeometry(0.46, 0.035, 0.46);
+    frame.translate(0, 0.018, z);
+    cast.push(frame);
+    // Slots, sunk just below the frame so they read as holes.
+    for (let k = 0; k < 5; k++) {
+      const bar = new THREE.BoxGeometry(0.40, 0.03, 0.032);
+      bar.translate(0, 0.030, z - 0.16 + k * 0.08);
+      cast.push(bar);
+    }
+  }
+
   // Two watering cans, left where somebody was last working.
   wateringCan(-3.02, -HALF + 14.2, 0.9, cast);
   wateringCan(3.0, -HALF + 33.0, -2.1, cast);
@@ -381,6 +399,35 @@ export function buildFurniture(uniforms: Record<string, THREE.IUniform>): Furnit
     tag.rotateY(r() * 0.9 - 0.45);
     tag.translate(x, 0.74, z);
     cast.push(tag);
+  }
+
+  /* LEAF LITTER. Sixty feet of path with nothing on it is the last thing
+     in here that only a computer would produce: a room full of plants that
+     drop things, swept to a shine. Real litter is not scattered evenly —
+     it is blown to the EDGES, banked against the kerbs and in the lee of
+     anything standing on the floor, and thin in the middle where feet go.
+     Placing it that way costs nothing and is the whole difference between
+     "leaves on the floor" and "nobody has swept since Tuesday". */
+  for (let i = 0; i < 320; i++) {
+    const side = r() < 0.5 ? -1 : 1;
+    // Biased hard towards the kerb: a squared random lands most of them in
+    // the outer third of the path.
+    const t = r() * r();
+    const x = side * (3.30 - t * 2.9);
+    const z = (r() - 0.5) * (NAVE.length - 4);
+    const len = 0.085 + r() * 0.11;
+    const leaf = new THREE.PlaneGeometry(len * 0.42, len, 1, 2);
+    const pos = leaf.attributes.position as THREE.BufferAttribute;
+    for (let v = 0; v < pos.count; v++) {
+      // Curled, and lying at a slight angle — a dry leaf never lies flat.
+      const yy = pos.getY(v);
+      pos.setZ(v, Math.abs(pos.getX(v)) * 0.55 + (yy / len) * 0.02);
+    }
+    leaf.computeVertexNormals();
+    leaf.rotateX(-Math.PI / 2 + (r() - 0.5) * 0.35);
+    leaf.rotateY(r() * Math.PI * 2);
+    leaf.translate(x, 0.004 + r() * 0.008, z);
+    wood.push(leaf);
   }
 
   for (const [parts, mat] of [

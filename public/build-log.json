@@ -1,9 +1,25 @@
 {
-  "generated_at": "2026-08-18T22:51:30.601Z",
+  "generated_at": "2026-08-18T23:16:33.288Z",
   "window_days": 45,
   "commits": [
     {
-      "sha": "4ac5b67c",
+      "sha": "2b13d314",
+      "date": "2026-08-18",
+      "subject": "Furnish the Conservatory, and let three sparrows in",
+      "lede": "Four things the room needed, in the order they were missing.",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "3bd03131",
+      "date": "2026-08-18",
+      "subject": "Restamped Vibe City",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "d919eee0",
       "date": "2026-08-18",
       "subject": "THE BASEMENT: a room in the same world where the music is the point",
       "lede": "Everything built for dancing so far has been outdoors, in a plaza, at whatever time of day the world happened to be in, with four regulars around a lit square. That is a good demo of a system and it is not a place. So: a club. Enclosed, dark, twenty regulars, a DJ on a riser, four beams sweeping the room, speaker stacks that punch on the kick, and a floor of panels running off the same `cityBeats()` clock as everythi",
@@ -11,6 +27,22 @@
         "Vibe Island"
       ],
       "files": 6
+    },
+    {
+      "sha": "4c096d41",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "939bb6fb",
+      "date": "2026-08-18",
+      "subject": "Sixteen hundred people who turn corners instead of vanishing",
+      "lede": "Nine hundred pedestrians across 3.4 by 4.4 km put one or two on a Mission block, which is a street nobody lives on. Sixteen hundred now, and clustered tighter — 400 m rather than 620 — because a thousand people spread over a square kilometre is one every thirty metres of pavement, and that reads as a quiet Sunday rather than as downtown.",
+      "places": [],
+      "files": 4
     },
     {
       "sha": "61bfe43c",
@@ -1002,40 +1034,6 @@
       "lede": "\"Add yours →\" and \"Put your game here\" both sent you to `/build`, which is a page about the deal rather than the form — so acting on the invitation meant two navigations away from the thing that made you want to. The arcade shelf is the argument for submitting; a form on its own route has to make that argument again from scratch.",
       "places": [],
       "files": 5
-    },
-    {
-      "sha": "e0628825",
-      "date": "2026-08-12",
-      "subject": "Powered by creators, owned by players",
-      "lede": "The old arcade's line, back above the wordmark. \"Every builder grows the universe\" said one half of it — anybody can add a door — and stopped there. This one says the other half too: what you earn behind the door is yours. It is the claim /manifesto spends a page on (\"Build worlds. Share ownership. Play forever.\") in six words, in the slot a tagline goes.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "2978d803",
-      "date": "2026-08-12",
-      "subject": "The picker gets an exit, and one card width",
-      "lede": "Three things wrong with the search overlay, all of them mine from two commits ago when I gave it a way to open without looking at what opening it revealed.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "f4d5ce53",
-      "date": "2026-08-12",
-      "subject": "Restamped Vibe Island",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "fb1d2199",
-      "date": "2026-08-12",
-      "subject": "Gave Vibe Island a town plan",
-      "lede": "From the air it read as a green disc with objects sprinkled on it: two shops sitting at angles in the middle of a lawn, a painted road cross nothing was built along, thirteen things crammed into the southern quarter and two empty quarters opposite. Every object was fine. The town was not a town.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
     }
   ]
 }

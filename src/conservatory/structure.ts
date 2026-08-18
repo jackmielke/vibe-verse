@@ -164,8 +164,12 @@ export function glassMaterial(uniforms: Record<string, THREE.IUniform>) {
         float alongAxis = abs(n.z) > 0.7 ? vWorld.x : vWorld.z;
         vec2 pane = vec2(alongAxis * 1.30, vWorld.y * 1.30);
         vec2 pf = abs(fract(pane) - 0.5);
-        float bars = max(smoothstep(0.40, 0.475, pf.x),
-                         smoothstep(0.40, 0.478, pf.y));
+        /* Slimmer than they were. At 0.40 the soft edge alone was 15cm
+           wide, so standing three metres off a wall put you behind what
+           looked like prison bars — a real glazing bar is a couple of
+           centimetres of iron with a putty line either side. */
+        float bars = max(smoothstep(0.452, 0.492, pf.x),
+                         smoothstep(0.455, 0.494, pf.y));
         /* Fade the grid out once the panes are smaller than a pixel. Down
            the length of a 48m vault they get there quickly, and an unfaded
            grid at that scale is not a roof, it is a moiré — the same thing

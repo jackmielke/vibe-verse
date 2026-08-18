@@ -97,6 +97,13 @@ float fbm(vec2 p){
   return s;
 }
 
+/** Two octaves. For fields that are broad by nature — dapple, damp, wear —
+ *  where the upper two octaves cost the same as the lower two and land
+ *  under a pixel anyway. */
+float fbm2(vec2 p){
+  return vnoise(p) * 0.5 + vnoise(p * 2.03) * 0.25;
+}
+
 /* ------------------------------------------------------------------ *
  * 1. The roof, as a function
  *
@@ -110,14 +117,19 @@ float fbm(vec2 p){
  * beneath it. Getting those out of step is the single most obvious way a
  * scene like this stops looking photographed.
  * ------------------------------------------------------------------ */
-float roofTransmission(vec2 roofUV){
-  // Iron ribs: hard, narrow, opaque.
+/** The opaque part: iron ribs one way, thinner glazing bars the other. */
+float roofBars(vec2 roofUV){
   float rib = smoothstep(0.030, 0.075, abs(fract(roofUV.x * 8.0) - 0.5));
-  // Glazing bars the other way, thinner and further apart.
   float bar = smoothstep(0.018, 0.055, abs(fract(roofUV.y * 3.0) - 0.5));
-  // Grime and algae in the corners of the panes.
-  float grime = 0.62 + 0.38 * fbm(roofUV * 6.0 + 11.0);
-  return rib * bar * grime;
+  return rib * bar;
+}
+
+/** Grime and algae in the corners of the panes. Broad, and separate from
+ *  the bars for a reason the blurred version below depends on. */
+float roofGrime(vec2 roofUV){ return 0.62 + 0.38 * fbm(roofUV * 6.0 + 11.0); }
+
+float roofTransmission(vec2 roofUV){
+  return roofBars(roofUV) * roofGrime(roofUV);
 }
 
 /**
@@ -140,12 +152,21 @@ float roofTransmission(vec2 roofUV){
  * because what is being blurred is already a smooth function.
  */
 float roofTransmissionSoft(vec2 roofUV, vec2 blur){
-  float s = roofTransmission(roofUV) * 0.30;
-  s += roofTransmission(roofUV + blur * 0.55) * 0.20;
-  s += roofTransmission(roofUV - blur * 0.55) * 0.20;
-  s += roofTransmission(roofUV + blur) * 0.15;
-  s += roofTransmission(roofUV - blur) * 0.15;
-  return s;
+  /* ONLY THE BARS ARE BLURRED. The first version took five full samples of
+     roofTransmission, and roofTransmission ends in an fbm — so every
+     surface in the building was evaluating twenty octaves of noise per
+     pixel to soften a pattern of hard lines. The foliage is drawn many
+     layers deep, so it paid that several times over for the same pixel,
+     and it was three quarters of the frame.
+
+     Grime is a broad field over metres; blurring it by a couple of
+     centimetres does nothing you could see. Sample it once, outside. */
+  float s = roofBars(roofUV) * 0.30;
+  s += roofBars(roofUV + blur * 0.55) * 0.20;
+  s += roofBars(roofUV - blur * 0.55) * 0.20;
+  s += roofBars(roofUV + blur) * 0.15;
+  s += roofBars(roofUV - blur) * 0.15;
+  return s * roofGrime(roofUV);
 }
 
 /* ------------------------------------------------------------------ *
@@ -177,7 +198,7 @@ float canopyShade(vec3 worldPos){
   float open = smoothstep(4.6, 1.1, ax);
   // Dapple. Drifts with the gust so the shade breathes when the house does.
   vec2 dp = worldPos.xz * 0.85 + vec2(uGust * 0.35, uTime * 0.02);
-  float dapple = 0.55 + 0.45 * fbm(dp);
+  float dapple = 0.55 + 0.60 * fbm2(dp);
   // Under the beds themselves almost nothing gets through.
   /* 0.20 under the beds put them at pure black — every leaf below waist
      height lost its shape entirely, and a jungle floor is dim, not absent.
