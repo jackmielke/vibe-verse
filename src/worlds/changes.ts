@@ -72,12 +72,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "d919eee", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "5a0721d", iso: "2026-08-17T16:54:36+00:00", subject: "The jetpack is on your back now, and the sea stops following you home" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
-    { sha: "6896dbb", iso: "2026-08-17T06:39:11+00:00", subject: "The bay has something in it, and you can finally look up" },
   ],
   "coil": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -188,12 +188,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ee1f96c", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
   ],
   "island": [
+    { sha: "d919eee", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
-    { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
   ],
   "island-2": [
     { sha: "0779cb9", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -227,12 +227,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
   "moon": [
+    { sha: "d919eee", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
-    { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
   ],
   "museum": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -299,12 +299,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "d919eee", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
-    { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
   ],
   "space": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -358,12 +358,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fb4e2dc", iso: "2026-08-02T10:01:00+00:00", subject: "Two ways to end Balance of Terror, and one fewer way to lose unfairly" },
   ],
   "vibestar": [
+    { sha: "d919eee", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
-    { sha: "fb1d219", iso: "2026-08-12T07:05:02+00:00", subject: "Gave Vibe Island a town plan" },
   ],
   "vibeverse": [
     { sha: "207af00", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
