@@ -30,6 +30,7 @@
  * you for being curious.
  */
 import * as THREE from "three";
+import { softDot } from "@/city/softDot";
 
 /** How far you can see down here. Air is 1100 m; this is the whole point. */
 const FOG_NEAR = 0.5;
@@ -37,6 +38,8 @@ const FOG_FAR = 42;
 /** The colour everything tends toward with depth. */
 const DEEP = new THREE.Color("#06212e");
 const SHALLOW = new THREE.Color("#1d6f7d");
+/** Past the shallows: what eighty metres of water looks like. */
+const ABYSS = new THREE.Color("#020c14");
 
 export interface UnderwaterTargets {
   scene: THREE.Scene;
@@ -123,6 +126,26 @@ export function createUnderwater(targets: UnderwaterTargets): Underwater {
 
   const patchOne = (mat: THREE.Material) => {
     if (patched.has(mat)) return;
+    /**
+     * Only materials whose shader actually has a normal.
+     *
+     * The vertex injection reads `objectNormal`, which exists in the lit
+     * material chunks and nowhere else. Sprites and points compile a
+     * completely different vertex shader — `<begin_vertex>` is there, the
+     * normal is not — so patching one is not a no-op, it is a shader that
+     * fails to link, and a failed link in three is a silent black object.
+     * This guard is what makes `patch()` safe to point at a whole subtree
+     * without first knowing what is in it.
+     */
+    const lit = mat as unknown as Record<string, boolean>;
+    if (
+      !lit.isMeshStandardMaterial &&
+      !lit.isMeshPhysicalMaterial &&
+      !lit.isMeshPhongMaterial &&
+      !lit.isMeshLambertMaterial
+    ) {
+      return;
+    }
     patched.add(mat);
     const prev = mat.onBeforeCompile?.bind(mat);
     mat.onBeforeCompile = (shader, renderer) => {
@@ -256,15 +279,28 @@ export function createUnderwater(targets: UnderwaterTargets): Underwater {
   const moteGeo = new THREE.BufferGeometry();
   moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
   moteGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
+  /**
+   * Round, and only round because it is textured.
+   *
+   * `fog: false` keeps the snow visible at any depth, which is right — it is
+   * the thing between you and everything else, and fogging it out defeats the
+   * point. But it also means these are the only pixels in the abyss the
+   * darkness does not touch, so their SHAPE is load-bearing down there: as
+   * untextured points they were crisp pale squares scattered over a black
+   * frame and read as rendering artefacts, not as silt.
+   */
+  const moteTex = softDot();
   const moteMat = new THREE.PointsMaterial({
     color: "#cdf3ff",
-    size: 0.09,
+    size: 0.11,
     sizeAttenuation: true,
     transparent: true,
     opacity: 0,
     depthWrite: false,
     fog: false,
+    ...(moteTex ? { map: moteTex } : {}),
   });
+  if (moteTex) trash.push(moteTex);
   const motes = new THREE.Points(moteGeo, moteMat);
   motes.frustumCulled = false;
   group.add(motes);
@@ -422,9 +458,37 @@ export function createUnderwater(targets: UnderwaterTargets): Underwater {
       // Colour with depth: green-blue in the shallows, going to almost black
       // by the time there is eighteen metres of water over your head.
       tint.copy(SHALLOW).lerp(DEEP, Math.min(1, depthEased / 18));
+      /**
+       * And keeps going past the point the shallows stop at.
+       *
+       * `DEEP` is the colour of twelve metres of bay, which is as deep as this
+       * world went when it was written. Eighty metres down a trench it is
+       * still far too blue and far too bright — so below eighteen metres the
+       * tint keeps sliding toward black and the sight line keeps closing. That
+       * falloff is doing the same job the dark does in a cave: it is what makes
+       * a big empty volume feel like it has something in it you have not seen
+       * yet.
+       *
+       * It closed to THIRTEEN metres first, and thirteen metres is smaller than
+       * the room. The trench is thirty-two across and the camera rides five
+       * behind you, so the walls, the floor, the vent and every polyp on them
+       * were past the fog's far plane the whole way down: the abyss rendered as
+       * a black rectangle with a silhouette in it, and it read as a missing
+       * texture rather than as darkness. Thirty is still a short sight line —
+       * the far wall of the shaft still fades out, which is the point — but it
+       * is longer than the thing you are standing in — thirty-two metres across
+       * at the floor of the trench, which is where the number below comes
+       * from, and a test asserts the two stay in that order.
+       */
+      const abyss = THREE.MathUtils.clamp((depthEased - 18) / 55, 0, 1);
+      tint.lerp(ABYSS, abyss);
       fog.color.copy(surface.fogColor).lerp(tint, k);
       fog.near = THREE.MathUtils.lerp(surface.fogNear, FOG_NEAR, k);
-      fog.far = THREE.MathUtils.lerp(surface.fogFar, FOG_FAR, k);
+      fog.far = THREE.MathUtils.lerp(
+        surface.fogFar,
+        THREE.MathUtils.lerp(FOG_FAR, 34, abyss),
+        k,
+      );
       (scene.background as THREE.Color).copy(surface.background).lerp(tint, k);
       scratch.copy(tint).lerp(AMBIENT_UW, 0.5);
       ambient.color.copy(surface.ambient).lerp(scratch, k);

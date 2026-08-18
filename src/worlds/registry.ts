@@ -644,7 +644,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🏙️",
     kind: "world",
     blurb:
-      "Jetpack a neon district — multiplayer, NPCs, star runs, and Vibey to talk to.",
+      "Jetpack a neon district — multiplayer, NPCs, star runs, and Vibey to talk to. Then swim out and dive: the bay has wrecks on the bottom, and somewhere offshore it does not have a bottom at all.",
     status: "Playable — multiplayer",
     accent: "#f0abfc",
     source: "src/pages/City.tsx + src/components/city + src/city",

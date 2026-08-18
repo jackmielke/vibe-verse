@@ -78,6 +78,7 @@ import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
 import { createWrecks } from "@/city/wrecks";
+import { createTrench } from "@/city/trench";
 import { createHeadMount } from "@/city/headMount";
 import { createBackMount } from "@/city/backMount";
 import { VibeEconomy } from "@/lib/vibeEconomy";
@@ -2838,6 +2839,12 @@ export default function City() {
     // Something to find down there, so the dive has a point beyond the view.
     const wrecks = createWrecks();
     scene.add(wrecks.group);
+    /**
+     * And the hole in the bay floor. See `src/city/trench.ts` — it is a realm
+     * you reach by swimming, so it has no portal and nothing to register.
+     */
+    const trench = createTrench();
+    scene.add(trench.group);
     // Dev-only handle for `scripts/ocean-probe.mjs`. Water is the one thing in
     // here you genuinely cannot debug from a screenshot: "flat blue" is what a
     // missing mesh, a shader that failed to link and a correct calm sea all
@@ -3083,6 +3090,31 @@ export default function City() {
     // Caustics go on the seabed — the same mesh as the beach, so the moving
     // web runs right up the sand and stops at the waterline on its own.
     underwater.patch(ocean.bedMaterial);
+    /**
+     * Everything under the water, not just the floor under it.
+     *
+     * The caustic web was patched onto the seabed alone, which is where it is
+     * most obvious and where a screenshot proves it works — and it meant a
+     * swimmer six metres down was the one object in the scene with no moving
+     * light on them at all, lit exactly as if they were standing in a street.
+     * The shader already does the right thing on arbitrary geometry: it keys
+     * off the world normal, so the web lands on shoulders and backs and the
+     * tops of chests, and not on undersides.
+     *
+     * Safe to point at a whole subtree — `patch` skips any material whose
+     * shader has no normal to read.
+     */
+    const patchForCaustics = (root: THREE.Object3D | null | undefined) => {
+      root?.traverse((o) => {
+        const mat = (o as THREE.Mesh).material;
+        if (mat) underwater.patch(mat);
+      });
+    };
+    patchForCaustics(wrecks.group);
+    // The karts too: a wreck on the seabed lit flat is the one thing down
+    // there that looks pasted in. Done here rather than where they are built,
+    // a thousand lines earlier, because the water does not exist yet up there.
+    for (const k of kartStates) if (k.mesh) patchForCaustics(k.mesh.group);
 
     // ---- GOD MODE: weather over the whole world ------------------------
     const weather = createWeather({
@@ -3291,6 +3323,7 @@ export default function City() {
         procPilot = buildProceduralPilot(undefined, designId);
         pilotModel = procPilot.group;
         modelHolder.add(procPilot.group);
+        patchForCaustics(procPilot.group);
         // Flux is built rather than rigged, so there is no head bone to bind:
         // the mount falls back to the fixed height it always used.
         headMount.attach(null, null, modelHolder);
@@ -3324,6 +3357,9 @@ export default function City() {
               std.roughness = Math.max(std.roughness, 0.45);
               std.needsUpdate = true;
             }
+            // So the moving light crawls over a swimmer too, and not only
+            // over the sand they are swimming above.
+            underwater.patch(mat);
           };
           const mat = mesh.material;
           if (Array.isArray(mat)) mat.forEach(apply);
@@ -3911,6 +3947,31 @@ export default function City() {
           tilt: new THREE.Euler().setFromQuaternion(jetpack.getWorldQuaternion(new THREE.Quaternion())).x,
         };
       };
+      /**
+       * Where the hole is, and how far down you have got.
+       *
+       * The mouth is placed by walking a bearing out to water deeper than
+       * twelve metres, so nothing in the source says where it lands — and
+       * "am I in the Deep" is a footprint test that four separate bounds in
+       * this file depend on.
+       */
+      (window as unknown as Record<string, unknown>).__cityTrench = () => ({
+        mouth: trench.mouth,
+        pearl: trench.prize(),
+        inside: trench.inside(player.position.x, player.position.z),
+        descent: trench.descent(player.position.y),
+        floor: trench.floorAt(player.position.x, player.position.z),
+        y: player.position.y,
+        camY: camera.position.y,
+        swimming,
+        // Everything that could be quietly overruling the swim.
+        onGround,
+        support: supportHeightAt(player.position.x, player.position.z, player.position.y + 0.1),
+        depthHere: waterDepthAt(player.position.x, player.position.z),
+        underground: undergroundActiveRef.current,
+        vy: vel.y,
+      });
+      (window as unknown as Record<string, unknown>).__cityTrenchReset = () => trench.reset();
       (window as unknown as Record<string, unknown>).__cityWrecks = () =>
         wrecks.sites.map((s) => ({ ...s }));
       (window as unknown as Record<string, unknown>).__cityWrecksReset = () => wrecks.reset();
@@ -3997,6 +4058,12 @@ export default function City() {
         // for — which is what made half the screenshots in this repo come back
         // framed on the avatar's back instead of the shot requested.
         vel.set(0, 0, 0);
+        // A teleport is a cut, not a pan. Without this the chase camera eases
+        // in from wherever it was, and a harness that warps 70 m down a trench
+        // and then samples the very next frame reads a camera 33 m behind the
+        // swimmer — and calls it a camera that never followed. It was simply
+        // still on its way.
+        camSnap = true;
       };
     }
     // VR-only: stable "body yaw" the dolly is parked behind. This is
@@ -4207,6 +4274,8 @@ export default function City() {
     const SINK_RECOVER = 11;
     /** Seconds until the next audible bubble; see the note where it is used. */
     let bubbleSfx = 0;
+    /** Have we announced the Deep on this descent? Re-arms when you leave. */
+    let trenchGreeted = false;
     /**
      * How loud something at (x, z) should be, 0..1.
      *
@@ -5703,7 +5772,18 @@ export default function City() {
       const deepEnough = waterHere > (swimming ? SWIM_OUT : SWIM_IN);
       // Only in the city's own ocean: the ski world, the moons and Mars all
       // live at their own altitudes and none of them is at sea level.
-      const atSeaLevel = pos.y < Math.max(seaTop, 0) + 0.6 && pos.y > -40;
+      /**
+       * The −40 floor on swimming, and the one place it does not apply.
+       *
+       * It is there so the moons, Mars and a mineshaft under the ocean are not
+       * treated as water. The trench is the exception the rule never
+       * anticipated: eighty metres of genuine sea, straight down, at one point
+       * offshore. Every bound in this file that assumes nobody is ever that
+       * deep has to ask.
+       */
+      const inTrench = trench.inside(pos.x, pos.z);
+      const atSeaLevel =
+        pos.y < Math.max(seaTop, 0) + 0.6 && (pos.y > -40 || inTrench);
       const wantSwim =
         deepEnough && atSeaLevel && !undergroundNow && !riding && !swinging && drivingKartRef.current < 0;
       if (wantSwim && !swimming) {
@@ -5832,7 +5912,18 @@ export default function City() {
           THREE.MathUtils.lerp(9, 0.35, glideEased),
         );
         const held = Math.min(rise, cap);
-        const wantVy = held - diveEased * 3.4;
+        /**
+         * You fall faster the deeper you get.
+         *
+         * A diver's buoyancy is not constant — everything compressible about
+         * them shrinks under pressure, so past a few metres you stop swimming
+         * down and start sinking, and it accelerates. In the bay that is a
+         * detail worth about half a metre a second. Down the trench it is the
+         * difference between a plunge and a lift ride: eighty metres at a flat
+         * 2.3 m/s is a very long time to watch a wall go past.
+         */
+        const sinkGain = 3.4 + Math.min(2.5, Math.max(0, -pos.y - 6) * 0.05);
+        const wantVy = held - diveEased * sinkGain;
         vel.y += (wantVy - vel.y) * (1 - Math.pow(0.008, dt));
         if (thrusting) vel.y += THRUST * dt;
         // Without a jetpack, Space is a kick for the surface.
@@ -5958,7 +6049,12 @@ export default function City() {
       // Nothing but the phantom sea-level plate won, and we are in the water:
       // let the swimmer past it and down to the actual seabed, which is what
       // buoyancy is then pushing them back up off.
-      if (swimming && support <= 0.0001) support = Math.max(seaBed, -80);
+      if (swimming && support <= 0.0001) {
+        // Inside the trench the floor is the trench's, which is a long way
+        // past the −80 that was only ever there as a backstop.
+        const tf = trench.floorAt(pos.x, pos.z);
+        support = tf !== null ? tf : Math.max(seaBed, -80);
+      }
       // Wading. In water too shallow to swim in, stand on the SEABED rather
       // than on the sea: the plate at y=0 is there so nobody can fall out of
       // the world, and over the shallows it was also letting them walk out
@@ -6630,7 +6726,17 @@ export default function City() {
         const dzT = pos.z - TRANSCEND_POS.z;
         const onDisc =
           dxT * dxT + dzT * dzT < 2.4 * 2.4 && Math.abs(pos.y - TRANSCEND_POS.y) < 1.5;
-        const fellOutOfWorld = pos.y < -25;
+        /**
+         * Falling out of the world, and the one place that is just deep water.
+         *
+         * Below −25 metres used to mean something had gone wrong: there was no
+         * geometry down there and the safety net caught you and put you back
+         * in the plaza. The trench is eighty metres of somewhere you are meant
+         * to be — so without this exemption the net fires at −25, every time,
+         * and the realm is unreachable by the exact mechanism that exists to
+         * stop the world losing you.
+         */
+        const fellOutOfWorld = pos.y < -25 && !trench.inside(pos.x, pos.z);
         if (onDisc || fellOutOfWorld) {
           transcendState.cooldown = 2.5;
           pos.set(0, 60, 0);
@@ -7019,10 +7125,23 @@ export default function City() {
         const eyeMayGoUnder =
           swimming ||
           (drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].sink > 0);
+        /**
+         * The floor the camera may not go through — and it is not always the
+         * bay's.
+         *
+         * `-waterDepthAt` is the seabed, which over the trench is the rim at
+         * about fourteen metres. Clamping to it pinned the eye there while the
+         * swimmer went down another seventy-five: the camera hung at the mouth
+         * looking into fog, and because the whole underwater atmosphere keys
+         * off the CAMERA's depth, the abyss rendered as mid-teal shallows with
+         * nothing in them. Every measurement passed — they were all about the
+         * swimmer — and the screenshot was a flat empty rectangle.
+         */
+        const eyeTrenchFloor = trench.floorAt(eye.x, eye.z);
         eye.y = Math.max(
           eye.y,
           eyeMayGoUnder && eyeSupport <= 0.0001
-            ? -waterDepthAt(eye.x, eye.z) + 0.45
+            ? (eyeTrenchFloor !== null ? eyeTrenchFloor : -waterDepthAt(eye.x, eye.z)) + 0.45
             : eyeSupport + 0.6,
         );
         // During the arrival cinematic the eased path IS the motion —
@@ -7093,7 +7212,7 @@ export default function City() {
          */
         const overSea =
           waterDepthAt(camera.position.x, camera.position.z) > 0.05 &&
-          camera.position.y > -40 &&
+          (camera.position.y > -40 || trench.inside(camera.position.x, camera.position.z)) &&
           !undergroundActiveRef.current;
         const camDepth = overSea ? seaAtEye - eyeY : -1;
         underwater.update(dt, now * 0.001, camDepth, camera.position);
@@ -7115,6 +7234,53 @@ export default function City() {
          * body: a swimmer on the bottom with the camera up in a wave trough
          * has still got their hand on it.
          */
+        /**
+         * You are breathing.
+         *
+         * A swimmer under the surface trailing nothing at all is the tell that
+         * the world is a diorama — every other moving thing down here vents
+         * air, including the car you drove in. Rate rises with effort, because
+         * the one thing everybody knows about diving is that working harder
+         * costs you more of it.
+         */
+        {
+          const seaHere = seaSurfaceAt(player.position.x, player.position.z, now * 0.001);
+          if (swimming && player.position.y < seaHere - 0.55) {
+            const effort = Math.min(1, Math.hypot(vel.x, vel.z) / 4);
+            carSink.bubble(dt, player.position.x, player.position.y + 1.25, player.position.z,
+              1.4 + effort * 4.5);
+          }
+        }
+        /**
+         * The Deep. Driven off the swimmer AND the eye — the life is drawn
+         * around the camera, the pearl is picked up by the body.
+         */
+        {
+          const prize = trench.update(dt, now * 0.001, player.position, camera.position);
+          if (prize) {
+            soundsRef.current?.fanfare?.();
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + prize.reward;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+            toast.success(`+${prize.reward} ✦ VIBE — ${prize.label}`, {
+              description: "Eighty metres down, in the dark.",
+            });
+          }
+          // Arriving is worth saying once. It is the only realm in this world
+          // with no portal and no loading screen, so without this you can be
+          // somewhere entirely new and have nothing tell you.
+          const down = trench.descent(player.position.y);
+          if (swimming && trench.inside(player.position.x, player.position.z) && down > 0.25) {
+            if (!trenchGreeted) {
+              trenchGreeted = true;
+              toast("🕳 THE DEEP", {
+                description: "The sun does not reach this far. Something down here makes its own.",
+              });
+            }
+          } else if (down < 0.05) {
+            trenchGreeted = false;
+          }
+        }
         {
           const got = wrecks.update(
             dt, now * 0.001, player.position,
@@ -7254,6 +7420,7 @@ export default function City() {
       splash.dispose();
       carSink.dispose();
       wrecks.dispose();
+      trench.dispose();
       headMount.dispose();
       backMount.dispose();
 
@@ -7277,6 +7444,8 @@ export default function City() {
       delete (window as unknown as Record<string, unknown>).__cityAvatar;
       delete (window as unknown as Record<string, unknown>).__cityCarsNear;
       delete (window as unknown as Record<string, unknown>).__cityJetpack;
+      delete (window as unknown as Record<string, unknown>).__cityTrench;
+      delete (window as unknown as Record<string, unknown>).__cityTrenchReset;
       delete (window as unknown as Record<string, unknown>).__cityWrecks;
       delete (window as unknown as Record<string, unknown>).__cityWrecksReset;
       delete (window as unknown as Record<string, unknown>).__cityVibe;

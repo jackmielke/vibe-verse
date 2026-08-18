@@ -167,6 +167,14 @@ describe("sounds that stop when you leave", () => {
     // camera four hundred metres down one is "submerged by four hundred
     // metres" by depth arithmetic alone — and every sound down there would be
     // muffled as if drowning, with no way out because you never surface.
-    expect(citySrc).toMatch(/camera\.position\.y > -40 &&\s*\n\s*!undergroundActiveRef\.current/);
+    //
+    // Pinned as a property rather than as a line of source: the depth clause
+    // has since grown a trench exemption (`|| trench.inside(...)`), which is
+    // correct and unrelated, and an exact-text match failed on it. What has to
+    // hold is that whatever the depth clause says, the underground flag still
+    // vetoes the whole thing.
+    const decl = citySrc.slice(citySrc.indexOf("const overSea ="), citySrc.indexOf("const camDepth ="));
+    expect(decl).toContain("!undergroundActiveRef.current");
+    expect(decl).toMatch(/camera\.position\.y > -40/);
   });
 });
