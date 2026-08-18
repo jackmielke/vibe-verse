@@ -1,7 +1,203 @@
 {
-  "generated_at": "2026-08-18T22:23:58.106Z",
+  "generated_at": "2026-08-18T22:40:03.229Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "207af005",
+      "date": "2026-08-18",
+      "subject": "Passport rows to forty-two, and stop raising it one world at a time",
+      "lede": "Thirty-six was passed inside a day: First Light and the Conservatory landed together and made thirty-seven, so the panel silently truncated — which on a completion panel is the worst kind of bug, since telling you what you have not done yet is its entire job.",
+      "places": [
+        "The Long Silence"
+      ],
+      "files": 1
+    },
+    {
+      "sha": "a12f0c34",
+      "date": "2026-08-18",
+      "subject": "Twenty-five foot lots, garage doors, and the long way out of a terrace",
+      "lede": "A standard San Francisco lot is twenty-five feet — 7.6 m — and the row houses built on them are why the Mission and Chinatown look the way they do: narrow, tall, shoulder to shoulder, every one a different colour. This city was building them seventeen to twenty-seven metres wide, which is right for the Financial District and wrong for everywhere anybody walks. Every residential block was three or four long slabs.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "e1a0765c",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "First Light lost its date in a rebase: the stamp commit went empty against a main that had re-stamped in the meantime, so it was dropped, and the world shipped for a few minutes with a failing freshness test and no date on its card.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "50900813",
+      "date": "2026-08-18",
+      "subject": "Every world now hands its WebGL context back",
+      "lede": "three r160's `renderer.dispose()` drops three's own caches and leaves the GL context for the garbage collector. `forceContextLoss()` is what actually releases it, and twenty-five of the twenty-nine renderers here never called it. Browsers allow around sixteen live contexts per tab and evict the *oldest* when you pass that, so a world that leaks one does not break itself — it breaks whichever world the visitor opened ",
+      "places": [
+        "Vibe Golf",
+        "Vibe Kart",
+        "Vibe Island",
+        "the Memory Garden",
+        "Seafair"
+      ],
+      "files": 27
+    },
+    {
+      "sha": "a86765f9",
+      "date": "2026-08-18",
+      "subject": "First Light — a lake at dawn, and one quality ladder for everybody",
+      "lede": "Fifty-four worlds and every one of them neon, arcade or sci-fi. This is the quiet one: a lake an hour before the sun clears the ridge, no objective, no score. You walk the shore, you wade in up to your knees, and over four minutes the sun comes up. Then it stays up — it does not loop, because the one thing a place should not do is reset while you are standing in it.",
+      "places": [
+        "The Long Silence"
+      ],
+      "files": 14
+    },
+    {
+      "sha": "8fa0918a",
+      "date": "2026-08-18",
+      "subject": "The Conservatory: forty-eight metres of glasshouse, and a walk",
+      "lede": "A new realm at /conservatory (and /glasshouse). No score, no timer, nothing to survive — a Victorian barrel-vaulted glasshouse on a wet afternoon, and a tiled path down the middle of it. The only number on screen is how far you have walked, and nothing counts it down.",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "add340ff",
+      "date": "2026-08-18",
+      "subject": "Recapture the newsroom's card",
+      "lede": "The old frame predated the spike by the door and was taken while the room was reading a two-week-old fallback edition. This one is the room as it stands: tonight's wire on the tape, tonight's issue on the presses.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "67f2af31",
+      "date": "2026-08-18",
+      "subject": "🖨 The paper survives Ctrl-P",
+      "lede": "/times was a newspaper everywhere except the one place a newspaper ends up. Printing it gave you a cream rectangle with a floating nav bar across the masthead, a \"Vibey reads it\" button that does nothing on paper, and every link underlined in a colour that costs ink.",
+      "places": [
+        "this newspaper"
+      ],
+      "files": 6
+    },
+    {
+      "sha": "e29527aa",
+      "date": "2026-08-18",
+      "subject": "Light the level, and stack it into a Spire",
+      "lede": "Two things: the renderer stopped being flat, and the eleven worlds got a second way to be played.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "1a3e4181",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "bdf0cd6c",
+      "date": "2026-08-18",
+      "subject": "Chunk the city so it can be frustum-culled",
+      "lede": "One merged mesh for every building in a 3.4 × 4.4 km map is a mesh that is always drawn. Standing on Market facing east, the Mission, Hayes Valley and the avenues are all behind you and every triangle of them was submitted anyway, because three.js culls objects and there was exactly one object.",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "88b82f02",
+      "date": "2026-08-18",
+      "subject": "📰 Reprint issue №13, and a way to photograph one part of a page",
+      "lede": "The presses were re-run tonight against v19 of the function to exercise the whole write path rather than only the read path: published, four headlines, seven dispatches, none dropped, live weather off Open-Meteo. That is the only way to know a deployed function is intact before the morning it has to work. The bylines came back exactly as intended — The Encounter Log filed the proximity story, The Economy Desk the led",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "31ae310a",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "4ab570fe",
+      "date": "2026-08-18",
+      "subject": "Fire escapes, lane markings, and two districts you can start in",
+      "lede": "Four things, all of them street level, because that is where this city is judged and the last two batches were mostly judged from the air.",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "b3869db3",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01DkXTgDnCDSAWK5gGog75Qz",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "99e4d5bf",
+      "date": "2026-08-18",
+      "subject": "🗂 Small ads, bylines, and a spike by the door",
+      "lede": "Three more things a real paper has.",
+      "places": [
+        "this newspaper",
+        "the machinery underneath"
+      ],
+      "files": 9
+    },
+    {
+      "sha": "053ec8f6",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "74ca69d8",
+      "date": "2026-08-18",
+      "subject": "Traffic that stops at the lights, and fifteen hundred cars at the kerb",
+      "lede": "The streets had a hundred and ninety cars driving through every junction at a constant speed and nothing at all parked. Both are now fixed, and the second one is the bigger change even though it is the dumber one.",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "5993e0ff",
+      "date": "2026-08-18",
+      "subject": "npm run stamp — and the newsroom gets a date",
+      "lede": "The clone this ran in was shallow, which is the one condition `stamp-worlds` and `build-log` both refuse to write under: `git log -- <path>` in a shallow clone answers with the graft boundary for every file in the tree, so every world untouched inside the window silently adopts one plausible recent date. Unshallowed the clone first, so these are real committer dates again.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "68719881",
+      "date": "2026-08-18",
+      "subject": "🗞 The Newsroom, and a paper that can be subscribed to",
+      "lede": "The Vibe Times had a front page and nothing behind it. This adds the floor it is made on, and three things a real paper has that this one did not.",
+      "places": [
+        "this newspaper",
+        "the machinery underneath"
+      ],
+      "files": 18
+    },
+    {
+      "sha": "12441046",
+      "date": "2026-08-18",
+      "subject": "Made the dancers people rather than four copies of one person",
+      "lede": "Everything about the dancing was perfectly quantised, which is exactly right for keeping a room in time and exactly wrong for making it look like people. Four regulars on the floor hit every beat on the same frame, at the same size, with every joint arriving at once, facing whichever way they were built. Three changes, and they compound:",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "151c50cf",
+      "date": "2026-08-18",
+      "subject": "Crossings, shopfronts, roof clutter — and the camera that would not move",
+      "lede": "Three things the city was missing at the two scales you actually look at it.",
+      "places": [],
+      "files": 7
+    },
     {
       "sha": "7ec4acfe",
       "date": "2026-08-17",
@@ -838,200 +1034,6 @@
       "lede": "`WorldPicker` is a full-screen overlay over every world in the registry, with an autofocused search field, featured-first ordering and cards that route straight there. It has been finished for a long time and nothing in the app could open it: `GlobalNav` holds the state and the only thing it ever does with it is set it to `false`. The menu that used to open it was removed and the component was left behind — a whole f",
       "places": [],
       "files": 4
-    },
-    {
-      "sha": "fb62b96f",
-      "date": "2026-08-12",
-      "subject": "The front door gets a sky, a cast, and a way in",
-      "lede": "/game answers \"what can I play here?\" and answered nothing else. Four things change, and one of them is a bug that has been sitting in the corner of the screen for months.",
-      "places": [],
-      "files": 13
-    },
-    {
-      "sha": "51778ca0",
-      "date": "2026-08-12",
-      "subject": "The wink arrives as a picture, then wakes up",
-      "lede": "The mark on /coin has been a live three.js object for a while and the mark everywhere else has been a PNG, and each was right about something. The render is the real artwork and it paints in one frame off the image cache; the object turns, catches the light differently every second, and can react to things — and costs three.js, a GLB and a WebGL context to say so.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "eb001bcf",
-      "date": "2026-08-12",
-      "subject": "The boss's shard was a white plate, not a gem",
-      "lede": "At 2.4× scale an additive white icosahedron at 0.95 opacity blows out into a flat slab the size of the boss's head. Smaller, amber, dimmer, and turning — a piece of God Orb it is carrying rather than a hole in the render.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 2
-    },
-    {
-      "sha": "893b6207",
-      "date": "2026-08-12",
-      "subject": "mines-probe: survive an HMR reload instead of dying on it",
-      "lede": "Editing a source file while the probe is up sends vite's hot reload through page.evaluate, which throws \"execution context was destroyed\" and killed the run seconds before its summary. One skipped sample is the right response.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "330b57a8",
-      "date": "2026-08-12",
-      "subject": "npm run stamp: the mines work moves the City-hosted world dates",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "fe79add6",
-      "date": "2026-08-12",
-      "subject": "The Gremlin Mines: dropped the stuck flash, gave the boss a fight",
-      "lede": "Landing in the mines put \"THE GREMLIN MINES / Purple mist deadens your jetpack…\" on screen with a full-viewport backdrop blur behind it, and left it there. The card cleared itself from onAnimationEnd — and animate-fade-in was never defined in the Tailwind config, so no animation ran, no animationend fired, and the blur stayed on top of the game forever. It now clears on a timer, the way the splat and transcendence fl",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "f9b75dc8",
-      "date": "2026-08-11",
-      "subject": "The wink was the 14 MB file, and the arc can go anywhere now",
-      "lede": "Two marks share a name and only one of them was ever slow.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "9480e237",
-      "date": "2026-08-11",
-      "subject": "Made the screenshot harnesses actually land the shot they ask for",
-      "lede": "Half the frames these scripts produced were of the wrong thing, and the reason was the same in every case: `__cityCam` is a request, and nobody was checking whether it had been granted.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 5
-    },
-    {
-      "sha": "07815561",
-      "date": "2026-08-11",
-      "subject": "254 MB of models becomes 70 MB, and nothing looks different",
-      "lede": "None of the .glb files in this repo had ever been through an optimiser. floating-island.glb was 38.7 MB and 1,049,034 triangles — for a decorative island that renders about 300 px wide behind a menu. That is a frame-rate problem on every phone that opens the hub before it is a download problem, and it is simply what a Meshy export looks like when nobody runs the last step.",
-      "places": [],
-      "files": 253
-    },
-    {
-      "sha": "638f5c51",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe Island",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "ae871433",
-      "date": "2026-08-11",
-      "subject": "Verges, and the last few things standing on nothing",
-      "lede": "The grass field took a boolean — grow here, don't grow there — so the lawn ended in a dead-straight line 4 m either side of every path. That edge is the clearest possible signal that a lawn was placed by a rule.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 3
-    },
-    {
-      "sha": "1f832a21",
-      "date": "2026-08-11",
-      "subject": "Vibe Island gets its own card, of the island as it is now",
-      "lede": "The card was a page screenshot of the old flat lawn, with somebody's chat bubble and two name tags burned into it — and it was doing double duty as Island Explorer's card, which is a different world. Vibe Island now has its own frame from `scripts/island-card.mjs`, taken through `__cityDebug.snapshot()` so it is the world and not the HUD, posed from the plaza to take in both shops, the paths, the Dream Tree and the g",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "a7acb4a5",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "3d88bbe7",
-      "date": "2026-08-11",
-      "subject": "Gave everybody in the city a body that can actually dance",
-      "lede": "The emote wheel could throw an emoji over your head, which is a label for a feeling rather than a performance of it: press 💃 and a pink sprite bobs above a character standing perfectly still. Nobody was dancing. Now T picks a move at random and the body does it — and pressing T again picks a different one.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 9
-    },
-    {
-      "sha": "cac360dd",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe Island",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "faeb0d3b",
-      "date": "2026-08-11",
-      "subject": "Corrugation on the rest of the island's cardboard",
-      "lede": "The shops got flutes in their normals; the planter walls, benches, arch posts, windmill tower and every roof slab were still smooth. They have them now.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 2
-    },
-    {
-      "sha": "f365bdb8",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe Island",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "0faea202",
-      "date": "2026-08-11",
-      "subject": "Vibe Island: gave the keel something to be",
-      "lede": "From the city, Vibe Island resolved to a green disc on a smooth beige wedge — and the wedge is the half of a floating island that says \"floating\" rather than \"hill\". It was the last flat thing left.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 3
-    },
-    {
-      "sha": "39e7ab0b",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe Island",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "e4b1fda8",
-      "date": "2026-08-11",
-      "subject": "Vibe Island: a real tree, a real pool, and a lawn worth standing in",
-      "lede": "Follow-up to the grass pass, all of it the same argument — the thing your eye lands on is whichever object in frame is still made of one flat value.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 4
-    },
-    {
-      "sha": "9b3bb8fa",
-      "date": "2026-08-11",
-      "subject": "Stopped the city shimmering when you look at it from the air",
-      "lede": "Vibe City's ground is a stack of near-coplanar surfaces: the asphalt plate at y=0, the sidewalks 1.2 cm above it, the crossings 2 cm above those, and now the beach running a few metres underneath the plate's edge. On the street those are real gaps. From six hundred metres up they are no gap at all.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 5
-    },
-    {
-      "sha": "7fa8304b",
-      "date": "2026-08-11",
-      "subject": "Restamped Vibe Island",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
     }
   ]
 }
