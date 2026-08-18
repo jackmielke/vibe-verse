@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 36;
+export const PASSPORT_ROWS = 42;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1212,12 +1212,16 @@ function drawArchivePassport(g, v, ctx) {
      panel got *roomier* rather than tighter: twenty-five stamps across three
      columns is nine rows at a 26 px pitch, where twelve rows was 19.5.
 
-     First Light arriving alongside the raise to thirty-six is a good check on
-     how much room the third column really bought: thirty-six rows is twelve
-     deep, and twelve rows need 330 px of the ~450 the band actually has, so the
-     pitch never leaves its 30 px ceiling and the type never leaves 13.5. There
-     is no arithmetic pressure here at all any more — the limit is now honestly
-     about how long a list anybody wants to read.
+     Then thirty-six was passed inside a day — First Light and the Conservatory
+     landing together made thirty-seven — which is the point to stop raising this
+     by one world at a time and work out where it actually breaks.
+
+     Three columns, and the pitch is clamped at 30 px: forty-two rows is fourteen
+     deep, needing 390 px of the ~450 the band has. The type only starts
+     shrinking past 21 px of pitch, which at three columns is around sixty-seven
+     worlds. So the ceiling is nowhere near, and this number is now a judgement
+     about how long a list anybody wants to read rather than an arithmetic
+     limit — which is why it goes to forty-two and not to thirty-eight.
 
      So the rows now shrink to fit instead of falling off the bottom. TOP to
      BOTTOM is the band that is genuinely free between the progress bar and the
