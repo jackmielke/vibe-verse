@@ -1,8 +1,25 @@
 {
+<<<<<<< HEAD
   "generated_at": "2026-08-18T23:26:23.404Z",
   "window_days": 45,
   "commits": [
     {
+=======
+  "generated_at": "2026-08-18T23:24:39.717Z",
+  "window_days": 45,
+  "commits": [
+    {
+      "sha": "d3309f77",
+      "date": "2026-08-18",
+      "subject": "Vibe City: make The Deep a place you can actually see",
+      "lede": "The trench shipped a working dive and an invisible destination. Every number the harness measured passed — you crossed −40 under power, the floor held at −92, the pearl paid — and the screenshot at the bottom was a flat teal rectangle. Then a black one. The measurements were all about the swimmer, and none of them were about the picture.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+>>>>>>> 7b4dc2d (npm run stamp)
       "sha": "9eb66186",
       "date": "2026-08-18",
       "subject": "Sweep the Conservatory less often",
@@ -1026,6 +1043,7 @@
         "Vibe Island"
       ],
       "files": 1
+<<<<<<< HEAD
     },
     {
       "sha": "5545ca63",
@@ -1034,6 +1052,8 @@
       "lede": "The chip in the corner has always shown an emoji — 🤖 for Vibey, 🦀 for Pinch — which identifies a species rather than a character. Sixty-three characters are built from one rig and photographed from it, so the corner can show the one you picked.",
       "places": [],
       "files": 67
+=======
+>>>>>>> 7b4dc2d (npm run stamp)
     }
   ]
 }
