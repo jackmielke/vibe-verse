@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   cityPlan,
   surfaceAt,
+  clearanceAt,
   walkableAt,
   districtAt,
   HALO_R,
@@ -150,18 +151,76 @@ describe("the nav graph", () => {
   });
 
   it("never links two nodes through a building", () => {
+    /* Sampled every 40 cm, by a method the generator does not use.
+       The generator steps each edge by its own clearance and is exact; this
+       is a dumb even sweep of `surfaceAt`, which is the function the rest of
+       the world actually asks. A test that checks the same points the
+       generator checked can only ever confirm that the generator ran — and
+       both of the spacings tried before this (five even samples, then one
+       every 1.2 m) missed corner clips thinner than themselves. */
     const bad: string[] = [];
     for (const n of plan.nav) {
       for (const l of n.links) {
         const m = plan.nav[l];
-        for (let t = 1; t <= 5; t++) {
-          const f = t / 6;
+        const steps = Math.max(8, Math.ceil(Math.hypot(m.x - n.x, m.z - n.z) / 0.4));
+        for (let t = 1; t < steps; t++) {
+          const f = t / steps;
           const k = surfaceAt(n.x + (m.x - n.x) * f, n.z + (m.z - n.z) * f).kind;
-          if (k === "lot" || k === "void") bad.push(`${n.id}->${l} crosses ${k}`);
+          if (k === "lot" || k === "void") {
+            bad.push(`${n.id}->${l} crosses ${k}`);
+            break;
+          }
         }
       }
     }
     expect(bad.slice(0, 10), `${bad.length} edges cut through geometry`).toEqual([]);
+  });
+
+  /* `clearanceAt` is a second description of the same walkable region, and
+     nothing structural keeps the two in step: add a street to `surfaceAt` and
+     forget it here, and the nav generator starts striding straight over it.
+     The failure is silent — a wider graph, not an exception — so it is checked
+     against the whole deck rather than left to be noticed. */
+  it("agrees with surfaceAt about where the pavement is", () => {
+    const PEDESTRIAN_KINDS = ["walk", "plaza", "road"];
+    const bad: string[] = [];
+    for (let x = -PLATEAU_R; x <= PLATEAU_R; x += 1.7) {
+      for (let z = -PLATEAU_R; z <= PLATEAU_R; z += 1.7) {
+        if (Math.hypot(x, z) > PLATEAU_R - 2) continue;
+        const walkable = PEDESTRIAN_KINDS.includes(surfaceAt(x, z).kind);
+        const clear = clearanceAt(x, z) > 0;
+        if (walkable !== clear) {
+          bad.push(`${x.toFixed(1)},${z.toFixed(1)} ${surfaceAt(x, z).kind} vs ${clear}`);
+        }
+      }
+    }
+    expect(bad.slice(0, 8), `${bad.length} points disagree`).toEqual([]);
+  });
+
+  /* The clearance is a promise: move less than it and you are still on the
+     pavement. If it ever over-reports, the generator steps over a shopfront
+     and the edge that goes through it is linked. */
+  it("never claims more clearance than there is", () => {
+    const bad: string[] = [];
+    for (let i = 0; i < 20000; i++) {
+      const a = (i * 2.399963) % (Math.PI * 2);
+      const r = ((i * 7.13) % 1) * (PLATEAU_R - 3);
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      const c = clearanceAt(x, z);
+      if (c <= 0) continue;
+      for (let k = 0; k < 8; k++) {
+        const b = (k / 8) * Math.PI * 2;
+        const px = x + Math.cos(b) * c * 0.98;
+        const pz = z + Math.sin(b) * c * 0.98;
+        const kind = surfaceAt(px, pz).kind;
+        if (kind === "lot" || kind === "void" || kind === "parapet") {
+          bad.push(`${x.toFixed(1)},${z.toFixed(1)} claimed ${c.toFixed(2)} but ${kind} is nearer`);
+          break;
+        }
+      }
+    }
+    expect(bad.slice(0, 8), `${bad.length} points over-report`).toEqual([]);
   });
 
   it("is one connected piece — an island in the graph is a crowd that never arrives", () => {

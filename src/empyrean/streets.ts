@@ -1059,6 +1059,13 @@ uniform bool receiveShadow;
 uniform vec3 uSun;
 uniform vec3 uCam;
 uniform float uDusk;
+/* How much sun there is, which is *not* uDusk. Dusk is the lamp switch and
+   is already 0.68 at the sunset this world is painted at. This is the light
+   meter, and without it the ambient below is a constant: at midnight the
+   roadway went on being lit by a full sunset sky while every building beside
+   it dimmed to 0.46, and the streets read as strips of daylight laid through
+   a dark city. */
+uniform float uSunUp;
 uniform vec3 uAccent[5];
 
 varying vec3 vWPos;
@@ -1519,7 +1526,7 @@ void main() {
      unlit-and-black is technically defensible and turns every flight of stairs
      on the rim into a silhouette. */
   vec3 skyDn = vec3(0.31, 0.25, 0.27);
-  vec3 amb = mix(skyDn, skyUp, N.y * 0.5 + 0.5);
+  vec3 amb = mix(skyDn, skyUp, N.y * 0.5 + 0.5) * mix(0.42, 1.0, uSunUp);
 
   /* The sun's weight is set against the citadel's stone, not chosen: a
      horizontal face here has to land where the plaza next to it lands or the
@@ -1550,8 +1557,9 @@ void main() {
 
   col += emis;
 
-  // A floor. The ground at dusk is never darker than the sky behind it.
-  col = max(col, vec3(0.055, 0.050, 0.070));
+  // A floor. The ground at dusk is never darker than the sky behind it — and
+  // once the sky has gone, neither is the floor.
+  col = max(col, vec3(0.055, 0.050, 0.070) * mix(0.42, 1.0, uSunUp));
 
   // Ordered-ish dither: a four-hundred-metre gradient banded visibly without.
   col += (h21(gl_FragCoord.xy) - 0.5) * 0.0035;
@@ -1587,6 +1595,7 @@ export function buildStreets(ctx: BuildContext): StreetsHandle {
   uniforms.uSun = { value: SUN_DIR.clone() };
   uniforms.uCam = { value: new THREE.Vector3() };
   uniforms.uDusk = { value: 0.35 };
+  uniforms.uSunUp = { value: 1 };
   uniforms.uAccent = { value: DISTRICTS.map((d) => new THREE.Color(d.accent)) };
 
   const material = new THREE.ShaderMaterial({
@@ -1627,6 +1636,7 @@ export function buildStreets(ctx: BuildContext): StreetsHandle {
       (u.uSun.value as THREE.Vector3).copy(f.sunDir);
       (u.uCam.value as THREE.Vector3).copy(f.camera.position);
       u.uDusk.value = 1 - f.daylight;
+      u.uSunUp.value = f.gradeDaylight;
     },
     dispose() {
       geo.dispose();

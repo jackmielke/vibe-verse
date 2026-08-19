@@ -37,8 +37,12 @@ describe("published JSON", () => {
       const rel = file.slice(PUBLIC.length + 1);
       const raw = readFileSync(file, "utf8");
       /* Named explicitly, because "Unexpected token <" is a baffling way to
-         be told that a merge went in sideways. */
-      expect(raw.includes("<<<<<<<"), `public/${rel} has merge conflict markers`).toBe(false);
+         be told that a merge went in sideways.
+         Anchored to the start of a line, because git writes it there and a
+         JSON string value cannot be: the build log has an entry *about* this
+         bug, quoting the marker, and matching it anywhere in the file failed
+         the honest file for describing the broken one. */
+      expect(/^<{7}( |$)/m.test(raw), `public/${rel} has merge conflict markers`).toBe(false);
       expect(() => JSON.parse(raw), `public/${rel} is not valid JSON`).not.toThrow();
     }
   });

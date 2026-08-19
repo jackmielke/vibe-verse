@@ -127,7 +127,11 @@ export const SHOTS: Shot[] = [
     id: "rail",
     title: "Under the Observatory",
     hint: "The first promenade ring, directly below the Observatory, looking back up at its telescope.",
-    at: P(353, -90, 598),
+    /* On the ring, not in the step between two of them. At 598 this stood in
+       the fascia below the first promenade and four metres out from the
+       second — solid rock in both directions, and the shot was of the inside
+       of a wall. The rings moved; this did not. */
+    at: P(344.5, -90, 605),
     look: { x: observatory.x, y: ISLAND_Y + 26, z: observatory.z },
     near: 15,
     arc: 28,

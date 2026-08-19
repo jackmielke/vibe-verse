@@ -251,6 +251,56 @@ export function walkableAt(x: number, z: number): boolean {
   return s.kind !== "void" && s.kind !== "parapet";
 }
 
+/**
+ * A lower bound on how far you can move from (x, z) in *any* direction and
+ * still be somewhere a pedestrian can stand. Zero or less when the point is
+ * already off the pavement.
+ *
+ * This exists so the nav graph can be checked exactly rather than sampled and
+ * hoped over. Every walkable region here is a band around a centreline — an
+ * annulus for a ring, a wedge for a radial, a disc for the Halo — so the
+ * distance to the edge of one is just its half-width minus the distance to its
+ * centre, and the distance to the edge of the *union* is the largest of those.
+ * Each of those measures grows no faster than about 1.02 metres per metre
+ * travelled (the arc-distance of a radial is the worst of them), so dividing
+ * by 1.05 turns "how much margin is there" into "how far may I step".
+ *
+ * It has to agree with `surfaceAt`, and nothing structural forces it to —
+ * `cityplan.test.ts` checks the two against each other over the whole deck.
+ */
+export function clearanceAt(x: number, z: number): number {
+  const r = Math.hypot(x, z);
+
+  /* The parapet caps everything: a straight edge on the city deck cannot
+     reach the promenades without crossing it, so beyond it there is no
+     clearance to report at all. */
+  const cap = PLATEAU_R - 1.4 - r;
+  if (cap <= 0) return cap;
+
+  let best = HALO_R + 9 - r; // the Halo and its apron
+  for (const rr of RING_R) {
+    best = Math.max(best, W.ring.half + W.ring.walk - Math.abs(r - rr));
+  }
+  best = Math.max(best, W.rim.half + W.rim.walk - Math.abs(r - RIM_R));
+
+  const a = Math.atan2(z, x);
+  best = Math.max(
+    best,
+    W.avenue.half + W.avenue.walk - angleToNearest(a, TAU / AVENUE_N, AVENUE_A0) * r,
+  );
+  if (r > RING_R[0]) {
+    best = Math.max(
+      best,
+      W.lane.half + W.lane.walk - angleToNearest(a, TAU / LANE_N, LANE_A0) * r,
+    );
+  }
+
+  /* Six metres is further than any single feature is wide, so capping the
+     step there costs nothing and bounds the damage if a region is ever added
+     that truncates rather than tapers. */
+  return Math.min(best, cap, 6) / 1.05;
+}
+
 /* -------------------------------------------------------------------------
  * Blocks and lots
  * ---------------------------------------------------------------------- */
@@ -746,22 +796,29 @@ export function buildNav(): NavNode[] {
           const m = nodes[other];
           const d = Math.hypot(m.x - n.x, m.z - n.z);
           if (d > CROSS) continue;
-          /* Sample the whole edge, not just its midpoint.
+          /* Walk the edge by its own clearance, not by a fixed spacing.
            *
            * A crossing is only a crossing if you can walk every metre of it.
-           * Testing the midpoint alone passes any chord that clips the corner
-           * of a block — the middle is in the road, both ends are on pavement,
-           * and the two metres in between are through somebody's shopfront.
-           * Five samples at this spacing is enough: the narrowest block in the
-           * plan is wider than the gap between them. */
-          let clear = true;
-          for (let t = 1; t <= 5; t++) {
-            const f = t / 6;
-            const k = surfaceAt(n.x + (m.x - n.x) * f, n.z + (m.z - n.z) * f).kind;
-            if (k === "lot" || k === "void" || k === "parapet") {
-              clear = false;
-              break;
-            }
+           * The midpoint alone passes any chord that clips the corner of a
+           * block: the middle is in the road, both ends are on pavement, and
+           * the two metres in between go through somebody's shopfront.
+           *
+           * Five even samples let eighteen through; one every 1.2 m still let
+           * twenty through. Both were the same mistake — picking a spacing and
+           * hoping no sliver of building is thinner than it, when the corner
+           * an avenue cuts off a block is as thin as the geometry happens to
+           * make it. `clearanceAt` reports how far it is to the nearest edge
+           * of the pavement, so a step of that length cannot jump over
+           * anything: in the middle of an avenue it strides six metres, and
+           * beside a shopfront it inches. That makes this exact rather than
+           * fine, which is a different property, and it is faster than the
+           * spacing it replaces. */
+          let clear = clearanceAt(m.x, m.z) > 0;
+          for (let t = 0; clear && t < d; ) {
+            const f = t / d;
+            const c = clearanceAt(n.x + (m.x - n.x) * f, n.z + (m.z - n.z) * f);
+            if (c <= 0) clear = false;
+            else t += Math.max(0.2, c);
           }
           if (clear) link(n.id, other);
         }

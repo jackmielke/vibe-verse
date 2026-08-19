@@ -72,3 +72,4 @@ __zz_compile.mjs
 # Scratch harnesses agents leave behind. Never committed.
 .tmp-*
 __zz_*
+.tmp/

@@ -133,6 +133,16 @@ Kept because each one cost a rebuild and would cost another.
   patches because lit windows were picked with `hash(x*31.7 + y*7.3)`;
   neighbouring bays land close together in the input. Anything indexed by
   (bay, floor) wants a 2-D hash.
+- **A blocker is a floor, so it has to end where the building does.** A
+  tapering spire's crown was given one box at the *shaft's* width all the way
+  to the tip: thirty metres of clear air you could stand on, several metres
+  out from a wall that had visibly sloped away from under you. Every existing
+  check passed — the box was finite, positive, on the island and the right way
+  up, and the tower drew perfectly. There is no cheap test for this: the
+  meshes are hollow shells, so "is there geometry here" answers *no* for the
+  inside of every solid building, and a raycast against three hundred thousand
+  triangles with no BVH is not a unit test. Emit the boxes from the same
+  polygons the geometry is lofted from, and if you cannot, look at it.
 - **Test the world, not just the modules.** `src/test/empyreanWorld.test.ts`
   builds every system, steps it, and looks for the failures whose symptom is a
   black screen rather than an exception: a NaN in a position buffer (one

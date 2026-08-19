@@ -2017,7 +2017,8 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
   const topShell = shellOf(cur);
   const roofY = yA;
   if (crownKind === 0) {
-    const tip = offsetPoly(cur, Math.min(6, bboxOf(cur).hx * 0.55));
+    const inset = Math.min(6, bboxOf(cur).hx * 0.55);
+    const tip = offsetPoly(cur, inset);
     if (tip) {
       loft(pen, pen.glass, cur, roofY, tip, roofY + crownH, W_CROWN);
       capPoly(pen, pen.stone, tip, roofY + crownH, 1, T_METAL);
@@ -2026,8 +2027,21 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
        * signage come off at the low tier. */
       const c = centroidOf(tip);
       tube(pen, pen.glow, c.x, c.z, 0.6, 0.2, roofY + crownH, roofY + crownH + 6, 5, G_WHITE);
+      /* Four slabs following the taper, rather than one box at the shaft's
+         own width all the way to the tip. That box is the easy thing and it
+         is a floor of clear air standing thirty metres above the roof, out
+         where the spire has visibly sloped away from under you — you land on
+         nothing, beside a wall that is not there. */
+      let prevY = roofY;
+      for (let k = 1; k <= 4; k++) {
+        const slab = k === 4 ? tip : (offsetPoly(cur, (inset * k) / 4) ?? tip);
+        const y = roofY + (crownH * k) / 4;
+        addBox(pen, slab, y, prevY);
+        prevY = y;
+      }
     } else {
       cornice(pen, topShell, roofY, 1.2, 0.4, T_STONE, true);
+      addBox(pen, cur, roofY + crownH, roofY);
     }
     addDeck(pen, cur, roofY);
   } else if (crownKind === 1) {
@@ -2052,12 +2066,14 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
       prismWalls(pen, pen.glass, shellOf(next), sy, sy + 5, W_CROWN);
       capPoly(pen, pen.stone, next, sy + 5, 1, T_ROOF);
       cornice(pen, shellOf(next), sy + 5, 0.7, 0.3, T_STONE, k === 2);
+      addBox(pen, next, sy + 5, sy);
       step = next;
       sy += 5;
     }
     addDeck(pen, step, sy + 0.7);
   }
-  addBox(pen, cur, roofY + (crownKind === 1 ? 1.2 : crownKind === 2 ? 3.7 : crownKind === 0 ? crownH : 15), yA);
+  if (crownKind === 1) addBox(pen, cur, roofY + 1.2, roofY);
+  if (crownKind === 2) addBox(pen, cur, roofY + 3.7, roofY);
 }
 
 /**

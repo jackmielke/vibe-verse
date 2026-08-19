@@ -300,7 +300,11 @@ describe("empyrean vehicles — boarding round-trips", () => {
     expect(surfaceAt(glider.x, glider.z).kind).toBe("promenade");
 
     for (const s of [interiors, buildings, props, v]) s.dispose();
-  });
+    /* Thirty seconds, because this one test builds the entire city — a
+     * hundred and eighty-two buildings, the interiors and eight hundred props
+     * — and the default five is comfortable alone and not when three suites
+     * are competing for the same container. */
+  }, 30_000);
 
   it("parks all three somewhere a body can stand", () => {
     const v = build();

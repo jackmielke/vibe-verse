@@ -742,6 +742,11 @@ describe("the ground under all of it", () => {
     expect(plan.doors.length).toBeGreaterThan(40);
     expect(PLATEAU_R).toBe(340);
     expect(ISLAND_Y).toBe(620);
-    expect(DECKS[DECKS.length - 1].outer).toBe(400);
+    /* 356, not 400: the promenade skirt was halved when three rings with
+       sixty metres of overhang turned the island into a car park. The number
+       is asserted rather than derived on purpose — this whole test is a
+       tripwire for the plan moving under a module that hard-codes its
+       geometry, and a derived one would move with it silently. */
+    expect(DECKS[DECKS.length - 1].outer).toBe(356);
   });
 });
