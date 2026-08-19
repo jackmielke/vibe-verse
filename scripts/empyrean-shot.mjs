@@ -106,7 +106,7 @@ const VIEWS = {
       ring's own 7 m band (341–348) and y a metre above its deck; at 352/598
       this hung in the step face between two rings, photographing a fascia
       from a foot away. The rings moved when the skirt was halved. */
-  promenade: { at: [-344, 605, 0], look: [-Math.PI / 2 + 0.5, 0.0], dist: 6 },
+  promenade: { at: [-344, 605, 0], look: [0, 0.02], dist: 3 },
   /** The whole skyline from off the south rim, at deck height. */
   skyline: { at: [0, 700, 640], look: [0, 0.05], dist: 18 },
   /** High and outside, looking down the avenues at the plan. */

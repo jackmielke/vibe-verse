@@ -133,7 +133,18 @@ void main() {
 }
 `;
 
-/** The vertical face of a terrace step, and the soffit under the deck. */
+/**
+ * The vertical face of a terrace step, and the soffit under the deck.
+ *
+ * This is the wall you stand against on the promenade — a hundred metres of
+ * it in shot, two metres from the lens — and for a long time it was one flat
+ * mauve field with a soft vertical shimmer on it, because a rhythm expressed
+ * as a 22% shading swing is a rhythm you can only see from a kilometre away.
+ * A retaining wall reads as masonry from three things: bays with real edges,
+ * courses across them, and a base and a cornice that say which way is up.
+ * All three are driven from `vH` and from arc length, never from world Y, so
+ * they survive the mirror.
+ */
 const FASCIA_FRAG = /* glsl */ `
 precision highp float;
 uniform vec3 uSun;
@@ -143,21 +154,73 @@ varying float vH;
 varying vec3 vNrm;
 varying vec3 vWPos;
 
+float h21(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+/** A joint: dark in the groove, with a lit arris on the upper side. */
+float joint(float f, float w, float aa, out float arris) {
+  float d = min(f, 1.0 - f);
+  arris = smoothstep(w * 2.4 + aa, w * 1.1, d) - smoothstep(w * 1.1, w - aa, d);
+  return smoothstep(w + aa, w - aa, d);
+}
+
 void main() {
   vec3 N = normalize(vNrm);
   float sunlit = clamp(dot(N, normalize(uSun)), -1.0, 1.0);
 
-  /* Cut stone, pale and warm, darkening into the shadow the deck above casts
-   * on it. vH is 0 at the bottom of the face and 1 at the top, so the
-   * darkening is at the top where the overhang is — and it stays there when
-   * the whole thing is mirrored. */
-  vec3 stone = mix(vec3(0.52, 0.44, 0.42), vec3(0.30, 0.24, 0.28), smoothstep(0.55, 1.0, vH));
+  float r = length(vWPos.xz);
+  float ang = atan(vWPos.z, vWPos.x);
+  /* Arc length, so a bay is the same number of metres on every ring rather
+     than the same number of radians — the outermost skirt is five per cent
+     further out than the deck's own edge and would otherwise have wider
+     bays than the wall above it. */
+  float arc = ang * r;
+
+  /* ---- the courses and the bays ---- */
+  float bay = arc / 7.6;
+  float course = vH * 11.0;
+  float bayI = floor(bay);
+  float courseI = floor(course);
+
+  float px = max(fwidth(arc), 0.0008);
+  float aaB = px / 7.6 + 0.0008;
+  float aaC = max(fwidth(course), 0.0008);
+
+  float arrisB, arrisC;
+  float jb = joint(fract(bay), 0.030, aaB, arrisB);
+  float jc = joint(fract(course), 0.035, aaC, arrisC);
+
+  /* ---- the stone ----
+   * Two-dimensional hash on (bay, course). A one-dimensional one on a
+   * combination of the two clumps into patches, which on a wall this size is
+   * a stain rather than a variation. */
+  float tone = h21(vec2(bayI, courseI));
+  vec3 stone = mix(vec3(0.55, 0.47, 0.44), vec3(0.44, 0.37, 0.38), tone);
+  /* Darker into the shadow the deck above casts. vH is 0 at the bottom of
+     the face and 1 at the top, so the darkening stays at the top when the
+     whole thing is mirrored. */
+  stone = mix(stone, vec3(0.28, 0.22, 0.26), smoothstep(0.62, 1.0, vH));
+
+  /* A plinth at the foot and a cornice band under the deck: without them a
+     wall of identical courses has no top and no bottom and reads as tiling. */
+  float plinth = smoothstep(0.075, 0.055, vH);
+  float band = smoothstep(0.90, 0.925, vH);
+  stone = mix(stone, vec3(0.33, 0.27, 0.29), plinth * 0.75);
+  stone = mix(stone, vec3(0.62, 0.54, 0.49), band * 0.7);
+
   vec3 col = stone * (0.30 + 0.85 * max(sunlit, 0.0));
 
-  /* Pilasters: a vertical rhythm every few metres, so a five-hundred-metre
-   * circumference of retaining wall has a scale you can read. */
-  float rib = abs(fract(atan(vWPos.z, vWPos.x) * 46.0) - 0.5) * 2.0;
-  col *= 0.88 + 0.22 * smoothstep(0.1, 0.7, rib);
+  /* Pilasters: every fourth bay stands proud, which is what gives a
+     five-hundred-metre circumference a scale you can read from the air. */
+  float pil = step(3.5, mod(bayI, 4.0));
+  col *= mix(1.0, 1.09, pil);
+
+  /* Joints last, over everything, so the bands do not swallow them. */
+  col *= 1.0 - max(jb, jc) * 0.42;
+  col += vec3(1.0, 0.86, 0.72) * max(arrisB * 0.5, arrisC) * 0.10 * max(sunlit, 0.12);
 
   /* Sky bounce from below — the ice again. */
   float down = clamp(-N.y * 0.5 + 0.5, 0.0, 1.0);
@@ -358,6 +421,9 @@ export function buildKeel(ctx: BuildContext): KeelHandle {
     fragmentShader: FASCIA_FRAG,
     uniforms: uniforms(),
     side: THREE.DoubleSide,
+    // `fwidth` is core in the GLSL ES 3.00 this compiles to on WebGL2; the
+    // flag is what keeps it compiling on a WebGL1 context.
+    extensions: { derivatives: true },
   });
 
   const rock = buildRock(low ? 30 : 54, low ? 72 : 128);
