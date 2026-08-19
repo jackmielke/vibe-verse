@@ -88,6 +88,7 @@ function frame(time: number, dt: number): FrameContext {
     dayPhase: 0.75,
     sunDir: new THREE.Vector3(-0.62, 0.085, -0.78).normalize(),
     daylight: 0.32,
+    gradeDaylight: 1,
     camRadiusSq: 120 * 120,
   };
 }

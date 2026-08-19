@@ -839,14 +839,22 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
   const update = (frame: FrameContext) => {
     const dt = frame.dt;
     uniforms.uTime.value = frame.time;
+    /* Two different daylights, and the difference matters here more than
+       anywhere else in this file. `daylight` is the lamp switch — it is what
+       decides whether a craft's running lights and a tram's windows are lit,
+       and it reads 0.32 at the sunset the world is painted at, which is
+       exactly right for "the lights are on". `gradeDaylight` is how much
+       light there is to shade a hull by, and shading with the other one puts
+       every skycar in the sky at a third brightness under the brightest sky
+       of the day. */
     uniforms.uNight.value = 1 - frame.daylight;
     (uniforms.uSun.value as THREE.Vector3).copy(frame.sunDir);
-    const warm = 0.4 + frame.daylight * 0.9;
+    const warm = 0.4 + frame.gradeDaylight * 0.9;
     (uniforms.uSunCol.value as THREE.Color).setRGB(1.5 * warm, 1.08 * warm, 0.78 * warm);
     (uniforms.uSkyCol.value as THREE.Color).setRGB(
-      0.13 + frame.daylight * 0.2,
-      0.13 + frame.daylight * 0.19,
-      0.2 + frame.daylight * 0.24,
+      0.13 + frame.gradeDaylight * 0.2,
+      0.13 + frame.gradeDaylight * 0.19,
+      0.2 + frame.gradeDaylight * 0.24,
     );
 
     /* ---- skycars ------------------------------------------------------- */

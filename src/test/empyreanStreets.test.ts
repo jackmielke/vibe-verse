@@ -87,6 +87,7 @@ describe("the system contract", () => {
       dayPhase: 0.75,
       sunDir: sun,
       daylight: 0.4,
+      gradeDaylight: 1,
       camRadiusSq: 0,
     });
     // Copied in place: the same Vector3 object, carrying the new value.

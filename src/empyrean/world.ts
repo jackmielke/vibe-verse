@@ -476,6 +476,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     dayPhase: DEFAULT_DAY_PHASE,
     sunDir: sunDirFor(DEFAULT_DAY_PHASE),
     daylight: 0.32,
+    gradeDaylight: 1,
     camRadiusSq: 0,
   };
 
@@ -510,6 +511,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     if (!shotMode) ctx.dayPhase = (ctx.dayPhase + (dt / DAY_SECONDS) * dwell(ctx.dayPhase)) % 1;
     const pal = skyPalette(ctx.dayPhase);
     ctx.daylight = pal.daylight;
+    ctx.gradeDaylight = lighting.look.gradeDaylight;
     sunDirFor(ctx.dayPhase, ctx.sunDir);
     sky.setDayPhase(ctx.dayPhase);
     lighting.setDayPhase(ctx.dayPhase);

@@ -33,6 +33,10 @@ import {
 } from "@/empyrean/vehicles";
 import { DECKS, ISLAND_Y, KILL_Y, LAKE_R, PLATEAU_R, WATER_Y } from "@/empyrean/config";
 import { HALO_R, LANDMARKS, surfaceAt } from "@/empyrean/cityplan";
+import { buildBuildings } from "@/empyrean/buildings";
+import { buildInteriors } from "@/empyrean/interiors";
+import { buildProps } from "@/empyrean/props";
+import { buildCollision } from "@/empyrean/collide";
 import { GRAVITY } from "@/lib/worldPhysics";
 
 /* -------------------------------------------------------------------------
@@ -77,6 +81,9 @@ function shortest(a: number): number {
   return d;
 }
 
+/** The real city, built once: this is slow and only one test needs it. */
+const REAL = { quality: "high" as const, seedSalt: "test" };
+
 const STILL: VehicleInput = { forward: 0, strafe: 0, lift: 0, boost: false, camYaw: 0 };
 const input = (o: Partial<VehicleInput>): VehicleInput => ({ ...STILL, ...o });
 
@@ -98,6 +105,7 @@ function frame(time: number, dt: number) {
     dayPhase: 0.75,
     sunDir: new THREE.Vector3(-0.95, 0.02, -0.31).normalize(),
     daylight: 0.32,
+    gradeDaylight: 1,
     camRadiusSq: 0,
   };
 }
@@ -231,6 +239,69 @@ describe("empyrean vehicles — stay out of the scenery", () => {
  * ====================================================================== */
 
 describe("empyrean vehicles — boarding round-trips", () => {
+  it("parks all three clear of the city that is actually built", () => {
+    /* The bug this exists for, in full.
+     *
+     * Every other test in this file hands the system a synthetic world with
+     * one tower in it, so every pad looks like open pavement. The real world
+     * has a hundred and eighty-two buildings, six landmark structures and
+     * eight hundred props in it, and `Landmark.clear` is the footprint of the
+     * landmark's *structure* rather than a clearing round it — so the skiff
+     * spent a while parked ten metres inside the Launch Terrace, through a
+     * green build, a green typecheck and a green version of this file. The
+     * only symptom was a camera in a wall.
+     *
+     * So: build the collision world the engine actually hands over, and check
+     * every pad against it. */
+    const interiors = buildInteriors(REAL);
+    const buildings = buildBuildings(REAL);
+    const props = buildProps(REAL);
+    const collision = buildCollision(
+      [...buildings.blockers, ...interiors.blockers, ...(props.blockers ?? [])],
+      [...buildings.decks, ...interiors.decks],
+    );
+
+    const v = buildVehicles(REAL);
+    v.setWorld({
+      blockedAt: (x, z, y) => collision.blockedAt(x, z, y),
+      supportAt: collision.supportAt,
+    });
+
+    const bad: string[] = [];
+    const out = new THREE.Vector3();
+    for (const pad of v.pads) {
+      const where = `${pad.kind} @ ${pad.x.toFixed(0)},${pad.z.toFixed(0)}`;
+      const support = collision.supportAt(pad.x, pad.z, pad.y + 3);
+      if (!Number.isFinite(support)) bad.push(`${where} stands over the void`);
+      if (Math.abs(support - pad.y) > 0.6) bad.push(`${where} floats ${(pad.y - support).toFixed(1)} m`);
+      if (collision.blockedAt(pad.x, pad.z, pad.y + 1.2)) bad.push(`${where} is inside a building`);
+      // And there is room for the vehicle, not merely for its centre point.
+      const hull = pad.kind === "lifter" ? 2.9 : pad.kind === "glider" ? 3.4 : 2.4;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        if (collision.blockedAt(pad.x + Math.cos(a) * hull, pad.z + Math.sin(a) * hull, pad.y + 1.2)) {
+          bad.push(`${where} has a wall within ${hull} m`);
+          break;
+        }
+      }
+      // The craft came with its pad.
+      v.positionOf(pad.kind, out);
+      if (Math.hypot(out.x - pad.x, out.z - pad.z) > 0.01) bad.push(`${where} left its vehicle behind`);
+    }
+    expect(bad).toEqual([]);
+
+    // A moved pad is still recognisably where the brief said to put it.
+    const skiff = v.pads.find((p) => p.kind === "skiff")!;
+    const terrace = LANDMARKS.find((l) => l.id === "launch")!;
+    expect(Math.hypot(skiff.x - terrace.x, skiff.z - terrace.z)).toBeLessThan(terrace.clear + 34);
+    const lifter = v.pads.find((p) => p.kind === "lifter")!;
+    expect(Math.hypot(lifter.x, lifter.z)).toBeLessThan(HALO_R + 12);
+    const glider = v.pads.find((p) => p.kind === "glider")!;
+    expect(surfaceAt(glider.x, glider.z).kind).toBe("promenade");
+
+    for (const s of [interiors, buildings, props, v]) s.dispose();
+  });
+
   it("parks all three somewhere a body can stand", () => {
     const v = build();
     for (const pad of v.pads) {
@@ -248,10 +319,12 @@ describe("empyrean vehicles — boarding round-trips", () => {
     const glider = by("glider");
     const lifter = by("lifter");
 
-    // The skiff is out at the Launch Terrace, inside the landmark's own
-    // cleared radius so nothing else is ever placed on top of it.
+    // The skiff is out at the Launch Terrace, just past the footprint of the
+    // terrace's own structure.
     const terrace = LANDMARKS.find((l) => l.id === "launch")!;
-    expect(Math.hypot(skiff.x - terrace.x, skiff.z - terrace.z)).toBeLessThan(terrace.clear);
+    const off = Math.hypot(skiff.x - terrace.x, skiff.z - terrace.z);
+    expect(off).toBeGreaterThan(terrace.clear);
+    expect(off).toBeLessThan(terrace.clear + 34);
     expect(skiff.y).toBeCloseTo(ISLAND_Y, 0);
 
     // The glider is on the first promenade ring, below the city deck. Read

@@ -39,7 +39,10 @@ function makeCtx(): FrameContext {
     quality: "high",
     dayPhase: 0.75,
     sunDir: new THREE.Vector3(-0.62, 0.085, -0.78).normalize(),
+    // The lamp switch is low at sunset; the light is not. Two fields, and
+    // the systems under test read a different one for each job.
     daylight: 0.35,
+    gradeDaylight: 1,
     camRadiusSq: SPAWN.z * SPAWN.z,
   };
 }
@@ -77,6 +80,7 @@ describe("the crowd", () => {
       // The day turns over the run, which is what moves the district weights
       // and the headcount, so this exercises both.
       ctx.daylight = 0.5 + 0.5 * Math.sin(f / 3000);
+      ctx.gradeDaylight = ctx.daylight > 0.02 ? 1 : 0;
       crowd.update?.(ctx);
 
       if (f % 200 !== 0) continue;

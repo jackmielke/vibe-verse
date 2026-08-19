@@ -1033,6 +1033,7 @@ const HEAD = /* glsl */ `
 precision highp float;
 uniform float uTime;
 uniform float uDaylight;
+uniform float uSunUp;
 uniform vec3 uCam;
 uniform vec3 uSun;
 varying float vH;
@@ -1175,7 +1176,15 @@ void main() {
   col += mix(vec3(0.45, 0.85, 1.0), vec3(1.0, 0.72, 0.85), warmth)
        * fres * smoothstep(35.0, 220.0, dist) * 0.85;
 
-  col *= mix(0.42, 1.0, uDaylight);
+  /* Shaded by how much sun there is, not by whether the lamps are on.
+   *
+   * uDaylight is the lamp switch and reads 0.32 at the hour this world is
+   * painted at, so this line used to multiply every tower in the city by 0.61
+   * before the grade ever saw it — at the exact moment the sky dome is the
+   * brightest it will be all day and is lighting the whole facade. uSunUp
+   * is 1 while the sun is above the horizon and falls away after it sets,
+   * which is the quantity this actually wanted. */
+  col *= mix(0.46, 1.0, uSunUp);
   col *= 0.94 + 0.06 * sin(uTime * 0.5 + s * 6.28);
   gl_FragColor = vec4(col, 1.0);
 }
@@ -1281,7 +1290,7 @@ void main() {
    * by a half before it had even been tone mapped. The dome does not switch
    * off at sunset — it is the brightest it will be all day — so the curve
    * holds most of its value through dusk and only lets go after it. */
-  float night = 1.0 - smoothstep(0.04, 0.62, uDaylight);
+  float night = 1.0 - smoothstep(0.02, 0.55, uSunUp);
   col *= mix(vec3(1.0), vec3(0.30, 0.33, 0.48), night);
   col += vec3(1.0, 0.55, 0.22) * (1.0 - uDaylight)
        * (1.0 - smoothstep(0.0, 15.0, vBase)) * 0.34 * (0.35 + 0.65 * up);
@@ -2896,7 +2905,12 @@ function makeMaterial(name: string, frag: string, glow: boolean): THREE.ShaderMa
     fragmentShader: frag,
     uniforms: {
       uTime: { value: 0 },
+      /* Two of them, and confusing them is the trap `types.ts` documents at
+       * length: `uDaylight` is the lamp switch and reads 0.32 at the hour this
+       * world is painted at; `uSunUp` is how much sun there is. Windows and
+       * signage want the first. Anything shading a surface wants the second. */
       uDaylight: { value: 1 },
+      uSunUp: { value: 1 },
       uCam: { value: new THREE.Vector3() },
       uSun: { value: SUN_DIR.clone() },
     },
@@ -2991,6 +3005,7 @@ export function buildBuildings(ctx: BuildContext, options?: BuildingsOptions): B
         const u = mats[i].uniforms;
         u.uTime.value = frame.time;
         u.uDaylight.value = frame.daylight;
+        u.uSunUp.value = frame.gradeDaylight;
         (u.uCam.value as THREE.Vector3).copy(frame.camera.position);
         (u.uSun.value as THREE.Vector3).copy(frame.sunDir);
       }

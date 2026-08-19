@@ -253,6 +253,7 @@ describe("the budget", () => {
       dayPhase: 0.75,
       sunDir: new THREE.Vector3(0, 1, 0),
       daylight: 0.4,
+      gradeDaylight: 1,
       camRadiusSq: 0,
     });
     b.dispose();

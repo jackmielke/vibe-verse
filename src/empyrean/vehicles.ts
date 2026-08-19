@@ -520,19 +520,27 @@ const LAUNCH = LANDMARKS.find((l) => l.id === "launch")!;
 /** The Launch Terrace's polar angle. Its `yaw` field happens to be it. */
 const LAUNCH_A = Math.atan2(LAUNCH.z, LAUNCH.x);
 
+/** Where the skiff stands, in metres round the arc from the terrace. */
+const SKIFF_R = RIM_R - 26;
+
 /**
- * The three pads.
+ * The three pads, as intended. `resolvePads` gets the last word.
  *
- * The skiff sits sixteen metres round the arc from the terrace's centreline,
- * which puts it on the pavement beside the ring road rather than on the
- * carriageway the races start on. The glider is on the first promenade at the
- * foot of the south-west avenue's stairs — you walk out the avenue, down the
- * gate, and the rail is there pointing off the edge, at the face of the rock
- * the sun is on when the world opens. The lifter is on the Halo, clear of the
- * Beacon's skirt and of the Cistern.
+ * The skiff stands just outside the Launch Terrace's own clear radius —
+ * `clear` is not empty ground, it is the footprint of the landmark's
+ * *structure*, and the first version of this parked the skiff ten metres
+ * inside the terrace building. Nothing caught it: the collision world is
+ * handed over at `setWorld`, so every test that used a synthetic one saw open
+ * pavement, and the only symptom in the real world was a camera inside a wall.
+ *
+ * The glider is on the first promenade at the foot of the south-west avenue's
+ * stairs — you walk out the avenue, down the gate, and the rail is there
+ * pointing off the edge, at the face of the rock the sun is on when the world
+ * opens. The lifter is on the Halo, clear of the Beacon's skirt and the
+ * Cistern.
  */
 const PADS: VehiclePad[] = [
-  padAt("skiff", "Ember", LAUNCH_A + 0.055, RIM_R - 26, true),
+  padAt("skiff", "Ember", LAUNCH_A + (LAUNCH.clear + 10) / SKIFF_R, SKIFF_R, true),
   padAt("glider", "Vesper", -Math.PI * 0.75, DECKS[1].outer - DECKS[1].width * 0.5, true),
   padAt("lifter", "Derrick", -Math.PI * 0.25, 42, false),
 ];
@@ -647,11 +655,6 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
   const crafts: Craft[] = [];
   const byKind = new Map<VehicleKind, Craft>();
 
-  /** The pads never move, so all three of them are one static merge each. */
-  const padPaint: THREE.BufferGeometry[] = [];
-  const padPost: THREE.BufferGeometry[] = [];
-  const padColumn: THREE.BufferGeometry[] = [];
-
   for (const pad of pads) {
     const g = new THREE.Group();
     g.name = `empyrean-${pad.kind}`;
@@ -668,14 +671,11 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     flush(g, bin.glow, matGlow, `empyrean-${pad.kind}-glow`, false, keep);
     group.add(g);
 
-    const skidH =
-      pad.kind === "skiff" ? SKIFF.skidH : pad.kind === "glider" ? GLIDER.skidH : LIFTER.skidH;
-
     const c: Craft = {
       kind: pad.kind,
       pad,
       group: g,
-      pos: new THREE.Vector3(pad.x, pad.y + skidH, pad.z),
+      pos: new THREE.Vector3(pad.x, pad.y + skidOf(pad.kind), pad.z),
       vel: new THREE.Vector3(),
       yaw: pad.yaw,
       pitch: 0,
@@ -694,14 +694,36 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     crafts.push(c);
     byKind.set(pad.kind, c);
 
-    /* ---- the pad it is standing on ---- */
-    if (pad.kind === "glider") railParts(pad, accent, padPaint, padPost, padColumn);
-    else padParts(pad, accent, padPaint, padPost, padColumn);
   }
 
-  flush(group, padPost, matBody, "empyrean-pad-posts", false, keep);
-  flush(group, padPaint, matGlow, "empyrean-pad-paint", false, keep);
-  flush(group, padColumn, matColumn, "empyrean-pad-columns", false, keep);
+  /**
+   * The pads, merged in world space — once, and not until somebody has told
+   * us where the buildings are.
+   *
+   * Three fixed marks on a deck have no business being three objects with
+   * three transforms, so all three are one merge per program and cannot move
+   * afterwards. That is exactly why this is deferred: `resolvePads` may shift
+   * a pad several metres to get it out of a wall, and the paint has to be
+   * drawn where the pad ends up rather than where it was hoped for. Called
+   * from `setWorld` and, for anything that never calls it, from the first
+   * frame.
+   */
+  let padsBuilt = false;
+  function ensurePads(): void {
+    if (padsBuilt) return;
+    padsBuilt = true;
+    const paint: THREE.BufferGeometry[] = [];
+    const post: THREE.BufferGeometry[] = [];
+    const column: THREE.BufferGeometry[] = [];
+    for (const pad of pads) {
+      const accent = ACCENT[pad.kind];
+      if (pad.kind === "glider") railParts(pad, accent, paint, post, column);
+      else padParts(pad, accent, paint, post, column);
+    }
+    flush(group, post, matBody, "empyrean-pad-posts", false, keep);
+    flush(group, paint, matGlow, "empyrean-pad-paint", false, keep);
+    flush(group, column, matColumn, "empyrean-pad-columns", false, keep);
+  }
 
   /* ---- the world it collides with -------------------------------------- */
   let world: {
@@ -784,7 +806,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
    * only ever asks about its own belly lands halfway through a parapet.
    */
   function hullBlocked(c: Craft, x: number, y: number, z: number, yaw: number): boolean {
-    const R = c.kind === "skiff" ? SKIFF.hullR : c.kind === "glider" ? GLIDER.hullR : LIFTER.hullR;
+    const R = hullOf(c.kind);
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     for (let i = 0; i < 5; i++) {
@@ -799,6 +821,85 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       if (insideIsland(px, pz, y + 0.3)) return true;
     }
     return false;
+  }
+
+  /** Hull half-extent used against `blockedAt`, by kind. */
+  function hullOf(kind: VehicleKind): number {
+    return kind === "skiff" ? SKIFF.hullR : kind === "glider" ? GLIDER.hullR : LIFTER.hullR;
+  }
+
+  function skidOf(kind: VehicleKind): number {
+    return kind === "skiff" ? SKIFF.skidH : kind === "glider" ? GLIDER.skidH : LIFTER.skidH;
+  }
+
+  /**
+   * Is this somewhere a vehicle could actually stand?
+   *
+   * Support within a few metres of where the pad was meant to be, nothing
+   * solid over it, and nothing solid within a hull radius of it.
+   */
+  function padFits(x: number, z: number, wantY: number, hull: number): number | null {
+    const kind = surfaceAt(x, z).kind;
+    if (kind === "void" || kind === "parapet") return null;
+    const sup = world.supportAt(x, z, wantY + 3);
+    if (!Number.isFinite(sup) || Math.abs(sup - wantY) > 6) return null;
+    if (world.blockedAt(x, z, sup + 1.2)) return null;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      if (world.blockedAt(x + Math.cos(a) * hull, z + Math.sin(a) * hull, sup + 1.2)) return null;
+    }
+    return sup;
+  }
+
+  /**
+   * Put every pad somewhere its vehicle can stand, given the real world.
+   *
+   * The nominal positions come out of `cityplan.ts`, which knows where the
+   * streets are and nothing about what was built on them — and buildings,
+   * interiors and props are three other systems that may move under this one
+   * at any time. `clear` on a landmark is the *footprint of its structure*,
+   * not a clearing, which is how the skiff came to be parked inside the Launch
+   * Terrace through a green build and a green test suite.
+   *
+   * So the nominal point is a preference, not a promise: if it is inside
+   * something, walk round the arc a few metres at a time, in and out a little,
+   * and take the first spot that holds a vehicle. Staying on the same radius
+   * first keeps a pad on the pavement it was meant to be on rather than
+   * marching it into the road.
+   */
+  function resolvePads(): void {
+    for (const c of crafts) {
+      const pad = c.pad;
+      const hull = hullOf(c.kind);
+      const r0 = Math.max(1, Math.hypot(pad.x, pad.z));
+      const a0 = Math.atan2(pad.z, pad.x);
+      let placed = false;
+      for (let step = 0; step <= 14 && !placed; step++) {
+        for (const dir of step === 0 ? [1] : [1, -1]) {
+          for (const dr of [0, -7, 7]) {
+            const r = r0 + dr;
+            const a = a0 + (dir * step * 5) / r;
+            const x = Math.cos(a) * r;
+            const z = Math.sin(a) * r;
+            const sup = padFits(x, z, pad.y, hull);
+            if (sup === null) continue;
+            pad.x = x;
+            pad.z = z;
+            pad.y = sup;
+            placed = true;
+            break;
+          }
+          if (placed) break;
+        }
+      }
+      if (!placed) pad.y = groundBelow(pad.x, pad.z, pad.y + 3);
+      // A craft still on its pad comes with it. One somebody has already
+      // parked on a roof stays where they left it.
+      if (c.phase === "parked") {
+        c.pos.set(pad.x, pad.y + skidOf(c.kind), pad.z);
+        c.yaw = pad.yaw;
+      }
+    }
   }
 
   /* =======================================================================
@@ -1281,7 +1382,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
   const _exit = { x: 0, y: 0, z: 0, found: false };
 
   function exitPoint(c: Craft): typeof _exit {
-    const R = (c.kind === "skiff" ? SKIFF.hullR : c.kind === "glider" ? GLIDER.hullR : LIFTER.hullR) + 1.3;
+    const R = hullOf(c.kind) + 1.3;
     const fx = -Math.sin(c.yaw);
     const fz = -Math.cos(c.yaw);
     for (let i = 0; i < 5; i++) {
@@ -1310,9 +1411,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
 
   /** Put a craft back on its pad, still and level. */
   function sendHome(c: Craft): void {
-    const skidH =
-      c.kind === "skiff" ? SKIFF.skidH : c.kind === "glider" ? GLIDER.skidH : LIFTER.skidH;
-    c.pos.set(c.pad.x, c.pad.y + skidH, c.pad.z);
+    c.pos.set(c.pad.x, c.pad.y + skidOf(c.kind), c.pad.z);
     c.yaw = c.pad.yaw;
     c.vel.set(0, 0, 0);
     c.airspeed = 0;
@@ -1469,16 +1568,8 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
 
     setWorld(w) {
       world = w;
-      /* Settle every parked craft onto whatever is actually under it now
-       * that there is something to ask. A pad computed from `surfaceAt` is
-       * right about the deck and knows nothing about a plinth on it. */
-      for (const c of crafts) {
-        const skidH =
-          c.kind === "skiff" ? SKIFF.skidH : c.kind === "glider" ? GLIDER.skidH : LIFTER.skidH;
-        const g = groundBelow(c.pad.x, c.pad.z, c.pad.y + 3);
-        c.pad.y = g;
-        c.pos.y = g + skidH;
-      }
+      resolvePads();
+      ensurePads();
     },
 
     interactables() {
@@ -1548,6 +1639,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     },
 
     update(frame: FrameContext) {
+      ensurePads();
       time = frame.time;
       _sun.copy(frame.sunDir);
       sunBearing = Math.atan2(_sun.z, _sun.x);
@@ -1887,12 +1979,17 @@ function lifterParts(p: CraftParts, accent: number): void {
 /**
  * The pad.
  *
- * A painted ring, three pylons, and a forty-metre column of soft light. The
- * column is the part that does the work: a parked skiff is two metres tall on
- * a deck full of two-metre things, and the whole brief for these was that you
- * can find one. The column is additive and unlit, so the bloom in `postfx.ts`
- * turns it into a landmark from the far side of the island without costing a
- * light.
+ * A painted ring, three pylons, and a column of soft light. The column is the
+ * part that does the work: a parked skiff is two metres tall on a deck full of
+ * two-metre things, and the whole brief for these was that you can find one.
+ * It is additive and unlit, so the bloom in `postfx.ts` turns it into a
+ * landmark from the far side of the island without costing a light.
+ *
+ * It starts four metres up and it is narrow at the bottom. The first one was
+ * a five-metre-wide cylinder standing on the deck, which from the far side of
+ * the island was perfect and from ten metres away was a wall of violet haze
+ * with the vehicle somewhere inside it. A beacon you cannot see the thing
+ * through is a beacon pointing at nothing.
  *
  * Everything here is emitted in world space and merged with the other two
  * pads: they are three fixed marks on a deck and there is no reason for any
@@ -1933,7 +2030,7 @@ function padParts(
     lit(paint, new THREE.SphereGeometry(0.2, 8, 6), accent, wx(lx, lz), py + 1.6, wz(lx, lz));
   }
 
-  lit(column, new THREE.CylinderGeometry(1.5, 2.6, 40, 12, 1, true), accent, px, py + 20, pz);
+  lit(column, new THREE.CylinderGeometry(2.2, 0.7, 34, 10, 1, true), accent, px, py + 21, pz);
 }
 
 /**
@@ -1986,7 +2083,7 @@ function railParts(
     0, pad.yaw, 0,
   );
 
-  lit(column, new THREE.CylinderGeometry(1.5, 2.6, 40, 12, 1, true), accent, pad.x, py + 20, pad.z);
+  lit(column, new THREE.CylinderGeometry(2.2, 0.7, 34, 10, 1, true), accent, pad.x, py + 21, pad.z);
 }
 
 /**
@@ -2034,7 +2131,7 @@ function padColumnMaterial(): THREE.ShaderMaterial {
       void main() {
         float fade = pow(1.0 - vH, 2.2);
         float band = 0.5 + 0.5 * sin((vH - uTime * 0.11) * 22.0);
-        float a = fade * (0.22 + 0.18 * band) * uNight;
+        float a = fade * (0.16 + 0.12 * band) * uNight;
         gl_FragColor = vec4(vCol * (0.55 + band * 0.3), a);
       }
     `,

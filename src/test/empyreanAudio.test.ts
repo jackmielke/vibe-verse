@@ -342,6 +342,7 @@ function makeFrame(): FrameContext {
     dayPhase: 0.75,
     sunDir: new THREE.Vector3(0, 0.2, -1),
     daylight: 0.6,
+    gradeDaylight: 1,
     camRadiusSq: 0,
   };
 }

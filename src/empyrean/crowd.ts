@@ -1140,6 +1140,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
    * Decisions
    * -------------------------------------------------------------------- */
 
+  /* The lamp switch, deliberately: everything below it decides *when in the
+     day* something happens — how full the Bazaar is, whether anybody is at
+     the rim — rather than how bright anything is. Shading uses
+     `ctx.gradeDaylight` instead. */
   let daylight = 1;
   /* How much of the crowd should be sitting and how much on the rail. Not
      quotas — the falloff below is soft — but the numbers the mix settles on. */
@@ -1395,14 +1399,20 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     daylight = ctx.daylight;
     uniforms.uTime.value = ctx.time;
     (uniforms.uSun.value as THREE.Vector3).copy(ctx.sunDir);
-    // The whole crowd warms and cools with the sky, which is most of why they
-    // sit inside the picture rather than on top of it.
-    const warm = 0.35 + daylight * 0.9;
+    /* The whole crowd warms and cools with the sky, which is most of why they
+       sit inside the picture rather than on top of it.
+     *
+     * `gradeDaylight`, not `daylight` — see the note on both in types.ts.
+     * `daylight` is the lamp switch and reads 0.32 at the hour this world
+     * exists for, so shading with it took a third of the light off every
+     * pedestrian at exactly the sunset they are meant to be standing in. The
+     * sky dome is at its brightest then; the people should be too. */
+    const warm = 0.35 + ctx.gradeDaylight * 0.9;
     (uniforms.uSunCol.value as THREE.Color).setRGB(1.42 * warm, 1.02 * warm, 0.74 * warm);
     (uniforms.uSkyCol.value as THREE.Color).setRGB(
-      0.12 + daylight * 0.20,
-      0.12 + daylight * 0.18,
-      0.20 + daylight * 0.22,
+      0.12 + ctx.gradeDaylight * 0.20,
+      0.12 + ctx.gradeDaylight * 0.18,
+      0.20 + ctx.gradeDaylight * 0.22,
     );
 
     /* ---- how many people are out ---------------------------------------- */

@@ -284,6 +284,7 @@ describe("empyrean props — the frame", () => {
       dayPhase: 0.75,
       sunDir: new THREE.Vector3(0, 0.1, -1).normalize(),
       daylight: 0.5,
+      gradeDaylight: 1,
       camRadiusSq: 70 * 70,
       ...over,
     };

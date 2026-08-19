@@ -63,8 +63,29 @@ export interface FrameContext {
   dayPhase: number;
   /** Unit vector toward the sun. Recomputed from `dayPhase` each frame. */
   sunDir: THREE.Vector3;
-  /** 0 at night, 1 in full day. What lamps and windows switch on against. */
+  /**
+   * 0 at night, 1 in full day — **the lamp switch, and only that.**
+   *
+   * It is 0.32 at the sunset this world is painted at, because that is when a
+   * street lamp is worth switching on. It is emphatically *not* a measure of
+   * how much light there is: the sky dome at sunset is the brightest it will
+   * be all day, and it is lighting the entire city.
+   *
+   * Using it as one is the single most expensive mistake available here, and
+   * it has been made twice. A shader that multiplies its output by
+   * `mix(0.42, 1.0, daylight)` darkens every tower in the city by nearly half
+   * at the exact hour the world exists for, before the grade has even seen it
+   * — and the symptom is "the lighting looks a bit flat", which sends you
+   * looking in the lighting rig, which is fine.
+   */
   daylight: number;
+  /**
+   * 1 whenever the sun is above the horizon at all, 0 once it has set.
+   *
+   * This is the one to use for "how much daylight is there" — exposure, the
+   * grade, and any shader deciding how strongly to shade a surface.
+   */
+  gradeDaylight: number;
   /**
    * Squared distance from the camera to the island's axis, cached.
    * Systems that cull by "am I even near the city" read this instead of

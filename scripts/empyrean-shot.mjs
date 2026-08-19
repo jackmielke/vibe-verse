@@ -208,7 +208,11 @@ for (const name of names) {
         await page.waitForTimeout(1500);
       }
     }
-    if (!up) console.log(`${name}: the world never came up — this shot is a menu`);
+    if (!up) {
+      // Loud, and on stderr: a menu photographed as if it were the world is
+      // the single most misleading artefact this script can produce.
+      console.error(`!! ${name}: the world never came up — THIS SHOT IS THE MENU`);
+    }
     // Built, but not settled: the city is still compiling shaders and the
     // crowd has not yet found the pavement.
     await page.waitForTimeout(6000);

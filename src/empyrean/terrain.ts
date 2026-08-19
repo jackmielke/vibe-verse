@@ -188,9 +188,19 @@ function buildSnow(): THREE.Mesh {
         "#include <common>",
         "#include <common>\nuniform vec3 uSun;\nvarying vec3 vWPos;\nvarying vec3 vWNrm;",
       )
+      /* Grafted before the fog, not after it.
+       *
+       * `<dithering_fragment>` is the last chunk in the shader — after tone
+       * mapping, after the colour space, and after `<fog_fragment>`. Anything
+       * injected there is immune to fog, and four kilometres of snowfield that
+       * fog cannot touch is a flat lavender plate sitting brighter than the
+       * lit city in front of it, in every long view, at every hour. Injecting
+       * at the fog chunk instead puts this tint where a surface colour
+       * belongs: computed, then faded into the distance like everything else.
+       */
       .replace(
-        "#include <dithering_fragment>",
-        `#include <dithering_fragment>
+        "#include <fog_fragment>",
+        `
          float sunlit = clamp(dot(normalize(vWNrm), normalize(uSun)) * 0.5 + 0.5, 0.0, 1.0);
          /* Snow is white and stays white. What changes is which light is
           * reaching it: gold on the faces turned to the sun, and the sky's
@@ -205,10 +215,17 @@ function buildSnow(): THREE.Mesh {
          gl_FragColor.rgb *= 1.0 + alt * 0.22;
          // Rose bounce on the faces turned away, which is the sky lighting them.
          gl_FragColor.rgb += vec3(0.26, 0.10, 0.20) * pow(1.0 - sunlit, 3.0) * 0.40;
-         /* And a floor under the whole thing. Snow at dusk is never darker
-          * than the sky above it; without this the shadowed side of every peak
-          * goes to black and the ranges read as basalt. */
-         gl_FragColor.rgb = max(gl_FragColor.rgb, vec3(0.30, 0.26, 0.38));`,
+         /* A little sky in the shadows, added rather than clamped.
+          *
+          * There was a hard max(rgb, vec3(0.30, 0.26, 0.38)) here, to stop
+          * the shadowed side of every peak going to black. It worked, and it
+          * pinned the entire snowfield to one flat value that no fog could
+          * fade and no grade could put a gradient into — which is most of why
+          * every aerial view of this world washed out. An additive term does
+          * the same job, keeps the shading underneath it, and gets fogged.
+          */
+         gl_FragColor.rgb += vec3(0.085, 0.075, 0.125);
+#include <fog_fragment>`,
       );
   };
 
