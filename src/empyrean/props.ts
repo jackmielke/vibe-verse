@@ -123,6 +123,9 @@ const C = {
   wood: new THREE.Color("#a3703f"),
   woodPale: new THREE.Color("#c69760"),
   cream: new THREE.Color("#f4ecda"),
+  /* For geometry whose colour lives on `instanceColor` instead. Tagging such
+     a piece with its own colour squares it — see `canopyGeo`. */
+  white: new THREE.Color("#ffffff"),
   lampGlass: new THREE.Color("#ffcf92"),
   bulb: new THREE.Color("#ffc46b"),
   leaf: new THREE.Color("#4f8f4e"),
@@ -898,7 +901,14 @@ function canopyGeo(rng: Rng, seg: number): Geo {
     }
     g.computeVertexNormals();
     put(g, lx, ly, lz);
-    parts.push(tag(g, C.leaf, 0, (y) => 0.06 + Math.max(0, y - 2.4) * 0.075));
+    /* White, not green.
+     *
+     * Every tree carries its own leaf colour on `instanceColor`, and three
+     * multiplies that by the vertex colour — so tagging the canopy green as
+     * well squared it. #4f8f4e became #183618: four hundred trees rendered as
+     * black blobs in a city that is otherwise all light, and the thing that
+     * looked wrong was the *shading*, which is somewhere else entirely. */
+    parts.push(tag(g, C.white, 0, (y) => 0.06 + Math.max(0, y - 2.4) * 0.075));
   }
   return mergeBucket(parts) as Geo;
 }
@@ -984,6 +994,7 @@ export function buildProps(ctx: BuildContext): PropsHandle {
   const brackets: Inst[] = [];
   const lanterns: Inst[] = [];
   const trees: Inst[] = [];
+  const trunks: Inst[] = [];
   const pools: Inst[] = [];
 
   const tmpM = new THREE.Matrix4();
@@ -1107,7 +1118,12 @@ export function buildProps(ctx: BuildContext): PropsHandle {
 
   const treeAt = (x: number, z: number, y: number, scale: number, warm: number) => {
     const col = C.leaf.clone().lerp(C.leafWarm, warm).lerp(C.leafBlue, rng.range(0, 0.22));
-    inst(trees, x, y, z, rng.range(0, TAU), scale, col);
+    const yaw = rng.range(0, TAU);
+    inst(trees, x, y, z, yaw, scale, col);
+    /* The trunk shares the tree's transform and not its colour. One list for
+       both put the leaf colour on the bark as well, which is the same
+       multiply and the same green mud. */
+    inst(trunks, x, y, z, yaw, scale, C.white.clone().multiplyScalar(0.86 + 0.18 * warm));
     note("tree", x, z, y);
   };
 
@@ -1636,7 +1652,7 @@ export function buildProps(ctx: BuildContext): PropsHandle {
   if (trees.length) {
     const trunk = trunkGeo(rng);
     const canopy = canopyGeo(rng, T.canopySeg);
-    addInstanced(trees, trunk, "empyrean-tree-trunk", matProp);
+    addInstanced(trunks, trunk, "empyrean-tree-trunk", matProp);
     addInstanced(trees, canopy, "empyrean-tree-canopy", matProp);
   }
 
