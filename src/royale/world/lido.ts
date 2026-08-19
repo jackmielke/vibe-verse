@@ -3451,11 +3451,21 @@ const createLido: SystemFactory = (ctx: WorldCtx): System => {
    * through it, which is the whole reason to have a shelving floor.
    */
   let waterMat: THREE.MeshStandardMaterial | null = null;
+  /** Driven from `update` off `ctx.elapsed`. Never wall clock — see the note there. */
+  const waterTime = { value: 0 };
   const makeWater = (): THREE.Material => {
     waterMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(WATER_TINT),
       transparent: true,
-      opacity: 0.74,
+      /*
+       * 0.58, not the 0.74 this started at. The Fresnel term below RAISES
+       * alpha toward 1 as the view flattens, so this number is now only the
+       * head-on case — the one where you are meant to see the tiled floor. Left
+       * at 0.74 the pool came out as opaque turquoise milk from every angle,
+       * which threw away the shelving floor that depthWrite:false exists to
+       * show.
+       */
+      opacity: 0.58,
       roughness: 0.09,
       metalness: 0,
       envMap: materials.env ?? null,
@@ -3463,6 +3473,151 @@ const createLido: SystemFactory = (ctx: WorldCtx): System => {
       side: THREE.DoubleSide,
       depthWrite: false,
     });
+
+    /**
+     * What makes it read as water rather than as cyan paint.
+     *
+     * The material above is already physically reasonable — low roughness, an
+     * environment map, alpha under one — and it still photographed as a flat
+     * sheet of colour, because a perfectly flat surface with a static
+     * reflection has nothing in it that moves or changes with angle. Three
+     * things fix that, and they are cheap because they are all one fragment:
+     *
+     *  1. RIPPLE. Two layers of gradient noise scrolling across world XZ at
+     *     different rates and scales, perturbing the normal. World space, not
+     *     UV: every pool, the lazy river and the splash pads share this one
+     *     material, and a UV-space ripple would run in a different direction
+     *     in each of them and break at every seam between two surfaces that
+     *     are the same body of water.
+     *
+     *  2. FRESNEL. The single strongest cue that a surface is water. Looking
+     *     down into a pool you see the floor; looking along it you see the
+     *     sky, almost opaquely. A constant alpha of 0.74 everywhere throws
+     *     that away, which is most of why the flat version read as paint —
+     *     the far end of a pool should be a mirror and it was a window.
+     *
+     *  3. TINT, weighted by the same Fresnel. Where you are looking INTO the
+     *     water rather than off it, the red end of what comes back has been
+     *     through a depth of it and is gone. This is the cheap half of a
+     *     transmission model and it is the half you can see.
+     *
+     * There was a fourth, and it is worth recording as a warning rather than
+     * quietly dropping: thickening the water by how far the VIEW RAY travels
+     * through it. Physically reasonable, and it saturates — standing in the
+     * pool the ray is near-horizontal across the whole visible surface, so
+     * every pixel pinned to maximum depth and the tiled floor disappeared
+     * under a flat sheet of turquoise milk. At a grazing angle what you see is
+     * the reflection, which is what Fresnel already says; ray length is not an
+     * independent term, it is the same term counted twice.
+     *
+     * All three ride on `#include <normal_fragment_maps>` / the alpha at the
+     * end of the fragment, so the standard lighting path — including the
+     * env map, the shadows and the fog every other surface here uses — is
+     * untouched. Nothing about this needs a second render target.
+     */
+    waterMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uLidoTime = waterTime;
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           varying vec3 vLidoWorld;`,
+        )
+        .replace(
+          "#include <worldpos_vertex>",
+          `#include <worldpos_vertex>
+           vLidoWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           uniform float uLidoTime;
+           varying vec3 vLidoWorld;
+
+           /* Value noise with a smooth derivative. Cheap, and the derivative
+              is what we actually want: the gradient IS the ripple's slope, so
+              the normal falls out without a second tap. */
+           float lidoHash(vec2 p) {
+             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+           }
+           vec3 lidoNoiseD(vec2 p) {
+             vec2 i = floor(p);
+             vec2 f = fract(p);
+             vec2 u = f * f * (3.0 - 2.0 * f);
+             vec2 du = 6.0 * f * (1.0 - f);
+             float a = lidoHash(i);
+             float b = lidoHash(i + vec2(1.0, 0.0));
+             float c = lidoHash(i + vec2(0.0, 1.0));
+             float d = lidoHash(i + vec2(1.0, 1.0));
+             float k1 = b - a;
+             float k2 = c - a;
+             float k3 = a - b - c + d;
+             return vec3(
+               a + k1 * u.x + k2 * u.y + k3 * u.x * u.y,
+               du.x * (k1 + k3 * u.y),
+               du.y * (k2 + k3 * u.x)
+             );
+           }`,
+        )
+        .replace(
+          "#include <normal_fragment_maps>",
+          `#include <normal_fragment_maps>
+           {
+             /* Two scales, drifting on different headings so neither one ever
+                reads as a repeating direction. 1.7 m and 0.55 m: the coarse
+                layer is what breaks up the sky reflection at a distance, the
+                fine one is what you see at your feet. */
+             vec3 nA = lidoNoiseD(vLidoWorld.xz * 1.15 + vec2(0.07, 0.041) * uLidoTime * 6.0);
+             vec3 nB = lidoNoiseD(vLidoWorld.xz * 3.40 + vec2(-0.052, 0.089) * uLidoTime * 6.0);
+             /* Shallow on purpose. A pool is not the open sea: the amplitude
+                that reads right is the one that bends the REFLECTION, not one
+                that visibly deforms the surface. Past about 0.1 the sky in it
+                turns to gravel. */
+             vec2 slope = nA.yz * 0.055 + nB.yz * 0.028;
+             /* normal is in VIEW space here, and the slope was derived from
+                world XZ. Rotating the perturbation into view space is not
+                optional: added raw, the ripple is pinned to the screen and
+                slides around the pool as the player turns, which looks like a
+                bug in the camera rather than like water. */
+             vec3 rippleW = vec3(slope.x, 0.0, slope.y);
+             normal = normalize(normal + (viewMatrix * vec4(rippleW, 0.0)).xyz);
+           }`,
+        )
+        .replace(
+          "#include <dithering_fragment>",
+          `{
+             vec3 viewDir = normalize(vViewPosition);
+             /* Schlick against the RIPPLED normal, so the mirror band at the
+                far end of the pool shimmers instead of sitting there as a hard
+                edge. 0.02 is water's F0. */
+             float fres = 0.02 + 0.98 * pow(clamp(1.0 - dot(normalize(normal), viewDir), 0.0, 1.0), 5.0);
+
+             /* Fresnel is the WHOLE alpha story, and getting there took one
+                wrong turn worth recording. The first version also thickened the
+                water by how far the view ray travels through it — physically
+                reasonable, and it saturates: standing in the pool, the ray is
+                near-horizontal across the entire visible surface, so every
+                pixel pinned to maximum depth and the floor vanished under a
+                flat sheet of milk. At a grazing angle what you actually see is
+                the REFLECTION, which is what Fresnel already says. */
+             gl_FragColor.a = clamp(mix(gl_FragColor.a, 1.0, fres), 0.0, 1.0);
+
+             /* Bluer where you are looking INTO the water rather than off it —
+                the red end goes first through any real depth of it. Applied to
+                the composed colour so it tints the floor showing through,
+                which is the only place the effect is visible at all. */
+             gl_FragColor.rgb *= mix(vec3(1.0), vec3(0.78, 0.95, 1.05), (1.0 - fres) * 0.55);
+           }
+           #include <dithering_fragment>`,
+        );
+    };
+    /* Changing onBeforeCompile after a material has been used needs this, and
+       it is set once here rather than trusted to the first-use path. */
+    waterMat.customProgramCacheKey = () => "lido-water-v1";
+
     return waterMat;
   };
 
@@ -3624,6 +3779,12 @@ const createLido: SystemFactory = (ctx: WorldCtx): System => {
     /** Cosmetics only. Everything here is timed off `ctx.elapsed`. */
     update(dt, c) {
       const t = c.elapsed;
+
+      // The pool ripple. `ctx.elapsed` and not a wall clock: under software
+      // rendering the simulation runs a few hundred times slower than the wall,
+      // and a surface animated off `performance.now()` tears across the frame
+      // while everything else in the park moves at a sensible rate.
+      waterTime.value = t;
 
       for (const set of anim.jets) {
         for (let i = 0; i < set.items.length; i++) {

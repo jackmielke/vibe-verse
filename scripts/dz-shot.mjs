@@ -123,6 +123,60 @@ const SHOTS = {
     },
   },
   /**
+   * Standing at the long edge of the biggest pool, looking across it.
+   *
+   * The hard test for the water specifically: it puts the far coping near the
+   * horizon, so the frame carries the whole Fresnel range at once — floor
+   * showing through at your feet, sky reflecting off the far end. A vantage
+   * looking straight DOWN at water shows only one half of that and will
+   * happily photograph a flat sheet of paint as fine.
+   */
+  lidopool: {
+    settle: SETTLE,
+    pose: (e) => {
+      const l = e.ctx.services.lido;
+      // The wave pool by NAME, not the biggest by area. Sorting by area picked
+      // a splash basin whose extent runs under the slide tower, and aiming
+      // across it framed the tower's footings with no water in the shot at all.
+      const pool = l?.pools?.find((x) => x.id === "wave") ?? l?.pools?.[0];
+      if (!l || !pool) {
+        const pos = V(e, 0, 2, 40);
+        return { pos, ...aim(pos, V(e, 0, 2, 0)) };
+      }
+      /*
+       * Height comes from the POOL's own waterline, not from `decks.main`.
+       * The biggest pool is not necessarily on the main terrace, and standing
+       * a park-wide deck height above a pool on the lower one buried the
+       * camera in the slab: the first frame of this vantage was a full-screen
+       * close-up of paving grain.
+       *
+       * And eight metres back, not two. The engine puts the camera about four
+       * metres behind the player, so a pose that stands ON the coping puts the
+       * CAMERA inside the pool wall.
+       */
+      /*
+       * Standing IN the pool, at its centre, looking along it.
+       *
+       * Four attempts at photographing this from the deck landed inside
+       * geometry — the slab twice, and a poolside pavilion once — because the
+       * park is dense and nothing in the pool record says what is built around
+       * it. The middle of a body of water is the one place in a water park
+       * guaranteed to be open in every direction, and the boom behind the
+       * player stays inside it as long as the pool is more than four metres
+       * long, which every pool here is.
+       *
+       * Aimed slightly UP, like every other working ground vantage in this
+       * file: the engine hangs the camera about four metres BEHIND the player
+       * along the view direction, so a downward pitch swings that boom into
+       * the floor. Aiming at the waterline — the intuitive way to photograph a
+       * pool — produced a full-screen close-up of paving grain, twice.
+       *
+       */
+      const pos = V(e, pool.center.x, pool.center.y + 0.05, pool.center.z);
+      return { pos, ...aim(pos, V(e, pool.center.x, pos.y + 1.6, pool.center.z + pool.hz * 3)) };
+    },
+  },
+  /**
    * Eye height in the plaza. Materials, trim, shadows — the hard test.
    *
    * `pos` is the PLAYER's feet, not the camera: the engine derives the camera
