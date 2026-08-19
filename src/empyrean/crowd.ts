@@ -35,19 +35,28 @@
  * - **LOD is by distance and it is hard.** Full articulation to 45 m, a
  *   six-box body to 130 m, a three-band billboard to 260 m, nothing beyond.
  *
- * ## The graph is the plan's, with two corrections
+ * ## The graph is the plan's, filtered
  *
- * `cityPlan().nav` is built from street centrelines and offsets, and a couple
- * of hundred of its nodes land a few centimetres outside the pavement they
- * were meant to be on — the rim ring is the whole of it, offset by the *ring*
- * road's width when the rim road is narrower. A pedestrian standing there is
- * standing in a flowerbed. So every node is probed with `surfaceAt` and nudged
- * up to 2.6 m onto real pavement if it needs it, every edge is sampled along
- * its length and dropped if it cuts through a lot, and what survives is
- * reduced to its largest connected component. That is 1419 nodes and ~5260
- * edges of the plan's ~5416, still one piece, with every one of the 138 shop
- * doors reachable. It is done here rather than in the plan because it is a
- * *walking* correction: traffic and couriers may well want the raw graph.
+ * `cityPlan().nav` is trustworthy about its nodes: all 1403 of them stand on
+ * pavement, plaza or road, and none needs moving. (That was not always true —
+ * the rim ring used to be offset by the *ring* road's half-width when the rim
+ * road is narrower, which put 244 nodes a few centimetres into the flowerbeds,
+ * and this file used to nudge them back. The plan fixes it at source now, so
+ * the nudge is gone.)
+ *
+ * Its *edges* still need one check. Crossings are stitched by proximity, and
+ * 18 of the 5226 of them cut the corner of a block — mostly the long diagonal
+ * where an avenue meets a ring, at r≈129→105 and r≈209→188 and their mirrors.
+ * Each is sampled along its length and dropped if anything on it is a lot, the
+ * parapet or the void, and what survives is reduced to its largest connected
+ * component: 1403 nodes, 5208 edges, still one piece, every one of the 138
+ * shop doors reachable.
+ *
+ * The check stays even though it is nearly a no-op, because it is what turns
+ * "the plan changed and now people walk through a wall" into a graph that is
+ * merely slightly worse connected. It is done here rather than in the plan
+ * because it is a *walking* correction: traffic and couriers may want the
+ * raw graph.
  */
 import * as THREE from "three";
 import { makeRng } from "@/shared/proc/rng";
@@ -154,14 +163,6 @@ interface WalkGraph {
   list: Int32Array;
 }
 
-/** Eight directions at four distances — the nudge search, cheapest first. */
-const NUDGE: number[] = [];
-for (const d of [0.6, 1.2, 1.8, 2.6]) {
-  for (let i = 0; i < 8; i++) {
-    NUDGE.push(Math.cos((i / 8) * TAU) * d, Math.sin((i / 8) * TAU) * d);
-  }
-}
-
 function buildWalkGraph(): WalkGraph {
   const nav = cityPlan().nav;
   const raw = nav.length;
@@ -169,26 +170,15 @@ function buildWalkGraph(): WalkGraph {
   const pz = new Float64Array(raw);
   const ok = new Uint8Array(raw);
 
+  // Every node the plan offers, as long as it is somewhere a body can stand.
+  // Currently that is all of them; the check costs one `surfaceAt` each and
+  // is the difference between a plan regression and a crowd in the walls.
   for (let i = 0; i < raw; i++) {
     const node = nav[i];
     px[i] = node.x;
     pz[i] = node.z;
     const kind = surfaceAt(node.x, node.z).kind;
-    if (kind === "walk" || kind === "plaza" || kind === "road") {
-      ok[i] = 1;
-      continue;
-    }
-    for (let k = 0; k < NUDGE.length; k += 2) {
-      const nx = node.x + NUDGE[k];
-      const nz = node.z + NUDGE[k + 1];
-      const kk = surfaceAt(nx, nz).kind;
-      if (kk === "walk" || kk === "plaza") {
-        px[i] = nx;
-        pz[i] = nz;
-        ok[i] = 1;
-        break;
-      }
-    }
+    if (kind === "walk" || kind === "plaza" || kind === "road") ok[i] = 1;
   }
 
   // An edge survives if nothing along it is a building plot, the parapet or
@@ -415,13 +405,24 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     if (r < RIM_R - 4) continue;
     addDest(i, D_RIM, graph.x[i], graph.z[i]);
   }
-  // Somewhere to sit: wide pavement in the Terraces and around the Halo.
+  /* Somewhere to sit: the wide pavements of the Bazaar and the Terraces.
+   *
+   * `props.ts` puts its benches along pavement at a fixed spacing, and a
+   * system may not import another system, so there is no way to ask where
+   * they actually are — only to sit where they plausibly are and, more
+   * importantly, to sit in a way that does not need one. See the sit pose in
+   * the vertex shader: bodies sit on the kerb, at kerb height, which is
+   * correct on a bench, a step, a plinth or a bare pavement edge. A person
+   * floating at bench height over nothing is far worse than one more person
+   * standing, and this is how that is avoided rather than guessed at.
+   *
+   * The width filter is doing the real work: 3.5 m lane pavement has no room
+   * for somebody sitting on it, and 4.5 m ring pavement does. */
   for (let i = 0; i < graph.n; i++) {
     const r = Math.hypot(graph.x[i], graph.z[i]);
-    const wide = graph.width[i] >= 4.4;
-    const green = r > RING_R[1] && r < RING_R[2];
-    if (!wide && !green) continue;
-    if (!rng.chance(green ? 0.16 : 0.07)) continue;
+    if (graph.width[i] < 4.4) continue;
+    if (r < RING_R[0] || r > RING_R[2]) continue;
+    if (!rng.chance(0.2)) continue;
     const a = rng.range(0, TAU);
     addDest(i, D_SIT, Math.cos(a), Math.sin(a));
   }
@@ -820,9 +821,19 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       float torso = gait * 0.09 + lean * 0.34 - sit * 0.05;
       float head = look * 0.72 - lean * 0.14 + sin(uTime * 0.7 + aPos.z) * 0.03;
 
-      thigh = mix(thigh, 1.46, sit);
-      knee = mix(knee, -1.55, sit);
-      arm = mix(arm, 0.24, sit);
+      /* Sitting is a *kerb* sit, not a chair sit: hips a hand's breadth off
+         the deck with the legs stretched out in front, which is what somebody
+         sitting on a step, a plinth, a bench's edge or the bare kerb looks
+         like — and, crucially, what somebody sitting on nothing at all looks
+         like too, because there is no way from here to know whether the
+         bench props.ts might have put on this pavement is really there. A
+         chair sit needs furniture under it or it is a person levitating.
+         The knee stays straight for the same reason: fold it and the shin
+         goes through the deck. */
+      thigh = mix(thigh, 1.5708, sit);
+      knee = mix(knee, 0.0, sit);
+      arm = mix(arm, 0.06, sit);
+      torso -= sit * 0.13;
 
       vec3 p = position;
       vec3 n = normal;
@@ -873,11 +884,17 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         n = rotX(n, torso);
       }
 
-      p.y -= sit * 0.43;
+      /* Captured before the seat drop, so vUp stays a measurement of the
+         body rather than of the ground: the fragment shader darkens shoes
+         below 0.11, and a seated body whose hips are at 0.10 would otherwise
+         come out in shoe leather from the waist down. */
+      vUp = p.y;
+
+      // 0.80 puts a straight, horizontal leg's underside on the deck.
+      p.y -= sit * 0.80;
       p.z -= lean * 0.12;
       p.y += gait * 0.026 * cos(aAnim.x * TAU * 2.0);
 
-      vUp = p.y;
       p.x *= aBody.y;
       p.z *= aBody.y;
       p.y *= aBody.x;
@@ -1040,9 +1057,22 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     bind("aSkin", skin, 3);
 
     geo.instanceCount = 0;
-    // The whole crowd lives inside a 700 m disc and is culled by distance in
-    // `update`; a bounding sphere would only be a second, worse, test.
+    /* Declared, not computed, and it covers the deck rather than the body.
+     *
+     * The geometry here is one person authored around the origin and the
+     * placements live in `aPos`, so anything that reads these bounds — a
+     * frustum test, a `Box3.setFromObject`, a debug sweep looking for
+     * geometry left in the wrong space — would otherwise be told that eight
+     * hundred pedestrians are a two-metre box sitting on the ice six hundred
+     * metres below the city. The honest answer is the disc they walk on.
+     * (The traffic solves the same problem the other way, with a real
+     * `InstancedMesh`, because at seventy-nine vehicles the exact answer is
+     * affordable and here it is not.) */
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, ISLAND_Y, 0), PLATEAU_R * 1.6);
+    geo.boundingBox = new THREE.Box3(
+      new THREE.Vector3(-PLATEAU_R, ISLAND_Y - 2, -PLATEAU_R),
+      new THREE.Vector3(PLATEAU_R, ISLAND_Y + 3, PLATEAU_R),
+    );
     const mesh = new THREE.Mesh(geo, mat);
     mesh.frustumCulled = false;
     mesh.renderOrder = 2;
@@ -1573,6 +1603,22 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     }
 
     liveCount = live;
+    if (typeof process !== "undefined" && process.env.CROWD_DEBUG && Math.round(clock * 60) % 1800 === 0) {
+      let w = 0, st = 0, si = 0, le = 0, wa = 0, pa = 0, lot = 0, off = 0;
+      for (let i = 0; i < MAX; i++) {
+        if (!aActive[i]) continue;
+        const k = surfaceAt(ax[i], az[i]).kind;
+        if (k === "lot") lot++;
+        if (k === "void" || k === "parapet") off++;
+        if (aState[i] === ST_WALK) w++;
+        else if (aState[i] === ST_STAND) st++;
+        else if (aState[i] === ST_SIT) si++;
+        else if (aState[i] === ST_LEAN) le++;
+        else if (aState[i] === ST_PAUSE) pa++;
+        else wa++;
+      }
+      console.log(`t=${clock.toFixed(0)} live=${live} walk=${w} stand=${st} sit=${si} lean=${le} pause=${pa} wait=${wa} lot=${lot} off=${off}`);
+    }
 
     /* ---- a few paths, and only a few ------------------------------------ */
     for (let k = 0; k < REPATH_BUDGET && repathCount > 0; k++) {

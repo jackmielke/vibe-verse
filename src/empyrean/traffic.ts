@@ -371,8 +371,6 @@ function birdGeo(): RawGeo {
 
 const HULL_VERT = /* glsl */ `
   attribute float aPart;
-  attribute vec3 aPos;
-  attribute vec3 aRot;   // yaw, pitch, roll
   attribute vec3 aTint;
   attribute vec2 aGlow;  // emissive gain, strobe phase
 
@@ -384,14 +382,11 @@ const HULL_VERT = /* glsl */ `
   varying vec3 vView;
   varying float vEmit;
 
-  vec3 rotZ(vec3 p, float a) { float s = sin(a), c = cos(a); return vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z); }
-  vec3 rotX(vec3 p, float a) { float s = sin(a), c = cos(a); return vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c); }
-  vec3 rotY(vec3 p, float a) { float s = sin(a), c = cos(a); return vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c); }
-
   void main() {
-    vec3 p = rotY(rotX(rotZ(position, aRot.z), aRot.y), aRot.x);
-    vec3 n = rotY(rotX(rotZ(normal, aRot.z), aRot.y), aRot.x);
-    vec3 world = aPos + p;
+    // Position and facing both come out of the instance matrix, which three
+    // declares for us because this is drawn from an InstancedMesh.
+    vec3 world = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+    vec3 n = mat3(modelMatrix) * mat3(instanceMatrix) * normal;
 
     vec3 col = aTint;
     float emit = 0.0;
@@ -410,7 +405,7 @@ const HULL_VERT = /* glsl */ `
     vEmit = emit;
     vNrm = n;
     vView = cameraPosition - world;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);
+    gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
   }
 `;
 
@@ -444,8 +439,6 @@ const HULL_FRAG = /* glsl */ `
 
 const BIRD_VERT = /* glsl */ `
   attribute float aPart;
-  attribute vec3 aPos;
-  attribute vec3 aRot;
   attribute vec3 aTint;
   attribute vec2 aGlow;
   uniform float uTime;
@@ -453,8 +446,6 @@ const BIRD_VERT = /* glsl */ `
   varying float vShade;
 
   vec3 rotZ(vec3 p, float a) { float s = sin(a), c = cos(a); return vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z); }
-  vec3 rotX(vec3 p, float a) { float s = sin(a), c = cos(a); return vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c); }
-  vec3 rotY(vec3 p, float a) { float s = sin(a), c = cos(a); return vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c); }
 
   void main() {
     vec3 p = position;
@@ -468,9 +459,9 @@ const BIRD_VERT = /* glsl */ `
     } else {
       vShade = 1.0;
     }
-    p = rotY(rotX(p, aRot.y), aRot.x);
+    // Flap first, in the bird's own frame, then fly it.
     vCol = aTint;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(aPos + p, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(p, 1.0);
   }
 `;
 
@@ -656,50 +647,81 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
     side: THREE.DoubleSide,
   });
 
+  /**
+   * A fleet is a real `InstancedMesh`, and that is a correctness decision
+   * rather than a stylistic one.
+   *
+   * The obvious alternative — a plain `Mesh` over an `InstancedBufferGeometry`
+   * with the transform in custom attributes — draws identically and is what
+   * the crowd does, because eight hundred bodies want four floats a frame
+   * rather than sixteen. But it makes every three.js utility lie about where
+   * the thing is: `Box3.setFromObject` reads the *geometry's* box for a plain
+   * mesh, which is authored around the origin, so a tram lapping the ring at
+   * y = 620 reports as a ten-metre box sitting on the ice six hundred metres
+   * below the city. Frustum tests, raycasts and "where is the tram" queries
+   * all inherit that. `InstancedMesh` carries an object-level bounding box
+   * that walks the instance matrices, so it answers honestly — and at
+   * seventy-nine vehicles the per-frame matrix compose is free.
+   */
   interface Fleet {
-    geo: THREE.InstancedBufferGeometry;
-    mesh: THREE.Mesh;
-    pos: Float32Array;
-    rot: Float32Array;
+    geo: THREE.BufferGeometry;
+    mesh: THREE.InstancedMesh;
     tint: Float32Array;
     glow: Float32Array;
     attrs: THREE.InstancedBufferAttribute[];
   }
 
-  const makeFleet = (src: RawGeo, mat: THREE.ShaderMaterial, cap: number, radius: number): Fleet => {
-    const geo = new THREE.InstancedBufferGeometry();
+  const makeFleet = (src: RawGeo, mat: THREE.ShaderMaterial, cap: number): Fleet => {
+    const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(src.position, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(src.normal, 3));
     geo.setAttribute("aPart", new THREE.BufferAttribute(src.part, 1));
     geo.setIndex(new THREE.BufferAttribute(src.index, 1));
-    const pos = new Float32Array(Math.max(1, cap) * 3);
-    const rot = new Float32Array(Math.max(1, cap) * 3);
-    const tint = new Float32Array(Math.max(1, cap) * 3);
-    const glow = new Float32Array(Math.max(1, cap) * 2);
+    const n = Math.max(1, cap);
+    const tint = new Float32Array(n * 3);
+    const glow = new Float32Array(n * 2);
     const attrs: THREE.InstancedBufferAttribute[] = [];
     const bind = (name: string, arr: Float32Array, size: number) => {
       const attr = new THREE.InstancedBufferAttribute(arr, size);
-      attr.setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute(name, attr);
       attrs.push(attr);
     };
-    bind("aPos", pos, 3);
-    bind("aRot", rot, 3);
+    // Colour and glow are per-vehicle and written once; only the matrices move.
     bind("aTint", tint, 3);
     bind("aGlow", glow, 2);
-    geo.instanceCount = cap;
-    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, DECK, 0), radius);
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.InstancedMesh(geo, mat, n);
+    mesh.count = cap;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
     group.add(mesh);
-    return { geo, mesh, pos, rot, tint, glow, attrs };
+    return { geo, mesh, tint, glow, attrs };
   };
 
-  const cars = makeFleet(boxes(SKYCAR), hullMat, carCount, PLATEAU_R * 2);
-  const tramCars = makeFleet(boxes(TRAM_CAR), hullMat, 3, PLATEAU_R * 1.4);
-  const platforms = makeFleet(boxes(PLATFORM), hullMat, stops.length, PLATEAU_R * 1.4);
-  const birds = makeFleet(birdGeo(), birdMat, Math.max(1, BIRDS), PLATEAU_R * 3);
-  if (BIRDS === 0) birds.geo.instanceCount = 0;
+  /* One matrix and one euler, reused by every vehicle in the world. The order
+     is YXZ — yaw, then pitch, then roll — which is the order a craft actually
+     banks in and the order the old vertex shader composed by hand. */
+  const mtx = new THREE.Matrix4();
+  const eul = new THREE.Euler();
+  const place = (
+    fleet: Fleet,
+    i: number,
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    pitch: number,
+    roll: number,
+  ) => {
+    eul.set(pitch, yaw, roll, "YXZ");
+    mtx.makeRotationFromEuler(eul);
+    mtx.setPosition(x, y, z);
+    fleet.mesh.setMatrixAt(i, mtx);
+  };
+
+  const cars = makeFleet(boxes(SKYCAR), hullMat, carCount);
+  const tramCars = makeFleet(boxes(TRAM_CAR), hullMat, 3);
+  const platforms = makeFleet(boxes(PLATFORM), hullMat, stops.length);
+  const birds = makeFleet(birdGeo(), birdMat, BIRDS);
 
   for (let c = 0; c < carCount; c++) {
     cars.tint[c * 3] = carTint[c * 3];
@@ -718,11 +740,8 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
   // Platforms never move; write them once and never touch them again.
   for (let i = 0; i < stops.length; i++) {
     const a = TRAM_STOPS[i].a;
-    platforms.pos[i * 3] = stops[i].x;
-    platforms.pos[i * 3 + 1] = DECK;
-    platforms.pos[i * 3 + 2] = stops[i].z;
     // The slab runs along the road, so its long axis is the tangent.
-    platforms.rot[i * 3] = -a;
+    place(platforms, i, stops[i].x, DECK, stops[i].z, -a, 0, 0);
     platforms.tint[i * 3] = 0.52;
     platforms.tint[i * 3 + 1] = 0.55;
     platforms.tint[i * 3 + 2] = 0.6;
@@ -730,6 +749,9 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
     platforms.glow[i * 2 + 1] = i * 0.2;
   }
   for (const attr of platforms.attrs) attr.needsUpdate = true;
+  platforms.mesh.instanceMatrix.needsUpdate = true;
+  platforms.mesh.computeBoundingBox();
+  platforms.mesh.computeBoundingSphere();
   for (let i = 0; i < BIRDS; i++) {
     birds.tint[i * 3] = 0.10;
     birds.tint[i * 3 + 1] = 0.09;
@@ -854,18 +876,14 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
         const z = sampleOut[2];
         const yaw = sampleOut[3];
         const roll = Math.atan((carV[c] * carV[c] * sampleOut[5]) / 9.81);
-        cars.pos[c * 3] = x;
-        cars.pos[c * 3 + 1] = y;
-        cars.pos[c * 3 + 2] = z;
-        cars.rot[c * 3] = yaw;
-        cars.rot[c * 3 + 1] = sampleOut[4];
-        cars.rot[c * 3 + 2] = Math.max(-0.9, Math.min(0.9, roll));
+        const bank = Math.max(-0.9, Math.min(0.9, roll));
+        place(cars, c, x, y, z, yaw, sampleOut[4], bank);
 
         // Wingtips and a strobe, in the craft's own frame.
         const sy = Math.sin(yaw);
         const cy = Math.cos(yaw);
-        const sr = Math.sin(cars.rot[c * 3 + 2]);
-        const cr = Math.cos(cars.rot[c * 3 + 2]);
+        const sr = Math.sin(bank);
+        const cr = Math.cos(bank);
         const b = c * LIGHTS_PER_CAR;
         const put = (idx: number, lx: number, ly: number, lz: number) => {
           const rx = lx * cr - ly * sr;
@@ -919,12 +937,7 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
       let s = tramS - i * 11.6;
       while (s < 0) s += tramLane.total;
       tramSample[i] = sampleLane(tramLane, s, tramSample[i]);
-      tramCars.pos[i * 3] = sampleOut[0];
-      tramCars.pos[i * 3 + 1] = sampleOut[1];
-      tramCars.pos[i * 3 + 2] = sampleOut[2];
-      tramCars.rot[i * 3] = sampleOut[3];
-      tramCars.rot[i * 3 + 1] = 0;
-      tramCars.rot[i * 3 + 2] = 0;
+      place(tramCars, i, sampleOut[0], sampleOut[1], sampleOut[2], sampleOut[3], 0, 0);
       if (i === 0) {
         tram.x = sampleOut[0];
         tram.y = sampleOut[1];
@@ -963,25 +976,33 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
       const x = Math.cos(birdA[i]) * r;
       const z = Math.sin(birdA[i]) * r;
       const y = birdY[i] + Math.sin(frame.time * 0.4 + i * 1.7) * 6;
-      birds.pos[i * 3] = x;
-      birds.pos[i * 3 + 1] = y;
-      birds.pos[i * 3 + 2] = z;
+
       // Facing the way they are going: the tangent, whichever way round the
       // flock is drifting.
       const sw = birdW[i] < 0 ? -1 : 1;
-      birds.rot[i * 3] = Math.atan2(Math.sin(birdA[i]) * sw, -Math.cos(birdA[i]) * sw);
-      birds.rot[i * 3 + 1] = Math.sin(frame.time * 0.6 + i) * 0.12;
-      birds.rot[i * 3 + 2] = 0;
+      place(
+        birds,
+        i,
+        x,
+        y,
+        z,
+        Math.atan2(Math.sin(birdA[i]) * sw, -Math.cos(birdA[i]) * sw),
+        Math.sin(frame.time * 0.6 + i) * 0.12,
+        0,
+      );
     }
 
     /* ---- upload -------------------------------------------------------- */
-    cars.attrs[0].needsUpdate = true;
-    cars.attrs[1].needsUpdate = true;
-    tramCars.attrs[0].needsUpdate = true;
-    tramCars.attrs[1].needsUpdate = true;
-    if (BIRDS > 0) {
-      birds.attrs[0].needsUpdate = true;
-      birds.attrs[1].needsUpdate = true;
+    /* Matrices up, and then the object-level bounds recomputed from them.
+       Seventy-nine instances of eight corners is nothing, and it is what makes
+       `Box3.setFromObject(tram)` agree with `tram.x` — without it the scene
+       graph insists the whole fleet is a ten-metre box on the ice, which is
+       both wrong and exactly the shape of a real bug worth catching. */
+    for (const fleet of [cars, tramCars, birds]) {
+      if (fleet.mesh.count === 0) continue;
+      fleet.mesh.instanceMatrix.needsUpdate = true;
+      fleet.mesh.computeBoundingBox();
+      fleet.mesh.computeBoundingSphere();
     }
     lightPosAttr.needsUpdate = true;
   };
@@ -994,6 +1015,7 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
     update,
     dispose() {
       for (const fleet of [cars, tramCars, platforms, birds]) {
+        fleet.mesh.dispose();
         fleet.geo.dispose();
         group.remove(fleet.mesh);
       }

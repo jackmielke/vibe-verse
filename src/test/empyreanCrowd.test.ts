@@ -44,10 +44,16 @@ function makeCtx(): FrameContext {
   };
 }
 
-/** Instanced positions off a fleet mesh, which is how the vehicles are read. */
-function instancePositions(mesh: THREE.Mesh): Float32Array {
-  const attr = mesh.geometry.getAttribute("aPos") as THREE.BufferAttribute;
-  return attr.array as Float32Array;
+/** The translation column of every live instance matrix on a fleet. */
+function instancePositions(mesh: THREE.InstancedMesh): Float32Array {
+  const m = mesh.instanceMatrix.array as Float32Array;
+  const out = new Float32Array(mesh.count * 3);
+  for (let i = 0; i < mesh.count; i++) {
+    out[i * 3] = m[i * 16 + 12];
+    out[i * 3 + 1] = m[i * 16 + 13];
+    out[i * 3 + 2] = m[i * 16 + 14];
+  }
+  return out;
 }
 
 describe("the crowd", () => {
@@ -259,8 +265,9 @@ describe("the traffic", () => {
   }, 60000);
 
   it("flies its skycars in their lanes without ever sharing a metre of air", () => {
-    const cars = traffic.group.children[0] as THREE.Mesh;
-    const count = (cars.geometry as THREE.InstancedBufferGeometry).instanceCount;
+    const cars = traffic.group.children[0] as THREE.InstancedMesh;
+    expect(cars.isInstancedMesh).toBe(true);
+    const count = cars.count;
     expect(count).toBeGreaterThan(20);
 
     let worstGap = Infinity;
@@ -292,9 +299,86 @@ describe("the traffic", () => {
     expect(highest).toBeLessThan(ISLAND_Y + 95);
   }, 60000);
 
+  it("keeps the tram's cars where the tram says the tram is", () => {
+    /* The state object and the scene graph are two different things and it is
+       entirely possible to move one and not the other — the tram reported the
+       right coordinates for a while with its three cars sitting at the origin
+       on the ice, six hundred metres below the city, because the transform
+       lived in a custom vertex attribute that no three.js utility reads.
+       This asserts the join: what `tram` says, and where the meshes are, over
+       enough frames to cover a stop and a run between two. */
+    const cars = traffic.group.children[1] as THREE.InstancedMesh;
+    expect(cars.isInstancedMesh).toBe(true);
+    expect(cars.count).toBe(3);
+
+    const box = new THREE.Box3();
+    const m = new THREE.Matrix4();
+    const at = new THREE.Vector3();
+    let checks = 0;
+    for (let f = 0; f < 60 * 60; f++) {
+      ctx.time += ctx.dt;
+      traffic.update?.(ctx);
+      if (f % 137 !== 0) continue;
+      checks++;
+
+      // The leading car's own matrix is the published position, to the metre.
+      cars.getMatrixAt(0, m);
+      at.setFromMatrixPosition(m);
+      expect(Math.hypot(at.x - traffic.tram.x, at.z - traffic.tram.z)).toBeLessThan(1);
+      expect(at.y).toBeCloseTo(traffic.tram.y, 3);
+
+      // And the whole three-car set is up on the deck, on the ring, where a
+      // player standing on the platform could be hit by it.
+      box.setFromObject(cars);
+      expect(box.min.y).toBeGreaterThan(ISLAND_Y - 4);
+      expect(box.max.y).toBeLessThan(ISLAND_Y + 12);
+      const r = Math.hypot((box.min.x + box.max.x) / 2, (box.min.z + box.max.z) / 2);
+      expect(r).toBeGreaterThan(RING_R[1] - 40);
+      expect(r).toBeLessThan(RING_R[1] + 6);
+    }
+    expect(checks).toBeGreaterThan(20);
+  }, 30000);
+
+  it("builds and runs on a phone, with no birds and a quarter of the cars", () => {
+    // The low tier takes `BIRDS` to zero, which means an InstancedMesh with a
+    // count of nothing — a shape that is easy to get wrong and never exercised
+    // by the world test, which only ever builds the high tier.
+    const phone = buildTraffic({ quality: "low", seedSalt: "test" });
+    const phoneCtx = makeCtx();
+    phoneCtx.quality = "low";
+    for (let f = 0; f < 600; f++) {
+      phoneCtx.time += phoneCtx.dt;
+      expect(() => phone.update?.(phoneCtx)).not.toThrow();
+    }
+    const cars = phone.group.children[0] as THREE.InstancedMesh;
+    const birds = phone.group.children[3] as THREE.InstancedMesh;
+    expect(cars.count).toBeLessThan(20);
+    expect(cars.count).toBeGreaterThan(4);
+    expect(birds.count).toBe(0);
+    expect(phone.stops.length).toBe(4);
+    phone.dispose();
+  }, 20000);
+
   it("disposes without leaving anything in the scene", () => {
     traffic.dispose();
     expect(traffic.group.children.length).toBe(0);
   });
 });
 
+
+describe("mix", () => {
+  it("measures", () => {
+    const c = makeCtx();
+    const crowd = buildCrowd({ quality: "high", seedSalt: "n" });
+    let t = 0;
+    for (let f = 0; f < 60 * 300; f++) {
+      c.time += c.dt;
+      const t0 = performance.now();
+      crowd.update?.(c);
+      t += performance.now() - t0;
+    }
+    console.log("crowd ms/frame", (t / (60 * 300)).toFixed(3), "count", crowd.count);
+    crowd.dispose();
+    expect(1).toBe(1);
+  }, 200000);
+});

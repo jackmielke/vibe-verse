@@ -217,10 +217,18 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   scene.add(lighting.group);
 
   const keel = add(buildKeel(build));
-  const buildings = add(buildBuildings(build));
+  /* Interiors are built first, and only so that the buildings can be told to
+   * leave their lots alone.
+   *
+   * The café and the gallery are real rooms standing inside two ordinary shop
+   * lots. `buildings.ts` has no idea, so left to itself it puts a solid block
+   * on top of each of them — walls with no door, a room sealed inside somebody
+   * else's box. Neither system may import the other, so the engine carries the
+   * one fact between them. */
+  const interiors = add(buildInteriors(build));
+  const buildings = add(buildBuildings(build, { skipLots: interiors.claimedLots }));
   const streets = add(buildStreets(build));
   const props = add(buildProps(build));
-  const interiors = add(buildInteriors(build));
   const crowd = add(buildCrowd(build));
   const traffic = add(buildTraffic(build));
   const activities = add(buildActivities(build));
@@ -475,9 +483,19 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
        * lens, the lake filling the lower third, the sun behind the towers. A
        * very slow orbit, so a recorder gets motion without the frame changing
        * enough to stop being the picture. */
+      /* Framed on the island's whole vertical extent, which is the constraint.
+       *
+       * The city spans from the keel's tip at y=60 to the Beacon's crown at
+       * 1120 — 1060 m of subject — so the camera distance is set by fitting
+       * that into 58 degrees, not by how wide the island looks. At 1250 m the
+       * tip sits at -13 degrees and the crown at +32, inside the frame with
+       * room, and the bottom of the shot lands on the ice directly under the
+       * island rather than on empty sky. Closer and the point of the rock is
+       * cut off, which is the one part of the silhouette the whole world is
+       * named for. */
       const a = Math.PI * 0.5 + time * 0.014;
-      camera.position.set(Math.sin(a) * 1420, 420, Math.cos(a) * 1420);
-      camera.lookAt(0, ISLAND_Y + 60, 0);
+      camera.position.set(Math.sin(a) * 1250, 340, Math.cos(a) * 1250);
+      camera.lookAt(0, ISLAND_Y + 20, 0);
       body.visible = false;
     } else {
       /* ---- gather input ---- */

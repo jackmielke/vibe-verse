@@ -184,16 +184,38 @@ for (const name of names) {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180000 });
 
   if (view !== null) {
-    await page
-      .getByText("Arrive", { exact: false })
-      .first()
-      .click({ timeout: 60000 })
-      .catch(() => console.log(`${name}: no Arrive button — the shot may be a menu`));
+    /* Click until the world is actually up, not once and hope.
+     *
+     * One click plus a fixed wait photographs the title card perhaps a third
+     * of the time under load: the button can be clicked before its handler is
+     * attached, the dynamic import of the engine takes as long as it takes on
+     * a software rasteriser, and a blocked character fetch can stall the boot
+     * past any fixed timeout. The world publishes `window.__empyrean` at the
+     * end of its constructor, so that is the thing to wait for — and a shot of
+     * the menu is worse than a slow shot, because it looks like a finished
+     * frame of a world that is not there. */
+    let up = false;
+    for (let attempt = 0; attempt < 6 && !up; attempt++) {
+      await page
+        .getByText("Arrive", { exact: false })
+        .first()
+        .click({ timeout: 20000 })
+        .catch(() => {});
+      const deadline = Date.now() + WAIT;
+      while (Date.now() < deadline) {
+        up = await page.evaluate(() => typeof window.__empyrean === "object").catch(() => false);
+        if (up) break;
+        await page.waitForTimeout(1500);
+      }
+    }
+    if (!up) console.log(`${name}: the world never came up — this shot is a menu`);
+    // Built, but not settled: the city is still compiling shaders and the
+    // crowd has not yet found the pavement.
+    await page.waitForTimeout(6000);
+  } else {
+    // The capture camera boots itself; there is nothing to click.
+    await page.waitForTimeout(WAIT);
   }
-
-  // The world builds a city on the main thread; give it real time under a
-  // software rasteriser before asking it to do anything.
-  await page.waitForTimeout(WAIT);
 
   if (view !== null) {
     await evalSafe(

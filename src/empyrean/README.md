@@ -41,7 +41,8 @@ scene
 │   └── mirror  (scale.y = -1)
 │        └── clone(true) of ▼
 ├── REFLECTED   ← keel.ts, buildings.ts      the island's silhouette
-├── DETAIL      ← streets, props, crowd, traffic, interiors, activities
+├── DETAIL      ← streets, props, interiors, crowd, traffic, vehicles,
+│                 activities, weather
 └── body + plume
 ```
 
@@ -71,12 +72,16 @@ unplaceably wrong, and invisible until somebody looks at the lake.
 | `props.ts` | lamps, benches, trees, stalls, awnings, banners, fountains |
 | `crowd.ts` | pedestrians on the nav graph |
 | `traffic.ts` | skycars on their lanes and the ring tram |
+| `vehicles.ts` | the sky skiff and the glider you can get into |
 | `interiors.ts` | the rooms you can walk into |
 | `activities/` | races, courier runs, the photo hunt, the collectibles |
+| `weather.ts` | the weather cycle, snow, cloud banks, birds, the aurora |
 | `lighting.ts` | sun, shadows, the day cycle, what switches on at dusk |
 | `postfx.ts` | the one place in this world that tone maps |
 | `flight.ts` | the body — City's physics, in a function you can test |
 | `camera.ts` | the third-person rig |
+| `collide.ts` | every system's boxes and decks, in one grid |
+| `minimap.ts` | the plan, drawn in 2D canvas rather than by a second camera |
 | `audio.ts` | wind, jets, the city, and a pad that never resolves |
 
 ## The physics is not "like" Vibe City's, it is Vibe City's
@@ -113,13 +118,52 @@ Kept because each one cost a rebuild and would cost another.
   are inset inside blocks, so there are two or three metres of dead ground in
   front of every shopfront. `Lot.door` is the first walkable point outward;
   `Lot.frontMid` is the wall. Send couriers and pedestrians to the former.
+- **The promenade rings are a skirt, not a superstructure.** Three rings with
+  sixty metres of overhang turned the island into a multi-storey car park with
+  a town on the roof and hid the rock — which is half the silhouette — from
+  every angle. Two rings, sixteen out and thirty-two down.
+- **Rock is matte.** The keel's grooves were a 40% shading swing on top of a 4%
+  geometric flute; raked by a low sun, four hundred metres of cliff read as a
+  ring of polished golden columns holding the city up. The shape does the work.
+- **`DECKS` has changed length twice**, and both times something indexed it by
+  hand. Derive from the array. It is `as const` so the type checker will catch
+  the read past the end — which is the only reason the last one was not an
+  undefined dereference on the first frame.
+- **A 1-D hash on two indices clumps.** The towers came out quilted in 5–20 m
+  patches because lit windows were picked with `hash(x*31.7 + y*7.3)`;
+  neighbouring bays land close together in the input. Anything indexed by
+  (bay, floor) wants a 2-D hash.
+- **Test the world, not just the modules.** `src/test/empyreanWorld.test.ts`
+  builds every system, steps it, and looks for the failures whose symptom is a
+  black screen rather than an exception: a NaN in a position buffer (one
+  collapses the bounding sphere and the mesh silently stops drawing), geometry
+  left in local space, a built lot that is hollow. It found the ring tram
+  updating its state perfectly and never once moving its geometry.
 
 ## Verifying
 
 `npm run typecheck` (never bare `tsc --noEmit` — see the root `CLAUDE.md`),
 `npm run build`, `npx vitest run src/test/cityplan.test.ts src/test/empyrean.test.ts`.
 
-Then open it. `node scripts/route-shot.mjs "/empyrean?shot=1" out.jpg` for the
-card composition, and `ROUTE_SHOT_ENTER="Take off" node scripts/route-shot.mjs
-/empyrean out.jpg` for what a player actually sees. Neither a green build nor a
-green test suite has ever caught this world looking wrong.
+Then open it. **`scripts/empyrean-shot.mjs` is the tool** — it drives the
+world's own debug hooks (`__empyrean.warp`, `.look`, `.dist`, `.day`,
+`.weather`, `.freeze`, `.hide`) rather than synthesising mouse drags, so a
+viewpoint is three numbers in its table instead of a sequence of inputs that
+breaks the moment the camera is retuned.
+
+```
+node scripts/empyrean-shot.mjs                      # every viewpoint
+node scripts/empyrean-shot.mjs bazaar .shots/a.jpg  # one, eye level in a street
+EMP_DAY=0.02 node scripts/empyrean-shot.mjs skyline # at night
+EMP_HIDE=props,crowd node scripts/empyrean-shot.mjs air   # bisect an occlusion
+```
+
+Two things it learned the hard way. **Freeze before you warp** — gravity undoes
+a warp inside the settle window, so every aerial viewpoint used to be a
+photograph of the pavement the player landed on. And **wait for
+`window.__empyrean`, do not click once and hope** — under load the title card
+photographs about a third of the time, and a shot of the menu looks like a
+finished frame of a world that is not there.
+
+Neither a green build nor a green test suite has ever caught this world
+looking wrong.

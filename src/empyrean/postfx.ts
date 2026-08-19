@@ -664,7 +664,7 @@ export function buildPostFx(
     // lamps, the jets and the crowns of the towers. Set under 1 it also caught
     // the sky and the snow, and standing anywhere near a lit surface turned
     // the frame into fog.
-    uThreshold: { value: 1.25 },
+    uThreshold: { value: 1.18 },
     uKnee: { value: 0.55 },
   });
 
@@ -690,7 +690,7 @@ export function buildPostFx(
     uScene: { value: sceneRT.texture },
     uDepth: { value: sceneRT.depthTexture ?? null },
     uTexel: { value: new THREE.Vector2() },
-    uThreshold: { value: 1.55 },
+    uThreshold: { value: 1.45 },
   });
 
   const shaftBlurMat = mk("EmpyreanShaftBlur", SHAFT_BLUR, {
@@ -710,11 +710,11 @@ export function buildPostFx(
     uShaftStrength: { value: 0 },
     uShaftTint: { value: new THREE.Color(1.0, 0.78, 0.52) },
     uExposure: { value: 0.52 },
-    uContrast: { value: 1.15 },
+    uContrast: { value: 1.10 },
     uSaturation: { value: 1.24 },
     uVignette: { value: 0.42 },
     uLift: { value: 0.009 },
-    uShadowGain: { value: 0.5 },
+    uShadowGain: { value: 0.55 },
     uShadowRange: { value: 0.3 },
     uDither: { value: 1 / 255 },
     uCA: { value: 0.010 },
@@ -731,7 +731,7 @@ export function buildPostFx(
   let rayGain = 1;
   let bloomGain = 1;
   let liftGain = 1;
-  let shadowGain = 0.5;
+  let shadowGain = 0.55;
   const baseGlow = high ? 0.30 : 0.25;
 
   const draw = (mat: THREE.Material, target: THREE.WebGLRenderTarget | null) => {
@@ -856,7 +856,7 @@ export function buildPostFx(
            * moment for shafts, and a threshold that starts at zero would have
            * switched them off exactly then. */
           const up = THREE.MathUtils.smoothstep(sunDir.y, -0.12, 0.01);
-          shaftStrength = onScreen * up * rayGain * 0.5;
+          shaftStrength = onScreen * up * rayGain * 0.6;
         }
         if (shaftStrength > 0.001) {
           draw(shaftSrcMat, shaftA);
